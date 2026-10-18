@@ -162,12 +162,20 @@ describe("ISSUE-1184 UI/service wiring remains truthful", () => {
   const creativeStep = read("components/campaign-builder/StepCreative.jsx");
   const workflow = read("../../.github/workflows/issue-1184-video-phase-a-tests.yml");
 
-  it("runs one awaitable platform at a time and exposes Stop/Resume/Retry", () => {
-    assert.match(page, /for \(const platform of preparationPlatforms\)/);
-    assert.match(page, /await runPreparationPlatform\(platform/);
-    assert.match(panel, /Stop waiting/);
-    assert.match(panel, /Resume preparation/);
-    assert.match(panel, /Retry/);
+  // [TEST-MOD-APPROVED #3697] Preparation is no longer an operator-triggered
+  // creative-step action. It is a sequential, resumable launch service called
+  // only after exact plan confirmation.
+  it("runs one bound platform at a time only after plan confirmation", () => {
+    assert.match(service, /for \(const platform of PREPARATION_ORDER\)/);
+    assert.match(service, /plan_version_id: planVersionId/);
+    assert.match(service, /plan_hash: planHash/);
+    assert.match(page, /await prepareBoundVideoCreative\(/);
+    assert.ok(
+      page.indexOf('action: "confirm_launch"') <
+        page.indexOf("await prepareBoundVideoCreative("),
+    );
+    assert.doesNotMatch(creativeStep, /VideoPreparationPanel/);
+    assert.match(panel, /Stop waiting/); // legacy component remains reusable
   });
 
   it("uses a safe Meta iframe and new-tab TikTok link", () => {
@@ -220,7 +228,13 @@ describe("ISSUE-1184 UI/service wiring remains truthful", () => {
       },
     );
     assert.match(creativeStep, /buildVideoSourcePayload/);
-    assert.match(creativeStep, /Bunny poster URL \(required\)/);
+    // [TEST-MOD-APPROVED #3697] Operator infrastructure fields were removed;
+    // the server-owned Creative Library supplies the same trusted refs.
+    assert.match(creativeStep, /listAdCreatives/);
+    assert.match(creativeStep, /getAdCreativeForReuse/);
+    assert.doesNotMatch(creativeStep, /label="Bunny poster URL/);
+    assert.doesNotMatch(creativeStep, /label="MP4 master URL/);
+    assert.doesNotMatch(creativeStep, /label="Bunny video ID/);
     assert.doesNotMatch(creativeStep, /handlePosterPicked|Poster upload failed/);
   });
 

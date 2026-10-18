@@ -20,7 +20,9 @@ describe("#1983 ToolProposalCard account deletion confirm", () => {
     expect(source).toContain("legalNameInput");
     expect(source).toMatch(/legal_name:\s*legalNameInput\.trim\(\)/);
     expect(source).toMatch(/confirm_phrase:\s*"DELETE"/);
-    expect(source).toContain("Type your legal name and DELETE to confirm");
+    expect(source).toMatch(
+      /Type your legal name and DELETE\s+to confirm\./,
+    );
   });
 
   it("gates the delete button on legal name + DELETE", () => {

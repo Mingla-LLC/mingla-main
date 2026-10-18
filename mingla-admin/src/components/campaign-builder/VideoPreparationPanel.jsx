@@ -2,7 +2,6 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock3,
-  Eye,
   LoaderCircle,
   LockKeyhole,
   PauseCircle,
@@ -19,8 +18,8 @@ import { PREPARATION_ORDER } from "../../lib/adBuilder/preparationState";
 const CAPABILITY = {
   meta: "Build + real platform preview",
   snapchat: "Build + Mingla approximation",
-  tiktok: "Real preview only · no Phase A video create",
-  google: "Mingla approximation · no Phase A video create",
+  tiktok: "Build + real platform preview",
+  google: "Build + Mingla approximation",
 };
 
 const FAILURE_COPY = {
@@ -37,9 +36,6 @@ function elapsed(startedAt) {
 }
 
 function presentation(platform, row, queued, stopped) {
-  if (platform === "google") {
-    return { Icon: Eye, tone: "warning", primary: "Mingla approximation · video create not in Phase A" };
-  }
   if (queued) return { Icon: Clock3, tone: "info", primary: "Queued" };
   if (stopped && (row.state === "uploading" || row.state === "processing")) {
     return { Icon: PauseCircle, tone: "neutral", primary: "Status not checked" };
@@ -51,9 +47,10 @@ function presentation(platform, row, queued, stopped) {
     return { Icon: LoaderCircle, tone: "info", spin: true, primary: `${PLATFORM_LABELS[platform]} is processing${elapsed(row.started_at) ? ` · ${elapsed(row.started_at)} elapsed` : ""}` };
   }
   if (row.state === "ready") {
-    if (platform === "meta") return { Icon: CheckCircle2, tone: "success", primary: "Ready to build + preview" };
-    if (platform === "snapchat") return { Icon: CheckCircle2, tone: "success", primary: "Ready to build" };
-    return { Icon: Eye, tone: "info", primary: "Real preview ready · video create not in Phase A" };
+    if (platform === "meta" || platform === "tiktok") {
+      return { Icon: CheckCircle2, tone: "success", primary: "Ready to build + preview" };
+    }
+    return { Icon: CheckCircle2, tone: "success", primary: "Ready to build" };
   }
   if (row.state === "failed" || row.state === "timed_out") {
     return { Icon: AlertCircle, tone: "error", primary: `${PLATFORM_LABELS[platform]} couldn't prepare this video` };
@@ -76,11 +73,9 @@ export function VideoPreparationPanel({
 }) {
   const recorded = Boolean(creativeId);
   const prepPlatforms = PREPARATION_ORDER.filter((p) => fundedPlatforms.includes(p));
-  const visiblePlatforms = [...prepPlatforms, ...(fundedPlatforms.includes("google") ? ["google"] : [])];
-  const readyBuild = ["meta", "snapchat"].filter((p) =>
-    fundedPlatforms.includes(p) && rows[p]?.state === "ready"
-  );
-  const buildCount = ["meta", "snapchat"].filter((p) => fundedPlatforms.includes(p)).length;
+  const visiblePlatforms = prepPlatforms;
+  const readyBuild = prepPlatforms.filter((p) => rows[p]?.state === "ready");
+  const buildCount = prepPlatforms.length;
 
   return (
     <section className="phase-a-panel space-y-3" aria-labelledby="video-prepare-title">
@@ -116,9 +111,7 @@ export function VideoPreparationPanel({
               const runningIndex = prepPlatforms.indexOf(runningPlatform);
               const queued = runningPlatform && index > runningIndex && row.state === "not_started";
               const view = presentation(platform, row, queued, stopped);
-              const action = platform === "google"
-                ? null
-                : row.state === "failed" || row.state === "timed_out"
+              const action = row.state === "failed" || row.state === "timed_out"
                 ? <Button size="sm" variant="secondary" disabled={!online} onClick={() => onRetry(platform)}>Retry {PLATFORM_LABELS[platform]}</Button>
                 : stopped && (row.state === "uploading" || row.state === "processing")
                 ? <Button size="sm" variant="secondary" disabled={!online} onClick={() => onCheck(platform)}>Check status</Button>
@@ -163,7 +156,7 @@ export function VideoPreparationPanel({
 
           <div aria-live="polite">
             {buildCount > 0 && readyBuild.length === buildCount ? (
-              <AlertCard variant="success" title="Video is ready for Meta and Snapchat">
+              <AlertCard variant="success" title="Video is ready for every selected platform">
                 Preparation created media copies only. No campaign or ad was created.
               </AlertCard>
             ) : readyBuild.length > 0 ? (

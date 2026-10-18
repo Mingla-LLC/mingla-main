@@ -16,14 +16,11 @@ const REPO_ROOT = path.resolve(ADMIN_SRC, "../..");
 const read = (relativePath) => fs.readFileSync(path.join(REPO_ROOT, relativePath), "utf8");
 
 describe("ISSUE-1162 — stock is the honest default and Magnific is opt-in", () => {
-  it("both admin creative entry points default to non-generated", () => {
+  it("the governed admin creative entry point defaults to non-generated", () => {
     const builder = read("mingla-admin/src/pages/CampaignBuilderPage.jsx");
-    const engine = read("mingla-admin/src/pages/AdEnginePage.jsx");
 
     assert.match(builder, /aiGenerated:\s*false,/);
     assert.doesNotMatch(builder, /aiGenerated:\s*true,/);
-    assert.match(engine, /ai_generated:\s*false,/);
-    assert.doesNotMatch(engine, /ai_generated:\s*true,/);
   });
 
   it("creative upload maps omitted→false and preserves explicit false/true", () => {
@@ -31,7 +28,7 @@ describe("ISSUE-1162 — stock is the honest default and Magnific is opt-in", ()
 
     assert.match(
       upload,
-      /const aiGenerated = typeof body\.ai_generated === "boolean" \? body\.ai_generated : false;/,
+      /const aiGenerated = typeof body\.ai_generated === "boolean"\s*\? body\.ai_generated\s*: false;/,
     );
 
     const normalize = (value) => (typeof value === "boolean" ? value : false);

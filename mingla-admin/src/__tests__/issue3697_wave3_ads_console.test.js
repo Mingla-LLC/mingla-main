@@ -46,6 +46,7 @@ test("formatCampaignMoney uses campaign currency (not always USD)", () => {
   const gbp = formatCampaignMoney("GBP", 1234);
   assert.match(gbp, /1\.34|£|GBP/);
   assert.equal(formatCampaignMoney("USD", null), "—");
+  assert.equal(formatCampaignMoney(null, 1234), "—");
 });
 
 test("Pause only for ACTIVE; Launch only for PAUSED (#3708)", () => {
@@ -138,7 +139,7 @@ test("CampaignsPage spend-vs-cap + currency-honest money", () => {
   assert.match(src, /formatCampaignMoney/);
   assert.match(src, /canPauseCampaign/);
   assert.match(src, /Spend vs hard cap/);
-  assert.match(src, /Meta-only/);
+  assert.match(src, /every enabled platform/);
   assert.match(src, /roiLoading \? null/);
   assert.doesNotMatch(src, /function centsToUsd/);
 });
@@ -146,7 +147,18 @@ test("CampaignsPage spend-vs-cap + currency-honest money", () => {
 test("plan currency comes from ad_connections and rides the create budget", () => {
   assert.deepEqual(
     resolvePlanCurrency({ meta: { currency: "gbp" } }, ["meta", "tiktok"]),
-    { currency: "GBP", mixed: false },
+    { currency: null, mixed: false, unresolved: true },
+  );
+  assert.deepEqual(
+    resolvePlanCurrency(
+      { meta: { currency: "gbp" }, tiktok: { currency: "GBP" } },
+      ["meta", "tiktok"],
+    ),
+    { currency: "GBP", mixed: false, unresolved: false },
+  );
+  assert.deepEqual(
+    resolvePlanCurrency({}, ["meta"]),
+    { currency: null, mixed: false, unresolved: true },
   );
   assert.equal(
     resolvePlanCurrency(
@@ -164,5 +176,17 @@ test("plan currency comes from ad_connections and rides the create budget", () =
   const builder = fs.readFileSync(path.join(ADMIN, "pages/CampaignBuilderPage.jsx"), "utf8");
   assert.match(builder, /resolvePlanCurrency/);
   assert.match(builder, /currency: planCurrency\.currency/);
+  assert.match(builder, /currencyBlockedReason/);
   assert.doesNotMatch(builder, /currency: "USD"/);
+
+  const unresolved = buildLaunchSummary({
+    channelRows: [{ platform: "meta", label: "Meta", eligible: true }],
+    allocations: [{ platform: "meta", dailyCents: 1000 }],
+    totalDailyCents: 1000,
+    currency: null,
+  });
+  assert.equal(unresolved.channels[0].dailyLabel, "Currency unavailable/day");
+  assert.match(unresolved.budgetLine, /Currency unavailable/);
 });
+// #3697 v1.4: prior USD-fallback assertions were replaced because unresolved
+// provider currency must now fail closed under the binding currency contract.

@@ -18,8 +18,12 @@ describe("issue #3697 Wave 8 Cancel / End / filters", () => {
     expect(detail).toContain("ads-detail-end");
     expect(detail).toContain("canCancel");
     expect(detail).toContain("canEnd");
-    expect(detail).toContain("spent <= 0");
-    expect(detail).toContain("spent > 0");
+    // [TEST-MOD-APPROVED #3697] v1.4 uses provider-account spend as the
+    // cancellation authority; Host-currency conversion may be unavailable.
+    expect(detail).toContain("hasProviderSpend");
+    expect(detail).toContain("Number(row.spend_cents) > 0");
+    expect(detail).toContain("!isEnded && !hasProviderSpend");
+    expect(detail).toContain("!isEnded && hasProviderSpend");
     expect(detail).toContain("cancelHostAdCampaign");
   });
 
@@ -32,10 +36,15 @@ describe("issue #3697 Wave 8 Cancel / End / filters", () => {
   it("Ads list has status filters", () => {
     const route = read("app/(tabs)/marketing/ads/index.tsx");
     expect(route).toContain("ads-campaign-filters");
-    expect(route).toContain("ads-filter-all");
-    expect(route).toContain("ads-filter-live");
-    expect(route).toContain("ads-filter-paused");
-    expect(route).toContain("ads-filter-ended");
-    expect(route).toContain("campaignMatchesFilter");
+    // [TEST-MOD-APPROVED #3697] filters now cover the complete v1.4 lifecycle
+    // and generate stable IDs from the canonical filter keys.
+    expect(route).toContain('{ key: "all", label: "All" }');
+    expect(route).toContain('{ key: "live", label: "Live" }');
+    expect(route).toContain('{ key: "paused", label: "Paused" }');
+    expect(route).toContain('{ key: "ended", label: "Ended" }');
+    expect(route).toContain(
+      'testID={`ads-filter-${key.replaceAll("_", "-")}`}',
+    );
+    expect(route).toContain("hostAdMatchesFilter");
   });
 });

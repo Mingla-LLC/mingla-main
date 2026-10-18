@@ -17,9 +17,19 @@ import {
   toPreparationState,
   verifyCreativeBytes,
 } from "../_shared/adCreativePrepare.ts";
+import {
+  type CreativePreparationAllocation,
+  creativePreparationBindingError,
+  type CreativePreparationPlan,
+  type CreativePreparationVersion,
+} from "../_shared/adCreativePreparationPlan.ts";
+import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PLAN_HASH_RE = /^[0-9a-f]{64}$/;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,6 +59,8 @@ const REQUEST_KEYS = new Set([
   "platform",
   "lane",
   "brand_id",
+  "plan_version_id",
+  "plan_hash",
 ]);
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
   provider_terminal:
@@ -198,19 +210,6 @@ serve(async (req: Request): Promise<Response> => {
   const requestedBrandId = typeof body.brand_id === "string"
     ? body.brand_id.trim()
     : "";
-  const requestedLane = body.lane;
-  if (!adminRow) {
-    if (!requestedBrandId || requestedLane !== "business") {
-      return json({ error: "forbidden" }, 403);
-    }
-    const { data: canManage, error: manageError } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
-      { p_brand_id: requestedBrandId, p_user_id: user.id },
-    );
-    if (manageError || canManage !== true) {
-      return json({ error: "forbidden", detail: "permission_denied" }, 403);
-    }
-  }
   for (const key of Object.keys(body)) {
     if (!REQUEST_KEYS.has(key)) {
       return json({ error: "unknown_field", detail: key }, 400);
@@ -222,6 +221,12 @@ serve(async (req: Request): Promise<Response> => {
     : "";
   const platform = body.platform;
   const lane = body.lane;
+  const planVersionId = typeof body.plan_version_id === "string"
+    ? body.plan_version_id.trim()
+    : "";
+  const planHash = typeof body.plan_hash === "string"
+    ? body.plan_hash.trim().toLowerCase()
+    : "";
   if (!["start", "status", "retry"].includes(String(action))) {
     return json({ error: "action_invalid" }, 400);
   }
@@ -232,27 +237,124 @@ serve(async (req: Request): Promise<Response> => {
   if (lane !== "consumer" && lane !== "business") {
     return json({ error: "lane_invalid" }, 422);
   }
-  if (!adminRow && lane !== "business") {
-    return json({ error: "lane_invalid" }, 422);
+  if (!UUID_RE.test(planVersionId) || !PLAN_HASH_RE.test(planHash)) {
+    return json({
+      error: "plan_required",
+      detail: "plan_version_and_hash_required_before_provider_prepare",
+    }, 409);
+  }
+
+  const { data: versionData, error: versionError } = await supabase
+    .from("ad_plan_versions")
+    .select("id,plan_id,plan_hash,canonical_plan")
+    .eq("id", planVersionId)
+    .maybeSingle();
+  if (versionError) return json({ error: "plan_lookup_failed" }, 503);
+  if (!versionData) {
+    return json({
+      error: "plan_conflict",
+      detail: "plan_version_hash_mismatch",
+    }, 409);
+  }
+  const version = versionData as CreativePreparationVersion;
+  const [planResult, allocationResult, confirmationResult] = await Promise.all([
+    supabase.from("ad_plans")
+      .select("id,owner_kind,brand_id,current_version_id,state")
+      .eq("id", version.plan_id).maybeSingle(),
+    supabase.from("ad_plan_provider_allocations")
+      .select("platform,connection_id")
+      .eq("plan_version_id", planVersionId)
+      .eq("platform", platform)
+      .maybeSingle(),
+    supabase.from("ad_plan_confirmations")
+      .select("id")
+      .eq("plan_version_id", planVersionId)
+      .eq("plan_hash", planHash)
+      .maybeSingle(),
+  ]);
+  if (planResult.error || allocationResult.error || confirmationResult.error) {
+    return json({ error: "plan_lookup_failed" }, 503);
+  }
+  const plan = planResult.data as CreativePreparationPlan | null;
+  if (!plan) {
+    return json({ error: "plan_conflict", detail: "plan_not_found" }, 409);
+  }
+  if (plan.owner_kind === "mingla") {
+    if (!adminRow) return json({ error: "forbidden" }, 403);
+  } else if (plan.owner_kind === "host") {
+    if (!UUID_RE.test(requestedBrandId)) {
+      return json({ error: "forbidden", detail: "brand_id_invalid" }, 403);
+    }
+    const { data: canLaunch, error: launchPermissionError } = await supabase
+      .rpc(
+        "ad_can_host_action",
+        {
+          p_brand_id: requestedBrandId,
+          p_user_id: user.id,
+          p_action: "launch",
+        },
+      );
+    if (launchPermissionError || canLaunch !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
+  } else {
+    return json({ error: "plan_conflict", detail: "plan_owner_invalid" }, 409);
   }
   const traceId = crypto.randomUUID();
-  try {
-    assertCreativeCdnConfigured();
-  } catch (error) {
-    if (error instanceof CreativeTrustError) {
-      return json({ error: error.code, trace_id: traceId }, error.status);
-    }
+
+  const allocation = allocationResult.data as
+    | CreativePreparationAllocation
+    | null;
+  if (!allocation) {
     return json(
-      { error: "creative_cdn_config_missing", trace_id: traceId },
-      503,
+      {
+        error: "plan_conflict",
+        detail: "plan_platform_not_allocated",
+        trace_id: traceId,
+      },
+      409,
+    );
+  }
+
+  const bindingError = creativePreparationBindingError({
+    plan,
+    version,
+    allocation,
+    connection: { id: allocation.connection_id },
+    confirmationPresent: confirmationResult.data !== null,
+    requestedPlanVersionId: planVersionId,
+    requestedPlanHash: planHash,
+    requestedCreativeId: creativeId,
+    requestedPlatform: platform,
+    requestedLane: lane,
+    requestedBrandId,
+  });
+  if (bindingError) {
+    return json({ error: "plan_conflict", detail: bindingError }, 409);
+  }
+
+  const { error: launchableError } = await supabase.rpc(
+    "ad_plan_assert_launchable",
+    {
+      p_plan_version_id: planVersionId,
+      p_plan_hash: planHash,
+    },
+  );
+  if (launchableError) {
+    return json(
+      {
+        error: "plan_conflict",
+        detail: "plan_not_launchable",
+        trace_id: traceId,
+      },
+      409,
     );
   }
 
   const { data: connectionRow, error: connectionError } = await supabase
     .from("ad_connections")
     .select("*")
-    .eq("platform", platform)
-    .eq("lane", lane)
+    .eq("id", allocation.connection_id)
     .maybeSingle();
   if (connectionError) {
     return json({ error: "connection_lookup_failed", trace_id: traceId }, 503);
@@ -264,6 +366,34 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: `${platform}_not_connected`, trace_id: traceId }, 424);
   }
   const connection = connectionRow as unknown as AdConnectionRow;
+  if (
+    connection.id !== allocation.connection_id ||
+    connection.platform !== platform || connection.lane !== lane
+  ) {
+    return json(
+      {
+        error: "plan_conflict",
+        detail: "plan_connection_mismatch",
+        trace_id: traceId,
+      },
+      409,
+    );
+  }
+
+  // Only after the exact immutable, funded and launch-confirmed plan passes do
+  // we inspect provider/CDN configuration or enter the provider preparation
+  // state machine. No pre-plan request can create a native provider object.
+  try {
+    assertCreativeCdnConfigured();
+  } catch (error) {
+    if (error instanceof CreativeTrustError) {
+      return json({ error: error.code, trace_id: traceId }, error.status);
+    }
+    return json(
+      { error: "creative_cdn_config_missing", trace_id: traceId },
+      503,
+    );
+  }
 
   const { data: creativeRow, error: creativeError } = await supabase
     .from("ad_creatives")
@@ -277,8 +407,13 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "creative_not_found", trace_id: traceId }, 404);
   }
   const creative = creativeRow as unknown as AdCreativeRow;
-  if (!adminRow && creative.brand_id !== requestedBrandId) {
-    return json({ error: "creative_brand_mismatch", trace_id: traceId }, 403);
+  const ownershipError = adCreativeOwnershipError({
+    ownerKind: plan.owner_kind,
+    planBrandId: plan.brand_id,
+    creativeBrandId: creative.brand_id,
+  });
+  if (ownershipError) {
+    return json({ error: ownershipError, trace_id: traceId }, 403);
   }
   if (creative.status !== "active" || creative.kind !== "video") {
     return json(

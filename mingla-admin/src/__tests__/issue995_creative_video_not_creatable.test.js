@@ -144,20 +144,29 @@ describe("ISSUE-995 rework · component + page honesty wiring", () => {
   const stepCreative = read(path.join(ADMIN_SRC, "components/campaign-builder/StepCreative.jsx"));
   const page = read(path.join(ADMIN_SRC, "pages/CampaignBuilderPage.jsx"));
 
-  it("StepCreative labels Phase A truth and embeds preparation", () => {
-    assert.match(stepCreative, /Video Phase A/);
-    assert.match(stepCreative, /VideoPreparationPanel/);
+  // [TEST-MOD-APPROVED #3697] v1.4 removes pre-plan preparation from the
+  // creative step and explains the confirmed-plan boundary instead.
+  it("StepCreative keeps provider preparation out of creative selection", () => {
+    assert.match(stepCreative, /One canonical video, safely reused/);
+    assert.match(stepCreative, /nothing\s+is uploaded to an ad platform/i);
+    assert.doesNotMatch(stepCreative, /VideoPreparationPanel/);
   });
 
-  it("StepCreative names the create-capable platforms", () => {
-    assert.match(stepCreative, /Meta and Snapchat can build after/);
+  it("StepCreative uses the server-owned Creative Library", () => {
+    assert.match(stepCreative, /listAdCreatives/);
+    assert.match(stepCreative, /Storage IDs, master URLs and\s+poster URLs stay server-owned/);
   });
 
   it("CampaignBuilderPage passes creative.kind into the build partition", () => {
     assert.match(page, /kind:\s*creative\.kind/);
   });
 
-  it("CampaignBuilderPage gives video its preparation gate reason", () => {
-    assert.match(page, /Prepare at least one video platform/);
+  it("CampaignBuilderPage defers provider preparation until confirmation", () => {
+    assert.match(page, /requirePreparation: false/);
+    assert.match(page, /await prepareBoundVideoCreative\(/);
+    assert.ok(
+      page.indexOf('action: "confirm_launch"') <
+        page.indexOf("await prepareBoundVideoCreative("),
+    );
   });
 });

@@ -399,6 +399,8 @@ export interface CreateAdSetInput {
   /** toward #3697 Wave 2 — Meta start_time. */
   startTime?: string;
   targeting: Record<string, unknown>;
+  /** Provider-native promoted object (currently Meta app acquisition). */
+  promotedObject?: Record<string, unknown>;
   validateOnly?: boolean;
 }
 

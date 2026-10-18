@@ -93,6 +93,7 @@ export function creativeExclusionReason(channel) {
  * @param {string[]} input.fundedPlatforms   platforms the budget funded (allocations)
  * @param {Array}    input.channels          validation.channels from the byte-probe
  * @param {"image"|"video"} [input.kind]     creative kind (default "image")
+ * @param {boolean} [input.requirePreparation] require provider-native refs now
  * @returns {{ buildable: string[], excluded: Array<{platform, reason, channel}> }}
  */
 export function partitionFundedCreative({
@@ -100,6 +101,7 @@ export function partitionFundedCreative({
   channels = [],
   kind = "image",
   preparationByPlatform = {},
+  requirePreparation = true,
 }) {
   const byPlatform = new Map((channels ?? []).map((c) => [c.platform, c]));
   const buildable = [];
@@ -129,6 +131,7 @@ export function partitionFundedCreative({
       // apply. Its readiness is decided solely by the byte-probe matrix
       // (creativeReady below); Reddit video requires a poster, enforced there.
       if (
+        requirePreparation &&
         !VIDEO_CREATE_NO_PREPARE.includes(platform) &&
         preparationByPlatform[platform]?.state !== "ready"
       ) {

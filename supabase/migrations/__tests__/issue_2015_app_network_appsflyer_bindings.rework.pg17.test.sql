@@ -5,6 +5,10 @@ DECLARE
   v_actor uuid := '20152015-2015-4015-8015-201520152015';
   v_other_actor uuid := '20152015-2015-4015-8015-201520152016';
   v_run uuid := gen_random_uuid();
+  v_connection uuid := '20152015-2015-4015-8015-201520152020';
+  v_plan uuid := '20152015-2015-4015-8015-201520152017';
+  v_plan_version uuid := '20152015-2015-4015-8015-201520152018';
+  v_campaign uuid := '20152015-2015-4015-8015-201520152019';
   v_checked timestamptz := clock_timestamp();
   v_change jsonb;
   v_result jsonb;
@@ -122,11 +126,63 @@ BEGIN
     v_run,'business','android','reddit','ready','all_required_dimensions_proven',
     NULL,NULL,NULL,'{}','{}','{}','{}','{}'
   );
+
+  -- [TEST-MOD-APPROVED #3697] The v1.4 control plane makes the approval,
+  -- immutable plan, paused provider object, and stop receipt part of every
+  -- passed canary. Preserve this test's AppsFlyer-binding attacks while using
+  -- a fixture that satisfies the stronger lifecycle contract.
+  INSERT INTO public.ad_connections(
+    id,platform,lane,display_name,external_account_id,auth_kind,token_env_var,
+    status,currency,connected,connected_by
+  ) VALUES(
+    v_connection,'reddit','business','Issue 2015 Reddit fixture','reddit-2015',
+    'system_user_token','REDDIT_ACCESS_TOKEN','connected','USD',true,v_actor
+  );
+  INSERT INTO public.ad_plans(
+    id,client_kind,owner_kind,destination_family,destination_key,state,created_by
+  ) VALUES(
+    v_plan,'admin','mingla','host_app','business:android','paused',v_actor
+  );
+  INSERT INTO public.ad_plan_versions(
+    id,plan_id,version_number,canonical_plan,destination_snapshot,plan_hash,
+    host_currency,host_budget_cents,created_by
+  ) VALUES(
+    v_plan_version,v_plan,1,'{}'::jsonb,'{}'::jsonb,repeat('a',64),
+    'USD',100,v_actor
+  );
+  UPDATE public.ad_plans
+  SET current_version_id=v_plan_version
+  WHERE id=v_plan;
+  INSERT INTO public.ad_campaigns(
+    id,connection_id,platform,external_campaign_id,name,objective,status,
+    daily_budget_cents,targeting,dest_page_type,dest_brand_slug,dest_url,
+    dest_smart_link,request_id,created_by,owner_kind,cap_cents,
+    lifetime_budget_cents,currency,host_currency,provider_currency,
+    currency_status
+  ) VALUES(
+    v_campaign,v_connection,'reddit','reddit-canary-2015',
+    'Issue 2015 binding canary','APP_INSTALLS','PAUSED',100,'{}'::jsonb,
+    'host_app','mingla','https://usemingla.com/','https://usemingla.com/',
+    'issue-2015-rework-canary',v_actor,'mingla',100,100,'USD','USD','USD',
+    'aligned'
+  );
   UPDATE public.ad_app_acquisition_canaries
   SET status='passed',founder_approval_reference='issue-2015-test-approval',
       approved_spend_ceiling_cents=100,approved_currency='USD',
+      plan_version_id=v_plan_version,
+      plan_hash=repeat('a',64),
+      approval_scope_hash=repeat('b',64),
+      approval_requested_by=v_actor,
+      approval_requested_at=clock_timestamp()-interval '3 minutes',
+      approved_by=v_actor,
+      approved_at=clock_timestamp()-interval '150 seconds',
+      approval_expires_at=clock_timestamp()+interval '1 hour',
+      local_campaign_id=v_campaign,
+      provider_objects_created_at=clock_timestamp()-interval '2 minutes',
       started_at=clock_timestamp()-interval '2 minutes',
       completed_at=clock_timestamp()-interval '1 minute',
+      provider_stop_confirmed_at=clock_timestamp()-interval '1 minute',
+      actual_spend_cents=0,
       safe_provider_campaign_id='reddit-canary-2015',
       safe_evidence=jsonb_build_object(
         'provenance','appsflyer_api',

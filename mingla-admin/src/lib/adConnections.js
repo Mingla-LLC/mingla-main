@@ -31,6 +31,9 @@ export const PLATFORMS = PLATFORM_META.map((p) => p.platform);
 /** A connected row older than this (or never verified) is flagged stale. */
 export const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24h
 
+/** Connected rows are re-verified at most once per visible six-hour window. */
+export const AUTO_VERIFY_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+
 /** Platform-native "the account is actually usable" values (F-7/Lane E). */
 export const ACTIVE_ACCOUNT_STATUSES = new Set(["ACTIVE", "ENABLED", "STATUS_ENABLE"]);
 
@@ -95,6 +98,86 @@ export function computeConnectionStatus(row, now = new Date()) {
 }
 
 /**
+ * Translate the legacy health classifier into honest operator language and
+ * the least-destructive next action. The legacy `state` remains untouched so
+ * older callers keep their fail-closed contract; the Admin UI uses this
+ * presentation instead of calling a healthy-but-old credential "stale" or
+ * asking an operator to reconnect a connection that only needs verification.
+ */
+export function connectionOperatorPresentation(row, health) {
+  if (!row) {
+    return {
+      state: "not_connected",
+      label: "Not connected",
+      action: "connect",
+      actionLabel: "Connect",
+      reason: "No provider account is connected yet.",
+    };
+  }
+
+  if (row.connected !== true || row.status !== "connected") {
+    return {
+      state: "needs_attention",
+      label: "Needs attention",
+      action: "connect",
+      actionLabel: "Reconnect",
+      reason: health.reason ?? "The provider connection needs attention before ads can run.",
+    };
+  }
+
+  const accountStatus = row.account_status ?? null;
+  if (accountStatus != null && !ACTIVE_ACCOUNT_STATUSES.has(accountStatus)) {
+    return {
+      state: "needs_attention",
+      label: "Needs attention",
+      action: "connect",
+      actionLabel: "Reconnect",
+      reason: health.reason ?? `The provider reports account status "${accountStatus}".`,
+    };
+  }
+
+  if (health.state === "stale") {
+    return {
+      state: "verification_due",
+      label: "Verification due",
+      action: "status",
+      actionLabel: "Verify now",
+      reason: "Provider verification is due. Verify now to confirm this account is still usable.",
+    };
+  }
+
+  return {
+    state: "connected",
+    label: "Connected",
+    action: "status",
+    actionLabel: "Verify now",
+    reason: null,
+  };
+}
+
+/**
+ * Return only previously connected rows whose automatic status check may run.
+ * Missing, invalid and disconnected rows are never auto-connected. The
+ * caller-owned last-attempt map prevents visibility/focus churn from causing
+ * provider traffic more than once every six hours.
+ */
+export function autoVerificationPlatforms(
+  connections,
+  lastAttemptByPlatform = {},
+  nowMs = Date.now(),
+) {
+  return (connections ?? [])
+    .filter((row) => row?.connected === true && row?.status === "connected")
+    .filter((row) => {
+      const lastAttempt = Number(lastAttemptByPlatform[row.platform] ?? 0);
+      return !Number.isFinite(lastAttempt) || lastAttempt <= 0 ||
+        nowMs - lastAttempt >= AUTO_VERIFY_INTERVAL_MS;
+    })
+    .map((row) => row.platform)
+    .filter((platform) => PLATFORMS.includes(platform));
+}
+
+/**
  * Merge live `ad_connections` rows (any subset/order, any missing platform)
  * with the fixed 5-platform list so the panel ALWAYS renders exactly 5 rows
  * — a platform with no row (Google, pre-connect) renders as "not_connected /
@@ -104,13 +187,19 @@ export function buildConnectionRows(connections, now = new Date()) {
   const byPlatform = new Map((connections ?? []).filter(Boolean).map((row) => [row.platform, row]));
   return PLATFORM_META.map(({ platform, label }) => {
     const row = byPlatform.get(platform) ?? null;
-    const { state, reason } = computeConnectionStatus(row, now);
+    const health = computeConnectionStatus(row, now);
+    const presentation = connectionOperatorPresentation(row, health);
     return {
       platform,
       label,
       row,
-      state,
-      reason,
+      state: health.state,
+      reason: health.reason,
+      operatorState: presentation.state,
+      operatorLabel: presentation.label,
+      operatorReason: presentation.reason,
+      action: presentation.action,
+      actionLabel: presentation.actionLabel,
       displayName: row?.display_name ?? null,
       externalAccountId: row?.external_account_id ?? null,
       accountStatus: row?.account_status ?? null,
@@ -126,19 +215,19 @@ export function buildConnectionRows(connections, now = new Date()) {
  * business logic in lib/, components are thin wiring). `connectChannelFn`
  * matches adEngineService.connectChannel(platform, action) → { data, error }.
  */
-export function createReconnectHandler({ connectChannelFn, onStart, onSuccess, onError }) {
+export function createReconnectHandler({ connectChannelFn, lane = "consumer", onStart, onSuccess, onError }) {
   return async function reconnect(platform, action = "connect") {
-    onStart?.(platform);
+    onStart?.(platform, action);
     try {
-      const { data, error } = await connectChannelFn(platform, action);
+      const { data, error } = await connectChannelFn(platform, action, lane);
       if (error) {
-        onError?.(platform, error);
+        await onError?.(platform, error, action);
         return { ok: false, error };
       }
-      onSuccess?.(platform, data);
+      await onSuccess?.(platform, data, action);
       return { ok: true, data };
     } catch (err) {
-      onError?.(platform, err);
+      await onError?.(platform, err, action);
       return { ok: false, error: err };
     }
   };

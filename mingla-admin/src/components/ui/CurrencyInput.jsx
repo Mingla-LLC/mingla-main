@@ -1,14 +1,27 @@
 /**
  * ISSUE-864 WP4 — CurrencyInput (SPEC §4.1 new primitive).
- * Dollars-in / CENTS-AT-REST: the parent holds cents; conversion to
- * micro/dollars is the server adapter's job at the API boundary, never the
+ * MAJOR-UNITS-IN / MINOR-UNITS-AT-REST: the parent holds minor units; conversion
+ * to each provider's API unit is the server adapter's job at the boundary, never the
  * builder's (blueprint §1.4 Discovery 3 — the 10,000× money bug).
  */
 
 import { useEffect, useState } from "react";
 
-export function CurrencyInput({ label, cents, onCentsChange, error, helper, id, ...props }) {
+export function CurrencyInput({
+  label,
+  cents,
+  onCentsChange,
+  error,
+  helper,
+  id,
+  currency,
+  ...props
+}) {
   const [text, setText] = useState(cents > 0 ? (cents / 100).toFixed(2) : "");
+  const currencyCode =
+    typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
+      ? currency
+      : null;
 
   // Sync down only when the parent's cents disagree with what we'd emit —
   // never clobber in-progress typing ("5." etc.).
@@ -22,7 +35,7 @@ export function CurrencyInput({ label, cents, onCentsChange, error, helper, id, 
 
   const handleChange = (e) => {
     const raw = e.target.value;
-    if (!/^\d*\.?\d{0,2}$/.test(raw)) return; // dollars + max 2 decimals
+    if (!/^\d*\.?\d{0,2}$/.test(raw)) return; // major units + max 2 decimals
     setText(raw);
     onCentsChange(Math.round((parseFloat(raw) || 0) * 100));
   };
@@ -36,7 +49,7 @@ export function CurrencyInput({ label, cents, onCentsChange, error, helper, id, 
       )}
       <div className="relative">
         <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--color-text-secondary)]">
-          $
+          {currencyCode ?? "—"}
         </span>
         <input
           id={id}
@@ -47,7 +60,7 @@ export function CurrencyInput({ label, cents, onCentsChange, error, helper, id, 
           aria-invalid={Boolean(error)}
           className={[
             "w-full h-10 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
-            "border rounded-lg outline-none transition-all duration-150 pl-7 pr-3",
+            "border rounded-lg outline-none transition-all duration-150 pl-14 pr-3",
             error
               ? "border-[#ef4444] focus:border-[#ef4444] focus:ring-2 focus:ring-[#fee2e2]"
               : "border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",

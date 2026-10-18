@@ -1,6 +1,6 @@
 /**
- * ISSUE-978 [Ad Connections panel] — all-5-platform live status + one-click
- * Connect/Reconnect + staleness surfacing.
+ * ISSUE-978 / #3697 [Ad Connections panel] — all-5-platform live status,
+ * honest Connect/Reconnect/Verify actions, and bounded background checks.
  *
  * Gap this closes (proven in #977 Lane B/E/G): admin-ad-connect ALREADY
  * connects/verifies all 5 channels (meta/tiktok/snapchat/google/reddit) and
@@ -16,7 +16,7 @@
  * lib/adBuilder/*.js + the node:test suite under __tests__/).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PlugZap, RefreshCw } from "lucide-react";
 import { SectionCard, AlertCard } from "./ui/Card";
 import { Button } from "./ui/Button";
@@ -24,18 +24,18 @@ import { Badge } from "./ui/Badge";
 import { Spinner } from "./ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import { connectChannel, getConnections, parseEdgeError } from "../services/adEngineService";
-import { buildConnectionRows, createReconnectHandler } from "../lib/adConnections";
+import {
+  AUTO_VERIFY_INTERVAL_MS,
+  autoVerificationPlatforms,
+  buildConnectionRows,
+  createReconnectHandler,
+} from "../lib/adConnections";
 
 const STATE_BADGE = {
   connected: "success",
-  stale: "warning",
+  verification_due: "warning",
+  needs_attention: "error",
   not_connected: "default",
-};
-
-const STATE_LABEL = {
-  connected: "Connected",
-  stale: "Stale",
-  not_connected: "Not connected",
 };
 
 export function AdConnectionsPanel() {
@@ -43,8 +43,13 @@ export function AdConnectionsPanel() {
   const [connections, setConnections] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [busyPlatform, setBusyPlatform] = useState(null);
+  const [busyPlatforms, setBusyPlatforms] = useState({});
   const [rowErrors, setRowErrors] = useState({});
+  const autoVerifyAttempts = useRef({});
+
+  const setPlatformBusy = useCallback((platform, busy) => {
+    setBusyPlatforms((current) => ({ ...current, [platform]: busy }));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,23 +73,96 @@ export function AdConnectionsPanel() {
     queueMicrotask(load);
   }, [load]);
 
+  const verifyConnectedRows = useCallback(async (currentConnections) => {
+    const nowMs = Date.now();
+    const platforms = autoVerificationPlatforms(
+      currentConnections,
+      autoVerifyAttempts.current,
+      nowMs,
+    );
+    if (platforms.length === 0) return;
+
+    platforms.forEach((platform) => {
+      autoVerifyAttempts.current[platform] = nowMs;
+      setPlatformBusy(platform, true);
+      setRowErrors((current) => ({ ...current, [platform]: null }));
+    });
+
+    await Promise.all(platforms.map(async (platform) => {
+      try {
+        const { error } = await connectChannel(platform, "status", "consumer");
+        if (error) {
+          const parsed = await parseEdgeError(error);
+          setRowErrors((current) => ({
+            ...current,
+            [platform]: parsed?.message ?? "Provider verification failed.",
+          }));
+        }
+      } catch (error) {
+        const parsed = await parseEdgeError(error);
+        setRowErrors((current) => ({
+          ...current,
+          [platform]: parsed?.message ?? error?.message ?? "Provider verification failed.",
+        }));
+      } finally {
+        setPlatformBusy(platform, false);
+      }
+    }));
+
+    // A status request may mark a formerly healthy row invalid. Re-read the
+    // lane once after the bounded batch instead of guessing from responses.
+    const { data, error } = await getConnections("consumer");
+    if (!error) setConnections(data ?? []);
+  }, [setPlatformBusy]);
+
+  useEffect(() => {
+    if (connections === null) return;
+    queueMicrotask(() => verifyConnectedRows(connections));
+  }, [connections, verifyConnectedRows]);
+
+  useEffect(() => {
+    const verifyWhenVisible = () => {
+      if (document.visibilityState === "visible" && connections !== null) {
+        void verifyConnectedRows(connections);
+      }
+    };
+    const intervalId = window.setInterval(verifyWhenVisible, AUTO_VERIFY_INTERVAL_MS);
+    document.addEventListener("visibilitychange", verifyWhenVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", verifyWhenVisible);
+    };
+  }, [connections, verifyConnectedRows]);
+
   const reconnect = createReconnectHandler({
     connectChannelFn: connectChannel,
+    lane: "consumer",
     onStart: (platform) => {
-      setBusyPlatform(platform);
+      setPlatformBusy(platform, true);
       setRowErrors((prev) => ({ ...prev, [platform]: null }));
     },
-    onSuccess: async (platform) => {
-      setBusyPlatform(null);
-      addToast({ variant: "success", title: `${platform} connected`, description: "Connection verified and persisted." });
+    onSuccess: async (platform, _data, action) => {
+      setPlatformBusy(platform, false);
+      const verified = action === "status";
+      addToast({
+        variant: "success",
+        title: `${platform} ${verified ? "verified" : "connected"}`,
+        description: verified
+          ? "Provider status refreshed."
+          : "Connection verified and persisted.",
+      });
       await load();
     },
-    onError: async (platform, error) => {
+    onError: async (platform, error, action) => {
       const parsed = await parseEdgeError(error);
-      const message = parsed?.message ?? "Connect failed.";
+      const message = parsed?.message ?? (action === "status" ? "Verification failed." : "Connect failed.");
       setRowErrors((prev) => ({ ...prev, [platform]: message }));
-      addToast({ variant: "error", title: `${platform} connect failed`, description: message });
-      setBusyPlatform(null);
+      addToast({
+        variant: "error",
+        title: `${platform} ${action === "status" ? "verification" : "connect"} failed`,
+        description: message,
+      });
+      setPlatformBusy(platform, false);
     },
   });
 
@@ -115,8 +193,8 @@ export function AdConnectionsPanel() {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <Badge variant={STATE_BADGE[row.state]} dot>
-                      {STATE_LABEL[row.state]}
+                    <Badge variant={STATE_BADGE[row.operatorState]} dot>
+                      {row.operatorLabel}
                     </Badge>
                     <span className="font-medium text-sm">{row.label}</span>
                   </div>
@@ -126,13 +204,17 @@ export function AdConnectionsPanel() {
                     {row.accountStatus ? ` · ${row.accountStatus}` : ""}
                     {" · "}verified {row.verifiedAgeLabel}
                   </div>
-                  {row.reason && (
+                  {row.operatorReason && (
                     <div
                       className={`text-xs mt-1 ${
-                        row.state === "stale" ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-secondary)]"
+                        row.operatorState === "verification_due"
+                          ? "text-[var(--color-warning-700)]"
+                          : row.operatorState === "needs_attention"
+                            ? "text-[var(--color-error-700)]"
+                            : "text-[var(--color-text-secondary)]"
                       }`}
                     >
-                      {row.reason}
+                      {row.operatorReason}
                     </div>
                   )}
                   {rowErrors[row.platform] && (
@@ -141,12 +223,12 @@ export function AdConnectionsPanel() {
                 </div>
                 <Button
                   size="sm"
-                  variant={row.state === "connected" ? "secondary" : "primary"}
-                  icon={PlugZap}
-                  loading={busyPlatform === row.platform}
-                  onClick={() => reconnect(row.platform, "connect")}
+                  variant={row.action === "status" ? "secondary" : "primary"}
+                  icon={row.action === "status" ? RefreshCw : PlugZap}
+                  loading={busyPlatforms[row.platform] === true}
+                  onClick={() => reconnect(row.platform, row.action)}
                 >
-                  {row.state === "not_connected" ? "Connect" : "Reconnect"}
+                  {row.actionLabel}
                 </Button>
               </div>
             </div>

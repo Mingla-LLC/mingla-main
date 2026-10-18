@@ -4,9 +4,16 @@
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -31,51 +38,63 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useAdCreditWallet } from "../../../../src/hooks/marketing/useAdCreditWallet";
 import { useHostAdCampaigns } from "../../../../src/hooks/marketing/useHostAdCampaigns";
+import { useHostAdPlans } from "../../../../src/hooks/marketing/useHostAdPlans";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
 import { applyAdCreditTopUp } from "../../../../src/services/adCreditService";
+import {
+  buildHostAdList,
+  hostAdMatchesFilter,
+  type HostAdFilter,
+  type HostAdLifecycle,
+} from "../../../../src/services/hostAdLifecycle";
 import { formatCurrency } from "../../../../src/utils/currency";
 
-function firstParam(
-  value: string | string[] | undefined,
-): string | null {
+function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
-  if (Array.isArray(value) && typeof value[0] === "string" && value[0].length > 0) {
+  if (
+    Array.isArray(value) &&
+    typeof value[0] === "string" &&
+    value[0].length > 0
+  ) {
     return value[0];
   }
   return null;
 }
 
-function statusLabel(status: string): string {
-  const s = status.toUpperCase();
-  if (s === "ACTIVE") return "Live";
-  if (s === "PAUSED") return "Paused";
-  if (s === "ARCHIVED" || s === "DELETED") return "Ended";
-  return status;
-}
+const LIFECYCLE_LABEL: Record<HostAdLifecycle, string> = {
+  draft: "Draft",
+  in_review: "In review",
+  scheduled: "Scheduled",
+  live: "Live",
+  paused: "Paused",
+  needs_attention: "Needs attention",
+  ended: "Ended",
+};
 
-type CampaignFilter = "all" | "live" | "paused" | "ended";
-
-function campaignMatchesFilter(
-  status: string,
-  filter: CampaignFilter,
-): boolean {
-  if (filter === "all") return true;
-  const s = status.toUpperCase();
-  if (filter === "live") return s === "ACTIVE";
-  if (filter === "paused") return s === "PAUSED";
-  return s === "ARCHIVED" || s === "DELETED";
-}
+const FILTERS: { key: HostAdFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "draft", label: "Draft" },
+  { key: "in_review", label: "In review" },
+  { key: "scheduled", label: "Scheduled" },
+  { key: "live", label: "Live" },
+  { key: "paused", label: "Paused" },
+  { key: "needs_attention", label: "Needs attention" },
+  { key: "ended", label: "Ended" },
+];
 
 export default function MarketingAdsRoute(): React.ReactElement {
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
   const walletQuery = useAdCreditWallet(brandId);
   const campaignsQuery = useHostAdCampaigns(brandId);
-  const manage = useCanManageBrandPayments(brandId);
+  const plansQuery = useHostAdPlans(brandId);
+  const creditManage = useCanManageBrandPayments(brandId);
+  const permissions = useHostAdPermissions(brandId);
   const [sheetMode, setSheetMode] = useState<AdCreditQuoteMode | null>(null);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
-  const [campaignFilter, setCampaignFilter] = useState<CampaignFilter>("all");
+  const [campaignFilter, setCampaignFilter] = useState<HostAdFilter>("all");
   const params = useLocalSearchParams<{
     ad_credit_top_up?: string | string[];
     session_id?: string | string[];
@@ -87,9 +106,10 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const appliedSessionRef = useRef<string | null>(null);
 
   const onRefresh = useCallback(() => {
-    void walletQuery.refetch();
+    if (walletQuery.canView) void walletQuery.refetch();
     void campaignsQuery.refetch();
-  }, [campaignsQuery, walletQuery]);
+    void plansQuery.refetch();
+  }, [campaignsQuery, plansQuery, walletQuery]);
 
   // Stripe Checkout return: ?ad_credit_top_up=1&session_id=cs_...
   // Paystack return: ?reference=mingla_adc_... (and/or trxref)
@@ -106,7 +126,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
     }
 
     if (brandId === null) return;
-    if (!manage.allowed || manage.isLoading) return;
+    if (!creditManage.allowed || creditManage.isLoading) return;
 
     if (paystackRef && paystackRef.startsWith("mingla_adc_")) {
       if (appliedSessionRef.current === paystackRef) return;
@@ -115,8 +135,6 @@ export default function MarketingAdsRoute(): React.ReactElement {
         try {
           await applyAdCreditTopUp({
             brandId,
-            payCents: 0,
-            currency: "NGN",
             paystackReference: paystackRef,
             idempotencyKey: `top_up:${paystackRef}`,
           });
@@ -142,8 +160,6 @@ export default function MarketingAdsRoute(): React.ReactElement {
       try {
         await applyAdCreditTopUp({
           brandId,
-          payCents: 0,
-          currency: "USD",
           checkoutSessionId: sessionId,
         });
         setReturnNotice("Ads credit added.");
@@ -159,8 +175,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
     })();
   }, [
     brandId,
-    manage.allowed,
-    manage.isLoading,
+    creditManage.allowed,
+    creditManage.isLoading,
     params.ad_credit_top_up,
     params.payment,
     params.reference,
@@ -169,6 +185,18 @@ export default function MarketingAdsRoute(): React.ReactElement {
     router,
     walletQuery,
   ]);
+
+  const campaigns = campaignsQuery.campaigns;
+  const plans = plansQuery.plans;
+  const drafts = plansQuery.drafts;
+  const adItems = useMemo(
+    () => buildHostAdList({ drafts, plans, campaigns }),
+    [campaigns, drafts, plans],
+  );
+  const filteredAds = useMemo(
+    () => adItems.filter((item) => hostAdMatchesFilter(item, campaignFilter)),
+    [adItems, campaignFilter],
+  );
 
   if (brandId === null) {
     return (
@@ -183,7 +211,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  if (walletQuery.viewLoading || (!walletQuery.hasResolved && !walletQuery.isError)) {
+  if (permissions.isLoading) {
     return (
       <View style={styles.host} testID="ads-skeleton">
         <ActivityIndicator color={textTokens.secondary} />
@@ -191,18 +219,18 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  if (walletQuery.viewError) {
+  if (permissions.isError) {
     return (
       <View style={styles.host}>
         <EmptyState
           illustration="users"
-          title="Couldn't check access"
+          title="Couldn't check Ads access"
           description="Check your connection and try again."
           testID="ads-view-error"
           cta={{
             label: "Retry",
             onPress: () => {
-              void walletQuery.refetchView();
+              void permissions.refetch();
             },
           }}
         />
@@ -210,46 +238,38 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  if (!walletQuery.canView) {
+  if (!permissions.canRead) {
     return (
       <View style={styles.host}>
         <EmptyState
           illustration="users"
-          title="Payments view required"
-          description="Ask a brand owner or finance manager to open Ads credit."
+          title="Ads access required"
+          description="Ask a brand owner to grant Ads view access for this brand."
           testID="ads-view-denied"
         />
       </View>
     );
   }
 
-  if (walletQuery.isError) {
-    return (
-      <View style={styles.host}>
-        <EmptyState
-          illustration="users"
-          title="Couldn't load Ads credit"
-          description="Check your connection and try again."
-          testID="ads-load-error"
-          cta={{
-            label: "Retry",
-            onPress: () => {
-              void walletQuery.refetch();
-            },
-          }}
-        />
-      </View>
-    );
-  }
-
-  const wallet = walletQuery.data?.wallet;
-  const history = walletQuery.data?.history ?? [];
-  const currency = wallet?.currency ?? "USD";
+  const wallet = walletQuery.canView ? walletQuery.data?.wallet : null;
+  const history = walletQuery.canView ? (walletQuery.data?.history ?? []) : [];
+  const authority = walletQuery.canView
+    ? walletQuery.data?.currency_authority
+    : undefined;
+  const authorityCurrency =
+    authority?.resolved === true &&
+    typeof authority.currency === "string" &&
+    /^[A-Z]{3}$/.test(authority.currency)
+      ? authority.currency
+      : null;
+  const walletAligned =
+    wallet === null ||
+    wallet === undefined ||
+    (wallet.currency_status === "aligned" &&
+      wallet.currency === authorityCurrency &&
+      wallet.authority_currency === authorityCurrency);
+  const currency = authorityCurrency;
   const balanceCents = wallet?.balance_cents ?? 0;
-  const campaigns = campaignsQuery.campaigns;
-  const filteredCampaigns = campaigns.filter((c) =>
-    campaignMatchesFilter(c.status, campaignFilter)
-  );
 
   return (
     <View style={styles.host} testID="ads-credit-screen">
@@ -257,7 +277,11 @@ export default function MarketingAdsRoute(): React.ReactElement {
         contentContainerStyle={styles.scroll}
         refreshControl={
           <RefreshControl
-            refreshing={walletQuery.isRefetching || campaignsQuery.isRefetching}
+            refreshing={
+              walletQuery.isRefetching ||
+              campaignsQuery.isRefetching ||
+              plansQuery.isRefetching
+            }
             onRefresh={onRefresh}
           />
         }
@@ -267,47 +291,119 @@ export default function MarketingAdsRoute(): React.ReactElement {
             {returnNotice}
           </Text>
         ) : null}
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.kicker}>Available credit</Text>
-          <Text style={styles.balance} testID="ads-credit-balance">
-            {formatCurrency(balanceCents, currency, true)}
-          </Text>
-          <Text style={styles.sub}>
-            Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any time.
-            USD/GBP by card; Naira through our Nigerian payment partner.
-          </Text>
-          <View style={styles.actions}>
+        {walletQuery.viewLoading ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <ActivityIndicator color={textTokens.secondary} />
+          </GlassCard>
+        ) : walletQuery.viewError ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Ads credit unavailable</Text>
+            <Text style={styles.sub}>Check your connection and try again.</Text>
             <Pressable
               style={styles.actionBtn}
-              onPress={() => setSheetMode("top_up")}
+              onPress={() => void walletQuery.refetchView()}
               accessibilityRole="button"
-              accessibilityLabel="Add Ads credit"
-              testID="ads-add-credit"
+              accessibilityLabel="Retry Ads credit access"
             >
-              <Text style={styles.actionLabel}>Add credit</Text>
+              <Text style={styles.actionLabel}>Retry</Text>
             </Pressable>
+          </GlassCard>
+        ) : !walletQuery.canView ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Ads credit</Text>
+            <Text style={styles.sub}>
+              You can review plans and campaign results. A brand owner or
+              finance manager manages the balance and payment history.
+            </Text>
+          </GlassCard>
+        ) : !walletQuery.hasResolved && !walletQuery.isError ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <ActivityIndicator color={textTokens.secondary} />
+          </GlassCard>
+        ) : walletQuery.viewError || walletQuery.isError ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Ads credit unavailable</Text>
+            <Text style={styles.sub}>Check your connection and try again.</Text>
             <Pressable
               style={styles.actionBtn}
-              onPress={() => setSheetMode("withdraw")}
+              onPress={() => void walletQuery.refetch()}
               accessibilityRole="button"
-              accessibilityLabel="Withdraw Ads credit"
-              testID="ads-withdraw"
+              accessibilityLabel="Retry Ads credit"
             >
-              <Text style={styles.actionLabel}>Withdraw</Text>
+              <Text style={styles.actionLabel}>Retry</Text>
             </Pressable>
-          </View>
-        </GlassCard>
+          </GlassCard>
+        ) : currency === null || !walletAligned ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Finish payout setup</Text>
+            <Text style={styles.sub}>
+              Ads credit unlocks after this brand has one verified settlement
+              currency and payout account. No default currency is assumed.
+            </Text>
+          </GlassCard>
+        ) : (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Available credit</Text>
+            <Text style={styles.balance} testID="ads-credit-balance">
+              {formatCurrency(balanceCents, currency, true)}
+            </Text>
+            <Text style={styles.sub}>
+              Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any
+              time. Payments and refunds stay in this brand&apos;s verified
+              settlement currency.
+            </Text>
+            {creditManage.allowed ? (
+              <View style={styles.actions}>
+                <Pressable
+                  style={styles.actionBtn}
+                  onPress={() => setSheetMode("top_up")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add Ads credit"
+                  testID="ads-add-credit"
+                >
+                  <Text style={styles.actionLabel}>Add credit</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.actionBtn}
+                  onPress={() => setSheetMode("withdraw")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Withdraw Ads credit"
+                  testID="ads-withdraw"
+                >
+                  <Text style={styles.actionLabel}>Withdraw</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.sub}>
+                A brand owner or finance manager controls top-ups and
+                withdrawals.
+              </Text>
+            )}
+          </GlassCard>
+        )}
 
-        <Text style={styles.sectionTitle}>Your ads</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Your ads</Text>
+          <Pressable
+            style={[
+              styles.createBtn,
+              !permissions.canPlan && styles.createBtnDisabled,
+            ]}
+            onPress={() => router.push("/(tabs)/marketing/ads/create" as never)}
+            disabled={!permissions.canPlan}
+            accessibilityRole="button"
+            accessibilityLabel="Create a Host ad"
+            accessibilityState={{ disabled: !permissions.canPlan }}
+            testID="ads-create"
+          >
+            <Text style={styles.createBtnLabel}>Create ad</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.subsectionTitle}>
+          Plans in progress, drafts, live delivery and results in one list.
+        </Text>
         <View style={styles.filterRow} testID="ads-campaign-filters">
-          {(
-            [
-              ["all", "All", "ads-filter-all"],
-              ["live", "Live", "ads-filter-live"],
-              ["paused", "Paused", "ads-filter-paused"],
-              ["ended", "Ended", "ads-filter-ended"],
-            ] as const
-          ).map(([key, label, testID]) => {
+          {FILTERS.map(({ key, label }) => {
             const selected = campaignFilter === key;
             return (
               <Pressable
@@ -317,7 +413,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 accessibilityLabel={`Filter ads: ${label}`}
-                testID={testID}
+                testID={`ads-filter-${key.replaceAll("_", "-")}`}
               >
                 <Text
                   style={[
@@ -332,81 +428,138 @@ export default function MarketingAdsRoute(): React.ReactElement {
           })}
         </View>
         <GlassCard variant="base" padding={0}>
-          {campaigns.length === 0 ? (
-            <View style={styles.emptyHistory} testID="ads-campaigns-empty">
+          {campaignsQuery.isLoading || plansQuery.isLoading ? (
+            <View style={styles.emptyHistory} testID="ads-list-loading">
+              <ActivityIndicator color={textTokens.secondary} />
+            </View>
+          ) : campaignsQuery.isError || plansQuery.isError ? (
+            <View style={styles.emptyHistory} testID="ads-list-error">
               <Text style={styles.emptyHistoryText}>
-                No Host ads yet. Ask Ari to propose a plan, or add credit first.
+                We couldn&apos;t load your ads. Pull to refresh and try again.
               </Text>
             </View>
-          ) : filteredCampaigns.length === 0 ? (
-            <View style={styles.emptyHistory} testID="ads-campaigns-filter-empty">
+          ) : adItems.length === 0 ? (
+            <View style={styles.emptyHistory} testID="ads-campaigns-empty">
+              <Text style={styles.emptyHistoryText}>
+                No Host ads yet. Create one here or ask Ari to propose the same
+                immutable plan.
+              </Text>
+            </View>
+          ) : filteredAds.length === 0 ? (
+            <View
+              style={styles.emptyHistory}
+              testID="ads-campaigns-filter-empty"
+            >
               <Text style={styles.emptyHistoryText}>
                 No ads in this filter.
               </Text>
             </View>
           ) : (
-            filteredCampaigns.map((c) => (
-              <Pressable
-                key={c.id}
-                style={styles.campaignRow}
-                onPress={() =>
-                  router.push(`/(tabs)/marketing/ads/${c.id}` as never)
-                }
-                accessibilityRole="button"
-                accessibilityLabel={`${c.name}, ${statusLabel(c.status)}`}
-                testID={`ads-campaign-row-${c.id}`}
-              >
-                <View style={styles.campaignText}>
-                  <Text style={styles.campaignName}>{c.name}</Text>
-                  <Text style={styles.campaignMeta}>
-                    {c.platform} ·{" "}
-                    {formatCurrency(
-                      Number(c.cap_cents ?? c.daily_budget_cents ?? 0),
-                      c.currency ?? currency,
-                      true,
-                    )}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.statusPill,
-                    String(c.status).toUpperCase() === "ACTIVE" &&
-                      styles.statusPillLive,
-                  ]}
+            filteredAds.map((item) => {
+              const hasMoney = item.currency !== null && item.capCents !== null;
+              const providerSpend = item.spendByCurrency
+                .map((row) =>
+                  formatCurrency(row.spend_cents, row.currency, true),
+                )
+                .join(" · ");
+              const money = hasMoney
+                ? item.spendCents !== null
+                  ? `${formatCurrency(item.spendCents, item.currency as string, true)} of ${formatCurrency(item.capCents as number, item.currency as string, true)} spent`
+                  : `${formatCurrency(item.capCents as number, item.currency as string, true)} cap · ${providerSpend || "spend unavailable"}`
+                : "Budget set before launch";
+              return (
+                <Pressable
+                  key={`${item.kind}:${item.id}`}
+                  style={styles.campaignRow}
+                  onPress={() => router.push(item.route as never)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.name}, ${LIFECYCLE_LABEL[item.lifecycle]}, ${item.nextAction}`}
+                  testID={`ads-${item.kind}-row-${item.id}`}
                 >
-                  <Text style={styles.statusPillLabel}>
-                    {statusLabel(c.status)}
-                  </Text>
-                </View>
-              </Pressable>
-            ))
+                  {item.creative?.previewUrl ? (
+                    <Image
+                      source={{ uri: item.creative.previewUrl }}
+                      style={styles.creativeThumb}
+                      accessibilityIgnoresInvertColors
+                    />
+                  ) : (
+                    <View style={styles.creativePlaceholder}>
+                      <Text style={styles.creativePlaceholderLabel}>AD</Text>
+                    </View>
+                  )}
+                  <View style={styles.campaignText}>
+                    <View style={styles.rowHeadline}>
+                      <Text style={styles.campaignName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <View
+                        style={[
+                          styles.statusPill,
+                          item.lifecycle === "live" && styles.statusPillLive,
+                          item.lifecycle === "needs_attention" &&
+                            styles.statusPillAttention,
+                        ]}
+                      >
+                        <Text style={styles.statusPillLabel}>
+                          {LIFECYCLE_LABEL[item.lifecycle]}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.campaignMeta} numberOfLines={1}>
+                      {item.platforms.length > 0
+                        ? item.platforms.join(" · ")
+                        : "Platforms chosen during setup"}
+                      {item.destination ? ` · ${item.destination}` : ""}
+                    </Text>
+                    <Text style={styles.campaignMeta}>{money}</Text>
+                    {item.kind === "campaign" ? (
+                      <Text style={styles.campaignMeta}>
+                        {item.primaryResultCount.toLocaleString()}{" "}
+                        {item.primaryResultLabel.replaceAll("_", " ")}
+                        {item.costPerResultCents !== null && item.currency
+                          ? ` · ${formatCurrency(item.costPerResultCents, item.currency, true)} each`
+                          : ""}
+                      </Text>
+                    ) : null}
+                    {item.reason ? (
+                      <Text style={styles.planReason}>{item.reason}</Text>
+                    ) : null}
+                    <Text style={styles.nextAction}>{item.nextAction} →</Text>
+                  </View>
+                </Pressable>
+              );
+            })
           )}
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>History</Text>
-        <GlassCard variant="base" padding={0}>
-          {history.length === 0 ? (
-            <View style={styles.emptyHistory} testID="ads-history-empty">
-              <Text style={styles.emptyHistoryText}>
-                No top-ups or withdrawals yet.
-              </Text>
-            </View>
-          ) : (
-            history.map((row) => (
-              <AdCreditLedgerRow key={row.id} row={row} />
-            ))
-          )}
-        </GlassCard>
+        {walletQuery.canView ? (
+          <>
+            <Text style={styles.sectionTitle}>History</Text>
+            <GlassCard variant="base" padding={0}>
+              {history.length === 0 ? (
+                <View style={styles.emptyHistory} testID="ads-history-empty">
+                  <Text style={styles.emptyHistoryText}>
+                    No top-ups or withdrawals yet.
+                  </Text>
+                </View>
+              ) : (
+                history.map((row) => (
+                  <AdCreditLedgerRow key={row.id} row={row} />
+                ))
+              )}
+            </GlassCard>
+          </>
+        ) : null}
       </ScrollView>
 
-      {sheetMode !== null ? (
+      {sheetMode !== null && currency !== null && walletAligned ? (
         <AdCreditQuoteSheet
           visible
           mode={sheetMode}
           brandId={brandId}
           currency={currency}
           balanceCents={balanceCents}
-          canManage={manage.allowed}
+          canManage={creditManage.allowed}
           onClose={() => setSheetMode(null)}
           onTopUpApplied={() => {
             void walletQuery.refetch();
@@ -470,6 +623,30 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     marginTop: spacing.sm,
   },
+  subsectionTitle: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    fontWeight: "700",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  createBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 999,
+    backgroundColor: "#F5F5F6",
+  },
+  createBtnDisabled: {
+    opacity: 0.45,
+  },
+  createBtnLabel: {
+    ...typography.buttonMd,
+    color: "#0c0e12",
+  },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -504,8 +681,7 @@ const styles = StyleSheet.create({
   },
   campaignRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    alignItems: "flex-start",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -516,13 +692,46 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  rowHeadline: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   campaignName: {
     ...typography.body,
     color: textTokens.primary,
+    flex: 1,
   },
   campaignMeta: {
     ...typography.caption,
     color: textTokens.secondary,
+  },
+  planReason: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    marginTop: spacing.xs,
+  },
+  creativeThumb: {
+    width: 56,
+    height: 70,
+    borderRadius: 10,
+    backgroundColor: glass.tint.chrome.idle,
+  },
+  creativePlaceholder: {
+    width: 56,
+    height: 70,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.chrome.idle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  creativePlaceholderLabel: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    fontWeight: "700",
   },
   statusPill: {
     paddingHorizontal: spacing.sm,
@@ -533,8 +742,17 @@ const styles = StyleSheet.create({
   statusPillLive: {
     backgroundColor: "rgba(46, 160, 90, 0.18)",
   },
+  statusPillAttention: {
+    backgroundColor: "rgba(180, 60, 60, 0.18)",
+  },
   statusPillLabel: {
     ...typography.caption,
     color: textTokens.primary,
+  },
+  nextAction: {
+    ...typography.caption,
+    color: textTokens.primary,
+    fontWeight: "700",
+    marginTop: spacing.xs,
   },
 });

@@ -5,7 +5,7 @@
 //  1. Stepper: attacks NUMERIC EXTREMES (0 / negative / Infinity / a
 //     sub-pixel fraction straddling the exact breakpoint) that the
 //     implementor's suite never fed isCompactStepper, plus derives the
-//     10-step list by PARSING CampaignBuilderPage.jsx's real `STEPS` array
+//     stage list by PARSING CampaignBuilderPage.jsx's real `STEPS` array
 //     (never hand-copied — catches label/id drift the implementor's suite
 //     can't) and asserts every real step abbreviates safely with no
 //     collisions. Also a repo-wide grep (not file-scoped) that the retired
@@ -60,7 +60,7 @@ const REPO_ROOT = path.resolve(ADMIN_SRC, "../..");
 const read = (p) => fs.readFileSync(p, "utf8");
 
 // ─────────────────────────────────────────────────────────────────────────
-// 1. STEPPER — numeric extremes + source-derived 10-step sweep
+// 1. STEPPER — numeric extremes + source-derived stage sweep
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("ISSUE-980 adversarial — Stepper survives numeric extremes the implementor's suite never fed it", () => {
@@ -84,7 +84,7 @@ describe("ISSUE-980 adversarial — Stepper survives numeric extremes the implem
   });
 });
 
-describe("ISSUE-980 adversarial — ALL 10 real wizard steps, parsed live from CampaignBuilderPage.jsx (not hand-copied)", () => {
+describe("ISSUE-980 adversarial — all five real wizard stages, parsed live from CampaignBuilderPage.jsx (not hand-copied)", () => {
   const page = read(path.join(ADMIN_SRC, "pages/CampaignBuilderPage.jsx"));
   const stepsBlock = page.match(/const STEPS = \[([\s\S]*?)\];/);
   assert.ok(stepsBlock, "CampaignBuilderPage.jsx must still define a STEPS array in this exact shape — the source this test parses");
@@ -93,8 +93,8 @@ describe("ISSUE-980 adversarial — ALL 10 real wizard steps, parsed live from C
   let m;
   while ((m = stepRe.exec(stepsBlock[1]))) REAL_STEPS.push({ id: m[1], label: m[2] });
 
-  it("sanity: parsing found exactly the 10 real steps the 10-step overflow math is about", () => {
-    assert.equal(REAL_STEPS.length, 10, `expected 10 real steps, parsed ${REAL_STEPS.length}: ${JSON.stringify(REAL_STEPS)}`);
+  it("sanity: parsing found the five-stage v1.4 builder contract", () => {
+    assert.equal(REAL_STEPS.length, 5, `expected 5 real stages, parsed ${REAL_STEPS.length}: ${JSON.stringify(REAL_STEPS)}`);
   });
 
   it("every real step produces a non-empty label at BOTH densities — no step silently goes blank", () => {
@@ -116,7 +116,7 @@ describe("ISSUE-980 adversarial — ALL 10 real wizard steps, parsed live from C
     }
   });
 
-  it("the 10 compact-density labels are all DISTINCT — abbreviation never collides two different steps onto one string", () => {
+  it("the compact-density labels are all DISTINCT — density never collides two different stages onto one string", () => {
     const compactLabels = REAL_STEPS.map((s) => stepLabel(s, { compact: true }));
     assert.equal(
       new Set(compactLabels).size,
@@ -125,9 +125,9 @@ describe("ISSUE-980 adversarial — ALL 10 real wizard steps, parsed live from C
     );
   });
 
-  it("exactly the two steps ISSUE-977 named (Channel health, Policy check) are the ones that actually abbreviate — every other step is untouched even in compact density", () => {
+  it("the removed preflight/policy steps cannot leave a stale compact-label dependency in the five-stage builder", () => {
     const shortened = REAL_STEPS.filter((s) => stepLabel(s, { compact: true }) !== s.label).map((s) => s.id);
-    assert.deepEqual(shortened.sort(), ["policy", "preflight"], `expected exactly preflight+policy to abbreviate, got: ${JSON.stringify(shortened)}`);
+    assert.deepEqual(shortened, [], `five-stage labels should not depend on retired step aliases, got: ${JSON.stringify(shortened)}`);
   });
 });
 

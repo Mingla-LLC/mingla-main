@@ -12,16 +12,19 @@ const source = fs.readFileSync(
 
 describe("#1982 ToolProposalCard team confirm card", () => {
   it("humanizes invite and revoke tool titles", () => {
-    expect(source).toContain('case "invite_brand_member": return "Invite team member"');
-    expect(source).toContain('case "invite_scanner": return "Invite scanner"');
-    expect(source).toContain('case "revoke_brand_member": return "Revoke team member"');
-    expect(source).toContain(
-      'case "revoke_brand_invitation": return "Revoke team invitation"',
-    );
-    expect(source).toContain(
-      'case "revoke_scanner_invitation": return "Revoke scanner invitation"',
-    );
-    expect(source).toContain('case "manage_brand_people": return "Add Brand Person"');
+    const titles = {
+      invite_brand_member: "Invite team member",
+      invite_scanner: "Invite scanner",
+      revoke_brand_member: "Revoke team member",
+      revoke_brand_invitation: "Revoke team invitation",
+      revoke_scanner_invitation: "Revoke scanner invitation",
+      manage_brand_people: "Add Brand Person",
+    };
+    for (const [tool, title] of Object.entries(titles)) {
+      expect(source).toMatch(
+        new RegExp(`case \\"${tool}\\":\\s*return \\"${title}\\"`),
+      );
+    }
   });
 
   it("summarizes email/role/scope on team confirm cards", () => {

@@ -3,6 +3,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import type {
   AgentAuthorizationDeclaration,
+  AgentHostAdAction,
   AgentRequiredRole,
   AgentResourceKind,
   AgentTool,
@@ -57,7 +58,12 @@ const EVENT_TYPE_BY_TOOL: Readonly<
 const role = (
   requiredRole: AgentRequiredRole,
   resource: AgentResourceKind,
-): AgentAuthorizationDeclaration => ({ requiredRole, resource });
+  hostAdActions?: readonly AgentHostAdAction[],
+): AgentAuthorizationDeclaration => ({
+  requiredRole,
+  resource,
+  ...(hostAdActions ? { hostAdActions } : {}),
+});
 
 // Generated from the accepted #2000 ledger translation. This deliberately is
 // exhaustive: an unregistered tool cannot be exposed to the model or executed.
@@ -145,12 +151,14 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   schedule_campaign: role("marketing_manager", "campaign"),
   send_campaign_now: role("marketing_manager", "campaign"),
   cancel_campaign: role("marketing_manager", "campaign"),
-  // toward #3697 Wave 7c — Host Ads (finance manage floor; edge re-checks).
-  propose_ad_plan: role("finance_manager", "brand"),
-  approve_ad_plan: role("finance_manager", "brand"),
-  pause_ad_campaign: role("finance_manager", "brand"),
-  end_ad_campaign: role("finance_manager", "brand"),
-  get_ad_campaign_report: role("finance_manager", "brand"),
+  // Issue #3697 v1.4 — Host Ads is an action capability matrix, not the
+  // monotonic brand-role ladder. The legacy role label remains for capability
+  // ledger compatibility; hostAdActions is the authoritative caller check.
+  propose_ad_plan: role("finance_manager", "brand", ["plan"]),
+  approve_ad_plan: role("finance_manager", "brand", ["fund", "launch"]),
+  pause_ad_campaign: role("finance_manager", "brand", ["pause"]),
+  end_ad_campaign: role("finance_manager", "brand", ["end"]),
+  get_ad_campaign_report: role("finance_manager", "brand", ["read"]),
   run_growth_tool: role("marketing_manager", "brand"),
   get_growth_tool_report: role("marketing_manager", "brand"),
   get_payout_status: role("finance_manager", "brand"),
@@ -565,7 +573,10 @@ async function resolveBrand(
 }
 
 export async function authorizeAgentTool(
-  tool: Pick<AgentTool, "name" | "parameters" | "requiredRole" | "resource">,
+  tool: Pick<
+    AgentTool,
+    "name" | "parameters" | "requiredRole" | "resource" | "hostAdActions"
+  >,
   args: Record<string, unknown>,
   userClient: SupabaseClient,
   userId: string,
@@ -574,9 +585,15 @@ export async function authorizeAgentTool(
     throw new ToolError("ROLE_DENIED", "Authentication is required");
   }
   const expected = AGENT_TOOL_AUTHORIZATION[tool.name];
+  const expectedAdActions = expected?.hostAdActions ?? [];
+  const declaredAdActions = tool.hostAdActions ?? [];
   if (
     !expected || expected.requiredRole !== tool.requiredRole ||
-    expected.resource !== tool.resource
+    expected.resource !== tool.resource ||
+    expectedAdActions.length !== declaredAdActions.length ||
+    expectedAdActions.some((action, index) =>
+      action !== declaredAdActions[index]
+    )
   ) {
     throw new ToolError(
       "ROLE_CHECK_UNAVAILABLE",
@@ -590,6 +607,43 @@ export async function authorizeAgentTool(
   }
   if (expected.resource === "optional_brand" && brandId) {
     await assertAgentReadBrand(userClient, userId, brandId);
+  }
+  if (expectedAdActions.length > 0) {
+    if (!brandId) unavailable();
+    const results = await Promise.all(
+      expectedAdActions.map((action) =>
+        userClient.rpc("ad_can_host_action_for_caller", {
+          p_brand_id: brandId,
+          p_action: action,
+        })
+      ),
+    );
+    if (results.some(({ error }) => error)) {
+      throw new ToolError(
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not verify permissions right now",
+      );
+    }
+    if (results.some(({ data }) => data !== true)) {
+      // Preserve the generic not-found response for non-members; only an
+      // authenticated brand member may learn that their capability is short.
+      const { data: rank, error } = await userClient.rpc(
+        "biz_brand_effective_rank_for_caller",
+        { p_brand_id: brandId },
+      );
+      if (error || !Number.isFinite(Number(rank))) {
+        throw new ToolError(
+          "ROLE_CHECK_UNAVAILABLE",
+          "Ari could not verify permissions right now",
+        );
+      }
+      if (Number(rank) <= 0) unavailable();
+      throw new ToolError(
+        "ROLE_DENIED",
+        "Your role does not allow that action",
+      );
+    }
+    return { brandId, resource: expected.resource };
   }
   if (
     expected.requiredRole === "business_user" ||

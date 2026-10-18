@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_v14_frozen_targeting_execution.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-v14-03b-frozen-targeting-execution",
+  "profile": "deno-2-unit"
+}

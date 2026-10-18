@@ -344,6 +344,7 @@ jest.mock("../../components/brand/BrandDeleteSheet", () => ({ BrandDeleteSheet: 
 jest.mock("../../components/brand/BrandSwitcherSheet", () => ({ BrandSwitcherSheet: () => null }));
 jest.mock("../../components/home/BusinessTodoToggle", () => ({ BusinessTodoToggle: () => null }));
 jest.mock("../../components/home/AnalyticsHomeTile", () => ({ AnalyticsHomeTile: () => null }));
+jest.mock("../../components/home/HomeAdsSection", () => ({ HomeAdsSection: () => null }));
 jest.mock("../../components/home/LiveOfferingCard", () => ({ LiveOfferingCard: () => null }));
 jest.mock("../../components/home/RecentRow", () => ({ RecentRow: () => null }));
 jest.mock("../../components/home/RecentFullScreen", () => ({ RecentFullScreen: () => null }));
@@ -353,6 +354,9 @@ jest.mock("../../components/team/InvitePendingSheet", () => ({ InvitePendingShee
 jest.mock("../../components/ui/GlassCard", () => ({ GlassCard: () => null }));
 jest.mock("../../components/ui/KpiTile", () => ({ KpiTile: () => null }));
 jest.mock("../../components/ui/UniversalCreatorSheet", () => ({ UniversalCreatorSheet: () => null }));
+jest.mock("../marketing/useHostAdCampaigns", () => ({
+  hostAdCampaignKeys: { byBrand: (id: string) => ["host-ad-campaigns", id] },
+}));
 
 describe("#3345 H — Home renders loading, not the brandless Home, while a brand loads", () => {
   // The REAL `useCurrentBrand` + store + cache from above feed Home.

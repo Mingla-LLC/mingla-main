@@ -46,6 +46,7 @@ import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { AnalyticsHomeTile } from "../../src/components/home/AnalyticsHomeTile";
+import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
 import {
   LiveOfferingCard,
   type LiveCardMetrics,
@@ -81,6 +82,7 @@ import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery
 import { isCurrentBrandPending } from "../../src/utils/currentBrandPending";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
+import { hostAdCampaignKeys } from "../../src/hooks/marketing/useHostAdCampaigns";
 import { useBusinessRecent } from "../../src/hooks/useBusinessRecentHome";
 import { brandKeys } from "../../src/hooks/useBrands";
 import {
@@ -277,6 +279,9 @@ export default function HomeTab(): React.ReactElement {
           ? [
               queryClient.invalidateQueries({
         queryKey: brandAnalyticsKeys.minglaDrove(currentBrand.id),
+              }),
+              queryClient.invalidateQueries({
+                queryKey: hostAdCampaignKeys.byBrand(currentBrand.id),
               }),
             ]
           : []),
@@ -946,6 +951,7 @@ export default function HomeTab(): React.ReactElement {
               </View>
 
               {renderLiveSection()}
+              <HomeAdsSection brandId={currentBrand.id} />
 
               <View style={styles.desktopUpcomingPane}>
                 <View style={styles.sectionHeaderRow}>
@@ -1076,6 +1082,7 @@ export default function HomeTab(): React.ReactElement {
             </View>
           </View>
           {renderLiveSection()}
+          <HomeAdsSection brandId={currentBrand.id} />
               <View style={styles.mobileRecentHeaderWrap}>
             <View style={styles.mobileSectionHeaderRow}>
                   <Text accessibilityRole="header" style={styles.sectionTitle}>

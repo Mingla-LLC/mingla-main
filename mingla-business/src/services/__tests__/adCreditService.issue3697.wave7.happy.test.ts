@@ -49,14 +49,22 @@ describe("adCreditService Wave 7", () => {
         wallet: {
           brand_id: "b1",
           currency: "USD",
+          authority_currency: "USD",
+          currency_status: "aligned",
           balance_cents: 8500,
           updated_at: null,
         },
         history: [],
+        currency_authority: {
+          resolved: true,
+          currency: "USD",
+          provider: "stripe",
+          reason: null,
+        },
       }),
     );
     const payload = await getAdCreditWallet("b1");
-    expect(payload.wallet.balance_cents).toBe(8500);
+    expect(payload.wallet?.balance_cents).toBe(8500);
     expect(mockInvoke).toHaveBeenCalledWith("ad-credit", {
       body: { action: "get_wallet", brand_id: "b1" },
     });
@@ -72,7 +80,7 @@ describe("adCreditService Wave 7", () => {
         currency: "USD",
       }),
     );
-    const q = await quoteAdCreditTopUp(2500, "USD");
+    const q = await quoteAdCreditTopUp("b1", 2500);
     expect(q).toEqual({
       ok: true,
       pay_cents: 2500,
@@ -81,7 +89,7 @@ describe("adCreditService Wave 7", () => {
       currency: "USD",
     });
     expect(mockInvoke).toHaveBeenCalledWith("ad-credit", {
-      body: { action: "quote_top_up", pay_cents: 2500, currency: "USD" },
+      body: { action: "quote_top_up", brand_id: "b1", pay_cents: 2500 },
     });
   });
 
@@ -108,7 +116,7 @@ describe("adCreditService Wave 7", () => {
     });
     let caught: unknown;
     try {
-      await quoteAdCreditTopUp(2500, "USD");
+      await quoteAdCreditTopUp("b1", 2500);
     } catch (e) {
       caught = e;
     }
@@ -127,7 +135,7 @@ describe("adCreditService Wave 7", () => {
     });
     let caught: unknown;
     try {
-      await quoteAdCreditTopUp(100, "USD");
+      await quoteAdCreditTopUp("b1", 100);
     } catch (e) {
       caught = e;
     }
@@ -154,7 +162,6 @@ describe("adCreditService Wave 7", () => {
     const started = await startAdCreditTopUp({
       brandId: "b1",
       payCents: 2500,
-      currency: "USD",
       idempotencyKey: "attempt-abc-12345",
     });
     expect(started.kind).toBe("requires_payment_sheet");
@@ -163,7 +170,6 @@ describe("adCreditService Wave 7", () => {
         action: "start_top_up",
         brand_id: "b1",
         pay_cents: 2500,
-        currency: "USD",
         idempotency_key: "attempt-abc-12345",
       },
     });
@@ -216,8 +222,6 @@ describe("adCreditService Wave 7", () => {
     );
     const applied = await applyAdCreditTopUp({
       brandId: "b1",
-      payCents: 2500,
-      currency: "USD",
       paymentRef: "pi_test",
     });
     expect(applied.payment_ref).toBe("pi_test");
@@ -225,10 +229,10 @@ describe("adCreditService Wave 7", () => {
       body: {
         action: "apply_top_up",
         brand_id: "b1",
-        pay_cents: 2500,
-        currency: "USD",
         payment_ref: "pi_test",
       },
     });
   });
 });
+// #3697 v1.4: client-supplied currency expectations were replaced because the
+// server-resolved brand settlement currency is now the only wallet authority.

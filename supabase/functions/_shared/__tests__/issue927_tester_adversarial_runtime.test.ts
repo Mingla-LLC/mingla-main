@@ -87,6 +87,7 @@ interface LoggedRequest {
 interface MockDbState {
   adminRow: Record<string, unknown> | null;
   connections: Record<string, Record<string, unknown> | null>;
+  activeRequest: Record<string, unknown> | null;
   eventRow: Record<string, unknown> | null;
   adCreativeRow: Record<string, unknown> | null;
   refRow: Record<string, unknown> | null;
@@ -99,6 +100,7 @@ interface MockDbState {
 const db: MockDbState = {
   adminRow: { id: "admin-1" },
   connections: {},
+  activeRequest: null,
   eventRow: null,
   adCreativeRow: null,
   refRow: null,
@@ -116,6 +118,7 @@ function resetDb(): void {
       lane: "consumer",
       connected: true,
       status: "connected",
+      currency: "USD",
       external_account_id: "a2_qaacct",
       token_env_var: null,
       extra: {
@@ -130,6 +133,7 @@ function resetDb(): void {
       lane: "consumer",
       connected: true,
       status: "connected",
+      currency: "USD",
       external_account_id: "7000000000000000001",
       token_env_var: null,
       extra: { identity_type: "TT_USER", identity_id: "identity-qa-1" },
@@ -140,11 +144,13 @@ function resetDb(): void {
       lane: "consumer",
       connected: true,
       status: "connected",
+      currency: "USD",
       external_account_id: "snap-acct-1",
       token_env_var: null,
       extra: {},
     },
   };
+  db.activeRequest = null;
   db.eventRow = { id: "ev-1", brand_slug: "velvet-lounge", slug: "friday-live", status: "live" };
   db.adCreativeRow = null;
   db.refRow = null;
@@ -169,6 +175,17 @@ async function parseBody(req: Request): Promise<Record<string, unknown> | null> 
 }
 
 function tableRowFor(table: string, params: URLSearchParams): unknown {
+  const request = db.activeRequest ?? {};
+  const platform = String(request.platform ?? "reddit");
+  const amount = Number(
+    (request.budget as Record<string, unknown> | undefined)?.amount_cents ?? 2000,
+  );
+  const audienceIntent = request.audience_intent as
+    | Record<string, unknown>
+    | undefined;
+  const planVersionId = "92700000-0000-4000-8000-000000000001";
+  const planId = "92700000-0000-4000-8000-000000000002";
+  const planHash = "a".repeat(64);
   switch (table) {
     case "admin_users":
       return db.adminRow;
@@ -176,6 +193,57 @@ function tableRowFor(table: string, params: URLSearchParams): unknown {
       const platform = (params.get("platform") ?? "").replace(/^eq\./, "");
       return db.connections[platform] ?? null;
     }
+    case "ad_plan_versions":
+      return {
+        id: planVersionId,
+        plan_id: planId,
+        plan_hash: planHash,
+        canonical_plan: {
+          name: request.name,
+          schedule: { starts_at: null, ends_at: null },
+          special_ad_category: "NONE",
+          delivery_budgets: {
+            [platform]: {
+              host_amount_cents: amount,
+              provider_amount_cents: amount,
+            },
+          },
+        },
+        destination_snapshot: {
+          canonical_url:
+            "https://business.qa927.example/e/velvet-lounge/friday-live",
+        },
+        host_currency: "USD",
+      };
+    case "ad_plans":
+      return {
+        id: planId,
+        owner_kind: "mingla",
+        brand_id: null,
+        current_version_id: planVersionId,
+        state: "creating_paused_objects",
+      };
+    case "ad_plan_provider_allocations":
+      return {
+        connection_id: db.connections[platform]?.id,
+        platform,
+        host_currency: "USD",
+        provider_currency: "USD",
+        host_budget_cents: amount,
+        provider_budget_cents: amount,
+        host_delivery_budget_cents: amount,
+        provider_delivery_budget_cents: amount,
+        fx_snapshot_id: null,
+      };
+    case "ad_plan_targeting_snapshots":
+      return {
+        verdict: "exact",
+        broader_accepted: false,
+        audience_intent: audienceIntent ?? { countries: ["US"] },
+        compiled_targeting: {},
+      };
+    case "ad_plan_confirmations":
+      return { id: "92700000-0000-4000-8000-000000000003" };
     case "business_public_events_view":
       return db.eventRow;
     case "business_public_brands_view":
@@ -203,6 +271,9 @@ const supabaseMock = Deno.serve({ port: 0, onListen: () => {} }, async (req) => 
       app_metadata: {},
       user_metadata: {},
     });
+  }
+  if (url.pathname === "/rest/v1/rpc/ad_plan_assert_launchable") {
+    return json(true);
   }
   const restMatch = url.pathname.match(/^\/rest\/v1\/([a-z_]+)$/);
   if (!restMatch) return json({ message: `unmocked path ${url.pathname}` }, 404);
@@ -375,6 +446,7 @@ async function waitForEdge(): Promise<void> {
 await waitForEdge();
 
 async function callCreate(body: Record<string, unknown>): Promise<{ status: number; body: Record<string, unknown> }> {
+  db.activeRequest = body;
   const res = await fetch(EDGE_URL, {
     method: "POST",
     headers: {
@@ -406,6 +478,9 @@ const redditBody = (over: Record<string, unknown> = {}): Record<string, unknown>
   name: "QA927 Reddit — Friday Live",
   objective: "TRAFFIC",
   budget: { type: "daily", amount_cents: 2000 },
+  plan_version_id: "92700000-0000-4000-8000-000000000001",
+  plan_hash: "a".repeat(64),
+  audience_intent: { countries: ["US"] },
   targeting: { countries: ["US"] },
   destination: { page_type: "event", brand_slug: "velvet-lounge", entity_slug: "friday-live" },
   creative: {
@@ -421,6 +496,9 @@ const tiktokBody = (over: Record<string, unknown> = {}): Record<string, unknown>
   name: "QA927 TikTok — Friday Live",
   objective: "TRAFFIC",
   budget: { type: "daily", amount_cents: 2000 },
+  plan_version_id: "92700000-0000-4000-8000-000000000001",
+  plan_hash: "a".repeat(64),
+  audience_intent: { countries: ["US"], ageMin: 21, ageMax: 45 },
   targeting: { countries: ["US"], age_min: 21, age_max: 45 },
   destination: { page_type: "event", brand_slug: "velvet-lounge", entity_slug: "friday-live" },
   creative: {
@@ -586,13 +664,13 @@ Deno.test({
     }
     const adGroupBody = creates.find((c) => c.path.endsWith("/ad_groups"))!.body!;
     assertEquals(adGroupBody.conversion_pixel_id, "px_qa_1", "the pixel must stay the connection's own");
-    // The allowlisted passthrough key DID ride (control: the drop is selective,
-    // not a dead passthrough) — and was validated on the wire first.
+    // v1.4 executes the reviewed targeting snapshot, so even a formerly
+    // allowlisted caller passthrough cannot appear unless it was frozen there.
     const targeting = adGroupBody.targeting as Record<string, unknown>;
-    assertEquals(targeting.keywords, ["velvet lounge"]);
+    assertEquals(targeting.keywords, undefined);
     assert(
-      reddit.api.some((r) => r.path === "/targeting/keyword_validations"),
-      "allowlisted keywords must be validated pre-create",
+      !reddit.api.some((r) => r.path === "/targeting/keyword_validations"),
+      "caller-only keywords must not be validated or sent after plan freeze",
     );
     assert(!("configured_status" in targeting), "passthrough configured_status must be dropped by the allowlist");
   },
@@ -972,6 +1050,9 @@ Deno.test({
       name: "QA927 Snap — Friday Live",
       objective: "TRAFFIC",
       budget: { type: "daily", amount_cents: 2000 },
+      plan_version_id: "92700000-0000-4000-8000-000000000001",
+      plan_hash: "a".repeat(64),
+      audience_intent: { countries: ["US"] },
       targeting: { countries: ["US"] },
       destination: { page_type: "event", brand_slug: "velvet-lounge", entity_slug: "friday-live" },
       creative: {

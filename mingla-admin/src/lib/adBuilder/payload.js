@@ -10,7 +10,7 @@
  *  - Meta carries creative.call_to_action_type; the GOOGLE payload NEVER
  *    carries call_to_action_type anywhere (A4.b — not an RSA field; Search
  *    ads have no CTA button).
- *  - Budgets are CENTS at rest (dollars-in → cents here, once); micro/dollar
+ *  - Budgets are minor units at rest (major-units-in → minor units here, once); provider-unit
  *    conversion is the server adapter's job (blueprint §1.4 Discovery 3).
  *  - request_id per (channel, wizard-session) → server idempotency replay.
  *  - special_ad_categories comes from the validated selector, never a
@@ -35,7 +35,7 @@ import {
   tiktokLocationIdsFrom,
 } from "./targeting.js";
 
-/** Dollars-in → cents-at-rest, once (the CurrencyInput contract). */
+/** Major-units-in → minor-units-at-rest, once (the CurrencyInput contract). */
 export function dollarsToCents(dollars) {
   const value = typeof dollars === "string" ? parseFloat(dollars) : dollars;
   if (!Number.isFinite(value) || value <= 0) return 0;
@@ -45,9 +45,10 @@ export function dollarsToCents(dollars) {
 /** toward #3697 Wave 2 — budget + schedule fields for admin-ad-create-campaign. */
 export function budgetPayloadFromState(budget) {
   const mode = budget?.mode === "lifetime" ? "lifetime" : "daily";
-  const amount = mode === "lifetime"
-    ? (Number(budget.amountCents) || Number(budget.dailyCentsForChannel) || 0)
-    : (Number(budget.dailyCentsForChannel) || Number(budget.amountCents) || 0);
+  const amount =
+    mode === "lifetime"
+      ? Number(budget.amountCents) || Number(budget.dailyCentsForChannel) || 0
+      : Number(budget.dailyCentsForChannel) || Number(budget.amountCents) || 0;
   const body = {
     type: mode,
     amount_cents: amount,
@@ -58,14 +59,20 @@ export function budgetPayloadFromState(budget) {
     body.cap_cents = amount;
   }
   // toward #3697 Wave 3 — persist the ad-account currency (not a hardcoded USD).
-  const currency = typeof budget?.currency === "string" ? budget.currency.trim().toUpperCase() : "";
+  const currency =
+    typeof budget?.currency === "string"
+      ? budget.currency.trim().toUpperCase()
+      : "";
   if (/^[A-Z]{3}$/.test(currency)) {
     body.currency = currency;
   }
   const schedule = {};
   if (budget?.startsAt) schedule.starts_at = budget.startsAt;
   if (budget?.endsAt) schedule.ends_at = budget.endsAt;
-  return { budget: body, ...(Object.keys(schedule).length ? { schedule } : {}) };
+  return {
+    budget: body,
+    ...(Object.keys(schedule).length ? { schedule } : {}),
+  };
 }
 
 /**
@@ -75,6 +82,9 @@ export function budgetPayloadFromState(budget) {
  * @param {string[]} platforms
  */
 export function resolvePlanCurrency(connections = {}, platforms = []) {
+  if (!Array.isArray(platforms) || platforms.length === 0) {
+    return { currency: null, mixed: false, unresolved: true };
+  }
   const codes = [];
   for (const platform of platforms) {
     const raw = connections?.[platform]?.currency;
@@ -83,20 +93,121 @@ export function resolvePlanCurrency(connections = {}, platforms = []) {
     }
   }
   const unique = [...new Set(codes)];
-  if (unique.length === 0) return { currency: "USD", mixed: false };
+  if (codes.length !== platforms.length || unique.length === 0)
+    return { currency: null, mixed: false, unresolved: true };
   if (platforms.includes("meta") && connections?.meta?.currency) {
     const meta = String(connections.meta.currency).trim().toUpperCase();
     if (/^[A-Z]{3}$/.test(meta)) {
-      return { currency: meta, mixed: unique.length > 1 };
+      return { currency: meta, mixed: unique.length > 1, unresolved: false };
     }
   }
-  return { currency: unique[0], mixed: unique.length > 1 };
+  return { currency: unique[0], mixed: unique.length > 1, unresolved: false };
 }
 
 /** Spec §4.4: auto-suggested campaign name — "{brand} — {title} — {YYYY-MM-DD}", editable. */
 export function suggestCampaignName({ brandName, title, date = new Date() }) {
   const day = date.toISOString().slice(0, 10);
   return [brandName, title, day].filter(Boolean).join(" — ");
+}
+
+function intentCityKey(city) {
+  return `${String(city.countryCode).trim().toUpperCase()}:${String(city.name).trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ")}`;
+}
+
+export function audienceIntentFromState(audience = {}) {
+  const cities = (audience.cities ?? [])
+    .map((city) => ({
+      name: String(city.label ?? city.google?.name ?? "").trim(),
+      countryCode: String(city.country ?? city.google?.country_code ?? "")
+        .trim()
+        .toUpperCase(),
+    }))
+    .filter((city) => city.name && city.countryCode);
+  const distanceUnit =
+    audience.distanceUnit === "kilometer" ? "kilometer" : "mile";
+  const radius = Number(audience.radius);
+  const radiusKm =
+    Number.isFinite(radius) && cities.length > 0
+      ? Math.round(
+          (distanceUnit === "mile" ? radius * 1.609344 : radius) * 10,
+        ) / 10
+      : null;
+  return {
+    countries: [
+      ...new Set(
+        (audience.countries ?? []).map((code) =>
+          String(code).trim().toUpperCase(),
+        ),
+      ),
+    ],
+    ...(cities.length > 0 ? { cities } : {}),
+    ...(radiusKm !== null ? { radiusKm } : {}),
+    ...(Number.isInteger(Number(audience.ageMin))
+      ? { ageMin: Number(audience.ageMin) }
+      : {}),
+    ...(Number.isInteger(Number(audience.ageMax))
+      ? { ageMax: Number(audience.ageMax) }
+      : {}),
+    gender: ["all", "men", "women"].includes(audience.gender)
+      ? audience.gender
+      : "all",
+    ...((audience.interests ?? []).length > 0
+      ? {
+          interests: [
+            ...new Map(
+              audience.interests
+                .map((interest) => ({
+                  name: String(interest.name ?? interest.id ?? "").trim(),
+                }))
+                .filter((interest) => interest.name)
+                .map((interest) => [
+                  interest.name.toLocaleLowerCase("en-US"),
+                  interest,
+                ]),
+            ).values(),
+          ],
+        }
+      : {}),
+  };
+}
+
+export function targetingRefsFromState(audience = {}, platforms = []) {
+  const refs = {};
+  for (const platform of platforms) {
+    const locationIds = {};
+    for (const city of audience.cities ?? []) {
+      const intentCity = {
+        name: String(city.label ?? city.google?.name ?? "").trim(),
+        countryCode: String(city.country ?? city.google?.country_code ?? "")
+          .trim()
+          .toUpperCase(),
+      };
+      if (!intentCity.name || !intentCity.countryCode) continue;
+      const key = intentCityKey(intentCity);
+      if (platform === "meta" && city.meta?.key)
+        locationIds[key] = String(city.meta.key);
+      if (platform === "tiktok" && city.tiktok?.location_ids?.[0]) {
+        locationIds[key] = String(city.tiktok.location_ids[0]);
+      }
+      if (platform === "google" && city.google?.criterion_id) {
+        locationIds[key] = String(city.google.criterion_id);
+      }
+    }
+    const interestIds = {};
+    for (const interest of audience.interests ?? []) {
+      if (interest.platform !== platform) continue;
+      const name = String(interest.name ?? interest.id ?? "").trim();
+      if (name && interest.id) {
+        interestIds[name.toLocaleLowerCase("en-US").replace(/\s+/g, " ")] =
+          String(interest.id);
+      }
+    }
+    refs[platform] = {
+      ...(Object.keys(locationIds).length ? { locationIds } : {}),
+      ...(Object.keys(interestIds).length ? { interestIds } : {}),
+    };
+  }
+  return refs;
 }
 
 /**
@@ -107,7 +218,10 @@ export function suggestCampaignName({ brandName, title, date = new Date() }) {
  * created DISABLE/paused — zero spend risk on a 422/502).
  */
 const TIKTOK_GOAL_DEFAULTS = {
-  TRAFFIC: { optimization_goal: "TRAFFIC_LANDING_PAGE_VIEW", billing_event: "CPC" },
+  TRAFFIC: {
+    optimization_goal: "TRAFFIC_LANDING_PAGE_VIEW",
+    billing_event: "CPC",
+  },
   REACH: { optimization_goal: "REACH", billing_event: "CPM" },
 };
 
@@ -149,8 +263,12 @@ export function buildCreatePayload(platform, state) {
   const destinationBody = {
     page_type: destination.page_type,
     brand_slug: destination.brand_slug,
-    ...(destination.entity_slug ? { entity_slug: destination.entity_slug } : {}),
+    ...(destination.entity_slug
+      ? { entity_slug: destination.entity_slug }
+      : {}),
   };
+
+  const audienceIntent = audienceIntentFromState(audience);
 
   // ISSUE-1002 [multi-destination fan-out] — the destination fields every
   // per-platform body carries. The endpoint now accepts a `destinations[]` array
@@ -164,6 +282,17 @@ export function buildCreatePayload(platform, state) {
   const destinationFields = {
     destination: destinationBody,
     destinations: [destinationBody],
+    audience_intent: audienceIntent,
+    // Platform-neutral copy authority. Provider-specific fields below are
+    // derived renderings; the server binds this exact intent to the immutable
+    // plan before it is allowed to create any provider object.
+    copy_intent: copy,
+    creative_intent: {
+      kind: creative?.kind === "video" ? "video" : "image",
+      creative_library_id: creative?.creativeLibraryId ?? null,
+      image_url:
+        creative?.kind === "video" ? null : (creative?.imageUrl ?? null),
+    },
     ...(destinationGroupId ? { destination_group_id: destinationGroupId } : {}),
   };
 
@@ -186,7 +315,10 @@ export function buildCreatePayload(platform, state) {
   // Never silently dropped at the client — the flags always leave for the server.
   const compliance = {
     aiGenerated: creative?.aiGenerated === true,
-    specialAdCategory: specialAdCategory && specialAdCategory !== "" ? specialAdCategory : "NONE",
+    specialAdCategory:
+      specialAdCategory && specialAdCategory !== ""
+        ? specialAdCategory
+        : "NONE",
   };
 
   // ISSUE-995 [Campaign Builder creative] Wave 3 — VIDEO. A video creative is
@@ -200,9 +332,11 @@ export function buildCreatePayload(platform, state) {
   const creativeIsVideo = creative?.kind === "video";
   const videoRef = creativeIsVideo
     ? {
-      kind: "video",
-      ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
-    }
+        kind: "video",
+        ...(creative.creativeLibraryId
+          ? { creative_library_id: creative.creativeLibraryId }
+          : {}),
+      }
     : null;
 
   if (platform === "tiktok") {
@@ -213,7 +347,8 @@ export function buildCreatePayload(platform, state) {
     // TikTok CTAs are bare display strings — the SERVER owns the per-platform
     // map (GR-29: never a shared normalizer); the wizard sends none.
     const objective = goal.platforms?.tiktok?.objective ?? "TRAFFIC";
-    const goalDefaults = TIKTOK_GOAL_DEFAULTS[objective] ?? TIKTOK_GOAL_DEFAULTS.TRAFFIC;
+    const goalDefaults =
+      TIKTOK_GOAL_DEFAULTS[objective] ?? TIKTOK_GOAL_DEFAULTS.TRAFFIC;
     return {
       platform: "tiktok",
       lane,
@@ -235,20 +370,28 @@ export function buildCreatePayload(platform, state) {
           ? { location_ids: tiktokLocationIdsFrom(audience.cities) }
           : {}),
         ...(tiktokInterestCategoryIdsFrom(audience.interests).length > 0
-          ? { interest_category_ids: tiktokInterestCategoryIdsFrom(audience.interests) }
+          ? {
+              interest_category_ids: tiktokInterestCategoryIdsFrom(
+                audience.interests,
+              ),
+            }
           : {}),
         age_min: Number(audience.ageMin),
         age_max: Number(audience.ageMax),
-        ...(tiktokGenderFor(audience.gender) ? { gender: tiktokGenderFor(audience.gender) } : {}),
+        ...(tiktokGenderFor(audience.gender)
+          ? { gender: tiktokGenderFor(audience.gender) }
+          : {}),
       },
       ...destinationFields,
       creative: videoRef
         ? { ad_text: copy.primary, ...videoRef }
         : {
-          ad_text: copy.primary,
-          image_url: creative.imageUrl,
-          ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
-        },
+            ad_text: copy.primary,
+            image_url: creative.imageUrl,
+            ...(creative.creativeLibraryId
+              ? { creative_library_id: creative.creativeLibraryId }
+              : {}),
+          },
       // Bug 3: global compliance intent reaches TikTok's create path. TikTok's
       // only AI-disclosure field (aigc_disclosure_type) is CUSTOMIZED_USER-only
       // and unreachable for our account (T-P6); it has no special-category field.
@@ -276,18 +419,26 @@ export function buildCreatePayload(platform, state) {
       // Country stays the geo (Reddit is country/metro, not city).
       targeting: {
         countries: audience.countries,
-        ...(redditGendersFor(audience.gender) ? { genders: redditGendersFor(audience.gender) } : {}),
+        ...(redditGendersFor(audience.gender)
+          ? { genders: redditGendersFor(audience.gender) }
+          : {}),
         ...(redditInterestNamesFrom(audience.interests).length > 0
-          ? { passthrough: { reddit: { interests: redditInterestNamesFrom(audience.interests) } } }
+          ? {
+              passthrough: {
+                reddit: {
+                  interests: redditInterestNamesFrom(audience.interests),
+                },
+              },
+            }
           : {}),
       },
       ...destinationFields,
       creative: videoRef
         ? { headline: copy.primary, ...videoRef }
         : {
-          headline: copy.primary,
-          image_url: creative.imageUrl,
-        },
+            headline: copy.primary,
+            image_url: creative.imageUrl,
+          },
       // Bug 3: global compliance intent reaches Reddit's create path. Reddit has
       // no AI-disclosure field and no special-ad-category field on its API.
       compliance,
@@ -308,7 +459,8 @@ export function buildCreatePayload(platform, state) {
       request_id: requestId,
       name,
       objective: goal.platforms?.snapchat?.objective ?? "TRAFFIC",
-      optimization_goal: goal.platforms?.snapchat?.optimization_goal ?? "SWIPES",
+      optimization_goal:
+        goal.platforms?.snapchat?.optimization_goal ?? "SWIPES",
       ...budgetPayloadFromState(budget),
       // ISSUE-989: age/gender via demographics (STRINGS — GR-39). Absent →
       // server default [{min_age:"18"}].
@@ -321,8 +473,18 @@ export function buildCreatePayload(platform, state) {
         ...(snapDemographicsFrom(audience)
           ? { demographics: snapDemographicsFrom(audience) }
           : {}),
-        ...(snapCirclesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit).length > 0
-          ? { circles: snapCirclesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit) }
+        ...(snapCirclesFrom(
+          audience.cities,
+          audience.radius ?? DEFAULT_RADIUS_MI,
+          audience.distanceUnit,
+        ).length > 0
+          ? {
+              circles: snapCirclesFrom(
+                audience.cities,
+                audience.radius ?? DEFAULT_RADIUS_MI,
+                audience.distanceUnit,
+              ),
+            }
           : {}),
         ...(snapInterestCategoryIdsFrom(audience.interests).length > 0
           ? { interests: snapInterestCategoryIdsFrom(audience.interests) }
@@ -332,7 +494,9 @@ export function buildCreatePayload(platform, state) {
       creative: {
         headline: copy.headline || copy.primary,
         ...(creative.brandName ? { brand_name: creative.brandName } : {}),
-        ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
+        ...(creative.creativeLibraryId
+          ? { creative_library_id: creative.creativeLibraryId }
+          : {}),
         ...(videoRef ? { kind: "video" } : {}),
       },
       // Bug 3: global compliance intent reaches Snapchat's create path. Snapchat
@@ -355,9 +519,10 @@ export function buildCreatePayload(platform, state) {
     const googleLongHeadlines = (copy.googleLongHeadlines ?? [])
       .map((h) => (h ?? "").trim())
       .filter(Boolean);
-    const googleBusinessName = typeof copy.googleBusinessName === "string"
-      ? copy.googleBusinessName.trim()
-      : "";
+    const googleBusinessName =
+      typeof copy.googleBusinessName === "string"
+        ? copy.googleBusinessName.trim()
+        : "";
     return {
       platform: "google",
       lane,
@@ -385,8 +550,12 @@ export function buildCreatePayload(platform, state) {
       },
       ...destinationFields,
       creative: {
-        headlines: (copy.googleHeadlines ?? []).map((h) => h.trim()).filter(Boolean),
-        descriptions: (copy.googleDescriptions ?? []).map((d) => d.trim()).filter(Boolean),
+        headlines: (copy.googleHeadlines ?? [])
+          .map((h) => h.trim())
+          .filter(Boolean),
+        descriptions: (copy.googleDescriptions ?? [])
+          .map((d) => d.trim())
+          .filter(Boolean),
         // ISSUE-995: a video RSA rides on the library ref (Google runs it
         // YouTube-hosted, resolved from the #866 row); image RSAs carry no media.
         ...(videoRef ?? {}),
@@ -398,11 +567,18 @@ export function buildCreatePayload(platform, state) {
         ...(creativeIsVideo && googleLongHeadlines.length > 0
           ? { long_headlines: googleLongHeadlines }
           : {}),
-        ...(creativeIsVideo && googleBusinessName ? { business_name: googleBusinessName } : {}),
+        ...(creativeIsVideo && googleBusinessName
+          ? { business_name: googleBusinessName }
+          : {}),
       },
       keywords: (copy.keywords ?? []).map((k) => k.trim()).filter(Boolean),
-      ...(Array.isArray(copy.negativeKeywords) && copy.negativeKeywords.length > 0
-        ? { negative_keywords: copy.negativeKeywords.map((k) => k.trim()).filter(Boolean) }
+      ...(Array.isArray(copy.negativeKeywords) &&
+      copy.negativeKeywords.length > 0
+        ? {
+            negative_keywords: copy.negativeKeywords
+              .map((k) => k.trim())
+              .filter(Boolean),
+          }
         : {}),
       // Bug 3: global compliance intent reaches Google's create path. Google
       // Ads has no general special-ad-category field (housing/employment/etc.
@@ -415,9 +591,10 @@ export function buildCreatePayload(platform, state) {
 
   // Meta (the generic branch).
   const genders = metaGendersFor(audience.gender);
-  const categories = specialAdCategory && specialAdCategory !== "NONE"
-    ? [specialAdCategory]
-    : [];
+  const categories =
+    specialAdCategory && specialAdCategory !== "NONE"
+      ? [specialAdCategory]
+      : [];
   return {
     platform: "meta",
     lane,
@@ -434,8 +611,18 @@ export function buildCreatePayload(platform, state) {
     // omit the keys, so broad country+age targeting is byte-identical to before.
     targeting: {
       countries: audience.countries,
-      ...(metaCitiesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit).length > 0
-        ? { cities: metaCitiesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit) }
+      ...(metaCitiesFrom(
+        audience.cities,
+        audience.radius ?? DEFAULT_RADIUS_MI,
+        audience.distanceUnit,
+      ).length > 0
+        ? {
+            cities: metaCitiesFrom(
+              audience.cities,
+              audience.radius ?? DEFAULT_RADIUS_MI,
+              audience.distanceUnit,
+            ),
+          }
         : {}),
       ...(metaInterestIdsFrom(audience.interests).length > 0
         ? { interests: metaInterestIdsFrom(audience.interests) }
@@ -456,7 +643,9 @@ export function buildCreatePayload(platform, state) {
       ai_generated: creative.aiGenerated === true,
     },
     special_ad_categories: categories,
-    ...(categories.length > 0 ? { special_ad_category_country: audience.countries } : {}),
+    ...(categories.length > 0
+      ? { special_ad_category_country: audience.countries }
+      : {}),
     // Bug 3: Meta ALSO carries the platform-neutral compliance descriptor (it
     // applies both flags via self_ai_disclosure + special_ad_categories above)
     // so every platform's payload carries `compliance` uniformly.

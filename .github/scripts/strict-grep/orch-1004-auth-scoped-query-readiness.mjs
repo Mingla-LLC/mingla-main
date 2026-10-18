@@ -76,6 +76,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   "marketing/useAdCreditWallet.ts",
   // toward #3697 Wave 7c — Host-owned ad campaigns list (JWT + brand-scoped edge).
   "marketing/useHostAdCampaigns.ts",
+  // Issue #3697 v1.4 — resumable Host ad plans (JWT + brand-scoped edge).
+  "marketing/useHostAdPlans.ts",
   "marketing/useAudienceList.ts",
   "marketing/useBrandCustomers.ts",
   "marketing/useEventBuyers.ts",

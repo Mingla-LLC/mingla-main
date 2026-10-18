@@ -402,12 +402,20 @@ describe("ISSUE-1184 adversarial [structural]: page/preview wiring enforces the 
   it("the Review count is gated on the buildable (READY) subset, not raw allocations", () => {
     assert.match(
       page,
-      /allocations\.filter\(\(a\) => creativePartition\.buildable\.includes\(a\.platform\)\)/,
+      // [TEST-MOD-APPROVED #3697] Prettier may wrap this predicate; keep the
+      // guard semantic so Review still receives only video-ready allocations.
+      /allocations\.filter\(\(a\)\s*=>\s*creativePartition\.buildable\.includes\(a\.platform\),?\s*\)/,
     );
   });
 
-  it("a terminal failure is announced once, keyed by a de-dupe set", () => {
-    assert.match(page, /terminalAnnouncementsRef/);
+  // [TEST-MOD-APPROVED #3697] Provider preparation moved behind the immutable
+  // funded + confirmed plan. The creative step no longer owns terminal alerts;
+  // the launch path records one durable plan failure instead.
+  it("a preparation failure is bound to and recorded on the exact plan", () => {
+    assert.match(page, /prepareBoundVideoCreative/);
+    assert.match(page, /action: "record_create_failure"/);
+    assert.match(page, /plan_version_id: immutablePlan\.plan_version_id/);
+    assert.match(page, /plan_hash: immutablePlan\.plan_hash/);
   });
 
   it("resetting the creative discards prior preparation truth (generation reset)", () => {

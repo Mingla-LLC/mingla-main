@@ -1,13 +1,13 @@
 -- toward #3697 Wave 7c — non-member cannot SELECT host ad_campaigns; withdraw without PI refuses.
+-- [TEST-MOD-APPROVED #3697] v1.4 fixtures establish verified settlement and
+-- provider-account currency authority before testing RLS and refund refusal.
 \set ON_ERROR_STOP on
 BEGIN;
 
-alter table auth.users add column if not exists email_confirmed_at timestamptz;
-
-insert into auth.users (id, email, email_confirmed_at)
+insert into auth.users (id, email)
 values
-  ('3697c100-0000-4000-c000-000000000001', 'issue3697w7c-a@test.local', now()),
-  ('3697c100-0000-4000-c000-000000000002', 'issue3697w7c-b@test.local', now())
+  ('3697c100-0000-4000-c000-000000000001', 'issue3697w7c-a@test.local'),
+  ('3697c100-0000-4000-c000-000000000002', 'issue3697w7c-b@test.local')
 on conflict (id) do nothing;
 
 insert into public.creator_accounts (id, created_at)
@@ -16,16 +16,30 @@ values
   ('3697c100-0000-4000-c000-000000000002', now())
 on conflict (id) do nothing;
 
-insert into public.brands (id, account_id, name, slug, created_at, updated_at)
+insert into public.brands (
+  id, account_id, name, slug, default_currency, payment_provider,
+  payment_country, created_at, updated_at
+)
 values (
   '3697c100-0000-4000-c000-000000000010',
   '3697c100-0000-4000-c000-000000000001',
   'Issue 3697 Wave7c Adv',
   'issue3697wave7cadv',
+  'USD',
+  'stripe',
+  'US',
   now(),
   now()
 )
 on conflict (id) do nothing;
+
+insert into public.stripe_connect_accounts (
+  brand_id, stripe_account_id, charges_enabled, payouts_enabled,
+  country, default_currency
+) values (
+  '3697c100-0000-4000-c000-000000000010', 'acct_issue3697_w7c_adv',
+  true, true, 'US', 'USD'
+);
 
 insert into public.brand_team_members
   (brand_id, user_id, role, accepted_at, invited_at)
@@ -35,7 +49,8 @@ values
 on conflict do nothing;
 
 insert into public.ad_connections (
-  id, platform, lane, display_name, external_account_id, auth_kind, token_env_var
+  id, platform, lane, display_name, external_account_id, auth_kind, token_env_var,
+  status, currency, connected
 )
 values (
   '3697c100-0000-4000-c000-000000000020',
@@ -44,14 +59,17 @@ values (
   'W7c Adv Reddit',
   'w7c_adv_acct',
   'refresh_token',
-  'REDDIT_ADS_TOKEN_W7C_ADV'
+  'REDDIT_ADS_TOKEN_W7C_ADV',
+  'connected',
+  'USD',
+  true
 )
 on conflict (id) do nothing;
 
 insert into public.ad_campaigns (
   id, connection_id, platform, external_campaign_id, name, objective, status,
   dest_page_type, dest_brand_slug, dest_url, dest_smart_link,
-  brand_id, owner_kind, created_by
+  brand_id, owner_kind, created_by, currency
 ) values (
   '3697c100-0000-4000-c000-000000000030',
   '3697c100-0000-4000-c000-000000000020',
@@ -66,7 +84,8 @@ insert into public.ad_campaigns (
   'https://usemingla.com/b/issue3697wave7cadv',
   '3697c100-0000-4000-c000-000000000010',
   'host',
-  '3697c100-0000-4000-c000-000000000001'
+  '3697c100-0000-4000-c000-000000000001',
+  'USD'
 )
 on conflict (id) do nothing;
 
@@ -135,12 +154,19 @@ declare
   v_brand uuid := '3697c100-0000-4000-c000-000000000011';
   v_actor uuid := '3697c100-0000-4000-c000-000000000001';
 begin
-  insert into public.brands (id, account_id, name, slug, created_at, updated_at)
+  insert into public.brands (
+    id, account_id, name, slug, default_currency, payment_provider,
+    payment_country, paystack_subaccount_code, created_at, updated_at
+  )
   values (
     v_brand,
     v_actor,
     'Issue 3697 Wave7c PSK Min',
     'issue3697wave7cpskmin',
+    'NGN',
+    'paystack',
+    'NG',
+    'ACCT_issue3697_w7c_min',
     now(),
     now()
   )

@@ -23,19 +23,20 @@
  *   - Reddit interest/community: Reddit targeting takes NAMES (the serializer
  *            accepts arbitrary community/interest names) — the query passes
  *            through as a candidate name; no unproven upstream lookup is invented.
- *   - Snapchat: city-circle + interest-segment CONSUMPTION is not wired in the
- *            create path yet (ISSUE-989 split) — fail-open with a clear note so
- *            the builder degrades to Snap demographics + country. Snap age/gender
- *            DO travel (targeting.demographics), fixing the silent drop.
+ *   - Snapchat: city names are selected without exposing coordinates; ad-plan
+ *            geocodes them server-side into the immutable compiled snapshot.
+ *            SCLS interest IDs and demographics are frozen and delivered from
+ *            that same snapshot.
  *
  * FAIL-OPEN (house style): a provider error / not-connected channel returns
  * 200 { results: [], warning } — a broken typeahead must never block the wizard.
  * Only auth (401/403) and input validation (400) hard-fail.
  *
- * verify_jwt = true (config.toml) + in-code admin_users active gate (mirrors
- * admin-ad-connect / -preflight / -create-campaign, admin-gate FIRST). No token
- * ever appears in a response — the shared adapters send Bearer headers and
- * normalize/scrub provider errors.
+ * verify_jwt = true. Active admins may search either lane; an authenticated
+ * Host planner may search only the business lane for a brand where
+ * ad_can_host_action(..., plan) is true. Authorization still precedes input
+ * validation. No token ever appears in a response — shared adapters send
+ * Bearer headers and normalize/scrub provider errors.
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -44,8 +45,8 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   AdApiError,
-  AdNotConnectedError,
   type AdConnectionRow,
+  AdNotConnectedError,
   isLane,
   isPlatform,
   type Lane,
@@ -68,14 +69,20 @@ import {
   searchGoogleUserInterests,
   suggestGeoTargetConstants,
 } from "../_shared/google.ts";
-import { resolveSnapchatClient, snapchatFetchInterests } from "../_shared/snapchat.ts";
+import {
+  resolveSnapchatClient,
+  snapchatFetchInterests,
+} from "../_shared/snapchat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -129,7 +136,9 @@ async function resolveMeta(
     });
     const results = parseMetaGeoResults(payload).map((r) => ({
       id: r.key,
-      name: r.region ? `${r.name}, ${r.region}, ${r.country_code ?? ""}`.replace(/,\s*$/, "") : r.name,
+      name: r.region
+        ? `${r.name}, ${r.region}, ${r.country_code ?? ""}`.replace(/,\s*$/, "")
+        : r.name,
       meta: {
         key: r.key,
         city: r.name,
@@ -139,9 +148,18 @@ async function resolveMeta(
         type: r.type,
       },
     }));
-    return { results, ...(country ? {} : { warning: "Add a country to disambiguate the city." }) };
+    return {
+      results,
+      ...(country
+        ? {}
+        : { warning: "Add a country to disambiguate the city." }),
+    };
   }
-  const payload = await metaSearch(client, { type: "adinterest", q, limit: "15" });
+  const payload = await metaSearch(client, {
+    type: "adinterest",
+    q,
+    limit: "15",
+  });
   const results = parseMetaInterestResults(payload).map((r) => ({
     id: r.id,
     name: r.name,
@@ -169,7 +187,10 @@ async function resolveTikTok(
     // zero matches and the create path silently fell back to country. geo_id ==
     // adgroup location_id; an empty result (e.g. GB — no sub-country geo) is an
     // HONEST country fallback, surfaced below, never a silent widen.
-    const cities = await tiktokSearchCityLocations(client, { q, country: country ?? undefined });
+    const cities = await tiktokSearchCityLocations(client, {
+      q,
+      country: country ?? undefined,
+    });
     const results = cities.map((r) => ({
       id: r.geoId,
       name: r.name,
@@ -222,13 +243,24 @@ async function resolveGoogle(
       })),
     };
   }
-  if (!country) return { results: [], warning: "Add a country to resolve a Google location." };
+  if (!country) {
+    return {
+      results: [],
+      warning: "Add a country to resolve a Google location.",
+    };
+  }
   if (!conn) throw new AdNotConnectedError("google", "google_not_connected");
   const client = await resolveGoogleClient(conn);
   // Exact-name confirmation (the create path re-resolves by name+country_code).
-  const resolved = await suggestGeoTargetConstants(client, { name: q, countryCode: country });
+  const resolved = await suggestGeoTargetConstants(client, {
+    name: q,
+    countryCode: country,
+  });
   if (!resolved) {
-    return { results: [], warning: `Google found no ENABLED "${q}" in ${country}.` };
+    return {
+      results: [],
+      warning: `Google found no ENABLED "${q}" in ${country}.`,
+    };
   }
   return {
     results: [{
@@ -253,7 +285,9 @@ async function resolveSnapchat(
   if (kind === "interest") {
     // ISSUE-992 (3a): real SCLS interest-segment resolution (replaces the old
     // deferred fail-open stub).
-    if (!conn) throw new AdNotConnectedError("snapchat", "snapchat_not_connected");
+    if (!conn) {
+      throw new AdNotConnectedError("snapchat", "snapchat_not_connected");
+    }
     const client = await resolveSnapchatClient(conn);
     const interests = await snapchatFetchInterests(client, q);
     return {
@@ -280,7 +314,11 @@ function resolveReddit(
   q: string,
 ): { results: TargetingSearchResult[]; warning?: string } {
   if (kind === "city") {
-    return { results: [], warning: "Reddit targets by country/metro, not city — this campaign uses the countries you picked." };
+    return {
+      results: [],
+      warning:
+        "Reddit targets by country/metro, not city — this campaign uses the countries you picked.",
+    };
   }
   // Reddit targeting takes NAMES verbatim (serializeRedditTargeting accepts
   // community/interest names). No unproven upstream lookup is invented — the
@@ -288,12 +326,18 @@ function resolveReddit(
   const name = q.trim();
   if (!name) return { results: [] };
   return {
-    results: [{ id: name, name, meta: { kind: "interest", passthrough: true } }],
+    results: [{
+      id: name,
+      name,
+      meta: { kind: "interest", passthrough: true },
+    }],
   };
 }
 
 serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   let body: Record<string, unknown>;
@@ -303,15 +347,16 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  // ── ADMIN GATE FIRST (auth precedes input validation — mirrors the sibling
-  //    admin-ad-* fns; no pre-auth probe surface). ──────────────────────────────
+  // ── AUTHORIZATION FIRST (no pre-auth probe surface). ────────────────────────
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ error: "unauthorized" }, 401);
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const token = authHeader.replace("Bearer ", "");
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  const { data: { user }, error: authError } = await supabase.auth.getUser(
+    token,
+  );
   if (authError || !user) return json({ error: "unauthorized" }, 401);
   const { data: adminRow } = await supabase
     .from("admin_users")
@@ -319,20 +364,51 @@ serve(async (req: Request): Promise<Response> => {
     .eq("email", user.email)
     .eq("status", "active")
     .maybeSingle();
-  if (!adminRow) return json({ error: "forbidden" }, 403);
+  const requestedLane = body.lane ?? "consumer";
+  const requestedBrandId = typeof body.brand_id === "string"
+    ? body.brand_id.trim()
+    : "";
+  if (!adminRow) {
+    if (requestedLane !== "business" || !UUID_RE.test(requestedBrandId)) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { data: canPlan, error: permissionError } = await supabase.rpc(
+      "ad_can_host_action",
+      {
+        p_brand_id: requestedBrandId,
+        p_user_id: user.id,
+        p_action: "plan",
+      },
+    );
+    if (permissionError || canPlan !== true) {
+      return json({ error: "forbidden" }, 403);
+    }
+  }
 
   // ── Input validation. ────────────────────────────────────────────────────────
   const platform = body.platform;
-  const lane = body.lane ?? "consumer";
+  const lane = requestedLane;
   const kind = body.kind;
   const q = typeof body.q === "string" ? body.q.trim() : "";
   const country = typeof body.country === "string" && body.country.trim()
     ? body.country.trim().toUpperCase()
     : null;
-  if (!isPlatform(platform)) return json({ error: "validation_error", detail: "platform_invalid" }, 400);
-  if (!isLane(lane)) return json({ error: "validation_error", detail: "lane_invalid" }, 400);
-  if (typeof kind !== "string" || !(KINDS as readonly string[]).includes(kind)) {
-    return json({ error: "validation_error", detail: "kind_invalid — expected 'city' | 'interest'" }, 400);
+  if (!isPlatform(platform)) {
+    return json({ error: "validation_error", detail: "platform_invalid" }, 400);
+  }
+  if (!isLane(lane)) {
+    return json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  }
+  if (!adminRow && lane !== "business") {
+    return json({ error: "forbidden" }, 403);
+  }
+  if (
+    typeof kind !== "string" || !(KINDS as readonly string[]).includes(kind)
+  ) {
+    return json({
+      error: "validation_error",
+      detail: "kind_invalid — expected 'city' | 'interest'",
+    }, 400);
   }
   if (!q) return json({ error: "validation_error", detail: "q_required" }, 400);
 

@@ -118,7 +118,7 @@ describe("ISSUE-986 ADVERSARIAL — A: a picked SUBSET drives split + StepCopy +
     }
 
     // Review / launch summary
-    const summary = buildLaunchSummary({ channelRows: planned, allocations, totalDailyCents: 3000 });
+    const summary = buildLaunchSummary({ channelRows: planned, allocations, totalDailyCents: 3000, currency: "USD" });
     assert.equal(summary.channels.length, 1);
     assert.equal(summary.channels[0].platform, "snapchat");
     assert.equal(summary.channels[0].dailyLabel, "$30.00/day");

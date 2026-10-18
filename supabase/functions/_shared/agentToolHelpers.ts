@@ -31,9 +31,22 @@ export type AgentResourceKind =
   | "venue"
   | "venue_feedback";
 
+export type AgentHostAdAction =
+  | "read"
+  | "plan"
+  | "fund"
+  | "launch"
+  | "pause"
+  | "end";
+
 export interface AgentAuthorizationDeclaration {
   requiredRole: AgentRequiredRole;
   resource: AgentResourceKind;
+  /**
+   * Host Ads permissions are independent capabilities, not a role ladder.
+   * When present, these exact actions replace the coarse requiredRole check.
+   */
+  hostAdActions?: readonly AgentHostAdAction[];
 }
 
 /**

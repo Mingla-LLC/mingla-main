@@ -125,7 +125,9 @@ export function summaryFor(latest) {
   if (counts.stale) return "Evidence is stale. Recheck before relying on this target.";
   if (counts.blocked) return "This target is blocked until the provider issue is resolved.";
   if (counts.action_required) return "Action is required before this target can be used.";
-  return counts.ready === 5 ? "Ready for a future paused app campaign." : "This target is blocked until the provider issue is resolved.";
+  return counts.ready === 5
+    ? "Provider-ready for a paused app campaign. Certification and release gates still apply."
+    : "This target is blocked until the provider issue is resolved.";
 }
 
 export function demoteLatest(latest) {

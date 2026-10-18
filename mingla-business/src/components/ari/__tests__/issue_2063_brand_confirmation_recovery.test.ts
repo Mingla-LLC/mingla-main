@@ -20,8 +20,12 @@ describe("#2063 shared Business brand confirmation recovery", () => {
   });
 
   test("brand hours and currency have human proposal labels on the shared card", () => {
-    expect(card).toContain('case "manage_brand_hours": return "Update venue hours"');
-    expect(card).toContain('case "manage_brand_discovery_currency": return "Update discovery currency"');
+    expect(card).toMatch(
+      /case\s+["']manage_brand_hours["']:\s*return\s+["']Update venue hours["']/,
+    );
+    expect(card).toMatch(
+      /case\s+["']manage_brand_discovery_currency["']:\s*return\s+["']Update discovery currency["']/,
+    );
   });
 
   test("structured and thrown confirmation failures remain visible and retryable", () => {

@@ -2433,9 +2433,12 @@
       "id": "ari.ads.propose_ad_plan",
       "domain": "ads",
       "outcome": "Propose a Host Ads plan (no spend)",
-      "safety": "read",
+      "safety": "write",
       "required_role": "owner_or_finance_manager",
-      "confirmation": "none",
+      "confirmation": "standard",
+      "authorization_actions": [
+        "plan"
+      ],
       "surfaces": [
         "business_ios",
         "business_android",
@@ -2483,6 +2486,10 @@
       "safety": "money",
       "required_role": "owner_or_finance_manager",
       "confirmation": "type_to_confirm",
+      "authorization_actions": [
+        "fund",
+        "launch"
+      ],
       "surfaces": [
         "business_ios",
         "business_android",
@@ -2530,6 +2537,9 @@
       "safety": "write",
       "required_role": "owner_or_finance_manager",
       "confirmation": "standard",
+      "authorization_actions": [
+        "pause"
+      ],
       "surfaces": [
         "business_ios",
         "business_android",
@@ -2577,6 +2587,9 @@
       "safety": "money",
       "required_role": "owner_or_finance_manager",
       "confirmation": "type_to_confirm",
+      "authorization_actions": [
+        "end"
+      ],
       "surfaces": [
         "business_ios",
         "business_android",
@@ -2624,6 +2637,9 @@
       "safety": "read",
       "required_role": "owner_or_finance_manager",
       "confirmation": "none",
+      "authorization_actions": [
+        "read"
+      ],
       "surfaces": [
         "business_ios",
         "business_android",

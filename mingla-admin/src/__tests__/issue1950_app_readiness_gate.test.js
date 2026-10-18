@@ -73,9 +73,9 @@ test("#1950 feature gate fails closed for false, missing, malformed, and RPC fai
   }
   assert.match(
     pageSource,
-    /const \[appDownloadReadinessEnabled, setAppDownloadReadinessEnabled\] = useState\(false\);/,
+    /const \[appDownloadReadinessEnabled, setAppDownloadReadinessEnabled\]\s*=\s*useState\(false\);/,
   );
-  assert.ok(pageSource.includes(boundaryCopy));
+  assert.ok(pageSource.replace(/\s+/g, " ").includes(boundaryCopy));
 });
 
 test("#1950 page gates the mount instead of hiding the panel and preserves traffic campaigns", () => {
@@ -85,8 +85,9 @@ test("#1950 page gates the mount instead of hiding the panel and preserves traff
   );
   assert.equal((pageSource.match(/<AppDownloadReadinessPanel \/>/g) ?? []).length, 1);
   assert.doesNotMatch(pageSource, /display:\s*["']none["'][\s\S]{0,160}AppDownloadReadinessPanel/);
-  assert.match(pageSource, /Create web traffic campaign/);
-  assert.match(pageSource, /Web traffic preflight/);
+  assert.match(pageSource, /Campaign work/);
+  assert.match(pageSource, /Channel preflight/);
+  assert.doesNotMatch(pageSource, /createCampaign|campaignAction|budget_usd/);
 });
 
 test("#1950 flag-ON ephemeral interceptor admits only readiness reads, checks, and safe analytics", async () => {
@@ -155,5 +156,5 @@ test("#1950 OFF rollback makes zero readiness calls in the next fresh session", 
   assert.equal(enabled, false);
   assert.deepEqual(interceptor.calls.map(({ route }) => route), ["admin_get_feature_flags"]);
   assert.match(pageSource, /<AdConnectionsPanel \/>/);
-  assert.match(pageSource, /Web traffic campaigns/);
+  assert.match(pageSource, /Governed campaign operations/);
 });

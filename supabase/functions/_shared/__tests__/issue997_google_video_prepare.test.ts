@@ -258,11 +258,11 @@ Deno.test("ISSUE-997 D1: google is an accepted preparation platform with an adap
 });
 
 // Fails-on-revert: removing the google capabilityFor branch fails this.
-Deno.test("ISSUE-997 D1: capabilityFor(google) is create_and_approx_preview; tiktok stays preview_only", () => {
+Deno.test("ISSUE-997 D1: capability labels match each provider's create and preview support", () => {
   assertEquals(capabilityFor("google"), "create_and_approx_preview");
   assertEquals(capabilityFor("meta"), "create_and_real_preview");
   assertEquals(capabilityFor("snapchat"), "create_and_approx_preview");
-  assertEquals(capabilityFor("tiktok"), "preview_only");
+  assertEquals(capabilityFor("tiktok"), "create_and_real_preview");
 });
 
 // ── 2. initiate: resumable start → upload/finalize → save ref + mark processing ─

@@ -1,18 +1,5 @@
 import { supabase } from "./supabase";
 
-const PREPARED_VIDEO_PLATFORMS = new Set([
-  "meta",
-  "google",
-  "tiktok",
-  "snapchat",
-]);
-
-type PrepareEnvelope = {
-  state?: string;
-  retry_after_seconds?: number | null;
-  error?: { message?: string } | null;
-};
-
 function bunnyVideoIdFromUrl(url: string): string {
   const pathname = new URL(url).pathname;
   const candidate = pathname.split("/").filter(Boolean)[0] ?? "";
@@ -32,17 +19,26 @@ function functionMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-const wait = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
-export async function recordAndPrepareAriAdVideo(input: {
+/**
+ * Record the canonical Bunny-backed creative only. Provider-native copies are
+ * launch work and are created later by launchHostAdPlan, after the exact plan
+ * is funded, reviewed and phrase-confirmed.
+ */
+export async function recordHostAdVideo(input: {
   brandId: string;
-  platform: string;
+  platforms: string[];
   name: string;
   videoUrl: string;
   posterUrl: string;
 }): Promise<string> {
-  const platform = input.platform.trim().toLowerCase();
+  const platforms = [
+    ...new Set(
+      input.platforms.map((value) => value.trim().toLowerCase()).filter(Boolean),
+    ),
+  ];
+  if (platforms.length === 0) {
+    throw new Error("Choose at least one ad platform before adding the video.");
+  }
   const bunnyVideoId = bunnyVideoIdFromUrl(input.videoUrl);
   const { data: uploadData, error: uploadError } =
     await supabase.functions.invoke<{
@@ -57,7 +53,7 @@ export async function recordAndPrepareAriAdVideo(input: {
         bunny_video_id: bunnyVideoId,
         poster_url: input.posterUrl,
         brand_id: input.brandId,
-        platforms: [platform],
+        platforms,
         ai_generated: false,
       },
     });
@@ -69,41 +65,5 @@ export async function recordAndPrepareAriAdVideo(input: {
   const creativeId = uploadData?.creative?.id;
   if (!creativeId)
     throw new Error("The ad video was validated but not recorded.");
-  if (!PREPARED_VIDEO_PLATFORMS.has(platform)) return creativeId;
-
-  let action: "start" | "status" = "start";
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    const { data, error } = await supabase.functions.invoke<PrepareEnvelope>(
-      "admin-ad-creative-prepare",
-      {
-        body: {
-          action,
-          creative_library_id: creativeId,
-          platform,
-          lane: "business",
-          brand_id: input.brandId,
-        },
-      },
-    );
-    if (error) {
-      throw new Error(
-        functionMessage(error, "The ad platform couldn't prepare that video."),
-      );
-    }
-    if (data?.state === "ready") return creativeId;
-    if (data?.state === "failed" || data?.state === "timed_out") {
-      throw new Error(
-        data.error?.message || "The ad platform couldn't prepare that video.",
-      );
-    }
-    action = "status";
-    const seconds = Math.min(
-      10,
-      Math.max(1, Number(data?.retry_after_seconds) || 2),
-    );
-    await wait(seconds * 1000);
-  }
-  throw new Error(
-    "The platform is still preparing this video. Try again in a moment.",
-  );
+  return creativeId;
 }

@@ -43,10 +43,10 @@ describe("ISSUE-997 D2 · Google Demand Gen video create is wired through the bu
   // this. Reconciles the P4 divergence with the edge capabilityFor("google").
   it("emptyPreparation('google').capability === 'create_and_approx_preview' (matches the edge)", () => {
     assert.equal(emptyPreparation("google").capability, "create_and_approx_preview");
-    // Meta/Snap unchanged; tiktok still the cosmetic preview_only default.
+    // Meta/TikTok expose real previews; Snap/Google expose approximations.
     assert.equal(emptyPreparation("meta").capability, "create_and_real_preview");
     assert.equal(emptyPreparation("snapchat").capability, "create_and_approx_preview");
-    assert.equal(emptyPreparation("tiktok").capability, "preview_only");
+    assert.equal(emptyPreparation("tiktok").capability, "create_and_real_preview");
   });
 
   // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit as a no-prepare video platform,

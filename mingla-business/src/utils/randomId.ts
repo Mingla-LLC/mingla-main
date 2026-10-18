@@ -15,3 +15,17 @@ export const randomId = (): string => {
   }
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
 };
+
+/** RN-safe UUID for server resources whose primary key is PostgreSQL uuid. */
+export const randomUuid = (): string => {
+  const maybeCrypto = (globalThis as { crypto?: Crypto }).crypto;
+  if (typeof maybeCrypto?.randomUUID === "function") {
+    return maybeCrypto.randomUUID();
+  }
+  const hex = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
+  return hex.replace(/[xy]/g, (token) => {
+    const value = Math.floor(Math.random() * 16);
+    const nibble = token === "x" ? value : (value & 0x3) | 0x8;
+    return nibble.toString(16);
+  });
+};

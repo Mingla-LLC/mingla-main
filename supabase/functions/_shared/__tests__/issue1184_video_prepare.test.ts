@@ -27,7 +27,7 @@ Deno.test("ISSUE-1184 MD5 uses known vectors and capabilities stay narrow", () =
   );
   assertEquals(capabilityFor("meta"), "create_and_real_preview");
   assertEquals(capabilityFor("snapchat"), "create_and_approx_preview");
-  assertEquals(capabilityFor("tiktok"), "preview_only");
+  assertEquals(capabilityFor("tiktok"), "create_and_real_preview");
 });
 
 function fakeDb(

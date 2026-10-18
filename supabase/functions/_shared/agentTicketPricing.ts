@@ -41,6 +41,29 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   "zero_priced_remaining",
   "payment_method",
   "installment_id",
+  "ad_budget_cents",
+  "ad_daily_budget_cents",
+  "ad_platforms",
+  // Issue #3697 v1.4 — server-derived Host Ads review policy. These values are
+  // display-only and never enter the confirmed tool args; the allowlist keeps
+  // arbitrary model/client context out of the proposal card.
+  "ad_currency_policy",
+  "ad_provider_allocation",
+  "ad_destination",
+  "ad_result",
+  "ad_audience",
+  "ad_targeting",
+  "ad_schedule",
+  "ad_creative",
+  "ad_copy",
+  "ad_media_rights",
+  "ad_ai_disclosure",
+  "ad_measurement",
+  "ad_measurement_scope",
+  "ad_fee",
+  "ad_credit",
+  "ad_review",
+  "ad_binding",
 ]);
 
 export function verifiedProposalArgs(

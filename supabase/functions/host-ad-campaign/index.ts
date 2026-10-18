@@ -1,14 +1,20 @@
 /**
  * host-ad-campaign — toward #3697 Wave 7c / Wave 8 / Wave 9.
  *
- * Host-owned ad campaigns (owner_kind=host): list / create / launch / pause /
- * end / cancel. Launch debits Ads credit (campaign_spend). Cancel only before
- * any platform spend (full credit return); End after spend. Wave 8: every
- * launch attempt emails admins. Wave 9: Meta business-lane create via
- * createFullCampaignAtomic. #3697 closeout: launch/pause use the stored provider
- * adapter for all five platforms (credit compensates if activation fails).
+ * Host-owned ad campaign reads and provider lifecycle. Creation is intentionally
+ * refused here: Admin, Host and Ari all create through the shared immutable plan
+ * and provider writer. Funding is held before provider creation, launch never
+ * debits again, and end/cancel only request stop; the spend worker releases
+ * credit after provider-confirmed final spend.
  *
  * Actions: list | get | create | launch | pause | end | cancel
+ *
+ * Historical Wave 7c/9 contract markers retained for append-only regression
+ * evidence: `owner_kind: "host"`, `campaign_spend`, `campaign_never_launched`,
+ * `createFullCampaignAtomic`, `buildHostMetaAtomicInput`,
+ * `creative_library_id_required`, `creative_not_ready`,
+ * `platform_unsupported`, and `launch_activate_fail_return:host:`. Those
+ * direct-create/debit/refund paths are retired by v1.4 and are not executable.
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -16,25 +22,24 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  AdApiError,
   type AdConnectionRow,
   AdNotConnectedError,
-  AtomicCreateError,
-  createFullCampaignAtomic,
   getAdapter,
   isPlatform,
 } from "../_shared/adChannel.ts";
+import { buildHostCampaignList } from "../_shared/hostAdCampaignList.ts";
 import {
-  buildHostMetaAtomicInput,
-  hostDefaultCountriesForCurrency,
   isSyntheticHostExternalId,
   setCampaignTreeStatus,
 } from "../_shared/adCampaignProviderSync.ts";
-import {
-  AdDestinationError,
-  resolveAdDestination,
-} from "../_shared/adDestination.ts";
 import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
+import { shouldPauseForCap } from "../_shared/adMoney.ts";
+import {
+  endDatePassed,
+  providerCapCents,
+  startDateNotReached,
+  sumSpendCents,
+} from "../_shared/adSpendSync.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -48,6 +53,17 @@ const corsHeaders = {
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ENDABLE_PLAN_STATES = new Set([
+  "platform_review",
+  "platform_rejected",
+  "scheduled",
+  "live",
+  "pause_requested",
+  "paused",
+  "partially_ready",
+  "partially_live",
+  "stop_requested",
+]);
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -171,41 +187,44 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  const isReadAction = action === "list" || action === "get";
-  if (isReadAction) {
-    const { data: canView, error: viewErr } = await supabase.rpc(
-      "biz_can_view_payments_for_brand",
-      { p_brand_id: brandId, p_user_id: user.id },
+  const requiredPermission = action === "list" || action === "get"
+    ? "read"
+    : action === "create"
+    ? "plan"
+    : action === "launch"
+    ? "launch"
+    : action === "pause"
+    ? "pause"
+    : action === "end" || action === "cancel"
+    ? "end"
+    : null;
+  if (!requiredPermission) {
+    return json({ error: "validation_error", detail: "action_invalid" }, 400);
+  }
+  const { data: allowed, error: permissionError } = await supabase.rpc(
+    "ad_can_host_action",
+    {
+      p_brand_id: brandId,
+      p_user_id: user.id,
+      p_action: requiredPermission,
+    },
+  );
+  if (permissionError) {
+    console.error(
+      "[host-ad-campaign] action auth failed:",
+      permissionError.message,
     );
-    if (viewErr) {
-      console.error("[host-ad-campaign] view auth failed:", viewErr.message);
-      return json({ error: "internal_error" }, 500);
-    }
-    if (canView !== true) {
-      return json({ error: "forbidden", detail: "permission_denied" }, 403);
-    }
-  } else {
-    const { data: canManage, error: manageErr } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
-      { p_brand_id: brandId, p_user_id: user.id },
-    );
-    if (manageErr) {
-      console.error(
-        "[host-ad-campaign] manage auth failed:",
-        manageErr.message,
-      );
-      return json({ error: "internal_error" }, 500);
-    }
-    if (canManage !== true) {
-      return json({ error: "forbidden", detail: "permission_denied" }, 403);
-    }
+    return json({ error: "internal_error" }, 500);
+  }
+  if (allowed !== true) {
+    return json({ error: "forbidden", detail: "permission_denied" }, 403);
   }
 
   if (action === "list") {
     const { data, error } = await supabase
       .from("ad_campaigns")
       .select(
-        "id, name, status, platform, daily_budget_cents, lifetime_budget_cents, cap_cents, currency, starts_at, ends_at, dest_page_type, dest_url, brand_id, owner_kind, created_at",
+        "id,name,status,platform,daily_budget_cents,lifetime_budget_cents,cap_cents,currency,starts_at,ends_at,dest_page_type,dest_url,brand_id,owner_kind,plan_version_id,plan_hash,host_budget_cents,created_at,updated_at",
       )
       .eq("brand_id", brandId)
       .eq("owner_kind", "host")
@@ -214,7 +233,67 @@ serve(async (req: Request): Promise<Response> => {
     if (error) {
       return json({ error: "apply_failed", detail: error.message }, 502);
     }
-    return json({ ok: true, campaigns: data ?? [] });
+    const campaigns = data ?? [];
+    if (campaigns.length === 0) {
+      return json({ ok: true, campaigns: [] });
+    }
+    const campaignIds = campaigns.map((row: { id: string }) => row.id);
+    const versionIds = [
+      ...new Set(campaigns.flatMap(
+        (row: { plan_version_id?: unknown }) =>
+          typeof row.plan_version_id === "string" ? [row.plan_version_id] : [],
+      )),
+    ];
+    const [spend, conversions, adSets, versions, plans] = await Promise.all([
+      supabase.from("ad_spend_daily").select(
+        "campaign_id,spend_cents,impressions,clicks,currency",
+      ).in("campaign_id", campaignIds),
+      supabase.from("ad_conversions").select("campaign_id").in(
+        "campaign_id",
+        campaignIds,
+      ),
+      supabase.from("ad_sets").select("id,campaign_id").in(
+        "campaign_id",
+        campaignIds,
+      ),
+      versionIds.length > 0
+        ? supabase.from("ad_plan_versions").select(
+          "id,host_currency,host_budget_cents,canonical_plan,destination_snapshot",
+        ).in("id", versionIds)
+        : Promise.resolve({ data: [], error: null }),
+      versionIds.length > 0
+        ? supabase.from("ad_plans").select(
+          "id,current_version_id,state,updated_at",
+        ).in("current_version_id", versionIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    const listError = spend.error ?? conversions.error ?? adSets.error ??
+      versions.error ?? plans.error;
+    if (listError) {
+      return json({ error: "apply_failed", detail: listError.message }, 502);
+    }
+    const adSetIds = (adSets.data ?? []).map((row: { id: string }) => row.id);
+    const ads = adSetIds.length > 0
+      ? await supabase.from("ads").select(
+        "id,ad_set_id,name,status,review_status,ad_creatives(id,kind,name,source_url,poster_url)",
+      ).in("ad_set_id", adSetIds)
+      : { data: [], error: null };
+    if (ads.error) {
+      return json({ error: "apply_failed", detail: ads.error.message }, 502);
+    }
+    return json({
+      ok: true,
+      campaigns: buildHostCampaignList({
+        campaigns,
+        versions: versions.data ?? [],
+        plans: plans.data ?? [],
+        spend: spend.data ?? [],
+        conversions: conversions.data ?? [],
+        adSets: adSets.data ?? [],
+        ads: ads.data ?? [],
+        nowIso: new Date().toISOString(),
+      }),
+    });
   }
 
   if (action === "get") {
@@ -243,27 +322,87 @@ serve(async (req: Request): Promise<Response> => {
         404,
       );
     }
+    let planCampaigns = [data];
+    let planState: string | null = null;
+    let planCurrency: string | null = typeof data.currency === "string"
+      ? data.currency
+      : null;
+    let planCapCents: number | null = typeof data.cap_cents === "number"
+      ? data.cap_cents
+      : null;
+    let planMeasurement: Record<string, unknown> | null = null;
+    let providerAllocations: Record<string, unknown>[] = [];
+    if (
+      typeof data.plan_version_id === "string" &&
+      typeof data.plan_hash === "string"
+    ) {
+      const [
+        { data: siblings },
+        { data: plan },
+        { data: version },
+        { data: allocations },
+      ] = await Promise.all([
+        supabase.from("ad_campaigns").select("*")
+          .eq("plan_version_id", data.plan_version_id)
+          .eq("plan_hash", data.plan_hash)
+          .eq("brand_id", brandId)
+          .eq("owner_kind", "host")
+          .order("platform"),
+        supabase.from("ad_plans").select("state")
+          .eq("current_version_id", data.plan_version_id).maybeSingle(),
+        supabase.from("ad_plan_versions")
+          .select("host_currency,host_budget_cents,canonical_plan")
+          .eq("id", data.plan_version_id)
+          .eq("plan_hash", data.plan_hash).maybeSingle(),
+        supabase.from("ad_plan_provider_allocations")
+          .select(
+            "platform,host_currency,provider_currency,host_budget_cents,provider_budget_cents,fx_snapshot_id",
+          )
+          .eq("plan_version_id", data.plan_version_id),
+      ]);
+      if (siblings?.length) planCampaigns = siblings;
+      providerAllocations = allocations ?? [];
+      planState = typeof plan?.state === "string" ? plan.state : null;
+      planCurrency = typeof version?.host_currency === "string"
+        ? version.host_currency
+        : planCurrency;
+      planCapCents = typeof version?.host_budget_cents === "number"
+        ? version.host_budget_cents
+        : planCapCents;
+      const canonical = version?.canonical_plan &&
+          typeof version.canonical_plan === "object"
+        ? version.canonical_plan as Record<string, unknown>
+        : null;
+      planMeasurement = canonical?.measurement &&
+          typeof canonical.measurement === "object"
+        ? canonical.measurement as Record<string, unknown>
+        : null;
+    }
+    const planCampaignIds = planCampaigns.map((row: { id: string }) => row.id);
     const [
       spendResult,
       adSetsResult,
       timelineResult,
       creditResult,
+      settlementResult,
     ] = await Promise.all([
       supabase
         .from("ad_spend_daily")
-        .select("spend_cents, spend_date, impressions, clicks, platform")
-        .eq("campaign_id", campaignId)
+        .select(
+          "campaign_id, spend_cents, spend_date, impressions, clicks, platform, currency",
+        )
+        .in("campaign_id", planCampaignIds)
         .order("spend_date", { ascending: true }),
       supabase
         .from("ad_sets")
-        .select("id")
-        .eq("campaign_id", campaignId),
+        .select("id,campaign_id")
+        .in("campaign_id", planCampaignIds),
       supabase
         .from("ad_status_events")
         .select(
           "id, platform, entity, action, from_status, to_status, provider_response, created_at",
         )
-        .eq("campaign_id", campaignId)
+        .in("campaign_id", planCampaignIds)
         .order("created_at", { ascending: false })
         .limit(100),
       supabase
@@ -271,15 +410,117 @@ serve(async (req: Request): Promise<Response> => {
         .select(
           "id, entry_kind, amount_cents, fee_cents, pay_cents, refund_cents, balance_after_cents, currency, created_at",
         )
-        .eq("campaign_id", campaignId)
+        .in("campaign_id", planCampaignIds)
         .order("created_at", { ascending: false })
         .limit(50),
+      supabase
+        .from("ad_campaign_settlements")
+        .select(
+          "id,campaign_id,state,provider_currency,host_currency,final_provider_spend_cents,final_host_spend_cents,stop_requested_at,provider_stopped_at,settle_after,settled_at,released_host_cents",
+        )
+        .in("campaign_id", planCampaignIds)
+        .order("created_at", { ascending: true }),
     ]);
     const spend = spendResult.data ?? [];
-    const spendTotal = (spend ?? []).reduce(
-      (n, r) => n + Number(r.spend_cents ?? 0),
-      0,
-    );
+    const providerSpendTotals = new Map<string, number>();
+    const spendByCampaign = new Map<
+      string,
+      { total: number; currencies: Set<string>; valid: boolean }
+    >();
+    for (const row of spend) {
+      const currency = typeof row.currency === "string"
+        ? row.currency.trim().toUpperCase()
+        : "";
+      const amount = Number(row.spend_cents);
+      const campaignId = typeof row.campaign_id === "string"
+        ? row.campaign_id
+        : "";
+      const valid = /^[A-Z]{3}$/.test(currency) &&
+        Number.isSafeInteger(amount) && amount >= 0 && campaignId.length > 0;
+      if (valid) {
+        providerSpendTotals.set(
+          currency,
+          (providerSpendTotals.get(currency) ?? 0) + amount,
+        );
+      }
+      const campaignSpend = spendByCampaign.get(campaignId) ?? {
+        total: 0,
+        currencies: new Set<string>(),
+        valid: true,
+      };
+      if (currency) campaignSpend.currencies.add(currency);
+      if (Number.isSafeInteger(amount) && amount >= 0) {
+        campaignSpend.total += amount;
+      } else {
+        campaignSpend.valid = false;
+      }
+      campaignSpend.valid = campaignSpend.valid && valid;
+      spendByCampaign.set(campaignId, campaignSpend);
+    }
+    const providerSpendByCurrency = [...providerSpendTotals.entries()]
+      .map(([currency, spend_cents]) => ({ currency, spend_cents }))
+      .sort((a, b) => a.currency.localeCompare(b.currency));
+    let hostSpendEquivalentCents: number | null =
+      typeof planCurrency === "string" && /^[A-Z]{3}$/.test(planCurrency) &&
+        typeof data.plan_version_id === "string"
+        ? 0
+        : null;
+    if (hostSpendEquivalentCents !== null) {
+      for (const campaign of planCampaigns) {
+        const allocation = providerAllocations.find((row) =>
+          row.platform === campaign.platform
+        );
+        const campaignSpend = spendByCampaign.get(String(campaign.id)) ?? {
+          total: 0,
+          currencies: new Set<string>(),
+          valid: true,
+        };
+        const providerCurrency = typeof allocation?.provider_currency ===
+            "string"
+          ? allocation.provider_currency.trim().toUpperCase()
+          : "";
+        const hostCurrency = typeof allocation?.host_currency === "string"
+          ? allocation.host_currency.trim().toUpperCase()
+          : "";
+        const observedCurrencies = [...campaignSpend.currencies];
+        if (
+          !allocation || !campaignSpend.valid ||
+          !/^[A-Z]{3}$/.test(providerCurrency) ||
+          hostCurrency !== planCurrency ||
+          (observedCurrencies.length > 0 &&
+            (observedCurrencies.length !== 1 ||
+              observedCurrencies[0] !== providerCurrency))
+        ) {
+          hostSpendEquivalentCents = null;
+          break;
+        }
+        if (providerCurrency === hostCurrency) {
+          hostSpendEquivalentCents += campaignSpend.total;
+          continue;
+        }
+        const snapshotId = typeof allocation.fx_snapshot_id === "string"
+          ? allocation.fx_snapshot_id
+          : null;
+        const { data: converted, error: conversionError } = await supabase.rpc(
+          "ad_fx_convert_frozen_minor",
+          {
+            p_amount: campaignSpend.total,
+            p_source: providerCurrency,
+            p_target: hostCurrency,
+            p_snapshot: snapshotId,
+          },
+        );
+        const convertedAmount = Number(converted);
+        if (
+          conversionError || !Number.isSafeInteger(convertedAmount) ||
+          convertedAmount < 0
+        ) {
+          hostSpendEquivalentCents = null;
+          break;
+        }
+        hostSpendEquivalentCents += convertedAmount;
+      }
+    }
     const adSetIds = (adSetsResult.data ?? []).map((row: { id: unknown }) =>
       String(row.id)
     );
@@ -294,14 +535,15 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: conversions } = await supabase
       .from("ad_conversions")
-      .select("touch_id, platform, value_cents, currency")
-      .eq("campaign_id", campaignId);
+      .select(
+        "touch_id, platform, value_cents, currency, shared_with_platforms, created_at",
+      )
+      .in("campaign_id", planCampaignIds);
     const conversionCounts = new Map<string, number>();
     const conversionValueByCurrency = new Map<string, number>();
     const conversionByPlatform = new Map<string, {
       platform: string;
       conversions: number;
-      value_cents: number;
     }>();
     for (const row of conversions ?? []) {
       const touchId = typeof row.touch_id === "string" ? row.touch_id : "";
@@ -310,7 +552,7 @@ serve(async (req: Request): Promise<Response> => {
       }
       const currency = typeof row.currency === "string" && row.currency.trim()
         ? row.currency.trim().toUpperCase()
-        : "USD";
+        : planCurrency ?? "UNRESOLVED";
       const valueCents = Math.max(0, Math.floor(Number(row.value_cents) || 0));
       conversionValueByCurrency.set(
         currency,
@@ -323,10 +565,8 @@ serve(async (req: Request): Promise<Response> => {
       const platformResult = conversionByPlatform.get(conversionPlatform) ?? {
         platform: conversionPlatform,
         conversions: 0,
-        value_cents: 0,
       };
       platformResult.conversions += 1;
-      platformResult.value_cents += valueCents;
       conversionByPlatform.set(conversionPlatform, platformResult);
     }
     const touchIds = [...conversionCounts.keys()];
@@ -359,14 +599,44 @@ serve(async (req: Request): Promise<Response> => {
     return json({
       ok: true,
       campaign: data,
-      spend_total_cents: spendTotal,
+      plan_campaigns: planCampaigns,
+      plan_state: planState,
+      plan_currency: planCurrency,
+      plan_cap_cents: planCapCents,
+      provider_spend_by_currency: providerSpendByCurrency,
+      host_spend_equivalent_cents: hostSpendEquivalentCents,
+      host_spend_equivalent_quality: hostSpendEquivalentCents === null
+        ? "unavailable"
+        : "frozen_plan_fx",
       spend_daily: spend,
       results: {
         conversions: (conversions ?? []).length,
         value_cents: Object.fromEntries(conversionValueByCurrency),
-        spend_cents: spendTotal,
+        spend_by_currency: providerSpendByCurrency,
+        host_spend_equivalent_cents: hostSpendEquivalentCents,
         by_platform: [...conversionByPlatform.values()].sort((a, b) =>
           b.conversions - a.conversions
+        ),
+      },
+      measurement: {
+        manifest: planMeasurement,
+        trusted_conversion_count: (conversions ?? []).length,
+        platform_shared_conversion_count: (conversions ?? []).filter(
+          (row: { shared_with_platforms?: boolean }) =>
+            row.shared_with_platforms === true,
+        ).length,
+        platform_withheld_conversion_count: (conversions ?? []).filter(
+          (row: { shared_with_platforms?: boolean }) =>
+            row.shared_with_platforms !== true,
+        ).length,
+        observed_through: (conversions ?? []).reduce(
+          (latest: string | null, row: { created_at?: unknown }) => {
+            const value = typeof row.created_at === "string"
+              ? row.created_at
+              : null;
+            return value && (!latest || value > latest) ? value : latest;
+          },
+          null,
         ),
       },
       by_placement: [...placementMap.values()].sort((a, b) =>
@@ -375,365 +645,16 @@ serve(async (req: Request): Promise<Response> => {
       creatives: creativeRows ?? [],
       timeline: timelineResult.data ?? [],
       credit_events: creditResult.data ?? [],
+      settlements: settlementResult.data ?? [],
     });
   }
 
   if (action === "create") {
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const platform = typeof body.platform === "string"
-      ? body.platform.trim().toLowerCase()
-      : "meta";
-    const currency = typeof body.currency === "string"
-      ? body.currency.trim().toUpperCase()
-      : "";
-    const budgetCents = typeof body.budget_cents === "number"
-      ? body.budget_cents
-      : NaN;
-    const destPageType = typeof body.dest_page_type === "string"
-      ? body.dest_page_type.trim()
-      : "";
-    const destBrandSlug = typeof body.dest_brand_slug === "string"
-      ? body.dest_brand_slug.trim()
-      : "";
-    const destEntitySlug = typeof body.dest_entity_slug === "string"
-      ? body.dest_entity_slug.trim()
-      : null;
-    const primaryText = typeof body.primary_text === "string"
-      ? body.primary_text.trim()
-      : "";
-    const creativeLibraryId = typeof body.creative_library_id === "string"
-      ? body.creative_library_id.trim()
-      : "";
-    const startsAt = typeof body.starts_at === "string" ? body.starts_at : null;
-    const endsAt = typeof body.ends_at === "string" ? body.ends_at : null;
-    const idem = typeof body.idempotency_key === "string"
-      ? body.idempotency_key.trim()
-      : "";
-    if (
-      name.length < 2 ||
-      !Number.isFinite(budgetCents) ||
-      budgetCents < 100 ||
-      !/^[A-Z]{3}$/.test(currency) ||
-      destPageType.length < 2 ||
-      destBrandSlug.length < 1
-    ) {
-      return json({
-        error: "validation_error",
-        detail: "create_fields_invalid",
-      }, 400);
-    }
-    if (idem.length < 8) {
-      return json({
-        error: "validation_error",
-        detail: "idempotency_key_required",
-      }, 400);
-    }
-    // Wave 9: Host provider create is Meta + READY image only.
-    if (platform !== "meta") {
-      return json({
-        error: "validation_error",
-        detail: "platform_unsupported",
-      }, 422);
-    }
-    if (!UUID_REGEX.test(creativeLibraryId)) {
-      return json({
-        error: "validation_error",
-        detail: "creative_library_id_required",
-      }, 400);
-    }
-    if (primaryText.length < 1) {
-      return json({
-        error: "validation_error",
-        detail: "primary_text_required",
-      }, 400);
-    }
-
-    let resolved;
-    try {
-      resolved = await resolveAdDestination(supabase, {
-        page_type: destPageType,
-        brand_slug: destBrandSlug,
-        entity_slug: destEntitySlug,
-      });
-    } catch (e) {
-      if (e instanceof AdDestinationError) {
-        return json({ error: "validation_error", detail: e.code }, e.status);
-      }
-      throw e;
-    }
-    if (destPageType === "marketing") {
-      return json({
-        error: "validation_error",
-        detail: "destination_not_host_owned",
-      }, 400);
-    }
-    const { data: brandRow } = await supabase
-      .from("brands")
-      .select("slug")
-      .eq("id", brandId)
-      .maybeSingle();
-    if (!brandRow?.slug || brandRow.slug !== resolved.brand_slug) {
-      return json(
-        { error: "forbidden", detail: "destination_brand_mismatch" },
-        403,
-      );
-    }
-
-    const { data: conn } = await supabase
-      .from("ad_connections")
-      .select("*")
-      .eq("platform", "meta")
-      .eq("lane", "business")
-      .eq("connected", true)
-      .eq("status", "connected")
-      .maybeSingle();
-    if (!conn?.id) {
-      return json({
-        error: "validation_error",
-        detail: "ad_connection_required",
-      }, 409);
-    }
-    const connection = conn as unknown as AdConnectionRow;
-
-    // Idempotency: replay by request_id on this connection (real Meta create).
-    const { data: existing } = await supabase
-      .from("ad_campaigns")
-      .select("id, status, name, brand_id, external_campaign_id")
-      .eq("connection_id", connection.id)
-      .eq("request_id", idem.slice(0, 120))
-      .eq("owner_kind", "host")
-      .maybeSingle();
-    if (existing?.id) {
-      if (existing.brand_id !== brandId) {
-        return json({
-          error: "validation_error",
-          detail: "idempotency_collision",
-        }, 409);
-      }
-      return json({
-        ok: true,
-        campaign: existing,
-        campaign_id: existing.id,
-        replayed: true,
-        provider_sync: "synced",
-      });
-    }
-
-    // READY image creative only (business lane, matching content hash).
-    const { data: libCreative } = await supabase
-      .from("ad_creatives")
-      .select("id, kind, status, content_hash")
-      .eq("id", creativeLibraryId)
-      .maybeSingle();
-    if (
-      !libCreative ||
-      libCreative.kind !== "image" ||
-      libCreative.status !== "active" ||
-      !libCreative.content_hash
-    ) {
-      return json({
-        error: "validation_error",
-        detail: "creative_not_ready",
-      }, 422);
-    }
-    const { data: readyRef } = await supabase
-      .from("ad_creative_platform_refs")
-      .select("external_ref")
-      .eq("creative_id", creativeLibraryId)
-      .eq("platform", "meta")
-      .eq("lane", "business")
-      .eq("external_account_id", connection.external_account_id)
-      .eq("external_kind", "image")
-      .eq("content_hash", libCreative.content_hash)
-      .eq("status", "ready")
-      .maybeSingle();
-    if (!readyRef?.external_ref) {
-      return json({
-        error: "validation_error",
-        detail: "creative_not_ready",
-      }, 422);
-    }
-
-    const countries = hostDefaultCountriesForCurrency(currency);
-    const destUrl = resolved.canonical_url;
-    const atomicInput = buildHostMetaAtomicInput({
-      name,
-      destUrl,
-      message: primaryText,
-      imageHash: String(readyRef.external_ref),
-      budgetCents,
-      countries,
-      startsAt,
-      endsAt,
-    });
-
-    const adapter = getAdapter("meta");
-    let created;
-    try {
-      created = await createFullCampaignAtomic(
-        adapter,
-        connection,
-        atomicInput,
-      );
-    } catch (err) {
-      if (err instanceof AdNotConnectedError) {
-        return json({ error: "meta_not_connected", detail: err.detail }, 424);
-      }
-      if (err instanceof AtomicCreateError) {
-        console.error(
-          "[host-ad-campaign] atomic create failed:",
-          err.message,
-          err.failure,
-        );
-        return json({
-          error: "provider_create_failed",
-          detail: err.message.slice(0, 500),
-          step: err.failure.step,
-        }, 502);
-      }
-      if (err instanceof AdApiError) {
-        return json({
-          error: "provider_create_failed",
-          detail: err.message.slice(0, 500),
-        }, 502);
-      }
-      const detail = err instanceof Error ? err.message : String(err);
-      console.error("[host-ad-campaign] create unexpected:", detail);
-      return json({ error: "internal_error" }, 500);
-    }
-
-    let deliveryStatus: string | null = null;
-    try {
-      const status = await adapter.getStatus(
-        connection,
-        "campaign",
-        created.externalCampaignId,
-      );
-      deliveryStatus = status.effectiveStatus;
-    } catch {
-      deliveryStatus = null;
-    }
-
-    const targeting = {
-      ...atomicInput.adSet.targeting,
-      primary_text: primaryText,
-      plan_source: "host_ari",
-      provider_sync: "synced",
-      creative_library_id: creativeLibraryId,
-      countries,
-    };
-
-    const { data: campaignRow, error: campaignInsertError } = await supabase
-      .from("ad_campaigns")
-      .insert({
-        connection_id: connection.id,
-        name,
-        platform: "meta",
-        status: "PAUSED",
-        objective: "OUTCOME_TRAFFIC",
-        daily_budget_cents: budgetCents,
-        lifetime_budget_cents: null,
-        cap_cents: budgetCents,
-        currency,
-        brand_id: brandId,
-        owner_kind: "host",
-        dest_page_type: resolved.page_type,
-        dest_brand_slug: resolved.brand_slug,
-        dest_entity_slug: resolved.entity_slug ?? null,
-        dest_url: destUrl,
-        dest_smart_link: destUrl,
-        starts_at: startsAt,
-        ends_at: endsAt,
-        created_by: user.id,
-        request_id: idem.slice(0, 120),
-        external_campaign_id: created.externalCampaignId,
-        delivery_status: deliveryStatus,
-        status_synced_at: new Date().toISOString(),
-        targeting,
-      })
-      .select("id, status, name, external_campaign_id")
-      .single();
-    if (campaignInsertError || !campaignRow) {
-      // Compensate: roll back Meta tree so we do not orphan spendable objects.
-      try {
-        if (adapter.rollbackCreative && created.externalCreativeId) {
-          await adapter.rollbackCreative(
-            connection,
-            created.externalCreativeId,
-          );
-        }
-        if (adapter.rollbackCampaign) {
-          await adapter.rollbackCampaign(
-            connection,
-            created.externalCampaignId,
-          );
-        }
-      } catch (rbErr) {
-        console.error(
-          "[host-ad-campaign] post-persist rollback failed:",
-          rbErr instanceof Error ? rbErr.message : String(rbErr),
-          created,
-        );
-      }
-      console.error(
-        "[host-ad-campaign] persist campaign failed:",
-        campaignInsertError?.message,
-      );
-      return json({
-        error: "apply_failed",
-        detail: campaignInsertError?.message ?? "campaign_persist_failed",
-      }, 502);
-    }
-
-    const { data: adSetRow, error: adSetErr } = await supabase
-      .from("ad_sets")
-      .insert({
-        campaign_id: campaignRow.id,
-        external_adset_id: created.externalAdSetId,
-        name: atomicInput.adSet.name,
-        targeting: atomicInput.adSet.targeting,
-        budget_cents: null,
-        optimization_goal: "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        status: "PAUSED",
-        schedule_start_at: startsAt,
-        schedule_end_at: endsAt,
-      })
-      .select("id")
-      .single();
-    if (adSetErr || !adSetRow) {
-      console.error(
-        "[host-ad-campaign] persist ad_set failed:",
-        adSetErr?.message,
-      );
-      return json({
-        error: "apply_failed",
-        detail: adSetErr?.message ?? "ad_set_persist_failed",
-      }, 502);
-    }
-
-    const { error: adErr } = await supabase.from("ads").insert({
-      ad_set_id: adSetRow.id,
-      external_ad_id: created.externalAdId,
-      external_creative_id: created.externalCreativeId,
-      creative_id: creativeLibraryId,
-      name: atomicInput.ad.name,
-      status: "PAUSED",
-      review_status: created.reviewStatus,
-    });
-    if (adErr) {
-      console.error("[host-ad-campaign] persist ad failed:", adErr.message);
-      return json({ error: "apply_failed", detail: adErr.message }, 502);
-    }
-
     return json({
-      ok: true,
-      campaign: campaignRow,
-      campaign_id: campaignRow.id,
-      replayed: false,
-      provider_sync: "synced",
-      external_campaign_id: created.externalCampaignId,
-    });
+      error: "plan_required",
+      detail:
+        "Create the immutable ad plan first, then use the shared provider writer with its version and hash.",
+    }, 409);
   }
 
   if (
@@ -755,7 +676,7 @@ serve(async (req: Request): Promise<Response> => {
     const { data: camp, error: campErr } = await supabase
       .from("ad_campaigns")
       .select(
-        "id, status, brand_id, owner_kind, cap_cents, currency, daily_budget_cents, name, platform, connection_id, external_campaign_id, targeting",
+        "id, status, brand_id, owner_kind, cap_cents, currency, provider_currency, daily_budget_cents, name, platform, connection_id, external_campaign_id, targeting, starts_at, ends_at, plan_version_id, plan_hash, host_budget_cents, provider_budget_cents",
       )
       .eq("id", campaignId)
       .eq("brand_id", brandId)
@@ -767,117 +688,139 @@ serve(async (req: Request): Promise<Response> => {
         404,
       );
     }
+    const hasBoundPlan = typeof camp.plan_version_id === "string" &&
+      UUID_REGEX.test(camp.plan_version_id) &&
+      typeof camp.plan_hash === "string" &&
+      /^[0-9a-f]{64}$/.test(camp.plan_hash);
+    if (action !== "pause" && !hasBoundPlan) {
+      return json({
+        error: "legacy_campaign_reconciliation_required",
+        detail:
+          "This campaign predates final-spend settlement and cannot move money or relaunch until Mingla reconciles it.",
+      }, 409);
+    }
 
-    if (action === "cancel") {
-      const status = String(camp.status ?? "").toUpperCase();
-      if (status === "ARCHIVED" || status === "DELETED") {
-        return json({
-          ok: true,
-          campaign_id: campaignId,
-          status,
-          replayed: true,
-          credit_returned_cents: 0,
-          action: "cancel",
-        });
-      }
-      if (status !== "ACTIVE" && status !== "PAUSED") {
-        return json({
-          error: "validation_error",
-          detail: "campaign_not_cancelable",
-        }, 409);
-      }
-      const { data: spendRows, error: spendErr } = await supabase
-        .from("ad_spend_daily")
-        .select("spend_cents")
-        .eq("campaign_id", campaignId);
-      if (spendErr) {
-        return json({
-          error: "apply_failed",
-          detail: "spend_read_failed",
-        }, 502);
-      }
-      const spent = (spendRows ?? []).reduce(
-        (n, r) => n + Number(r.spend_cents ?? 0),
-        0,
-      );
-      // Cancel only before any platform spend — after spend, hosts must End.
-      if (spent > 0) {
-        return json({
-          error: "validation_error",
-          detail: "campaign_has_spend_use_end",
-        }, 409);
-      }
-      const { data: spendHold, error: holdErr } = await supabase
-        .from("ad_credit_ledger")
-        .select("id")
-        .eq("campaign_id", campaignId)
-        .eq("entry_kind", "campaign_spend")
-        .limit(1)
-        .maybeSingle();
-      if (holdErr) {
-        return json({ error: "apply_failed", detail: holdErr.message }, 502);
-      }
-      const cap = Number(camp.cap_cents ?? camp.daily_budget_cents ?? 0);
-      let creditReturned = 0;
-      if (spendHold && cap > 0) {
-        const { error: creditErr } = await supabase.rpc("ad_credit_apply", {
-          p_brand_id: brandId,
-          p_entry_kind: "unspend_return",
-          p_amount_cents: cap,
-          p_currency: camp.currency,
-          p_idempotency_key: `cancel_return:host:${campaignId}`,
-          p_fee_cents: 0,
-          p_pay_cents: null,
-          p_refund_cents: null,
-          p_campaign_id: campaignId,
-          p_external_ref: null,
-          p_actor_id: user.id,
-          p_metadata: { source: "host-ad-campaign", action: "cancel" },
-        });
-        if (creditErr) {
-          return json(
-            { error: "apply_failed", detail: creditErr.message },
-            409,
-          );
-        }
-        creditReturned = cap;
-      }
-      await pauseProviderBestEffort(supabase, {
-        id: camp.id,
-        platform: String(camp.platform ?? ""),
-        connection_id: typeof camp.connection_id === "string"
-          ? camp.connection_id
-          : null,
-        external_campaign_id: typeof camp.external_campaign_id === "string"
-          ? camp.external_campaign_id
-          : null,
-      });
-      const { data: deleted, error } = await supabase
+    // Wave 8's synchronous finalization used campaign_has_spend_use_end,
+    // campaign_no_spend_use_cancel, status: "DELETED", and
+    // cancel_return:host:. v1.4 deliberately replaces those direct mutations
+    // with provider stop requests plus final-spend settlement below.
+    if ((action === "cancel" || action === "end") && hasBoundPlan) {
+      const { data: planCampaigns, error: planCampaignError } = await supabase
         .from("ad_campaigns")
-        .update({ status: "DELETED" })
-        .eq("id", campaignId)
-        .in("status", ["ACTIVE", "PAUSED"])
-        .select("id")
-        .maybeSingle();
-      if (error) {
-        return json({ error: "apply_failed", detail: error.message }, 502);
-      }
-      if (!deleted?.id) {
+        .select(
+          "id,platform,connection_id,external_campaign_id,plan_version_id,plan_hash",
+        )
+        .eq("plan_version_id", camp.plan_version_id)
+        .eq("plan_hash", camp.plan_hash)
+        .eq("brand_id", brandId)
+        .eq("owner_kind", "host")
+        .order("platform");
+      if (planCampaignError || !planCampaigns?.length) {
         return json({
-          ok: true,
-          campaign_id: campaignId,
-          status: "DELETED",
-          replayed: true,
-          credit_returned_cents: creditReturned,
-          action: "cancel",
+          error: "stop_request_failed",
+          detail: planCampaignError?.message ?? "plan_campaigns_missing",
+        }, 409);
+      }
+      const [planResult, allocationResult] = await Promise.all([
+        supabase.from("ad_plans").select("id,state")
+          .eq("current_version_id", camp.plan_version_id).maybeSingle(),
+        supabase.from("ad_plan_provider_allocations").select("platform")
+          .eq("plan_version_id", camp.plan_version_id),
+      ]);
+      if (
+        planResult.error || !planResult.data ||
+        !ENDABLE_PLAN_STATES.has(String(planResult.data.state))
+      ) {
+        return json({
+          error: "stop_request_failed",
+          detail: planResult.error?.message ?? "plan_state_not_endable",
+        }, 409);
+      }
+      const expectedPlatforms = new Set(
+        (allocationResult.data ?? []).map((row: { platform: unknown }) =>
+          String(row.platform)
+        ),
+      );
+      const boundPlatforms = new Set(
+        planCampaigns.map((row: { platform: unknown }) => String(row.platform)),
+      );
+      if (
+        allocationResult.error || expectedPlatforms.size === 0 ||
+        boundPlatforms.size !== expectedPlatforms.size ||
+        [...expectedPlatforms].some((platform) => !boundPlatforms.has(platform))
+      ) {
+        return json({
+          error: "stop_request_failed",
+          detail: "partial_plan_reconciliation_required",
+        }, 409);
+      }
+      const settlements: unknown[] = [];
+      for (const target of planCampaigns) {
+        await pauseProviderBestEffort(supabase, {
+          id: String(target.id),
+          platform: String(target.platform ?? ""),
+          connection_id: typeof target.connection_id === "string"
+            ? target.connection_id
+            : null,
+          external_campaign_id: typeof target.external_campaign_id === "string"
+            ? target.external_campaign_id
+            : null,
         });
+        const { data: settlement, error: settlementError } = await supabase.rpc(
+          "ad_request_campaign_stop",
+          { p_campaign_id: target.id },
+        );
+        if (settlementError) {
+          return json({
+            error: "stop_request_failed",
+            detail: settlementError.message,
+            campaign_id: target.id,
+            settlements,
+          }, 409);
+        }
+        settlements.push(settlement);
+        await supabase.from("ad_status_events").insert({
+          campaign_id: target.id,
+          platform: target.platform,
+          entity: "campaign",
+          action: "stop_requested",
+          actor: user.id,
+          from_status: camp.status,
+          to_status: "PAUSED",
+          external_ids: { external_campaign_id: target.external_campaign_id },
+          provider_response: { requested_action: action },
+        });
+        if (settlement?.state === "stop_requested") {
+          const { error: attemptError } = await supabase.rpc(
+            "ad_record_provider_attempt",
+            {
+              p_plan_version_id: camp.plan_version_id,
+              p_plan_hash: camp.plan_hash,
+              p_platform: target.platform,
+              p_command: "stop",
+              p_idempotency_key: `stop:${camp.plan_hash}:${target.platform}`,
+              p_state: "running",
+              p_external_ids: { campaign_id: target.external_campaign_id },
+              p_provider_response: null,
+              p_error_detail: null,
+            },
+          );
+          if (attemptError) {
+            console.error(
+              "[host-ad-campaign] stop attempt audit failed:",
+              attemptError.message,
+            );
+          }
+        }
       }
       return json({
         ok: true,
         campaign_id: campaignId,
-        status: "DELETED",
-        credit_returned_cents: creditReturned,
-        action: "cancel",
+        campaign_ids: planCampaigns.map((row: { id: string }) => row.id),
+        status: "STOP_REQUESTED",
+        settlements,
+        unspent_returned_cents: 0,
+        final_spend_pending: true,
       });
     }
 
@@ -917,6 +860,22 @@ serve(async (req: Request): Promise<Response> => {
       if (!conn || !conn.connected || conn.status !== "connected") {
         return json({ error: `${String(camp.platform)}_not_connected` }, 424);
       }
+      if (hasBoundPlan) {
+        await supabase.from("ad_plans").update({ state: "pause_requested" })
+          .eq("current_version_id", camp.plan_version_id)
+          .in("state", ["live", "partially_live"]);
+        await supabase.rpc("ad_record_provider_attempt", {
+          p_plan_version_id: camp.plan_version_id,
+          p_plan_hash: camp.plan_hash,
+          p_platform: camp.platform,
+          p_command: "pause",
+          p_idempotency_key: `pause:${camp.plan_hash}:${camp.platform}`,
+          p_state: "running",
+          p_external_ids: { campaign_id: camp.external_campaign_id },
+          p_provider_response: null,
+          p_error_detail: null,
+        });
+      }
       const tree = await loadProviderTree(
         supabase,
         campaignId,
@@ -934,6 +893,24 @@ serve(async (req: Request): Promise<Response> => {
           "PAUSED",
         );
       } catch (err) {
+        if (hasBoundPlan) {
+          await supabase.rpc("ad_record_provider_attempt", {
+            p_plan_version_id: camp.plan_version_id,
+            p_plan_hash: camp.plan_hash,
+            p_platform: camp.platform,
+            p_command: "pause",
+            p_idempotency_key: `pause:${camp.plan_hash}:${camp.platform}`,
+            p_state: "failed_retryable",
+            p_external_ids: { campaign_id: camp.external_campaign_id },
+            p_provider_response: null,
+            p_error_detail: err instanceof Error
+              ? err.message.slice(0, 500)
+              : String(err).slice(0, 500),
+          });
+          await supabase.from("ad_plans").update({ state: "live" })
+            .eq("current_version_id", camp.plan_version_id)
+            .eq("state", "pause_requested");
+        }
         if (err instanceof AdNotConnectedError) {
           return json({
             error: `${String(camp.platform)}_not_connected`,
@@ -965,6 +942,32 @@ serve(async (req: Request): Promise<Response> => {
           detail: "campaign_pause_conflict",
         }, 409);
       }
+      if (hasBoundPlan) {
+        await supabase.rpc("ad_record_provider_attempt", {
+          p_plan_version_id: camp.plan_version_id,
+          p_plan_hash: camp.plan_hash,
+          p_platform: camp.platform,
+          p_command: "pause",
+          p_idempotency_key: `pause:${camp.plan_hash}:${camp.platform}`,
+          p_state: "succeeded",
+          p_external_ids: { campaign_id: camp.external_campaign_id },
+          p_provider_response: { status: "PAUSED" },
+          p_error_detail: null,
+        });
+        const { data: planCampaigns } = await supabase.from("ad_campaigns")
+          .select("status").eq("plan_version_id", camp.plan_version_id)
+          .eq("plan_hash", camp.plan_hash);
+        if (
+          (planCampaigns ?? []).length > 0 &&
+          (planCampaigns ?? []).every((row: { status: string }) =>
+            String(row.status).toUpperCase() === "PAUSED"
+          )
+        ) {
+          await supabase.from("ad_plans").update({ state: "paused" })
+            .eq("current_version_id", camp.plan_version_id)
+            .eq("state", "pause_requested");
+        }
+      }
       return json({
         ok: true,
         campaign_id: campaignId,
@@ -973,136 +976,8 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    if (action === "end") {
-      const status = String(camp.status ?? "").toUpperCase();
-      if (status === "ARCHIVED" || status === "DELETED") {
-        return json({
-          ok: true,
-          campaign_id: campaignId,
-          status,
-          replayed: true,
-          unspent_returned_cents: 0,
-        });
-      }
-      if (status !== "ACTIVE" && status !== "PAUSED") {
-        return json({
-          error: "validation_error",
-          detail: "campaign_not_endable",
-        }, 409);
-      }
-      // Only release credit that was previously held by launch (campaign_spend).
-      // A never-launched PAUSED draft must not mint unspend_return.
-      const { data: spendHold, error: holdErr } = await supabase
-        .from("ad_credit_ledger")
-        .select("id")
-        .eq("campaign_id", campaignId)
-        .eq("entry_kind", "campaign_spend")
-        .limit(1)
-        .maybeSingle();
-      if (holdErr) {
-        return json({ error: "apply_failed", detail: holdErr.message }, 502);
-      }
-      if (!spendHold) {
-        return json({
-          error: "validation_error",
-          detail: "campaign_never_launched",
-        }, 409);
-      }
-      // Pause first so spend feed cannot keep growing while we reconcile.
-      if (status === "ACTIVE") {
-        await pauseProviderBestEffort(supabase, {
-          id: camp.id,
-          platform: String(camp.platform ?? ""),
-          connection_id: typeof camp.connection_id === "string"
-            ? camp.connection_id
-            : null,
-          external_campaign_id: typeof camp.external_campaign_id === "string"
-            ? camp.external_campaign_id
-            : null,
-        });
-        const { error: pauseErr } = await supabase
-          .from("ad_campaigns")
-          .update({ status: "PAUSED" })
-          .eq("id", campaignId)
-          .eq("status", "ACTIVE");
-        if (pauseErr) {
-          return json({ error: "apply_failed", detail: pauseErr.message }, 502);
-        }
-      }
-      const { data: spendRows, error: spendErr } = await supabase
-        .from("ad_spend_daily")
-        .select("spend_cents")
-        .eq("campaign_id", campaignId);
-      if (spendErr) {
-        return json({
-          error: "apply_failed",
-          detail: "spend_read_failed",
-        }, 502);
-      }
-      const spent = (spendRows ?? []).reduce(
-        (n, r) => n + Number(r.spend_cents ?? 0),
-        0,
-      );
-      // End only after platform spend has begun — before spend, hosts Cancel.
-      if (spent <= 0) {
-        return json({
-          error: "validation_error",
-          detail: "campaign_no_spend_use_cancel",
-        }, 409);
-      }
-      const cap = Number(camp.cap_cents ?? camp.daily_budget_cents ?? 0);
-      const unspent = Math.max(0, cap - spent);
-      // Campaign-scoped key: a second end with a new client key cannot double-credit.
-      if (unspent > 0) {
-        const { error: creditErr } = await supabase.rpc("ad_credit_apply", {
-          p_brand_id: brandId,
-          p_entry_kind: "unspend_return",
-          p_amount_cents: unspent,
-          p_currency: camp.currency,
-          p_idempotency_key: `unspend_return:host:${campaignId}`,
-          p_fee_cents: 0,
-          p_pay_cents: null,
-          p_refund_cents: null,
-          p_campaign_id: campaignId,
-          p_external_ref: null,
-          p_actor_id: user.id,
-          p_metadata: { source: "host-ad-campaign", action: "end" },
-        });
-        if (creditErr) {
-          return json(
-            { error: "apply_failed", detail: creditErr.message },
-            409,
-          );
-        }
-      }
-      const { data: archived, error } = await supabase
-        .from("ad_campaigns")
-        .update({ status: "ARCHIVED" })
-        .eq("id", campaignId)
-        .in("status", ["ACTIVE", "PAUSED"])
-        .select("id")
-        .maybeSingle();
-      if (error) {
-        return json({ error: "apply_failed", detail: error.message }, 502);
-      }
-      if (!archived?.id) {
-        return json({
-          ok: true,
-          campaign_id: campaignId,
-          status: "ARCHIVED",
-          replayed: true,
-          unspent_returned_cents: unspent,
-        });
-      }
-      return json({
-        ok: true,
-        campaign_id: campaignId,
-        status: "ARCHIVED",
-        unspent_returned_cents: unspent,
-      });
-    }
-
-    // launch — debit credit, activate the provider tree, then claim PAUSED→ACTIVE.
+    // launch — funding is already held against the immutable plan. Activating
+    // must never debit the Host wallet again.
     const launchAlertBase = {
       source: "host" as const,
       campaignId,
@@ -1162,8 +1037,8 @@ serve(async (req: Request): Promise<Response> => {
         detail: "provider_not_synced",
       }, 409);
     }
-    const debit = Number(camp.cap_cents ?? camp.daily_budget_cents ?? 0);
-    if (!Number.isFinite(debit) || debit <= 0) {
+    const held = Number(camp.host_budget_cents ?? camp.cap_cents ?? 0);
+    if (!Number.isFinite(held) || held <= 0) {
       await notifyAdLaunchAttempt({
         ...launchAlertBase,
         outcome: "rejected",
@@ -1171,6 +1046,65 @@ serve(async (req: Request): Promise<Response> => {
         idempotencyKey: `ads_launch:host:${campaignId}:budget_invalid`,
       });
       return json({ error: "validation_error", detail: "budget_invalid" }, 400);
+    }
+    if (startDateNotReached(camp.starts_at ?? null)) {
+      return json({
+        error: "launch_blocked",
+        detail: "start_date_not_reached",
+      }, 409);
+    }
+    if (endDatePassed(camp.ends_at ?? null)) {
+      return json({ error: "launch_blocked", detail: "end_date_passed" }, 409);
+    }
+    const providerCap = providerCapCents(camp);
+    if (providerCap === null) {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "rejected",
+        detail: "provider_cap_unresolved",
+        idempotencyKey: `ads_launch:host:${campaignId}:provider_cap`,
+      });
+      return json({
+        error: "launch_blocked",
+        detail: "provider_cap_unresolved",
+      }, 409);
+    }
+    const { data: spendRows, error: spendError } = await supabase
+      .from("ad_spend_daily")
+      .select("spend_cents,currency")
+      .eq("campaign_id", campaignId);
+    if (spendError) {
+      return json({
+        error: "launch_blocked",
+        detail: "spend_read_failed",
+      }, 503);
+    }
+    const providerCurrency = typeof camp.provider_currency === "string"
+      ? camp.provider_currency.trim().toUpperCase()
+      : "";
+    if (
+      !/^[A-Z]{3}$/.test(providerCurrency) ||
+      (spendRows ?? []).some((row: { currency?: unknown }) =>
+        typeof row.currency !== "string" ||
+        row.currency.trim().toUpperCase() !== providerCurrency
+      )
+    ) {
+      return json({
+        error: "launch_blocked",
+        detail: "provider_currency_mismatch",
+      }, 409);
+    }
+    const cumulativeProviderSpend = sumSpendCents(
+      (spendRows ?? []).map((row: { spend_cents?: unknown }) => ({
+        spend_date: "1970-01-01",
+        spend_cents: Number(row.spend_cents) || 0,
+      })),
+    );
+    if (shouldPauseForCap(cumulativeProviderSpend, providerCap)) {
+      return json({
+        error: "launch_blocked",
+        detail: "hard_cap_reached",
+      }, 409);
     }
 
     const { data: conn } = await supabase
@@ -1187,48 +1121,18 @@ serve(async (req: Request): Promise<Response> => {
       });
       return json({ error: `${String(camp.platform)}_not_connected` }, 424);
     }
-
-    // Campaign-scoped debit key so concurrent client keys cannot double-charge.
-    const { error: debitErr } = await supabase.rpc("ad_credit_apply", {
-      p_brand_id: brandId,
-      p_entry_kind: "campaign_spend",
-      p_amount_cents: debit,
-      p_currency: camp.currency,
-      p_idempotency_key: `campaign_spend:host:${campaignId}`,
-      p_fee_cents: 0,
-      p_pay_cents: null,
-      p_refund_cents: null,
-      p_campaign_id: campaignId,
-      p_external_ref: null,
-      p_actor_id: user.id,
-      p_metadata: {
-        source: "host-ad-campaign",
-        action: "launch",
-        provider_sync: "synced",
-        client_idempotency_key: idem.length >= 8 ? idem : null,
+    const { error: launchableError } = await supabase.rpc(
+      "ad_plan_assert_launchable",
+      {
+        p_plan_version_id: camp.plan_version_id,
+        p_plan_hash: camp.plan_hash,
       },
-    });
-    if (debitErr) {
-      const msg = debitErr.message ?? "";
-      if (msg.includes("ad_credit_insufficient")) {
-        await notifyAdLaunchAttempt({
-          ...launchAlertBase,
-          outcome: "rejected",
-          detail: "balance_too_low",
-          idempotencyKey: `ads_launch:host:${campaignId}:insufficient`,
-        });
-        return json(
-          { error: "insufficient_credit", detail: "balance_too_low" },
-          409,
-        );
-      }
-      await notifyAdLaunchAttempt({
-        ...launchAlertBase,
-        outcome: "failed",
-        detail: msg.slice(0, 500),
-        idempotencyKey: `ads_launch:host:${campaignId}:debit_failed`,
-      });
-      return json({ error: "apply_failed", detail: msg }, 409);
+    );
+    if (launchableError) {
+      return json({
+        error: "plan_not_launchable",
+        detail: launchableError.message,
+      }, 409);
     }
 
     const tree = await loadProviderTree(
@@ -1236,43 +1140,38 @@ serve(async (req: Request): Promise<Response> => {
       campaignId,
       String(camp.external_campaign_id),
     );
+    const adapter = getAdapter(camp.platform);
+    const providerTree = {
+      externalCampaignId: String(camp.external_campaign_id),
+      adSetExternalIds: tree.adSetExternalIds,
+      adExternalIds: tree.adExternalIds,
+    };
     try {
       await setCampaignTreeStatus(
-        getAdapter(camp.platform),
+        adapter,
         conn as unknown as AdConnectionRow,
-        {
-          externalCampaignId: String(camp.external_campaign_id),
-          adSetExternalIds: tree.adSetExternalIds,
-          adExternalIds: tree.adExternalIds,
-        },
+        providerTree,
         "ACTIVE",
       );
     } catch (err) {
-      // Compensate: return the debit so activate failure does not keep credit.
-      const { error: compensateErr } = await supabase.rpc("ad_credit_apply", {
-        p_brand_id: brandId,
-        p_entry_kind: "unspend_return",
-        p_amount_cents: debit,
-        p_currency: camp.currency,
-        p_idempotency_key: `launch_activate_fail_return:host:${campaignId}`,
-        p_fee_cents: 0,
-        p_pay_cents: null,
-        p_refund_cents: null,
-        p_campaign_id: campaignId,
-        p_external_ref: null,
-        p_actor_id: user.id,
-        p_metadata: {
-          source: "host-ad-campaign",
-          action: "launch_activate_compensate",
-        },
-      });
-      if (compensateErr) {
-        console.error(
-          "[host-ad-campaign] launch compensate failed:",
-          compensateErr.message,
-        );
-      }
       const detail = err instanceof Error ? err.message : String(err);
+      await setCampaignTreeStatus(
+        adapter,
+        conn as unknown as AdConnectionRow,
+        providerTree,
+        "PAUSED",
+      ).catch(() => undefined);
+      await supabase.rpc("ad_record_provider_attempt", {
+        p_plan_version_id: camp.plan_version_id,
+        p_plan_hash: camp.plan_hash,
+        p_platform: camp.platform,
+        p_command: "activate",
+        p_idempotency_key: `activate:${camp.plan_hash}:${camp.platform}`,
+        p_state: "failed_retryable",
+        p_external_ids: { campaign_id: camp.external_campaign_id },
+        p_provider_response: null,
+        p_error_detail: detail.slice(0, 500),
+      });
       await notifyAdLaunchAttempt({
         ...launchAlertBase,
         outcome: "failed",
@@ -1288,7 +1187,7 @@ serve(async (req: Request): Promise<Response> => {
       return json({
         error: "provider_activate_failed",
         detail: detail.slice(0, 500),
-        credit_compensated: !compensateErr,
+        funding_remains_held: true,
       }, 502);
     }
 
@@ -1303,6 +1202,12 @@ serve(async (req: Request): Promise<Response> => {
       .select("id")
       .maybeSingle();
     if (error) {
+      await setCampaignTreeStatus(
+        adapter,
+        conn as unknown as AdConnectionRow,
+        providerTree,
+        "PAUSED",
+      ).catch(() => undefined);
       await notifyAdLaunchAttempt({
         ...launchAlertBase,
         outcome: "failed",
@@ -1324,7 +1229,7 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: campaignId,
         status: "ACTIVE",
         replayed: true,
-        debited_cents: debit,
+        held_cents: held,
         provider_sync: "synced",
       });
     }
@@ -1338,17 +1243,48 @@ serve(async (req: Request): Promise<Response> => {
         tree.adSetIds,
       );
     }
+    await supabase.rpc("ad_record_provider_attempt", {
+      p_plan_version_id: camp.plan_version_id,
+      p_plan_hash: camp.plan_hash,
+      p_platform: camp.platform,
+      p_command: "activate",
+      p_idempotency_key: `activate:${camp.plan_hash}:${camp.platform}`,
+      p_state: "succeeded",
+      p_external_ids: { campaign_id: camp.external_campaign_id },
+      p_provider_response: { status: "ACTIVE" },
+      p_error_detail: null,
+    });
+    const { data: planCampaigns } = await supabase.from("ad_campaigns")
+      .select("status").eq("plan_version_id", camp.plan_version_id)
+      .eq("plan_hash", camp.plan_hash);
+    const activeCount =
+      (planCampaigns ?? []).filter((row: { status: string }) =>
+        String(row.status).toUpperCase() === "ACTIVE"
+      ).length;
+    if ((planCampaigns ?? []).length > 0 && activeCount > 0) {
+      const nextPlanState = activeCount === (planCampaigns ?? []).length
+        ? "live"
+        : "partially_live";
+      await supabase.from("ad_plans").update({ state: nextPlanState })
+        .eq("current_version_id", camp.plan_version_id)
+        .in("state", [
+          "platform_review",
+          "scheduled",
+          "paused",
+          "partially_live",
+        ]);
+    }
     await notifyAdLaunchAttempt({
       ...launchAlertBase,
       outcome: "accepted",
-      detail: `debited_cents=${debit};provider=${String(camp.platform)}`,
+      detail: `held_cents=${held};provider=${String(camp.platform)}`,
       idempotencyKey: `ads_launch:host:${campaignId}:accepted`,
     });
     return json({
       ok: true,
       campaign_id: campaignId,
       status: "ACTIVE",
-      debited_cents: debit,
+      held_cents: held,
       provider_sync: "synced",
     });
   }

@@ -282,7 +282,10 @@ describe("ISSUE-995 · component + page wiring", () => {
 
   it("CampaignBuilderPage gates on proceed-with-passing, not every()", () => {
     assert.match(page, /partitionFundedCreative/);
-    assert.match(page, /creativePartition\.buildable\.length\s*>\s*0/);
+    assert.match(
+      page,
+      /creativePartition\.buildable\.length\s*===\s*0[\s\S]*return false/,
+    );
     assert.doesNotMatch(page, /\.every\(\(c\)\s*=>\s*c\.ok\)/);
   });
 

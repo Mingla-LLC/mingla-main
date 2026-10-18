@@ -20,6 +20,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { quoteTopUp, quoteWithdraw } from "../_shared/adMoney.ts";
+import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
   adCreditTopUpMetadata,
   buildAdCreditPaystackReference,
@@ -43,7 +44,10 @@ import {
 import { stripeTicketCheckout, stripeTicketRefund } from "../_shared/stripe.ts";
 
 async function markProviderRefundOrThrow(
-  supabase: ReturnType<typeof createClient>,
+  // The generated client has no Database generic in Edge functions; keeping
+  // this helper structural avoids the false `rpc(...): undefined` overload.
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
   args: {
     p_id: string;
     p_status: string;
@@ -161,16 +165,6 @@ serve(async (req: Request): Promise<Response> => {
 
   const action = typeof body.action === "string" ? body.action : "";
 
-  if (action === "quote_top_up") {
-    const payCents = typeof body.pay_cents === "number" ? body.pay_cents : NaN;
-    const currency = typeof body.currency === "string" ? body.currency : "USD";
-    const quoted = quoteTopUp(payCents, currency);
-    if (!quoted.ok) {
-      return json({ error: quoted.error, detail: quoted.detail }, 400);
-    }
-    return json(quoted);
-  }
-
   if (action === "quote_withdraw") {
     const creditCents = typeof body.credit_cents === "number"
       ? body.credit_cents
@@ -193,6 +187,34 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  if (action === "quote_top_up") {
+    const { data: canManage, error: manageErr } = await supabase.rpc(
+      "biz_can_manage_payments_for_brand",
+      { p_brand_id: brandId, p_user_id: user.id },
+    );
+    if (manageErr) {
+      console.error("[ad-credit] quote auth failed:", manageErr.message);
+      return json({ error: "internal_error" }, 500);
+    }
+    if (canManage !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
+    const authority = await resolveAdBrandCurrency(supabase, brandId);
+    if (!authority.ok) {
+      return json({
+        error: "currency_authority_unresolved",
+        detail: authority.detail,
+        currency_authority: authority.authority,
+      }, 409);
+    }
+    const payCents = typeof body.pay_cents === "number" ? body.pay_cents : NaN;
+    const quoted = quoteTopUp(payCents, authority.currency);
+    if (!quoted.ok) {
+      return json({ error: quoted.error, detail: quoted.detail }, 400);
+    }
+    return json(quoted);
+  }
+
   if (action === "get_wallet") {
     const { data: canView, error: viewErr } = await supabase.rpc(
       "biz_can_view_payments_for_brand",
@@ -206,9 +228,12 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "forbidden", detail: "permission_denied" }, 403);
     }
 
+    const authority = await resolveAdBrandCurrency(supabase, brandId);
     const { data: wallet } = await supabase
       .from("ad_credit_wallets")
-      .select("brand_id, currency, balance_cents, updated_at")
+      .select(
+        "brand_id, currency, authority_currency, currency_status, balance_cents, updated_at",
+      )
       .eq("brand_id", brandId)
       .maybeSingle();
     const { data: history } = await supabase
@@ -220,13 +245,16 @@ serve(async (req: Request): Promise<Response> => {
       .order("created_at", { ascending: false })
       .limit(50);
     return json({
-      wallet: wallet ?? {
-        brand_id: brandId,
-        currency: "USD",
-        balance_cents: 0,
-        updated_at: null,
-      },
+      wallet: wallet ?? null,
       history: history ?? [],
+      currency_authority: authority.ok
+        ? authority.authority
+        : (authority.authority ?? {
+          resolved: false,
+          currency: null,
+          provider: null,
+          reason: authority.detail,
+        }),
     });
   }
 
@@ -243,11 +271,20 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "forbidden", detail: "permission_denied" }, 403);
   }
 
+  const brandCurrency = await resolveAdBrandCurrency(supabase, brandId);
+  if (!brandCurrency.ok) {
+    return json({
+      error: "currency_authority_unresolved",
+      detail: brandCurrency.detail,
+      currency_authority: brandCurrency.authority,
+    }, 409);
+  }
+
   // Wave 7b: platform Stripe top-up (host → Mingla). Reuses TICKET_CHECKOUT
   // RAK for platform PIs — no stripeAccount, no application_fee.
   if (action === "start_top_up") {
     const payCents = typeof body.pay_cents === "number" ? body.pay_cents : NaN;
-    const currency = typeof body.currency === "string" ? body.currency : "USD";
+    const currency = brandCurrency.currency;
     const returnUrl = typeof body.return_url === "string"
       ? body.return_url.trim()
       : "";
@@ -266,8 +303,10 @@ serve(async (req: Request): Promise<Response> => {
     if (!quoted.ok) {
       return json({ error: quoted.error, detail: quoted.detail }, 400);
     }
-    const stripeOk = isAdCreditStripeTopUpCurrency(quoted.currency);
-    const paystackOk = isAdCreditPaystackTopUpCurrency(quoted.currency);
+    const stripeOk = brandCurrency.authority.provider === "stripe" &&
+      isAdCreditStripeTopUpCurrency(quoted.currency);
+    const paystackOk = brandCurrency.authority.provider === "paystack" &&
+      isAdCreditPaystackTopUpCurrency(quoted.currency);
     if (!stripeOk && !paystackOk) {
       return json({
         error: "validation_error",
@@ -421,8 +460,8 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (action === "apply_top_up") {
-    let payCents = typeof body.pay_cents === "number" ? body.pay_cents : NaN;
-    let currency = typeof body.currency === "string" ? body.currency : "USD";
+    let payCents = NaN;
+    let currency = brandCurrency.currency;
     let paymentRef = typeof body.payment_ref === "string"
       ? body.payment_ref.trim()
       : "";
@@ -460,7 +499,13 @@ serve(async (req: Request): Promise<Response> => {
           : NaN;
         const cur = typeof verified.currency === "string"
           ? verified.currency.toUpperCase()
-          : "NGN";
+          : "";
+        if (cur !== brandCurrency.currency) {
+          return json({
+            error: "validation_error",
+            detail: "payment_currency_authority_mismatch",
+          }, 400);
+        }
         payCents = amount;
         currency = cur;
         paymentRef = ref;
@@ -514,11 +559,15 @@ serve(async (req: Request): Promise<Response> => {
 
         // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
         const pi = await stripe.paymentIntents.retrieve(paymentRef); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
-        if (checkoutSessionId || !Number.isFinite(payCents) || payCents <= 0) {
-          payCents = typeof pi.amount === "number" ? pi.amount : NaN;
-          currency = typeof pi.currency === "string"
-            ? pi.currency.toUpperCase()
-            : currency;
+        payCents = typeof pi.amount === "number" ? pi.amount : NaN;
+        currency = typeof pi.currency === "string"
+          ? pi.currency.toUpperCase()
+          : "";
+        if (currency !== brandCurrency.currency) {
+          return json({
+            error: "validation_error",
+            detail: "payment_currency_authority_mismatch",
+          }, 400);
         }
         quoted = quoteTopUp(payCents, currency);
         if (!quoted.ok) {
@@ -605,8 +654,14 @@ serve(async (req: Request): Promise<Response> => {
       .eq("brand_id", brandId)
       .maybeSingle();
     const currency = typeof wallet?.currency === "string"
-      ? wallet.currency
-      : "USD";
+      ? wallet.currency.toUpperCase()
+      : "";
+    if (currency !== brandCurrency.currency) {
+      return json({
+        error: "currency_authority_unresolved",
+        detail: "wallet_currency_authority_mismatch",
+      }, 409);
+    }
     if (!wallet || Number(wallet.balance_cents) < quoted.credit_cents) {
       return json(
         { error: "insufficient_credit", detail: "balance_too_low" },

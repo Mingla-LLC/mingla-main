@@ -5,6 +5,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertStringIncludes,
   assertThrows,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
@@ -82,14 +83,10 @@ function videoSpec(overrides: Record<string, unknown> = {}) {
 }
 
 // ── Capability label (surfaced by admin-ad-creative-prepare) ─────────────────
-// The capability string is COSMETIC — no code gates create on it (create is gated
-// by the admin VIDEO_CREATE_ENABLED / VIDEO_CREATE_PLATFORMS lists + the create-branch
-// READY-ref resolve). Flipping it to "create_and_real_preview" (spec §2.4) would force
-// a TEST-MOD on the core #1184 edge regression for zero functional gain, so it is
-// DEFERRED to the orchestrator. This test pins the deliberate current value so the
-// deferral is explicit and a future flip is a conscious decision, not a silent drift.
-Deno.test("ISSUE-997 C capabilityFor(tiktok) label is intentionally deferred at preview_only (cosmetic, non-gating)", () => {
-  assertEquals(capabilityFor("tiktok"), "preview_only");
+// The capability string is descriptive, not an authorization gate, and must
+// still report the real provider behavior: paused create plus real preview.
+Deno.test("ISSUE-997 C capabilityFor(tiktok) reports create and real preview", () => {
+  assertEquals(capabilityFor("tiktok"), "create_and_real_preview");
 });
 
 // ── Prepare-side cover capture (D-C1: prepare-side, keeps create ref-pure) ────
@@ -342,14 +339,14 @@ Deno.test("ISSUE-997 C the create branch resolves an exact READY video ref and e
   assertStringIncludes(source, "refExtraVT.video_id");
   assertStringIncludes(source, "refExtraVT.cover_image_id");
   // 5–60 s advertising-policy duration gate.
-  assertStringIncludes(
+  assertMatch(
     source,
-    "validateTikTokVideoDuration(libCreativeVT.duration_seconds)",
+    /validateTikTokVideoDuration\(\s*libCreativeVT\.duration_seconds,?\s*\)/,
   );
   // The ad object is built as SINGLE_VIDEO and threads the prepared video_id.
-  assertStringIncludes(
+  assertMatch(
     source,
-    'const adFormatT = creativeKindT === "video" ? "SINGLE_VIDEO" : "SINGLE_IMAGE";',
+    /const adFormatT = creativeKindT === "video"\s*\? "SINGLE_VIDEO"\s*: "SINGLE_IMAGE";/,
   );
   assertStringIncludes(source, "adFormat: adFormatT");
   assertStringIncludes(source, "...(videoIdT ? { videoId: videoIdT } : {})");

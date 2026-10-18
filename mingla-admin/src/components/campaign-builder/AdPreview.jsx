@@ -348,7 +348,7 @@ export function AdPreview({
           <p className="text-xs mt-1">
             {activePlatform === "snapchat"
               ? "Layout guide only. Snapchat does not provide a matching pre-create render here."
-              : "Layout guide only. Google video creation is not in Phase A."}
+              : "Layout guide only. Google does not provide a matching pre-create render here. Your prepared video is still eligible for paused creation."}
           </p>
         </div>
       )}
