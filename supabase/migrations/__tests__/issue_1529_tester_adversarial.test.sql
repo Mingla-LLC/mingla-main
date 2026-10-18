@@ -272,14 +272,15 @@ BEGIN
       v_count;
   END IF;
 
-  -- And the WRITERS specifically. EIGHT: the floor is the number that
+  -- [TEST-MOD-APPROVED #3720] Waves 3, 6, and 7 add three country-aware
+  -- producers. And the WRITERS specifically. ELEVEN: the floor is the number that
   -- actually exists, so a producer disappearing is caught as well as one
   -- appearing.
   SELECT count(*) INTO v_count
   FROM issue_1529_adv_producers WHERE writes_outbox;
-  IF v_count < 8 THEN
+  IF v_count < 11 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_8_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_11_got_%',
       v_count;
   END IF;
 END;
@@ -297,6 +298,9 @@ DECLARE
     'community_publish_announcement',
     'community_notify_roadmap_change',
     'issue_3720_send_brand_group_message',
+    'issue_3720_complete_brand_group_file',
+    'content_calendar_comment_add_with_mentions',
+    'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund
