@@ -293,6 +293,24 @@ function harness(
           error: null,
         });
       }
+      // issue #2947 slice 4 — free arm is a no-op here (fixtures are Stripe
+      // evidence holds / paid rows, not NO_REF). Still accept the RPC so the
+      // sweep does not error on the new first step.
+      if (name === "issue_2947_expire_no_ref_holds") {
+        return Promise.resolve({
+          data: { expired_count: 0, freed: [] },
+          error: null,
+        });
+      }
+      if (
+        name === "issue_2947_waitlist_drain_for_ticket_type" ||
+        name === "issue_2947_note_expired_session"
+      ) {
+        return Promise.resolve({
+          data: name === "issue_2947_note_expired_session" ? [] : 0,
+          error: null,
+        });
+      }
       return Promise.resolve({ data: null, error: null });
     },
     functions: {

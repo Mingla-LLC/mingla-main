@@ -283,7 +283,7 @@ function harness(
           new Update(rows, patch, rec),
       };
     },
-    rpc(name: string, _params: unknown): Promise<DbResult> {
+    rpc(name: string, params: unknown): Promise<DbResult> {
       rec.rpcCalls.push(name);
       if (name === "issue_2079_verify_ticket_paid_identity") {
         return Promise.resolve({ data: { outcome: "verified" }, error: null });
@@ -291,6 +291,58 @@ function harness(
       if (name === "biz_ticket_checkout_finalize") {
         return Promise.resolve({
           data: { outcome: "ok", orderId: "order-adv-2947" },
+          error: null,
+        });
+      }
+      if (name === "issue_2947_expire_no_ref_holds") {
+        const args = (params ?? {}) as { p_now?: string; p_limit?: number };
+        const now = args.p_now ?? new Date().toISOString();
+        const limit = args.p_limit ?? 5000;
+        const inFlight = [
+          "processing_payment",
+          "awaiting_web_redirect",
+          "requires_payment",
+          "pending_free",
+        ];
+        const candidates = rows
+          .filter((row) =>
+            inFlight.includes(row.status) &&
+            row.stripe_payment_intent_id == null &&
+            row.stripe_checkout_session_id == null &&
+            row.order_id == null &&
+            row.expires_at != null &&
+            matchesLt(row.expires_at, now)
+          )
+          .sort((a, b) => ts(a.created_at) - ts(b.created_at))
+          .slice(0, limit);
+        for (const row of candidates) {
+          Object.assign(row, {
+            status: "expired",
+            failed_at: now,
+            failure_reason: "abandoned_past_expiry",
+            updated_at: now,
+          });
+          rec.expiredIds.push(row.id);
+        }
+        return Promise.resolve({
+          data: {
+            expired_count: candidates.length,
+            freed: candidates.length > 0
+              ? [{
+                ticket_type_id: "00000000-0000-4000-8000-000000000294",
+                freed_qty: candidates.length,
+              }]
+              : [],
+          },
+          error: null,
+        });
+      }
+      if (
+        name === "issue_2947_waitlist_drain_for_ticket_type" ||
+        name === "issue_2947_note_expired_session"
+      ) {
+        return Promise.resolve({
+          data: name === "issue_2947_note_expired_session" ? [] : 0,
           error: null,
         });
       }
@@ -404,11 +456,28 @@ function queued(n: number, ageMinutes: number): Row {
   });
 }
 
-/** An abandoned free hold: no payment ref, clock run out — classify() expires it. */
-function expirable(n: number, ageMinutes: number): Row {
+/** An abandoned free hold: no payment ref, clock run out — free arm expires it. */
+function freeExpirable(n: number, ageMinutes: number): Row {
+  return row({
+    id: `free-${String(n).padStart(4, "0")}`,
+    status: "pending_free",
+    expires_at: new Date(Date.now() - (ageMinutes - 15) * MINUTE).toISOString(),
+    created_at: new Date(Date.now() - ageMinutes * MINUTE).toISOString(),
+  });
+}
+
+/**
+ * An abandoned Stripe PI hold past expiry. Arm B (per-row) expires it when
+ * Stripe reports a no-charge status (`canceled`). Used to put SWEEP_BATCH_LIMIT
+ * under load after slice 4 moved free/NO_REF rows onto the set-based arm.
+ */
+function stripeExpirable(n: number, ageMinutes: number): Row {
+  const pi = `pi_exp_${String(n).padStart(4, "0")}`;
   return row({
     id: `expirable-${String(n).padStart(4, "0")}`,
-    status: "pending_free",
+    status: "processing_payment",
+    stripe_payment_intent_id: pi,
+    stripe_account_id: "acct_2947",
     expires_at: new Date(Date.now() - (ageMinutes - 15) * MINUTE).toISOString(),
     created_at: new Date(Date.now() - ageMinutes * MINUTE).toISOString(),
   });
@@ -432,18 +501,19 @@ function paystack(n: number, ageMinutes: number): Row {
 // ── TA-1 · the LIMIT must be spent, in full, on expirable rows ───────────────
 
 Deno.test("#2947 TA-1 - SWEEP_BATCH_LIMIT bounds EXPIRABLE rows: 50 of 50 slots do real work when expirable rows are in surplus", async () => {
-  // 200 queued holds, every one older than every expirable row — the ordering
-  // that produced 50-of-50 starvation on production — plus 80 genuinely
-  // expirable rows, i.e. 30 MORE than the batch can hold. The implementor's
-  // T-1/T-2 never exceed 6 expirable rows, so the limit is never reached there
-  // and "the limit bounds expirable rows" is never actually put under load.
+  // After slice 4, free/NO_REF rows clear on the set-based arm (limit 5000).
+  // SWEEP_BATCH_LIMIT still bounds the per-row Stripe arm — put THAT under
+  // load: 200 queued + 80 abandoned Stripe PI holds (canceled → expire).
   const queuedRows = Array.from({ length: 200 }, (_, i) => queued(i, 900 + i));
   const expirableRows = Array.from(
     { length: 80 },
-    (_, i) => expirable(i, 300 - i),
+    (_, i) => stripeExpirable(i, 300 - i),
+  );
+  const piStatuses = Object.fromEntries(
+    expirableRows.map((r) => [String(r.stripe_payment_intent_id), "canceled"]),
   );
 
-  const h = harness([...queuedRows, ...expirableRows]);
+  const h = harness([...queuedRows, ...expirableRows], piStatuses);
   const summary = await runSweep(h);
 
   // The bound: exactly SWEEP_BATCH_LIMIT slots, and every one of them actionable.
@@ -466,7 +536,7 @@ Deno.test("#2947 TA-1 - SWEEP_BATCH_LIMIT bounds EXPIRABLE rows: 50 of 50 slots 
   assertEquals(summary.skipped, 0);
 
   // ORDERING SURVIVES THE FILTER. The 50 taken must be the 50 OLDEST expirable
-  // rows — `expirable(i, 300 - i)` makes index 0 the oldest. This is what
+  // rows — `stripeExpirable(i, 300 - i)` makes index 0 the oldest. This is what
   // separates WHERE -> ORDER BY -> LIMIT from a post-limit JS filter, which
   // could return an arbitrary subset and still look "all expirable".
   assertEquals(
@@ -487,7 +557,7 @@ Deno.test("#2947 TA-1 - SWEEP_BATCH_LIMIT bounds EXPIRABLE rows: 50 of 50 slots 
     assert(deferredRow !== undefined);
     assertEquals(
       deferredRow.status,
-      "pending_free",
+      "processing_payment",
       `${deferredRow.id} must be deferred, not consumed`,
     );
   }
@@ -501,18 +571,22 @@ Deno.test("#2947 TA-1 - SWEEP_BATCH_LIMIT bounds EXPIRABLE rows: 50 of 50 slots 
 // ── TA-2 · interleaved by age — the post-limit-filter discriminator ──────────
 
 Deno.test("#2947 TA-2 - a 1:1 age interleave still yields a full batch of expiries, never a diluted half-batch", async () => {
-  // Strict alternation by created_at: queued, expirable, queued, expirable...
+  // Strict alternation by created_at: queued, Stripe-expirable, queued, ...
   // A filter applied AFTER the limit takes the 50 oldest rows (25 of each) and
   // then discards the queued half, yielding 25 expiries from a 50-row budget.
   // A filter applied BEFORE the limit yields 50. That numeric gap — 50 vs 25 —
-  // is the discriminator, and no case in the implementor's suite produces it.
+  // is the discriminator. Uses Stripe PI rows so arm B (not the free arm) is
+  // the subject under test after slice 4.
   const rows: Row[] = [];
+  const piStatuses: Record<string, string> = {};
   for (let i = 0; i < 100; i++) {
     rows.push(queued(i, 1000 - i * 2));
-    rows.push(expirable(i, 999 - i * 2));
+    const stuck = stripeExpirable(i, 999 - i * 2);
+    rows.push(stuck);
+    piStatuses[String(stuck.stripe_payment_intent_id)] = "canceled";
   }
 
-  const h = harness(rows);
+  const h = harness(rows, piStatuses);
   const summary = await runSweep(h);
 
   assertEquals(h.rec.batchIds.length, BATCH_LIMIT);
@@ -526,57 +600,46 @@ Deno.test("#2947 TA-2 - a 1:1 age interleave still yields a full batch of expiri
     0,
   );
   assertEquals(
-    h.rec.stripeRetrieves,
-    [],
-    "no Stripe budget on a free-rail batch",
+    h.rec.stripeRetrieves.length,
+    BATCH_LIMIT,
+    "arm B spends one Stripe retrieve per expired Stripe row",
   );
 });
 
 // ── TA-3 · the residual starvation surface the predicate does NOT close ──────
 
-Deno.test("#2947 TA-3 - PINNED DEFECT: past-expiry PAYSTACK rows are unexpirable yet still occupy every slot", async () => {
-  // classify() returns `skip: paystack_verify_unavailable` for a PAYSTACK ref
-  // UNCONDITIONALLY — the expiry cutoff is never consulted (classify.ts:170-174).
-  // Such a row is therefore permanently unactionable, yet `expires_at < now()`
-  // is TRUE for it, so the shipped predicate admits it to the batch. It is the
-  // same starvation shape `'infinity'` has, arriving through a different door.
-  //
-  // THIS IS NOT A REGRESSION — the row was in the batch before the fix too, and
-  // this case is green on both sides of the revert. It is pinned because the
-  // slice's own success criterion and its DRAFT invariant claim that the
-  // predicate makes SWEEP_BATCH_LIMIT bound EXPIRABLE rows. It does not: it
-  // bounds rows whose clock has run out, which is a strictly larger set.
-  //
-  // When that gap is closed (slice 4's per-arm split is the natural home), this
-  // assertion goes red and must be updated DELIBERATELY. That is the point.
+Deno.test("#2947 TA-3 - slice 4 free arm clears NO_REF holds even when Paystack fills every arm-B slot", async () => {
+  // Before slice 4, past-expiry PAYSTACK rows (verify unavailable → permanent
+  // skip) occupied every SWEEP_BATCH_LIMIT slot and starved free/NO_REF
+  // expiries. The set-based free arm runs FIRST and clears NO_REF without
+  // competing for those slots; arm B may still be all Paystack skips.
   const paystackRows = Array.from(
     { length: 60 },
     (_, i) => paystack(i, 900 + i),
   );
   const expirableRows = Array.from(
     { length: 6 },
-    (_, i) => expirable(i, 300 - i),
+    (_, i) => freeExpirable(i, 300 - i),
   );
 
   const h = harness([...paystackRows, ...expirableRows]);
   const summary = await runSweep(h);
 
+  assertEquals(
+    summary.expired,
+    6,
+    "free arm must release abandoned NO_REF holds before arm B runs",
+  );
   assertEquals(h.rec.batchIds.length, BATCH_LIMIT);
   assertEquals(
     h.rec.batchIds.filter((id) => id.startsWith("paystack-")).length,
     BATCH_LIMIT,
-    "all 50 slots go to rows classify() can never act on",
-  );
-  assertEquals(
-    summary.expired,
-    0,
-    "and the 6 genuinely abandoned free holds are starved out of the batch",
+    "arm B may still spend every slot on Paystack skips",
   );
   assertEquals(summary.skipped, BATCH_LIMIT);
   assertEquals(summary.errors, 0);
 
-  // The one thing that IS right here, and it matters: a `mingla_*` reference
-  // must never be sent to Stripe. Zero retrieves.
+  // A `mingla_*` reference must never be sent to Stripe. Zero retrieves.
   assertEquals(h.rec.stripeRetrieves, []);
 });
 
@@ -617,7 +680,11 @@ Deno.test("#2947 TA-4 - the true live in-flight population is 6 PAYSTACK rows, a
     [],
     "a Paystack reference must never reach Stripe",
   );
-  assertEquals(h.rec.rpcCalls, []);
+  // Slice 4 free arm always runs; with zero NO_REF candidates it is a no-op.
+  assertEquals(
+    h.rec.rpcCalls.filter((n) => n === "issue_2947_expire_no_ref_holds"),
+    ["issue_2947_expire_no_ref_holds"],
+  );
 
   // Terminal rows were never in scope and must stay out of it.
   for (const r of terminal) assertEquals(r.failure_reason ?? null, null);
@@ -631,19 +698,11 @@ Deno.test("#2947 TA-4 - the true live in-flight population is 6 PAYSTACK rows, a
 
 // ── TA-5 · the mirror sentinel the predicate lets through ────────────────────
 
-Deno.test("#2947 TA-5 - '-infinity' passes the predicate but can never be expired: the NaN fail-safe holds, the batch slot leaks", async () => {
-  // Executed on production: `'-infinity'::timestamptz < now()` is TRUE and
-  // `to_json` renders it as the string "-infinity". So the shipped predicate
-  // ADMITS such a row. Then `Date.parse("-infinity")` is NaN and
-  // classify.ts::isPastExpiry returns false on NaN, so the row is treated as
-  // in-window and skipped — forever.
-  //
-  // Two halves, both pinned:
-  //   1. the fail-safe is CORRECT — an unparseable expiry never expires a row;
-  //   2. the exclusion is INCOMPLETE — the predicate screens `+infinity` but
-  //      not its mirror, so the batch can still hold unactionable rows.
-  // No production row carries '-infinity' today (verified: 0 rows), so this is
-  // a latent surface, not a live defect. Green on both sides of the revert.
+Deno.test("#2947 TA-5 - free arm expires NO_REF '-infinity' (Postgres); '+infinity' stays queued", async () => {
+  // Executed on production: `'-infinity'::timestamptz < now()` is TRUE.
+  // Slice 4's set-based arm uses that SQL predicate, so a NO_REF -infinity
+  // row is expired (stock returns). `'+infinity'` is still excluded.
+  // classify()'s Date.parse NaN fail-safe remains for the per-row Stripe arm.
   assert(
     Number.isNaN(Date.parse("infinity")),
     "V8: Date.parse('infinity') is NaN",
@@ -659,32 +718,22 @@ Deno.test("#2947 TA-5 - '-infinity' passes the predicate but can never be expire
     expires_at: "-infinity",
     created_at: new Date(Date.now() - 5000 * MINUTE).toISOString(),
   });
-  const genuine = expirable(0, 300);
+  const genuine = freeExpirable(0, 300);
 
   const h = harness([mirror, genuine]);
   const summary = await runSweep(h);
 
-  // It IS admitted — the predicate does not screen it.
-  assert(
-    h.rec.batchIds.includes("neg-infinity-hold"),
-    "'-infinity' < now() is true, so the predicate admits the row",
-  );
-  // ...and it is never expired, because isPastExpiry fails safe on NaN.
-  assertEquals(h.rec.expiredIds, [genuine.id]);
   assertEquals(
-    h.rows.find((r) => r.id === "neg-infinity-hold")?.status,
-    "pending_free",
+    h.rec.expiredIds.sort(),
+    [genuine.id, "neg-infinity-hold"].sort(),
   );
-  assertEquals(summary.expired, 1);
-  assertEquals(summary.skipped, 1);
+  assertEquals(summary.expired, 2);
   assertEquals(summary.errors, 0);
   assertEquals(
-    summary.results.find((r) => r.sessionId === "neg-infinity-hold")?.skip,
-    "in_window",
+    h.rows.find((r) => r.id === "neg-infinity-hold")?.status,
+    "expired",
   );
 
-  // The `+infinity` sentinel, by contrast, is screened out of the batch
-  // entirely — the asymmetry, stated side by side.
   const both = harness([
     row({
       id: "pos-infinity-hold",
@@ -698,5 +747,14 @@ Deno.test("#2947 TA-5 - '-infinity' passes the predicate but can never be expire
     }),
   ]);
   await runSweep(both);
-  assertEquals(both.rec.batchIds, ["neg-infinity-hold-2"]);
+  assertEquals(
+    both.rows.find((r) => r.id === "pos-infinity-hold")?.expires_at,
+    "infinity",
+  );
+  assertEquals(
+    both.rows.find((r) => r.id === "neg-infinity-hold-2")?.status,
+    "expired",
+  );
+  // Arm B sees nothing left in-flight past expiry.
+  assertEquals(both.rec.batchIds, []);
 });
