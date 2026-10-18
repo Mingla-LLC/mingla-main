@@ -183,8 +183,8 @@ BEGIN
   VALUES (f.o_event, f.o_tier, 'trig@example.test', 'Trig', 'waiting', 1, now() - interval '5 minutes')
   RETURNING id INTO v_w;
 
-  INSERT INTO public.orders(id, event_id, payment_status, payment_method, source, total_cents, currency, buyer_email)
-  VALUES (gen_random_uuid(), f.o_event, 'paid', 'free', 'online_checkout', 0, 'USD', 'buyer@example.test')
+  INSERT INTO public.orders(id, event_id, payment_status, payment_method, source, total_cents, currency, buyer_email, buyer_phone_e164)
+  VALUES (gen_random_uuid(), f.o_event, 'paid', 'free', 'online_checkout', 0, 'USD', 'buyer@example.test', '+15550002947')
   RETURNING id INTO v_order;
 
   INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status)
