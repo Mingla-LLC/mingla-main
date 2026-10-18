@@ -12,10 +12,7 @@ import {
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
 // #966 — Bunny is the sole cover-video provider (Cloudinary ack path removed).
-import {
-  bunnyGetVideo,
-  bunnyPresignTusUpload,
-} from "../_shared/bunnyStream.ts";
+import { bunnyPresignTusUpload } from "../_shared/bunnyStream.ts";
 
 type ProviderUploadResponse = {
   asset_id?: unknown;
@@ -59,10 +56,10 @@ const mergeProviderPayload = (
 //   proved it (its 12h stall deadline is the encode bound and is untouched).
 //
 // THREE STRUCTURAL CONSEQUENCES, each load-bearing:
-//   1. `bunnyGetVideo` is NEVER a gate any more. It is read best-effort for
-//      provider metadata AFTER the transfer is already proven. The old
-//      `bunny_get_pending` branch was a second unbounded 200/"keep waiting"
-//      shape and it is gone.
+//   1. `bunnyGetVideo` is NEVER part of this acknowledgement path. Calling it
+//      before the database write made nominally optional observability into an
+//      unbounded gate again in production (issue #3040 certification sample 1).
+//      The webhook + reaper own provider metadata and encode completion.
 //   2. THIS FUNCTION DESTROYS NOTHING, EVER. Asset reclamation has exactly one
 //      owner — `event-cover-video-reaper`, which re-reads provider truth
 //      before it deletes and skips anything still processing. An endpoint that
@@ -90,7 +87,6 @@ const expiresAtMs = (value: unknown): number | null => {
 };
 
 const defaultDeps = {
-  bunnyGetVideo,
   bunnyPresignTusUpload,
   requireBrandCoverManager,
   requireCoverVideoTargetManager,
@@ -98,6 +94,12 @@ const defaultDeps = {
   requireUserId,
   serviceRoleClient,
 };
+
+// The user's transfer already completed before this endpoint runs. A Bunny
+// control-plane pause must not turn the confirmation request into a spinner
+// that outlives the product's 60-second processing SLO. Eight seconds leaves
+// room for a retry while staying well inside that contract.
+export const TUS_HEAD_TIMEOUT_MS = 8_000;
 
 // The authoritative transfer verdict, read from Bunny's own TUS HEAD.
 //   "complete"   — uploadOffset === uploadLength === source_bytes. PROOF.
@@ -117,15 +119,22 @@ export const readTusTransfer = async (
   sourceBytes: number,
   guid: string | null,
   tusResourceUrl: string | null,
-  deps: { bunnyPresignTusUpload: typeof bunnyPresignTusUpload },
+  deps: {
+    bunnyPresignTusUpload: typeof bunnyPresignTusUpload;
+    fetchImpl?: typeof fetch;
+    tusHeadTimeoutMs?: number;
+  },
 ): Promise<TusTransferVerdict> => {
   if (guid === null || tusResourceUrl === null) {
     return { kind: "unreadable", reason: "transport_not_allocated" };
   }
   const presign = await deps.bunnyPresignTusUpload(guid);
+  const timeoutSignal = AbortSignal.timeout(
+    deps.tusHeadTimeoutMs ?? TUS_HEAD_TIMEOUT_MS,
+  );
   let tusHead: Response;
   try {
-    tusHead = await fetch(tusResourceUrl, {
+    tusHead = await (deps.fetchImpl ?? fetch)(tusResourceUrl, {
       method: "HEAD",
       headers: {
         AuthorizationSignature: presign.authorizationSignature,
@@ -134,9 +143,13 @@ export const readTusTransfer = async (
         VideoId: presign.videoId,
         "Tus-Resumable": "1.0.0",
       },
+      signal: timeoutSignal,
     });
   } catch {
-    return { kind: "unreadable", reason: "tus_head_network" };
+    return {
+      kind: "unreadable",
+      reason: timeoutSignal.aborted ? "tus_head_timeout" : "tus_head_network",
+    };
   }
   if (!tusHead.ok) {
     return { kind: "unreadable", reason: `tus_head_http_${tusHead.status}` };
@@ -313,23 +326,14 @@ export const handleEventCoverVideoSourceUploaded = async (
         413,
       );
     }
-    // Provider metadata is recorded for observability only. A failed read is
-    // NOT a reason to withhold acknowledgement — that inversion is the whole
-    // bug this issue exists to remove.
-    const video = await deps.bunnyGetVideo(guid ?? "");
+    // Only transfer proof belongs in this critical-path payload. Provider
+    // metadata is owned by the webhook/reaper; even a "best effort" awaited
+    // GET here can hang and withhold the acknowledgement write.
     const bunnySourceUpload: Record<string, unknown> = {
       acknowledged_at: new Date(nowMs).toISOString(),
       // #3040 — the acknowledged size is the TRANSFERRED size (Bunny's TUS
-      // upload-length). `storageSize` is recorded beside it when it happens to
-      // be available, purely as an encode-progress observation.
+      // upload-length), not post-encode `storageSize`.
       transferredBytes: transfer.uploadLength,
-      storageSize: video.ok && typeof video.video.storageSize === "number"
-        ? video.video.storageSize
-        : null,
-      length: video.ok && typeof video.video.length === "number"
-        ? video.video.length
-        : null,
-      bunny_status: video.ok ? video.video.status : null,
     };
     const { data: bunnyUpdatedJob, error: bunnyUpdateError } = await supabase
       .from("event_cover_video_jobs")
@@ -372,7 +376,6 @@ export const handleEventCoverVideoSourceUploaded = async (
     console.log(
       "[event-cover-video-source-uploaded]",
       JSON.stringify({
-        bunnyStatus: video.ok ? video.video.status : null,
         jobId: job.id,
         requestId,
         stage: "tus_transfer_proven_acknowledged",

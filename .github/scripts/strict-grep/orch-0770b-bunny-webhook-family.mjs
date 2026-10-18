@@ -38,8 +38,11 @@
  *     RP-2  `COVER_VIDEO_STALL_MS` + `evaluateCoverVideoStall` — a non-terminal
  *           job must have a bounded deadline after which it fails visibly.
  *   source-uploaded (event-cover-video-source-uploaded/index.ts, comment-stripped):
- *     SU-1  `bunnyGetVideo` + SU-2 `storageSize` + SU-3 `MAX_SOURCE_VIDEO_BYTES` —
- *           source truth read from Bunny, cap enforced on the REAL stored bytes.
+ *     SU-1  signed Bunny TUS HEAD is the authoritative transfer read.
+ *     SU-2  `AbortSignal.timeout` + `TUS_HEAD_TIMEOUT_MS` bound that network read.
+ *     SU-3  exact offset/length/source equality + `MAX_SOURCE_VIDEO_BYTES` cap.
+ *     SU-4  `bunnyGetVideo` / `storageSize` metadata cannot gate acknowledgement;
+ *           webhook + reaper own post-transfer provider metadata.
  *
  * Comment-stripped before scanning: prose naming Cloudinary / the headers must
  * neither satisfy nor trip an assertion.
@@ -170,15 +173,22 @@ export function scan(sources) {
     }
   }
 
-  // ── source-uploaded Bunny truth + cap ──────────────────────────────────
-  if (!su.includes("bunnyGetVideo")) {
-    failures.push("SU-1: source-uploaded no longer reads source truth from Bunny via `bunnyGetVideo`.");
+  // ── source-uploaded authoritative TUS transfer proof + bound ───────────
+  if (!su.includes("bunnyPresignTusUpload") || !su.includes('method: "HEAD"')) {
+    failures.push("SU-1: source-uploaded no longer reads authoritative transfer truth through a signed Bunny TUS HEAD.");
   }
-  if (!su.includes("storageSize")) {
-    failures.push("SU-2: source-uploaded no longer reads Bunny `storageSize` — it may trust the client-declared byte count.");
+  if (!su.includes("AbortSignal.timeout") || !su.includes("TUS_HEAD_TIMEOUT_MS")) {
+    failures.push("SU-2: source-uploaded no longer bounds Bunny's TUS HEAD — acknowledgement can hang indefinitely.");
   }
-  if (!su.includes("MAX_SOURCE_VIDEO_BYTES")) {
-    failures.push("SU-3: source-uploaded no longer enforces the `MAX_SOURCE_VIDEO_BYTES` source cap.");
+  if (
+    !su.includes("uploadOffset === sourceBytes") ||
+    !su.includes("uploadLength === sourceBytes") ||
+    !su.includes("MAX_SOURCE_VIDEO_BYTES")
+  ) {
+    failures.push("SU-3: source-uploaded no longer requires exact TUS offset/length equality and the source byte cap.");
+  }
+  if (su.includes("bunnyGetVideo") || su.includes("storageSize")) {
+    failures.push("SU-4: provider metadata re-entered source acknowledgement; webhook/reaper must own post-transfer metadata.");
   }
 
   return failures;
@@ -213,10 +223,12 @@ if (process.argv.includes("--self-test")) {
       "export function bunnyApiVideoStatusAsWebhookStatus(status) { return 3; }",
     ].join("\n"),
     sourceUploaded: [
-      'import { bunnyGetVideo } from "../_shared/bunnyStream.ts";',
-      "const video = await deps.bunnyGetVideo(guid);",
-      "const storageSize = video.video.storageSize;",
-      "if (storageSize > MAX_SOURCE_VIDEO_BYTES) { await fail(); }",
+      'import { bunnyPresignTusUpload } from "../_shared/bunnyStream.ts";',
+      "export const TUS_HEAD_TIMEOUT_MS = 8_000;",
+      "const timeoutSignal = AbortSignal.timeout(TUS_HEAD_TIMEOUT_MS);",
+      'const tusHead = await fetch(url, { method: "HEAD", signal: timeoutSignal });',
+      "const complete = uploadOffset === sourceBytes && uploadLength === sourceBytes;",
+      "if (uploadLength > MAX_SOURCE_VIDEO_BYTES) { await fail(); }",
     ].join("\n"),
     reaper: [
       'import { bunnyApiVideoStatusAsWebhookStatus, mapBunnyStatusFromApiVideo } from "../_shared/bunnyStream.ts";',
@@ -263,9 +275,11 @@ if (process.argv.includes("--self-test")) {
   bad("reaper passing the raw API status trips RP-1", (s) => { s.reaper = s.reaper.replace("Status: webhookStatus", "Status: provider.video.status"); }, "RP-1:");
   bad("reaper dropping the stall deadline trips RP-2", (s) => { s.reaper = s.reaper.replaceAll("COVER_VIDEO_STALL_MS", "0"); }, "RP-2:");
   bad("reaper dropping the stall evaluator trips RP-2", (s) => { s.reaper = s.reaper.replaceAll("evaluateCoverVideoStall", "foo"); }, "RP-2:");
-  bad("drop bunnyGetVideo trips SU-1", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("bunnyGetVideo", "foo"); }, "SU-1:");
-  bad("drop storageSize trips SU-2", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("storageSize", "bytes"); }, "SU-2:");
+  bad("drop signed Bunny TUS presign trips SU-1", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("bunnyPresignTusUpload", "foo"); }, "SU-1:");
+  bad("drop TUS HEAD timeout trips SU-2", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("AbortSignal.timeout", "AbortSignal.any"); }, "SU-2:");
+  bad("drop exact TUS offset equality trips SU-3", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("uploadOffset === sourceBytes", "uploadOffset >= 0"); }, "SU-3:");
   bad("drop MAX_SOURCE_VIDEO_BYTES trips SU-3", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("MAX_SOURCE_VIDEO_BYTES", "0"); }, "SU-3:");
+  bad("reintroduce provider metadata into acknowledgement trips SU-4", (s) => { s.sourceUploaded += "\nawait bunnyGetVideo(guid);"; }, "SU-4:");
 
   // Comment-only Cloudinary mention must NOT trip WH-CLD (strip proof).
   const co = clone(good);
@@ -312,8 +326,8 @@ if (failures.length > 0) {
     "[orch-0770b] Bunny webhook-family authenticity guard FAILED:\n\n  - " +
       failures.join("\n  - ") +
       "\n\nThe LIVE cover-video webhook verifies a v1/hmac-sha256 Bunny signature, keys the job " +
-      "by source_asset_id, and finalizes fail-closed; source-uploaded reads Bunny truth and caps " +
-      "real bytes. A dropped authenticity invariant or a reintroduced Cloudinary shape trips this " +
+      "by source_asset_id, and finalizes fail-closed; source-uploaded proves exact Bunny TUS transfer " +
+      "under a hard timeout. A dropped authenticity invariant or a reintroduced Cloudinary shape trips this " +
       "gate. See issue #964.",
   );
   process.exit(1);

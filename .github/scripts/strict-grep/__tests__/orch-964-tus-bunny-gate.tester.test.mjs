@@ -164,6 +164,31 @@ test("orch-0770b: terminally failing the job during derivative lag trips WH-6", 
   assert.ok(hasPrefix(f, "WH-6:"), `expected a WH-6 terminal-lag failure, got: ${JSON.stringify(f)}`);
 });
 
+// [TEST-MOD-APPROVED #3040] The first live duration certification stalled in
+// acknowledgement after Bunny had every byte. These attacks pin the repaired
+// boundary: exact TUS transfer truth is bounded, and post-transfer metadata can
+// never re-enter the acknowledgement critical path.
+test("orch-0770b: removing the TUS HEAD timeout trips SU-2", () => {
+  const s = live0770b();
+  s.sourceUploaded = s.sourceUploaded.replaceAll("AbortSignal.timeout", "AbortSignal.any");
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "SU-2:"), `expected an SU-2 timeout failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: weakening exact TUS offset equality trips SU-3", () => {
+  const s = live0770b();
+  s.sourceUploaded = s.sourceUploaded.replaceAll("uploadOffset === sourceBytes", "uploadOffset >= 0");
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "SU-3:"), `expected an SU-3 transfer-integrity failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: reintroducing Bunny metadata before acknowledgement trips SU-4", () => {
+  const s = live0770b();
+  s.sourceUploaded += "\nawait bunnyGetVideo(guid);\n";
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "SU-4:"), `expected an SU-4 critical-path failure, got: ${JSON.stringify(f)}`);
+});
+
 test("orch-0770b: reintroducing the x-cld-timestamp header into the webhook trips WH-CLD", () => {
   const s = live0770b();
   s.webhook += '\nconst __t = req.headers.get("x-cld-timestamp");\n';
