@@ -28,20 +28,7 @@
 
 import { supabase } from "./supabase";
 import { readBrandCoverFileBytes } from "./brandCoverFileReader";
-import {
-  acknowledgeEventCoverVideoSourceUploaded,
-  applyEventCoverVideoJob,
-  createEventCoverVideoUploadIntent,
-  EVENT_COVER_MAX_VIDEO_DURATION_MS,
-  EventCoverVideoProcessingError,
-  type EventCoverVideoStatus,
-  uploadEventCoverVideoSource,
-  waitForEventCoverVideoReady,
-} from "./eventCoverVideoProcessingService";
-import {
-  deletePreparedEventCoverVideoSource,
-  prepareEventCoverVideoSource,
-} from "./eventCoverVideoPreparedSource";
+import type { EventCoverVideoStatus } from "./eventCoverVideoProcessingService";
 import {
   BrandCoverError,
   generateBrandCoverPathToken,
@@ -156,7 +143,12 @@ const acknowledgeTripDayVideo = async (input: {
   jobId: string;
   eventId: string;
   brandId: string;
+  processing: typeof import("./eventCoverVideoAuthoringRuntime");
 }): Promise<EventCoverVideoStatus> => {
+  const {
+    acknowledgeEventCoverVideoSourceUploaded,
+    EventCoverVideoProcessingError,
+  } = input.processing;
   const deadlineAt = Date.now() + 150_000;
   let status = await acknowledgeEventCoverVideoSourceUploaded({
     target: "trip_day_media",
@@ -191,6 +183,19 @@ const uploadTripDayVideo = async (
   byteLength: number,
   onProgress?: (progress: TripDayVideoUploadProgress) => void,
 ): Promise<TripDayMedia> => {
+  // Keep the substantial TUS/provider implementation out of the shared eager
+  // app chunk. Images never need it; video selection loads it on demand.
+  const processing = await import("./eventCoverVideoAuthoringRuntime");
+  const {
+    applyEventCoverVideoJob,
+    createEventCoverVideoUploadIntent,
+    EVENT_COVER_MAX_VIDEO_DURATION_MS,
+    EventCoverVideoProcessingError,
+    uploadEventCoverVideoSource,
+    waitForEventCoverVideoReady,
+  } = processing;
+  const { deletePreparedEventCoverVideoSource, prepareEventCoverVideoSource } =
+    processing;
   const durationMs = Math.round(Number(input.durationMs ?? 0));
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     throw new EventCoverVideoProcessingError(
@@ -253,6 +258,7 @@ const uploadTripDayVideo = async (
         jobId: intent.jobId,
         eventId,
         brandId,
+        processing,
       });
     } else {
       status = intent.status;

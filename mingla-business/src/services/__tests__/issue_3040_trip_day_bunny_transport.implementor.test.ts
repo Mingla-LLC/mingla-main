@@ -9,6 +9,12 @@ const read = (relativePath: string): string =>
 describe("#3040 trip-day videos use the canonical Bunny transport", () => {
   const service = read("mingla-business/src/services/tripDayMediaService.ts");
   const sheet = read("mingla-business/src/components/trip/TripDayMediaSheet.tsx");
+  const coverPickerSheet = read(
+    "mingla-business/src/components/ui/CoverPickerSheet.tsx",
+  );
+  const authoringRuntime = read(
+    "mingla-business/src/services/eventCoverVideoAuthoringRuntime.ts",
+  );
   const uploadIntent = read(
     "supabase/functions/event-cover-video-upload-intent/index.ts",
   );
@@ -33,6 +39,26 @@ describe("#3040 trip-day videos use the canonical Bunny transport", () => {
     expect(sheet).toContain("videos up to one minute");
     expect(service).toContain("EVENT_COVER_MAX_VIDEO_DURATION_MS");
     expect(service).toContain("Choose a video that is one minute or shorter.");
+  });
+
+  test("keeps cover and trip video authoring behind one lazy runtime", () => {
+    const runtimeSpecifier = "eventCoverVideoAuthoringRuntime";
+    expect(service).toContain(`import("./${runtimeSpecifier}")`);
+    expect(coverPickerSheet).toContain(
+      `import("../../services/${runtimeSpecifier}")`,
+    );
+    expect(authoringRuntime).toContain(
+      'export { CoverPicker } from "../components/ui/CoverPicker"',
+    );
+    expect(authoringRuntime).toContain(
+      'export * from "./eventCoverVideoProcessingService"',
+    );
+    expect(authoringRuntime).toContain(
+      'export * from "./eventCoverVideoPreparedSource"',
+    );
+    expect(sheet).toContain(
+      'readPickedVideoDurationMs } from "../ui/pickedVideoDuration"',
+    );
   });
 
   test("edge authorization treats trip media as event-manager media", () => {

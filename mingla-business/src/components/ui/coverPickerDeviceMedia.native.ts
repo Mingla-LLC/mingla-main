@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+export { readPickedVideoDurationMs } from "./pickedVideoDuration";
 
 type CoverPickerAsset = {
   uri: string;
@@ -53,15 +54,5 @@ export const launchCoverVideoPicker = async (): Promise<CoverPickerResult> => {
     quality: 1,
   }));
 };
-
-export const readPickedVideoDurationMs = async (
-  _uri: string,
-  providedDurationMs?: number | null,
-): Promise<number | null> =>
-  typeof providedDurationMs === "number" &&
-    Number.isFinite(providedDurationMs) &&
-    providedDurationMs > 0
-    ? Math.round(providedDurationMs)
-    : null;
 
 export const revokeCoverPickedAssets = (_assets: readonly CoverPickerAsset[]): void => {};

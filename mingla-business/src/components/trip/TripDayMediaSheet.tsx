@@ -63,7 +63,7 @@ import { BrandCoverError } from "../../utils/brandCoverRules";
 import { normalizeTripDayImage } from "../../utils/normalizeTripDayImage";
 import type { TripDayMedia } from "../../services/tripsService";
 import { EventCoverProviderError } from "../../services/eventCoverProviderError";
-import { readPickedVideoDurationMs } from "../ui/coverPickerDeviceMedia";
+import { readPickedVideoDurationMs } from "../ui/pickedVideoDuration";
 import {
   searchGiphyEventCovers,
   type GiphyCoverSearchResult,
