@@ -759,6 +759,7 @@ Deno.test("#2715 full TUS truth wins over zero-byte Bunny metadata lag without c
     ...job("source_uploading"),
     source_asset_id: GUID,
     source_bytes: 716_949,
+    tus_upload_offset: 0,
     tus_resource_url: "https://tus.example.test/resource",
   };
   // Any field whose value IS the source-verification verdict. #2715 exists to
