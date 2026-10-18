@@ -27,6 +27,31 @@ export type CommunityRoadmapCard = {
   sort_order: number;
 };
 
+export type CommunityPostKind = "idea" | "question";
+
+export type CommunityPost = {
+  id: string;
+  kind: CommunityPostKind;
+  title: string;
+  body: string;
+  author_label: string;
+  review_state: "pending" | "published" | "rejected" | "removed";
+  created_at: string;
+  vote_count: number;
+  comment_count: number;
+  voted_by_me: boolean;
+  is_mine: boolean;
+  accepted_comment_id: string | null;
+};
+
+export type CommunityComment = {
+  id: string;
+  body: string;
+  author_label: string;
+  created_at: string;
+  is_mine: boolean;
+};
+
 type AnnouncementRow = {
   id: string;
   title: string;
@@ -143,4 +168,113 @@ export async function fetchSupportIsOnline(): Promise<boolean> {
   const { data, error } = await supabase.rpc("support_is_online");
   if (error) throw new Error(error.message);
   return Boolean(data);
+}
+
+export async function listCommunityPosts(
+  kind?: CommunityPostKind,
+): Promise<CommunityPost[]> {
+  const { data, error } = await supabase.rpc("issue_3720_community_feed", {
+    p_kind: kind ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as CommunityPost[]).map((post) => ({
+    ...post,
+    vote_count: Number(post.vote_count) || 0,
+    comment_count: Number(post.comment_count) || 0,
+  }));
+}
+
+export async function submitCommunityPost(input: {
+  kind: CommunityPostKind;
+  title: string;
+  body: string;
+}): Promise<{ post_id: string; review_state: string }> {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_submit_post",
+    { p_kind: input.kind, p_title: input.title, p_body: input.body },
+  );
+  if (error) throw new Error(error.message);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.post_id) throw new Error("The Community post was not saved.");
+  return row;
+}
+
+export async function toggleCommunityVote(postId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_toggle_vote",
+    { p_post_id: postId },
+  );
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
+export async function listCommunityComments(
+  postId: string,
+): Promise<CommunityComment[]> {
+  const { data, error } = await supabase.rpc("issue_3720_community_comments", {
+    p_post_id: postId,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CommunityComment[];
+}
+
+export async function addCommunityComment(
+  postId: string,
+  body: string,
+): Promise<string> {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_add_comment",
+    { p_post_id: postId, p_body: body },
+  );
+  if (error) throw new Error(error.message);
+  return String(data);
+}
+
+export async function acceptCommunityAnswer(
+  postId: string,
+  commentId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_accept_answer",
+    { p_post_id: postId, p_comment_id: commentId },
+  );
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
+export async function reportCommunityContent(
+  targetType: "post" | "comment",
+  targetId: string,
+  reason: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("issue_3720_community_report", {
+    p_target_type: targetType,
+    p_target_id: targetId,
+    p_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function blockCommunityAuthor(
+  targetType: "post" | "comment",
+  targetId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("issue_3720_community_block_author", {
+    p_target_type: targetType,
+    p_target_id: targetId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function appealCommunityModeration(
+  targetType: "post" | "comment",
+  targetId: string,
+  reason: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("issue_3720_community_appeal", {
+    p_target_type: targetType,
+    p_target_id: targetId,
+    p_reason: reason,
+  });
+  if (error) throw new Error(error.message);
 }

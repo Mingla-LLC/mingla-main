@@ -19,9 +19,13 @@ export function communitySupportTabsForAccess(access, tabs) {
   if (isAdmin) return tabs;
 
   const allowed = new Set();
-  if (canCommunity) allowed.add("overview");
+  if (canCommunity) {
+    allowed.add("overview");
+    allowed.add("moderation");
+  }
   if (canSupport) {
     allowed.add("support");
+    allowed.add("feature-guide");
     allowed.add("brand-groups");
     allowed.add("availability");
   }

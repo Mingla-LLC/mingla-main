@@ -647,6 +647,8 @@ Deno.test("#3802 W-4: every refusal a write tool can be given leaves in plain wo
   assert(INSTRUCTIONS.length <= 1900);
 });
 
+// [TEST-MOD-APPROVED #3720] Wave 6 adds the human-only teammate-recipient
+// picker to the screen parity census without granting agents send authority.
 Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a written reason it has none", () => {
   const called = new Set<string>();
   for (
@@ -706,6 +708,7 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
     Object.entries(SCREEN_FUNCTION_PARITY).filter(([, e]) => "excluded" in e)
       .map(([fn]) => fn).sort(),
     [
+      "content_calendar_comment_add_with_mentions",
       "content_calendar_delete",
       "content_calendar_duplicate_check",
       "content_calendar_undo",

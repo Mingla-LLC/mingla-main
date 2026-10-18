@@ -159,6 +159,14 @@ export function renderCategoryMessage(
         sms: `Mingla: ${communityExcerpt(body)}`,
       };
     }
+    case "business.community_reply": {
+      const body = "Someone replied to your Community post.";
+      return {
+        push: { title: "New Community reply", body },
+        email: { subject: "New Community reply", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
     case "business.community_roadmap_updated": {
       const body = "See what’s new in Now, Next and Later.";
       return {

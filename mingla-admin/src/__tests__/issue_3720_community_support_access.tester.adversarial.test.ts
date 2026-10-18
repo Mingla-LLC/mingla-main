@@ -5,8 +5,10 @@ import {
   AREA,
   COMMUNITY_OPERATIONS_AREA,
   COMMUNITY_SUPPORT_AREA,
+  DATA_ROOM_AREA,
   PAGE_ADDITIONAL_AREAS,
   SUPPORT_OPERATIONS_AREA,
+  TEAM_NOTIFICATIONS_AREA,
   canOpenPage,
 } from "../lib/access.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
@@ -30,15 +32,21 @@ Deno.test("a sub-capability alone cannot open any Admin page", () => {
   }
 });
 
-Deno.test("the only additional page exception is the combined console", () => {
+Deno.test("additional page exceptions stay one-to-one with server capabilities", () => {
   assertEquals(PAGE_ADDITIONAL_AREAS, {
     "community-support": [COMMUNITY_SUPPORT_AREA],
+    notifications: [TEAM_NOTIFICATIONS_AREA],
+    "data-room": [DATA_ROOM_AREA],
   });
   const candidate = access(COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA);
   assertEquals(canOpenPage(candidate, "community-support"), true);
   for (const page of ["overview", "announcements", "roadmap", "email", "team", "availability"]) {
     assertEquals(canOpenPage(candidate, page), false, `scoped staff unexpectedly opened ${page}`);
   }
+  assertEquals(canOpenPage(access(TEAM_NOTIFICATIONS_AREA), "notifications"), true);
+  assertEquals(canOpenPage(access(TEAM_NOTIFICATIONS_AREA), "data-room"), false);
+  assertEquals(canOpenPage(access(DATA_ROOM_AREA), "data-room"), true);
+  assertEquals(canOpenPage(access(DATA_ROOM_AREA), "notifications"), false);
 });
 
 Deno.test("hash manipulation cannot add a forbidden tab", () => {

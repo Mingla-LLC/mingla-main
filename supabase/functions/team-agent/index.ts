@@ -36,10 +36,17 @@ const CONTENT_TOOLS = new Set([
   "move_content",
 ]);
 
+const PRODUCT_TRUTH_TOOLS = new Set([
+  "find_capabilities",
+  "mcp:tools/list",
+]);
+
 const handler = createTeamAgentHandler({
   // The only call this function makes.
   gateway: async (keyHash, tool, args, client) => {
-    const gateway = CONTENT_TOOLS.has(tool)
+    const gateway = PRODUCT_TRUTH_TOOLS.has(tool)
+      ? "team_agent_product_truth_call"
+      : CONTENT_TOOLS.has(tool)
       ? "team_agent_content_call"
       : "team_agent_call";
     const { data, error } = await server.rpc(gateway, {

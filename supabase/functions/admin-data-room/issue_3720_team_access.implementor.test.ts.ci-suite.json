@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-data-room/issue_3720_team_access.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-team-access-edge",
+  "profile": "deno-1.46-stripe"
+}

@@ -7,6 +7,7 @@ export interface DriveServiceAccount {
   token_uri?: string;
   shared_drive_id: string;
   host_details_folder_id: string;
+  data_room_folder_id?: string;
 }
 
 export interface DriveFile {
@@ -14,6 +15,7 @@ export interface DriveFile {
   name?: string;
   mimeType?: string;
   size?: string;
+  modifiedTime?: string;
   parents?: string[];
   appProperties?: Record<string, string>;
 }
@@ -71,6 +73,12 @@ export function parseDriveServiceAccount(serialized: string): DriveServiceAccoun
   if (candidate.token_uri !== undefined && typeof candidate.token_uri !== "string") {
     throw new Error("DRIVE_CONFIG_INVALID");
   }
+  if (
+    candidate.data_room_folder_id !== undefined &&
+    (typeof candidate.data_room_folder_id !== "string" || candidate.data_room_folder_id.length < 8)
+  ) {
+    throw new Error("DRIVE_CONFIG_INVALID");
+  }
   return candidate as unknown as DriveServiceAccount;
 }
 
@@ -79,8 +87,9 @@ export function parseDriveServiceAccount(serialized: string): DriveServiceAccoun
  * client_id|client_secret|refresh_token. Wave 3 appends one base64url-encoded
  * JSON Drive object as field four, avoiding an 89th Supabase secret name.
  * Governed manifest fields: drive_storage.client_email,
- * drive_storage.private_key, drive_storage.shared_drive_id and
- * drive_storage.host_details_folder_id.
+ * drive_storage.private_key, drive_storage.shared_drive_id,
+ * drive_storage.host_details_folder_id and optional
+ * drive_storage.data_room_folder_id.
  */
 export function parseDriveCredentialBundle(packed: string): DriveServiceAccount {
   const parts = packed.split("|");
@@ -394,5 +403,29 @@ export class GoogleDriveClient {
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
       { headers: { Authorization: `Bearer ${token}`, ...(range ? { Range: range } : {}) } },
     );
+  }
+
+  async listFolderFiles(folderId: string): Promise<DriveFile[]> {
+    if (!folderId) throw new Error("DRIVE_CONFIG_INVALID");
+    return await this.list(
+      `'${q(folderId)}' in parents and mimeType!='${DRIVE_FOLDER_MIME}'`,
+      "files(id,name,mimeType,size,modifiedTime,parents)",
+    );
+  }
+
+  async dataRoomContent(file: DriveFile): Promise<Response> {
+    if (!file.id) throw new Error("DRIVE_NOT_FOUND");
+    const exportable = new Set([
+      "application/vnd.google-apps.document",
+      "application/vnd.google-apps.presentation",
+      "application/vnd.google-apps.spreadsheet",
+    ]);
+    if (file.mimeType && exportable.has(file.mimeType)) {
+      const params = new URLSearchParams({ mimeType: "application/pdf" });
+      return await this.request(
+        `/drive/v3/files/${encodeURIComponent(file.id)}/export?${params}`,
+      );
+    }
+    return await this.media(file.id);
   }
 }

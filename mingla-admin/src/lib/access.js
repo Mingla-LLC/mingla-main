@@ -35,9 +35,13 @@ export const AREA = {
 export const COMMUNITY_SUPPORT_AREA = "community_support";
 export const SUPPORT_OPERATIONS_AREA = "community_support_support";
 export const COMMUNITY_OPERATIONS_AREA = "community_support_community";
+export const TEAM_NOTIFICATIONS_AREA = "team_notifications";
+export const DATA_ROOM_AREA = "data_room";
 
 export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   "community-support": Object.freeze([COMMUNITY_SUPPORT_AREA]),
+  notifications: Object.freeze([TEAM_NOTIFICATIONS_AREA]),
+  "data-room": Object.freeze([DATA_ROOM_AREA]),
 });
 
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any

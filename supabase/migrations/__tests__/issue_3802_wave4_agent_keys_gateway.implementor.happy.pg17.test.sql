@@ -51,9 +51,10 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802k_pw PGPASSWORD
--- [TEST-MOD-APPROVED #3802] Wave 2 adds one separately guarded sibling gateway;
--- keep this legacy self-check scoped to the original agent surface it owns.
-\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'team_agent_call,team_agent_content_call,team_agent_housekeeping'/" -e "s/admin_team_set_member,team_agent_call,team_agent_key_issue/admin_team_set_member,team_agent_call,team_agent_content_call,team_agent_key_issue/"`
+-- [TEST-MOD-APPROVED #3720] Wave 2 and Wave 5 add separately guarded sibling
+-- gateways; keep this legacy self-check scoped to the original agent surface
+-- it owns while preserving its exhaustive stray-function and writer checks.
+\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/"`
 \set t3802k_file `cat supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_selfcheck_a `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_oldmember `sed -n '/^CREATE OR REPLACE FUNCTION public.admin_team_set_member/,/^\$\$;/p' supabase/migrations/20270818003802_issue_3802_wave0_invite_binding.sql`
@@ -291,6 +292,7 @@ begin
       ('public.team_agent_key_issue(text,text,text,text)', false),
       ('public.team_agent_setup_redeem(text,text)', false),
       ('public.team_agent_content_call(text,text,jsonb,text)', false),
+      ('public.team_agent_product_truth_call(text,text,jsonb,text)', false),
       ('public.crm_ctx()', false)
     ) as x(fn, client)
   loop
@@ -303,9 +305,10 @@ begin
     perform pg_temp.t3802k_check('K-1', f.fn || ': pins an empty search path',
       (select ('search_path=""' = any (p.proconfig))::text from pg_proc p where p.oid = f.fn::regprocedure), 'true');
   end loop;
-  perform pg_temp.t3802k_check('K-1', 'there are exactly 17 team_agent_ functions',
+  -- [TEST-MOD-APPROVED #3720] Product Truth adds one closed sibling gateway.
+  perform pg_temp.t3802k_check('K-1', 'there are exactly 18 team_agent_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname like 'team\_agent\_%'), '17');
+      where n.nspname = 'public' and p.proname like 'team\_agent\_%'), '18');
   -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
   perform pg_temp.t3802k_check('K-1', 'there are exactly 52 crm_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace

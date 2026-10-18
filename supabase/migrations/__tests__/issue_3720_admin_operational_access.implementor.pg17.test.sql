@@ -1,4 +1,6 @@
 -- #3720 scoped Admin Community & Support access, executable PostgreSQL 17 proof.
+-- [TEST-MOD-APPROVED #3720] Wave 6 intentionally gives every accepted active
+-- teammate Support and team-notification access, plus role-scoped Data room.
 -- Runs after the complete migration replay and rolls every fixture back.
 -- MINGLA-INVARIANT: I-3720-ADMIN-OPERATIONAL-ACCESS | issue #3720 | Operational grants never confer admin_console and require accepted Admin team membership.
 \set ON_ERROR_STOP on
@@ -90,20 +92,20 @@ $$;
 
 DO $proof$
 BEGIN
-  IF pg_temp.t3720_operational('owner') <> '{community_support,community_support_support,community_support_community}'
-     OR pg_temp.t3720_operational('admin') <> '{community_support,community_support_support,community_support_community}' THEN
+  IF pg_temp.t3720_operational('owner') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room}'
+     OR pg_temp.t3720_operational('admin') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room}' THEN
     RAISE EXCEPTION 'full_admin_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('support') <> '{community_support,community_support_support}' THEN
+  IF pg_temp.t3720_operational('support') <> '{community_support,community_support_support,team_notifications}' THEN
     RAISE EXCEPTION 'support_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('community') <> '{community_support,community_support_community}' THEN
+  IF pg_temp.t3720_operational('community') <> '{community_support,community_support_support,team_notifications,community_support_community}' THEN
     RAISE EXCEPTION 'community_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('dual') <> '{community_support,community_support_support,community_support_community}' THEN
+  IF pg_temp.t3720_operational('dual') <> '{community_support,community_support_support,team_notifications,community_support_community,data_room}' THEN
     RAISE EXCEPTION 'dual_operational_areas_wrong';
   END IF;
-  IF pg_temp.t3720_operational('ordinary') <> '{}'
+  IF pg_temp.t3720_operational('ordinary') <> '{community_support,community_support_support,team_notifications}'
      OR pg_temp.t3720_operational('invited') <> '{}'
      OR pg_temp.t3720_operational('outsider') <> '{}' THEN
     RAISE EXCEPTION 'inactive_disabled_or_non_team_grant_widened_access';

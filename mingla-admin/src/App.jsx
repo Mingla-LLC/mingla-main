@@ -69,6 +69,8 @@ import { DraftsPage } from "./pages/DraftsPage";
 import { AgentPage } from "./pages/AgentPage";
 import { GuidePage } from "./pages/GuidePage";
 import { ContentCalendarPage } from "./pages/ContentCalendarPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
+import { DataRoomPage } from "./pages/DataRoomPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -91,6 +93,7 @@ const PAGES = {
   claims: ClaimsPage,
   // #3720 Slice F — #/community-support (legacy #/support and #/email rewrite below).
   "community-support": CommunitySupportPage,
+  notifications: NotificationsPage,
   // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
   pricing: PricingPage,
   admin: AdminPage,
@@ -105,6 +108,7 @@ const PAGES = {
   "api-health": ApiHealthPage,
   // META-ORCH-1222: careers applications + role manager (hash route #/careers).
   careers: CareersPage,
+  "data-room": DataRoomPage,
   // ORCH-1272: Business identity console (READ-ONLY) — People + Brands
   // (hash routes #/business-people, #/business-brands).
   "business-people": PeopleConsolePage,

@@ -191,6 +191,11 @@ function validDeepLink(
     return !!id && UUID.test(id) &&
       deepLink === `mingla-business://community/announcement/${id}`;
   }
+  if (category === "business.community_reply") {
+    const id = deepLink?.replace("mingla-business://community/post/", "");
+    return !!id && UUID.test(id) &&
+      deepLink === `mingla-business://community/post/${id}`;
+  }
   if (category === "business.support_new_ticket") {
     const id = deepLink?.replace("mingla-business://support/", "");
     return !!id && UUID.test(id) &&
@@ -217,6 +222,9 @@ export function providerSafePayload(
   if (category === "business.community_announcement") {
     return pick(["campaign_id", "announcement_id"]);
   }
+  if (category === "business.community_reply") {
+    return pick(["post_id", "comment_id"]);
+  }
   if (category === "business.community_roadmap_updated") {
     return pick(["campaign_id"]);
   }
@@ -226,14 +234,19 @@ export function providerSafePayload(
   if (category === "business.brand_group_message") {
     return pick(["message_id", "conversation_id", "brand_id"]);
   }
+  if (category === "admin.team_mention") {
+    return pick(["mention_id", "source_kind", "source_id"]);
+  }
   return payload;
 }
 
 const ISSUE_3720_CATEGORIES = new Set([
   "business.community_announcement",
+  "business.community_reply",
   "business.community_roadmap_updated",
   "business.support_new_ticket",
   "business.brand_group_message",
+  "admin.team_mention",
 ]);
 const SAFE_DENIAL_REASONS = new Set([
   "category_inactive",
