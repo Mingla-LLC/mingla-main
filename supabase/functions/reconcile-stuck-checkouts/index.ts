@@ -67,6 +67,12 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 // across successive */15 runs. Current stuck population is 5.
 const SWEEP_BATCH_LIMIT = 50;
 
+// issue #2947 slice 4 — set-based free/NO_REF arm. Zero Stripe I/O; one SQL
+// statement clears up to this many abandoned holds per run. Equivalence to
+// classify() for NO_REF: expire iff expires_at < now. PAYSTACK and Stripe refs
+// stay on the per-row arm below.
+const SWEEP_FREE_BATCH_LIMIT = 5000;
+
 // Evidence holds re-checked per run, newest first. A hold is a paid checkout
 // closed only because an earlier signal lacked evidence; they are rare, and a
 // hold whose refund is kept leaves this set once that refund is processed.
@@ -139,6 +145,71 @@ const serviceClient = () =>
   });
 
 type ServiceClient = ReturnType<typeof serviceClient>;
+
+type FreedCapacityRow = { ticket_type_id: string; freed_qty: number };
+
+/**
+ * issue #2947 slices 4+5 — after capacity returns from an expired hold, invite
+ * waitlisted buyers in join order via the shared SQL drain. Fail-open: a drain
+ * error is recorded, never blocks the rest of the sweep.
+ */
+async function drainWaitlistForFreed(
+  supabase: ServiceClient,
+  freed: FreedCapacityRow[],
+  results: Array<Record<string, unknown>>,
+): Promise<void> {
+  for (const row of freed) {
+    const ticketTypeId = row.ticket_type_id;
+    const freedQty = Number(row.freed_qty);
+    if (!ticketTypeId || !Number.isFinite(freedQty) || freedQty < 1) continue;
+    const { error } = await supabase.rpc(
+      "issue_2947_waitlist_drain_for_ticket_type",
+      {
+        p_ticket_type_id: ticketTypeId,
+        p_freed: freedQty,
+      },
+    );
+    if (error) {
+      results.push({
+        ticketTypeId,
+        freedQty,
+        error: `waitlist_drain:${error.message}`,
+      });
+    }
+  }
+}
+
+/**
+ * issue #2947 slice 4 — set-based free/NO_REF expiry. Returns how many sessions
+ * were stamped expired (for the run summary) and the freed-qty rows for drain.
+ */
+async function expireNoRefHolds(
+  supabase: ServiceClient,
+  nowIso: string,
+): Promise<{ expiredCount: number; freed: FreedCapacityRow[] }> {
+  const { data, error } = await supabase.rpc("issue_2947_expire_no_ref_holds", {
+    p_now: nowIso,
+    p_limit: SWEEP_FREE_BATCH_LIMIT,
+  });
+  if (error) {
+    throw new Error(`expire_no_ref_holds:${error.message}`);
+  }
+  const payload = (data ?? {}) as {
+    expired_count?: number;
+    freed?: Array<{ ticket_type_id?: string; freed_qty?: number }>;
+  };
+  const expiredCount = Number(payload.expired_count ?? 0);
+  const freed: FreedCapacityRow[] = (payload.freed ?? [])
+    .map((row) => ({
+      ticket_type_id: String(row.ticket_type_id ?? ""),
+      freed_qty: Number(row.freed_qty ?? 0),
+    }))
+    .filter((row) => row.ticket_type_id.length > 0 && row.freed_qty > 0);
+  return {
+    expiredCount: Number.isFinite(expiredCount) ? expiredCount : 0,
+    freed,
+  };
+}
 
 /**
  * issue #2947 slice 1 — the I/O seam that makes this sweep RUNNABLE in a test.
@@ -286,9 +357,35 @@ async (req) => {
   // again) is finalized by the batch below in this same run.
   const evidenceHolds = await releaseStripeEvidenceHolds(supabase, stripe);
 
+  const results: Array<Record<string, unknown>> = [];
+
+  // issue #2947 slice 4 — Arm A: set-based free/NO_REF expiry BEFORE the
+  // per-row Stripe arm. Clears thousands of abandoned free holds with zero
+  // Stripe I/O; then hands freed capacity to the waitlist (slice 5).
+  let freeArmExpired = 0;
+  try {
+    const freeArm = await expireNoRefHolds(supabase, nowIso);
+    freeArmExpired = freeArm.expiredCount;
+    if (freeArmExpired > 0) {
+      results.push({
+        arm: "free",
+        status: "expired",
+        expiredCount: freeArmExpired,
+      });
+      await drainWaitlistForFreed(supabase, freeArm.freed, results);
+    }
+  } catch (freeErr) {
+    results.push({
+      arm: "free",
+      error: freeErr instanceof Error ? freeErr.message : String(freeErr),
+    });
+  }
+
   // ORCH-1388 widened select — the WHOLE in-flight strand family (ruling 3),
   // not just processing_payment, and no PI-non-null filter (no-ref rows are in
   // scope now: pending_free / pre-mint requires_payment can strand too).
+  // After arm A, remaining NO_REF past-expiry rows are rare (over the free
+  // limit); the per-row loop still handles them via classify() as a backstop.
   const { data: sessions, error: listError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
@@ -353,7 +450,6 @@ async (req) => {
     });
   }
 
-  const results: Array<Record<string, unknown>> = [];
   for (const s of sessions ?? []) {
     const sessionId = s.id as string;
     const snapshotStatus = s.status as string;
@@ -768,6 +864,26 @@ async (req) => {
           results.push({ sessionId, piId, csId, skip: "raced" });
         } else {
           results.push({ sessionId, piId, csId, status: "expired" });
+          // issue #2947 slices 4+5 — release queue entry + waitlist handoff.
+          const { data: noted, error: noteError } = await supabase.rpc(
+            "issue_2947_note_expired_session",
+            { p_session_id: sessionId, p_now: nowIso },
+          );
+          if (noteError) {
+            results.push({
+              sessionId,
+              error: `note_expired_session:${noteError.message}`,
+            });
+          } else {
+            const freed = ((noted ?? []) as Array<{
+              ticket_type_id?: string;
+              freed_qty?: number;
+            }>).map((row) => ({
+              ticket_type_id: String(row.ticket_type_id ?? ""),
+              freed_qty: Number(row.freed_qty ?? 0),
+            }));
+            await drainWaitlistForFreed(supabase, freed, results);
+          }
         }
       } else {
         if (decision.reason === "cs_paid_no_pi") {
@@ -795,14 +911,20 @@ async (req) => {
     }
   }
 
+  // Free-arm expiries are one summary row with expiredCount, not N session
+  // rows — fold that count into `expired` so monitors see the real total.
+  const perRowExpired = results.filter((r) =>
+    r.status === "expired" && r.arm !== "free"
+  ).length;
   const summary = {
     reconciled: results.filter((r) => r.status === "finalized").length,
-    expired: results.filter((r) => r.status === "expired").length,
+    expired: perRowExpired + freeArmExpired,
     skipped: results.filter((r) => r.skip).length,
     errors: results.filter((r) => r.error).length,
     evidenceHoldsReleased: evidenceHolds.filter((r) =>
       r.evidenceHold === "released"
     ).length,
+    freeArmExpired,
   };
   // One greppable summary line per run (SC-12).
   console.log("[reconcile-stuck-checkouts] run summary", summary);
@@ -823,6 +945,8 @@ async (req) => {
             evidenceHolds,
           }
           : {}),
+        // issue #2947 slice 4 — additive; only present when the free arm did work.
+        ...(freeArmExpired > 0 ? { freeArmExpired } : {}),
         results,
       },
       null,

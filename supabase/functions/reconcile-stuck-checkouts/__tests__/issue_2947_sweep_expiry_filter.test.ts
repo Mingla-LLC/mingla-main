@@ -285,7 +285,7 @@ function harness(
           new UpdateBuilder(rows, patch, rec),
       };
     },
-    rpc(name: string, _params: unknown): Promise<DbResult> {
+    rpc(name: string, params: unknown): Promise<DbResult> {
       rec.rpcCalls.push(name);
       if (name === "issue_2079_verify_ticket_paid_identity") {
         return Promise.resolve({ data: { outcome: "verified" }, error: null });
@@ -293,6 +293,54 @@ function harness(
       if (name === "biz_ticket_checkout_finalize") {
         return Promise.resolve({
           data: { outcome: "ok", orderId: "order-2947" },
+          error: null,
+        });
+      }
+      // issue #2947 slice 4 — set-based free/NO_REF arm. Mirror the SQL
+      // predicate so existing slice-1 cases still expire through the real
+      // handler once free-arm runs first.
+      if (name === "issue_2947_expire_no_ref_holds") {
+        const args = (params ?? {}) as { p_now?: string; p_limit?: number };
+        const now = args.p_now ?? new Date().toISOString();
+        const limit = args.p_limit ?? 5000;
+        const candidates = rows
+          .filter((row) =>
+            IN_FLIGHT.includes(row.status) &&
+            row.stripe_payment_intent_id == null &&
+            row.stripe_checkout_session_id == null &&
+            row.order_id == null &&
+            tsValue(row.expires_at) < tsValue(now)
+          )
+          .sort((a, b) => tsValue(a.created_at) - tsValue(b.created_at))
+          .slice(0, limit);
+        for (const row of candidates) {
+          Object.assign(row, {
+            status: "expired",
+            failed_at: now,
+            failure_reason: "abandoned_past_expiry",
+            updated_at: now,
+          });
+          rec.expiredIds.push(row.id);
+        }
+        return Promise.resolve({
+          data: {
+            expired_count: candidates.length,
+            freed: candidates.length > 0
+              ? [{
+                ticket_type_id: "00000000-0000-4000-8000-000000000294",
+                freed_qty: candidates.length,
+              }]
+              : [],
+          },
+          error: null,
+        });
+      }
+      if (
+        name === "issue_2947_waitlist_drain_for_ticket_type" ||
+        name === "issue_2947_note_expired_session"
+      ) {
+        return Promise.resolve({
+          data: name === "issue_2947_note_expired_session" ? [] : 0,
           error: null,
         });
       }
@@ -454,14 +502,18 @@ Deno.test("#2947 T-2 - the batch spends no slot on a row that can never expire",
     }));
 
   const h = harness([...queued, ...expirable]);
-  await runSweep(h);
+  const summary = await runSweep(h);
 
+  // Slice 4: free/NO_REF rows clear on arm A before the per-row SELECT. The
+  // arm B batch therefore sees zero in-flight past-expiry rows here — and
+  // still must never admit an `'infinity'` queued hold.
+  assertEquals(summary.expired, 6);
   assertEquals(
     h.rec.batchIds.filter((id) => id.startsWith("queued-")).length,
     0,
     "a row at expires_at='infinity' must never occupy a batch slot",
   );
-  assertEquals(h.rec.batchIds.length, 6);
+  assertEquals(h.rec.batchIds.length, 0);
 
   // Placement, not just presence: the predicate has to sit on the query the
   // database runs, alongside the status filter and ahead of the limit.
@@ -472,6 +524,10 @@ Deno.test("#2947 T-2 - the batch spends no slot on a row that can never expire",
 
   // And no Stripe budget was burned learning nothing about them.
   assertEquals(h.rec.stripeRetrieves, []);
+  assert(
+    h.rec.rpcCalls.includes("issue_2947_expire_no_ref_holds"),
+    "free arm must run",
+  );
 });
 
 // ── T-3 · the OTHER job this function does still works ───────────────────────
@@ -499,7 +555,9 @@ Deno.test("#2947 T-3 - a webhook-lost payment past expiry is still finalized, ne
   assertEquals(h.rec.expiredIds, []);
   assertEquals(h.rows[0].status, "processing_payment");
   // Capture-before-finalize is intact and the finalize RPC actually ran.
+  // Free arm runs first (no-op here) then the paid-path RPCs.
   assertEquals(h.rec.rpcCalls, [
+    "issue_2947_expire_no_ref_holds",
     "issue_2079_verify_ticket_paid_identity",
     "biz_ticket_checkout_finalize",
   ]);
@@ -619,7 +677,8 @@ Deno.test("#2947 T-5 - the live pre-queue population behaves exactly as it did a
   // A `mingla_*` reference must NEVER be sent to Stripe.
   assertEquals(h.rec.stripeRetrieves, []);
   assertEquals(h.rec.expiredIds, []);
-  assertEquals(h.rec.rpcCalls, []);
+  // Slice 4 free arm always probes; with zero NO_REF candidates it is a no-op.
+  assertEquals(h.rec.rpcCalls, ["issue_2947_expire_no_ref_holds"]);
   assertEquals(summary, {
     reconciled: 0,
     expired: 0,
