@@ -14,8 +14,13 @@ export const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Issue #3040 — the shared lane emits up to 1080p. A 60 s 1080p MP4 is larger
+// than the old 25 MiB budget, so the processed cap is 64 MiB (the same cap the
+// ads byte fetch already used). These defaults are pinned against the DB
+// CHECKs and packages/video-upload/limits.js by I-VIDEO-LIMITS-PARITY.
+// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | edge defaults equal the DB CHECKs and the client limits table
 export const FINAL_MAX_BYTES = Number.parseInt(
-  Deno.env.get("EVENT_COVER_FINAL_MAX_BYTES") ?? "26214400",
+  Deno.env.get("EVENT_COVER_FINAL_MAX_BYTES") ?? "67108864",
   10,
 );
 export const MAX_DURATION_MS = Number.parseInt(
@@ -30,6 +35,11 @@ export const MAX_SOURCE_VIDEO_DURATION_MS = Number.parseInt(
   Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "60000",
   10,
 );
+// Issue #3040 — ad videos (target `ad_creative`) need at least 5 s; covers and
+// trip-day media have no minimum.
+export const AD_MIN_DURATION_MS = 5000;
+// Issue #3040 — highest Bunny MP4 rendition the lane will select.
+export const MAX_RENDITION_HEIGHT = 1080;
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -287,22 +297,146 @@ export type CoverVideoTargetKind =
   | "brand"
   | "venue"
   | "venue_draft"
-  | "trip_day_media";
+  | "trip_day_media"
+  | "ad_creative";
 
 export type CoverVideoTargetSelector = {
   targetKind: CoverVideoTargetKind;
   eventId: string | null;
-  brandId: string;
+  // Issue #3040 — null only for a brandless (house) `ad_creative` upload.
+  brandId: string | null;
   venueId: string | null;
   draftOwnerKey: string | null;
   requestedBy?: string | null;
 };
+
+// Issue #3040 — the owner key of an `ad_creative` upload names where the
+// finished video belongs: the Admin library of one admin, one Host Ads draft,
+// or one Ari proposal.
+export type AdCreativeOwnerKey = {
+  kind: "admin-library" | "host-ad" | "ari";
+  id: string;
+};
+
+const AD_CREATIVE_OWNER_KEY_RE = /^(admin-library|host-ad|ari):([A-Za-z0-9_-]{3,120})$/;
+
+export function parseAdCreativeOwnerKey(
+  key: unknown,
+): AdCreativeOwnerKey | null {
+  if (typeof key !== "string") return null;
+  const match = AD_CREATIVE_OWNER_KEY_RE.exec(key);
+  if (!match) return null;
+  return { kind: match[1] as AdCreativeOwnerKey["kind"], id: match[2] };
+}
+
+// Issue #3040 — an active Admin, matched by the caller's email exactly as
+// admin-ad-creative-upload already does.
+async function callerIsActiveAdmin(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<boolean | Response> {
+  const { data: userData, error: userError } = await supabase.auth.admin
+    .getUserById(userId);
+  if (userError) {
+    console.error("[event-cover-video] admin user read failed:", {
+      code: userError.code ?? null,
+    });
+    return jsonResponse({
+      error: "internal_error",
+      detail: "admin_check_failed",
+    }, 500);
+  }
+  const email = userData?.user?.email;
+  if (typeof email !== "string" || email.length === 0) return false;
+  const { data: adminRow, error: adminError } = await supabase
+    .from("admin_users")
+    .select("id")
+    .eq("email", email)
+    .eq("status", "active")
+    .maybeSingle();
+  if (adminError) {
+    console.error("[event-cover-video] admin row read failed:", {
+      code: adminError.code ?? null,
+    });
+    return jsonResponse({
+      error: "internal_error",
+      detail: "admin_check_failed",
+    }, 500);
+  }
+  return Boolean(adminRow);
+}
+
+async function requireAdCreativeUploader(
+  supabase: SupabaseClient,
+  selector: CoverVideoTargetSelector,
+  userId: string,
+): Promise<{ target: CoverVideoTargetSelector } | Response> {
+  if (selector.brandId === null) {
+    const admin = await callerIsActiveAdmin(supabase, userId);
+    if (admin instanceof Response) return admin;
+    return admin ? { target: selector } : jsonResponse(
+      { error: "forbidden", detail: "permission_denied" },
+      403,
+    );
+  }
+  if (!isValidUuid(selector.brandId)) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "brand_id_invalid_uuid",
+    }, 400);
+  }
+  const { data: canPlan, error } = await supabase.rpc("ad_can_host_action", {
+    p_brand_id: selector.brandId,
+    p_user_id: userId,
+    p_action: "plan",
+  });
+  if (error) {
+    console.error("[event-cover-video] ad plan permission failed:", {
+      code: error.code ?? null,
+    });
+    return jsonResponse({
+      error: "internal_error",
+      detail: "role_check_failed",
+    }, 500);
+  }
+  return canPlan === true ? { target: selector } : jsonResponse(
+    { error: "forbidden", detail: "permission_denied" },
+    403,
+  );
+}
 
 export async function requireCoverVideoTargetManager(
   supabase: SupabaseClient,
   selector: CoverVideoTargetSelector,
   userId: string,
 ): Promise<{ target: CoverVideoTargetSelector } | Response> {
+  if (selector.targetKind === "ad_creative") {
+    // A private upload: only its requester may read or drive it.
+    if (
+      selector.requestedBy !== undefined && selector.requestedBy !== null &&
+      selector.requestedBy !== userId
+    ) {
+      return jsonResponse(
+        { error: "forbidden", detail: "draft_owner_mismatch" },
+        403,
+      );
+    }
+    if (parseAdCreativeOwnerKey(selector.draftOwnerKey) === null) {
+      return jsonResponse({
+        error: "validation_error",
+        detail: "draft_owner_key_invalid",
+      }, 400);
+    }
+    return await requireAdCreativeUploader(supabase, selector, userId);
+  }
+  // Every non-ad target is brand-owned (DB: event_cover_video_jobs_brand_required).
+  if (selector.brandId === null) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "brand_id_invalid_uuid",
+    }, 400);
+  }
+  const brandId: string = selector.brandId;
   if (
     selector.targetKind === "event" ||
     selector.targetKind === "trip_day_media"
@@ -316,7 +450,7 @@ export async function requireCoverVideoTargetManager(
     const allowed = await requireEventManager(
       supabase,
       selector.eventId,
-      selector.brandId,
+      brandId,
       userId,
     );
     return allowed instanceof Response ? allowed : { target: selector };
@@ -332,7 +466,7 @@ export async function requireCoverVideoTargetManager(
       .from("venue_listings")
       .select("id,brand_id")
       .eq("id", selector.venueId)
-      .eq("brand_id", selector.brandId)
+      .eq("brand_id", brandId)
       .maybeSingle();
     if (error) {
       return jsonResponse({
@@ -369,7 +503,7 @@ export async function requireCoverVideoTargetManager(
   }
   const allowed = await requireBrandCoverManager(
     supabase,
-    selector.brandId,
+    brandId,
     userId,
   );
   return allowed instanceof Response ? allowed : { target: selector };
@@ -548,7 +682,8 @@ export type EventCoverVideoStatusPayload = {
   jobId: string;
   // ORCH-0989: null for brand-target jobs (brand jobs have no events-row).
   eventId: string | null;
-  brandId: string;
+  // Issue #3040: null only for a brandless (house) ad_creative upload.
+  brandId: string | null;
   // ORCH-0989: 'event' (default) or 'brand'.
   targetKind: CoverVideoTargetKind;
   venueId: string | null;
@@ -578,6 +713,11 @@ export type EventCoverVideoStatusPayload = {
   cancelledAt: string | null;
   applicationVersion: number;
   applicationReceipt: Record<string, unknown> | null;
+  // Issue #3040: the MP4 rendition height the lane chose (null until ready).
+  renditionHeight: number | null;
+  // Issue #3040: the ad_creatives row materialized from an ad_creative job.
+  // The status/apply endpoints fill it; the pure mapper does not read tables.
+  creativeId: string | null;
 };
 
 export type EventCoverVideoReadyUpdateInput = {
@@ -612,7 +752,8 @@ type EventCoverVideoJobRow = {
   id: string;
   // ORCH-0989: nullable for brand-target jobs.
   event_id: string | null;
-  brand_id: string;
+  // Issue #3040: nullable for a brandless ad_creative upload.
+  brand_id: string | null;
   target_kind?: string | null;
   venue_id?: string | null;
   draft_owner_key?: string | null;
@@ -774,7 +915,8 @@ export function mapEventCoverVideoStatus(
     eventId: job.event_id ?? null,
     targetKind: job.target_kind === "brand" || job.target_kind === "venue" ||
         job.target_kind === "venue_draft" ||
-        job.target_kind === "trip_day_media"
+        job.target_kind === "trip_day_media" ||
+        job.target_kind === "ad_creative"
       ? job.target_kind
       : "event",
     venueId: job.venue_id ?? null,
@@ -807,5 +949,20 @@ export function mapEventCoverVideoStatus(
         typeof job.application_receipt === "object"
       ? job.application_receipt as Record<string, unknown>
       : null,
+    renditionHeight: renditionHeightFromPayload(job.provider_payload),
+    creativeId: null,
   };
+}
+
+// Issue #3040 — the webhook records the chosen rendition height in
+// provider_payload.rendition_height.
+export function renditionHeightFromPayload(providerPayload: unknown): number | null {
+  if (providerPayload === null || typeof providerPayload !== "object") {
+    return null;
+  }
+  const value = (providerPayload as { rendition_height?: unknown })
+    .rendition_height;
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : null;
 }

@@ -1,14 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
+  AD_MIN_DURATION_MS,
   corsHeaders,
   coverVideoProvider,
   destroyCoverVideoAsset,
+  FINAL_MAX_BYTES,
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
   MAX_DURATION_MS,
   MAX_SOURCE_VIDEO_BYTES,
   MAX_SOURCE_VIDEO_DURATION_MS,
+  parseAdCreativeOwnerKey,
   providerConfigured,
   requireBrandCoverManager,
   requireCoverVideoTargetManager,
@@ -24,8 +27,21 @@ import {
   bunnyFindVideoByTitle,
   bunnyPresignTusUpload,
   bunnyUsagePct,
+  fetchWithTimeout,
 } from "../_shared/bunnyStream.ts";
 import { resolveRuntimeNumber } from "../_shared/runtimeConfig.ts";
+// #3040 — "did any bytes land?" has ONE answer: the provider's own TUS HEAD.
+import { readTusTransfer } from "../event-cover-video-source-uploaded/index.ts";
+import { isMissingRpc } from "../_shared/coverVideoReap.ts";
+
+// #3040 (B-1, A-1) — a store build too old for the deterministic lane gets a
+// human sentence, not a raw code. Pre-#2827 clients render `detail` for codes
+// they do not know, so this copy reaches build 37 with no native change.
+// MINGLA-INVARIANT: I-VIDEO-OLD-CLIENT-TOLD | issue #3040 | a client too old for the lane always receives human "update" copy, and the rejection is logged
+export const CLIENT_VERSION_REQUIRED_DETAIL =
+  "Update Mingla Host to upload videos. This version can\u2019t upload videos anymore. Updating takes a minute.";
+// #3040 (B-6) — the provider TUS-create POST is bounded.
+export const TUS_CREATE_TIMEOUT_MS = 10_000;
 
 export const SOURCE_CEILING_MS = 60_000;
 const SOURCE_MIME_EXTENSIONS = new Map([
@@ -264,7 +280,38 @@ const defaultDeps = {
   serviceRoleClient,
   sleep: (ms: number) =>
     new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  // #3040 (B-7) — a replay hands out a fresh one-hour signature; the server
+  // lease must follow it or the job is killed mid-transfer at the old hour.
+  extendTransportLease,
+  // #3040 (B-16) — the live TUS offset, not the DB copy (which is 0 until
+  // acknowledgement), decides whether a transport may be replaced.
+  readTusTransfer,
 };
+
+// #3040 (B-7) — returns ok on success or when the RPC is not deployed yet
+// (B-11: degrade explicitly, never 500 the request); a real failure is
+// reported so the caller does not hand out a signature the server will not
+// honour.
+// deno-lint-ignore no-explicit-any
+async function extendTransportLease(
+  supabase: any,
+  jobId: string,
+  expiresAtIso: string,
+): Promise<{ ok: true; degraded?: "migration_not_applied" } | { ok: false }> {
+  try {
+    const { error } = await supabase.rpc("cover_video_extend_transport_lease", {
+      p_job_id: jobId,
+      p_expires_at: expiresAtIso,
+    });
+    if (!error) return { ok: true };
+    if (isMissingRpc(error)) {
+      return { ok: true, degraded: "migration_not_applied" };
+    }
+    return { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
 
 const isMissingDeterministicContract = (
   error: { code?: string; message?: string } | null,
@@ -327,9 +374,13 @@ const withAllocationLease = async <T>(
   }
 };
 
+type UploadIntentDeps =
+  & Omit<typeof defaultDeps, "extendTransportLease" | "readTusTransfer">
+  & Partial<Pick<typeof defaultDeps, "extendTransportLease" | "readTusTransfer">>;
+
 export const handleEventCoverVideoUploadIntent = async (
   req: Request,
-  deps: typeof defaultDeps = defaultDeps,
+  deps: UploadIntentDeps = defaultDeps,
 ): Promise<Response> => {
   let requestId: string = crypto.randomUUID();
   if (req.method === "OPTIONS") {
@@ -387,7 +438,8 @@ export const handleEventCoverVideoUploadIntent = async (
   }
 
   const targetKind = body.target === "brand" || body.target === "venue" ||
-      body.target === "venue_draft" || body.target === "trip_day_media"
+      body.target === "venue_draft" || body.target === "trip_day_media" ||
+      body.target === "ad_creative"
     ? body.target
     : "event";
 
@@ -404,11 +456,21 @@ export const handleEventCoverVideoUploadIntent = async (
   });
 
   const eventId = body.eventId;
-  const brandId = body.brandId;
+  // #3040 — a brandless (house) upload exists only for the ad_creative target.
+  const brandId: string | null = targetKind === "ad_creative" &&
+      (body.brandId === undefined || body.brandId === null)
+    ? null
+    : body.brandId ?? "";
   if (!isValidUuid(body.clientOperationId)) {
+    logWarn(requestId, "client_version_required", {
+      appVersion: req.headers.get("x-mingla-app-version"),
+      platform: req.headers.get("x-mingla-platform"),
+      userAgent: (req.headers.get("user-agent") ?? "").slice(0, 80),
+    });
     return jsonResponse({
       error: "client_version_required",
-      detail: "client_operation_id_required",
+      code: "client_operation_id_required",
+      detail: CLIENT_VERSION_REQUIRED_DETAIL,
     }, 426);
   }
   if (
@@ -421,12 +483,32 @@ export const handleEventCoverVideoUploadIntent = async (
       detail: "event_id_invalid_uuid",
     }, 400);
   }
-  if (!isValidUuid(brandId)) {
+  if (brandId !== null && !isValidUuid(brandId)) {
     logWarn(requestId, "brand_id_invalid_uuid", { brandId });
     return jsonResponse({
       error: "validation_error",
       detail: "brand_id_invalid_uuid",
     }, 400);
+  }
+  // #3040 — the ad_creative owner key names where the finished video belongs.
+  // admin-library:<id> is the calling admin's own house library (brandless);
+  // host-ad:<draftId> and ari:<proposalId> are brand-owned.
+  const adOwner = targetKind === "ad_creative"
+    ? parseAdCreativeOwnerKey(body.draftOwnerKey)
+    : null;
+  if (targetKind === "ad_creative") {
+    const ownerValid = adOwner !== null && (
+      adOwner.kind === "admin-library"
+        ? brandId === null && adOwner.id === userId
+        : brandId !== null
+    );
+    if (!ownerValid) {
+      logWarn(requestId, "draft_owner_key_invalid", { targetKind });
+      return jsonResponse({
+        error: "validation_error",
+        detail: "draft_owner_key_invalid",
+      }, 400);
+    }
   }
   if (targetKind === "venue" && !isValidUuid(body.venueId)) {
     return jsonResponse({
@@ -504,7 +586,10 @@ export const handleEventCoverVideoUploadIntent = async (
     });
     return jsonResponse({
       error: "validation_error",
-      detail: "source_size_out_of_range",
+      // #3040 — over the cap is its own, named refusal.
+      detail: sourceBytes > MAX_SOURCE_VIDEO_BYTES
+        ? "source_too_large"
+        : "source_size_out_of_range",
     }, 422);
   }
   if (
@@ -533,6 +618,18 @@ export const handleEventCoverVideoUploadIntent = async (
       },
       422,
     );
+  }
+  // #3040 (answer 4) — ad videos need at least 5 s; the pick-time check on
+  // every client is mirrored here and in the DB. Covers have no minimum.
+  if (targetKind === "ad_creative" && sourceDurationMs < AD_MIN_DURATION_MS) {
+    logWarn(requestId, "ad_video_too_short", {
+      minDurationMs: AD_MIN_DURATION_MS,
+      sourceDurationMs,
+    });
+    return jsonResponse({
+      error: "validation_error",
+      detail: "ad_video_too_short",
+    }, 422);
   }
   const trimError = validateTrimRange({
     sourceDurationMs,
@@ -572,9 +669,9 @@ export const handleEventCoverVideoUploadIntent = async (
     eventId: targetKind === "event" || targetKind === "trip_day_media"
       ? eventId as string
       : null,
-    brandId: brandId as string,
+    brandId,
     venueId: targetKind === "venue" ? body.venueId as string : null,
-    draftOwnerKey: targetKind === "venue_draft"
+    draftOwnerKey: targetKind === "venue_draft" || targetKind === "ad_creative"
       ? body.draftOwnerKey!.trim()
       : null,
     requestedBy: userId,
@@ -618,7 +715,8 @@ export const handleEventCoverVideoUploadIntent = async (
       : null,
     p_brand_id: brandId,
     p_venue_id: targetKind === "venue" ? body.venueId : null,
-    p_draft_owner_key: targetKind === "venue_draft"
+    p_draft_owner_key: targetKind === "venue_draft" ||
+        targetKind === "ad_creative"
       ? body.draftOwnerKey?.trim()
       : null,
     p_apply_mode: applyMode,
@@ -913,7 +1011,7 @@ export const handleEventCoverVideoUploadIntent = async (
           leaseToken,
           async () => {
             try {
-              const response = await fetch(presign.tusEndpoint, {
+              const response = await fetchWithTimeout(presign.tusEndpoint, {
                 method: "POST",
                 headers: {
                   AuthorizationSignature: presign.authorizationSignature,
@@ -926,7 +1024,7 @@ export const handleEventCoverVideoUploadIntent = async (
                     btoa(job.id)
                   },sha256 ${btoa(sourceSha256)}`,
                 },
-              });
+              }, TUS_CREATE_TIMEOUT_MS);
               return { response, networkError: null as string | null };
             } catch {
               return { response: null, networkError: "tus_create_network" };
@@ -1058,20 +1156,55 @@ export const handleEventCoverVideoUploadIntent = async (
           detail: "uploaded_transport_cannot_be_replaced",
         }, 409);
       }
-      const createTus = await fetch(presign.tusEndpoint, {
-        method: "POST",
-        headers: {
-          AuthorizationSignature: presign.authorizationSignature,
-          AuthorizationExpire: String(presign.authorizationExpire),
-          LibraryId: presign.libraryId,
-          VideoId: presign.videoId,
-          "Tus-Resumable": "1.0.0",
-          "Upload-Length": String(sourceBytes),
-          "Upload-Metadata": `filetype ${btoa(sourceMimeType)},title ${
-            btoa(job.id)
-          },sha256 ${btoa(sourceSha256)}`,
-        },
-      });
+      // #3040 (B-16) — the DB offset stays 0 until acknowledgement, so it
+      // cannot prove a resource is empty. Ask the provider; any byte on the
+      // resource (or an unanswerable question) refuses the replacement.
+      const transfer = await (deps.readTusTransfer ?? readTusTransfer)(
+        sourceBytes,
+        videoId,
+        tusResourceUrl,
+        { bunnyPresignTusUpload: deps.bunnyPresignTusUpload },
+      );
+      if (transfer.kind === "unreadable") {
+        return jsonResponse({
+          error: "transport_refresh_failed",
+          detail: transfer.reason,
+          retryable: true,
+        }, 503);
+      }
+      if (transfer.uploadOffset > 0) {
+        return jsonResponse({
+          error: "transport_has_bytes",
+          detail: { uploadOffset: transfer.uploadOffset },
+        }, 409);
+      }
+      let createTus: Response;
+      try {
+        createTus = await fetchWithTimeout(presign.tusEndpoint, {
+          method: "POST",
+          headers: {
+            AuthorizationSignature: presign.authorizationSignature,
+            AuthorizationExpire: String(presign.authorizationExpire),
+            LibraryId: presign.libraryId,
+            VideoId: presign.videoId,
+            "Tus-Resumable": "1.0.0",
+            "Upload-Length": String(sourceBytes),
+            "Upload-Metadata": `filetype ${btoa(sourceMimeType)},title ${
+              btoa(job.id)
+            },sha256 ${btoa(sourceSha256)}`,
+          },
+        }, TUS_CREATE_TIMEOUT_MS);
+      } catch (error) {
+        logWarn(requestId, "transport_refresh_failed", {
+          jobId: job.id,
+          reason: error instanceof Error ? error.name : "error",
+        });
+        return jsonResponse({
+          error: "transport_refresh_failed",
+          detail: "tus_create_network",
+          retryable: true,
+        }, 503);
+      }
       const location = createTus.headers.get("location");
       if (createTus.status !== 201 || location === null) {
         return jsonResponse({
@@ -1098,12 +1231,36 @@ export const handleEventCoverVideoUploadIntent = async (
       }
       tusResourceUrl = replacementUrl;
     }
+    // #3040 (B-7) — the signature returned below expires an hour from now; the
+    // server's transport lease moves forward to match it before the client
+    // ever sees it. A failed extension is retryable, never a signature the
+    // server would later refuse to honour.
+    if (deps.extendTransportLease) {
+      const extended = await deps.extendTransportLease(
+        supabase,
+        job.id,
+        new Date(presign.authorizationExpire * 1000).toISOString(),
+      );
+      if (!extended.ok) {
+        logWarn(requestId, "transport_lease_extend_failed", { jobId: job.id });
+        return jsonResponse({
+          error: "transport_lease_extend_failed",
+          retryable: true,
+        }, 503);
+      }
+      if (extended.degraded) {
+        logWarn(requestId, extended.degraded, {
+          jobId: job.id,
+          rpc: "cover_video_extend_transport_lease",
+        });
+      }
+    }
     logInfo(requestId, "returned", { jobId: job.id, provider: "bunny" });
     return jsonResponse({
       jobId: job.id,
       provider: "bunny",
       maxDurationMs: MAX_DURATION_MS,
-      finalMaxBytes: 25 * 1024 * 1024,
+      finalMaxBytes: FINAL_MAX_BYTES,
       upload: {
         url: tusResourceUrl,
         // NEW discriminator the client branches on ("tus" vs the implicit
