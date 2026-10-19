@@ -8,6 +8,9 @@
 -- its next tick is not reported as stuck.
 -- SLO figures exclude rows created before 2026-10-18: their source_uploaded_at
 -- was backfilled from a later clock and would read as 0 s processing.
+-- A ready venue-draft video is client-owned and kept in the host's local draft
+-- (I-VENUE-DRAFT-VIDEO-RETAINED): it is never "unclaimed", never "stuck", and
+-- never feeds the alert rail.
 
 BEGIN;
 
@@ -16,6 +19,7 @@ WITH (security_invoker = true) AS
 SELECT
   (SELECT count(*) FROM public.event_cover_video_jobs j
     WHERE j.status = 'ready'
+      AND j.target_kind <> 'venue_draft'
       AND j.completed_at < now() - interval '15 minutes')::bigint
     AS ready_unclaimed_count,
   (SELECT count(*) FROM public.event_cover_video_jobs j
@@ -36,7 +40,8 @@ SELECT
       OR (j.status IN ('source_uploaded','processing_queued','processing')
         AND coalesce(j.source_uploaded_at, j.created_at) < now() - interval '15 minutes')
       -- ready: 24 h owner TTL
-      OR (j.status = 'ready' AND j.completed_at < now() - interval '24 hours 5 minutes')
+      OR (j.status = 'ready' AND j.target_kind <> 'venue_draft'
+        AND j.completed_at < now() - interval '24 hours 5 minutes')
     ))::bigint
     AS stuck_nonterminal_count,
   (SELECT count(*) FROM public.event_cover_video_jobs j
@@ -45,7 +50,7 @@ SELECT
     AS slo_breaches_1h,
   (SELECT floor(extract(epoch FROM (now() - min(j.completed_at))))::bigint
     FROM public.event_cover_video_jobs j
-    WHERE j.status = 'ready')
+    WHERE j.status = 'ready' AND j.target_kind <> 'venue_draft')
     AS oldest_ready_age_s;
 
 REVOKE ALL ON public.cover_video_lane_health_v FROM PUBLIC, anon, authenticated;

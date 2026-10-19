@@ -4,8 +4,10 @@
 -- migration: new columns are nullable (ad_creatives.source is filled by a
 -- BEFORE INSERT default when an older writer omits it), CHECKs only widen or
 -- pin values the edge already enforces, every function keeps its signature and
--- its behaviour for existing target kinds, and the one new transition edge
--- (ready -> failed) is only reachable with failure codes no deployed code sends.
+-- its behaviour for existing target kinds, and the new transition edges are
+-- reachable only by new code: ready -> failed with failure codes no deployed
+-- code sends, and ready -> cancelled for an ad_creative job (a target kind no
+-- deployed code creates) that has no creative row yet.
 
 BEGIN;
 
@@ -76,6 +78,18 @@ ALTER TABLE public.ad_creatives
   ADD CONSTRAINT ad_creatives_source_check
     CHECK (source IN ('admin_upload','host_upload','ari_upload','event_cover')) NOT VALID;
 ALTER TABLE public.ad_creatives VALIDATE CONSTRAINT ad_creatives_source_check;
+
+-- House media is media that was a Mingla house upload FROM CREATION: recorded
+-- as admin_upload with no owning brand snapshot. Media that ever belonged to
+-- a brand keeps that brand in its immutable snapshot, so it can never become
+-- house media later, whatever happens to brand_id. Every house-reuse check
+-- (edge and SQL) also requires source_brand_id IS NULL.
+-- MINGLA-INVARIANT: I-CREATIVE-HOUSE-PROVENANCE-RECORDED | issue #3040 | source='admin_upload' is only ever recorded with no brand snapshot; house reuse requires both
+ALTER TABLE public.ad_creatives DROP CONSTRAINT IF EXISTS ad_creatives_admin_upload_is_house;
+ALTER TABLE public.ad_creatives
+  ADD CONSTRAINT ad_creatives_admin_upload_is_house
+    CHECK (source <> 'admin_upload' OR source_brand_id IS NULL) NOT VALID;
+ALTER TABLE public.ad_creatives VALIDATE CONSTRAINT ad_creatives_admin_upload_is_house;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ad_creatives_source_job_id_key
   ON public.ad_creatives(source_job_id) WHERE source_job_id IS NOT NULL;
@@ -317,11 +331,20 @@ BEGIN
  IF v_job.status<>'ready' OR v_job.processed_url IS DISTINCT FROM p_expected_url OR v_job.application_version IS DISTINCT FROM p_expected_version
    OR (v_job.target_kind IN ('venue_draft','ad_creative') AND p_expected_requested_by IS NOT NULL
        AND v_job.requested_by IS DISTINCT FROM p_expected_requested_by) THEN RETURN v_job; END IF;
+ -- The server owner (NULL requester) re-checks, in the same statement that
+ -- writes, that the cover still shows the baseline recorded at upload (or
+ -- already shows this video): a host change landing after the reaper read the
+ -- cover is never overwritten. A client caller and the draft_auto webhook keep
+ -- their existing behaviour.
  IF v_job.target_kind='event' THEN
-  UPDATE public.events SET cover_media_type='video',cover_media_url=v_job.processed_url,cover_media_poster_url=v_job.processed_poster_url,updated_at=now() WHERE id=v_job.event_id AND deleted_at IS NULL;
+  UPDATE public.events SET cover_media_type='video',cover_media_url=v_job.processed_url,cover_media_poster_url=v_job.processed_poster_url,updated_at=now() WHERE id=v_job.event_id AND deleted_at IS NULL
+    AND (p_expected_requested_by IS NOT NULL OR v_job.apply_mode='draft_auto' OR NOT v_job.target_cover_base_captured
+      OR cover_media_url IS NOT DISTINCT FROM v_job.target_cover_base_url OR cover_media_url IS NOT DISTINCT FROM v_job.processed_url);
   GET DIAGNOSTICS n=ROW_COUNT;
  ELSIF v_job.target_kind='brand' THEN
-  UPDATE public.brands SET cover_media_type='video',cover_media_url=v_job.processed_url,cover_media_poster_url=v_job.processed_poster_url,updated_at=now() WHERE id=v_job.brand_id AND deleted_at IS NULL;
+  UPDATE public.brands SET cover_media_type='video',cover_media_url=v_job.processed_url,cover_media_poster_url=v_job.processed_poster_url,updated_at=now() WHERE id=v_job.brand_id AND deleted_at IS NULL
+    AND (p_expected_requested_by IS NOT NULL OR v_job.apply_mode='draft_auto' OR NOT v_job.target_cover_base_captured
+      OR cover_media_url IS NOT DISTINCT FROM v_job.target_cover_base_url OR cover_media_url IS NOT DISTINCT FROM v_job.processed_url);
   GET DIAGNOSTICS n=ROW_COUNT;
  ELSIF v_job.target_kind IN ('venue','venue_draft','trip_day_media') THEN n:=1;
  ELSIF v_job.target_kind='ad_creative' THEN
@@ -389,6 +412,15 @@ BEGIN
  IF EXISTS (SELECT 1 FROM public.ad_creatives c WHERE c.bunny_video_id=p_guid) THEN
    kinds := array_append(kinds,'ad_creative');
  END IF;
+ -- A venue-draft video that reached ready was handed to the host's device and
+ -- lives in a local draft no table can see. It is client-owned and kept, so
+ -- its own job counts too (p_exclude_job_id does not apply to this arm).
+ -- MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040
+ IF EXISTS (SELECT 1 FROM public.event_cover_video_jobs j
+      WHERE j.source_asset_id=p_guid AND j.target_kind='venue_draft'
+        AND j.processed_url IS NOT NULL) THEN
+   kinds := array_append(kinds,'venue_draft');
+ END IF;
  IF EXISTS (SELECT 1 FROM public.event_cover_video_jobs j
       WHERE j.source_asset_id=p_guid
         AND j.id IS DISTINCT FROM p_exclude_job_id
@@ -397,6 +429,40 @@ BEGIN
  END IF;
  RETURN kinds;
 END $f$;
+
+-- ── Step 11b: a replaced ad video is cancellable until it is in the library. ─
+-- Ad videos never supersede each other (they are independent library items),
+-- so the Host client cancels the one it replaced. A READY ad video may be
+-- cancelled while no creative row exists for it; once cancelled, no creative
+-- can ever be created for it. The job row lock serializes the two: cancel
+-- takes FOR UPDATE, a creative insert takes FOR SHARE.
+-- MINGLA-INVARIANT: I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES | issue #3040 | a cancelled ad video job never becomes an ad_creatives row
+CREATE OR REPLACE FUNCTION public.cover_video_cancel_once(p_job_id uuid) RETURNS public.event_cover_video_jobs
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $f$ DECLARE v public.event_cover_video_jobs;
+BEGIN
+ SELECT * INTO v FROM public.event_cover_video_jobs WHERE id=p_job_id FOR UPDATE;
+ IF NOT FOUND OR v.status IN ('applied','failed','cancelled','superseded') THEN RETURN v; END IF;
+ IF v.status='ready' AND (v.target_kind IS DISTINCT FROM 'ad_creative'
+     OR EXISTS (SELECT 1 FROM public.ad_creatives c WHERE c.source_job_id=v.id)) THEN
+   RETURN v;
+ END IF;
+ UPDATE public.event_cover_video_jobs SET status='cancelled',cancelled_at=coalesce(cancelled_at,now()),completed_at=coalesce(completed_at,now()) WHERE id=p_job_id RETURNING * INTO v; RETURN v;
+END $f$;
+
+CREATE OR REPLACE FUNCTION public.ad_creatives_job_not_cancelled() RETURNS trigger
+LANGUAGE plpgsql SET search_path=public,pg_temp AS $f$
+DECLARE v_status text;
+BEGIN
+  IF NEW.source_job_id IS NULL THEN RETURN NEW; END IF;
+  SELECT j.status INTO v_status FROM public.event_cover_video_jobs j WHERE j.id=NEW.source_job_id FOR SHARE;
+  IF v_status IN ('cancelled','superseded','failed') THEN
+    RAISE EXCEPTION 'ad_creative_job_not_materializable';
+  END IF;
+  RETURN NEW;
+END $f$;
+DROP TRIGGER IF EXISTS trg_ad_creatives_job_not_cancelled ON public.ad_creatives;
+CREATE TRIGGER trg_ad_creatives_job_not_cancelled BEFORE INSERT ON public.ad_creatives
+FOR EACH ROW EXECUTE FUNCTION public.ad_creatives_job_not_cancelled();
 
 -- ── Step 12: RLS read policy gains the ad_creative arm. ──────────────────────
 DROP POLICY IF EXISTS "Authorized managers can read cover video jobs"
@@ -427,6 +493,8 @@ CREATE POLICY "Authorized managers can read cover video jobs"
 -- ── Step 13: grants. ─────────────────────────────────────────────────────────
 REVOKE ALL ON FUNCTION public.ad_creatives_default_source() FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.ad_creatives_provenance_immutable() FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.ad_creatives_job_not_cancelled() FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.cover_video_cancel_once(uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.cover_video_require_new_identity() FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.cover_video_create_or_replay_job(uuid,uuid,text,uuid,uuid,uuid,text,text,text,text,text,text,text,bigint,integer,integer,integer,boolean) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.cover_video_transition_job(uuid,text[],text,integer,integer,jsonb) FROM PUBLIC,anon,authenticated;
@@ -436,6 +504,8 @@ REVOKE ALL ON FUNCTION public.cover_video_extend_transport_lease(uuid,timestampt
 REVOKE ALL ON FUNCTION public.cover_video_guid_live_references(text,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.ad_creatives_default_source() TO service_role;
 GRANT EXECUTE ON FUNCTION public.ad_creatives_provenance_immutable() TO service_role;
+GRANT EXECUTE ON FUNCTION public.ad_creatives_job_not_cancelled() TO service_role;
+GRANT EXECUTE ON FUNCTION public.cover_video_cancel_once(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.cover_video_require_new_identity() TO service_role;
 GRANT EXECUTE ON FUNCTION public.cover_video_create_or_replay_job(uuid,uuid,text,uuid,uuid,uuid,text,text,text,text,text,text,text,bigint,integer,integer,integer,boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.cover_video_transition_job(uuid,text[],text,integer,integer,jsonb) TO service_role;
@@ -475,6 +545,14 @@ BEGIN
   IF to_regprocedure('public.cover_video_guid_live_references(text,uuid)') IS NULL THEN
     RAISE EXCEPTION 'issue #3040: cover_video_guid_live_references missing';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid='public.ad_creatives'::regclass AND conname='ad_creatives_admin_upload_is_house'
+  ) THEN RAISE EXCEPTION 'issue #3040: house provenance is not recorded'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid='public.ad_creatives'::regclass AND tgname='trg_ad_creatives_job_not_cancelled'
+  ) THEN RAISE EXCEPTION 'issue #3040: a cancelled ad video could still materialize'; END IF;
   IF to_regprocedure('public.cover_video_extend_transport_lease(uuid,timestamptz)') IS NULL THEN
     RAISE EXCEPTION 'issue #3040: cover_video_extend_transport_lease missing';
   END IF;
