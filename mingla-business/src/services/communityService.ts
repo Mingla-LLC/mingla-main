@@ -12,12 +12,14 @@ export type CommunityAnnouncement = {
   id: string;
   title: string;
   body_md: string;
+  action_line: string | null;
+  roadmap_card_id: string | null;
   published_at: string | null;
   /** ISO timestamp when this host marked it read; null = unread. */
   read_at: string | null;
 };
 
-export type CommunityRoadmapLane = "now" | "next" | "later";
+export type CommunityRoadmapLane = "now" | "next" | "later" | "shipped";
 
 export type CommunityRoadmapCard = {
   id: string;
@@ -25,6 +27,9 @@ export type CommunityRoadmapCard = {
   public_body: string | null;
   lane: CommunityRoadmapLane;
   sort_order: number;
+  shipped_at: string | null;
+  target_label: string | null;
+  idea_count: number;
 };
 
 export type CommunityPostKind = "idea" | "question";
@@ -35,6 +40,7 @@ export type CommunityPost = {
   title: string;
   body: string;
   author_label: string;
+  brand_label: string;
   review_state: "pending" | "published" | "rejected" | "removed";
   created_at: string;
   vote_count: number;
@@ -42,6 +48,11 @@ export type CommunityPost = {
   voted_by_me: boolean;
   is_mine: boolean;
   accepted_comment_id: string | null;
+  workflow_status: string | null;
+  public_response: string | null;
+  pinned: boolean;
+  locked: boolean;
+  staff_answered: boolean;
 };
 
 export type CommunityComment = {
@@ -50,12 +61,15 @@ export type CommunityComment = {
   author_label: string;
   created_at: string;
   is_mine: boolean;
+  staff_answer: boolean;
 };
 
 type AnnouncementRow = {
   id: string;
   title: string;
   body_md: string;
+  action_line?: string | null;
+  roadmap_card_id?: string | null;
   published_at: string | null;
 };
 
@@ -70,10 +84,13 @@ type RoadmapRow = {
   public_body: string | null;
   lane: string;
   sort_order: number;
+  shipped_at?: string | null;
+  target_label?: string | null;
+  idea_count?: number;
 };
 
 function asLane(raw: string): CommunityRoadmapLane {
-  if (raw === "next" || raw === "later") return raw;
+  if (raw === "next" || raw === "later" || raw === "shipped") return raw;
   return "now";
 }
 
@@ -83,7 +100,7 @@ export async function listPublishedAnnouncements(): Promise<
 > {
   const { data: rows, error } = await supabase
     .from("community_announcements")
-    .select("id, title, body_md, published_at")
+    .select("id, title, body_md, action_line, roadmap_card_id, published_at")
     .eq("status", "published")
     .order("published_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -102,6 +119,8 @@ export async function listPublishedAnnouncements(): Promise<
     id: row.id,
     title: row.title,
     body_md: row.body_md,
+    action_line: row.action_line ?? null,
+    roadmap_card_id: row.roadmap_card_id ?? null,
     published_at: row.published_at,
     read_at: readById.get(row.id) ?? null,
   }));
@@ -126,7 +145,7 @@ export async function markAnnouncementRead(
 export async function listPublicRoadmap(): Promise<CommunityRoadmapCard[]> {
   const { data, error } = await supabase
     .from("community_roadmap_public")
-    .select("id, public_title, public_body, lane, sort_order")
+    .select("id, public_title, public_body, lane, sort_order, shipped_at, target_label, idea_count")
     .order("sort_order", { ascending: true })
     .order("id", { ascending: true });
   if (error) throw new Error(error.message);
@@ -137,6 +156,9 @@ export async function listPublicRoadmap(): Promise<CommunityRoadmapCard[]> {
     public_body: row.public_body,
     lane: asLane(row.lane),
     sort_order: row.sort_order,
+    shipped_at: row.shipped_at ?? null,
+    target_label: row.target_label ?? null,
+    idea_count: Number(row.idea_count) || 0,
   }));
 }
 
@@ -173,7 +195,7 @@ export async function fetchSupportIsOnline(): Promise<boolean> {
 export async function listCommunityPosts(
   kind?: CommunityPostKind,
 ): Promise<CommunityPost[]> {
-  const { data, error } = await supabase.rpc("issue_3720_community_feed", {
+  const { data, error } = await supabase.rpc("issue_3720_community_feed_v2", {
     p_kind: kind ?? null,
   });
   if (error) throw new Error(error.message);
@@ -211,7 +233,7 @@ export async function toggleCommunityVote(postId: string): Promise<boolean> {
 export async function listCommunityComments(
   postId: string,
 ): Promise<CommunityComment[]> {
-  const { data, error } = await supabase.rpc("issue_3720_community_comments", {
+  const { data, error } = await supabase.rpc("issue_3720_community_comments_v2", {
     p_post_id: postId,
   });
   if (error) throw new Error(error.message);

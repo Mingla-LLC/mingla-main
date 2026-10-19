@@ -37,12 +37,21 @@ export async function listAnnouncements() {
   return data ?? [];
 }
 
-export async function upsertAnnouncement({ id = null, title, bodyMd }) {
-  const { data, error } = await supabase.rpc("community_upsert_announcement", {
+export async function upsertAnnouncement({ id = null, title, bodyMd, actionLine = null, roadmapCardId = null }) {
+  let { data, error } = await supabase.rpc("issue_3720_admin_upsert_announcement", {
     p_id: id,
     p_title: title,
     p_body_md: bodyMd,
+    p_action_line: actionLine,
+    p_roadmap_card_id: roadmapCardId,
   });
+  if (error?.code === "PGRST202") {
+    ({ data, error } = await supabase.rpc("community_upsert_announcement", {
+      p_id: id,
+      p_title: title,
+      p_body_md: bodyMd,
+    }));
+  }
   throwRpc(error);
   return data;
 }

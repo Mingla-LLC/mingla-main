@@ -112,6 +112,7 @@ export default function AccountTab(): React.ReactElement {
     null,
   );
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  const [signOutLocalOpen, setSignOutLocalOpen] = useState(false);
   const [signOutEverywhereOpen, setSignOutEverywhereOpen] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
   const [signOutEverywhereError, setSignOutEverywhereError] = useState<
@@ -142,6 +143,7 @@ export default function AccountTab(): React.ReactElement {
         // /(tabs)/account with cleared session but unchanged UI (Cycle 0a-vintage
         // bug surfaced during Cycle 0b smoke; per ORCH-BIZ-AUTH-SIGNOUT-NAV).
         setSignOutEverywhereOpen(false);
+        setSignOutLocalOpen(false);
         router.replace("/");
       } catch (error) {
         if (scope === "global") {
@@ -342,7 +344,7 @@ export default function AccountTab(): React.ReactElement {
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.title}>Your brands</Text>
             <Text style={styles.body}>
-              Couldn't load your brands. Pull down or reopen Account to retry.
+              Couldn&apos;t load your brands. Pull down or reopen Account to retry.
             </Text>
           </GlassCard>
         ) : brandList.status === "empty" ? (
@@ -434,12 +436,11 @@ export default function AccountTab(): React.ReactElement {
               onPress={handleSupport}
             />
             <SettingsNavRow
-              icon="shield"
+              icon="logout"
               label="Sign out"
-              onPress={() => {
-                void handleSignOut("local");
-              }}
+              onPress={() => setSignOutLocalOpen(true)}
             />
+            <View style={styles.settingsDivider} />
             <SettingsNavRow
               icon="shield"
               label="Sign out everywhere"
@@ -502,6 +503,21 @@ export default function AccountTab(): React.ReactElement {
           />
         </Suspense>
       ) : null}
+
+      <ConfirmDialog
+        visible={signOutLocalOpen}
+        onClose={() => {
+          if (!signOutBusy) setSignOutLocalOpen(false);
+        }}
+        title="Sign out of Mingla Host on this device?"
+        description="You'll stay signed in on your other devices."
+        confirmLabel="Sign out"
+        cancelLabel="Keep signed in"
+        destructive
+        confirmLoading={signOutBusy}
+        onConfirm={() => handleSignOut("local")}
+        testID="account-sign-out-local-confirm"
+      />
 
       <ConfirmDialog
         visible={signOutEverywhereOpen}
@@ -631,6 +647,11 @@ const styles = StyleSheet.create({
   navRowsCol: {
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  settingsDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: glass.border.profileBase,
+    marginVertical: spacing.xs,
   },
   navRow: {
     flexDirection: "row",

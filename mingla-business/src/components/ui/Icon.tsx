@@ -75,6 +75,7 @@ export type IconName =
   | "filter"
   | "branch"
   | "shield"
+  | "logout"
   | "receipt"
   | "bank"
   | "nfc"
@@ -320,6 +321,7 @@ const RENDERERS: Record<IconName, Renderer> = {
     </>
   ),
   shield: () => <Path d="M12 3l8 3v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-3z" />,
+  logout: () => <Path d="M10 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h5M14 8l4 4-4 4M18 12H9" />,
   receipt: () => <Path d="M4 4v18l3-2 2 2 2-2 2 2 2-2 3 2V4l-3 2-2-2-2 2-2-2-2 2-3-2zM8 9h8M8 13h8M8 17h5" />,
   bank: () => <Path d="M3 21h18M5 21V10M9 21V10M15 21V10M19 21V10M2 10h20L12 3 2 10z" />,
   nfc: () => <Path d="M5 12C5 8 8 5 12 5s7 3 7 7-3 7-7 7M9 12a3 3 0 0 1 3-3 3 3 0 0 1 3 3" />,
