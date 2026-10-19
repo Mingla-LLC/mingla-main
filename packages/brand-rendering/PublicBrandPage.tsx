@@ -2398,7 +2398,6 @@ const styles = StyleSheet.create({
   },
   brandName: {
     fontSize: 30,
-    lineHeight: 33,
     fontWeight: "900",
     letterSpacing: -0.5,
   },
@@ -2455,7 +2454,6 @@ const styles = StyleSheet.create({
   },
   nextTeaserBody: {
     fontSize: 17,
-    lineHeight: 23,
     fontWeight: "800",
     marginTop: 10,
   },
@@ -2619,7 +2617,6 @@ const styles = StyleSheet.create({
   },
   oCardTitle: {
     fontSize: 17,
-    lineHeight: 21,
     fontWeight: "800",
     marginTop: 1,
   },
@@ -2690,7 +2687,6 @@ const styles = StyleSheet.create({
   tagline: {
     fontSize: 19,
     fontWeight: "800",
-    lineHeight: 24,
   },
   bioWrap: {
     marginTop: 12,

@@ -429,7 +429,7 @@ const VenueOrderItemOptions: React.FC<{
 const styles = StyleSheet.create({
   wrap: { gap: 24 },
   section: { gap: 8 },
-  sectionName: { fontSize: 17, lineHeight: 21, fontWeight: "800" },
+  sectionName: { fontSize: 17, fontWeight: "800" },
   sectionDesc: { fontSize: 14, lineHeight: 20, marginTop: 2 },
   card: { borderRadius: 16, overflow: "hidden", padding: 14 },
   row: { paddingVertical: 10, gap: 10 },

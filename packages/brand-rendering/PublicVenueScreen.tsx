@@ -651,7 +651,7 @@ const VenuePriceLedeSection: VenueSectionRenderer = ({
     if (stayRate === null) return null;
     return (
       <Text
-        style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
+        style={[styles.aboutBodyThemed, themedFont, { color: palette.secondaryText }]}
         testID="issue-1562-stay-rate-lede"
       >
         {venueStayRateRangeLine(stayRate)}
@@ -665,7 +665,7 @@ const VenuePriceLedeSection: VenueSectionRenderer = ({
     return null;
   }
   return (
-    <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
+    <Text style={[styles.aboutBodyThemed, themedFont, { color: palette.secondaryText }]}>
       Typical spend · {formatSourceRange({
         minMinor: discoveryPrice.minMinor,
         maxMinor: discoveryPrice.maxMinor,
@@ -695,7 +695,7 @@ const VenueAboutSection: VenueSectionRenderer = ({
   const aboutBlock = hasPitch ? (
     <View>
       <Text
-        style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
+        style={[styles.aboutBodyThemed, themedFont, { color: palette.secondaryText }]}
         numberOfLines={aboutExpanded ? undefined : 4}
       >
         {pitchText}
@@ -2339,6 +2339,9 @@ const styles = StyleSheet.create({
   aboutBody: {
     fontSize: 15,
     lineHeight: 23,
+  },
+  aboutBodyThemed: {
+    fontSize: 15,
   },
   aboutToggle: {
     paddingVertical: 8,

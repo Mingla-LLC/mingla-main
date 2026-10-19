@@ -163,7 +163,6 @@ const styles = StyleSheet.create({
   },
   menuSectionName: {
     fontSize: 17,
-    lineHeight: 21,
     fontWeight: "800",
   },
   menuSectionDesc: {
