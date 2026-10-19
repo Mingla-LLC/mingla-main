@@ -98,8 +98,16 @@ function CheckoutExperienceConfirmScreenInner({
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
   const experienceBrand = query.data?.brand ?? null;
-  const { lines, buyer, result, recordResult, setLineQuantity, setBuyer } =
-    useCart();
+  const {
+    lines,
+    buyer,
+    result,
+    recordResult,
+    setLineQuantity,
+    setBuyer,
+    bookedStartAt,
+    setBookedStartAt,
+  } = useCart();
 
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
   // Surface parity with the event and trip screens. A verified terminal
@@ -224,6 +232,13 @@ function CheckoutExperienceConfirmScreenInner({
     }
     if (buyer.email.length === 0 && buyer.phone.length === 0) {
       setBuyer(payload.buyer);
+    }
+    if (
+      payload.bookedStartAt !== undefined &&
+      payload.bookedStartAt !== null &&
+      payload.bookedStartAt.length > 0
+    ) {
+      setBookedStartAt(payload.bookedStartAt);
     }
 
     let cancelled = false;
@@ -491,6 +506,25 @@ function CheckoutExperienceConfirmScreenInner({
         })
       : "";
 
+  const bookedStartLabel = ((): string | null => {
+    if (bookedStartAt === null || bookedStartAt.length === 0) return null;
+    const d = new Date(bookedStartAt);
+    if (Number.isNaN(d.getTime())) return null;
+    const tz = experience?.timezone ?? "UTC";
+    try {
+      const time = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: tz,
+      }).format(d);
+      return `Booked ${time}`;
+    } catch {
+      return `Booked ${d.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      })}`;
+    }
+  })();
 
   return (
     <View style={styles.host}>
@@ -533,6 +567,11 @@ function CheckoutExperienceConfirmScreenInner({
             {dateSubline.length > 0 ? (
               <Text style={styles.summaryEventSubline} numberOfLines={1}>
                 {dateSubline}
+              </Text>
+            ) : null}
+            {bookedStartLabel !== null ? (
+              <Text style={styles.summaryEventSubline} numberOfLines={1}>
+                {bookedStartLabel}
               </Text>
             ) : null}
           </View>

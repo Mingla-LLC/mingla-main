@@ -317,6 +317,9 @@ export default function ConsumerExperienceDetailScreen({
   const [selectedEventDateId, setSelectedEventDateId] = useState<string | null>(
     null,
   );
+  const [selectedBookedStartAt, setSelectedBookedStartAt] = useState<
+    string | null
+  >(null);
   const [selectedQuantity, setSelectedQuantity] = useState<number>(1);
 
   // float→dock CTA visibility tracking (mirror the event screen 1:1).
@@ -619,6 +622,7 @@ export default function ConsumerExperienceDetailScreen({
 
   const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
     setSelectedEventDateId(eventDateId);
+    setSelectedBookedStartAt(null);
     setSelectedQuantity(1);
     setOccurrencePickerVisible(false);
     setCartVisible(true);
@@ -632,6 +636,11 @@ export default function ConsumerExperienceDetailScreen({
   const handleReserveConfirm = useCallback(
     (sel: ExperienceReserveSelection): void => {
       setSelectedEventDateId(sel.eventDateId);
+      setSelectedBookedStartAt(
+        typeof sel.startAt === "string" && sel.startAt.length > 0
+          ? sel.startAt
+          : null,
+      );
       setSelectedQuantity(sel.quantity >= 1 ? Math.floor(sel.quantity) : 1);
       setReservePickerVisible(false);
       setCartVisible(true);
@@ -684,6 +693,9 @@ export default function ConsumerExperienceDetailScreen({
           // request byte-identical to a one-off / no-date experience.
           ...(selectedEventDateId !== null
             ? { eventDateId: selectedEventDateId }
+            : {}),
+          ...(selectedBookedStartAt !== null
+            ? { bookedStartAt: selectedBookedStartAt }
             : {}),
           // issue #2265 — feed the cart sheet's pending copy.
           onPhase: setCheckoutPhase,
@@ -764,6 +776,7 @@ export default function ConsumerExperienceDetailScreen({
           // Drop the stale selection + invalidate the fresh detail so the picker
           // re-materializes with live, future slots, then re-open the right one.
           setSelectedEventDateId(null);
+          setSelectedBookedStartAt(null);
           freshDetailQuery.refetch();
           if (openDaily) {
             setReservePickerVisible(true);
@@ -782,6 +795,7 @@ export default function ConsumerExperienceDetailScreen({
       user,
       runNativeCheckout,
       selectedEventDateId,
+      selectedBookedStartAt,
       queryClient,
       openDaily,
       freshDetailQuery,

@@ -113,12 +113,16 @@ function requireEnv(key: string, fallback?: string, resolved?: string): string {
 function formatDate(dateIso: string | null, timezone: string): string {
   if (dateIso === null) return "Date to be confirmed";
   try {
+    // issue #3281 — include the booked clock ("Tue 14 Oct, 2:00 PM") in the
+    // experience zone so open-daily confirmations name the chosen start.
     return new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
       weekday: "short",
       month: "short",
       day: "numeric",
       year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     }).format(new Date(dateIso));
   } catch {
     return "Date to be confirmed";

@@ -72,6 +72,49 @@ export const experienceTimeChoices = (
   return out;
 };
 
+/**
+ * Minutes to add to `startAt`'s instant for a grid choice built like
+ * `experienceTimeChoices` (same loop index). null when `selectedMinute` is not
+ * on the grid inside the window.
+ */
+export const experienceMinuteOffsetFromOpen = (
+  startAt: string,
+  endAt: string,
+  timeZone: string,
+  selectedMinute: number,
+  stepMinutes: number = 30,
+): number | null => {
+  const w = experienceWindowMinutes(startAt, endAt, timeZone);
+  if (w === null) return null;
+  const step = stepMinutes > 0 ? stepMinutes : 30;
+  const day = 24 * 60;
+  for (let m = w.open; m <= w.close; m += step) {
+    if (m % day === selectedMinute) return m - w.open;
+  }
+  return null;
+};
+
+/** ISO instant for the buyer's open-daily time choice, or null when invalid. */
+export const experienceBookedStartIso = (
+  startAt: string,
+  endAt: string,
+  timeZone: string,
+  selectedMinute: number,
+  stepMinutes: number = 30,
+): string | null => {
+  const offset = experienceMinuteOffsetFromOpen(
+    startAt,
+    endAt,
+    timeZone,
+    selectedMinute,
+    stepMinutes,
+  );
+  if (offset === null) return null;
+  const base = Date.parse(startAt);
+  if (!Number.isFinite(base)) return null;
+  return new Date(base + offset * 60_000).toISOString();
+};
+
 /** Format minutes-from-midnight as "10:00 AM" (experience zone, not device). */
 export const formatExperienceMinute = (min: number): string => {
   const h = Math.floor(min / 60) % 24;

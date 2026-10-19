@@ -38,6 +38,7 @@ import {
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
 import {
+  experienceBookedStartIso,
   experienceTimeChoices,
   experienceZoneCityLabel,
   experienceZoneDiffersFromViewer,
@@ -54,6 +55,8 @@ export interface ExperienceReserveSelection {
   eventDateId: string;
   /** Party size (open-daily) → cart quantity. Always ≥1; 1 in slots mode. */
   quantity: number;
+  /** issue #3281 — open-daily booked start instant (ISO), when a time was chosen. */
+  startAt?: string;
 }
 
 export interface ExperienceReservePickerProps {
@@ -223,7 +226,18 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
       return;
     }
     if (selectedMinute === null) return;
-    onConfirm({ eventDateId: selectedDate.id, quantity: party });
+    const bookedIso = experienceBookedStartIso(
+      selectedDate.startAt,
+      selectedDate.endAt,
+      timezone,
+      selectedMinute,
+      30,
+    );
+    onConfirm({
+      eventDateId: selectedDate.id,
+      quantity: party,
+      ...(bookedIso !== null ? { startAt: bookedIso } : {}),
+    });
   };
 
   const formatMinute = formatExperienceMinute;

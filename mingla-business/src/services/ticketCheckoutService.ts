@@ -95,6 +95,11 @@ export interface TicketCheckoutCreateInput {
    * event, trip, RSVP and experience.
    */
   eventDateIds?: readonly string[];
+  /**
+   * issue #3281 Round 1 — open-daily booked start (ISO). OMITTED when absent so
+   * the request stays byte-identical for slots / no-time paths.
+   */
+  bookedStartAt?: string;
   /** #3859 — opt-in only; omitted callers remain on the legacy v1 rail. */
   checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
   /** One UUID retained by the cart across one logical create/retry. */
@@ -821,6 +826,9 @@ export const createTicketCheckout = async (
     // the RPC, which owns the pricing mode and the multiplier.
     ...(input.eventDateIds !== undefined && input.eventDateIds.length > 0
       ? { eventDateIds: [...input.eventDateIds] }
+      : {}),
+    ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
+      ? { bookedStartAt: input.bookedStartAt }
       : {}),
     // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
     // the request stays byte-identical for non-ad traffic. The edge fn persists

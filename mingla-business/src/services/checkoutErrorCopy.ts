@@ -230,6 +230,14 @@ const FREE_CHECKOUT_MESSAGE_BY_RAISE: Readonly<Record<string, string>> = Object
       "This event is not set up to take payment yet. Nothing was reserved.",
     stripe_account_not_ready:
       "This organiser has not finished setting up payments, so paid tickets cannot be sold yet. Nothing was reserved.",
+    booked_start_required:
+      "Choose a time within the open hours, then try again — nothing was reserved.",
+    booked_start_invalid:
+      "That time is not available for this day. Pick another time — nothing was reserved.",
+    booked_start_in_past:
+      "That time has already passed. Pick a later time — nothing was reserved.",
+    booked_start_off_grid:
+      "That time is not on the available schedule. Pick one of the listed times — nothing was reserved.",
   });
 
 /**

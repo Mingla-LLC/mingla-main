@@ -943,6 +943,20 @@ export const createTicketCheckoutCreateHandler = (
         body.eventDateId.length > 0
       ? body.eventDateId
       : null;
+    // issue #3281 — optional open-daily start (ISO). Shape-checked here; the
+    // RPC owns meaning (window / grid / past / required-when-flagged). Absent
+    // => byte-identical to today for every slots / legacy / pre-OTA client.
+    const bookedStartRaw = typeof body.bookedStartAt === "string"
+      ? body.bookedStartAt.trim()
+      : "";
+    let bookedStartAt: string | null = null;
+    if (bookedStartRaw.length > 0) {
+      const parsed = Date.parse(bookedStartRaw);
+      if (Number.isNaN(parsed)) {
+        return refuse({ error: "booked_start_invalid" }, 422);
+      }
+      bookedStartAt = new Date(parsed).toISOString();
+    }
     // issue #2160 [multi-day multi-select] — the SET of days the guest chose,
     // as a sibling of `lines` rather than a per-line field (SPEC amendment §1).
     // De-duplicated here; ORDERED and validated server-side below. Absent or
@@ -1422,6 +1436,8 @@ export const createTicketCheckoutCreateHandler = (
         paymentPlanChoice,
         // issue #2160 — day-aware. Empty => string-identical to today's key.
         eventDateIds: orderedEventDateIds,
+        // issue #3281 — start-aware. Absent => string-identical to today's key.
+        bookedStartAt,
       });
     const buyerStatusToken = randomBuyerStatusToken();
 
@@ -1465,6 +1481,8 @@ export const createTicketCheckoutCreateHandler = (
           p_event_date_ids: orderedEventDateIds.length > 0
             ? orderedEventDateIds
             : null,
+          // issue #3281 — optional booked start. RPC validates; null omits.
+          p_booked_start_at: bookedStartAt,
       },
       );
     const sessionResult: unknown = sessionCall.data;
@@ -1520,6 +1538,19 @@ export const createTicketCheckoutCreateHandler = (
       // same 422 family as the other day refusals) instead of a generic 409.
       if (sessionError?.message?.includes("event_date_choice_required")) {
         return jsonResponse({ error: "event_date_choice_required" }, 422);
+      }
+      // issue #3281 — booked-start refusals (stable names for client copy).
+      for (
+        const token of [
+          "booked_start_required",
+          "booked_start_invalid",
+          "booked_start_in_past",
+          "booked_start_off_grid",
+        ] as const
+      ) {
+        if (sessionError?.message?.includes(token)) {
+          return jsonResponse({ error: token }, 422);
+        }
       }
       const dbAccessDenial = ticketCheckoutAccessDenialFromDbMessage(
         sessionError?.message,

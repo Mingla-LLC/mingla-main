@@ -87,6 +87,8 @@ export interface NativeCheckoutInput {
    * ONLY when non-empty, so a single-date request stays byte-identical.
    */
   eventDateIds?: readonly string[];
+  /** issue #3281 — open-daily booked start (ISO). Omitted when absent. */
+  bookedStartAt?: string;
   /**
    * ORCH-1246 (Apple 4.9) — the on-screen event/trip/experience title, threaded
    * from the checkout route so the Apple Pay sheet's line item shows the PRODUCT
@@ -372,6 +374,9 @@ export const useNativeCheckoutFlow = (): (
           // (#3313). Empty => omitted => byte-identical single-date request.
           ...(normalizedEventDateIds(input).length > 0
             ? { eventDateIds: normalizedEventDateIds(input) }
+            : {}),
+          ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
+            ? { bookedStartAt: input.bookedStartAt }
             : {}),
         },
       },

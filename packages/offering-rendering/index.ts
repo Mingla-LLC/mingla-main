@@ -239,6 +239,8 @@ export type { StopSpineProps } from "./StopSpine";
 export {
   experienceWindowMinutes,
   experienceTimeChoices,
+  experienceMinuteOffsetFromOpen,
+  experienceBookedStartIso,
   formatExperienceMinute,
   experienceZoneCityLabel,
   experienceZoneDiffersFromViewer,

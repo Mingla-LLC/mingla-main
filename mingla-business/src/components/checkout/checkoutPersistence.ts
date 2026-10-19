@@ -40,6 +40,8 @@ export interface CheckoutResumePayload {
    * which now names the days, would have had nothing to name.
    */
   eventDateIds?: string[];
+  /** issue #3281 — open-daily booked start (ISO). Optional for older entries. */
+  bookedStartAt?: string | null;
 }
 
 export const checkoutResumeStorageKey = (eventId: string): string =>
@@ -87,7 +89,10 @@ export const isCheckoutResumePayload = (
     // whole payload rather than half-restoring a checkout.
     (v.eventDateIds === undefined ||
       (Array.isArray(v.eventDateIds) &&
-        v.eventDateIds.every((id) => typeof id === "string")))
+        v.eventDateIds.every((id) => typeof id === "string"))) &&
+    (v.bookedStartAt === undefined ||
+      v.bookedStartAt === null ||
+      typeof v.bookedStartAt === "string")
   );
 };
 

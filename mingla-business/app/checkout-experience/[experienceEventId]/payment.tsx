@@ -122,6 +122,8 @@ function CheckoutExperiencePaymentScreenContent({
     setLineQuantity,
     setBuyer,
     eventDateId,
+    bookedStartAt,
+    setBookedStartAt,
     checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
@@ -162,6 +164,7 @@ function CheckoutExperiencePaymentScreenContent({
   const cartFingerprint = JSON.stringify({
     eventId: experienceEventId,
     eventDateId,
+    bookedStartAt,
     email: buyer.email.trim().toLowerCase(),
     phone: buyer.phone.trim(),
     lines: lines.map((l) => [l.ticketTypeId, l.quantity]),
@@ -202,6 +205,13 @@ function CheckoutExperiencePaymentScreenContent({
         });
       }
       setBuyer(payload.buyer);
+      if (
+        payload.bookedStartAt !== undefined &&
+        payload.bookedStartAt !== null &&
+        payload.bookedStartAt.length > 0
+      ) {
+        setBookedStartAt(payload.bookedStartAt);
+      }
     }
     setRestoreChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,6 +382,7 @@ function CheckoutExperiencePaymentScreenContent({
           // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when the buyer
           // picked a slot (adaptive Reserve); null → request byte-identical.
           ...(eventDateId !== null ? { eventDateId } : {}),
+          ...(bookedStartAt !== null ? { bookedStartAt } : {}),
         });
         // issue #2190 — provider-neutral. Stripe brands answer with
         // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
@@ -398,6 +409,7 @@ function CheckoutExperiencePaymentScreenContent({
           buyerStatusToken: handoff.buyerStatusToken,
           lines,
           buyer,
+          ...(bookedStartAt !== null ? { bookedStartAt } : {}),
         });
         if (assignLocation(handoff.redirectUrl)) return;
         // Sandbox / test environments where location.assign is unavailable.
@@ -454,6 +466,7 @@ function CheckoutExperiencePaymentScreenContent({
           : {}),
         // ORCH-1138 Leg 3 — chosen occurrence ONLY when present; null → identical.
         ...(eventDateId !== null ? { eventDateId } : {}),
+        ...(bookedStartAt !== null ? { bookedStartAt } : {}),
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -554,6 +567,7 @@ function CheckoutExperiencePaymentScreenContent({
     buyer,
     checkoutAttemptIdFor,
     eventDateId,
+    bookedStartAt,
     experienceEventId,
     lines,
     nativeCheckout,
