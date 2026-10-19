@@ -8,7 +8,7 @@
 -- the provider returned to the host on a refund.
 --
 -- Every case below FAILS on the formula that shipped before #3872 and passes after
--- 20271106003872_issue_3872_money_truth.sql:
+-- 20271107003872_issue_3872_money_truth.sql:
 --   A. F10 — a hosted Stripe order that passes fees: gross must be what the card was
 --      charged (buyer_total_cents), not the ticket base kept in orders.total_cents.
 --   B. F1  — a partner share (10% OF Mingla's fee, paid from Mingla's platform

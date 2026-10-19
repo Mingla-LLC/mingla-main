@@ -16,7 +16,7 @@
 --   4. A provider amount below the computed subtotal and fees is refused, and the
 --      identity constraint refuses totals that do not add up.
 --   5. Copy never overwrites totals already on the order.
--- Every assertion fails before 20271106003872_issue_3872_money_truth.sql (the
+-- Every assertion fails before 20271107003872_issue_3872_money_truth.sql (the
 -- columns, the copy and the provider-total function do not exist).
 
 \set ON_ERROR_STOP on

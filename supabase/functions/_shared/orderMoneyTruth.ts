@@ -8,7 +8,7 @@
 // totals and pricing_breakdown to the order.
 //
 // Column meanings (ticket_checkout_sessions and orders, added by
-// 20271106003872_issue_3872_money_truth.sql):
+// 20271107003872_issue_3872_money_truth.sql):
 //   list_subtotal_cents  sum of the ticket lines at list price
 //   discount_cents       discounts applied (0 until discounts ship)
 //   net_subtotal_cents   what the tickets cost after discounts, before fees

@@ -9,7 +9,7 @@
 -- no fee or tax share, for partial and full refunds alike, on Stripe and
 -- Paystack. A current app therefore sees the same amount as before.
 --
--- Cases (each FAILS before 20271106003872_issue_3872_money_truth.sql):
+-- Cases (each FAILS before 20271107003872_issue_3872_money_truth.sql):
 --   1. an inflated client amount is ignored and logged;
 --   2. a client that sends no amount gets the server amount;
 --   3. the same line listed twice cannot exceed its quantity;

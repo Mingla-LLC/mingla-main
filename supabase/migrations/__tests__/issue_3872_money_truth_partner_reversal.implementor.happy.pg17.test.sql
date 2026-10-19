@@ -5,7 +5,7 @@
 -- gives back floor(original share x fee refunded / fee); untransferred splits
 -- are reduced in place; recording a reversal is idempotent and bounded.
 --
--- Fails before 20271106003872_issue_3872_money_truth.sql: the plan/record
+-- Fails before 20271107003872_issue_3872_money_truth.sql: the plan/record
 -- functions and partner_splits.reversed_cents do not exist; the only tool was
 -- mark_partner_split_reversed, which closes the whole split on any refund.
 
