@@ -16572,10 +16572,11 @@
       "providerWorkflow": ".github/workflows/issue-1972-ari-event-lifecycle.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "dba66db86e4cb21bc9e2f570e29067a0247fa9de37950b448f2308d75369246d",
+        "sourceSha256": "5acf75b0c8de1147f73a54e700e5ffda58753926365005a79c81b3038a81e326",
         "triggers": [
           "pull_request",
-          "push"
+          "push",
+          "workflow_dispatch"
         ],
         "pathScope": [
           ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs",
@@ -16694,10 +16695,11 @@
       "providerWorkflow": ".github/workflows/issue-1974-ari-ticket-pricing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "02374df4c75cd95bcbf6be951efb770790b6edd3eb2e0163fe8ca9f5b67347bb",
+        "sourceSha256": "305ff02b72e4c46311a4d2abc6a486c38c58e16ee4d8c1c271110494302b1608",
         "triggers": [
           "pull_request",
-          "push"
+          "push",
+          "workflow_dispatch"
         ],
         "pathScope": [
           ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs",
@@ -16811,10 +16813,11 @@
       "providerWorkflow": ".github/workflows/issue-1985-ari-task-state.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "4e0161d9236f27354bba3c5bdba21f6d3524ac4c32aca2f204c8e6db1a4d0b58",
+        "sourceSha256": "85dbc04e8df38a4eab2e1b3bd502e04bbbca6a8343e3783cf5e96020807de021",
         "triggers": [
           "pull_request",
-          "push"
+          "push",
+          "workflow_dispatch"
         ],
         "pathScope": [
           ".github/scripts/strict-grep/issue-1985-ari-task-state.mjs",
@@ -17466,10 +17469,11 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c9276202079ee18c5ab7a5ec6bd64c50b1ffbc6b90eb024ab9ae98a6800dbe9c",
+        "sourceSha256": "4474efa75f5518c2dbd61552227ffd0163c37a65a7a673e97da4036f2d9d42a1",
         "triggers": [
           "pull_request",
-          "push"
+          "push",
+          "workflow_dispatch"
         ],
         "pathScope": [
           ".github/scripts/strict-grep/MANIFEST.json",

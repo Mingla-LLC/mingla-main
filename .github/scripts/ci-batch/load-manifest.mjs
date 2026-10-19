@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
 export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
-export const BOOTSTRAP_SHA256 = "ec425d9e48c68fe62b3cd96c0f0b5651c4b3abf44870520a3689980e9a80cd8f";
+// #3281: re-sealed after the four affected live providers added the reviewed,
+// input-free exact-current-main recovery trigger to their metadata.
+export const BOOTSTRAP_SHA256 = "deddd1e3af4396d64f81e227ac3f6d0798ba7242ea8634eb48ec2dffa84ef7d1";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

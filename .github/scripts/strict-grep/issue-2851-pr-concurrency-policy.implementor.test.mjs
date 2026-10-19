@@ -1225,7 +1225,11 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // registration line is protected by its row in the revert-sensitivity table,
   // and the receipt chain that did otherwise was retired under #3095.
   // Every earlier re-derivation is preserved above, not replaced.
-  "6d801614096e869746862f804ed347ad58054820403a11d6a50efd77bdf1e3e7";
+  // [TEST-MOD-APPROVED #3281] Re-derived after four existing PR-family
+  // workflows gained the input-free workflow_dispatch event required by the
+  // exact-current-main recovery contract. The PR-family inventory, workflow
+  // identities, concurrency blocks and reusable-workflow calls are unchanged.
+  "0b0993ff999bce0b07e13778a7f0b4784f8c1b5e5d4aa35c9fdac68645de0085";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
