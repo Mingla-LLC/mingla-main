@@ -132,3 +132,11 @@ jobs:
         run: >-
           npx jest --ci --runInBand --runTestsByPath
           src/components/ari/__tests__/issue_1983_account_deletion_confirm.test.ts
+
+      # #3040 — the shared web video uploader (`packages/video-upload`) is plain
+      # ESM with node:test suites: purity (no native code, OTA-safe) and limits
+      # parity with the edge defaults and the lane migration's CHECKs. jest's
+      # roots stop at mingla-business/src, so the package's own suites run here.
+      - name: "#3040 packages/video-upload node:test (purity, limits parity, progress)"
+        if: always()
+        run: node --test ../packages/video-upload/__tests__/*.mjs

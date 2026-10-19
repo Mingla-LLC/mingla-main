@@ -16,8 +16,15 @@
  *     SV-2  `emitUploadProgress`                    — the byte-progress emitter.
  *     SV-3  `(bytesSent / bytesTotal) * 100`        — the real byte math.
  *     SV-4  `bytesSent` + `bytesTotal`              — the byte fields.
+ *   web transport (issue #3040, I-VIDEO-ONE-UPLOADER): the web XHR lives ONLY in
+ *   packages/video-upload/index.js, shared by Host web and Admin, so SV-5/SV-6
+ *   read that file (comment-stripped):
  *     SV-5  `xhr.upload.onprogress`                 — the web XHR real-progress hook.
- *     SV-6  `event.loaded` + `event.total`          — the real XHR byte counts.
+ *     SV-6  `event.loaded` feeds `projectUploadPercent`, and 100 is reported only
+ *           on the final confirmed chunk (`final ? 100 : projectUploadPercent(`)
+ *           — real bytes, never a premature 100.
+ *     SV-7  the service imports `@mingla/video-upload` and builds NO XHR of its
+ *           own (`new XMLHttpRequest` absent) — one web uploader.
  *     SV-CLD  `createUploadTask` ABSENT             — the dead Expo path must not return.
  *   CoverPicker.tsx (comment-stripped):
  *     CP-1  `videoProjectionCopy(stage, status)` owns truthful state copy.
@@ -40,6 +47,7 @@ const REPO_ROOT = join(__dirname, "..", "..", "..");
 
 const REL = {
   service: "mingla-business/src/services/eventCoverVideoProcessingService.ts",
+  webTransport: "packages/video-upload/index.js",
   coverPicker: "mingla-business/src/components/ui/CoverPicker.tsx",
   hook: "mingla-business/src/hooks/useEventCoverVideoUpload.ts",
 };
@@ -59,6 +67,7 @@ export function scan(sources) {
   const svc = stripComments(sources.service ?? "");
   const cp = stripComments(sources.coverPicker ?? "");
   const hook = stripComments(sources.hook ?? "");
+  const web = stripComments(sources.webTransport ?? "");
 
   // ── service byte-progress ──────────────────────────────────────────────
   if (!svc.includes("EventCoverVideoUploadProgress")) {
@@ -73,11 +82,15 @@ export function scan(sources) {
   if (!svc.includes("bytesSent") || !svc.includes("bytesTotal")) {
     failures.push("SV-4: service no longer carries the `bytesSent`/`bytesTotal` byte fields.");
   }
-  if (!svc.includes("xhr.upload.onprogress")) {
-    failures.push("SV-5: service web transport no longer wires `xhr.upload.onprogress` — the real-progress hook is gone.");
+  if (!web.includes("xhr.upload.onprogress")) {
+    failures.push("SV-5: the shared web transport (packages/video-upload) no longer wires `xhr.upload.onprogress` — the real-progress hook is gone.");
   }
-  if (!svc.includes("event.loaded") || !svc.includes("event.total")) {
-    failures.push("SV-6: service web transport no longer reads `event.loaded`/`event.total` — the real XHR byte counts are gone.");
+  if (!web.includes("event.loaded") || !web.includes("final ? 100 : projectUploadPercent(") ||
+      !web.includes("confirmedBytes")) {
+    failures.push("SV-6: the shared web transport no longer derives percent from real bytes (`event.loaded` + confirmed offset through `projectUploadPercent`, 100 only on the final chunk).");
+  }
+  if (!svc.includes("@mingla/video-upload") || svc.includes("new XMLHttpRequest")) {
+    failures.push("SV-7: the service must upload web bytes through `@mingla/video-upload` and build no XHR of its own (one web uploader, #3040).");
   }
   if (svc.includes("createUploadTask")) {
     failures.push("SV-CLD: the dead Expo `createUploadTask` path reappeared in the service. Upload is TUS-only (#966).");
@@ -119,9 +132,11 @@ if (process.argv.includes("--self-test")) {
       "  const percent = clampPercent((bytesSent / bytesTotal) * 100);",
       "  cb?.({ bytesSent, bytesTotal, percent });",
       "};",
-      "xhr.upload.onprogress = (event) => {",
-      "  emitUploadProgress(input.onProgress, event.loaded, event.total);",
-      "};",
+      'import { uploadSourceWeb } from "@mingla/video-upload";',
+    ].join("\n"),
+    webTransport: [
+      "xhr.upload.onprogress = (event) => { onProgress(event.loaded); };",
+      "const percent = final ? 100 : projectUploadPercent({ confirmedBytes, inflightLoaded, total });",
     ].join("\n"),
     coverPicker: [
       "const copy = videoProjectionCopy(stage, status);",
@@ -149,8 +164,12 @@ if (process.argv.includes("--self-test")) {
   bad("drop EventCoverVideoUploadProgress trips SV-1", (s) => { s.service = s.service.replaceAll("EventCoverVideoUploadProgress", "Foo"); }, "SV-1:");
   bad("drop emitUploadProgress trips SV-2", (s) => { s.service = s.service.replaceAll("emitUploadProgress", "foo"); }, "SV-2:");
   bad("drop byte math trips SV-3", (s) => { s.service = s.service.replace("(bytesSent / bytesTotal) * 100", "70"); }, "SV-3:");
-  bad("drop xhr.upload.onprogress trips SV-5", (s) => { s.service = s.service.replace("xhr.upload.onprogress", "xhr.foo"); }, "SV-5:");
-  bad("drop event.loaded/total trips SV-6", (s) => { s.service = s.service.replace("event.loaded, event.total", "0, 1"); }, "SV-6:");
+  bad("drop xhr.upload.onprogress trips SV-5", (s) => { s.webTransport = s.webTransport.replace("xhr.upload.onprogress", "xhr.foo"); }, "SV-5:");
+  bad("drop event.loaded trips SV-6", (s) => { s.webTransport = s.webTransport.replace("event.loaded", "0"); }, "SV-6:");
+  bad("premature 100 trips SV-6", (s) => { s.webTransport = s.webTransport.replace("final ? 100 : projectUploadPercent(", "projectUploadPercent("); }, "SV-6:");
+  bad("drop confirmed offset trips SV-6", (s) => { s.webTransport = s.webTransport.replace("confirmedBytes", "guessedBytes"); }, "SV-6:");
+  bad("service builds its own XHR trips SV-7", (s) => { s.service += "\nconst xhr = new XMLHttpRequest();"; }, "SV-7:");
+  bad("service drops the shared uploader trips SV-7", (s) => { s.service = s.service.replace('"@mingla/video-upload"', '"./localTus"'); }, "SV-7:");
   bad("reintroduce createUploadTask trips SV-CLD", (s) => { s.service += "\nconst t = FileSystem.createUploadTask(url);"; }, "SV-CLD:");
   bad("drop canonical projection trips CP-1", (s) => { s.coverPicker = s.coverPicker.replace("videoProjectionCopy(stage, status)", "legacyCopy(stage)"); }, "CP-1:");
   bad("drop accessible determinate bar trips CP-2", (s) => { s.coverPicker = s.coverPicker.replace('accessibilityRole="progressbar"', 'accessibilityRole="none"'); }, "CP-2:");
@@ -183,6 +202,7 @@ let sources;
 try {
   sources = {
     service: readFileSync(join(REPO_ROOT, REL.service), "utf8"),
+    webTransport: readFileSync(join(REPO_ROOT, REL.webTransport), "utf8"),
     coverPicker: readFileSync(join(REPO_ROOT, REL.coverPicker), "utf8"),
     hook: readFileSync(join(REPO_ROOT, REL.hook), "utf8"),
   };
