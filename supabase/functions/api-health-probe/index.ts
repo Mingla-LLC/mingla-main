@@ -26,7 +26,11 @@ import {
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { logError, structuredLog } from "../_shared/structuredLog.ts";
 // META-ORCH-1270 (Phase 2) — Bunny Stream account usage read for the alarm.
-import { bunnyFetchLibraryUsage, bunnyUsagePct } from "../_shared/bunnyStream.ts";
+import {
+  bunnyFetchLibrarySettings,
+  bunnyFetchLibraryUsage,
+  bunnyUsagePct,
+} from "../_shared/bunnyStream.ts";
 import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../_shared/runtimeConfig.ts";
 import {
@@ -54,6 +58,12 @@ import {
   type ProbeResult,
   STATUS_PAGE_URLS,
   tallyDeliveryRows,
+  // #3040 — video lane verdict.
+  evaluateVideoLaneHealth,
+  VIDEO_LANE_SIGNALS,
+  VIDEO_LANE_WINDOW_MS,
+  type VideoLanePassiveRow,
+  type VideoLaneView,
 } from "./logic.ts";
 // issue #3526 M-2 — the probe must exercise the SAME model production calls.
 import {
@@ -1253,6 +1263,56 @@ serve(async (req) => {
     // low volume — never drives failedTick/alerting; the usage alarm is the pager).
     await webhookFreshness("bunny", "event_cover_video_jobs", "created_at", false);
     await webhookFreshness("twilio", "twilio_message_status_events", "received_at", false);
+
+    // ── #3040 VIDEO LANE (passive) ──
+    // Reads what the reaper and the SLO ledger record, the lane health view and
+    // the Bunny library settings, and emits ONE passive Bunny verdict row. A
+    // degraded verdict opts into the alert path (alert_on_degraded). Gated on
+    // registration like every other tile so the batch insert stays safe.
+    if (registeredServiceKeys.has("bunny")) {
+      try {
+        const since = new Date(nowMs - VIDEO_LANE_WINDOW_MS).toISOString();
+        const { data: laneRows, error: laneRowsError } = await serviceClient
+          .from("api_health_checks")
+          .select("detail,checked_at")
+          .eq("service_key", "bunny")
+          .eq("layer", "passive")
+          .gt("checked_at", since)
+          .limit(500);
+        const { data: laneView, error: laneViewError } = await serviceClient
+          .from("cover_video_lane_health_v")
+          .select("*")
+          .maybeSingle();
+        const settings = await bunnyFetchLibrarySettings(PROBE_TIMEOUT_MS);
+        const verdict = evaluateVideoLaneHealth({
+          passiveRows: laneRowsError
+            ? []
+            : ((laneRows ?? []) as VideoLanePassiveRow[]).filter((row) =>
+              (VIDEO_LANE_SIGNALS as readonly string[]).includes(String(row.detail?.signal ?? ""))
+            ),
+          laneView: laneViewError ? null : (laneView as VideoLaneView | null),
+          librarySettings: settings.ok
+            ? { ok: true, settings: settings.settings }
+            : settings.reason === "bunny_settings_not_configured"
+            ? null
+            : { ok: false, reason: settings.reason },
+          nowMs,
+        });
+        if (laneRowsError || laneViewError) {
+          structuredLog("warn", "api_health video lane read failed", {
+            fn: "api-health-probe",
+            rows_error: laneRowsError?.message ?? null,
+            view_error: laneViewError?.message ?? null,
+          });
+        }
+        checkRows.push({
+          service_key: "bunny", layer: "passive", status: verdict.status,
+          latency_ms: null, mode: null, http_status: null, detail: verdict.detail,
+        });
+      } catch (e) {
+        structuredLog("warn", "api_health video lane verdict failed", { fn: "api-health-probe", err: String(e) });
+      }
+    }
 
     // ── BULK INSERT ──
     if (checkRows.length > 0) {

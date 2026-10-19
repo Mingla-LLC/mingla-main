@@ -22,6 +22,8 @@ Deno.test("#3697 Creative Library reports usage, rights, fit and worst provider 
       duration_seconds: 15,
       ai_generated: false,
       brand_id: null,
+      // #3040/#3697 — house media is decided by provenance, not a null brand.
+      source: "admin_upload",
       variants: {
         "4:5": {
           source_url: "https://media.example/portrait.jpg",

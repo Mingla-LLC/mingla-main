@@ -113,6 +113,10 @@ const makeClient = (job: Record<string, unknown>) => {
         const scan = {
           is: () => scan,
           not: () => scan,
+          // #3040 — the reaper's reads are now status-filtered and ordered.
+          in: () => scan,
+          order: () => scan,
+          lt: () => scan,
           limit: () => Promise.resolve({ data: [current], error: null }),
         };
         return {

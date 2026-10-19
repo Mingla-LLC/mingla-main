@@ -29,7 +29,7 @@
  *   _shared/eventCoverVideo.ts (comment-stripped):
  *     SH-1  `coverVideoProvider` returns `"bunny"` — bunny-only provider.
  *     SH-2  `assertProcessedDerivative`            — the derivative validator.
- *     SH-3  `"video/mp4"` + SH-4 `FINAL_MAX_BYTES` + SH-5 `26214400` — the 25 MiB
+ *     SH-3  `"video/mp4"` + SH-4 `FINAL_MAX_BYTES` + SH-5 `67108864` — the 64 MiB
  *           processed budget (env default).
  *     SH-6  `MAX_SOURCE_VIDEO_BYTES` + SH-7 `104857600` — the 100 MiB source cap.
  *     SH-CLD  `verifyCloudinaryNotificationSignature` / `x-cld-timestamp` /
@@ -150,8 +150,10 @@ export function scan(sources) {
   if (!sh.includes("FINAL_MAX_BYTES")) {
     failures.push("SH-4: `_shared` no longer defines `FINAL_MAX_BYTES` — the processed size budget is gone.");
   }
-  if (!sh.includes("26214400")) {
-    failures.push("SH-5: `_shared` FINAL_MAX_BYTES no longer defaults to `26214400` (25 MiB processed budget).");
+  // #3040 — the lane emits up to 1080p; a 60 s 1080p MP4 needs the 64 MiB
+  // processed budget (pinned in the DB CHECK event_cover_video_jobs_processed_max_bytes).
+  if (!sh.includes("67108864")) {
+    failures.push("SH-5: `_shared` FINAL_MAX_BYTES no longer defaults to `67108864` (64 MiB processed budget).");
   }
   if (!sh.includes("MAX_SOURCE_VIDEO_BYTES")) {
     failures.push("SH-6: `_shared` no longer defines `MAX_SOURCE_VIDEO_BYTES` — the source intake cap is gone.");
@@ -216,7 +218,7 @@ if (process.argv.includes("--self-test")) {
       'export function assertProcessedDerivative(input) {',
       '  if (input.mimeType !== "video/mp4") return { ok: false };',
       '}',
-      'export const FINAL_MAX_BYTES = Number.parseInt(Deno.env.get("A") ?? "26214400", 10);',
+      'export const FINAL_MAX_BYTES = Number.parseInt(Deno.env.get("A") ?? "67108864", 10);',
       'export const MAX_SOURCE_VIDEO_BYTES = Number.parseInt(Deno.env.get("B") ?? "104857600", 10);',
     ].join("\n"),
     bunnyStream: "const authorizationSignature = await sha256Hex(`${libraryId}${apiKey}${authorizationExpire}${videoId}`);",
@@ -244,7 +246,7 @@ if (process.argv.includes("--self-test")) {
   bad("reintroduce vc_h264 trips UI-CLD", (s) => { s.uploadIntent = s.uploadIntent.replace("upload: {", 'eager: "vc_h264", upload: {'); }, "UI-CLD:");
   bad("drop return \"bunny\" trips SH-1", (s) => { s.shared = s.shared.replace('return "bunny"', 'return "cloudinary"'); }, "SH-1:");
   bad("drop assertProcessedDerivative trips SH-2", (s) => { s.shared = s.shared.replace(/assertProcessedDerivative/g, "xxx"); }, "SH-2:");
-  bad("drop 26214400 trips SH-5", (s) => { s.shared = s.shared.replace("26214400", "999"); }, "SH-5:");
+  bad("drop 67108864 trips SH-5", (s) => { s.shared = s.shared.replace("67108864", "999"); }, "SH-5:");
   bad("drop 104857600 trips SH-7", (s) => { s.shared = s.shared.replace("104857600", "999"); }, "SH-7:");
   bad("reintroduce verifyCloudinaryNotificationSignature trips SH-CLD", (s) => { s.shared += "\nexport const verifyCloudinaryNotificationSignature = 1;"; }, "SH-CLD:");
   bad("drop presign recipe trips BS-1", (s) => { s.bunnyStream = s.bunnyStream.replace("${apiKey}", ""); }, "BS-1:");

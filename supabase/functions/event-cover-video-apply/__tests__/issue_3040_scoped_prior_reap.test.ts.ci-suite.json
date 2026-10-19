@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/event-cover-video-apply/__tests__/issue_3040_scoped_prior_reap.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-apply-scoped-prior-reap",
+  "profile": "deno-2-unit"
+}

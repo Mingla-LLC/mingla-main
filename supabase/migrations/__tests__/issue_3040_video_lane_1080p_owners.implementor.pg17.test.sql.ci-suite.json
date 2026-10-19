@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3040_video_lane_1080p_owners.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3040-video-lane-1080p-owners",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}

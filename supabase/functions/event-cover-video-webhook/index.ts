@@ -3,18 +3,24 @@ import {
   assertProcessedDerivative,
   corsHeaders,
   destroyCoverVideoAsset,
+  FINAL_MAX_BYTES,
   jsonResponse,
+  MAX_RENDITION_HEIGHT,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
 // #966 — Bunny is the sole cover-video webhook route (the Cloudinary
 // signature/eager arm was removed as dead residue post-META-1270).
 import {
-  bunnyBestMp4,
   bunnyGetVideo,
+  bunnyMp4Candidates,
   bunnyThumbnailUrl,
+  fetchWithTimeout,
   mapBunnyStatusFromWebhook,
   verifyBunnyWebhookSignature,
 } from "../_shared/bunnyStream.ts";
+// #3040 — a webhook auto-apply reclaims the cover it replaced, through the same
+// scoped, reference-guarded path as an explicit apply.
+import { reapPriorCoverAssets } from "../_shared/coverVideoReap.ts";
 
 // #2905 — the webhook was completely silent: nine real Bunny callbacks for the
 // wedged production job (2026-08-30 03:11:23 → 03:11:39) left ZERO function
@@ -81,6 +87,10 @@ const autoApplyEventCover = async (
   return !error && data?.status === "applied" ? { ok: true } : { ok: false };
 };
 
+// #3040 (B-6) — every CDN HEAD is bounded; three attempts cannot hold the
+// webhook longer than ~19 s.
+export const DERIVATIVE_HEAD_TIMEOUT_MS = 5_000;
+
 const headWithRetry = async (
   url: string,
   attempts: number,
@@ -89,7 +99,11 @@ const headWithRetry = async (
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     let response: Response | null = null;
     try {
-      response = await fetch(url, { method: "HEAD" });
+      response = await fetchWithTimeout(
+        url,
+        { method: "HEAD" },
+        DERIVATIVE_HEAD_TIMEOUT_MS,
+      );
     } catch {
       response = null;
     }
@@ -97,6 +111,34 @@ const headWithRetry = async (
     if (attempt < attempts - 1) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+  }
+  return null;
+};
+
+// #3040 (B-2, C-10) — rendition selection, highest first and at most 1080p.
+// A rendition the CDN does not serve yet stops the walk (retryable 503): it is
+// propagation lag, and settling for a lower rendition would downgrade the
+// video for good. A rendition that is served but over the processed byte
+// budget falls to the next one down, and says so.
+// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
+export const selectDeliverableRendition = async (
+  candidates: Array<{ url: string; heightP: number }>,
+  context: { jobId: string; videoGuid: string },
+): Promise<{ url: string; heightP: number; head: Response } | null> => {
+  for (const candidate of candidates) {
+    const head = await headWithRetry(candidate.url, 3, 2000);
+    if (head === null) return null;
+    const bytes = Number(head.headers.get("content-length"));
+    if (Number.isFinite(bytes) && bytes > FINAL_MAX_BYTES) {
+      logWebhook("rendition_over_budget_fallback", {
+        ...context,
+        bytes,
+        finalMaxBytes: FINAL_MAX_BYTES,
+        heightP: candidate.heightP,
+      }, "warn");
+      continue;
+    }
+    return { ...candidate, head };
   }
   return null;
 };
@@ -410,7 +452,8 @@ export const handleBunnyWebhook = async (
       ignored: failedJob?.status ?? "transition_lost",
     });
   }
-  const best = bunnyBestMp4(video.video);
+  const candidates = bunnyMp4Candidates(video.video, MAX_RENDITION_HEIGHT);
+  const best = candidates[0] ?? null;
   // #2905 — logged BEFORE the guard so the two retryable 503 branches below keep
   // the exact `if (x === null) { return jsonResponse(...); }` shape that
   // orch-0770b WH-6 pins (no mutation, no destroy, stable 503).
@@ -429,11 +472,16 @@ export const handleBunnyWebhook = async (
   if (best === null) {
     return jsonResponse({ error: "derivative_not_ready" }, 503);
   }
-  const head = await headWithRetry(best.url, 3, 2000);
+  const selected = await selectDeliverableRendition(candidates, {
+    jobId: existingJob.id,
+    videoGuid,
+  });
+  const head = selected?.head ?? null;
   logWebhook("derivative_head", {
     jobId: existingJob.id,
     reachable: head !== null,
-    url: best.url,
+    url: selected?.url ?? best.url,
+    heightP: selected?.heightP ?? null,
     videoGuid,
   }, head === null ? "warn" : "info");
   if (head === null) {
@@ -453,8 +501,9 @@ export const handleBunnyWebhook = async (
       detail: "duration_pending",
     }, 503);
   }
+  const chosen = selected ?? best;
   const derivative = assertProcessedDerivative({
-    url: best.url,
+    url: chosen.url,
     mimeType: "video/mp4",
     bytes,
     durationMs,
@@ -507,6 +556,8 @@ export const handleBunnyWebhook = async (
   const providerPayload = mergeBunnyPayload(existingJob.provider_payload, {
     bunny_webhook: payload,
     bunny_thumbnail: posterUrl,
+    // #3040 — the delivered rendition, read by status, ads and the live matrix.
+    rendition_height: chosen.heightP,
   });
   const { data: readyJob, error: readyError } = await supabase.rpc(
     "cover_video_transition_job",
@@ -573,10 +624,22 @@ export const handleBunnyWebhook = async (
     }, "warn");
     return jsonResponse({ ok: true, status: "ready", applyFailed: true });
   }
+  // #3040 (B-14) — an auto-applied event cover replaced the previous one;
+  // reclaim it through the scoped, reference-guarded path. Ad videos and every
+  // other target only reach `ready` here; their owner is the apply endpoint or
+  // the reaper.
+  if (
+    readyJob.target_kind === "event" && readyJob.apply_mode === "draft_auto"
+  ) {
+    await reapPriorCoverAssets(supabase, readyJob, {
+      destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+    });
+  }
   logWebhook("ready", {
     jobId: existingJob.id,
     processedUrl: derivative.url,
     providerStatus: status,
+    renditionHeight: chosen.heightP,
     videoGuid,
   });
   return jsonResponse({ ok: true });

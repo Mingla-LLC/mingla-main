@@ -69,6 +69,16 @@ const emptyCandidateQuery = {
   limit() {
     return this;
   },
+  // #3040 — the reaper's reads are now status-filtered and ordered.
+  in() {
+    return this;
+  },
+  order() {
+    return this;
+  },
+  lt() {
+    return this;
+  },
   then(resolve: (value: { data: ReapCandidate[]; error: null }) => unknown) {
     return Promise.resolve({ data: [], error: null }).then(resolve);
   },
