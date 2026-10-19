@@ -152,7 +152,7 @@ export default function SupportRoute(): React.ReactElement {
 
   return (
     <DesktopCanvas>
-      <View style={[styles.host, { paddingTop: isWideDesktop ? 0 : insets.top, backgroundColor: canvas.discover }]}>
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
         {isWideDesktop ? (
           <View style={styles.desktopHeader}>
             <Text style={styles.breadcrumb}>Account  ›  Help &amp; Support</Text>

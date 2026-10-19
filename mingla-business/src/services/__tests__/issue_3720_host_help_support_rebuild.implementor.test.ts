@@ -5,10 +5,20 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { truncateRoadmapBlurb } from "../../utils/roadmapBlurb";
+
 const ROOT = path.resolve(__dirname, "../../../..");
 const read = (relative: string) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 
 describe("#3720 Host Help & Support rebuild", () => {
+  test("H6 roadmap blurbs execute the bounded host-facing summary behavior", async () => {
+    const result = await Promise.resolve(
+      truncateRoadmapBlurb("Hosts can see an honest target without an overflowing internal planning note.", 34),
+    );
+    expect(result).toBe("Hosts can see an honest target…");
+    expect(result.length).toBeLessThanOrEqual(35);
+  });
+
   test("H1-H2 keep the desktop shell, constrained panes and four section navigation", () => {
     const route = read("mingla-business/app/account/support.tsx");
     const community = read("mingla-business/src/components/support/CommunityTabPanel.tsx");
