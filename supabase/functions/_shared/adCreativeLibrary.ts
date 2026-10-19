@@ -111,9 +111,13 @@ function summarizeProviderRefs(rows: UnknownRow[]) {
  * identifiers, uploaded media references, content hashes and storage paths are
  * intentionally not accepted by the returned shape.
  */
-// MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse requires source='admin_upload' and no brand
+// #3040 rework — and no owning-brand snapshot: media that ever belonged to a
+// brand never becomes house media when that brand is deleted. A row read
+// without the snapshot column is refused (fail closed).
+// MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse requires source='admin_upload', no brand and no brand snapshot
 export function isHouseReusable(creative: UnknownRow): boolean {
-  return creative.source === "admin_upload" && creative.brand_id === null;
+  return creative.source === "admin_upload" && creative.brand_id === null &&
+    creative.source_brand_id === null;
 }
 
 function sourceSummary(creative: UnknownRow): string {

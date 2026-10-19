@@ -17,7 +17,8 @@ Deno.test("#3040 a brandless Host row (deleted brand) is never house media", () 
   assert(isHouseReusable({ brand_id: null, source: "host_upload" }) === false, "host row reusable");
   assert(isHouseReusable({ brand_id: null, source: "ari_upload" }) === false, "ari row reusable");
   assert(isHouseReusable({ brand_id: null }) === false, "row without provenance reusable");
-  assert(isHouseReusable({ brand_id: null, source: "admin_upload" }) === true, "admin house row not reusable");
+  // [TEST-MOD-APPROVED #3040] P1-3 ruling: house media also has no owning-brand snapshot.
+  assert(isHouseReusable({ brand_id: null, source: "admin_upload", source_brand_id: null }) === true, "admin house row not reusable");
   assert(isHouseReusable({ brand_id: "b", source: "admin_upload" }) === false, "brand-tagged row reusable");
   const row = library({ brand_id: null, source: "host_upload", source_job_id: "job-1", rendition_height: 1080 });
   assert(row.house_reuse_allowed === false && row.source === "host_upload", JSON.stringify(row));
@@ -27,7 +28,8 @@ Deno.test("#3040 a brandless Host row (deleted brand) is never house media", () 
 
 Deno.test("#3040 the ownership gate refuses house plans without admin provenance", () => {
   const mingla = (creativeSource: string | null | undefined) =>
-    adCreativeOwnershipError({ ownerKind: "mingla", planBrandId: null, creativeBrandId: null, creativeSource });
+    // [TEST-MOD-APPROVED #3040] P1-3 ruling: the gate reads the brand snapshot too.
+    adCreativeOwnershipError({ ownerKind: "mingla", planBrandId: null, creativeBrandId: null, creativeSource, creativeSourceBrandId: null });
   assert(mingla("host_upload") === "host_media_reuse_not_approved", "host media entered a house plan");
   assert(mingla(undefined) === "host_media_reuse_not_approved", "unknown provenance must fail closed");
   assert(mingla("admin_upload") === null, "admin media refused");

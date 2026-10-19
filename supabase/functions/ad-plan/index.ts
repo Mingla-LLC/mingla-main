@@ -752,7 +752,7 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "forbidden" }, 403);
     }
     const creatives = await db.from("ad_creatives").select(
-      "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_job_id,source_job_ref,rendition_height,created_at,updated_at",
+      "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_brand_id,source_job_id,source_job_ref,rendition_height,created_at,updated_at",
     ).order("created_at", { ascending: false }).limit(250);
     if (creatives.error) return databaseFailure(creatives.error);
     const creativeRows = creatives.data ?? [];
@@ -847,7 +847,7 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
     const { data: creative, error } = await db.from("ad_creatives").select(
-      "id,name,kind,status,source_url,storage_bucket,storage_path,bunny_video_id,poster_url,mp4_master_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,created_at,updated_at",
+      "id,name,kind,status,source_url,storage_bucket,storage_path,bunny_video_id,poster_url,mp4_master_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_brand_id,created_at,updated_at",
     ).eq("id", creativeId).maybeSingle();
     if (error) return databaseFailure(error);
     if (!creative || creative.status !== "active") {
@@ -858,6 +858,7 @@ serve(async (req: Request): Promise<Response> => {
       planBrandId: null,
       creativeBrandId: creative.brand_id,
       creativeSource: creative.source,
+      creativeSourceBrandId: creative.source_brand_id,
     });
     if (ownershipError) {
       return json({ error: ownershipError }, 409);
@@ -1154,7 +1155,7 @@ serve(async (req: Request): Promise<Response> => {
     }
     const { data: creative, error: creativeError } = await db
       .from("ad_creatives")
-      .select("id,brand_id,status,source")
+      .select("id,brand_id,status,source,source_brand_id")
       .eq("id", creativeId)
       .maybeSingle();
     if (creativeError) return databaseFailure(creativeError);
@@ -1169,6 +1170,7 @@ serve(async (req: Request): Promise<Response> => {
       planBrandId: plan.brand_id,
       creativeBrandId: creative.brand_id,
       creativeSource: creative.source,
+      creativeSourceBrandId: creative.source_brand_id,
     });
     if (ownershipError) {
       return json(

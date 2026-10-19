@@ -66,6 +66,7 @@ import {
   probeTrustedVideoSources,
 } from "../_shared/adCreativePrepare.ts";
 import { requireAdCreativeLaneAccess } from "../_shared/adCreativeLaneAuth.ts";
+import { creativeSourceForUpload } from "../_shared/adCreativeOwnership.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -492,8 +493,13 @@ export const handleAdminAdCreativeUpload = async (
       variants,
       status: "active",
       created_by: user.id,
-      // #3040/#3697 — immutable provenance. House reuse requires admin_upload.
-      source: adminRow ? "admin_upload" : "host_upload",
+      // #3040/#3697 — immutable provenance, decided by ownership: an admin
+      // attaching media to a Host brand records Host media (the database
+      // refuses admin_upload with a brand snapshot).
+      source: creativeSourceForUpload({
+        adminCaller: Boolean(adminRow),
+        brandId,
+      }),
     })
     .select("*")
     .maybeSingle();

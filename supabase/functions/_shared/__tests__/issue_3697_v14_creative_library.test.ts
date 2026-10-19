@@ -24,6 +24,8 @@ Deno.test("#3697 Creative Library reports usage, rights, fit and worst provider 
       brand_id: null,
       // #3040/#3697 — house media is decided by provenance, not a null brand.
       source: "admin_upload",
+      // #3040 rework (P1-3) — and by the absence of an owning-brand snapshot.
+      source_brand_id: null,
       variants: {
         "4:5": {
           source_url: "https://media.example/portrait.jpg",
