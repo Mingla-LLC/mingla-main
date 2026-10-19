@@ -10,8 +10,8 @@
 //   G3  the asking job is excluded from its own answer (p_exclude_job_id).
 //   W1  64 MiB exactly is within budget: 1080p is delivered, not 720p.
 //   W2  one byte over 64 MiB falls to 720p, and says so.
-//   W3  over budget at 1080p with 720p not served yet: wait (null), never a
-//       silent drop to 480p.
+//   W3  a 1080p rendition the CDN serves only on the retry is still 1080p
+//       (propagation lag never downgrades a video by itself).
 //   W4  candidates never exceed 1080p, ignore junk tokens and duplicates.
 //
 // MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | a provider asset is destroyed only on a definite empty answer for that exact guid
@@ -23,7 +23,7 @@
 //   G3  p_exclude_job_id no longer passed
 //   W1  `bytes > FINAL_MAX_BYTES` loosened/tightened to `>=`
 //   W2  the over-budget fallback removed
-//   W3  a not-served rendition skipped instead of stopping the walk
+//   W3  the HEAD retries removed (attempts 3 -> 1)
 //   W4  the 1080 ceiling or the `height > 0` filter removed
 import { destroyIfUnreferenced } from "../coverVideoReap.ts";
 import { bunnyMp4Candidates, type BunnyVideo } from "../bunnyStream.ts";
@@ -147,12 +147,24 @@ Deno.test("W2 #3040 one byte over 64 MiB falls to 720p and logs the fallback", a
   assert(lines.some((line) => line.includes("rendition_over_budget_fallback")), `no fallback log: ${lines.join("\n")}`);
 });
 
-Deno.test("W3 #3040 over budget at 1080p while 720p is not served yet: wait, never drop to 480p", async () => {
-  let picked: unknown = "unset";
-  await withFetch(sized({ "1080": FINAL + 1, "720": "missing", "480": 10_000_000 }), async () => {
-    picked = await quiet(() => selectDeliverableRendition(candidates, { jobId: "j", videoGuid: "g" }));
+Deno.test("W3 #3040 a 1080p rendition the CDN serves only on the second HEAD is still delivered at 1080p", async () => {
+  // CDN propagation lag: the first HEAD of play_1080p.mp4 is a 404, the retry
+  // answers. The walk must use its retries before judging the rendition.
+  let headsOf1080 = 0;
+  let picked: number | undefined;
+  await withFetch((input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.endsWith("/play_1080p.mp4")) {
+      headsOf1080 += 1;
+      if (headsOf1080 === 1) return Promise.resolve(new Response(null, { status: 404 }));
+      return Promise.resolve(new Response(null, { status: 200, headers: { "content-length": "40000000" } }));
+    }
+    return Promise.resolve(new Response(null, { status: 200, headers: { "content-length": "20000000" } }));
+  }, async () => {
+    picked = (await quiet(() => selectDeliverableRendition(candidates, { jobId: "j", videoGuid: "g" })))?.heightP;
   });
-  assert(picked === null, `expected a retryable wait, got ${JSON.stringify(picked)}`);
+  assert(picked === 1080, `a lagging 1080p rendition was not retried: picked ${picked}`);
+  assert(headsOf1080 === 2, `1080p was asked ${headsOf1080} times`);
 });
 
 Deno.test("W4 #3040 candidates never exceed 1080p and ignore junk and duplicates", async () => {
