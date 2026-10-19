@@ -20,7 +20,10 @@ import {
 } from "../_shared/bunnyStream.ts";
 // #3040 — a webhook auto-apply reclaims the cover it replaced, through the same
 // scoped, reference-guarded path as an explicit apply.
-import { reapPriorCoverAssets } from "../_shared/coverVideoReap.ts";
+import {
+  destroyIfUnreferenced,
+  reapPriorCoverAssets,
+} from "../_shared/coverVideoReap.ts";
 
 // #2905 — the webhook was completely silent: nine real Bunny callbacks for the
 // wedged production job (2026-08-30 03:11:23 → 03:11:39) left ZERO function
@@ -357,7 +360,10 @@ export const handleBunnyWebhook = async (
       },
     );
     if (failedJob?.status === "failed") {
-      await deps.destroyCoverVideoAsset(existingJob);
+      // #3040 — guarded: the only provider delete path.
+      await destroyIfUnreferenced(supabase, existingJob, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
     }
     logWebhook("provider_failed", {
       jobId: existingJob.id,
@@ -444,7 +450,10 @@ export const handleBunnyWebhook = async (
       },
     );
     if (failedJob?.status === "failed") {
-      await deps.destroyCoverVideoAsset(existingJob);
+      // #3040 — guarded: the only provider delete path.
+      await destroyIfUnreferenced(supabase, existingJob, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
       return jsonResponse({ ok: true, status: "failed" });
     }
     return jsonResponse({
@@ -530,7 +539,10 @@ export const handleBunnyWebhook = async (
       },
     );
     if (failedJob?.status === "failed") {
-      await deps.destroyCoverVideoAsset(existingJob);
+      // #3040 — guarded: the only provider delete path.
+      await destroyIfUnreferenced(supabase, existingJob, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
       return jsonResponse({
         ok: true,
         status: "failed",

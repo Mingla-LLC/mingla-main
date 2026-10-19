@@ -72,6 +72,11 @@ const makeClient = (job: Record<string, unknown>) => {
         }
         return Promise.resolve({ data: current, error: null });
       }
+      // #3040 P1-1 — every terminal reap asks for live references first; this
+      // abandoned upload is served nowhere.
+      if (name === "cover_video_guid_live_references") {
+        return Promise.resolve({ data: [], error: null });
+      }
       return Promise.resolve({ data: null, error: null });
     },
     from: () => ({

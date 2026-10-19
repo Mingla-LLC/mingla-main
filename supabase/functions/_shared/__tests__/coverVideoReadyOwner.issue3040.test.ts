@@ -53,8 +53,9 @@ Deno.test("#3040 decideReadyOwnership: the full owner table", () => {
     ["trip day 25 h unreferenced", { job: job({ target_kind: "trip_day_media", completed_at: isoAgo(25 * 60 * MIN) }), references: [], targetCoverNow: undefined, nowMs: now }, "expire"],
     ["trip day referenced by its gallery", { job: job({ target_kind: "trip_day_media", completed_at: isoAgo(2 * MIN) }), references: ["trip_day_media"], targetCoverNow: undefined, nowMs: now }, "apply_observed"],
     ["event whose cover already IS this video", { job: job({ target_kind: "event" }), references: ["event_cover"], targetCoverNow: "https://cdn.test/guid-ready-3040/play_1080p.mp4", nowMs: now }, "apply_observed"],
-    ["venue draft 25 h, references unknown", { job: job({ target_kind: "venue_draft", completed_at: isoAgo(25 * 60 * MIN) }), references: null, targetCoverNow: undefined, nowMs: now }, "alert"],
-    ["venue draft 25 h, already alerted, references unknown", { job: job({ target_kind: "venue_draft", completed_at: isoAgo(25 * 60 * MIN), ready_alerted_at: isoAgo(MIN) }), references: null, targetCoverNow: undefined, nowMs: now }, "wait"],
+    // [TEST-MOD-APPROVED #3040] P1-2 ruling: a venue draft is client-owned and kept — never alerted, never expired.
+    ["venue draft 25 h, references unknown", { job: job({ target_kind: "venue_draft", completed_at: isoAgo(25 * 60 * MIN) }), references: null, targetCoverNow: undefined, nowMs: now }, "retain"],
+    ["venue draft 25 h, already alerted, references unknown", { job: job({ target_kind: "venue_draft", completed_at: isoAgo(25 * 60 * MIN), ready_alerted_at: isoAgo(MIN) }), references: null, targetCoverNow: undefined, nowMs: now }, "retain"],
     ["ad video, any age", { job: job({ target_kind: "ad_creative", completed_at: isoAgo(5_000) }), references: [], targetCoverNow: undefined, nowMs: now }, "materialize"],
   ];
   for (const [name, input, expected] of cases) {

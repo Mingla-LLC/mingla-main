@@ -382,10 +382,15 @@ export function evaluateVideoLaneHealth(input: {
   nowMs: number;
 }): { status: HealthStatus; reasons: string[]; detail: Record<string, unknown> } {
   const since = input.nowMs - VIDEO_LANE_WINDOW_MS;
+  // A ready venue-draft video is client-owned and kept in the host's local
+  // draft (I-VENUE-DRAFT-VIDEO-RETAINED): it is never "unclaimed", so a row
+  // naming one never raises the alert, whoever wrote it.
   const count = (signal: string) =>
     input.passiveRows.filter((row) => {
       const at = Date.parse(String(row.checked_at ?? ""));
-      return Number.isFinite(at) && at > since && row.detail?.signal === signal;
+      return Number.isFinite(at) && at > since && row.detail?.signal === signal &&
+        !(signal === "cover_video_ready_unclaimed" &&
+          row.detail?.target_kind === "venue_draft");
     }).length;
   const n = (value: unknown): number => {
     const parsed = typeof value === "number" ? value : Number(value);

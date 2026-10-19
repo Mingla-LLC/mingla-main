@@ -32,7 +32,7 @@ import {
 import { resolveRuntimeNumber } from "../_shared/runtimeConfig.ts";
 // #3040 — "did any bytes land?" has ONE answer: the provider's own TUS HEAD.
 import { readTusTransfer } from "../event-cover-video-source-uploaded/index.ts";
-import { isMissingRpc } from "../_shared/coverVideoReap.ts";
+import { destroyIfUnreferenced, isMissingRpc } from "../_shared/coverVideoReap.ts";
 
 // #3040 (B-1, A-1) — a store build too old for the deterministic lane gets a
 // human sentence, not a raw code. Pre-#2827 clients render `detail` for codes
@@ -242,7 +242,7 @@ export async function reapSupersededBunnyAssets(
     .is("reaped_at", null);
   const scoped = filter.targetKind === "brand"
     ? base.eq("brand_id", filter.brandId).eq("target_kind", "brand")
-    : base.eq("event_id", filter.eventId as string);
+    : base.eq("event_id", filter.eventId as string).eq("target_kind", "event");
   const { data, error } = await scoped;
   if (error) return;
   for (
@@ -255,13 +255,10 @@ export async function reapSupersededBunnyAssets(
       }
     >
   ) {
-    const destroyed = await destroyCoverVideoAsset(row);
-    if (destroyed.ok) {
-      await supabase
-        .from("event_cover_video_jobs")
-        .update({ reaped_at: new Date().toISOString() })
-        .eq("id", row.id);
-    }
+    // #3040 — a superseded job's asset may still be the live cover (it was
+    // saved while ready); reclaim only through the live-reference guard,
+    // which stamps reaped_at itself.
+    await destroyIfUnreferenced(supabase, row);
   }
 }
 
@@ -1062,7 +1059,11 @@ export const handleEventCoverVideoUploadIntent = async (
             },
           });
           if (failed.data?.status === "failed") {
-            await deps.destroyCoverVideoAsset({ source_asset_id: videoId });
+            // #3040 — guarded, like every provider delete.
+            await destroyIfUnreferenced(supabase, {
+              id: job.id,
+              source_asset_id: videoId,
+            }, { destroyCoverVideoAsset: deps.destroyCoverVideoAsset });
           }
           return failed.data
             ? canonicalJobResponse(failed.data as Record<string, unknown>)
@@ -1124,7 +1125,12 @@ export const handleEventCoverVideoUploadIntent = async (
             canonical.source_asset_id !== videoId &&
             canonical.provider_allocation_token !== leaseToken
           ) {
-            await deps.destroyCoverVideoAsset({ source_asset_id: videoId });
+            // #3040 — guarded: this caller's asset is not on any job row, so
+            // nothing is excluded from the reference check.
+            await destroyIfUnreferenced(supabase, {
+              id: "",
+              source_asset_id: videoId,
+            }, { destroyCoverVideoAsset: deps.destroyCoverVideoAsset });
           }
           return TERMINAL_JOB_STATUSES.has(String(canonical.status))
             ? canonicalJobResponse(canonical)

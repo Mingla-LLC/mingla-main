@@ -26,7 +26,10 @@ Deno.test("#3040 a missing cover_video_guid_live_references never destroys and t
   assert(body.ok === true, `the tick failed: ${JSON.stringify(body)}`);
   assert(!reaper.destroyed.includes("guid-trip-old"), "a destroy was forced without a reference answer");
   assert(reaper.job("trip-old").status === "ready", "the job was expired without a reference answer");
-  assert(reaper.destroyed.includes("guid-cancelled"), "an unrelated step was skipped");
+  // [TEST-MOD-APPROVED #3040] P1-1 ruling: a cancelled job's reap is guarded
+  // too, so with no reference answer it is KEPT (and the tick still runs on).
+  assert(!reaper.destroyed.includes("guid-cancelled"), "a cancelled asset was destroyed without a reference answer");
+  assert(reaper.job("cancelled").reaped_at == null && Number(body.guardedSkipped) >= 1, `cancelled row: ${JSON.stringify(reaper.job("cancelled"))}`);
   assert((body.stepFailures as string[]).includes("migration_not_applied"), JSON.stringify(body.stepFailures));
   const rail = reaper.db.tables.api_health_checks.filter((row) => row.detail?.signal === "cover_video_reaper_step_failed");
   assert(rail.some((row) => row.detail.stage === "migration_not_applied" && row.status === "degraded"), JSON.stringify(rail));

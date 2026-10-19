@@ -70,6 +70,11 @@ const makeSupabaseStub = (
       if (name === "cover_video_record_processing_slo_breaches") {
         return Promise.resolve({ data: [], error: null });
       }
+      // #3040 P1-1 — every terminal reap asks for live references first;
+      // these terminal assets are served nowhere.
+      if (name === "cover_video_guid_live_references") {
+        return Promise.resolve({ data: [], error: null });
+      }
       if (name !== "cover_video_claim_reconcile_jobs") {
         throw new Error(`unexpected rpc ${name}`);
       }
@@ -118,7 +123,9 @@ Deno.test("reaper: destroys a cancelled Bunny asset + stamps reaped_at", async (
       {
         id: "job-a",
         status: "cancelled",
-        source_asset_id: "guid-a",
+        // [TEST-MOD-APPROVED #3040] P1-1: the guarded destroy refuses a guid
+        // that is not guid-shaped, so the fixture uses a realistic one.
+        source_asset_id: "guid-aaaa",
         reaped_at: null,
         provider: "bunny",
         created_at: HOURS(1),
@@ -141,7 +148,7 @@ Deno.test("reaper: destroys a cancelled Bunny asset + stamps reaped_at", async (
     );
     assert(
       (destroyed[0] as { source_asset_id?: unknown }).source_asset_id ===
-        "guid-a",
+        "guid-aaaa",
       "destroy targets guid-a",
     );
     const stamp = patches.find((p) => p.id === "job-a");
@@ -205,7 +212,7 @@ Deno.test("reaper: destroy FAILURE → no reaped_at (fail-safe retry)", async ()
       {
         id: "job-x",
         status: "failed",
-        source_asset_id: "guid-x",
+        source_asset_id: "guid-xxxx",
         reaped_at: null,
         provider: "bunny",
         created_at: HOURS(1),

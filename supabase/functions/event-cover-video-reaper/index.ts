@@ -52,8 +52,11 @@ import { readTusTransfer } from "../event-cover-video-source-uploaded/index.ts";
 // owner; nothing still in use is ever destroyed).
 import {
   destroyIfUnreferenced,
+  isClientRetainedAsset,
   readGuidLiveReferences,
+  reapPriorCoverAssets,
 } from "../_shared/coverVideoReap.ts";
+import { materializeAdCreativeFromJob } from "../_shared/adCreativeMaterialize.ts";
 import {
   decideReadyOwnership,
   executeReadyOwnership,
@@ -83,6 +86,9 @@ export type ReapCandidate = {
   target_kind?: string | null;
   event_id?: string | null;
   brand_id?: string | null;
+  // #3040 — the venue-draft retention rule and the reap back-off.
+  processed_url?: string | null;
+  reconcile_lease_until?: string | null;
 };
 
 export type ReapTarget = {
@@ -90,31 +96,25 @@ export type ReapTarget = {
   provider?: string | null;
   source_asset_id?: unknown;
   source_public_id?: unknown;
+  // #3040 — the venue-draft retention rule reads these (see coverVideoReap).
+  target_kind?: string | null;
+  processed_url?: string | null;
   action: "reap";
-  // #3040 — reclaim only through the live-reference guard.
-  guarded?: boolean;
 };
 
 const hasAssetId = (value: unknown): boolean =>
   typeof value === "string" && value.trim().length > 0;
 
-// #3040 — terminal codes that can end a job whose asset was already verified
-// and may be served somewhere (a finished video, a deleted parent). Their
-// assets are reclaimed only when nothing live references them.
-export const GUARDED_REAP_FAILURE_CODES: ReadonlySet<string> = new Set([
-  "ready_unclaimed",
-  "target_deleted",
-  "creative_materialize_failed",
-  "creative_source_untrusted",
-]);
-
+// #3040 — there is no unguarded reap. Every terminal asset is reclaimed only
+// through destroyIfUnreferenced (I-VIDEO-NO-DESTROY-WHILE-REFERENCED).
 const toTarget = (job: ReapCandidate): ReapTarget => ({
   id: job.id,
   provider: job.provider,
   source_asset_id: job.source_asset_id,
   source_public_id: job.source_public_id,
+  target_kind: job.target_kind ?? null,
+  processed_url: job.processed_url ?? null,
   action: "reap",
-  guarded: GUARDED_REAP_FAILURE_CODES.has(job.failure_code ?? ""),
 });
 
 // PURE selection: which un-reaped, asset-bearing jobs to reclaim, and whether an
@@ -274,10 +274,50 @@ export function selectOrphanCandidates(
   return jobs.filter((job) =>
     job.status === "applied" && job.reaped_at == null &&
     hasAssetId(job.source_asset_id) &&
+    // P1-2 — a venue-draft video is client-owned; no orphan reclaim may take
+    // it until a draft-aware reference exists (Seth-gated).
+    !isClientRetainedAsset(job) &&
     nowMs - parseMs(job.completed_at ?? job.applied_at ?? null) >=
       COVER_VIDEO_ORPHAN_AGE_MS
   ).slice(0, COVER_VIDEO_ORPHAN_RECLAIM_LIMIT);
 }
+
+// #3040 — a terminal job whose asset is still referenced (or retained for a
+// client-owned venue draft) is asked about again after this back-off instead
+// of every tick. The claim RPC already skips rows whose reconcile lease is in
+// the future; the reap read applies the same rule.
+export const REAP_REFERENCED_BACKOFF_MS = 6 * 60 * 60 * 1000;
+export const REAP_RETAINED_BACKOFF_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const reapDeferred = (row: ReapCandidate, nowMs: number): boolean => {
+  const until = parseMs(row.reconcile_lease_until ?? null);
+  return Number.isFinite(until) && until > nowMs;
+};
+
+// deno-lint-ignore no-explicit-any
+const deferReap = async (
+  supabase: any,
+  jobId: string,
+  nowMs: number,
+  why: "referenced" | "retained",
+): Promise<void> => {
+  const backoff = why === "retained"
+    ? REAP_RETAINED_BACKOFF_MS
+    : REAP_REFERENCED_BACKOFF_MS;
+  try {
+    await supabase.from("event_cover_video_jobs")
+      .update({
+        reconcile_lease_until: new Date(nowMs + backoff).toISOString(),
+      })
+      .eq("id", jobId)
+      .is("reaped_at", null);
+  } catch (error) {
+    logReaper("reap_defer_failed", {
+      jobId,
+      error: error instanceof Error ? error.name : "error",
+    });
+  }
+};
 
 const defaultDeps = {
   bunnyFindVideoByTitle,
@@ -287,7 +327,7 @@ const defaultDeps = {
 };
 
 const CANDIDATE_COLUMNS =
-  "id,status,provider,source_asset_id,source_public_id,applied_at,reaped_at,created_at,completed_at,source_bytes,tus_expires_at,tus_resource_url,source_uploaded_at,failure_code,target_kind,event_id,brand_id,provider_allocation_uncertain_at";
+  "id,status,provider,source_asset_id,source_public_id,applied_at,reaped_at,created_at,completed_at,source_bytes,tus_expires_at,tus_resource_url,source_uploaded_at,failure_code,target_kind,event_id,brand_id,provider_allocation_uncertain_at,processed_url,reconcile_lease_until";
 
 const logReaper = (stage: string, fields: Record<string, unknown> = {}): void => {
   console.warn("[event-cover-video-reaper]", JSON.stringify({ stage, ...fields }));
@@ -370,6 +410,9 @@ export const handleReaper = async (
       .in("status", ["failed", "cancelled", "superseded"])
       .is("reaped_at", null)
       .not("source_asset_id", "is", null)
+      // #3040 — rows whose reap was deferred (still referenced, or a retained
+      // venue draft) sort last, so they can never fill the window.
+      .order("reconcile_lease_until", { ascending: true, nullsFirst: true })
       .order("completed_at", { ascending: true, nullsFirst: true })
       .order("id", { ascending: true })
       .limit(SCAN_LIMIT);
@@ -394,18 +437,16 @@ export const handleReaper = async (
       });
       return jsonResponse({ ok: false, error: "candidate_read_failed" });
     }
-    const reapRows = (reapRead.data ?? []) as ReapCandidate[];
+    const reapRows = ((reapRead.data ?? []) as ReapCandidate[]).filter(
+      (row) => !reapDeferred(row, nowMs),
+    );
     const sweepRows = ((sweepRead.data ?? []) as ReapCandidate[]).filter(
       (row) => row.status === "source_uploading",
     );
     const targets = selectReapTargets(reapRows, nowMs);
-    const addTarget = (candidate: ReapCandidate, guarded = false): void => {
-      const existing = targets.find((target) => target.id === candidate.id);
-      if (existing) {
-        if (guarded) existing.guarded = true;
-        return;
-      }
-      targets.push({ ...toTarget(candidate), guarded: guarded || undefined });
+    const addTarget = (candidate: ReapCandidate): void => {
+      if (targets.some((target) => target.id === candidate.id)) return;
+      targets.push(toTarget(candidate));
     };
 
     const { data: claimed, error: claimError } = await supabase.rpc(
@@ -734,7 +775,7 @@ export const handleReaper = async (
           if (failedJob?.status === "failed") {
             targetDeleted += 1;
             logReaper("target_deleted_failed_job", { jobId: candidate.id });
-            addTarget({ ...candidate, failure_code: "target_deleted" }, true);
+            addTarget({ ...candidate, failure_code: "target_deleted" });
           }
         } catch (error) {
           stepFailed("target_deleted_failed", { error: errorName(error) });
@@ -774,10 +815,21 @@ export const handleReaper = async (
             job,
             decision,
             nowMs,
+            {
+              materializeAdCreativeFromJob,
+              // D-12 — the prior-cover reap uses THIS tick's injected destroy.
+              reapPriorCoverAssets: (client, applied) =>
+                reapPriorCoverAssets(client, applied, {
+                  destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+                }),
+            },
           );
           readyOwner[outcome] = (readyOwner[outcome] ?? 0) + 1;
           if (outcome === "expired") {
-            addTarget({ ...candidate, failure_code: "ready_unclaimed" }, true);
+            addTarget({ ...candidate, failure_code: "ready_unclaimed" });
+          } else if (outcome === "retained") {
+            // A client-owned venue draft: look again in a week, not every tick.
+            await deferReap(supabase, candidate.id, nowMs, "retained");
           }
         } catch (error) {
           stepFailed("ready_owner_failed", {
@@ -958,6 +1010,7 @@ export const handleReaper = async (
           .from("event_cover_video_jobs")
           .select(CANDIDATE_COLUMNS)
           .in("status", ["applied"])
+          .neq("target_kind", "venue_draft")
           .is("reaped_at", null)
           .not("source_asset_id", "is", null)
           .lt(
@@ -1010,43 +1063,36 @@ export const handleReaper = async (
     let failed = 0;
     let guardedSkipped = 0;
     for (const target of targets) {
-      if (target.guarded) {
-        // #3040 — a verified asset whose job ended without being applied may
-        // be served somewhere; destroy only when nothing references it.
-        const outcome = await destroyIfUnreferenced(supabase, target, {
-          destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
-        });
-        if (outcome.outcome === "destroyed") reaped += 1;
-        else if (outcome.outcome === "destroy_failed") failed += 1;
-        else if (outcome.outcome === "unknown") {
-          guardedSkipped += 1;
-          stepFailed(
-            outcome.reason === "migration_not_applied"
-              ? "migration_not_applied"
-              : "guarded_reap_unknown",
-            { jobId: target.id },
-          );
-        } else guardedSkipped += 1;
-        continue;
-      }
-      const destroyed = await deps.destroyCoverVideoAsset(target);
-      if (!destroyed.ok) {
-        // Fail-safe: leave reaped_at NULL so the next run retries. Never wedge.
+      // #3040 — EVERY terminal reap goes through the live-reference guard: a
+      // superseded, cancelled or failed job's asset may still be a cover, a
+      // venue listing, a trip-day video, an ad creative or another job's asset
+      // (e.g. a venue cover saved while its job was ready, then replaced and
+      // the replacement cancelled). Nothing here destroys directly.
+      const outcome = await destroyIfUnreferenced(supabase, target, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
+      if (outcome.outcome === "destroyed") reaped += 1;
+      else if (outcome.outcome === "destroy_failed") {
+        // Fail-safe: reaped_at stays NULL so the next run retries. Never wedge.
         failed += 1;
-        console.warn("[event-cover-video-reaper] destroy failed:", {
-          jobId: target.id,
-          reason: destroyed.reason,
-        });
-        continue;
+      } else if (outcome.outcome === "unknown") {
+        guardedSkipped += 1;
+        stepFailed(
+          outcome.reason === "migration_not_applied"
+            ? "migration_not_applied"
+            : "guarded_reap_unknown",
+          { jobId: target.id },
+        );
+      } else if (
+        outcome.outcome === "referenced" || outcome.outcome === "retained"
+      ) {
+        guardedSkipped += 1;
+        // A still-served (or client-retained) asset is asked about again
+        // later, not every tick: without this back-off a growing set of
+        // referenced terminal rows would fill the claim and the reap window
+        // and starve live work.
+        await deferReap(supabase, target.id, nowMs, outcome.outcome);
       }
-      const patch: Record<string, unknown> = {
-        reaped_at: new Date().toISOString(),
-      };
-      await supabase.from("event_cover_video_jobs").update(patch).eq(
-        "id",
-        target.id,
-      );
-      reaped += 1;
     }
 
     // #3040 (B-9) — a failed internal step reaches the Bunny health rail. Best

@@ -6,6 +6,8 @@
 // video is not.
 //
 // MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | no code path destroys a provider asset whose guid has a live reference; prior reaps are scoped to the same target_kind and target
+// MINGLA-INVARIANT: I-VIDEO-SINGLE-GUARDED-DELETE | issue #3040 | destroyIfUnreferenced is the only caller of the provider delete; every reaper, cancel, apply, supersede, fail and purge path goes through it (enforced by coverVideoReap.singleDeletePath.issue3040.test.ts)
+// MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040 | a venue-draft video that reached ready lives in the host's local draft, which no database reference can see; it is never destroyed by expiry, terminal reap, cancel or supersede (only an explicitly enabled, draft-aware orphan reclaim may ever touch it)
 import { destroyCoverVideoAsset } from "./eventCoverVideo.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -16,7 +18,20 @@ export type ReapableRow = {
   provider?: string | null;
   source_asset_id?: unknown;
   source_public_id?: unknown;
+  target_kind?: string | null;
+  processed_url?: string | null;
 };
+
+// #3040 (P1-2) — a venue-draft video that reached `ready` has been handed to
+// the host's device, which keeps it in a local draft until the venue is
+// published. No database row references it, so the live-reference answer
+// would be "unreferenced". It is client-owned and kept, exactly as before
+// #3040. The database guard (cover_video_guid_live_references, arm
+// `venue_draft`) enforces the same rule for callers that do not carry the
+// job's kind.
+export const isClientRetainedAsset = (row: ReapableRow): boolean =>
+  row.target_kind === "venue_draft" &&
+  typeof row.processed_url === "string" && row.processed_url.length > 0;
 
 export type GuidReferences =
   | { ok: true; kinds: string[] }
@@ -79,6 +94,7 @@ export type GuardedDestroyOutcome =
   | { outcome: "referenced"; kinds: string[] }
   | { outcome: "unknown"; reason: string }
   | { outcome: "destroy_failed"; reason: string }
+  | { outcome: "retained" }
   | { outcome: "no_asset" };
 
 // Destroy `row`'s provider asset only when nothing live still serves it, then
@@ -92,7 +108,16 @@ export async function destroyIfUnreferenced(
     ? row.source_asset_id.trim()
     : "";
   if (guid.length === 0) return { outcome: "no_asset" };
-  const references = await readGuidLiveReferences(supabase, guid, row.id);
+  if (isClientRetainedAsset(row)) {
+    log("reap_skipped_client_retained", { jobId: row.id });
+    return { outcome: "retained" };
+  }
+  // An asset that is on no job row (a freshly created, never-recorded upload)
+  // passes an empty id: nothing is excluded and nothing is stamped.
+  const ownJobId = typeof row.id === "string" && row.id.length > 0
+    ? row.id
+    : null;
+  const references = await readGuidLiveReferences(supabase, guid, ownJobId);
   if (!references.ok) return { outcome: "unknown", reason: references.reason };
   if (references.kinds.length > 0) {
     log("reap_skipped_referenced", { jobId: row.id, kinds: references.kinds });
@@ -103,10 +128,23 @@ export async function destroyIfUnreferenced(
     log("reap_destroy_failed", { jobId: row.id, reason: destroyed.reason });
     return { outcome: "destroy_failed", reason: destroyed.reason };
   }
-  await supabase
-    .from("event_cover_video_jobs")
-    .update({ reaped_at: new Date().toISOString() })
-    .eq("id", row.id);
+  if (ownJobId !== null) {
+    // The asset is gone either way. A failed stamp only means a later tick
+    // asks again, and a Bunny delete of an absent guid is idempotent (404 ok),
+    // so the stamp must never turn a done destroy into a caller failure.
+    try {
+      const { error } = await supabase
+        .from("event_cover_video_jobs")
+        .update({ reaped_at: new Date().toISOString() })
+        .eq("id", ownJobId);
+      if (error) log("reap_stamp_failed", { jobId: ownJobId, code: error.code ?? null });
+    } catch (error) {
+      log("reap_stamp_failed", {
+        jobId: ownJobId,
+        error: error instanceof Error ? error.name : "error",
+      });
+    }
+  }
   return { outcome: "destroyed" };
 }
 

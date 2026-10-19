@@ -18,6 +18,10 @@
 //                  asset is reclaimed only through the guarded destroy.
 //   alert          older than the grace with nothing else to do: one durable
 //                  alert on the Bunny health rail.
+//   retain         venue_draft: the finished video lives in the host's local
+//                  draft (no database row can see it). It is client-owned and
+//                  kept, as before #3040: never expired, never alerted, never
+//                  destroyed (I-VENUE-DRAFT-VIDEO-RETAINED).
 //   wait           younger than the grace.
 //
 // MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every non-terminal and ready job has a server owner with a finite bound
@@ -39,6 +43,7 @@ export type ReadyOwnerAction =
   | "apply_server"
   | "expire"
   | "alert"
+  | "retain"
   | "wait";
 
 export type ReadyOwnerJob = MaterializableJob & {
@@ -82,15 +87,23 @@ export function decideReadyOwnership(input: {
   const guid = typeof job.source_asset_id === "string"
     ? job.source_asset_id
     : "";
-  if (references !== null && references.length > 0) {
+  // The database's own venue-draft retention arm is not a surface serving
+  // the video; it never counts as an observed reference.
+  const observed = references === null
+    ? null
+    : references.filter((kind) => kind !== "venue_draft");
+  if (observed !== null && observed.length > 0) {
     // An event/brand apply rewrites the cover, so it is "observed" only when the
     // cover already IS this video; other targets only record a receipt.
     const onTarget = !coverTargets.has(kind) ||
       (typeof targetCoverNow === "string" && guid.length > 0 &&
         targetCoverNow.includes(`/${guid}/`));
     if (onTarget) {
-      return { action: "apply_observed", reason: references.join(",") };
+      return { action: "apply_observed", reason: observed.join(",") };
     }
+  }
+  if (kind === "venue_draft") {
+    return { action: "retain", reason: "client_owned_draft" };
   }
   // Server auto-apply needs proof the host still wants it: a baseline cover
   // recorded at upload, the target still showing exactly that baseline, and a
@@ -127,6 +140,7 @@ export type ReadyOwnerOutcome =
   | "expired"
   | "alerted"
   | "waiting"
+  | "retained"
   | "lost";
 
 export type ReadyOwnerDeps = {
@@ -291,6 +305,8 @@ export async function executeReadyOwnership(
       });
       return "alerted";
     }
+    case "retain":
+      return "retained";
     case "wait":
       return "waiting";
   }
