@@ -27,6 +27,9 @@ const ACTIVE = new Set(["checking", "starting", "uploading", "offline", "reconne
 const BYTES = new Set(["checking", "starting", "uploading", "offline", "reconnecting", "confirming"]);
 
 let localCounter = 0;
+// Uploads still running in this tab (a page change does not stop them), so a
+// remount never restores one as if it had been interrupted.
+const IN_FLIGHT = new Set();
 
 function safeStorage() {
   try {
@@ -86,9 +89,11 @@ export function useAdminVideoUploads({ onFinished } = {}) {
     async (entry, mode) => {
       const controller = new AbortController();
       controllers.current.set(entry.localId, controller);
+      if (entry.record?.opId) IN_FLIGHT.add(entry.record.opId);
       let lastSaved = 0;
       const onStage = (stage) => {
         if (stage.phase === "registered") {
+          IN_FLIGHT.add(stage.record.opId);
           entry.record = stage.record;
           patch(entry.localId, { record: stage.record, jobId: stage.jobId });
           return;
@@ -130,6 +135,7 @@ export function useAdminVideoUploads({ onFinished } = {}) {
         });
       } finally {
         controllers.current.delete(entry.localId);
+        if (entry.record?.opId) IN_FLIGHT.delete(entry.record.opId);
       }
     },
     [drop, patch, storage, uploader],
@@ -153,6 +159,7 @@ export function useAdminVideoUploads({ onFinished } = {}) {
     (async () => {
       for (const record of listUploadRecords(storage)) {
         if (cancelled) return;
+        if (IN_FLIGHT.has(record.opId)) continue;
         if (!record.jobId) {
           clearUploadRecord(storage, record.opId);
           continue;
