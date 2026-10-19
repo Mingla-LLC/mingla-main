@@ -72,6 +72,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [result, setResult] = useState("");
   const [blockReason, setBlockReason] = useState("");
   const [removeReason, setRemoveReason] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
   const [saveState, setSaveState] = useState("");
   const idle = useRef(null);
 
@@ -273,7 +274,31 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
       {card.status !== "done" && (
         <Section title="Blocked">
           {systemBlock ? (
-            <p className="break-words text-[13px] text-[var(--color-error-700)]">{card.blocked_reason}</p>
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="break-words text-[13px] text-[var(--color-error-700)]">{card.blocked_reason}</p>
+              {card.kind === "promo" && me.can_override && (form === "override" ? (
+                <div className="flex min-w-0 flex-wrap items-end gap-2">
+                  <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+                    <span className={LABEL}>Why it can start now</span>
+                    <input value={overrideReason} maxLength={300} onChange={(e) => setOverrideReason(e.target.value)} className={INPUT} />
+                  </label>
+                  <Button className="min-h-11" disabled={locked || overrideReason.trim().length < 10 || !!busy} onClick={async () => {
+                    setBusy("override");
+                    try {
+                      await ops.overrideGate(card.id, overrideReason.trim());
+                      await refresh();
+                      addToast({ variant: "success", title: "Overridden. The card can start, and the reason is in the agent log." });
+                      setForm(""); setOverrideReason("");
+                    } catch (error) {
+                      addToast({ variant: "error", title: "That didn’t save", description: opsErrorWords(error) });
+                    } finally { setBusy(""); }
+                  }}>Override</Button>
+                  <Button variant="ghost" className="min-h-11" onClick={() => setForm("")}>Cancel</Button>
+                </div>
+              ) : (
+                <Button variant="secondary" className="min-h-11 self-start" disabled={locked || !!busy} onClick={() => setForm("override")}>Override</Button>
+              ))}
+            </div>
           ) : card.blocked ? (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <p className="min-w-0 flex-1 break-words text-[13px] text-[var(--color-error-700)]">{card.blocked_reason}</p>
@@ -288,6 +313,8 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
               <Button className="min-h-11" disabled={locked || blockReason.trim().length < 5 || !!busy} onClick={async () => { const a = await update({ blocked: true, blocked_reason: blockReason.trim() }, "Marked blocked"); if (a) { setForm(""); setBlockReason(""); } }}>Mark blocked</Button>
               <Button variant="ghost" className="min-h-11" onClick={() => setForm("")}>Cancel</Button>
             </div>
+          ) : card.override ? (
+            <p className="break-words text-[13px] text-[var(--color-text-secondary)]">Started before go-live: {card.override.by_name} overrode the giveaway and ads rule on {dayLabel(card.override.at)}. {card.override.reason}</p>
           ) : <p className="text-[13px] text-[var(--color-text-tertiary)]">Not blocked.</p>}
         </Section>
       )}

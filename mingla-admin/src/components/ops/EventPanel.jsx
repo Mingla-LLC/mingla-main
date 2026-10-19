@@ -1,13 +1,15 @@
 // Issue #3980 — the Calendar's right column. With nothing selected: the
 // Runway list of upcoming events. With an event (or an expected event)
-// selected: its runway bar, the launch kit and each step's card, the host and
-// the cards linked to it. Two columns, no overlay.
+// selected: its runway bar, the launch kit and each step's card (and Plan this
+// launch when it has no kit card yet), the host and the cards linked to it.
+// Two columns, no overlay.
 import { forwardRef } from "react";
 import { ArrowLeft } from "lucide-react";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { OpsChip } from "./OpsChip";
 import { RunwayBar } from "./RunwayBar";
+import { LaunchPlanner } from "./LaunchPlanner";
 import { useOpsAnchor, useOpsRunway } from "../../hooks/useOpsCalendar";
 import { buildCrmHash } from "../../lib/crmUrl";
 import {
@@ -87,7 +89,7 @@ function RunwayList({ onSelect }) {
   );
 }
 
-const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack }, headingRef) {
+const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack, online }, headingRef) {
   const detail = useOpsAnchor(selection);
   if (detail.loading) return <Loading label="Loading the event…" />;
   if (detail.error && !detail.data) {
@@ -152,6 +154,7 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack }, h
               );
             })}
           </ul>
+          {!data.has_kit_card && <LaunchPlanner anchor={{ kind: a.kind, id: a.id }} online={online !== false} onAdded={() => detail.refetch({ quiet: true })} />}
         </section>
 
         <section aria-labelledby="event-host-heading" className="flex min-w-0 flex-col gap-1 border-t border-[var(--gray-200)] pt-3">
@@ -188,8 +191,8 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack }, h
   );
 });
 
-export const EventPanel = forwardRef(function EventPanel({ selection, onSelect, onBack }, headingRef) {
+export const EventPanel = forwardRef(function EventPanel({ selection, onSelect, onBack, online }, headingRef) {
   return selection
-    ? <SelectedEvent key={`${selection.kind}:${selection.id}`} ref={headingRef} selection={selection} onBack={onBack} />
+    ? <SelectedEvent key={`${selection.kind}:${selection.id}`} ref={headingRef} selection={selection} onBack={onBack} online={online} />
     : <RunwayList onSelect={onSelect} />;
 });

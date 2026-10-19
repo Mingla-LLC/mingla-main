@@ -1,6 +1,7 @@
 // Issue #3980 — push a card back: not needed, or already done (with proof).
 import { useId, useState } from "react";
-import { ProofLines, proofFromLines } from "./ProofForm";
+import { ProofLines } from "./ProofForm";
+import { proofFromLines } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 

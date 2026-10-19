@@ -83,3 +83,13 @@ export const fetchHostOnMingla = (recordId, today) =>
   call(() => supabase.rpc("ops_host_on_mingla", { p_record_id: recordId, p_today: today || null }));
 export const setExpectedEvent = (item, requestKey) =>
   call(() => supabase.rpc("ops_expected_event_set", { p_item: item, p_request_key: requestKey }));
+
+// Wave 3 — the launch kit, the giveaway and ads rule, the Team dashboard and
+// turning next steps into cards (owner only).
+export const previewLaunchKit = (kind, id, options, today) =>
+  call(() => supabase.rpc("ops_launch_kit_preview", { p_anchor_kind: kind, p_anchor_id: id, p_options: options || {}, p_today: today || null }));
+export const overrideGate = (cardId, reason) => call(() => supabase.rpc("ops_gate_override", { p_card_id: cardId, p_reason: reason }));
+export const fetchTeamOverview = (today) => call(() => supabase.rpc("ops_team_overview", { p_today: today || null }));
+export const previewNextActions = (limit) => call(() => supabase.rpc("ops_next_action_preview", { p_limit: limit || 600 }));
+export const convertNextActions = (recordIds, fallbackOwner, requestKey) =>
+  call(() => supabase.rpc("ops_next_action_convert", { p_record_ids: recordIds, p_fallback_owner: fallbackOwner || null, p_request_key: requestKey }));

@@ -1,6 +1,7 @@
 // Issue #3980 — close a card with proof: one or more lines that show the
 // work is done.
 import { useState } from "react";
+import { proofFromLines } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] ${FOCUS}`;
@@ -26,10 +27,6 @@ export function ProofLines({ lines, setLines, disabled, label = "Proof" }) {
       )}
     </div>
   );
-}
-
-export function proofFromLines(lines) {
-  return lines.map((t) => t.trim()).filter((t) => t.length >= 3).map((text) => ({ kind: "text", text }));
 }
 
 export function ProofForm({ busy, disabled, onSubmit, onCancel }) {

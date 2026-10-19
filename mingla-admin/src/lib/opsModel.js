@@ -456,3 +456,93 @@ export function runwayBarModel(anchor, today) {
     fill: fillFrom === null ? null : { left: fillFrom, width: Math.max(0, end - fillFrom), tone: bandTone(anchor?.runway?.band) },
   };
 }
+
+/** Proof lines typed by a person, as proof items (3 characters or more each). */
+export function proofFromLines(lines) {
+  return (Array.isArray(lines) ? lines : [])
+    .map((t) => String(t ?? "").trim())
+    .filter((t) => t.length >= 3)
+    .map((text) => ({ kind: "text", text }));
+}
+
+// ---------------------------------------------------------------------------
+// Wave 3 — the launch kit, the giveaway and ads rule, the Team dashboard and
+// turning next steps into cards.
+// ---------------------------------------------------------------------------
+
+const KIT_SKIP_WORDS = {
+  card_exists: "Already has a card",
+  already_public: "Done: the event is public",
+  date_passed: "Its day has passed",
+  no_date: "The event has no date yet",
+};
+
+/** Why a launch kit step was not proposed, in words. */
+export function kitSkipWords(reason) {
+  return KIT_SKIP_WORDS[reason] || "Not proposed";
+}
+
+/** What a launch kit preview proposes, for the panel's words and button. */
+export function kitPlanSummary(preview) {
+  const cards = Array.isArray(preview?.cards) ? preview.cards : [];
+  const skipped = Array.isArray(preview?.skipped) ? preview.skipped : [];
+  const promoHeld = !!preview?.promo_gate?.blocked && cards.some((c) => c?.kind === "promo");
+  return {
+    count: cards.length,
+    skipped: skipped.length,
+    promoHeld,
+    addLabel: cards.length === 1 ? "Add 1 card" : `Add ${cards.length} cards`,
+  };
+}
+
+/** After an add: how many went on the board, and the ones that did not, with their fixes. */
+export function addResultSummary(answer) {
+  const results = Array.isArray(answer?.results) ? answer.results : [];
+  const added = Number(answer?.added || 0);
+  const problems = results
+    .filter((r) => r?.status === "refused" || r?.status === "duplicate")
+    .map((r) => ({
+      index: r.index,
+      title: typeof r.title === "string" ? r.title : "",
+      messages: r.status === "duplicate"
+        ? [typeof r.message === "string" ? r.message : "An open card already does this."]
+        : (Array.isArray(r.fixes) ? r.fixes : []).map((f) => f?.message).filter((m) => typeof m === "string"),
+    }));
+  return { added, problems, toast: added === 1 ? "1 card added. Owners were told." : `${added} cards added. Owners were told.` };
+}
+
+const CONVERSION_ISSUES = {
+  no_owner: { label: "No owner", tone: "warning" },
+  already_converted: { label: "Already converted", tone: "default" },
+  duplicate_title: { label: "Same title as an open card", tone: "error" },
+  too_short: { label: "Next step too short", tone: "error" },
+};
+
+/** The chip for a next step that cannot simply be converted. */
+export function conversionIssue(issue) {
+  return issue ? CONVERSION_ISSUES[issue] || { label: "Cannot convert", tone: "error" } : null;
+}
+
+/** A row can be picked when it is ready, or has no owner and a fallback owner is chosen. */
+export function conversionSelectable(row, fallbackOwner) {
+  if (!row) return false;
+  if (!row.issue) return true;
+  return row.issue === "no_owner" && typeof fallbackOwner === "string" && fallbackOwner.length > 0;
+}
+
+export const HOSTS_WITHOUT_OWNER_PROMPT =
+  "Give every host card that has no owner an owner by city and ICP: find_records for hosts with no owner, then set_owners. Tell me who you assigned.";
+
+/** "N host cards have no owner…", or nothing when every host card has one. */
+export function hostsWithoutOwnerWords(count) {
+  const n = Number(count || 0);
+  if (n <= 0) return "";
+  return `${n} host ${n === 1 ? "card has" : "cards have"} no owner. Work cannot be assigned to ${n === 1 ? "it" : "them"}.`;
+}
+
+/** Open cards first by due date, at most `limit`. */
+export function dueOrder(cards, limit) {
+  const list = (Array.isArray(cards) ? cards : []).filter((c) => c && c.status !== "done");
+  list.sort((a, b) => String(a.due_on || "").localeCompare(String(b.due_on || "")) || Number(a.number || 0) - Number(b.number || 0));
+  return typeof limit === "number" ? list.slice(0, limit) : list;
+}

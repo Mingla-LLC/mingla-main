@@ -10,23 +10,26 @@ export function RecordPicker({ onPick, onClose, kinds = LINK_KINDS }) {
   const id = useId();
   const [kind, setKind] = useState(kinds[0]?.value || "host");
   const [q, setQ] = useState("");
-  const [state, setState] = useState({ loading: false, results: [], error: null });
+  // Results belong to the kind and words they were searched for; anything
+  // else on screen is still searching.
+  const [found, setFound] = useState({ kind: null, query: null, results: [], error: null });
   const seq = useRef(0);
+  const query = q.trim();
   useEffect(() => {
-    const query = q.trim();
-    if (query.length < 2) { setState({ loading: false, results: [], error: null }); return undefined; }
+    if (query.length < 2) return undefined;
     const mine = ++seq.current;
-    setState((s) => ({ ...s, loading: true, error: null }));
     const timer = setTimeout(async () => {
       try {
         const answer = await ops.searchLinks(kind, query);
-        if (mine === seq.current) setState({ loading: false, results: answer?.results || [], error: null });
+        if (mine === seq.current) setFound({ kind, query, results: answer?.results || [], error: null });
       } catch (error) {
-        if (mine === seq.current) setState({ loading: false, results: [], error });
+        if (mine === seq.current) setFound({ kind, query, results: [], error });
       }
     }, 250);
     return () => clearTimeout(timer);
-  }, [kind, q]);
+  }, [kind, query]);
+  const current = found.kind === kind && found.query === query;
+  const state = { loading: !current, results: current ? found.results : [], error: current ? found.error : null };
   return (
     <div className="flex min-w-0 flex-col gap-2 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-secondary)] p-2">
       <div role="group" aria-label="Kind of record" className="flex min-w-0 flex-wrap gap-1">
@@ -35,7 +38,7 @@ export function RecordPicker({ onPick, onClose, kinds = LINK_KINDS }) {
             key={k.value}
             type="button"
             aria-pressed={k.value === kind}
-            onClick={() => { setKind(k.value); setState({ loading: false, results: [], error: null }); }}
+            onClick={() => setKind(k.value)}
             className={`min-h-11 rounded-lg px-3 text-[13px] font-semibold ${k.value === kind ? "bg-[var(--color-brand-800)] text-white" : "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"} ${FOCUS}`}
           >
             {k.label}

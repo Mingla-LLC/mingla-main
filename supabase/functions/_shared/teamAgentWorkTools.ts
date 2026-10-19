@@ -457,7 +457,8 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
             type: "string",
             minLength: 1,
             maxLength: 500,
-            hint: "Say why the card no longer needs a person, up to 500 characters",
+            hint:
+              "Say why the card no longer needs a person, up to 500 characters",
           },
         },
         required: [],
@@ -767,6 +768,21 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
       "the agent reads a host's events with list_calendar and the host card with get_record",
   },
   ops_expected_event_set: { tools: ["set_expected_event"] },
+  ops_launch_kit_preview: { tools: ["plan_work"] },
+  ops_gate_override: {
+    excluded:
+      "only the owner or an admin, in person, lets a giveaway and ads card start early",
+  },
+  ops_team_overview: {
+    excluded:
+      "the Team dashboard is for the owner and admins; an agent reads runway with runway_report",
+  },
+  ops_next_action_preview: {
+    excluded: "the owner turns next steps into cards in person",
+  },
+  ops_next_action_convert: {
+    excluded: "the owner turns next steps into cards in person",
+  },
 };
 
 const WORK_BY_NAME = new Map(

@@ -1,6 +1,8 @@
 // Issue #3802 (Wave 1) — the Team dashboard (#/team-dashboard), for an owner
 // or admin: the team's pipelines by stage, everything due, this week by
 // person, and the monthly host targets (set, changed and removed here).
+// Issue #3980 adds the Runway and Sprint panels above them (and, for the
+// owner, turning next steps into cards) from components/ops/TeamOpsPanels.
 //
 // Every number was counted by the server (crm_team_summary, through
 // hooks/useCrmSummary.js). The page id has no entry in lib/access.js, so only
@@ -26,6 +28,7 @@ import { StageFunnel } from "../components/crm/home/StageFunnel";
 import { GONE_REGION, TargetsCard } from "../components/crm/home/TargetsCard";
 import { TargetAddForm, TargetRowControls } from "../components/crm/home/TargetEditor";
 import { WeekByPerson } from "../components/crm/home/WeekByPerson";
+import { TeamOpsPanels } from "../components/ops/TeamOpsPanels";
 
 const PAGE_ID = "team-dashboard";
 const UNDO_MS = 8000;
@@ -176,6 +179,8 @@ export function TeamDashboardPage() {
       />
 
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
+
+      <TeamOpsPanels online={online} />
 
       {error ? (
         error.token === "forbidden" ? (

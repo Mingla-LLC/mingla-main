@@ -1,6 +1,6 @@
 // Issue #3980 — this week's sprint: dates, goal, progress and the counts that
 // matter, with the week arrows.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { OpsChip } from "./OpsChip";
 import { sprintLabel } from "../../lib/opsModel";
@@ -8,8 +8,12 @@ import { sprintLabel } from "../../lib/opsModel";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
 export function SprintStrip({ sprint, counts, overdue, canEditGoal, online, onGoal, onWeek, onThisWeek, isThisWeek }) {
-  const [goal, setGoal] = useState(sprint?.goal || "");
-  useEffect(() => setGoal(sprint?.goal || ""), [sprint?.goal, sprint?.starts_on]);
+  // The typed goal belongs to one week and one saved goal; a new week or a
+  // newly saved goal shows the saved text again.
+  const goalKey = `${sprint?.starts_on || ""}|${sprint?.goal || ""}`;
+  const [draft, setDraft] = useState({ key: goalKey, value: sprint?.goal || "" });
+  const goal = draft.key === goalKey ? draft.value : sprint?.goal || "";
+  const setGoal = (value) => setDraft({ key: goalKey, value });
   const open = Number(counts?.todo || 0) + Number(counts?.doing || 0) + Number(counts?.person || 0);
   const done = Number(counts?.done || 0);
   const pct = open + done > 0 ? Math.round((done / (open + done)) * 100) : 0;

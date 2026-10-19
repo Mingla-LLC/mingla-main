@@ -66,3 +66,22 @@ export function useOpsWork({ who = "all", week = null } = {}) {
   const query = { who, today: todayIso(), ...(week ? { week } : {}) };
   return useOpsPoll(() => ops.listWork(query), { key: `${access?.email || ""}|${who}|${week || ""}`, intervalMs: 30_000 });
 }
+
+/** Wave 3 — the Team dashboard's runway, sprint and host-owner numbers (owner and admins). */
+export function useOpsTeamOverview() {
+  const { access } = useAuth();
+  return useOpsPoll(() => ops.fetchTeamOverview(todayIso()), { key: `${access?.email || ""}|team-overview`, intervalMs: 60_000 });
+}
+
+/** Wave 3 — My day: open cards I own and cards I watch. */
+export function useMyCards() {
+  const { access } = useAuth();
+  return useOpsPoll(async () => {
+    const today = todayIso();
+    const [mine, watching] = await Promise.all([
+      ops.listWork({ who: "mine", today, done_days: 0, limit: 50 }),
+      ops.listWork({ who: "watching", today, done_days: 0, limit: 20 }),
+    ]);
+    return { mine: Array.isArray(mine?.cards) ? mine.cards : [], watching: Array.isArray(watching?.cards) ? watching.cards : [] };
+  }, { key: `${access?.email || ""}|my-cards`, intervalMs: 60_000 });
+}

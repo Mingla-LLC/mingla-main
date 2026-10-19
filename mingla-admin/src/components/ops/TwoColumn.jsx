@@ -15,12 +15,3 @@ export const TwoColumn = forwardRef(function TwoColumn({ list, detail, detailLab
     </div>
   );
 });
-
-/** Below 1180px the detail sits under the list: bring it into view. */
-export function revealDetail(detailRef, headingRef) {
-  if (typeof window === "undefined") return;
-  requestAnimationFrame(() => {
-    if (window.innerWidth < 1180) detailRef?.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-    headingRef?.current?.focus?.({ preventScroll: window.innerWidth >= 1180 });
-  });
-}
