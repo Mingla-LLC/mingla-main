@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-ad-creative-upload/index.issue3040.videoRecordRetired.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-admin-ad-creative-upload-videorecordretired",
+  "profile": "deno-2-unit"
+}

@@ -293,7 +293,7 @@ const defaultDeps = {
 // reported so the caller does not hand out a signature the server will not
 // honour.
 // deno-lint-ignore no-explicit-any
-async function extendTransportLease(
+export async function extendTransportLease(
   supabase: any,
   jobId: string,
   expiresAtIso: string,

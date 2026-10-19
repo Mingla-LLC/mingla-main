@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/api-health-probe/issue3040_video_lane_signals.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-video-lane-health-signals",
+  "profile": "deno-2-unit"
+}

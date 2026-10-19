@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/event-cover-video-reaper/__tests__/issue_3040_ready_owner.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-reaper-ready-owner",
+  "profile": "deno-2-unit"
+}
