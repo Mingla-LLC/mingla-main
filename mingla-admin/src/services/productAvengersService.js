@@ -22,7 +22,7 @@ export async function listProductAvengersWorkspace() {
     supabase.from("product_avengers_items").select("*"),
     supabase.from("product_avengers_commands").select("id,signal_id,action,state,error_code,requested_at,completed_at").order("requested_at", { ascending: false }).limit(500),
     supabase.from("product_customer_update_drafts").select("*").order("created_at", { ascending: false }).limit(500),
-    supabase.from("community_roadmap_cards").select("id,public_title,public_body,internal_note,lane,status,avengers_item_id,source_signal_id,updated_at"),
+    supabase.from("community_roadmap_cards").select("id,public_title,public_body,lane,status,avengers_item_id,source_signal_id,updated_at"),
   ]);
   for (const result of [signals, reviews, candidates, links, items, commands, drafts, cards]) {
     if (result.error) throw new Error(result.error.message || "Couldn't load Product Inbox");
