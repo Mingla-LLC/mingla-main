@@ -255,11 +255,15 @@ BEGIN
       v_release.partner_share_cents;
   END IF;
 
-  -- ₦10,000 gross - ₦1,000 Mingla fee - ₦100 partner principal
-  -- - ₦100 processing fee - ₦10 partner transfer fee = ₦8,790.
-  IF v_release.net_release_cents <> 879000 THEN
+  -- Issue #3872 (F1): the partner principal is 10% OF Mingla's ₦1,000 fee and
+  -- Mingla pays it (and its transfer fee) from that fee, so the organiser's
+  -- cash is ₦10,000 gross - ₦1,000 Mingla fee - ₦100 processing fee = ₦8,900.
+  -- (Before #3872 the organiser also gave up the ₦100 principal and the ₦10
+  -- partner transfer fee, paying the partner twice over: once inside Mingla's
+  -- fee and once out of their own cash.)
+  IF v_release.net_release_cents <> 890000 THEN
     RAISE EXCEPTION
-      'organiser cash overpays late partner principal: expected 879000, got %',
+      'organiser cash must not fund the partner principal: expected 890000, got %',
       v_release.net_release_cents;
   END IF;
 END;
