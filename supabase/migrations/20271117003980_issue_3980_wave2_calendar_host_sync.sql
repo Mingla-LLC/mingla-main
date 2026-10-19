@@ -1067,7 +1067,7 @@ BEGIN
         v_result := public.ops_expected_event_set(v_args - 'request_key', v_rk);
         v_items := 1;
         v_summary := jsonb_build_object('expected', v_result->>'status');
-      -- [TRANSITIONAL] the launch kit tool arrives with Wave 3 of this build; this branch is replaced before the pull request.
+      -- The launch kit tool answers from the Wave 3 migration of #3980, which replaces this gateway in the same release.
       WHEN 'plan_work' THEN RAISE EXCEPTION 'not_ready: This tool is not ready yet. Use the other work tools for now.' USING ERRCODE = '22023';
       ELSE
         RAISE EXCEPTION 'unknown_tool: That tool does not exist. Call tools/list to see what is available.' USING ERRCODE = '22023';

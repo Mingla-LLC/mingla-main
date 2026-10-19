@@ -3899,7 +3899,7 @@ BEGIN
           'watching', public.ops_work_list(jsonb_build_object('who', 'watching', 'today', v_date, 'done_days', 0))->'cards',
           'claims', public.ops_log_list('{"who":"mine","limit":1}'::jsonb)->'claims');
         v_summary := jsonb_build_object('mine', jsonb_array_length(v_result->'mine'), 'watching', jsonb_array_length(v_result->'watching'));
-      -- [TRANSITIONAL] the calendar and launch-kit tools arrive with the next waves of this build; these four branches are replaced before the pull request.
+      -- The calendar and launch-kit tools answer from the Wave 2 and Wave 3 migrations of #3980, which replace this gateway in the same release.
       WHEN 'plan_work' THEN RAISE EXCEPTION 'not_ready: This tool is not ready yet. Use the other work tools for now.' USING ERRCODE = '22023';
       WHEN 'list_calendar' THEN RAISE EXCEPTION 'not_ready: This tool is not ready yet. Use the other work tools for now.' USING ERRCODE = '22023';
       WHEN 'runway_report' THEN RAISE EXCEPTION 'not_ready: This tool is not ready yet. Use the other work tools for now.' USING ERRCODE = '22023';
