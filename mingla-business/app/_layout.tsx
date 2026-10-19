@@ -848,9 +848,10 @@ export default function RootLayout(): React.ReactElement {
   }, []);
 
   // #2075 folds the version trigger into Host's one existing root AppState
-  // owner. The event state is set during the background→active callback, so
-  // MandatoryUpdateGate replaces the old snapshot with its opaque veil before
-  // the route tree can accept a foreground tap.
+  // owner. #2107 A2: the foreground recheck this event starts runs BEHIND the
+  // mounted route tree — MandatoryUpdateGate no longer veils while it is
+  // pending, so returning after 15+ minutes keeps navigation and any flow in
+  // progress. Only a confirmed `required` covers the app.
   useEffect(() => {
     const handleAppStateChange = (status: AppStateStatus): void => {
       focusManager.setFocused(status === "active");

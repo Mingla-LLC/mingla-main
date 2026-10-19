@@ -9,24 +9,45 @@
 // otaUpdatePolicy.ts so the adversarial suite can drive it without a device.
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import * as Updates from "expo-updates";
 import { Platform } from "react-native";
 import {
   OTA_POLICY_APP_ID,
   OtaGateCoordinator,
-  getAcknowledgementCacheKey,
+  criticalIndexFromExpoConfig,
+  criticalIndexFromManifest,
+  getAttemptRecordKey,
   parseOtaPolicy,
   POLICY_CHECK_TIMEOUT_MS,
   type AppOtaPolicy,
   type OtaPlatform,
   type OtaUpdateBridge,
 } from "./otaUpdatePolicy";
+import { reportUpdateGateEvent } from "./updateGateTelemetry";
 import { supabaseUrl } from "./supabase";
 
 export function getOtaPlatform(): OtaPlatform | null {
   return Platform.OS === "ios" || Platform.OS === "android"
     ? Platform.OS
     : null;
+}
+
+/**
+ * The criticalIndex baked into the code that is running right now. An OTA
+ * launch carries it in its manifest (extra.expoClient.extra); an embedded
+ * launch carries it in the binary's expo config. Null when neither has one,
+ * which the core treats as "cannot call anything critical".
+ */
+function readRunningCriticalIndex(): number | null {
+  try {
+    return (
+      criticalIndexFromManifest(Updates.manifest) ??
+      criticalIndexFromExpoConfig(Constants.expoConfig)
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -39,16 +60,37 @@ export function createOtaUpdateBridge(): OtaUpdateBridge {
   return {
     isEnabled: enabled,
     runtimeVersion: enabled ? Updates.runtimeVersion : null,
+    runningUpdateId: enabled ? Updates.updateId : null,
+    runningCriticalIndex: enabled ? readRunningCriticalIndex() : null,
+    isEmergencyLaunch: enabled ? Updates.isEmergencyLaunch === true : false,
     checkForUpdate: async () => {
       const result = await Updates.checkForUpdateAsync();
+      if (result.isAvailable) {
+        return {
+          isAvailable: true,
+          isRollBackToEmbedded: false,
+          updateId: typeof result.manifest.id === "string" ? result.manifest.id : null,
+          criticalIndex: criticalIndexFromManifest(result.manifest),
+          reason: null,
+        };
+      }
       return {
-        isAvailable: result.isAvailable,
+        isAvailable: false,
         isRollBackToEmbedded: result.isRollBackToEmbedded === true,
-        updateId: result.isAvailable ? result.manifest.id : null,
+        updateId: null,
+        criticalIndex: null,
+        reason: typeof result.reason === "string" ? result.reason : null,
       };
     },
     fetchUpdate: async () => {
-      await Updates.fetchUpdateAsync();
+      const result = await Updates.fetchUpdateAsync();
+      return {
+        isNew: result.isNew === true,
+        updateId:
+          result.isNew === true && typeof result.manifest?.id === "string"
+            ? result.manifest.id
+            : null,
+      };
     },
     reload: async () => {
       await Updates.reloadAsync();
@@ -87,21 +129,22 @@ export async function fetchOtaPolicy(
 export function createOtaGateCoordinator(): OtaGateCoordinator {
   const platform = getOtaPlatform();
   const updates = createOtaUpdateBridge();
-  const cacheKey = platform !== null && updates.runtimeVersion !== null
-    ? getAcknowledgementCacheKey(platform, updates.runtimeVersion)
-    : "mingla.otaAcknowledgement.unavailable";
+  const recordKey = platform !== null && updates.runtimeVersion !== null
+    ? getAttemptRecordKey(platform, updates.runtimeVersion)
+    : "mingla.criticalUpdateAttempt.unavailable";
   return new OtaGateCoordinator({
     platform,
     updates,
     fetchPolicy: fetchOtaPolicy,
-    loadAcknowledgement: () => AsyncStorage.getItem(cacheKey),
-    saveAcknowledgement: (updateId) => AsyncStorage.setItem(cacheKey, updateId),
+    loadAttemptRecord: () => AsyncStorage.getItem(recordKey),
+    saveAttemptRecord: (value) => AsyncStorage.setItem(recordKey, value),
+    clearAttemptRecord: () => AsyncStorage.removeItem(recordKey),
     report: (event, detail) => {
-      console.warn(
-        `[ota-update-gate] ${event}${
-          detail === undefined ? "" : ` ${JSON.stringify(detail)}`
-        }`,
-      );
+      reportUpdateGateEvent("ota-update-gate", event, {
+        app_id: OTA_POLICY_APP_ID,
+        platform,
+        ...(detail ?? {}),
+      });
     },
   });
 }
