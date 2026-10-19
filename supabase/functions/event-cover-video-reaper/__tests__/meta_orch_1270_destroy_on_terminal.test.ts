@@ -45,6 +45,19 @@ const makeSupabaseStub = (
     limit() {
       return this as any;
     },
+    // #3040 — the reaper's reads are now status-filtered and ordered.
+    // deno-lint-ignore no-explicit-any
+    in() {
+      return this as any;
+    },
+    // deno-lint-ignore no-explicit-any
+    order() {
+      return this as any;
+    },
+    // deno-lint-ignore no-explicit-any
+    lt() {
+      return this as any;
+    },
     then(resolve: (v: { data: ReapCandidate[]; error: null }) => unknown) {
       return Promise.resolve({ data: candidates, error: null }).then(resolve);
     },

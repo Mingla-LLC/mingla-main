@@ -411,6 +411,15 @@ Deno.test("#2715 lost Bunny create response is reconciled after lease expiry wit
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
         }),
+        // #3040 — the reaper's reads are now status-filtered and ordered.
+        in: () => {
+          const scan: Record<string, unknown> = {};
+          for (const method of ["in", "is", "not", "order", "lt"]) {
+            scan[method] = () => scan;
+          }
+          scan.limit = () => Promise.resolve({ data: [], error: null });
+          return scan;
+        },
       }),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
     }),

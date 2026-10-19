@@ -5,68 +5,40 @@ import {
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
-  requireBrandCoverManager,
   requireCoverVideoTargetManager,
-  requireEventManager,
   requireUserId,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
+// #3040 (B-5, B-14) — the cover a new video replaces is reclaimed through ONE
+// shared path, scoped to the same target kind and target and guarded by live
+// references (a trip-day gallery video sharing the events-row is never touched).
+import { reapPriorCoverAssets } from "../_shared/coverVideoReap.ts";
+// #3040 (C-4..C-8) — an ad video's library row is created server-side from the
+// READY job itself; the client only asks for it to happen.
+import { materializeAdCreativeFromJob } from "../_shared/adCreativeMaterialize.ts";
 
-// META-ORCH-1270 (Phase 2) — cover-replace reaping. Before a new cover overwrites
-// a prior applied one, reclaim the PRIOR applied Bunny asset for this target so
-// it does not linger. Bunny-only (Cloudinary rows carry no source_asset_id; their
-// reaping is out of scope until Phase 4). Best-effort; never fails the apply.
-// deno-lint-ignore no-explicit-any
-const reapPriorAppliedBunnyCover = async (
-  supabase: any,
-  job: {
-    id: string;
-    provider?: string | null;
-    target_kind?: string | null;
-    event_id?: string | null;
-    brand_id: string;
-  },
-): Promise<void> => {
-  if (job.provider !== "bunny") return;
-  const base = supabase
-    .from("event_cover_video_jobs")
-    .select("id,provider,source_asset_id,source_public_id")
-    .eq("status", "applied")
-    .eq("provider", "bunny")
-    .neq("id", job.id)
-    .not("source_asset_id", "is", null)
-    .is("reaped_at", null);
-  const scoped = job.target_kind === "brand"
-    ? base.eq("brand_id", job.brand_id).eq("target_kind", "brand")
-    : base.eq("event_id", job.event_id as string);
-  const { data, error } = await scoped;
-  if (error) return;
-  for (
-    const row of (data ?? []) as Array<
-      {
-        id: string;
-        provider?: string | null;
-        source_asset_id?: unknown;
-        source_public_id?: unknown;
-      }
-    >
-  ) {
-    const destroyed = await destroyCoverVideoAsset(row);
-    if (destroyed.ok) {
-      await supabase
-        .from("event_cover_video_jobs")
-        .update({ reaped_at: new Date().toISOString() })
-        .eq("id", row.id);
-    } else {
-      console.warn("[event-cover-video-apply] prior cover reap failed:", {
-        jobId: row.id,
-        reason: destroyed.reason,
-      });
-    }
-  }
+const defaultDeps = {
+  destroyCoverVideoAsset,
+  materializeAdCreativeFromJob,
+  requireCoverVideoTargetManager,
+  requireUserId,
+  serviceRoleClient,
 };
 
-serve(async (req) => {
+// deno-lint-ignore no-explicit-any
+const creativeIdForJob = async (supabase: any, jobId: string) => {
+  const { data } = await supabase
+    .from("ad_creatives")
+    .select("id")
+    .eq("source_job_id", jobId)
+    .maybeSingle();
+  return typeof data?.id === "string" ? data.id : null;
+};
+
+export const handleEventCoverVideoApply = async (
+  req: Request,
+  deps: typeof defaultDeps = defaultDeps,
+): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -74,7 +46,7 @@ serve(async (req) => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  const userIdOrResponse = await requireUserId(req);
+  const userIdOrResponse = await deps.requireUserId(req);
   if (userIdOrResponse instanceof Response) return userIdOrResponse;
   const userId = userIdOrResponse;
 
@@ -98,7 +70,7 @@ serve(async (req) => {
     }, 400);
   }
 
-  const supabase = serviceRoleClient();
+  const supabase = deps.serviceRoleClient();
   const { data: job, error: jobError } = await supabase
     .from("event_cover_video_jobs")
     .select("*")
@@ -113,7 +85,7 @@ serve(async (req) => {
   if (!job) {
     return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
   }
-  const allowed = await requireCoverVideoTargetManager(supabase, {
+  const allowed = await deps.requireCoverVideoTargetManager(supabase, {
     targetKind: job.target_kind,
     eventId: job.event_id,
     brandId: job.brand_id,
@@ -122,6 +94,7 @@ serve(async (req) => {
     requestedBy: job.requested_by,
   }, userId);
   if (allowed instanceof Response) return allowed;
+  const isAdVideo = job.target_kind === "ad_creative";
   if (job.status === "applied") {
     return jsonResponse({
       ok: true,
@@ -129,6 +102,9 @@ serve(async (req) => {
       processedUrl: job.processed_url,
       posterUrl: job.processed_poster_url,
       status: mapEventCoverVideoStatus(job),
+      ...(isAdVideo
+        ? { creativeId: await creativeIdForJob(supabase, job.id) }
+        : {}),
     });
   }
   if (
@@ -149,6 +125,27 @@ serve(async (req) => {
       detail: "apply_precondition_required",
     }, 400);
   }
+  // #3040 (E-6c) — an ad video applies only once its library row exists; the
+  // row is built from the job's own media, never from anything in this request.
+  let creativeId: string | null = null;
+  if (isAdVideo) {
+    const made = await deps.materializeAdCreativeFromJob(supabase, job);
+    if (!made.ok && made.retryable) {
+      return jsonResponse({
+        error: "creative_materialize_pending",
+        retryable: true,
+        status: mapEventCoverVideoStatus(job),
+      }, 503);
+    }
+    if (!made.ok) {
+      const terminal = made.code === "creative_source_untrusted";
+      return jsonResponse({
+        error: terminal ? "creative_source_untrusted" : "job_not_ready",
+        status: mapEventCoverVideoStatus(job),
+      }, 409);
+    }
+    creativeId = made.creativeId;
+  }
   const { data: applied, error: applyError } = await supabase.rpc(
     "cover_video_apply_once",
     {
@@ -159,9 +156,10 @@ serve(async (req) => {
       p_expected_url: typeof body.expectedProcessedUrl === "string"
         ? body.expectedProcessedUrl
         : null,
-      p_expected_requested_by: job.target_kind === "venue_draft"
-        ? userId
-        : null,
+      p_expected_requested_by:
+        job.target_kind === "venue_draft" || job.target_kind === "ad_creative"
+          ? userId
+          : null,
     },
   );
   if (applyError || !applied || applied.status !== "applied") {
@@ -173,12 +171,19 @@ serve(async (req) => {
   // The target CAS and applied receipt are durable before any prior asset is
   // reclaimed. A stale/failed apply can therefore never delete the live cover.
   if (job.target_kind === "event" || job.target_kind === "brand") {
-    await reapPriorAppliedBunnyCover(supabase, job);
+    await reapPriorCoverAssets(supabase, job, {
+      destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+    });
   }
   return jsonResponse({
     ok: true,
     processedUrl: applied.processed_url,
     posterUrl: applied.processed_poster_url,
     status: mapEventCoverVideoStatus(applied),
+    ...(isAdVideo ? { creativeId } : {}),
   });
-});
+};
+
+if (import.meta.main) {
+  serve((req) => handleEventCoverVideoApply(req));
+}
