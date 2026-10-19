@@ -1764,7 +1764,153 @@ GRANT EXECUTE ON FUNCTION public.refund_preview(uuid, jsonb) TO authenticated, s
 COMMENT ON FUNCTION public.refund_preview(uuid, jsonb) IS
   'Issue #3872: the amount refunding these lines would return (quantity x unit price at purchase), computed by the same rule biz_refund_order applies. Read-only. Callers need payment rights on the order''s brand.';
 
--- @@M5@@
+-- =============================================================================
+-- §7. Proportional partner reversal on refunds (F5)
+-- =============================================================================
+-- The partner share is 10% OF Mingla's application fee. When a refund returns
+-- part of that fee, the partner gives back the same proportion:
+--   target reversed = floor(original share x fee refunded / fee).
+-- A split not yet transferred is reduced in place (no provider call). A
+-- transferred split is reversed by the difference between the target and what
+-- is already reversed; the edge function makes that one Stripe call with an
+-- idempotency key per cumulative target, so a replayed or reordered refund
+-- event can never reverse twice. Disputes keep their existing full treatment
+-- (mark_partner_split_reversed). On Paystack, a ticket refund returns none of
+-- Mingla's fee (refunds.application_fee_refunded_cents = 0), so the rule
+-- leaves the partner share unchanged.
+ALTER TABLE public.partner_splits
+  ADD COLUMN IF NOT EXISTS reversed_cents integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS original_partner_share_cents integer;
+ALTER TABLE public.partner_splits DROP CONSTRAINT IF EXISTS partner_splits_issue_3872_reversal_bounds;
+ALTER TABLE public.partner_splits ADD CONSTRAINT partner_splits_issue_3872_reversal_bounds CHECK (
+  reversed_cents >= 0
+  AND (original_partner_share_cents IS NULL OR original_partner_share_cents >= 0)
+  AND reversed_cents <= COALESCE(original_partner_share_cents, partner_share_cents + reversed_cents)
+);
+COMMENT ON COLUMN public.partner_splits.reversed_cents IS
+  'Issue #3872: partner share given back because Mingla''s fee was refunded (reduced in place before transfer, or reversed from the transfer after).';
+COMMENT ON COLUMN public.partner_splits.original_partner_share_cents IS
+  'Issue #3872: the partner share at sale, recorded the first time a refund reduces partner_share_cents in place.';
+
+CREATE OR REPLACE FUNCTION public.issue_3872_partner_split_refund_plan(
+  p_application_fee_id text,
+  p_fee_amount_cents integer,
+  p_fee_refunded_cents integer
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_split public.partner_splits%ROWTYPE;
+  v_original integer;
+  v_target integer;
+BEGIN
+  IF p_fee_amount_cents IS NULL OR p_fee_amount_cents <= 0
+     OR p_fee_refunded_cents IS NULL OR p_fee_refunded_cents < 0 THEN
+    RAISE EXCEPTION 'invalid_fee_amounts' USING ERRCODE = '22023';
+  END IF;
+  SELECT * INTO v_split FROM public.partner_splits
+   WHERE stripe_application_fee_id = p_application_fee_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('outcome', 'no_split');
+  END IF;
+
+  v_original := CASE
+    WHEN v_split.status = 'transferred' THEN COALESCE(v_split.original_partner_share_cents, v_split.partner_share_cents)
+    ELSE COALESCE(v_split.original_partner_share_cents, v_split.partner_share_cents + v_split.reversed_cents)
+  END;
+  v_target := LEAST(v_original,
+    floor(v_original::numeric * LEAST(p_fee_refunded_cents, p_fee_amount_cents) / p_fee_amount_cents)::integer);
+
+  IF v_split.status IN ('reversed', 'reversed_pending', 'cancelled_refund') THEN
+    RETURN jsonb_build_object('outcome', 'already_closed', 'status', v_split.status);
+  END IF;
+  IF v_target <= v_split.reversed_cents THEN
+    RETURN jsonb_build_object('outcome', 'nothing_to_reverse',
+      'target_reversed_cents', v_target, 'reversed_cents', v_split.reversed_cents);
+  END IF;
+
+  IF v_split.status = 'transferred' THEN
+    IF v_split.stripe_transfer_id IS NULL THEN
+      RETURN jsonb_build_object('outcome', 'transfer_missing');
+    END IF;
+    RETURN jsonb_build_object(
+      'outcome', 'reverse',
+      'transfer_id', v_split.stripe_transfer_id,
+      'target_reversed_cents', v_target,
+      'reverse_cents', v_target - v_split.reversed_cents,
+      'original_partner_share_cents', v_original
+    );
+  END IF;
+
+  -- Not transferred yet: reduce in place, no provider call.
+  UPDATE public.partner_splits
+  SET original_partner_share_cents = v_original,
+      partner_share_cents = v_original - v_target,
+      reversed_cents = v_target,
+      status = CASE
+        WHEN v_original - v_target > 0 THEN status
+        WHEN status = 'held' THEN 'cancelled_refund'
+        ELSE 'reversed_pending'
+      END,
+      reversed_at = CASE WHEN v_original - v_target > 0 THEN reversed_at ELSE COALESCE(reversed_at, now()) END
+  WHERE id = v_split.id;
+  RETURN jsonb_build_object(
+    'outcome', 'reduced_in_place',
+    'partner_share_cents', v_original - v_target,
+    'target_reversed_cents', v_target
+  );
+END
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.issue_3872_partner_split_record_reversal(
+  p_application_fee_id text,
+  p_target_reversed_cents integer,
+  p_reversal_id text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_split public.partner_splits%ROWTYPE;
+  v_original integer;
+BEGIN
+  SELECT * INTO v_split FROM public.partner_splits
+   WHERE stripe_application_fee_id = p_application_fee_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('outcome', 'no_split');
+  END IF;
+  v_original := COALESCE(v_split.original_partner_share_cents, v_split.partner_share_cents);
+  IF p_target_reversed_cents IS NULL OR p_target_reversed_cents < 0
+     OR p_target_reversed_cents > v_original THEN
+    RAISE EXCEPTION 'invalid_reversal_target' USING ERRCODE = '22023';
+  END IF;
+  UPDATE public.partner_splits
+  SET original_partner_share_cents = v_original,
+      reversed_cents = GREATEST(reversed_cents, p_target_reversed_cents),
+      status = CASE WHEN GREATEST(reversed_cents, p_target_reversed_cents) >= v_original
+        THEN 'reversed' ELSE status END,
+      reversed_at = CASE WHEN GREATEST(reversed_cents, p_target_reversed_cents) >= v_original
+        THEN COALESCE(reversed_at, now()) ELSE reversed_at END,
+      error_message = CASE WHEN p_reversal_id IS NOT NULL
+        THEN left('last_reversal:' || p_reversal_id, 500) ELSE error_message END
+  WHERE id = v_split.id;
+  RETURN jsonb_build_object('outcome', 'recorded',
+    'reversed_cents', GREATEST(v_split.reversed_cents, p_target_reversed_cents));
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3872_partner_split_refund_plan(text, integer, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_partner_split_refund_plan(text, integer, integer)
+  TO service_role;
+REVOKE ALL ON FUNCTION public.issue_3872_partner_split_record_reversal(text, integer, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_partner_split_record_reversal(text, integer, text)
+  TO service_role;
+COMMENT ON FUNCTION public.issue_3872_partner_split_refund_plan(text, integer, integer) IS
+  'Issue #3872 (F5): proportional partner give-back when Mingla''s application fee is refunded. Reduces an untransferred split in place; for a transferred split returns the amount still to reverse. service_role only.';
+COMMENT ON FUNCTION public.issue_3872_partner_split_record_reversal(text, integer, text) IS
+  'Issue #3872 (F5): records a Stripe transfer reversal up to a cumulative target; idempotent. service_role only.';
+
 
 
 

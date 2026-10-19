@@ -250,6 +250,10 @@ Deno.test("charge.succeeded with no partner → no Transfer, no record", async (
 });
 
 Deno.test("charge.refunded with transferred split → TransferReversal w/ idempotency-key", async () => {
+  // Issue #3872 (F5): the reversal is proportional to the application fee
+  // Stripe refunded and is keyed by the cumulative target, not one full
+  // reversal per fee. A full refund (fee 150 fully refunded) still reverses
+  // the whole 15 share.
   const { stripe, calls } = fakeStripe();
   const { sb, rpcCalls } = fakeSupabase({
     partnerSplitsRow: {
@@ -259,6 +263,16 @@ Deno.test("charge.refunded with transferred split → TransferReversal w/ idempo
       partner_share_cents: 15,
     },
   });
+  sb.rpc = (name: string, args: unknown) => {
+    rpcCalls.push({ name, args });
+    if (name === "issue_3872_partner_split_refund_plan") {
+      return Promise.resolve({
+        data: { outcome: "reverse", transfer_id: "tr_test_abc", target_reversed_cents: 15, reverse_cents: 15 },
+        error: null,
+      });
+    }
+    return Promise.resolve({ data: { outcome: "recorded" }, error: null });
+  };
 
   const event = {
     id: "evt_refund_1",
@@ -266,7 +280,7 @@ Deno.test("charge.refunded with transferred split → TransferReversal w/ idempo
     data: {
       object: {
         id: "ch_test_1",
-        application_fee: "fee_test_1",
+        application_fee: { id: "fee_test_1", amount: 150, amount_refunded: 150 },
       },
     },
   };
@@ -276,13 +290,16 @@ Deno.test("charge.refunded with transferred split → TransferReversal w/ idempo
   const reversal = calls.find((c) => c.kind === "transfers.createReversal");
   assert(reversal, "TransferReversal should be created");
   // deno-lint-ignore no-explicit-any
-  const [transferId, _payload, options] = reversal!.args as [string, any, any];
+  const [transferId, payload, options] = reversal!.args as [string, any, any];
   assertEquals(transferId, "tr_test_abc");
-  assertEquals(options.idempotencyKey, "partner_split_reversal_fee_test_1");
-  assert(rpcCalls.some((c) => c.name === "mark_partner_split_reversed"));
+  assertEquals(payload.amount, 15);
+  assertEquals(options.idempotencyKey, "partner_split_reversal_fee_test_1_to_15");
+  assert(rpcCalls.some((c) => c.name === "issue_3872_partner_split_record_reversal"));
 });
 
 Deno.test("charge.refunded with pending split → marks reversed_pending, no Stripe call", async () => {
+  // Issue #3872 (F5): an untransferred split is reduced in place by the
+  // database (to zero on a full refund, status reversed_pending); no Stripe call.
   const { stripe, calls } = fakeStripe();
   const { sb, rpcCalls } = fakeSupabase({
     partnerSplitsRow: {
@@ -292,20 +309,35 @@ Deno.test("charge.refunded with pending split → marks reversed_pending, no Str
       partner_share_cents: 15,
     },
   });
+  sb.rpc = (name: string, args: unknown) => {
+    rpcCalls.push({ name, args });
+    return Promise.resolve({
+      data: { outcome: "reduced_in_place", partner_share_cents: 0, target_reversed_cents: 15 },
+      error: null,
+    });
+  };
 
   const event = {
     id: "evt_refund_2",
     type: "charge.refunded",
     data: {
-      object: { id: "ch_test_2", application_fee: "fee_test_2" },
+      object: {
+        id: "ch_test_2",
+        application_fee: { id: "fee_test_2", amount: 150, amount_refunded: 150 },
+      },
     },
   };
 
   await handleChargeReversal(sb, stripe, event, "refund");
 
   assertEquals(calls.length, 0); // no Stripe calls (nothing transferred)
-  const reverseCall = rpcCalls.find((c) => c.name === "mark_partner_split_reversed");
-  assert(reverseCall, "RPC should still mark the row reversed_pending");
+  const planCall = rpcCalls.find((c) => c.name === "issue_3872_partner_split_refund_plan");
+  assert(planCall, "RPC should reduce the untransferred split in place");
+  assertEquals(planCall!.args, {
+    p_application_fee_id: "fee_test_2",
+    p_fee_amount_cents: 150,
+    p_fee_refunded_cents: 150,
+  });
 });
 
 Deno.test("account.updated for known partner stripe_account_id → populates currencies", async () => {
