@@ -147,6 +147,8 @@ export interface CoverPickerSheetProps {
   mediaMode?: "all" | "video-only";
   title?: string;
   confirmLabel?: string;
+  /** #3040 AD-04 — the per-platform fit sentence for a saved ad video. */
+  adFitSummary?: string | null;
 }
 
 export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
@@ -166,6 +168,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
   mediaMode = "all",
   title = "Cover",
   confirmLabel = "Use this cover",
+  adFitSummary = null,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
 
@@ -180,6 +183,9 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
     kind: ToastKind;
   }>({ visible: false, message: "", kind: "info" });
   const [videoProcessing, setVideoProcessing] = useState(false);
+  // #3040 — H-12 / H-19 / AD-05 keep ONE decision on screen; the footer then
+  // offers a plain "Close" instead of a confirm that would read as "done".
+  const [needsAction, setNeedsAction] = useState(false);
 
   const handleShowToast = useCallback((message: string): void => {
     setToast({ visible: true, message, kind: inferKind(message) });
@@ -334,6 +340,8 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
               galleryEnabled={galleryEnabled}
               deferPreviousCleanup={deferPreviousCleanup}
               mediaMode={mediaMode}
+              adFitSummary={adFitSummary}
+              onNeedsActionChange={setNeedsAction}
               onCoverVideoProcessingChange={(processing): void => {
                 setVideoProcessing(processing);
                 onCoverVideoProcessingChange?.(processing);
@@ -356,7 +364,17 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             selected yet. Covers persist live via onCoverChange, so this button
             is confirm + close, not the persistence path. */}
         <View style={styles.footer}>
-          {videoProcessing ? (
+          {needsAction ? (
+            <Button
+              label="Close"
+              variant="secondary"
+              size="lg"
+              fullWidth
+              onPress={onClose}
+              accessibilityLabel="Close cover picker"
+              testID="cover-picker-close"
+            />
+          ) : videoProcessing ? (
             <Button
               label="Close — keep working"
               variant="primary"

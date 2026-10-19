@@ -113,3 +113,14 @@ export const BUSINESS_INVITE_ONELINK_URL = "https://biz.usemingla.com/ZSCW";
  * the host.
  */
 export const BUSINESS_ONELINK_BRANDED_DOMAIN = "biz.usemingla.com";
+
+/**
+ * #3040 — the Mingla HOST (business) app's own store listings, for the video
+ * lane's "Update Mingla Host" action (design state H-14e). Direct listings,
+ * not the OneLink: this is an existing host updating the app they already
+ * have, so there is no install to attribute.
+ *   iOS     → App Store Connect app id 6768737367 (eas.json `ascAppId`)
+ *   Android → the Play listing of `com.sethogieva.minglabusiness` (app.json)
+ */
+export const BUSINESS_APP_STORE_URL = "https://apps.apple.com/app/id6768737367";
+export const BUSINESS_PLAY_MARKET_URL = "market://details?id=com.sethogieva.minglabusiness";

@@ -28,8 +28,15 @@
  *      copy (the desktop-only gate message is gone).
  *   C. The video button's `disabled` is exactly `{uploading || disabled}` and
  *      NOT `{uploading || disabled || isPhoneWeb}` (no re-gating).
- *   D. The web helper copy "video covers upload the clip as-is" is present (web
- *      users are told the as-is/30s behavior).
+ *   D. Web users are told the limits and get an actionable over-cap path with
+ *      no trimmer. Issue #3040 replaced the old helper sentence ("video covers
+ *      upload the clip as-is") with the approved design copy (Appendix A D4 and
+ *      H-14a), which lives in the pure `coverUploadCardModel.ts`:
+ *        D1. CoverPicker renders the limits block via `coverLimitsLines(`.
+ *        D2. The video limits line says "Up to 1 minute".
+ *        D3. The H-14a "too long" refusal says "Trim it to the best minute, or
+ *            pick a shorter clip." and offers "Trim to 1 minute" ONLY on native;
+ *            web's action is "Choose another video" (no dead trim button).
  *
  * Self-test (`--self-test`): the GOOD (post-fix) shape passes; each reverted BAD
  * shape (gate re-added / copy back / disabled re-gated) fails.
@@ -44,6 +51,7 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 
 const PICKER_REL = "mingla-business/src/components/ui/CoverPicker.tsx";
+const MODEL_REL = "mingla-business/src/components/ui/coverUploadCardModel.ts";
 
 /** Strip block comments + whole-line `//` comments so prose can't satisfy/trip. */
 function stripComments(src) {
@@ -57,8 +65,8 @@ function normalize(src) {
   return stripComments(src).replace(/\s+/g, " ");
 }
 
-/** Scan CoverPicker (rules A–D). */
-function scanPicker(src) {
+/** Scan CoverPicker (rules A–D) and the upload card model (rule D). */
+function scanPicker(src, modelSrc = "") {
   const failures = [];
   const stripped = stripComments(src);
   const s = normalize(src);
@@ -82,11 +90,20 @@ function scanPicker(src) {
         "term; the button is enabled on mobile web (ORCH-1307).",
     );
   }
-  if (!/video covers upload the clip as-is/.test(s)) {
+  const model = normalize(modelSrc);
+  const tooLong = model.match(/case "too_long":[\s\S]*?case "too_large":/)?.[0] ?? "";
+  if (
+    !/coverLimitsLines\(/.test(s) ||
+    !/Up to 1 minute/.test(model) ||
+    !/Trim it to the best minute, or pick a shorter clip\./.test(tooLong) ||
+    !/actions: ctx\.isNative \? \[action\("trim", "Trim to 1 minute", "primary"\)/.test(tooLong) ||
+    !/: \[action\("choose_another", "Choose another video", "primary"\)\]/.test(tooLong)
+  ) {
     failures.push(
-      "D: CoverPicker.tsx no longer tells web users the as-is/30s behavior " +
-        '("video covers upload the clip as-is") — keep the actionable web copy ' +
-        "(ORCH-1307).",
+      "D: web users are no longer told the 1-minute limit with an actionable " +
+        'over-cap path ("Up to 1 minute" limits line rendered via coverLimitsLines; ' +
+        'H-14a offers "Trim to 1 minute" on native only and "Choose another video" on web) ' +
+        "(ORCH-1307, #3040).",
     );
   }
   return failures;
@@ -98,24 +115,36 @@ if (process.argv.includes("--self-test")) {
     const isNative = Platform.OS !== "web";
     // pickVideoCover has no isPhoneWeb early return
     <Button label="Video" onPress={onPickVideo} disabled={uploading || disabled} />
-    {Platform.OS === "web" ? (
-      <Text>On the web, video covers upload the clip as-is, up to 30 seconds. To
-        trim a longer clip, use the Mingla Host app.</Text>
-    ) : null}`;
+    {coverLimitsLines(coverKind, videoOnly).map((line) => <Text>{line}</Text>)}`;
+  const MODEL = `
+    case "too_long":
+      return base({
+        body: "Trim it to the best minute, or pick a shorter clip.",
+        actions: ctx.isNative
+          ? [action("trim", "Trim to 1 minute", "primary"), action("choose_another", "Choose another video", "secondary")]
+          : [action("choose_another", "Choose another video", "primary")],
+      });
+    case "too_large":
+    const video = "MP4, MOV, M4V or WebM · Up to 1 minute · Under 100 MB";`;
   const BAD_GATE_BACK = `
     const isPhoneWeb = Platform.OS === "web" && window.innerWidth < 768;
     <Button label="Video" onPress={onPickVideo} disabled={uploading || disabled} />
-    {Platform.OS === "web" ? (<Text>video covers upload the clip as-is</Text>) : null}`;
+    {coverLimitsLines(coverKind, videoOnly)}`;
   const BAD_COPY_BACK = `
     <Button label="Video" onPress={onPickVideo} disabled={uploading || disabled} />
     <Text>Video cover uploads are available on desktop or in the app for now.</Text>
-    <Text>video covers upload the clip as-is</Text>`;
+    {coverLimitsLines(coverKind, videoOnly)}`;
   const BAD_DISABLED_REGATED = `
     <Button label="Video" onPress={onPickVideo} disabled={uploading || disabled || isPhoneWeb} />
-    <Text>video covers upload the clip as-is</Text>`;
+    {coverLimitsLines(coverKind, videoOnly)}`;
   const BAD_WEB_COPY_GONE = `
     <Button label="Video" onPress={onPickVideo} disabled={uploading || disabled} />
     {Platform.OS === "web" ? (<Text>Some other copy.</Text>) : null}`;
+  const MODEL_WEB_TRIM = MODEL.replace(
+    ': [action("choose_another", "Choose another video", "primary")]',
+    ': [action("trim", "Trim to 1 minute", "primary")]',
+  );
+  const MODEL_NO_LIMIT = MODEL.replace("Up to 1 minute", "Any length");
 
   const check = (label, failures, expectFail) => {
     if (expectFail && failures.length === 0) {
@@ -131,14 +160,16 @@ if (process.argv.includes("--self-test")) {
     }
   };
 
-  check("picker GOOD (gate removed)", scanPicker(GOOD), false);
-  check("picker BAD (isPhoneWeb gate back)", scanPicker(BAD_GATE_BACK), true);
-  check("picker BAD (desktop-only copy back)", scanPicker(BAD_COPY_BACK), true);
-  check("picker BAD (video button re-gated)", scanPicker(BAD_DISABLED_REGATED), true);
-  check("picker BAD (web as-is copy gone)", scanPicker(BAD_WEB_COPY_GONE), true);
+  check("picker GOOD (gate removed)", scanPicker(GOOD, MODEL), false);
+  check("picker BAD (isPhoneWeb gate back)", scanPicker(BAD_GATE_BACK, MODEL), true);
+  check("picker BAD (desktop-only copy back)", scanPicker(BAD_COPY_BACK, MODEL), true);
+  check("picker BAD (video button re-gated)", scanPicker(BAD_DISABLED_REGATED, MODEL), true);
+  check("picker BAD (web limits block gone)", scanPicker(BAD_WEB_COPY_GONE, MODEL), true);
+  check("model BAD (web offered a trim it cannot run)", scanPicker(GOOD, MODEL_WEB_TRIM), true);
+  check("model BAD (1-minute limit no longer told)", scanPicker(GOOD, MODEL_NO_LIMIT), true);
 
   console.log(
-    "ORCH-1307 gate self-test PASS (5/5: fixed shape passes; 4 reverts fail).",
+    "ORCH-1307 gate self-test PASS (7/7: fixed shape passes; 6 reverts fail).",
   );
   process.exit(0);
 }
@@ -153,21 +184,22 @@ function read(rel) {
   }
 }
 
-const failures = scanPicker(read(PICKER_REL));
+const failures = scanPicker(read(PICKER_REL), read(MODEL_REL));
 
 if (failures.length > 0) {
   console.error(
     "ORCH-1307 gate FAIL — the mobile-web video cover gate regressed:\n\n  - " +
       failures.join("\n  - ") +
       "\n\nMobile web MUST be able to upload video covers (no isPhoneWeb gate); " +
-      "clips within the 33s ceiling upload as-is (Bunny TUS accepts browser " +
-      "uploads), and an over-30s clip gets an actionable web message since the " +
-      "web has no trimmer. See ORCH-1307.",
+      "clips within the 1-minute limit upload as-is (Bunny TUS accepts browser " +
+      "uploads), and an over-limit clip gets an actionable web message since the " +
+      "web has no trimmer. See ORCH-1307 and #3040.",
   );
   process.exit(1);
 }
 
 console.log(
   "ORCH-1307 gate PASS — CoverPicker has no isPhoneWeb video gate; the video " +
-    "button is enabled on mobile web; the web as-is/30s copy is present.",
+    "button is enabled on mobile web; web is told the 1-minute limit with a " +
+    "no-trimmer over-cap action.",
 );

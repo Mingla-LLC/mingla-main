@@ -799,7 +799,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           <View style={styles.fieldsCol}>
             <View style={styles.coverPreviewWrap}>
               {/* ORCH-1298 — the brand cover preview must be VIDEO-capable. A
-                  video cover's coverMediaUrl is a Bunny …/play_720p.mp4 that a
+                  video cover's coverMediaUrl is a Bunny …/play_{720,1080}p.mp4 that a
                   plain Image cannot render → the preview came up empty after a
                   video upload. EventCoverMedia handles image / gif / video /
                   empty in ONE component — the shared pattern already used by

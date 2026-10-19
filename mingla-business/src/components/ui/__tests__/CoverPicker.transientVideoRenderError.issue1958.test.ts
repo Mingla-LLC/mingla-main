@@ -84,8 +84,10 @@ describe("CoverPicker transient local-video render errors (issue #1958)", () => 
     );
     const guardIndex = handler.indexOf("if (\n        activeVideoUpload");
     const returnIndex = handler.indexOf("return;", guardIndex);
-    const stateIndex = handler.indexOf("setMediaDisplayError(");
-    const toastIndex = handler.indexOf("onShowToast(");
+    // [TEST-MOD-APPROVED #3040] B-C16 / H-16 — the surfaced effect is the
+    // render-failure count (the in-sheet card) and then its telemetry.
+    const stateIndex = handler.indexOf("setRenderFailures(");
+    const toastIndex = handler.indexOf("reportCoverPreviewRenderError(");
 
     expect(logIndex).toBeGreaterThan(-1);
     expect(guardIndex).toBeGreaterThan(logIndex);
@@ -94,10 +96,10 @@ describe("CoverPicker transient local-video render errors (issue #1958)", () => 
     expect(toastIndex).toBeGreaterThan(stateIndex);
   });
 
-  test("T-1958-04 persisted, stale, null-preview, and final errors retain the existing copy", () => {
-    expect(handler.split(DISPLAY_ERROR)).toHaveLength(3);
-    expect(handler).toContain(
-      "[activeVideoUpload, onShowToast, videoUpload.localPreviewUri]",
-    );
+  // [TEST-MOD-APPROVED #3040] B-C16 — the image-or-GIF copy is gone (wrong
+  // for a video, no retry); H-16 copy lives in coverUploadCardModel.
+  test("T-1958-04 persisted, stale, null-preview, and final errors surface H-16, not the old copy", () => {
+    expect(handler.split(DISPLAY_ERROR)).toHaveLength(1);
+    expect(handler).toContain("[activeVideoUpload, videoUpload.localPreviewUri]");
   });
 });

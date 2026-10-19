@@ -239,23 +239,28 @@ describe("issue #3485 video pick gate (source wiring)", () => {
   });
 
   test('"Choose replacement" still reaches the pick as a replace', () => {
-    expect(coverPickerSource).toContain("onReplaceVideo={() => { void pickVideoCover(true); }}");
-    expect(coverPickerSource).toContain('accessibilityLabel={replacing ? "Choose replacement video"');
+    // [TEST-MOD-APPROVED #3040] design H-18 — "Choose a different video" opens
+    // the swap confirm; its "Choose another video" reaches the pick as a replace.
+    expect(coverPickerSource).toContain("onConfirmSwap={() => { void pickVideoCover(true); }}");
+    expect(coverPickerSource).toContain('act: "Choose another video",');
   });
 
   test("the refusal can be SEEN while a video job owns the cover", () => {
     // The notice used to live only inside the `activeVideoUpload ? null : (…)`
     // branch, which renders nothing during a job — so the sentence would have
     // been set and never shown, and the dead tap would have looked identical.
+    // [TEST-MOD-APPROVED #3040] the notice row now renders unconditionally,
+    // under the card, in every state — including while a job owns the cover.
     expect(coverPickerSource).toContain(
-      "{activeVideoUpload ? <VideoPickNoticeRow notice={videoPickNotice} /> : (",
+      "      <VideoPickNoticeRow notice={videoPickNotice} />\n\n      {coverActions.showActions",
     );
     expect(coverPickerSource).toContain(
       "const VideoPickNoticeRow: React.FC<{ notice: NativeEditorNotice | null }>",
     );
     // One writer for the row: both branches render the same component, and the
     // notice markup exists in exactly one place.
-    expect(coverPickerSource.match(/<VideoPickNoticeRow /g)).toHaveLength(2);
+    // [TEST-MOD-APPROVED #3040] one unconditional render site now.
+    expect(coverPickerSource.match(/<VideoPickNoticeRow /g)).toHaveLength(1);
     expect(coverPickerSource.match(/style={styles\.videoNoticeRow}/g)).toHaveLength(1);
   });
 });

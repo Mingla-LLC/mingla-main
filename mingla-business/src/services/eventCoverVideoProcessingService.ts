@@ -1,4 +1,23 @@
+import Constants from "expo-constants";
+// #3040 — the ONE web TUS uploader and the lane's numeric contract.
+import {
+  tusMetadata as laneTusMetadata,
+  uploadSourceWeb,
+  VIDEO_LIMITS,
+  VideoUploadError,
+} from "@mingla/video-upload";
 import { supabase } from "./supabase";
+import {
+  isClientVersionRequired,
+  laneVersionHeaders,
+  LANE_CODES,
+  readCreativeId,
+  readRenditionHeight,
+  STATUS_ACTIVE_ONLY_FLAG,
+  isActiveLaneStatus,
+  UPDATE_REQUIRED_COPY,
+  type LaneTargetKind,
+} from "./eventCoverVideoEdgeContract";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
 import { EVENT_COVER_MAX_VIDEO_DURATION_MS } from "../utils/eventCoverMediaRules";
 import { Platform } from "react-native";
@@ -25,10 +44,15 @@ declare const require: (moduleName: string) => {
 
 export { EVENT_COVER_MAX_VIDEO_DURATION_MS };
 export const EVENT_COVER_SOURCE_CEILING_MS = EVENT_COVER_MAX_VIDEO_DURATION_MS;
-export const EVENT_COVER_VIDEO_PROCESSING_COPY =
-  Platform.OS === "web"
-    ? "Video covers: MP4, MOV, M4V, or WebM • up to 1 minute • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB."
-    : "Video covers: MP4, MOV, or M4V • up to 1 minute • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB.";
+// #3040 B-C15/B-C20 — ONE limits line per media, from the approved design (D4).
+// The old two-line copy promised a 25 MB output and omitted WebM on native.
+export const EVENT_COVER_VIDEO_LIMITS_COPY = "MP4, MOV, M4V or WebM · Up to 1 minute · Under 100 MB";
+export const EVENT_COVER_PHOTO_LIMITS_COPY = "JPEG, PNG, WebP or GIF · Under 30 MB";
+export const AD_VIDEO_LIMITS_COPY = "MP4, MOV, M4V or WebM · 5 seconds to 1 minute · Under 100 MB";
+/** @deprecated #3040 — kept as an alias of the single video limits line. */
+export const EVENT_COVER_VIDEO_PROCESSING_COPY = EVENT_COVER_VIDEO_LIMITS_COPY;
+/** #3040 B-C20 — the pipeline's source cap, from the shared limits table. */
+export const EVENT_COVER_SOURCE_MAX_BYTES = VIDEO_LIMITS.SOURCE_MAX_BYTES;
 export const EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY =
   "Video cover processing is not configured yet. Images and GIFs still work.";
 
@@ -106,24 +130,64 @@ export interface EventCoverVideoUploadProgress {
   bytesSent: number;
   bytesTotal: number;
   percent: number;
+  /**
+   * #3040 B-C8 — true when the transfer cannot report byte-true progress (a
+   * native source of one chunk or less). The card shows "Uploading…" with no %.
+   */
+  indeterminate?: boolean;
+  /** #3040 — true only on the emission after the server confirmed every byte. */
+  final?: boolean;
 }
+
+/**
+ * #3040 — why a job is `detached` (design truth rules T3/T4/T5):
+ *   - `offline`      H-10: the device reports no network; auto-resumes.
+ *   - `interrupted`  H-11: a server or transport error, after 3 auto-retries.
+ *   - `repick`       H-12: the bytes cannot be re-read here (web reload/unmount).
+ *   - `watching`     the watch deadline passed; the job runs on server-side.
+ */
+export type EventCoverVideoDetachedReason = "offline" | "interrupted" | "repick" | "watching";
 
 export type EventCoverVideoUploadStage =
   | { phase: "idle"; percent: 0 }
   | { phase: "picking"; percent: 0 }
+  // #3040 B-C18 — web: the file chooser closed and the duration is being read.
+  | { phase: "reading"; percent: 0 }
   | { phase: "preparing" | "validating" | "intent_pending" | "ack_pending" | "reattaching"; percent: 0 }
   | { phase: "compressing"; percent: number | null }
-  | { phase: "uploading"; percent: number }
+  | {
+      phase: "uploading";
+      /** Byte-true % (server-confirmed, held at 99 until the last byte), or null. */
+      percent: number | null;
+      confirmedBytes?: number;
+      totalBytes?: number;
+      /** #3040 B-C9 — an automatic retry is in flight ("Reconnecting…"). */
+      retrying?: boolean;
+    }
   | {
       phase: "processing";
       percent: number | null;
       timing: "normal" | "delayed" | "breached";
     }
-  | { phase: "detached"; percent: 0; sourceAcknowledged: boolean }
+  | {
+      phase: "detached";
+      percent: 0;
+      sourceAcknowledged: boolean;
+      reason?: EventCoverVideoDetachedReason;
+      confirmedBytes?: number;
+      totalBytes?: number;
+    }
   | { phase: "ready"; percent: 100 }
   | { phase: "applying"; percent: 100 }
   | { phase: "applied"; percent: 100 }
-  | { phase: "error"; percent: 0; code: string; message: string };
+  | {
+      phase: "error";
+      percent: 0;
+      code: string;
+      message: string;
+      /** #3040 B-C1 — false for answers no retry can change (e.g. app too old). */
+      canRetry?: boolean;
+    };
 
 export type CompressionProgress = { phase: "compressing"; percent: number };
 
@@ -133,12 +197,7 @@ export interface EventCoverVideoStatus {
   eventId: string | null;
   brandId: string;
   // ORCH-0989: "event" (default) or "brand".
-  targetKind?:
-    | "event"
-    | "brand"
-    | "venue"
-    | "venue_draft"
-    | "trip_day_media";
+  targetKind?: LaneTargetKind;
   venueId: string | null;
   draftOwnerKey: string | null;
   clientOperationId: string | null;
@@ -166,6 +225,10 @@ export interface EventCoverVideoStatus {
   cancelledAt: string | null;
   applicationVersion: number;
   applicationReceipt: Record<string, unknown> | null;
+  /** #3040 E-10b — the ad creative row for an `ad_creative` job, once it exists. */
+  creativeId?: string | null;
+  /** #3040 E-10b — the provider rendition height the lane served. */
+  renditionHeight?: number | null;
 }
 
 interface StatusResponse extends Partial<EventCoverVideoStatus> {
@@ -253,6 +316,22 @@ const processingErrorFromPayload = (
         "unauthenticated",
         "Finishing sign-in. Try again in a moment.",
       ),
+      edgeMetadata,
+    );
+  }
+  // #3040 B-C1 — the lane refuses an app too old to upload (HTTP 426). Never a
+  // generic retry: no retry can change this answer, only an update can.
+  if (isClientVersionRequired(payload?.error, metadata.edgeStatus)) {
+    return new EventCoverVideoProcessingError(
+      LANE_CODES.clientVersionRequired,
+      UPDATE_REQUIRED_COPY.body,
+      edgeMetadata,
+    );
+  }
+  if (payload?.error === LANE_CODES.creativeMaterializePending) {
+    return new EventCoverVideoProcessingError(
+      LANE_CODES.creativeMaterializePending,
+      "Saving to your ad. Checking how it fits each platform.",
       edgeMetadata,
     );
   }
@@ -358,6 +437,11 @@ const validationDetailMessage = (detail?: string): string => {
     case "event_id_invalid_uuid":
     case "brand_id_invalid_uuid":
       return "This event is still syncing. Reopen the draft and try again.";
+    // #3040 E-3g/E-3h — the edge mirrors the pick-time checks.
+    case LANE_CODES.adVideoTooShort:
+      return "Ad videos need at least 5 seconds. Choose another video.";
+    case LANE_CODES.sourceTooLarge:
+      return "Videos must be under 100 MB. Try a shorter clip.";
     case "invalid_json":
       return "Video upload request was malformed. Try again.";
     default:
@@ -417,10 +501,15 @@ const errorCodeOf = (error: unknown, fallback = "unknown"): string => {
 const clampPercent = (value: number): number =>
   Math.max(0, Math.min(100, Math.round(value)));
 
+// #3040 B-C8 / design T1-T2 — the percent is server-confirmed bytes ÷ total,
+// FLOORED and held at 99 until the emission that follows the server's
+// confirmation of the last byte (`final`). Rounding up used to show 100 while
+// the last chunk was still unconfirmed.
 const emitUploadProgress = (
   callback: ((progress: EventCoverVideoUploadProgress) => void) | undefined,
   bytesSent: number,
   bytesTotal: number,
+  options: { final?: boolean; indeterminate?: boolean } = {},
 ): void => {
   if (
     callback === undefined ||
@@ -430,11 +519,14 @@ const emitUploadProgress = (
   ) {
     return;
   }
+  const truePercent = Math.floor((bytesSent / bytesTotal) * 100);
   callback({
     bytesSent: Math.max(0, bytesSent),
     bytesTotal,
-    percent: clampPercent((bytesSent / bytesTotal) * 100),
+    percent: options.final === true ? 100 : Math.max(0, Math.min(99, truePercent)),
     phase: "source_upload",
+    indeterminate: options.indeterminate === true,
+    final: options.final === true,
   });
 };
 
@@ -487,21 +579,25 @@ const loadVideoCompressor = (): VideoCompressorModule | null => {
 // on a phone. `compressionMethod: "auto"` sizes its target from that source, so
 // it tried to keep 4K — minutes of work, and on this device it never finished.
 //
-// Nothing downstream wants 4K. Bunny transcodes server-side and delivers a
-// 720p-max ladder (`play_720p.mp4` is what every applied cover here resolves
-// to), so every pixel above 1080p is spent to be thrown away twice — once by
+// Nothing downstream wants 4K. Bunny transcodes server-side and (before
+// #3040) delivered a 720p-max ladder (`play_720p.mp4`; #3040 raised it to
+// 1080p, see below), so every pixel above 1080p is spent to be thrown away twice — once by
 // the phone, once by the provider.
 //
 // So: downscale to 1080p on the way in. A quarter of the pixels of 4K, well
 // above anything the delivery ladder serves, and a job a phone can actually
 // finish.
-// #3134 — 1280, not 1920. Bunny's delivery ladder tops out at 720p in this
-// project (`play_720p.mp4` on every applied cover), so 1080p is a rung nobody
+// #3134 (superseded by #3040 below) — 1280, not 1920. Bunny's delivery ladder
+// then topped out at 720p in this project (`play_720p.mp4` on every applied cover), so 1080p is a rung nobody
 // is served: it costs the phone a bigger encode and the host a bigger upload to
 // produce pixels the provider then discards. 1280 is exactly what gets
 // delivered, and four times the pixels of the 640 the library's `auto` mode
 // silently used — which is why a real device's cover came back 360x640.
-const COMPRESSION_MAX_EDGE_PX = 1280;
+// #3040 §2 — the lane now serves 1080p (Snapchat needs 1080×1920), so the
+// phone keeps a 1920 long edge at 8 Mbps: a full minute is ≈61 MB plus audio,
+// inside the 100 MB source cap with room to spare.
+const COMPRESSION_MAX_EDGE_PX = VIDEO_LIMITS.NATIVE_COMPRESSION_MAX_EDGE_PX;
+const COMPRESSION_BITRATE_BPS = VIDEO_LIMITS.NATIVE_COMPRESSION_BITRATE_BPS;
 // `auto` reports progress rarely enough that the sheet showed a bare spinner
 // with no percentage. This asks for an update every 1%, which also gives the
 // stall detector below a real signal to watch instead of silence.
@@ -551,7 +647,7 @@ export const compressVideoLocally = async (input: {
     durationMs: input.durationMs,
     wasCompressed: false,
   };
-  if (compressor === null || input.bytes < 5 * 1024 * 1024) return untouched;
+  if (compressor === null || input.bytes < VIDEO_LIMITS.NATIVE_COMPRESSION_MIN_SOURCE_BYTES) return untouched;
 
   const startedAt = Date.now();
   let lastProgressAt = startedAt;
@@ -596,6 +692,7 @@ export const compressVideoLocally = async (input: {
         {
           compressionMethod: "manual",
           maxSize: COMPRESSION_MAX_EDGE_PX,
+          bitrate: COMPRESSION_BITRATE_BPS,
           progressDivider: COMPRESSION_PROGRESS_DIVIDER,
           getCancellationId: (id: string) => { cancellationId = id; },
         },
@@ -675,6 +772,9 @@ const edgeError = async (
   if (typeof maybe?.context?.json === "function") {
     try {
       const payload = await maybe.context.json();
+      if (isClientVersionRequired(null, maybe.context.status) && (payload === null || typeof payload !== "object")) {
+        return processingErrorFromPayload({ error: LANE_CODES.clientVersionRequired }, fallback, edgeMetadata);
+      }
       if (payload !== null && typeof payload === "object") {
         const edgePayload = payload as EdgeErrorPayload;
         devWarn("edge-error-payload", {
@@ -694,6 +794,18 @@ const edgeError = async (
       // Keep the edge message fallback when the function body is unavailable.
     }
   }
+  if (isClientVersionRequired(null, maybe?.context?.status)) {
+    return processingErrorFromPayload({ error: LANE_CODES.clientVersionRequired }, fallback, edgeMetadata);
+  }
+  // #3040 B-C9 / design T4 — "offline" copy only when the device says so. On
+  // web the browser's own flag is the truth; native asks NetInfo in the hook.
+  if (maybe?.context?.status === undefined && isBrowserOffline()) {
+    return new EventCoverVideoProcessingError(
+      "network_offline",
+      "You're offline. It'll pick up when you reconnect.",
+      edgeMetadata,
+    );
+  }
   return new EventCoverVideoProcessingError(
     "edge_error",
     fallback,
@@ -701,9 +813,19 @@ const edgeError = async (
   );
 };
 
+/** #3040 B-C9 — web only: the browser reports no network. Native returns false. */
+export const isBrowserOffline = (): boolean =>
+  Platform.OS === "web" &&
+  typeof navigator !== "undefined" &&
+  (navigator as { onLine?: boolean }).onLine === false;
+
+/** #3040 B-C1 — the version headers the lane logs on a 426 (native only). */
+const laneHeaders = (): Record<string, string> =>
+  laneVersionHeaders(Platform.OS, Constants.expoConfig?.version ?? null);
+
 type EventCoverVideoUploadIntentInput = {
   // ORCH-0989: "event" (default) or "brand". Brand-target jobs carry no eventId.
-  target?: "event" | "brand" | "venue" | "venue_draft" | "trip_day_media";
+  target?: LaneTargetKind;
   eventId?: string;
   venueId?: string;
   draftOwnerKey?: string;
@@ -771,7 +893,7 @@ export async function createEventCoverVideoUploadIntent(
       "event-cover-video-upload-intent",
       {
         body: { ...input, clientRequestId: requestId },
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { ...laneHeaders(), Authorization: `Bearer ${accessToken}` },
       },
     );
     data = response.data;
@@ -883,51 +1005,9 @@ const cancelledUploadError = (): EventCoverVideoProcessingError =>
     "Video upload was cancelled.",
   );
 
-const BASE64_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-// TUS Upload-Metadata values are base64. filetype/title are ASCII (mime + a job
-// UUID), so a tiny pure encoder works on BOTH native (no global btoa) and web.
-const toBase64 = (input: string): string => {
-  const bytes: number[] = [];
-  for (let i = 0; i < input.length; i += 1) {
-    const code = input.charCodeAt(i);
-    if (code < 0x80) {
-      bytes.push(code);
-    } else if (code < 0x800) {
-      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
-    } else {
-      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
-    }
-  }
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i];
-    const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
-    const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
-    out += BASE64_ALPHABET[b0 >> 2];
-    out += BASE64_ALPHABET[((b0 & 3) << 4) | (b1 >> 4)];
-    out += i + 1 < bytes.length ? BASE64_ALPHABET[((b1 & 15) << 2) | (b2 >> 6)] : "=";
-    out += i + 2 < bytes.length ? BASE64_ALPHABET[b2 & 63] : "=";
-  }
-  return out;
-};
-
-export const tusMetadata = (
-  metadata: { filetype?: string; title?: string; sha256?: string } | undefined,
-): string => {
-  const filetype = metadata?.filetype ?? "video/mp4";
-  const parts = [`filetype ${toBase64(filetype)}`];
-  const title = metadata?.title;
-  if (typeof title === "string" && title.length > 0) {
-    parts.push(`title ${toBase64(title)}`);
-  }
-  const sha256 = metadata?.sha256;
-  if (typeof sha256 === "string" && sha256.length > 0) {
-    parts.push(`sha256 ${toBase64(sha256)}`);
-  }
-  return parts.join(",");
-};
+// #3040 — TUS metadata encoding moved to the shared package (one owner for
+// Host web, native and Admin). Re-exported so existing callers keep working.
+export const tusMetadata = laneTusMetadata;
 
 const resolveTusLocation = (base: string, location: string): string => {
   if (/^https?:\/\//i.test(location)) return location;
@@ -938,55 +1018,17 @@ const resolveTusLocation = (base: string, location: string): string => {
   }
 };
 
-const patchTusWithXhr = (input: {
-  url: string;
-  blob: Blob;
-  headers: Record<string, string>;
-  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
-  signal?: AbortSignal;
-}): Promise<void> =>
-  new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const abort = (): void => {
-      xhr.abort();
-      reject(cancelledUploadError());
-    };
-    if (input.signal?.aborted) {
-      abort();
-      return;
-    }
-    input.signal?.addEventListener("abort", abort, { once: true });
-    xhr.upload.onprogress = (event) => {
-      emitUploadProgress(input.onProgress, event.loaded, event.total);
-    };
-    xhr.onerror = () => {
-      input.signal?.removeEventListener("abort", abort);
-      reject(
-        new EventCoverVideoProcessingError(
-          "source_upload_failed",
-          "Video upload failed before processing. Try again.",
-        ),
-      );
-    };
-    xhr.onload = () => {
-      input.signal?.removeEventListener("abort", abort);
-      if (xhr.status === 200 || xhr.status === 204) {
-        resolve();
-        return;
-      }
-      reject(
-        new EventCoverVideoProcessingError(
-          "source_upload_failed",
-          "We couldn't upload this video. Check your connection and resume.",
-        ),
-      );
-    };
-    xhr.open("PATCH", input.url);
-    Object.entries(input.headers).forEach(([key, value]) => {
-      xhr.setRequestHeader(key, value);
+// #3040 B-C8 / I-VIDEO-ONE-UPLOADER — the web PATCH loop lives in
+// `@mingla/video-upload` (`uploadSourceWeb`), shared with Admin. Its typed
+// failures are translated here so every caller sees one error type.
+const laneUploadError = (error: unknown): unknown => {
+  if (error instanceof VideoUploadError) {
+    return new EventCoverVideoProcessingError(error.code, error.message, {
+      edgeDetail: error.detail,
     });
-    xhr.send(input.blob);
-  });
+  }
+  return error;
+};
 
 // ORCH-1295 — the native TUS PATCH no longer streams through expo-file-system's
 // BINARY_CONTENT upload task (which dropped the TUS `Upload-Offset` header →
@@ -1015,9 +1057,13 @@ const patchTusNative = async (input: {
   } catch (error) {
     if (input.signal?.aborted) throw cancelledUploadError();
     if (error instanceof EventCoverVideoProcessingError) throw error;
+    // #3040 B-C11 — the prepared copy lives in the OS cache, which iOS and
+    // Android may purge. A copy that cannot be read is gone for good: say so
+    // (design H-12) instead of offering a Resume that can never work.
     throw new EventCoverVideoProcessingError(
-      "source_upload_failed",
-      "Video file could not be read.",
+      "source_file_gone",
+      "Your phone cleared the copy we were uploading. Choose the video again.",
+      { edgeDetail: "source_read_failed" },
     );
   }
   if (input.signal?.aborted) throw cancelledUploadError();
@@ -1053,7 +1099,10 @@ const patchTusNative = async (input: {
   emitUploadProgress(input.onProgress, 1, 1);
 };
 
-const EVENT_COVER_TUS_CHUNK_BYTES = 5 * 1024 * 1024;
+// #3040 B-C8 — 2 MiB native chunks: a clip of a few MB now shows real steps
+// instead of sitting at 0% for the whole transfer. Web uses the package's
+// 8 MiB chunks with in-flight XHR progress.
+const EVENT_COVER_TUS_CHUNK_BYTES = VIDEO_LIMITS.TUS_CHUNK_NATIVE_BYTES;
 
 const headTusOffset = async (
   upload: EventCoverVideoUploadDescriptor,
@@ -1094,24 +1143,43 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
   if (input.signal?.aborted) throw cancelledUploadError();
 
   let bytes = typeof input.bytes === "number" && input.bytes > 0 ? input.bytes : 0;
-  let webBlob: Blob | null = null;
   if (Platform.OS === "web") {
     // ORCH-1303: read the picked clip's bytes from its browser object URL.
     // A raw fetch() rejection here surfaces an opaque "Failed to fetch"
     // (Constitution #3 non-actionable). Wrap it in an honest, actionable
     // error so the operator knows what to do next. The happy path (a valid
     // `blob:` uri) is unchanged.
+    let webBlob: Blob;
     try {
       const blobResponse = await fetch(input.uri);
       webBlob = await blobResponse.blob();
     } catch {
       throw new EventCoverVideoProcessingError(
-        "source_upload_failed",
-        "Could not read the selected video in your browser. Try a shorter MP4, or upload the cover from the Mingla Host app.",
+        "source_file_gone",
+        "Could not read the selected video in your browser. Choose the video again.",
       );
     }
-    if (bytes <= 0) bytes = webBlob.size;
-  } else if (bytes <= 0) {
+    try {
+      await uploadSourceWeb({
+        file: webBlob,
+        transport: { url: input.upload.url, headers: { ...input.upload.fields } },
+        signal: input.signal,
+        onProgress: (progress) => {
+          input.onProgress?.({
+            phase: "source_upload",
+            bytesSent: progress.confirmedBytes,
+            bytesTotal: progress.totalBytes,
+            percent: progress.percent,
+            final: progress.final,
+          });
+        },
+      });
+    } catch (error) {
+      throw laneUploadError(error);
+    }
+    return null;
+  }
+  if (bytes <= 0) {
     bytes = await statFileSize(input.uri, 0);
   }
   if (bytes <= 0) {
@@ -1121,8 +1189,12 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
     );
   }
 
+  // #3040 B-C8 — a source of one chunk or less cannot show byte-true steps:
+  // the card shows "Uploading…" without a percent instead of 0% → 100%.
+  const indeterminate = bytes <= EVENT_COVER_TUS_CHUNK_BYTES;
   let offset = await headTusOffset(input.upload, input.signal);
   if (offset > bytes) throw new EventCoverVideoProcessingError("transport_integrity_failed", "We couldn't resume this upload. Choose the original video again.");
+  emitUploadProgress(input.onProgress, offset, bytes, { indeterminate });
   while (offset < bytes) {
     const chunkLength = Math.min(EVENT_COVER_TUS_CHUNK_BYTES, bytes - offset);
     const patchHeaders = {
@@ -1132,25 +1204,16 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
       "Tus-Resumable": "1.0.0",
       "Upload-Offset": String(offset),
     };
-    if (Platform.OS === "web") {
-      await patchTusWithXhr({
-        blob: (webBlob as Blob).slice(offset, offset + chunkLength),
-        headers: patchHeaders,
-        onProgress: (progress) => emitUploadProgress(input.onProgress, offset + progress.bytesSent, bytes),
-        signal: input.signal,
-        url: input.upload.url,
-      });
-    } else {
-      await patchTusNative({ headers: patchHeaders, onProgress: undefined, signal: input.signal, uri: input.uri, url: input.upload.url });
-    }
+    await patchTusNative({ headers: patchHeaders, onProgress: undefined, signal: input.signal, uri: input.uri, url: input.upload.url });
     const serverOffset = await headTusOffset(input.upload, input.signal);
     if (serverOffset <= offset || serverOffset > bytes) {
       throw new EventCoverVideoProcessingError("transport_integrity_failed", "We couldn't resume this upload. Choose the original video again.");
     }
     offset = serverOffset;
-    emitUploadProgress(input.onProgress, offset, bytes);
+    // Emitted after EVERY confirmed chunk (PATCH answered, HEAD agrees).
+    if (offset < bytes) emitUploadProgress(input.onProgress, offset, bytes, { indeterminate });
   }
-  emitUploadProgress(input.onProgress, 1, 1);
+  emitUploadProgress(input.onProgress, bytes, bytes, { final: true, indeterminate });
   return null;
 };
 
@@ -1183,7 +1246,7 @@ export const fetchEventCoverVideoStatus = async (
 ): Promise<EventCoverVideoStatus> => {
   const { data, error } = await supabase.functions.invoke<StatusResponse>(
     "event-cover-video-status",
-    { body: { jobId }, signal },
+    { body: { jobId }, signal, headers: laneHeaders() },
   );
   if (error) throw await edgeError(error, "Could not check video processing status.");
   if (data?.error !== undefined) {
@@ -1199,10 +1262,17 @@ export const fetchEventCoverVideoStatus = async (
 };
 
 export const fetchEventCoverVideoStatusByTarget = async (input: {
-  target: "event" | "brand" | "venue" | "venue_draft" | "trip_day_media"; eventId?: string; brandId: string; venueId?: string; draftOwnerKey?: string; signal?: AbortSignal;
+  target: LaneTargetKind; eventId?: string; brandId: string | null; venueId?: string; draftOwnerKey?: string; signal?: AbortSignal;
+  /**
+   * #3040 E-10a / design T6 — only a job still in flight. A finished, failed
+   * or cancelled latest job is never handed back to a freshly opened sheet.
+   * Older servers ignore the flag, so the answer is filtered here as well.
+   */
+  activeOnly?: boolean;
 }): Promise<EventCoverVideoStatus | null> => {
-  const { signal, ...body } = input;
-  const { data, error } = await supabase.functions.invoke<StatusResponse>("event-cover-video-status", { body, signal });
+  const { signal, activeOnly, ...rest } = input;
+  const body = activeOnly === true ? { ...rest, ...STATUS_ACTIVE_ONLY_FLAG } : rest;
+  const { data, error } = await supabase.functions.invoke<StatusResponse>("event-cover-video-status", { body, signal, headers: laneHeaders() });
   if (error) {
     const mapped = await edgeError(error, "Could not restore video processing status.");
     if (mapped.code === "not_found") return null;
@@ -1210,7 +1280,9 @@ export const fetchEventCoverVideoStatusByTarget = async (input: {
   }
   if (data?.error === "not_found") return null;
   if (data?.error) throw processingErrorFromPayload(data, "Could not restore video processing status.");
-  return data ? mapStatusResponse(data, "event-cover-video-status") : null;
+  const mapped = data ? mapStatusResponse(data, "event-cover-video-status") : null;
+  if (mapped !== null && activeOnly === true && !isActiveLaneStatus(mapped.status)) return null;
+  return mapped;
 };
 
 const mapStatusResponse = (
@@ -1237,7 +1309,7 @@ const mapStatusResponse = (
     createdAt: payload.createdAt ?? null,
     // ORCH-0989: null for brand-target jobs (the edge fn returns null eventId).
     eventId: typeof payload.eventId === "string" ? payload.eventId : null,
-    targetKind: payload.targetKind === "brand" || payload.targetKind === "venue" || payload.targetKind === "venue_draft" || payload.targetKind === "trip_day_media"
+    targetKind: payload.targetKind === "brand" || payload.targetKind === "venue" || payload.targetKind === "venue_draft" || payload.targetKind === "trip_day_media" || payload.targetKind === "ad_creative"
       ? payload.targetKind
       : "event",
     venueId: typeof payload.venueId === "string" ? payload.venueId : null,
@@ -1267,12 +1339,14 @@ const mapStatusResponse = (
     applicationReceipt: payload.applicationReceipt !== null && typeof payload.applicationReceipt === "object"
       ? payload.applicationReceipt as Record<string, unknown>
       : null,
+    creativeId: readCreativeId(payload),
+    renditionHeight: readRenditionHeight(payload),
   };
 };
 
 export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
   // ORCH-0989: "event" (default) or "brand". Brand-target carries no eventId.
-  target?: "event" | "brand" | "venue" | "venue_draft" | "trip_day_media";
+  target?: LaneTargetKind;
   jobId: string;
   eventId?: string;
   brandId: string;
@@ -1288,6 +1362,7 @@ export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
         ...input,
         clientRequestId: requestId,
       },
+      headers: laneHeaders(),
     },
   );
   if (error) {
@@ -1318,7 +1393,7 @@ export const applyEventCoverVideoJob = async (
 ): Promise<string> => {
   const { data, error } = await supabase.functions.invoke<{ processedUrl?: string }>(
     "event-cover-video-apply",
-    { body: { jobId, expectedVersion, expectedProcessedUrl } },
+    { body: { jobId, expectedVersion, expectedProcessedUrl }, headers: laneHeaders() },
   );
   if (error) throw await edgeError(error, "Could not save processed video cover.");
   if ((data as { error?: string; detail?: string } | null)?.error !== undefined) {
@@ -1343,7 +1418,7 @@ export const cancelEventCoverVideoJob = async (
   }
   const { data, error } = await supabase.functions.invoke<StatusResponse>(
     "event-cover-video-cancel",
-    { body: { jobId } },
+    { body: { jobId }, headers: laneHeaders() },
   );
   if (error) {
     throw await edgeError(error, "Could not cancel video processing.", {

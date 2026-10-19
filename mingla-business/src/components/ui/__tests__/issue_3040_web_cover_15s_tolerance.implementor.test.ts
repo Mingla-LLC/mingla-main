@@ -113,9 +113,13 @@ describe("issue #3040 — web cover video one-minute tolerance", () => {
     expect(rawClipIntent(14_833, true).trimEndMs).toBe(14_833);
   });
 
-  test("native is unchanged: an over-ceiling clip is never clamped", () => {
-    expect(resolveRawCoverClipDurationMs(60_015, false)).toBe(60_015);
-    expect(pickerRefuses(rawClipIntent(60_015, false).durationMs)).toBe(true);
+  // [TEST-MOD-APPROVED #3040] B-C13a [A-13a] — native now gets the same
+  // 500 ms band: a phone's own "1 minute" clip is declared as 60000 instead of
+  // being sent to the trimmer. Past the band, native still trims.
+  test("native gets the band too: 60.015 s is declared as exactly 60 s", () => {
+    expect(resolveRawCoverClipDurationMs(60_015, false)).toBe(60_000);
+    expect(pickerRefuses(rawClipIntent(60_015, false).durationMs)).toBe(false);
+    expect(resolveRawCoverClipDurationMs(60_501, false)).toBe(60_501);
   });
 
   test("the picker's raw branch declares the clamped value, and native still trims on the strict ceiling", () => {
@@ -126,13 +130,14 @@ describe("issue #3040 — web cover video one-minute tolerance", () => {
     );
     expect(pickerSource).toContain("durationMs: rawClipDurationMs,");
     expect(pickerSource).toContain("trimEndMs: rawClipDurationMs,");
-    // Native over-ceiling clips still go to the trimmer, on the strict ceiling.
+    // Native over-ceiling clips still go to the trimmer, on the strict ceiling
+    // of the RESOLVED duration (#3040 B-C13a).
     expect(pickerSource).toMatch(
-      /const needsNativeTrim =\s*isNative && sourceDurationMs > EVENT_COVER_SOURCE_CEILING_MS;/,
+      /const needsNativeTrim =\s*isNative && rawClipDurationMs > EVENT_COVER_SOURCE_CEILING_MS;/,
     );
-    // The refusal itself is untouched.
+    // The refusal itself is untouched; its copy is now design H-14a.
     expect(pickerSource).toContain("durationMs > EVENT_COVER_SOURCE_CEILING_MS");
-    expect(pickerSource).toContain('"Choose a video that is 1 minute or shorter."');
+    expect(pickerSource).toContain('setPickRefusal({ kind: "too_long", durationMs });');
   });
 
   test("the server, edge and client ceilings all stay at a strict 60000 ms", () => {
@@ -192,9 +197,9 @@ describe("issue #3040 — the upload request a 60.015 s web clip produces", () =
   });
 
   test("the undeclared 60015 is what the server refuses: the reported failure, reproduced", async () => {
-    // What the picker declared before the fix (and what native still declares
-    // for a raw clip, which is why native sends it to the trimmer instead).
-    const unclamped = rawClipIntent(60_015, false);
+    // What the picker declared before the fix. Since #3040 B-C13a no platform
+    // declares it, so the unclamped body is built by hand here.
+    const unclamped = { durationMs: 60_015, trimStartMs: 0, trimEndMs: 60_015 };
     expect(unclamped.durationMs).toBe(60_015);
 
     let refusal: unknown = null;

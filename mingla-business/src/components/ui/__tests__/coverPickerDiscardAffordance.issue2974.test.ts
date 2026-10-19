@@ -21,37 +21,28 @@ describe("#2974 the video error card offers a reachable way out", () => {
   const picker = repoFile("src/components/ui/CoverPicker.tsx");
   const hook = repoFile("src/hooks/useEventCoverVideoUpload.ts");
 
-  const actionRow = (): string => {
-    const start = picker.indexOf('{stage.phase === "error" ? <Button label="Try again"');
-    expect(start).toBeGreaterThan(-1);
-    const end = picker.indexOf("</View>", start);
-    expect(end).toBeGreaterThan(start);
-    return picker.slice(start, end);
-  };
+  // [TEST-MOD-APPROVED #3040] design H-13 — the error card's actions come
+  // from coverUploadCardModel ("Try again" + "Discard"), and a different clip
+  // after a failure is now a NEW operation (A-18) instead of a "choose the same
+  // video" refusal, so the old mismatch sentence has nothing left to name.
+  const model = repoFile("src/components/ui/coverUploadCardModel.ts");
 
   test("T-2974-D-01 the error phase renders a discard control alongside Try again", () => {
-    const row = actionRow();
-    expect(row).toContain('label="Discard upload"');
+    expect(model).toContain('actions: [action("try_again", "Try again", "secondary"), action("discard", "Discard", "ghost")],');
     // Wired to the real cancel path, which clears the local record (and cancels
     // the server job when one exists) — not to a cosmetic no-op.
-    expect(row).toMatch(/label="Discard upload"[^>]*onPress=\{onCancel\}/);
+    expect(picker).toMatch(/case "discard":[\s\S]{0,120}cancelVideoCoverUpload\(\);/);
   });
 
-  test("T-2974-D-02 the source-mismatch copy names a control the sheet actually has", () => {
-    // The instruction must reference the affordance that now exists...
-    expect(hook).toContain("tap Discard upload to start over");
-    // ...and the old dead-end wording must be gone.
+  test("T-2974-D-02 a different clip after a failure starts fresh instead of a dead-end refusal", () => {
     expect(hook).not.toContain(
       "Choose the same video to resume this upload, or cancel it first.",
     );
+    expect(hook).toContain("operationId = newOperationId();");
   });
 
-  test("T-2974-D-03 the discard control is the ONLY new terminal affordance (Cancel/Replace stay gated on active)", () => {
-    // The existing gate is untouched: this fix adds a control for the error
-    // phase rather than widening `active` (which would put Cancel/Replace on
-    // an applied/idle card too).
-    expect(picker).toContain(
-      'const active = !["idle", "applied", "error"].includes(stage.phase);',
-    );
+  test("T-2974-D-03 Cancel/Choose-a-different-video belong to the active card states only", () => {
+    expect(model).toMatch(/case "error":\s*return errorCardModel\(/);
+    expect(model).not.toMatch(/stateId: "H-13"[\s\S]{0,400}"choose_different"/);
   });
 });

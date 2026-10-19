@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3040",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-2262-composer-responsive-layout",
+      "extension": "yml"
+    },
+    "baseRowSha256": "46fdf3b775541aa63bf7465859249b37f64c51d3a697ea12d19c8c9550e1b85e"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "6db9fd1a9e499900a30ad5e313d01daf1da816ae346531cf5f51b3b9f23126f4",
+      "value": "7164bcaa0054358e7e790fc27cf9d649193663efebd3493ab74f5f170808d7b8"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3040 scopes the #2262 zero-dependency step to changes that touch composer-owned files, without changing triggers, path scope, jobs or execution topology."
+}

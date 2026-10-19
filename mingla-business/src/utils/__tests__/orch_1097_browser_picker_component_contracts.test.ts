@@ -32,7 +32,10 @@ describe("ORCH-1097 browser picker component contracts", () => {
     expect(picker).not.toContain(
       "Video cover uploads are available on desktop or in the app for now.",
     );
-    expect(picker).toContain("video covers upload the clip as-is");
+    // [TEST-MOD-APPROVED #3040] design D4 — the web-only helper sentence was
+    // replaced by the approved limits block; the as-is web behaviour is now
+    // stated by the shared video limits line and the H-14 refusals.
+    expect(picker).toContain("coverLimitsLines(coverKind, videoOnly)");
     expect(picker).toContain("revokeCoverPickedAssets(pickedAssets)");
   });
 

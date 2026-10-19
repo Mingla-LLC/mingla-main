@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_lease_extend_no_row.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-intent-lease-extend-no-row",
+  "profile": "deno-2-unit"
+}

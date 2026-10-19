@@ -19,6 +19,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { TripDayEditor, type TripDayDraft } from "./TripDayEditor";
 import { TripDayMediaSheet } from "./TripDayMediaSheet";
+import { tripDayMediaKey } from "./tripDayTileModel";
 import type { TripDayMedia } from "../../services/tripsService";
 import { MAX_TRIP_DAY_MEDIA } from "../../services/tripDayMediaService";
 
@@ -204,6 +205,9 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
           currentCount={(days[mediaSheetDayIndex]?.media ?? []).length}
           onAddMedia={(media) => handleAddMediaToDay(mediaSheetDayIndex, media)}
           onShowToast={onShowToast as (msg: string) => void}
+          // #3040 B-C12 — the day these items belong to: part of each video's
+          // resume key, so the same file on the same day continues its upload.
+          dayKey={tripDayMediaKey(days[mediaSheetDayIndex], mediaSheetDayIndex)}
         />
       ) : null}
     </View>

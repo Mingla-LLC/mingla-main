@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/event-cover-video-source-uploaded/index.issue3040.unreadable.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-source-uploaded-unreadable",
+  "profile": "deno-2-unit"
+}

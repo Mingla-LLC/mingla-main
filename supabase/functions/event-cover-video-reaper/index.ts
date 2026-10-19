@@ -48,6 +48,20 @@ import { handleBunnyWebhook } from "../event-cover-video-webhook/index.ts";
 // #3040 — ONE implementation of "did the TUS transfer finish?", shared with the
 // acknowledgement endpoint. The sweep below must not invent a second answer.
 import { readTusTransfer } from "../event-cover-video-source-uploaded/index.ts";
+// #3040 — guarded destroy and the ready owner (every ready job has a server
+// owner; nothing still in use is ever destroyed).
+import {
+  destroyIfUnreferenced,
+  isClientRetainedAsset,
+  readGuidLiveReferences,
+  reapPriorCoverAssets,
+} from "../_shared/coverVideoReap.ts";
+import { materializeAdCreativeFromJob } from "../_shared/adCreativeMaterialize.ts";
+import {
+  decideReadyOwnership,
+  executeReadyOwnership,
+  type ReadyOwnerJob,
+} from "../_shared/coverVideoReadyOwner.ts";
 
 export type ReapCandidate = {
   id: string;
@@ -58,6 +72,7 @@ export type ReapCandidate = {
   applied_at?: string | null;
   reaped_at?: string | null;
   created_at?: string | null;
+  completed_at?: string | null;
   provider_allocation_identity?: string | null;
   provider_allocation_uncertain_at?: string | null;
   provider_allocation_token?: string | null;
@@ -65,6 +80,15 @@ export type ReapCandidate = {
   source_bytes?: number | null;
   tus_expires_at?: string | null;
   tus_resource_url?: string | null;
+  // #3040 — owner fields.
+  source_uploaded_at?: string | null;
+  failure_code?: string | null;
+  target_kind?: string | null;
+  event_id?: string | null;
+  brand_id?: string | null;
+  // #3040 — the venue-draft retention rule and the reap back-off.
+  processed_url?: string | null;
+  reconcile_lease_until?: string | null;
 };
 
 export type ReapTarget = {
@@ -72,11 +96,26 @@ export type ReapTarget = {
   provider?: string | null;
   source_asset_id?: unknown;
   source_public_id?: unknown;
+  // #3040 — the venue-draft retention rule reads these (see coverVideoReap).
+  target_kind?: string | null;
+  processed_url?: string | null;
   action: "reap";
 };
 
 const hasAssetId = (value: unknown): boolean =>
   typeof value === "string" && value.trim().length > 0;
+
+// #3040 — there is no unguarded reap. Every terminal asset is reclaimed only
+// through destroyIfUnreferenced (I-VIDEO-NO-DESTROY-WHILE-REFERENCED).
+const toTarget = (job: ReapCandidate): ReapTarget => ({
+  id: job.id,
+  provider: job.provider,
+  source_asset_id: job.source_asset_id,
+  source_public_id: job.source_public_id,
+  target_kind: job.target_kind ?? null,
+  processed_url: job.processed_url ?? null,
+  action: "reap",
+});
 
 // PURE selection: which un-reaped, asset-bearing jobs to reclaim, and whether an
 // abandoned draft also needs its terminal state flipped to failed. Idempotent by
@@ -93,13 +132,7 @@ export function selectReapTargets(
     if (
       status === "cancelled" || status === "failed" || status === "superseded"
     ) {
-      targets.push({
-        id: job.id,
-        provider: job.provider,
-        source_asset_id: job.source_asset_id,
-        source_public_id: job.source_public_id,
-        action: "reap",
-      });
+      targets.push(toTarget(job));
       continue;
     }
     // Active and ready/unapplied jobs are durable. Reconciliation below owns
@@ -118,39 +151,48 @@ export const selectReconciliationCandidates = (
     )
   );
 
-// ── #2905 STALL DEADLINE ────────────────────────────────────────────────────
+// ── #2905 / #3040 STALL DEADLINE ───────────────────────────────────────────
 //
 // #2715 correctly stopped age from reaping durable work, but combined with a
-// promotion path that could not fire it made a wedged job IMMORTAL: it never
-// completed, never failed, never reaped. Production job e055c562-… sat in
-// `processing` for 3 days with failure_code NULL and no user-visible affordance.
-//
-// A non-terminal job past this deadline becomes a VISIBLE, RETRYABLE failure
+// promotion path that could not fire it made a wedged job IMMORTAL. A
+// non-terminal job past its deadline becomes a VISIBLE, RETRYABLE failure
 // (mapEventCoverVideoStatus sets canRetry for `failed`), never a silent delete.
 //
-// WHY 12 HOURS:
-//   • The reconciler ticks every 6h, so 12h guarantees a job gets at least TWO
-//     full provider-truth promotion attempts before it is ever called stalled.
-//     Anything under 6h could declare a job stalled on the same tick that would
-//     have promoted it.
-//   • Bunny may legitimately encode well beyond 120s (#2715), so a
-//     seconds-or-minutes deadline is wrong on its face. The slowest cover video
-//     that ever reached `applied` in production took 93s (2026-08-12 18:03:43 →
-//     18:05:16); 12h is ~465× that and ~1,700× the median (18s).
-//   • It is HALF the pre-existing 24h abandoned-draft window, so a stalled job
-//     surfaces to the host the same day they uploaded it — strictly sooner than
-//     the old code, which silently deleted it at 24h with no explanation.
+// #3040 — the product promise is 60 s from the final byte to ready, so the
+// encode bound is measured from `source_uploaded_at` and is 10 × that SLO
+// (COVER_VIDEO_UPLOADED_STALL_MS). Last-30-day p99 for clips over 30 s was
+// 62 s, so 10 minutes leaves room for 1080p encodes and still fails the job in
+// the same session. A provider 404 on an uploaded job fails on the first tick.
+//
+// COVER_VIDEO_STALL_MS keeps its original meaning: the backstop for a job
+// that has no final-byte clock (an upload still in transfer, which is bounded
+// first by its TUS lease, or a legacy row). It stays 12 hours.
 export const COVER_VIDEO_STALL_MS = 12 * 60 * 60 * 1000;
+export const COVER_VIDEO_UPLOADED_STALL_MS = 10 * 60 * 1000;
+// #3040 — allocation that never started / never resolved (B-13).
+export const COVER_VIDEO_ALLOCATION_ABANDON_MS = 10 * 60 * 1000;
+export const COVER_VIDEO_ALLOCATION_UNRESOLVED_MS = 30 * 60 * 1000;
+// #3040 — a lease that expired while Bunny's HEAD was unreadable gets 30 more
+// minutes of HEAD retries before the upload is called unverifiable (B-8).
+export const COVER_VIDEO_UNVERIFIABLE_GRACE_MS = 30 * 60 * 1000;
+// #3040 — the reaper stops starting new work after this much of its 60 s
+// lease; unworked leases simply expire and are claimed next tick (B-6).
+export const REAPER_TICK_BUDGET_MS = 45_000;
+// #3040 — applied assets nothing references for this long are orphans (B-14).
+export const COVER_VIDEO_ORPHAN_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const COVER_VIDEO_ORPHAN_RECLAIM_LIMIT = 20;
+export const ORPHAN_RECLAIM_FLAG_KEY = "cover_video_orphan_reclaim_enabled";
+const SCAN_LIMIT = 200;
 
-// Only non-terminal states are stallable. `ready` is authoritative provider
-// truth waiting on its owner to apply it (and cover_video_transition_job has no
-// ready→failed edge), so it is deliberately excluded.
+// Only non-terminal states are stallable. `ready` is owned by the ready owner
+// (coverVideoReadyOwner), never by the stall deadline.
 const STALLABLE_STATUSES = [
   "source_uploading",
   "source_uploaded",
   "processing_queued",
   "processing",
 ];
+const NON_TERMINAL_OR_READY = [...STALLABLE_STATUSES, "ready"];
 
 export type StallVerdict =
   | { stalled: false; reason: string }
@@ -160,6 +202,9 @@ export type StallVerdict =
     failureMessage: string;
   };
 
+const parseMs = (value: string | null | undefined): number =>
+  typeof value === "string" ? Date.parse(value) : Number.NaN;
+
 // PURE. `providerRead` is how this tick's `bunnyGetVideo` resolved:
 //   "non_terminal" — read succeeded, provider is still not finished/failed.
 //   "absent"       — HTTP 404: the provider asset is definitively gone.
@@ -168,6 +213,7 @@ export type StallVerdict =
 export function evaluateCoverVideoStall(input: {
   status: string | null;
   createdAt: string | null;
+  sourceUploadedAt?: string | null;
   nowMs: number;
   providerRead: "non_terminal" | "absent" | "unreadable";
 }): StallVerdict {
@@ -177,29 +223,101 @@ export function evaluateCoverVideoStall(input: {
   if (input.providerRead === "unreadable") {
     return { stalled: false, reason: "provider_unreadable" };
   }
-  const createdMs = input.createdAt === null
-    ? Number.NaN
-    : Date.parse(input.createdAt);
-  if (!Number.isFinite(createdMs)) {
+  const missing: StallVerdict = {
+    stalled: true,
+    failureCode: "provider_asset_missing",
+    failureMessage:
+      "The uploaded video is no longer available at the media host.",
+  };
+  // #3040 (B-10) — bytes were acknowledged on the provider and the provider now
+  // says the asset does not exist: that is definitive on the first tick.
+  if (input.providerRead === "absent" && input.status !== "source_uploading") {
+    return missing;
+  }
+  const uploadedMs = parseMs(input.sourceUploadedAt ?? null);
+  const createdMs = parseMs(input.createdAt);
+  const [anchorMs, windowMs] = Number.isFinite(uploadedMs)
+    ? [uploadedMs, COVER_VIDEO_UPLOADED_STALL_MS]
+    : [createdMs, COVER_VIDEO_STALL_MS];
+  if (!Number.isFinite(anchorMs)) {
     return { stalled: false, reason: "created_at_unparseable" };
   }
-  if (input.nowMs - createdMs < COVER_VIDEO_STALL_MS) {
+  if (input.nowMs - anchorMs < windowMs) {
     return { stalled: false, reason: "within_stall_window" };
   }
-  return input.providerRead === "absent"
-    ? {
-      stalled: true,
-      failureCode: "provider_asset_missing",
-      failureMessage:
-        "The uploaded video is no longer available at the media host.",
-    }
-    : {
-      stalled: true,
-      failureCode: "processing_stalled",
-      failureMessage:
-        "Video processing did not finish in time. Try uploading it again.",
-    };
+  return input.providerRead === "absent" ? missing : {
+    stalled: true,
+    failureCode: "processing_stalled",
+    failureMessage:
+      "Video processing did not finish in time. Try uploading it again.",
+  };
 }
+
+// PURE (B-13): a job created by the client that never got as far as asking the
+// provider for an asset is owned by nothing else.
+export function selectAbandonedAllocations(
+  jobs: ReapCandidate[],
+  nowMs: number,
+): ReapCandidate[] {
+  return jobs.filter((job) =>
+    job.status === "source_uploading" && !hasAssetId(job.source_asset_id) &&
+    job.provider_allocation_uncertain_at == null &&
+    nowMs - parseMs(job.created_at) >= COVER_VIDEO_ALLOCATION_ABANDON_MS
+  );
+}
+
+// PURE (B-14): applied, never reaped, old enough to be an orphan candidate.
+export function selectOrphanCandidates(
+  jobs: ReapCandidate[],
+  nowMs: number,
+): ReapCandidate[] {
+  return jobs.filter((job) =>
+    job.status === "applied" && job.reaped_at == null &&
+    hasAssetId(job.source_asset_id) &&
+    // P1-2 — a venue-draft video is client-owned; no orphan reclaim may take
+    // it until a draft-aware reference exists (Seth-gated).
+    !isClientRetainedAsset(job) &&
+    nowMs - parseMs(job.completed_at ?? job.applied_at ?? null) >=
+      COVER_VIDEO_ORPHAN_AGE_MS
+  ).slice(0, COVER_VIDEO_ORPHAN_RECLAIM_LIMIT);
+}
+
+// #3040 — a terminal job whose asset is still referenced (or retained for a
+// client-owned venue draft) is asked about again after this back-off instead
+// of every tick. The claim RPC already skips rows whose reconcile lease is in
+// the future; the reap read applies the same rule.
+export const REAP_REFERENCED_BACKOFF_MS = 6 * 60 * 60 * 1000;
+export const REAP_RETAINED_BACKOFF_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const reapDeferred = (row: ReapCandidate, nowMs: number): boolean => {
+  const until = parseMs(row.reconcile_lease_until ?? null);
+  return Number.isFinite(until) && until > nowMs;
+};
+
+// deno-lint-ignore no-explicit-any
+const deferReap = async (
+  supabase: any,
+  jobId: string,
+  nowMs: number,
+  why: "referenced" | "retained",
+): Promise<void> => {
+  const backoff = why === "retained"
+    ? REAP_RETAINED_BACKOFF_MS
+    : REAP_REFERENCED_BACKOFF_MS;
+  try {
+    await supabase.from("event_cover_video_jobs")
+      .update({
+        reconcile_lease_until: new Date(nowMs + backoff).toISOString(),
+      })
+      .eq("id", jobId)
+      .is("reaped_at", null);
+  } catch (error) {
+    logReaper("reap_defer_failed", {
+      jobId,
+      error: error instanceof Error ? error.name : "error",
+    });
+  }
+};
 
 const defaultDeps = {
   bunnyFindVideoByTitle,
@@ -207,6 +325,15 @@ const defaultDeps = {
   destroyCoverVideoAsset,
   serviceRoleClient,
 };
+
+const CANDIDATE_COLUMNS =
+  "id,status,provider,source_asset_id,source_public_id,applied_at,reaped_at,created_at,completed_at,source_bytes,tus_expires_at,tus_resource_url,source_uploaded_at,failure_code,target_kind,event_id,brand_id,provider_allocation_uncertain_at,processed_url,reconcile_lease_until";
+
+const logReaper = (stage: string, fields: Record<string, unknown> = {}): void => {
+  console.warn("[event-cover-video-reaper]", JSON.stringify({ stage, ...fields }));
+};
+
+type TargetState = { deleted: boolean; coverUrl: string | null };
 
 export const handleReaper = async (
   req: Request,
@@ -222,6 +349,23 @@ export const handleReaper = async (
   }
 
   const nowMs = Date.now();
+  const tickStartMs = nowMs;
+  // #3040 (B-6) — stop STARTING new work past the budget; leases expire.
+  let budgetExhausted = false;
+  const overBudget = (): boolean => {
+    if (Date.now() - tickStartMs > REAPER_TICK_BUDGET_MS) {
+      budgetExhausted = true;
+    }
+    return budgetExhausted;
+  };
+  // #3040 (B-9) — internal step failures are reported, never swallowed.
+  const stepFailures: string[] = [];
+  const stepFailed = (stage: string, fields: Record<string, unknown> = {}) => {
+    if (!stepFailures.includes(stage)) stepFailures.push(stage);
+    logReaper(stage, fields);
+  };
+  const errorName = (error: unknown): string =>
+    error instanceof Error ? error.name : "error";
   try {
     const supabase = deps.serviceRoleClient();
     // Issue #3040 — the reaper already owns the minute-cadence provider truth
@@ -254,25 +398,56 @@ export const handleReaper = async (
         }),
       );
     }
-    // Candidate window: un-reaped rows that carry a provider asset id. The pure
-    // selector applies the terminal/abandoned predicates. Bounded by the partial
-    // index (reaped_at IS NULL AND source_asset_id IS NOT NULL).
-    const { data, error } = await supabase
+    // #3040 (B-12) — two bounded, ORDERED reads replace one unordered window
+    // that only ever grew (applied rows were never reaped, so they filled the
+    // 1000-row window and starved live work):
+    //   reap  — terminal, un-reaped, asset-bearing; oldest completion first.
+    //   sweep — in-transfer uploads with an asset; oldest first.
+    // Every predicate is re-checked by the pure selectors below.
+    const reapRead = await supabase
       .from("event_cover_video_jobs")
-      .select(
-        // #3040 — tus_* + source_bytes feed the abandoned-source_uploading sweep.
-        "id,status,provider,source_asset_id,source_public_id,applied_at,reaped_at,created_at,source_bytes,tus_expires_at,tus_resource_url",
-      )
+      .select(CANDIDATE_COLUMNS)
+      .in("status", ["failed", "cancelled", "superseded"])
       .is("reaped_at", null)
       .not("source_asset_id", "is", null)
-      .limit(1000);
-    if (error) {
+      // #3040 — rows whose reap was deferred (still referenced, or a retained
+      // venue draft) sort last, so they can never fill the window.
+      .order("reconcile_lease_until", { ascending: true, nullsFirst: true })
+      .order("completed_at", { ascending: true, nullsFirst: true })
+      .order("id", { ascending: true })
+      .limit(SCAN_LIMIT);
+    if (reapRead.error) {
       console.error("[event-cover-video-reaper] candidate read failed", {
-        code: error.code,
+        code: reapRead.error.code,
       });
       return jsonResponse({ ok: false, error: "candidate_read_failed" });
     }
-    const targets = selectReapTargets((data ?? []) as ReapCandidate[], nowMs);
+    const sweepRead = await supabase
+      .from("event_cover_video_jobs")
+      .select(CANDIDATE_COLUMNS)
+      .in("status", ["source_uploading"])
+      .is("reaped_at", null)
+      .not("source_asset_id", "is", null)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(SCAN_LIMIT);
+    if (sweepRead.error) {
+      console.error("[event-cover-video-reaper] candidate read failed", {
+        code: sweepRead.error.code,
+      });
+      return jsonResponse({ ok: false, error: "candidate_read_failed" });
+    }
+    const reapRows = ((reapRead.data ?? []) as ReapCandidate[]).filter(
+      (row) => !reapDeferred(row, nowMs),
+    );
+    const sweepRows = ((sweepRead.data ?? []) as ReapCandidate[]).filter(
+      (row) => row.status === "source_uploading",
+    );
+    const targets = selectReapTargets(reapRows, nowMs);
+    const addTarget = (candidate: ReapCandidate): void => {
+      if (targets.some((target) => target.id === candidate.id)) return;
+      targets.push(toTarget(candidate));
+    };
 
     const { data: claimed, error: claimError } = await supabase.rpc(
       "cover_video_claim_reconcile_jobs",
@@ -283,6 +458,10 @@ export const handleReaper = async (
     }
     let reconciled = 0;
     let stalled = 0;
+    let allocationAbandoned = 0;
+    let allocationUnresolved = 0;
+    let targetDeleted = 0;
+    const readyOwner: Record<string, number> = {};
     // #2905 — drive the stall deadline through the canonical transition RPC so a
     // stalled job becomes a real, visible, retryable terminal failure with a
     // failure_code (never a silent delete), and queue its asset for reclamation
@@ -293,6 +472,7 @@ export const handleReaper = async (
     ): Promise<void> => {
       const verdict = evaluateCoverVideoStall({
         createdAt: candidate.created_at ?? null,
+        sourceUploadedAt: candidate.source_uploaded_at ?? null,
         nowMs,
         providerRead,
         status: candidate.status,
@@ -323,49 +503,192 @@ export const handleReaper = async (
           stage: "stall_deadline_failed_job",
         }),
       );
-      if (!targets.some((target) => target.id === candidate.id)) {
-        targets.push({
-          id: candidate.id,
-          provider: candidate.provider,
-          source_asset_id: candidate.source_asset_id,
-          source_public_id: candidate.source_public_id,
-          action: "reap",
+      addTarget(candidate);
+    };
+    const failSourceUploading = async (
+      candidate: ReapCandidate,
+      failureCode: string,
+      failureMessage: string,
+    ): Promise<boolean> => {
+      const { data: failedJob } = await supabase.rpc(
+        "cover_video_transition_job",
+        {
+          p_job_id: candidate.id,
+          p_from_statuses: ["source_uploading"],
+          p_to_status: "failed",
+          p_provider_status: null,
+          p_provider_progress: null,
+          p_patch: {
+            failure_code: failureCode,
+            failure_message: failureMessage,
+          },
+        },
+      );
+      return failedJob?.status === "failed";
+    };
+
+    // ── #3040 (B-13) ALLOCATION ABANDONED ────────────────────────────────
+    // A job whose client vanished between job creation and provider
+    // allocation has no asset and no uncertainty marker, so neither the
+    // sweep nor the claim can ever see it. Bound: 10 minutes after creation.
+    try {
+      const allocationRead = await supabase
+        .from("event_cover_video_jobs")
+        .select(CANDIDATE_COLUMNS)
+        .in("status", ["source_uploading"])
+        .is("source_asset_id", null)
+        .is("provider_allocation_uncertain_at", null)
+        .lt(
+          "created_at",
+          new Date(nowMs - COVER_VIDEO_ALLOCATION_ABANDON_MS).toISOString(),
+        )
+        .order("created_at", { ascending: true })
+        .limit(SCAN_LIMIT);
+      if (allocationRead.error) {
+        stepFailed("allocation_abandoned_read_failed", {
+          code: allocationRead.error.code ?? null,
         });
       }
+      for (
+        const candidate of selectAbandonedAllocations(
+          (allocationRead.data ?? []) as ReapCandidate[],
+          nowMs,
+        )
+      ) {
+        if (overBudget()) break;
+        if (
+          await failSourceUploading(
+            candidate,
+            "allocation_abandoned",
+            "The upload never started. Try uploading the video again.",
+          )
+        ) {
+          allocationAbandoned += 1;
+          logReaper("allocation_abandoned", { jobId: candidate.id });
+        }
+      }
+    } catch (error) {
+      stepFailed("allocation_abandoned_failed", { error: errorName(error) });
+    }
+
+    const claimedRows = (claimed ?? []) as ReapCandidate[];
+    // #3040 (B-4) — parent state for every claimed job: a soft-deleted event or
+    // brand fails its jobs, and the ready owner needs the current cover. A
+    // failed read is reported and leaves this tick's soft-delete and
+    // server-apply decisions undecided (never guessed).
+    const eventState = new Map<string, TargetState>();
+    const brandState = new Map<string, TargetState>();
+    let targetStateKnown = true;
+    try {
+      // D-8 — the sweep's in-transfer rows need their parents too.
+      const parentRows = [...claimedRows, ...sweepRows];
+      const eventIds = [
+        ...new Set(
+          parentRows.flatMap((row) =>
+            (row.target_kind === "event" ||
+                row.target_kind === "trip_day_media") &&
+              typeof row.event_id === "string"
+              ? [row.event_id]
+              : []
+          ),
+        ),
+      ];
+      const brandIds = [
+        ...new Set(
+          parentRows.flatMap((row) =>
+            typeof row.brand_id === "string" ? [row.brand_id] : []
+          ),
+        ),
+      ];
+      if (eventIds.length > 0) {
+        const events = await supabase.from("events")
+          .select("id,deleted_at,cover_media_url").in("id", eventIds)
+          .limit(eventIds.length);
+        if (events.error) throw new Error("event_read_failed");
+        for (const row of (events.data ?? []) as Array<Record<string, unknown>>) {
+          if (typeof row.id !== "string") continue;
+          eventState.set(row.id, {
+            deleted: row.deleted_at != null,
+            coverUrl: typeof row.cover_media_url === "string"
+              ? row.cover_media_url
+              : null,
+          });
+        }
+      }
+      if (brandIds.length > 0) {
+        const brands = await supabase.from("brands")
+          .select("id,deleted_at,cover_media_url").in("id", brandIds)
+          .limit(brandIds.length);
+        if (brands.error) throw new Error("brand_read_failed");
+        for (const row of (brands.data ?? []) as Array<Record<string, unknown>>) {
+          if (typeof row.id !== "string") continue;
+          brandState.set(row.id, {
+            deleted: row.deleted_at != null,
+            coverUrl: typeof row.cover_media_url === "string"
+              ? row.cover_media_url
+              : null,
+          });
+        }
+      }
+    } catch (error) {
+      targetStateKnown = false;
+      stepFailed("target_state_read_failed", { error: errorName(error) });
+    }
+    const parentDeleted = (row: ReapCandidate): boolean => {
+      if (!targetStateKnown) return false;
+      const event = typeof row.event_id === "string"
+        ? eventState.get(row.event_id)
+        : undefined;
+      const brand = typeof row.brand_id === "string"
+        ? brandState.get(row.brand_id)
+        : undefined;
+      return event?.deleted === true || brand?.deleted === true;
     };
+    const currentCover = (row: ReapCandidate): string | null | undefined => {
+      if (!targetStateKnown) return undefined;
+      const state = row.target_kind === "event" && typeof row.event_id === "string"
+        ? eventState.get(row.event_id)
+        : row.target_kind === "brand" && typeof row.brand_id === "string"
+        ? brandState.get(row.brand_id)
+        : undefined;
+      return state === undefined ? undefined : state.coverUrl;
+    };
+
     // ── #3040 ABANDONED source_uploading SWEEP ──────────────────────────
     // Invariant 7: a job whose client never comes back must still reach a
-    // terminal state SERVER-SIDE. Before this, it could not:
-    // `cover_video_claim_reconcile_jobs` only claims a `source_uploading` row
-    // when `provider_allocation_uncertain_at IS NOT NULL`, so an ordinary
-    // abandoned upload was claimed by NOTHING — the production row sat 24h+ in
-    // `source_uploading` with `failure_code = NULL` and no affordance anywhere.
+    // terminal state SERVER-SIDE. Every write goes through
+    // `cover_video_transition_job`, whose CAS makes a concurrent or repeated
+    // run a no-op.
     //
-    // The claim RPC is deliberately NOT widened: it is pinned by #2715's SQL
-    // contract tests and its lease exists for the webhook-replay path. This
-    // sweep reads rows the tick already fetched, and every write it makes goes
-    // through `cover_video_transition_job`, whose CAS makes a concurrent or
-    // repeated run a no-op. No migration, no new matrix edge.
-    //
-    // Three outcomes, in order of preference:
     //   RECOVER — Bunny's own TUS HEAD proves the transfer completed, so the
     //             ack was simply never made. Advance `source_uploading →
-    //             source_uploaded` (an edge the matrix ALREADY has) and let the
-    //             normal promotion path finish it. This does NOT publish
-    //             anything: the webhook still runs its `source_sha256` vs
-    //             `originalHash` identity check before any `ready`, so the
-    //             #2967 interlock is intact and no unverified source can reach
-    //             a cover.
-    //   FAIL    — the transfer is incomplete AND the TUS lease has expired, so
-    //             those bytes can never be re-offered. Terminal, named,
-    //             retryable.
-    //   LEAVE   — transfer incomplete, lease still alive: the user may be
-    //             mid-upload right now. The 12h stall deadline is the backstop.
+    //             source_uploaded`; the webhook still runs its identity check
+    //             before any `ready` (the #2967 interlock is intact).
+    //   FAIL    — the transfer is incomplete AND the TUS lease has expired.
+    //   LEAVE   — lease still alive: the user may be mid-upload right now.
+    //   (B-8)   — an UNREADABLE HEAD after the lease is not proof of anything;
+    //             it gets 30 more minutes before the upload is unverifiable.
     let sweptSourceUploading = 0;
-    for (const candidate of (data ?? []) as ReapCandidate[]) {
-      if (candidate.status !== "source_uploading") continue;
+    for (const candidate of sweepRows) {
+      if (overBudget()) break;
       if (candidate.reaped_at != null) continue;
       if (!hasAssetId(candidate.source_asset_id)) continue;
+      // D-8 (B-4) — an in-transfer upload whose event or brand was
+      // soft-deleted ends now, named, instead of at its lease expiry.
+      if (parentDeleted(candidate)) {
+        if (
+          await failSourceUploading(
+            candidate,
+            "target_deleted",
+            "The item this video was for was deleted.",
+          )
+        ) {
+          targetDeleted += 1;
+          logReaper("target_deleted_failed_job", { jobId: candidate.id });
+          addTarget({ ...candidate, failure_code: "target_deleted" });
+        }
+        continue;
+      }
       const guid = typeof candidate.source_asset_id === "string"
         ? candidate.source_asset_id
         : null;
@@ -407,26 +730,25 @@ export const handleReaper = async (
         : Number.NaN;
       if (!Number.isFinite(expiresAt) || nowMs < expiresAt) {
         // Lease alive (or unreadable expiry): never convert a live upload into
-        // a failure. `failStalledIf` still owns the 12h backstop.
+        // a failure. `failStalledIf` still owns the backstop.
         await failStalledIf(candidate, "non_terminal");
         continue;
       }
-      const { data: expired } = await supabase.rpc(
-        "cover_video_transition_job",
-        {
-          p_job_id: candidate.id,
-          p_from_statuses: ["source_uploading"],
-          p_to_status: "failed",
-          p_provider_status: null,
-          p_provider_progress: null,
-          p_patch: {
-            failure_code: "source_transport_expired",
-            failure_message:
-              "The upload session expired before the video finished uploading.",
-          },
-        },
+      if (
+        transfer.kind === "unreadable" &&
+        nowMs < expiresAt + COVER_VIDEO_UNVERIFIABLE_GRACE_MS
+      ) {
+        continue;
+      }
+      const unverifiable = transfer.kind === "unreadable";
+      const failed = await failSourceUploading(
+        candidate,
+        unverifiable ? "source_unverifiable" : "source_transport_expired",
+        unverifiable
+          ? "The upload could not be verified. Try uploading the video again."
+          : "The upload session expired before the video finished uploading.",
       );
-      if (expired?.status !== "failed") continue;
+      if (!failed) continue;
       sweptSourceUploading += 1;
       console.warn(
         "[event-cover-video-reaper]",
@@ -437,36 +759,102 @@ export const handleReaper = async (
           tusExpiresAt: candidate.tus_expires_at,
         }),
       );
-      if (!targets.some((target) => target.id === candidate.id)) {
-        targets.push({
-          id: candidate.id,
-          provider: candidate.provider,
-          source_asset_id: candidate.source_asset_id,
-          source_public_id: candidate.source_public_id,
-          action: "reap",
-        });
-      }
+      addTarget(candidate);
     }
 
-    for (const candidate of (claimed ?? []) as ReapCandidate[]) {
+    for (const candidate of claimedRows) {
+      if (overBudget()) break;
       if (
         ["cancelled", "failed", "superseded"].includes(candidate.status ?? "")
       ) {
-        if (!targets.some((target) => target.id === candidate.id)) {
-          targets.push({
-            id: candidate.id,
-            provider: candidate.provider,
-            source_asset_id: candidate.source_asset_id,
-            source_public_id: candidate.source_public_id,
-            action: "reap",
-          });
+        addTarget(candidate);
+        continue;
+      }
+      // #3040 (B-4) — the parent was soft-deleted under a live job.
+      if (
+        NON_TERMINAL_OR_READY.includes(candidate.status ?? "") &&
+        parentDeleted(candidate)
+      ) {
+        try {
+          const { data: failedJob } = await supabase.rpc(
+            "cover_video_transition_job",
+            {
+              p_job_id: candidate.id,
+              p_from_statuses: NON_TERMINAL_OR_READY,
+              p_to_status: "failed",
+              p_provider_status: null,
+              p_provider_progress: null,
+              p_patch: {
+                failure_code: "target_deleted",
+                failure_message: "The item this video was for was deleted.",
+              },
+            },
+          );
+          if (failedJob?.status === "failed") {
+            targetDeleted += 1;
+            logReaper("target_deleted_failed_job", { jobId: candidate.id });
+            addTarget({ ...candidate, failure_code: "target_deleted" });
+          }
+        } catch (error) {
+          stepFailed("target_deleted_failed", { error: errorName(error) });
         }
         continue;
       }
       if (candidate.status === "ready") {
-        // Ready is already authoritative provider truth. Keep it durable for its
-        // target owner; counting it here feeds ready-unapplied operations alerts.
+        // Ready is already authoritative provider truth. Counting it here keeps
+        // the existing reconcile metric; the ready owner below decides it.
         reconciled += 1;
+        try {
+          const guid = typeof candidate.source_asset_id === "string"
+            ? candidate.source_asset_id
+            : "";
+          const references = await readGuidLiveReferences(
+            supabase,
+            guid,
+            candidate.id,
+          );
+          if (!references.ok) {
+            stepFailed(
+              references.reason === "migration_not_applied"
+                ? "migration_not_applied"
+                : "ready_owner_references_unreadable",
+              { jobId: candidate.id },
+            );
+          }
+          const job = candidate as unknown as ReadyOwnerJob;
+          const decision = decideReadyOwnership({
+            job,
+            references: references.ok ? references.kinds : null,
+            targetCoverNow: currentCover(candidate),
+            nowMs,
+          });
+          const outcome = await executeReadyOwnership(
+            supabase,
+            job,
+            decision,
+            nowMs,
+            {
+              materializeAdCreativeFromJob,
+              // D-12 — the prior-cover reap uses THIS tick's injected destroy.
+              reapPriorCoverAssets: (client, applied) =>
+                reapPriorCoverAssets(client, applied, {
+                  destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+                }),
+            },
+          );
+          readyOwner[outcome] = (readyOwner[outcome] ?? 0) + 1;
+          if (outcome === "expired") {
+            addTarget({ ...candidate, failure_code: "ready_unclaimed" });
+          } else if (outcome === "retained") {
+            // A client-owned venue draft: look again in a week, not every tick.
+            await deferReap(supabase, candidate.id, nowMs, "retained");
+          }
+        } catch (error) {
+          stepFailed("ready_owner_failed", {
+            jobId: candidate.id,
+            error: errorName(error),
+          });
+        }
         continue;
       }
       if (
@@ -475,22 +863,48 @@ export const handleReaper = async (
         candidate.provider_allocation_identity === candidate.id &&
         !hasAssetId(candidate.source_asset_id)
       ) {
+        // #3040 (B-13) — an uncertain allocation that title lookup could not
+        // resolve for 30 minutes is ended, named.
+        const unresolvedTooLong = (): boolean =>
+          nowMs - parseMs(candidate.provider_allocation_uncertain_at ?? null) >=
+            COVER_VIDEO_ALLOCATION_UNRESOLVED_MS;
         const allocation = await supabase.rpc(
           "cover_video_claim_provider_allocation",
           { p_job_id: candidate.id, p_lease_seconds: 60 },
         );
         const token = allocation.data?.provider_allocation_token;
         // #2905 — an unresolvable allocation is the OTHER immortality hole: no
-        // asset id means the promotion path can never run for this row. The
-        // deadline is the only thing that can end it. A provider lookup that
-        // failed is transient ("unreadable" → never stalls); a lookup that
-        // authoritatively found nothing is "absent".
+        // asset id means the promotion path can never run for this row. A
+        // provider lookup that failed is transient ("unreadable" → never
+        // stalls); a lookup that authoritatively found nothing is "absent".
         if (typeof token !== "string") {
+          if (
+            unresolvedTooLong() &&
+            await failSourceUploading(
+              candidate,
+              "allocation_unresolved",
+              "The upload could not be started. Try uploading the video again.",
+            )
+          ) {
+            allocationUnresolved += 1;
+            continue;
+          }
           await failStalledIf(candidate, "non_terminal");
           continue;
         }
         const lookup = await deps.bunnyFindVideoByTitle(candidate.id);
         if (!lookup.ok) {
+          if (
+            unresolvedTooLong() &&
+            await failSourceUploading(
+              candidate,
+              "allocation_unresolved",
+              "The upload could not be started. Try uploading the video again.",
+            )
+          ) {
+            allocationUnresolved += 1;
+            continue;
+          }
           await failStalledIf(candidate, "unreadable");
           continue;
         }
@@ -523,12 +937,8 @@ export const handleReaper = async (
       // ── #2905 THE ENUM SEAM ──────────────────────────────────────────────
       // `provider.video.status` is the Bunny API VIDEO-OBJECT enum (4 =
       // Finished, 3 = Transcoding). `handleBunnyWebhook` reads the Bunny
-      // WEBHOOK enum (3 = Finished, 4 = ResolutionFinished). Passing the raw
-      // API number across (the shipped bug) read a FINISHED video as "still
-      // encoding, wait for 3" — a 3 that can never arrive after a 4 — so the
-      // reconciler could never complete a job, and read a TRANSCODING video as
-      // ready, which would have published a half-encoded video. The crossing is
-      // now made exactly once, by one function named for both enums.
+      // WEBHOOK enum (3 = Finished, 4 = ResolutionFinished). The crossing is
+      // made exactly once, by one function named for both enums.
       const webhookStatus = bunnyApiVideoStatusAsWebhookStatus(
         provider.video.status,
       );
@@ -587,23 +997,13 @@ export const handleReaper = async (
         }),
       );
       // #2905 — the stall deadline is keyed on THIS TICK'S ACTUAL OUTCOME, not
-      // on what the provider claims. Gating it on `providerLifecycle` alone
-      // would re-open the wedge for the case where Bunny reports Finished but
-      // the promotion still cannot complete — e.g. `availableResolutions`
-      // advertises a rendition the CDN does not actually serve (play_720p.mp4
-      // 404s for the wedged production asset right now), which 503s the ready
-      // branch on every tick, forever, with the job never leaving `processing`.
+      // on what the provider claims: a Finished asset whose derivative the CDN
+      // will not serve must still die at the deadline.
       if (response.ok) {
-        // The promotion path ran to completion. Only a provider that is itself
-        // still mid-encode can be stalled here.
         if (providerLifecycle !== "ready" && providerLifecycle !== "failed") {
           await failStalledIf(candidate, "non_terminal");
         }
       } else {
-        // The promotion could not complete. A provider read that failed INSIDE
-        // the replay is transient and must never fail a job; every other
-        // incompletion (unfetchable derivative or poster, refused transition) is
-        // a genuine stall once the deadline has passed.
         const replayBody = await response.clone().json().catch(() => null);
         const transient = replayBody !== null &&
           typeof replayBody === "object" &&
@@ -613,47 +1013,169 @@ export const handleReaper = async (
       }
     }
 
+    // ── #3040 (B-14) ORPHAN RECLAIM ─────────────────────────────────────
+    // Applied assets that nothing has referenced for 7 days. Off by default:
+    // with the flag off this is a dry run that only counts candidates.
+    let orphanCandidates = 0;
+    let orphanDestroyed = 0;
+    let orphanReclaimEnabled = false;
+    if (!overBudget()) {
+      try {
+        const flag = await supabase.from("admin_config").select("value")
+          .eq("key", ORPHAN_RECLAIM_FLAG_KEY).maybeSingle();
+        orphanReclaimEnabled = !flag.error && flag.data?.value === true;
+        const orphanRead = await supabase
+          .from("event_cover_video_jobs")
+          .select(CANDIDATE_COLUMNS)
+          .in("status", ["applied"])
+          .neq("target_kind", "venue_draft")
+          .is("reaped_at", null)
+          .not("source_asset_id", "is", null)
+          .lt(
+            "completed_at",
+            new Date(nowMs - COVER_VIDEO_ORPHAN_AGE_MS).toISOString(),
+          )
+          .order("completed_at", { ascending: true })
+          .limit(COVER_VIDEO_ORPHAN_RECLAIM_LIMIT);
+        if (orphanRead.error) {
+          stepFailed("orphan_read_failed", { code: orphanRead.error.code ?? null });
+        }
+        for (
+          const orphan of selectOrphanCandidates(
+            (orphanRead.data ?? []) as ReapCandidate[],
+            nowMs,
+          )
+        ) {
+          if (overBudget()) break;
+          const guid = String(orphan.source_asset_id);
+          if (!orphanReclaimEnabled) {
+            const references = await readGuidLiveReferences(
+              supabase,
+              guid,
+              orphan.id,
+            );
+            if (references.ok && references.kinds.length === 0) {
+              orphanCandidates += 1;
+            }
+            continue;
+          }
+          const outcome = await destroyIfUnreferenced(supabase, orphan, {
+            destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+          });
+          if (outcome.outcome === "destroyed") {
+            orphanCandidates += 1;
+            orphanDestroyed += 1;
+          }
+        }
+        logReaper("orphan_reclaim_candidate", {
+          enabled: orphanReclaimEnabled,
+          candidates: orphanCandidates,
+          destroyed: orphanDestroyed,
+        });
+      } catch (error) {
+        stepFailed("orphan_reclaim_failed", { error: errorName(error) });
+      }
+    }
+
     let reaped = 0;
     let failed = 0;
+    let guardedSkipped = 0;
     for (const target of targets) {
-      const destroyed = await deps.destroyCoverVideoAsset(target);
-      if (!destroyed.ok) {
-        // Fail-safe: leave reaped_at NULL so the next run retries. Never wedge.
+      // #3040 — EVERY terminal reap goes through the live-reference guard: a
+      // superseded, cancelled or failed job's asset may still be a cover, a
+      // venue listing, a trip-day video, an ad creative or another job's asset
+      // (e.g. a venue cover saved while its job was ready, then replaced and
+      // the replacement cancelled). Nothing here destroys directly.
+      const outcome = await destroyIfUnreferenced(supabase, target, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
+      if (outcome.outcome === "destroyed") reaped += 1;
+      else if (outcome.outcome === "destroy_failed") {
+        // Fail-safe: reaped_at stays NULL so the next run retries. Never wedge.
         failed += 1;
-        console.warn("[event-cover-video-reaper] destroy failed:", {
-          jobId: target.id,
-          reason: destroyed.reason,
-        });
-        continue;
+      } else if (outcome.outcome === "unknown") {
+        guardedSkipped += 1;
+        stepFailed(
+          outcome.reason === "migration_not_applied"
+            ? "migration_not_applied"
+            : "guarded_reap_unknown",
+          { jobId: target.id },
+        );
+      } else if (
+        outcome.outcome === "referenced" || outcome.outcome === "retained"
+      ) {
+        guardedSkipped += 1;
+        // A still-served (or client-retained) asset is asked about again
+        // later, not every tick: without this back-off a growing set of
+        // referenced terminal rows would fill the claim and the reap window
+        // and starve live work.
+        await deferReap(supabase, target.id, nowMs, outcome.outcome);
       }
-      const patch: Record<string, unknown> = {
-        reaped_at: new Date().toISOString(),
-      };
-      await supabase.from("event_cover_video_jobs").update(patch).eq(
-        "id",
-        target.id,
-      );
-      reaped += 1;
     }
+
+    // #3040 (B-9) — a failed internal step reaches the Bunny health rail. Best
+    // effort: the tick's own result must never depend on this write.
+    if (stepFailures.length > 0) {
+      try {
+        const checkedAt = new Date().toISOString();
+        const { error: healthError } = await supabase.from("api_health_checks")
+          .insert(stepFailures.map((stage) => ({
+            service_key: "bunny",
+            layer: "passive",
+            status: "degraded",
+            latency_ms: null,
+            mode: null,
+            http_status: null,
+            detail: { signal: "cover_video_reaper_step_failed", stage },
+            checked_at: checkedAt,
+          })));
+        if (healthError) {
+          logReaper("step_failure_health_write_failed", {
+            code: healthError.code ?? null,
+          });
+        }
+      } catch (error) {
+        logReaper("step_failure_health_write_failed", {
+          error: errorName(error),
+        });
+      }
+    }
+    if (budgetExhausted) logReaper("tick_budget_exhausted");
 
     return jsonResponse({
       ok: true,
-      candidates: (data ?? []).length,
+      candidates: new Set([...reapRows, ...sweepRows].map((row) => row.id))
+        .size,
       targets: targets.length,
       reaped,
       failed,
+      guardedSkipped,
       reconciled,
       stalled,
+      allocationAbandoned,
+      allocationUnresolved,
+      targetDeleted,
+      readyOwner,
+      orphanReclaim: {
+        enabled: orphanReclaimEnabled,
+        candidates: orphanCandidates,
+        destroyed: orphanDestroyed,
+      },
       processingSloBreaches,
       sweptSourceUploading,
+      stepFailures,
+      budgetExhausted,
       timestamp: new Date(nowMs).toISOString(),
     });
   } catch (err) {
-    console.error("[event-cover-video-reaper] tick failed");
+    console.error("[event-cover-video-reaper] tick failed", {
+      error: errorName(err),
+    });
     // 200 so pg_cron does not retry-storm.
     return jsonResponse({
       ok: false,
       error: "reaper_tick_failed",
+      stepFailures,
     });
   }
 };

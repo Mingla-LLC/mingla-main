@@ -43,9 +43,11 @@ import { isToolProposalEditable, ToolEditForm } from "./ToolEditForm";
 import { GlassChrome } from "../ui/GlassChrome";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
-import type { CoverTarget } from "../ui/coverTarget";
+import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
+import { useAdVideoFitSummary } from "../../hooks/useAdVideoFitSummary";
 import { randomId } from "../../utils/randomId";
+import { ariAdOwnerKey, isValidAdCreativeOwnerKey } from "../../services/eventCoverVideoEdgeContract";
 import type { ConfirmOutcome } from "./toolProposalTypes";
 
 // Premium proposal-card metrics — tighter than the default kit values.
@@ -92,6 +94,13 @@ export interface ToolProposalCardProps {
   brandNamesById?: Record<string, string>;
   /** The signed-in account id — needed to construct the brand CoverTarget. */
   accountId?: string | null;
+  /**
+   * #3040 B-C14 — the persisted proposal id (`pending_action_id`). The ad
+   * video's lane owner key is `ari:<proposalId>`, so reopening the card (or
+   * remounting it) re-attaches to the SAME in-flight video; a random per-mount
+   * key used to orphan it.
+   */
+  proposalId?: string | null;
   /**
    * ORCH-1103 Q7 — called after the create-for-cover commit + cover attach
    * resolves, so the host clears the now-executed pending action and the
@@ -821,6 +830,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   brandNamesById = {},
   accountId = null,
   onAttachDone,
+  proposalId = null,
 }) => {
   const [editing, setEditing] = useState(false);
   const [editedArgs, setEditedArgs] = useState<Record<string, unknown>>(args);
@@ -829,7 +839,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     useState<CoverUploadState>("idle");
   const [adVideoPatch, setAdVideoPatch] =
     useState<CoverPatch>(EMPTY_COVER_PATCH);
-  const [adDraftOwnerKey] = useState(() => `ari-ad-${randomId()}`);
+  const adOwnerKey =
+    typeof proposalId === "string" && isValidAdCreativeOwnerKey(ariAdOwnerKey(proposalId))
+      ? ariAdOwnerKey(proposalId)
+      : null;
   const [typedName, setTypedName] = useState("");
   // #1983 — highest-safety: legal name must be freshly typed (never prefilled
   // from the model proposal), same empty-start pattern as brand-delete confirm.
@@ -964,6 +977,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     });
   };
 
+  // #3040 B-C14 — the ad video is an `ad_creative` lane job; the server
+  // creates the creative row from the READY job and the sheet hands back its
+  // id. Nothing records a creative from a URL here any more.
   const handleAdVideoChange = async (patch: CoverPatch): Promise<void> => {
     setAdVideoPatch(patch);
     if (!patch.coverMediaUrl) {
@@ -974,50 +990,17 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       });
       return;
     }
-    if (patch.coverMediaType !== "video" || !patch.coverMediaPosterUrl) {
+    if (patch.coverMediaType !== "video" || !patch.adCreativeId) {
       setCoverUploadState("error");
       setProposalError(
         "Host ads need a video. Choose a video from your library.",
       );
       return;
     }
-    const brandId = typeof args.brand_id === "string" ? args.brand_id : "";
-    const platforms = [
-      ...new Set(
-        (Array.isArray(args.platforms) && args.platforms.length > 0
-          ? args.platforms
-          : [args.platform]
-        )
-          .map((value) =>
-            String(value ?? "")
-              .trim()
-              .toLowerCase(),
-          )
-          .filter(Boolean),
-      ),
-    ];
-    setCoverUploadState("processing");
+    const creativeId = patch.adCreativeId;
+    setEditedArgs((prev) => ({ ...prev, creative_library_id: creativeId }));
+    setCoverUploadState("idle");
     setProposalError(null);
-    try {
-      const { recordHostAdVideo } =
-        await import("../../services/ariAdCreativeService");
-      const creativeId = await recordHostAdVideo({
-        brandId,
-        platforms,
-        name: typeof args.name === "string" ? args.name : "Ari Host ad video",
-        videoUrl: patch.coverMediaUrl,
-        posterUrl: patch.coverMediaPosterUrl,
-      });
-      setEditedArgs((prev) => ({ ...prev, creative_library_id: creativeId }));
-      setCoverUploadState("idle");
-    } catch (error) {
-      setCoverUploadState("error");
-      setProposalError(
-        error instanceof Error
-          ? error.message
-          : "We couldn't record that ad video.",
-      );
-    }
   };
 
   // The brand CoverTarget — requires a real brandId. On UPDATE the id comes
@@ -1055,13 +1038,17 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             coverMediaApplyMode: "draft_auto",
           }
         : null;
+  // #3040 AD-04 — the same per-platform fit sentence Host Ads shows, from the
+  // same server-computed fit, for the video this proposal will run.
+  const adVideoFitSummary = useAdVideoFitSummary(
+    isAdPlanCreativeProposal && typeof args.brand_id === "string" ? args.brand_id : null,
+    isAdPlanCreativeProposal && typeof editedArgs.creative_library_id === "string"
+      ? editedArgs.creative_library_id
+      : null,
+  );
   const adVideoTarget: CoverTarget | null =
-    isAdPlanCreativeProposal && typeof args.brand_id === "string"
-      ? {
-          kind: "venue_draft",
-          brandId: args.brand_id,
-          draftOwnerKey: adDraftOwnerKey,
-        }
+    isAdPlanCreativeProposal && typeof args.brand_id === "string" && adOwnerKey !== null
+      ? adCreativeCoverTarget(args.brand_id, adOwnerKey)
       : null;
 
   // ORCH-1103 — what happens when the user taps "Add cover".
@@ -1463,6 +1450,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               emptyHelp="Required — upload the video Ari will run"
               selectedLabel="Ad video"
             />
+            {adVideoFitSummary !== null ? (
+              <Text style={styles.adFitText} testID="ari-ad-video-fit">
+                {adVideoFitSummary}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -1758,6 +1750,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           mediaMode="video-only"
           title="Ad video"
           confirmLabel="Use this ad video"
+          adFitSummary={adVideoFitSummary}
         />
       ) : null}
     </GlassChrome>
@@ -1765,6 +1758,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920."
+  adFitText: {
+    marginTop: spacing.xs,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
   card: {
     marginVertical: 6,
     marginLeft: 24 + ariThread.orbGap,

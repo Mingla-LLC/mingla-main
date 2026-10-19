@@ -7,15 +7,30 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 // webhook residue was removed (dead post-META-1270). bunnyDeleteVideo is the
 // only provider delete path.
 import { bunnyDeleteVideo } from "./bunnyStream.ts";
+// Issue #3040 — who may drive an ad_creative upload, in a module without
+// environment reads so the ads functions can share it.
+import { requireAdCreativeLaneAccess } from "./adCreativeLaneAuth.ts";
+export {
+  type AdCreativeOwnerKey,
+  parseAdCreativeOwnerKey,
+} from "./adCreativeLaneAuth.ts";
 
+// #3040 B-C1 — Host clients name their app version and platform on every lane
+// call so the 426 old-client refusal is logged with who was refused. A browser
+// preflight-rejects any request header missing from this list.
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-mingla-app-version, x-mingla-platform",
 };
 
+// Issue #3040 — the shared lane emits up to 1080p. A 60 s 1080p MP4 is larger
+// than the old 25 MiB budget, so the processed cap is 64 MiB (the same cap the
+// ads byte fetch already used). These defaults are pinned against the DB
+// CHECKs and packages/video-upload/limits.js by I-VIDEO-LIMITS-PARITY.
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): edge defaults equal the DB CHECKs and the client limits table
 export const FINAL_MAX_BYTES = Number.parseInt(
-  Deno.env.get("EVENT_COVER_FINAL_MAX_BYTES") ?? "26214400",
+  Deno.env.get("EVENT_COVER_FINAL_MAX_BYTES") ?? "67108864",
   10,
 );
 export const MAX_DURATION_MS = Number.parseInt(
@@ -30,6 +45,11 @@ export const MAX_SOURCE_VIDEO_DURATION_MS = Number.parseInt(
   Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "60000",
   10,
 );
+// Issue #3040 — ad videos (target `ad_creative`) need at least 5 s; covers and
+// trip-day media have no minimum.
+export const AD_MIN_DURATION_MS = 5000;
+// Issue #3040 — highest Bunny MP4 rendition the lane will select.
+export const MAX_RENDITION_HEIGHT = 1080;
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -287,12 +307,14 @@ export type CoverVideoTargetKind =
   | "brand"
   | "venue"
   | "venue_draft"
-  | "trip_day_media";
+  | "trip_day_media"
+  | "ad_creative";
 
 export type CoverVideoTargetSelector = {
   targetKind: CoverVideoTargetKind;
   eventId: string | null;
-  brandId: string;
+  // Issue #3040 — null only for a brandless (house) `ad_creative` upload.
+  brandId: string | null;
   venueId: string | null;
   draftOwnerKey: string | null;
   requestedBy?: string | null;
@@ -303,6 +325,19 @@ export async function requireCoverVideoTargetManager(
   selector: CoverVideoTargetSelector,
   userId: string,
 ): Promise<{ target: CoverVideoTargetSelector } | Response> {
+  if (selector.targetKind === "ad_creative") {
+    // Issue #3040 — a private ad upload (see adCreativeLaneAuth.ts).
+    const denied = await requireAdCreativeLaneAccess(supabase, selector, userId);
+    return denied ?? { target: selector };
+  }
+  // Every non-ad target is brand-owned (DB: event_cover_video_jobs_brand_required).
+  if (selector.brandId === null) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "brand_id_invalid_uuid",
+    }, 400);
+  }
+  const brandId: string = selector.brandId;
   if (
     selector.targetKind === "event" ||
     selector.targetKind === "trip_day_media"
@@ -316,7 +351,7 @@ export async function requireCoverVideoTargetManager(
     const allowed = await requireEventManager(
       supabase,
       selector.eventId,
-      selector.brandId,
+      brandId,
       userId,
     );
     return allowed instanceof Response ? allowed : { target: selector };
@@ -332,7 +367,7 @@ export async function requireCoverVideoTargetManager(
       .from("venue_listings")
       .select("id,brand_id")
       .eq("id", selector.venueId)
-      .eq("brand_id", selector.brandId)
+      .eq("brand_id", brandId)
       .maybeSingle();
     if (error) {
       return jsonResponse({
@@ -369,7 +404,7 @@ export async function requireCoverVideoTargetManager(
   }
   const allowed = await requireBrandCoverManager(
     supabase,
-    selector.brandId,
+    brandId,
     userId,
   );
   return allowed instanceof Response ? allowed : { target: selector };
@@ -548,7 +583,8 @@ export type EventCoverVideoStatusPayload = {
   jobId: string;
   // ORCH-0989: null for brand-target jobs (brand jobs have no events-row).
   eventId: string | null;
-  brandId: string;
+  // Issue #3040: null only for a brandless (house) ad_creative upload.
+  brandId: string | null;
   // ORCH-0989: 'event' (default) or 'brand'.
   targetKind: CoverVideoTargetKind;
   venueId: string | null;
@@ -578,6 +614,11 @@ export type EventCoverVideoStatusPayload = {
   cancelledAt: string | null;
   applicationVersion: number;
   applicationReceipt: Record<string, unknown> | null;
+  // Issue #3040: the MP4 rendition height the lane chose (null until ready).
+  renditionHeight: number | null;
+  // Issue #3040: the ad_creatives row materialized from an ad_creative job.
+  // The status/apply endpoints fill it; the pure mapper does not read tables.
+  creativeId: string | null;
 };
 
 export type EventCoverVideoReadyUpdateInput = {
@@ -612,7 +653,8 @@ type EventCoverVideoJobRow = {
   id: string;
   // ORCH-0989: nullable for brand-target jobs.
   event_id: string | null;
-  brand_id: string;
+  // Issue #3040: nullable for a brandless ad_creative upload.
+  brand_id: string | null;
   target_kind?: string | null;
   venue_id?: string | null;
   draft_owner_key?: string | null;
@@ -774,7 +816,8 @@ export function mapEventCoverVideoStatus(
     eventId: job.event_id ?? null,
     targetKind: job.target_kind === "brand" || job.target_kind === "venue" ||
         job.target_kind === "venue_draft" ||
-        job.target_kind === "trip_day_media"
+        job.target_kind === "trip_day_media" ||
+        job.target_kind === "ad_creative"
       ? job.target_kind
       : "event",
     venueId: job.venue_id ?? null,
@@ -807,5 +850,20 @@ export function mapEventCoverVideoStatus(
         typeof job.application_receipt === "object"
       ? job.application_receipt as Record<string, unknown>
       : null,
+    renditionHeight: renditionHeightFromPayload(job.provider_payload),
+    creativeId: null,
   };
+}
+
+// Issue #3040 — the webhook records the chosen rendition height in
+// provider_payload.rendition_height.
+export function renditionHeightFromPayload(providerPayload: unknown): number | null {
+  if (providerPayload === null || typeof providerPayload !== "object") {
+    return null;
+  }
+  const value = (providerPayload as { rendition_height?: unknown })
+    .rendition_height;
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : null;
 }

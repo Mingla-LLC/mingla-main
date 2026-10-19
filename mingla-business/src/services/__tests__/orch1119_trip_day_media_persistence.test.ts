@@ -65,7 +65,9 @@ describe("ORCH-1119 — trip-day media persistence (published-edit RPC)", () => 
 describe("ORCH-1119 — upload service rejects over-cap + unsupported (SC-3)", () => {
   const svc = read("mingla-business/src/services/tripDayMediaService.ts");
   test("25 MB byte cap is enforced before upload (no silent failure)", () => {
-    expect(svc).toContain("TRIP_DAY_MEDIA_MAX_BYTES = 25 * 1024 * 1024");
+    // [TEST-MOD-APPROVED #3040] B-C12 — the 25 MB cap is now photos-only
+    // (renamed); trip-day videos follow the lane's 100 MB contract.
+    expect(svc).toContain("TRIP_DAY_MEDIA_IMAGE_MAX_BYTES = 25 * 1024 * 1024");
     // A friendly file_too_large reject must precede any storage.upload call.
     const capIdx = svc.indexOf("file_too_large");
     const uploadIdx = svc.indexOf(".upload(");

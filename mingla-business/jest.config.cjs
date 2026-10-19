@@ -373,6 +373,10 @@ module.exports = {
     // resolve that exact workspace package through the real TypeScript module.
     "^@mingla/search-measurement$":
       "<rootDir>/../packages/search-measurement/src/index.ts",
+    // #3040 — the shared web TUS uploader is plain ES-module JavaScript.
+    // Resolve the exact specifier to THIS checkout's package (resolution
+    // repair, not a mock); the transform below turns its ESM into CJS.
+    "^@mingla/video-upload$": "<rootDir>/../packages/video-upload/index.js",
     // react is unresolvable FROM workspace packages/*.tsx in CI because the
     // Business install owns the peer dependency. Point the bare specifier at
     // that one real copy, matching the JSX-runtime repair immediately below.
@@ -562,6 +566,14 @@ module.exports = {
     // them as bare CJS, so transpile lucide-react's `.js` to CJS via babel-jest
     // (babel-preset-expo is already a dep). Scope is narrow: only lucide-react.
     "lucide-react/.+\\.js$": ["babel-jest", { presets: ["babel-preset-expo"] }],
+    // #3040 — packages/video-upload ships ESM `.js` (consumed by Metro and
+    // Vite as-is). Babel changes module syntax only; the real uploader runs.
+    // Module syntax only, with inline helpers: the package lives outside this
+    // app, so a preset that imports `@babel/runtime` helpers cannot resolve.
+    "packages/video-upload/.+\\.js$": [
+      "babel-jest",
+      { babelrc: false, configFile: false, plugins: ["@babel/plugin-transform-modules-commonjs"] },
+    ],
   },
   // ORCH-1137 (rework) — by default jest ignores ALL of node_modules for
   // transforms; un-ignore lucide-react so the `.js` transform above runs on it.

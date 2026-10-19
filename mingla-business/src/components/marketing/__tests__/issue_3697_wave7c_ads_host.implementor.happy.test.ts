@@ -65,13 +65,15 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(card).toContain('end_ad_campaign: "END"');
     // [TEST-MOD-APPROVED #3697] Ari records only the canonical video. Native
     // provider copies are plan-bound launch work in hostAdPlanService.
-    expect(card).toContain("recordHostAdVideo");
+    // [TEST-MOD-APPROVED #3040] B-C14 — the server creates the creative from
+    // the READY ad_creative job; the card links the id it is handed.
+    expect(card).toContain("patch.adCreativeId");
     expect(card).toContain("Add ad video");
     expect(card).toContain('toolName === "approve_ad_plan"');
     expect(card).toContain("editing || isAdPlanProposal ? editedArgs : args");
-    const creative = read("src/services/ariAdCreativeService.ts");
-    expect(creative).toContain('"admin-ad-creative-upload"');
-    expect(creative).not.toContain('"admin-ad-creative-prepare"');
+    // [TEST-MOD-APPROVED #3040] ariAdCreativeService (recordHostAdVideo) is
+    // deleted; nothing on the client calls admin-ad-creative-prepare either.
+    expect(card).not.toContain('"admin-ad-creative-prepare"');
     const plan = read("src/services/hostAdPlanService.ts");
     expect(plan).toContain('"admin-ad-creative-prepare"');
     expect(plan).toContain('lane: "business"');

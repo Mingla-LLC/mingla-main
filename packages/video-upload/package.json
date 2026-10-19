@@ -1,0 +1,11 @@
+{
+  "name": "@mingla/video-upload",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "sideEffects": false,
+  "license": "UNLICENSED",
+  "description": "Dependency-free web TUS upload for the shared Mingla video lane (#3040). Plain JavaScript only: no native code, no react-native or expo imports."
+}

@@ -101,6 +101,13 @@ const defaultDeps = {
 // room for a retry while staying well inside that contract.
 export const TUS_HEAD_TIMEOUT_MS = 8_000;
 
+// #3040 (B-8) — after the TUS lease expires, an UNREADABLE HEAD proves nothing
+// either way. The upload is given this long past the lease to be read before it
+// is called unverifiable; until then the client is told to ask again.
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): an unreadable provider HEAD never fails a transfer inside its bound
+export const SOURCE_UNVERIFIABLE_GRACE_MS = 30 * 60 * 1000;
+export const SOURCE_VERIFICATION_RETRY_AFTER_MS = 5_000;
+
 // The authoritative transfer verdict, read from Bunny's own TUS HEAD.
 //   "complete"   — uploadOffset === uploadLength === source_bytes. PROOF.
 //   "incomplete" — the HEAD answered and the bytes are demonstrably not all
@@ -196,7 +203,8 @@ export const handleEventCoverVideoSourceUploaded = async (
 
   const requestId = safeString(body.clientRequestId) ?? crypto.randomUUID();
   const targetKind = body.target === "brand" || body.target === "venue" ||
-      body.target === "venue_draft" || body.target === "trip_day_media"
+      body.target === "venue_draft" || body.target === "trip_day_media" ||
+      body.target === "ad_creative"
     ? body.target
     : "event";
   if (!isValidUuid(body.jobId)) {
@@ -399,7 +407,29 @@ export const handleEventCoverVideoSourceUploaded = async (
   // gated it on `storageSize <= 0`, which made an expired lease lethal to a
   // fully-transferred, still-encoding video.
   const tusExpiresAt = expiresAtMs(job.tus_expires_at);
+  if (
+    tusExpiresAt !== null && nowMs >= tusExpiresAt &&
+    transfer.kind === "unreadable" &&
+    nowMs < tusExpiresAt + SOURCE_UNVERIFIABLE_GRACE_MS
+  ) {
+    // #3040 (B-8) — the bytes may well all be on Bunny; we just could not ask.
+    console.log(
+      "[event-cover-video-source-uploaded]",
+      JSON.stringify({
+        jobId: job.id,
+        reason: transfer.reason,
+        requestId,
+        stage: "tus_head_unreadable_after_lease",
+      }),
+    );
+    return jsonResponse({
+      ...mapEventCoverVideoStatus(job),
+      verification: "pending",
+      retryAfterMs: SOURCE_VERIFICATION_RETRY_AFTER_MS,
+    }, 202);
+  }
   if (tusExpiresAt !== null && nowMs >= tusExpiresAt) {
+    const unverifiable = transfer.kind === "unreadable";
     const { data: expiredJob } = await supabase.rpc(
       "cover_video_transition_job",
       {
@@ -408,11 +438,17 @@ export const handleEventCoverVideoSourceUploaded = async (
         p_to_status: "failed",
         p_provider_status: null,
         p_provider_progress: null,
-        p_patch: {
-          failure_code: "source_transport_expired",
-          failure_message:
-            "The upload session expired before the video finished uploading.",
-        },
+        p_patch: unverifiable
+          ? {
+            failure_code: "source_unverifiable",
+            failure_message:
+              "The upload could not be verified. Try uploading the video again.",
+          }
+          : {
+            failure_code: "source_transport_expired",
+            failure_message:
+              "The upload session expired before the video finished uploading.",
+          },
       },
     );
     // #3040 — no destroy here either. See the header note: reclamation is the

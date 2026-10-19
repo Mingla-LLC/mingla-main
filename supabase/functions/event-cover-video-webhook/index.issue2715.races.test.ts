@@ -201,7 +201,12 @@ Deno.test("#2715 authoritative invalid derivative fails and cleans up exactly on
             }),
           }),
         }),
-        rpc: () => {
+        // [TEST-MOD-APPROVED #3040] P1-1: the cleanup is a GUARDED destroy, so
+        // it asks for live references first; that read is not a transition.
+        rpc: (name: string) => {
+          if (name === "cover_video_guid_live_references") {
+            return Promise.resolve({ data: [], error: null });
+          }
           rpcs += 1;
           current = {
             ...current,

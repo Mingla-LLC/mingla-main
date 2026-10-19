@@ -177,7 +177,10 @@ describe("issue #3128 — local compression is bounded and honest", () => {
     // provider discards. This is also four times the pixels of the 640 the
     // library's `auto` mode silently used, which is why a real device's cover
     // came back 360x640.
-    expect(options.maxSize).toBe(1280);
+    // [TEST-MOD-APPROVED #3040] §2 — the lane now serves 1080p (Snapchat
+    // needs 1080×1920), so the phone keeps a 1920 long edge at 8 Mbps.
+    expect(options.maxSize).toBe(1920);
+    expect(options.bitrate).toBe(8_000_000);
     // And a real progress signal, so the sheet is not a bare spinner and the
     // stall detector has something to watch.
     expect(options.progressDivider).toBe(1);

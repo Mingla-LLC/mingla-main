@@ -349,15 +349,17 @@ describe("event cover video processing service", () => {
     expect(invoke).toHaveBeenNthCalledWith(
       1,
       "event-cover-video-upload-intent",
+      // [TEST-MOD-APPROVED #3040] B-C1 — native requests also carry the
+      // x-mingla-app-version / x-mingla-platform headers the edge logs on 426.
       expect.objectContaining({
-        headers: { Authorization: "Bearer first-session-jwt" },
+        headers: expect.objectContaining({ Authorization: "Bearer first-session-jwt" }),
       }),
     );
     expect(invoke).toHaveBeenNthCalledWith(
       2,
       "event-cover-video-upload-intent",
       expect.objectContaining({
-        headers: { Authorization: "Bearer retry-session-jwt" },
+        headers: expect.objectContaining({ Authorization: "Bearer retry-session-jwt" }),
       }),
     );
   });

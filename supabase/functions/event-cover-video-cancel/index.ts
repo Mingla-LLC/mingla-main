@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   corsHeaders,
-  destroyCoverVideoAsset,
   isValidUuid,
   jsonResponse,
   mapEventCoverVideoStatus,
@@ -11,6 +10,7 @@ import {
   requireUserId,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
+import { destroyIfUnreferenced } from "../_shared/coverVideoReap.ts";
 
 const sourcePublicIdFromJob = (job: {
   source_public_id?: unknown;
@@ -96,7 +96,14 @@ serve(async (req) => {
     requestedBy: job.requested_by,
   }, userId);
   if (allowed instanceof Response) return allowed;
+  // #3040 (P2) — a READY ad video is still cancellable: the Host replaced it
+  // before it reached the library. cover_video_cancel_once cancels it only
+  // while no creative row exists for it, and a creative can never be created
+  // for a cancelled job (trigger trg_ad_creatives_job_must_be_ready).
+  const cancellableReadyAd = job.status === "ready" &&
+    job.target_kind === "ad_creative";
   if (
+    !cancellableReadyAd &&
     ["ready", "failed", "cancelled", "superseded", "applied"].includes(
       job.status,
     )
@@ -118,29 +125,25 @@ serve(async (req) => {
     );
   }
 
-  // META-ORCH-1270 (Phase 2) — route the terminal destroy through the
-  // provider-agnostic helper (behavior-preserving for Cloudinary — it still
-  // destroys the resolved public_id — and adds the Bunny delete). On success
-  // stamp reaped_at so the reaper never re-hits an already-gone asset. On
-  // failure leave reaped_at null so the reaper cron retries (fail-safe).
+  // #3040 — the cancelled job's asset is reclaimed only through the
+  // live-reference guard (I-VIDEO-SINGLE-GUARDED-DELETE), which also stamps
+  // reaped_at. A referenced, retained or unknown answer leaves it for the
+  // reaper, which asks again.
   if (updatedJob.status !== "cancelled") {
     return jsonResponse(mapEventCoverVideoStatus(updatedJob));
   }
-  const sourcePublicId = sourcePublicIdFromJob(job);
-  const destroyResult = await destroyCoverVideoAsset({
+  const outcome = await destroyIfUnreferenced(supabase, {
+    id: job.id,
     provider: job.provider,
-    source_public_id: sourcePublicId,
     source_asset_id: job.source_asset_id,
+    source_public_id: sourcePublicIdFromJob(job),
+    target_kind: job.target_kind,
+    processed_url: job.processed_url,
   });
-  if (destroyResult.ok) {
-    await supabase
-      .from("event_cover_video_jobs")
-      .update({ reaped_at: new Date().toISOString() })
-      .eq("id", job.id);
-  } else {
-    console.warn("[event-cover-video-cancel] asset destroy failed:", {
+  if (outcome.outcome !== "destroyed" && outcome.outcome !== "no_asset") {
+    console.warn("[event-cover-video-cancel] asset kept for the reaper:", {
       jobId: job.id,
-      reason: destroyResult.reason,
+      outcome: outcome.outcome,
     });
   }
 

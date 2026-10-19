@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/coverVideoReap.singleDeletePath.issue3040.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-single-guarded-delete-path",
+  "profile": "deno-2-unit"
+}

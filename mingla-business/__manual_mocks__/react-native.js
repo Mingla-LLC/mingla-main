@@ -92,6 +92,21 @@ module.exports = {
   Dimensions,
   Animated,
   Alert: { alert: () => {}, prompt: () => {} },
+  // #3040 — the cover upload card reads reduced-motion and announces phase
+  // changes; its indeterminate bar eases. Inert stand-ins, like the rest here.
+  AccessibilityInfo: {
+    isReduceMotionEnabled: () => Promise.resolve(false),
+    announceForAccessibility: () => {},
+    addEventListener: () => ({ remove() {} }),
+  },
+  Easing: {
+    linear: (t) => t,
+    ease: (t) => t,
+    in: (f) => f,
+    out: (f) => f,
+    inOut: (f) => f,
+    bezier: () => (t) => t,
+  },
   Linking: {
     openURL: () => Promise.resolve(),
     canOpenURL: () => Promise.resolve(true),

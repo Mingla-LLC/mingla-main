@@ -17,15 +17,18 @@ describe("#3697 Ari creative-before-freeze boundary", () => {
   });
 
   it("records once and defers every provider copy until the confirmed server launch", () => {
-    const service = read("src/services/ariAdCreativeService.ts");
+    // [TEST-MOD-APPROVED #3040] B-C14 — the creative is created server-side
+    // from the READY ad_creative job (E-6c/E-7); the client record service is
+    // deleted, so the Ari card carries the boundary now.
+    const service = read("src/components/ari/ToolProposalCard.tsx");
     const tools = read("../supabase/functions/_shared/agentDomainTools.ts");
     const approve = tools.slice(
       tools.indexOf('const approveAdPlan = writeTool('),
       tools.indexOf('const pauseAdCampaign = writeTool('),
     );
-    expect(service).toContain("platforms: string[]");
-    expect(service).toContain("platforms,");
-    expect(service).toContain('"admin-ad-creative-upload"');
+    expect(service).toContain("adCreativeCoverTarget(args.brand_id, adOwnerKey)");
+    expect(service).toContain("creative_library_id: creativeId");
+    expect(service).not.toContain('"admin-ad-creative-upload"');
     expect(service).not.toContain('"admin-ad-creative-prepare"');
     expect(approve).toContain('"admin-ad-creative-prepare"');
     expect(approve).toContain('lane: "business"');

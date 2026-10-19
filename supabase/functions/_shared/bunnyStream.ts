@@ -95,11 +95,58 @@ const constantTimeEqual = (a: string, b: string): boolean => {
 const networkReason = (prefix: string, error: unknown): string =>
   `${prefix}_${error instanceof Error ? error.name : "error"}`;
 
+// ── Issue #3040 BOUNDED PROVIDER I/O ────────────────────────────────────────
+// Every Bunny control-plane call carries a hard deadline. A Bunny pause used to
+// hang the webhook, the minute reaper and upload intent with no bound at all.
+// The deadline is enforced by racing the request against a timer (and aborting
+// it), so even a transport that ignores the abort signal cannot hold a caller
+// past its budget. A timeout surfaces as each helper's existing network-failure
+// shape, with the error name `TimeoutError`.
+// Invariant I-VIDEO-BOUNDED-IO (declared in supabase/functions/_shared/__tests__/bunnyStream.issue3040.timeouts.test.ts): every outbound provider call has a timeout
+export const BUNNY_TIMEOUTS_MS = Object.freeze({
+  create: 10_000,
+  findByTitle: 8_000,
+  get: 8_000,
+  delete: 8_000,
+  usage: 5_000,
+  settings: 5_000,
+});
+
+export type BunnyCallOptions = {
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+};
+
+export async function fetchWithTimeout(
+  input: string | URL,
+  init: RequestInit,
+  timeoutMs: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timer: number | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new DOMException("Bunny request timed out", "TimeoutError"));
+    }, Math.max(1, timeoutMs));
+  });
+  try {
+    return await Promise.race([
+      fetchImpl(input, { ...init, signal: controller.signal }),
+      deadline,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Create the video object; returns its guid (the videoId).
 // POST https://video.bunnycdn.com/library/{libraryId}/videos
 // https://docs.bunny.net/reference/video_createvideo
 export async function bunnyCreateVideo(
   title: string,
+  options: BunnyCallOptions = {},
 ): Promise<
   { ok: true; guid: string } | { ok: false; reason: string; retryable: boolean }
 > {
@@ -111,15 +158,20 @@ export async function bunnyCreateVideo(
   const startedAt = Date.now();
   let response: Response;
   try {
-    response = await fetch(`${BUNNY_HOST}/library/${libraryId}/videos`, {
-      method: "POST",
-      headers: {
-        AccessKey: apiKey,
-        "Content-Type": "application/json",
-        accept: "application/json",
+    response = await fetchWithTimeout(
+      `${BUNNY_HOST}/library/${libraryId}/videos`,
+      {
+        method: "POST",
+        headers: {
+          AccessKey: apiKey,
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({ title }),
       },
-      body: JSON.stringify({ title }),
-    });
+      options.timeoutMs ?? BUNNY_TIMEOUTS_MS.create,
+      options.fetchImpl,
+    );
   } catch (error) {
     return {
       ok: false,
@@ -164,6 +216,7 @@ export type BunnyVideoTitleLookup =
 // authoritative absence; duplicate exact matches remain ambiguous/fail closed.
 export async function bunnyFindVideoByTitle(
   title: string,
+  options: BunnyCallOptions = {},
 ): Promise<BunnyVideoTitleLookup> {
   const libraryId = bunnyLibraryId();
   const apiKey = bunnyApiKey();
@@ -183,9 +236,12 @@ export async function bunnyFindVideoByTitle(
     let response: Response;
     const startedAt = Date.now();
     try {
-      response = await fetch(url, {
-        headers: { AccessKey: apiKey, accept: "application/json" },
-      });
+      response = await fetchWithTimeout(
+        url,
+        { headers: { AccessKey: apiKey, accept: "application/json" } },
+        options.timeoutMs ?? BUNNY_TIMEOUTS_MS.findByTitle,
+        options.fetchImpl,
+      );
     } catch (error) {
       return {
         ok: false,
@@ -303,6 +359,7 @@ const toBunnyVideo = (body: Record<string, unknown>): BunnyVideo => ({
 // https://docs.bunny.net/reference/video_getvideo
 export async function bunnyGetVideo(
   guid: string,
+  options: BunnyCallOptions = {},
 ): Promise<
   { ok: true; video: BunnyVideo } | {
     ok: false;
@@ -322,12 +379,14 @@ export async function bunnyGetVideo(
   const startedAt = Date.now();
   let response: Response;
   try {
-    response = await fetch(
+    response = await fetchWithTimeout(
       `${BUNNY_HOST}/library/${libraryId}/videos/${trimmed}`,
       {
         method: "GET",
         headers: { AccessKey: apiKey, accept: "application/json" },
       },
+      options.timeoutMs ?? BUNNY_TIMEOUTS_MS.get,
+      options.fetchImpl,
     );
   } catch (error) {
     return {
@@ -371,6 +430,7 @@ export async function bunnyGetVideo(
 // https://docs.bunny.net/reference/video_deletevideo
 export async function bunnyDeleteVideo(
   guid: string,
+  options: BunnyCallOptions = {},
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const libraryId = bunnyLibraryId();
   const apiKey = bunnyApiKey();
@@ -384,12 +444,14 @@ export async function bunnyDeleteVideo(
   const startedAt = Date.now();
   let response: Response;
   try {
-    response = await fetch(
+    response = await fetchWithTimeout(
       `${BUNNY_HOST}/library/${libraryId}/videos/${trimmed}`,
       {
         method: "DELETE",
         headers: { AccessKey: apiKey, accept: "application/json" },
       },
+      options.timeoutMs ?? BUNNY_TIMEOUTS_MS.delete,
+      options.fetchImpl,
     );
   } catch (error) {
     return { ok: false, reason: networkReason("bunny_delete_network", error) };
@@ -418,20 +480,42 @@ export function bunnyPlayUrl(guid: string, heightP: number): string {
   return `https://${bunnyCdnHost()}/${guid}/play_${heightP}p.mp4`;
 }
 
-// Highest available rendition height <= 720 from availableResolutions
-// ("720p,480p" → 720). Returns null when no <=720p rendition exists (fail closed).
+// Issue #3040 — every MP4 rendition the lane may deliver, highest first:
+// heights from availableResolutions with 0 < h <= maxHeight (1080 by default),
+// de-duplicated. Bunny names renditions by the short side, so a 9:16 1080p
+// video is 1080x1920. The webhook HEAD-checks these in order and takes the
+// first one that is served and fits the processed byte budget. Empty when the
+// list is missing or has no usable rendition (fail closed).
+export function bunnyMp4Candidates(
+  video: BunnyVideo,
+  maxHeight = 1080,
+): Array<{ url: string; heightP: number }> {
+  const raw = video.availableResolutions;
+  if (typeof raw !== "string" || raw.trim().length === 0) return [];
+  const heights = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((token) => Number.parseInt(token.trim().replace(/p$/i, ""), 10))
+        .filter((height) =>
+          Number.isFinite(height) && height > 0 && height <= maxHeight
+        ),
+    ),
+  ].sort((a, b) => b - a);
+  return heights.map((heightP) => ({
+    url: bunnyPlayUrl(video.guid, heightP),
+    heightP,
+  }));
+}
+
+// Highest available rendition height <= maxHeight. Kept for existing callers;
+// its historical 720 ceiling is the default so their contract is unchanged.
+// The lane itself selects through bunnyMp4Candidates (1080 ceiling).
 export function bunnyBestMp4(
   video: BunnyVideo,
+  maxHeight = 720,
 ): { url: string; heightP: number } | null {
-  const raw = video.availableResolutions;
-  if (typeof raw !== "string" || raw.trim().length === 0) return null;
-  const heights = raw
-    .split(",")
-    .map((token) => Number.parseInt(token.trim().replace(/p$/i, ""), 10))
-    .filter((height) => Number.isFinite(height) && height > 0 && height <= 720);
-  if (heights.length === 0) return null;
-  const heightP = Math.max(...heights);
-  return { url: bunnyPlayUrl(video.guid, heightP), heightP };
+  return bunnyMp4Candidates(video, maxHeight)[0] ?? null;
 }
 
 // ── #2905 THE TWO BUNNY STATUS ENUMS ────────────────────────────────────────
@@ -709,6 +793,83 @@ export async function bunnyFetchLibraryUsage(
     };
   }
   return { ok: true, usage: { storageUsage, trafficUsage } };
+}
+
+// Issue #3040 — the two library settings the 1080p lane depends on. Read from
+// the same account endpoint as usage. FAIL CLOSED: anything unreadable or
+// malformed is { ok:false } — never a guessed default.
+//   EnabledResolutions — CSV such as "240p,360p,480p,720p,1080p"
+//   EnableMP4Fallback  — must be true for play_{H}p.mp4 to exist
+export type BunnyLibrarySettings = {
+  enabledResolutions: string[];
+  mp4Fallback: boolean;
+};
+
+export async function bunnyFetchLibrarySettings(
+  timeoutMs = BUNNY_TIMEOUTS_MS.settings,
+  fetchImpl: typeof fetch = fetch,
+): Promise<
+  { ok: true; settings: BunnyLibrarySettings } | {
+    ok: false;
+    status: number;
+    reason: string;
+  }
+> {
+  const libraryId = bunnyLibraryId();
+  const accountKey = bunnyAccountApiKey();
+  if (libraryId.length === 0 || accountKey.length === 0) {
+    return { ok: false, status: 0, reason: "bunny_settings_not_configured" };
+  }
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      `${BUNNY_ACCOUNT_HOST}/videolibrary/${libraryId}`,
+      {
+        method: "GET",
+        headers: { AccessKey: accountKey, accept: "application/json" },
+      },
+      timeoutMs,
+      fetchImpl,
+    );
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      reason: networkReason("bunny_settings_network", error),
+    };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      reason: `bunny_settings_http_${response.status}`,
+    };
+  }
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (
+    body === null || typeof body.EnabledResolutions !== "string" ||
+    typeof body.EnableMP4Fallback !== "boolean"
+  ) {
+    return {
+      ok: false,
+      status: response.status,
+      reason: "bunny_settings_malformed",
+    };
+  }
+  return {
+    ok: true,
+    settings: {
+      enabledResolutions: body.EnabledResolutions.split(",")
+        .map((token) => token.trim().toLowerCase())
+        .filter((token) => token.length > 0),
+      mp4Fallback: body.EnableMP4Fallback,
+    },
+  };
 }
 
 // Pure: percent used = the HIGHER of the storage/traffic ratios against their

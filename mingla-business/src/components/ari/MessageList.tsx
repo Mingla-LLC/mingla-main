@@ -392,6 +392,8 @@ export const MessageList: React.FC<MessageListProps> = ({
               brandNamesById={brandNamesById}
               accountId={accountId}
               onAttachDone={onAttachDone}
+              // #3040 B-C14 — the persisted proposal id keys Ari's ad video.
+              proposalId={item.pendingAction.pending_action_id}
             />
           );
         }

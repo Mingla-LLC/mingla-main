@@ -263,7 +263,9 @@ const mount = async (props: CoverPickerProps): Promise<Tree> => {
 
 const pressVideo = async (tree: Tree): Promise<void> => {
   const video = tree.root.findAll(
-    (node) => node.type === "MockButton" && node.props.label === "Video",
+    // [TEST-MOD-APPROVED #3040] B-C15 — the empty cover's video action is
+    // named by its outcome: "Add a video" (was "Video").
+    (node) => node.type === "MockButton" && node.props.label === "Add a video",
   )[0];
   expect(video).toBeDefined();
   await TestRenderer.act(async () => {

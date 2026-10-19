@@ -25,7 +25,9 @@ import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
 import { CoverPickerSheet } from "../../../../src/components/ui/CoverPickerSheet";
 import type { CoverPatch } from "../../../../src/components/ui/CoverPicker";
+import { adCreativeCoverTarget } from "../../../../src/components/ui/coverTarget";
 import {
+  accent,
   canvas,
   glass,
   semantic,
@@ -48,8 +50,9 @@ import type {
   PreparedHostAdPlan,
 } from "../../../../src/services/hostAdPlanService";
 import { loadHostAdPlanService } from "../../../../src/services/lazyHostAdPlanService";
-import { recordHostAdVideo } from "../../../../src/services/ariAdCreativeService";
+import { hostAdOwnerKey } from "../../../../src/services/eventCoverVideoEdgeContract";
 import { randomUuid } from "../../../../src/utils/randomId";
+import { adVideoFitSummaryFor } from "../../../../src/utils/adVideoFit";
 
 const PLATFORM_LABELS: Record<string, string> = {
   meta: "Meta",
@@ -332,8 +335,27 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [adVideoPatch, setAdVideoPatch] = useState<CoverPatch>(
     EMPTY_AD_VIDEO_PATCH,
   );
-  const [adVideoRecording, setAdVideoRecording] = useState(false);
-  const recordedVideoUrlRef = useRef<string | null>(null);
+  // #3040 B-C14 — ONE owner: true only while a creative id the server
+  // created is being linked into this draft. Processing never disables the
+  // sheet or the button (A-14: Replace used to be refused while it ran).
+  const [adVideoLinking, setAdVideoLinking] = useState(false);
+  // The job running in the sheet, for the button's own spinner only.
+  const [adVideoProcessing, setAdVideoProcessing] = useState(false);
+  const linkedCreativeIdRef = useRef<string | null>(null);
+  // #3040 AD-04 — the fit sentence for the video this sheet holds, from the
+  // server's per-platform fit (the same matrix every ads gate uses).
+  const adVideoFitSummary = useMemo(
+    (): string | null =>
+      adVideoFitSummaryFor({
+        creatives: setup?.creatives,
+        heldId: adVideoPatch.adCreativeId ?? linkedCreativeIdRef.current,
+        linked: creative,
+      }),
+    [adVideoPatch.adCreativeId, creative, setup],
+  );
+  // AD-05 — a creative that exists server-side but did not link here yet:
+  // "Try linking again" re-links the SAME id, never re-uploads.
+  const [unlinkedCreativeId, setUnlinkedCreativeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (requestedDraftId !== null || draftIdRef.current === null) return;
@@ -362,62 +384,63 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }
   }, [brandId, permissions.canRead]);
 
-  const handleAdVideoChange = useCallback(
-    async (patch: CoverPatch): Promise<void> => {
-      setAdVideoPatch(patch);
-      if (!patch.coverMediaUrl) return;
-      if (patch.coverMediaType !== "video" || !patch.coverMediaPosterUrl) {
-        setError("Host ads need a finished video with a poster frame.");
-        return;
-      }
-      if (!brandId || !setup) return;
-      if (recordedVideoUrlRef.current === patch.coverMediaUrl) return;
-      const selectedConnections = connections.length > 0
-        ? connections
-        : setup.connections;
-      const platforms = [
-        ...new Set(selectedConnections.map((item) => item.platform)),
-      ];
-      if (platforms.length === 0) {
-        setError("Connect at least one ad platform before adding the video.");
-        return;
-      }
-      setAdVideoRecording(true);
+  // #3040 B-C14 [A-14, C-4..C-8] — the ad video is an `ad_creative` lane job;
+  // the SERVER creates the creative row from the READY job and the sheet hands
+  // back its id (`patch.adCreativeId`). Nothing records a creative from a URL
+  // here any more (`recordHostAdVideo` is gone).
+  const linkAdCreative = useCallback(
+    async (creativeId: string): Promise<void> => {
+      if (!brandId) return;
+      if (linkedCreativeIdRef.current === creativeId) return;
+      setAdVideoLinking(true);
       setError(null);
       try {
-        const creativeId = await recordHostAdVideo({
-          brandId,
-          platforms,
-          name: name.trim() || "Host ad video",
-          videoUrl: patch.coverMediaUrl,
-          posterUrl: patch.coverMediaPosterUrl,
-        });
         const { loadHostAdSetup } = await loadHostAdPlanService();
         const refreshed = await loadHostAdSetup(brandId);
         const recorded = refreshed.creatives.find(
           (item) => item.id === creativeId,
         );
         if (!recorded) {
-          throw new Error("The recorded video could not be reloaded.");
+          throw new Error("Your ad video is saved, but it didn't show up here yet. Try linking it again.");
         }
-        recordedVideoUrlRef.current = patch.coverMediaUrl;
+        linkedCreativeIdRef.current = creativeId;
+        setUnlinkedCreativeId(null);
         setSetup(refreshed);
         setCreative(recorded);
         setRightsConfirmed(false);
         setPrepared(null);
         setNotice(
-          "Video recorded in Mingla. Provider copies will be created only after this exact plan is funded and launch-confirmed.",
+          "Ad video saved to this ad. Nothing goes to ad platforms until you fund and confirm the plan.",
         );
       } catch (cause) {
+        setUnlinkedCreativeId(creativeId);
         setError(
           cause instanceof Error
             ? cause.message
-            : "The ad video could not be recorded.",
+            : "Your ad video is saved, but it didn't link to this ad. Try linking it again.",
         );
       } finally {
-        setAdVideoRecording(false);
+        setAdVideoLinking(false);
       }
-    }, [brandId, connections, name, setup],
+    },
+    [brandId],
+  );
+
+  const handleAdVideoChange = useCallback(
+    async (patch: CoverPatch): Promise<void> => {
+      setAdVideoPatch(patch);
+      if (!patch.coverMediaUrl) {
+        // "Remove video" — the ad has no video until one is added again.
+        linkedCreativeIdRef.current = null;
+        setUnlinkedCreativeId(null);
+        setCreative(null);
+        setRightsConfirmed(false);
+        setPrepared(null);
+        return;
+      }
+      if (patch.coverMediaType !== "video" || !patch.adCreativeId) return;
+      await linkAdCreative(patch.adCreativeId);
+    }, [linkAdCreative],
   );
 
   useEffect(() => {
@@ -1870,8 +1893,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
           <Text style={styles.sectionTitle}>Choose the ad</Text>
           {setup.creatives.length === 0 ? (
             <Text style={styles.helper}>
-              No ready brand video is available yet. Add one here through
-              Mingla&apos;s shared resumable video pipeline.
+              No ad video yet. Add one below — vertical 9:16 works on the most
+              platforms.
             </Text>
           ) : (
             setup.creatives.map((item) => (
@@ -1879,7 +1902,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 key={item.id}
                 selected={creative?.id === item.id}
                 title={item.name}
-                subtitle={`${Math.round(Number(item.duration_seconds ?? 0))} sec · Bunny master ready`}
+                subtitle={`${Math.round(Number(item.duration_seconds ?? 0))} sec · Ready`}
                 onPress={() => {
                   setCreative(item);
                   setRightsConfirmed(false);
@@ -1896,20 +1919,35 @@ export default function HostAdCreateRoute(): React.ReactElement {
               </ChoiceCard>
             ))
           )}
+          {/* #3040 design §7 — the button reopens the sheet at any time: a
+              running job shows its own spinner here but never disables it. */}
           <Button
             label={setup.creatives.length === 0 ? "Add ad video" : "Add another video"}
             variant="secondary"
             onPress={() => setAdVideoPickerVisible(true)}
-            loading={adVideoRecording}
-            disabled={adVideoRecording}
+            loading={adVideoLinking}
+            leadingIcon={adVideoProcessing ? undefined : "play"}
             fullWidth
             testID="host-ad-add-video"
           />
-          <Text style={styles.helper}>
-            This stores one canonical Bunny-backed video in Mingla. Nothing is
-            uploaded to Meta, Google, TikTok or Snapchat until you fund and
-            confirm the exact plan.
-          </Text>
+          {adVideoProcessing ? (
+            <View style={styles.adVideoWorkingRow} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={accent.warm} />
+              <Text style={styles.helper}>
+                Your ad video is being prepared. You can keep editing.
+              </Text>
+            </View>
+          ) : null}
+          {unlinkedCreativeId !== null ? (
+            <Button
+              label="Try linking again"
+              variant="primary"
+              onPress={() => { void linkAdCreative(unlinkedCreativeId); }}
+              loading={adVideoLinking}
+              fullWidth
+              testID="host-ad-relink-video"
+            />
+          ) : null}
           <Text style={styles.label}>Paid-ad rights basis</Text>
           <View style={styles.chipRow}>
             {(
@@ -2341,19 +2379,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
       <CoverPickerSheet
         visible={adVideoPickerVisible}
         onClose={() => setAdVideoPickerVisible(false)}
-        target={{
-          kind: "venue_draft",
-          brandId,
-          draftOwnerKey: `host-ad-${draftIdRef.current}`,
-        }}
+        // #3040 E-1d — `host-ad:<draftId>`: stable for this draft, so a
+        // reopened sheet re-attaches to the same in-flight ad video.
+        target={adCreativeCoverTarget(brandId, hostAdOwnerKey(draftIdRef.current ?? ""))}
         initial={adVideoPatch}
         onCoverChange={handleAdVideoChange}
         onShowToast={(message) => setNotice(message)}
-        onCoverVideoProcessingChange={setAdVideoRecording}
-        disabled={adVideoRecording}
+        onCoverVideoProcessingChange={setAdVideoProcessing}
         mediaMode="video-only"
         title="Ad video"
         confirmLabel="Use this ad video"
+        // #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920."
+        adFitSummary={adVideoFitSummary}
       />
     </View>
   );
@@ -2455,6 +2492,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
   },
   sectionTitle: { ...typography.h3, color: textTokens.primary },
+  adVideoWorkingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   helper: {
     ...typography.caption,
     color: textTokens.secondary,

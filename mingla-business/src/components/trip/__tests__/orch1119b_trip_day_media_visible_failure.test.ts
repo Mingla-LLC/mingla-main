@@ -123,9 +123,16 @@ describe("ORCH-1119B — all-failed upload batch is VISIBLE (Constitution #3)", 
 describe("ORCH-1119B — source contract (fails-on-revert anchor)", () => {
   const sheet = read("mingla-business/src/components/trip/TripDayMediaSheet.tsx");
 
-  test("1119B-B: the post-loop close is UNCONDITIONAL (no uploaded.length gate)", () => {
-    // The fix: a bare `onClose();` after the error-surfacing block, NOT gated.
-    expect(sheet).toMatch(/occluded[\s\S]*?onClose\(\);/);
+  // [TEST-MOD-APPROVED #3040] Appendix A §6 keeps a failed tile on screen
+  // ("Tap to retry" / "Can't use"), so a failed batch no longer closes the
+  // sheet. The protective intent is unchanged: a failure is never invisible.
+  // It is shown IN the sheet (role alert) and toasted for the wizard, and the
+  // sheet closes as soon as nothing in it needs the host.
+  test("1119B-B: a failed batch is never silent, and the sheet closes once settled", () => {
+    expect(sheet).toMatch(/setTileNotice\(message\);\s*onShowToast\(message\);/);
+    expect(sheet).toMatch(/tileNotice !== null \? \(\s*<Text[^>]*accessibilityRole="alert"/);
+    expect(sheet).toMatch(/onShowToast\(message\);[\s\S]*?closeIfSettled\(\);/);
+    expect(sheet).toMatch(/const closeIfSettled[\s\S]*?if \(!tilesRef\.current\.some\(tileNeedsSheet\)\) \{\s*onClose\(\);/);
     // The reverted gated close must be GONE.
     expect(sheet).not.toMatch(/if\s*\(uploaded\.length\s*>\s*0\)\s*onClose\(\)/);
   });

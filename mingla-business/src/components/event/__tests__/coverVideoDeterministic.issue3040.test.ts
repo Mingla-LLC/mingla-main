@@ -61,14 +61,13 @@ describe("#3040 invariant 4 — the UI never states something untrue", () => {
     expect(picker).toMatch(
       /status\.targetKind === "event" &&\s*\n?\s*status\.applyMode === "draft_auto"/,
     );
-    // Every "finish automatically" promise is now behind that predicate.
-    const promises = picker.match(/we’ll finish automatically/g) ?? [];
-    expect(promises.length).toBeGreaterThan(0);
-    for (const _ of promises) {
-      expect(picker).toContain("coverVideoFinishesWithoutYou(status)");
-    }
-    // And the non-auto targets get the honest alternative instead.
-    expect(picker).toContain("we’ll apply it when you come back");
+    // [TEST-MOD-APPROVED #3040] design H-08 — the promise now lives in the
+    // card model, behind `finishesWithoutYou`, which the picker fills from the
+    // SAME predicate; other targets get "next time you open this".
+    const model = repoCode("src/components/ui/coverUploadCardModel.ts");
+    expect(picker).toContain("finishesWithoutYou: coverVideoFinishesWithoutYou(videoUpload.status),");
+    expect(model).toMatch(/ctx\.finishesWithoutYou\s*\?\s*"[^"]*We'll swap it in automatically\."/);
+    expect(model).toContain("We'll swap it in next time you open this.");
   });
 
   test("T-3040-B-03 the webhook auto-apply gate the copy mirrors is still exactly that", () => {
@@ -88,7 +87,9 @@ describe("#3040 invariant 2 — no unbounded wait, client or server", () => {
     // `waitForEventCoverVideoReady` is a `while (true)` that exits only on a
     // terminal status or an abort. Deleting EVENT_COVER_VIDEO_WATCH_DEADLINE_MS
     // or the watchdog controller restores the unbounded wait.
-    expect(hook).toContain("export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = 600_000;");
+    // [TEST-MOD-APPROVED #3040] B-C20 — 11 minutes: the server's 10-minute
+    // stall bound plus one reaper tick (VIDEO_LIMITS.WATCH_DEADLINE_MS).
+    expect(hook).toContain("export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = VIDEO_LIMITS.WATCH_DEADLINE_MS;");
     expect(hook).toContain("const watchdog = new AbortController();");
     expect(hook).toContain("signal: watchdog.signal,");
     expect(hook).toMatch(
@@ -193,8 +194,9 @@ describe("#3040 invariant 6 — every terminal failure is retryable by the user"
   });
 
   test("T-3040-E-02 a terminal error card carries BOTH a retry and a discard", () => {
-    const picker = repoFile("src/components/ui/CoverPicker.tsx");
-    expect(picker).toContain('label="Try again"');
-    expect(picker).toContain('label="Discard upload"');
+    // [TEST-MOD-APPROVED #3040] design H-13 labels ("Try again" / "Discard").
+    const model = repoFile("src/components/ui/coverUploadCardModel.ts");
+    expect(model).toContain('action("try_again", "Try again", "secondary")');
+    expect(model).toContain('action("discard", "Discard", "ghost")');
   });
 });

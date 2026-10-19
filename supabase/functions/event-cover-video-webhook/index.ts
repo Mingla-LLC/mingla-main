@@ -3,18 +3,27 @@ import {
   assertProcessedDerivative,
   corsHeaders,
   destroyCoverVideoAsset,
+  FINAL_MAX_BYTES,
   jsonResponse,
+  MAX_RENDITION_HEIGHT,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
 // #966 — Bunny is the sole cover-video webhook route (the Cloudinary
 // signature/eager arm was removed as dead residue post-META-1270).
 import {
-  bunnyBestMp4,
   bunnyGetVideo,
+  bunnyMp4Candidates,
   bunnyThumbnailUrl,
+  fetchWithTimeout,
   mapBunnyStatusFromWebhook,
   verifyBunnyWebhookSignature,
 } from "../_shared/bunnyStream.ts";
+// #3040 — a webhook auto-apply reclaims the cover it replaced, through the same
+// scoped, reference-guarded path as an explicit apply.
+import {
+  destroyIfUnreferenced,
+  reapPriorCoverAssets,
+} from "../_shared/coverVideoReap.ts";
 
 // #2905 — the webhook was completely silent: nine real Bunny callbacks for the
 // wedged production job (2026-08-30 03:11:23 → 03:11:39) left ZERO function
@@ -81,24 +90,146 @@ const autoApplyEventCover = async (
   return !error && data?.status === "applied" ? { ok: true } : { ok: false };
 };
 
+// #3040 (B-6) — every CDN HEAD is bounded; three attempts cannot hold the
+// webhook longer than ~19 s.
+export const DERIVATIVE_HEAD_TIMEOUT_MS = 5_000;
+
 const headWithRetry = async (
   url: string,
   attempts: number,
   delayMs: number,
+  sleep: (ms: number) => Promise<void> = realSleep,
 ): Promise<Response | null> => {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     let response: Response | null = null;
     try {
-      response = await fetch(url, { method: "HEAD" });
+      response = await fetchWithTimeout(
+        url,
+        { method: "HEAD" },
+        DERIVATIVE_HEAD_TIMEOUT_MS,
+      );
     } catch {
       response = null;
     }
     if (response !== null && response.ok) return response;
-    if (attempt < attempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+    if (attempt < attempts - 1) await sleep(delayMs);
   }
   return null;
+};
+
+// #3040 rework (P1-4) — how long, after Bunny reports the encode FINISHED,
+// the lane keeps waiting for a preferred rendition the CDN does not serve yet
+// before it settles for the next one down. Each webhook / reconciler call
+// asks 3 times (5 s timeouts); across calls the wait is anchored on the first
+// absence, recorded in provider_payload.rendition_wait.
+export const RENDITION_WAIT_MS = 90_000;
+const HEAD_ATTEMPTS = 3;
+const HEAD_RETRY_DELAY_MS = 2_000;
+
+export type RenditionFallbackReason = "absent" | "over_budget" | "size_unknown";
+
+export type RenditionSelection =
+  | {
+    kind: "selected";
+    url: string;
+    heightP: number;
+    head: Response;
+    fallback: { fromHeightP: number; reason: RenditionFallbackReason } | null;
+  }
+  // The highest rendition still worth waiting for is not served yet.
+  | { kind: "absent"; heightP: number }
+  // Nothing is deliverable at all (every candidate absent or over budget).
+  | { kind: "none" };
+
+// #3040 (B-2, C-10) + rework (P1-4) — rendition selection, highest first and
+// at most 1080p. A rendition that is served but over the processed byte
+// budget, or whose size the CDN does not state, falls to the next one down.
+// A rendition the CDN does not serve stops the walk (retryable) UNTIL the
+// wait window after the encode finished has passed; after that it falls to
+// the highest rendition that is served. The lane never fails a job only
+// because 1080p is missing; a source below 1080p simply starts lower. When
+// nothing is deliverable the answer stays retryable and the reconciler's
+// encode stall deadline (10 min after the final byte) ends the job.
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
+// Invariant I-VIDEO-RENDITION-FALLBACK (declared in supabase/functions/event-cover-video-webhook/__tests__/issue_3040_rendition_fallback_rework.test.ts): a missing or over-budget 1080p falls back to the highest served rendition once the wait window has passed; it never fails the job by itself
+export const selectRendition = async (
+  candidates: Array<{ url: string; heightP: number }>,
+  context: { jobId: string; videoGuid: string },
+  options: {
+    absentFallback?: boolean;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
+): Promise<RenditionSelection> => {
+  let fallback: { fromHeightP: number; reason: RenditionFallbackReason } | null =
+    null;
+  const fallFrom = (
+    heightP: number,
+    reason: RenditionFallbackReason,
+    extra: Record<string, unknown> = {},
+  ): void => {
+    fallback ??= { fromHeightP: heightP, reason };
+    logWebhook("rendition_fallback", {
+      ...context,
+      heightP,
+      reason,
+      ...extra,
+    }, "warn");
+  };
+  for (const candidate of candidates) {
+    const head = await headWithRetry(
+      candidate.url,
+      HEAD_ATTEMPTS,
+      HEAD_RETRY_DELAY_MS,
+      options.sleep,
+    );
+    if (head === null) {
+      if (!options.absentFallback) {
+        return { kind: "absent", heightP: candidate.heightP };
+      }
+      fallFrom(candidate.heightP, "absent");
+      continue;
+    }
+    const length = head.headers.get("content-length");
+    const bytes = length === null ? Number.NaN : Number(length);
+    if (!Number.isFinite(bytes)) {
+      // An unstated size is not "within budget".
+      fallFrom(candidate.heightP, "size_unknown");
+      continue;
+    }
+    if (bytes > FINAL_MAX_BYTES) {
+      logWebhook("rendition_over_budget_fallback", {
+        ...context,
+        bytes,
+        finalMaxBytes: FINAL_MAX_BYTES,
+        heightP: candidate.heightP,
+      }, "warn");
+      fallFrom(candidate.heightP, "over_budget", { bytes });
+      continue;
+    }
+    return { kind: "selected", ...candidate, head, fallback };
+  }
+  return { kind: "none" };
+};
+
+// The pre-rework entry point: the highest deliverable rendition, never
+// settling for a lower one while a higher one is merely not served yet.
+export const selectDeliverableRendition = async (
+  candidates: Array<{ url: string; heightP: number }>,
+  context: { jobId: string; videoGuid: string },
+): Promise<{ url: string; heightP: number; head: Response } | null> => {
+  const selection = await selectRendition(candidates, context);
+  return selection.kind === "selected" ? selection : null;
+};
+
+// When did this job first find its preferred rendition missing after the
+// encode finished? Read from provider_payload; NaN when it never has.
+export const renditionWaitStartedMs = (payload: unknown): number => {
+  if (payload === null || typeof payload !== "object") return Number.NaN;
+  const wait = (payload as { rendition_wait?: { first_absent_at?: unknown } })
+    .rendition_wait;
+  return typeof wait?.first_absent_at === "string"
+    ? Date.parse(wait.first_absent_at)
+    : Number.NaN;
 };
 
 const mergeBunnyPayload = (
@@ -315,7 +446,10 @@ export const handleBunnyWebhook = async (
       },
     );
     if (failedJob?.status === "failed") {
-      await deps.destroyCoverVideoAsset(existingJob);
+      // #3040 — guarded: the only provider delete path.
+      await destroyIfUnreferenced(supabase, existingJob, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
     }
     logWebhook("provider_failed", {
       jobId: existingJob.id,
@@ -402,7 +536,10 @@ export const handleBunnyWebhook = async (
       },
     );
     if (failedJob?.status === "failed") {
-      await deps.destroyCoverVideoAsset(existingJob);
+      // #3040 — guarded: the only provider delete path.
+      await destroyIfUnreferenced(supabase, existingJob, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
       return jsonResponse({ ok: true, status: "failed" });
     }
     return jsonResponse({
@@ -410,7 +547,8 @@ export const handleBunnyWebhook = async (
       ignored: failedJob?.status ?? "transition_lost",
     });
   }
-  const best = bunnyBestMp4(video.video);
+  const candidates = bunnyMp4Candidates(video.video, MAX_RENDITION_HEIGHT);
+  const best = candidates[0] ?? null;
   // #2905 — logged BEFORE the guard so the two retryable 503 branches below keep
   // the exact `if (x === null) { return jsonResponse(...); }` shape that
   // orch-0770b WH-6 pins (no mutation, no destroy, stable 503).
@@ -429,11 +567,50 @@ export const handleBunnyWebhook = async (
   if (best === null) {
     return jsonResponse({ error: "derivative_not_ready" }, 503);
   }
-  const head = await headWithRetry(best.url, 3, 2000);
+  // #3040 rework (P1-4) — the encode is finished (this is the ready path).
+  const nowMs = Date.now();
+  const waitStartedMs = renditionWaitStartedMs(existingJob.provider_payload);
+  const waitedOut = Number.isFinite(waitStartedMs) &&
+    nowMs - waitStartedMs >= RENDITION_WAIT_MS;
+  const selection = await selectRendition(candidates, {
+    jobId: existingJob.id,
+    videoGuid,
+  }, { absentFallback: waitedOut, sleep: deps.sleep });
+  if (selection.kind === "absent" && !Number.isFinite(waitStartedMs)) {
+    // Start the wait window once; later calls fall back after it.
+    try {
+      await supabase.from("event_cover_video_jobs")
+        .update({
+          provider_payload: mergeBunnyPayload(existingJob.provider_payload, {
+            rendition_wait: {
+              first_absent_at: new Date(nowMs).toISOString(),
+              height: selection.heightP,
+            },
+          }),
+        })
+        .eq("id", existingJob.id)
+        .in("status", [
+          "source_uploading",
+          "source_uploaded",
+          "processing_queued",
+          "processing",
+        ]);
+    } catch (error) {
+      logWebhook("rendition_wait_record_failed", {
+        jobId: existingJob.id,
+        error: error instanceof Error ? error.name : "error",
+      }, "warn");
+    }
+  }
+  const selected = selection.kind === "selected" ? selection : null;
+  const head = selected?.head ?? null;
   logWebhook("derivative_head", {
     jobId: existingJob.id,
     reachable: head !== null,
-    url: best.url,
+    url: selected?.url ?? best.url,
+    heightP: selected?.heightP ?? null,
+    waiting: selection.kind === "absent" ? selection.heightP : null,
+    waitedOut,
     videoGuid,
   }, head === null ? "warn" : "info");
   if (head === null) {
@@ -453,8 +630,9 @@ export const handleBunnyWebhook = async (
       detail: "duration_pending",
     }, 503);
   }
+  const chosen = selected ?? best;
   const derivative = assertProcessedDerivative({
-    url: best.url,
+    url: chosen.url,
     mimeType: "video/mp4",
     bytes,
     durationMs,
@@ -481,7 +659,10 @@ export const handleBunnyWebhook = async (
       },
     );
     if (failedJob?.status === "failed") {
-      await deps.destroyCoverVideoAsset(existingJob);
+      // #3040 — guarded: the only provider delete path.
+      await destroyIfUnreferenced(supabase, existingJob, {
+        destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+      });
       return jsonResponse({
         ok: true,
         status: "failed",
@@ -507,6 +688,10 @@ export const handleBunnyWebhook = async (
   const providerPayload = mergeBunnyPayload(existingJob.provider_payload, {
     bunny_webhook: payload,
     bunny_thumbnail: posterUrl,
+    // #3040 — the delivered rendition, read by status, ads and the live matrix.
+    rendition_height: chosen.heightP,
+    // #3040 rework (P1-4) — why a lower rendition was delivered, if it was.
+    rendition_fallback: selected?.fallback ?? null,
   });
   const { data: readyJob, error: readyError } = await supabase.rpc(
     "cover_video_transition_job",
@@ -573,10 +758,22 @@ export const handleBunnyWebhook = async (
     }, "warn");
     return jsonResponse({ ok: true, status: "ready", applyFailed: true });
   }
+  // #3040 (B-14) — an auto-applied event cover replaced the previous one;
+  // reclaim it through the scoped, reference-guarded path. Ad videos and every
+  // other target only reach `ready` here; their owner is the apply endpoint or
+  // the reaper.
+  if (
+    readyJob.target_kind === "event" && readyJob.apply_mode === "draft_auto"
+  ) {
+    await reapPriorCoverAssets(supabase, readyJob, {
+      destroyCoverVideoAsset: deps.destroyCoverVideoAsset,
+    });
+  }
   logWebhook("ready", {
     jobId: existingJob.id,
     processedUrl: derivative.url,
     providerStatus: status,
+    renditionHeight: chosen.heightP,
     videoGuid,
   });
   return jsonResponse({ ok: true });

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/eventCoverVideo.issue3040.adCreativeAuth.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-shared-eventcovervideo-adcreativeauth",
+  "profile": "deno-2-unit"
+}

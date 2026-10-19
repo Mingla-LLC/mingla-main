@@ -51,4 +51,26 @@ export type CoverTarget =
       kind: "venue_draft";
       brandId: string;
       draftOwnerKey: string;
+    }
+  | {
+      // #3040 B-C14 — an ad video (Host Ads, Ari). Rides the shared lane as
+      // the non-superseding `ad_creative` target; the server turns the READY
+      // job into the ad creative row. `ownerKey` is `host-ad:<draftId>` or
+      // `ari:<proposalId>` (stable across mounts, never random per mount).
+      kind: "ad_creative";
+      brandId: string;
+      ownerKey: string;
     };
+
+/**
+ * #3040 B-C14 — the ONE way Host Ads and Ari build their ad-video target, so
+ * both surfaces ride the `ad_creative` lane with a stable owner key.
+ */
+export const adCreativeCoverTarget = (
+  brandId: string,
+  ownerKey: string,
+): Extract<CoverTarget, { kind: "ad_creative" }> => ({
+  kind: "ad_creative",
+  brandId,
+  ownerKey,
+});

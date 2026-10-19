@@ -26,6 +26,7 @@ import {
 import type { AdConnectionRow, Platform } from "../_shared/adChannelCore.ts";
 import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
+import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -712,7 +713,7 @@ serve(async (req: Request): Promise<Response> => {
           .order("platform"),
         db.from("ad_creatives")
           .select(
-            "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at",
+            "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at,width,height,has_audio,mime_type,byte_size,variants",
           )
           .eq("brand_id", brandId).eq("kind", "video").eq("status", "active")
           .order("created_at", { ascending: false }).limit(100),
@@ -736,7 +737,12 @@ serve(async (req: Request): Promise<Response> => {
       currency: authority.currency,
       pages: pages.data ?? [],
       connections: connections.data ?? [],
-      creatives: creatives.data ?? [],
+      // #3040 AD-04 — each video's fit on the brand's connected platforms,
+      // judged by the same channel matrix as every ads gate.
+      creatives: withHostCreativeFit(
+        creatives.data ?? [],
+        connections.data ?? [],
+      ),
       plans: plans.data ?? [],
     });
   }
@@ -746,7 +752,7 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "forbidden" }, 403);
     }
     const creatives = await db.from("ad_creatives").select(
-      "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,created_at,updated_at",
+      "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_brand_id,source_job_id,source_job_ref,rendition_height,created_at,updated_at",
     ).order("created_at", { ascending: false }).limit(250);
     if (creatives.error) return databaseFailure(creatives.error);
     const creativeRows = creatives.data ?? [];
@@ -841,7 +847,7 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
     const { data: creative, error } = await db.from("ad_creatives").select(
-      "id,name,kind,status,source_url,storage_bucket,storage_path,bunny_video_id,poster_url,mp4_master_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,created_at,updated_at",
+      "id,name,kind,status,source_url,storage_bucket,storage_path,bunny_video_id,poster_url,mp4_master_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_brand_id,created_at,updated_at",
     ).eq("id", creativeId).maybeSingle();
     if (error) return databaseFailure(error);
     if (!creative || creative.status !== "active") {
@@ -851,6 +857,8 @@ serve(async (req: Request): Promise<Response> => {
       ownerKind: "mingla",
       planBrandId: null,
       creativeBrandId: creative.brand_id,
+      creativeSource: creative.source,
+      creativeSourceBrandId: creative.source_brand_id,
     });
     if (ownershipError) {
       return json({ error: ownershipError }, 409);
@@ -1147,7 +1155,7 @@ serve(async (req: Request): Promise<Response> => {
     }
     const { data: creative, error: creativeError } = await db
       .from("ad_creatives")
-      .select("id,brand_id,status")
+      .select("id,brand_id,status,source,source_brand_id")
       .eq("id", creativeId)
       .maybeSingle();
     if (creativeError) return databaseFailure(creativeError);
@@ -1161,6 +1169,8 @@ serve(async (req: Request): Promise<Response> => {
       ownerKind: plan.owner_kind,
       planBrandId: plan.brand_id,
       creativeBrandId: creative.brand_id,
+      creativeSource: creative.source,
+      creativeSourceBrandId: creative.source_brand_id,
     });
     if (ownershipError) {
       return json(

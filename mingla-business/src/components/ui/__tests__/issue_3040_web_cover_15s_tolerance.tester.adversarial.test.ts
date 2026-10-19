@@ -225,25 +225,27 @@ describe("issue #3040 tester — unreadable durations are never rescued by the c
   });
 });
 
-describe("issue #3040 tester — native never gets the tolerance", () => {
-  test("no millisecond of the band is clamped when the platform is not web", () => {
-    const clamped: number[] = [];
+// [TEST-MOD-APPROVED #3040] B-C13a [A-13a] — the tolerance is now
+// platform-agnostic: a phone's own "1 minute" recording (60.03 s) was forced
+// through the trimmer on native. Native now gets exactly the web band.
+describe("issue #3040 tester — native gets the same tolerance as web", () => {
+  test("every millisecond of the band clamps identically on native and web", () => {
     for (let ms = CEILING_MS + 1; ms <= CEILING_MS + 600; ms += 1) {
-      if (resolveRaw(ms, false) !== ms) clamped.push(ms);
+      expect(resolveRaw(ms, false)).toBe(resolveRaw(ms, true));
     }
-    expect(clamped).toEqual([]);
+    expect(resolveRaw(CEILING_MS + 500, false)).toBe(CEILING_MS);
+    expect(resolveRaw(CEILING_MS + 501, false)).toBe(CEILING_MS + 501);
   });
 
-  test("the trim decision reads the UNCLAMPED source, before the clamp is computed", () => {
+  test("the trim decision reads the RESOLVED duration, after the clamp is computed", () => {
     const picker = repoFile("src/components/ui/CoverPicker.tsx");
     const trimDecision = picker.indexOf("const needsNativeTrim =");
     const clamp = picker.indexOf("const rawClipDurationMs =");
 
     expect(trimDecision).toBeGreaterThan(0);
-    expect(clamp).toBeGreaterThan(trimDecision);
+    expect(trimDecision).toBeGreaterThan(clamp);
     const decisionLine = picker.slice(trimDecision, picker.indexOf(";", trimDecision));
-    expect(decisionLine).toContain("isNative && sourceDurationMs > EVENT_COVER_SOURCE_CEILING_MS");
-    expect(decisionLine).not.toContain("rawClipDurationMs");
+    expect(decisionLine).toContain("isNative && rawClipDurationMs > EVENT_COVER_SOURCE_CEILING_MS");
     // The trimmer is still asked for the strict 60000, not ceiling + tolerance.
     expect(picker).toContain(
       "trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS)",
@@ -255,11 +257,15 @@ describe("issue #3040 tester — native never gets the tolerance", () => {
     const picker = repoFile("src/components/ui/CoverPicker.tsx");
     const call = picker.slice(
       picker.indexOf("const rawClipDurationMs ="),
-      picker.indexOf("const uploadFile ="),
+      picker.indexOf("let uploadFile: EventCoverVideoUploadFile;"),
     );
     expect(call).toMatch(/resolveRawCoverClipDurationMs\(\s*sourceDurationMs,\s*Platform\.OS === "web",?\s*\)/);
-    // Declared twice (durationMs, trimEndMs) and nowhere else.
-    expect(picker.match(/rawClipDurationMs/g)?.length).toBe(3);
+    // [TEST-MOD-APPROVED #3040] the resolved value now also feeds the native
+    // trim decision (B-C13a) and the pick-time refusals (H-14c, AD-06), so it
+    // is read in more places; the trimmed branch still never sees it (below).
+    expect(picker.match(/rawClipDurationMs/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(picker).toContain("durationMs: rawClipDurationMs,");
+    expect(picker).toContain("trimEndMs: rawClipDurationMs,");
     const trimmedBranch = picker.slice(
       picker.indexOf("? await buildTrimmedVideoUploadFile({"),
       picker.indexOf("bytes: asset.fileSize ?? 0,"),

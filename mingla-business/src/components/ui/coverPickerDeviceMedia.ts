@@ -63,8 +63,18 @@ export const launchCoverImagePicker = async (): Promise<CoverPickerResult> => {
   };
 };
 
-export const launchCoverVideoPicker = async (): Promise<CoverPickerResult> => {
+export const launchCoverVideoPicker = async (
+  options: {
+    /**
+     * #3040 B-C18 [A-21] — the file chooser closed with a file and its
+     * duration is now being read: show design H-05 ("Reading video…") at once
+     * instead of up to 8 s of silence.
+     */
+    onFileChosen?: () => void;
+  } = {},
+): Promise<CoverPickerResult> => {
   const result = await pickBrowserFiles(COVER_VIDEO_PICKER_OPTIONS);
+  if (!result.canceled && result.files.length > 0) options.onFileChosen?.();
   const assets = await Promise.all(
     result.files.map(async (file) =>
       toCoverAsset(file, {

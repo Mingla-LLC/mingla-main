@@ -111,6 +111,30 @@ function summarizeProviderRefs(rows: UnknownRow[]) {
  * identifiers, uploaded media references, content hashes and storage paths are
  * intentionally not accepted by the returned shape.
  */
+// #3040 rework — and no owning-brand snapshot: media that ever belonged to a
+// brand never becomes house media when that brand is deleted. A row read
+// without the snapshot column is refused (fail closed).
+// Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): house reuse requires source='admin_upload', no brand and no brand snapshot
+export function isHouseReusable(creative: UnknownRow): boolean {
+  return creative.source === "admin_upload" && creative.brand_id === null &&
+    creative.source_brand_id === null;
+}
+
+function sourceSummary(creative: UnknownRow): string {
+  switch (creative.source) {
+    case "admin_upload":
+      return creative.brand_id ? "Host brand library" : "Mingla admin library";
+    case "ari_upload":
+      return "From Ari";
+    case "event_cover":
+      return "Event cover";
+    case "host_upload":
+      return "Host brand library";
+    default:
+      return creative.brand_id ? "Host brand library" : "Mingla admin library";
+  }
+}
+
 export function buildCreativeLibrary(input: CreativeLibraryInput) {
   const plansById = new Map(input.plans.map((row) => [String(row.id), row]));
   const versionsById = new Map(
@@ -190,12 +214,17 @@ export function buildCreativeLibrary(input: CreativeLibraryInput) {
       aspect_ratio: creative.aspect_ratio ?? null,
       duration_seconds: creative.duration_seconds ?? null,
       ai_generated: creative.ai_generated === true,
-      source_summary: creative.brand_id
-        ? "Host brand library"
-        : "Mingla admin library",
+      source_summary: sourceSummary(creative),
       // Legal hold: Host-owned media stays visible for operations, but cannot
       // be selected into a Mingla house plan until Terms approval exists.
-      house_reuse_allowed: !creative.brand_id,
+      // #3040/#3697 — house media is decided by immutable provenance, never by
+      // a brand that happens to be missing.
+      house_reuse_allowed: isHouseReusable(creative),
+      source: text(creative.source),
+      source_job_id: text(creative.source_job_ref) ?? text(creative.source_job_id),
+      rendition_height: typeof creative.rendition_height === "number"
+        ? creative.rendition_height
+        : null,
       placement_formats: [...placementFormats],
       version_label: latestVersion
         ? `v${Number(latestVersion.version_number) || 1}`

@@ -411,6 +411,9 @@ serve(async (req: Request): Promise<Response> => {
     ownerKind: plan.owner_kind,
     planBrandId: plan.brand_id,
     creativeBrandId: creative.brand_id,
+    creativeSource: (creativeRow as { source?: string | null }).source ?? null,
+    creativeSourceBrandId:
+      (creativeRow as { source_brand_id?: string | null }).source_brand_id,
   });
   if (ownershipError) {
     return json({ error: ownershipError, trace_id: traceId }, 403);
