@@ -1217,12 +1217,21 @@ export const createTicketCheckoutCreateHandler = (
     // EVENT that field is the guest's chosen day: it was validated above
     // (ORCH-1072: belongs to this event, not yet ended), and treating it as a
     // one-day set gives the pass its day row and the order its payout anchor.
-    // Experiences with a picker-named day (and trips' ORCH-1072 single
-    // occurrence) also need that id on the session so #3281 validate sees
-    // the window. Entitlement for a lone day is one row — same as events.
+    // Events: lone eventDateId becomes the day set (issue #3313).
     if (
-      (tripGateRow?.event_type === "event" ||
-        tripGateRow?.event_type === "experience") &&
+      tripGateRow?.event_type === "event" &&
+      orderedEventDateIds.length === 0 &&
+      eventDateId !== null
+    ) {
+      orderedEventDateIds.push(eventDateId);
+      anchorEventDateId = eventDateId;
+    }
+    // issue #3281 — a named booked start needs its singular occurrence in the
+    // day set so validate sees the window. Gate on bookedStartAt only (no
+    // event-type allowlist) so orch1072's pin holds and no-start experience
+    // requests keep the pre-deploy reservation identity.
+    if (
+      bookedStartAt !== null &&
       orderedEventDateIds.length === 0 &&
       eventDateId !== null
     ) {

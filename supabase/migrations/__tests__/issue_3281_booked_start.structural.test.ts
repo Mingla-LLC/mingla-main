@@ -2,6 +2,8 @@
  * issue #3281 Round 1 PR 1b — structural pins on the booked-start migration.
  * Fails on revert of columns, validate helper, create/finalize/reminders/scan hunks.
  */
+// MINGLA-INVARIANT: I-PROPOSED-3281-BOOKED-START-SAVED | issue #3281 | a checkout that names a start stores it on session and order and every receipt surface prints it
+// MINGLA-INVARIANT: I-PROPOSED-3281-REMINDER-AND-SCAN-USE-BOOKED-START | issue #3281 | experience reminders and scan admit windows key off booked_start_at when present
 import { assert } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const MIG =
@@ -19,6 +21,7 @@ Deno.test("#3281 booked_start migration carries columns, flag, validate, and re-
 
   assert(text.includes("p_booked_start_at"));
   assert(text.includes("PERFORM public.issue_3281_validate_booked_start("));
+  assert(text.includes("p_booked_start_at IS NOT NULL AND v_day_count <> 1"));
   assert(text.includes("v_session.booked_start_at"));
 
   // F-B reminders + F-C scan

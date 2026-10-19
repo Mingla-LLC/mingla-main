@@ -233,10 +233,13 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
       selectedMinute,
       30,
     );
+    // issue #3281 — never confirm open-daily without a resolvable start
+    // (past / spring-forward gaps convert to null).
+    if (bookedIso === null) return;
     onConfirm({
       eventDateId: selectedDate.id,
       quantity: party,
-      ...(bookedIso !== null ? { startAt: bookedIso } : {}),
+      startAt: bookedIso,
     });
   };
 

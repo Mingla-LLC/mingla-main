@@ -32,8 +32,15 @@ Deno.test("#3281 R1: Lagos 10:00–18:00 window is zone-correct (not viewer loca
   assertEquals(w!.open, 10 * 60);
   assertEquals(w!.close, 18 * 60);
   // End-exclusive: 10:00–18:00 with 60m steps offers through 17:00, matching
-  // SQL `booked_start_at < end_at` (issue #3281).
-  const choices = experienceTimeChoices(start, end, "Africa/Lagos", 60);
+  // SQL `booked_start_at < end_at` (issue #3281). Pin nowMs before the window
+  // so the "future-only" filter does not empty a historical fixture day.
+  const choices = experienceTimeChoices(
+    start,
+    end,
+    "Africa/Lagos",
+    60,
+    Date.parse(start),
+  );
   assertEquals(choices[0], 10 * 60);
   assertEquals(choices[choices.length - 1], 17 * 60);
   assertEquals(formatExperienceMinute(10 * 60), "10:00 AM");

@@ -9,9 +9,8 @@
 -- BEFORE MERGE: apply this migration on production (Seth's migration chat).
 -- Edge auto-deploys after merge; clients send bookedStartAt behind the same
 -- PR with the flag still off.
---
--- MINGLA-INVARIANT: I-PROPOSED-3281-BOOKED-START-SAVED | issue #3281 | a checkout that names a start stores it on session and order and every receipt surface prints it
--- MINGLA-INVARIANT: I-PROPOSED-3281-REMINDER-AND-SCAN-USE-BOOKED-START | issue #3281 | experience reminders and scan admit windows key off booked_start_at when present
+-- Invariants live on the structural/happy SQL tests (ordinary migrations are
+-- not allowed as MINGLA-INVARIANT owners).
 
 BEGIN;
 
@@ -398,9 +397,14 @@ BEGIN
   -- issue #3281 Round 1 — optional booked start (open-daily experiences).
   -- Required only when experience_require_booked_start is on AND the experience
   -- is open-daily AND a date is named; otherwise optional. Meaning lives here.
+  -- A scalar booked start names ONE occurrence: multi-date + start is refused
+  -- so finalize/scan cannot apply the first day's instant to every pass.
+  IF p_booked_start_at IS NOT NULL AND v_day_count <> 1 THEN
+    RAISE EXCEPTION 'booked_start_invalid';
+  END IF;
   PERFORM public.issue_3281_validate_booked_start(
     p_event_id,
-    CASE WHEN v_day_count >= 1 THEN v_day_ids[1] ELSE NULL END,
+    CASE WHEN v_day_count = 1 THEN v_day_ids[1] ELSE NULL END,
     p_booked_start_at
   );
 

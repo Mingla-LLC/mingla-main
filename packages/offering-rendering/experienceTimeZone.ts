@@ -58,25 +58,6 @@ export const experienceWindowMinutes = (
 };
 
 /**
- * 30-minute (or `stepMinutes`) grid inside the window, each entry 0..1439.
- * End-exclusive: a 10:00–18:00 window offers through 17:30, matching SQL
- * `booked_start_at < event_dates.end_at` (issue #3281 Copilot).
- */
-export const experienceTimeChoices = (
-  startAt: string,
-  endAt: string,
-  timeZone: string,
-  stepMinutes: number = 30,
-): number[] => {
-  const w = experienceWindowMinutes(startAt, endAt, timeZone);
-  if (w === null) return [];
-  const step = stepMinutes > 0 ? stepMinutes : 30;
-  const out: number[] = [];
-  for (let m = w.open; m < w.close; m += step) out.push(m % (24 * 60));
-  return out;
-};
-
-/**
  * Minutes to add to `startAt`'s instant for a grid choice built like
  * `experienceTimeChoices` (same end-exclusive loop). null when
  * `selectedMinute` is not on the grid inside the window.
@@ -135,6 +116,41 @@ export const experienceBookedStartIso = (
     }
   }
   return null;
+};
+
+/**
+ * 30-minute (or `stepMinutes`) grid inside the window, each entry 0..1439.
+ * End-exclusive: a 10:00–18:00 window offers through 17:30, matching SQL
+ * `booked_start_at < event_dates.end_at` (issue #3281 Copilot).
+ *
+ * Only offers minutes that resolve to a real instant (spring-forward gaps
+ * excluded) and that are still in the future relative to `nowMs`.
+ */
+export const experienceTimeChoices = (
+  startAt: string,
+  endAt: string,
+  timeZone: string,
+  stepMinutes: number = 30,
+  nowMs: number = Date.now(),
+): number[] => {
+  const w = experienceWindowMinutes(startAt, endAt, timeZone);
+  if (w === null) return [];
+  const step = stepMinutes > 0 ? stepMinutes : 30;
+  const out: number[] = [];
+  for (let m = w.open; m < w.close; m += step) {
+    const minute = m % (24 * 60);
+    const iso = experienceBookedStartIso(
+      startAt,
+      endAt,
+      timeZone,
+      minute,
+      step,
+    );
+    if (iso === null) continue;
+    if (Date.parse(iso) < nowMs) continue;
+    out.push(minute);
+  }
+  return out;
 };
 
 /** Format minutes-from-midnight as "10:00 AM" (experience zone, not device). */

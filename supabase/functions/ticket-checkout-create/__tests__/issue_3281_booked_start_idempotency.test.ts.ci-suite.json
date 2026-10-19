@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3281_booked_start_idempotency.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3281-05-booked-start-idempotency",
+  "profile": "deno-1.46-stripe"
+}
