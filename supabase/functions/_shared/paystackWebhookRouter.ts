@@ -22,6 +22,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
+import { recordTicketProviderTotal } from "./orderMoneyTruth.ts";
 import {
   isEvidenceHoldCandidate,
   releaseTicketEvidenceHold,
@@ -432,6 +433,13 @@ export async function handlePaystackChargeSuccess(
       );
     }
   }
+  // Issue #3872 (F3) — record the verified Paystack amount as the order's
+  // charged total (it equals the all-in total checked above). Non-fatal.
+  await recordTicketProviderTotal(supabase, {
+    checkoutSessionId: String(session.id),
+    provider: "paystack",
+    providerTotalCents: verifiedAmount,
+  });
   const { data: finalized, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
     {
