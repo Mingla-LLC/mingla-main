@@ -118,7 +118,8 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
       // [TEST-MOD-APPROVED #3802] Drafts to send is now the third pipeline page.
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"], a.role);
+      // [TEST-MOD-APPROVED #3980] the Work board and Agent log sit in the Pipeline group.
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
       const shown = groups(a);
