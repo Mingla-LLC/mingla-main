@@ -33,6 +33,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
+  coverUpload,
   glass,
   radius,
   semantic,
@@ -56,7 +57,9 @@ import { Button } from "../ui/Button";
 import {
   uploadTripDayMedia,
   MAX_TRIP_DAY_MEDIA,
-  TRIP_DAY_MEDIA_MAX_BYTES,
+  TRIP_DAY_MEDIA_IMAGE_MAX_BYTES,
+  TRIP_DAY_MEDIA_VIDEO_MAX_BYTES,
+  tripDayVideoErrorCopy,
   type TripDayVideoUploadProgress,
 } from "../../services/tripDayMediaService";
 import { BrandCoverError } from "../../utils/brandCoverRules";
@@ -127,7 +130,37 @@ export interface TripDayMediaSheetProps {
    */
   onAddMedia: (media: TripDayMedia[]) => void;
   onShowToast: (msg: string) => void;
+  /** #3040 B-C12 — the day these items belong to (part of the resume key). */
+  dayKey?: string;
 }
+
+/** #3040 B-C12 / Appendix A §6 — one tile per picked item, with its own state. */
+type TripDayTile = {
+  key: string;
+  kind: "image" | "video";
+  state: "checking" | "uploading" | "preparing" | "done" | "failed";
+  percent: number | null;
+  durationMs: number | null;
+};
+
+const formatTileClock = (ms: number | null): string | null => {
+  if (ms === null || ms <= 0) return null;
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+};
+
+const tileLabel = (tile: TripDayTile, index: number): string => {
+  const noun = tile.kind === "video" ? "Video" : "Photo";
+  switch (tile.state) {
+    case "checking": return `${noun} ${index + 1}, checking file`;
+    case "uploading": return tile.percent === null
+      ? `${noun} ${index + 1}, uploading. Double tap to cancel.`
+      : `${noun} ${index + 1}, uploading, ${tile.percent} percent. Double tap to cancel.`;
+    case "preparing": return `${noun} ${index + 1}, preparing`;
+    case "done": return `${noun} ${index + 1}${formatTileClock(tile.durationMs) !== null ? `, ${formatTileClock(tile.durationMs)}` : ""}`;
+    case "failed": return `${noun} ${index + 1}, upload failed`;
+  }
+};
 
 export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
   visible,
@@ -137,8 +170,20 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
   currentCount,
   onAddMedia,
   onShowToast,
+  dayKey,
 }) => {
   const remaining = Math.max(0, MAX_TRIP_DAY_MEDIA - currentCount);
+  // #3040 B-C12 — per-item tiles while a batch uploads, and each item's own
+  // abort so × on one tile never stops the others.
+  const [tiles, setTiles] = useState<TripDayTile[]>([]);
+  const tileAbortRef = useRef<Map<string, AbortController>>(new Map());
+  const updateTile = useCallback((key: string, patch: Partial<TripDayTile>): void => {
+    setTiles((current) => current.map((tile) => (tile.key === key ? { ...tile, ...patch } : tile)));
+  }, []);
+  useEffect(() => () => {
+    for (const controller of tileAbortRef.current.values()) controller.abort();
+    tileAbortRef.current.clear();
+  }, []);
   const [activeTab, setActiveTab] = useState<MediaTabId>("library");
   const [uploading, setUploading] = useState(false);
   const [videoProgress, setVideoProgress] =
@@ -306,9 +351,13 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
         assets = (await Promise.all(result.files
           .map(async (file) => {
             try {
+              // #3040 B-C12 — images keep 25 MB; videos follow the lane's
+              // 100 MB contract (shipped together with the compression fix).
               validateBrowserFile(file.file, {
                 accept: LIBRARY_ACCEPT,
-                maxBytes: TRIP_DAY_MEDIA_MAX_BYTES,
+                maxBytes: file.mimeType?.startsWith("video/")
+                  ? TRIP_DAY_MEDIA_VIDEO_MAX_BYTES
+                  : TRIP_DAY_MEDIA_IMAGE_MAX_BYTES,
               });
               return {
                 fileName: file.name,
@@ -325,12 +374,12 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
           })))
           .filter((asset): asset is NonNullable<typeof asset> => asset !== null);
         if (assets.length === 0) {
-          onShowToast("Choose an image or video under 25 MB.");
+          onShowToast("Choose a photo under 25 MB, or a video up to 1 minute and under 100 MB.");
           return;
         }
         if (assets.length < result.files.length) {
           onShowToast(
-            "Some files were skipped. Use an image or video under 25 MB.",
+            "Some files were skipped. Use a photo under 25 MB, or a video up to 1 minute and under 100 MB.",
           );
         }
       } else {
@@ -350,6 +399,14 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
         assets = result.assets;
       }
       setUploading(true);
+      const batch: TripDayTile[] = assets.slice(0, remaining).map((asset, index) => ({
+        key: `${Date.now().toString(36)}-${index}`,
+        kind: asset.mimeType?.startsWith("video/") || typeof asset.duration === "number" && asset.duration > 0 ? "video" : "image",
+        state: "checking",
+        percent: null,
+        durationMs: typeof asset.duration === "number" ? asset.duration : null,
+      }));
+      setTiles(batch);
       // ORCH-1119 REWORK: upload each chosen asset, COLLECT the successes, and
       // hand the parent the whole batch in ONE onAddMedia call. A per-item
       // onAddMedia in this loop clobbered every pick but the last (the parent
@@ -358,8 +415,11 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
       // toast and is skipped — partial success is preserved (Constitution #3).
       const uploaded: TripDayMedia[] = [];
       let firstError: string | null = null;
-      for (const asset of assets) {
+      for (const [assetIndex, asset] of assets.entries()) {
         if (uploaded.length >= remaining) break;
+        const tileKey = batch[assetIndex]?.key ?? `tile-${assetIndex}`;
+        const tileAbort = new AbortController();
+        tileAbortRef.current.set(tileKey, tileAbort);
         try {
           // ORCH-1119C: iPhones shoot HEIC; convert HEIC/HEIF -> JPEG on-device
           // BEFORE upload (the upload service hard-rejects image/heic, and HEIC
@@ -386,18 +446,33 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
             width: normalized.width,
             height: normalized.height,
             durationMs: normalized.duration,
-          }, setVideoProgress);
+          }, (progress) => {
+            setVideoProgress(progress);
+            updateTile(tileKey, {
+              state: progress.phase === "checking"
+                ? "checking"
+                : progress.phase === "uploading"
+                  ? "uploading"
+                  : "preparing",
+              percent: progress.phase === "uploading" ? progress.percent : null,
+            });
+          }, { dayKey, signal: tileAbort.signal });
           uploaded.push(media);
+          updateTile(tileKey, { state: "done", percent: null });
           setVideoProgress(null);
         } catch (itemError) {
+          updateTile(tileKey, { state: "failed", percent: null });
+          // × on a tile is a decision, not a failure to report.
+          if (tileAbort.signal.aborted) continue;
           if (firstError === null) {
+            // #3040 B-C12 — never a raw code in a toast.
             firstError =
               itemError instanceof BrandCoverError
                 ? itemError.message
-                : itemError instanceof Error
-                  ? itemError.message
-                  : "Couldn't upload that file. Tap to retry.";
+                : tripDayVideoErrorCopy(itemError);
           }
+        } finally {
+          tileAbortRef.current.delete(tileKey);
         }
       }
       if (uploaded.length > 0) {
@@ -435,16 +510,19 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
     } finally {
       revokeBrowserPickedFiles(browserFiles);
       setVideoProgress(null);
+      setTiles([]);
       setUploading(false);
     }
   }, [
     atCap,
     brandId,
+    dayKey,
     eventId,
     onAddMedia,
     onClose,
     onShowToast,
     remaining,
+    updateTile,
     uploading,
   ]);
 
@@ -564,8 +642,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
             <View style={styles.libraryPreview}>
               <Icon name="grid" size={40} color={textTokens.tertiary} />
               <Text style={styles.libraryHint}>
-                Pick up to {remaining} from your phone — images or videos (up to
-                25 MB each; videos up to one minute).
+                {`Add up to ${remaining} more photos or videos. Videos: up to 1 minute, under 100 MB.`}
               </Text>
             </View>
             <Button
@@ -580,16 +657,66 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                 void pickFromLibrary();
               }}
             />
+            {tiles.length > 0 ? (
+              <View style={styles.dayTileGrid} accessibilityLiveRegion="polite">
+                {tiles.map((tile, index) => (
+                  <View
+                    key={tile.key}
+                    style={[styles.dayTile, tile.state === "failed" && styles.dayTileFailed]}
+                    accessible
+                    accessibilityLabel={tileLabel(tile, index)}
+                  >
+                    <View style={styles.dayTileScrim}>
+                      {tile.state === "uploading" && tile.percent !== null ? (
+                        <Text style={styles.dayTileLabel}>{`${tile.percent}%`}</Text>
+                      ) : tile.state === "done" ? (
+                        <Icon name="check" size={18} color={textTokens.primary} />
+                      ) : tile.state === "failed" ? (
+                        <>
+                          <Icon name="x" size={18} color={semantic.errorText} />
+                          <Text style={styles.dayTileLabel}>Can&apos;t use</Text>
+                        </>
+                      ) : (
+                        <>
+                          <ActivityIndicator size="small" color={textTokens.primary} />
+                          <Text style={styles.dayTileLabel}>
+                            {tile.state === "checking" ? "Checking" : tile.state === "uploading" ? "Uploading" : "Preparing"}
+                          </Text>
+                        </>
+                      )}
+                    </View>
+                    {tile.state !== "done" && tile.state !== "failed" ? (
+                      <Pressable
+                        onPress={() => tileAbortRef.current.get(tile.key)?.abort()}
+                        hitSlop={10}
+                        style={styles.dayTileCancel}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Cancel ${tile.kind === "video" ? "video" : "photo"} ${index + 1}`}
+                      >
+                        <Icon name="close" size={14} color={textTokens.primary} />
+                      </Pressable>
+                    ) : null}
+                    {tile.kind === "video" && formatTileClock(tile.durationMs) !== null && tile.state === "done" ? (
+                      <View style={styles.dayTileDuration}>
+                        <Text style={styles.dayTileDurationText}>{`▶ ${formatTileClock(tile.durationMs)}`}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {videoProgress !== null ? (
               <Text
                 style={styles.uploadProgress}
                 accessibilityLiveRegion="polite"
               >
-                {videoProgress.phase === "uploading"
-                  ? `Uploading video${videoProgress.percent === null ? "…" : ` · ${videoProgress.percent}%`}`
-                  : videoProgress.phase === "confirming"
-                    ? "Finishing upload…"
-                    : `Processing video${videoProgress.percent === null ? "…" : ` · ${videoProgress.percent}%`}`}
+                {videoProgress.phase === "checking"
+                  ? "Checking video…"
+                  : videoProgress.phase === "uploading"
+                    ? `Uploading${videoProgress.percent === null ? "…" : ` · ${videoProgress.percent}%`}`
+                    : videoProgress.phase === "confirming"
+                      ? "Confirming upload…"
+                      : `Preparing${videoProgress.percent === null || videoProgress.percent <= 0 ? "…" : ` · ${videoProgress.percent}%`}`}
               </Text>
             ) : null}
           </View>
@@ -991,6 +1118,62 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
     textAlign: "center",
+  },
+  // #3040 B-C12 — Appendix A §6 tiles: 3-column grid, gap 8, square, radius 12.
+  dayTileGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  dayTile: {
+    width: "31%",
+    aspectRatio: 1,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: glass.tint.profileElevated,
+  },
+  dayTileFailed: {
+    borderWidth: 2,
+    borderColor: "rgba(239,68,68,0.65)",
+  },
+  dayTileScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: coverUpload.scrim,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+  dayTileLabel: {
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  dayTileCancel: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(12,14,18,0.72)",
+  },
+  dayTileDuration: {
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.64)",
+  },
+  dayTileDurationText: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
   uploadProgress: {
     fontSize: typography.bodySm.fontSize,

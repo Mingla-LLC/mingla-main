@@ -17,8 +17,15 @@
  *
  * Video uploads use target `trip_day_media`: the pipeline processes and returns
  * a reusable MP4 URL, while its apply receipt deliberately performs no cover
- * mutation. The 25 MB item cap remains; the shared one-minute video contract
- * now applies consistently to trip-day video too.
+ * mutation.
+ *
+ * #3040 B-C12 [A-12] — trip-day video now follows the SAME lane contract as a
+ * cover: up to one minute and under 100 MB, compressed on the phone first (a
+ * normal 1-minute phone clip used to be refused at 25 MB before compression
+ * was even tried), read once by prepare (never pulled through JS twice),
+ * resumable (the operation is remembered by the file's hash, so choosing the
+ * same file again continues it), and watched for a bounded time. Images keep
+ * their 25 MB cap (`TRIP_DAY_MEDIA_IMAGE_MAX_BYTES`).
  *
  * Trips-only + per-day-only. NOT shared with experiences/events (locked scope).
  *
@@ -41,9 +48,13 @@ export const TRIP_DAY_MEDIA_BUCKET = "event_covers";
 /** Per-day gallery cap (SPEC §10 OQ-1). */
 export const MAX_TRIP_DAY_MEDIA = 8;
 
-/** 25 MB per item (SPEC §10 OQ-2) — under the event_covers 30 MB bucket limit,
- *  leaving upload headroom. Images are tiny; videos are the constraint. */
-export const TRIP_DAY_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+/** 25 MB per IMAGE (SPEC §10 OQ-2) — under the event_covers 30 MB bucket limit,
+ *  leaving upload headroom. #3040 — videos follow the lane's 100 MB contract. */
+export const TRIP_DAY_MEDIA_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
+/** #3040 B-C12 — the lane's source cap (post-compression on native, raw on web). */
+export const TRIP_DAY_MEDIA_VIDEO_MAX_BYTES = 104_857_600;
+/** #3040 B-C12 — how long the sheet watches a trip-day video before it stops. */
+export const TRIP_DAY_VIDEO_WATCH_DEADLINE_MS = 660_000;
 
 const IMAGE_MIME_BY_EXT: Record<string, string> = {
   jpg: "image/jpeg",
@@ -85,8 +96,39 @@ export interface TripDayMediaAssetInput {
 }
 
 export type TripDayVideoUploadProgress = {
-  phase: "uploading" | "confirming" | "processing";
+  phase: "checking" | "uploading" | "confirming" | "processing";
   percent: number | null;
+};
+
+/** #3040 B-C12 — the lane's error codes in host words; never a raw code. */
+const TRIP_DAY_VIDEO_COPY: Record<string, string> = {
+  video_source_type_unknown: "That video couldn't be used. Use MP4, MOV, M4V or WebM under 100 MB.",
+  video_source_type_unsupported: "That video couldn't be used. Use MP4, MOV, M4V or WebM under 100 MB.",
+  video_source_size_changed: "That video changed while it was being read. Choose it again.",
+  video_source_unreadable: "We couldn't read that video. Choose it again.",
+  video_storage_unavailable: "Your phone is out of space for this video. Free some space and try again.",
+  video_source_too_large: "That video is over 100 MB. Try a shorter clip.",
+  video_file_too_large: "That video is over 100 MB, even after shrinking it. Try a shorter clip.",
+  video_compression_failed: "Your phone couldn't prepare that video. Try a shorter clip.",
+  video_compression_stalled: "Your phone couldn't prepare that video. Try a shorter clip.",
+  client_version_required: "Update Mingla Host to upload videos.",
+  video_watch_deadline: "That video is still being prepared. Add it again in a few minutes — it won't upload twice.",
+};
+
+/**
+ * #3040 B-C12 — the toast for a failed trip-day video. A lane error already
+ * carries a host sentence; a bare code (`video_source_type_unknown`) or a
+ * snake_case message never reaches the screen.
+ */
+export const tripDayVideoErrorCopy = (error: unknown): string => {
+  const code = error !== null && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : null;
+  const message = error instanceof Error ? error.message : "";
+  const mapped = (code !== null ? TRIP_DAY_VIDEO_COPY[code] : undefined) ?? TRIP_DAY_VIDEO_COPY[message];
+  if (mapped !== undefined) return mapped;
+  if (message.length > 0 && !/^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(message)) return message;
+  return "Couldn't upload that video. Try again.";
 };
 
 const cleanMime = (mime?: string | null): string =>
@@ -182,12 +224,14 @@ const uploadTripDayVideo = async (
   contentType: string,
   byteLength: number,
   onProgress?: (progress: TripDayVideoUploadProgress) => void,
+  options: TripDayMediaUploadOptions = {},
 ): Promise<TripDayMedia> => {
   // Keep the substantial TUS/provider implementation out of the shared eager
   // app chunk. Images never need it; video selection loads it on demand.
   const processing = await import("./eventCoverVideoAuthoringRuntime");
   const {
     applyEventCoverVideoJob,
+    compressVideoLocally,
     createEventCoverVideoUploadIntent,
     EVENT_COVER_MAX_VIDEO_DURATION_MS,
     EventCoverVideoProcessingError,
@@ -210,20 +254,79 @@ const uploadTripDayVideo = async (
     );
   }
 
-  const operationId = newOperationId();
-  const extension = EXT_BY_MIME[contentType] as "mp4" | "mov" | "webm";
-  const fileName = input.fileName?.trim() ||
-    `trip-day-${operationId}.${extension}`;
-  const prepared = await prepareEventCoverVideoSource({
+  onProgress?.({ phase: "checking", percent: null });
+  // #3040 B-C12 — shrink on the phone first (native; a no-op on web), exactly
+  // like a cover; the 100 MB cap applies to what is actually uploaded.
+  const compressed = await compressVideoLocally({
     uri: input.uri,
     bytes: byteLength,
     durationMs,
+    maxUncompressedBytes: TRIP_DAY_MEDIA_VIDEO_MAX_BYTES,
+  });
+  if (compressed.bytes > TRIP_DAY_MEDIA_VIDEO_MAX_BYTES) {
+    throw new EventCoverVideoProcessingError(
+      "video_file_too_large",
+      TRIP_DAY_VIDEO_COPY.video_file_too_large,
+    );
+  }
+
+  const provisionalOperationId = newOperationId();
+  const extension = EXT_BY_MIME[contentType] as "mp4" | "mov" | "webm";
+  const fileName = compressed.wasCompressed
+    ? `trip-day-${provisionalOperationId}.mp4`
+    : input.fileName?.trim() || `trip-day-${provisionalOperationId}.${extension}`;
+  const prepared = await prepareEventCoverVideoSource({
+    uri: compressed.uri,
+    bytes: compressed.bytes,
+    durationMs,
     fileName,
-    mimeType: contentType,
-    operationId,
+    mimeType: compressed.wasCompressed ? "video/mp4" : contentType,
+    operationId: provisionalOperationId,
+    ownedTemporary: compressed.wasCompressed,
   });
 
+  // #3040 B-C12 — the same file chosen again continues the SAME operation:
+  // the record is keyed by the file's hash, so the intent replays instead of
+  // starting a second upload of identical bytes.
+  const persistence = await import("./eventCoverVideoJobPersistence");
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user.id ?? null;
+  const persistenceKey = `trip_day_media:${eventId}:${options.dayKey ?? "day"}:${prepared.sha256}`;
+  const remembered = userId !== null
+    ? await persistence.readPersistedCoverVideoJob(userId, persistenceKey)
+    : null;
+  const operationId = remembered?.clientOperationId ?? provisionalOperationId;
+  const remember = async (jobId: string | null): Promise<void> => {
+    if (userId === null) return;
+    await persistence.writePersistedCoverVideoJob({
+      userId, key: persistenceKey, jobId, clientOperationId: operationId,
+      // The prepared copy is deleted after every attempt; resume re-prepares.
+      sourceUri: null, sourceFingerprint: prepared.fingerprint,
+      sourceBytes: prepared.bytes, sourceDurationMs: prepared.durationMs,
+      sourceFileName: prepared.fileName, sourceMimeType: prepared.mimeType,
+      sourceExtension: prepared.extension, sourceSha256: prepared.sha256,
+      trimStartMs: 0, trimEndMs: prepared.durationMs, sourceAcknowledged: false,
+    });
+  };
+  const forget = async (): Promise<void> => {
+    if (userId === null) return;
+    await persistence.removePersistedCoverVideoJob(userId, persistenceKey, { preserveSource: true });
+  };
+
+  // #3040 B-C12 — never an unbounded wait: an 11-minute watch (the server's
+  // stall bound plus one reaper tick), and the sheet's own abort.
+  const watch = new AbortController();
+  const stopWatching = (): void => watch.abort();
+  if (options.signal?.aborted) watch.abort();
+  else options.signal?.addEventListener("abort", stopWatching, { once: true });
+  let deadlineReached = false;
+  const deadline = setTimeout(() => {
+    deadlineReached = true;
+    watch.abort();
+  }, TRIP_DAY_VIDEO_WATCH_DEADLINE_MS);
+
   try {
+    await remember(remembered?.jobId ?? null);
     const intent = await createEventCoverVideoUploadIntent({
       target: "trip_day_media",
       eventId,
@@ -239,6 +342,7 @@ const uploadTripDayVideo = async (
       trimStartMs: 0,
       trimEndMs: prepared.durationMs,
     });
+    await remember(intent.jobId);
 
     let status: EventCoverVideoStatus;
     if ("upload" in intent) {
@@ -250,8 +354,12 @@ const uploadTripDayVideo = async (
         jobId: intent.jobId,
         fileName: prepared.fileName,
         mimeType: prepared.mimeType,
+        signal: watch.signal,
         onProgress: (progress) =>
-          onProgress?.({ phase: "uploading", percent: progress.percent }),
+          onProgress?.({
+            phase: "uploading",
+            percent: progress.indeterminate === true && progress.final !== true ? null : progress.percent,
+          }),
       });
       onProgress?.({ phase: "confirming", percent: null });
       status = await acknowledgeTripDayVideo({
@@ -269,13 +377,26 @@ const uploadTripDayVideo = async (
         phase: "processing",
         percent: status.progressPercent,
       });
-      status = await waitForEventCoverVideoReady(intent.jobId, {
-        onStatus: (next) =>
-          onProgress?.({
-            phase: "processing",
-            percent: next.progressPercent,
-          }),
-      });
+      try {
+        status = await waitForEventCoverVideoReady(intent.jobId, {
+          signal: watch.signal,
+          onStatus: (next) =>
+            onProgress?.({
+              phase: "processing",
+              percent: next.progressPercent,
+            }),
+        });
+      } catch (waitError) {
+        if (deadlineReached) {
+          // The job keeps going server-side; the record stays, so adding the
+          // same file again picks up the finished video without re-uploading.
+          throw new EventCoverVideoProcessingError(
+            "video_watch_deadline",
+            TRIP_DAY_VIDEO_COPY.video_watch_deadline,
+          );
+        }
+        throw waitError;
+      }
     }
     if (!status.processedUrl) {
       throw new EventCoverVideoProcessingError(
@@ -290,14 +411,31 @@ const uploadTripDayVideo = async (
         status.processedUrl,
       );
     }
+    await forget().catch(() => undefined);
     return {
       url: status.processedUrl,
       type: "video",
       provider: "bunny",
     };
+  } catch (error) {
+    // A definite failure ends the operation; the next pick starts fresh.
+    const code = error !== null && typeof error === "object" ? (error as { code?: unknown }).code : null;
+    const keep = code === "video_watch_deadline" || code === "source_upload_cancelled" ||
+      code === "source_upload_failed" || code === "edge_error" || code === "network_offline";
+    if (!keep) await forget().catch(() => undefined);
+    throw error;
   } finally {
+    clearTimeout(deadline);
+    options.signal?.removeEventListener("abort", stopWatching);
     await deletePreparedEventCoverVideoSource(prepared.uri).catch(() => {});
   }
+};
+
+export type TripDayMediaUploadOptions = {
+  /** The day this media belongs to; part of the resume key. */
+  dayKey?: string;
+  /** The sheet's abort (× on a tile): stops the transfer and the watch. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -309,6 +447,7 @@ export const uploadTripDayMedia = async (
   eventId: string,
   input: TripDayMediaAssetInput,
   onVideoProgress?: (progress: TripDayVideoUploadProgress) => void,
+  options: TripDayMediaUploadOptions = {},
 ): Promise<TripDayMedia> => {
   const contentType = resolveTripDayMediaContentType(input);
   if (contentType === null) {
@@ -318,15 +457,37 @@ export const uploadTripDayMedia = async (
     );
   }
 
+  if (isVideoMime(contentType)) {
+    // #3040 B-C12 — a video is NEVER read through JS here: prepare reads the
+    // file once (and compression may shrink it first). Its size comes from
+    // the picker; the lane's 100 MB cap applies to what is uploaded.
+    const videoBytes = typeof input.fileSize === "number" && input.fileSize > 0 ? input.fileSize : 0;
+    if (videoBytes <= 0) {
+      throw new BrandCoverError(
+        "empty_local_file",
+        "We couldn't read that video. Choose it again.",
+      );
+    }
+    return await uploadTripDayVideo(
+      brandId,
+      eventId,
+      input,
+      contentType,
+      videoBytes,
+      onVideoProgress,
+      options,
+    );
+  }
+
   // Pre-read size guard (metadata) — surfaces a friendly reject before reading
   // 25 MB of bytes through the JS thread.
   if (
     typeof input.fileSize === "number" &&
-    input.fileSize > TRIP_DAY_MEDIA_MAX_BYTES
+    input.fileSize > TRIP_DAY_MEDIA_IMAGE_MAX_BYTES
   ) {
     throw new BrandCoverError(
       "file_too_large",
-      "That file is too large — pick one under 25 MB.",
+      "That photo is too large — pick one under 25 MB.",
     );
   }
 
@@ -337,21 +498,10 @@ export const uploadTripDayMedia = async (
       "We couldn't read that file. Try another.",
     );
   }
-  if (byteLength > TRIP_DAY_MEDIA_MAX_BYTES) {
+  if (byteLength > TRIP_DAY_MEDIA_IMAGE_MAX_BYTES) {
     throw new BrandCoverError(
       "file_too_large",
-      "That file is too large — pick one under 25 MB.",
-    );
-  }
-
-  if (isVideoMime(contentType)) {
-    return await uploadTripDayVideo(
-      brandId,
-      eventId,
-      input,
-      contentType,
-      byteLength,
-      onVideoProgress,
+      "That photo is too large — pick one under 25 MB.",
     );
   }
 
