@@ -64,7 +64,8 @@ const MENU = [
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
   ["Growth", ["ad-engine"]],
   ["Company", ["admin", "careers", "data-room"]],
-  ["System", ["stripe-mode", "api-health", "settings", "agent", "guide"]],
+  // [TEST-MOD-APPROVED #2879] Queue health gauges sit beside API health in System.
+  ["System", ["stripe-mode", "api-health", "queue-health", "settings", "agent", "guide"]],
 ];
 
 // The words on each menu item (updated for #3720 Community & Support).
@@ -79,7 +80,7 @@ const LABELS = {
   "deck-tuner": "Deck tuner", "place-intelligence-trial": "Intelligence Trial",
   "ad-engine": "Ads",
   admin: "Team and roles", careers: "Careers", "data-room": "Data room",
-  "stripe-mode": "Stripe mode", "api-health": "API health", settings: "Settings", agent: "My agent", guide: "Guide",
+  "stripe-mode": "Stripe mode", "api-health": "API health", "queue-health": "Queue health", settings: "Settings", agent: "My agent", guide: "Guide",
 };
 
 const person = (role, areas) => ({ email: `${role}@example.test`, role, status: "active", areas });
@@ -130,7 +131,8 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
   it("no id twice", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(ids.length, 37);
+    // [TEST-MOD-APPROVED #2879] Queue health added beside API health (+1).
+    assert.equal(ids.length, 38);
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -382,7 +384,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
     "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
-    "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "RefundOperationsPage.jsx",
+    "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
     "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
   ];
@@ -415,8 +417,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   it("every page is either on the one header or named for the follow-up", () => {
     const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
-    // [TEST-MOD-APPROVED #3720] Wave 6 adds Notifications and Data room pages.
-    assert.equal(MIGRATED.length, 41);
+    // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
+    assert.equal(MIGRATED.length, 42);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -552,8 +554,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   };
 
   it("every state of every migrated page draws the page header", () => {
-    // [TEST-MOD-APPROVED #3720] Wave 6 adds Notifications and Data room pages.
-    assert.equal(MIGRATED.length, 41);
+    // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
+    assert.equal(MIGRATED.length, 42);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

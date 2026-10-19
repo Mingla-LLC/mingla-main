@@ -44,4 +44,13 @@ Target: 150k inventory / 100k reservation attempts; drills for retry storm, 429 
 
 ## Dashboard signals (minimum)
 
-Queue depth, admission rate, remaining inventory, Initialize/Verify failures, provider 429/5xx, p95 finalization, stuck holds, paid-without-ticket, support interventions.
+Admin surface: mingla-admin `#/queue-health` (RPC `admin_get_queue_health`).
+
+**Wired now (read-only over monitor + finder data):**
+- Queue depth / eligible waiting / armed tiers / orphan infinity
+- 72h joins / admissions / releases / waitlist invites + verdict badge
+- Paid-without-ticket count (#3645 finder predicate)
+- Recent observe-run table
+
+**Still Gate 0 / no eng store yet (must not invent):**
+- Remaining inventory, Initialize/Verify failures, provider 429/5xx, p95 finalization, support interventions
