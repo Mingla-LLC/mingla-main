@@ -227,6 +227,25 @@ export type EventCoverVideoUploadOptions = {
   isDeviceOffline?: () => boolean;
 };
 
+
+// #3040 rework (P2) — best effort with one retry; a failure is logged, never
+// swallowed (the replaced ad video would otherwise join the library).
+const cancelReplacedAdVideo = async (jobId: string): Promise<void> => {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await cancelEventCoverVideoJob(jobId);
+      return;
+    } catch (caught) {
+      if (attempt === 1) {
+        console.warn("[cover-video] the replaced ad video could not be cancelled", {
+          jobId,
+          error: caught instanceof Error ? caught.name : "error",
+        });
+      }
+    }
+  }
+};
+
 export function useEventCoverVideoUpload(
   eventId: string,
   brandId: string,
@@ -543,6 +562,15 @@ export function useEventCoverVideoUpload(
     }
     ownedJobIdsRef.current.add(intent.jobId);
     if (replacing) {
+      // #3040 rework (P2) — ad videos never supersede each other on the
+      // server (each is its own library item), so the one this replaces is
+      // cancelled here, the moment the replacement is accepted. The server
+      // cancels it only while it has no creative row, and a cancelled job can
+      // never become one, so the replaced video never reaches the library.
+      const replacedJobId = jobIdRef.current;
+      if (exactTarget.serverTarget === "ad_creative" && replacedJobId !== null && replacedJobId !== intent.jobId) {
+        void cancelReplacedAdVideo(replacedJobId);
+      }
       // The old watcher, persistence, and prepared bytes remain authoritative
       // until this exact point: the server has accepted/replayed the replacement.
       generation = ++generationRef.current;
@@ -925,6 +953,7 @@ export function useEventCoverVideoUpload(
       void (async () => {
         try {
           const jobId = jobIdRef.current ?? persisted?.jobId ?? null;
+          const byTarget = jobId === null;
           const canonical = jobId !== null
             ? await fetchEventCoverVideoStatus(jobId, abort.signal)
             : await fetchEventCoverVideoStatusByTarget({
@@ -934,7 +963,11 @@ export function useEventCoverVideoUpload(
             });
           if (stageRef.current.phase !== "reattaching") return;
           if (generationRef.current !== generation) return;
-          if (canonical === null) {
+          // D-11 — a job found by TARGET (not this device's own job id) is
+          // only resumed while it is still active, exactly like the main
+          // path: a server that ignores activeOnly must not resurrect a
+          // finished video.
+          if (canonical === null || (byTarget && !isActiveLaneStatus(canonical.status))) {
             setStage(idleStage);
             return;
           }
