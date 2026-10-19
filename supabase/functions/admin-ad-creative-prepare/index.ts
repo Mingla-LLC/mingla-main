@@ -24,6 +24,7 @@ import {
   type CreativePreparationVersion,
 } from "../_shared/adCreativePreparationPlan.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
+import { creativeFitGateFailure } from "../_shared/adCreativeLifecycle.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -418,11 +419,36 @@ serve(async (req: Request): Promise<Response> => {
   if (ownershipError) {
     return json({ error: ownershipError, trace_id: traceId }, 403);
   }
-  if (creative.status !== "active" || creative.kind !== "video") {
+  // #3697 (C-13) — this plan version is already frozen with the creative, so
+  // an archived creative stays preparable. A purged creative has no media.
+  if ((creativeRow as { purged_at?: unknown }).purged_at) {
+    return json({ error: "creative_purged", trace_id: traceId }, 409);
+  }
+  if (
+    !["active", "archived"].includes(String(creative.status)) ||
+    creative.kind !== "video"
+  ) {
     return json(
       { error: "creative_kind_or_status_invalid", trace_id: traceId },
       422,
     );
+  }
+  // #3697 FG-2 — no provider preparation starts for a video that does not fit
+  // the platform it is being prepared for (same matrix as the Builder).
+  // Invariant I-ADS-FIT-BEFORE-FUNDING (declared in supabase/functions/ad-plan/__tests__/issue_3697_fit_gate.test.ts)
+  if (action !== "status") {
+    const misfit = creativeFitGateFailure(
+      creativeRow as Record<string, unknown>,
+      [platform],
+    );
+    if (misfit) {
+      return json({
+        error: "creative_does_not_fit",
+        platform,
+        reasons: misfit.reasons,
+        trace_id: traceId,
+      }, 422);
+    }
   }
   if (
     platform === "snapchat" && (creative.duration_seconds ?? Infinity) > 180

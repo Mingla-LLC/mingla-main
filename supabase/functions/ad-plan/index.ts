@@ -28,6 +28,25 @@ import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
 import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
+import {
+  applyLibraryFilters,
+  creativeFitGateFailure,
+  creativeSelectionError,
+  decorateLibraryRows,
+  FIT_CREATIVE_COLUMNS,
+  handleCreativeLifecycleAction,
+  IN_FLIGHT_AD_JOB_STATUSES,
+  LIBRARY_CREATIVE_COLUMNS,
+  LIBRARY_PAGE_SIZE,
+  LIFECYCLE_ACTIONS,
+  type LifecycleContext,
+  namePattern,
+  parseLibraryFilters,
+  pendingLibraryItems,
+  storedCreativeValidation,
+} from "../_shared/adCreativeLifecycle.ts";
+import { bunnyDeleteVideo } from "../_shared/bunnyStream.ts";
+import { PLATFORMS } from "../_shared/adChannelCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -442,6 +461,49 @@ async function normalizedAllocations(
   return { ok: true, hostCurrency: [...currencies][0], rows };
 }
 
+/**
+ * #3697 FG-1 — the creative frozen into this version must fit every platform
+ * the version allocates. Fails closed on an unreadable creative or allocation.
+ */
+async function fundingFitGate(
+  db: Db,
+  version: Version,
+): Promise<Response | null> {
+  const creativeId = version.canonical_plan?.creative_library_id;
+  if (typeof creativeId !== "string" || !UUID_RE.test(creativeId)) return null;
+  const [creativeResult, allocationResult] = await Promise.all([
+    db.from("ad_creatives").select(FIT_CREATIVE_COLUMNS).eq("id", creativeId)
+      .maybeSingle(),
+    db.from("ad_plan_provider_allocations").select("platform").eq(
+      "plan_version_id",
+      version.id,
+    ),
+  ]);
+  if (creativeResult.error || allocationResult.error) {
+    return databaseFailure(creativeResult.error ?? allocationResult.error);
+  }
+  const creative = creativeResult.data as Record<string, unknown> | null;
+  if (!creative) {
+    return json(
+      { error: "plan_preflight_failed", detail: "creative_not_found" },
+      409,
+    );
+  }
+  if (creative.purged_at) {
+    return json({ error: "creative_purged" }, 409);
+  }
+  const platforms = ((allocationResult.data ?? []) as { platform: unknown }[])
+    .map((row) => row.platform).filter(isPlatform);
+  const failure = creativeFitGateFailure(creative, platforms);
+  if (!failure) return null;
+  return json({
+    error: "creative_does_not_fit",
+    platform: failure.platform,
+    reasons: failure.reasons,
+    misfits: failure.misfits.map(({ platform, needs }) => ({ platform, needs })),
+  }, 422);
+}
+
 async function getPlanAggregate(db: Db, plan: Plan) {
   const version = plan.current_version_id
     ? await loadVersion(db, plan.current_version_id)
@@ -504,7 +566,16 @@ async function getPlanAggregate(db: Db, plan: Plan) {
   };
 }
 
-serve(async (req: Request): Promise<Response> => {
+/** Test seams. Production uses the service-role client and Bunny. */
+export type AdPlanDeps = {
+  db?: Db;
+  destroyVideo?: LifecycleContext["destroyVideo"];
+};
+
+export async function handleAdPlan(
+  req: Request,
+  deps: AdPlanDeps = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -517,9 +588,11 @@ serve(async (req: Request): Promise<Response> => {
   }
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ error: "unauthorized" }, 401);
-  const db = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const serviceDb = () =>
+    createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  const db = (deps.db ?? serviceDb()) as ReturnType<typeof serviceDb>;
   const token = authHeader.replace(/^Bearer\s+/i, "");
   const { data: { user }, error: authError } = await db.auth.getUser(token);
   if (authError || !user) return json({ error: "unauthorized" }, 401);
@@ -751,14 +824,100 @@ serve(async (req: Request): Promise<Response> => {
     if (!(await isActiveAdmin(db, actor))) {
       return json({ error: "forbidden" }, 403);
     }
-    const creatives = await db.from("ad_creatives").select(
-      "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_brand_id,source_job_id,source_job_ref,rendition_height,created_at,updated_at",
-    ).order("created_at", { ascending: false }).limit(250);
+    // #3697 — filters, a cursor, in-flight uploads and per-platform fit. A
+    // purged creative (tombstone) is excluded from every view, Archived too.
+    const parsedFilters = parseLibraryFilters(body);
+    if (!parsedFilters.ok) {
+      return json(
+        { error: "validation_error", detail: parsedFilters.detail },
+        400,
+      );
+    }
+    const filters = parsedFilters.filters;
+    const creatives = await applyLibraryFilters(
+      db.from("ad_creatives").select(LIBRARY_CREATIVE_COLUMNS),
+      filters,
+    );
     if (creatives.error) return databaseFailure(creatives.error);
-    const creativeRows = creatives.data ?? [];
-    const creativeIds = creativeRows.map((row: { id: string }) => row.id);
+    const pageRows = (creatives.data ?? []) as Record<string, unknown>[];
+    const hasMore = pageRows.length > LIBRARY_PAGE_SIZE;
+    const creativeRows = hasMore
+      ? pageRows.slice(0, LIBRARY_PAGE_SIZE)
+      : pageRows;
+    const lastRow = creativeRows[creativeRows.length - 1];
+    const nextCursor = hasMore && lastRow
+      ? { created_at: lastRow.created_at, id: lastRow.id }
+      : null;
+
+    // In-flight house uploads by this admin show as cards before their row
+    // exists (first page of the active view only).
+    let pending: Record<string, unknown>[] = [];
+    if (
+      filters.status === "active" && !filters.before &&
+      filters.kind !== "image" && filters.source !== "host"
+    ) {
+      let jobQuery = db.from("event_cover_video_jobs").select(
+        "id,status,created_at,source_uploaded_at,source_file_name,source_bytes,source_duration_ms,client_operation_id",
+      ).eq("target_kind", "ad_creative").eq("requested_by", actor.id)
+        .is("brand_id", null).in("status", [...IN_FLIGHT_AD_JOB_STATUSES]);
+      if (filters.q) {
+        jobQuery = jobQuery.ilike("source_file_name", namePattern(filters.q));
+      }
+      const jobs = await jobQuery.order("created_at", { ascending: false })
+        .limit(LIBRARY_PAGE_SIZE);
+      if (jobs.error) return databaseFailure(jobs.error);
+      const jobRows = (jobs.data ?? []) as Record<string, unknown>[];
+      const jobIds = jobRows.map((row) => String(row.id));
+      const made = jobIds.length > 0
+        ? await db.from("ad_creatives").select("source_job_id").in(
+          "source_job_id",
+          jobIds,
+        )
+        : { data: [], error: null };
+      if (made.error) return databaseFailure(made.error);
+      pending = pendingLibraryItems(
+        jobRows,
+        new Set(
+          ((made.data ?? []) as { source_job_id: string }[]).map((row) =>
+            row.source_job_id
+          ),
+        ),
+      );
+    }
+
+    const countOf = async (
+      apply: (query: Db) => Db,
+    ): Promise<number | null> => {
+      const result = await apply(
+        db.from("ad_creatives").select("id", { count: "exact", head: true })
+          .is("purged_at", null),
+      );
+      if (result.error) {
+        console.warn("[ad-plan] creative_library count failed", {
+          code: result.error.code ?? null,
+        });
+        return null;
+      }
+      return typeof result.count === "number" ? result.count : null;
+    };
+    const [all, images, videos, fromHosts, archived] = await Promise.all([
+      countOf((q) => q.eq("status", "active")),
+      countOf((q) => q.eq("status", "active").eq("kind", "image")),
+      countOf((q) => q.eq("status", "active").eq("kind", "video")),
+      countOf((q) => q.eq("status", "active").neq("source", "admin_upload")),
+      countOf((q) => q.eq("status", "archived")),
+    ]);
+    const counts = { all, images, videos, from_hosts: fromHosts, archived };
+
+    const creativeIds = creativeRows.map((row) => String(row.id));
     if (creativeIds.length === 0) {
-      return json({ ok: true, creatives: [] });
+      return json({
+        ok: true,
+        creatives: [],
+        pending,
+        counts,
+        next_cursor: null,
+      });
     }
 
     const [versions, refs, ads] = await Promise.all([
@@ -819,17 +978,68 @@ serve(async (req: Request): Promise<Response> => {
       ),
     );
 
+    const projected = buildCreativeLibrary({
+      creatives: creativeRows,
+      versions: versionRows,
+      plans: plans.data ?? [],
+      campaigns: [...campaignsById.values()],
+      adSets: adSets.data ?? [],
+      ads: ads.data ?? [],
+      providerRefs: refs.data ?? [],
+    });
+    const personIds = [
+      ...new Set(
+        creativeRows.flatMap((row) =>
+          [row.created_by, row.archived_by].filter((id): id is string =>
+            typeof id === "string"
+          )
+        ),
+      ),
+    ];
+    const brandIds = [
+      ...new Set(
+        creativeRows.map((row) => row.brand_id).filter((
+          id,
+        ): id is string => typeof id === "string"),
+      ),
+    ];
+    const [profiles, brands] = await Promise.all([
+      personIds.length > 0
+        ? db.from("profiles").select("id,first_name,display_name").in(
+          "id",
+          personIds,
+        )
+        : Promise.resolve({ data: [], error: null }),
+      brandIds.length > 0
+        ? db.from("brands").select("id,name").in("id", brandIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (profiles.error || brands.error) {
+      // Names are presentation only; the cards fall back to unnamed copy.
+      console.warn("[ad-plan] creative_library names unavailable", {
+        profiles: profiles.error?.code ?? null,
+        brands: brands.error?.code ?? null,
+      });
+    }
     return json({
       ok: true,
-      creatives: buildCreativeLibrary({
-        creatives: creativeRows,
-        versions: versionRows,
-        plans: plans.data ?? [],
-        campaigns: [...campaignsById.values()],
-        adSets: adSets.data ?? [],
-        ads: ads.data ?? [],
-        providerRefs: refs.data ?? [],
+      creatives: decorateLibraryRows(projected, creativeRows, {
+        profiles: new Map(
+          ((profiles.data ?? []) as Record<string, unknown>[]).map((row) => [
+            String(row.id),
+            row,
+          ]),
+        ),
+        brands: new Map(
+          ((brands.data ?? []) as { id: string; name: string }[]).map((row) => [
+            row.id,
+            row.name,
+          ]),
+        ),
       }),
+      pending,
+      counts,
+      next_cursor: nextCursor,
     });
   }
 
@@ -847,11 +1057,18 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
     const { data: creative, error } = await db.from("ad_creatives").select(
-      "id,name,kind,status,source_url,storage_bucket,storage_path,bunny_video_id,poster_url,mp4_master_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_brand_id,created_at,updated_at",
+      "id,name,kind,status,source_url,storage_bucket,storage_path,bunny_video_id,poster_url,mp4_master_url,duration_seconds,aspect_ratio,width,height,has_audio,mime_type,byte_size,ai_generated,variants,brand_id,source,source_brand_id,source_job_id,source_job_ref,purged_at,created_at,updated_at",
     ).eq("id", creativeId).maybeSingle();
     if (error) return databaseFailure(error);
-    if (!creative || creative.status !== "active") {
-      return json({ error: "creative_not_reusable" }, 409);
+    // #3697 — a new selection refuses archived (409) and purged (410) media.
+    // Fit is never checked here: a misfit stays reusable from the library and
+    // is blocked only inside the Builder and at the funding gate.
+    const selectionError = creativeSelectionError(creative, { frozen: false });
+    if (selectionError || !creative) {
+      return json(
+        { error: selectionError?.error ?? "creative_not_reusable" },
+        selectionError?.status ?? 409,
+      );
     }
     const ownershipError = adCreativeOwnershipError({
       ownerKind: "mingla",
@@ -863,7 +1080,45 @@ serve(async (req: Request): Promise<Response> => {
     if (ownershipError) {
       return json({ error: ownershipError }, 409);
     }
-    return json({ ok: true, creative });
+    const requestedPlatforms = Array.isArray(body.platforms)
+      ? body.platforms.filter(isPlatform)
+      : [];
+    const reusable: Record<string, unknown> = { ...creative };
+    delete reusable.purged_at;
+    reusable.source_job_id = creative.source_job_id ?? creative.source_job_ref ??
+      null;
+    return json({
+      ok: true,
+      creative: reusable,
+      // The Builder's per-channel report, from the probe facts stored when the
+      // creative was made (server truth; no client-supplied media is read).
+      validation: storedCreativeValidation(
+        creative,
+        requestedPlatforms.length > 0 ? requestedPlatforms : PLATFORMS,
+      ),
+    });
+  }
+
+  if ((LIFECYCLE_ACTIONS as readonly string[]).includes(action)) {
+    const result = await handleCreativeLifecycleAction(
+      action as (typeof LIFECYCLE_ACTIONS)[number],
+      body,
+      {
+        db,
+        actor,
+        isActiveAdmin: () => isActiveAdmin(db, actor),
+        canBrandPlan: async (brandId) => {
+          const { data, error } = await db.rpc("ad_can_host_action", {
+            p_brand_id: brandId,
+            p_user_id: actor.id,
+            p_action: "plan",
+          });
+          return !error && data === true;
+        },
+        destroyVideo: deps.destroyVideo ?? ((guid) => bunnyDeleteVideo(guid)),
+      },
+    );
+    return json(result.body, result.status);
   }
 
   if (action === "review_queue") {
@@ -1155,14 +1410,24 @@ serve(async (req: Request): Promise<Response> => {
     }
     const { data: creative, error: creativeError } = await db
       .from("ad_creatives")
-      .select("id,brand_id,status,source,source_brand_id")
+      .select("id,brand_id,status,source,source_brand_id,purged_at")
       .eq("id", creativeId)
       .maybeSingle();
     if (creativeError) return databaseFailure(creativeError);
-    if (!creative || creative.status !== "active") {
+    // #3697 (C-13) — an archived creative stays usable for a plan whose
+    // current version already carries it; a new selection refuses it.
+    let carriedOver = false;
+    if (creative?.status === "archived" && plan.current_version_id) {
+      const current = await loadVersion(db, plan.current_version_id);
+      carriedOver = current?.canonical_plan?.creative_library_id === creativeId;
+    }
+    const selectionError = creativeSelectionError(creative, {
+      frozen: carriedOver,
+    });
+    if (selectionError || !creative) {
       return json({
         error: "plan_preflight_failed",
-        detail: "creative_not_reusable",
+        detail: selectionError?.error ?? "creative_not_reusable",
       }, 422);
     }
     const ownershipError = adCreativeOwnershipError({
@@ -1556,6 +1821,13 @@ serve(async (req: Request): Promise<Response> => {
       : json({ error: "plan_conflict", detail: "create_state_invalid" }, 409);
   }
 
+  // #3697 FG-1 — the server backstop of the Builder's misfit block: no plan
+  // reaches funding with a video that does not fit an allocated platform.
+  if (action === "mark_ready" || action === "fund") {
+    const gate = await fundingFitGate(db, authorized.version);
+    if (gate) return gate;
+  }
+
   if (action === "mark_ready") {
     const { data, error } = await db.rpc("ad_plan_mark_ready", {
       p_plan_version_id: versionId,
@@ -1695,4 +1967,8 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   return json({ error: "validation_error", detail: "action_invalid" }, 400);
-});
+}
+
+if (import.meta.main) {
+  serve((req: Request) => handleAdPlan(req));
+}
