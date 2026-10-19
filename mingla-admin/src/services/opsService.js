@@ -1,6 +1,7 @@
 // Issue #3980 — the ONLY browser caller of ops_* functions (Work board, Agent
-// log, To review). Every function gates on the server; this file only shapes
-// calls and turns refusals into an OpsError the screens can word.
+// log, To review, Calendar, host cards). Every function gates on the server;
+// this file only shapes calls and turns refusals into an OpsError the screens
+// can word.
 import { supabase } from "../lib/supabase";
 import { parseServerError } from "../lib/crmModel";
 
@@ -70,3 +71,15 @@ export const listLog = (query = {}) => call(() => supabase.rpc("ops_log_list", {
 export const releaseClaims = (cardId, claimIds) =>
   call(() => supabase.rpc("ops_release", { p_card_id: cardId || null, p_claim_ids: claimIds || null }));
 export const setSprintGoal = (week, goal) => call(() => supabase.rpc("ops_sprint_set_goal", { p_week: week, p_goal: goal }));
+
+// Wave 2 — the Calendar, runway and host sync.
+export const fetchCalendar = (from, to, today) =>
+  call(() => supabase.rpc("ops_calendar", { p_from: from, p_to: to, p_today: today || null }));
+export const fetchRunwayReport = (from, to, today) =>
+  call(() => supabase.rpc("ops_runway_report", { p_from: from || null, p_to: to || null, p_today: today || null }));
+export const fetchAnchorDetail = (kind, id, today) =>
+  call(() => supabase.rpc("ops_anchor_detail", { p_kind: kind, p_id: id, p_today: today || null }));
+export const fetchHostOnMingla = (recordId, today) =>
+  call(() => supabase.rpc("ops_host_on_mingla", { p_record_id: recordId, p_today: today || null }));
+export const setExpectedEvent = (item, requestKey) =>
+  call(() => supabase.rpc("ops_expected_event_set", { p_item: item, p_request_key: requestKey }));

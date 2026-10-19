@@ -353,3 +353,106 @@ const EVENT_WORDS = {
 export function eventWords(action) {
   return EVENT_WORDS[action] || "changed it";
 }
+
+// ---------------------------------------------------------------------------
+// Wave 2 — the Calendar layers, runway words and the launch kit rows.
+// ---------------------------------------------------------------------------
+
+/** The Calendar's layers, in order, with the swatch each one is drawn in. */
+export const CALENDAR_LAYERS = [
+  { id: "live", label: "On Mingla", swatch: "bg-[var(--color-success-600)]" },
+  { id: "exp", label: "Expected", swatch: "border-[1.5px] border-dashed border-[var(--gray-400)] bg-transparent" },
+  { id: "dead", label: "Go-live deadlines", swatch: "bg-[var(--color-info-600)]" },
+  { id: "promo", label: "Promotions", swatch: "bg-[var(--color-brand-600)]" },
+  { id: "content", label: "Content", swatch: "bg-[var(--gray-500)]" },
+];
+const LAYER_IDS = CALENDAR_LAYERS.map((l) => l.id);
+
+/** `layers=live,exp` → which layers are on. Absent (or nothing valid) = all on. */
+export function parseLayers(value) {
+  const on = Object.fromEntries(LAYER_IDS.map((id) => [id, true]));
+  if (typeof value !== "string") return on;
+  const picked = value.split(",").map((s) => s.trim()).filter((s) => LAYER_IDS.includes(s));
+  if (value.trim() === "") return on;
+  if (value === "none") return Object.fromEntries(LAYER_IDS.map((id) => [id, false]));
+  if (!picked.length) return on;
+  return Object.fromEntries(LAYER_IDS.map((id) => [id, picked.includes(id)]));
+}
+
+/** The URL value for these layers: null when all are on, "none" when none are. */
+export function buildLayers(on) {
+  const picked = LAYER_IDS.filter((id) => on?.[id]);
+  if (picked.length === LAYER_IDS.length) return null;
+  return picked.length ? picked.join(",") : "none";
+}
+
+/** The short band label on chips and buttons. */
+export function bandShort(runway) {
+  const band = runway?.band;
+  if (band === "full") return "Full launch";
+  if (band === "tight") return "Tight";
+  if (band === "organic") return "Organic only";
+  if (band === "not_live") return `Go live by ${dayLabel(runway?.go_live_by)}`;
+  if (band === "missed") return "Missed";
+  return "No date yet";
+}
+
+/** `event=event:<id>` or `event=expected:<id>` → { kind, id }, else null. */
+export function parseEventParam(value) {
+  const m = typeof value === "string" ? value.match(/^(event|expected):([0-9a-f-]{36})$/i) : null;
+  return m && UUID_RE.test(m[2]) ? { kind: m[1].toLowerCase(), id: m[2].toLowerCase() } : null;
+}
+
+export const EVENT_TYPE_LABELS = { event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP" };
+export const KIT_WHO = { host_owner: "Host owner", marketing: "Sales and marketing" };
+
+/** The state chip of one launch kit row: its words and colour. */
+export function kitStateChip(row) {
+  const state = row?.state;
+  if (state === "card" || (state === "done" && row?.card)) {
+    const card = row.card || {};
+    if (card.status === "done") return { label: "Done", tone: "success" };
+    if (card.blocked) return { label: "Blocked", tone: "error" };
+    const status = WORK_STATUSES.find((s) => s.value === card.status);
+    return { label: status ? status.label : "Card", tone: card.status === "person" ? "warning" : "brand" };
+  }
+  if (state === "done") return { label: "Done", tone: "success" };
+  if (state === "not_eligible") return { label: "Not eligible", tone: "error" };
+  if (state === "passed") return { label: "Passed", tone: "default" };
+  return { label: "No card", tone: "default" };
+}
+
+function daysBetween(from, to) {
+  const a = typeof from === "string" ? from.match(DATE_RE) : null;
+  const b = typeof to === "string" ? to.match(DATE_RE) : null;
+  if (!a || !b) return null;
+  return Math.round((Date.UTC(+b[1], +b[2] - 1, +b[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3])) / 86_400_000);
+}
+
+/**
+ * The runway bar: a track from 42 days before the start to 2 days after,
+ * ticks for T-28 (live), T-21 (promo), the event and today, and a fill from
+ * the day it went public to the start. Positions are percentages, 0 to 100.
+ */
+export function runwayBarModel(anchor, today) {
+  const start = typeof anchor?.start_on === "string" ? anchor.start_on.slice(0, 10) : null;
+  if (!start) return null;
+  const from = addDays(start, -42);
+  const span = 44;
+  const pos = (day) => {
+    const d = daysBetween(from, day);
+    return d === null ? null : Math.max(0, Math.min(100, (d / span) * 100));
+  };
+  const published = anchor?.is_public && typeof anchor?.published_at === "string" ? anchor.published_at.slice(0, 10) : null;
+  const fillFrom = published ? pos(published) : null;
+  const end = pos(start);
+  return {
+    ticks: [
+      { key: "live", label: "T-28 live", at: pos(addDays(start, -28)) },
+      { key: "promo", label: "T-21 promo", at: pos(addDays(start, -21)) },
+      { key: "event", label: "Event", at: end },
+      { key: "today", label: "Today", at: pos(today), brand: true },
+    ],
+    fill: fillFrom === null ? null : { left: fillFrom, width: Math.max(0, end - fillFrom), tone: bandTone(anchor?.runway?.band) },
+  };
+}

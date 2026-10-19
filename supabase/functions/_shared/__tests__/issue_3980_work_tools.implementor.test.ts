@@ -255,19 +255,21 @@ Deno.test("#3980 the gateway names exactly these tools, and every function a too
     .filter((e) => /3980.*\.sql$/.test(e.name))
     .map((e) => read(`supabase/migrations/${e.name}`))
     .join("\n");
-  const gateway = migrations.slice(
-    migrations.lastIndexOf("CREATE FUNCTION public.ops_agent_call("),
-  );
+  // The newest definition of the gateway (each wave replaces it whole).
+  const starts = [
+    ...migrations.matchAll(
+      /CREATE (?:OR REPLACE )?FUNCTION public\.ops_agent_call\(/g,
+    ),
+  ];
+  assert(starts.length >= 2, "Wave 2 replaces the gateway");
+  const gateway = migrations.slice(starts[starts.length - 1].index!);
   const tools = gateway.match(
     /c_tools constant text\[\] := ARRAY\[([^\]]*)\]/,
   )![1].match(/'([a-z_]+)'/g)!.map((s) => s.slice(1, -1));
   assertEquals(tools, NAMES);
-  // [TRANSITIONAL] reached by the calendar and launch-kit tools; their functions arrive with the next waves of this build.
+  // [TRANSITIONAL] reached by the launch-kit tool; its function arrives with Wave 3 of this build.
   const later = new Set([
     "ops_launch_kit_preview",
-    "ops_calendar",
-    "ops_runway_report",
-    "ops_expected_event_set",
   ]);
   for (const t of TEAM_AGENT_WORK_TOOLS) {
     for (const fn of t.reaches) {
