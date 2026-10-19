@@ -76,6 +76,7 @@ jobs:
           src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
           src/services/__tests__/issue_2107_update_gate_airtight.test.ts
           src/services/__tests__/issue_2107_update_gate_telemetry.test.ts
+          src/services/__tests__/issue_2107_safe_reload.test.ts
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   host-ota-gate:
@@ -98,6 +99,7 @@ jobs:
           src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
           src/services/__tests__/issue_2107_update_gate_airtight.test.ts
           src/services/__tests__/issue_2107_update_gate_telemetry.test.ts
+          src/services/__tests__/issue_2107_safe_reload.test.ts
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   edge-ota-policy:

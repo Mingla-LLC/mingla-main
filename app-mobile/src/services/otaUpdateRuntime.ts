@@ -24,6 +24,7 @@ import {
   type OtaPlatform,
   type OtaUpdateBridge,
 } from "./otaUpdatePolicy";
+import { runSafeReload } from "./safeReloadRuntime";
 import { reportUpdateGateEvent } from "./updateGateTelemetry";
 import { supabaseUrl } from "./supabase";
 
@@ -92,9 +93,11 @@ export function createOtaUpdateBridge(): OtaUpdateBridge {
             : null,
       };
     },
-    reload: async () => {
-      await Updates.reloadAsync();
-    },
+    // #2107 (Sentry REACT-NATIVE-1C): never a bare reloadAsync. A request
+    // issued while the bridge tears down crashes RCTNetworking, so every
+    // restart stops network work, flushes analytics, lets in-flight writes
+    // finish (capped) and only then reloads. Fails open if no restart happens.
+    reload: () => runSafeReload(() => Updates.reloadAsync()),
   };
 }
 

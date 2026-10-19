@@ -16,6 +16,11 @@
 //      and fail open — silently disarming the native gate at the moment #2075's
 //      enforcement is switched on.
 //
+//   5. (Sentry REACT-NATIVE-1C) Every in-app restart goes through safeReload,
+//      which stops network work before reloadAsync. A request issued while the
+//      bridge tears down crashes RCTNetworking, so a bare reloadAsync anywhere
+//      is a crash waiting for a tap.
+//
 // ISSUE_2107_SIMULATE_REVERT=1 proves the gate fails when the root mount is
 // removed, so a green run means something.
 
@@ -54,7 +59,24 @@ const FILES = {
   hostConfig: "mingla-business/app.config.js",
   consumerPublish: "app-mobile/scripts/ota/publish-production-ota.sh",
   hostPublish: "mingla-business/scripts/ota/publish-production-ota.sh",
+  // Sentry REACT-NATIVE-1C — safe restart.
+  consumerSafeReload: "app-mobile/src/services/safeReload.ts",
+  hostSafeReload: "mingla-business/src/services/safeReload.ts",
+  consumerFence: "app-mobile/src/services/reloadNetworkFence.ts",
+  hostFence: "mingla-business/src/services/reloadNetworkFence.ts",
+  hostFenceWeb: "mingla-business/src/services/reloadNetworkFence.web.ts",
+  consumerSafeReloadRuntime: "app-mobile/src/services/safeReloadRuntime.ts",
+  hostSafeReloadRuntime: "mingla-business/src/services/safeReloadRuntime.ts",
+  consumerSupabase: "app-mobile/src/services/supabase.ts",
+  hostSupabase: "mingla-business/src/services/supabase.ts",
 };
+
+// The one routed restart each runtime is allowed to contain.
+const ROUTED_RELOAD = "runSafeReload(() => Updates.reloadAsync())";
+// Anything that restarts the JS bundle. window.location.reload is a browser
+// page load, not a bridge teardown, and is out of scope.
+const RELOAD_CALL = /\b(?:reloadAsync|DevSettings\.reload|NativeModules\.DevSettings\.reload)\s*\(/g;
+const isTestFile = (file) => /(^|\/)__tests__\//.test(file) || /\.test\.[cm]?[jt]sx?$/.test(file);
 
 // Directories scanned for stray expo-updates importers. Only the two runtime
 // modules above are allowed to import it.
@@ -191,6 +213,67 @@ export function validate(sources, { simulateRevert = false } = {}) {
     requireText(key, 'from "expo-updates"', `${key} must own the expo-updates import`);
     requireText(key, "!__DEV__ && Updates.isEnabled", `${key} must double-guard the native module`);
   }
+
+  // 3b — every restart goes through safeReload (Sentry REACT-NATIVE-1C).
+  for (const file of sources.scanned) {
+    if (ALLOWED_UPDATES_IMPORTERS.has(file) || isTestFile(file)) continue;
+    if (RELOAD_CALL.test(sources.byFile[file])) {
+      failures.push(`${file} restarts the app directly — route it through runSafeReload in otaUpdateRuntime.ts`);
+    }
+    RELOAD_CALL.lastIndex = 0;
+  }
+  for (const key of ["consumerRuntime", "hostRuntime"]) {
+    const calls = (sources[key].match(RELOAD_CALL) ?? []).length;
+    const routed = sources[key].split(ROUTED_RELOAD).length - 1;
+    if (calls === 0 || routed !== calls) {
+      failures.push(
+        `${key} calls reloadAsync outside runSafeReload (${calls} call(s), ${routed} routed) — a request issued during the reload crashes RCTNetworking`,
+      );
+    }
+    requireText(key, 'import { runSafeReload } from "./safeReloadRuntime";', `${key} must restart through safeReloadRuntime`);
+  }
+  for (const [a, b, label] of [
+    ["consumerSafeReload", "hostSafeReload", "safeReload.ts"],
+    ["consumerFence", "hostFence", "reloadNetworkFence.ts"],
+    ["consumerSafeReloadRuntime", "hostSafeReloadRuntime", "safeReloadRuntime.ts"],
+  ]) {
+    if (sources[a] !== sources[b]) failures.push(`${label} drifted between app-mobile and mingla-business`);
+  }
+  for (const key of ["consumerSafeReload", "hostSafeReload"]) {
+    // The core imports nothing, so it can never pull a native module anywhere.
+    if (/^import\s/m.test(sources[key])) failures.push(`${key} must import nothing`);
+    for (const phase of ["dependencies.pause", "dependencies.flush", "dependencies.lockdown", "dependencies.settle", "dependencies.reload()"]) {
+      requireText(key, phase, `${key} must run ${phase}`);
+    }
+    const order = ["for (const step of dependencies.pause)", "for (const flush of dependencies.flush)", "for (const step of dependencies.lockdown)", "dependencies.settle,", "await dependencies.reload()"]
+      .map((needle) => sources[key].indexOf(needle));
+    if (order.some((at) => at === -1) || order.some((at, i) => i > 0 && at < order[i - 1])) {
+      failures.push(`${key} must pause, flush, lock down and settle BEFORE reloading`);
+    }
+    requireText(key, "await restore();", `${key} must restore the app when the reload fails`);
+  }
+  for (const key of ["consumerSafeReloadRuntime", "hostSafeReloadRuntime"]) {
+    for (const [needle, what] of [
+      ["closeNetworkFence()", "close the app network fence"],
+      ["onlineManager.setOnline(false)", "take React Query offline"],
+      ["queryClient.cancelQueries()", "cancel queries"],
+      ["supabase.removeAllChannels()", "remove realtime channels"],
+      ["lockDownXhrSends(", "hold remaining XHR sends"],
+      ["waitForNetworkIdle()", "let in-flight requests settle"],
+      ["openNetworkFence()", "reopen the network on restore"],
+    ]) requireText(key, needle, `${key} must ${what}`);
+    if (/^import .* from ["'](?!\.\/)/m.test(sources[key])) {
+      failures.push(`${key} must import only its sibling pure modules — app modules are required lazily`);
+    }
+  }
+  requireText("consumerSupabase", "trackNetworkRequest(() => fetchWithTimeoutUntracked(url, options))", "Explorer Supabase fetch must go through the restart fence");
+  requireText("consumerSupabase", "fetch: fetchWithTimeout,", "Explorer Supabase client must use the fenced fetch");
+  requireText("hostSupabase", "createTrackedFetch(() => fetch)", "Host Supabase fetch must go through the restart fence");
+  requireText("hostSupabase", "createClient(supabaseUrl, supabaseAnonKey, withRestartFence({", "Host Supabase client must use the fenced fetch");
+  if ([...sources.hostFenceWeb.matchAll(/^import\s/gm)].length > 0) {
+    failures.push("reloadNetworkFence.web.ts must import nothing — it is in the web boot payload");
+  }
+  requireText("hostFenceWeb", "export function createTrackedFetch", "the web fence stub must export createTrackedFetch");
 
   // 4 — separate endpoint; the shipped native contract is untouched.
   requireText("edgeEndpoint", "readAppOtaPolicy", "the OTA endpoint must read the OTA policy table");
@@ -336,8 +419,56 @@ function selfTest() {
     console.error("#2107 self-test: a foreground recheck that veils the app was not detected");
     process.exit(1);
   }
+  // Sentry REACT-NATIVE-1C — a bypassed restart at ONE call site is caught.
+  const bypassedRuntime = validate({
+    ...sources,
+    hostRuntime: sources.hostRuntime.replace(ROUTED_RELOAD, "Updates.reloadAsync()"),
+  });
+  if (!bypassedRuntime.some((failure) => failure.includes("outside runSafeReload"))) {
+    console.error("#2107 self-test: a reloadAsync that bypasses safeReload was not detected");
+    process.exit(1);
+  }
+  const strayFile = "app-mobile/src/hooks/useOtaUpdates.ts";
+  const strayReload = validate({
+    ...sources,
+    byFile: {
+      ...sources.byFile,
+      [strayFile]: `${sources.byFile[strayFile]}\nexport const restart = () => Updates.reloadAsync();\n`,
+    },
+  });
+  if (!strayReload.some((failure) => failure.includes("restarts the app directly"))) {
+    console.error("#2107 self-test: a direct reloadAsync outside the runtime owner was not detected");
+    process.exit(1);
+  }
+  const devSettingsReload = validate({
+    ...sources,
+    byFile: {
+      ...sources.byFile,
+      [strayFile]: `${sources.byFile[strayFile]}\nDevSettings.reload();\n`,
+    },
+  });
+  if (devSettingsReload.length === 0) {
+    console.error("#2107 self-test: a DevSettings.reload call was not detected");
+    process.exit(1);
+  }
+  const unpausedCore = validate({
+    ...sources,
+    hostSafeReload: sources.hostSafeReload.replace("for (const step of dependencies.pause)", "for (const step of [])"),
+  });
+  if (unpausedCore.length === 0) {
+    console.error("#2107 self-test: a safeReload core that no longer pauses was not detected");
+    process.exit(1);
+  }
+  const unfencedSupabase = validate({
+    ...sources,
+    hostSupabase: sources.hostSupabase.replace("withRestartFence({", "({"),
+  });
+  if (unfencedSupabase.length === 0) {
+    console.error("#2107 self-test: a Supabase client outside the restart fence was not detected");
+    process.exit(1);
+  }
   console.log(
-    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish and blocking foreground all caught).",
+    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish, blocking foreground, bypassed restart, stray restart, DevSettings restart, unpaused core and unfenced Supabase all caught).",
   );
 }
 
