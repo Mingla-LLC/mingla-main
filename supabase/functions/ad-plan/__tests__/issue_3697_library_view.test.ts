@@ -46,7 +46,7 @@ const TOMBSTONE = videoCreative({
   purged_at: "2026-10-18T13:00:00.000Z",
   created_at: "2026-10-16T09:00:00.000Z",
 });
-const HOST_IMAGE = {
+const HOST_IMAGE: Record<string, unknown> = {
   ...videoCreative({
     id: "c0000000-0000-4000-8000-000000000005",
     name: "Brunch still",

@@ -5,9 +5,11 @@
 // Proves: an archived creative is refused for a NEW selection (409) but a plan
 // whose current version already carries it can freeze a new version; a purged
 // creative is refused (410); a delete with any blocker never destroys media;
-// a clear delete destroys, then records the tombstone with the checked time;
-// a destroy failure changes nothing; only an Admin may delete; the typed
-// DELETE phrase is required.
+// a clear delete records the tombstone (the database re-checks under the row
+// lock), then destroys the file through the one guarded provider delete,
+// which re-reads live references and stamps the source job; a destroy
+// failure is reported and retryable on the tombstone; only an Admin may
+// delete; the typed DELETE phrase is required.
 //
 // FAILS ON REVERT: drop the creativeSelectionError call in creative_reuse or
 // create_version, or drop the blocker / phrase checks in
@@ -122,61 +124,122 @@ Deno.test("#3697 a plan already frozen with an archived creative can freeze its 
   assertEquals(carried.body.detail === "creative_not_reusable", false);
 });
 
+function destroyer(result: { ok: true } | { ok: false; reason: string } = { ok: true }) {
+  const destroyed: string[] = [];
+  return {
+    destroyed,
+    reapDeps: {
+      destroyCoverVideoAsset: (row: { source_asset_id?: unknown }) => {
+        destroyed.push(String(row.source_asset_id));
+        return Promise.resolve(result);
+      },
+    },
+  };
+}
+
 Deno.test("#3697 a delete with any blocker never destroys the media", async () => {
   for (const blocker of ["platform_ref", "campaign", "live_surface", "duplicate_creative"]) {
     const { db, recorded } = lifecycleDb(ARCHIVED, [blocker]);
-    const destroyed: string[] = [];
+    const media = destroyer();
     const result = await callAdPlan(handleAdPlan, db, "admin", {
       action: "creative_purge",
       creative_id: ARCHIVED.id,
       confirm_phrase: "DELETE",
-    }, { destroyVideo: (guid: string) => { destroyed.push(guid); return Promise.resolve({ ok: true }); } });
+    }, { reapDeps: media.reapDeps });
     assertEquals(result.status, 409, blocker);
     assertEquals(result.body.error, "creative_in_use");
     assertEquals(result.body.blockers, [blocker]);
-    assertEquals(destroyed, [], blocker);
+    assertEquals(media.destroyed, [], blocker);
     assertEquals(recorded, [], blocker);
   }
 });
 
-Deno.test("#3697 a clear delete destroys the media, then records the tombstone", async () => {
-  const { db, recorded } = lifecycleDb(ARCHIVED, []);
-  const order: string[] = [];
+Deno.test("#3697 a race the database catches under the row lock never destroys the media", async () => {
+  const { db } = lifecycleDb(ARCHIVED, []);
+  db.rpcs.ad_creative_record_purge = () => ({
+    error: { code: "55000", message: "ad_creative_purge_blocked:plan_version,campaign" },
+  });
+  const media = destroyer();
   const result = await callAdPlan(handleAdPlan, db, "admin", {
     action: "creative_purge",
     creative_id: ARCHIVED.id,
     confirm_phrase: "DELETE",
-  }, {
-    destroyVideo: (guid: string) => {
-      order.push(`destroy:${guid}`);
-      return Promise.resolve({ ok: true });
-    },
-  });
-  assertEquals(result.status, 200);
-  assertEquals(order, ["destroy:guid-house-0001"]);
-  assertEquals(recorded.length, 1);
-  assertEquals(recorded[0].p_creative_id, ARCHIVED.id);
-  assertEquals(recorded[0].p_admin_email, ADMIN.email);
-  assertEquals(typeof recorded[0].p_blockers_checked_at, "string");
-  const rpcOrder = db.rpcCalls.map((call) => call.name);
-  assertEquals(rpcOrder, ["ad_creative_purge_blockers", "ad_creative_record_purge"]);
+  }, { reapDeps: media.reapDeps });
+  assertEquals(result.status, 409);
+  assertEquals(result.body.blockers, ["plan_version", "campaign"]);
+  assertEquals(media.destroyed, []);
 });
 
-Deno.test("#3697 a failed destroy changes nothing; phrase and Admin role are required", async () => {
+Deno.test("#3697 a clear delete tombstones, then destroys through the guarded delete", async () => {
+  const { db, recorded } = lifecycleDb(ARCHIVED, [], {
+    event_cover_video_jobs: [{ id: ARCHIVED.source_job_id, reaped_at: null }],
+  });
+  db.rpcs.cover_video_guid_live_references = () => ({ data: [] });
+  const media = destroyer();
+  const result = await callAdPlan(handleAdPlan, db, "admin", {
+    action: "creative_purge",
+    creative_id: ARCHIVED.id,
+    confirm_phrase: "DELETE",
+  }, { reapDeps: media.reapDeps });
+  assertEquals(result.status, 200);
+  assertEquals(result.body.media_deleted, true);
+  assertEquals(media.destroyed, ["guid-house-0001"]);
+  assertEquals(recorded.length, 1);
+  assertEquals(recorded[0].p_admin_email, ADMIN.email);
+  assertEquals(typeof recorded[0].p_blockers_checked_at, "string");
+  assertEquals(db.rpcCalls.map((call) => call.name), [
+    "ad_creative_purge_blockers",
+    "ad_creative_record_purge",
+    "cover_video_guid_live_references",
+  ]);
+  // The guard excludes the creative's own source job and stamps it reaped.
+  assertEquals(db.rpcCalls[2].args, { p_guid: "guid-house-0001", p_exclude_job_id: ARCHIVED.source_job_id });
+  assertEquals(db.updates.map((update) => update.table), ["event_cover_video_jobs"]);
+});
+
+Deno.test("#3697 the guard refuses a file something still serves; a retry on the tombstone only retries the delete", async () => {
+  const { db, recorded } = lifecycleDb(ARCHIVED, []);
+  db.rpcs.cover_video_guid_live_references = () => ({ data: ["brand_cover"] });
+  const media = destroyer();
+  const refused = await callAdPlan(handleAdPlan, db, "admin", {
+    action: "creative_purge",
+    creative_id: ARCHIVED.id,
+    confirm_phrase: "DELETE",
+  }, { reapDeps: media.reapDeps });
+  assertEquals(refused.status, 502);
+  assertEquals(refused.body.error, "media_delete_failed");
+  assertEquals(refused.body.removed_from_library, true);
+  assertEquals(media.destroyed, []);
+
+  const tombstone = lifecycleDb({ ...ARCHIVED, purged_at: "2026-10-19T00:00:00.000Z" }, ["already_purged"]);
+  tombstone.db.rpcs.cover_video_guid_live_references = () => ({ data: [] });
+  const retried = await callAdPlan(handleAdPlan, tombstone.db, "admin", {
+    action: "creative_purge",
+    creative_id: ARCHIVED.id,
+    confirm_phrase: "DELETE",
+  }, { reapDeps: media.reapDeps });
+  assertEquals(retried.status, 200);
+  assertEquals(media.destroyed, ["guid-house-0001"]);
+  assertEquals(tombstone.recorded, []);
+  assertEquals(recorded.length, 1);
+});
+
+Deno.test("#3697 a provider failure is reported; phrase and Admin role are required", async () => {
   const failed = lifecycleDb(ARCHIVED, []);
+  failed.db.rpcs.cover_video_guid_live_references = () => ({ data: [] });
   const result = await callAdPlan(handleAdPlan, failed.db, "admin", {
     action: "creative_purge",
     creative_id: ARCHIVED.id,
     confirm_phrase: "DELETE",
-  }, { destroyVideo: () => Promise.resolve({ ok: false, reason: "bunny_delete_http_500" }) });
+  }, { reapDeps: destroyer({ ok: false, reason: "bunny_delete_http_500" }).reapDeps });
   assertEquals(result.status, 502);
-  assertEquals(failed.recorded, []);
+  assertEquals(result.body.detail, "bunny_delete_http_500");
 
   const noPhrase = lifecycleDb(ARCHIVED, []);
   const unphrased = await callAdPlan(handleAdPlan, noPhrase.db, "admin", {
     action: "creative_purge",
     creative_id: ARCHIVED.id,
-  }, { destroyVideo: () => Promise.resolve({ ok: true }) });
+  }, { reapDeps: destroyer().reapDeps });
   assertEquals(unphrased.status, 400);
   assertEquals(noPhrase.recorded, []);
 
@@ -185,7 +248,7 @@ Deno.test("#3697 a failed destroy changes nothing; phrase and Admin role are req
     action: "creative_purge",
     creative_id: ARCHIVED.id,
     confirm_phrase: "DELETE",
-  }, { destroyVideo: () => Promise.resolve({ ok: true }) });
+  }, { reapDeps: destroyer().reapDeps });
   assertEquals(host.status, 403);
   assertEquals(notAdmin.recorded, []);
 });

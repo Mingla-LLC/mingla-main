@@ -8,7 +8,7 @@
 --   L2  every blocker kind is reported: not_archived, campaign + plan_version,
 --       platform_ref, status_event, duplicate_creative, live_surface,
 --       legal_hold, not_video; an archived, unreferenced house video has none
---   L3  recording a purge tombstones the row, stamps the source job reaped and
+--   L3  recording a purge re-checks every blocker, tombstones the row and
 --       writes one audit row; a replay changes nothing
 --   L4  the tombstone refuses UPDATE and DELETE; a live row refuses DELETE
 --   L5  the purge audit row refuses UPDATE and DELETE; other audit rows do not
@@ -177,6 +177,16 @@ BEGIN
     IF SQLERRM <> 'ad_creative_tombstone_immutable' THEN RAISE; END IF;
   END;
 
+  -- L3 the record re-checks every blocker under the row lock.
+  UPDATE public.brands SET cover_media_url='https://cdn.test/'||v_guid||'/play_1080p.mp4' WHERE id=v_brand;
+  BEGIN
+    PERFORM public.ad_creative_record_purge(v_c.id, v_admin, 'issue-3697-admin@test.local', now());
+    RAISE EXCEPTION 'L3 a referenced creative was tombstoned';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    IF SQLERRM NOT LIKE 'ad_creative_purge_blocked:%live_surface%' THEN RAISE; END IF;
+  END;
+  UPDATE public.brands SET cover_media_url=NULL WHERE id=v_brand;
+
   -- L3 record the purge.
   BEGIN
     PERFORM public.ad_creative_record_purge(v_img.id, v_admin, '', now());
@@ -187,8 +197,10 @@ BEGIN
   IF v_c.purged_at IS NULL OR v_c.purged_by IS DISTINCT FROM v_admin OR v_c.status <> 'archived' THEN
     RAISE EXCEPTION 'L3 the tombstone was not recorded';
   END IF;
-  IF (SELECT reaped_at FROM public.event_cover_video_jobs WHERE id=v_job.id) IS NULL THEN
-    RAISE EXCEPTION 'L3 the source job was not stamped reaped';
+  -- The media file is destroyed afterwards by the guarded provider delete,
+  -- which stamps the job; recording the tombstone never claims it.
+  IF (SELECT reaped_at FROM public.event_cover_video_jobs WHERE id=v_job.id) IS NOT NULL THEN
+    RAISE EXCEPTION 'L3 the tombstone claimed the media was destroyed';
   END IF;
   SELECT count(*), min(id::text)::uuid INTO v_n, v_audit FROM public.admin_audit_log
     WHERE action='ad_creative_purge' AND target_id=v_c.id::text;
@@ -211,9 +223,9 @@ BEGIN
   END;
   BEGIN
     PERFORM public.ad_creative_record_purge(v_img.id, v_admin, 'issue-3697-admin@test.local', now());
-    PERFORM public.ad_creative_set_archived(v_img.id, false, v_admin);
-    RAISE EXCEPTION 'L3 restore of a purged image succeeded';
-  EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL;
+    RAISE EXCEPTION 'L3 an image was tombstoned as a video';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    IF SQLERRM NOT LIKE 'ad_creative_purge_blocked:%not_video%' THEN RAISE; END IF;
   END;
 
   -- L4 the tombstone is immutable.

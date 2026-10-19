@@ -322,10 +322,16 @@ export type LifecycleContext = {
   actor: { id: string; email?: string | null };
   isActiveAdmin: () => Promise<boolean>;
   canBrandPlan: (brandId: string) => Promise<boolean>;
-  /** Destroys the media file. A missing file counts as destroyed. */
-  destroyVideo: (
-    guid: string,
-  ) => Promise<{ ok: true } | { ok: false; reason: string }>;
+  /**
+   * The one guarded provider delete (coverVideoReap.destroyIfUnreferenced):
+   * it re-reads every live reference to the file and stamps the source job.
+   */
+  destroyMedia: (row: {
+    id: string;
+    provider: string;
+    source_asset_id: string;
+    target_kind: string;
+  }) => Promise<{ outcome: string; reason?: string; kinds?: string[] }>;
   now?: () => Date;
 };
 
@@ -386,7 +392,9 @@ export async function handleCreativeLifecycleAction(
   }
   const { data: creative, error: loadError } = await ctx.db
     .from("ad_creatives")
-    .select("id,name,kind,status,brand_id,source,bunny_video_id,purged_at")
+    .select(
+      "id,name,kind,status,brand_id,source,bunny_video_id,source_job_id,source_job_ref,purged_at",
+    )
     .eq("id", creativeId)
     .maybeSingle();
   if (loadError) {
@@ -427,80 +435,103 @@ export async function handleCreativeLifecycleAction(
     return { status: 403, body: { error: "forbidden" } };
   }
   const checkedAt = (ctx.now ?? (() => new Date()))().toISOString();
-  const { data: blockerData, error: blockerError } = await ctx.db.rpc(
-    "ad_creative_purge_blockers",
-    { p_creative_id: creativeId },
-  );
-  if (blockerError) return lifecycleRpcFailure(blockerError);
-  const blockers = Array.isArray(blockerData)
-    ? blockerData.filter((value): value is string => typeof value === "string")
-    : null;
-  if (blockers === null) {
-    // An unreadable answer is never treated as "nothing references it".
-    return {
-      status: 502,
-      body: { error: "creative_lifecycle_failed", detail: "blockers_unreadable" },
-    };
-  }
-  if (action === "creative_purge_check") {
-    return { status: 200, body: { ok: true, blockers, checked_at: checkedAt } };
-  }
-  if (body.confirm_phrase !== "DELETE") {
+  if (action === "creative_purge" && body.confirm_phrase !== "DELETE") {
     return {
       status: 400,
       body: { error: "validation_error", detail: "confirm_phrase_must_be_DELETE" },
     };
   }
-  if (blockers.length > 0) {
-    // Something started using it after the menu was opened: re-checked here.
-    return { status: 409, body: { error: "creative_in_use", blockers } };
+
+  let tombstone: Row | null = creative.purged_at ? creative : null;
+  if (!tombstone) {
+    const { data: blockerData, error: blockerError } = await ctx.db.rpc(
+      "ad_creative_purge_blockers",
+      { p_creative_id: creativeId },
+    );
+    if (blockerError) return lifecycleRpcFailure(blockerError);
+    const blockers = Array.isArray(blockerData)
+      ? blockerData.filter((value): value is string => typeof value === "string")
+      : null;
+    if (blockers === null) {
+      // An unreadable answer is never treated as "nothing references it".
+      return {
+        status: 502,
+        body: { error: "creative_lifecycle_failed", detail: "blockers_unreadable" },
+      };
+    }
+    if (action === "creative_purge_check") {
+      return { status: 200, body: { ok: true, blockers, checked_at: checkedAt } };
+    }
+    if (blockers.length > 0) {
+      return { status: 409, body: { error: "creative_in_use", blockers } };
+    }
+    // The database re-checks every blocker under the row lock, then records
+    // the tombstone and the immutable audit row in one transaction.
+    const { data: recorded, error: recordError } = await ctx.db.rpc(
+      "ad_creative_record_purge",
+      {
+        p_creative_id: creativeId,
+        p_actor: ctx.actor.id,
+        p_admin_email: ctx.actor.email ?? "",
+        p_blockers_checked_at: checkedAt,
+      },
+    );
+    if (recordError) {
+      const message = recordError.message ?? "";
+      if (message.includes("ad_creative_purge_blocked:")) {
+        // Something started using it after the menu was opened.
+        const raced = message.split("ad_creative_purge_blocked:")[1]?.split(",")
+          .map((value: string) => value.trim()).filter(Boolean) ?? [];
+        return { status: 409, body: { error: "creative_in_use", blockers: raced } };
+      }
+      return lifecycleRpcFailure(recordError);
+    }
+    tombstone = (Array.isArray(recorded) ? recorded[0] : recorded) as Row | null;
+  } else if (action === "creative_purge_check") {
+    return {
+      status: 200,
+      body: { ok: true, blockers: ["already_purged"], checked_at: checkedAt },
+    };
   }
+
+  // Destroy the file through the one guarded provider delete. A tombstoned
+  // creative is no longer a reference to its own file, so the guard proceeds
+  // unless something else still serves it. A failure is retryable: calling
+  // creative_purge again on the tombstone retries only this step.
   const guid = typeof creative.bunny_video_id === "string"
     ? creative.bunny_video_id
     : "";
-  if (!guid) {
-    return { status: 409, body: { error: "creative_in_use", blockers: ["not_video"] } };
-  }
-  const destroyed = await ctx.destroyVideo(guid);
-  if (!destroyed.ok) {
-    console.error("[ad-plan] creative purge destroy failed", {
-      creativeId,
-      reason: destroyed.reason,
-    });
+  const sourceJob = typeof creative.source_job_id === "string"
+    ? creative.source_job_id
+    : typeof creative.source_job_ref === "string"
+    ? creative.source_job_ref
+    : "";
+  const outcome = guid
+    ? await ctx.destroyMedia({
+      id: sourceJob,
+      provider: "bunny",
+      source_asset_id: guid,
+      target_kind: "ad_creative",
+    })
+    : { outcome: "no_asset" };
+  const purgedAt = tombstone?.purged_at ?? null;
+  if (outcome.outcome === "destroyed" || outcome.outcome === "no_asset") {
     return {
-      status: 502,
-      body: { error: "media_delete_failed", detail: destroyed.reason },
+      status: 200,
+      body: { ok: true, creative: { id: creativeId, purged_at: purgedAt }, media_deleted: true },
     };
   }
-  const { data: tombstone, error: recordError } = await ctx.db.rpc(
-    "ad_creative_record_purge",
-    {
-      p_creative_id: creativeId,
-      p_actor: ctx.actor.id,
-      p_admin_email: ctx.actor.email ?? "",
-      p_blockers_checked_at: checkedAt,
-    },
-  );
-  if (recordError) {
-    // The file is already gone; say so loudly so an operator can finish the
-    // tombstone (the reaper never re-destroys: a missing file is a no-op).
-    console.error("[ad-plan] creative purge record failed after destroy", {
-      creativeId,
-      code: recordError.code ?? null,
-      message: recordError.message ?? null,
-    });
-    const failure = lifecycleRpcFailure(recordError);
-    return {
-      status: failure.status === 404 ? 404 : 500,
-      body: { error: "purge_record_failed", media_deleted: true },
-    };
-  }
-  const row = (Array.isArray(tombstone) ? tombstone[0] : tombstone) as Row | null;
+  console.error("[ad-plan] creative purge: media not destroyed yet", {
+    creativeId,
+    outcome: outcome.outcome,
+    reason: outcome.reason ?? null,
+  });
   return {
-    status: 200,
+    status: 502,
     body: {
-      ok: true,
-      creative: { id: creativeId, purged_at: row?.purged_at ?? null },
+      error: "media_delete_failed",
+      removed_from_library: true,
+      detail: outcome.reason ?? outcome.outcome,
     },
   };
 }

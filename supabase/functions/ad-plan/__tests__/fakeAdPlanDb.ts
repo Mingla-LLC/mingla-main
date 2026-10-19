@@ -36,12 +36,18 @@ class Query {
   private orders: { column: string; ascending: boolean }[] = [];
   private max: number | null = null;
   private countOnly = false;
+  private pendingUpdate: Row | null = null;
 
   constructor(private readonly db: FakeAdPlanDb, private readonly table: string) {}
 
   select(_columns?: string, options?: { count?: string; head?: boolean }) {
     this.db.calls.push({ table: this.table, op: "select" });
     if (options?.head) this.countOnly = true;
+    return this;
+  }
+  update(values: Row) {
+    this.db.calls.push({ table: this.table, op: "update" });
+    this.pendingUpdate = values;
     return this;
   }
   eq(column: string, value: unknown) {
@@ -114,6 +120,11 @@ class Query {
   then<T>(resolve: (value: unknown) => T, reject?: (reason: unknown) => T) {
     try {
       const rows = this.rows();
+      if (this.pendingUpdate) {
+        for (const row of rows) Object.assign(row, this.pendingUpdate);
+        this.db.updates.push({ table: this.table, values: this.pendingUpdate, count: rows.length });
+        return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+      }
       return Promise.resolve(
         this.countOnly
           ? { data: null, error: null, count: rows.length }
@@ -128,6 +139,7 @@ class Query {
 export class FakeAdPlanDb {
   calls: { table: string; op: string }[] = [];
   rpcCalls: { name: string; args: Row }[] = [];
+  updates: { table: string; values: Row; count: number }[] = [];
   readonly auth: { getUser: (token: string) => Promise<unknown> };
 
   constructor(

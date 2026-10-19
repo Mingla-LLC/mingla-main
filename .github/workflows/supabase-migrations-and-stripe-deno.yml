@@ -235,6 +235,18 @@ on:
       - "supabase/functions/support-grant-staff/**"
       # #3720 Slice F — Community & Support console
       - "mingla-admin/src/__tests__/issue_3720_community_support_console.implementor.happy.test.js"
+      # #3697 Creative Library: the Admin client suites and the files they read.
+      - "mingla-admin/src/services/__tests__/adminVideoUpload.issue3697.test.js"
+      - "mingla-admin/src/services/__tests__/adminVideoUpload.issue3697.minDuration.test.js"
+      - "mingla-admin/src/pages/__tests__/creativeLibrary.issue3697.test.js"
+      - "mingla-admin/src/pages/__tests__/creativeLibraryFit.issue3697.test.js"
+      - "mingla-admin/src/services/adminVideoUpload.js"
+      - "mingla-admin/src/services/adEngineService.js"
+      - "mingla-admin/src/components/ad-engine/**"
+      - "mingla-admin/src/components/campaign-builder/StepCreative.jsx"
+      - "mingla-admin/src/pages/AdEnginePage.jsx"
+      - "mingla-admin/src/pages/CampaignBuilderPage.jsx"
+      - "packages/video-upload/**"
       - "mingla-admin/src/services/communityService.js"
       - "mingla-admin/src/components/community/**"
       - "mingla-admin/src/pages/**"
@@ -480,6 +492,18 @@ on:
       - "supabase/functions/support-grant-staff/**"
       # #3720 Slice F — Community & Support console
       - "mingla-admin/src/__tests__/issue_3720_community_support_console.implementor.happy.test.js"
+      # #3697 Creative Library: the Admin client suites and the files they read.
+      - "mingla-admin/src/services/__tests__/adminVideoUpload.issue3697.test.js"
+      - "mingla-admin/src/services/__tests__/adminVideoUpload.issue3697.minDuration.test.js"
+      - "mingla-admin/src/pages/__tests__/creativeLibrary.issue3697.test.js"
+      - "mingla-admin/src/pages/__tests__/creativeLibraryFit.issue3697.test.js"
+      - "mingla-admin/src/services/adminVideoUpload.js"
+      - "mingla-admin/src/services/adEngineService.js"
+      - "mingla-admin/src/components/ad-engine/**"
+      - "mingla-admin/src/components/campaign-builder/StepCreative.jsx"
+      - "mingla-admin/src/pages/AdEnginePage.jsx"
+      - "mingla-admin/src/pages/CampaignBuilderPage.jsx"
+      - "packages/video-upload/**"
       - "mingla-admin/src/services/communityService.js"
       - "mingla-admin/src/components/community/**"
       - "mingla-admin/src/pages/**"
@@ -693,6 +717,16 @@ jobs:
       - name: "#3720 Slice F — Community & Support console (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_community_support_console.implementor.happy.test.js
+      - name: "Issue #3697 — Admin video upload rides the shared lane; the library and Builder honour fit, archive and delete"
+        working-directory: mingla-admin
+        run: >-
+          node --test
+          src/services/__tests__/adminVideoUpload.issue3697.test.js
+          src/services/__tests__/adminVideoUpload.issue3697.minDuration.test.js
+          src/pages/__tests__/creativeLibrary.issue3697.test.js
+          src/pages/__tests__/creativeLibraryFit.issue3697.test.js
+          src/__tests__/issue3697_v14_creative_library.test.js
+          src/__tests__/issue3697_v14_admin_ads_ia.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}

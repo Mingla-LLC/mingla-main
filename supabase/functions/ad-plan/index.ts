@@ -39,13 +39,12 @@ import {
   LIBRARY_CREATIVE_COLUMNS,
   LIBRARY_PAGE_SIZE,
   LIFECYCLE_ACTIONS,
-  type LifecycleContext,
   namePattern,
   parseLibraryFilters,
   pendingLibraryItems,
   storedCreativeValidation,
 } from "../_shared/adCreativeLifecycle.ts";
-import { bunnyDeleteVideo } from "../_shared/bunnyStream.ts";
+import { destroyIfUnreferenced, type ReapDeps } from "../_shared/coverVideoReap.ts";
 import { PLATFORMS } from "../_shared/adChannelCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -569,7 +568,8 @@ async function getPlanAggregate(db: Db, plan: Plan) {
 /** Test seams. Production uses the service-role client and Bunny. */
 export type AdPlanDeps = {
   db?: Db;
-  destroyVideo?: LifecycleContext["destroyVideo"];
+  /** The provider delete inside the guarded path (tests stub the network). */
+  reapDeps?: ReapDeps;
 };
 
 export async function handleAdPlan(
@@ -1115,7 +1115,9 @@ export async function handleAdPlan(
           });
           return !error && data === true;
         },
-        destroyVideo: deps.destroyVideo ?? ((guid) => bunnyDeleteVideo(guid)),
+        // The one guarded provider delete: it re-reads every live reference.
+        // Invariant I-VIDEO-SINGLE-GUARDED-DELETE (declared in supabase/functions/_shared/__tests__/coverVideoReap.singleDeletePath.issue3040.test.ts)
+        destroyMedia: (row) => destroyIfUnreferenced(db, row, deps.reapDeps),
       },
     );
     return json(result.body, result.status);

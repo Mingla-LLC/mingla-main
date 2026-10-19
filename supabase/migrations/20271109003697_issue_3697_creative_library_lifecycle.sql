@@ -236,11 +236,13 @@ BEGIN
   RETURN c;
 END $f$;
 
--- ── 5b. Record a permanent delete after the media file is destroyed. ──────────
--- The caller re-checks ad_creative_purge_blockers immediately before it
--- destroys the file; once the file is gone this records the tombstone, stamps
--- the source lane job as reaped (so no reaper tries again) and writes the
--- immutable audit row, all in one transaction. A replay returns the tombstone.
+-- ── 5b. Record a permanent delete. ─────────────────────────────────────────
+-- Re-checks every blocker under the row lock (the server-side re-check at
+-- delete time), then tombstones the row and writes the immutable audit row in
+-- one transaction. Only after this does the caller destroy the media file,
+-- through the one guarded provider delete (which also stamps the source job
+-- reaped): once tombstoned, the creative no longer counts as a live reference
+-- to its own file. A replay returns the tombstone unchanged.
 CREATE OR REPLACE FUNCTION public.ad_creative_record_purge(
   p_creative_id uuid,
   p_actor uuid,
@@ -250,6 +252,7 @@ CREATE OR REPLACE FUNCTION public.ad_creative_record_purge(
 DECLARE
   c public.ad_creatives;
   v_job uuid;
+  v_blockers text[];
 BEGIN
   IF p_admin_email IS NULL OR length(btrim(p_admin_email)) = 0 THEN
     RAISE EXCEPTION 'ad_creative_purge_actor_required' USING ERRCODE = '22023';
@@ -261,19 +264,16 @@ BEGIN
   IF c.purged_at IS NOT NULL THEN
     RETURN c;
   END IF;
-  IF c.status <> 'archived' THEN
-    RAISE EXCEPTION 'ad_creative_not_archived' USING ERRCODE = '55000';
+  v_blockers := public.ad_creative_purge_blockers(p_creative_id);
+  IF cardinality(v_blockers) > 0 THEN
+    RAISE EXCEPTION 'ad_creative_purge_blocked:%', array_to_string(v_blockers, ',')
+      USING ERRCODE = '55000';
   END IF;
   v_job := coalesce(c.source_job_id, c.source_job_ref);
   UPDATE public.ad_creatives
   SET purged_at = now(), purged_by = p_actor
   WHERE id = p_creative_id
   RETURNING * INTO c;
-  IF v_job IS NOT NULL THEN
-    UPDATE public.event_cover_video_jobs
-    SET reaped_at = coalesce(reaped_at, now())
-    WHERE id = v_job;
-  END IF;
   INSERT INTO public.admin_audit_log(admin_email, action, target_type, target_id, metadata, actor_uid)
   VALUES (
     p_admin_email,
@@ -315,7 +315,7 @@ COMMENT ON FUNCTION public.ad_creative_purge_blockers(uuid) IS
 COMMENT ON FUNCTION public.ad_creative_set_archived(uuid,boolean,uuid) IS
   'Issue #3697 archive or restore a creative. Idempotent; refuses a tombstone.';
 COMMENT ON FUNCTION public.ad_creative_record_purge(uuid,uuid,text,timestamptz) IS
-  'Issue #3697 record a permanent delete after the media file is destroyed: tombstone, reaped source job, immutable audit row.';
+  'Issue #3697 re-check every blocker under the row lock, then tombstone the creative and write the immutable audit row. The media file is destroyed afterwards through the guarded provider delete.';
 COMMENT ON FUNCTION public.cover_video_guid_live_references(text,uuid) IS
   'Issue #3040 the live surfaces still serving a provider asset. A non-empty answer forbids destroying it. A tombstoned creative is not a reference (#3697).';
 

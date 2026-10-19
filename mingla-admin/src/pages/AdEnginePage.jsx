@@ -593,11 +593,22 @@ function CreativeLibraryPanel() {
         setPurge((current) => ({ ...current, [target.id]: { blockers: parsed.body.blockers ?? ["campaign"] } }));
         return;
       }
-      setDeleteError(
-        parsed?.body?.error === "media_delete_failed"
-          ? "Couldn't delete the file right now. Nothing changed. Try again in a moment."
-          : String(parsed?.message ?? "Couldn't delete it. Try again."),
-      );
+      if (parsed?.body?.removed_from_library) {
+        // Gone from the library (immutable record kept); the file delete is
+        // retryable on its own.
+        setDeleteTarget(null);
+        setDeletePhrase("");
+        hide(target.id);
+        addToast({
+          variant: "warning",
+          title: "Removed from the library",
+          description: "The video file couldn't be deleted yet. Try again in a moment.",
+          action: { label: "Try again", onClick: () => void retryFileDelete(target) },
+        });
+        void load();
+        return;
+      }
+      setDeleteError(String(parsed?.message ?? "Couldn't delete it. Try again."));
       return;
     }
     setDeleteTarget(null);
@@ -605,6 +616,20 @@ function CreativeLibraryPanel() {
     hide(target.id);
     addToast({ variant: "success", title: "Deleted permanently." });
     void load();
+  };
+
+  const retryFileDelete = async (target) => {
+    const { error: retryError } = await purgeCreative(target.id);
+    if (retryError) {
+      addToast({
+        variant: "error",
+        title: "The video file still couldn't be deleted",
+        description: "It stays out of the library. Try again later.",
+        action: { label: "Try again", onClick: () => void retryFileDelete(target) },
+      });
+      return;
+    }
+    addToast({ variant: "success", title: "Deleted permanently." });
   };
 
   const requestCancel = (entry) => {
