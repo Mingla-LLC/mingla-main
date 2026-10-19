@@ -7,6 +7,7 @@
  */
 
 import { supabase } from "./supabase";
+import type { AdVideoFit } from "../utils/adVideoFit";
 
 const PREPARED_VIDEO_PLATFORMS = new Set([
   "meta",
@@ -76,6 +77,11 @@ export type HostAdCreative = {
   duration_seconds: number | null;
   aspect_ratio: number | null;
   created_at: string;
+  /**
+   * #3040 AD-04 — per connected platform, judged server-side by the shared ads
+   * channel matrix. Absent on servers older than #3040.
+   */
+  fit?: AdVideoFit[];
 };
 
 export type HostAdPlanRow = {

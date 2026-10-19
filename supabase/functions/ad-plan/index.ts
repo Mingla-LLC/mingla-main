@@ -26,6 +26,7 @@ import {
 import type { AdConnectionRow, Platform } from "../_shared/adChannelCore.ts";
 import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
+import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -712,7 +713,7 @@ serve(async (req: Request): Promise<Response> => {
           .order("platform"),
         db.from("ad_creatives")
           .select(
-            "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at",
+            "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at,width,height,has_audio,mime_type,byte_size,variants",
           )
           .eq("brand_id", brandId).eq("kind", "video").eq("status", "active")
           .order("created_at", { ascending: false }).limit(100),
@@ -736,7 +737,12 @@ serve(async (req: Request): Promise<Response> => {
       currency: authority.currency,
       pages: pages.data ?? [],
       connections: connections.data ?? [],
-      creatives: creatives.data ?? [],
+      // #3040 AD-04 — each video's fit on the brand's connected platforms,
+      // judged by the same channel matrix as every ads gate.
+      creatives: withHostCreativeFit(
+        creatives.data ?? [],
+        connections.data ?? [],
+      ),
       plans: plans.data ?? [],
     });
   }

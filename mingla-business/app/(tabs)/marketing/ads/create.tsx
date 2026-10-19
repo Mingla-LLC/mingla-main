@@ -52,6 +52,7 @@ import type {
 import { loadHostAdPlanService } from "../../../../src/services/lazyHostAdPlanService";
 import { hostAdOwnerKey } from "../../../../src/services/eventCoverVideoEdgeContract";
 import { randomUuid } from "../../../../src/utils/randomId";
+import { formatAdFitSummary } from "../../../../src/utils/adVideoFit";
 
 const PLATFORM_LABELS: Record<string, string> = {
   meta: "Meta",
@@ -341,6 +342,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
   // The job running in the sheet, for the button's own spinner only.
   const [adVideoProcessing, setAdVideoProcessing] = useState(false);
   const linkedCreativeIdRef = useRef<string | null>(null);
+  // #3040 AD-04 — the fit sentence for the video this sheet holds, from the
+  // server's per-platform fit (the same matrix every ads gate uses).
+  const adVideoFitSummary = useMemo((): string | null => {
+    const id = adVideoPatch.adCreativeId ?? linkedCreativeIdRef.current;
+    const held = id ? setup?.creatives.find((item) => item.id === id) : undefined;
+    return formatAdFitSummary((held ?? creative)?.fit);
+  }, [adVideoPatch.adCreativeId, creative, setup]);
   // AD-05 — a creative that exists server-side but did not link here yet:
   // "Try linking again" re-links the SAME id, never re-uploads.
   const [unlinkedCreativeId, setUnlinkedCreativeId] = useState<string | null>(null);
@@ -2377,6 +2385,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
         mediaMode="video-only"
         title="Ad video"
         confirmLabel="Use this ad video"
+        // #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920."
+        adFitSummary={adVideoFitSummary}
       />
     </View>
   );
