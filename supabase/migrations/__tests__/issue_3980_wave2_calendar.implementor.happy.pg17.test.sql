@@ -504,10 +504,10 @@ begin
   perform pg_temp.t3980_like('W2-BACK', 'the reason is in the agent log',
     (select summary from public.ops_agent_log where card_id = pg_temp.t3980_id('cp')::uuid and action = 'updated' and via = 'claude' order by id desc limit 1),
     'Card % no longer needs a person: The host paid for the boost themselves.');
-  perform pg_temp.t3980_like('W2-BACK', 'the watcher is told, with the reason',
-    (select m.body_excerpt from public.team_mentions m join t3980_people p on p.id = m.target_user_id
-      where m.source_kind = 'work_card' and p.who = 'admin' and m.deep_link like '%' || pg_temp.t3980_id('cp') order by m.created_at desc limit 1),
-    '%moved W3980 approve the poster boost back to To do from Needs a person: The host paid for the boost themselves.');
+  perform pg_temp.t3980_check('W2-BACK', 'the watcher is told, with the reason',
+    (select count(*) from public.team_mentions m join t3980_people p on p.id = m.target_user_id
+      where m.source_kind = 'work_card' and p.who = 'admin' and m.deep_link like '%' || pg_temp.t3980_id('cp')
+        and m.body_excerpt like '%moved W3980 approve the poster boost back to To do from Needs a person: The host paid for the boost themselves.')::text, '1');
   perform pg_temp.t3980_check('W2-BACK', 'the history keeps the reason',
     (select body from public.ops_work_events where card_id = pg_temp.t3980_id('cp')::uuid and action = 'status' order by at desc limit 1),
     'The host paid for the boost themselves.');
