@@ -43,7 +43,7 @@ const nocrm = { email: "x@test.local", role: "growth", status: "active", areas: 
 Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, in order", () => {
   const pipeline = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Pipeline");
   assertEquals(
-    pipeline.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
+    pipeline?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
     [
       "hosts:Hosts:Handshake",
       "creators:Creators:Sparkles",
