@@ -86,8 +86,20 @@ function providerFeeFromCharge(
   if (bt && typeof bt === "object") {
     const row = bt as Record<string, unknown>;
     const fee = Number(row.fee);
+    // Issue #3872: on a direct charge `fee` also contains Mingla's application
+    // fee (fee_details type "application_fee"), which the release deducts
+    // separately. Keep only the provider's own fee (Stripe always sends
+    // fee_details on a balance transaction).
+    const details = Array.isArray(row.fee_details) ? row.fee_details : [];
+    const applicationFee = details
+      .filter((d) => (d as Record<string, unknown>)?.type === "application_fee")
+      .reduce((sum, d) => sum + Number((d as Record<string, unknown>).amount ?? 0), 0);
+    const providerFee = fee - applicationFee;
     return {
-      feeCents: Number.isSafeInteger(fee) && fee >= 0 ? fee : null,
+      feeCents: Number.isSafeInteger(providerFee) && providerFee >= 0 &&
+          Number.isSafeInteger(applicationFee) && applicationFee >= 0
+        ? providerFee
+        : null,
       balanceTransactionId: objectId(row.id),
     };
   }

@@ -67,7 +67,11 @@ export type TaxBasis =
   // ASSIGN their own literals; ticket-checkout's `taxBasis !== "venue_resolved"`
   // check safely falls to taxCents=0 if ever reached — but the contribution path
   // lives in its own fn and never touches those files).
-  | "voluntary_contribution";
+  | "voluntary_contribution"
+  // Issue #3872 — hosted Stripe Checkout: the provider computes tax on the paid
+  // page (automatic_tax). The create-time breakdown records the pre-tax line item;
+  // payment reconciles buyer_total/tax from the Checkout Session's amount_total.
+  | "provider_hosted_checkout";
 
 // ORCH-1034 — per-region inclusive-VAT divisor (1 + VAT rate) used ONLY to
 // re-derive the display tax portion from Stripe's amount_total for INCLUSIVE

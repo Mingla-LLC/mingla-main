@@ -32,6 +32,11 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
+import {
+  isRefundLineRequest,
+  type RefundLineRequest,
+  serverRefundLines,
+} from "../_shared/refundServerLines.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
 import {
@@ -57,29 +62,17 @@ import {
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
 
-interface RefundLineInput {
-  order_line_item_id: string;
-  quantity: number;
-  amount_cents: number;
-}
 
 interface RefundOrderRequest {
   order_id: string;
-  lines: RefundLineInput[];
+  lines: RefundLineRequest[];
   reason: string;
 }
 
-function isRefundLine(value: unknown): value is RefundLineInput {
-  const row = value as Partial<RefundLineInput>;
-  return (
-    typeof row.order_line_item_id === "string" &&
-    row.order_line_item_id.length > 0 &&
-    Number.isInteger(row.quantity) &&
-    Number(row.quantity) > 0 &&
-    Number.isInteger(row.amount_cents) &&
-    Number(row.amount_cents) > 0
-  );
-}
+// Issue #3872 (F4): a line names an order line and a quantity. Any
+// amount_cents is accepted for older Host apps, but biz_refund_order prices the
+// line on the server; this function uses the RPC's returned lines.
+const isRefundLine = isRefundLineRequest;
 
 function mapRpcErrorToHttp(errorMessage: string): {
   code: string;
@@ -115,6 +108,9 @@ function mapRpcErrorToHttp(errorMessage: string): {
   }
   if (msg.includes("refund_amount_zero")) {
     return { code: "refund_amount_zero", status: 422, detail: errorMessage };
+  }
+  if (msg.includes("refund_exceeds_remaining")) {
+    return { code: "refund_exceeds_remaining", status: 422, detail: errorMessage };
   }
   if (msg.includes("refund_not_found")) {
     return { code: "refund_not_found", status: 404, detail: errorMessage };
@@ -517,7 +513,7 @@ serve(async (req: Request): Promise<Response> => {
           reference: `mingla_refund:${refundId}`,
           expand: ["line_items"],
           ...(isFullRefund ? {} : {
-            line_items: lines.map((line) => ({
+            line_items: serverRefundLines(pending).map((line) => ({
               amount: -line.amount_cents,
               reference: `line:${line.order_line_item_id}`,
             })),
@@ -622,7 +618,7 @@ serve(async (req: Request): Promise<Response> => {
         template_key: "buyer_refund_issued",
         amount_cents: amountCents,
         currency: String(orderDetail.currency ?? currency),
-        refund_lines: lines,
+        refund_lines: serverRefundLines(pending),
         reason: reason.trim(),
         is_full_refund: pending.is_full_refund === true,
         stripe_refund_id: stripeRefund.id,

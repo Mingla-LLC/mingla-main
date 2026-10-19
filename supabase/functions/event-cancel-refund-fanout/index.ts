@@ -226,9 +226,13 @@ async function refundOneOrder(
     return { result: "refunded", refundId: row.refund_id };
   }
 
-  // ── Step 1: pending refund row (service_role twin). ──────────────────────────
+  // ── Step 1: pending refund row. ──────────────────────────────────────────────
+  // Issue #3872: a cancelled event returns what the buyer was charged (fees and
+  // added tax included) on every rail, not just the ticket lines. The RPC has
+  // admin_refund_order's response and idempotency shape; the commit twin below
+  // is unchanged.
   const { data: pendingResult, error: pendingError } = await supabase.rpc(
-    "admin_refund_order",
+    "issue_3872_cancel_refund_order",
     {
       p_order_id: orderId,
       p_lines: lines,
