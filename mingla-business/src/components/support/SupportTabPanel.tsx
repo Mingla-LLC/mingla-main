@@ -141,6 +141,9 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
           loading={creating}
           disabled={!canStart}
         />
+        {!canStart && !creating ? (
+          <Text style={styles.disabledHint}>Add a subject to start</Text>
+        ) : null}
       </GlassCard>
 
       <Text style={styles.sectionLabel}>My support requests</Text>
@@ -265,6 +268,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.12)",
     marginBottom: spacing.md,
+    letterSpacing: 0,
+  },
+  disabledHint: {
+    marginTop: spacing.xs,
+    textAlign: "center",
+    color: textTokens.tertiary,
+    fontSize: 12,
   },
   sectionLabel: {
     fontSize: 13,

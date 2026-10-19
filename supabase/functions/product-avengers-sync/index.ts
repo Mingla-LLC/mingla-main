@@ -5,6 +5,12 @@ import {
   ProductAvengersClient,
   type PublicProductReview,
 } from "../_shared/productAvengers.ts";
+import {
+  buildFeatureGuideDriftNote,
+  type FeatureGuideDriftRow,
+  featureGuideWeekStart,
+  pinnedFeatureSources,
+} from "../_shared/featureGuideDrift.ts";
 
 type Json = Record<string, unknown>;
 type AdminClient = ReturnType<typeof createClient>;
@@ -214,6 +220,14 @@ async function reconcile(
     }
   }
 
+  let featureGuideDrift = "not_due";
+  try {
+    featureGuideDrift = await postWeeklyFeatureGuideDrift(admin, github);
+  } catch {
+    featureGuideDrift = "failed";
+    failed += 1;
+  }
+
   const items = await admin
     .from("product_avengers_items")
     .select("issue_number")
@@ -242,8 +256,63 @@ async function reconcile(
     ok: true,
     commands_processed: commandCount,
     items_refreshed: refreshed,
+    feature_guide_drift: featureGuideDrift,
     failed,
   };
+}
+
+async function postWeeklyFeatureGuideDrift(
+  admin: AdminClient,
+  github: ProductAvengersClient,
+): Promise<string> {
+  const generatedAt = new Date();
+  const weekStart = featureGuideWeekStart(generatedAt);
+  const claimed = await admin.rpc("issue_3720_claim_feature_guide_drift", {
+    p_week_start: weekStart,
+  });
+  if (claimed.error?.code === "PGRST202") return "not_ready";
+  if (claimed.error) throw new Error("DRIFT_CLAIM_FAILED");
+  if (claimed.data !== true) return "not_due";
+
+  try {
+    const snapshot = await admin.rpc("issue_3720_feature_guide_drift_snapshot");
+    if (snapshot.error || !Array.isArray(snapshot.data)) {
+      throw new Error("DRIFT_SNAPSHOT_FAILED");
+    }
+    const entries = snapshot.data as FeatureGuideDriftRow[];
+    const sources = pinnedFeatureSources(entries);
+    const changedSources = await github.changedPinnedSources(sources);
+    const body = buildFeatureGuideDriftNote({
+      weekStart,
+      generatedAt,
+      entries,
+      changedSources,
+    });
+    const marker = `feature-guide-drift:${weekStart}`;
+    const commentId = await github.ensureIssueComment(3720, marker, body);
+    const completed = await admin.rpc(
+      "issue_3720_complete_feature_guide_drift",
+      {
+        p_week_start: weekStart,
+        p_comment_id: commentId,
+        p_summary: {
+          catalog_count: entries.length,
+          needs_review_count: entries.filter((entry) =>
+            entry.effective_status === "Needs review"
+          ).length,
+          source_change_count: changedSources.length,
+        },
+      },
+    );
+    if (completed.error) throw new Error("DRIFT_COMPLETE_FAILED");
+    return "posted";
+  } catch (error) {
+    await admin.rpc("issue_3720_fail_feature_guide_drift", {
+      p_week_start: weekStart,
+      p_error_code: safeCode(error),
+    });
+    throw error;
+  }
 }
 
 export async function handleProductAvengers(

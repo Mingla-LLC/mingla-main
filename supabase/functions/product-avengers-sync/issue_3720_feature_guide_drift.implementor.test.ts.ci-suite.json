@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/product-avengers-sync/issue_3720_feature_guide_drift.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-feature-guide-drift",
+  "profile": "deno-1.46-stripe"
+}

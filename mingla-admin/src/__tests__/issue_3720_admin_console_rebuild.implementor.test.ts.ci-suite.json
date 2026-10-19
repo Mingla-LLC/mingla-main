@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3720_admin_console_rebuild.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-admin-console-rebuild",
+  "profile": "deno-1.46-stripe"
+}

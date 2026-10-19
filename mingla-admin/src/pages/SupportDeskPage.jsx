@@ -103,7 +103,7 @@ async function invokeSupportFn(fnName, body) {
       if (status === 404) {
         return {
           ok: false,
-          error: `Support actions aren't live yet — "${fnName}" isn't deployed. The queue + thread are read-only until the support functions ship.`,
+          error: `Support actions aren't live yet. "${fnName}" isn't deployed, so the queue and thread are read-only until the support functions ship.`,
         };
       }
       if (isSessionExpiredError(error) || status === 401) {
@@ -414,7 +414,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
           priority: selectedTicket.priority,
         });
         setSelectedTicket((ticket) => ticket ? { ...ticket, status: nextStatus, workflow_revision: revision } : ticket);
-        addToast({ variant: "success", title: `Status → ${nextStatus}` });
+        addToast({ variant: "success", title: `Status: ${nextStatus}` });
         await loadQueue();
       } catch (error) {
         addToast({ variant: "error", title: "Couldn't change status", description: error.message });
@@ -426,7 +426,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
       });
       if (res.ok) {
         setSessionExpired(false);
-        addToast({ variant: "success", title: `Status → ${nextStatus}` });
+        addToast({ variant: "success", title: `Status: ${nextStatus}` });
         await logAdminAction("support.set_status", "support_ticket", selectedTicket.id, { status: nextStatus });
         setSelectedTicket((t) => (t ? { ...t, status: nextStatus } : t));
         await loadQueue();
@@ -449,7 +449,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
           priority: nextPriority,
         });
         setSelectedTicket((ticket) => ticket ? { ...ticket, priority: nextPriority, workflow_revision: revision } : ticket);
-        addToast({ variant: "success", title: `Priority → ${nextPriority}` });
+        addToast({ variant: "success", title: `Priority: ${nextPriority}` });
         await loadQueue();
       } catch (error) {
         addToast({ variant: "error", title: "Couldn't change priority", description: error.message });
@@ -461,7 +461,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
       });
       if (res.ok) {
         setSessionExpired(false);
-        addToast({ variant: "success", title: `Priority → ${nextPriority}` });
+        addToast({ variant: "success", title: `Priority: ${nextPriority}` });
         await logAdminAction("support.set_priority", "support_ticket", selectedTicket.id, { priority: nextPriority });
         setSelectedTicket((t) => (t ? { ...t, priority: nextPriority } : t));
         await loadQueue();
@@ -696,35 +696,33 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <>
+          <div className="divide-y divide-[var(--gray-200)] lg:hidden">
+            {visibleTickets.map((t) => {
+              const r = profilesById[t.requester_user_id];
+              return <button key={t.id} type="button" onClick={() => openTicket(t)} className="block w-full p-4 text-left hover:bg-[var(--gray-50)]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{t.subject}</p><p className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">{r ? profileLabel(r) : "No customer linked"}</p></div><Badge variant={STATUS_BADGE[t.status] || "default"}>{t.status}</Badge></div><div className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--color-text-tertiary)]"><span>Idle {timeAgo(t.last_message_at)}</span>{t.next_update_at ? <span className={hasActiveNextUpdate(t) ? "" : "font-semibold text-[var(--color-error-700)]"}>{formatDateTime(t.next_update_at)}</span> : <Badge variant="error">Promise needed</Badge>}</div></button>;
+            })}
+          </div>
+          <div className="hidden lg:block">
+            <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-[var(--gray-200)] text-left text-[var(--color-text-tertiary)]">
-                  <th className="py-2.5 px-4">Type</th>
-                  <th className="py-2.5 px-4">Requester</th>
-                  <th className="py-2.5 px-4">Subject</th>
-                  <th className="py-2.5 px-4">Status</th>
-                  <th className="py-2.5 px-4">Priority</th>
-                  <th className="py-2.5 px-4">Assigned</th>
-                  <th className="py-2.5 px-4">Next update</th>
-                  <th className="py-2.5 px-4">Last activity</th>
+                  <th className="w-[22%] py-2.5 px-4">Requester</th>
+                  <th className="w-[30%] py-2.5 px-4">Subject</th>
+                  <th className="w-[14%] py-2.5 px-4">Status</th>
+                  <th className="w-[12%] py-2.5 px-4">Idle</th>
+                  <th className="w-[22%] py-2.5 px-4">Next update</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleTickets.map((t) => {
                   const r = profilesById[t.requester_user_id];
-                  const a = t.assigned_staff_id ? profilesById[t.assigned_staff_id] : null;
                   return (
                     <tr
                       key={t.id}
                       onClick={() => openTicket(t)}
                       className="border-b border-[var(--gray-100)] hover:bg-[var(--gray-50)] cursor-pointer"
                     >
-                      <td className="py-2.5 px-4 whitespace-nowrap">
-                        <Badge variant={t.source_kind === "support_ticket" ? "brand" : "default"}>
-                          {t.source_label}
-                        </Badge>
-                      </td>
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-2 min-w-0">
                           <Avatar src={r?.avatar_url} name={r ? profileLabel(r) : "Internal"} size="sm" />
@@ -747,16 +745,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                       <td className="py-2.5 px-4">
                         <Badge variant={STATUS_BADGE[t.status] || "default"} dot>{t.status}</Badge>
                       </td>
-                      <td className="py-2.5 px-4">
-                        <Badge variant={PRIORITY_BADGE[t.priority] || "default"}>{t.priority}</Badge>
-                      </td>
-                      <td className="py-2.5 px-4">
-                        {a ? (
-                          <span className="text-[var(--color-text-secondary)] truncate">{profileLabel(a)}</span>
-                        ) : (
-                          <Badge variant="warning">Unassigned</Badge>
-                        )}
-                      </td>
+                      <td className="py-2.5 px-4 text-xs text-[var(--color-text-tertiary)] whitespace-nowrap">{timeAgo(t.last_message_at)}</td>
                       <td className="py-2.5 px-4 text-xs whitespace-nowrap">
                         {t.next_update_at ? (
                           <span className={hasActiveNextUpdate(t) ? "text-[var(--color-text-secondary)]" : "font-medium text-[var(--color-error-700)]"}>
@@ -766,15 +755,13 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                           <Badge variant="error">Promise needed</Badge>
                         )}
                       </td>
-                      <td className="py-2.5 px-4 text-xs text-[var(--color-text-tertiary)] whitespace-nowrap">
-                        {timeAgo(t.last_message_at)}
-                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          </>
         )}
       </SectionCard>
 

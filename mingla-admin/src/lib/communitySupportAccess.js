@@ -21,12 +21,16 @@ export function communitySupportTabsForAccess(access, tabs) {
   const allowed = new Set();
   if (canCommunity) {
     allowed.add("overview");
+    allowed.add("ideas");
+    allowed.add("questions");
     allowed.add("moderation");
   }
   if (canSupport) {
     allowed.add("support");
     allowed.add("feature-guide");
     allowed.add("brand-groups");
+    // Kept for old deep-link permission checks. The console no longer renders
+    // an Availability tab; presence lives in the page header.
     allowed.add("availability");
   }
   return tabs.filter((tab) => allowed.has(tab.id));

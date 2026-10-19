@@ -42,6 +42,7 @@ export function BrandGroupsPanel() {
   const fileInputRef = useRef(null);
   const [uploads, setUploads] = useState([]);
   const [filePreview, setFilePreview] = useState(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => () => {
@@ -112,6 +113,11 @@ export function BrandGroupsPanel() {
     () => messages.filter((message) => selectedMessageIds.includes(message.id)),
     [messages, selectedMessageIds],
   );
+  const visibleGroups = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return needle ? groups.filter((group) => group.brand_name?.toLowerCase().includes(needle)) : groups;
+  }, [groups, query]);
+  const teammateLabel = (count) => `${count} ${count === 1 ? "teammate" : "teammates"}`;
 
   async function send() {
     const content = composer.trim();
@@ -220,8 +226,9 @@ export function BrandGroupsPanel() {
   return (
     <div className="grid min-h-[620px] gap-4 xl:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]">
       <SectionCard title="Official Brand groups" subtitle={`${groups.length} active`} noPadding>
+        <div className="border-b border-[var(--gray-200)] p-3"><label className="sr-only" htmlFor="brand-group-search">Search Brand groups</label><input id="brand-group-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Brand groups" className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm" /></div>
         <div className="max-h-[700px] overflow-y-auto divide-y divide-[var(--gray-200)]">
-          {groups.length === 0 ? <p className="p-5 text-sm text-[var(--color-text-secondary)]">Active Host brands will appear here automatically.</p> : groups.map((group) => (
+          {visibleGroups.length === 0 ? <p className="p-5 text-sm text-[var(--color-text-secondary)]">{groups.length ? "No Brand groups match that search." : "Active Host brands will appear here automatically."}</p> : visibleGroups.map((group) => (
             <button
               key={group.conversation_id}
               type="button"
@@ -232,7 +239,7 @@ export function BrandGroupsPanel() {
                 <span className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{group.brand_name}</span>
                 {group.unread_count > 0 ? <Badge variant="brand">{group.unread_count}</Badge> : null}
               </div>
-              <p className="mt-1 truncate text-xs text-[var(--color-text-tertiary)]">{group.last_message_preview || `${group.member_count} brand teammates`}</p>
+              <p className="mt-1 truncate text-xs text-[var(--color-text-tertiary)]">{group.last_message_preview || teammateLabel(group.member_count)}</p>
             </button>
           ))}
         </div>
@@ -240,7 +247,7 @@ export function BrandGroupsPanel() {
 
       <SectionCard
         title={selectedGroup?.brand_name || "Choose a Brand group"}
-        subtitle={selectedGroup ? `${selectedGroup.member_count} brand teammates · Support has access` : ""}
+        subtitle={selectedGroup ? `${teammateLabel(selectedGroup.member_count)} · Support has access` : ""}
         action={selectedGroup ? <Button variant="secondary" size="sm" onClick={() => void toggleWatch()}>{selectedGroup.push_enabled ? "Watching" : "Watch"}</Button> : null}
         noPadding
       >

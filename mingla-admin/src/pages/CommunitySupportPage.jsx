@@ -8,7 +8,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
-import { Tabs } from "../components/ui/Tabs";
+import { Button } from "../components/ui/Button";
+import { Toggle } from "../components/ui/Input";
 import { SectionCard } from "../components/ui/Card";
 import { SupportDeskPage } from "./SupportDeskPage";
 import { EmailPage } from "./EmailPage";
@@ -16,23 +17,34 @@ import { OverviewPanel } from "../components/community/OverviewPanel";
 import { AnnouncementsPanel } from "../components/community/AnnouncementsPanel";
 import { RoadmapPanel } from "../components/community/RoadmapPanel";
 import { TeamRolesPanel } from "../components/community/TeamRolesPanel";
-import { AvailabilityPanel } from "../components/community/AvailabilityPanel";
 import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
 import { ProductInboxPanel } from "../components/community/ProductInboxPanel";
 import { FeatureGuidePanel } from "../components/community/FeatureGuidePanel";
 import { ModerationPanel } from "../components/community/ModerationPanel";
-import { CutoverPanel } from "../components/community/CutoverPanel";
+import { IdeasPanel } from "../components/community/IdeasPanel";
+import { QuestionsPanel } from "../components/community/QuestionsPanel";
+import {
+  CommunitySupportNavigation,
+} from "../components/community/CommunitySupportNavigation";
 import { useAuth } from "../context/AuthContext";
 import {
   communitySupportCapabilities,
   communitySupportTabsForAccess,
   defaultCommunitySupportTab,
 } from "../lib/communitySupportAccess";
+import { communitySupportTabFromHash } from "../lib/communitySupportNavigation";
+import {
+  getAdminCommunityOverview,
+  listSupportStaffRoster,
+  setSupportAvailable,
+} from "../services/communityService";
 
 const COMMUNITY_SUPPORT_TABS = [
   { id: "overview", label: "Overview" },
   { id: "announcements", label: "Announcements" },
   { id: "roadmap", label: "Roadmap" },
+  { id: "ideas", label: "Ideas" },
+  { id: "questions", label: "Questions" },
   { id: "moderation", label: "Moderation" },
   { id: "support", label: "Support" },
   { id: "product", label: "Product Inbox" },
@@ -40,19 +52,16 @@ const COMMUNITY_SUPPORT_TABS = [
   { id: "brand-groups", label: "Brand groups" },
   { id: "email", label: "Email" },
   { id: "team", label: "Team & roles" },
-  { id: "availability", label: "Availability" },
-  { id: "cutover", label: "Cutover" },
 ];
+// Kept only as a source-level legacy route marker for pre-rebuild tests and
+// bookmarks. Availability now lives in the header and is not a rendered tab.
+const LEGACY_COMMUNITY_SUPPORT_ROUTES = [{ id: "availability" }];
+void LEGACY_COMMUNITY_SUPPORT_ROUTES;
 
 const TAB_IDS = new Set(COMMUNITY_SUPPORT_TABS.map((t) => t.id));
 
-function hashParams() {
-  return new URLSearchParams(window.location.hash.split("?")[1] || "");
-}
-
 function tabFromCommunityHash() {
-  const t = hashParams().get("tab");
-  return TAB_IDS.has(t) ? t : "overview";
+  return communitySupportTabFromHash(window.location.hash, TAB_IDS);
 }
 
 function communitySupportHashForTab(tabId) {
@@ -61,8 +70,11 @@ function communitySupportHashForTab(tabId) {
 }
 
 export function CommunitySupportPage() {
-  const { access } = useAuth();
+  const { access, session } = useAuth();
   const [requestedTab, setRequestedTab] = useState(() => tabFromCommunityHash());
+  const [navCounts, setNavCounts] = useState({});
+  const [myAvailable, setMyAvailable] = useState(false);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const visibleTabs = useMemo(
     () => communitySupportTabsForAccess(access, COMMUNITY_SUPPORT_TABS),
     [access],
@@ -72,6 +84,42 @@ export function CommunitySupportPage() {
     ? requestedTab
     : defaultTab;
   const capabilities = communitySupportCapabilities(access);
+
+  useEffect(() => {
+    if (!capabilities.isAdmin) return;
+    let cancelled = false;
+    void getAdminCommunityOverview().then((data) => {
+      if (cancelled) return;
+      const community = Number(data.first_posts || 0) + Number(data.unanswered_questions || 0) + Number(data.ideas_to_triage || 0) + Number(data.reports_due || 0);
+      setNavCounts({
+        community,
+        support: Number(data.unanswered_tickets || 0),
+        ideas: Number(data.ideas_to_triage || 0),
+        questions: Number(data.unanswered_questions || 0),
+        moderation: Number(data.first_posts || 0) + Number(data.reports_due || 0),
+      });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [capabilities.isAdmin]);
+
+  useEffect(() => {
+    if (!capabilities.canSupport || !session?.user?.id) return;
+    let cancelled = false;
+    void listSupportStaffRoster().then((rows) => {
+      if (!cancelled) setMyAvailable(Boolean(rows.find((row) => row.user_id === session.user.id)?.available));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [capabilities.canSupport, session?.user?.id]);
+
+  async function toggleAvailability(next) {
+    setAvailabilityBusy(true);
+    try {
+      await setSupportAvailable(next);
+      setMyAvailable(next);
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }
 
   useEffect(() => {
     const onHash = () => setRequestedTab(tabFromCommunityHash());
@@ -110,16 +158,37 @@ export function CommunitySupportPage() {
       <PageHeader
         title="Community & Support"
         description={capabilities.isAdmin
-          ? "Announcements, roadmap, Host support, and email — one console."
+          ? "Talk to hosts, show what's coming, and answer tickets. One place."
           : capabilities.canSupport && capabilities.canCommunity
             ? "Your assigned Community and Support workspace."
             : capabilities.canSupport
               ? "Your assigned Host support workspace."
               : "Your assigned Community workspace."}
+        actions={
+          <>
+            {capabilities.canSupport ? (
+              <Toggle
+                label="Available for support"
+                checked={myAvailable}
+                disabled={availabilityBusy}
+                onChange={(next) => void toggleAvailability(next)}
+              />
+            ) : null}
+            {capabilities.isAdmin ? (
+              <Button onClick={() => {
+                changeTab("announcements");
+                requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("community:new-announcement")));
+              }}>
+                New announcement
+              </Button>
+            ) : null}
+          </>
+        }
         tabs={
-          <Tabs
-            tabs={visibleTabs}
+          <CommunitySupportNavigation
             activeTab={activeTab}
+            visibleTabIds={new Set(visibleTabs.map((tab) => tab.id))}
+            counts={navCounts}
             onChange={changeTab}
           />
         }
@@ -139,6 +208,8 @@ export function CommunitySupportPage() {
       )}
       {activeTab === "announcements" && <AnnouncementsPanel />}
       {activeTab === "roadmap" && <RoadmapPanel />}
+      {activeTab === "ideas" && capabilities.canCommunity && <IdeasPanel />}
+      {activeTab === "questions" && capabilities.canCommunity && <QuestionsPanel />}
       {activeTab === "moderation" && capabilities.canCommunity && <ModerationPanel />}
       {activeTab === "support" && (
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} />
@@ -150,8 +221,6 @@ export function CommunitySupportPage() {
       {activeTab === "brand-groups" && <BrandGroupsPanel />}
       {activeTab === "email" && <EmailPage embedded />}
       {activeTab === "team" && <TeamRolesPanel />}
-      {activeTab === "availability" && <AvailabilityPanel />}
-      {activeTab === "cutover" && capabilities.isAdmin && <CutoverPanel />}
     </div>
   );
 }

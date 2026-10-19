@@ -178,6 +178,9 @@ jobs:
       - name: "#2726 — Restaurant Hub responsive system (native happy path)"
         if: always()
         run: npx jest --config jest.issue2726.render.cjs --runInBand --ci
+      - name: "#3720 — Help & Support input typography"
+        if: always()
+        run: npx jest --config jest.issue3720.render.cjs --ci --maxWorkers=2
 
       # ---- WEB render proofs -------------------------------------------------
       # react-test-renderer is structurally blind to react-native-web's atomic

@@ -86,8 +86,8 @@ export function AvailabilityPanel() {
 
       <SectionCard title="Desk presence">
         <p className="text-sm text-[var(--color-text-secondary)] mb-3">
-          Hosts see Online or Away from <code>support_is_online()</code> — any enabled
-          support staffer marked available.
+          Hosts see Online or Away when anyone on the support team marks themselves
+          available.
         </p>
         <div className="flex items-center gap-3 mb-4">
           <span className="text-sm text-[var(--color-text-primary)]">Hosts currently see:</span>

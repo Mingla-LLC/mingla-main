@@ -41,7 +41,7 @@ const SAMPLE_VALUES = Object.fromEntries(TOKENS.map((token) => [token.value, tok
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const DRAFT_KEY = "mingla_admin_email_draft_v1";
 const EMPTY_FILTERS = {
-  userType: "all",
+  userType: "host",
   country: "all",
   onboarding: "all",
   accountStatus: "all",
@@ -185,9 +185,9 @@ function LocalEmailPreview({ subject, documentValue }) {
   );
 }
 
-export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionExpired }) {
+export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionExpired, openTemplateManager = false }) {
   const { addToast } = useToast();
-  const [audienceMode, setAudienceMode] = useState("everyone");
+  const [audienceMode, setAudienceMode] = useState("segment");
   const [recipientQuery, setRecipientQuery] = useState("");
   const [recipientMatches, setRecipientMatches] = useState([]);
   const [selectedRecipient, setSelectedRecipient] = useState(null);
@@ -226,6 +226,10 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     () => audienceFor(audienceMode, selectedRecipient, filters),
     [audienceMode, selectedRecipient, filters],
   );
+
+  useEffect(() => {
+    if (openTemplateManager) setTemplateManagerOpen(true);
+  }, [openTemplateManager]);
 
   const setFilter = useCallback((key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -583,7 +587,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
       setReviewOpen(false);
       setSubject("");
       setDocumentValue(defaultDocument());
-      setAudienceMode("everyone");
+      setAudienceMode("segment");
       setFilters(EMPTY_FILTERS);
       setSelectedRecipient(null);
       setRecipientQuery("");
@@ -602,7 +606,11 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     ? "Everyone"
     : audienceMode === "person"
       ? (selectedRecipient?.display_name || "One person")
-      : `${estimate?.will_receive ?? "—"} matching users`;
+      : filters.userType === "host"
+        ? `${estimate?.will_receive ?? "—"} Hosts`
+        : filters.userType === "explorer"
+          ? `${estimate?.will_receive ?? "—"} Explorer users`
+          : `${estimate?.will_receive ?? "—"} matching users`;
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(340px,0.9fr)]">
@@ -617,20 +625,27 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-semibold text-[var(--color-text-primary)]">Audience</h2>
-              <p className="text-xs text-[var(--color-text-tertiary)]">Choose everyone, combine filters, or send to one person.</p>
+              <p className="text-xs text-[var(--color-text-tertiary)]">Hosts are the default. Explorer sends always require an explicit choice and count review.</p>
             </div>
             <div className="flex rounded-lg bg-[var(--gray-100)] p-1">
               {[
-                ["everyone", "Everyone"],
-                ["segment", "Segment"],
+                ["hosts", "Hosts"],
                 ["person", "One person"],
+                ["segment", "Segment"],
+                ["explorers", "Explorer users"],
+                ["everyone", "Everyone"],
               ].map(([id, label]) => (
                 <button
                   key={id}
                   type="button"
-                  aria-pressed={audienceMode === id}
-                  onClick={() => setAudienceMode(id)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${audienceMode === id ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"}`}
+                  aria-pressed={(id === "hosts" && audienceMode === "segment" && filters.userType === "host") || (id === "explorers" && audienceMode === "segment" && filters.userType === "explorer") || audienceMode === id}
+                  onClick={() => {
+                    if (id === "hosts" || id === "explorers") {
+                      setAudienceMode("segment");
+                      setFilters({ ...EMPTY_FILTERS, userType: id === "hosts" ? "host" : "explorer" });
+                    } else setAudienceMode(id);
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${((id === "hosts" && audienceMode === "segment" && filters.userType === "host") || (id === "explorers" && audienceMode === "segment" && filters.userType === "explorer") || audienceMode === id) ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"}`}
                 >
                   {label}
                 </button>
@@ -765,9 +780,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <label htmlFor="email-subject" className="text-sm font-medium text-[var(--color-text-primary)]">Subject</label>
-              <div className="flex max-w-[70%] gap-1 overflow-x-auto pb-1" aria-label="Subject personalization">
-                {TOKENS.map((token) => <button key={token.value} type="button" onClick={() => insertToken(token.value, "subject")} className="shrink-0 rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-2 py-1 text-[11px] font-medium text-[var(--color-text-secondary)] hover:border-[var(--color-brand-300)] hover:text-[var(--color-brand-700)]">+ {token.label}</button>)}
-              </div>
+              <details className="relative"><summary className="cursor-pointer list-none rounded-md border border-[var(--gray-200)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)]">Insert ▾</summary><div className="absolute right-0 z-30 mt-1 w-44 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1 shadow-lg">{TOKENS.map((token) => <button key={token.value} type="button" onClick={() => insertToken(token.value, "subject")} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--gray-50)]">{token.label}</button>)}</div></details>
             </div>
             <input id="email-subject" ref={subjectRef} value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="A clear, personal subject line" className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]" />
           </div>
@@ -823,10 +836,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <button type="button" onClick={() => setDocumentValue((current) => [...current, { id: blockId(), type: "rich_text", html: "<p><br></p>" }])} className="text-xs font-semibold text-[var(--color-brand-600)] hover:underline">+ Add text block</button>
             </div>
 
-            <div className="flex items-center gap-1 overflow-x-auto border-t border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2" aria-label="Insert personalization at cursor">
-              <span className="mr-1 flex shrink-0 items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-tertiary)]"><Sparkles className="h-3.5 w-3.5" /> Insert at cursor</span>
-              {TOKENS.map((token) => <button key={token.value} type="button" onClick={() => insertToken(token.value)} className="shrink-0 rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-2 py-1 text-[11px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-brand-700)]">{token.label}</button>)}
-            </div>
+            <div className="flex items-center justify-end border-t border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2"><details className="relative"><summary className="flex cursor-pointer list-none items-center gap-1 rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-2 py-1 text-[11px] font-semibold text-[var(--color-text-secondary)]"><Sparkles className="h-3.5 w-3.5" /> Insert ▾</summary><div className="absolute bottom-full right-0 z-30 mb-1 w-44 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1 shadow-lg">{TOKENS.map((token) => <button key={token.value} type="button" onClick={() => insertToken(token.value)} className="block w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--gray-50)]">{token.label}</button>)}</div></details></div>
           </div>
 
           <div className="grid gap-3 border-t border-[var(--gray-200)] pt-4 md:grid-cols-[minmax(210px,0.75fr)_minmax(220px,1fr)_auto] md:items-end">

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, Plus, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, FileJson, Plus, RefreshCw, Search } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { SectionCard } from "../ui/Card";
 import { Input, Textarea } from "../ui/Input";
 import { Spinner } from "../ui/Spinner";
+import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { useToast } from "../../context/ToastContext";
 import {
   listFeatureGuide,
@@ -31,6 +32,43 @@ const STATUS_BADGE = {
   Planned: "info",
   Retired: "default",
 };
+
+const STATUS_FILTERS = [
+  ["Needs review", "Needs review"], ["Live", "Live"],
+  ["Planned", "Not available yet"], ["Retired", "Removed"],
+];
+
+const AREA_NAMES = {
+  account: "Account and access", discover: "Discovery", social: "Community and social",
+  event: "Events", ticket: "Tickets and bookings", payment: "Getting paid",
+  payout: "Getting paid", host: "Host operations", admin: "Staff tools",
+  support: "Help and support", site: "Websites", email: "Email",
+};
+
+function areaFor(row) {
+  const prefix = String(row.capability_key || "other").split("-")[0];
+  return AREA_NAMES[prefix] || `${prefix.charAt(0).toUpperCase()}${prefix.slice(1)}`;
+}
+
+function parseEvidencePacket(raw, rows) {
+  const packet = JSON.parse(raw);
+  if (!packet || !Array.isArray(packet.entries) || packet.entries.length === 0) throw new Error("The packet needs a non-empty entries array.");
+  const byKey = new Map(rows.map((row) => [row.capability_key, row]));
+  return packet.entries.map((entry) => {
+    const row = byKey.get(entry.capability_key);
+    if (!row) throw new Error(`Unknown capability: ${entry.capability_key}`);
+    if (!Array.isArray(entry.evidence) || entry.evidence.length === 0) throw new Error(`${entry.capability_key} has no evidence.`);
+    const kinds = new Set((row.evidence || []).filter((item) => item.verdict === "verified").map((item) => item.kind));
+    for (const item of entry.evidence) {
+      if (!EVIDENCE_KINDS.includes(item.kind) || !["verified", "conflict"].includes(item.verdict || "verified")) throw new Error(`${entry.capability_key} has an invalid evidence kind or verdict.`);
+      if (!/^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(blob\/[0-9a-f]{40}\/|issues\/\d+#issuecomment-|pull\/\d+)/.test(item.url || "")) throw new Error(`${entry.capability_key} needs a pinned Mingla GitHub URL.`);
+      if (!item.details || String(item.details).trim().length < 4) throw new Error(`${entry.capability_key} needs evidence details.`);
+      if ((item.verdict || "verified") === "verified") kinds.add(item.kind); else kinds.delete(item.kind);
+    }
+    const after = row.claimed_status === "live" && (row.required_evidence_kinds || []).every((kind) => kinds.has(kind)) ? "Live" : row.effective_status;
+    return { row, entry, before: row.effective_status, after };
+  });
+}
 
 function localDateTime(value) {
   if (!value) return "";
@@ -93,6 +131,12 @@ export function FeatureGuidePanel({ canManage = false }) {
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState(null);
   const [proof, setProof] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("Needs review");
+  const [areaFilter, setAreaFilter] = useState("all");
+  const [packetOpen, setPacketOpen] = useState(false);
+  const [packetText, setPacketText] = useState("");
+  const [packetPreview, setPacketPreview] = useState([]);
+  const [packetError, setPacketError] = useState("");
 
   const load = useCallback(async (nextQuery = "") => {
     setLoading(true);
@@ -117,6 +161,18 @@ export function FeatureGuidePanel({ canManage = false }) {
     () => rows.find((row) => row.capability_id === selectedId) || null,
     [rows, selectedId],
   );
+  const counts = useMemo(() => Object.fromEntries(STATUS_FILTERS.map(([status]) => [status, rows.filter((row) => row.effective_status === status).length])), [rows]);
+  const areas = useMemo(() => [...new Set(rows.map(areaFor))].sort(), [rows]);
+  const visibleRows = useMemo(() => rows.filter((row) =>
+    row.effective_status === statusFilter && (areaFilter === "all" || areaFor(row) === areaFilter),
+  ), [areaFilter, rows, statusFilter]);
+  const groupedRows = useMemo(() => Object.entries(visibleRows.reduce((groups, row) => {
+    const area = areaFor(row);
+    return { ...groups, [area]: [...(groups[area] || []), row] };
+  }, {})).sort(([left], [right]) => left.localeCompare(right)), [visibleRows]);
+  useEffect(() => {
+    if (!visibleRows.some((row) => row.capability_id === selectedId)) setSelectedId(visibleRows[0]?.capability_id || null);
+  }, [selectedId, visibleRows]);
 
   async function saveCapability() {
     if (!editor) return;
@@ -148,6 +204,31 @@ export function FeatureGuidePanel({ canManage = false }) {
     }
   }
 
+  function reviewPacket() {
+    try { const preview = parseEvidencePacket(packetText, rows); setPacketPreview(preview); setPacketError(""); }
+    catch (error) { setPacketPreview([]); setPacketError(error?.message || "Invalid packet."); }
+  }
+
+  async function applyPacket() {
+    if (!packetPreview.length) return;
+    setBusy(true);
+    try {
+      for (const item of packetPreview) {
+        let revision = item.row.revision;
+        for (const evidence of item.entry.evidence) {
+          revision = await recordFeatureEvidence(item.row.capability_id, revision, {
+            kind: evidence.kind, verdict: evidence.verdict || "verified", url: evidence.url,
+            details: evidence.details, observedAt: evidence.observed_at || new Date().toISOString(),
+            expiresAt: evidence.expires_at || "",
+          });
+        }
+      }
+      addToast({ variant: "success", title: "Evidence packet recorded", description: `${packetPreview.reduce((sum, item) => sum + item.entry.evidence.length, 0)} checks were written through the audited evidence path.` });
+      setPacketOpen(false); setPacketText(""); setPacketPreview([]); await load(query);
+    } catch (error) { addToast({ variant: "error", title: "Packet stopped", description: error?.message }); }
+    finally { setBusy(false); }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -163,23 +244,29 @@ export function FeatureGuidePanel({ canManage = false }) {
         <div className="flex gap-2">
           <Button variant="secondary" icon={Search} onClick={() => void load(query)} disabled={loading}>Search</Button>
           <Button variant="secondary" icon={RefreshCw} onClick={() => void load(query)} disabled={loading}>Refresh</Button>
+          {canManage && <Button variant="secondary" icon={FileJson} onClick={() => setPacketOpen(true)}>Apply evidence packet</Button>}
           {canManage && <Button icon={Plus} onClick={() => setEditor(editorFor())}>New capability</Button>}
         </div>
       </div>
 
       <p className="text-sm text-[var(--color-text-secondary)]">
-        Answers come from reviewed evidence. Missing, expired, or conflicting proof is shown as Needs review—never guessed.
+        Answers come from reviewed evidence. Missing, expired, or conflicting proof is shown as Needs review until evidence is applied.
       </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {STATUS_FILTERS.map(([status, label]) => <Button key={status} size="sm" variant={statusFilter === status ? "primary" : "secondary"} onClick={() => setStatusFilter(status)}>{label} ({counts[status] || 0})</Button>)}
+        <select aria-label="Feature Guide area" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)} className="ml-auto h-9 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm"><option value="all">All areas</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select>
+      </div>
 
       {loading ? <div className="flex justify-center py-12"><Spinner /></div> : rows.length === 0 ? (
         <SectionCard title="No verified capability matched">
           <p className="text-sm text-[var(--color-text-secondary)]">Try a different search. Do not infer an answer from an empty result.</p>
         </SectionCard>
-      ) : (
+      ) : visibleRows.length === 0 ? <SectionCard title="No capabilities in this view"><p className="text-sm text-[var(--color-text-secondary)]">Choose another status or area.</p></SectionCard> : (
         <div className="grid gap-4 lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,2fr)]">
-          <SectionCard title={`${rows.length} capabilit${rows.length === 1 ? "y" : "ies"}`}>
+          <SectionCard title={`${visibleRows.length} capabilit${visibleRows.length === 1 ? "y" : "ies"}`}>
             <div className="space-y-2">
-              {rows.map((row) => (
+              {groupedRows.flatMap(([area, areaRows]) => [<p key={`${area}-heading`} className="pt-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{area} · {areaRows.length}</p>, ...areaRows.map((row) => (
                 <button
                   key={row.capability_id}
                   type="button"
@@ -195,8 +282,9 @@ export function FeatureGuidePanel({ canManage = false }) {
                     <Badge variant={STATUS_BADGE[row.effective_status] || "default"}>{row.effective_status}</Badge>
                   </div>
                   <p className="mt-1 line-clamp-2 text-xs text-[var(--color-text-secondary)]">{row.outcome_summary}</p>
+                  <p className="mt-1 text-[11px] text-[var(--color-warning-700)]">Missing: {(row.required_evidence_kinds || []).filter((kind) => !(row.evidence || []).some((item) => item.kind === kind && item.verdict === "verified")).join(", ") || "none"}</p>
                 </button>
-              ))}
+              ))])}
             </div>
           </SectionCard>
 
@@ -270,6 +358,7 @@ export function FeatureGuidePanel({ canManage = false }) {
           <div className="flex gap-2"><Button loading={busy} onClick={() => void saveEvidence()}>Record evidence</Button><Button variant="secondary" disabled={busy} onClick={() => setProof(null)}>Cancel</Button></div>
         </div>
       </SectionCard>}
+      <Modal open={packetOpen} onClose={() => setPacketOpen(false)} title="Apply evidence packet" size="lg"><ModalBody className="space-y-3"><Textarea label="Evidence packet JSON" value={packetText} onChange={(event) => { setPacketText(event.target.value); setPacketPreview([]); setPacketError(""); }} rows={12} placeholder='{"entries":[{"capability_key":"payouts-stripe","evidence":[{"kind":"live_check","url":"https://github.com/Mingla-LLC/mingla-main/issues/3720#issuecomment-…","details":"Signed-in production check passed"}]}]}' />{packetError ? <p className="text-sm text-[var(--color-error-700)]">{packetError}</p> : null}{packetPreview.length ? <div className="rounded-xl border border-[var(--gray-200)] p-3"><p className="mb-2 text-sm font-semibold">Review before recording</p>{packetPreview.map((item) => <div key={item.row.capability_key} className="flex items-center justify-between gap-3 border-t border-[var(--gray-100)] py-2 text-sm"><span>{item.row.capability_key}</span><span>{item.before} → <strong>{item.after}</strong></span></div>)}</div> : null}</ModalBody><ModalFooter><Button variant="secondary" onClick={() => setPacketOpen(false)}>Cancel</Button>{packetPreview.length ? <Button loading={busy} onClick={() => void applyPacket()}>Record {packetPreview.reduce((sum, item) => sum + item.entry.evidence.length, 0)} checks</Button> : <Button onClick={reviewPacket}>Review packet</Button>}</ModalFooter></Modal>
     </div>
   );
 }

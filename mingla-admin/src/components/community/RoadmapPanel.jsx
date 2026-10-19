@@ -20,6 +20,7 @@ const LANES = [
   { id: "now", label: "Now" },
   { id: "next", label: "Next" },
   { id: "later", label: "Later" },
+  { id: "shipped", label: "Recently shipped" },
 ];
 
 const STATUS_BADGE = {
@@ -39,6 +40,8 @@ export function RoadmapPanel() {
   const [notifyRequestKey, setNotifyRequestKey] = useState(null);
   const [notifyPreview, setNotifyPreview] = useState(null);
   const [notifyStatus, setNotifyStatus] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("published");
+  const [draggingId, setDraggingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,12 +69,12 @@ export function RoadmapPanel() {
   }, [load]);
 
   const byLane = useMemo(() => {
-    const map = { now: [], next: [], later: [] };
-    for (const row of rows) {
+    const map = { now: [], next: [], later: [], shipped: [] };
+    for (const row of rows.filter((item) => item.status === statusFilter)) {
       (map[row.lane] || map.later).push(row);
     }
     return map;
-  }, [rows]);
+  }, [rows, statusFilter]);
 
   async function saveEditor() {
     if (!editor) return;
@@ -108,11 +111,12 @@ export function RoadmapPanel() {
     const tmp = laneRows[idx];
     laneRows[idx] = laneRows[swapWith];
     laneRows[swapWith] = tmp;
-    const allOrdered = [
-      ...(row.lane === "now" ? laneRows : byLane.now),
-      ...(row.lane === "next" ? laneRows : byLane.next),
-      ...(row.lane === "later" ? laneRows : byLane.later),
-    ];
+    let laneIndex = 0;
+    const allOrdered = rows.map((item) => (
+      item.lane === row.lane && item.status === statusFilter
+        ? laneRows[laneIndex++]
+        : item
+    ));
     setBusy(true);
     try {
       await reorderRoadmap(allOrdered.map((r) => r.id));
@@ -122,6 +126,27 @@ export function RoadmapPanel() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function dropOn(targetId) {
+    if (!draggingId || draggingId === targetId) return;
+    const ordered = rows.slice();
+    const from = ordered.findIndex((item) => item.id === draggingId);
+    const to = ordered.findIndex((item) => item.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [item] = ordered.splice(from, 1);
+    ordered.splice(to, 0, item);
+    setDraggingId(null);
+    setBusy(true);
+    try { await reorderRoadmap(ordered.map((row) => row.id)); await load(); }
+    catch (err) { addToast({ variant: "error", title: "Reorder failed", description: err?.message }); }
+    finally { setBusy(false); }
+  }
+
+  function summary(value) {
+    if (!value || value.length <= 140) return value;
+    const clipped = value.slice(0, 140);
+    return `${clipped.slice(0, clipped.lastIndexOf(" ") > 100 ? clipped.lastIndexOf(" ") : 140)}…`;
   }
 
   function openNotifyConfirmation() {
@@ -222,6 +247,14 @@ export function RoadmapPanel() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {[["published", "Live"], ["draft", "Drafts"], ["archived", "Archived"]].map(([id, label]) => (
+          <Button key={id} size="sm" variant={statusFilter === id ? "primary" : "secondary"} onClick={() => setStatusFilter(id)}>
+            {label} ({rows.filter((row) => row.status === id).length})
+          </Button>
+        ))}
+      </div>
+
       {notifyStatus ? (
         <SectionCard title="Last roadmap notification">
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--color-text-secondary)]">
@@ -255,7 +288,7 @@ export function RoadmapPanel() {
           <Spinner />
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
           {LANES.map((lane) => (
             <SectionCard key={lane.id} title={lane.label}>
               <div className="space-y-3">
@@ -265,24 +298,26 @@ export function RoadmapPanel() {
                 {(byLane[lane.id] || []).map((row, index, arr) => (
                   <div
                     key={row.id}
+                    draggable={!busy}
+                    onDragStart={() => setDraggingId(row.id)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => void dropOn(row.id)}
                     className="rounded-lg border border-[var(--color-border-primary)] p-3 space-y-2"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium text-sm truncate">{row.public_title}</p>
+                        <p className="line-clamp-2 font-medium text-sm">{row.public_title}</p>
                         <Badge variant={STATUS_BADGE[row.status] || "default"}>
                           {row.status}
                         </Badge>
                       </div>
                       {row.public_body && (
                         <p className="text-xs text-[var(--color-text-secondary)] mt-1 line-clamp-3">
-                          {row.public_body}
+                          {summary(row.public_body)}
                         </p>
                       )}
                       {row.internal_note && (
-                        <p className="text-xs text-[var(--color-warning-700)] mt-1">
-                          Internal: {row.internal_note}
-                        </p>
+                        <button type="button" className="mt-1 rounded-full bg-[var(--color-warning-50)] px-2 py-1 text-xs font-medium text-[var(--color-warning-700)]" onClick={() => setEditor({ id: row.id, publicTitle: row.public_title, publicBody: row.public_body || "", internalNote: row.internal_note || "", lane: row.lane, status: row.status })}>Internal note</button>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-1">
