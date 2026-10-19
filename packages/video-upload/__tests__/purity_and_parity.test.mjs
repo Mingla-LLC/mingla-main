@@ -45,13 +45,16 @@ const laneMigration = () => {
   const name = readdirSync(MIGRATIONS).find((file) => /_issue_3040_video_lane_1080p_owners\.sql$/.test(file));
   return name ? join(MIGRATIONS, name) : null;
 };
-// The edge defaults and the lane migration land in the server wave of PR-1.
-// Until that wave is in this tree the cross-layer half cannot be measured, and
-// it says so instead of passing quietly; once the migration exists it binds.
+// Both halves of PR-1 are in this tree, so the cross-layer half binds: a
+// missing migration or edge file is a failure, never a silent skip.
 const serverWave = laneMigration();
-const pending = serverWave === null ? "server wave (lane migration) not in this tree yet" : false;
 
-test("edge defaults equal VIDEO_LIMITS", { skip: pending }, () => {
+test("the lane migration and edge defaults exist", () => {
+  assert.ok(serverWave !== null, "supabase/migrations/*_issue_3040_video_lane_1080p_owners.sql is missing");
+  assert.ok(existsSync(EDGE), "supabase/functions/_shared/eventCoverVideo.ts is missing");
+});
+
+test("edge defaults equal VIDEO_LIMITS", () => {
   const edge = readFileSync(EDGE, "utf8");
   const def = (env) => {
     const match = new RegExp(`${env}"\\)\\s*\\?\\?\\s*"(\\d+)"`).exec(edge);
@@ -65,9 +68,17 @@ test("edge defaults equal VIDEO_LIMITS", { skip: pending }, () => {
   assert.match(edge, new RegExp(`MAX_RENDITION_HEIGHT\\s*=\\s*${VIDEO_LIMITS.MAX_RENDITION_HEIGHT}`));
 });
 
-test("lane migration CHECKs equal VIDEO_LIMITS", { skip: pending }, () => {
+test("lane migration CHECKs equal VIDEO_LIMITS", () => {
+  assert.ok(serverWave !== null, "lane migration missing");
   const sql = readFileSync(serverWave, "utf8");
   assert.match(sql, new RegExp(`processed_bytes\\s*<=\\s*${VIDEO_LIMITS.FINAL_MAX_BYTES}`));
   assert.match(sql, new RegExp(`source_bytes\\s*<=\\s*${VIDEO_LIMITS.SOURCE_MAX_BYTES}`));
   assert.match(sql, new RegExp(`source_duration_ms\\s*>=\\s*${VIDEO_LIMITS.AD_MIN_DURATION_MS}`));
+});
+
+test("the ads byte cap equals VIDEO_LIMITS.FINAL_MAX_BYTES", () => {
+  const ads = readFileSync(join(REPO_ROOT, "supabase", "functions", "_shared", "videoLaneLimits.ts"), "utf8");
+  const match = /VIDEO_LANE_FINAL_MAX_BYTES\s*=\s*(\d+)/.exec(ads);
+  assert.ok(match, "VIDEO_LANE_FINAL_MAX_BYTES not found");
+  assert.equal(Number(match[1]), VIDEO_LIMITS.FINAL_MAX_BYTES);
 });

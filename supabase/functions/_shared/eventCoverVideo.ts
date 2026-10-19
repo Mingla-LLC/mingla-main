@@ -15,10 +15,13 @@ export {
   parseAdCreativeOwnerKey,
 } from "./adCreativeLaneAuth.ts";
 
+// #3040 B-C1 — Host clients name their app version and platform on every lane
+// call so the 426 old-client refusal is logged with who was refused. A browser
+// preflight-rejects any request header missing from this list.
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-mingla-app-version, x-mingla-platform",
 };
 
 // Issue #3040 — the shared lane emits up to 1080p. A 60 s 1080p MP4 is larger

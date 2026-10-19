@@ -98,11 +98,16 @@ export const isValidAdCreativeOwnerKey = (key: string): boolean =>
 /**
  * B-C1 request headers. The edge logs them on a 426 (E-3b).
  *
- * Sent from NATIVE only. The lane functions' CORS `Access-Control-Allow-Headers`
- * today lists `authorization, x-client-info, apikey, content-type`; a browser
- * would preflight-reject any other header and break every web upload. Web has
- * no store build to be too old, so it loses nothing. When the server wave adds
- * both names to `corsHeaders`, flip `LANE_VERSION_HEADERS_ON_WEB`.
+ * The lane's CORS allow-list (`_shared/eventCoverVideo.ts corsHeaders`) names
+ * both headers as of this PR, pinned by the Deno suite
+ * `eventCoverVideo.issue3040.corsVersionHeaders`. Web still does not send them:
+ * on merge the web build and the edge functions deploy separately, and a web
+ * build that reaches users before the new CORS list would have every upload
+ * preflight-rejected. Web has no store build that can be too old, so it loses
+ * only a log field.
+ * [TRANSITIONAL] web omits the version headers — exit: flip
+ * `LANE_VERSION_HEADERS_ON_WEB` in the first PR after #3040's edge deploy is
+ * confirmed live (the OPTIONS response lists `x-mingla-app-version`).
  */
 export const LANE_VERSION_HEADERS_ON_WEB = false;
 export const LANE_APP_VERSION_HEADER = "x-mingla-app-version";
