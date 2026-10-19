@@ -16,11 +16,8 @@ import { DRAFT_STATES, draftErrorWords, remainingUndoMs } from "../lib/draftMode
 import { useToast } from "../context/ToastContext";
 import { ReviewQueue } from "../components/ops/ReviewQueue";
 import { parseReviewSearch } from "../lib/opsModel";
+import { announceReviewChange, useReviewCount } from "../hooks/useReviewCount";
 
-const REVIEW_TABS = [
-  { value: "messages", label: "Messages" },
-  { value: "spend", label: "Spend or publish" },
-];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -112,8 +109,15 @@ export function DraftsPage() {
     setSearch(p.toString());
   };
 
-  const totalWaiting = Number(counts.data?.waiting || 0);
+  // #3980: the header counts exactly what the menu badge counts: your waiting
+  // messages plus your cards that need a person.
+  const reviewCount = useReviewCount();
+  const totalWaiting = reviewCount.total;
   const meta = `${totalWaiting} waiting`;
+  const reviewTabs = [
+    { value: "messages", label: "Messages" },
+    { value: "spend", label: "Spend or publish" },
+  ];
   const notFound = query.hasDraft && queue.loaded && !queue.error && (query.draftInvalid || queue.drafts.length === 0);
   const filtered = !!query.record;
   const loadedRecordName = queue.drafts.find((draft) => draft.record?.id === query.record)?.record?.name;
@@ -124,9 +128,9 @@ export function DraftsPage() {
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <div ref={headingRef} tabIndex={-1}><PageHeader title="To review" description="Only what needs a person: messages to send, money to spend, events to publish." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
-      <Segmented label="What to review" options={REVIEW_TABS} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
+      <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
       {review.tab === "spend" ? (
-        <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => counts.refetch({ quiet: true })} />
+        <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
       ) : (<>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:!w-fit" /></div>

@@ -310,12 +310,36 @@ export function mentionMatches(team, typed) {
   return (Array.isArray(team) ? team : []).filter((p) => !q || String(p.name || "").toLowerCase().startsWith(q) || String(p.email || "").startsWith(q)).slice(0, 6);
 }
 
-/** The emails named with "@Name" in a note, from the active team. */
-export function mentionedEmails(team, body) {
+/** The text the mention picker puts in a note for one teammate. */
+export function mentionToken(person) {
+  return `@${String(person?.name || person?.email || "").trim()}`;
+}
+
+/**
+ * The emails to tell about a note: only teammates picked from the mention
+ * list (each pick carries its email), and only while the picked "@Name" is
+ * still in the text as a whole token. Names typed by hand never match, so two
+ * teammates with the same first name, or a name that starts another, are
+ * never confused. When the same "@Name" was picked for two people, each
+ * occurrence left in the text keeps one pick, in the order they were picked.
+ */
+export function mentionedEmails(picks, body) {
   const text = String(body || "");
-  return (Array.isArray(team) ? team : [])
-    .filter((p) => p.name && new RegExp(`(^|\\s)@${p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text))
-    .map((p) => p.email);
+  const byToken = new Map();
+  for (const p of Array.isArray(picks) ? picks : []) {
+    const email = String(p?.email || "").trim().toLowerCase();
+    const token = mentionToken(p);
+    if (!email || token === "@") continue;
+    if (!byToken.has(token)) byToken.set(token, []);
+    if (!byToken.get(token).includes(email)) byToken.get(token).push(email);
+  }
+  const out = [];
+  for (const [token, emails] of byToken) {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const count = (text.match(new RegExp(`(?:^|\\s)${escaped}(?![\\w.@-]*[\\w@])`, "g")) || []).length;
+    for (const email of emails.slice(0, count)) if (!out.includes(email)) out.push(email);
+  }
+  return out;
 }
 
 /** What a plan step may name as the thing that does it. */

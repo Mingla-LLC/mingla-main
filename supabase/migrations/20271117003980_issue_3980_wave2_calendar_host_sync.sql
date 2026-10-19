@@ -615,6 +615,7 @@ BEGIN
     'anchor', CASE WHEN p_changes ? 'anchor' THEN p_changes->'anchor'
                    WHEN c.anchor_id IS NOT NULL THEN jsonb_build_object('kind', c.anchor_kind, 'id', c.anchor_id) ELSE 'null'::jsonb END,
     'kit_step', to_jsonb(c.kit_step), 'kind', to_jsonb(c.kind),
+    'person_reason', CASE WHEN p_changes ? 'person_reason' THEN p_changes->'person_reason' ELSE to_jsonb(c.person_reason) END,
     'plan', CASE WHEN p_changes ? 'plan' THEN p_changes->'plan' ELSE c.plan END,
     'due_on', CASE WHEN p_changes ? 'due_on' THEN p_changes->'due_on'
                    WHEN v_anchor_changed AND c.due_source <> 'explicit' THEN 'null'::jsonb ELSE to_jsonb(c.due_on) END,
@@ -751,6 +752,12 @@ BEGIN
     format('%s added you as owner: %s', v_who, n.title));
   PERFORM public.ops_notify_people(c.id, v_event, ARRAY(SELECT jsonb_array_elements_text(v_people->'new_watchers')), v.actor_email,
     format('%s added you as watcher: %s', v_who, n.title));
+  -- An agent that takes someone off a card tells them: who, which agent, and
+  -- the card (the notice links to it). Guardrail, not a bottleneck.
+  IF v.via IN ('claude', 'codex') THEN
+    PERFORM public.ops_notify_people(c.id, v_event, ARRAY(SELECT jsonb_array_elements_text(v_people->'removed')), v.actor_email,
+      format('%s took you off this card: %s', v_who, n.title));
+  END IF;
   IF n.status = 'person' AND c.status <> 'person' THEN
     PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), v.actor_email,
       format('%s: %s needs a person (%s)', v_who, n.title, CASE n.person_reason WHEN 'send' THEN 'send a message' WHEN 'spend' THEN 'spend money' WHEN 'publish' THEN 'publish an event' ELSE 'other' END));

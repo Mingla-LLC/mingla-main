@@ -1307,11 +1307,28 @@ BEGIN
   SELECT p_card_id, x, 'watcher', p_actor, p_via FROM unnest(p_watchers) x WHERE NOT x = ANY (p_owners)
   ON CONFLICT (card_id, email) DO NOTHING;
   RETURN jsonb_build_object(
+    'removed', to_jsonb(ARRAY(SELECT x FROM unnest(v_before_o || v_before_w) x WHERE NOT x = ANY (p_owners) AND NOT x = ANY (p_watchers) ORDER BY x)),
     'new_owners', to_jsonb(ARRAY(SELECT x FROM unnest(p_owners) x WHERE NOT x = ANY (v_before_o))),
     'new_watchers', to_jsonb(ARRAY(SELECT x FROM unnest(p_watchers) x WHERE NOT x = ANY (v_before_w) AND NOT x = ANY (v_before_o))),
     'changed', (v_before_o IS DISTINCT FROM ARRAY(SELECT x FROM unnest(p_owners) x ORDER BY x))
                OR (v_before_w IS DISTINCT FROM ARRAY(SELECT x FROM unnest(p_watchers) x WHERE NOT x = ANY (p_owners) ORDER BY x)));
 END;
+$$;
+
+-- Everyone taken off a card (owner or watcher) in the last 24 hours who is
+-- not on it now, from the card's own history; an undone change does not
+-- count. They are told when the card closes, so a reviewer removed just
+-- before a close still hears about it.
+CREATE FUNCTION public.ops_recently_removed(p_card_id uuid) RETURNS text[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT COALESCE(array_agg(DISTINCT b.email ORDER BY b.email), ARRAY[]::text[])
+    FROM public.ops_work_events e
+    CROSS JOIN LATERAL (SELECT x->>'email' AS email FROM jsonb_array_elements(COALESCE(e.before->'people', '[]'::jsonb)) x) b
+   WHERE e.card_id = p_card_id AND e.undone_at IS NULL AND e.at > clock_timestamp() - interval '24 hours'
+     AND e.after IS NOT NULL AND jsonb_typeof(e.after->'people') = 'array'
+     AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(e.after->'people') a WHERE a->>'email' = b.email)
+     AND NOT EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = p_card_id AND p.email = b.email)
 $$;
 
 CREATE FUNCTION public.ops_links_set(p_card_id uuid, p_links jsonb, p_actor text, p_via text) RETURNS boolean
@@ -1586,6 +1603,21 @@ $$;
 -- Add 1 to 50 cards. Each card is checked; a refused card comes back with
 -- every fix and nothing is written for it. The same request key repeats
 -- safely.
+-- A card field in the words people read in the agent log, never its
+-- internal name.
+CREATE FUNCTION public.ops_field_words(p_field text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT CASE p_field
+    WHEN 'title' THEN 'title' WHEN 'instructions' THEN 'instructions' WHEN 'done_means' THEN 'done means'
+    WHEN 'owners' THEN 'owners' WHEN 'watchers' THEN 'watchers' WHEN 'due_on' THEN 'due date'
+    WHEN 'links' THEN 'links' WHEN 'anchor' THEN 'event' WHEN 'kit_step' THEN 'launch kit step'
+    WHEN 'kind' THEN 'card type' WHEN 'plan' THEN 'plan' WHEN 'person_reason' THEN 'why it needs a person'
+    WHEN 'status' THEN 'status' WHEN 'week' THEN 'sprint week' WHEN 'blocked_reason' THEN 'what blocks it'
+    WHEN 'result' THEN 'result' WHEN 'blocked' THEN 'blocked' WHEN 'item' THEN 'the card'
+    ELSE 'a field' END
+$$;
+
 CREATE FUNCTION public.ops_work_add(p_items jsonb, p_request_key text) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -1608,7 +1640,7 @@ BEGIN
   FOR v_item IN SELECT e.value FROM jsonb_array_elements(p_items) WITH ORDINALITY e(value, ord) ORDER BY e.ord LOOP
     v_chk := public.ops_validate_card(v_item, 'add', v.actor_email, v_today);
     IF jsonb_array_length(v_chk->'fixes') > 0 THEN
-      SELECT string_agg(DISTINCT f->>'field', ', ') INTO v_fields FROM jsonb_array_elements(v_chk->'fixes') f;
+      SELECT string_agg(DISTINCT public.ops_field_words(f->>'field'), ', ') INTO v_fields FROM jsonb_array_elements(v_chk->'fixes') f;
       v_rows := v_rows || jsonb_build_array(jsonb_build_object('index', v_idx, 'status', 'refused', 'fixes', v_chk->'fixes',
         'title', v_chk->'clean'->'title'));
       PERFORM public.ops_log_write(v.actor_email, v.via, 'card_refused', 'stopped', NULL, NULL, NULL,
@@ -1941,6 +1973,8 @@ BEGIN
     jsonb_build_object('verified', (SELECT count(*) FROM jsonb_array_elements(v_proof) p WHERE (p->>'verified')::boolean)));
   PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), v.actor_email,
     format('%s closed: %s', public.ops_actor_label(v.actor_email, v.via), n.title));
+  PERFORM public.ops_notify_people(c.id, v_event, public.ops_recently_removed(c.id), v.actor_email,
+    format('%s closed a card you were taken off in the last 24 hours: %s', public.ops_actor_label(v.actor_email, v.via), n.title));
   RETURN jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', v_event);
 END;
 $$;
@@ -1976,6 +2010,8 @@ BEGIN
     jsonb_build_object('kind', p_kind));
   PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), v.actor_email,
     format('%s pushed back: %s — %s', v_who, n.title, v_reason));
+  PERFORM public.ops_notify_people(c.id, v_event, public.ops_recently_removed(c.id), v.actor_email,
+    format('%s closed a card you were taken off in the last 24 hours: %s — %s', v_who, n.title, v_reason));
   RETURN jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', v_event);
 END;
 $$;

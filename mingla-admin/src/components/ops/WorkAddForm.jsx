@@ -91,7 +91,7 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
       </label>
       <label className="flex min-w-0 flex-col gap-1">
         <span className={LABEL}>Done means</span>
-        <input value={doneMeans} maxLength={300} onChange={(e) => setDoneMeans(e.target.value)} placeholder="One line the work is checked against" className={INPUT} />
+        <textarea value={doneMeans} maxLength={300} rows={2} onChange={(e) => setDoneMeans(e.target.value)} placeholder="What shows the work is done" className={`min-h-[56px] w-full resize-y whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] ${FOCUS}`} />
       </label>
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <PeoplePicker label="Owners" people={people(owners)} team={team} exclude={watchers} onAdd={(email) => setOwners([...owners, email])} onRemove={(email) => setOwners(owners.filter((x) => x !== email))} />

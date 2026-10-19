@@ -78,7 +78,7 @@ function RunwayList({ onSelect }) {
                     <span className="block break-words text-[13.5px] font-semibold text-[var(--color-text-primary)]">{row.title}</span>
                     <span className="block break-words text-[12px] text-[var(--color-text-tertiary)]">{dayLabel(row.start_on)}{row.host_name ? ` · ${row.host_name}` : ""}</span>
                   </span>
-                  <OpsChip tone={bandTone(row.band)} dashed={row.anchor_kind === "expected" || row.band === "missed"}>{bandShort(row)}</OpsChip>
+                  <OpsChip tone={bandTone(row.band)} dashed={row.anchor_kind === "expected" || row.band === "missed"} className="shrink-0 whitespace-nowrap">{bandShort(row)}</OpsChip>
                 </button>
               </li>
             ))}
@@ -140,7 +140,7 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack, onl
                     <span className={`block break-words text-[13px] text-[var(--color-text-primary)] ${row.gate ? "font-semibold" : ""}`}>{row.title}</span>
                     <span className="block text-[12px] text-[var(--color-text-tertiary)]">{KIT_WHO[row.who] || row.who}</span>
                   </span>
-                  <OpsChip tone={chip.tone}>{chip.label}</OpsChip>
+                  <OpsChip tone={chip.tone} className="shrink-0 whitespace-nowrap">{chip.label}</OpsChip>
                 </>
               );
               return (
@@ -179,7 +179,7 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack, onl
                 <li key={c.id}>
                   <a href={`#/work-board?card=${c.id}`} className={`flex min-h-11 min-w-0 items-start justify-between gap-2 rounded-lg px-1 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`}>
                     <span className="min-w-0 break-words text-[13px] text-[var(--color-text-primary)]">Card {c.number}: {c.title}</span>
-                    <OpsChip tone={c.status === "done" ? "success" : c.blocked ? "error" : "brand"}>{c.blocked && c.status !== "done" ? "Blocked" : WORK_STATUSES.find((s) => s.value === c.status)?.label || c.status}</OpsChip>
+                    <OpsChip tone={c.status === "done" ? "success" : c.blocked ? "error" : "brand"} className="shrink-0 whitespace-nowrap">{c.blocked && c.status !== "done" ? "Blocked" : WORK_STATUSES.find((s) => s.value === c.status)?.label || c.status}</OpsChip>
                   </a>
                 </li>
               ))}

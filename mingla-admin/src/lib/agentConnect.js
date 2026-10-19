@@ -405,7 +405,7 @@ export const AGENT_WORK_ABILITIES = [
   { tool: "add_work", group: "Work", title: "Adds work cards", detail: "Up to 50 at a time, straight to the Work board after the server checks each one. Owners and watchers are told." },
   { tool: "start_work", group: "Work", title: "Starts a card", detail: "Moves a card you own to Doing and claims it." },
   { tool: "update_work", group: "Work", title: "Updates a card", detail: "Changes it, marks plan steps it read back, adds notes, or hands it to you as Needs a person." },
-  { tool: "close_work", group: "Work", title: "Closes a card with proof", detail: "Only with proof Mingla can check, such as a saved draft or a changed record." },
+  { tool: "close_work", group: "Work", title: "Closes a card with proof", detail: "With at least one line of proof. A saved draft or a changed record is checked by Mingla; anything else shows on the card as the agent's word. Anyone it took off the card in the last day is told it closed." },
   { tool: "push_back", group: "Work", title: "Pushes a card back", detail: "As not needed or already done, with a reason everyone on the card sees." },
   { tool: "list_work", group: "Work", title: "Lists the Work board", detail: "By status, owner, event, host or creator, or sprint week." },
   { tool: "my_work", group: "Work", title: "Reads your cards", detail: "Your open cards, the ones you watch, and its open claims." },
@@ -416,7 +416,8 @@ export const AGENT_WORK_ABILITIES = [
 
 export const AGENT_WORK_GUARDRAILS = [
   "It reads the agent log and claims before it acts.",
-  "It closes a card only with proof.",
+  "It closes a card only with at least one line of proof. Proof Mingla cannot check shows as the agent's word.",
+  "If it takes someone off a card, they are told who did it and which agent.",
   "It never marks a message sent, approves spend or publishes: those wait in To review.",
 ];
 

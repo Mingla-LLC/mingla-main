@@ -36,6 +36,8 @@ import { NoteBox } from "./NoteBox";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
+// Done means wraps to show its whole text (it is one line to the server).
+const DONE_MEANS_CLASS = "min-h-[56px] w-full resize-y whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60";
 const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]";
 
 function Section({ title, children, action }) {
@@ -267,7 +269,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
       </Section>
 
       <Section title="Done means">
-        <input value={doneMeans} maxLength={300} disabled={locked || card.status === "done"} aria-label="Done means" onChange={(e) => setDoneMeans(e.target.value)} onBlur={() => saveText("done_means", doneMeans, card.done_means)} className={INPUT} />
+        <textarea value={doneMeans} maxLength={300} rows={2} disabled={locked || card.status === "done"} aria-label="Done means" onChange={(e) => setDoneMeans(e.target.value)} onBlur={() => saveText("done_means", doneMeans, card.done_means)} className={`${DONE_MEANS_CLASS} ${FOCUS}`} />
         {card.kind === "gate_live" && <p className="text-[12px] text-[var(--color-text-tertiary)]">Closes itself the moment the event goes public.</p>}
       </Section>
 

@@ -1,19 +1,24 @@
 // Issue #3980 — a note on a card. Type @ and a name to tell a teammate.
 import { useState } from "react";
-import { mentionMatches, mentionedEmails } from "../../lib/opsModel";
+import { mentionMatches, mentionToken, mentionedEmails } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
 export function NoteBox({ team = [], disabled, busy, onPost }) {
   const [body, setBody] = useState("");
+  // Each pick carries the teammate's email; only picks still in the text are told.
+  const [picks, setPicks] = useState([]);
   const typed = body.match(/(?:^|\s)@([\w.-]*)$/);
   const options = typed ? mentionMatches(team, typed[1]) : [];
-  const pick = (p) => setBody(body.replace(/@([\w.-]*)$/, `@${p.name} `));
+  const pick = (p) => {
+    setBody(body.replace(/@([\w.-]*)$/, `${mentionToken(p)} `));
+    setPicks((list) => [...list, { email: p.email, name: p.name }]);
+  };
   const submit = async () => {
     const text = body.trim();
     if (!text) return;
-    const ok = await onPost(text, mentionedEmails(team, text));
-    if (ok) setBody("");
+    const ok = await onPost(text, mentionedEmails(picks, text));
+    if (ok) { setBody(""); setPicks([]); }
   };
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -30,7 +35,7 @@ export function NoteBox({ team = [], disabled, busy, onPost }) {
         <ul aria-label="Teammates to mention" className="flex min-w-0 flex-wrap gap-1">
           {options.map((p) => (
             <li key={p.email}>
-              <button type="button" onClick={() => pick(p)} className={`min-h-11 rounded-lg bg-[var(--gray-100)] px-3 text-[13px] hover:bg-[var(--gray-200)] ${FOCUS}`}>@{p.name}</button>
+              <button type="button" onClick={() => pick(p)} aria-label={`Mention ${p.name}, ${p.email}`} className={`min-h-11 max-w-full rounded-lg bg-[var(--gray-100)] px-3 text-left text-[13px] [overflow-wrap:anywhere] hover:bg-[var(--gray-200)] ${FOCUS}`}>{mentionToken(p)} <span className="text-[var(--color-text-tertiary)]">{p.email}</span></button>
             </li>
           ))}
         </ul>
