@@ -99,8 +99,20 @@ Deno.test("#3980 rework: the month grid beside the event panel never scrolls sid
   assertMatch(page, /<DayPanel /);
   // A day opened from "+N more" is in the address, so Back and reload keep it.
   assertMatch(page, /p\.set\("day", key\)/);
-  // Chips wrap by word, never letter by letter.
+  // Chips wrap by word (hyphenated where a word is wider than its chip),
+  // never letter by letter.
   assertNotMatch(page, /overflow-wrap:anywhere|break-all/);
+  assertMatch(page, /const CONTENT_CHIP = "block w-full break-words hyphens-auto /);
+  assertMatch(page, /const EVENT_CHIP = "block w-full break-words hyphens-auto /);
+  // Where the grid is too narrow for words, each day shows one bar per entry
+  // and opens in the panel. The container classes are written out whole, or
+  // Tailwind never generates them.
+  assertMatch(panelGrid, /@container hidden min-w-0/);
+  assertMatch(panelGrid, /hidden min-w-0 space-y-1 @min-\[630px\]:block/);
+  assertMatch(panelGrid, /data-calendar-day-dense=\{key\} onClick=\{\(\) => onDay\?\.\(key\)\}/);
+  assertMatch(panelGrid, /@min-\[630px\]:hidden/);
+  assertNotMatch(page, /\$\{[A-Z_]+\}:(?:block|hidden|min-h)/);
+  assertMatch(page, /if \(mode === "dense"\)/);
 });
 
 Deno.test("#3980 rework: status chips in the event panel never wrap", () => {

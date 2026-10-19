@@ -36,7 +36,7 @@ import { bandShort, bandTone, buildLayers, opsErrorWords, parseEventParam, parse
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // #3980: event layer chips, coloured by runway band.
-const EVENT_CHIP = "block w-full break-words rounded-md px-1.5 text-left font-semibold leading-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-1";
+const EVENT_CHIP = "block w-full break-words hyphens-auto rounded-md px-1.5 text-left font-semibold leading-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-1";
 const EVENT_TONE = {
   success: "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
   warning: "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
@@ -45,6 +45,15 @@ const EVENT_TONE = {
   brand: "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]",
   expected: "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)]",
   default: "bg-[var(--gray-100)] text-[var(--gray-700)]",
+};
+// The same layers as one bar each, where the month grid is too narrow for words.
+const EVENT_BAR = {
+  success: "bg-[var(--color-success-600)]",
+  warning: "bg-[var(--color-warning-600)]",
+  error: "bg-[var(--color-error-600)]",
+  info: "bg-[var(--color-info-600)]",
+  brand: "bg-[var(--color-brand-600)]",
+  default: "bg-[var(--gray-500)]",
 };
 
 function useCoarsePointer() {
@@ -62,7 +71,11 @@ function useCoarsePointer() {
 // #3980: how many entries a day shows in the month grid beside the event
 // panel before "+N more" opens the whole day in the panel.
 const DAY_CHIP_LIMIT = 3;
-const CONTENT_CHIP = "block w-full break-words rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 py-0.5 text-left text-[11px] font-semibold leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-1";
+// Below a 630px grid a day's words would break letter by letter, so each day
+// shows one coloured bar per entry instead and opens in the panel (the
+// @min-[630px] container classes below; written out whole so Tailwind sees them).
+const CONTENT_BAR = "block h-1.5 w-full rounded-full bg-[var(--gray-400)]";
+const CONTENT_CHIP = "block w-full break-words hyphens-auto rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 py-0.5 text-left text-[11px] font-semibold leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-1";
 
 function CalendarView({ items, month, open, reschedule, coarse, extras = null, showContent = true, withPanel = false, onDay = null, openDay = null }) {
   const window = monthWindow(month);
@@ -112,12 +125,17 @@ function CalendarView({ items, month, open, reschedule, coarse, extras = null, s
         })}</div>
         <div className="p-3"><h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{new Date(`${selected}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</h2><div className="mt-2 space-y-2">{selectedItems.length || selectedMore.length ? <>{selectedItems.map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} />)}{selectedMore}</> : <p className="text-sm text-[var(--color-text-secondary)]">Nothing scheduled.</p>}</div></div>
       </div>
-      {withPanel ? <div data-calendar-grid="panel" className="hidden min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] md:block"><div className="grid grid-cols-[repeat(7,minmax(0,1fr))] border-b border-[var(--gray-200)]">{WEEKDAYS.map((name) => <div key={name} className="min-w-0 p-2 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{name}</div>)}</div><div className="grid grid-cols-[repeat(7,minmax(0,1fr))]">{window.days.map((date) => {
+      {withPanel ? <div data-calendar-grid="panel" className="@container hidden min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] md:block"><div className="grid grid-cols-[repeat(7,minmax(0,1fr))] border-b border-[var(--gray-200)]">{WEEKDAYS.map((name) => <div key={name} className="min-w-0 p-2 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{name}</div>)}</div><div className="grid grid-cols-[repeat(7,minmax(0,1fr))]">{window.days.map((date) => {
         const key = localDateKey(date);
         const entries = [...byDate(date).map((item) => <button key={`c-${item.id}`} type="button" draggable={!coarse} onDragStart={(event) => { event.dataTransfer.setData("text/x-mingla-content-id", item.id); event.dataTransfer.effectAllowed = "move"; }} onClick={() => open(item.id)} aria-label={`${item.title}, content, ${item.stage}`} className={`${CONTENT_CHIP} min-h-6`}>{item.title}</button>), ...more(key, "grid")];
         const hidden = entries.length - DAY_CHIP_LIMIT;
         const dayWords = date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
-        return <section key={date.toISOString()} onDragOver={coarse ? undefined : (event) => event.preventDefault()} onDrop={(event) => drop(event, date)} aria-label={dayWords} className={`min-h-28 min-w-0 border-b border-r border-[var(--gray-200)] p-1 ${inMonth(date) ? "" : "bg-[var(--gray-50)] opacity-70"} ${openDay === key ? "ring-2 ring-inset ring-[var(--color-brand-700)]" : ""}`}><p className="mb-1 text-xs font-semibold text-[var(--color-text-secondary)]">{date.getDate()}</p><div className="min-w-0 space-y-1">{hidden > 0 ? entries.slice(0, DAY_CHIP_LIMIT - 1) : entries}{hidden > 0 && <button type="button" onClick={() => onDay?.(key)} aria-label={`Show all ${entries.length} on ${dayWords}`} className={`block min-h-6 w-full rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-50)] ${FOCUS}`}>+{hidden + 1} more</button>}</div></section>;
+        const bars = [...byDate(date).map((item) => <span key={`cb-${item.id}`} aria-hidden="true" className={CONTENT_BAR} />), ...more(key, "dense")];
+        const barWords = [...byDate(date).map((item) => item.title), ...bars.slice(byDate(date).length).map((bar) => bar.props["data-words"])].filter(Boolean).join("; ");
+        return <section key={date.toISOString()} onDragOver={coarse ? undefined : (event) => event.preventDefault()} onDrop={(event) => drop(event, date)} aria-label={dayWords} className={`min-h-20 min-w-0 border-b border-r border-[var(--gray-200)] p-1 @min-[630px]:min-h-28 ${inMonth(date) ? "" : "bg-[var(--gray-50)] opacity-70"} ${openDay === key ? "ring-2 ring-inset ring-[var(--color-brand-700)]" : ""}`}><p className="mb-1 text-xs font-semibold text-[var(--color-text-secondary)]">{date.getDate()}</p>
+          <div className={`hidden min-w-0 space-y-1 @min-[630px]:block`}>{hidden > 0 ? entries.slice(0, DAY_CHIP_LIMIT - 1) : entries}{hidden > 0 && <button type="button" onClick={() => onDay?.(key)} aria-label={`Show all ${entries.length} on ${dayWords}`} className={`block min-h-6 w-full rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-50)] ${FOCUS}`}>+{hidden + 1} more</button>}</div>
+          {bars.length > 0 && <button type="button" data-calendar-day-dense={key} onClick={() => onDay?.(key)} aria-label={`${dayWords}: ${bars.length} on this day. ${barWords}`} className={`flex min-h-11 w-full min-w-0 flex-col items-stretch justify-start gap-1 rounded-md p-1 hover:bg-[var(--gray-50)] @min-[630px]:hidden ${FOCUS}`}>{bars.slice(0, DAY_CHIP_LIMIT)}{bars.length > DAY_CHIP_LIMIT && <span aria-hidden="true" className="text-left text-[11px] font-semibold leading-none text-[var(--color-brand-700)]">+{bars.length - DAY_CHIP_LIMIT}</span>}</button>}
+        </section>;
       })}</div></div>
       : <div className="hidden overflow-x-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] md:block"><div className="grid min-w-[700px] grid-cols-7 border-b border-[var(--gray-200)]">{WEEKDAYS.map((name) => <div key={name} className="p-2 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{name}</div>)}</div><div className="grid min-w-[700px] grid-cols-7">{window.days.map((date) => <section key={date.toISOString()} onDragOver={coarse ? undefined : (event) => event.preventDefault()} onDrop={(event) => drop(event, date)} aria-label={date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" })} className={`min-h-32 border-b border-r border-[var(--gray-200)] p-1.5 ${inMonth(date) ? "" : "bg-[var(--gray-50)] opacity-70"}`}><p className="mb-1 text-xs font-semibold text-[var(--color-text-secondary)]">{date.getDate()}</p><div className="space-y-1">{byDate(date).map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} draggable={!coarse} />)}{more(localDateKey(date), "grid")}</div></section>)}</div></div>}
     </section>
@@ -198,6 +216,7 @@ export function ContentCalendarPage() {
     const on = route.layers;
     const chips = [];
     const chip = (id, label, tone, dashed, selection, onDate, words = label) => {
+      if (mode === "dense") { chips.push(<span key={`${id}-dense`} aria-hidden="true" data-words={words} className={`block h-1.5 w-full rounded-full ${dashed ? "border border-dashed border-[var(--gray-500)] bg-transparent" : EVENT_BAR[tone] || EVENT_BAR.default}`} />); return; }
       const current = route.event && selection && route.event.kind === selection.kind && route.event.id === selection.id;
       chips.push(<button key={`${id}-${mode}`} type="button" aria-current={current ? "true" : undefined} aria-label={words} onClick={() => selectEvent(selection, onDate)} className={`${EVENT_CHIP} ${mode === "grid" ? "min-h-6 py-0.5 text-[11px]" : "min-h-11 py-2 text-[13px]"} ${EVENT_TONE[tone] || EVENT_TONE.default} ${dashed ? "border-[1.5px] border-dashed border-[var(--gray-400)]" : "border border-transparent"} ${current ? "ring-2 ring-[var(--color-brand-700)]" : ""}`}>{label}</button>);
     };

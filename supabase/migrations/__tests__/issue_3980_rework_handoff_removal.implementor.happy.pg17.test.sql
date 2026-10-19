@@ -345,7 +345,7 @@ $removed$;
 do $words$
 declare v text; v_summary text;
 begin
-  v := pg_temp.ti_work('GC', 'add_work', '{"items":[{"title":"Y3980 Half a card","instructions":"Do the half card task carefully.","owners":["gia.y3980@test.local"]}],"request_key":"y3980-half-card"}');
+  v := pg_temp.ti_work('GC', 'add_work', '{"cards":[{"title":"Y3980 Half a card","instructions":"Do the half card task carefully.","owners":["gia.y3980@test.local"]}],"request_key":"y3980-half-card"}');
   select summary into v_summary from public.ops_agent_log where action = 'card_refused' and summary like '%Y3980 Half a card%' order by at desc limit 1;
   perform pg_temp.ti_like('R-WORDS', 'the agent log names what to fix in plain words', v_summary, '%done means%due date%to fix.');
   perform pg_temp.ti_check('R-WORDS', 'the agent log carries no internal field name',
