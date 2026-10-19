@@ -106,6 +106,7 @@
     "@mingla/search-measurement": "file:../packages/search-measurement",
     "@mingla/sharing": "file:../packages/sharing",
     "@mingla/theme-animations": "file:../packages/theme-animations",
+    "@mingla/video-upload": "file:../packages/video-upload",
     "@react-native-community/netinfo": "11.4.1",
     "@radix-ui/react-dialog": "^1.1.15",
     "@react-native-async-storage/async-storage": "^2.2.0",
