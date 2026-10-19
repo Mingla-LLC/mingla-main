@@ -141,6 +141,15 @@ exception when others then
 end;
 $fn$;
 
+create function pg_temp.t3980_j(p text) returns jsonb
+language plpgsql as $fn$
+begin
+  return p::jsonb;
+exception when others then
+  return jsonb_build_object('unreadable', left(p, 300));
+end;
+$fn$;
+
 create function pg_temp.t3980_id(p_k text) returns text
 language sql as $fn$ select v from t3980_ids where k = p_k $fn$;
 
@@ -185,7 +194,7 @@ declare v text;
 begin
   v := pg_temp.t3980_person(p_who, format('select public.team_agent_key_create(%L)::text', p_agent));
   if v like 'ERR:%' then return v; end if;
-  perform pg_temp.t3980_keep(p_label, v::jsonb ->> 'key');
+  perform pg_temp.t3980_keep(p_label, pg_temp.t3980_j(v) ->> 'key');
   return v;
 end;
 $fn$;
@@ -246,9 +255,9 @@ begin
     pg_temp.t3980_get(v, 'results', '0', 'status') || '/' || pg_temp.t3980_get(v, 'added'), 'added/1');
   perform pg_temp.t3980_keep('c1', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));
   perform pg_temp.t3980_check('W1-ADD', 'with two owners, one watcher, the host link, the sprint of its due week and To do',
-    jsonb_array_length(v::jsonb #> '{results,0,card,owners}') || '/' || jsonb_array_length(v::jsonb #> '{results,0,card,watchers}')
-      || '/' || (v::jsonb #>> '{results,0,card,links,0,label}') || '/' || (v::jsonb #>> '{results,0,card,sprint,starts_on}')
-      || '/' || (v::jsonb #>> '{results,0,card,status}'),
+    jsonb_array_length(pg_temp.t3980_j(v) #> '{results,0,card,owners}') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{results,0,card,watchers}')
+      || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,links,0,label}') || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,sprint,starts_on}')
+      || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,status}'),
     '2/1/W3980 Claimed Host/' || (v_due - (extract(isodow FROM v_due)::integer - 1))::text || '/todo');
 
   select count(*) into v_cards from public.ops_work_cards;
@@ -256,32 +265,32 @@ begin
   perform pg_temp.t3980_check('W1-ADD', 'a card missing every required field is refused, not duplicate, and nothing is written',
     pg_temp.t3980_get(v, 'results', '0', 'status') || '/' || (select count(*) from public.ops_work_cards)::text, 'refused/' || v_cards);
   perform pg_temp.t3980_check('W1-ADD', 'missing title: the exact fix',
-    (select f->>'message' from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'title'),
+    (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'title'),
     'Title is missing. Say what the work is in 3 to 160 characters.');
   perform pg_temp.t3980_check('W1-ADD', 'missing instructions: the exact fix',
-    (select f->>'message' from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'instructions'),
+    (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'instructions'),
     'Instructions are missing. Say what the person or their agent should do (10 to 4,000 characters).');
   perform pg_temp.t3980_check('W1-ADD', 'missing done means: the exact fix',
-    (select f->>'message' from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'done_means'),
+    (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'done_means'),
     'Done means is empty. Add one line the work is checked against.');
   perform pg_temp.t3980_like('W1-ADD', 'no owner: the exact fix, naming current teammates',
-    (select f->>'message' from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'owners'),
+    (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'owners'),
     'No owner. Pick at least one current teammate: %Ada%');
   perform pg_temp.t3980_check('W1-ADD', 'no due date: the exact fix',
-    (select f->>'message' from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'due_on'),
+    (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'due_on'),
     'No due date. Add one, or link an event and it is counted back from the start.');
   perform pg_temp.t3980_check('W1-ADD', 'the refusal is in the agent log as stopped',
     (select outcome from public.ops_agent_log where action = 'card_refused' and actor_email = 'ada.w3980@test.local' order by id desc limit 1), 'stopped');
 
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_add('[{"title":"W3980 owner check","instructions":"Check the owner rule here.","done_means":"Owner rule checked.","owners":["gus.w3980@test.local","fay.w3980@test.local"],"due_on":"%s","links":[{"kind":"host","id":"39800000-0000-4000-9999-000000000001"}]}]'::jsonb, 'w3980-add-0003')::text$q$, v_due));
   perform pg_temp.t3980_like('W1-ADD', 'an owner who is not on the team is refused',
-    (select string_agg(f->>'message', ' | ') from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'owners'),
+    (select string_agg(f->>'message', ' | ') from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'owners'),
     'Owner "gus.w3980@test.local" is not on the team. Pick from %');
   perform pg_temp.t3980_like('W1-ADD', 'a removed teammate is refused as owner too',
-    (select string_agg(f->>'message', ' | ') from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'owners'),
+    (select string_agg(f->>'message', ' | ') from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'owners'),
     '%Owner "fay.w3980@test.local" is not on the team.%');
   perform pg_temp.t3980_check('W1-ADD', 'a link to a missing record is refused',
-    (select f->>'message' from jsonb_array_elements(v::jsonb #> '{results,0,fixes}') f where f->>'field' = 'links'),
+    (select f->>'message' from jsonb_array_elements(pg_temp.t3980_j(v) #> '{results,0,fixes}') f where f->>'field' = 'links'),
     'Linked host 39800000-0000-4000-9999-000000000001 does not exist or was removed. Pick it again from live data.');
 
   v := pg_temp.t3980_person('growth2', format($q$select public.ops_work_add('[{"title":"collect the  W3980 MENU","instructions":"Same work again, typed differently.","done_means":"Menu collected.","owners":["bo.w3980@test.local"],"due_on":"%s"}]'::jsonb, 'w3980-add-0004')::text$q$, v_due));
@@ -333,7 +342,7 @@ declare v text; v_seen timestamptz;
 begin
   v := pg_temp.t3980_work('A', 'claim', format('{"card_id":"%s","targets":[{"kind":"crm_record","id":"%s"}]}', pg_temp.t3980_id('c1'), pg_temp.t3980_id('h1')));
   perform pg_temp.t3980_check('W1-CLAIMS', 'agent A claims the card and the host',
-    pg_temp.t3980_get(v, 'result', 'status') || '/' || jsonb_array_length(v::jsonb #> '{result,claims}'), 'claimed/2');
+    pg_temp.t3980_get(v, 'result', 'status') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,claims}'), 'claimed/2');
   perform pg_temp.t3980_check('W1-CLAIMS', 'the claim is in the agent log',
     (select action || '/' || via from public.ops_agent_log where actor_email = 'ada.w3980@test.local' and action = 'claimed' order by id desc limit 1), 'claimed/claude');
 
@@ -414,7 +423,7 @@ begin
 
   v := pg_temp.t3980_person('growth', format($q$select public.ops_contact_override(%L, 'The host asked for the menu today')::text$q$, pg_temp.t3980_id('h5')));
   perform pg_temp.t3980_check('W1-SEND', 'a person allows one more message for 24 hours',
-    ((v::jsonb ->> 'expires_at')::timestamptz - now() = interval '24 hours')::text, 'true');
+    ((pg_temp.t3980_j(v) ->> 'expires_at')::timestamptz - now() = interval '24 hours')::text, 'true');
   v := pg_temp.t3980_gw('A', 'save_drafts', format('{"drafts":[{"record_id":"%s","channel":"whatsapp","body":"Here is the menu link"}],"request_key":"w3980-a-draft-04"}', pg_temp.t3980_id('h5')));
   perform pg_temp.t3980_check('W1-SEND', 'after the override the draft saves', pg_temp.t3980_get(v, 'result', 'results', '0', 'status'), 'saved');
 
@@ -438,7 +447,7 @@ begin
   v := pg_temp.t3980_work('A', 'start_work', format('{"id":"%s","expected_revision":%s}', pg_temp.t3980_id('c2'), v_rev));
   perform pg_temp.t3980_check('W1-CLOSE', 'agent A starts its person''s card, which claims it',
     pg_temp.t3980_get(v, 'result', 'card', 'status') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'claim', 'holder_via'), 'doing/claude');
-  v_rev := (v::jsonb #>> '{result,card,revision}')::bigint;
+  v_rev := (pg_temp.t3980_j(v) #>> '{result,card,revision}')::bigint;
   v := pg_temp.t3980_work('A', 'close_work', format('{"id":"%s","expected_revision":%s,"proof":[]}', pg_temp.t3980_id('c2'), v_rev));
   perform pg_temp.t3980_check('W1-CLOSE', 'an agent cannot close without proof', pg_temp.t3980_get(v, 'error', 'token'), 'proof_required');
   v := pg_temp.t3980_work('A', 'close_work', format('{"id":"%s","expected_revision":%s,"proof":[{"kind":"draft","text":"Draft saved for the quiet host","id":"39800000-0000-4000-9999-000000000002"}]}', pg_temp.t3980_id('c2'), v_rev));
@@ -460,19 +469,19 @@ begin
   v := pg_temp.t3980_work('A', 'push_back', format('{"id":"%s","expected_revision":%s,"kind":"declined","reason":"The host is closed for renovation this month."}', pg_temp.t3980_id('c1'), v_rev));
   perform pg_temp.t3980_check('W1-CLOSE', 'pushing back as not needed closes it as declined',
     pg_temp.t3980_get(v, 'result', 'card', 'status') || '/' || pg_temp.t3980_get(v, 'result', 'card', 'close_kind'), 'done/declined');
-  v_rev := (v::jsonb #>> '{result,card,revision}')::bigint;
+  v_rev := (pg_temp.t3980_j(v) #>> '{result,card,revision}')::bigint;
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_reopen(%L, 'The renovation was cancelled', %s)::text$q$, pg_temp.t3980_id('c1'), v_rev));
   perform pg_temp.t3980_check('W1-CLOSE', 'a person reopens it to To do',
     pg_temp.t3980_get(v, 'card', 'status') || '/' || coalesce(pg_temp.t3980_get(v, 'card', 'close_kind'), 'none'), 'todo/none');
 
-  v_rev := (v::jsonb #>> '{card,revision}')::bigint;
+  v_rev := (pg_temp.t3980_j(v) #>> '{card,revision}')::bigint;
   v := pg_temp.t3980_person('growth', format($q$select public.ops_work_update(%L, '{"watchers":["di.w3980@test.local","bo.w3980@test.local"]}'::jsonb, %s)::text$q$, pg_temp.t3980_id('c1'), v_rev));
   v_event := pg_temp.t3980_get(v, 'event_id');
   perform pg_temp.t3980_check('W1-CLOSE', 'adding a watcher is one people change that tells the new watcher',
-    jsonb_array_length(v::jsonb #> '{card,watchers}')::text || '/'
-      || (select count(*) from public.team_mentions where source_kind = 'work_card' and source_id = v_event::uuid and target_user_id = '39800000-0000-4000-a000-000000000004')::text, '2/1');
+    jsonb_array_length(pg_temp.t3980_j(v) #> '{card,watchers}')::text || '/'
+      || (select count(*) from public.team_mentions where source_kind = 'work_card' and source_id::text = v_event and target_user_id = '39800000-0000-4000-a000-000000000004')::text, '2/1');
   v := pg_temp.t3980_person('growth', format('select public.ops_work_undo(%L)::text', v_event));
-  perform pg_temp.t3980_check('W1-CLOSE', 'undo puts the watchers back', jsonb_array_length(v::jsonb #> '{card,watchers}')::text, '1');
+  perform pg_temp.t3980_check('W1-CLOSE', 'undo puts the watchers back', jsonb_array_length(pg_temp.t3980_j(v) #> '{card,watchers}')::text, '1');
 end;
 $close$;
 
@@ -561,17 +570,17 @@ declare v text;
 begin
   v := pg_temp.t3980_gw('A', 'get_started');
   perform pg_temp.t3980_check('W1-GUIDE', 'get_started has 23 rules and 8 routines, one rule about today',
-    jsonb_array_length(v::jsonb #> '{result,rules}') || '/' || jsonb_array_length(v::jsonb #> '{result,routines}') || '/'
-      || (select count(*) from jsonb_array_elements_text(v::jsonb #> '{result,rules}') r where r like 'Today is your person''s own date.%'),
+    jsonb_array_length(pg_temp.t3980_j(v) #> '{result,rules}') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,routines}') || '/'
+      || (select count(*) from jsonb_array_elements_text(pg_temp.t3980_j(v) #> '{result,rules}') r where r like 'Today is your person''s own date.%'),
     '23/8/1');
   v := pg_temp.t3980_gw('A', 'mcp:tools/list', '{}', 'team_agent_product_truth_call');
   perform pg_temp.t3980_check('W1-LIST', 'tools/list says the Work board is open to this teammate', pg_temp.t3980_get(v, 'me', 'work'), 'true');
   v := pg_temp.t3980_work('A', 'read_log', format('{"record_id":"%s"}', pg_temp.t3980_id('h1')));
   perform pg_temp.t3980_check('W1-LIST', 'read_log returns the record''s entries and the nine work rules',
-    (jsonb_array_length(v::jsonb #> '{result,entries}') > 0)::text || '/' || jsonb_array_length(v::jsonb #> '{result,rules}'), 'true/9');
+    (jsonb_array_length(pg_temp.t3980_j(v) #> '{result,entries}') > 0)::text || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,rules}'), 'true/9');
   v := pg_temp.t3980_work('A', 'my_work', '{}');
   perform pg_temp.t3980_check('W1-LIST', 'my_work lists the person''s open cards',
-    (jsonb_array_length(v::jsonb #> '{result,mine}') > 0)::text, 'true');
+    (jsonb_array_length(pg_temp.t3980_j(v) #> '{result,mine}') > 0)::text, 'true');
 end;
 $guide$;
 
