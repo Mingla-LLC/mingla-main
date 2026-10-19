@@ -1,8 +1,16 @@
 // Shared browser implementation for video pickers that feed the canonical
 // Bunny lane. Keep this leaf module UI-free so Metro can share it without
 // pulling the complete cover picker into the eager web bundle.
-const VIDEO_DURATION_ATTEMPT_TIMEOUT_MS = 6000;
-const VIDEO_DURATION_RETRY_DELAYS_MS = [900, 1600, 2400];
+// #3040 B-C18 [A-21] — the whole read is bounded at 8 s: two attempts of 3 s
+// with one 1 s settle between them (ORCH-1312: the retry must not fire inside
+// the tab-resume window right after the OS picker closes). It used to be four
+// 6 s attempts plus 4.9 s of waits — up to ~29 s of silence with nothing on
+// screen. The caller now shows "Reading video…" before the first attempt.
+export const VIDEO_DURATION_ATTEMPT_TIMEOUT_MS = 3000;
+export const VIDEO_DURATION_RETRY_DELAYS_MS = [1000];
+export const VIDEO_DURATION_READ_BUDGET_MS =
+  VIDEO_DURATION_ATTEMPT_TIMEOUT_MS * (VIDEO_DURATION_RETRY_DELAYS_MS.length + 1) +
+  VIDEO_DURATION_RETRY_DELAYS_MS.reduce((sum, wait) => sum + wait, 0);
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -60,6 +68,8 @@ const readBrowserVideoDurationOnce = (uri: string): Promise<number | null> => {
 export const readPickedVideoDurationMs = async (
   uri: string,
   providedDurationMs?: number | null,
+  /** #3040 B-C18 — fired once, before the first attempt (the "reading" stage). */
+  onReading?: () => void,
 ): Promise<number | null> => {
   if (
     typeof providedDurationMs === "number" &&
@@ -68,6 +78,7 @@ export const readPickedVideoDurationMs = async (
   ) {
     return Math.round(providedDurationMs);
   }
+  onReading?.();
   let result = await readBrowserVideoDurationOnce(uri);
   for (const wait of VIDEO_DURATION_RETRY_DELAYS_MS) {
     if (result !== null && result > 0) return result;

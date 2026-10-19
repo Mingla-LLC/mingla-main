@@ -32,16 +32,66 @@ export const normalizeLocalFileUri = (path: string): string =>
 export const resolveRawClipUploadUri = (assetUri: string, isWeb: boolean): string =>
   isWeb ? assetUri : normalizeLocalFileUri(assetUri);
 
+// #3040 B-C13 [A-13b] — the trimmer is a keyframe STREAM COPY
+// (`enablePreciseTrimming: false`, issue #1350), so the real file can run up
+// to one GOP past the window the host dragged. Declaring the WINDOW let a
+// "60 s" trim reach the provider at 60.9 s and fail `processed_duration_over_cap`
+// after the whole upload and encode. The output is now MEASURED.
+export const TRIM_MAX_DECLARED_MS = 60_000;
+export const TRIM_MEASURE_TOLERANCE_MS = 500;
+
+/** The measured trim is still over a minute (design H-14a). */
+export class TrimOverCapError extends Error {
+  readonly code = "trim_over_cap" as const;
+  readonly measuredMs: number;
+  constructor(measuredMs: number) {
+    super("This trimmed clip is still over 1 minute. Trim it again a little shorter.");
+    this.name = "TrimOverCapError";
+    this.measuredMs = measuredMs;
+  }
+}
+
+const TRIM_MIME_BY_EXTENSION: Record<string, string> = {
+  mp4: "video/mp4",
+  m4v: "video/x-m4v",
+  mov: "video/quicktime",
+  webm: "video/webm",
+};
+
+const basenameOf = (path: string): string => path.split("/").pop() ?? path;
+
+/**
+ * The duration to DECLARE for a trimmed output: the measured length, with a
+ * measurement up to 500 ms over the minute declared as exactly one minute.
+ * Anything longer is refused before a byte is uploaded.
+ */
+export const resolveTrimmedDeclaredDurationMs = (
+  measuredMs: number | null,
+  windowMs: number,
+): number => {
+  if (measuredMs === null || !Number.isFinite(measuredMs) || measuredMs <= 0) return windowMs;
+  if (measuredMs <= TRIM_MAX_DECLARED_MS) return measuredMs;
+  if (measuredMs <= TRIM_MAX_DECLARED_MS + TRIM_MEASURE_TOLERANCE_MS) return TRIM_MAX_DECLARED_MS;
+  throw new TrimOverCapError(measuredMs);
+};
+
 export const buildTrimmedVideoUploadFile = async (input: {
   trimResult: VideoTrimFinishPayload;
+  /** @deprecated #3040 — the OUTPUT's own name and type are used (B-C13c). */
   originalFileName?: string | null;
+  /** @deprecated #3040 — the OUTPUT's own name and type are used (B-C13c). */
   originalMimeType?: string | null;
   statFile: (uri: string) => Promise<FileInfoForUpload>;
+  /**
+   * #3040 B-C13b — measure the real output length (react-native-compressor
+   * `getVideoMetaData`, normalised to ms). Absent or failing ⇒ the window.
+   */
+  measureDurationMs?: (uri: string) => Promise<number | null>;
 }): Promise<EventCoverVideoUploadFile> => {
-  const trimmedDurationMs = normalizePickerDurationMs(
+  const windowMs = normalizePickerDurationMs(
     input.trimResult.endTime - input.trimResult.startTime,
   );
-  if (trimmedDurationMs <= 0) {
+  if (windowMs <= 0) {
     throw new Error("Could not read this video's duration. Try another clip.");
   }
 
@@ -52,15 +102,28 @@ export const buildTrimmedVideoUploadFile = async (input: {
     throw new Error("Could not read this video's size. Try another clip.");
   }
 
+  let measuredMs: number | null = null;
+  if (input.measureDurationMs !== undefined) {
+    try {
+      const raw = await input.measureDurationMs(uploadUri);
+      measuredMs = typeof raw === "number" ? normalizePickerDurationMs(raw) : null;
+    } catch {
+      measuredMs = null;
+    }
+  }
+  const durationMs = resolveTrimmedDeclaredDurationMs(measuredMs, windowMs);
+
+  // #3040 B-C13c — the trimmed file's OWN name and type. The output is an
+  // MP4 even when the original was a .MOV; declaring the original's name and
+  // `video/quicktime` made prepare refuse it or mislabel it.
+  const fileName = basenameOf(input.trimResult.outputPath) || "trimmed-video.mp4";
+  const extension = /\.([a-z0-9]+)$/i.exec(fileName)?.[1]?.toLowerCase() ?? "mp4";
   return {
     bytes,
-    durationMs: trimmedDurationMs,
-    fileName:
-      input.originalFileName ??
-      input.trimResult.outputPath.split("/").pop() ??
-      "trimmed-video.mp4",
-    mimeType: input.originalMimeType ?? "video/mp4",
-    trimEndMs: trimmedDurationMs,
+    durationMs,
+    fileName,
+    mimeType: TRIM_MIME_BY_EXTENSION[extension] ?? "video/mp4",
+    trimEndMs: durationMs,
     trimStartMs: 0,
     uri: uploadUri,
   };

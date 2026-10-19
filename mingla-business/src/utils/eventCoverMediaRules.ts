@@ -2,27 +2,35 @@ import type { EventCoverMediaType } from "../store/draftEventStore";
 
 export const EVENT_COVER_MAX_BYTES = 30 * 1024 * 1024;
 export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 60_000;
-// issue #3040 — how far above the one-minute ceiling a WEB source clip may run
-// and still be accepted. A nominal 60-second export can run a few frames over,
-// so a strict ceiling refuses it even though the browser has no trimmer. Within
-// browser has no trimmer to send the host to. Within this tolerance the web
-// picker declares the clip as exactly the ceiling; the server, the edge
+// issue #3040 — how far above the one-minute ceiling a raw source clip may run
+// and still be accepted. A nominal 60-second recording runs a few frames over
+// (60.03 s at 29.97 fps), so a strict ceiling refuses it. Within this tolerance
+// the picker declares the clip as exactly the ceiling; the server, the edge
 // functions and the database keep their strict 60000 ms rule and never see a
-// larger number. Native is unaffected: an over-ceiling clip goes to the trimmer.
+// larger number.
+//
+// #3040 B-C13a [A-13a] — this used to be WEB-only, so a phone's own "1 minute"
+// recording was forced through the trimmer on iOS and Android. The tolerance
+// is now platform-agnostic and owned by the shared lane contract.
+//
+// A literal, not an import of `@mingla/video-upload`: this rules module is in
+// the public buyer pages' eager bundle, and the upload package is not. The
+// value equals `VIDEO_LIMITS.SOURCE_DURATION_TOLERANCE_MS`, pinned by
+// `src/utils/__tests__/eventCoverMediaRules.issue3040.nativeTolerance.test.ts`.
 export const EVENT_COVER_WEB_SOURCE_DURATION_TOLERANCE_MS = 500;
 
 /**
- * The duration a RAW (untrimmed) picked clip is declared with.
- * Web only: a source above the ceiling by no more than the tolerance is clamped
- * to the ceiling. Everything else is returned untouched, so a longer web clip
- * and every native clip are still judged against the strict ceiling.
+ * The duration a RAW (untrimmed) picked clip is declared with, on EVERY
+ * platform: a source above the ceiling by no more than the tolerance is
+ * clamped to the ceiling; everything else is returned untouched, so a longer
+ * clip is still judged against the strict ceiling (native trims it, web
+ * refuses it). `_isWeb` is kept so existing callers need not change.
  */
 export const resolveRawCoverClipDurationMs = (
   sourceDurationMs: number,
-  isWeb: boolean,
+  _isWeb: boolean,
 ): number => {
   if (
-    isWeb &&
     sourceDurationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS &&
     sourceDurationMs <=
       EVENT_COVER_MAX_VIDEO_DURATION_MS +

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
+// #3040 — the lane's numeric contract (one source for every layer). Imported
+// from the shared package, never from the processing service, so suites that
+// mock the service partially still read real limits.
+import { VIDEO_LIMITS } from "@mingla/video-upload";
 import {
   acknowledgeEventCoverVideoSourceUploaded, applyEventCoverVideoJob, cancelEventCoverVideoJob,
   compressVideoLocally, createEventCoverVideoUploadIntent, EventCoverVideoProcessingError,
@@ -18,6 +22,8 @@ import {
   clearPersistedCoverVideoJobsForUser, readPersistedCoverVideoJob,
   removePersistedCoverVideoJob, type PersistedCoverVideoJob, writePersistedCoverVideoJob,
 } from "../services/eventCoverVideoJobPersistence";
+import { preparedSourceStillExists } from "../services/eventCoverVideoSourcePresence";
+import { isActiveLaneStatus, LANE_CODES } from "../services/eventCoverVideoEdgeContract";
 import { supabase } from "../services/supabase";
 import { validateNativeTrimmedEventCoverVideo } from "../utils/eventCoverNativeVideo";
 import { coverVideoProcessingTiming } from "../utils/eventCoverVideoSlo";
@@ -39,41 +45,36 @@ const REATTACH_DEADLINE_MS = 12_000;
 
 // Issue #3119 — the 100 MB source cap used to be applied to the file the host
 // PICKED, one line before `compressVideoLocally` — the step whose whole job is
-// shrinking exactly that file. A normal iPhone clip was therefore refused with
-// "Choose a smaller video before uploading" before the app ever tried the thing
-// that would have made it small enough. Reported from a real device on the
-// production build 2026-09-08; the refusal is client-side, so no job row is
-// even created.
-//
-// Why a one-minute cap does not solve source size: the trim editor is a keyframe
-// STREAM COPY (`enablePreciseTrimming: false`, issue #1350), which preserves
-// the source bitrate. Trimming 4K/60 iPhone footage to the duration cap can leave
-// it at or above 100 MB on its own, so obeying the length limit does not get a
-// host under the size limit.
-//
-// So the caps split in two. PICK_CEILING is a sanity bound on what a phone can
-// be asked to transcode at all — deliberately generous, because anything under
-// it is the compressor's problem, not the host's. SOURCE_MAX is the real
-// contract with the upload pipeline and is now checked against the COMPRESSED
-// result.
+// shrinking exactly that file. So the caps split in two. PICK_CEILING is a
+// sanity bound on what a phone can be asked to transcode at all; SOURCE_MAX is
+// the real contract with the upload pipeline and is checked against the
+// COMPRESSED result.
 const EVENT_COVER_PICK_CEILING_BYTES = 524_288_000; // 500 MB
-const EVENT_COVER_SOURCE_MAX_BYTES = 104_857_600; // 100 MB
+// #3040 B-C20 — from the shared limits table (100 MiB, unchanged value).
+const EVENT_COVER_SOURCE_MAX_BYTES = VIDEO_LIMITS.SOURCE_MAX_BYTES;
 export type EventCoverVideoUploadFile = {
   uri: string; fileName?: string | null; mimeType?: string | null;
   bytes: number; durationMs: number; trimStartMs?: number; trimEndMs?: number;
 };
-export type CoverVideoTargetKind = "event" | "brand" | "experience" | "venue" | "venue_draft";
+// #3040 — `ad_creative` (Host Ads and Ari): a non-superseding, owner-keyed
+// lane target whose READY job the server turns into an ad creative row.
+export type CoverVideoTargetKind = "event" | "brand" | "experience" | "venue" | "venue_draft" | "ad_creative";
 type ExactTarget = {
-  serverTarget: "event" | "brand" | "venue" | "venue_draft";
+  serverTarget: "event" | "brand" | "venue" | "venue_draft" | "ad_creative";
   eventId?: string; venueId?: string; draftOwnerKey?: string;
 };
 const newOperationId = (): string => typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
   ? crypto.randomUUID()
   : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (digit) =>
     (Number(digit) ^ Math.floor(Math.random() * 16) >> Number(digit) / 4).toString(16));
+// #3040 B-C9 [A-9] — "recoverable" means our side or the network failed and the
+// SAME operation can continue. Offline is told apart from server trouble by
+// the device itself (`isDeviceOffline`), never inferred from the error kind.
 const recoverableCodes = new Set([
   "edge_error", "source_upload_failed", "transport_integrity_failed", "upload_incomplete",
   "upload_initializing", "upload_temporarily_unavailable", "upload_verification_pending",
+  "internal_error", "network_offline", LANE_CODES.transportRefreshFailed,
+  LANE_CODES.transportLeaseExtendFailed, LANE_CODES.transportHasBytes,
 ]);
 const isRecoverable = (error: unknown): boolean =>
   error instanceof EventCoverVideoProcessingError && recoverableCodes.has(error.code);
@@ -88,7 +89,13 @@ const terminalCodes = new Set([
   "source_ack_timeout", "source_mismatch", "source_over_cap",
   "source_transport_expired", "source_video_track_missing", "validation_error",
   "video_compression_failed", "video_compression_stalled",
+  // #3040 — answers no retry can change.
+  LANE_CODES.clientVersionRequired, "source_file_gone", "ad_video_too_short",
+  LANE_CODES.creativeSourceUntrusted, "video_source_type_unsupported", "video_file_too_large",
 ]);
+// #3040 B-C9 — three automatic retries (1 s, 3 s, 9 s) before the card admits
+// an interruption (design H-11). During them the card says "Reconnecting…".
+export const EVENT_COVER_VIDEO_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000, 9_000];
 // Issue #3075 — one live transfer per operation, module-scoped so it spans hook
 // instances. A JOIN was the obvious shape and it is wrong: a remount would await
 // the ORIGINAL transfer, so a wedged one — an interrupted acknowledgement, say —
@@ -128,72 +135,96 @@ const isServerRowId = (value: string | undefined): boolean =>
   typeof value === "string" && UUID_PATTERN.test(value);
 // issue #2967 — the client half of the acknowledgement bound. The server owns
 // the precise, named failure (`source_ack_deadline_exceeded` at 90s); this is
-// the backstop for a server that never produces one — an older deployed edge
-// revision, or anything that keeps answering 200/`source_uploading`. It sits
-// 60s BEYOND the server deadline so a healthy server always wins the race and
-// the user gets the specific failure code rather than this generic one. A
-// client that loops forever on a server response is a defect even when the
-// server behaves.
+// the backstop for a server that never produces one. It sits 60s BEYOND the
+// server deadline so a healthy server always wins the race.
 export const EVENT_COVER_VIDEO_ACK_DEADLINE_MS = 150_000;
 const ACK_POLL_INTERVAL_MS = 2_000;
 // issue #3040 — the client half of invariant 2 ("no unbounded wait anywhere").
 //
 // `waitForEventCoverVideoReady` is a `while (true)` that only exits on a
-// TERMINAL job status or an abort. Now that acknowledgement no longer waits for
-// the encode (#3039), the encode is where the user's time actually goes — and a
-// job that wedges upstream would hold this loop open for as long as the sheet
-// is mounted.
+// TERMINAL job status or an abort. Crossing this bound is NOT a failure and must
+// never be rendered as one: the job is alive server-side and the server now
+// owns its outcome (the reaper applies or expires a READY job, #3040 E-9). We
+// simply stop WATCHING and hand the user the "Check now" affordance.
 //
-// Crossing this bound is NOT a failure and must never be rendered as one: the
-// job is alive server-side and finishes on its own (an event `draft_auto` job
-// is auto-applied by the webhook; every other target applies on the next
-// visit). We simply stop WATCHING and hand the user the "Check now" affordance
-// the `detached` stage already provides. Nothing is cancelled and nothing is
-// destroyed.
-//
-// WHY 10 MINUTES: the slowest cover video that ever reached `applied` in
-// production took 93s (#2905, job fddc283b) against a median of 18s, and #3039
-// showed Bunny legitimately taking minutes rather than seconds on a cold
-// library. 10 minutes is ~6.5x the slowest observed encode, and it is far
-// inside the reaper's 12h stall deadline so the server always owns the real
-// verdict.
-export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = 600_000;
+// #3040 B-C20 — 11 minutes: the server's processing stall bound (10 min after
+// the last byte) plus one reaper tick, so the client stops watching only after
+// the server has had its chance to decide.
+export const EVENT_COVER_VIDEO_WATCH_DEADLINE_MS = VIDEO_LIMITS.WATCH_DEADLINE_MS;
+// #3040 AD-05 — how long the ad flow waits on server materialization before it
+// shows "Video is ready, but not saved to the ad" with "Try saving again".
+export const AD_CREATIVE_MATERIALIZE_PATIENCE_MS = 20_000;
+const AD_CREATIVE_MATERIALIZE_POLL_MS = 2_000;
 // issue #3073 — `prepareEventCoverVideoSource` refuses a source whose ISO-BMFF
-// handler boxes carry no video track (the compressor can return an audio-only
-// MP4 — see the fallback in `startInternal`). Translating it HERE, at the single point every start-path error already
-// funnels through, keeps the prepare call itself a plain direct call — which is
-// what ORCH-1308 gate D reads to prove the source is prepared before allocation.
-// Matched by NAME, and defined right here rather than imported. Several suites
-// mock `../services/eventCoverVideoPreparedSource` partially, so a newly
-// imported symbol is `undefined` at runtime in those tests — and calling it (or
-// using it as an `instanceof` right-hand side) THROWS, taking the whole suite
-// down instead of failing one assertion. Owning the predicate locally means no
-// mock can reach it. Same reasoning as the repo's PostgREST error checks, which
-// duck-type because those errors arrive as plain objects.
+// handler boxes carry no video track. Matched by NAME, and defined right here
+// rather than imported: several suites mock `../services/eventCoverVideoPreparedSource`
+// partially, so a newly imported symbol is `undefined` at runtime in those
+// tests — and calling it THROWS, taking the whole suite down.
 const isMissingVideoTrackError = (error: unknown): boolean =>
   error !== null && typeof error === "object" &&
   (error as { name?: unknown }).name === "EventCoverVideoSourceHasNoVideoTrackError";
 
-const safeUploadError = (error: unknown): Error =>
-  isMissingVideoTrackError(error)
-  ? new EventCoverVideoProcessingError(
-    "source_video_track_missing",
-    "That clip came back without any video. Trim it again, or pick a different video.",
-  )
-  : error instanceof EventCoverVideoProcessingError
-  ? error
-  : error instanceof Error && "code" in error && error.code === "unauthenticated"
-  ? Object.assign(new Error("Finishing sign-in. Try again in a moment."), { code: "unauthenticated" })
-  : new EventCoverVideoProcessingError(
+// #3040 B-C19/B-C12 — prepare's plain-string failures, in host words.
+const PREPARE_ERROR_COPY: Record<string, { code: string; message: string }> = {
+  video_source_type_unsupported: {
+    code: "video_source_type_unsupported",
+    message: "We can't use this file type. Use MP4, MOV, M4V or WebM.",
+  },
+  video_source_type_unknown: {
+    code: "video_source_type_unsupported",
+    message: "We can't use this file type. Use MP4, MOV, M4V or WebM.",
+  },
+  video_source_too_large: {
+    code: "video_file_too_large",
+    message: "Videos must be under 100 MB. Try a shorter clip, or export it at a lower quality.",
+  },
+};
+
+const safeUploadError = (error: unknown): Error => {
+  if (isMissingVideoTrackError(error)) {
+    return new EventCoverVideoProcessingError(
+      "source_video_track_missing",
+      "That clip came back without any video. Trim it again, or pick a different video.",
+    );
+  }
+  if (error instanceof EventCoverVideoProcessingError) return error;
+  if (error instanceof Error && "code" in error && error.code === "unauthenticated") {
+    return Object.assign(new Error("Finishing sign-in. Try again in a moment."), { code: "unauthenticated" });
+  }
+  const mapped = error instanceof Error ? PREPARE_ERROR_COPY[error.message] : undefined;
+  if (mapped !== undefined) return new EventCoverVideoProcessingError(mapped.code, mapped.message);
+  return new EventCoverVideoProcessingError(
     "video_upload_failed",
     "We couldn't finish this video upload. Try again, or choose another video.",
   );
+};
+const errorCodeOf = (error: Error): string =>
+  "code" in error && typeof (error as { code?: unknown }).code === "string"
+    ? (error as { code: string }).code
+    : "video_upload_failed";
 const currentUserId = async (): Promise<string> => {
   const { data } = await supabase.auth.getSession();
   if (!data.session?.user.id) {
     throw new EventCoverVideoProcessingError("unauthenticated", "Finishing sign-in. Try again in a moment.");
   }
   return data.session.user.id;
+};
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+  const timer = setTimeout(resolve, ms);
+  signal?.addEventListener("abort", () => {
+    clearTimeout(timer);
+    reject(new Error("aborted"));
+  }, { once: true });
+});
+
+export type EventCoverVideoUploadOptions = {
+  /**
+   * #3040 B-C9 / design T4 — true while the DEVICE reports no network
+   * (NetInfo on native, `navigator.onLine` on web). Only then does a
+   * recoverable failure read as "offline" (H-10); otherwise it is our side
+   * (H-11). Supplied by the picker so this hook never mounts NetInfo itself.
+   */
+  isDeviceOffline?: () => boolean;
 };
 
 export function useEventCoverVideoUpload(
@@ -202,6 +233,7 @@ export function useEventCoverVideoUpload(
   applyMode: EventCoverVideoApplyMode = "draft_auto",
   target: CoverVideoTargetKind = "event",
   identity: { venueId?: string; draftOwnerKey?: string } = {},
+  options: EventCoverVideoUploadOptions = {},
 ) {
   const queryClient = useQueryClient();
   const exactTarget = useMemo<ExactTarget>(() => target === "brand"
@@ -210,13 +242,19 @@ export function useEventCoverVideoUpload(
     ? { serverTarget: "venue", venueId: identity.venueId }
     : target === "venue_draft"
     ? { serverTarget: "venue_draft", draftOwnerKey: identity.draftOwnerKey }
+    : target === "ad_creative"
+    ? { serverTarget: "ad_creative", draftOwnerKey: identity.draftOwnerKey }
     : { serverTarget: "event", eventId }, [eventId, identity.draftOwnerKey, identity.venueId, target]);
+  // #3040 E-3a — an ad video is never a draft auto-apply.
+  const laneApplyMode: EventCoverVideoApplyMode = target === "ad_creative" ? "published_manual" : applyMode;
   const persistenceKey = useMemo(() => exactTarget.serverTarget === "event"
     ? `event:${eventId}`
     : exactTarget.serverTarget === "brand"
     ? `brand:${brandId}`
     : exactTarget.serverTarget === "venue"
     ? `venue:${identity.venueId ?? "invalid"}`
+    : exactTarget.serverTarget === "ad_creative"
+    ? `ad-creative:${brandId}:${identity.draftOwnerKey ?? "invalid"}`
     : `venue-draft:${brandId}:${identity.draftOwnerKey??"invalid"}`,
   [brandId, eventId, exactTarget.serverTarget, identity.draftOwnerKey, identity.venueId]);
   const replacementPersistenceKey = `${persistenceKey}:replacement`;
@@ -224,18 +262,28 @@ export function useEventCoverVideoUpload(
   const generationRef = useRef(0);
   const jobIdRef = useRef<string | null>(null);
   // issue #2974 — the generation `uploadPrepared` claimed for the CURRENT
-  // delegated flow. `resume()` cannot know it up front (uploadPrepared bumps
-  // generationRef itself), and without it resume cannot tell "my delegate
-  // failed" from "a newer flow took over" — the ambiguity that made resume's
-  // error handler a no-op and stranded the sheet on "Reconnecting to your
-  // video…". Reset to null on every resume; set by uploadPrepared on its bump.
+  // delegated flow (see `resume`).
   const delegatedGenerationRef = useRef<number | null>(null);
   const userIdRef = useRef<string | null>(null);
+  // #3040 B-C2 [A-2] — the transfer THIS mount is running, or null. A job in
+  // `source_uploading` that no live transfer here owns is NOT "confirming": its
+  // bytes may be partial, so it projects as `detached`, never `ack_pending`.
+  const transferRef = useRef<AbortController | null>(null);
+  // True only while `uploadPrepared` polls the acknowledgement after the LAST
+  // byte. It is the one route into `ack_pending` (design truth rule T3).
+  const acknowledgingRef = useRef(false);
+  // #3040 B-C3 [A-3/T6] — jobs this mount started, or resumed from this
+  // device's own persisted record. Only these may ever be emitted as a cover.
+  const ownedJobIdsRef = useRef<Set<string>>(new Set());
+  // #3040 B-C9 — the prepared source this mount still holds (web blob or
+  // native cache file), so an offline pause or an interruption can continue
+  // without asking the host to pick again.
+  const retainedPreparedRef = useRef<{ prepared: PreparedEventCoverVideoSource; operationId: string } | null>(null);
+  const lastUploadProgressRef = useRef<{ confirmedBytes?: number; totalBytes?: number; percent: number | null }>({ percent: 0 });
+  const isDeviceOfflineRef = useRef(options.isDeviceOffline);
+  isDeviceOfflineRef.current = options.isDeviceOffline;
   const [stage, setStage] = useState<EventCoverVideoUploadStage>(idleStage);
-  // issue #3074 — the deadline below must judge the CURRENT phase, not a flag
-  // set optimistically when a branch was entered. The 39-minute stall was a
-  // resume that DID hand off to real work (`uploadPrepared`) and then never
-  // settled, so "we delegated" is not evidence the spinner is gone.
+  // issue #3074 — the deadline below must judge the CURRENT phase.
   const stageRef = useRef<EventCoverVideoUploadStage>(idleStage);
   stageRef.current = stage;
   const [status, setStatus] = useState<EventCoverVideoStatus | null>(null);
@@ -267,7 +315,7 @@ export function useEventCoverVideoUpload(
   }, []);
 
   const invalidate = useCallback((): void => {
-    if (target === "venue" || target === "venue_draft") return;
+    if (target === "venue" || target === "venue_draft" || target === "ad_creative") return;
     if (exactTarget.serverTarget === "brand") {
       void queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
       void queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
@@ -295,25 +343,26 @@ export function useEventCoverVideoUpload(
       });
       invalidate();
     } else if (next.status === "source_uploading") {
-      setStage({ phase: "ack_pending", percent: 0 });
+      // #3040 B-C2 [A-2] / design T3 — "Confirming upload" only while THIS
+      // mount is acknowledging bytes it sent in full. A job left mid-transfer
+      // (another mount, a reload, an interruption) is honestly `detached`.
+      if (acknowledgingRef.current && transferRef.current !== null) {
+        setStage({ phase: "ack_pending", percent: 0 });
+      } else {
+        setStage({
+          phase: "detached", percent: 0, sourceAcknowledged: false,
+          reason: Platform.OS === "web" ? "repick" : "interrupted",
+        });
+      }
     } else if (["source_uploaded", "processing_queued", "processing"].includes(next.status)) {
       setStage({
         phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null,
         timing: coverVideoProcessingTiming(next.sourceUploadedAt),
       });
     } else if (["failed", "cancelled", "superseded"].includes(next.status)) {
-      // issue #3074 — a terminal NON-success used to set `status` and leave the
-      // STAGE untouched, so a sheet that was mid-"Reconnecting to your video…"
-      // learned the job had failed and went on rendering the spinner anyway.
-      // Measured in the field: 39 minutes on the spinner against a job that had
-      // been `failed` for 39 minutes. Every other terminal outcome above moves
-      // the stage; this branch is the one that did not.
-      //
-      // `cancelled` and `superseded` are not the host's problem — a superseding
-      // upload owns the sheet now, and a cancel was deliberate — so they return
-      // the sheet to idle rather than shouting an error at it. Only `failed`
-      // becomes an error card, carrying the provider's own failure code so the
-      // picker can name it and offer the job code.
+      // issue #3074 — a terminal NON-success moves the stage too. `cancelled`
+      // and `superseded` return the sheet to idle; only `failed` becomes an
+      // error card, carrying the provider's own failure code.
       setStage(next.status === "failed"
         ? {
           phase: "error",
@@ -321,6 +370,7 @@ export function useEventCoverVideoUpload(
           code: next.failureCode ?? "video_upload_failed",
           message: next.failureMessage
             ?? "We couldn't finish this video. Choose another video, or try again.",
+          canRetry: true,
         }
         : idleStage);
     }
@@ -345,14 +395,38 @@ export function useEventCoverVideoUpload(
     await removePersistedCoverVideoJob(userId, persistenceKey);
   }, [persistenceKey]);
 
+  // #3040 AD-03/AD-05 — an `ad_creative` job is applied only once the server
+  // has created its creative row (E-6c). A 503 `creative_materialize_pending`
+  // is "still saving", polled for a bounded time and then handed to the host
+  // as "ready, not saved yet" with a re-apply that needs no re-upload.
+  const applyReady = useCallback(async (next: EventCoverVideoStatus): Promise<void> => {
+    if (target !== "ad_creative") {
+      await applyEventCoverVideoJob(next.jobId, next.applicationVersion, next.processedUrl ?? undefined);
+      return;
+    }
+    const giveUpAt = Date.now() + AD_CREATIVE_MATERIALIZE_PATIENCE_MS;
+    for (;;) {
+      try {
+        await applyEventCoverVideoJob(next.jobId, next.applicationVersion, next.processedUrl ?? undefined);
+        return;
+      } catch (caught) {
+        const pending = caught instanceof EventCoverVideoProcessingError &&
+          caught.code === LANE_CODES.creativeMaterializePending;
+        if (!pending || Date.now() >= giveUpAt) throw caught;
+        await sleep(AD_CREATIVE_MATERIALIZE_POLL_MS);
+      }
+    }
+  }, [target]);
+
   const settleCanonical = useCallback(async (
     next: EventCoverVideoStatus,
     signal?: AbortSignal,
   ): Promise<EventCoverVideoStatus> => {
     project(next);
-    if (next.status === "ready" && (target === "event" || target === "brand")) {
+    if (next.status === "ready" && (target === "event" || target === "brand" || target === "experience" || target === "ad_creative")) {
       setStage({ phase: "applying", percent: 100 });
-      await applyEventCoverVideoJob(next.jobId, next.applicationVersion, next.processedUrl ?? undefined);
+      if (target === "ad_creative") await applyReady(next);
+      else await applyEventCoverVideoJob(next.jobId, next.applicationVersion, next.processedUrl ?? undefined);
       const applied = await fetchEventCoverVideoStatus(next.jobId, signal);
       project(applied);
       if (applied.status === "applied" && userIdRef.current) await cleanupPersisted(userIdRef.current);
@@ -362,23 +436,15 @@ export function useEventCoverVideoUpload(
       await cleanupPersisted(userIdRef.current);
     }
     return next;
-  }, [cleanupPersisted, project, target]);
+  }, [applyReady, cleanupPersisted, project, target]);
 
   const watch = useCallback(async (
     jobId: string, signal: AbortSignal, generation: number,
   ): Promise<void> => {
-    // issue #3040 — bound the WATCH, not the job. `waitForEventCoverVideoReady`
-    // is a `while (true)`; this controller ends our subscription to it after
-    // EVENT_COVER_VIDEO_WATCH_DEADLINE_MS while leaving the server job
-    // completely untouched.
+    // issue #3040 — bound the WATCH, not the job.
     const watchdog = new AbortController();
     const stopWatching = (): void => watchdog.abort();
-    // An ALREADY-aborted caller signal never emits another "abort" event, so a
-    // listener alone would leave the watchdog live and this wait would never
-    // settle — the caller's promise hangs forever. That is reachable in
-    // production (the sheet is closed in the same tick the acknowledgement
-    // resolves, so `watch` is entered with a dead signal) and it is exactly what
-    // #2715's "interrupted acknowledgement + remount" case drives.
+    // An ALREADY-aborted caller signal never emits another "abort" event.
     if (signal.aborted) watchdog.abort();
     else signal.addEventListener("abort", stopWatching, { once: true });
     let deadlineReached = false;
@@ -396,10 +462,10 @@ export function useEventCoverVideoUpload(
       await settleCanonical(ready, signal);
     } catch (caught) {
       if (deadlineReached && !signal.aborted) {
-        // Not a failure. The job is still running server-side and will finish
-        // without us; surface the honest "still working" card with its real
-        // Check-now control instead of spinning forever.
+        // Not a failure. The job is still running server-side and the server
+        // owns its outcome; surface the honest "still working" card.
         if (generationRef.current === generation) {
+          // (reason omitted = "watching": the server owns the job from here.)
           setStage({ phase: "detached", percent: 0, sourceAcknowledged: true });
         }
         return;
@@ -427,9 +493,16 @@ export function useEventCoverVideoUpload(
     let abort = new AbortController();
     // issue #3075 — see `signal:` on the upload call below.
     const transferAbort = new AbortController();
-    const trimStartMs = persisted?.trimStartMs ?? 0;
-    const trimEndMs = persisted?.trimEndMs ?? prepared.durationMs;
+    // #3040 B-C5 [A-5] — a persisted record's trim applies ONLY to the same
+    // operation on the same bytes. A replacement (or any new clip) is trimmed
+    // by ITS OWN duration; it used to inherit the old clip's window, so a
+    // shorter replacement was refused as "longer than the source".
+    const sameOperation = persisted !== undefined && persisted.clientOperationId === operationId &&
+      persisted.sourceSha256 === prepared.sha256;
+    const trimStartMs = sameOperation ? persisted.trimStartMs : 0;
+    const trimEndMs = sameOperation ? persisted.trimEndMs : prepared.durationMs;
     const provisionalKey = replacementPersistenceKey;
+    retainedPreparedRef.current = { prepared, operationId };
     setError(null);
     if (!replacing) {
       generation = ++generationRef.current;
@@ -437,7 +510,7 @@ export function useEventCoverVideoUpload(
       abortRef.current?.abort();
       abortRef.current = abort;
       setLocalPreviewUri(prepared.uri);
-      await persist(userId, prepared, operationId, persisted?.jobId ?? null, false, trimStartMs, trimEndMs);
+      await persist(userId, prepared, operationId, sameOperation ? persisted.jobId : null, false, trimStartMs, trimEndMs);
       projectPreparation({ phase: "intent_pending", percent: 0 });
     } else {
       // Crash-safe replacement ordering: preserve the old target record and its
@@ -446,7 +519,7 @@ export function useEventCoverVideoUpload(
     }
     const intentInput = {
       target: exactTarget.serverTarget, eventId: exactTarget.eventId, venueId: exactTarget.venueId,
-      draftOwnerKey: exactTarget.draftOwnerKey, clientOperationId: operationId, applyMode, brandId,
+      draftOwnerKey: exactTarget.draftOwnerKey, clientOperationId: operationId, applyMode: laneApplyMode, brandId,
       sourceBytes: prepared.bytes, sourceDurationMs: prepared.durationMs,
       sourceFileName: prepared.fileName, sourceMimeType: prepared.mimeType,
       sourceExtension: prepared.extension, sourceSha256: prepared.sha256,
@@ -459,16 +532,12 @@ export function useEventCoverVideoUpload(
       if (replacing) {
         await removePersistedCoverVideoJob(userId, provisionalKey, { preserveSource: true });
       } else if (isTerminalUploadError(caught)) {
-        // issue #2974 — the record above was written BEFORE the intent call, so
-        // a terminal rejection (e.g. 400 `event_id_invalid_uuid`) leaves a local
-        // upload record pointing at a job the server never created. Every later
-        // attempt then tries to "reconnect" to that phantom instead of starting
-        // fresh — which is what turned a one-off error into a permanently
-        // wedged sheet. No job exists, so drop the record AND its staged bytes.
+        // issue #2974 — no job exists, so drop the record AND its staged bytes.
         await cleanupPersisted(userId);
       }
       throw caught;
     }
+    ownedJobIdsRef.current.add(intent.jobId);
     if (replacing) {
       // The old watcher, persistence, and prepared bytes remain authoritative
       // until this exact point: the server has accepted/replayed the replacement.
@@ -478,8 +547,6 @@ export function useEventCoverVideoUpload(
       abort = new AbortController();
       abortRef.current = abort;
       jobIdRef.current = intent.jobId;
-      // Correlate the journal with the accepted job before promoting the target.
-      // If target persistence fails, remount can still recover this operation.
       await persist(userId, prepared, operationId, intent.jobId, false, trimStartMs, trimEndMs, provisionalKey);
       try {
         await persist(userId, prepared, operationId, intent.jobId, false, trimStartMs, trimEndMs);
@@ -490,8 +557,6 @@ export function useEventCoverVideoUpload(
       }
       setLocalPreviewUri(prepared.uri);
       onAccepted?.();
-      // Once the authoritative target record points at the accepted job, old
-      // record/byte cleanup is best effort and can never roll the UI back.
       try {
         await removePersistedCoverVideoJob(userId, provisionalKey, { preserveSource: true });
       } catch { /* the target record already owns the prepared source */ }
@@ -512,13 +577,7 @@ export function useEventCoverVideoUpload(
         return;
       }
       setStage({ phase: "intent_pending", percent: 0 });
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, pendingIntent.retryAfterMs);
-        abort.signal.addEventListener("abort", () => {
-          clearTimeout(timer);
-          reject(new Error("aborted"));
-        }, { once: true });
-      });
+      await sleep(pendingIntent.retryAfterMs, abort.signal);
       const replay = await createEventCoverVideoUploadIntent(intentInput);
       if (replay.jobId !== intent.jobId) {
         throw new EventCoverVideoProcessingError("operation_conflict", "The replacement changed while it was being accepted.");
@@ -528,7 +587,8 @@ export function useEventCoverVideoUpload(
     }
     let acceptedIntent = intent;
     setStatus(null);
-    setStage({ phase: "uploading", percent: 0 });
+    lastUploadProgressRef.current = { percent: prepared.bytes <= VIDEO_LIMITS.TUS_CHUNK_NATIVE_BYTES && Platform.OS !== "web" ? null : 0, totalBytes: prepared.bytes, confirmedBytes: 0 };
+    setStage({ phase: "uploading", ...lastUploadProgressRef.current });
     const upload = (): Promise<unknown> => uploadEventCoverVideoSource({
       bytes: prepared.bytes, fileName: prepared.fileName, jobId: acceptedIntent.jobId,
       mimeType: prepared.mimeType, uri: prepared.uri, upload: acceptedIntent.upload,
@@ -537,80 +597,140 @@ export function useEventCoverVideoUpload(
       // subscription nobody is reading any more) without stopping the bytes.
       signal: transferAbort.signal,
       onProgress: (progress) => {
-        if (generationRef.current === generation) setStage({ phase: "uploading", percent: progress.percent });
+        // #3040 B-C8 / T1-T2 — byte-true, server-confirmed; null when the
+        // transfer cannot report steps (one native chunk or less).
+        lastUploadProgressRef.current = {
+          percent: progress.indeterminate === true && progress.final !== true ? null : progress.percent,
+          confirmedBytes: progress.bytesSent,
+          totalBytes: progress.bytesTotal,
+        };
+        if (generationRef.current === generation) setStage({ phase: "uploading", ...lastUploadProgressRef.current });
       },
     });
     // issue #3075 — one live transfer per operation, however many sheets mount.
     const uploadSlotKey = `${persistenceKey}:${operationId}`;
     claimUploadSlot(uploadSlotKey, transferAbort);
+    transferRef.current = transferAbort;
     try {
-      await upload();
-    } catch (uploadError) {
-      const expired = uploadError instanceof EventCoverVideoProcessingError &&
-        ["tus_head_http_404", "tus_head_http_410"].includes(uploadError.edgeDetail ?? "");
-      if (!expired) throw uploadError;
-      const refreshedIntent = await createEventCoverVideoUploadIntent({ ...intentInput, refreshTransport: true });
-      if (refreshedIntent.jobId !== jobIdRef.current || "status" in refreshedIntent) {
-        throw new EventCoverVideoProcessingError(
-          "transport_integrity_failed",
-          "We couldn't resume this upload. Choose the original video again.",
-        );
+      try {
+        await upload();
+      } catch (uploadError) {
+        const expired = uploadError instanceof EventCoverVideoProcessingError &&
+          ["tus_head_http_404", "tus_head_http_410"].includes(uploadError.edgeDetail ?? "");
+        if (!expired) throw uploadError;
+        const refreshedIntent = await createEventCoverVideoUploadIntent({ ...intentInput, refreshTransport: true });
+        if (refreshedIntent.jobId !== jobIdRef.current || "status" in refreshedIntent) {
+          throw new EventCoverVideoProcessingError(
+            "transport_integrity_failed",
+            "We couldn't resume this upload. Choose the original video again.",
+          );
+        }
+        acceptedIntent = refreshedIntent;
+        await upload();
+      } finally {
+        releaseUploadSlot(uploadSlotKey, transferAbort);
       }
-      acceptedIntent = refreshedIntent;
-      await upload();
-    } finally {
-      releaseUploadSlot(uploadSlotKey, transferAbort);
-    }
-    setStage({ phase: "ack_pending", percent: 0 });
-    // issue #2967 — this loop used to be `while (status === "source_uploading")`
-    // with a 2s sleep, no iteration cap, no elapsed cap and no failure exit.
-    // Paired with a server that answered 200 + `source_uploading` forever
-    // whenever Bunny's storageSize stayed zero, it was a literal infinite loop
-    // and `ack_pending` is the "Finishing upload…" spinner the user stared at.
-    const ackDeadlineAt = Date.now() + EVENT_COVER_VIDEO_ACK_DEADLINE_MS;
-    let acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
-      target: exactTarget.serverTarget, brandId, eventId: exactTarget.eventId, jobId: acceptedIntent.jobId,
-    });
-    while (acknowledged.status === "source_uploading") {
-      if (Date.now() >= ackDeadlineAt) {
+      // #3040 B-C2 — every byte is server-confirmed (the final HEAD agreed):
+      // only now may the card say "Confirming upload".
+      acknowledgingRef.current = true;
+      setStage({ phase: "ack_pending", percent: 0 });
+      // issue #2967 — bounded acknowledgement.
+      const ackDeadlineAt = Date.now() + EVENT_COVER_VIDEO_ACK_DEADLINE_MS;
+      let acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
+        target: exactTarget.serverTarget, brandId, eventId: exactTarget.eventId, jobId: acceptedIntent.jobId,
+      });
+      while (acknowledged.status === "source_uploading") {
+        if (Date.now() >= ackDeadlineAt) {
+          throw new EventCoverVideoProcessingError(
+            "source_ack_timeout",
+            "We couldn't confirm this upload with the video service. Try again, or choose another video.",
+            { lastStatus: acknowledged, phase: "source_uploaded" },
+          );
+        }
+        project(acknowledged);
+        await sleep(ACK_POLL_INTERVAL_MS, abort.signal);
+        acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
+          target: exactTarget.serverTarget, brandId, eventId: exactTarget.eventId, jobId: acceptedIntent.jobId,
+        });
+      }
+      acknowledgingRef.current = false;
+      project(acknowledged);
+      if (["failed", "cancelled", "superseded"].includes(acknowledged.status)) {
+        // issue #2967 — the server ended the job DURING acknowledgement.
+        await settleCanonical(acknowledged, abort.signal);
         throw new EventCoverVideoProcessingError(
-          "source_ack_timeout",
-          "We couldn't confirm this upload with the video service. Try again, or choose another video.",
+          acknowledged.failureCode ?? acknowledged.status,
+          acknowledged.status === "cancelled"
+            ? "Video upload was cancelled."
+            : acknowledged.status === "superseded"
+            ? "A newer video was selected."
+            : "We couldn't confirm this upload with the video service. Try again, or choose another video.",
           { lastStatus: acknowledged, phase: "source_uploaded" },
         );
       }
-      project(acknowledged);
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, ACK_POLL_INTERVAL_MS);
-        abort.signal.addEventListener("abort", () => {
-          clearTimeout(timer);
-          reject(new Error("aborted"));
-        }, { once: true });
-      });
-      acknowledged = await acknowledgeEventCoverVideoSourceUploaded({
-        target: exactTarget.serverTarget, brandId, eventId: exactTarget.eventId, jobId: acceptedIntent.jobId,
-      });
-    }
-    project(acknowledged);
-    if (["failed", "cancelled", "superseded"].includes(acknowledged.status)) {
-      // issue #2967 — the server ended the job DURING acknowledgement (its own
-      // 90s deadline, an expired TUS transport, or a cancel). Settle canonical
-      // truth and surface it. Never persist `sourceAcknowledged: true` for an
-      // acknowledgement that did not happen, and never fall through to watch().
-      await settleCanonical(acknowledged, abort.signal);
-      throw new EventCoverVideoProcessingError(
-        acknowledged.failureCode ?? acknowledged.status,
-        acknowledged.status === "cancelled"
-          ? "Video upload was cancelled."
-          : acknowledged.status === "superseded"
-          ? "A newer video was selected."
-          : "We couldn't confirm this upload with the video service. Try again, or choose another video.",
-        { lastStatus: acknowledged, phase: "source_uploaded" },
-      );
+    } finally {
+      acknowledgingRef.current = false;
+      if (transferRef.current === transferAbort) transferRef.current = null;
     }
     await persist(userId, prepared, operationId, acceptedIntent.jobId, true, trimStartMs, trimEndMs);
     await watch(acceptedIntent.jobId, abort.signal, generation);
-  }, [applyMode, brandId, cleanupPersisted, clearPreparationProjection, exactTarget, persist, persistenceKey, project, projectPreparation, replacementPersistenceKey, settleCanonical, watch]);
+  }, [brandId, cleanupPersisted, clearPreparationProjection, exactTarget, laneApplyMode, persist, persistenceKey, project, projectPreparation, replacementPersistenceKey, settleCanonical, watch]);
+
+  // #3040 B-C9 — one failure, classified once. Offline needs the device's own
+  // word for it (design T4); our-side failures retry 1 s / 3 s / 9 s first.
+  const isOfflineFailure = useCallback((failure: Error): boolean =>
+    errorCodeOf(failure) === "network_offline" || isDeviceOfflineRef.current?.() === true, []);
+
+  const detachRecoverable = useCallback((failure: Error, sourceAcknowledged: boolean): void => {
+    const progress = lastUploadProgressRef.current;
+    setStage({
+      phase: "detached", percent: 0, sourceAcknowledged,
+      reason: isOfflineFailure(failure) ? "offline" : "interrupted",
+      confirmedBytes: progress.confirmedBytes, totalBytes: progress.totalBytes,
+    });
+  }, [isOfflineFailure]);
+
+  // #3040 B-C9/B-C11 — the same operation, continued after a recoverable
+  // failure: re-read the durable record (it names the accepted job) and replay
+  // the intent, which hands back a fresh transport; the transfer resumes from
+  // the server's offset. Retries never re-run a replacement's acceptance.
+  const continueRetained = useCallback(async (): Promise<boolean> => {
+    const retained = retainedPreparedRef.current;
+    if (retained === null) return false;
+    const userId = await currentUserId();
+    const persisted = await readPersistedCoverVideoJob(userId, persistenceKey);
+    await uploadPrepared(retained.prepared, retained.operationId, persisted ?? undefined);
+    return true;
+  }, [persistenceKey, uploadPrepared]);
+
+  const runWithRetries = useCallback(async (
+    first: () => Promise<void>,
+    attemptGeneration: () => number,
+  ): Promise<void> => {
+    try {
+      await first();
+      return;
+    } catch (caught) {
+      let failure = safeUploadError(caught);
+      for (let attempt = 0; attempt < EVENT_COVER_VIDEO_RETRY_DELAYS_MS.length; attempt += 1) {
+        if (!isRecoverable(failure) || isOfflineFailure(failure)) throw failure;
+        const generation = attemptGeneration();
+        if (stageRef.current.phase === "uploading") {
+          setStage({ phase: "uploading", ...lastUploadProgressRef.current, retrying: true });
+        }
+        await sleep(EVENT_COVER_VIDEO_RETRY_DELAYS_MS[attempt]);
+        // A cancel, a newer pick or unmount took the sheet meanwhile.
+        if (generationRef.current !== generation) throw failure;
+        try {
+          if (await continueRetained()) return;
+          throw failure;
+        } catch (retryError) {
+          failure = safeUploadError(retryError);
+        }
+      }
+      throw failure;
+    }
+  }, [continueRetained, isOfflineFailure]);
 
   const startInternal = useCallback(async (
     file: EventCoverVideoUploadFile,
@@ -618,43 +738,32 @@ export function useEventCoverVideoUpload(
   ): Promise<void> => {
     let prepared: PreparedEventCoverVideoSource | null = null;
     let replacementAccepted = false;
-    // Issue #3073 — who is allowed to silence this attempt's failure.
-    //
-    // The catch below returns WITHOUT a word when the attempt was cancelled or
-    // superseded, because whoever did that owns the sheet now. It used to ask
-    // only "is the installed controller aborted?". `cancel()` aborts that
-    // controller and leaves it installed, and nothing here replaces it until
-    // `uploadPrepared` runs. So after "Discard upload", the NEXT attempt that
-    // failed during preparation found that old, already-aborted controller,
-    // took itself for cancelled and returned silently, leaving the sheet on
-    // "Optimizing video…" forever with no job row. Reproduced on the iOS
-    // Simulator 2026-09-17: a 4-second clip, discarded 14-second clip before it.
-    //
-    // A controller that was ALREADY aborted when this attempt began says nothing
-    // about this attempt. A cancel that lands during preparation bumps the
-    // generation, which is the signal that stays honest even when the installed
-    // controller was already dead.
+    // Issue #3073 — who is allowed to silence this attempt's failure: a cancel
+    // that lands during preparation bumps the generation.
     const startGeneration = generationRef.current;
     const abortedBeforeStart = abortRef.current?.signal.aborted === true ? abortRef.current : null;
     let handedToUpload = false;
     try {
-      // issue #2974 — the create-event wizard holds a client-only `d_<ts36>`
-      // draft id until the lazy server promotion lands. Sending it to
-      // upload-intent is a hard 400 `event_id_invalid_uuid` and NO job row is
-      // ever created, so nothing downstream can recover. `CreatorStep4Cover`
-      // promotes the draft the moment the Cover step mounts; this is the
-      // backstop for the window before that resolves. It is a FINITE, named
-      // error the picker renders — never a spinner.
+      // issue #2974 — the create-event wizard holds a client-only draft id
+      // until the lazy server promotion lands; never send it to upload-intent.
       if (exactTarget.serverTarget === "event" && !isServerRowId(exactTarget.eventId)) {
         throw new EventCoverVideoProcessingError(
           "event_not_ready",
           "This event is still being created. Give it a moment, then add the cover again.",
         );
       }
+      // #3040 AD-06 / I-AD-VIDEO-MIN-5S — an ad video under 5 s never leaves
+      // the device. The picker refuses it first; this is the backstop.
+      if (target === "ad_creative" && file.durationMs > 0 && file.durationMs < VIDEO_LIMITS.AD_MIN_DURATION_MS) {
+        throw new EventCoverVideoProcessingError(
+          "ad_video_too_short",
+          "Ad videos need at least 5 seconds. Choose another video.",
+        );
+      }
       const userId = await currentUserId();
       userIdRef.current = userId;
-      const persisted = await readPersistedCoverVideoJob(userId, persistenceKey);
-      const operationId = replacing ? newOperationId() : persisted?.clientOperationId ?? newOperationId();
+      let persisted = await readPersistedCoverVideoJob(userId, persistenceKey);
+      let operationId = replacing ? newOperationId() : persisted?.clientOperationId ?? newOperationId();
       if (!replacing) {
         beginPreparationProjection();
         projectPreparation({ phase: "validating", percent: 0 });
@@ -666,54 +775,41 @@ export function useEventCoverVideoUpload(
         maxDurationMs: EVENT_COVER_SOURCE_CEILING_MS,
         // issue #3119 — the generous pick-time ceiling, NOT the pipeline cap.
         maxSourceBytes: EVENT_COVER_PICK_CEILING_BYTES,
-        allowWebm: Platform.OS === "web",
+        // #3040 — WebM is in the lane's limits line on every platform.
+        allowWebm: true,
       });
       if (!valid.ok) throw new EventCoverVideoProcessingError(valid.code, valid.message);
       if (!replacing) projectPreparation({ phase: "compressing", percent: null });
       const compressed = await compressVideoLocally({
         uri: file.uri, bytes: file.bytes, durationMs: file.durationMs,
         // issue #3128 — if compressing stalls or fails and the original already
-        // fits the pipeline, upload it untouched rather than losing the cover
-        // to an optimisation the host never asked for.
+        // fits the pipeline, upload it untouched.
         maxUncompressedBytes: EVENT_COVER_SOURCE_MAX_BYTES,
         onProgress: (progress) => {
           if (!replacing) projectPreparation({ phase: "compressing", percent: progress.percent });
         },
       });
-      // issue #3119 — the pipeline cap belongs HERE, on what we are actually
-      // about to upload. Reaching this line means compression ran and the clip
-      // is still too big, which is a different sentence to the host than
-      // "choose a smaller video": there may not be a smaller one on the device,
-      // and shrinking it was our job, not theirs.
+      // issue #3119 — the pipeline cap belongs HERE, on what we upload.
       if (compressed.bytes > EVENT_COVER_SOURCE_MAX_BYTES) {
         throw new EventCoverVideoProcessingError(
           "video_file_too_large",
           "This clip is still too big after compressing. Try a shorter clip, or record at a lower resolution.",
         );
       }
+      // #3040 B-C7 [A-7] — optimizing is over the moment compression resolves;
+      // the copy-and-fingerprint step is "Checking file", never a frozen 100%.
+      if (!replacing) projectPreparation({ phase: "preparing", percent: 0 });
       try {
         prepared = await prepareEventCoverVideoSource({
           uri: compressed.uri, bytes: compressed.bytes, durationMs: compressed.durationMs,
           fileName: compressed.wasCompressed ? `${operationId}.mp4` : file.fileName,
           mimeType: compressed.wasCompressed ? "video/mp4" : file.mimeType, operationId,
+          // B-C7 — the compressor's own cache file is renamed, never copied.
+          ownedTemporary: compressed.wasCompressed,
         });
       } catch (preparationError) {
         // Issue #3073 — the compressor can hand back a file with sound and no
-        // picture, and call it a success. `react-native-compressor` builds its
-        // H.264 writer input only if `AVAssetWriter.canApply(outputSettings:)`
-        // agrees; when it does not, the exporter logs "Unsupported output
-        // configuration", skips the video track, exports the audio track alone
-        // and resolves. The iOS 26.5 Simulator refuses the
-        // `AVVideoAverageNonDroppableFrameRateKey` it always sends, so EVERY
-        // clip that is big enough to compress (5 MB and up) and has a sound
-        // track came back picture-less there — a 90 MB iPhone clip became a
-        // 223 KB AAC file. A clip without sound fails the export outright, and
-        // #3128 already uploads the original in that case.
-        //
-        // This is the same failure, detected one step later: compression did
-        // not work, so the original is uploaded exactly as #3128 does, and the
-        // provider transcodes it. Refusing a good phone clip because our own
-        // optimisation broke is the wrong answer.
+        // picture; upload the original exactly as #3128 does.
         if (!compressed.wasCompressed || !isMissingVideoTrackError(preparationError)) throw preparationError;
         if (file.bytes > EVENT_COVER_SOURCE_MAX_BYTES) {
           throw new EventCoverVideoProcessingError(
@@ -721,31 +817,42 @@ export function useEventCoverVideoUpload(
             "Your phone couldn’t shrink this clip, and it’s over 100 MB as it is. Try a shorter clip, or record at a lower resolution.",
           );
         }
-        // Optimising is over. Copying and fingerprinting the full-size original
-        // is the slow part now, and "Preparing video…" is what it is.
         if (!replacing) projectPreparation({ phase: "preparing", percent: 0 });
         prepared = await prepareEventCoverVideoSource({
           uri: file.uri, bytes: file.bytes, durationMs: file.durationMs,
           fileName: file.fileName, mimeType: file.mimeType, operationId,
         });
       }
-      if (!replacing&&persisted&&!persisted.sourceAcknowledged&&persisted.sourceSha256!==prepared.sha256) {
-        await deletePreparedEventCoverVideoSource(prepared.uri);
-        throw new EventCoverVideoProcessingError(
-          "source_mismatch",
-          // issue #2974 — names the control that actually exists in the sheet.
-          // The old copy said "cancel it first" while no cancel affordance was
-          // reachable from the error card at all.
-          "Choose the same video to resume this upload, or tap Discard upload to start over.",
-        );
+      if (!replacing && persisted && !persisted.sourceAcknowledged && persisted.sourceSha256 !== prepared.sha256) {
+        // #3040 B-C9 [A-18] / design H-12 — a DIFFERENT clip is a new operation.
+        // It used to be refused ("Choose the same video to resume") and the host
+        // had no way out; now the old job is cancelled and its record dropped.
+        const staleJobId = persisted.jobId;
+        abortActiveTransfersFor(persistenceKey);
+        if (staleJobId !== null) {
+          try { await cancelEventCoverVideoJob(staleJobId); } catch { /* the reaper ends an abandoned job */ }
+        }
+        // Keep the freshly prepared bytes (the record's own source goes).
+        await removePersistedCoverVideoJob(userId, persistenceKey, { preserveSource: true });
+        if (persisted.sourceUri && persisted.sourceUri !== prepared.uri) {
+          try { await deletePreparedEventCoverVideoSource(persisted.sourceUri); } catch { /* orphan cleanup is retry-safe */ }
+        }
+        persisted = null;
+        operationId = newOperationId();
       }
       handedToUpload = true;
-      await uploadPrepared(
-        prepared,
-        operationId,
-        persisted ?? undefined,
-        replacing,
-        () => { replacementAccepted = true; },
+      const preparedSource = prepared;
+      const persistedForUpload = persisted ?? undefined;
+      const flowOperationId = operationId;
+      await runWithRetries(
+        () => uploadPrepared(
+          preparedSource,
+          flowOperationId,
+          persistedForUpload,
+          replacing,
+          () => { replacementAccepted = true; },
+        ),
+        () => generationRef.current,
       );
     } catch (caught) {
       clearPreparationProjection();
@@ -762,20 +869,36 @@ export function useEventCoverVideoUpload(
         throw next;
       }
       setLocalPreviewUri(null);
+      const code = errorCodeOf(next);
       logEventCoverVideoUploadTelemetry("video_cover_upload_preview_rolled_back", {
-        applyMode,
-        errorCode: "code" in next && typeof next.code === "string" ? next.code : "video_upload_failed",
+        applyMode: laneApplyMode,
+        errorCode: code,
         eventId, jobId: jobIdRef.current ?? undefined, phase: "upload_intent",
         timestamp: new Date().toISOString(),
       });
       if (isRecoverable(next)) {
-        setStage({ phase: "detached", percent: 0, sourceAcknowledged: status?.sourceUploadedAt != null });
-      } else {
-        setError(next);
-        setStage({ phase: "error", percent: 0, code: "video_upload_failed", message: next.message });
+        detachRecoverable(next, status?.sourceUploadedAt != null);
+        return;
       }
+      // #3040 B-C9 [A-18] — a terminal failure after the intent drops the
+      // durable record and its operation id, so the next pick (any clip) is a
+      // NEW operation instead of a "choose the same video" dead end.
+      // Only a DEFINITE answer (a terminal code) drops it: a local failure
+      // (say, a storage write) leaves the record for the next mount to recover.
+      if (isTerminalUploadError(next) && userIdRef.current) {
+        try { await cleanupPersisted(userIdRef.current); } catch { /* best effort */ }
+      }
+      if (code === "source_file_gone" && jobIdRef.current) {
+        try { await cancelEventCoverVideoJob(jobIdRef.current); } catch { /* the reaper ends it */ }
+      }
+      setError(next);
+      // #3040 A-19 — the stage carries the REAL code (it used to be a literal).
+      setStage({
+        phase: "error", percent: 0, code, message: next.message,
+        canRetry: code !== LANE_CODES.clientVersionRequired,
+      });
     }
-  }, [applyMode, beginPreparationProjection, clearPreparationProjection, eventId, exactTarget, persistenceKey, projectPreparation, status?.sourceUploadedAt, uploadPrepared]);
+  }, [beginPreparationProjection, cleanupPersisted, clearPreparationProjection, detachRecoverable, eventId, exactTarget, laneApplyMode, persistenceKey, projectPreparation, runWithRetries, status?.sourceUploadedAt, target, uploadPrepared]);
 
   const start = useCallback((file: EventCoverVideoUploadFile): Promise<void> => startInternal(file, false), [startInternal]);
   const replace = useCallback((file: EventCoverVideoUploadFile): Promise<void> => startInternal(file, true), [startInternal]);
@@ -789,12 +912,7 @@ export function useEventCoverVideoUpload(
     abortRef.current?.abort();
     abortRef.current = abort;
     setStage({ phase: "reattaching", percent: 0 });
-    // issue #3074 — the deadline. The ONLY thing that disarms it is the sheet
-    // actually leaving the spinner: if any later phase is showing when this
-    // fires, the resume is visibly working and is left alone. A resume that is
-    // still on "Reconnecting to your video…" gets overridden by the truth,
-    // whichever branch it is stuck in — including a delegated upload that never
-    // settles, which is the branch the 39-minute stall was in.
+    // issue #3074 — the deadline. Overrides a resume still on "Reconnecting…".
     const reattachDeadline = setTimeout(() => {
       if (stageRef.current.phase !== "reattaching") return;
       if (generationRef.current !== generation) return;
@@ -806,7 +924,7 @@ export function useEventCoverVideoUpload(
             : await fetchEventCoverVideoStatusByTarget({
               target: exactTarget.serverTarget, eventId: exactTarget.eventId, brandId,
               venueId: exactTarget.venueId, draftOwnerKey: exactTarget.draftOwnerKey,
-              signal: abort.signal,
+              signal: abort.signal, activeOnly: true,
             });
           if (stageRef.current.phase !== "reattaching") return;
           if (generationRef.current !== generation) return;
@@ -822,13 +940,12 @@ export function useEventCoverVideoUpload(
         }
       })();
     }, REATTACH_DEADLINE_MS);
-    // Only the error path disarms the timer outright — every success path is
-    // already covered by the phase check inside it.
     const leaveReattaching = (): void => { clearTimeout(reattachDeadline); };
     try {
       const userId = await currentUserId();
       userIdRef.current = userId;
       persisted = await readPersistedCoverVideoJob(userId, persistenceKey);
+      if (persisted?.jobId) ownedJobIdsRef.current.add(persisted.jobId);
       const provisional = await readPersistedCoverVideoJob(userId, replacementPersistenceKey);
       let recoveredReplacement: EventCoverVideoStatus | null = null;
       if (provisional) {
@@ -849,10 +966,10 @@ export function useEventCoverVideoUpload(
             key: persistenceKey,
             jobId: recoveredReplacement.jobId,
           };
-          // Target-first promotion is the recovery commit. Journal removal is
-          // best effort and preserves the source now owned by the target record.
+          // Target-first promotion is the recovery commit.
           await writePersistedCoverVideoJob(promoted);
           persisted = promoted;
+          ownedJobIdsRef.current.add(recoveredReplacement.jobId);
           try {
             await removePersistedCoverVideoJob(userId, replacementPersistenceKey, { preserveSource: true });
           } catch { /* promoted target is already durable */ }
@@ -864,14 +981,10 @@ export function useEventCoverVideoUpload(
           provisional.jobId === recoveredReplacement.jobId &&
           persisted?.jobId === recoveredReplacement.jobId
         ) {
-          // Promotion committed before the crash; remove only the duplicate
-          // journal record because the target record owns the same source.
           try {
             await removePersistedCoverVideoJob(userId, replacementPersistenceKey, { preserveSource: true });
           } catch { /* retry on next mount */ }
         } else {
-          // No accepted replacement is authoritative, so only now is it safe to
-          // discard the provisional record and its candidate source.
           try { await removePersistedCoverVideoJob(userId, replacementPersistenceKey); } catch { /* retry on next mount */ }
         }
       }
@@ -888,8 +1001,26 @@ export function useEventCoverVideoUpload(
       }
       if (persisted && !persisted.sourceAcknowledged) {
         if (Platform.OS === "web") {
+          // #3040 B-C10 / design H-12 (web) — the browser kept no bytes across
+          // the reload. Say so; never claim the video uploaded.
           jobIdRef.current = persisted.jobId;
-          setStage({ phase: "detached", percent: 0, sourceAcknowledged: false });
+          setStage({ phase: "detached", percent: 0, sourceAcknowledged: false, reason: "repick" });
+          return;
+        }
+        // #3040 B-C11 [A-11] — the OS may have purged the prepared copy. A
+        // resume from a missing file can only fail, so end it honestly.
+        if (!(await preparedSourceStillExists(persisted.sourceUri))) {
+          const goneJobId = persisted.jobId;
+          if (goneJobId !== null) {
+            try { await cancelEventCoverVideoJob(goneJobId); } catch { /* the reaper ends it */ }
+          }
+          await cleanupPersisted(userId);
+          leaveReattaching();
+          setStage({
+            phase: "error", percent: 0, code: "source_file_gone",
+            message: "Your phone cleared the copy we were uploading, so we can't continue from here. Pick the same video and we'll start it fresh.",
+            canRetry: true,
+          });
           return;
         }
         const prepared: PreparedEventCoverVideoSource = {
@@ -911,48 +1042,48 @@ export function useEventCoverVideoUpload(
         if (!settled.isTerminal) await watch(persisted.jobId, abort.signal, generation);
         return;
       }
+      // #3040 B-C3 [A-3/A-6] / design T6 — with no record of its own, the sheet
+      // only re-attaches to a job STILL IN FLIGHT for this target. An applied,
+      // failed, cancelled or superseded latest job is never re-announced: that
+      // is how a replaced video came back as the cover on reopen.
       const recovered = await fetchEventCoverVideoStatusByTarget({
         target: exactTarget.serverTarget, eventId: exactTarget.eventId, brandId,
         venueId: exactTarget.venueId, draftOwnerKey: exactTarget.draftOwnerKey, signal: abort.signal,
+        activeOnly: true,
       });
-      if (!recovered) { setStage(idleStage); return; }
+      if (!recovered || !isActiveLaneStatus(recovered.status)) { setStage(idleStage); return; }
       jobIdRef.current = recovered.jobId;
       const settled = await settleCanonical(recovered, abort.signal);
       if (!settled.isTerminal) await watch(recovered.jobId, abort.signal, generation);
     } catch (caught) {
       // issue #3074 — whatever the outcome, the spinner is over.
       leaveReattaching();
-      // issue #2974 — this guard used to read `abort.signal.aborted` on the
-      // controller resume created. When resume delegates to `uploadPrepared`,
-      // that function installs its OWN controller and aborts this one first, so
-      // the guard was ALWAYS true on a delegated failure and this handler did
-      // nothing at all — leaving the sheet on "Reconnecting to your video…"
-      // with no Cancel and no Replace button, forever, for a hard 400. Ask the
-      // controller that is CURRENTLY installed instead: it is aborted only when
-      // a newer flow, a cancel, or unmount genuinely superseded this resume.
       const ownerGeneration = delegated
         ? delegatedGenerationRef.current ?? generation
         : generation;
       if (generationRef.current !== ownerGeneration) return;
       if (abortRef.current?.signal.aborted === true) return;
       const next = safeUploadError(caught);
+      const code = errorCodeOf(next);
       if (isTerminalUploadError(next)) {
-        // A definite server answer. Drop the local record (it can only point at
-        // a job that cannot be resumed) and show the finite error.
         if (userIdRef.current) await cleanupPersisted(userIdRef.current);
+        if (code === "source_file_gone" && jobIdRef.current) {
+          try { await cancelEventCoverVideoJob(jobIdRef.current); } catch { /* the reaper ends it */ }
+        }
         setError(next);
         setStage({
-          phase: "error", percent: 0,
-          code: "code" in next && typeof next.code === "string" ? next.code : "video_upload_failed",
-          message: next.message,
+          phase: "error", percent: 0, code, message: next.message,
+          canRetry: code !== LANE_CODES.clientVersionRequired,
         });
         return;
       }
-      setStage(persisted
-        ? { phase: "detached", percent: 0, sourceAcknowledged: persisted.sourceAcknowledged }
-        : idleStage);
+      if (persisted) {
+        detachRecoverable(next, persisted.sourceAcknowledged);
+        return;
+      }
+      setStage(idleStage);
     }
-  }, [brandId, cleanupPersisted, exactTarget, persistenceKey, replacementPersistenceKey, settleCanonical, uploadPrepared, watch]);
+  }, [brandId, cleanupPersisted, detachRecoverable, exactTarget, persistenceKey, replacementPersistenceKey, settleCanonical, uploadPrepared, watch]);
 
   useEffect(() => {
     void resume();
@@ -965,13 +1096,24 @@ export function useEventCoverVideoUpload(
     });
     return () => {
       clearPreparationProjection();
+      // #3040 B-C10 [A-10] — on WEB the browser keeps no bytes across a
+      // remount, so a job that never received a byte cannot be continued:
+      // cancel it (best effort) and drop the record, instead of leaving a 0-byte
+      // job that a later open would mistake for "Finishing upload".
+      const phaseAtUnmount = stageRef.current.phase;
+      const noBytesYet = ["reading", "validating", "compressing", "preparing", "intent_pending"].includes(phaseAtUnmount) ||
+        (phaseAtUnmount === "uploading" && (lastUploadProgressRef.current.confirmedBytes ?? 0) === 0);
+      if (Platform.OS === "web" && noBytesYet) {
+        const orphanJobId = jobIdRef.current;
+        const orphanUserId = userIdRef.current;
+        abortActiveTransfersFor(persistenceKey);
+        if (orphanJobId !== null) void cancelEventCoverVideoJob(orphanJobId).catch(() => undefined);
+        if (orphanUserId !== null) void removePersistedCoverVideoJob(orphanUserId, persistenceKey).catch(() => undefined);
+      }
       // issue #3075 — bumping the generation is what makes this instance stop
       // WRITING (every setStage/progress callback is generation-guarded), and
       // that is all unmount should do. It used to abort the controller too,
-      // which killed the transfer itself. The bytes must keep moving: the job
-      // is already durable server-side and locally persisted, and
-      // `runSingleFlightUpload` stops a remounted sheet from starting a second
-      // transfer for the same operation. Explicit cancel, a superseding upload,
+      // which killed the transfer itself. Explicit cancel, a superseding upload,
       // and SIGNED_OUT still abort — see `abortRef` at those call sites.
       generationRef.current += 1;
       // Ends this instance's WATCH. The transfer runs on its own controller and
@@ -979,7 +1121,7 @@ export function useEventCoverVideoUpload(
       abortRef.current?.abort();
       subscription.unsubscribe();
     };
-  }, [clearPreparationProjection, resume]);
+  }, [clearPreparationProjection, persistenceKey, resume]);
 
   const checkNow = useCallback(async (): Promise<void> => {
     if (jobIdRef.current) await settleCanonical(await fetchEventCoverVideoStatus(jobIdRef.current));
@@ -987,11 +1129,44 @@ export function useEventCoverVideoUpload(
   const acknowledgeApplied = useCallback(async (): Promise<void> => {
     if (!jobIdRef.current || !status?.processedUrl) return;
     setStage({ phase: "applying", percent: 100 });
-    await applyEventCoverVideoJob(jobIdRef.current, status.applicationVersion, status.processedUrl);
+    if (status !== null) await applyReady(status);
     const next = await fetchEventCoverVideoStatus(jobIdRef.current);
     project(next);
     if (next.status === "applied" && userIdRef.current) await cleanupPersisted(userIdRef.current);
-  }, [cleanupPersisted, project, status]);
+  }, [applyReady, cleanupPersisted, project, status]);
+  // #3040 B-C9/B-C2 — "Resume upload" (H-10) and "Continue upload" (H-11):
+  // continue the SAME operation from the server's offset. With the source
+  // still in hand here it replays at once; otherwise native resumes from its
+  // durable record. Never a no-op: a source that is gone ends on H-12.
+  const continueUpload = useCallback(async (): Promise<void> => {
+    if (retainedPreparedRef.current !== null) {
+      try {
+        await runWithRetries(async () => {
+          if (!(await continueRetained())) throw new EventCoverVideoProcessingError("source_file_gone", "Choose the video again.");
+        }, () => generationRef.current);
+      } catch (caught) {
+        // A cancel (or a newer pick) aborted this flow: it owns the sheet now.
+        if (abortRef.current?.signal.aborted === true) return;
+        const next = safeUploadError(caught);
+        if (isRecoverable(next)) detachRecoverable(next, false);
+        else {
+          setError(next);
+          setStage({ phase: "error", percent: 0, code: errorCodeOf(next), message: next.message, canRetry: true });
+        }
+      }
+      return;
+    }
+    await resume();
+  }, [continueRetained, detachRecoverable, resume, runWithRetries]);
+  // #3040 B-C4 [A-4] / design T7 — new media wins. A photo, GIF, stock pick or
+  // Remove clears the finished video's preview and its "added" state, so a
+  // stale `processedUrl` can never outrank the cover the host just chose.
+  const resetAppliedPreview = useCallback((): void => {
+    if (stageRef.current.phase !== "applied") return;
+    setProcessedUrl(null);
+    setProcessedPosterUrl(null);
+    setStage(idleStage);
+  }, []);
   // issue #3075 — an explicit cancel is the one gesture that DOES stop the
   // transfer, so it aborts the operation's slot as well as this instance's
   // watch. Unmount is not a cancel.
@@ -1000,6 +1175,7 @@ export function useEventCoverVideoUpload(
     abortRef.current?.abort();
     abortActiveTransfersFor(persistenceKey);
     abortActiveTransfersFor(replacementPersistenceKey);
+    retainedPreparedRef.current = null;
     if (!jobIdRef.current) {
       if (userIdRef.current) await cleanupPersisted(userIdRef.current);
       setLocalPreviewUri(null);
@@ -1017,10 +1193,16 @@ export function useEventCoverVideoUpload(
       setLocalPreviewUri(null);
       setStage(idleStage);
     }
-  }, [cleanupPersisted, project, settleCanonical]);
+  }, [cleanupPersisted, persistenceKey, project, replacementPersistenceKey, settleCanonical]);
+
+  // #3040 B-C3 — true only for a job this mount started or resumed from its
+  // own record; the picker emits a finished video as the cover only then.
+  const ownsJob = useCallback((jobId: string | null | undefined): boolean =>
+    typeof jobId === "string" && ownedJobIdsRef.current.has(jobId), []);
 
   return {
-    acknowledgeApplied, cancel, checkNow, error, localPreviewUri,
-    processedPosterUrl, processedUrl, replace, resume, stage, start, status,
+    acknowledgeApplied, cancel, checkNow, continueUpload, error, localPreviewUri, ownsJob,
+    processedPosterUrl, processedUrl, replace, resetAppliedPreview, resume, stage, start, status,
+    creativeId: status?.creativeId ?? null,
   };
 }

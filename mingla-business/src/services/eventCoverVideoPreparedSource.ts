@@ -1,20 +1,22 @@
+import { sha256OfBlob, VideoUploadError } from "@mingla/video-upload";
+import {
+  LaneVideoTypeError,
+  resolveLaneVideoType,
+  type LaneVideoExtension,
+} from "./eventCoverVideoSourceType";
+
 export type PreparedEventCoverVideoSource = {
   uri: string;
   bytes: number;
   durationMs: number;
   fileName: string;
   mimeType: string;
-  extension: "mp4" | "mov" | "m4v" | "webm";
+  extension: LaneVideoExtension;
   sha256: string;
   fingerprint: string;
 };
 
-const allowed = new Map<string, PreparedEventCoverVideoSource["extension"]>([
-  ["video/mp4", "mp4"],
-  ["video/quicktime", "mov"],
-  ["video/x-m4v", "m4v"],
-  ["video/webm", "webm"],
-]);
+export type PrepareProgress = { phase: "preparing"; percent: number };
 
 // Issue #3073 — mirrors the native guard's error so the shared hook can import
 // ONE symbol regardless of platform. Web reads the blob through `fetch` and the
@@ -46,24 +48,47 @@ export const prepareEventCoverVideoSource = async (input: {
   fileName?: string | null;
   mimeType?: string | null;
   operationId: string;
+  /** Native only (rename instead of copy); the browser never copies. */
+  ownedTemporary?: boolean;
+  onProgress?: (progress: PrepareProgress) => void;
 }): Promise<PreparedEventCoverVideoSource> => {
-  const mimeType = String(input.mimeType ?? "").toLowerCase();
-  const extension = allowed.get(mimeType);
-  const namedExtension = input.fileName?.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
-  if (!extension || namedExtension !== extension) throw new Error("video_source_type_unknown");
   const response = await fetch(input.uri);
   if (!response.ok) throw new Error("video_source_unreadable");
   const blob = await response.blob();
   if (blob.size <= 0 || blob.size !== input.bytes) throw new Error("video_source_size_changed");
-  const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
-  const sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  // #3040 B-C19 — MIME, then extension, then the first 12 bytes. An empty
+  // browser MIME is "unknown", never a type.
+  let resolved: ReturnType<typeof resolveLaneVideoType>;
+  try {
+    resolved = resolveLaneVideoType({ mimeType: input.mimeType, fileName: input.fileName });
+  } catch (metadataError) {
+    if (metadataError instanceof LaneVideoTypeError && metadataError.code === "video_source_type_unsupported") {
+      throw new Error(metadataError.code);
+    }
+    const head = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+    try {
+      resolved = resolveLaneVideoType({ mimeType: input.mimeType, fileName: input.fileName, head });
+    } catch (sniffError) {
+      throw new Error(sniffError instanceof LaneVideoTypeError ? sniffError.code : "video_source_type_unknown");
+    }
+  }
+  // #3040 — the shared package hashes, and refuses a blob over 100 MB before
+  // reading a byte of it.
+  let sha256: string;
+  try {
+    sha256 = await sha256OfBlob(blob);
+  } catch (error) {
+    if (error instanceof VideoUploadError && error.code === "source_too_large") throw new Error("video_source_too_large");
+    throw error;
+  }
+  input.onProgress?.({ phase: "preparing", percent: 99 });
   return {
     uri: input.uri,
     bytes: blob.size,
     durationMs: input.durationMs,
-    fileName: input.fileName!,
-    mimeType,
-    extension,
+    fileName: resolved.fileName,
+    mimeType: resolved.mimeType,
+    extension: resolved.extension,
     sha256,
     fingerprint: `${sha256}:${blob.size}`,
   };

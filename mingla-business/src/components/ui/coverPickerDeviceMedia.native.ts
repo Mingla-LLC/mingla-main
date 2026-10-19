@@ -45,7 +45,10 @@ export const launchCoverImagePicker = async (): Promise<CoverPickerResult> => {
   }));
 };
 
-export const launchCoverVideoPicker = async (): Promise<CoverPickerResult> => {
+export const launchCoverVideoPicker = async (
+  // #3040 B-C18 — web-only hook (the native picker returns the duration).
+  _options: { onFileChosen?: () => void } = {},
+): Promise<CoverPickerResult> => {
   const ImagePicker = await import("expo-image-picker");
   return normalizePickerResult(await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ["videos"],

@@ -2244,6 +2244,7 @@ const videoProjectionCopy = (
     case "applied": return { title: "Video cover added", body: "Your new cover is ready.", percent: null, tone: "success" };
     case "error": return { title: "We couldn’t finish this video", body: stage.message, percent: null, tone: "error" };
     case "picking": return { title: "Preparing video…", body: "Making a secure copy so the upload can resume if you leave.", percent: null, tone: "neutral" };
+    case "reading": return { title: "Reading video…", body: "Checking the length of the video you chose.", percent: null, tone: "neutral" };
     case "idle": return { title: "", body: "", percent: null, tone: "neutral" };
   }
 };

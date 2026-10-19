@@ -73,6 +73,14 @@ export type VideoRecheckState = {
    * this picker yet (a freshly opened sheet always gets its read).
    */
   msSinceLastCheck: number | null;
+  /**
+   * #3040 B-C2 [A-2] — for a `detached` card: did the server already confirm
+   * every byte? `false` means the bytes may be partial; a read could only find
+   * `source_uploading`, which is exactly the read that used to flip the card to
+   * a false "Finishing upload…". Such a card waits for Resume / a re-pick.
+   * `undefined` keeps the pre-#3040 behaviour for callers that do not know.
+   */
+  sourceAcknowledged?: boolean;
 };
 
 /** True iff the cover card should ask the server for the job's truth now. */
@@ -80,8 +88,10 @@ export const shouldRecheckCoverVideo = ({
   phase,
   checkInFlight,
   msSinceLastCheck,
+  sourceAcknowledged,
 }: VideoRecheckState): boolean => {
   if (!RECHECKABLE_VIDEO_PHASES.includes(phase)) return false;
+  if (phase === "detached" && sourceAcknowledged === false) return false;
   if (checkInFlight) return false;
   if (msSinceLastCheck !== null && msSinceLastCheck < VIDEO_RECHECK_MIN_INTERVAL_MS) return false;
   return true;
