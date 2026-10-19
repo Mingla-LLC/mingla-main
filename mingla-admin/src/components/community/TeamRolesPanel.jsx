@@ -1,126 +1,50 @@
-import { useState } from "react";
-import { UserPlus } from "lucide-react";
-import { SectionCard } from "../ui/Card";
+import { useCallback, useEffect, useState } from "react";
+import { MoreHorizontal, UserPlus } from "lucide-react";
+import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { SectionCard } from "../ui/Card";
 import { Input } from "../ui/Input";
+import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
+import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
 import { supabase } from "../../lib/supabase";
-import { setCommunityStaff } from "../../services/communityService";
+import { timeAgo } from "../../lib/formatters";
+import { listAdminTeamRoster, setCommunityStaff } from "../../services/communityService";
 
-/**
- * Community moderator/agent grants (not Mingla admin_users, not support_staff).
- * community_staff has no authenticated SELECT — roster listing needs a later RPC.
- * This tab grants/updates by resolving email → profiles.id then community_set_staff.
- */
 export function TeamRolesPanel() {
   const { addToast } = useToast();
-  const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState("moderator");
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editor, setEditor] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [lastGranted, setLastGranted] = useState(null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRows(await listAdminTeamRoster()); }
+    catch (error) { addToast({ variant: "error", title: "Could not load team", description: error?.message }); }
+    finally { setLoading(false); }
+  }, [addToast]);
+  useEffect(() => { void load(); }, [load]);
 
-  async function resolveUserId(rawEmail) {
-    const trimmed = rawEmail.trim().toLowerCase();
-    if (!trimmed) throw new Error("Email is required.");
-    const { data, error } = await supabase
-      .from("profiles_with_segment")
-      .select("id, email, display_name")
-      .ilike("email", trimmed)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data?.id) throw new Error("No Mingla profile matches that email.");
-    return data;
-  }
-
-  async function onGrant({ enabled }) {
+  async function save(enabled = true) {
+    if (!editor?.email?.trim()) return;
     setBusy(true);
     try {
-      const profile = await resolveUserId(email);
-      await setCommunityStaff({
-        userId: profile.id,
-        role,
-        enabled,
-        displayName: displayName.trim() || null,
-      });
-      setLastGranted({
-        email: profile.email || email.trim(),
-        role,
-        enabled,
-        displayName: displayName.trim() || profile.display_name || null,
-      });
-      addToast({
-        variant: "success",
-        title: enabled ? "Community role saved" : "Community role disabled",
-        description: profile.email || email.trim(),
-      });
-    } catch (err) {
-      addToast({
-        variant: "error",
-        title: "Could not update community staff",
-        description: err?.message,
-      });
-    } finally {
-      setBusy(false);
-    }
+      let userId = editor.userId;
+      if (!userId) {
+        const { data, error } = await supabase.from("profiles_with_segment").select("id,email,display_name").ilike("email", editor.email.trim()).maybeSingle();
+        if (error) throw error;
+        if (!data?.id) throw new Error("No Mingla profile matches that email.");
+        userId = data.id;
+      }
+      await setCommunityStaff({ userId, role: editor.role, enabled, displayName: editor.displayName.trim() || null });
+      addToast({ variant: "success", title: enabled ? "Community role saved" : "Community role removed" });
+      setEditor(null); await load();
+    } catch (error) { addToast({ variant: "error", title: "Could not update teammate", description: error?.message }); }
+    finally { setBusy(false); }
   }
 
-  return (
-    <div className="space-y-4">
-      <SectionCard title="Community roles">
-        <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-          Moderators and agents for the Host community. Full Mingla admins already
-          have publish access via admin status — do not add them here. Support desk
-          agents stay on the Support tab.
-        </p>
-        <div className="grid gap-3 max-w-xl">
-          <Input
-            label="Teammate email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@usemingla.com"
-          />
-          <Input
-            label="Display name (optional)"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)]">
-            Role
-            <select
-              className="mt-1 w-full rounded-md border border-[var(--color-border-primary)] bg-[var(--color-background-primary)] px-3 py-2 text-sm"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              <option value="moderator">Moderator</option>
-              <option value="agent">Agent</option>
-            </select>
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              icon={UserPlus}
-              loading={busy}
-              onClick={() => void onGrant({ enabled: true })}
-            >
-              Grant / update
-            </Button>
-            <Button
-              variant="secondary"
-              loading={busy}
-              onClick={() => void onGrant({ enabled: false })}
-            >
-              Disable
-            </Button>
-          </div>
-        </div>
-        {lastGranted && (
-          <p className="mt-4 text-sm text-[var(--color-text-secondary)]">
-            Last change: {lastGranted.email} → {lastGranted.role}
-            {lastGranted.enabled ? " (enabled)" : " (disabled)"}
-            {lastGranted.displayName ? ` · ${lastGranted.displayName}` : ""}
-          </p>
-        )}
-      </SectionCard>
-    </div>
-  );
+  return <SectionCard title="Team" subtitle="Who can moderate, answer support and publish" action={<Button size="sm" icon={UserPlus} onClick={() => setEditor({ userId: null, email: "", displayName: "", role: "moderator" })}>Invite teammate</Button>} noPadding>
+    {loading ? <div className="flex justify-center py-12"><Spinner /></div> : rows.length === 0 ? <p className="p-5 text-sm text-[var(--color-text-secondary)]">No teammates have Community or Support roles yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-[var(--gray-200)] text-left text-xs text-[var(--color-text-tertiary)]"><th className="p-3">Person</th><th className="p-3">Community role</th><th className="p-3">Support</th><th className="p-3">Available now</th><th className="p-3">Last active</th><th className="p-3"></th></tr></thead><tbody>{rows.map((row) => <tr key={row.user_id} className="border-b border-[var(--gray-100)]"><td className="p-3"><strong className="block text-[var(--color-text-primary)]">{row.display_name}</strong><span className="text-xs text-[var(--color-text-tertiary)]">{row.email}</span></td><td className="p-3"><Badge variant={row.community_role === "admin" ? "brand" : "default"}>{row.community_role || "None"}</Badge></td><td className="p-3"><Badge variant={row.support_role ? "info" : "default"}>{row.support_role || "None"}</Badge></td><td className="p-3"><Badge variant={row.available ? "success" : "default"}>{row.available ? "Yes" : "No"}</Badge></td><td className="p-3 text-xs text-[var(--color-text-secondary)]">{row.last_active ? timeAgo(row.last_active) : "Never"}</td><td className="p-3 text-right">{row.community_role !== "admin" ? <Button size="sm" variant="secondary" icon={MoreHorizontal} onClick={() => setEditor({ userId: row.user_id, email: row.email, displayName: row.display_name, role: row.community_role || "agent" })}>Manage</Button> : null}</td></tr>)}</tbody></table></div>}
+    <Modal open={Boolean(editor)} onClose={() => setEditor(null)} title={editor?.userId ? "Manage teammate" : "Invite teammate"} size="sm"><ModalBody className="space-y-3"><Input label="Email" type="email" value={editor?.email || ""} disabled={Boolean(editor?.userId)} onChange={(event) => setEditor((current) => ({ ...current, email: event.target.value }))}/><Input label="Display name" value={editor?.displayName || ""} onChange={(event) => setEditor((current) => ({ ...current, displayName: event.target.value }))}/><label className="block text-sm font-medium">Community role<select value={editor?.role || "moderator"} onChange={(event) => setEditor((current) => ({ ...current, role: event.target.value }))} className="mt-1.5 h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3"><option value="moderator">Moderator</option><option value="agent">Agent</option></select></label></ModalBody><ModalFooter>{editor?.userId ? <Button variant="secondary" disabled={busy} onClick={() => void save(false)}>Remove role</Button> : null}<Button variant="secondary" onClick={() => setEditor(null)}>Cancel</Button><Button loading={busy} onClick={() => void save(true)}>Save</Button></ModalFooter></Modal>
+  </SectionCard>;
 }

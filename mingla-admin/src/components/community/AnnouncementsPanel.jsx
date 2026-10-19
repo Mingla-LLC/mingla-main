@@ -8,19 +8,10 @@ import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
 import { formatDateTime } from "../../lib/formatters";
-import {
-  archiveAnnouncement,
-  getAnnouncementNotificationStatus,
-  listAnnouncements,
-  publishAnnouncement,
-  upsertAnnouncement,
-} from "../../services/communityService";
+import { archiveAnnouncement, listAnnouncementDeliveries, publishAnnouncement, retryAnnouncementDelivery, upsertAnnouncement } from "../../services/communityService";
 
-const STATUS_BADGE = {
-  draft: "default",
-  published: "success",
-  archived: "warning",
-};
+const STATUS_BADGE = { draft: "default", published: "success", archived: "warning" };
+const blankEditor = () => ({ id: null, title: "", bodyMd: "" });
 
 export function AnnouncementsPanel() {
   const { addToast } = useToast();
@@ -28,286 +19,58 @@ export function AnnouncementsPanel() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [editor, setEditor] = useState(null);
-  const [notificationStatus, setNotificationStatus] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const [announcements, status] = await Promise.all([
-        listAnnouncements(),
-        getAnnouncementNotificationStatus(),
-      ]);
-      setRows(announcements);
-      setNotificationStatus(status);
-    } catch (err) {
-      addToast({
-        variant: "error",
-        title: "Could not load announcements",
-        description: err?.message,
-      });
-    } finally {
-      setLoading(false);
-    }
+    try { setRows(await listAnnouncementDeliveries()); }
+    catch (error) { addToast({ variant: "error", title: "Could not load announcements", description: error?.message }); }
+    finally { setLoading(false); }
   }, [addToast]);
-
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    void load();
-  }, [load]);
+    const open = () => setEditor(blankEditor());
+    window.addEventListener("community:new-announcement", open);
+    return () => window.removeEventListener("community:new-announcement", open);
+  }, []);
 
   async function saveEditor() {
     if (!editor) return;
-    const title = editor.title.trim();
-    const bodyMd = editor.bodyMd.trim();
-    if (!title || !bodyMd) {
-      addToast({ variant: "error", title: "Title and body are required" });
-      return;
-    }
+    const title = editor.title.trim(); const bodyMd = editor.bodyMd.trim();
+    if (!title || !bodyMd) { addToast({ variant: "error", title: "Title and body are required" }); return; }
     setBusyId(editor.id || "new");
-    try {
-      await upsertAnnouncement({ id: editor.id, title, bodyMd });
-      addToast({
-        variant: "success",
-        title: editor.id ? "Draft saved" : "Announcement drafted",
-      });
-      setEditor(null);
-      await load();
-    } catch (err) {
-      addToast({
-        variant: "error",
-        title: "Save failed",
-        description: err?.message,
-      });
-    } finally {
-      setBusyId(null);
-    }
+    try { await upsertAnnouncement({ id: editor.id, title, bodyMd }); setEditor(null); await load(); addToast({ variant: "success", title: "Draft saved" }); }
+    catch (error) { addToast({ variant: "error", title: "Save failed", description: error?.message }); }
+    finally { setBusyId(null); }
   }
-
   async function onPublish(id) {
     setBusyId(id);
-    try {
-      const result = await publishAnnouncement(id);
-      const status = await getAnnouncementNotificationStatus(
-        result?.campaign_id ?? null,
-      );
-      setNotificationStatus(status);
-      addToast({
-        variant: "success",
-        title: result?.duplicate ? "Already published" : "Published and queued",
-        description: Number.isInteger(result?.audience_count)
-          ? `Queued one notification for each of ${result.audience_count} Host user${
-              result.audience_count === 1 ? "" : "s"
-            }.`
-          : "The announcement is live. Delivery status is tracked separately.",
-      });
-      await load();
-    } catch (err) {
-      addToast({
-        variant: "error",
-        title: "Publish failed",
-        description: err?.message,
-      });
-    } finally {
-      setBusyId(null);
-    }
+    try { const result = await publishAnnouncement(id); addToast({ variant: "success", title: result?.duplicate ? "Already published" : "Published and queued", description: `${result?.audience_count ?? 0} Host users in this delivery.` }); await load(); }
+    catch (error) { addToast({ variant: "error", title: "Publish failed", description: error?.message }); }
+    finally { setBusyId(null); }
   }
-
   async function onArchive(id) {
     setBusyId(id);
-    try {
-      await archiveAnnouncement(id);
-      addToast({ variant: "success", title: "Archived" });
-      await load();
-    } catch (err) {
-      addToast({
-        variant: "error",
-        title: "Archive failed",
-        description: err?.message,
-      });
-    } finally {
-      setBusyId(null);
-    }
+    try { await archiveAnnouncement(id); await load(); }
+    catch (error) { addToast({ variant: "error", title: "Archive failed", description: error?.message }); }
+    finally { setBusyId(null); }
+  }
+  async function retry(row) {
+    const campaignId = row.delivery?.campaign_id;
+    if (!campaignId) return;
+    setBusyId(row.id);
+    try { const count = await retryAnnouncementDelivery(campaignId); addToast({ variant: "success", title: "Retry queued", description: `${count} failed recipient event${count === 1 ? "" : "s"} will resume.` }); await load(); }
+    catch (error) { addToast({ variant: "error", title: "Retry failed", description: error?.message }); }
+    finally { setBusyId(null); }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-[var(--color-text-secondary)]">
-          Service notices for Hosts. Push is always on; email follows each
-          host&apos;s community email preference.
-        </p>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={RefreshCw}
-            onClick={() => void load()}
-          >
-            Refresh
-          </Button>
-          <Button
-            size="sm"
-            icon={Plus}
-            onClick={() => setEditor({ id: null, title: "", bodyMd: "" })}
-          >
-            New
-          </Button>
-        </div>
-      </div>
-
-      {notificationStatus ? (
-        <SectionCard title="Latest announcement notification">
-          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--color-text-secondary)]">
-            <span>Status: {notificationStatus.state}</span>
-            <span>Audience: {notificationStatus.audience_count}</span>
-            <span>
-              Bell delivered:{" "}
-              {notificationStatus.channels?.inapp_delivered ?? 0}
-            </span>
-            <span>
-              Push accepted: {notificationStatus.channels?.push_accepted ?? 0}
-            </span>
-            <span>
-              Push suppressed:{" "}
-              {notificationStatus.channels?.push_suppressed ?? 0}
-            </span>
-            <span>
-              Push retrying: {notificationStatus.channels?.push_retrying ?? 0}
-            </span>
-            <span>
-              Push failed: {notificationStatus.channels?.push_failed ?? 0}
-            </span>
-            <span>
-              Email accepted: {notificationStatus.channels?.email_accepted ?? 0}
-            </span>
-            <span>
-              Email suppressed:{" "}
-              {notificationStatus.channels?.email_suppressed ?? 0}
-            </span>
-            <span>
-              Email retrying: {notificationStatus.channels?.email_retrying ?? 0}
-            </span>
-            <span>
-              Email failed: {notificationStatus.channels?.email_failed ?? 0}
-            </span>
-          </div>
-        </SectionCard>
-      ) : null}
-
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <Spinner />
-        </div>
-      ) : rows.length === 0 ? (
-        <SectionCard>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            No announcements yet.
-          </p>
-        </SectionCard>
-      ) : (
-        <div className="space-y-3">
-          {rows.map((row) => (
-            <SectionCard key={row.id}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-medium text-[var(--color-text-primary)] truncate">
-                      {row.title}
-                    </h3>
-                    <Badge variant={STATUS_BADGE[row.status] || "default"}>
-                      {row.status}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-[var(--color-text-tertiary)]">
-                    Updated {formatDateTime(row.updated_at)}
-                    {row.published_at
-                      ? ` · Published ${formatDateTime(row.published_at)}`
-                      : ""}
-                  </p>
-                  <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap line-clamp-3">
-                    {row.body_md}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {row.status === "draft" && (
-                    <>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon={Pencil}
-                        disabled={busyId === row.id}
-                        onClick={() =>
-                          setEditor({
-                            id: row.id,
-                            title: row.title,
-                            bodyMd: row.body_md,
-                          })
-                        }
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        icon={Send}
-                        disabled={busyId === row.id}
-                        onClick={() => void onPublish(row.id)}
-                      >
-                        Publish
-                      </Button>
-                    </>
-                  )}
-                  {row.status === "published" && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      icon={Archive}
-                      disabled={busyId === row.id}
-                      onClick={() => void onArchive(row.id)}
-                    >
-                      Archive
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </SectionCard>
-          ))}
-        </div>
-      )}
-
-      <Modal
-        open={Boolean(editor)}
-        onClose={() => setEditor(null)}
-        title={editor?.id ? "Edit announcement" : "New announcement"}
-      >
-        <ModalBody className="space-y-3">
-          <Input
-            label="Title"
-            value={editor?.title || ""}
-            onChange={(e) =>
-              setEditor((prev) => ({ ...prev, title: e.target.value }))
-            }
-            maxLength={200}
-          />
-          <Textarea
-            label="Body (markdown ok)"
-            value={editor?.bodyMd || ""}
-            onChange={(e) =>
-              setEditor((prev) => ({ ...prev, bodyMd: e.target.value }))
-            }
-            rows={8}
-          />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setEditor(null)}>
-            Cancel
-          </Button>
-          <Button
-            loading={busyId === (editor?.id || "new")}
-            onClick={() => void saveEditor()}
-          >
-            Save draft
-          </Button>
-        </ModalFooter>
-      </Modal>
-    </div>
-  );
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[var(--color-text-secondary)]">Host notices use in-app, push and eligible email delivery.</p><div className="flex gap-2"><Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => void load()}>Refresh</Button><Button size="sm" icon={Plus} onClick={() => setEditor(blankEditor())}>New announcement</Button></div></div>
+    <SectionCard title="Sent and scheduled" subtitle="Latest announcement notification delivery by channel" noPadding>
+      {loading ? <div className="flex justify-center py-12"><Spinner /></div> : rows.length === 0 ? <p className="p-5 text-sm text-[var(--color-text-secondary)]">No announcements yet.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-sm"><thead><tr className="border-b border-[var(--gray-200)] text-left text-xs text-[var(--color-text-tertiary)]"><th className="p-3">Announcement</th><th className="p-3">Status</th><th className="p-3">Bell delivered</th><th className="p-3">Push accepted</th><th className="p-3">Email accepted</th><th className="p-3">Email suppressed</th><th className="p-3"></th></tr></thead><tbody>{rows.map((row) => {
+        const delivery = row.delivery || {}; const channels = delivery.channels || {}; const pushFailed = Number(channels.push_failed || 0); const emailSuppressed = Number(channels.email_suppressed || 0);
+        return <tr key={row.id} className="border-b border-[var(--gray-100)] align-top"><td className="p-3"><strong className="block text-[var(--color-text-primary)]">{row.title}</strong><span className="text-xs text-[var(--color-text-tertiary)]">{row.scheduled_at ? `Scheduled ${formatDateTime(row.scheduled_at)}` : row.published_at ? `Sent ${formatDateTime(row.published_at)}` : `Updated ${formatDateTime(row.updated_at)}`}</span></td><td className="p-3"><Badge variant={delivery.state === "failed" || delivery.state === "partial" ? "error" : STATUS_BADGE[row.status] || "default"}>{delivery.state || row.status}</Badge></td><td className="p-3">{channels.inapp_delivered ?? "–"}</td><td className={`p-3 ${pushFailed ? "font-semibold text-[var(--color-error-700)]" : ""}`}>{channels.push_accepted ?? "–"}{pushFailed ? ` · ${pushFailed} failed` : ""}</td><td className="p-3">{channels.email_accepted ?? "–"}</td><td className="p-3">{emailSuppressed || "–"}</td><td className="p-3"><div className="flex flex-wrap justify-end gap-2">{pushFailed ? <Button size="sm" variant="secondary" icon={RefreshCw} loading={busyId === row.id} onClick={() => void retry(row)}>Retry failed</Button> : null}{row.status === "draft" ? <><Button size="sm" variant="secondary" icon={Pencil} onClick={() => setEditor({ id: row.id, title: row.title, bodyMd: row.body_md || "" })}>Edit</Button><Button size="sm" icon={Send} loading={busyId === row.id} onClick={() => void onPublish(row.id)}>Publish</Button></> : null}{row.status === "published" ? <Button size="sm" variant="secondary" icon={Archive} loading={busyId === row.id} onClick={() => void onArchive(row.id)}>Archive</Button> : null}</div></td></tr>;
+      })}</tbody></table></div>}
+    </SectionCard>
+    <Modal open={Boolean(editor)} onClose={() => setEditor(null)} title={editor?.id ? "Edit announcement" : "New announcement"}><ModalBody className="space-y-3"><Input label="Title" value={editor?.title || ""} onChange={(event) => setEditor((current) => ({ ...current, title: event.target.value }))} maxLength={200}/><Textarea label="Message" value={editor?.bodyMd || ""} onChange={(event) => setEditor((current) => ({ ...current, bodyMd: event.target.value }))} rows={8}/><div className="rounded-lg bg-[var(--gray-50)] p-3 text-xs text-[var(--color-text-secondary)]"><strong className="text-[var(--color-text-primary)]">Preview</strong><p className="mt-1">{editor?.title || "Your title appears here"}</p><p className="mt-1 whitespace-pre-wrap">{editor?.bodyMd || "Write the Host update here."}</p></div></ModalBody><ModalFooter><Button variant="secondary" onClick={() => setEditor(null)}>Cancel</Button><Button loading={busyId === (editor?.id || "new")} onClick={() => void saveEditor()}>Save draft</Button></ModalFooter></Modal>
+  </div>;
 }

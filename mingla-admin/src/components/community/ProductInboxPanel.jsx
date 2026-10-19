@@ -120,7 +120,7 @@ export function ProductInboxPanel() {
   if (loading && !signals.length) return <div className="flex min-h-48 items-center justify-center"><Spinner /></div>;
   if (!signals.length) return (
     <SectionCard title="Product Inbox">
-      <p className="text-sm text-[var(--color-text-secondary)]">No bug or feature signals are waiting for Product review.</p>
+      <div className="space-y-3 text-sm text-[var(--color-text-secondary)]"><p>No bug or feature signals are waiting for Product review. Structured reports from Support tickets and Brand groups land here before Product links them to an initiative.</p><a href="https://github.com/orgs/Mingla-LLC/projects/4" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-[var(--color-brand-600)] hover:underline">Open the Mingla Avengers board <ExternalLink className="h-4 w-4" /></a></div>
     </SectionCard>
   );
 

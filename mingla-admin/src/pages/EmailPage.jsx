@@ -38,9 +38,10 @@ const SUPABASE_BASE = import.meta.env.VITE_SUPABASE_URL || "";
 const EDGE_FUNCTION_URL = SUPABASE_BASE ? `${SUPABASE_BASE}/functions/v1/admin-send-email` : "";
 
 const SUB_TABS = [
-  { id: "compose", label: "Compose" },
   { id: "history", label: "History" },
-  { id: "preferences", label: "Preferences" },
+  { id: "send", label: "Send" },
+  { id: "templates", label: "Templates" },
+  { id: "unsubscribes", label: "Unsubscribes" },
 ];
 
 // #3720 Slice B — only segments the edge actually filters. City / tier /
@@ -156,7 +157,7 @@ async function callEdgeFunction(payload, { retried = false } = {}) {
 
 export function EmailPage({ embedded = false } = {}) {
   const { signOut } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState("compose");
+  const [activeSubTab, setActiveSubTab] = useState("send");
   const [providerConfigured, setProviderConfigured] = useState(true);
   const [providerChecked, setProviderChecked] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -216,15 +217,16 @@ export function EmailPage({ embedded = false } = {}) {
           </button>
         </div>
       )}
-      {activeSubTab === "compose" && (
+      {(activeSubTab === "send" || activeSubTab === "templates") && (
         <ComposeSubView
           providerConfigured={providerConfigured}
           providerChecked={providerChecked}
           onSessionExpired={() => setSessionExpired(true)}
+          openTemplateManager={activeSubTab === "templates"}
         />
       )}
       {activeSubTab === "history" && <HistorySubView />}
-      {activeSubTab === "preferences" && <PreferencesSubView />}
+      {activeSubTab === "unsubscribes" && <PreferencesSubView />}
     </div>
   );
 }
@@ -237,6 +239,7 @@ function ComposeSubView(props) {
       callEdgeFunction={callEdgeFunction}
       providerConfigured={props.providerConfigured}
       onSessionExpired={props.onSessionExpired}
+      openTemplateManager={props.openTemplateManager}
     />
   );
 }

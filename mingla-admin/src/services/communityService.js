@@ -64,6 +64,23 @@ export async function getAnnouncementNotificationStatus(campaignId = null) {
   return data;
 }
 
+export async function listAnnouncementDeliveries() {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_admin_announcement_deliveries",
+  );
+  throwRpc(error);
+  return data ?? [];
+}
+
+export async function retryAnnouncementDelivery(campaignId) {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_admin_retry_announcement",
+    { p_campaign_id: campaignId },
+  );
+  throwRpc(error);
+  return Number(data ?? 0);
+}
+
 export async function archiveAnnouncement(id) {
   const { data, error } = await supabase.rpc("community_archive_announcement", {
     p_id: id,
@@ -78,7 +95,7 @@ export async function listRoadmapCards() {
   const { data, error } = await supabase
     .from("community_roadmap_cards")
     .select(
-      "id, public_title, public_body, internal_note, lane, status, sort_order, created_at, updated_at",
+      "id, public_title, public_body, internal_note, lane, status, sort_order, shipped_at, target_label, idea_count, created_at, updated_at",
     )
     .order("sort_order", { ascending: true })
     .order("id", { ascending: true });
@@ -166,6 +183,62 @@ export async function listCommunityModerationQueue() {
   return data ?? [];
 }
 
+export async function listAdminCommunityPosts(kind, filter = "all") {
+  const { data, error } = await supabase.rpc("issue_3720_admin_list_posts", {
+    p_kind: kind,
+    p_filter: filter,
+  });
+  throwRpc(error);
+  return data ?? [];
+}
+
+export async function updateAdminIdea({
+  postId,
+  status,
+  publicResponse = "",
+  mergeInto = null,
+  promote = false,
+}) {
+  const { data, error } = await supabase.rpc("issue_3720_admin_update_idea", {
+    p_post_id: postId,
+    p_status: status,
+    p_public_response: publicResponse,
+    p_merge_into: mergeInto,
+    p_promote: Boolean(promote),
+  });
+  throwRpc(error);
+  return data;
+}
+
+export async function runAdminQuestionAction({ postId, action, answer = "" }) {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_admin_question_action",
+    { p_post_id: postId, p_action: action, p_answer: answer },
+  );
+  throwRpc(error);
+  return data === true;
+}
+
+export async function listModerationWorkspace(section) {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_admin_moderation_workspace",
+    { p_section: section },
+  );
+  throwRpc(error);
+  return data ?? [];
+}
+
+export async function runModerationAction({ queueType, recordId, action, reason = "" }) {
+  const { data, error } = await supabase.rpc("issue_3720_admin_moderate", {
+    p_queue_type: queueType,
+    p_record_id: recordId,
+    p_action: action,
+    p_reason: reason,
+  });
+  throwRpc(error);
+  return data === true;
+}
+
 export async function moderateCommunityItem({ queueType, recordId, action }) {
   const { data, error } = await supabase.rpc(
     "issue_3720_community_moderate",
@@ -204,6 +277,12 @@ export async function listSupportStaffRoster() {
   return data ?? [];
 }
 
+export async function listAdminTeamRoster() {
+  const { data, error } = await supabase.rpc("issue_3720_admin_team_roster");
+  throwRpc(error);
+  return data ?? [];
+}
+
 // ── Overview helpers ─────────────────────────────────────────────────────────
 
 export async function countOpenSupportTickets() {
@@ -222,6 +301,12 @@ export async function countDraftAnnouncements() {
     .eq("status", "draft");
   if (error) throw error;
   return count ?? 0;
+}
+
+export async function getAdminCommunityOverview() {
+  const { data, error } = await supabase.rpc("issue_3720_admin_overview");
+  throwRpc(error);
+  return data ?? {};
 }
 
 // ── Official Brand groups ───────────────────────────────────────────────────
