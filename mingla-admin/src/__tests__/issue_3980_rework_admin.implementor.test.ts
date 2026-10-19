@@ -44,8 +44,10 @@ Deno.test("#3980 rework: two teammates with the same first name are never confus
   assertEquals(mentionedEmails([ALEX_LEE], "@Alex can you take this?"), ["alex.lee@usemingla.com"]);
   // Both picked, both still in the text: both told.
   assertEquals(mentionedEmails([ALEX_KIM, ALEX_LEE], "@Alex and @Alex, please"), ["alex.kim@usemingla.com", "alex.lee@usemingla.com"]);
-  // Both picked, one taken back out: one told, the first picked.
-  assertEquals(mentionedEmails([ALEX_KIM, ALEX_LEE], "@Alex, please"), ["alex.kim@usemingla.com"]);
+  // Both picked under one text, one taken back out: nobody behind that text
+  // is told, since Mingla cannot know which one stayed (rework 2: the note
+  // box gives each teammate unique text, so this only guards old picks).
+  assertEquals(mentionedEmails([ALEX_KIM, ALEX_LEE], "@Alex, please"), []);
   // The same person picked twice is told once.
   assertEquals(mentionedEmails([ALEX_KIM, ALEX_KIM], "@Alex @Alex"), ["alex.kim@usemingla.com"]);
 });
@@ -63,7 +65,7 @@ Deno.test("#3980 rework: the note box sends the picks, not the team, and shows e
   const box = code("components/ops/NoteBox.jsx");
   assertMatch(box, /mentionedEmails\(picks, text\)/);
   assertNotMatch(box, /mentionedEmails\(team/);
-  assertMatch(box, /setPicks\(\(list\) => \[\.\.\.list, \{ email: p\.email, name: p\.name \}\]\)/);
+  assertMatch(box, /setPicks\(\(list\) => \[\.\.\.list, \{ email: p\.email, name: p\.name, token \}\]\)/);
   assertMatch(box, /\{p\.email\}<\/span>/);
   assertMatch(box, /setPicks\(\[\]\)/);
   const model = code("lib/opsModel.js");
@@ -99,11 +101,11 @@ Deno.test("#3980 rework: the month grid beside the event panel never scrolls sid
   assertMatch(page, /<DayPanel /);
   // A day opened from "+N more" is in the address, so Back and reload keep it.
   assertMatch(page, /p\.set\("day", key\)/);
-  // Chips wrap by word (hyphenated where a word is wider than its chip),
-  // never letter by letter.
-  assertNotMatch(page, /overflow-wrap:anywhere|break-all/);
-  assertMatch(page, /const CONTENT_CHIP = "block w-full break-words hyphens-auto /);
-  assertMatch(page, /const EVENT_CHIP = "block w-full break-words hyphens-auto /);
+  // Chips wrap by whole words only, never letter by letter and never
+  // hyphenated (rework 2: two lines, then an ellipsis).
+  assertNotMatch(page, /overflow-wrap:anywhere|break-all|hyphens-auto/);
+  assertMatch(page, /const CONTENT_CHIP = "block w-full min-w-0 overflow-hidden break-normal hyphens-none /);
+  assertMatch(page, /const EVENT_CHIP = "block w-full min-w-0 overflow-hidden break-normal hyphens-none /);
   // Where the grid is too narrow for words, each day shows one bar per entry
   // and opens in the panel. The container classes are written out whole, or
   // Tailwind never generates them.
