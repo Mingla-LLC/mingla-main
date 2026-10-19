@@ -21,13 +21,13 @@ import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
 import { ProductInboxPanel } from "../components/community/ProductInboxPanel";
 import { FeatureGuidePanel } from "../components/community/FeatureGuidePanel";
 import { ModerationPanel } from "../components/community/ModerationPanel";
-import { CutoverPanel } from "../components/community/CutoverPanel";
 import { useAuth } from "../context/AuthContext";
 import {
   communitySupportCapabilities,
   communitySupportTabsForAccess,
   defaultCommunitySupportTab,
 } from "../lib/communitySupportAccess";
+import { communitySupportTabFromHash } from "../lib/communitySupportNavigation";
 
 const COMMUNITY_SUPPORT_TABS = [
   { id: "overview", label: "Overview" },
@@ -41,18 +41,12 @@ const COMMUNITY_SUPPORT_TABS = [
   { id: "email", label: "Email" },
   { id: "team", label: "Team & roles" },
   { id: "availability", label: "Availability" },
-  { id: "cutover", label: "Cutover" },
 ];
 
 const TAB_IDS = new Set(COMMUNITY_SUPPORT_TABS.map((t) => t.id));
 
-function hashParams() {
-  return new URLSearchParams(window.location.hash.split("?")[1] || "");
-}
-
 function tabFromCommunityHash() {
-  const t = hashParams().get("tab");
-  return TAB_IDS.has(t) ? t : "overview";
+  return communitySupportTabFromHash(window.location.hash, TAB_IDS);
 }
 
 function communitySupportHashForTab(tabId) {
@@ -151,7 +145,6 @@ export function CommunitySupportPage() {
       {activeTab === "email" && <EmailPage embedded />}
       {activeTab === "team" && <TeamRolesPanel />}
       {activeTab === "availability" && <AvailabilityPanel />}
-      {activeTab === "cutover" && capabilities.isAdmin && <CutoverPanel />}
     </div>
   );
 }
