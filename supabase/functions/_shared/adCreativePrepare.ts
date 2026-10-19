@@ -13,6 +13,9 @@ import {
 } from "./adCreative.ts";
 import type { AdCreativeRow, CreativeUploadDeps } from "./adCreative.ts";
 import { probeCreativeBytes, sha256Hex } from "./adCreativeProbe.ts";
+// #3040 — one processed-video budget for the lane and the ads byte fetch.
+// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the ads video fetch cap is the lane FINAL_MAX_BYTES
+import { FINAL_MAX_BYTES } from "./eventCoverVideo.ts";
 import { normalizeMetaError, resolveMetaClient } from "./meta.ts";
 import { resolveGoogleClient } from "./google.ts";
 import type { GoogleClient } from "./google.ts";
@@ -429,7 +432,8 @@ export async function probeTrustedVideoSources(
     asset.poster_url,
     `/${asset.bunny_video_id}/thumbnail.jpg`,
   );
-  const video = await fetchBounded(videoUrl, 60_000, 64 * 1024 * 1024, deps);
+  // #3040 — the lane's processed budget is the single source for this cap.
+  const video = await fetchBounded(videoUrl, 60_000, FINAL_MAX_BYTES, deps);
   const poster = await fetchBounded(posterUrl, 15_000, 10 * 1024 * 1024, deps);
   const [videoProbe, posterProbe, videoHash, posterHash] = await Promise.all([
     probeCreativeBytes(video),

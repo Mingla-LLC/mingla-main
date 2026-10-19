@@ -22,6 +22,12 @@
  *      else 422, no write (RT-4: no new venue table).
  *   6. action='validate' returns the probe + matrix report WITHOUT writing;
  *      action='record' (default) INSERTs ad_creatives and returns the row.
+ *   7. #3040 — VIDEO creatives are no longer recorded here. A video becomes a
+ *      library row only from a READY video-lane job (adCreativeMaterialize),
+ *      so video `record` answers 410. Video `validate` names the lane job
+ *      (`source_job_id`); the caller must be authorized on that job, and only
+ *      the job's own processed media is probed — no video URL or asset id from
+ *      the request is used.
  *
  * FAIL-CLOSE: probe failure, unresolvable byte source, kind mismatch, or a
  * 422 tag → NO row is written. This endpoint never calls an ad platform —
@@ -58,6 +64,7 @@ import {
   CreativeTrustError,
   probeTrustedVideoSources,
 } from "../_shared/adCreativePrepare.ts";
+import { requireCoverVideoTargetManager } from "../_shared/eventCoverVideo.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -83,7 +90,19 @@ interface VariantInput {
   storage_path?: string;
 }
 
-serve(async (req: Request): Promise<Response> => {
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const defaultDeps = {
+  createClient,
+  probeTrustedVideoSources,
+  requireCoverVideoTargetManager,
+};
+
+export const handleAdminAdCreativeUpload = async (
+  req: Request,
+  deps: typeof defaultDeps = defaultDeps,
+): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -99,7 +118,7 @@ serve(async (req: Request): Promise<Response> => {
   // ── Admin or brand ad-planner gate. Auth precedes input validation. ────────
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ error: "unauthorized" }, 401);
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+  const supabase = deps.createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const jwt = authHeader.replace("Bearer ", "");
@@ -147,6 +166,10 @@ serve(async (req: Request): Promise<Response> => {
   if (kind !== "image" && kind !== "video") {
     return json({ error: "validation_error", detail: "kind_invalid" }, 422);
   }
+  // #3040 — a video library row is created only from a READY lane job.
+  if (kind === "video" && action === "record") {
+    return json({ error: "video_record_retired", detail: "use_video_lane" }, 410);
+  }
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) {
     return json({ error: "validation_error", detail: "name_required" }, 422);
@@ -155,15 +178,52 @@ serve(async (req: Request): Promise<Response> => {
   const sourceUrl = typeof body.source_url === "string"
     ? body.source_url
     : null;
-  const bunnyVideoId = typeof body.bunny_video_id === "string"
-    ? body.bunny_video_id
-    : null;
-  const posterUrl = typeof body.poster_url === "string"
-    ? body.poster_url
-    : null;
-  const mp4MasterUrl = typeof body.mp4_master_url === "string"
-    ? body.mp4_master_url
-    : null;
+  let bunnyVideoId: string | null = null;
+  let posterUrl: string | null = null;
+  let mp4MasterUrl: string | null = null;
+  if (kind === "video") {
+    // #3040 — video validation probes ONLY the named lane job's own media.
+    const sourceJobId = typeof body.source_job_id === "string"
+      ? body.source_job_id
+      : "";
+    if (!UUID_RE.test(sourceJobId)) {
+      return json({
+        error: "validation_error",
+        detail: "source_job_id_required",
+      }, 422);
+    }
+    const { data: job, error: jobError } = await supabase
+      .from("event_cover_video_jobs")
+      .select(
+        "id,status,target_kind,event_id,brand_id,venue_id,draft_owner_key,requested_by,source_asset_id,processed_url,processed_poster_url",
+      )
+      .eq("id", sourceJobId)
+      .maybeSingle();
+    if (jobError) return json({ error: "internal_error" }, 500);
+    if (!job) {
+      return json({ error: "not_found", detail: "job_not_found" }, 404);
+    }
+    const jobAllowed = await deps.requireCoverVideoTargetManager(supabase, {
+      targetKind: job.target_kind,
+      eventId: job.event_id,
+      brandId: job.brand_id,
+      venueId: job.venue_id,
+      draftOwnerKey: job.draft_owner_key,
+      requestedBy: job.requested_by,
+    }, user.id);
+    if (jobAllowed instanceof Response) return jobAllowed;
+    if (
+      !["ready", "applied"].includes(String(job.status)) ||
+      typeof job.source_asset_id !== "string" ||
+      typeof job.processed_url !== "string" ||
+      typeof job.processed_poster_url !== "string"
+    ) {
+      return json({ error: "job_not_ready" }, 409);
+    }
+    bunnyVideoId = job.source_asset_id;
+    posterUrl = job.processed_poster_url;
+    mp4MasterUrl = job.processed_url;
+  }
 
   if (kind === "image" && !sourceUrl) {
     return json({
@@ -247,7 +307,7 @@ serve(async (req: Request): Promise<Response> => {
   let posterContentHash: string | null = null;
   try {
     if (kind === "video") {
-      const trusted = await probeTrustedVideoSources({
+      const trusted = await deps.probeTrustedVideoSources({
         bunny_video_id: bunnyVideoId,
         mp4_master_url: mp4MasterUrl,
         poster_url: posterUrl,
@@ -431,6 +491,8 @@ serve(async (req: Request): Promise<Response> => {
       variants,
       status: "active",
       created_by: user.id,
+      // #3040/#3697 — immutable provenance. House reuse requires admin_upload.
+      source: adminRow ? "admin_upload" : "host_upload",
     })
     .select("*")
     .maybeSingle();
@@ -443,4 +505,8 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   return json({ creative, validation });
-});
+};
+
+if (import.meta.main) {
+  serve((req: Request) => handleAdminAdCreativeUpload(req));
+}

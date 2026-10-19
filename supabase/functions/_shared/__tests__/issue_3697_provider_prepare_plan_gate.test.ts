@@ -145,6 +145,8 @@ Deno.test("#3697 Host media cannot cross a brand or enter a house plan", () => {
       ownerKind: "mingla",
       planBrandId: null,
       creativeBrandId: null,
+      // #3040/#3697 — house media is decided by provenance, not a null brand.
+      creativeSource: "admin_upload",
     }),
     null,
   );
