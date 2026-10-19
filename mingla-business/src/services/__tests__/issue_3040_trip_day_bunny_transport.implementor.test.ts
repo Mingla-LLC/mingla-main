@@ -34,9 +34,11 @@ describe("#3040 trip-day videos use the canonical Bunny transport", () => {
 
   test("shows transport progress and applies the shared one-minute contract", () => {
     expect(sheet).toContain("videoProgress.percent");
-    expect(sheet).toContain("Uploading video");
-    expect(sheet).toContain("Processing video");
-    expect(sheet).toContain("videos up to one minute");
+    // [TEST-MOD-APPROVED #3040] B-C12 / design §6 — tile states and the
+    // shipped-with-the-fix hint replace the old progress line and 25 MB copy.
+    expect(sheet).toContain("Uploading");
+    expect(sheet).toContain("Preparing");
+    expect(sheet).toContain("Videos: up to 1 minute, under 100 MB.");
     expect(service).toContain("EVENT_COVER_MAX_VIDEO_DURATION_MS");
     expect(service).toContain("Choose a video that is one minute or shorter.");
   });

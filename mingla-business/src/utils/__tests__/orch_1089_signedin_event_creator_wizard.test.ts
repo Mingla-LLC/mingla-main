@@ -119,7 +119,10 @@ describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
     // copy) was removed — mobile-web video covers now upload like desktop. The
     // durable part of this contract is the web shim wiring below.
     expect(coverPicker).not.toContain("isPhoneWeb");
-    expect(coverPicker).toContain("video covers upload the clip as-is");
+    // [TEST-MOD-APPROVED #3040] design D4 — the web-only helper sentence was
+    // replaced by the approved limits block; the as-is web behaviour is now
+    // stated by the shared video limits line and the H-14 refusals.
+    expect(coverPicker).toContain("coverLimitsLines(coverKind, videoOnly)");
     expect(sheetWeb).toContain('from "./SheetMobile"');
     expect(reanimatedWebStub).toContain("const bezier");
     expect(reanimatedWebStub).toContain("const runOnUI");

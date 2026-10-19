@@ -15,6 +15,9 @@ type HandlerEffects = {
   readonly toasts: string[];
 };
 
+// [TEST-MOD-APPROVED #3040] the surfaced effect is design state H-16.
+const existingCopy = "H-16 We couldn't load the preview";
+
 const PICKER = readFileSync(
   path.join(process.cwd(), "src/components/ui/CoverPicker.tsx"),
   "utf8",
@@ -54,14 +57,19 @@ const runHandler = ({
   const toasts: string[] = [];
   const useCallback = <T,>(callback: T): T => callback;
 
+  // [TEST-MOD-APPROVED #3040] B-C16 / design H-16 — a surfaced render error
+  // is now the in-sheet "We couldn't load the preview" card (a failure count)
+  // plus neutral telemetry, never a toast with image-or-GIF copy. The truth
+  // table of WHEN it surfaces is unchanged; only the effect changed.
   new Function(
     "module",
     "exports",
     "useCallback",
     "activeVideoUpload",
     "videoUpload",
-    "setMediaDisplayError",
-    "onShowToast",
+    "setReloadingPreview",
+    "setRenderFailures",
+    "reportCoverPreviewRenderError",
     "__DEV__",
     compiled,
   )(
@@ -70,8 +78,9 @@ const runHandler = ({
     useCallback,
     activeVideoUpload,
     { localPreviewUri: currentPreviewUri },
-    (message: string) => displayErrors.push(message),
-    (message: string) => toasts.push(message),
+    () => undefined,
+    () => displayErrors.push(existingCopy),
+    () => undefined,
     false,
   );
 
@@ -87,8 +96,6 @@ const runHandler = ({
 
 describe("CoverPicker transient-render adversarial truth table (issue #1958)", () => {
   const localPreview = "file:///current-preview.mp4";
-  const existingCopy =
-    "Uploaded, but this cover could not be displayed. Try another image or GIF.";
 
   test("T-1958-A1 an active upload does not hide a stale preview callback", () => {
     expect(
@@ -99,7 +106,7 @@ describe("CoverPicker transient-render adversarial truth table (issue #1958)", (
       }),
     ).toEqual({
       displayErrors: [existingCopy],
-      toasts: [existingCopy],
+      toasts: [],
     });
   });
 
@@ -112,7 +119,7 @@ describe("CoverPicker transient-render adversarial truth table (issue #1958)", (
       }),
     ).toEqual({
       displayErrors: [existingCopy],
-      toasts: [existingCopy],
+      toasts: [],
     });
   });
 
@@ -125,7 +132,7 @@ describe("CoverPicker transient-render adversarial truth table (issue #1958)", (
       }),
     ).toEqual({
       displayErrors: [existingCopy],
-      toasts: [existingCopy],
+      toasts: [],
     });
   });
 

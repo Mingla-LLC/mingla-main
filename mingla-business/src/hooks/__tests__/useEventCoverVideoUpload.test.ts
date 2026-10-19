@@ -368,8 +368,10 @@ describe("useEventCoverVideoUpload", () => {
     const finalRender = renderHook();
     expect(finalRender.localPreviewUri).toBeNull();
     expect(finalRender.processedUrl).toBeNull();
+    // [TEST-MOD-APPROVED #3040] A-19 — the error stage carries the REAL code
+    // (it used to be the literal "video_upload_failed" for every failure).
     expect(finalRender.stage).toMatchObject({
-      code: "video_upload_failed",
+      code: "unauthenticated",
       phase: "error",
     });
     expect(uploadEventCoverVideoSource).not.toHaveBeenCalled();
@@ -689,11 +691,17 @@ describe("useEventCoverVideoUpload", () => {
       mimeType: "video/mp4",
       uri: "blob:different",
     });
-    expect(createEventCoverVideoUploadIntent).not.toHaveBeenCalled();
-    expect(logEventCoverVideoUploadTelemetry).toHaveBeenCalledWith(
-      "video_cover_upload_preview_rolled_back",
-      expect.objectContaining({ errorCode: "source_mismatch" }),
+    // [TEST-MOD-APPROVED #3040] A-18 / design H-12 — "Choose the video again"
+    // accepts ANY clip: a different file cancels the stale job and starts a
+    // NEW operation instead of a "choose the same video" refusal.
+    expect(cancelEventCoverVideoJob).toHaveBeenCalledWith("job-web-pending");
+    expect(createEventCoverVideoUploadIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceSha256: "b".repeat(64),
+      }),
     );
+    expect((createEventCoverVideoUploadIntent as unknown as { mock: { calls: Array<Array<{ clientOperationId: string }>> } })
+      .mock.calls[0][0].clientOperationId).not.toBe("11111111-1111-4111-8111-111111111111");
   });
 
   // [TEST-MOD-APPROVED #2715] Executable event/local happy path: provider

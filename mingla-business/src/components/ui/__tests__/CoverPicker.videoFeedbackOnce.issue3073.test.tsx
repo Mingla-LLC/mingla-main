@@ -208,8 +208,12 @@ const mount = async (): Promise<Tree> => {
   return tree as Tree;
 };
 
+// [TEST-MOD-APPROVED #3040] B-C15 — the empty cover's buttons are named by
+// their outcome ("Add a video" / "Add a photo", Seth Q2) instead of the old
+// "Video" / "Image"; the test keeps its own short names for them.
+const LABELS: Record<string, string> = { Video: "Add a video", Image: "Add a photo" };
 const buttons = (tree: Tree, label: string): HostNode[] =>
-  tree.root.findAll((node) => node.type === "MockButton" && node.props.label === label);
+  tree.root.findAll((node) => node.type === "MockButton" && node.props.label === (LABELS[label] ?? label));
 
 const press = async (tree: Tree, label: string): Promise<void> => {
   const [button] = buttons(tree, label);
@@ -318,12 +322,15 @@ describe("#3073 — a failed video says so once, with one retry", () => {
     const tree = await failAfterPick();
     const text = shownText(tree);
 
-    expect(occurrences(text, NO_PICTURE)).toBe(1);
-    expect(text).toContain("We couldn’t finish this video");
+    // [TEST-MOD-APPROVED #3040] design H-13 — the card states the failure
+    // once in the approved copy (the hook's sentence stays in telemetry), and
+    // its actions are "Try again" + "Discard".
+    expect(occurrences(text, "Couldn't finish this upload")).toBe(1);
+    expect(occurrences(text, NO_PICTURE)).toBeLessThanOrEqual(1);
     expect(buttons(tree, "Try again")).toHaveLength(1);
     expect(buttons(tree, "Upload failed - try again")).toHaveLength(0);
     // Discard stays reachable (#2974).
-    expect(buttons(tree, "Discard upload")).toHaveLength(1);
+    expect(buttons(tree, "Discard")).toHaveLength(1);
     await TestRenderer.act(() => tree.unmount());
   });
 

@@ -141,15 +141,18 @@ describe("#3173 CoverPicker wiring", () => {
     expect(source).toContain("useElapsedSince(");
   });
 
-  test("elapsed is scoped to the processing phase and anchored on the provider handover", () => {
-    const call = source.slice(source.indexOf("useElapsedSince("), source.indexOf("useElapsedSince(") + 220);
-    expect(call).toContain("status?.sourceUploadedAt ?? status?.createdAt ?? null");
-    expect(call).toContain('stage.phase === "processing"');
+  // [TEST-MOD-APPROVED #3040] design H-05/H-08 — the upload card's model
+  // names where its timer counts from: "Finish" anchors on the provider
+  // handover (sourceUploadedAt), "Check" on the phase start (shown from 3 s).
+  test("elapsed is scoped by the card model and anchored on the provider handover", () => {
+    const anchor = source.slice(source.indexOf("const elapsedAnchor ="), source.indexOf("const elapsed = useElapsedSince("));
+    expect(anchor).toContain("status?.sourceUploadedAt ?? status?.createdAt ?? null");
+    expect(source).toContain('useElapsedSince(elapsedAnchor, model.elapsedFrom !== "none")');
   });
 
   test("elapsed fills the percent slot only when there is no percentage to show", () => {
     expect(source).toContain("elapsed !== null");
-    const slot = source.slice(source.indexOf("copy.percent !== null\n          ? <Text"));
+    const slot = source.slice(source.indexOf("{determinate && copy.percent !== null ? ("));
     expect(slot.slice(0, 600)).toContain("{elapsed}");
   });
 

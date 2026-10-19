@@ -555,7 +555,9 @@ describe("issue #3318 source wiring", () => {
     // [TEST-MOD-APPROVED #3073] Narrowed further: the Image spinner is an IMAGE
     // cover upload only; a video pick spins the Video button instead.
     expect(code).toContain('spinning={uploading && coverUploadKind === "image"}');
-    expect(code).toContain("loading={spinning}");
+    // [TEST-MOD-APPROVED #3040] B-C15 — the outcome-named buttons pick the
+    // spinner by the picker they open (photo → spinning, video → videoSpinning).
+    expect(code).toContain('loading={coverAction.opens === "video" ? videoSpinning : spinning}');
     expect(code).not.toContain("loading={uploading}");
     expect(code).toContain('testID="cover-gallery-uploading"');
     expect(code).toContain('testID="cover-gallery-pending-tile"');

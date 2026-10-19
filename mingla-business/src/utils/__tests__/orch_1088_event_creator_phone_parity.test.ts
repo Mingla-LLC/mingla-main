@@ -131,7 +131,10 @@ describe("ORCH-1088 business web event creator phone parity", () => {
       "Video cover uploads are available on desktop or in the app for now.",
     );
     expect(source).toContain("disabled={uploading || disabled}");
-    expect(source).toContain("video covers upload the clip as-is");
+    // [TEST-MOD-APPROVED #3040] design D4 — the web-only helper sentence was
+    // replaced by the approved limits block; the as-is web behaviour is now
+    // stated by the shared video limits line and the H-14 refusals.
+    expect(repoFile("src/components/ui/coverUploadCardModel.ts")).toContain("Mingla prepares a browser-safe version automatically.");
     expect(source).toContain("searchGiphyEventCovers");
     expect(source).toContain("searchPexelsEventCovers");
   });

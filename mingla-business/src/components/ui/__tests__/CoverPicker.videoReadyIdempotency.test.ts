@@ -51,8 +51,10 @@ describe("CoverPicker video-ready idempotency", () => {
       'text: "The video is ready, but the cover could not be saved. Retry saving it."',
       clearRememberedIndex,
     );
+    // [TEST-MOD-APPROVED #3040] design H-19 — the retry is the card's
+    // "Save as cover" action, dispatched to persistReadyVideo for a venue.
     const retryActionIndex = pickerSource.indexOf(
-      'label="Retry saving"',
+      "if (isVenue) void persistReadyVideo();",
       retryCopyIndex,
     );
 
@@ -72,8 +74,8 @@ describe("CoverPicker video-ready idempotency", () => {
     expect(pickerSource).not.toContain('onShowToast("Video cover updated.");');
     // …nor through a second in-sheet notice under the status card.
     expect(pickerSource).not.toContain('text: "Video cover added."');
-    expect(pickerSource).toContain(
-      'case "applied": return { title: "Video cover added", body: "Your new cover is ready.",',
-    );
+    // [TEST-MOD-APPROVED #3040] design H-15 — the success is the status row's
+    // "New video cover is live" for 3 s, once per job id.
+    expect(pickerSource).toContain("justApplied: justAppliedJobId !== null,");
   });
 });

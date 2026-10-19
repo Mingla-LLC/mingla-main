@@ -43,11 +43,16 @@ describe("META-ORCH-1270 — client Bunny TUS upload leg (C1 + C7)", () => {
     expect(service).not.toMatch(/method:\s*"POST"[\s\S]*Upload-Length/);
   });
 
+  // [TEST-MOD-APPROVED #3040] I-VIDEO-ONE-UPLOADER — the TUS metadata
+  // encoder moved to the shared @mingla/video-upload package (one owner for
+  // Host web, native and Admin); the service re-exports it.
   it("tusMetadata base64-encodes filetype and title per the TUS spec", () => {
-    expect(service).toMatch(/`filetype \$\{toBase64\(filetype\)\}`/);
-    expect(service).toMatch(/`title \$\{toBase64\(title\)\}`/);
+    const pkg = readFileSync(join(businessRoot, "..", "packages", "video-upload", "index.js"), "utf8");
+    expect(service).toMatch(/export const tusMetadata = laneTusMetadata;/);
+    expect(pkg).toMatch(/`filetype \$\{toBase64\(filetype\)\}`/);
+    expect(pkg).toMatch(/`title \$\{toBase64\(title\)\}`/);
     // The base64 encoder uses the standard alphabet (portable native + web).
-    expect(service).toContain(
+    expect(pkg).toContain(
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
     );
   });
@@ -56,7 +61,8 @@ describe("META-ORCH-1270 — client Bunny TUS upload leg (C1 + C7)", () => {
     expect(service).toMatch(/"Content-Type":\s*"application\/offset\+octet-stream"/);
     // [TEST-MOD-APPROVED #2715] PATCH starts at server truth and uses bounded chunks.
     expect(service).toMatch(/"Upload-Offset":\s*String\(offset\)/);
-    expect(service).toMatch(/EVENT_COVER_TUS_CHUNK_BYTES\s*=\s*5\s*\*\s*1024\s*\*\s*1024/);
+    // [TEST-MOD-APPROVED #3040] B-C8 — 2 MiB native chunks (truthful steps).
+    expect(service).toMatch(/EVENT_COVER_TUS_CHUNK_BYTES\s*=\s*VIDEO_LIMITS\.TUS_CHUNK_NATIVE_BYTES/);
     // ORCH-1295 — the native PATCH reads bytes with the File API and streams them
     // via expo/fetch (patchBunnyTusNative) so Upload-Offset reaches Bunny. It must
     // NOT route through expo-file-system's binary upload task (dropped
@@ -68,8 +74,8 @@ describe("META-ORCH-1270 — client Bunny TUS upload leg (C1 + C7)", () => {
     expect(service).toMatch(/patchBunnyTusNative\(/);
     expect(service).toMatch(/readEventCoverVideoChunk\(/);
     expect(service).not.toMatch(/createBinaryUploadTask/);
-    // Web PATCH still rides the verbatim-header XHR helper.
-    expect(service).toMatch(/await patchTusWithXhr\(/);
+    // [TEST-MOD-APPROVED #3040] web PATCH rides the shared package's XHR loop.
+    expect(service).toMatch(/await uploadSourceWeb\(/);
   });
 
   it("platformFileSystem exposes a BINARY_CONTENT native task + a web stub (OTA-safe, no new native module)", () => {

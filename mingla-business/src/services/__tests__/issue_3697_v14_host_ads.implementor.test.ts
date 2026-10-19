@@ -125,8 +125,11 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(planEndpoint).toContain('.eq("kind", "video")');
     expect(createRoute).toContain("CoverPickerSheet");
     expect(createRoute).toContain('mediaMode="video-only"');
-    expect(createRoute).toContain("recordHostAdVideo");
-    expect(createRoute).toContain("Provider copies will be created only after");
+    // [TEST-MOD-APPROVED #3040] B-C14 — no client record call; the route links
+    // the server-created creative id, and says nothing reaches ad platforms
+    // before the plan is funded and confirmed.
+    expect(createRoute).toContain("patch.adCreativeId");
+    expect(createRoute).toContain("Nothing goes to ad platforms until you fund and confirm the plan.");
     expect(createRoute).not.toMatch(/uploadAsync|createUpload|bunny.*upload/i);
   });
 

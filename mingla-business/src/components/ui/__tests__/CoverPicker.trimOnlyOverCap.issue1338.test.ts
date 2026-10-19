@@ -28,8 +28,10 @@ describe("CoverPicker trim-only-over-cap + in-sheet feedback (issue #1338)", () 
 
     // The trim-decision gate exists and is gated on BOTH conditions.
     expect(picker).toContain("const needsNativeTrim =");
+    // [TEST-MOD-APPROVED #3040] B-C13a — gated on the RESOLVED duration, so a
+    // native clip inside the 500 ms band is not sent to the trimmer.
     expect(picker).toContain(
-      "isNative && sourceDurationMs > EVENT_COVER_SOURCE_CEILING_MS",
+      "isNative && rawClipDurationMs > EVENT_COVER_SOURCE_CEILING_MS",
     );
     expect(picker).toContain(
       "const sourceDurationMs = normalizePickerDurationMs(asset.duration);",
@@ -75,9 +77,9 @@ describe("CoverPicker trim-only-over-cap + in-sheet feedback (issue #1338)", () 
     // status card's own `applied` state and no longer exists as a notice. The
     // success confirmation is still in-sheet (never a Toast) — see the
     // videoReadyIdempotency test.
+    // [TEST-MOD-APPROVED #3040] the two over-ceiling sentences became design
+    // H-14a, an in-sheet refusal CARD (setPickRefusal), still never a Toast.
     const videoFlowCopy = [
-      '"Trim it to 1 minute or less, then choose it again."',
-      '"Choose a video that is 1 minute or shorter."',
       '"No video added — trim to 1 minute or pick a shorter clip."',
       "\"Could not read this video's duration. Try another clip.\"",
       "\"Could not read this video's size. Try another clip.\"",

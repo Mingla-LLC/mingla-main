@@ -23,8 +23,10 @@ describe("CoverPicker video source ceiling", () => {
     expect(pickerSource).not.toContain("videoMaxDuration");
     expect(pickerSource).toContain("durationMs > EVENT_COVER_SOURCE_CEILING_MS");
     expect(pickerSource).not.toContain("EVENT_COVER_MAX_VIDEO_DURATION_MS + 250");
-    expect(pickerSource).toContain('"Trim it to 1 minute or less, then choose it again."');
-    expect(pickerSource).toContain('"Choose a video that is 1 minute or shorter."');
+    // [TEST-MOD-APPROVED #3040] design H-14a — the over-ceiling refusal is now
+    // the "This video is {m:ss} long" card (native: Trim to 1 minute; web:
+    // Choose another video), rendered from the pick-refusal model.
+    expect(pickerSource).toContain('setPickRefusal({ kind: "too_long", durationMs });');
     expect(pickerSource).not.toContain('"Please trim to 29 seconds first."');
     expect(pickerSource).not.toContain('"This video is over 30 seconds."');
   });
