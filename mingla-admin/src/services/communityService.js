@@ -100,14 +100,10 @@ export async function archiveAnnouncement(id) {
 
 // ── Roadmap ──────────────────────────────────────────────────────────────────
 
+// Internal notes are staff-only: the table grants signed-in users every column
+// except internal_note, so Admin reads cards through this Admin-checked RPC.
 export async function listRoadmapCards() {
-  const { data, error } = await supabase
-    .from("community_roadmap_cards")
-    .select(
-      "id, public_title, public_body, internal_note, lane, status, sort_order, shipped_at, target_label, idea_count, created_at, updated_at",
-    )
-    .order("sort_order", { ascending: true })
-    .order("id", { ascending: true });
+  const { data, error } = await supabase.rpc("issue_3720_admin_list_roadmap_cards");
   if (error) throw error;
   return data ?? [];
 }

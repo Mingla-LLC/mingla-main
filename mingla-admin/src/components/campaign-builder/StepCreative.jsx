@@ -22,7 +22,7 @@
  *      "Technical details" toggle (creativeCopy.js — mirrors ISSUE-980).
  */
 
-import { createElement, useEffect, useState } from "react";
+import { createElement, useCallback, useEffect, useState } from "react";
 import { ShieldCheck, Image as ImageIcon, Film, ChevronDown, ChevronRight, X } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -43,6 +43,17 @@ import { humanizeCreativeCheck } from "../../lib/adBuilder/creativeCopy";
 import {
   buildVideoSourcePayload,
 } from "../../lib/adBuilder/preparationState";
+import { CreativeDropZone } from "../ad-engine/CreativeDropZone";
+import { VideoPickRow } from "../ad-engine/CreativeCard";
+import { useAdminVideoUploads } from "../ad-engine/useAdminVideoUploads";
+import {
+  builderVideoRow,
+  joinNames,
+  platformName,
+  refusalTitle,
+  selectedVideoMisfitAlert,
+} from "../ad-engine/creativeLibraryModel";
+import { ADMIN_VIDEO_ACCEPT } from "../../services/adminVideoUpload";
 
 /** Ratio slots the backend accepts as pre-cropped variants (VARIANT_RATIOS). */
 const VARIANT_RATIOS = ["4:5", "1:1", "9:16", "1.91:1"];
@@ -83,6 +94,7 @@ export function StepCreative({
   fundedPlatforms = [],
   creativeExcluded = [],
   creativeBuildable = [],
+  onChangePlatforms,
 }) {
   const { addToast } = useToast();
   const [uploading, setUploading] = useState(false);
@@ -94,6 +106,9 @@ export function StepCreative({
   const [videoLibrary, setVideoLibrary] = useState(null);
   const [videoLibraryError, setVideoLibraryError] = useState(null);
   const [selectingVideoId, setSelectingVideoId] = useState(null);
+  const [videoRefusals, setVideoRefusals] = useState([]);
+  const [announcement, setAnnouncement] = useState("");
+  const [autoSelectId, setAutoSelectId] = useState(null);
   const set = (patch) => onCreativeChange({ ...creative, ...patch });
 
   const isVideo = creative.kind === "video";
@@ -102,32 +117,44 @@ export function StepCreative({
   // before budget or when empty, fall back to the eligible set.
   const reportPlatforms = fundedPlatforms.length > 0 ? fundedPlatforms : eligiblePlatforms;
 
-  useEffect(() => {
-    if (!isVideo || videoLibrary !== null) return undefined;
-    let mounted = true;
-    listAdCreatives().then(async ({ data, error }) => {
-      if (!mounted) return;
-      if (error) {
-        const parsed = await parseEdgeError(error);
-        setVideoLibraryError(
-          parsed?.message ?? "The Creative Library could not be loaded.",
-        );
-        setVideoLibrary([]);
-        return;
-      }
-      setVideoLibrary(
-        (data?.creatives ?? []).filter(
-          (row) =>
-            row.kind === "video" &&
-            row.status === "active" &&
-            row.house_reuse_allowed === true,
-        ),
+  // #3697 — ready house videos plus this admin's in-flight uploads. A
+  // permanently deleted creative never appears; archived ones stay out of new
+  // selections.
+  const [videoPending, setVideoPending] = useState([]);
+  const loadVideoLibrary = useCallback(async () => {
+    const { data, error } = await listAdCreatives({ status: "active", kind: "video" });
+    if (error) {
+      const parsed = await parseEdgeError(error);
+      setVideoLibraryError(
+        parsed?.message ?? "The Creative Library could not be loaded.",
       );
-    });
-    return () => {
-      mounted = false;
-    };
-  }, [isVideo, videoLibrary]);
+      setVideoLibrary([]);
+      return;
+    }
+    setVideoLibraryError(null);
+    setVideoPending(data?.pending ?? []);
+    setVideoLibrary(
+      (data?.creatives ?? []).filter(
+        (row) =>
+          row.kind === "video" &&
+          row.status === "active" &&
+          row.house_reuse_allowed === true,
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isVideo || videoLibrary !== null) return;
+    // Initial library read; state transitions live inside the async loader.
+    void loadVideoLibrary();
+  }, [isVideo, videoLibrary, loadVideoLibrary]);
+
+  const uploads = useAdminVideoUploads({
+    onFinished: ({ creativeId }) => {
+      setAutoSelectId(creativeId ?? null);
+      void loadVideoLibrary();
+    },
+  });
 
   const toggleExpanded = (key) =>
     setExpandedChecks((prev) => {
@@ -184,7 +211,10 @@ export function StepCreative({
     setSelectingVideoId(creativeId);
     setServerError(null);
     try {
-      const { data, error } = await getAdCreativeForReuse(creativeId);
+      const { data, error } = await getAdCreativeForReuse(
+        creativeId,
+        reportPlatforms.length > 0 ? reportPlatforms : undefined,
+      );
       if (error || !data?.creative) {
         const parsed = await parseEdgeError(error);
         throw new Error(
@@ -192,24 +222,9 @@ export function StepCreative({
         );
       }
       const row = data.creative;
-      const validated = await creativeUpload({
-        action: "validate",
-        kind: "video",
-        name: row.name,
-        source_url: row.source_url,
-        bunny_video_id: row.bunny_video_id,
-        poster_url: row.poster_url,
-        mp4_master_url: row.mp4_master_url,
-        variants: row.variants ?? {},
-        ai_generated: row.ai_generated === true,
-        platforms: eligiblePlatforms.length > 0 ? eligiblePlatforms : undefined,
-      });
-      if (validated.error) {
-        const parsed = await parseEdgeError(validated.error);
-        throw new Error(
-          parsed?.message ?? "The saved video no longer passes validation.",
-        );
-      }
+      // #3697 — the per-channel report comes with the reuse answer, judged by
+      // the server from the video's stored probe facts.
+      const validated = { data: { validation: data.validation ?? null } };
       onCreativeChange({
         ...creative,
         kind: "video",
@@ -300,7 +315,12 @@ export function StepCreative({
     if (!mediaReady) return;
     setValidating(true);
     setServerError(null);
-    const { data, error } = await creativeUpload({ action: "validate", ...buildPayload() });
+    const { data, error } = isVideo
+      ? await getAdCreativeForReuse(
+        creative.creativeRow?.id,
+        reportPlatforms.length > 0 ? reportPlatforms : undefined,
+      )
+      : await creativeUpload({ action: "validate", ...buildPayload() });
     if (error) {
       const parsed = await parseEdgeError(error);
       setServerError({
@@ -341,6 +361,54 @@ export function StepCreative({
     setRecording(false);
   };
 
+  // #3697 — inline upload: a new video that fits is selected and announced.
+  useEffect(() => {
+    if (!autoSelectId || !videoLibrary) return;
+    const row = videoLibrary.find((item) => item.id === autoSelectId);
+    if (!row) return;
+    setAutoSelectId(null);
+    if (builderVideoRow(row, reportPlatforms).selectable) {
+      void selectLibraryVideo(row.id).then(() => setAnnouncement("Video ready and selected."));
+    } else {
+      setAnnouncement("Video ready. It doesn't fit every platform in this campaign.");
+    }
+    // selectLibraryVideo is recreated every render; this runs once per upload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSelectId, videoLibrary]);
+
+  // #3697 — a platform change re-reads the chosen video's per-channel report.
+  const platformKey = reportPlatforms.join(",");
+  const selectedVideoId = isVideo ? creative.creativeRow?.id ?? null : null;
+  useEffect(() => {
+    if (!selectedVideoId) return undefined;
+    let current = true;
+    getAdCreativeForReuse(selectedVideoId, platformKey ? platformKey.split(",") : undefined)
+      .then(({ data, error }) => {
+        if (!current) return;
+        if (error || !data?.validation) {
+          // The video can no longer be reused (archived or deleted elsewhere).
+          onCreativeChange((existing) => ({ ...existing, validation: null }));
+          return;
+        }
+        onCreativeChange((existing) =>
+          existing.creativeRow?.id === selectedVideoId
+            ? { ...existing, validation: data.validation }
+            : existing
+        );
+      });
+    return () => {
+      current = false;
+    };
+  }, [platformKey, selectedVideoId, onCreativeChange]);
+
+  const selectedLibraryRow = isVideo
+    ? (videoLibrary ?? []).find((row) => row.id === creative.creativeRow?.id) ?? null
+    : null;
+  // The Builder is the one client place a misfit is blocked.
+  const selectedMisfit = selectedLibraryRow
+    ? selectedVideoMisfitAlert(selectedLibraryRow, reportPlatforms)
+    : null;
+
   const channels = creative.validation?.channels ?? null;
   const probe = creative.validation?.probe ?? null;
   const variantRatios = Object.keys(variantsPayload(creative.variants));
@@ -358,6 +426,24 @@ export function StepCreative({
           trusted. Fix rejects before a platform review cycle eats 24 hours.
         </p>
       </div>
+
+      {isVideo && (
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--color-text-secondary)]">
+          Running on
+          {reportPlatforms.map((platform) => (
+            <Badge key={platform}>{platformName(platform)}</Badge>
+          ))}
+          {onChangePlatforms && (
+            <button
+              type="button"
+              onClick={onChangePlatforms}
+              className="text-[13px] font-semibold text-[var(--color-brand-700)] hover:underline"
+            >
+              Change platforms
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Provider-native copies are launch work, never creative-step work. */}
       <div className="inline-flex rounded-lg border border-[var(--gray-200)] p-0.5" role="tablist" aria-label="Creative type">
@@ -385,13 +471,6 @@ export function StepCreative({
         ))}
       </div>
 
-      {isVideo && (
-        <AlertCard variant="info" title="One canonical video, safely reused">
-          Mingla validates the canonical video and its placement fit here. Provider-native copies
-          are created only after the exact plan is funded, reviewed and launch-confirmed; nothing
-          is uploaded to an ad platform during this step.
-        </AlertCard>
-      )}
 
       {!isVideo && (
         <ImageUploader
@@ -404,69 +483,92 @@ export function StepCreative({
       )}
 
       {isVideo && (
-        <div className="space-y-3 border border-[var(--gray-200)] rounded-xl p-3">
-          <p className="text-xs text-[var(--color-text-secondary)]">
-            Choose a ready video from Mingla&apos;s Creative Library. Storage IDs, master URLs and
-            poster URLs stay server-owned and are never entered by an operator.
+        <div className="grid gap-2">
+          <CreativeDropZone
+            compact
+            multiple={false}
+            accept={ADMIN_VIDEO_ACCEPT}
+            ariaLabel="Upload a new video. Drop it here or press Enter to browse."
+            title="Upload a new video, or drop it here"
+            sub="MP4, MOV, M4V or WebM · 5 seconds to 1 minute · Under 100 MB · Saved to the library too"
+            onFiles={async (files) => {
+              setVideoRefusals([]);
+              const { refusals } = await uploads.addVideos(files.slice(0, 1));
+              setVideoRefusals(refusals);
+            }}
+          />
+          {videoRefusals.length > 0 && (
+            <div role="alert">
+              <AlertCard variant="error" title={refusalTitle(videoRefusals.length)}>
+                <ul className="space-y-0.5">
+                  {videoRefusals.map((line) => <li key={line}>{line}</li>)}
+                </ul>
+              </AlertCard>
+            </div>
+          )}
+          <p className="mt-2 text-xs font-semibold uppercase tracking-[.06em] text-[var(--color-text-tertiary-strong)]">
+            From the library
           </p>
           {videoLibrary === null ? (
             <p className="text-sm text-[var(--color-text-secondary)]">
               Loading ready videos…
             </p>
-          ) : videoLibrary.length === 0 ? (
-            <AlertCard variant="warning" title="No ready video in the library">
-              Upload through Mingla&apos;s shared resumable media flow, then return here and choose
-              the recorded video. Only Mingla-owned media is eligible for a house campaign;
-              Host-owned media remains blocked pending Terms approval. The Ads builder does not
-              create a parallel uploader.
-            </AlertCard>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2">
+            <div
+              role="radiogroup"
+              aria-label="Choose a video"
+              className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))]"
+            >
+              {uploads.entries.map((entry) => (
+                <VideoPickRow
+                  key={entry.localId}
+                  upload={entry}
+                  onCancelUpload={(item) => void uploads.cancel(item)}
+                  onRetry={(item) => uploads.retry(item)}
+                />
+              ))}
+              {videoPending
+                .filter((item) => !uploads.entries.some((entry) => entry.record?.opId === item.clientOperationId))
+                .map((item) => (
+                  <VideoPickRow
+                    key={item.jobId}
+                    upload={{ localId: item.jobId, name: item.fileName ?? "Video", phase: "preparing" }}
+                  />
+                ))}
               {videoLibrary.map((row) => {
+                const state = builderVideoRow(row, reportPlatforms);
                 const selected = creative.creativeRow?.id === row.id;
                 return (
-                  <button
+                  <VideoPickRow
                     key={row.id}
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={selectingVideoId !== null}
-                    onClick={() => selectLibraryVideo(row.id)}
-                    className={[
-                      "flex items-center gap-3 rounded-xl border p-2 text-left transition-colors",
-                      selected
-                        ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
-                        : "border-[var(--gray-200)] hover:bg-[var(--gray-50)]",
-                    ].join(" ")}
-                  >
-                    {row.preview_url ? (
-                      <img
-                        src={row.preview_url}
-                        alt=""
-                        className="h-16 w-12 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <span className="flex h-16 w-12 items-center justify-center rounded-lg bg-[var(--gray-100)]">
-                        <Film className="h-5 w-5" aria-hidden="true" />
-                      </span>
-                    )}
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold">
-                        {row.name || "Untitled video"}
-                      </span>
-                      <span className="block text-xs text-[var(--color-text-secondary)]">
-                        {row.duration_seconds ? `${row.duration_seconds}s · ` : ""}
-                        {selected
-                          ? "Selected"
-                          : selectingVideoId === row.id
-                            ? "Checking…"
-                            : "Choose video"}
-                      </span>
-                    </span>
-                  </button>
+                    row={row}
+                    selected={selected}
+                    state={{
+                      ...state,
+                      fitsLine: state.selectable && reportPlatforms.length > 0
+                        ? `✓ Fits ${joinNames(reportPlatforms.map(platformName))}`
+                        : null,
+                    }}
+                    onSelect={() => {
+                      if (selectingVideoId === null) void selectLibraryVideo(row.id);
+                    }}
+                    onChangePlatforms={onChangePlatforms}
+                  />
                 );
               })}
+              {videoLibrary.length === 0 && uploads.entries.length === 0 && videoPending.length === 0 && (
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  No ready videos yet. Upload one above; it is saved to the library too.
+                </p>
+              )}
             </div>
           )}
+          {selectedMisfit && (
+            <AlertCard variant="error" title="Pick another video">
+              {selectedMisfit}
+            </AlertCard>
+          )}
+          <p className="sr-only" aria-live="polite">{announcement}</p>
           {videoLibraryError && (
             <AlertCard variant="error" title="Creative Library unavailable">
               {videoLibraryError}
@@ -474,7 +576,7 @@ export function StepCreative({
           )}
           <a
             href="#/ad-engine?tab=creative-library"
-            className="inline-flex text-xs font-medium text-[var(--color-brand-600)] hover:underline"
+            className="inline-flex text-xs font-semibold text-[var(--color-brand-700)] hover:underline"
           >
             Open Creative Library
           </a>
@@ -593,14 +695,16 @@ export function StepCreative({
           <Button variant="secondary" size="sm" icon={ShieldCheck} loading={validating} onClick={runValidate}>
             Validate per channel
           </Button>
-          <Button
-            size="sm"
-            loading={recording}
-            disabled={!creative.validation || Boolean(creative.creativeRow)}
-            onClick={recordCreative}
-          >
-            {creative.creativeRow ? "Recorded ✓" : "Use this creative"}
-          </Button>
+          {!isVideo && (
+            <Button
+              size="sm"
+              loading={recording}
+              disabled={!creative.validation || Boolean(creative.creativeRow)}
+              onClick={recordCreative}
+            >
+              {creative.creativeRow ? "Recorded ✓" : "Use this creative"}
+            </Button>
+          )}
         </div>
       )}
 
@@ -612,7 +716,8 @@ export function StepCreative({
 
       {/* ISSUE-995 PROCEED-WITH-PASSING: name the excluded channels; the build
           proceeds on the passing ones. */}
-      {channels && creativeExcluded.length > 0 && creativeBuildable.length > 0 && (
+      {/* #3697: a video never proceeds without a platform — the Builder blocks it. */}
+      {channels && !isVideo && creativeExcluded.length > 0 && creativeBuildable.length > 0 && (
         <AlertCard variant="warning" title="Some channels will be left out of this build">
           Building{" "}
           <span className="font-medium">

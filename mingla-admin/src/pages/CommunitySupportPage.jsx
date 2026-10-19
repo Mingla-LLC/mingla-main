@@ -38,6 +38,7 @@ import {
   listSupportStaffRoster,
   setSupportAvailable,
 } from "../services/communityService";
+import { changeSupportAvailability } from "../lib/supportAvailability";
 
 const COMMUNITY_SUPPORT_TABS = [
   { id: "overview", label: "Overview" },
@@ -75,6 +76,7 @@ export function CommunitySupportPage() {
   const [navCounts, setNavCounts] = useState({});
   const [myAvailable, setMyAvailable] = useState(false);
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState(null);
   const visibleTabs = useMemo(
     () => communitySupportTabsForAccess(access, COMMUNITY_SUPPORT_TABS),
     [access],
@@ -113,12 +115,15 @@ export function CommunitySupportPage() {
 
   async function toggleAvailability(next) {
     setAvailabilityBusy(true);
-    try {
-      await setSupportAvailable(next);
-      setMyAvailable(next);
-    } finally {
-      setAvailabilityBusy(false);
-    }
+    setAvailabilityError(null);
+    const result = await changeSupportAvailability({
+      next,
+      current: myAvailable,
+      setAvailable: setSupportAvailable,
+    });
+    setMyAvailable(result.available);
+    setAvailabilityError(result.message);
+    setAvailabilityBusy(false);
   }
 
   useEffect(() => {
@@ -193,6 +198,15 @@ export function CommunitySupportPage() {
           />
         }
       />
+
+      {availabilityError ? (
+        <p
+          role="alert"
+          className="text-sm text-[var(--color-error-700)]"
+        >
+          {availabilityError}
+        </p>
+      ) : null}
 
       {activeTab === "overview" && capabilities.isAdmin && <OverviewPanel onGoTab={changeTab} />}
       {activeTab === "overview" && !capabilities.isAdmin && (

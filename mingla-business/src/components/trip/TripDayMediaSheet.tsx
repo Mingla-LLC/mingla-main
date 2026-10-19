@@ -58,6 +58,7 @@ import {
   gridAnnouncement,
   newTripDayTile,
   tileA11yLabel,
+  sheetProgressLine,
   tileFromProgress,
   tileNeedsSheet,
   tileRingDashOffset,
@@ -943,13 +944,8 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                 style={styles.uploadProgress}
                 accessibilityLiveRegion="polite"
               >
-                {videoProgress.phase === "checking"
-                  ? "Checking video…"
-                  : videoProgress.phase === "uploading"
-                    ? `Uploading${videoProgress.percent === null ? "…" : ` · ${videoProgress.percent}%`}`
-                    : videoProgress.phase === "confirming"
-                      ? "Confirming upload…"
-                      : `Preparing${videoProgress.percent === null || videoProgress.percent <= 0 ? "…" : ` · ${videoProgress.percent}%`}`}
+                {/* #3040 — the same number the tile shows and its label reads. */}
+                {sheetProgressLine(videoProgress)}
               </Text>
             ) : null}
           </View>

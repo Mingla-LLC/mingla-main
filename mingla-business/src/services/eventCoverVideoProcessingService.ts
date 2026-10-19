@@ -6,7 +6,10 @@ import {
   VIDEO_LIMITS,
   VideoUploadError,
 } from "@mingla/video-upload";
-import { supabase } from "./supabase";
+// #3040 (2026-10-19) — every lane edge call goes through invokeLaneFunction:
+// a held, valid access token is reused and the auth lock is never awaited
+// past SESSION_ACQUIRE_TIMEOUT_MS (see laneEdgeInvoke.ts).
+import { invokeLaneFunction, resolveLaneAccessToken } from "./laneEdgeInvoke";
 import {
   isClientVersionRequired,
   laneVersionHeaders,
@@ -229,6 +232,8 @@ export interface EventCoverVideoStatus {
   creativeId?: string | null;
   /** #3040 E-10b — the provider rendition height the lane served. */
   renditionHeight?: number | null;
+  /** #3040 D1 — the server's hint for the next status poll, when it gives one. */
+  retryAfterMs?: number | null;
 }
 
 interface StatusResponse extends Partial<EventCoverVideoStatus> {
@@ -878,20 +883,12 @@ export async function createEventCoverVideoUploadIntent(
   let data: UploadIntentResponse | null = null;
   let error: unknown = null;
   try {
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-    const accessToken = session?.access_token;
-    if (sessionError !== null || typeof accessToken !== "string" || accessToken.length === 0) {
-      throw new BusinessAuthNotReadyError(
-        "unauthenticated",
-        "Finishing sign-in. Try again in a moment.",
-      );
-    }
-    const response = await supabase.functions.invoke<UploadIntentResponse>(
+    // Bounded: never more than SESSION_ACQUIRE_TIMEOUT_MS on the auth lock.
+    const accessToken = await resolveLaneAccessToken();
+    const response = await invokeLaneFunction<UploadIntentResponse>(
       "event-cover-video-upload-intent",
       {
+        accessToken,
         body: { ...input, clientRequestId: requestId },
         headers: { ...laneHeaders(), Authorization: `Bearer ${accessToken}` },
       },
@@ -1100,8 +1097,9 @@ const patchTusNative = async (input: {
 };
 
 // #3040 B-C8 — 2 MiB native chunks: a clip of a few MB now shows real steps
-// instead of sitting at 0% for the whole transfer. Web uses the package's
-// 8 MiB chunks with in-flight XHR progress.
+// instead of sitting at 0% for the whole transfer. Web uses the same 2 MiB
+// chunks through the package (#3040, 2026-10-19), with in-flight XHR progress
+// that never reaches 99 before the server has every byte.
 const EVENT_COVER_TUS_CHUNK_BYTES = VIDEO_LIMITS.TUS_CHUNK_NATIVE_BYTES;
 
 const headTusOffset = async (
@@ -1163,6 +1161,13 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
       await uploadSourceWeb({
         file: webBlob,
         transport: { url: input.upload.url, headers: { ...input.upload.fields } },
+        // #3040 (2026-10-19, job 2ad825b6) — 2 MB PATCHes on web too. A
+        // browser reports bytes HANDED TO THE NETWORK, not bytes the server
+        // holds: with the 8 MB default a 6 MB clip was one PATCH whose bytes
+        // were "sent" within a second, so the card sat at 99% for the ~31 s
+        // the transfer really took. Each 2 MB step is now confirmed by the
+        // server before it counts.
+        chunkBytes: EVENT_COVER_TUS_CHUNK_BYTES,
         signal: input.signal,
         onProgress: (progress) => {
           input.onProgress?.({
@@ -1244,7 +1249,7 @@ export const fetchEventCoverVideoStatus = async (
   jobId: string,
   signal?: AbortSignal,
 ): Promise<EventCoverVideoStatus> => {
-  const { data, error } = await supabase.functions.invoke<StatusResponse>(
+  const { data, error } = await invokeLaneFunction<StatusResponse>(
     "event-cover-video-status",
     { body: { jobId }, signal, headers: laneHeaders() },
   );
@@ -1272,7 +1277,7 @@ export const fetchEventCoverVideoStatusByTarget = async (input: {
 }): Promise<EventCoverVideoStatus | null> => {
   const { signal, activeOnly, ...rest } = input;
   const body = activeOnly === true ? { ...rest, ...STATUS_ACTIVE_ONLY_FLAG } : rest;
-  const { data, error } = await supabase.functions.invoke<StatusResponse>("event-cover-video-status", { body, signal, headers: laneHeaders() });
+  const { data, error } = await invokeLaneFunction<StatusResponse>("event-cover-video-status", { body, signal, headers: laneHeaders() });
   if (error) {
     const mapped = await edgeError(error, "Could not restore video processing status.");
     if (mapped.code === "not_found") return null;
@@ -1341,8 +1346,26 @@ const mapStatusResponse = (
       : null,
     creativeId: readCreativeId(payload),
     renditionHeight: readRenditionHeight(payload),
+    retryAfterMs: typeof payload.retryAfterMs === "number" && Number.isFinite(payload.retryAfterMs)
+      ? payload.retryAfterMs
+      : null,
   };
 };
+
+// #3040 (2026-10-19, job 2ad825b6) — the acknowledgement is due within 2 s
+// of the final byte being accepted, so nothing in it may wait unboundedly:
+// the access token comes from laneEdgeInvoke (held token, or at most
+// SESSION_ACQUIRE_TIMEOUT_MS on the auth lock), each request is aborted after
+// ACK_REQUEST_TIMEOUT_MS, and a sign-in that is still settling or a request
+// that ran out of time is tried again at once, up to ACK_ATTEMPTS times. The
+// server side is idempotent (a CAS on source_uploading → source_uploaded).
+export const ACK_REQUEST_TIMEOUT_MS = 6_000;
+export const ACK_ATTEMPTS = 3;
+const ACK_RETRY_DELAY_MS = 250;
+
+const isRetryableAckFailure = (error: unknown): boolean =>
+  error instanceof BusinessAuthNotReadyError ||
+  (error instanceof EventCoverVideoProcessingError && error.code === "ack_request_timeout");
 
 export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
   // ORCH-0989: "event" (default) or "brand". Brand-target carries no eventId.
@@ -1352,19 +1375,61 @@ export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
   brandId: string;
   providerUploadResponse?: EventCoverVideoProviderUploadResponse | null;
 }): Promise<EventCoverVideoStatus> => {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < ACK_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await new Promise<void>((resolve) => setTimeout(resolve, ACK_RETRY_DELAY_MS));
+    try {
+      return await acknowledgeOnce(input);
+    } catch (error) {
+      if (!isRetryableAckFailure(error)) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError;
+};
+
+const acknowledgeOnce = async (input: {
+  target?: LaneTargetKind;
+  jobId: string;
+  eventId?: string;
+  brandId: string;
+  providerUploadResponse?: EventCoverVideoProviderUploadResponse | null;
+}): Promise<EventCoverVideoStatus> => {
   const requestId = `${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 10)}`;
-  const { data, error } = await supabase.functions.invoke<StatusResponse>(
-    "event-cover-video-source-uploaded",
-    {
-      body: {
-        ...input,
-        clientRequestId: requestId,
-      },
-      headers: laneHeaders(),
-    },
-  );
+  const request = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      request.abort();
+      reject(new EventCoverVideoProcessingError(
+        "ack_request_timeout",
+        "Could not confirm video upload.",
+        { phase: "source_uploaded", requestId },
+      ));
+    }, ACK_REQUEST_TIMEOUT_MS);
+  });
+  let data: StatusResponse | null;
+  let error: unknown;
+  try {
+    ({ data, error } = await Promise.race([
+      invokeLaneFunction<StatusResponse>(
+        "event-cover-video-source-uploaded",
+        {
+          body: {
+            ...input,
+            clientRequestId: requestId,
+          },
+          headers: laneHeaders(),
+          signal: request.signal,
+        },
+      ),
+      timedOut,
+    ]));
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
   if (error) {
     throw await edgeError(error, "Could not confirm video upload.", {
       phase: "source_uploaded",
@@ -1391,7 +1456,7 @@ export const applyEventCoverVideoJob = async (
   expectedVersion?: number,
   expectedProcessedUrl?: string,
 ): Promise<string> => {
-  const { data, error } = await supabase.functions.invoke<{ processedUrl?: string }>(
+  const { data, error } = await invokeLaneFunction<{ processedUrl?: string }>(
     "event-cover-video-apply",
     { body: { jobId, expectedVersion, expectedProcessedUrl }, headers: laneHeaders() },
   );
@@ -1416,7 +1481,7 @@ export const cancelEventCoverVideoJob = async (
   if (typeof input !== "string") {
     input.uploadAbortController?.abort();
   }
-  const { data, error } = await supabase.functions.invoke<StatusResponse>(
+  const { data, error } = await invokeLaneFunction<StatusResponse>(
     "event-cover-video-cancel",
     { body: { jobId }, headers: laneHeaders() },
   );
@@ -1434,6 +1499,51 @@ export const cancelEventCoverVideoJob = async (
   return mapStatusResponse(data as StatusResponse, "event-cover-video-cancel");
 };
 
+// #3040 D1 — the status watch must see a server-side `ready`/`applied` within
+// seconds. Observed 2026-10-19 (job a79a090d): the server applied the job at
+// 17:30:08, but the poll that started at 17:30:06.6 hung for 30.5 s inside the
+// edge function's auth check and came back 401; the old loop awaited it with
+// no deadline and then backed off exponentially, so the sheet said
+// "Preparing 5%" until 17:30:45. Three rules now hold:
+//   1. no single status request may hold the loop: each one is aborted after
+//      STATUS_REQUEST_TIMEOUT_MS and the next one starts right away;
+//   2. the gap between polls is at most 3 s for the first 2 minutes of the
+//      watch and at most 10 s after that — a failure never stretches it;
+//   3. a server `retryAfterMs` hint is honoured, but clamped to those caps.
+export const STATUS_POLL_FAST_WINDOW_MS = 120_000;
+export const STATUS_POLL_FAST_MAX_MS = 3_000;
+export const STATUS_POLL_SLOW_MS = 5_000;
+export const STATUS_POLL_SLOW_MAX_MS = 10_000;
+export const STATUS_REQUEST_TIMEOUT_MS = 4_000;
+const STATUS_POLL_FLOOR_MS = 250;
+
+/** The longest gap allowed between two status polls at this point of the watch. */
+export const statusPollCapMs = (watchElapsedMs: number): number =>
+  watchElapsedMs < STATUS_POLL_FAST_WINDOW_MS ? STATUS_POLL_FAST_MAX_MS : STATUS_POLL_SLOW_MAX_MS;
+
+/**
+ * The gap before the next status poll: the caller's cadence (slower after the
+ * fast window), a server hint when one is given, a short ramp after
+ * consecutive failures — and never more than `statusPollCapMs`.
+ */
+export const nextStatusPollDelayMs = (input: {
+  watchElapsedMs: number;
+  pollIntervalMs: number;
+  retryAfterMs?: number | null;
+  failureCount?: number;
+}): number => {
+  const cap = statusPollCapMs(input.watchElapsedMs);
+  const cadence = input.watchElapsedMs < STATUS_POLL_FAST_WINDOW_MS
+    ? input.pollIntervalMs
+    : Math.max(input.pollIntervalMs, STATUS_POLL_SLOW_MS);
+  const failures = input.failureCount ?? 0;
+  const ramped = failures > 0 ? cadence * 2 ** Math.min(failures - 1, 3) : cadence;
+  const hinted = typeof input.retryAfterMs === "number" && Number.isFinite(input.retryAfterMs)
+    ? Math.max(ramped, input.retryAfterMs)
+    : ramped;
+  return Math.max(0, Math.min(cap, Math.max(Math.min(STATUS_POLL_FLOOR_MS, cadence), hinted)));
+};
+
 export const waitForEventCoverVideoReady = async (
   jobId: string,
   options: WaitForEventCoverVideoReadyOptions | number = {},
@@ -1443,24 +1553,58 @@ export const waitForEventCoverVideoReady = async (
   const onStatus = typeof options === "number" ? undefined : options.onStatus;
   const signal = typeof options === "number" ? undefined : options.signal;
   const delay = (ms: number): Promise<void> => new Promise((resolve, reject) => {
+    // An ALREADY-aborted signal never fires "abort" again; check it first.
+    if (signal?.aborted) { reject(cancelledUploadError()); return; }
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => { clearTimeout(timer); reject(cancelledUploadError()); }, { once: true });
   });
+  // One status request, bounded: aborted when the caller aborts or when it
+  // has run for STATUS_REQUEST_TIMEOUT_MS, whichever comes first.
+  const boundedFetch = async (): Promise<EventCoverVideoStatus> => {
+    if (signal?.aborted) throw cancelledUploadError();
+    const request = new AbortController();
+    const onAbort = (): void => request.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        request.abort();
+        reject(new EventCoverVideoProcessingError(
+          "status_request_timeout",
+          "Could not check video processing status.",
+          { phase: "status" },
+        ));
+      }, STATUS_REQUEST_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([fetchEventCoverVideoStatus(jobId, request.signal), timedOut]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+  };
+  const watchStartedAt = Date.now();
   let lastStatus: EventCoverVideoStatus | undefined;
   let failureCount = 0;
   while (true) {
     let status: EventCoverVideoStatus;
+    const requestStartedAt = Date.now();
     try {
-      status = await fetchEventCoverVideoStatus(jobId, signal);
+      status = await boundedFetch();
       failureCount = 0;
     } catch (error) {
+      if (signal?.aborted) throw cancelledUploadError();
       if (
         error instanceof EventCoverVideoProcessingError &&
         ["forbidden", "not_found", "validation_error", "unauthenticated"].includes(error.code)
       ) throw error;
       failureCount += 1;
-      const backoff = Math.min(30_000, pollIntervalMs * 2 ** Math.min(failureCount, 5));
-      await delay(backoff + Math.floor(Math.random() * 250));
+      // A timed-out request already cost its whole budget: poll again now.
+      const timedOut = error instanceof EventCoverVideoProcessingError &&
+        error.code === "status_request_timeout";
+      await delay(timedOut ? 0 : nextStatusPollDelayMs({
+        watchElapsedMs: Date.now() - watchStartedAt, pollIntervalMs, failureCount,
+      }));
       continue;
     }
     lastStatus = status;
@@ -1487,6 +1631,11 @@ export const waitForEventCoverVideoReady = async (
         { lastStatus: status, phase: "status" },
       );
     }
-    await delay(pollIntervalMs);
+    // The gap is measured from when this poll STARTED, so a slow response
+    // never adds to the cadence.
+    const gap = nextStatusPollDelayMs({
+      watchElapsedMs: Date.now() - watchStartedAt, pollIntervalMs, retryAfterMs: status.retryAfterMs ?? null,
+    });
+    await delay(Math.max(0, gap - (Date.now() - requestStartedAt)));
   }
 };

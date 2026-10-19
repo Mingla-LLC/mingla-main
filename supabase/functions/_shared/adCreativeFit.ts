@@ -111,10 +111,43 @@ export function fitNeedFor(
       return "a smaller file";
     case "video.min_bitrate":
       return "a higher-quality export";
+    // #3697 — image rules get image words. An image judged by the image rows
+    // of the matrix must never read "a different video".
+    case "image.ratio":
+    case "image.aspect_ratio":
+      return IMAGE_RATIO_NEED[check.platform] ?? "9:16";
+    case "image.resolution":
+      return "1080×1920";
+    case "image.min_width":
+      return "600px wide or more";
+    case "image.min_resolution":
+      return "a larger image";
+    case "image.max_bytes":
+      return IMAGE_MAX_MB[check.platform]
+        ? `a file under ${IMAGE_MAX_MB[check.platform]} MB`
+        : "a smaller file";
+    case "image.mime":
+      return "JPG or PNG";
     default:
-      return "a different video";
+      return facts.kind === "image" ? "a different image" : "a different video";
   }
 }
+
+// The image ratios each platform takes (adCreativeMatrix.ts image rows).
+const IMAGE_RATIO_NEED: Partial<Record<Platform, string>> = {
+  meta: "9:16, 4:5, 1:1 or 1.91:1",
+  google: "9:16, 4:5, 1:1 or 1.91:1",
+  tiktok: "9:16, 1:1 or 16:9",
+  snapchat: "9:16",
+};
+
+// The image byte caps the matrix rejects above, in MB.
+const IMAGE_MAX_MB: Partial<Record<Platform, number>> = {
+  meta: 30,
+  tiktok: 100,
+  google: 5,
+  snapchat: 5,
+};
 
 export function summarizeCreativeFit(
   platforms: readonly Platform[],

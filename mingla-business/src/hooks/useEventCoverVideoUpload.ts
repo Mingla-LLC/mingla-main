@@ -26,7 +26,9 @@ import { preparedSourceStillExists } from "../services/eventCoverVideoSourcePres
 import { isActiveLaneStatus, LANE_CODES } from "../services/eventCoverVideoEdgeContract";
 import { supabase } from "../services/supabase";
 import { validateNativeTrimmedEventCoverVideo } from "../utils/eventCoverNativeVideo";
-import { coverVideoProcessingTiming } from "../utils/eventCoverVideoSlo";
+import {
+  coverVideoProcessingTiming, trackProviderProgress, type ProviderProgressTracker,
+} from "../utils/eventCoverVideoSlo";
 import { brandKeys } from "./useBrands";
 import { businessEventKeys } from "./useBusinessEvents";
 import { publicEventKeys } from "./usePublicEvents";
@@ -313,6 +315,8 @@ export function useEventCoverVideoUpload(
   const preparationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const preparationVisibleRef = useRef(false);
   const pendingPreparationStageRef = useRef<EventCoverVideoUploadStage>({ phase: "preparing", percent: 0 });
+  // #3040 D2 — the last provider reading per job, to tell a moving % from a frozen one.
+  const providerProgressRef = useRef<ProviderProgressTracker | null>(null);
 
   const clearPreparationProjection = useCallback((): void => {
     if (preparationTimerRef.current !== null) clearTimeout(preparationTimerRef.current);
@@ -378,8 +382,15 @@ export function useEventCoverVideoUpload(
         });
       }
     } else if (["source_uploaded", "processing_queued", "processing"].includes(next.status)) {
+      // #3040 D2 / H-08 — a provider % only while it is real AND moving;
+      // otherwise null, which the card renders as indeterminate + elapsed.
+      // The provider's reading counts only when it is determinate (orch-0776a)…
+      const reported = { phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null } as const;
+      // …and is shown only while it is moving (H-08).
+      const tracked = trackProviderProgress(providerProgressRef.current, next.jobId, reported.percent);
+      providerProgressRef.current = tracked.tracker;
       setStage({
-        phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null,
+        ...reported, percent: tracked.percent,
         timing: coverVideoProcessingTiming(next.sourceUploadedAt),
       });
     } else if (["failed", "cancelled", "superseded"].includes(next.status)) {

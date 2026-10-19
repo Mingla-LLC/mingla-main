@@ -6,6 +6,8 @@ const VARIANTS = {
   error:    "bg-[var(--color-error-50)] text-[var(--color-error-700)]",
   info:     "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
   outline:  "bg-transparent text-[var(--color-text-secondary)] border border-[var(--gray-300)]",
+  // #3697 — over media (card posters): light ink on a translucent dark chip.
+  ink:      "bg-[rgba(17,24,39,.72)] text-white",
 };
 
 const DOT_COLORS = {
@@ -16,6 +18,7 @@ const DOT_COLORS = {
   error:   "bg-[#ef4444]",
   info:    "bg-[#3b82f6]",
   outline: "bg-[var(--color-text-secondary)]",
+  ink:     "bg-white",
 };
 
 export function Badge({ variant = "default", dot = false, children, className = "" }) {

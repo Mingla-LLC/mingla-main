@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ad-plan/__tests__/issue_3697_library_view.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-creative-lifecycle-03-library-view",
+  "profile": "deno-2-unit"
+}

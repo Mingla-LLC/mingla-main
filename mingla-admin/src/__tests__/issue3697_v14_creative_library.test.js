@@ -19,18 +19,25 @@ describe("#3697 Admin Creative Library", () => {
 
   it("loads the server-safe inventory and presents operational truth", () => {
     assert.match(service, /action: "creative_library"/);
-    assert.match(page, /Provider copies/);
-    assert.match(page, /Campaign use/);
-    assert.match(page, /Rights confirmed/);
-    assert.match(page, /Placement fit pending/);
-    assert.match(page, /PROCESSING_LABEL/);
+    // [TEST-MOD-APPROVED #3697] The v1.4 card (provider copies, rights line,
+    // placement formats) is SUPERSEDED by the approved #3697 card (§8.2):
+    // per-platform fit tiles, a source line and campaign usage.
+    assert.match(page, /<CreativeCard/);
+    const card = read("components/ad-engine/CreativeCard.jsx");
+    assert.match(card, /cardFitTiles\(creative\)/);
+    assert.match(card, /usageLine\(creative\)/);
+    assert.match(card, /sourceLine\(creative\)/);
   });
 
   it("makes Reuse a real, rights-gated builder handoff", () => {
     assert.match(page, /step=creative&creative=/);
     assert.match(service, /action: "creative_reuse"/);
     assert.match(builder, /getAdCreativeForReuse\(creativePresetId\)/);
-    assert.match(builder, /creativeUpload\(validationPayload\)/);
+    // [TEST-MOD-APPROVED #3697] Revalidating a library VIDEO by media URL is
+    // SUPERSEDED (the #3040 lane retired it); the reuse answer carries the
+    // server's report. Images still revalidate through creativeUpload.
+    assert.match(builder, /await creativeUpload\(\{\s*action: "validate"/);
+    assert.match(builder, /validation: data\.validation \?\? null/);
     assert.match(builder, /rightsConfirmed: false/);
     assert.match(builder, /Creative selected from the library/);
   });
