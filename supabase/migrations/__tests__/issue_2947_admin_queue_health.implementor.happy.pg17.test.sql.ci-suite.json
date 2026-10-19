@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_2947_admin_queue_health.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-2947-05-admin-queue-health-happy",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

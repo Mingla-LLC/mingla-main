@@ -200,6 +200,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "stripe-mode",               label: "Stripe mode",        icon: "Wallet" },
       { id: "api-health",                label: "API health",         icon: "HeartPulse" },
+      { id: "queue-health",              label: "Queue health",       icon: "Hourglass" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },
       { id: "agent",                     label: "My agent",           icon: "Bot" },
       { id: "guide",                     label: "Guide",              icon: "BookOpen" },

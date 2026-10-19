@@ -37,6 +37,8 @@ import { StripeModePage } from "./pages/StripeModePage";
 import { CommunitySupportPage } from "./pages/CommunitySupportPage";
 // ORCH-1201 — Admin API-Health hub (board of external-service health + alerts).
 import { ApiHealthPage } from "./pages/ApiHealthPage";
+// #2879 / #2947 — waiting-room queue-health gauges (hash route #/queue-health).
+import { QueueHealthPage } from "./pages/QueueHealthPage";
 // META-ORCH-1222 — Careers: applications list+detail + role CRUD (hash #/careers).
 import { CareersPage } from "./pages/CareersPage";
 // ORCH-1272 — Business identity console (READ-ONLY): People (#/business-people)
@@ -106,6 +108,8 @@ const PAGES = {
   "stripe-mode": StripeModePage,
   // ORCH-1201: API-health hub (hash route #/api-health).
   "api-health": ApiHealthPage,
+  // #2879 / #2947: waiting-room queue-health gauges (hash route #/queue-health).
+  "queue-health": QueueHealthPage,
   // META-ORCH-1222: careers applications + role manager (hash route #/careers).
   careers: CareersPage,
   "data-room": DataRoomPage,
