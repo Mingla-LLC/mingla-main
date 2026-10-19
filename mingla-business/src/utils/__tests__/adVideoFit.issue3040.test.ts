@@ -3,14 +3,9 @@
  * "Fits Meta and TikTok. Snapchat needs 1080×1920." The fit is judged on the
  * server by the shared ads matrix; this pins the sentence and the wiring.
  * MINGLA-INVARIANT: I-ADS-FIT-ONE-MATRIX | issue #3040 | Host fit text comes from adCreativeMatrix, never a client copy of its rules
- * FAILS ON REVERT: drop the formatter, the setup `fit` type, or the sheet prop.
+ * FAILS ON REVERT: drop the formatter, or pick the wrong video's fit.
  */
-import { readFileSync } from "fs";
-import { join } from "path";
-
-import { formatAdFitSummary, joinWithAnd } from "../adVideoFit";
-
-const ROOT = join(__dirname, "..", "..", "..");
+import { adVideoFitSummaryFor, formatAdFitSummary, joinWithAnd } from "../adVideoFit";
 
 describe("#3040 AD-04 per-platform fit sentence", () => {
   it("names the platforms that fit, then what each misfit needs", () => {
@@ -47,20 +42,20 @@ describe("#3040 AD-04 per-platform fit sentence", () => {
     expect(formatAdFitSummary([{ platform: "myspace", fits: true, needs: [] }])).toBeNull();
   });
 
-  it("is wired: setup creatives carry `fit` and Host Ads hands the sentence to the sheet", () => {
-    const service = readFileSync(join(ROOT, "src/services/hostAdPlanService.ts"), "utf8");
-    expect(service).toMatch(/fit\?: AdVideoFit\[\];/);
-    const screen = readFileSync(join(ROOT, "app/(tabs)/marketing/ads/create.tsx"), "utf8");
-    expect(screen).toMatch(/formatAdFitSummary\(/);
-    expect(screen).toMatch(/adFitSummary=\{adVideoFitSummary\}/);
-    const sheet = readFileSync(join(ROOT, "src/components/ui/CoverPickerSheet.tsx"), "utf8");
-    expect(sheet).toMatch(/adFitSummary=\{adFitSummary\}/);
+  it("passes the server's own words through — it holds no platform rule", () => {
+    expect(
+      formatAdFitSummary([{ platform: "google", fits: false, needs: ["a rule only the server knows"] }]),
+    ).toBe("Google needs a rule only the server knows.");
+    expect(formatAdFitSummary([{ platform: "reddit", fits: false, needs: [] }])).toBe("Reddit can't run this video.");
   });
 
-  it("holds no platform rule of its own (the server matrix owns them)", () => {
-    const source = readFileSync(join(ROOT, "src/utils/adVideoFit.ts"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/(^|[^:])\/\/.*$/gm, "$1");
-    expect(source).not.toMatch(/1080|1920|0\.5625|durationSeconds|has_audio/);
+  it("the sheet sentence is for the video the sheet holds, else the linked one", () => {
+    const creatives = [
+      { id: "a", fit: [{ platform: "meta" as const, fits: true, needs: [] }] },
+      { id: "b", fit: [{ platform: "snapchat" as const, fits: false, needs: ["1080×1920"] }] },
+    ];
+    expect(adVideoFitSummaryFor({ creatives, heldId: "b", linked: creatives[0] })).toBe("Snapchat needs 1080×1920.");
+    expect(adVideoFitSummaryFor({ creatives, heldId: null, linked: creatives[0] })).toBe("Fits Meta.");
+    expect(adVideoFitSummaryFor({ creatives: undefined, heldId: "zz", linked: null })).toBeNull();
   });
 });

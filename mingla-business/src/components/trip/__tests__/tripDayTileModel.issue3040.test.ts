@@ -2,14 +2,12 @@
  * #3040 B-C12 / Appendix A §6 — trip-day media tiles G-01…G-07.
  * Pins every tile state's visual, label, × behaviour and tap; the failure
  * classification (paused only when the device is offline, T4); the live-region
- * thresholds (§11); and the sheet/parent wiring (dayKey, retry, auto-resume).
+ * thresholds (§11). The rendered sheet is driven in
+ * TripDayMediaSheet.issue3040.tiles.test.tsx.
  * MINGLA-INVARIANT: I-VIDEO-NO-RESURRECT | issue #3040 | a trip-day tile shows only its own item's truth
  * FAILS ON REVERT: collapse a state, drop the offline-only pause, announce
- * every %, or stop passing dayKey from the parent.
+ * every %, or key a day by its list position while it has an ordinal.
  */
-import { readFileSync } from "fs";
-import { join } from "path";
-
 import {
   TRIP_DAY_TILE_STATE_IDS,
   classifyTileFailure,
@@ -24,9 +22,6 @@ import {
   tripDayMediaKey,
   type TripDayTile,
 } from "../tripDayTileModel";
-
-const ROOT = join(__dirname, "..", "..", "..", "..");
-const read = (rel: string): string => readFileSync(join(ROOT, rel), "utf8");
 
 const video = (patch: Partial<TripDayTile>): TripDayTile => ({
   ...newTripDayTile({ key: "k", kind: "video", durationMs: 45_000 }),
@@ -130,30 +125,5 @@ describe("#3040 trip-day tiles — truth rules", () => {
   it("dayKey comes from the day's ordinal", () => {
     expect(tripDayMediaKey({ ordinal: 3 }, 0)).toBe("day-3");
     expect(tripDayMediaKey(undefined, 1)).toBe("day-index-2");
-  });
-});
-
-describe("#3040 trip-day tiles — wiring", () => {
-  const sheet = read("src/components/trip/TripDayMediaSheet.tsx");
-  const parent = read("src/components/trip/TripCreatorStep2Itinerary.tsx");
-
-  it("the parent passes the day's key to the sheet", () => {
-    expect(parent).toMatch(/dayKey=\{tripDayMediaKey\(days\[mediaSheetDayIndex\], mediaSheetDayIndex\)\}/);
-  });
-
-  it("the sheet renders from the model and owns retry, × and auto-resume", () => {
-    expect(sheet).toContain("tileVisual(tile)");
-    expect(sheet).toContain("tileA11yLabel(tile, index)");
-    expect(sheet).toMatch(/visual\.tap === "retry"\s*\?\s*\(\) => \{ void retryTile\(tile\.key\); \}/);
-    expect(sheet).toContain("onPress={() => cancelTile(tile)}");
-    expect(sheet).toMatch(/networkConnected === true\) resumePausedTiles\(\)/);
-    expect(sheet).toContain('window.addEventListener("online", onOnline)');
-    expect(sheet).toContain('setTileNotice("Choose that video again.")');
-    expect(sheet).toContain("<TileRing percent={tile.percent} />");
-  });
-
-  it("the ring eases 200 ms and jumps under reduced motion", () => {
-    expect(sheet).toMatch(/if \(reduceMotion\) \{\s*offset\.setValue\(target\);/);
-    expect(sheet).toContain("duration: MOTION_SPEC.galleryRing.durationMs");
   });
 });

@@ -52,7 +52,7 @@ import type {
 import { loadHostAdPlanService } from "../../../../src/services/lazyHostAdPlanService";
 import { hostAdOwnerKey } from "../../../../src/services/eventCoverVideoEdgeContract";
 import { randomUuid } from "../../../../src/utils/randomId";
-import { formatAdFitSummary } from "../../../../src/utils/adVideoFit";
+import { adVideoFitSummaryFor } from "../../../../src/utils/adVideoFit";
 
 const PLATFORM_LABELS: Record<string, string> = {
   meta: "Meta",
@@ -344,11 +344,15 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const linkedCreativeIdRef = useRef<string | null>(null);
   // #3040 AD-04 — the fit sentence for the video this sheet holds, from the
   // server's per-platform fit (the same matrix every ads gate uses).
-  const adVideoFitSummary = useMemo((): string | null => {
-    const id = adVideoPatch.adCreativeId ?? linkedCreativeIdRef.current;
-    const held = id ? setup?.creatives.find((item) => item.id === id) : undefined;
-    return formatAdFitSummary((held ?? creative)?.fit);
-  }, [adVideoPatch.adCreativeId, creative, setup]);
+  const adVideoFitSummary = useMemo(
+    (): string | null =>
+      adVideoFitSummaryFor({
+        creatives: setup?.creatives,
+        heldId: adVideoPatch.adCreativeId ?? linkedCreativeIdRef.current,
+        linked: creative,
+      }),
+    [adVideoPatch.adCreativeId, creative, setup],
+  );
   // AD-05 — a creative that exists server-side but did not link here yet:
   // "Try linking again" re-links the SAME id, never re-uploads.
   const [unlinkedCreativeId, setUnlinkedCreativeId] = useState<string | null>(null);

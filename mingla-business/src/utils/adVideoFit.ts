@@ -62,3 +62,16 @@ export const formatAdFitSummary = (fit: unknown): string | null => {
   }
   return sentences.join(" ");
 };
+
+/**
+ * The AD-04 sentence for the video the ad sheet holds: the creative the sheet
+ * just produced (`heldId`), else the one already linked to the ad.
+ */
+export const adVideoFitSummaryFor = (input: {
+  creatives: readonly { id: string; fit?: unknown }[] | undefined;
+  heldId: string | null | undefined;
+  linked: { fit?: unknown } | null | undefined;
+}): string | null => {
+  const held = input.heldId ? input.creatives?.find((item) => item.id === input.heldId) : undefined;
+  return formatAdFitSummary((held ?? input.linked)?.fit);
+};
