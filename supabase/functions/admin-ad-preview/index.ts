@@ -2,6 +2,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore Deno ESM runtime import.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  creativeSelectionError,
+  frozenPlanCarriesCreative,
+} from "../_shared/adCreativeLifecycle.ts";
 import type { AdConnectionRow } from "../_shared/adChannel.ts";
 import { TIKTOK_API_BASE } from "../_shared/adCreative.ts";
 import {
@@ -42,6 +46,9 @@ const REQUEST_KEYS = new Set([
   "placement_id",
   "destination",
   "preview_input",
+  // #3697 (C-13): name the frozen plan version to preview an archived creative.
+  "plan_version_id",
+  "plan_hash",
 ]);
 const PREVIEW_INPUT_KEYS = new Set([
   "primary_text",
@@ -224,7 +231,7 @@ serve(async (req: Request): Promise<Response> => {
 
   const { data: creative, error: creativeError } = await supabase
     .from("ad_creatives")
-    .select("id,kind,status,content_hash,ai_generated")
+    .select("id,kind,status,content_hash,ai_generated,purged_at")
     .eq("id", creativeId)
     .maybeSingle();
   if (creativeError) {
@@ -233,7 +240,18 @@ serve(async (req: Request): Promise<Response> => {
   if (!creative) {
     return json({ error: "creative_not_found", trace_id: traceId }, 404);
   }
-  if (creative.kind !== "video" || creative.status !== "active") {
+  // #3697 (C-13) — an archived video previews only for the exact frozen plan
+  // version (id + hash) that carries it; otherwise it is a new selection.
+  const previewFrozen = creative.status === "archived" &&
+    await frozenPlanCarriesCreative(supabase, {
+      planVersionId: body.plan_version_id,
+      planHash: body.plan_hash,
+      creativeId,
+    });
+  if (
+    creative.kind !== "video" ||
+    creativeSelectionError(creative, { frozen: previewFrozen })
+  ) {
     return json(
       { error: "creative_kind_or_status_invalid", trace_id: traceId },
       422,
