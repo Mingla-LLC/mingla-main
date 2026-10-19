@@ -70,7 +70,9 @@ BEGIN
   -- old schema the column is absent, gross stays 3000 and the assertion below fails.
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public'
               AND table_name='orders' AND column_name='buyer_total_cents') THEN
-    EXECUTE 'UPDATE public.orders SET buyer_total_cents = 3135 WHERE id = $1' USING v_order;
+    EXECUTE 'UPDATE public.orders SET list_subtotal_cents = 3000, net_subtotal_cents = 3000,
+      buyer_fees_cents = 135, tax_cents = 0, buyer_total_cents = 3135,
+      pricing_source = ''provider_reconciled'' WHERE id = $1' USING v_order;
   END IF;
   INSERT INTO public.payout_source_fee_snapshots(source_type, source_id, provider_fee_cents)
   VALUES ('order', v_order, 166);

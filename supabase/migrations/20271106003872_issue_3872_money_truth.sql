@@ -624,7 +624,1149 @@ GRANT EXECUTE ON FUNCTION public.issue_3872_backfill_order_totals(boolean, integ
 COMMENT ON FUNCTION public.issue_3872_backfill_order_totals(boolean, integer) IS
   'Issue #3872 operator backfill. Reconciles orders without buyer_total_cents from the stored provider webhook payloads (legacy_reconstructed when none exists), fills a missing pricing_breakdown, and writes one audit row per changed order. p_apply=false is a dry run. Idempotent. service_role only.';
 
--- @@M3@@
+-- =============================================================================
+-- §5. Payout release equation (F1, F10, refunded fees, reservation fee)
+-- =============================================================================
+-- For every source: net released to the host = what landed in the host's
+-- provider balance = charged − fee Mingla kept − provider fee − net refunds −
+-- open disputes. Bodies below start from the live definitions:
+--   attach_payout_release, run_payout_release_dark_sweep:
+--     20270725003645_issue_3645_installment_cancel_and_ledger.sql
+--   plan_pending_payout_partner_legs:
+--     20270110000003_issue_1174_partner_payout_deferral.sql
+-- Readers of net_cents / net_release_cents checked and unchanged:
+-- refresh_pending_payout_release_truth, apply_open_payout_debts,
+-- sync_post_release_postponement_debts, payout-release-sweep engine.ts and
+-- partnerRelease.ts, paystackOrganiserRelease.ts, organiserPayoutNotify.ts and
+-- the Ari payout tool (none subtracts the partner share again).
+
+-- Nothing already attached may change: every existing item must already equal
+-- the new equation (production on 19 Oct 2026: 3 Paystack items, no partner
+-- share, all released).
+DO $assert_items$
+DECLARE
+  v_bad integer;
+BEGIN
+  SELECT count(*) INTO v_bad
+  FROM public.payout_release_items i
+  WHERE i.net_cents <> greatest(0, i.gross_cents - i.refunded_cents - i.disputed_cents
+                                   - i.mingla_fee_cents - i.provider_fee_cents);
+  IF v_bad > 0 THEN
+    RAISE EXCEPTION 'issue-3872: % existing payout_release_items would change under the corrected release equation; stop and review before applying', v_bad;
+  END IF;
+  SELECT count(*) INTO v_bad
+  FROM public.brand_payout_releases r
+  WHERE r.status <> 'pending'
+    AND (r.partner_share_cents <> 0 OR EXISTS (
+      SELECT 1 FROM public.payout_transfer_legs l WHERE l.release_id = r.id AND l.kind = 'partner'));
+  IF v_bad > 0 THEN
+    RAISE EXCEPTION 'issue-3872: % settled releases carry partner money; stop and review before applying', v_bad;
+  END IF;
+END
+$assert_items$;
+
+CREATE OR REPLACE FUNCTION public.attach_payout_release(p_source_type text, p_source_id uuid, p_brand_id uuid, p_event_id uuid, p_event_date_id uuid, p_occurrence_key text, p_provider text, p_currency text, p_finalized_at timestamp with time zone, p_anchor_end_at timestamp with time zone, p_gross_cents integer, p_refunded_cents integer, p_disputed_cents integer, p_mingla_fee_cents integer, p_partner_share_cents integer, p_provider_fee_cents integer)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_cutover timestamptz;
+  v_status text;
+  v_release_id uuid;
+  v_existing_release_id uuid;
+  v_net integer;
+  v_maturity_anchor timestamptz;
+BEGIN
+  -- #1790 T-P3(5) pins the one-liner NOT IN list below character-for-character.
+  -- Accept order_installment via a separate <> so that pin stays intact.
+  IF (p_source_type NOT IN ('order','rsvp_contribution','venue_reservation','venue_menu_order')
+      AND p_source_type <> 'order_installment')
+     OR p_provider NOT IN ('stripe','paystack') THEN
+    RAISE EXCEPTION 'invalid_payout_source' USING ERRCODE = '22023';
+  END IF;
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_source_type||':'||p_source_id::text,1171)
+  );
+  SELECT release_id INTO v_existing_release_id
+  FROM public.payout_release_items
+  WHERE source_type=p_source_type AND source_id=p_source_id;
+  IF FOUND THEN RETURN v_existing_release_id; END IF;
+
+  SELECT payout_hold_cutover_at INTO v_cutover FROM public.brands
+   WHERE id = p_brand_id FOR SHARE;
+  IF v_cutover IS NULL OR p_finalized_at <= v_cutover THEN
+    RAISE EXCEPTION 'source_not_after_cutover' USING ERRCODE = 'P0001';
+  END IF;
+  IF p_event_id IS NOT NULL THEN
+    SELECT status INTO v_status FROM public.events WHERE id = p_event_id FOR SHARE;
+    IF v_status = 'cancelled' THEN
+      RAISE EXCEPTION 'cancelled_event_never_releases' USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  -- Issue #3872 (F1): the partner share is 10% OF Mingla's fee and is paid from
+  -- Mingla's platform balance, never from the brand's. It stays stored on the
+  -- item for reporting and is not subtracted from the host's net.
+  v_net := greatest(0, p_gross_cents - p_refunded_cents - p_disputed_cents
+    - p_mingla_fee_cents - p_provider_fee_cents);
+
+  -- #3645: maturity anchors on payment time.
+  v_maturity_anchor := p_finalized_at;
+
+  INSERT INTO public.brand_payout_releases (
+    brand_id,event_id,event_date_id,occurrence_key,surface,provider,currency,
+    anchor_end_at,releasable_at,gross_cents,refunded_cents,disputed_cents,
+    mingla_fee_cents,partner_share_cents,provider_fee_cents,net_release_cents
+  ) VALUES (
+    p_brand_id,p_event_id,p_event_date_id,p_occurrence_key,p_source_type,p_provider,
+    lower(p_currency),v_maturity_anchor,v_maturity_anchor + interval '1 day',
+    p_gross_cents,p_refunded_cents,p_disputed_cents,p_mingla_fee_cents,
+    p_partner_share_cents,p_provider_fee_cents,v_net
+  )
+  ON CONFLICT (brand_id,event_key,occurrence_key,surface,provider,currency)
+  DO UPDATE SET
+    anchor_end_at = EXCLUDED.anchor_end_at,
+    releasable_at = EXCLUDED.releasable_at,
+    updated_at = now()
+  WHERE brand_payout_releases.status = 'pending'
+  RETURNING id INTO v_release_id;
+
+  IF v_release_id IS NULL THEN
+    SELECT id INTO v_release_id FROM public.brand_payout_releases
+     WHERE brand_id=p_brand_id
+       AND event_key=coalesce(p_event_id,'00000000-0000-0000-0000-000000000000'::uuid)
+       AND occurrence_key=p_occurrence_key
+       AND surface=p_source_type AND provider=p_provider AND currency=lower(p_currency);
+  END IF;
+
+  INSERT INTO public.payout_release_items (
+    release_id,source_type,source_id,gross_cents,refunded_cents,disputed_cents,
+    mingla_fee_cents,partner_share_cents,provider_fee_cents,net_cents,source_finalized_at
+  ) VALUES (
+    v_release_id,p_source_type,p_source_id,p_gross_cents,p_refunded_cents,
+    p_disputed_cents,p_mingla_fee_cents,p_partner_share_cents,p_provider_fee_cents,v_net,
+    p_finalized_at
+  ) ON CONFLICT (source_type,source_id) DO NOTHING;
+
+  IF p_source_type = 'order_installment' THEN
+    UPDATE public.order_installments
+    SET payout_accounting_state = 'attached',
+        updated_at = now()
+    WHERE id = p_source_id
+      AND payout_accounting_state = 'ready';
+  END IF;
+
+  UPDATE public.brand_payout_releases r SET
+    gross_cents=x.gross, refunded_cents=x.refunded, disputed_cents=x.disputed,
+    mingla_fee_cents=x.mingla_fee, partner_share_cents=x.partner_share,
+    provider_fee_cents=x.provider_fee, net_release_cents=x.net, updated_at=now()
+  FROM (
+    SELECT release_id,sum(gross_cents)::int gross,sum(refunded_cents)::int refunded,
+      sum(disputed_cents)::int disputed,sum(mingla_fee_cents)::int mingla_fee,
+      sum(partner_share_cents)::int partner_share,sum(provider_fee_cents)::int provider_fee,
+      sum(net_cents)::int net
+    FROM public.payout_release_items WHERE release_id=v_release_id GROUP BY release_id
+  ) x WHERE r.id=x.release_id;
+  RETURN v_release_id;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.run_payout_release_dark_sweep(p_now timestamp with time zone DEFAULT now())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE v_row record; v_release_id uuid; v_created integer:=0; v_matured integer;
+  v_opened integer; v_refreshed jsonb;
+BEGIN
+  v_refreshed:=public.refresh_pending_payout_release_truth(p_now);
+  v_opened:=public.sync_post_release_postponement_debts(p_now);
+  v_matured:=public.mature_postponement_debts(p_now);
+  FOR v_row IN
+    WITH candidates AS (
+      SELECT 'order'::text source_type,o.id source_id,e.brand_id,o.event_id,
+        occ.event_date_id,b.payment_provider provider,lower(o.currency::text) currency,
+        -- Issue #3872 (F10): gross is what the provider charged (buyer_total_cents);
+        -- orders.total_cents is the ticket base on Stripe paths.
+        o.created_at finalized_at,occ.end_at anchor_end_at,
+        coalesce(o.buyer_total_cents,o.total_cents)::int gross_cents,
+        o.refunded_amount_cents refunded_cents,
+        coalesce((SELECT sum(d.amount)::int FROM public.stripe_disputes d
+          WHERE d.order_id=o.id AND d.status NOT IN ('won','warning_closed')),0) disputed_cents,
+        -- Issue #3872: only the fee Mingla kept. A refund with
+        -- refund_application_fee returns part of the fee to the host's balance.
+        greatest(0,coalesce(o.stripe_application_fee_amount_cents,0)-coalesce((
+          SELECT sum(rf.application_fee_refunded_cents)::int FROM public.refunds rf
+          WHERE rf.order_id=o.id AND rf.status='succeeded'
+            AND rf.application_fee_refund_status='succeeded_positive'
+        ),0)) mingla_fee_cents,
+        coalesce((SELECT sum(ps.partner_share_cents)::int FROM public.partner_splits ps
+          WHERE ps.order_id=o.id),0) partner_share_cents,
+        fs.provider_fee_cents,occ.event_date_id::text occurrence_key
+      FROM public.orders o JOIN public.events e ON e.id=o.event_id
+      JOIN public.brands b ON b.id=e.brand_id
+      JOIN LATERAL public.resolve_payout_live_occurrence(
+        o.event_id,o.event_date_id,o.created_at
+      ) occ ON true
+      JOIN public.payout_source_fee_snapshots fs
+        ON fs.source_type='order' AND fs.source_id=o.id
+      WHERE o.payment_status IN ('paid','partial_refund')
+        AND o.total_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
+        AND o.created_at>b.payout_hold_cutover_at AND e.status<>'cancelled'
+      UNION ALL
+      SELECT 'rsvp_contribution',c.id,e.brand_id,c.event_id,occ.event_date_id,c.provider,
+        lower(c.currency),coalesce(c.paid_at,c.created_at),occ.end_at,
+        c.buyer_total_cents,
+        greatest(c.refunded_amount_cents,coalesce((
+          SELECT sum(sr.buyer_refund_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type='rsvp_contribution' AND sr.source_id=c.id
+            AND sr.buyer_state='processed'
+        ),0)),0,
+        greatest(0,coalesce(c.application_fee_amount_cents,0)-coalesce((
+          SELECT sum(sr.fee_reversal_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type='rsvp_contribution' AND sr.source_id=c.id
+            AND sr.fee_state='processed'
+        ),0)),0,fs.provider_fee_cents,
+        occ.event_date_id::text
+      FROM public.event_rsvp_contributions c JOIN public.events e ON e.id=c.event_id
+      JOIN public.brands b ON b.id=c.brand_id
+      JOIN LATERAL public.resolve_payout_live_occurrence(
+        c.event_id,NULL,coalesce(c.paid_at,c.created_at)
+      ) occ ON true
+      JOIN public.payout_source_fee_snapshots fs
+        ON fs.source_type='rsvp_contribution' AND fs.source_id=c.id
+      WHERE c.status IN ('paid','partially_refunded') AND b.payout_hold_cutover_at IS NOT NULL
+        AND coalesce(c.paid_at,c.created_at)>b.payout_hold_cutover_at AND e.status<>'cancelled'
+        AND NOT EXISTS (
+          SELECT 1 FROM public.source_refunds sr
+          WHERE sr.source_type='rsvp_contribution' AND sr.source_id=c.id
+            AND sr.financial_state<>'reconciled'
+        )
+      UNION ALL
+      SELECT 'venue_reservation',s.id,s.brand_id,NULL::uuid,NULL::uuid,b.payment_provider,
+        lower(s.currency::text),r.created_at,s.reserved_for,s.amount_cents,
+        coalesce((
+          SELECT sum(sr.buyer_refund_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type='venue_reservation' AND sr.source_id=s.id
+            AND sr.buyer_state='processed'
+        ),0),0,
+        -- Issue #3872: the deposit pays Mingla an application fee; deduct what
+        -- Mingla kept (this arm used to deduct 0 and over-release by the fee).
+        greatest(0,coalesce(s.application_fee_amount_cents,0)-coalesce((
+          SELECT sum(sr.fee_reversal_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type='venue_reservation' AND sr.source_id=s.id
+            AND sr.fee_state='processed'
+        ),0)),0,fs.provider_fee_cents,'reservation:'||s.id::text
+      FROM public.reservation_checkout_sessions s
+      JOIN public.reservations r ON r.id=s.reservation_id
+      JOIN public.brands b ON b.id=s.brand_id
+      JOIN public.payout_source_fee_snapshots fs
+        ON fs.source_type='venue_reservation' AND fs.source_id=s.id
+      WHERE s.status='completed' AND s.amount_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
+        AND r.created_at>b.payout_hold_cutover_at
+        AND NOT EXISTS (
+          SELECT 1 FROM public.source_refunds sr
+          WHERE sr.source_type='venue_reservation' AND sr.source_id=s.id
+            AND sr.financial_state<>'reconciled'
+        )
+      UNION ALL
+      SELECT 'venue_menu_order',vo.id,vo.brand_id,NULL::uuid,NULL::uuid,b.payment_provider,
+        lower(vo.currency),vo.confirmed_at,vo.created_at,vo.total_cents,
+        coalesce((
+          SELECT sum(sr.buyer_refund_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type='venue_menu_order' AND sr.source_id=vo.id
+            AND sr.buyer_state='processed'
+        ),0),
+        coalesce((SELECT sum(d.amount)::int FROM public.stripe_disputes d
+          WHERE d.venue_order_id=vo.id AND d.status NOT IN ('won','warning_closed')),0),
+        greatest(0,coalesce(vo.mingla_fee_cents,0)-coalesce((
+          SELECT sum(sr.fee_reversal_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type='venue_menu_order' AND sr.source_id=vo.id
+            AND sr.fee_state='processed'
+        ),0)),
+        0,
+        fs.provider_fee_cents,'venue_order:'||vo.id::text
+      FROM public.venue_orders vo
+      JOIN public.brands b ON b.id=vo.brand_id
+      JOIN public.payout_source_fee_snapshots fs
+        ON fs.source_type='venue_menu_order' AND fs.source_id=vo.id
+      WHERE vo.money_path='mingla'
+        AND vo.payment_status IN ('paid','partial_refund')
+        AND vo.total_cents>0
+        AND vo.confirmed_at IS NOT NULL
+        AND b.payout_hold_cutover_at IS NOT NULL
+        AND vo.created_at>b.payout_hold_cutover_at
+        AND NOT EXISTS (
+          SELECT 1 FROM public.source_refunds sr
+          WHERE sr.source_type='venue_menu_order' AND sr.source_id=vo.id
+            AND sr.financial_state<>'reconciled'
+        )
+      UNION ALL
+      -- #3645 / #2036 — collected installment arm. Fees live on the row
+      -- (application_fee_amount_cents / provider_fee_cents). Gated by
+      -- issue_2036_installment_payout_ready() (default false). Skip cancelled
+      -- events. Maturity = collected_at + 1 day via attach (payment+24h).
+      SELECT 'order_installment',oi.id,e.brand_id,o.event_id,occ.event_date_id,
+        -- Installment PIs are Stripe-only; never derive from mutable brands.payment_provider.
+        'stripe'::text,
+        lower(oi.currency::text),oi.collected_at,oi.collected_at,
+        oi.amount_cents::integer,0,0,
+        coalesce(oi.application_fee_amount_cents,0),0,
+        coalesce(oi.provider_fee_cents,0),
+        -- Unique per installment payment so a later installment never mutates
+        -- an already-released release keyed by shared occurrence (#3645).
+        'order_installment:' || oi.id::text
+      FROM public.order_installments oi
+      JOIN public.orders o ON o.id = oi.order_id
+      JOIN public.events e ON e.id = o.event_id
+      JOIN public.brands b ON b.id = e.brand_id
+      JOIN LATERAL public.resolve_payout_live_occurrence(
+        o.event_id,o.event_date_id,oi.collected_at
+      ) occ ON true
+      WHERE public.issue_2036_installment_payout_ready()
+        AND oi.status = 'collected'
+        AND oi.payout_accounting_state = 'ready'
+        AND oi.collected_at IS NOT NULL
+        AND oi.amount_cents > 0
+        AND oi.application_fee_amount_cents IS NOT NULL
+        AND b.payout_hold_cutover_at IS NOT NULL
+        AND oi.collected_at > b.payout_hold_cutover_at
+        AND e.status <> 'cancelled'
+    )
+    -- Global maturity predicate stays #1790-compatible (anchor_end_at + 3 days)
+    -- so #1792 T-1792-P1 CONTROL (confirmed_at=now()) still attaches. Installment
+    -- arm alone is type-aware: finalized_at + 1 day (= payment+24h) without
+    -- changing the global filter for other source types.
+    SELECT * FROM candidates c
+    WHERE c.anchor_end_at IS NOT NULL
+      AND (
+        CASE
+          WHEN c.source_type = 'order_installment'
+            THEN c.finalized_at + interval '1 day'
+          ELSE c.anchor_end_at + interval '3 days'
+        END
+      ) <= p_now
+      AND c.gross_cents-c.refunded_cents-c.disputed_cents>0
+      AND NOT EXISTS (SELECT 1 FROM public.payout_release_items i
+        WHERE i.source_type=c.source_type AND i.source_id=c.source_id)
+    ORDER BY c.anchor_end_at,c.source_id
+  LOOP
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended(v_row.source_type||':'||v_row.source_id::text,0)
+    );
+    IF v_row.source_type IN ('venue_reservation','rsvp_contribution','venue_menu_order') AND EXISTS (
+      SELECT 1 FROM public.source_refunds sr
+      WHERE sr.source_type=v_row.source_type AND sr.source_id=v_row.source_id
+        AND sr.financial_state<>'reconciled'
+    ) THEN CONTINUE; END IF;
+    v_release_id:=public.attach_payout_release(
+      v_row.source_type,v_row.source_id,v_row.brand_id,v_row.event_id,v_row.event_date_id,
+      v_row.occurrence_key,v_row.provider,v_row.currency,v_row.finalized_at,v_row.anchor_end_at,
+      v_row.gross_cents,v_row.refunded_cents,v_row.disputed_cents,v_row.mingla_fee_cents,
+      v_row.partner_share_cents,v_row.provider_fee_cents
+    );
+    PERFORM public.apply_open_payout_debts(v_release_id,p_now);
+    v_created:=v_created+1;
+  END LOOP;
+  RETURN jsonb_build_object(
+    'dark',true,'attached',v_created,'opened_postponement_debts',v_opened,
+    'matured_debts',v_matured,'refreshed',v_refreshed,'executed',0
+  );
+END $function$;
+
+CREATE OR REPLACE FUNCTION public.plan_pending_payout_partner_legs(p_limit integer DEFAULT 100)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_release record;
+  v_split record;
+  v_planned integer := 0;
+  v_fee integer;
+  v_stamp integer;
+  v_partner_cost integer;
+  v_principal_corrections integer := 0;
+  v_new_corrections integer;
+  v_gross integer;
+  v_refunded integer;
+  v_disputed integer;
+  v_mingla_fee integer;
+  v_item_partner_share integer;
+  v_provider_fee integer;
+  v_missing_attributions integer;
+  v_blocked_attributions integer := 0;
+BEGIN
+  FOR v_release IN
+    SELECT r.id
+    FROM public.brand_payout_releases r
+    WHERE r.status = 'pending'
+    ORDER BY r.releasable_at, r.id
+    LIMIT greatest(1, least(p_limit, 500))
+    FOR UPDATE SKIP LOCKED
+  LOOP
+    SELECT count(*)::integer
+      INTO v_missing_attributions
+    FROM public.payout_release_items i
+    LEFT JOIN public.payout_partner_attributions a
+      ON a.order_id = i.source_id
+    WHERE i.release_id = v_release.id
+      AND i.source_type = 'order'
+      AND i.mingla_fee_cents > 0
+      AND a.order_id IS NULL;
+    IF v_missing_attributions > 0 THEN
+      v_blocked_attributions :=
+        v_blocked_attributions + v_missing_attributions;
+      CONTINUE;
+    END IF;
+
+    v_new_corrections :=
+      public.reconcile_payout_partner_principal(v_release.id);
+    v_principal_corrections :=
+      v_principal_corrections + v_new_corrections;
+
+    FOR v_split IN
+      SELECT DISTINCT ps.id, ps.provider, ps.partner_share_cents
+      FROM public.payout_release_items i
+      JOIN public.partner_splits ps
+        ON ps.order_id = i.source_id
+       AND i.source_type = 'order'
+      WHERE i.release_id = v_release.id
+        AND ps.status = 'held'
+        AND ps.release_id IS NULL
+      ORDER BY ps.id
+    LOOP
+      -- Paystack cannot move a partner leg below its verified ₦50 floor.
+      -- The split remains held and incurs no fee until a later contract
+      -- explicitly aggregates sub-floor partner principal.
+      IF v_split.provider = 'paystack'
+         AND v_split.partner_share_cents < 5000 THEN
+        CONTINUE;
+      END IF;
+
+      IF v_split.provider = 'paystack' THEN
+        v_fee := CASE
+          WHEN v_split.partner_share_cents <= 500000 THEN 1000
+          WHEN v_split.partner_share_cents <= 5000000 THEN 2500
+          ELSE 5000
+        END;
+        v_stamp := CASE
+          WHEN v_split.partner_share_cents >= 1000000 THEN 5000
+          ELSE 0
+        END;
+      ELSE
+        v_fee := 0;
+        v_stamp := 0;
+      END IF;
+
+      INSERT INTO public.payout_transfer_legs (
+        release_id,
+        partner_split_id,
+        kind,
+        chunk_index,
+        principal_cents,
+        estimated_fee_cents,
+        stamp_duty_cents,
+        fee_schedule_version
+      )
+      VALUES (
+        v_release.id,
+        v_split.id,
+        'partner',
+        0,
+        v_split.partner_share_cents,
+        v_fee,
+        v_stamp,
+        CASE
+          WHEN v_split.provider = 'paystack' THEN 'verified-2026-07-24'
+          ELSE 'stripe-platform-transfer-v1'
+        END
+      )
+      ON CONFLICT (release_id, kind, partner_split_id, chunk_index)
+      DO NOTHING;
+      IF FOUND THEN v_planned := v_planned + 1; END IF;
+    END LOOP;
+
+    SELECT coalesce(sum(estimated_fee_cents + stamp_duty_cents), 0)::integer
+      INTO v_partner_cost
+    FROM public.payout_transfer_legs
+    WHERE release_id = v_release.id
+      AND kind = 'partner';
+
+    SELECT
+      coalesce(sum(gross_cents), 0)::integer,
+      coalesce(sum(refunded_cents), 0)::integer,
+      coalesce(sum(disputed_cents), 0)::integer,
+      coalesce(sum(mingla_fee_cents), 0)::integer,
+      coalesce(sum(partner_share_cents), 0)::integer,
+      coalesce(sum(provider_fee_cents), 0)::integer
+    INTO
+      v_gross,
+      v_refunded,
+      v_disputed,
+      v_mingla_fee,
+      v_item_partner_share,
+      v_provider_fee
+    FROM public.payout_release_items
+    WHERE release_id = v_release.id;
+
+    SELECT coalesce(sum(amount_cents), 0)::integer
+      INTO v_new_corrections
+    FROM public.payout_ledger_adjustments
+    WHERE release_id = v_release.id
+      AND kind = 'partner_principal_correction';
+
+    -- Rebuild from immutable items plus append-only corrections so retries
+    -- cannot double-deduct either principal or transfer costs.
+    UPDATE public.brand_payout_releases
+    SET gross_cents = v_gross,
+        refunded_cents = v_refunded,
+        disputed_cents = v_disputed,
+        mingla_fee_cents = v_mingla_fee,
+        partner_share_cents = v_item_partner_share + v_new_corrections,
+        provider_fee_cents = v_provider_fee,
+        -- Issue #3872 (F1): partner principal, its corrections and the cost of
+        -- the partner transfer are Mingla's money (platform balance), so none of
+        -- them reduce the host's net. partner_share_cents stays for reporting.
+        net_release_cents = greatest(
+          0,
+          v_gross - v_refunded - v_disputed - v_mingla_fee - v_provider_fee
+          - permanent_debt_withheld_cents - temporary_debt_withheld_cents
+          + maturity_recredit_cents
+        ),
+        updated_at = now()
+    WHERE id = v_release.id;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'planned_partner_legs', v_planned,
+    'partner_principal_corrections', v_principal_corrections,
+    'blocked_partner_attributions', v_blocked_attributions
+  );
+END;
+$function$;
+
+-- =============================================================================
+-- §6. Server-computed refunds (F4)
+-- =============================================================================
+-- Policy, read from mingla-business RefundSheet.tsx and eventOrdersService.ts:
+-- each refunded line is quantity x the line's unit price at purchase
+-- (order_line_items.unit_price_cents); no fee or tax share is added. The server
+-- now computes exactly that and ignores the amount a client sends, so a Host on
+-- a current app sees no change. Bodies of biz_refund_order and
+-- admin_refund_order start from their live definitions
+-- (20270110000006_issue_1175_paystack_refunds.sql, identical in production).
+
+-- Canonical server lines: one entry per order line (duplicates summed), sorted
+-- by line id, amount = quantity x unit price. A line that is not on the order is
+-- kept with a NULL amount so the caller raises line_item_not_found.
+CREATE OR REPLACE FUNCTION public.issue_3872_refund_server_lines(
+  p_order_id uuid,
+  p_lines jsonb
+) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  WITH req AS (
+    SELECT line->>'order_line_item_id' AS line_id,
+           sum((line->>'quantity')::int)::int AS qty
+    FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(p_lines) = 'array' THEN p_lines ELSE '[]'::jsonb END
+    ) AS line
+    GROUP BY line->>'order_line_item_id'
+  )
+  SELECT coalesce(jsonb_agg(jsonb_build_object(
+      'order_line_item_id', r.line_id,
+      'quantity', r.qty,
+      'amount_cents', (r.qty::bigint * oli.unit_price_cents)::int
+    ) ORDER BY r.line_id), '[]'::jsonb)
+  FROM req r
+  LEFT JOIN public.order_line_items oli
+    ON oli.id::text = r.line_id AND oli.order_id = p_order_id
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3872_refund_server_lines(uuid, jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_refund_server_lines(uuid, jsonb)
+  TO service_role;
+COMMENT ON FUNCTION public.issue_3872_refund_server_lines(uuid, jsonb) IS
+  'Issue #3872: the server''s refund lines for an order: quantity x order_line_items.unit_price_cents per line, duplicates summed. Internal helper for biz_refund_order, admin_refund_order and refund_preview.';
+
+CREATE OR REPLACE FUNCTION public.biz_refund_order(p_order_id uuid, p_lines jsonb, p_reason text, p_idempotency_key text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_brand_id uuid;
+  v_caller uuid := auth.uid();
+  v_refund_id uuid;
+  v_refund_amount_cents int := 0;
+  v_line jsonb;
+  v_line_item public.order_line_items%ROWTYPE;
+  v_existing_refunded int;
+  v_all_lines_fully_refunded boolean;
+  v_proposed_new_payment_status text;
+  v_existing_refund public.refunds%ROWTYPE;
+  v_canonical_lines jsonb;
+  v_request_manifest jsonb;
+  v_stored_manifest jsonb;
+  v_client_lines jsonb;
+  v_client_amount_cents bigint;
+BEGIN
+  -- Authorization precedes the idempotency lookup so replay cannot disclose
+  -- refund or payment identifiers to a caller outside the order's brand.
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT brand_id INTO v_brand_id FROM public.events WHERE id = v_order.event_id;
+  IF NOT public.biz_can_manage_payments_for_brand(v_brand_id, v_caller) THEN
+    RAISE EXCEPTION 'permission_denied' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_reason IS NULL OR length(trim(p_reason)) < 10 OR length(trim(p_reason)) > 200 THEN
+    RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = 'P0003';
+  END IF;
+
+  SELECT coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'order_line_item_id', line->>'order_line_item_id',
+        'quantity', (line->>'quantity')::int,
+        'amount_cents', (line->>'amount_cents')::int
+      )
+      ORDER BY
+        line->>'order_line_item_id',
+        (line->>'quantity')::int,
+        (line->>'amount_cents')::int
+    ),
+    '[]'::jsonb
+  )
+  INTO v_client_lines
+  FROM jsonb_array_elements(p_lines) AS line;
+
+  -- Issue #3872 (F4): the refund amount is derived on the server from the
+  -- order snapshot (quantity x order_line_items.unit_price_cents, the policy the
+  -- Host app has always sent). A client-sent amount_cents is ignored; it is
+  -- only logged below when it disagrees. Replays of a key minted before this
+  -- change still match their stored client-shaped manifest.
+  v_canonical_lines := public.issue_3872_refund_server_lines(p_order_id, p_lines);
+  SELECT sum((l->>'amount_cents')::bigint) INTO v_client_amount_cents
+  FROM jsonb_array_elements(v_client_lines) l;
+
+  v_request_manifest := jsonb_build_object(
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason),
+    -- What the client sent, kept so a retry under the same key must repeat it.
+    'client_lines', v_client_lines
+  );
+
+  -- Serialize same-key requests before the lookup/insert pair. The existing
+  -- unique expression index remains the final database backstop.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_order_id::text || ':' || p_idempotency_key, 0)
+  );
+
+  SELECT * INTO v_existing_refund
+  FROM public.refunds
+  WHERE metadata->>'idempotency_key' = p_idempotency_key
+    AND order_id = p_order_id
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    v_stored_manifest := v_existing_refund.metadata->'refund_request_manifest';
+    IF v_stored_manifest IS NULL
+       OR (v_stored_manifest->'lines' IS DISTINCT FROM v_canonical_lines
+           AND v_stored_manifest->'lines' IS DISTINCT FROM v_client_lines)
+       -- A request that names amounts must repeat the amounts first sent under
+       -- this key (same key, different body is still a mismatch, #1175).
+       OR (v_stored_manifest ? 'client_lines'
+           AND v_client_amount_cents IS NOT NULL
+           AND v_stored_manifest->'client_lines' IS DISTINCT FROM v_client_lines)
+       OR v_stored_manifest->>'reason' IS DISTINCT FROM trim(p_reason) THEN
+      RAISE EXCEPTION 'idempotency_request_mismatch'
+        USING ERRCODE = '23505';
+    END IF;
+
+    RETURN jsonb_build_object(
+      'refund_id', v_existing_refund.id,
+      'order_id', p_order_id,
+      'amount_cents', v_existing_refund.amount_cents,
+      'currency', v_existing_refund.currency,
+      'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+      'stripe_charge_id', v_order.stripe_charge_id,
+      'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+      'proposed_new_payment_status',
+        v_stored_manifest->>'proposed_new_payment_status',
+      'is_full_refund',
+        (v_stored_manifest->>'is_full_refund')::boolean,
+      'lines', v_stored_manifest->'lines',
+      'reason', v_stored_manifest->>'reason',
+      'idempotent_replay', true
+    );
+  END IF;
+
+  IF v_order.payment_status NOT IN ('paid', 'partial_refund') THEN
+    RAISE EXCEPTION 'order_not_refundable: status=%', v_order.payment_status
+      USING ERRCODE = 'P0002';
+  END IF;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    SELECT * INTO v_line_item
+    FROM public.order_line_items
+    WHERE id = (v_line->>'order_line_item_id')::uuid
+      AND order_id = p_order_id;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'line_item_not_found: %',
+        v_line->>'order_line_item_id' USING ERRCODE = 'P0004';
+    END IF;
+
+    SELECT COALESCE(SUM(rli.quantity), 0) INTO v_existing_refunded
+    FROM public.refund_line_items rli
+    JOIN public.refunds r ON r.id = rli.refund_id
+    WHERE rli.order_line_item_id = v_line_item.id
+      AND r.status IN ('pending', 'succeeded');
+
+    IF COALESCE((v_line->>'quantity')::int, 0) <= 0 THEN
+      RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+    END IF;
+
+    IF v_existing_refunded + (v_line->>'quantity')::int > v_line_item.quantity THEN
+      RAISE EXCEPTION 'line_overrefund: line=% requested=% existing=% capacity=%',
+        v_line_item.id, v_line->>'quantity', v_existing_refunded,
+        v_line_item.quantity USING ERRCODE = 'P0005';
+    END IF;
+
+    v_refund_amount_cents :=
+      v_refund_amount_cents + (v_line->>'amount_cents')::int;
+  END LOOP;
+
+  IF v_refund_amount_cents <= 0 THEN
+    RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+  END IF;
+
+  -- Issue #3872: never more than the buyer paid and has not had back.
+  IF v_refund_amount_cents >
+     COALESCE(v_order.buyer_total_cents, v_order.total_cents)
+       - COALESCE(v_order.refunded_amount_cents, 0) THEN
+    RAISE EXCEPTION 'refund_exceeds_remaining: requested=% remaining=%',
+      v_refund_amount_cents,
+      COALESCE(v_order.buyer_total_cents, v_order.total_cents)
+        - COALESCE(v_order.refunded_amount_cents, 0)
+      USING ERRCODE = 'P0009';
+  END IF;
+
+  INSERT INTO public.refunds (
+    order_id, amount_cents, currency, reason, initiated_by, status,
+    stripe_payment_intent_id, stripe_charge_id, metadata
+  ) VALUES (
+    p_order_id,
+    v_refund_amount_cents,
+    v_order.currency,
+    trim(p_reason),
+    v_caller,
+    'pending',
+    v_order.stripe_payment_intent_id,
+    v_order.stripe_charge_id,
+    jsonb_build_object(
+      'idempotency_key', p_idempotency_key,
+      'refund_request_manifest', v_request_manifest
+    ) || CASE
+      WHEN v_client_amount_cents IS NOT NULL
+        AND v_client_amount_cents IS DISTINCT FROM v_refund_amount_cents::bigint
+      THEN jsonb_build_object('issue_3872_client_reported', jsonb_build_object(
+        'amount_cents', v_client_amount_cents,
+        'lines', v_client_lines,
+        'server_amount_cents', v_refund_amount_cents))
+      ELSE '{}'::jsonb
+    END
+  ) RETURNING id INTO v_refund_id;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    INSERT INTO public.refund_line_items (
+      refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents
+    )
+    SELECT
+      v_refund_id,
+      (v_line->>'order_line_item_id')::uuid,
+      oli.ticket_type_id,
+      (v_line->>'quantity')::int,
+      (v_line->>'amount_cents')::int
+    FROM public.order_line_items oli
+    WHERE oli.id = (v_line->>'order_line_item_id')::uuid;
+  END LOOP;
+
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.order_line_items oli
+    WHERE oli.order_id = p_order_id
+      AND oli.quantity > (
+        SELECT COALESCE(SUM(rli.quantity), 0)
+        FROM public.refund_line_items rli
+        JOIN public.refunds r ON r.id = rli.refund_id
+        WHERE rli.order_line_item_id = oli.id
+          AND r.status IN ('pending', 'succeeded')
+      )
+  ) INTO v_all_lines_fully_refunded;
+
+  v_proposed_new_payment_status := CASE
+    WHEN v_all_lines_fully_refunded THEN 'refunded'
+    ELSE 'partial_refund'
+  END;
+  v_request_manifest := v_request_manifest || jsonb_build_object(
+    'amount_cents', v_refund_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded
+  );
+  UPDATE public.refunds
+  SET metadata = metadata ||
+    jsonb_build_object('refund_request_manifest', v_request_manifest)
+  WHERE id = v_refund_id;
+
+  RETURN jsonb_build_object(
+    'refund_id', v_refund_id,
+    'order_id', p_order_id,
+    'amount_cents', v_refund_amount_cents,
+    'currency', v_order.currency,
+    'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+    'stripe_charge_id', v_order.stripe_charge_id,
+    'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded,
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason),
+    'idempotent_replay', false
+  );
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.admin_refund_order(p_order_id uuid, p_lines jsonb, p_reason text, p_idempotency_key text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_caller uuid := auth.uid();
+  v_refund_id uuid;
+  v_refund_amount_cents int := 0;
+  v_line jsonb;
+  v_line_item public.order_line_items%ROWTYPE;
+  v_existing_refunded int;
+  v_all_lines_fully_refunded boolean;
+  v_proposed_new_payment_status text;
+  v_existing_refund public.refunds%ROWTYPE;
+  v_remaining_cents int;
+  v_canonical_lines jsonb;
+  v_request_manifest jsonb;
+  v_stored_manifest jsonb;
+  v_client_lines jsonb;
+  v_client_amount_cents bigint;
+BEGIN
+  -- I-PROPOSED-1278-ADMIN-GATE-FIRST: this remains the first executable
+  -- statement, byte-for-byte equivalent to the approved service-role twin.
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF p_reason IS NULL OR length(trim(p_reason)) < 10 OR length(trim(p_reason)) > 200 THEN
+    RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = 'P0003';
+  END IF;
+
+  SELECT coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'order_line_item_id', line->>'order_line_item_id',
+        'quantity', (line->>'quantity')::int,
+        'amount_cents', (line->>'amount_cents')::int
+      )
+      ORDER BY
+        line->>'order_line_item_id',
+        (line->>'quantity')::int,
+        (line->>'amount_cents')::int
+    ),
+    '[]'::jsonb
+  )
+  INTO v_client_lines
+  FROM jsonb_array_elements(p_lines) AS line;
+
+  -- Issue #3872 (F4): the refund amount is derived on the server from the
+  -- order snapshot (quantity x order_line_items.unit_price_cents, the policy the
+  -- Host app has always sent). A client-sent amount_cents is ignored; it is
+  -- only logged below when it disagrees. Replays of a key minted before this
+  -- change still match their stored client-shaped manifest.
+  v_canonical_lines := public.issue_3872_refund_server_lines(p_order_id, p_lines);
+  SELECT sum((l->>'amount_cents')::bigint) INTO v_client_amount_cents
+  FROM jsonb_array_elements(v_client_lines) l;
+
+  v_request_manifest := jsonb_build_object(
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason),
+    -- What the client sent, kept so a retry under the same key must repeat it.
+    'client_lines', v_client_lines
+  );
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_order_id::text || ':' || p_idempotency_key, 0)
+  );
+
+  SELECT * INTO v_existing_refund
+  FROM public.refunds
+  WHERE metadata->>'idempotency_key' = p_idempotency_key
+    AND order_id = p_order_id
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    v_stored_manifest := v_existing_refund.metadata->'refund_request_manifest';
+    IF v_stored_manifest IS NULL
+       OR (v_stored_manifest->'lines' IS DISTINCT FROM v_canonical_lines
+           AND v_stored_manifest->'lines' IS DISTINCT FROM v_client_lines)
+       -- A request that names amounts must repeat the amounts first sent under
+       -- this key (same key, different body is still a mismatch, #1175).
+       OR (v_stored_manifest ? 'client_lines'
+           AND v_client_amount_cents IS NOT NULL
+           AND v_stored_manifest->'client_lines' IS DISTINCT FROM v_client_lines)
+       OR v_stored_manifest->>'reason' IS DISTINCT FROM trim(p_reason) THEN
+      RAISE EXCEPTION 'idempotency_request_mismatch'
+        USING ERRCODE = '23505';
+    END IF;
+
+    RETURN jsonb_build_object(
+      'refund_id', v_existing_refund.id,
+      'order_id', p_order_id,
+      'amount_cents', v_existing_refund.amount_cents,
+      'currency', v_existing_refund.currency,
+      'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+      'stripe_charge_id', v_order.stripe_charge_id,
+      'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+      'proposed_new_payment_status',
+        v_stored_manifest->>'proposed_new_payment_status',
+      'is_full_refund',
+        (v_stored_manifest->>'is_full_refund')::boolean,
+      'lines', v_stored_manifest->'lines',
+      'reason', v_stored_manifest->>'reason',
+      'idempotent_replay', true
+    );
+  END IF;
+
+  IF v_order.payment_status NOT IN ('paid', 'partial_refund') THEN
+    RAISE EXCEPTION 'order_not_refundable: status=%', v_order.payment_status
+      USING ERRCODE = 'P0002';
+  END IF;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    SELECT * INTO v_line_item
+    FROM public.order_line_items
+    WHERE id = (v_line->>'order_line_item_id')::uuid
+      AND order_id = p_order_id;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'line_item_not_found: %',
+        v_line->>'order_line_item_id' USING ERRCODE = 'P0004';
+    END IF;
+
+    SELECT COALESCE(SUM(rli.quantity), 0) INTO v_existing_refunded
+    FROM public.refund_line_items rli
+    JOIN public.refunds r ON r.id = rli.refund_id
+    WHERE rli.order_line_item_id = v_line_item.id
+      AND r.status IN ('pending', 'succeeded');
+
+    IF COALESCE((v_line->>'quantity')::int, 0) <= 0 THEN
+      RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+    END IF;
+
+    IF v_existing_refunded + (v_line->>'quantity')::int > v_line_item.quantity THEN
+      RAISE EXCEPTION 'line_overrefund: line=% requested=% existing=% capacity=%',
+        v_line_item.id, v_line->>'quantity', v_existing_refunded,
+        v_line_item.quantity USING ERRCODE = 'P0005';
+    END IF;
+
+    v_refund_amount_cents :=
+      v_refund_amount_cents + (v_line->>'amount_cents')::int;
+  END LOOP;
+
+  IF v_refund_amount_cents <= 0 THEN
+    RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+  END IF;
+
+  v_remaining_cents :=
+    v_order.total_cents - COALESCE(v_order.refunded_amount_cents, 0);
+  IF v_refund_amount_cents > v_remaining_cents THEN
+    RAISE EXCEPTION 'refund_exceeds_remaining: requested=% remaining=%',
+      v_refund_amount_cents, v_remaining_cents USING ERRCODE = 'P0009';
+  END IF;
+
+  INSERT INTO public.refunds (
+    order_id, amount_cents, currency, reason, initiated_by, status,
+    stripe_payment_intent_id, stripe_charge_id, metadata
+  ) VALUES (
+    p_order_id,
+    v_refund_amount_cents,
+    v_order.currency,
+    trim(p_reason),
+    v_caller,
+    'pending',
+    v_order.stripe_payment_intent_id,
+    v_order.stripe_charge_id,
+    jsonb_build_object(
+      'idempotency_key', p_idempotency_key,
+      'refund_request_manifest', v_request_manifest
+    ) || CASE
+      WHEN v_client_amount_cents IS NOT NULL
+        AND v_client_amount_cents IS DISTINCT FROM v_refund_amount_cents::bigint
+      THEN jsonb_build_object('issue_3872_client_reported', jsonb_build_object(
+        'amount_cents', v_client_amount_cents,
+        'lines', v_client_lines,
+        'server_amount_cents', v_refund_amount_cents))
+      ELSE '{}'::jsonb
+    END
+  ) RETURNING id INTO v_refund_id;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    INSERT INTO public.refund_line_items (
+      refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents
+    )
+    SELECT
+      v_refund_id,
+      (v_line->>'order_line_item_id')::uuid,
+      oli.ticket_type_id,
+      (v_line->>'quantity')::int,
+      (v_line->>'amount_cents')::int
+    FROM public.order_line_items oli
+    WHERE oli.id = (v_line->>'order_line_item_id')::uuid;
+  END LOOP;
+
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.order_line_items oli
+    WHERE oli.order_id = p_order_id
+      AND oli.quantity > (
+        SELECT COALESCE(SUM(rli.quantity), 0)
+        FROM public.refund_line_items rli
+        JOIN public.refunds r ON r.id = rli.refund_id
+        WHERE rli.order_line_item_id = oli.id
+          AND r.status IN ('pending', 'succeeded')
+      )
+  ) INTO v_all_lines_fully_refunded;
+
+  v_proposed_new_payment_status := CASE
+    WHEN v_all_lines_fully_refunded THEN 'refunded'
+    ELSE 'partial_refund'
+  END;
+  v_request_manifest := v_request_manifest || jsonb_build_object(
+    'amount_cents', v_refund_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded
+  );
+  UPDATE public.refunds
+  SET metadata = metadata ||
+    jsonb_build_object('refund_request_manifest', v_request_manifest)
+  WHERE id = v_refund_id;
+
+  RETURN jsonb_build_object(
+    'refund_id', v_refund_id,
+    'order_id', p_order_id,
+    'amount_cents', v_refund_amount_cents,
+    'currency', v_order.currency,
+    'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+    'stripe_charge_id', v_order.stripe_charge_id,
+    'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded,
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason),
+    'idempotent_replay', false
+  );
+END;
+$function$;
+
+-- refund_preview: what a refund of these lines would return, computed by the
+-- same server rule, for the Host app's RefundSheet to show before confirm.
+CREATE OR REPLACE FUNCTION public.refund_preview(
+  p_order_id uuid,
+  p_lines jsonb
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_brand_id uuid;
+  v_lines jsonb;
+  v_line jsonb;
+  v_item public.order_line_items%ROWTYPE;
+  v_existing integer;
+  v_amount bigint := 0;
+  v_remaining bigint;
+BEGIN
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  SELECT brand_id INTO v_brand_id FROM public.events WHERE id = v_order.event_id;
+  IF NOT public.biz_can_manage_payments_for_brand(v_brand_id, auth.uid()) THEN
+    RAISE EXCEPTION 'permission_denied' USING ERRCODE = '42501';
+  END IF;
+
+  v_lines := public.issue_3872_refund_server_lines(p_order_id, p_lines);
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_lines) LOOP
+    SELECT * INTO v_item FROM public.order_line_items
+     WHERE id::text = v_line->>'order_line_item_id' AND order_id = p_order_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'line_item_not_found: %', v_line->>'order_line_item_id' USING ERRCODE = 'P0004';
+    END IF;
+    IF COALESCE((v_line->>'quantity')::int, 0) <= 0 THEN
+      RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+    END IF;
+    SELECT COALESCE(SUM(rli.quantity), 0) INTO v_existing
+    FROM public.refund_line_items rli
+    JOIN public.refunds r ON r.id = rli.refund_id
+    WHERE rli.order_line_item_id = v_item.id AND r.status IN ('pending', 'succeeded');
+    IF v_existing + (v_line->>'quantity')::int > v_item.quantity THEN
+      RAISE EXCEPTION 'line_overrefund: line=% requested=% existing=% capacity=%',
+        v_item.id, v_line->>'quantity', v_existing, v_item.quantity USING ERRCODE = 'P0005';
+    END IF;
+    v_amount := v_amount + (v_line->>'amount_cents')::bigint;
+  END LOOP;
+
+  v_remaining := COALESCE(v_order.buyer_total_cents, v_order.total_cents)
+    - COALESCE(v_order.refunded_amount_cents, 0);
+  RETURN jsonb_build_object(
+    'order_id', p_order_id,
+    'currency', v_order.currency,
+    'lines', v_lines,
+    'amount_cents', v_amount,
+    'remaining_cents', v_remaining,
+    'within_remaining', v_amount <= v_remaining
+  );
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION public.refund_preview(uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.refund_preview(uuid, jsonb) TO authenticated, service_role;
+COMMENT ON FUNCTION public.refund_preview(uuid, jsonb) IS
+  'Issue #3872: the amount refunding these lines would return (quantity x unit price at purchase), computed by the same rule biz_refund_order applies. Read-only. Callers need payment rights on the order''s brand.';
+
+-- @@M5@@
+
+
 
 
 COMMIT;
