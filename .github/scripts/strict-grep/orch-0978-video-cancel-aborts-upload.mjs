@@ -28,8 +28,15 @@ if (!/abortRef\.current\?\.abort\(\)[\s\S]*cancelEventCoverVideoJob\(jobIdRef\.c
 // job's source_public_id / source_asset_id). The behavioral guarantee is
 // UNCHANGED — cancel still destroys the source asset using its source id — the
 // mechanism was generalized off the Cloudinary-only cloudinaryDestroy call.
-if (!/destroyCoverVideoAsset|cloudinaryDestroy/.test(cancelEdge) || !/source_public_id|source_asset_id/.test(cancelEdge)) {
-  failures.push("event-cover-video-cancel must destroy the source asset (provider-agnostic destroyCoverVideoAsset) using its source id (source_public_id / source_asset_id).");
+// #3040 rework (P1-1): the cancel still reclaims the source asset by its id,
+// but ONLY through the live-reference guard destroyIfUnreferenced — a direct
+// destroyCoverVideoAsset call is now forbidden everywhere outside the guard
+// (I-VIDEO-SINGLE-GUARDED-DELETE, coverVideoReap.singleDeletePath suite).
+if (!/destroyIfUnreferenced\(/.test(cancelEdge) || !/source_asset_id/.test(cancelEdge)) {
+  failures.push("event-cover-video-cancel must reclaim the source asset through the guarded destroyIfUnreferenced using its source id (source_asset_id).");
+}
+if (/(?<!function\s)\bdestroyCoverVideoAsset\s*\(/.test(cancelEdge.replace(/\/\/.*$/gm, ""))) {
+  failures.push("event-cover-video-cancel must not call destroyCoverVideoAsset directly (#3040: every delete is guarded).");
 }
 
 if (failures.length > 0) {
