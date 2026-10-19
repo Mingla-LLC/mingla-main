@@ -18,8 +18,11 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Svg, { Circle } from "react-native-svg";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   Pressable,
   StyleSheet,
@@ -42,6 +45,25 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
+import {
+  MOTION_SPEC,
+  useIosAnnouncement,
+  useReduceMotion,
+} from "../ui/coverUploadMotion";
+import { useNetInfoSafe } from "../../lib/netinfoSafe";
+import {
+  TILE_RING,
+  classifyTileFailure,
+  gridAnnouncement,
+  newTripDayTile,
+  tileA11yLabel,
+  tileFromProgress,
+  tileNeedsSheet,
+  tileRingDashOffset,
+  tileVisual,
+  type TripDayTile,
+} from "./tripDayTileModel";
 import { Icon } from "../ui/Icon";
 import {
   launchImageLibraryAsync,
@@ -134,32 +156,69 @@ export interface TripDayMediaSheetProps {
   dayKey?: string;
 }
 
-/** #3040 B-C12 / Appendix A §6 — one tile per picked item, with its own state. */
-type TripDayTile = {
-  key: string;
-  kind: "image" | "video";
-  state: "checking" | "uploading" | "preparing" | "done" | "failed";
-  percent: number | null;
-  durationMs: number | null;
+/** A picked library item, retained so a failed or paused tile can retry it. */
+type PickedAsset = {
+  uri: string;
+  mimeType?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  duration?: number | null;
 };
 
-const formatTileClock = (ms: number | null): string | null => {
-  if (ms === null || ms <= 0) return null;
-  const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-};
+/** #3040 §11 — the device's own word that it is offline (T4). */
+const browserOffline = (): boolean =>
+  Platform.OS === "web" &&
+  typeof navigator !== "undefined" &&
+  (navigator as { onLine?: boolean }).onLine === false;
 
-const tileLabel = (tile: TripDayTile, index: number): string => {
-  const noun = tile.kind === "video" ? "Video" : "Photo";
-  switch (tile.state) {
-    case "checking": return `${noun} ${index + 1}, checking file`;
-    case "uploading": return tile.percent === null
-      ? `${noun} ${index + 1}, uploading. Double tap to cancel.`
-      : `${noun} ${index + 1}, uploading, ${tile.percent} percent. Double tap to cancel.`;
-    case "preparing": return `${noun} ${index + 1}, preparing`;
-    case "done": return `${noun} ${index + 1}${formatTileClock(tile.durationMs) !== null ? `, ${formatTileClock(tile.durationMs)}` : ""}`;
-    case "failed": return `${noun} ${index + 1}, upload failed`;
-  }
+/** #3040 Appendix A §6 — ring 36 / stroke 3; the arc eases 200 ms (reduced: jumps). */
+const AnimatedRingCircle = Animated.createAnimatedComponent(Circle);
+const TileRing: React.FC<{ percent: number | null }> = ({ percent }) => {
+  const reduceMotion = useReduceMotion();
+  const target = tileRingDashOffset(percent);
+  const offset = useRef(new Animated.Value(target)).current;
+  useEffect(() => {
+    if (reduceMotion) {
+      offset.setValue(target);
+      return undefined;
+    }
+    const animation = Animated.timing(offset, {
+      toValue: target,
+      duration: MOTION_SPEC.galleryRing.durationMs,
+      easing: Easing.bezier(0.33, 1, 0.68, 1),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [offset, reduceMotion, target]);
+  const radiusPx = (TILE_RING.size - TILE_RING.stroke) / 2;
+  const circumference = 2 * Math.PI * radiusPx;
+  return (
+    <Svg width={TILE_RING.size} height={TILE_RING.size} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Circle
+        cx={TILE_RING.size / 2}
+        cy={TILE_RING.size / 2}
+        r={radiusPx}
+        stroke="rgba(255,255,255,0.24)"
+        strokeWidth={TILE_RING.stroke}
+        fill="none"
+      />
+      <AnimatedRingCircle
+        cx={TILE_RING.size / 2}
+        cy={TILE_RING.size / 2}
+        r={radiusPx}
+        stroke={accent.warm}
+        strokeWidth={TILE_RING.stroke}
+        strokeLinecap="round"
+        fill="none"
+        strokeDasharray={`${circumference} ${circumference}`}
+        strokeDashoffset={offset}
+        transform={`rotate(-90 ${TILE_RING.size / 2} ${TILE_RING.size / 2})`}
+      />
+    </Svg>
+  );
 };
 
 export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
@@ -172,18 +231,54 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
   onShowToast,
   dayKey,
 }) => {
-  const remaining = Math.max(0, MAX_TRIP_DAY_MEDIA - currentCount);
-  // #3040 B-C12 — per-item tiles while a batch uploads, and each item's own
-  // abort so × on one tile never stops the others.
-  const [tiles, setTiles] = useState<TripDayTile[]>([]);
-  const tileAbortRef = useRef<Map<string, AbortController>>(new Map());
+  // #3040 B-C12 / Appendix A §6 — one tile per picked item (G-01…G-07). The
+  // tiles live in a ref mirror too, so a batch decides "close or stay open"
+  // from the same truth the screen shows.
+  const [tiles, setTilesState] = useState<TripDayTile[]>([]);
+  const tilesRef = useRef<TripDayTile[]>([]);
+  const commitTiles = useCallback((update: (current: TripDayTile[]) => TripDayTile[]): void => {
+    tilesRef.current = update(tilesRef.current);
+    setTilesState(tilesRef.current);
+  }, []);
   const updateTile = useCallback((key: string, patch: Partial<TripDayTile>): void => {
-    setTiles((current) => current.map((tile) => (tile.key === key ? { ...tile, ...patch } : tile)));
+    commitTiles((current) => current.map((tile) => (tile.key === key ? { ...tile, ...patch } : tile)));
+  }, [commitTiles]);
+  const removeTile = useCallback((key: string): void => {
+    commitTiles((current) => current.filter((tile) => tile.key !== key));
+  }, [commitTiles]);
+  // Each item's own abort (× never stops the others), its retained source
+  // (retry and auto-resume need no re-pick), and whether that source is gone.
+  const tileAbortRef = useRef<Map<string, AbortController>>(new Map());
+  const tileAssetRef = useRef<Map<string, PickedAsset>>(new Map());
+  const tileBrowserFileRef = useRef<Map<string, BrowserPickedFile>>(new Map());
+  const sourceGoneRef = useRef<Set<string>>(new Set());
+  const releaseTileSource = useCallback((key: string): void => {
+    tileAssetRef.current.delete(key);
+    sourceGoneRef.current.delete(key);
+    const browserFile = tileBrowserFileRef.current.get(key);
+    if (browserFile !== undefined) {
+      revokeBrowserPickedFiles([browserFile]);
+      tileBrowserFileRef.current.delete(key);
+    }
   }, []);
   useEffect(() => () => {
     for (const controller of tileAbortRef.current.values()) controller.abort();
     tileAbortRef.current.clear();
+    revokeBrowserPickedFiles([...tileBrowserFileRef.current.values()]);
+    tileBrowserFileRef.current.clear();
   }, []);
+  // In-sheet alert: the wizard's toast sits under this modal sheet.
+  const [tileNotice, setTileNotice] = useState<string | null>(null);
+  const [playingTileKey, setPlayingTileKey] = useState<string | null>(null);
+  const network = useNetInfoSafe();
+  const networkConnectedRef = useRef<boolean | null>(network?.isConnected ?? null);
+  networkConnectedRef.current = network?.isConnected ?? null;
+  const isDeviceOffline = useCallback(
+    (): boolean => networkConnectedRef.current === false || browserOffline(),
+    [],
+  );
+  const pendingTiles = tiles.filter(tileNeedsSheet).length;
+  const remaining = Math.max(0, MAX_TRIP_DAY_MEDIA - currentCount - pendingTiles);
   const [activeTab, setActiveTab] = useState<MediaTabId>("library");
   const [uploading, setUploading] = useState(false);
   const [videoProgress, setVideoProgress] =
@@ -326,19 +421,86 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
 
   // ----- Library device upload (image + video) ---------------------------
 
+  /**
+   * Upload ONE tile's item. Returns the media on success, or null after
+   * putting the tile in its failure state (or removing it, when × aborted it).
+   * Never throws: one item's failure never stops its siblings.
+   */
+  const runTile = useCallback(async (key: string, asset: PickedAsset): Promise<
+    { media: TripDayMedia } | { failure: string | null }
+  > => {
+    const controller = new AbortController();
+    tileAbortRef.current.set(key, controller);
+    updateTile(key, { state: "checking", percent: null, reason: null });
+    try {
+      // ORCH-1119C: iPhones shoot HEIC; convert HEIC/HEIF -> JPEG on-device
+      // BEFORE upload (the upload service hard-rejects image/heic, and HEIC
+      // doesn't render on Android or the public web trip page). jpeg/png/webp/
+      // GIF/video pass through unchanged. Native picker only — the web branch
+      // doesn't hand back HEIC the same way.
+      const normalized =
+        Platform.OS === "web"
+          ? asset
+          : await normalizeTripDayImage({
+              uri: asset.uri,
+              mimeType: asset.mimeType,
+              fileName: asset.fileName,
+              fileSize: asset.fileSize,
+              width: asset.width,
+              height: asset.height,
+              duration: asset.duration,
+            });
+      const media = await uploadTripDayMedia(brandId, eventId, {
+        uri: normalized.uri,
+        mimeType: normalized.mimeType,
+        fileName: normalized.fileName,
+        fileSize: normalized.fileSize,
+        width: normalized.width,
+        height: normalized.height,
+        durationMs: normalized.duration,
+      }, (progress) => {
+        setVideoProgress(progress);
+        updateTile(key, tileFromProgress(progress));
+      }, { dayKey, signal: controller.signal });
+      updateTile(key, { state: "ready", percent: null, reason: null, mediaUrl: media.url });
+      releaseTileSource(key);
+      return { media };
+    } catch (itemError) {
+      // × on a tile is a decision, not a failure to report.
+      if (controller.signal.aborted) {
+        removeTile(key);
+        releaseTileSource(key);
+        return { failure: null };
+      }
+      // #3040 B-C12 — never a raw code on screen.
+      const reason = itemError instanceof BrandCoverError
+        ? itemError.message
+        : tripDayVideoErrorCopy(itemError);
+      const failure = classifyTileFailure(itemError, isDeviceOffline());
+      if (failure.sourceGone) sourceGoneRef.current.add(key);
+      updateTile(key, { state: failure.state, percent: null, reason });
+      if (failure.state === "failed_terminal") releaseTileSource(key);
+      return { failure: failure.state === "paused" ? null : reason };
+    } finally {
+      tileAbortRef.current.delete(key);
+      setVideoProgress(null);
+    }
+  }, [brandId, dayKey, eventId, isDeviceOffline, releaseTileSource, removeTile, updateTile]);
+
+  /** Close once nothing in the sheet needs the host (Constitution #3: the
+   *  wizard toast is under this modal, so an open failure keeps it open). */
+  const closeIfSettled = useCallback((): void => {
+    if (!tilesRef.current.some(tileNeedsSheet)) {
+      onClose();
+    }
+  }, [onClose]);
+
   const pickFromLibrary = useCallback(async (): Promise<void> => {
     if (uploading || atCap) return;
     let browserFiles: BrowserPickedFile[] = [];
+    let keptBrowserFiles = false;
     try {
-      let assets: {
-        uri: string;
-        mimeType?: string | null;
-        fileName?: string | null;
-        fileSize?: number | null;
-        width?: number | null;
-        height?: number | null;
-        duration?: number | null;
-      }[];
+      let assets: (PickedAsset & { browserFile?: BrowserPickedFile })[];
       if (Platform.OS === "web") {
         const result = await pickBrowserFiles({
           accept: LIBRARY_ACCEPT,
@@ -367,6 +529,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                 duration: file.mimeType?.startsWith("video/")
                   ? await readPickedVideoDurationMs(file.uri)
                   : null,
+                browserFile: file,
               };
             } catch {
               return null;
@@ -399,80 +562,40 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
         assets = result.assets;
       }
       setUploading(true);
-      const batch: TripDayTile[] = assets.slice(0, remaining).map((asset, index) => ({
-        key: `${Date.now().toString(36)}-${index}`,
-        kind: asset.mimeType?.startsWith("video/") || typeof asset.duration === "number" && asset.duration > 0 ? "video" : "image",
-        state: "checking",
-        percent: null,
-        durationMs: typeof asset.duration === "number" ? asset.duration : null,
-      }));
-      setTiles(batch);
+      setTileNotice(null);
+      const chosen = assets.slice(0, remaining);
+      const stamp = Date.now().toString(36);
+      const batch = chosen.map((asset, index) => {
+        const key = `${stamp}-${index}`;
+        tileAssetRef.current.set(key, asset);
+        if (asset.browserFile !== undefined) tileBrowserFileRef.current.set(key, asset.browserFile);
+        return newTripDayTile({
+          key,
+          kind: asset.mimeType?.startsWith("video/") || typeof asset.duration === "number" && asset.duration > 0 ? "video" : "image",
+          durationMs: typeof asset.duration === "number" ? asset.duration : null,
+        });
+      });
+      // Finished tiles from an earlier batch make room; failed ones stay for
+      // their retry or ×.
+      commitTiles((current) => [...current.filter(tileNeedsSheet), ...batch]);
+      keptBrowserFiles = true;
+      // Picked files the batch does not take are released at once.
+      const taken = new Set(chosen.map((asset) => asset.browserFile).filter(Boolean));
+      revokeBrowserPickedFiles(browserFiles.filter((file) => !taken.has(file)));
       // ORCH-1119 REWORK: upload each chosen asset, COLLECT the successes, and
       // hand the parent the whole batch in ONE onAddMedia call. A per-item
       // onAddMedia in this loop clobbered every pick but the last (the parent
       // rebuilds the day from the same stale render-time `days`); a single
-      // batched append is clobber-proof. A failed item surfaces a friendly
-      // toast and is skipped — partial success is preserved (Constitution #3).
+      // batched append is clobber-proof. Partial success is preserved.
       const uploaded: TripDayMedia[] = [];
       let firstError: string | null = null;
-      for (const [assetIndex, asset] of assets.entries()) {
-        if (uploaded.length >= remaining) break;
-        const tileKey = batch[assetIndex]?.key ?? `tile-${assetIndex}`;
-        const tileAbort = new AbortController();
-        tileAbortRef.current.set(tileKey, tileAbort);
-        try {
-          // ORCH-1119C: iPhones shoot HEIC; convert HEIC/HEIF -> JPEG on-device
-          // BEFORE upload (the upload service hard-rejects image/heic, and HEIC
-          // doesn't render on Android or the public web trip page). jpeg/png/webp/
-          // GIF/video pass through unchanged. Native picker only — the web branch
-          // above doesn't hand back HEIC the same way.
-          const normalized =
-            Platform.OS === "web"
-              ? asset
-              : await normalizeTripDayImage({
-                  uri: asset.uri,
-                  mimeType: asset.mimeType,
-                  fileName: asset.fileName,
-                  fileSize: asset.fileSize,
-                  width: asset.width,
-                  height: asset.height,
-                  duration: asset.duration,
-                });
-          const media = await uploadTripDayMedia(brandId, eventId, {
-            uri: normalized.uri,
-            mimeType: normalized.mimeType,
-            fileName: normalized.fileName,
-            fileSize: normalized.fileSize,
-            width: normalized.width,
-            height: normalized.height,
-            durationMs: normalized.duration,
-          }, (progress) => {
-            setVideoProgress(progress);
-            updateTile(tileKey, {
-              state: progress.phase === "checking"
-                ? "checking"
-                : progress.phase === "uploading"
-                  ? "uploading"
-                  : "preparing",
-              percent: progress.phase === "uploading" ? progress.percent : null,
-            });
-          }, { dayKey, signal: tileAbort.signal });
+      for (const [index, tile] of batch.entries()) {
+        const outcome = await runTile(tile.key, chosen[index] as PickedAsset);
+        if ("media" in outcome) {
+          const { media } = outcome;
           uploaded.push(media);
-          updateTile(tileKey, { state: "done", percent: null });
-          setVideoProgress(null);
-        } catch (itemError) {
-          updateTile(tileKey, { state: "failed", percent: null });
-          // × on a tile is a decision, not a failure to report.
-          if (tileAbort.signal.aborted) continue;
-          if (firstError === null) {
-            // #3040 B-C12 — never a raw code in a toast.
-            firstError =
-              itemError instanceof BrandCoverError
-                ? itemError.message
-                : tripDayVideoErrorCopy(itemError);
-          }
-        } finally {
-          tileAbortRef.current.delete(tileKey);
+        } else if (outcome.failure !== null && firstError === null) {
+          firstError = outcome.failure;
         }
       }
       if (uploaded.length > 0) {
@@ -483,21 +606,15 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
           ).catch(() => {});
         }
       }
-      // Surface any failure (even on partial success) so nothing fails silently.
+      // Surface any failure (even on partial success) so nothing fails
+      // silently: in the sheet (role alert), and to the wizard for later.
       if (firstError !== null) {
         warnHaptic();
-        onShowToast(
-          uploaded.length > 0
-            ? `Some media couldn't be added. ${firstError}`
-            : firstError,
-        );
+        const message = uploaded.length > 0 ? `Some media couldn't be added. ${firstError}` : firstError;
+        setTileNotice(message);
+        onShowToast(message);
       }
-      // Close once the batch has resolved — on full success AND on a 0-success
-      // batch — so the wizard-root error toast (onShowToast above) is no longer
-      // occluded by this native-Modal sheet (Constitution #3). The partial-success
-      // toast still fires before this close. Pre-upload throws (catch below) keep
-      // the sheet open so the user can retry the picker.
-      onClose();
+      closeIfSettled();
     } catch (error) {
       // Pre-upload failures (permission denied, picker error) — friendly toast.
       onShowToast(
@@ -508,23 +625,91 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
             : "Couldn't add that media. Tap to retry.",
       );
     } finally {
-      revokeBrowserPickedFiles(browserFiles);
+      if (!keptBrowserFiles) revokeBrowserPickedFiles(browserFiles);
       setVideoProgress(null);
-      setTiles([]);
       setUploading(false);
     }
   }, [
     atCap,
-    brandId,
-    dayKey,
-    eventId,
+    closeIfSettled,
+    commitTiles,
     onAddMedia,
-    onClose,
     onShowToast,
     remaining,
-    updateTile,
+    runTile,
     uploading,
   ]);
+
+  /** G-06 tap: retry the same item; a source that is gone asks for it again. */
+  const retryTile = useCallback(async (key: string): Promise<void> => {
+    const asset = tileAssetRef.current.get(key);
+    if (asset === undefined || sourceGoneRef.current.has(key)) {
+      removeTile(key);
+      releaseTileSource(key);
+      setTileNotice("Choose that video again.");
+      void pickFromLibrary();
+      return;
+    }
+    setUploading(true);
+    setTileNotice(null);
+    try {
+      const outcome = await runTile(key, asset);
+      if ("media" in outcome) {
+        onAddMedia([outcome.media]);
+        if (Platform.OS !== "web") {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        }
+        closeIfSettled();
+      } else if (outcome.failure !== null) {
+        warnHaptic();
+        setTileNotice(outcome.failure);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }, [closeIfSettled, onAddMedia, pickFromLibrary, releaseTileSource, removeTile, runTile]);
+
+  /** × on a tile: stop it while it works (G-01…G-03), drop it once failed. */
+  const cancelTile = useCallback((tile: TripDayTile): void => {
+    const visual = tileVisual(tile);
+    if (visual.cancel === "abort") {
+      tileAbortRef.current.get(tile.key)?.abort();
+      return;
+    }
+    if (visual.cancel === "dismiss") {
+      removeTile(tile.key);
+      releaseTileSource(tile.key);
+      if (!tilesRef.current.some((item) => item.state === "failed_retryable" || item.state === "failed_terminal")) {
+        setTileNotice(null);
+      }
+    }
+  }, [releaseTileSource, removeTile]);
+
+  // G-04 — paused tiles pick up by themselves when the device is back online.
+  const resumePausedTiles = useCallback((): void => {
+    if (uploading) return;
+    const paused = tilesRef.current.filter((tile) => tile.state === "paused");
+    if (paused.length === 0) return;
+    void (async () => {
+      for (const tile of paused) {
+        await retryTile(tile.key);
+      }
+    })();
+  }, [retryTile, uploading]);
+  const networkConnected = network?.isConnected ?? null;
+  useEffect(() => {
+    if (networkConnected === true) resumePausedTiles();
+  }, [networkConnected, resumePausedTiles]);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+    const onOnline = (): void => resumePausedTiles();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [resumePausedTiles]);
+
+  // #3040 §11 — iOS hears the grid's state on change and the % at 25/50/75/100.
+  const tileAnnouncementText = tiles.length > 0 ? gridAnnouncement(tiles) : null;
+  useIosAnnouncement(tileAnnouncementText);
 
   // ----- Provider selection (GIPHY / Pexels) → type:"image" --------------
 
@@ -658,52 +843,89 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
               }}
             />
             {tiles.length > 0 ? (
-              <View style={styles.dayTileGrid} accessibilityLiveRegion="polite">
-                {tiles.map((tile, index) => (
-                  <View
-                    key={tile.key}
-                    style={[styles.dayTile, tile.state === "failed" && styles.dayTileFailed]}
-                    accessible
-                    accessibilityLabel={tileLabel(tile, index)}
-                  >
-                    <View style={styles.dayTileScrim}>
-                      {tile.state === "uploading" && tile.percent !== null ? (
-                        <Text style={styles.dayTileLabel}>{`${tile.percent}%`}</Text>
-                      ) : tile.state === "done" ? (
-                        <Icon name="check" size={18} color={textTokens.primary} />
-                      ) : tile.state === "failed" ? (
-                        <>
-                          <Icon name="x" size={18} color={semantic.errorText} />
-                          <Text style={styles.dayTileLabel}>Can&apos;t use</Text>
-                        </>
-                      ) : (
-                        <>
-                          <ActivityIndicator size="small" color={textTokens.primary} />
-                          <Text style={styles.dayTileLabel}>
-                            {tile.state === "checking" ? "Checking" : tile.state === "uploading" ? "Uploading" : "Preparing"}
-                          </Text>
-                        </>
-                      )}
-                    </View>
-                    {tile.state !== "done" && tile.state !== "failed" ? (
-                      <Pressable
-                        onPress={() => tileAbortRef.current.get(tile.key)?.abort()}
-                        hitSlop={10}
-                        style={styles.dayTileCancel}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Cancel ${tile.kind === "video" ? "video" : "photo"} ${index + 1}`}
-                      >
-                        <Icon name="close" size={14} color={textTokens.primary} />
-                      </Pressable>
-                    ) : null}
-                    {tile.kind === "video" && formatTileClock(tile.durationMs) !== null && tile.state === "done" ? (
-                      <View style={styles.dayTileDuration}>
-                        <Text style={styles.dayTileDurationText}>{`▶ ${formatTileClock(tile.durationMs)}`}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ))}
+              <View style={styles.dayTileGrid}>
+                {/* #3040 §11 — one polite region: each tile's state on change,
+                    its upload % only at 25/50/75/100. */}
+                <Text style={styles.srOnly} accessibilityLiveRegion="polite" aria-live="polite">
+                  {tileAnnouncementText}
+                </Text>
+                {tiles.map((tile, index) => {
+                  const visual = tileVisual(tile);
+                  const tap = visual.tap === "retry"
+                    ? () => { void retryTile(tile.key); }
+                    : visual.tap === "play"
+                      ? () => setPlayingTileKey((current) => (current === tile.key ? null : tile.key))
+                      : undefined;
+                  return (
+                    <Pressable
+                      key={tile.key}
+                      onPress={tap}
+                      disabled={tap === undefined || (visual.tap === "retry" && uploading)}
+                      style={[
+                        styles.dayTile,
+                        Platform.OS === "android" && styles.dayTileAndroid,
+                        visual.failedRing && styles.dayTileFailed,
+                      ]}
+                      accessibilityRole={tap !== undefined ? "button" : "image"}
+                      accessibilityLabel={tileA11yLabel(tile, index)}
+                      testID={`trip-day-tile-${visual.stateId}`}
+                    >
+                      {tile.state === "ready" && tile.kind === "video" && tile.mediaUrl !== null ? (
+                        <EventCoverMedia
+                          mediaUrl={tile.mediaUrl}
+                          mediaType="video"
+                          autoplay={false}
+                          playbackActive={playingTileKey === tile.key}
+                          muted
+                          loop={false}
+                          radius={radius.md}
+                          height="100%"
+                          width="100%"
+                        />
+                      ) : null}
+                      {visual.scrim ? (
+                        <View style={styles.dayTileScrim} pointerEvents="none">
+                          {visual.indicator === "ring" ? (
+                            <TileRing percent={tile.percent} />
+                          ) : visual.indicator === "spinner" ? (
+                            <ActivityIndicator size="small" color={textTokens.primary} />
+                          ) : visual.indicator === "wifi_off" ? (
+                            <Icon name="wifiOff" size={18} color={semantic.warning} />
+                          ) : visual.indicator === "error" ? (
+                            <Icon name="x" size={18} color={semantic.errorText} />
+                          ) : null}
+                          {visual.label !== null ? (
+                            <Text style={styles.dayTileLabel}>{visual.label}</Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+                      {visual.durationChip !== null ? (
+                        <View style={styles.dayTileDuration} pointerEvents="none">
+                          <Text style={styles.dayTileDurationText}>{visual.durationChip}</Text>
+                        </View>
+                      ) : null}
+                      {visual.cancel !== null ? (
+                        <Pressable
+                          onPress={() => cancelTile(tile)}
+                          hitSlop={10}
+                          style={styles.dayTileCancel}
+                          accessibilityRole="button"
+                          accessibilityLabel={visual.cancel === "abort"
+                            ? `Cancel ${tile.kind === "video" ? "video" : "photo"} ${index + 1}`
+                            : `Remove ${tile.kind === "video" ? "video" : "photo"} ${index + 1}`}
+                        >
+                          <Icon name="close" size={14} color={textTokens.primary} />
+                        </Pressable>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
               </View>
+            ) : null}
+            {tileNotice !== null ? (
+              <Text style={styles.tileNotice} accessibilityRole="alert">
+                {tileNotice}
+              </Text>
             ) : null}
             {videoProgress !== null ? (
               <Text
@@ -1132,9 +1354,28 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: glass.tint.profileElevated,
   },
+  // ANDROID_GLASS_USES_OPAQUE_FALLBACK — opaque tile fill, no elevation.
+  dayTileAndroid: {
+    backgroundColor: "#16181b",
+    elevation: 0,
+  },
   dayTileFailed: {
     borderWidth: 2,
     borderColor: "rgba(239,68,68,0.65)",
+  },
+  tileNotice: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: semantic.errorText,
+    textAlign: "center",
+  },
+  // #3040 §11 — a polite live region that is read, never seen.
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    overflow: "hidden",
+    opacity: 0,
   },
   dayTileScrim: {
     ...StyleSheet.absoluteFillObject,
