@@ -1,7 +1,7 @@
 import { assertEquals, assertMatch, assertNotMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { restoreDraftAudience } from "../lib/emailDraftAudience.js";
 
-// MINGLA-INVARIANT: I-3720-EMAIL-DRAFT-HOST-DEFAULT | issue #3720 | A restored Admin email draft never pre-selects an audience that reaches Explorer users; it falls back to Hosts and keeps the rest of the draft.
+// MINGLA-INVARIANT: I-3720-EMAIL-DRAFT-HOST-DEFAULT | issue #3720 | Restoring saved Admin email work never pre-selects an audience that reaches Explorer users; it falls back to Hosts and keeps the saved content.
 
 const DEFAULTS = {
   userType: "host",
