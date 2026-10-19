@@ -200,6 +200,35 @@ export function creativeSelectionError(
   return null;
 }
 
+/**
+ * #3697 (C-13) — true only when an existing plan version, matched by id AND
+ * hash, was frozen with this creative. Paths that act on an already-frozen
+ * plan use it to keep an archived creative working; anything else (a new
+ * selection, a draft, a malformed or unknown version) gets false.
+ */
+export async function frozenPlanCarriesCreative(
+  db: Db,
+  input: { planVersionId: unknown; planHash: unknown; creativeId: string },
+): Promise<boolean> {
+  const versionId = typeof input.planVersionId === "string"
+    ? input.planVersionId.trim()
+    : "";
+  const hash = typeof input.planHash === "string"
+    ? input.planHash.trim().toLowerCase()
+    : "";
+  if (!UUID_RE.test(versionId) || !/^[0-9a-f]{64}$/.test(hash)) return false;
+  const { data, error } = await db.from("ad_plan_versions")
+    .select("id,plan_hash,canonical_plan")
+    .eq("id", versionId)
+    .eq("plan_hash", hash)
+    .maybeSingle();
+  if (error || !data) return false;
+  const canonical = data.canonical_plan as Row | null;
+  return data.plan_hash === hash &&
+    typeof canonical?.creative_library_id === "string" &&
+    canonical.creative_library_id === input.creativeId;
+}
+
 /** The validation shape the Builder renders, computed from stored probe facts. */
 export function storedCreativeValidation(
   row: CreativeFitRow & { kind?: unknown },
