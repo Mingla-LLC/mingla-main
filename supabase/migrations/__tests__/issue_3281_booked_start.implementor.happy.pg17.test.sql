@@ -58,13 +58,12 @@ BEGIN
     id, brand_id, created_by, title, description, slug, event_type, status,
     visibility, timezone, currency, location_mode, pricing_mode,
     experience_intents, experience_intent, whole_price_cents,
-    is_recurring, recurrence_rules, master_start_at, master_end_at
+    is_recurring, recurrence_rules
   ) VALUES (
     v_event, v_brand, v_user, 'Open daily tasting', 'Hours.',
     'i3281b-happy-' || v_event, 'experience', 'live', 'public', 'Africa/Lagos', 'NGN',
     'per_stop', 'whole', ARRAY['group-fun'], 'group-fun', 500000,
-    true, '{"preset":"daily","termination":{"kind":"never"}}'::jsonb,
-    v_start, v_end
+    true, '{"preset":"daily","termination":{"kind":"never"}}'::jsonb
   );
 
   INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)

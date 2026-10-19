@@ -10,7 +10,7 @@
 -- Edge auto-deploys after merge; clients send bookedStartAt behind the same
 -- PR with the flag still off.
 -- Invariants live on the structural/happy SQL tests (ordinary migrations are
--- not allowed as MINGLA-INVARIANT owners).
+-- not allowed as invariant-declaration owners).
 
 BEGIN;
 
@@ -92,7 +92,12 @@ BEGIN
     AND v_event.recurrence_rules->'termination'->>'kind' = 'never'
   );
 
-  v_required := v_flag_on AND v_open_daily AND p_event_date_id IS NOT NULL;
+  -- Flag-on open-daily requires a start even when the entitlement day set is
+  -- empty. Picker requests that omit bookedStartAt skip day-set promotion so
+  -- pre-deploy reservation identity is preserved; validation must still see
+  -- the requirement without needing that day id here. Window checks below
+  -- still need a named date when a start IS supplied.
+  v_required := v_flag_on AND v_open_daily;
 
   IF p_booked_start_at IS NULL THEN
     IF v_required THEN
@@ -395,10 +400,11 @@ BEGIN
   END IF;
 
   -- issue #3281 Round 1 — optional booked start (open-daily experiences).
-  -- Required only when experience_require_booked_start is on AND the experience
-  -- is open-daily AND a date is named; otherwise optional. Meaning lives here.
-  -- A scalar booked start names ONE occurrence: multi-date + start is refused
-  -- so finalize/scan cannot apply the first day's instant to every pass.
+  -- Required when experience_require_booked_start is on AND the experience is
+  -- open-daily (date optional for the required check so no-start identity can
+  -- keep an empty day set). Window validation still needs exactly one day when
+  -- a start is supplied. Multi-date + start is refused so finalize/scan cannot
+  -- apply the first day's instant to every pass.
   IF p_booked_start_at IS NOT NULL AND v_day_count <> 1 THEN
     RAISE EXCEPTION 'booked_start_invalid';
   END IF;

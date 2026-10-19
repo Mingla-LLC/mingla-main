@@ -265,6 +265,16 @@ function CheckoutExperienceConfirmScreenInner({
         const confirmResult = verdict.result;
         const order = verdict.order;
         const taxCents = Number(order.taxAmountCents ?? 0);
+        // issue #3281 — after a successful return the resume payload is cleared;
+        // confirm/status carry orders.booked_start_at so a reload still labels.
+        const orderBooked =
+          typeof order.bookedStartAt === "string" &&
+          order.bookedStartAt.length > 0
+            ? order.bookedStartAt
+            : null;
+        if (orderBooked !== null) {
+          setBookedStartAt(orderBooked);
+        }
         recordResult({
           orderId: order.orderId,
           ticketIds: order.tickets.map((t) => t.ticketId),
@@ -329,6 +339,14 @@ function CheckoutExperienceConfirmScreenInner({
       : null,
     onOrderReady: (order) => {
       const taxCents = Number(order.taxAmountCents ?? 0);
+      const orderBooked =
+        typeof order.bookedStartAt === "string" &&
+        order.bookedStartAt.length > 0
+          ? order.bookedStartAt
+          : null;
+      if (orderBooked !== null) {
+        setBookedStartAt(orderBooked);
+      }
       recordResult({
         orderId: order.orderId,
         ticketIds: order.tickets.map((t) => t.ticketId),

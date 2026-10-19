@@ -234,10 +234,14 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   // before payment_intent.succeeded finalized the row).
   const { data: orderRow } = await supabase
     .from("orders")
-    .select("tax_amount_cents")
+    .select("tax_amount_cents, booked_start_at")
     .eq("id", orderId)
     .maybeSingle();
   const taxAmountCents = Number(orderRow?.tax_amount_cents ?? 0);
+  const bookedRaw = (orderRow as { booked_start_at?: string | null } | null)
+    ?.booked_start_at;
+  const bookedStartAt =
+    typeof bookedRaw === "string" && bookedRaw.length > 0 ? bookedRaw : null;
 
   return jsonResponse({
     checkoutSessionId,
@@ -249,6 +253,8 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
       taxAmountCents,
+      // issue #3281 — confirm reload has no resume payload; surface the saved start.
+      bookedStartAt,
       // issue #2216 — ONE owner for "ticket → ticket + rendered QR" across
       // create/confirm/status (`_shared/ticketQrImage.ts`). A single ticket
       // that fails to render degrades to the carousel placeholder AND emits a

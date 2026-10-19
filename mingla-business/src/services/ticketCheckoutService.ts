@@ -154,6 +154,12 @@ export interface TicketCheckoutFreeCompleted {
    * stripeWebhookRouter.handleCheckoutSessionCompleted from
    * session.total_details.amount_tax. */
   taxAmountCents?: number;
+  /**
+   * issue #3281 — guest-chosen experience start from `orders.booked_start_at`.
+   * Confirm/status return this so a provider-return reload can label the
+   * booking after the resume payload is cleared.
+   */
+  bookedStartAt?: string | null;
   tickets: OrderResult["tickets"];
   notificationStatus: OrderResult["notificationStatus"];
 }

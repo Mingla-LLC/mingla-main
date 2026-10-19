@@ -170,6 +170,8 @@ async function fetchOrderPayload(
     totalCents: number;
     currency: string;
     taxAmountCents: number;
+    /** issue #3281 — guest-chosen experience start; null when unset. */
+    bookedStartAt: string | null;
     tickets: Array<{
       ticketId: string;
       ticketTypeId: string;
@@ -203,10 +205,14 @@ async function fetchOrderPayload(
 
   const { data: orderRow } = await supabase
     .from("orders")
-    .select("tax_amount_cents")
+    .select("tax_amount_cents, booked_start_at")
     .eq("id", session.order_id)
     .maybeSingle();
   const taxAmountCents = Number(orderRow?.tax_amount_cents ?? 0);
+  const bookedRaw = (orderRow as { booked_start_at?: string | null } | null)
+    ?.booked_start_at;
+  const bookedStartAt =
+    typeof bookedRaw === "string" && bookedRaw.length > 0 ? bookedRaw : null;
 
   return {
     orderId: session.order_id,
@@ -216,6 +222,7 @@ async function fetchOrderPayload(
     totalCents: Number(session.total_cents ?? 0),
     currency: String(session.currency ?? "USD").trim(),
     taxAmountCents,
+    bookedStartAt,
     // issue #2216 — ONE owner for "ticket → ticket + rendered QR" across
     // create/confirm/status (`_shared/ticketQrImage.ts`). A single ticket that
     // fails to render degrades to the carousel placeholder AND emits a

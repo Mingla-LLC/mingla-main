@@ -18,6 +18,9 @@ Deno.test("#3281 booked_start migration carries columns, flag, validate, and re-
   assert(text.includes("booked_start_required"));
   assert(text.includes("booked_start_off_grid"));
   assert(text.includes("booked_start_in_past"));
+  // Flag-on requirement must not need a day id (empty day set / no-start identity).
+  assert(text.includes("v_required := v_flag_on AND v_open_daily;"));
+  assert(!text.includes("v_required := v_flag_on AND v_open_daily AND p_event_date_id IS NOT NULL"));
 
   assert(text.includes("p_booked_start_at"));
   assert(text.includes("PERFORM public.issue_3281_validate_booked_start("));

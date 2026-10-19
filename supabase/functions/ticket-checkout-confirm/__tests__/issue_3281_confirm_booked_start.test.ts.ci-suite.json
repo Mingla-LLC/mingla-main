@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-confirm/__tests__/issue_3281_confirm_booked_start.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3281-07-confirm-booked-start",
+  "profile": "deno-1.46-stripe"
+}
