@@ -208,6 +208,12 @@ export interface CartState {
    * today, which is every single-date event, trip, RSVP and experience.
    */
   eventDateIds: readonly string[];
+  /**
+   * issue #3281 Round 1 — open-daily booked start (ISO). null when the buyer
+   * did not pick a time within the window. Forwarded as `bookedStartAt` on
+   * ticket-checkout-create only when non-null.
+   */
+  bookedStartAt: string | null;
 }
 
 // ---- Reducer --------------------------------------------------------
@@ -240,6 +246,7 @@ type CartAction =
   | { type: "SET_EVENT_DATE_ID"; eventDateId: string | null }
   // issue #2160 — set/clear the chosen multi-date day SET.
   | { type: "SET_EVENT_DATE_IDS"; eventDateIds: readonly string[] }
+  | { type: "SET_BOOKED_START_AT"; bookedStartAt: string | null }
   | { type: "RESET" };
 
 const EMPTY_BUYER: BuyerDetails = {
@@ -268,6 +275,7 @@ const INITIAL_STATE: CartState = {
   eventDateId: null,
   // issue #2160 — no days chosen by default. An explicit choice is required.
   eventDateIds: [],
+  bookedStartAt: null,
 };
 
 const reducer = (state: CartState, action: CartAction): CartState => {
@@ -374,6 +382,8 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       return { ...state, eventDateId: action.eventDateId };
     case "SET_EVENT_DATE_IDS":
       return { ...state, eventDateIds: action.eventDateIds };
+    case "SET_BOOKED_START_AT":
+      return { ...state, bookedStartAt: action.bookedStartAt };
     case "RESET":
       return INITIAL_STATE;
     default: {
@@ -439,6 +449,8 @@ export interface CartContextValue extends CartState {
    * `?eventDateId=` accepted as a one-element set).
    */
   setEventDateIds: (eventDateIds: readonly string[]) => void;
+  /** issue #3281 — set/clear the open-daily booked start from route params. */
+  setBookedStartAt: (bookedStartAt: string | null) => void;
   reset: () => void;
 }
 
@@ -527,6 +539,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         })),
         eventDateId: state.eventDateId,
         eventDateIds: state.eventDateIds,
+        bookedStartAt: state.bookedStartAt,
         intakeFormData: Object.values(state.intakeFormData),
       }),
     [state],
@@ -549,6 +562,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     [],
   );
 
+  const setBookedStartAt = useCallback((bookedStartAt: string | null): void => {
+    dispatch({ type: "SET_BOOKED_START_AT", bookedStartAt });
+  }, []);
+
   const reset = useCallback((): void => {
     resetCheckoutAttempt();
     intakeUploadSessionRef.current = createCheckoutAttemptId();
@@ -570,6 +587,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       intakeUploadSessionId: intakeUploadSessionRef.current,
       setEventDateId,
       setEventDateIds,
+      setBookedStartAt,
       reset,
     }),
     [
@@ -585,6 +603,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       resetCheckoutAttempt,
       setEventDateId,
       setEventDateIds,
+      setBookedStartAt,
       reset,
     ],
   );

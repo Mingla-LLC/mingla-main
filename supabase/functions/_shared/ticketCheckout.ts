@@ -114,12 +114,22 @@ export function checkoutIdempotencyKey(input: {
    * what identifies the reservation.
    */
   eventDateIds?: readonly string[];
+  /**
+   * issue #3281 — guest-chosen open-daily start. Appended only when present so
+   * a request without a start stays string-identical to today's key (old
+   * clients / slots / flag-off). A different start must never replay an old
+   * session.
+   */
+  bookedStartAt?: string | null;
 }): string {
   const lineKey = input.lines
     .map((line) => `${line.ticketTypeId}:${line.quantity}`)
     .sort()
     .join("|");
   const dayKeys = (input.eventDateIds ?? []).filter((id) => id.length > 0);
+  const bookedStart = typeof input.bookedStartAt === "string"
+    ? input.bookedStartAt.trim()
+    : "";
   return [
     "ticket_checkout",
     input.eventId,
@@ -129,6 +139,7 @@ export function checkoutIdempotencyKey(input: {
     ...(dayKeys.length > 0
       ? [`days:${[...dayKeys].sort().join(",")}`]
       : []),
+    ...(bookedStart.length > 0 ? [`start:${bookedStart}`] : []),
     ...(input.paymentPlanChoice !== undefined && input.paymentPlanChoice !== "auto"
       ? [`choice:${input.paymentPlanChoice}`]
       : []),

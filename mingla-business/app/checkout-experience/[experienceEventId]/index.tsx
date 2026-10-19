@@ -97,6 +97,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
     experienceEventId: string;
     eventDateId?: string;
     quantity?: string;
+    bookedStartAt?: string;
   }>();
   const experienceEventId =
     typeof params.experienceEventId === "string"
@@ -110,12 +111,16 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
     const n = typeof params.quantity === "string" ? Number(params.quantity) : NaN;
     return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
   })();
+  const seedBookedStartAt =
+    typeof params.bookedStartAt === "string" && params.bookedStartAt.length > 0
+      ? params.bookedStartAt
+      : null;
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
   const brand = query.data?.brand ?? null;
 
-  const { lines, setLineQuantity, setEventDateId } = useCart();
+  const { lines, setLineQuantity, setEventDateId, setBookedStartAt } = useCart();
   const totals = useCartTotals();
 
   // META-ORCH-1187 P2 — fire `web_checkout_started` once the buyer lands on the
@@ -159,6 +164,10 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   React.useEffect(() => {
     setEventDateId(seedEventDateId);
   }, [seedEventDateId, setEventDateId]);
+
+  React.useEffect(() => {
+    setBookedStartAt(seedBookedStartAt);
+  }, [seedBookedStartAt, setBookedStartAt]);
 
   // ORCH-1138 Leg 3 — seed the party-size quantity (open-daily) onto the one line
   // once the experience + its ticket resolve. Runs once per (event, qty) seed.

@@ -76,3 +76,50 @@ export async function extractFunctionError(
 
   return fallback
 }
+
+/** Read bounded `error` + `detail` from a FunctionsHttpError without double-consuming the body. */
+export async function extractFunctionErrorFields(
+  error: unknown,
+  fallback: string,
+): Promise<{ token: string; detail: string | null }> {
+  try {
+    const err = error as Record<string, unknown> | null | undefined
+    if (!err) return { token: fallback, detail: null }
+
+    const ctx = err.context
+    if (ctx && typeof (ctx as Response).text === 'function') {
+      try {
+        const raw = await (ctx as Response).text()
+        try {
+          const body = JSON.parse(raw) as {
+            error?: unknown
+            detail?: unknown
+            message?: unknown
+          }
+          const detail =
+            typeof body.detail === 'string' && body.detail.length > 0
+              ? body.detail
+              : null
+          if (typeof body.error === 'string' && body.error.length > 0) {
+            return { token: body.error, detail }
+          }
+          if (typeof body.message === 'string' && body.message.length > 0) {
+            return { token: body.message, detail }
+          }
+          if (detail !== null) return { token: fallback, detail }
+        } catch {
+          if (raw && raw.length > 0 && raw.length < 200 && !raw.startsWith('<!')) {
+            return { token: raw, detail: null }
+          }
+        }
+      } catch {
+        // fall through
+      }
+    }
+
+    const token = await extractFunctionError(error, fallback)
+    return { token, detail: null }
+  } catch {
+    return { token: fallback, detail: null }
+  }
+}

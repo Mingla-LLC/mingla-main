@@ -35,6 +35,8 @@ export interface NativeCheckoutInput {
   eventDateId?: string;
   /** issue #3281 — the chosen day SET (web stub never invokes; type parity). */
   eventDateIds?: readonly string[];
+  /** issue #3281 — open-daily booked start (web stub never invokes; type parity). */
+  bookedStartAt?: string;
   /**
    * ORCH-1246 (Apple 4.9) — on-screen event/trip/experience title threaded into
    * the native Apple Pay cartItem so the wallet sheet shows the PRODUCT, not the

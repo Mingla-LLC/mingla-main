@@ -1,123 +1,162 @@
 #!/usr/bin/env node
 /**
- * ORCH-1138 Leg 3 REWORK (§9) — checkout BYTE-IDENTICAL gate (I-1).
+ * ORCH-1138 Leg 3 REWORK (§9) — checkout BYTE-IDENTICAL gate (I-1), amended
+ * by issue #3281 Round 1 PR 1b.
  *
- * The consumer experience Reserve (slot OR open-daily party-size) must reach the
- * SAME ticket-checkout-create request as the pre-rework path: the request adds
- * ONLY `eventDateId` (when a slot is chosen) + the line `quantity` (= party
- * size). NO new line item, NO address, NO taxCalculationId, NO paymentPlanChoice,
- * NO parallel money function. Party-size rides as cart `quantity` (initialQuantity
- * seed → setLineQuantity), never as a second line.
+ * The Explorer experience Reserve must reach ticket-checkout-create with ONLY:
+ *   - `eventDateId` (when a slot/day is chosen)
+ *   - line `quantity` (= party size)
+ *   - `bookedStartAt` (when open-daily chose a start; issue #3281)
  *
- * This gate asserts the consumer experience screen's runNativeCheckout call:
- *   (a) threads eventDateId conditionally (selectedEventDateId !== null),
- *   (b) does NOT introduce address / taxCalculationId / paymentPlanChoice keys,
- *   (c) does NOT call any experience-specific money edge fn (only the shared
- *       runNativeCheckout → ticket-checkout-create).
+ * NO address, NO taxCalculationId, NO paymentPlanChoice, NO parallel money fn
+ * on the Explorer experience detail screen.
  *
- * FAILS-ON-REVERT: add an address/tax/plan field or a second money fn → FAIL.
+ * Host / shared native checkout carriers are also required to thread
+ * `bookedStartAt` (type + body), but they intentionally serve trips/events too
+ * so tax/plan tokens there are NOT forbidden by this gate.
+ *
+ * FAILS-ON-REVERT: drop bookedStartAt threading, or add address/tax/plan on the
+ * Explorer experience screen → FAIL.
  */
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const FILE = "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx";
 
-const FORBIDDEN = [
+const EXPLORER_DETAIL =
+  "app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx";
+
+const CARRIERS = [
+  "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+  "mingla-business/src/payments/nativeCheckoutFlow.ts",
+  "mingla-business/src/services/ticketCheckoutService.ts",
+  "app-mobile/src/payments/nativeCheckoutFlow.ts",
+];
+
+const FORBIDDEN_ON_EXPLORER = [
   /\btaxCalculationId\b/,
   /\bbillingAddress\b/,
   /\bpaymentPlanChoice\b/,
   /\baddress:\s*\{/,
 ];
 
-// Pure verdict (behavior-preserving refactor). Strips comments from `raw`, then
-// asserts the byte-identical-checkout invariant, pushing human-readable strings
-// into `errors` in the same order (a → b → c) as before. Takes a STRING; never
-// touches disk.
-function check(raw, errors) {
-  // Strip line comments + block comments so a "NO taxCalculationId" doc line never
-  // trips the forbidden-field check (we gate on real CODE, not prose).
-  const src = raw
+function stripComments(raw) {
+  return raw
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .split("\n")
     .map((l) => l.replace(/\/\/.*$/, ""))
     .join("\n");
+}
 
-  // (a) eventDateId is threaded conditionally on a chosen slot.
+function checkExplorerDetail(src, errors) {
   if (
     !/selectedEventDateId\s*!==\s*null/.test(src) ||
     !/eventDateId:\s*selectedEventDateId/.test(src)
   ) {
     errors.push(
-      "missing the conditional `eventDateId: selectedEventDateId` thread (slot only).",
+      "Explorer detail: missing conditional `eventDateId: selectedEventDateId`.",
     );
   }
-
-  // (b) the checkout request must NOT carry buyer-tax / address / plan fields.
-  for (const re of FORBIDDEN) {
+  if (!/bookedStartAt/.test(src)) {
+    errors.push(
+      "Explorer detail: missing `bookedStartAt` thread (issue #3281).",
+    );
+  }
+  for (const re of FORBIDDEN_ON_EXPLORER) {
     if (re.test(src)) {
-      errors.push(`forbidden checkout field present: ${re}`);
+      errors.push(`Explorer detail forbidden field: ${re}`);
     }
   }
-
-  // (c) only the shared runNativeCheckout money path (no parallel experience fn).
   if (!/runNativeCheckout\(/.test(src)) {
-    errors.push("the shared runNativeCheckout call is missing.");
+    errors.push("Explorer detail: shared runNativeCheckout call missing.");
   }
   if (/functions\.invoke\(\s*["'`]experience-/.test(src)) {
-    errors.push("a parallel experience-specific money edge fn is invoked (I-1 violation).");
+    errors.push("Explorer detail: parallel experience money edge fn.");
   }
 }
 
-// ─────────────────────────────────────────────────────────────── self-test
+function checkCarrier(src, label, errors) {
+  if (!/bookedStartAt/.test(src)) {
+    errors.push(`${label}: missing bookedStartAt carrier (issue #3281).`);
+  }
+}
+
+function check(rawByFile, errors) {
+  const detail = rawByFile[EXPLORER_DETAIL];
+  if (detail !== undefined) {
+    checkExplorerDetail(stripComments(detail), errors);
+  }
+  for (const file of CARRIERS) {
+    const raw = rawByFile[file];
+    if (raw === undefined) continue;
+    checkCarrier(stripComments(raw), file, errors);
+  }
+}
+
 if (process.argv.includes("--self-test")) {
   const self = [];
-  const run = (raw) => {
+  const run = (map) => {
     const e = [];
-    check(raw, e);
+    check(map, e);
     return e;
   };
 
-  // GOOD: conditional eventDateId + line quantity, one shared money path, no
-  // address/tax/plan field → silent. eventDateId is threaded as an object
-  // property (colon form) exactly as the invariant requires.
-  const good =
+  const goodDetail =
     "if (selectedEventDateId !== null) {\n" +
-    "  payload = { eventDateId: selectedEventDateId };\n" +
+    "  payload = { eventDateId: selectedEventDateId, bookedStartAt: start };\n" +
     "}\n" +
     "runNativeCheckout({ lines });";
-  if (run(good).length) self.push("GOOD (byte-identical Reserve checkout) wrongly flagged");
+  const goodFlow = "body.bookedStartAt = input.bookedStartAt;";
+  const good = {
+    [EXPLORER_DETAIL]: goodDetail,
+    "mingla-business/src/payments/nativeCheckoutFlow.native.ts": goodFlow,
+    "mingla-business/src/payments/nativeCheckoutFlow.ts": goodFlow,
+    "mingla-business/src/services/ticketCheckoutService.ts": goodFlow,
+    "app-mobile/src/payments/nativeCheckoutFlow.ts": goodFlow,
+  };
+  if (run(good).length) {
+    self.push("GOOD (bookedStartAt + eventDateId) wrongly flagged");
+  }
 
-  // BAD1 (revert-style): a buyer-tax field is added to the checkout request → fires.
-  const bad1 = good + '\nconst taxCalculationId = "txcal_123";';
-  if (run(bad1).length === 0) self.push("BAD1 (taxCalculationId field added to checkout) not flagged");
+  const badTax = {
+    ...good,
+    [EXPLORER_DETAIL]: goodDetail + '\nconst taxCalculationId = "txcal_123";',
+  };
+  if (run(badTax).length === 0) {
+    self.push("BAD (taxCalculationId on Explorer detail) not flagged");
+  }
 
-  // BAD2 (regression, different angle): a parallel experience-specific money
-  // edge fn is invoked (instead of / alongside the shared path) → fires.
-  const bad2 = good + '\nawait supabase.functions.invoke("experience-checkout-create", { body });';
-  if (run(bad2).length === 0) self.push("BAD2 (parallel experience money edge fn invoked) not flagged");
+  const badMissing = {
+    ...good,
+    [EXPLORER_DETAIL]:
+      "if (selectedEventDateId !== null) {\n  payload = { eventDateId: selectedEventDateId };\n}\nrunNativeCheckout({ lines });",
+  };
+  if (run(badMissing).length === 0) {
+    self.push("BAD (missing bookedStartAt on Explorer detail) not flagged");
+  }
 
   if (self.length) {
     console.error("ORCH-1138-CHECKOUT-BYTE-IDENTICAL self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1138-CHECKOUT-BYTE-IDENTICAL self-test PASS (3/3 cases).");
+  console.log(
+    "ORCH-1138-CHECKOUT-BYTE-IDENTICAL self-test PASS (3/3 cases).",
+  );
   process.exit(0);
 }
 
-// ─────────────────────────────────────────────────────────────── main path
-let raw;
-try {
-  raw = readFileSync(resolve(ROOT, FILE), "utf8");
-} catch {
-  console.error(`[ORCH-1138 checkout-byte-identical] FAIL — cannot read ${FILE}`);
-  process.exit(1);
-}
-
+const rawByFile = {};
 const errors = [];
-check(raw, errors);
+for (const file of [EXPLORER_DETAIL, ...CARRIERS]) {
+  try {
+    rawByFile[file] = readFileSync(resolve(ROOT, file), "utf8");
+  } catch {
+    errors.push(`cannot read ${file}`);
+  }
+}
+if (errors.length === 0) check(rawByFile, errors);
 
 if (errors.length > 0) {
   console.error("[ORCH-1138 checkout-byte-identical] FAIL —");
@@ -126,5 +165,5 @@ if (errors.length > 0) {
 }
 
 console.log(
-  "[ORCH-1138 checkout-byte-identical] OK — Reserve adds only eventDateId + line quantity; no address/tax/plan field; one shared money path (I-1).",
+  "[ORCH-1138 checkout-byte-identical] OK — Reserve adds eventDateId + quantity + bookedStartAt; no parallel experience money path (I-1 / #3281).",
 );

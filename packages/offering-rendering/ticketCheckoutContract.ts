@@ -32,6 +32,7 @@ export interface CheckoutClientAttemptInput {
   lines: CheckoutV2Line[];
   eventDateId: string | null;
   eventDateIds: readonly string[];
+  bookedStartAt?: string | null;
   intakeFormData: unknown;
 }
 
@@ -185,6 +186,10 @@ export function checkoutClientAttemptFingerprint(
     lines: parsedLines.lines,
     eventDateId: input.eventDateId,
     eventDateIds: Array.from(new Set(input.eventDateIds)).sort(),
+    ...(input.bookedStartAt !== undefined && input.bookedStartAt !== null &&
+        input.bookedStartAt.length > 0
+      ? { bookedStartAt: input.bookedStartAt }
+      : {}),
     intakeFormData,
   });
 }

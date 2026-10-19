@@ -4,6 +4,7 @@ import { supabase } from "./supabase";
 // drive the REAL edge handler and the REAL mapper in one process. Re-exported
 // below so every existing import site is untouched.
 import {
+  checkoutRefusalRaiseMessage,
   codeOf,
   httpStatusOf,
   readEdgeRefusal,
@@ -95,6 +96,11 @@ export interface TicketCheckoutCreateInput {
    * event, trip, RSVP and experience.
    */
   eventDateIds?: readonly string[];
+  /**
+   * issue #3281 Round 1 — open-daily booked start (ISO). OMITTED when absent so
+   * the request stays byte-identical for slots / no-time paths.
+   */
+  bookedStartAt?: string;
   /** #3859 — opt-in only; omitted callers remain on the legacy v1 rail. */
   checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
   /** One UUID retained by the cart across one logical create/retry. */
@@ -148,6 +154,12 @@ export interface TicketCheckoutFreeCompleted {
    * stripeWebhookRouter.handleCheckoutSessionCompleted from
    * session.total_details.amount_tax. */
   taxAmountCents?: number;
+  /**
+   * issue #3281 — guest-chosen experience start from `orders.booked_start_at`.
+   * Confirm/status return this so a provider-return reload can label the
+   * booking after the resume payload is cleared.
+   */
+  bookedStartAt?: string | null;
   tickets: OrderResult["tickets"];
   notificationStatus: OrderResult["notificationStatus"];
 }
@@ -703,6 +715,11 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   }
   if (code === "checkout_in_progress") return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
   if (code === "checkout_unavailable") return PAID_CHECKOUT_UNAVAILABLE_MESSAGE;
+  // issue #3281 — booked-start refusals arrive as bare error codes on paid too.
+  {
+    const bookedStartCopy = checkoutRefusalRaiseMessage(code);
+    if (bookedStartCopy !== undefined) return bookedStartCopy;
+  }
   // #2198 — the return leg's verified outcomes. Ahead of the bare-409 fallback
   // because these carry a real, specific reason and must never be softened into
   // "wait about a minute and try again".
@@ -821,6 +838,9 @@ export const createTicketCheckout = async (
     // the RPC, which owns the pricing mode and the multiplier.
     ...(input.eventDateIds !== undefined && input.eventDateIds.length > 0
       ? { eventDateIds: [...input.eventDateIds] }
+      : {}),
+    ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
+      ? { bookedStartAt: input.bookedStartAt }
       : {}),
     // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
     // the request stays byte-identical for non-ad traffic. The edge fn persists

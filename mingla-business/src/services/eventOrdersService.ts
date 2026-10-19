@@ -54,6 +54,7 @@ export interface OrderRow {
   payment_method: string;
   payment_status: string;
   confirmed_at: string | null;
+  booked_start_at?: string | null;
   created_at: string;
   // ORCH-0787 cancellation columns
   cancelled_at: string | null;
@@ -182,6 +183,7 @@ export const fetchEventOrders = async (
       payment_method,
       payment_status,
       confirmed_at,
+      booked_start_at,
       created_at,
       cancelled_at,
       cancelled_by,
@@ -309,6 +311,11 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
         status: ticket.status ?? "valid",
         usedAt: ticket.used_at,
       })),
+      ...(order.booked_start_at !== null &&
+      order.booked_start_at !== undefined &&
+      order.booked_start_at.length > 0
+        ? { bookedStartAt: order.booked_start_at }
+        : {}),
       lines: order.order_line_items.map((line) => {
         const refundedQty = refundedQtyByLine[line.id] ?? 0;
         const refundedAmountCents = refundedAmountByLine[line.id] ?? 0;
