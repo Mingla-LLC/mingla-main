@@ -7,7 +7,8 @@
 // through safeReload: pause -> flush -> lockdown -> settle -> reload, failing
 // open if the restart does not happen.
 //
-// MINGLA-INVARIANT: I-2107-SAFE-RELOAD | issue #2107 | Every in-app restart goes through safeReload: app network work is paused and new requests are held before reloadAsync, in-flight writes settle (capped), and a failed restart restores the app.
+// Invariant I-2107-SAFE-RELOAD is declared once, in the Explorer copy of this
+// suite (app-mobile/src/services/__tests__/issue_2107_safe_reload.test.ts).
 //
 // The structural half (no bare reloadAsync anywhere, both copies identical) is
 // .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs.
