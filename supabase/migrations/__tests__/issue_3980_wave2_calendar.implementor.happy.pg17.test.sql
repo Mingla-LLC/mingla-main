@@ -430,7 +430,8 @@ begin
   perform pg_temp.t3980_check('W2-EXPECTED', 'runway_report answers for the next 90 days',
     pg_temp.t3980_get(v, 'ok') || '/' || (pg_temp.t3980_get(v, 'result', 'to')::date - pg_temp.t3980_get(v, 'result', 'from')::date)::text, 'true/90');
   v := pg_temp.t3980_work('A', 'plan_work', format('{"event_id":"%s"}', pg_temp.t3980_id('e_draft')));
-  perform pg_temp.t3980_check('W2-EXPECTED', 'plan_work is still closed until the launch kit arrives', pg_temp.t3980_get(v, 'error', 'token'), 'not_ready');
+  -- [TEST-MOD-APPROVED #3980] Wave 3 opens plan_work; it now answers instead of saying not ready.
+  perform pg_temp.t3980_check('W2-EXPECTED', 'plan_work answers now that the launch kit is here', pg_temp.t3980_get(v, 'ok'), 'true');
 end;
 $expected$;
 
