@@ -12,6 +12,14 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
+// Node's own digest, the reference the JS implementation must equal.
+const sha256Hex = (bytes: Uint8Array): string => {
+  const hash = createHash("sha256");
+  hash.write(bytes);
+  hash.end();
+  return (hash.read() as Buffer).toString("hex");
+};
+
 const FIXTURE_BYTES = 16_788_202;
 const fixture = (() => {
   const bytes = new Uint8Array(FIXTURE_BYTES);
@@ -62,7 +70,7 @@ describe("#3040 T-A7 — prepare hashes correctly and yields", () => {
       operationId: "op-1",
       ownedTemporary: true,
     });
-    expect(prepared.sha256).toBe(createHash("sha256").update(fixture).digest("hex"));
+    expect(prepared.sha256).toBe(sha256Hex(fixture));
     const zeroDelayYields = (timeoutSpy.mock.calls as unknown[][]).filter((call) => call[1] === 0).length;
     expect(zeroDelayYields).toBeGreaterThanOrEqual(16);
     // B-C7(3) — the compressor's own file is renamed, never copied.
@@ -90,7 +98,7 @@ describe("#3040 T-A7 — prepare hashes correctly and yields", () => {
       one.update(part);
       const many = new Sha256();
       for (let i = 0; i < size; i += 7) many.update(part.subarray(i, Math.min(size, i + 7)));
-      const expected = createHash("sha256").update(part).digest("hex");
+      const expected = sha256Hex(part);
       expect(one.digest()).toBe(expected);
       expect(many.digest()).toBe(expected);
     }

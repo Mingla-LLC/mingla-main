@@ -61,3 +61,16 @@ export type CoverTarget =
       brandId: string;
       ownerKey: string;
     };
+
+/**
+ * #3040 B-C14 — the ONE way Host Ads and Ari build their ad-video target, so
+ * both surfaces ride the `ad_creative` lane with a stable owner key.
+ */
+export const adCreativeCoverTarget = (
+  brandId: string,
+  ownerKey: string,
+): Extract<CoverTarget, { kind: "ad_creative" }> => ({
+  kind: "ad_creative",
+  brandId,
+  ownerKey,
+});

@@ -26,7 +26,7 @@ describe("#3697 Ari creative-before-freeze boundary", () => {
       tools.indexOf('const approveAdPlan = writeTool('),
       tools.indexOf('const pauseAdCampaign = writeTool('),
     );
-    expect(service).toContain('kind: "ad_creative"');
+    expect(service).toContain("adCreativeCoverTarget(args.brand_id, adOwnerKey)");
     expect(service).toContain("creative_library_id: creativeId");
     expect(service).not.toContain('"admin-ad-creative-upload"');
     expect(service).not.toContain('"admin-ad-creative-prepare"');

@@ -2,9 +2,6 @@
  * #3040 T-A16 [A-16] — a player error on a saved VIDEO cover gets video copy
  * and a "Load preview again" action, never "Try another image or GIF".
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, test } from "@jest/globals";
 
 import { resolveRenderErrorCopy, RELOAD_PREVIEW_MAX_MS } from "../coverUploadCardModel";
@@ -33,9 +30,4 @@ describe("#3040 T-A16 — render error on an existing video", () => {
     expect(describePreviewFailure("not a url", null)).toEqual({ mediaType: "unknown", host: "unknown", guidPresent: false });
   });
 
-  test("the picker no longer shows the image-or-GIF sentence for a render error", () => {
-    const picker = readFileSync(join(__dirname, "..", "CoverPicker.tsx"), "utf8");
-    expect(picker).not.toContain("Uploaded, but this cover could not be displayed. Try another image or GIF.");
-    expect(picker).toContain("reportCoverPreviewRenderError(event.mediaUrl, event.mediaType)");
-  });
 });

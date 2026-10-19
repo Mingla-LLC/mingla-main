@@ -43,7 +43,7 @@ import { isToolProposalEditable, ToolEditForm } from "./ToolEditForm";
 import { GlassChrome } from "../ui/GlassChrome";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
-import type { CoverTarget } from "../ui/coverTarget";
+import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
 import { randomId } from "../../utils/randomId";
 import { ariAdOwnerKey, isValidAdCreativeOwnerKey } from "../../services/eventCoverVideoEdgeContract";
@@ -1039,11 +1039,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         : null;
   const adVideoTarget: CoverTarget | null =
     isAdPlanCreativeProposal && typeof args.brand_id === "string" && adOwnerKey !== null
-      ? {
-          kind: "ad_creative",
-          brandId: args.brand_id,
-          ownerKey: adOwnerKey,
-        }
+      ? adCreativeCoverTarget(args.brand_id, adOwnerKey)
       : null;
 
   // ORCH-1103 — what happens when the user taps "Add cover".

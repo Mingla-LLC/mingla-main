@@ -25,6 +25,7 @@ import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
 import { CoverPickerSheet } from "../../../../src/components/ui/CoverPickerSheet";
 import type { CoverPatch } from "../../../../src/components/ui/CoverPicker";
+import { adCreativeCoverTarget } from "../../../../src/components/ui/coverTarget";
 import {
   accent,
   canvas,
@@ -2366,13 +2367,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
       <CoverPickerSheet
         visible={adVideoPickerVisible}
         onClose={() => setAdVideoPickerVisible(false)}
-        target={{
-          kind: "ad_creative",
-          brandId,
-          // #3040 E-1d — `host-ad:<draftId>`: stable for this draft, so a
-          // reopened sheet re-attaches to the same in-flight ad video.
-          ownerKey: hostAdOwnerKey(draftIdRef.current ?? ""),
-        }}
+        // #3040 E-1d — `host-ad:<draftId>`: stable for this draft, so a
+        // reopened sheet re-attaches to the same in-flight ad video.
+        target={adCreativeCoverTarget(brandId, hostAdOwnerKey(draftIdRef.current ?? ""))}
         initial={adVideoPatch}
         onCoverChange={handleAdVideoChange}
         onShowToast={(message) => setNotice(message)}

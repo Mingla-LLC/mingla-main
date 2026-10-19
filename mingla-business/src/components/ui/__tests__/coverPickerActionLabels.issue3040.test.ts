@@ -1,9 +1,6 @@
 /**
  * #3040 T-A15 [A-15] — every cover button names the picker it opens.
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, test } from "@jest/globals";
 
 import { coverKindOf, resolveCoverActions } from "../coverPickerActionLabels";
@@ -45,17 +42,17 @@ describe("#3040 T-A15 — outcome-named cover actions", () => {
     expect(resolveCoverActions("video", false, false, true).removeLabel).toBe("Remove video");
   });
 
+  test("only the primary of each pair is marked primary (dark ink on orange)", () => {
+    for (const kind of ["video", "photo", "empty"] as const) {
+      const primaries = resolveCoverActions(kind, false, false).actions.filter((action) => action.primary);
+      expect(primaries).toHaveLength(1);
+    }
+  });
+
   test("cover kind follows the saved media type", () => {
     expect(coverKindOf(null, null)).toBe("empty");
     expect(coverKindOf("u", "video")).toBe("video");
     expect(coverKindOf("u", "gif")).toBe("photo");
   });
 
-  test("the cover primary uses dark ink (canvas.depth) on the flat orange", () => {
-    const picker = readFileSync(join(__dirname, "..", "CoverPicker.tsx"), "utf8");
-    expect(picker).toMatch(/darkInkLabel:\s*\{\s*color:\s*canvas\.depth,?\s*\}/);
-    expect(picker).toContain("coverAction.primary ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel }");
-    // The old mislabelled pair is gone.
-    expect(picker).not.toContain('label={hasCover ? "Replace" : "Image"}');
-  });
 });

@@ -134,7 +134,6 @@ export const formatEta = (remainingBytes: number, bytesPerSecond: number | null 
 const PROVIDER_TERMINAL_CODES = new Set([
   "provider_failed",
   "processed_duration_over_cap",
-  "processed_duration_invalid",
   "processed_size_over_cap",
   "processed_mime_invalid",
   "derivative_invalid",
