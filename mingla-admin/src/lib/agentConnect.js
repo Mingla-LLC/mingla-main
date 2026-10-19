@@ -394,6 +394,32 @@ export const AGENT_NOT_YET = [
   "Claude in the browser or on your phone signs in a different way. That is coming; for now use Claude Code or Codex.",
 ];
 
+// Issue #3980 — the Work board, agent log and calendar tools, offered beside
+// the abilities above when the connector says the person can use the Work
+// board. Held to the connector's own list (TEAM_AGENT_WORK_TOOLS) by a test.
+export const AGENT_WORK_ABILITIES = [
+  { tool: "read_log", group: "Work", title: "Reads the agent log", detail: "What every agent did and which records are claimed, before it starts." },
+  { tool: "claim", group: "Work", title: "Claims a card and its records", detail: "So no other agent changes or messages them while it works. A claim ends after 30 minutes without an update." },
+  { tool: "release", group: "Work", title: "Releases its claims", detail: "When it stops working on a card." },
+  { tool: "plan_work", group: "Work", title: "Plans a launch", detail: "Proposes the launch kit cards for an event, counted back from its start, with owners." },
+  { tool: "add_work", group: "Work", title: "Adds work cards", detail: "Up to 50 at a time, straight to the Work board after the server checks each one. Owners and watchers are told." },
+  { tool: "start_work", group: "Work", title: "Starts a card", detail: "Moves a card you own to Doing and claims it." },
+  { tool: "update_work", group: "Work", title: "Updates a card", detail: "Changes it, marks plan steps it read back, adds notes, or hands it to you as Needs a person." },
+  { tool: "close_work", group: "Work", title: "Closes a card with proof", detail: "Only with proof Mingla can check, such as a saved draft or a changed record." },
+  { tool: "push_back", group: "Work", title: "Pushes a card back", detail: "As not needed or already done, with a reason everyone on the card sees." },
+  { tool: "list_work", group: "Work", title: "Lists the Work board", detail: "By status, owner, event, host or creator, or sprint week." },
+  { tool: "my_work", group: "Work", title: "Reads your cards", detail: "Your open cards, the ones you watch, and its open claims." },
+  { tool: "list_calendar", group: "Calendar", title: "Reads the Calendar", detail: "Events on Mingla with their runway, promised events, go-live deadlines, promotions and content." },
+  { tool: "runway_report", group: "Calendar", title: "Reports runway", detail: "Which upcoming events have a full launch, a tight one, or are organic only." },
+  { tool: "set_expected_event", group: "Calendar", title: "Records a promised event", detail: "The next event a host has promised, so it shows on the Calendar with its go-live deadline." },
+];
+
+export const AGENT_WORK_GUARDRAILS = [
+  "It reads the agent log and claims before it acts.",
+  "It closes a card only with proof.",
+  "It never marks a message sent, approves spend or publishes: those wait in To review.",
+];
+
 export const AGENT_GUARDRAILS = [
   "It never sends an email, DM or WhatsApp for you.",
   "It sees only what your role sees.",

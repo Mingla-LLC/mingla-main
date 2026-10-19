@@ -1,0 +1,355 @@
+// Issue #3980 — pure words and shapes for the Work board, the Agent log and
+// To review. No React and no Supabase here, so every rule is testable alone.
+
+export const WORK_STATUSES = [
+  { value: "todo", label: "To do" },
+  { value: "doing", label: "Doing" },
+  { value: "person", label: "Needs a person" },
+  { value: "done", label: "Done" },
+];
+
+export const PERSON_REASONS = {
+  send: "Sends a message",
+  spend: "Spends money",
+  publish: "Publishes an event",
+  other: "Needs a person",
+};
+
+export const PERSON_ACTIONS = {
+  send: { action: "mark_sent", label: "Mark sent" },
+  spend: { action: "approve_spend", label: "Approve spend" },
+  publish: { action: "mark_published", label: "Mark published" },
+};
+
+export const KIT_STEPS = [
+  { value: -35, label: "T-35 · host materials in" },
+  { value: -31, label: "T-31 · listing built and checked" },
+  { value: -28, label: "T-28 · go-live gate" },
+  { value: -26, label: "T-26 · content brief and creators" },
+  { value: -21, label: "T-21 · giveaway and ads start" },
+  { value: -14, label: "T-14 · creator posts" },
+  { value: -7, label: "T-7 · reminder push" },
+  { value: 2, label: "T+2 · recap" },
+];
+
+export const LINK_KINDS = [
+  { value: "host", label: "Host" },
+  { value: "creator", label: "Creator" },
+  { value: "brand", label: "Brand" },
+  { value: "event", label: "Event" },
+  { value: "content", label: "Content" },
+  { value: "expected", label: "Expected" },
+];
+
+/** The nine rules every agent follows, as people read them. */
+export const AGENT_RULES = [
+  "Reads the agent log for the records it will touch, and checks the open claims, before any work.",
+  "Claims the card and every record it will change or message. A claim ends after 30 minutes without an update.",
+  "Writes the plan on the card: each step names the connector tool that does it, or a person.",
+  "After each step, reads the record back and marks the step done only if the change is really there.",
+  "Never reports a step done that it could not do; it leaves it to a person with exact instructions.",
+  "Closes a card only with proof of what it read back, or pushes it back as not needed or already done, with a reason.",
+  "Never sends, spends money or publishes: it sets the card to Needs a person and stops.",
+  "Cannot write to someone Mingla messaged in the last 3 days, unless a person allows one more.",
+  "Closing or pushing back releases its claims; it releases any other claim when it stops.",
+];
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A date as "22 Oct" (from "2026-10-22" or a date-time). */
+export function dayLabel(value) {
+  if (typeof value !== "string") return "";
+  const m = value.slice(0, 10).match(DATE_RE);
+  if (!m) return "";
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1] || ""}`.trim();
+}
+
+/** A date-time as HH:MM in the browser's own zone. */
+export function timeLabel(value) {
+  const t = Date.parse(value || "");
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+export function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Today in the browser's own zone, as YYYY-MM-DD. */
+export function todayIso(now = new Date()) {
+  return isoDate(now);
+}
+
+export function addDays(value, days) {
+  const m = typeof value === "string" ? value.match(DATE_RE) : null;
+  if (!m) return "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days);
+  return isoDate(d);
+}
+
+/** The Monday of the week holding this date. */
+export function mondayOf(value) {
+  const m = typeof value === "string" ? value.match(DATE_RE) : null;
+  if (!m) return "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const dow = (d.getDay() + 6) % 7;
+  return addDays(value, -dow);
+}
+
+/** "Sprint 19 to 25 Oct", or "Sprint 27 Oct to 2 Nov" across months. */
+export function sprintLabel(startsOn) {
+  const end = addDays(startsOn, 6);
+  if (!end) return "Sprint";
+  const [, , , sd] = startsOn.match(DATE_RE);
+  const sameMonth = startsOn.slice(5, 7) === end.slice(5, 7);
+  return sameMonth ? `Sprint ${Number(sd)} to ${dayLabel(end)}` : `Sprint ${dayLabel(startsOn)} to ${dayLabel(end)}`;
+}
+
+/** "Seth's Claude" for an agent, "Seth" for a person. */
+export function agentName(name, via) {
+  const who = typeof name === "string" && name.trim() ? name.trim() : "A teammate";
+  if (via === "claude") return `${who}'s Claude`;
+  if (via === "codex") return `${who}'s Codex`;
+  if (via === "system") return "Mingla";
+  return who;
+}
+
+export function initials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts.length === 1 ? parts[0].slice(0, 2).toUpperCase() : `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+export const GROUPS = ["status", "person", "event"];
+export const WHO = ["all", "mine", "watching"];
+
+/** The Work board's address: card, group, who, week and the add form. */
+export function parseWorkSearch(search) {
+  const p = new URLSearchParams(typeof search === "string" ? search : "");
+  const card = p.get("card");
+  const week = p.get("week");
+  return {
+    card: card && UUID_RE.test(card) ? card : null,
+    cardInvalid: card !== null && !UUID_RE.test(card),
+    group: GROUPS.includes(p.get("group")) ? p.get("group") : "status",
+    who: WHO.includes(p.get("who")) ? p.get("who") : "all",
+    week: week && DATE_RE.test(week) ? mondayOf(week) : null,
+    add: p.get("add") === "1",
+  };
+}
+
+export function buildWorkSearch(state) {
+  const p = new URLSearchParams();
+  if (state.card) p.set("card", state.card);
+  if (state.group && state.group !== "status") p.set("group", state.group);
+  if (state.who && state.who !== "all") p.set("who", state.who);
+  if (state.week) p.set("week", state.week);
+  if (state.add) p.set("add", "1");
+  return p.toString();
+}
+
+export function parseLogSearch(search) {
+  const p = new URLSearchParams(typeof search === "string" ? search : "");
+  return { who: p.get("who") === "mine" ? "mine" : "all" };
+}
+
+export function parseReviewSearch(search) {
+  const p = new URLSearchParams(typeof search === "string" ? search : "");
+  const card = p.get("card");
+  return { tab: p.get("tab") === "spend" ? "spend" : "messages", card: card && UUID_RE.test(card) ? card : null };
+}
+
+/** Runway words: how many days an event was public before it starts. */
+export function runwayLabel(runway) {
+  const band = runway?.band;
+  const lead = Number(runway?.lead_days);
+  if (band === "full") return `Full launch · live ${lead} days ahead`;
+  if (band === "tight") return `Tight · live ${lead} days ahead`;
+  if (band === "organic") return `Organic only · live ${lead} days ahead`;
+  if (band === "not_live") return `Not live yet · go live by ${dayLabel(runway?.go_live_by)}`;
+  if (band === "missed") return "Missed go-live: organic only";
+  return "No date yet";
+}
+
+/** The colour family a band is shown in. */
+export function bandTone(band) {
+  if (band === "full") return "success";
+  if (band === "tight") return "warning";
+  if (band === "organic" || band === "missed") return "error";
+  if (band === "not_live") return "info";
+  return "default";
+}
+
+const ERROR_WORDS = {
+  network: "You’re offline. Reconnect and try again.",
+  stale_write: "This card changed. Showing the latest.",
+  not_found: "That card isn’t here any more.",
+  forbidden: "Your account can’t do this.",
+  signed_out: "You’ve been signed out. Sign in again.",
+  not_ready: "This part of Mingla isn’t ready yet. Try again shortly.",
+  undo_expired: "That change can no longer be undone.",
+  try_again: "That didn’t save. Try again.",
+};
+
+/** Words for a refusal. Server words are already written for people. */
+export function opsErrorWords(error) {
+  const token = typeof error?.token === "string" ? error.token : "";
+  if (token === "invalid_card" && Array.isArray(error?.fixes) && error.fixes.length) {
+    return error.fixes.map((f) => f.message).join(" ");
+  }
+  if (Object.hasOwn(ERROR_WORDS, token) && token !== "forbidden") return ERROR_WORDS[token];
+  if (typeof error?.message === "string" && /\s/.test(error.message)) return error.message;
+  if (token === "forbidden") return ERROR_WORDS.forbidden;
+  return "That didn’t work. Try again, and if it keeps happening tell an admin.";
+}
+
+export function requestKey(prefix = "web") {
+  const random = globalThis.crypto?.randomUUID?.().replaceAll("-", "") || `${Date.now()}${Math.random()}`.replace(/\D/g, "");
+  return `${prefix}_${random}`.slice(0, 70).padEnd(8, "0");
+}
+
+export function agentPromptFor(card) {
+  const title = typeof card?.title === "string" ? card.title : "";
+  return `Do card "${title}" (Card ${card?.number ?? "?"}) in Mingla. Check the agent log first, claim it, follow the instructions, and close it with proof or push back with a reason.`;
+}
+
+const LOG_ACTIONS = {
+  card_added: "added a card",
+  card_refused: "was refused a card",
+  claimed: "claimed",
+  claim_refused: "could not claim",
+  released: "released a claim",
+  claim_expired: "let a claim end",
+  step: "posted a step",
+  started: "started",
+  updated: "updated",
+  blocked: "marked blocked",
+  unblocked: "unblocked",
+  needs_person: "asked for a person",
+  closed: "closed",
+  pushed_back: "pushed back",
+  reopened: "reopened",
+  gate_closed: "closed a go-live gate",
+  gate_override: "overrode a block",
+  write_stopped: "was stopped",
+  draft_stopped: "was stopped from writing a message",
+  person_changed_claimed: "changed a claimed record",
+  expected_set: "set an expected event",
+  launch_planned: "planned a launch",
+  contact_override: "allowed one more message",
+  converted: "turned next steps into cards",
+  archived: "removed a card",
+};
+
+export function logActionWords(action) {
+  return LOG_ACTIONS[action] || "did something";
+}
+
+/** The chip on a log row. */
+export function logChip(entry) {
+  if (entry?.outcome === "stopped") return { label: "Stopped", tone: "error" };
+  if (["closed", "pushed_back", "gate_closed"].includes(entry?.action)) return { label: "Closed", tone: "success" };
+  if (["claimed", "started", "step", "updated"].includes(entry?.action)) return { label: "Working", tone: "default" };
+  if (entry?.action === "card_added") return { label: "Added", tone: "brand" };
+  return { label: "Info", tone: "info" };
+}
+
+export function closeKindLabel(kind) {
+  if (kind === "already_done") return "Closed: already done";
+  if (kind === "declined") return "Declined";
+  if (kind === "system") return "Closed by Mingla";
+  return "Done";
+}
+
+export function proofBadge(item) {
+  if (item?.verified) return "Checked by Mingla";
+  return item?.by_agent ? "Agent's word" : "Person's note";
+}
+
+const STATUS_ORDER = ["todo", "doing", "person", "done"];
+
+/** Cards grouped for the board: by status, by owner or by event. */
+export function groupCards(cards, group) {
+  const list = Array.isArray(cards) ? cards : [];
+  if (group === "person") {
+    const by = new Map();
+    for (const card of list) {
+      const owners = Array.isArray(card.owners) && card.owners.length ? card.owners : [{ email: "", name: "No owner" }];
+      for (const o of owners) {
+        const key = o.email || "none";
+        if (!by.has(key)) by.set(key, { key, title: o.name || o.email || "No owner", cards: [] });
+        by.get(key).cards.push(card);
+      }
+    }
+    return [...by.values()].sort((a, b) => a.title.localeCompare(b.title));
+  }
+  if (group === "event") {
+    const by = new Map();
+    for (const card of list) {
+      const a = card.anchor;
+      const key = a?.id ? `${a.kind}:${a.id}` : "none";
+      const title = a?.id ? `${a.title}${a.start_on ? ` · ${dayLabel(a.start_on)}` : ""}` : "No event";
+      if (!by.has(key)) by.set(key, { key, title, sort: a?.start_on || "9999", cards: [] });
+      by.get(key).cards.push(card);
+    }
+    return [...by.values()].sort((a, b) => (a.key === "none") - (b.key === "none") || a.sort.localeCompare(b.sort));
+  }
+  return STATUS_ORDER.map((status) => ({
+    key: status,
+    title: status === "done" ? "Done this week" : WORK_STATUSES.find((s) => s.value === status).label,
+    cards: list.filter((card) => card.status === status),
+  }));
+}
+
+/** Mention candidates for "@" text: active teammates whose name starts with what was typed. */
+export function mentionMatches(team, typed) {
+  const q = String(typed || "").toLowerCase();
+  return (Array.isArray(team) ? team : []).filter((p) => !q || String(p.name || "").toLowerCase().startsWith(q) || String(p.email || "").startsWith(q)).slice(0, 6);
+}
+
+/** The emails named with "@Name" in a note, from the active team. */
+export function mentionedEmails(team, body) {
+  const text = String(body || "");
+  return (Array.isArray(team) ? team : [])
+    .filter((p) => p.name && new RegExp(`(^|\\s)@${p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text))
+    .map((p) => p.email);
+}
+
+/** What a plan step may name as the thing that does it. */
+export const PLAN_TOOLS = [
+  "person", "get_started", "my_day", "find_records", "get_record", "check_names", "find_mingla_link", "check_contactable",
+  "list_beta_leads", "team_summary", "add_records", "upsert_record", "update_records", "move_stage", "set_owners",
+  "log_activity", "record_reply", "save_drafts", "update_draft", "list_drafts", "withdraw_drafts",
+  "list_content", "add_content", "update_content", "assign_content", "comment_content", "move_content",
+  "read_log", "claim", "release", "plan_work", "add_work", "start_work", "update_work", "close_work", "push_back",
+  "list_work", "my_work", "list_calendar", "runway_report", "set_expected_event",
+];
+
+const EVENT_WORDS = {
+  added: "added the card",
+  updated: "changed the card",
+  started: "started",
+  status: "changed the status",
+  blocked: "marked it blocked",
+  unblocked: "unblocked it",
+  closed: "closed it",
+  pushed_back: "pushed it back",
+  reopened: "reopened it",
+  note: "wrote a note",
+  people: "changed owners or watchers",
+  links: "changed links",
+  plan: "changed the plan",
+  gate_closed: "closed the gate",
+  gate_override: "overrode the block",
+  carried: "carried it into this sprint",
+  re_anchored: "moved it to the real event",
+  undone: "undid a change",
+  archived: "removed it",
+};
+
+export function eventWords(action) {
+  return EVENT_WORDS[action] || "changed it";
+}

@@ -67,6 +67,8 @@ import { RefundOperationsPage } from "./pages/RefundOperationsPage";
 // Issue #3802 (Wave 1) — the team's Hosts and Creators boards (#/hosts, #/creators).
 import { HostsPage, CreatorsPage } from "./pages/PipelinePage";
 import { DraftsPage } from "./pages/DraftsPage";
+import { WorkBoardPage } from "./pages/WorkBoardPage";
+import { AgentLogPage } from "./pages/AgentLogPage";
 // Issue #3802 (Wave 4) — connect your own agent (#/agent).
 import { AgentPage } from "./pages/AgentPage";
 import { GuidePage } from "./pages/GuidePage";
@@ -139,6 +141,8 @@ const PAGES = {
   "team-dashboard": TeamDashboardPage,
   creators: CreatorsPage,
   drafts: DraftsPage,
+  "work-board": WorkBoardPage,
+  "agent-log": AgentLogPage,
   // Issue #3802 (Wave 4): opened by the `crm` area, like the boards.
   agent: AgentPage,
   guide: GuidePage,

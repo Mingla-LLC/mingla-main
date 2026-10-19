@@ -14,6 +14,13 @@ import { announceDraftMutation, useDraftCountValue } from "../hooks/useDraftCoun
 import * as service from "../services/draftService";
 import { DRAFT_STATES, draftErrorWords, remainingUndoMs } from "../lib/draftModel";
 import { useToast } from "../context/ToastContext";
+import { ReviewQueue } from "../components/ops/ReviewQueue";
+import { parseReviewSearch } from "../lib/opsModel";
+
+const REVIEW_TABS = [
+  { value: "messages", label: "Messages" },
+  { value: "spend", label: "Spend or publish" },
+];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -32,6 +39,8 @@ function paramsFrom(search) {
 export function DraftsPage() {
   const [search, setSearch] = useHashQuery("drafts");
   const query = useMemo(() => paramsFrom(search), [search]);
+  const review = useMemo(() => parseReviewSearch(search), [search]);
+  const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : "");
   const online = useOnline();
   const reduced = useReducedMotion();
   const counts = useDraftCountValue();
@@ -114,7 +123,11 @@ export function DraftsPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div ref={headingRef} tabIndex={-1}><PageHeader title="Drafts to send" description="Your agent writes. You review and send." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
+      <div ref={headingRef} tabIndex={-1}><PageHeader title="To review" description="Only what needs a person: messages to send, money to spend, events to publish." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
+      <Segmented label="What to review" options={REVIEW_TABS} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
+      {review.tab === "spend" ? (
+        <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => counts.refetch({ quiet: true })} />
+      ) : (<>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:!w-fit" /></div>
       {filtered && <AlertCard variant="info" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); }}>Clear filter</Button>}>Showing drafts for {filterRecordName || "a record that is no longer available"}</AlertCard>}
@@ -144,6 +157,7 @@ export function DraftsPage() {
           {(queue.nextCursor || queue.moreError) && <div className="flex flex-col items-center gap-2 pt-2">{queue.moreError && <p role="alert" className="text-[13px] font-semibold text-[var(--color-error-700)]">Couldn’t load more drafts.</p>}<Button type="button" variant="secondary" loading={queue.loadingMore} className="min-h-11" disabled={busyAny || queue.loadingMore} onClick={() => queue.loadMore()}>{queue.loadingMore ? "Loading more…" : queue.moreError ? "Try again" : "Show more"}</Button></div>}
         </>
       )}
+      </>)}
     </div>
   );
 }
