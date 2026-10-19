@@ -24,7 +24,7 @@
 -- issue_3720_admin_list_roadmap_cards qualify every column reference that
 -- shares a name with an output column, so they need no change.
 --
--- MINGLA-INVARIANT: I-3720-ADMIN-TEAM-ROSTER-LOADS | issue #3720 | The Admin Team roster RPC returns rows for an admin when Community and Support staff exist; every column reference that shares a name with an output column is table-qualified. Enforced by supabase/migrations/__tests__/issue_3720_team_roster.implementor.pg17.test.sql.
+-- INVARIANT: {"id":"I-3720-ADMIN-TEAM-ROSTER-LOADS","rule":"The Admin Team roster RPC returns rows for an admin when Community and Support staff exist; every column reference that shares a name with an output column is table-qualified."}
 
 BEGIN;
 
