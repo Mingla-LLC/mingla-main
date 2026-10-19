@@ -7,7 +7,6 @@
  */
 import { useEffect, useState } from "react";
 
-import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { loadHostAdPlanService } from "../services/lazyHostAdPlanService";
 import { adVideoFitSummaryFor } from "../utils/adVideoFit";
 
@@ -28,7 +27,13 @@ export const useAdVideoFitSummary = (
       })
       .catch((error: unknown) => {
         // The sentence is informational; the card stays usable without it.
-        reportNonFatal("ari.adVideoFit", error, { brandId });
+        // The reporter loads only on this failure path: a static import would
+        // pull the native Sentry SDK into every screen that mounts Ari's
+        // proposal card, including the #1486 native render suites.
+        void import("../diagnostics/reportNonFatal").then(
+          ({ reportNonFatal }) => reportNonFatal("ari.adVideoFit", error, { brandId }),
+          () => console.warn("[ari.adVideoFit]", error instanceof Error ? error.message : String(error)),
+        );
       });
     return () => {
       alive = false;
