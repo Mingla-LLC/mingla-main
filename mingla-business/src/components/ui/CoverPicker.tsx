@@ -41,6 +41,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 // ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper (KAS on
@@ -120,6 +121,23 @@ import {
   type UploadStep,
 } from "./coverUploadCardModel";
 import { coverKindOf, resolveCoverActions } from "./coverPickerActionLabels";
+import {
+  AnimatedProgressFill,
+  CardPresence,
+  FadeOnChange,
+  MOTION_SPEC,
+  NudgeOnSignal,
+  PopOnSignal,
+  StepperSegmentFill,
+  animateInlineConfirmSwap,
+  announceBucket,
+  prefersStackedActions,
+  progressValueText,
+  uploadAnnouncement,
+  useFocusOnAlertEntry,
+  useIosAnnouncement,
+  useReduceMotion,
+} from "./coverUploadMotion";
 import { resolveActiveMedia, type ActiveMedia } from "./coverPickerActiveMedia";
 import { retryVideoPlan, RETRY_PICK_NOTICE } from "./coverPickerRetryRule";
 import { reportCoverPreviewRenderError } from "./coverPickerPreviewTelemetry";
@@ -459,6 +477,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // INSIDE LibraryTab (never a root-portal Toast, which iOS drops while the
   // CoverPickerSheet modal is up). tone drives info (warm) vs error (semantic).
   const [videoPickNotice, setVideoPickNoticeState] = useState<NativeEditorNotice | null>(null);
+  // #3040 §10 H-10 — a "Resume upload" tap while still offline nudges the card.
+  const [offlineNudge, setOfflineNudge] = useState(0);
   // issue #3280 — the notice as of NOW, so a hand-off to a fresh sheet carries
   // the message this sheet was about to show (state lags a render behind).
   const videoPickNoticeRef = useRef<NativeEditorNotice | null>(null);
@@ -1803,6 +1823,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       case "resume_upload":
         // H-10 — still offline: say so instead of a dead tap.
         if (isDeviceOffline()) {
+          setOfflineNudge((count) => count + 1);
           setVideoPickNotice({ tone: "info", text: "Still offline. We'll resume as soon as you're back." });
           return;
         }
@@ -2411,6 +2432,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           onReloadPreview={reloadPreview}
           onMediaError={handleMediaRenderError}
           videoPickNotice={videoPickNotice}
+          nudgeSignal={offlineNudge}
         />
       ) : null}
 
@@ -2576,12 +2598,16 @@ const UploadStepper: React.FC<{ steps: readonly UploadStep[]; current: UploadSte
         const state = index < currentIndex ? "done" : index === currentIndex ? "now" : "todo";
         return (
           <View key={step} style={styles.stepperColumn}>
-            <View
-              style={[
-                styles.stepperBar,
-                state === "now" ? styles.stepperBarNow : state === "done" ? styles.stepperBarDone : styles.stepperBarTodo,
-              ]}
-            />
+            {/* #3040 §10 — the current segment fills from the left (260 ms). */}
+            <View style={[styles.stepperBar, state === "now" ? styles.stepperBarTodo : null]}>
+              <StepperSegmentFill
+                active={state === "now"}
+                style={[
+                  styles.stepperBarFill,
+                  state === "now" ? styles.stepperBarNow : state === "done" ? styles.stepperBarDone : styles.stepperBarTodo,
+                ]}
+              />
+            </View>
             <Text
               style={[
                 styles.stepperLabel,
@@ -2706,7 +2732,7 @@ const InlineConfirm: React.FC<{
           variant={copy.variant}
           size="md"
           onPress={onConfirm}
-          {...(copy.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel } : {})}
+          {...(copy.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel, iconColor: canvas.depth } : {})}
         />
       </View>
     </View>
@@ -2741,9 +2767,13 @@ const VideoUploadCard: React.FC<{
   stage: EventCoverVideoUploadStage;
   status: EventCoverVideoStatus | null;
   phaseStartedAt: number;
+  /** #3040 H-10 — bumps when "Resume upload" is tapped while still offline. */
+  nudgeSignal: number;
   onAction: (id: CardActionId) => void;
-}> = ({ model, stage, status, phaseStartedAt, onAction }) => {
+}> = ({ model, stage, status, phaseStartedAt, nudgeSignal, onAction }) => {
   const copy = videoProjectionCopy(stage, status);
+  const reduceMotion = useReduceMotion();
+  const titleRef = useRef<Text>(null);
   const elapsedAnchor = model.elapsedFrom === "sourceUploaded"
     ? status?.sourceUploadedAt ?? status?.createdAt ?? null
     : model.elapsedFrom === "stage"
@@ -2752,8 +2782,18 @@ const VideoUploadCard: React.FC<{
   const elapsed = useElapsedSince(elapsedAnchor, model.elapsedFrom !== "none");
   const showElapsed = elapsed !== null && (model.elapsedFrom !== "stage" || Date.now() - phaseStartedAt >= 3_000);
   const determinate = model.progress.kind === "determinate" && copy.percent !== null;
+  // #3040 §11 — the polite region announces the title on a phase change and
+  // the % only at 25/50/75/100; the ticking %, meta and timer stay silent.
+  const percentStep = announceBucket(determinate ? copy.percent : null);
+  const announcement = uploadAnnouncement(model.title, determinate ? copy.percent : null);
+  useIosAnnouncement(announcement);
+  useFocusOnAlertEntry(titleRef, model.stateId, model.role === "alert");
+  const bytes = stage.phase === "uploading"
+    ? { confirmed: stage.confirmedBytes ?? null, total: stage.totalBytes ?? null }
+    : { confirmed: null, total: null };
   const titleColor = model.tone === "warning" ? semantic.warning : model.tone === "error" ? semantic.errorText : textTokens.primary;
   return (
+    <NudgeOnSignal signal={model.stateId === "H-10" ? nudgeSignal : 0}>
     <View
       style={[
         styles.uploadCard,
@@ -2762,7 +2802,6 @@ const VideoUploadCard: React.FC<{
         model.tone === "error" && styles.uploadCardError,
       ]}
       accessible={false}
-      accessibilityLiveRegion="polite"
       accessibilityRole={model.role === "alert" ? "alert" : undefined}
     >
       <View style={styles.uploadCardHeader}>
@@ -2773,12 +2812,23 @@ const VideoUploadCard: React.FC<{
             color={model.tone === "error" ? semantic.errorText : textTokens.primary}
           />
         </View>
-        <View style={styles.uploadCardHeaderText}>
-          <Text style={[styles.uploadCardTitle, { color: titleColor }]} accessibilityRole="header">{model.title}</Text>
+        {/* #3040 §11 — the polite region: the title (a phase change) plus a
+            hidden "{n} percent" that changes only at 25/50/75/100. */}
+        <View style={styles.uploadCardHeaderText} accessibilityLiveRegion="polite" aria-live="polite">
+          {/* #3040 §10 — the title crossfades on a phase change (120 ms). */}
+          <FadeOnChange
+            swapKey={model.title}
+            durationMs={MOTION_SPEC.cardTitle.durationMs}
+            reducedMs={MOTION_SPEC.cardTitle.reducedMs}
+            animateInitial={false}
+          >
+            <Text ref={titleRef} style={[styles.uploadCardTitle, { color: titleColor }]} accessibilityRole="header">{model.title}</Text>
+          </FadeOnChange>
           {model.sub !== null ? <Text style={styles.uploadCardSub}>{model.sub}</Text> : null}
+          {percentStep !== null ? <Text style={styles.srOnly}>{`${percentStep} percent`}</Text> : null}
         </View>
         {determinate && copy.percent !== null ? (
-          <Text style={styles.uploadCardPercent}>{Math.round(copy.percent)}%</Text>
+          <Text style={styles.uploadCardPercent} accessibilityElementsHidden importantForAccessibility="no">{Math.round(copy.percent)}%</Text>
         ) : showElapsed ? (
           // Hidden from assistive tech: the card is a polite live region, and a
           // value that changes every second would re-announce it every second.
@@ -2791,10 +2841,15 @@ const VideoUploadCard: React.FC<{
         <View
           accessibilityRole="progressbar"
           accessibilityLabel={stage.phase === "processing" ? "Video preparation progress" : "Video upload progress"}
-          accessibilityValue={{ min: 0, now: Math.round(copy.percent), max: 100, text: `${Math.round(copy.percent)} percent` }}
+          accessibilityValue={{ min: 0, now: Math.round(copy.percent), max: 100, text: progressValueText(copy.percent, bytes.confirmed, bytes.total) }}
           style={styles.progressTrack}
         >
-          <View style={[styles.progressFill, { transform: [{ scaleX: copy.percent / 100 }] }]} />
+          {/* #3040 §10 — eases to the new value (200 ms); reduced motion jumps. */}
+          {reduceMotion ? (
+            <View style={[styles.progressFill, { transform: [{ scaleX: copy.percent / 100 }] }]} />
+          ) : (
+            <AnimatedProgressFill fraction={copy.percent / 100} style={styles.progressFill} />
+          )}
         </View>
       ) : model.progress.kind === "frozen" ? (
         <View
@@ -2808,7 +2863,9 @@ const VideoUploadCard: React.FC<{
       ) : model.progress.kind === "indeterminate" ? (
         <IndeterminateTrack />
       ) : null}
-      {model.meta !== null ? <Text style={styles.uploadCardMeta}>{model.meta}</Text> : null}
+      {model.meta !== null ? (
+        <Text style={styles.uploadCardMeta} accessibilityElementsHidden importantForAccessibility="no">{model.meta}</Text>
+      ) : null}
       <Text style={styles.uploadCardBody}>{model.body}</Text>
       {model.steps !== null && model.currentStep !== null ? (
         <UploadStepper steps={model.steps} current={model.currentStep} />
@@ -2822,12 +2879,13 @@ const VideoUploadCard: React.FC<{
               variant={cardAction.variant}
               size="md"
               onPress={() => onAction(cardAction.id)}
-              {...(cardAction.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel } : {})}
+              {...(cardAction.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel, iconColor: canvas.depth } : {})}
             />
           ))}
         </View>
       ) : null}
     </View>
+    </NudgeOnSignal>
   );
 };
 
@@ -2881,6 +2939,8 @@ const LibraryTab: React.FC<{
   onMediaError: (e: EventCoverMediaErrorEvent) => void;
   // issue #1338 — in-sheet feedback for the cover-VIDEO flow (never a root Toast).
   videoPickNotice: NativeEditorNotice | null;
+  /** #3040 H-10 — bumps when "Resume upload" is tapped while still offline. */
+  nudgeSignal: number;
 }> = ({
   coverKind,
   hue,
@@ -2910,16 +2970,35 @@ const LibraryTab: React.FC<{
   onReloadPreview,
   onMediaError,
   videoPickNotice,
+  nudgeSignal,
 }) => {
-  const [confirming, setConfirming] = useState<ConfirmKind | null>(null);
+  const [confirming, setConfirmingState] = useState<ConfirmKind | null>(null);
   const [sheetWidth, setSheetWidth] = useState(0);
+  const reduceMotion = useReduceMotion();
+  const { fontScale } = useWindowDimensions();
+  // #3040 §10 — actions ↔ inline confirm swap with a 200 ms layout ease.
+  const setConfirming = (kind: ConfirmKind | null): void => {
+    animateInlineConfirmSwap(reduceMotion);
+    setConfirmingState(kind);
+  };
+  // #3040 §10 H-15 — the new cover crossfades in and the badge pops, once per
+  // applied job (latched, so the 3 s return to H-03 does not replay it).
+  const appliedSwapRef = useRef<string | null>(null);
+  if (statusRow.stateId === "H-15" && activeMedia.url !== null) appliedSwapRef.current = `h15:${activeMedia.url}`;
   // The selected ring + badge mean "this cover is applied": never while a
   // video job is still deciding what the cover will be.
   const activeVideoUpload = jobActive;
-  const wide = sheetWidth >= bpRegular;
+  const twoUpWidth = sheetWidth >= bpRegular;
   const hasCover = coverKind !== "empty";
   const needsAction = cardModel?.needsAction === true;
   const coverActions = resolveCoverActions(coverKind, jobActive, needsAction, videoOnly);
+  // #3040 §3 Dynamic Type — two-up falls back to stacked if a label would truncate.
+  const wide = twoUpWidth && !prefersStackedActions({
+    wide: twoUpWidth,
+    fontScale,
+    sheetWidth,
+    longestLabelChars: Math.max(0, ...coverActions.actions.map((item) => item.label.length)),
+  });
   // Cancel is immediate while nothing has left the phone (H-04/H-05); from the
   // upload on it asks first ("Stop this upload?").
   const handleCardAction = (id: CardActionId): void => {
@@ -2953,20 +3032,27 @@ const LibraryTab: React.FC<{
         accessible
         accessibilityLabel={previewLabel}
       >
-        <EventCoverMedia
-          key={previewKey}
-          hue={hue}
-          mediaUrl={activeMedia.url}
-          mediaType={activeMedia.type as EventCoverMediaType | null}
-          posterUrl={posterUrl}
-          radius={radiusTokens.md}
-          label={alt ?? "cover"}
-          height={wide ? coverUpload.previewHeightWide : coverUpload.previewHeightCompact}
-          onMediaError={onMediaError}
-          muted={true}
-          showAudioControl={activeMedia.type === "video"}
+        <FadeOnChange
+          swapKey={appliedSwapRef.current ?? "steady"}
+          durationMs={MOTION_SPEC.coverSwap.durationMs}
+          reducedMs={MOTION_SPEC.coverSwap.reducedMs}
+          animateInitial={false}
         >
-        </EventCoverMedia>
+          <EventCoverMedia
+            key={previewKey}
+            hue={hue}
+            mediaUrl={activeMedia.url}
+            mediaType={activeMedia.type as EventCoverMediaType | null}
+            posterUrl={posterUrl}
+            radius={radiusTokens.md}
+            label={alt ?? "cover"}
+            height={twoUpWidth ? coverUpload.previewHeightWide : coverUpload.previewHeightCompact}
+            onMediaError={onMediaError}
+            muted={true}
+            showAudioControl={activeMedia.type === "video"}
+          >
+          </EventCoverMedia>
+        </FadeOnChange>
         {!hasCover && !activeMedia.isNewClip ? (
           <View style={styles.previewEmptyLabel} pointerEvents="none">
             <Text style={styles.previewEmptyText}>No cover yet</Text>
@@ -2987,28 +3073,36 @@ const LibraryTab: React.FC<{
         {/* META-ORCH-1059: a check badge on the live preview signals the current
             cover is applied (decorative — the pill and label carry the state). */}
         {hasCover && !activeVideoUpload ? (
-          <View style={styles.selectedBadge} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <Icon name="check" size={14} color={textTokens.inverse} />
-          </View>
+          <PopOnSignal signal={appliedSwapRef.current} style={styles.selectedBadge}>
+            <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              <Icon name="check" size={14} color={textTokens.inverse} />
+            </View>
+          </PopOnSignal>
         ) : null}
       </View>
       {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
 
       {confirming !== null ? (
-        <InlineConfirm
-          kind={confirming}
-          hasCover={hasCover}
-          jobActive={jobActive}
-          videoOnly={videoOnly}
-          onKeep={() => setConfirming(null)}
-          onConfirm={() => {
-            const kind = confirming;
-            setConfirming(null);
-            if (kind === "cancel") onConfirmCancel();
-            else if (kind === "swap") onConfirmSwap();
-            else onRemove();
-          }}
-        />
+        <FadeOnChange
+          swapKey={confirming}
+          durationMs={MOTION_SPEC.inlineConfirm.durationMs}
+          reducedMs={MOTION_SPEC.inlineConfirm.reducedMs}
+        >
+          <InlineConfirm
+            kind={confirming}
+            hasCover={hasCover}
+            jobActive={jobActive}
+            videoOnly={videoOnly}
+            onKeep={() => setConfirming(null)}
+            onConfirm={() => {
+              const kind = confirming;
+              setConfirming(null);
+              if (kind === "cancel") onConfirmCancel();
+              else if (kind === "swap") onConfirmSwap();
+              else onRemove();
+            }}
+          />
+        </FadeOnChange>
       ) : renderError !== null ? (
         <View style={[styles.uploadCard, Platform.OS === "android" && styles.uploadCardAndroid, styles.uploadCardWarn]} accessibilityLiveRegion="polite">
           <Text style={[styles.uploadCardTitle, { color: semantic.warning }]}>
@@ -3027,17 +3121,25 @@ const LibraryTab: React.FC<{
             />
           </View>
         </View>
-      ) : cardModel !== null ? (
-        <VideoUploadCard
-          model={cardModel}
-          stage={videoStage}
-          status={videoStatus}
-          phaseStartedAt={phaseStartedAt}
-          onAction={handleCardAction}
-        />
-      ) : (
+      ) : null}
+      {/* #3040 §10 — the upload card rises in (260 ms) and fades out (180 ms). */}
+      {confirming === null && renderError === null ? (
+        <CardPresence visible={cardModel !== null}>
+          {cardModel !== null ? (
+            <VideoUploadCard
+              model={cardModel}
+              stage={videoStage}
+              status={videoStatus}
+              phaseStartedAt={phaseStartedAt}
+              nudgeSignal={nudgeSignal}
+              onAction={handleCardAction}
+            />
+          ) : null}
+        </CardPresence>
+      ) : null}
+      {confirming === null && renderError === null && cardModel === null ? (
         <CoverStatusRow row={statusRow} />
-      )}
+      ) : null}
 
       <VideoPickNoticeRow notice={videoPickNotice} />
 
@@ -3056,9 +3158,10 @@ const LibraryTab: React.FC<{
               loading={coverAction.opens === "video" ? videoSpinning : spinning}
               disabled={uploading || disabled}
               accessibilityLabel={coverAction.label}
+              accessibilityHint={coverAction.hint}
               style={wide ? styles.actionGridItem : undefined}
               // #3040 D3 (Seth, Q1) — dark ink on the flat orange: 6.87:1.
-              {...(coverAction.primary ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel } : {})}
+              {...(coverAction.primary ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel, iconColor: canvas.depth } : {})}
             />
           ))}
         </View>
@@ -3073,6 +3176,7 @@ const LibraryTab: React.FC<{
           onPress={() => setConfirming(videoOnly ? "remove_ad" : "remove")}
           disabled={disabled || uploading}
           accessibilityLabel={coverActions.removeLabel}
+          accessibilityHint="Asks before removing."
           style={styles.removeButton}
           labelStyle={styles.removeLabel}
         />
@@ -3929,6 +4033,20 @@ const styles = StyleSheet.create({
   stepperBar: {
     height: coverUpload.stepperBar,
     borderRadius: 999,
+    overflow: "hidden",
+  },
+  stepperBarFill: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 999,
+  },
+  // #3040 §11 — a polite live region that is read, never seen.
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    overflow: "hidden",
+    opacity: 0,
   },
   stepperBarNow: { backgroundColor: accent.warm },
   stepperBarDone: { backgroundColor: coverUpload.stepDone },

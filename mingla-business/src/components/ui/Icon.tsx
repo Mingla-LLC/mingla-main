@@ -69,6 +69,8 @@ export type IconName =
   | "pause"
   | "volume"
   | "volumeOff"
+  // #3040 Appendix A §6 — the trip-day "Paused" (offline) tile.
+  | "wifiOff"
   | "template"
   | "upload"
   | "download"
@@ -299,6 +301,14 @@ const RENDERERS: Record<IconName, Renderer> = {
     <>
       <Path d="M4 9v6h4l5 4V5L8 9H4z" />
       <Path d="M19 9l-6 6M13 9l6 6" />
+    </>
+  ),
+  // #3040 — Wi-Fi arcs with a slash: "paused, you're offline".
+  wifiOff: () => (
+    <>
+      <Path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0" />
+      <Circle cx="12" cy="19" r="1" />
+      <Path d="M3 3l18 18" />
     </>
   ),
   template: () => (

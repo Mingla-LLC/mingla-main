@@ -101,11 +101,20 @@ export interface ButtonProps {
   disabled?: boolean;
   fullWidth?: boolean;
   accessibilityLabel?: string;
+  /** #3040 §11 — what happens on press, read after the label. */
+  accessibilityHint?: string;
   accessibilityRole?: AccessibilityRole;
   accessibilityState?: AccessibilityState;
   testID?: string;
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
+  /**
+   * #3040 — explicit colour for the leading/trailing icon when `labelStyle`
+   * sets a label colour the icon must match exactly (the cover sheet's dark
+   * ink on orange). Ignored while disabled, so a disabled button stays one
+   * muted colour. Omit → the icon follows the resolved label colour.
+   */
+  iconColor?: string;
 }
 
 const SIZE_HEIGHT: Record<ButtonSize, number> = { sm: 36, md: 44, lg: 52 };
@@ -207,11 +216,13 @@ export const Button = forwardRef<
     disabled = false,
     fullWidth = false,
     accessibilityLabel,
+    accessibilityHint,
     accessibilityRole = "button",
     accessibilityState,
     testID,
     style,
     labelStyle,
+    iconColor,
   },
   forwardedRef,
 ) {
@@ -311,6 +322,8 @@ export const Button = forwardRef<
   };
 
   const resolvedTextColor = disabled ? textTokens.tertiary : effectiveText;
+  const resolvedIconColor =
+    !disabled && typeof iconColor === "string" ? iconColor : resolvedTextColor;
 
   // PressableStateCallbackType in the installed RN version does not declare
   // `focused`/`hovered` — both fields are passed at runtime on web. We widen
@@ -347,7 +360,7 @@ export const Button = forwardRef<
             <Icon
               name={leadingIcon}
               size={iconSize}
-              color={resolvedTextColor}
+              color={resolvedIconColor}
             />
           ) : null}
           <Text
@@ -373,7 +386,7 @@ export const Button = forwardRef<
             <Icon
               name={trailingIcon}
               size={iconSize}
-              color={resolvedTextColor}
+              color={resolvedIconColor}
             />
           ) : null}
         </View>
@@ -396,6 +409,7 @@ export const Button = forwardRef<
           : undefined
       }
       accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityHint={accessibilityHint}
       testID={testID}
       style={[fullWidth ? styles.fullWidth : undefined, style]}
     >
