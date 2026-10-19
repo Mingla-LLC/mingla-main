@@ -236,12 +236,27 @@ export const projectUploadPercent = ({ confirmedBytes, inflightLoaded = 0, total
 };
 
 /**
+ * #3040 (2026-10-19, job 2ad825b6) — how long the HEAD that confirms a PATCH
+ * may take once that PATCH's own response already carried the new offset.
+ * The PATCH response IS the server's word; the HEAD is a second opinion that
+ * must never hold a finished upload hostage (the acknowledgement is due
+ * within 2 s of the final byte being accepted).
+ */
+export const CONFIRM_HEAD_TIMEOUT_MS = 1500;
+
+/**
  * Upload a browser File/Blob to a server-issued TUS resource, resuming from
  * the server's offset. Every chunk is confirmed by a HEAD before it counts.
  *
  * `transport` = `{ url, headers }` exactly as the lane's upload intent issued
  * them (opaque, forwarded verbatim). `onProgress` receives
  * `{ percent, confirmedBytes, totalBytes, final }`.
+ *
+ * Percent rules (#3040, 2026-10-19): browsers report upload progress as bytes
+ * HANDED TO THE NETWORK, which can run tens of seconds ahead of the bytes the
+ * server holds. So bytes on the wire for the LAST chunk never reach 99: 99
+ * means the server answered the final PATCH (every byte accepted), and it
+ * lasts only until the confirming HEAD (bounded) answers.
  */
 export const uploadSourceWeb = async ({
   file,
@@ -249,6 +264,7 @@ export const uploadSourceWeb = async ({
   signal,
   onProgress,
   chunkBytes = VIDEO_LIMITS.TUS_CHUNK_WEB_BYTES,
+  confirmHeadTimeoutMs = CONFIRM_HEAD_TIMEOUT_MS,
   fetchImpl,
   XhrImpl,
 }) => {
@@ -270,6 +286,35 @@ export const uploadSourceWeb = async ({
     });
   };
   const head = () => headTusOffset({ url: transport.url, headers: transport.headers, signal, fetchImpl });
+  // The confirming HEAD after a PATCH that already reported its offset: the
+  // PATCH's own answer stands when the HEAD is slower than the bound.
+  const confirm = async (patchOffset) => {
+    if (patchOffset === null || !(confirmHeadTimeoutMs > 0)) return head();
+    const bounded = new AbortController();
+    const onAbort = () => bounded.abort();
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+    let timer = null;
+    const timedOut = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        bounded.abort();
+        resolve(patchOffset);
+      }, confirmHeadTimeoutMs);
+    });
+    try {
+      return await Promise.race([
+        headTusOffset({ url: transport.url, headers: transport.headers, signal: bounded.signal, fetchImpl })
+          .catch((error) => {
+            if (signal?.aborted) throw cancelled();
+            if (bounded.signal.aborted) return patchOffset;
+            throw error;
+          }),
+        timedOut,
+      ]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+      signal?.removeEventListener?.("abort", onAbort);
+    }
+  };
   let offset = await head();
   if (offset > total) {
     throw new VideoUploadError(
@@ -282,16 +327,24 @@ export const uploadSourceWeb = async ({
   while (offset < total) {
     const length = Math.min(chunkBytes, total - offset);
     const chunkStart = offset;
-    await patchTusChunkXhr({
+    const lastChunk = chunkStart + length >= total;
+    // Bytes the browser handed off for the last chunk stop one byte short:
+    // only the server's answer may say "every byte is there" (99).
+    const inflightCap = lastChunk ? Math.max(0, length - 1) : length;
+    const patchOffset = await patchTusChunkXhr({
       url: transport.url,
       headers: transport.headers,
       blob: file.slice(chunkStart, chunkStart + length),
       offset: chunkStart,
       signal,
       XhrImpl,
-      onProgress: (loaded) => emit(chunkStart, Math.min(loaded, length)),
+      onProgress: (loaded) => emit(chunkStart, Math.min(loaded, inflightCap)),
     });
-    const serverOffset = await head();
+    const reported = Number.isSafeInteger(patchOffset) && patchOffset > chunkStart && patchOffset <= total
+      ? patchOffset
+      : null;
+    if (reported === total) emit(total, 0);
+    const serverOffset = await confirm(reported);
     if (serverOffset <= chunkStart || serverOffset > total) {
       throw new VideoUploadError(
         "transport_integrity_failed",
@@ -302,7 +355,8 @@ export const uploadSourceWeb = async ({
     offset = serverOffset;
     if (offset < total) emit(offset, 0);
   }
-  // Final PATCH answered AND the HEAD says every byte is there: only now 100.
+  // Final PATCH answered AND the server's offset (the HEAD, or the PATCH's own
+  // answer when the HEAD is slower than its bound) is the total: only now 100.
   emit(total, 0, true);
   return { confirmedBytes: total, totalBytes: total };
 };
