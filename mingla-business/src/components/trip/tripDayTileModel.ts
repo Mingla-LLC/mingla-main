@@ -231,16 +231,14 @@ export const tileVisual = (tile: TripDayTile): TileVisual => {
 };
 
 /**
- * Design §11 — the live region announces the state on change and the upload %
- * only at 25 / 50 / 75 / 100, never every tick. Returns the text the polite
- * live region should hold for this tile (it changes only at those points).
+ * Design §11 — the live region announces the state on change, never every
+ * tick. #3040 (2026-10-19): it no longer carries a stepped "25/50/75 percent":
+ * that text stayed in the accessibility tree between steps, so a tile showing
+ * "99%" read "uploading, 75 percent". The one number assistive tech reads is
+ * the tile's own label (`tileA11yLabel`), which is always the visible percent.
  */
 export const tileAnnouncement = (tile: TripDayTile, index: number): string => {
-  if (tile.state === "uploading") {
-    const step = tile.percent === null ? 0 : Math.floor(tile.percent / 25) * 25;
-    const name = `${noun(tile)} ${index + 1}`;
-    return step > 0 ? `${name}, uploading, ${step} percent` : `${name}, uploading`;
-  }
+  if (tile.state === "uploading") return `${noun(tile)} ${index + 1}, uploading`;
   return tileA11yLabel(tile, index).replace(/\.? Double tap to (cancel|retry)\.$/, "");
 };
 

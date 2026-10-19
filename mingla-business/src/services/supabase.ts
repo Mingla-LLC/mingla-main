@@ -134,6 +134,25 @@ async function webResilientLock<R>(
   }
 }
 
+// #3040 (2026-10-19) — the video lane calls its edge functions straight
+// through this endpoint with an access token it already holds, instead of
+// `supabase.functions.invoke`, whose fetch wrapper awaits `auth.getSession()`
+// before every request. That await queues behind whatever holds the auth lock
+// in this tab (a `getUser()` probe or a token refresh can hold it for a whole
+// network round trip, with no bound), so a finished upload could wait on
+// sign-in bookkeeping. See services/laneEdgeInvoke.ts.
+export const laneEdgeEndpoint: {
+  functionsUrl: string;
+  anonKey: string;
+  headers: Record<string, string>;
+} | null = supabaseUrl && supabaseAnonKey
+  ? {
+    functionsUrl: `${supabaseUrl.replace(/\/+$/, "")}/functions/v1`,
+    anonKey: supabaseAnonKey,
+    headers: getNativeAppVersionHeaders(),
+  }
+  : null;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage,
