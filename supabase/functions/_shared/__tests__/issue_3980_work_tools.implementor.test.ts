@@ -267,15 +267,10 @@ Deno.test("#3980 the gateway names exactly these tools, and every function a too
     /c_tools constant text\[\] := ARRAY\[([^\]]*)\]/,
   )![1].match(/'([a-z_]+)'/g)!.map((s) => s.slice(1, -1));
   assertEquals(tools, NAMES);
-  // [TRANSITIONAL] reached by the launch-kit tool; its function arrives with Wave 3 of this build.
-  const later = new Set([
-    "ops_launch_kit_preview",
-  ]);
   for (const t of TEAM_AGENT_WORK_TOOLS) {
     for (const fn of t.reaches) {
       assert(
-        later.has(fn) ||
-          new RegExp(`CREATE FUNCTION public\\.${fn}\\(`).test(migrations),
+        new RegExp(`CREATE FUNCTION public\\.${fn}\\(`).test(migrations),
         `${t.name} reaches ${fn}`,
       );
     }
