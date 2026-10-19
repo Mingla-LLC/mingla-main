@@ -610,6 +610,30 @@ export const durations = {
   slowest: 800,
 } as const;
 
+/**
+ * #3040 — Host cover / video upload sheet geometry (Appendix A §13). Every
+ * value here is new to this surface; colours not listed reuse `accent`,
+ * `semantic`, `glass` and `text` tokens.
+ */
+export const coverUpload = {
+  thumb: 56,
+  thumbRadius: 8,
+  previewHeightCompact: 180,
+  previewHeightWide: 260,
+  stepperBar: 3,
+  trackHeight: 4,
+  frozenFill: "rgba(255,255,255,0.40)",
+  warnBorder: "rgba(245,158,11,0.40)",
+  errorBorder: "rgba(239,68,68,0.45)",
+  scrim: "rgba(8,9,12,0.55)",
+  tileRing: 36,
+  statusIcon: 28,
+  pillHeight: 28,
+  stepDone: "rgba(235,120,37,0.55)",
+  stepTodo: "rgba(255,255,255,0.14)",
+  track: "rgba(255,255,255,0.24)",
+} as const;
+
 /** #2796 feature-owned competition-sheet geometry. */
 export const competitorSheet = {
   contentInsetCompact: 16,

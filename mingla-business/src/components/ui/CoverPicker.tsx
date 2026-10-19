@@ -27,10 +27,14 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  Animated,
   AppState,
+  Easing,
   Image,
   InteractionManager,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -54,7 +58,11 @@ import {
   requestCoverMediaLibraryPermission,
   revokeCoverPickedAssets,
 } from "./coverPickerDeviceMedia";
+
 import { getCoverPickerFileInfoAsync } from "./coverPickerFileInfo";
+// #3040 B-C13b — platform split: native measures the trimmed output.
+import { measureTrimmedVideoDurationMs } from "./coverPickerVideoMeasure";
+import { VIDEO_LIMITS } from "@mingla/video-upload";
 import { useElapsedSince } from "./coverPickerElapsed";
 import {
   trimVideoWithDedicatedEditor,
@@ -71,6 +79,9 @@ import {
   accent,
   androidOpaque,
   ariThread,
+  bpRegular,
+  canvas,
+  coverUpload,
   glass,
   radius as radiusTokens,
   semantic,
@@ -81,16 +92,37 @@ import {
 import {
   EventCoverMediaError,
   EVENT_COVER_MAX_BYTES,
-  EVENT_COVER_UPLOAD_LIMIT_COPY,
   uploadEventCoverMedia,
 } from "../../services/eventCoverMediaService";
 import {
   EVENT_COVER_MAX_VIDEO_DURATION_MS,
   EVENT_COVER_SOURCE_CEILING_MS,
-  EVENT_COVER_VIDEO_PROCESSING_COPY,
+  EVENT_COVER_SOURCE_MAX_BYTES,
+  isBrowserOffline,
   type EventCoverVideoStatus,
   type EventCoverVideoUploadStage,
 } from "../../services/eventCoverVideoProcessingService";
+import { hostAppStoreUrl } from "../../services/eventCoverVideoEdgeContract";
+import { useNetInfoSafe } from "../../lib/netinfoSafe";
+import {
+  coverLimitsLines,
+  coverStatusRowModel,
+  pickRefusalCardModel,
+  resolveRenderErrorCopy,
+  RELOAD_PREVIEW_MAX_MS,
+  STEP_LABEL,
+  videoUploadCardModel,
+  type CardActionId,
+  type CoverKind,
+  type PickRefusal,
+  type StatusRowModel,
+  type UploadCardModel,
+  type UploadStep,
+} from "./coverUploadCardModel";
+import { coverKindOf, resolveCoverActions } from "./coverPickerActionLabels";
+import { resolveActiveMedia, type ActiveMedia } from "./coverPickerActiveMedia";
+import { retryVideoPlan, RETRY_PICK_NOTICE } from "./coverPickerRetryRule";
+import { reportCoverPreviewRenderError } from "./coverPickerPreviewTelemetry";
 import {
   useEventCoverVideoUpload,
   type EventCoverVideoUploadFile,
@@ -99,6 +131,7 @@ import {
   buildTrimmedVideoUploadFile,
   normalizePickerDurationMs,
   resolveRawClipUploadUri,
+  TrimOverCapError,
   type VideoTrimFinishPayload,
 } from "./coverPickerVideoTrimUpload";
 import { resolveRawCoverClipDurationMs } from "../../utils/eventCoverMediaRules";
@@ -178,6 +211,10 @@ export type { CoverTarget } from "./coverTarget";
 // own lazy web chunk), never by the upload services, which sit in the boot chunk.
 const galleryStorageUpload = createStorageUploadWithRetry();
 
+type CoverPickerAsset = Parameters<typeof revokeCoverPickedAssets>[0][number];
+// #3040 AD-06 — the ad-video pick minimum (the `ad_creative` target only).
+const AD_MIN_DURATION_MS = VIDEO_LIMITS.AD_MIN_DURATION_MS;
+
 // LOCKED tab ids (SPEC §4.3); display labels are designer-owned copy (DESIGN §3.1).
 type CoverTabId = "library" | "gif" | "stock";
 type ProviderStatus = "idle" | "loading" | "populated" | "empty" | "error";
@@ -219,6 +256,12 @@ export interface CoverPatch {
    * from the other (the ONE exception is the user-initiated "Make cover" action).
    */
   coverGallery?: OfferingGalleryImage[];
+  /**
+   * #3040 B-C14 — set only by the `ad_creative` target: the ad creative row
+   * the server created from the READY job (E-6c). Host Ads / Ari link THIS id;
+   * they never record a creative from a URL the browser hands them.
+   */
+  adCreativeId?: string | null;
 }
 
 export interface CoverPickerProps {
@@ -269,6 +312,13 @@ export interface CoverPickerProps {
   onResumeAfterNativeEditorConsumed?: (carryId: number) => void;
   /** Restrict the picker to device video (used by Ari Host Ads). */
   mediaMode?: "all" | "video-only";
+  /**
+   * #3040 — the sheet's footer: true while the card needs one decision (H-12,
+   * H-19, AD-05), so the footer offers a plain "Close" instead of a confirm.
+   */
+  onNeedsActionChange?: (needsAction: boolean) => void;
+  /** #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920." */
+  adFitSummary?: string | null;
 }
 
 const TAB_DEFS: ReadonlyArray<{ id: CoverTabId; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
@@ -362,9 +412,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   resumeAfterNativeEditor = null,
   onResumeAfterNativeEditorConsumed,
   mediaMode = "all",
+  onNeedsActionChange,
+  adFitSummary = null,
 }) => {
   const { isAuthReady } = useAuth();
   const isBrand = target.kind === "brand";
+  // #3040 B-C14 — Host Ads / Ari ad video on the `ad_creative` lane target.
+  const isAdCreative = target.kind === "ad_creative";
   // META-ORCH-1255(C) D-C: venue-listing hero target — brand-like storage +
   // video pipeline, ZERO brands-row writes (host persists the emitted patch).
   const isVenue = target.kind === "venue" || target.kind === "venue_draft";
@@ -392,7 +446,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // are NOT part of `gallery`, so a host re-seeding the gallery cannot wipe a
   // photo that has not saved yet.
   const [galleryTiles, setGalleryTiles] = useState<readonly GalleryPhotoTile[]>([]);
-  const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(null);
+  const [, setMediaDisplayError] = useState<string | null>(null);
+  // #3040 H-16 — player failures on the saved cover, and the reload state.
+  const [renderFailures, setRenderFailures] = useState(0);
+  const [reloadingPreview, setReloadingPreview] = useState(false);
+  const [previewKey, setPreviewKey] = useState(0);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (reloadTimerRef.current !== null) clearTimeout(reloadTimerRef.current);
+  }, []);
   // issue #1338 — in-sheet feedback channel for the cover-VIDEO flow. Rendered
   // INSIDE LibraryTab (never a root-portal Toast, which iOS drops while the
   // CoverPickerSheet modal is up). tone drives info (warm) vs error (semantic).
@@ -411,10 +473,21 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // Video upload hook — event/trip writes events.cover_media_url; brand writes
   // brands.cover_media_url (via the apply step on ready). For brand, eventRowId
   // is unused server-side (sentinel passed for the hook's signature).
+  // #3040 B-C9 / T4 — the device's own word on connectivity (NetInfo on
+  // native, the browser's flag on web). Null means unknown → assume online.
+  const network = useNetInfoSafe();
+  const networkConnectedRef = useRef<boolean | null>(network?.isConnected ?? null);
+  networkConnectedRef.current = network?.isConnected ?? null;
+  const isDeviceOffline = useCallback(
+    (): boolean => networkConnectedRef.current === false || isBrowserOffline(),
+    [],
+  );
   const videoUpload = useEventCoverVideoUpload(
     eventRowId,
     target.brandId,
-    isBrand || isVenue ? "published_manual" : target.coverMediaApplyMode,
+    target.kind === "event" || target.kind === "trip" || target.kind === "experience"
+      ? target.coverMediaApplyMode
+      : "published_manual",
     // META-ORCH-1059 Sub-B: experiences ride the event-cover video pipeline
     // (same events.cover_media_* columns + events-row id). Pass "experience"
     // for call-site clarity; the hook normalizes it to the "event" server path.
@@ -424,7 +497,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // it to the venue row.
     isBrand
       ? "brand"
-      : isVenue
+      : target.kind === "venue" || target.kind === "venue_draft" || target.kind === "ad_creative"
         ? target.kind
         : target.kind === "experience"
           ? "experience"
@@ -433,9 +506,16 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       ? { venueId: target.venueId }
       : target.kind === "venue_draft"
         ? { draftOwnerKey: target.draftOwnerKey }
-        : {},
+        : target.kind === "ad_creative"
+          ? { draftOwnerKey: target.ownerKey }
+          : {},
+    { isDeviceOffline },
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
+  // #3040 H-14a — the clip behind a "too long" refusal, for "Trim to 1 minute".
+  const lastPickedVideoAssetRef = useRef<CoverPickerAsset | null>(null);
+  // #3040 B-C18 — web: the chooser closed and the duration is being read.
+  const [readingClip, setReadingClip] = useState(false);
   // issue #3485 — the PICK/PREPARE half of "busy" (see coverPickerVideoPickGate).
   // True only while the OS video picker is open or its clip is being trimmed,
   // measured and handed onward; cleared the moment the file becomes the upload
@@ -499,6 +579,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   useEffect(() => {
     setMediaDisplayError(null);
+    setRenderFailures(0);
+    setReloadingPreview(false);
   }, [localCover.coverMediaUrl]);
 
   // issue #868 [cover-gallery] — the ADDITIONAL image/GIF items, managed
@@ -566,7 +648,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
   const projectedVideoStage: EventCoverVideoUploadStage = readyPersistenceFailed && videoUpload.status?.status === "ready"
     ? { phase: "ready" as const, percent: 100 }
-    : videoUpload.stage;
+    : readingClip && ["idle", "error", "applied"].includes(videoUpload.stage.phase)
+      ? { phase: "reading" as const, percent: 0 }
+      : videoUpload.stage;
 
   useEffect(() => {
     onCoverVideoProcessingChange?.(
@@ -605,14 +689,18 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     }),
     [disabled, galleryUploading, lockedVideoOperation, uploading],
   );
-  const activeMediaUrl =
-    videoUpload.localPreviewUri ??
-    videoUpload.processedUrl ??
-    localCover.coverMediaUrl;
-  const activeMediaType =
-    videoUpload.localPreviewUri !== null || videoUpload.processedUrl !== null
-      ? "video"
-      : localCover.coverMediaType;
+  // #3040 B-C4 [A-4] / design T7 — the preview is the SAVED cover; the new
+  // clip shows only when no cover exists yet (H-20). A finished job's
+  // `processedUrl` never outranks the cover the host chose after it.
+  const activeMedia = resolveActiveMedia({
+    localPreviewUri: videoUpload.localPreviewUri,
+    processedUrl: videoUpload.processedUrl,
+    stagePhase: projectedVideoStage.phase,
+    coverUrl: localCover.coverMediaUrl,
+    coverType: localCover.coverMediaType,
+  });
+  const activeMediaUrl = activeMedia.url;
+  const coverKind: CoverKind = coverKindOf(localCover.coverMediaUrl, localCover.coverMediaType);
 
   // issue #3318 — the refs both emit paths read at the moment they emit.
   const emitRefs = useMemo<CoverEmitRefs<CoverPatch>>(
@@ -638,6 +726,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const persistReadyVideo = useCallback(async (): Promise<void> => {
     const readyUrl = videoUpload.processedUrl;
     if (readyUrl === null || lastEmittedProcessedVideoUrlRef.current === readyUrl || savingProcessedVideoUrlRef.current === readyUrl) return;
+    // #3040 B-C3 [A-3] / T6 — only a job THIS device started (or resumed from
+    // its own record) may become the cover. Reopening the sheet used to
+    // re-emit the target's latest `applied` video over a newer photo.
+    if (!videoUpload.ownsJob(videoUpload.status?.jobId)) return;
+    // #3040 B-C14 — an ad video is linked by its creative id, which exists
+    // only once the server materialized the row (the job applies after that).
+    if (isAdCreative && videoUpload.creativeId === null) return;
     savingProcessedVideoUrlRef.current = readyUrl;
     setReadyPersistenceFailed(false);
     setMediaDisplayError(null);
@@ -651,6 +746,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         coverMediaCredit: UPLOAD_EVENT_COVER_PROVIDER_METADATA.credit,
         coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
         coverMediaAlt: "Uploaded video cover",
+        ...(isAdCreative ? { adCreativeId: videoUpload.creativeId } : {}),
       });
       if (isVenue) await videoUpload.acknowledgeApplied();
       lastEmittedProcessedVideoUrlRef.current = readyUrl;
@@ -669,11 +765,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     }
   }, [
     emitChange,
+    isAdCreative,
     isVenue,
     setVideoPickNotice,
-    videoUpload.acknowledgeApplied,
-    videoUpload.processedPosterUrl,
-    videoUpload.processedUrl,
+    videoUpload,
   ]);
 
   // Venue owners must persist first and acknowledge second. Event/brand jobs
@@ -684,6 +779,87 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       : videoUpload.stage.phase === "applied";
     if (shouldPersist) void persistReadyVideo();
   }, [isVenue, persistReadyVideo, readyPersistenceFailed, videoUpload.stage.phase, videoUpload.status?.status]);
+
+  // #3040 H-15 / T6 — "New video cover is live" for 3 s, once per job id,
+  // and only for a job this device started. Never replayed on reopen.
+  const announcedJobIdsRef = useRef<Set<string>>(new Set());
+  const [justAppliedJobId, setJustAppliedJobId] = useState<string | null>(null);
+  const appliedJobId = videoUpload.stage.phase === "applied" ? videoUpload.status?.jobId ?? null : null;
+  useEffect(() => {
+    if (appliedJobId === null || announcedJobIdsRef.current.has(appliedJobId)) return undefined;
+    if (!videoUpload.ownsJob(appliedJobId)) return undefined;
+    announcedJobIdsRef.current.add(appliedJobId);
+    setJustAppliedJobId(appliedJobId);
+    if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility("New video cover is live");
+    const timer = setTimeout(() => setJustAppliedJobId(null), 3_000);
+    return () => clearTimeout(timer);
+  }, [appliedJobId, videoUpload]);
+
+  // #3040 — how long the current phase has shown (the 20 s "Big file" and
+  // "Still confirming" rules, and the elapsed timer from 3 s).
+  const [phaseStartedAt, setPhaseStartedAt] = useState(() => Date.now());
+  const [phaseClock, setPhaseClock] = useState(0);
+  useEffect(() => {
+    setPhaseStartedAt(Date.now());
+    setPhaseClock(0);
+  }, [projectedVideoStage.phase]);
+  useEffect(() => {
+    if (!["picking", "reading", "validating", "preparing", "ack_pending"].includes(projectedVideoStage.phase)) return undefined;
+    const timer = setInterval(() => setPhaseClock(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [projectedVideoStage.phase]);
+
+  // #3040 B-C8 — throughput for the "About N s left" estimate, from the
+  // server-confirmed byte samples only (5 s minimum of samples).
+  const uploadSamplesRef = useRef<Array<{ at: number; bytes: number }>>([]);
+  const uploadConfirmed = projectedVideoStage.phase === "uploading" ? projectedVideoStage.confirmedBytes ?? null : null;
+  useEffect(() => {
+    if (uploadConfirmed === null) {
+      uploadSamplesRef.current = [];
+      return;
+    }
+    uploadSamplesRef.current = [...uploadSamplesRef.current, { at: Date.now(), bytes: uploadConfirmed }].slice(-12);
+  }, [uploadConfirmed]);
+  const bytesPerSecond = (() => {
+    const samples = uploadSamplesRef.current;
+    if (samples.length < 2) return null;
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    const seconds = (last.at - first.at) / 1000;
+    return seconds >= 5 ? (last.bytes - first.bytes) / seconds : null;
+  })();
+
+  // #3040 — a refusal made at pick time, before any byte left the device
+  // (H-14a too long, H-14b too large, H-14c type, AD-06 ad under 5 s).
+  const [pickRefusal, setPickRefusal] = useState<PickRefusal | null>(null);
+  const lastPickedClipRef = useRef<{ durationMs: number; bytes: number } | null>(null);
+  const cardContext = {
+    isNative: Platform.OS !== "web",
+    hasCover: localCover.coverMediaUrl !== null,
+    videoOnly: mediaMode === "video-only",
+    finishesWithoutYou: coverVideoFinishesWithoutYou(videoUpload.status),
+    phaseElapsedMs: Math.max(0, (phaseClock || Date.now()) - phaseStartedAt),
+    bytesPerSecond,
+    newClipDurationMs: lastPickedClipRef.current?.durationMs ?? null,
+    newClipBytes: lastPickedClipRef.current?.bytes ?? null,
+  };
+  const cardModel: UploadCardModel | null = pickRefusal !== null && !activeVideoUpload
+    ? pickRefusalCardModel(pickRefusal, cardContext)
+    : videoUploadCardModel(projectedVideoStage, videoUpload.status, cardContext);
+  const isLiveCover = target.kind === "brand" || target.kind === "venue" ||
+    ((target.kind === "event" || target.kind === "trip" || target.kind === "experience") &&
+      target.coverMediaApplyMode === "published_manual");
+  const statusRow = coverStatusRowModel({
+    coverKind,
+    isLive: isLiveCover,
+    videoOnly: mediaMode === "video-only",
+    justApplied: justAppliedJobId !== null,
+    adFitSummary,
+  });
+  const needsAction = cardModel?.needsAction === true;
+  useEffect(() => {
+    onNeedsActionChange?.(needsAction);
+  }, [needsAction, onNeedsActionChange]);
 
   // ----- Device image/GIF + video pickers --------------------------------
 
@@ -1025,10 +1201,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       };
       setLocalCover(patch);
       localCoverRef.current = patch;
+      videoUpload.resetAppliedPreview();
       onCoverChange(patch);
       onShowToast("Cover updated.");
     },
-    [makeCoverGate, onCoverChange, onShowToast],
+    [makeCoverGate, onCoverChange, onShowToast, videoUpload],
   );
 
   const requestMakeCover = useCallback(
@@ -1065,6 +1242,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
     setUploading(true);
     setCoverUploadKind("image");
+    // #3040 H-03 — switching a video cover to a photo says so.
+    const photoAddedToast = localCoverRef.current.coverMediaType === "video"
+      ? "Photo cover added. The video is no longer your cover."
+      : "Cover updated.";
+    setPickRefusal(null);
     // issue #1338 — an image/GIF pick clears any stale video-flow notice.
     setVideoPickNotice(null);
     let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
@@ -1106,7 +1288,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           }
         }
         setMediaDisplayError(null);
-        emitChange({
+        // #3040 B-C4 [A-4] — new media wins over a finished video preview.
+      videoUpload.resetAppliedPreview();
+      emitChange({
           coverMediaUrl: uploaded.publicUrl,
           coverMediaPosterUrl: posterUrl,
           coverMediaType: uploaded.mediaType === "gif" ? "gif" : "image",
@@ -1119,7 +1303,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         if (Platform.OS !== "web") {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         }
-        onShowToast("Cover updated.");
+        onShowToast(photoAddedToast);
         return;
       }
 
@@ -1151,7 +1335,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           }
         })();
         setMediaDisplayError(null);
-        emitChange({
+        // #3040 B-C4 [A-4] — new media wins over a finished video preview.
+      videoUpload.resetAppliedPreview();
+      emitChange({
           coverMediaUrl: uploaded.publicUrl,
           coverMediaPosterUrl: uploaded.posterUrl,
           coverMediaType: uploaded.mediaType === "gif" ? "gif" : "image",
@@ -1164,7 +1350,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         if (Platform.OS !== "web") {
           void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         }
-        onShowToast("Cover updated.");
+        onShowToast(photoAddedToast);
         return;
       }
 
@@ -1196,6 +1382,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         }
       }
       setMediaDisplayError(null);
+      // #3040 B-C4 [A-4] — new media wins over a finished video preview.
+      videoUpload.resetAppliedPreview();
       emitChange({
         coverMediaUrl: upload.publicUrl,
         coverMediaPosterUrl: posterUrl,
@@ -1209,9 +1397,16 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       if (Platform.OS !== "web") {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
-      onShowToast("Cover updated.");
+      onShowToast(photoAddedToast);
     } catch (error) {
-      showUploadError(error);
+      // #3040 H-02 — the old photo stays; the toast says exactly that.
+      if (error instanceof EventCoverMediaError && error.code === "upload_failed") {
+        onShowToast("Couldn't upload that photo. Your cover didn't change.");
+      } else if (error instanceof EventCoverMediaError || error instanceof BrandCoverError) {
+        showUploadError(error);
+      } else {
+        onShowToast("Couldn't upload that photo. Your cover didn't change.");
+      }
     } finally {
       revokeCoverPickedAssets(pickedAssets);
       setUploading(false);
@@ -1232,9 +1427,16 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     target,
     uploading,
     validateEventRowId,
+    videoUpload,
   ]);
 
-  const pickVideoCover = useCallback(async (replacing = false): Promise<void> => {
+  const pickVideoCover = useCallback(async (
+    replacing = false,
+    reuseAsset: CoverPickerAsset | null = null,
+    // #3040 T5 — the notice that explains WHY the picker opened (a retry
+    // with no retained file), shown instead of clearing the notice row.
+    openingNotice: NativeEditorNotice | null = null,
+  ): Promise<void> => {
     const resumingDetachedWeb = Platform.OS === "web" && videoUpload.stage.phase === "detached";
     // issue #3280 — see `pickImageOrGifCover`: a gallery upload is cover-busy.
     // issue #3485 — was one bare `return` over four flags, and `uploading` is
@@ -1276,7 +1478,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // either where the file is handed to the upload hook or in the `finally`.
     videoPickInFlightRef.current = true;
     // issue #1338 — clear any stale notice from a prior attempt.
-    setVideoPickNotice(null);
+    setVideoPickNotice(openingNotice);
+    setPickRefusal(null);
     const previousPickedVideoAssets = pickedVideoAssetsRef.current;
     let selectedReplacementAssets: Parameters<typeof revokeCoverPickedAssets>[0] | null = null;
     // issue #3280 — once the native trim editor has been shown on top of this
@@ -1303,7 +1506,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
     };
     try {
-      const result = await launchCoverVideoPicker();
+      // #3040 B-C18 [A-21] — web: the chooser closed; show "Checking file" at
+      // once instead of seconds of silence while the duration is read.
+      // A "Trim to 1 minute" tap (H-14a) reuses the clip already picked.
+      const result = reuseAsset !== null
+        ? { canceled: false, assets: [reuseAsset] }
+        : await launchCoverVideoPicker({ onFileChosen: () => setReadingClip(true) });
       if (result.canceled || result.assets.length === 0) return;
       // ORCH-1308: free the PREVIOUS pick's blob, then retain THIS one so the
       // "try again" retry (web fetch(blob:uri)) can re-read it. It is freed on
@@ -1311,23 +1519,53 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       // A replacement keeps the old browser blob alive until the server has
       // accepted the new immutable operation. A rejected replacement can then
       // resume the old upload instead of having its last readable bytes revoked.
-      if (!replacing) revokeCoverPickedAssets(previousPickedVideoAssets);
-      pickedVideoAssetsRef.current = result.assets;
-      if (replacing) selectedReplacementAssets = result.assets;
+      if (reuseAsset === null) {
+        if (!replacing) revokeCoverPickedAssets(previousPickedVideoAssets);
+        pickedVideoAssetsRef.current = result.assets;
+        if (replacing) selectedReplacementAssets = result.assets;
+      }
       const asset = result.assets[0];
+      lastPickedVideoAssetRef.current = asset;
+      const sourceDurationMs = normalizePickerDurationMs(asset.duration);
+      // issue #3040 — a clip a few frames over 60 s is declared as exactly
+      // 60 s instead of being refused or forced through the trimmer.
+      // #3040 B-C13a — on EVERY platform now: a phone's own "1 minute"
+      // recording (60.03 s) no longer opens the trimmer on iOS / Android.
+      const rawClipDurationMs = resolveRawCoverClipDurationMs(
+        sourceDurationMs,
+        Platform.OS === "web",
+      );
+      // #3040 H-14c — a type the lane cannot take is refused before any byte.
+      const pickedType = (asset.mimeType ?? "").toLowerCase();
+      if (pickedType === "video/3gpp" || pickedType === "video/3gpp2" || /\.3g[p2]$/i.test(asset.fileName ?? "")) {
+        setPickRefusal({ kind: "unsupported" });
+        return;
+      }
+      // #3040 AD-06 / I-AD-VIDEO-MIN-5S — an ad video under 5 s is refused at
+      // pick: no prepare, no intent, no byte leaves the device. Covers have no
+      // minimum.
+      if (isAdCreative && rawClipDurationMs > 0 && rawClipDurationMs < AD_MIN_DURATION_MS) {
+        setPickRefusal({ kind: "too_short", durationMs: rawClipDurationMs });
+        return;
+      }
+      // #3040 H-14b — web uploads the RAW file (no compressor), so over 100 MB
+      // is refused here. Native compresses first and checks after.
+      if (!isNative && typeof asset.fileSize === "number" && asset.fileSize > EVENT_COVER_SOURCE_MAX_BYTES) {
+        setPickRefusal({ kind: "too_large", bytes: asset.fileSize });
+        return;
+      }
       // issue #1338 — trim ONLY when a native clip is over the source ceiling.
       // Within-ceiling native clips and ALL web clips upload RAW (mirrors the
       // ORCH-1307 web path), which keeps the flaky native trim modal out of the
       // common short-clip path entirely.
-      const sourceDurationMs = normalizePickerDurationMs(asset.duration);
       const needsNativeTrim =
-        isNative && sourceDurationMs > EVENT_COVER_SOURCE_CEILING_MS;
+        isNative && rawClipDurationMs > EVENT_COVER_SOURCE_CEILING_MS;
 
       let trimResult: VideoTrimFinishPayload | null = null;
       if (needsNativeTrim) {
         // issue #1338 — present the trim editor ONLY after the OS photo picker
         // has fully dismissed, so iOS New Arch never refuses a 2nd stacked modal.
-        await waitForPickerDismissal();
+        if (reuseAsset === null) await waitForPickerDismissal();
         presentedNativeEditor = true;
         // The single-line trim call is pinned by the orch-0978 strict-grep C1
         // gate (exact substring match); prettier-ignore stops printWidth (80)
@@ -1343,34 +1581,38 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           return;
         }
       }
-      // issue #3040 — the browser has no trimmer, so a web clip a few frames
-      // over 60 s is declared as exactly 60 s instead of being refused. Native
-      // clips are returned unchanged.
-      const rawClipDurationMs = resolveRawCoverClipDurationMs(
-        sourceDurationMs,
-        Platform.OS === "web",
-      );
-      const uploadFile =
-        trimResult !== null
-          ? await buildTrimmedVideoUploadFile({
-              originalFileName: asset.fileName,
-              originalMimeType: asset.mimeType,
-              statFile: (uri) => getCoverPickerFileInfoAsync(uri),
-              trimResult,
-            })
-          : {
-              bytes: asset.fileSize ?? 0,
-              durationMs: rawClipDurationMs,
-              fileName: asset.fileName,
-              mimeType: asset.mimeType ?? "video/mp4",
-              trimEndMs: rawClipDurationMs,
-              trimStartMs: 0,
-              // ORCH-1303: on web `asset.uri` is a browser blob: object URL that
-              // is fetch-able as-is; normalizeLocalFileUri would prefix `file://`
-              // → `file://blob:…` and the web TUS upload's fetch(input.uri) would
-              // reject. Native still normalizes its real file path.
-              uri: resolveRawClipUploadUri(asset.uri, Platform.OS === "web"),
-            };
+      let uploadFile: EventCoverVideoUploadFile;
+      try {
+        uploadFile =
+          trimResult !== null
+            ? await buildTrimmedVideoUploadFile({
+                statFile: (uri) => getCoverPickerFileInfoAsync(uri),
+                trimResult,
+                // #3040 B-C13b — the stream-copy trim can run a GOP past the
+                // window; measure the real output before declaring it.
+                measureDurationMs: measureTrimmedVideoDurationMs,
+              })
+            : {
+                bytes: asset.fileSize ?? 0,
+                durationMs: rawClipDurationMs,
+                fileName: asset.fileName,
+                mimeType: asset.mimeType ?? "video/mp4",
+                trimEndMs: rawClipDurationMs,
+                trimStartMs: 0,
+                // ORCH-1303: on web `asset.uri` is a browser blob: object URL that
+                // is fetch-able as-is; normalizeLocalFileUri would prefix `file://`
+                // → `file://blob:…` and the web TUS upload's fetch(input.uri) would
+                // reject. Native still normalizes its real file path.
+                uri: resolveRawClipUploadUri(asset.uri, Platform.OS === "web"),
+              };
+      } catch (buildError) {
+        if (buildError instanceof TrimOverCapError) {
+          // #3040 H-14a — measured over a minute: say how long, offer the trimmer.
+          setPickRefusal({ kind: "too_long", durationMs: buildError.measuredMs });
+          return;
+        }
+        throw buildError;
+      }
       const { durationMs } = uploadFile;
       if (durationMs <= 0) {
         // issue #1338 — in-sheet, never a root Toast.
@@ -1386,17 +1628,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           capMs: EVENT_COVER_MAX_VIDEO_DURATION_MS,
           overshoot: durationMs - EVENT_COVER_MAX_VIDEO_DURATION_MS,
         });
-        // ORCH-1307: on native the trimmer already capped the clip, so this is a
-        // rare safety net ("trim to 29s"). On web there is NO trimmer — a raw
-        // over-ceiling clip is a dead end, so give an actionable web message
-        // instead of asking for a trim the browser can't do.
-        // issue #1338 — in-sheet, never a root Toast; literals preserved verbatim.
-        setVideoPickNotice({
-          tone: "error",
-          text: isNative
-            ? "Trim it to 1 minute or less, then choose it again."
-            : "Choose a video that is 1 minute or shorter.",
-        });
+        // #3040 H-14a — "This video is {m:ss} long": on web there is no
+        // trimmer, so the action is "Choose another video"; native offers
+        // "Trim to 1 minute" (a rare safety net — the trimmer runs first).
+        setPickRefusal({ kind: "too_long", durationMs });
         return;
       }
       if (uploadFile.bytes <= 0) {
@@ -1407,6 +1642,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         });
         return;
       }
+      lastPickedClipRef.current = { durationMs, bytes: uploadFile.bytes };
       lastVideoUploadFileRef.current = uploadFile;
       if (presentedNativeEditor && handOffAfterNativeEditor) {
         // issue #3280 — do NOT start here. The fresh sheet starts this upload
@@ -1442,6 +1678,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       // dismissal. It is released after, and on every early return and error.
       if (presentedNativeEditor && handOffAfterNativeEditor) await handOffToFreshSheet();
       videoPickInFlightRef.current = false;
+      setReadingClip(false);
       // ORCH-1308: do NOT revoke the picked blob here — the "try again" retry
       // re-reads it (web fetch(blob:uri)). It is retained via
       // pickedVideoAssetsRef and freed on the next pick / on unmount instead.
@@ -1452,6 +1689,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     ensureMediaPermission,
     galleryAdd,
     galleryUploading,
+    isAdCreative,
     isAuthReady,
     isNative,
     lockedVideoOperation,
@@ -1525,12 +1763,113 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     });
   }, [onShowToast, videoUpload]);
 
+  // #3040 B-C6 [A-6] / design T5 — "Try again" ALWAYS does something. After
+  // a remount no file is retained, and it used to return silently; now it
+  // opens the picker with "Choose the video again to retry.", or says why it
+  // is waiting. issue #3280 — a gallery upload is cover-busy.
   const retryVideoCoverUpload = useCallback((): void => {
     const uploadFile = lastVideoUploadFileRef.current;
-    // issue #3280 — a gallery upload is cover-busy (see `pickImageOrGifCover`).
-    if (uploadFile === null || activeVideoUpload || disabled || uploading || galleryUploading) return;
+    const plan = retryVideoPlan({
+      retainedFile: uploadFile !== null,
+      busy: activeVideoUpload || disabled || uploading || galleryUploading,
+    });
+    if (plan.kind === "busy") {
+      setVideoPickNotice({ tone: "info", text: plan.notice });
+      return;
+    }
+    if (plan.kind === "pick_again" || uploadFile === null) {
+      void pickVideoCover(lockedVideoOperation, null, { tone: "info", text: RETRY_PICK_NOTICE });
+      return;
+    }
     void videoUpload.start(uploadFile);
-  }, [activeVideoUpload, disabled, galleryUploading, uploading, videoUpload]);
+  }, [activeVideoUpload, disabled, galleryUploading, lockedVideoOperation, pickVideoCover, setVideoPickNotice, uploading, videoUpload]);
+
+  // #3040 — every card action, by the id the design gives it.
+  const handleCardAction = useCallback((id: CardActionId): void => {
+    switch (id) {
+      case "cancel":
+      case "cancel_upload":
+      case "discard":
+      case "discard_video":
+        setPickRefusal(null);
+        cancelVideoCoverUpload();
+        return;
+      case "check_now":
+      case "check_again":
+        void videoUpload.checkNow().catch(() => {
+          setVideoPickNotice({ tone: "info", text: "Couldn't reach Mingla. We'll check again when you're connected." });
+        });
+        return;
+      case "resume_upload":
+        // H-10 — still offline: say so instead of a dead tap.
+        if (isDeviceOffline()) {
+          setVideoPickNotice({ tone: "info", text: "Still offline. We'll resume as soon as you're back." });
+          return;
+        }
+        void videoUpload.continueUpload();
+        return;
+      case "continue_upload":
+        void videoUpload.continueUpload();
+        return;
+      case "choose_again":
+        // H-12 — any clip is accepted as a NEW operation; the hook cancels the
+        // old job once the new clip is prepared (A-18).
+        setPickRefusal(null);
+        void pickVideoCover(false);
+        return;
+      case "try_again":
+        retryVideoCoverUpload();
+        return;
+      case "trim": {
+        const asset = lastPickedVideoAssetRef.current;
+        setPickRefusal(null);
+        void pickVideoCover(lockedVideoOperation, asset);
+        return;
+      }
+      case "choose_another":
+        setPickRefusal(null);
+        void pickVideoCover(lockedVideoOperation);
+        return;
+      case "update_app": {
+        const url = hostAppStoreUrl(Platform.OS);
+        if (url !== null) {
+          void Linking.openURL(url).catch(() => {
+            setVideoPickNotice({ tone: "error", text: "Couldn't open the store. Update Mingla Host from your app store." });
+          });
+        }
+        return;
+      }
+      case "save_as_cover":
+      case "try_saving_again":
+        // H-19 / AD-05 — apply only, never a re-upload.
+        if (isVenue) void persistReadyVideo();
+        else {
+          void videoUpload.acknowledgeApplied().catch(() => {
+            setVideoPickNotice({ tone: "error", text: "Couldn't save it yet. Try again in a moment." });
+          });
+        }
+        return;
+      case "choose_different":
+        void pickVideoCover(true);
+        return;
+    }
+  }, [cancelVideoCoverUpload, isDeviceOffline, isVenue, lockedVideoOperation, persistReadyVideo, pickVideoCover, retryVideoCoverUpload, setVideoPickNotice, videoUpload]);
+
+  // #3040 H-10 — reconnecting resumes the paused upload without a tap.
+  const wasOfflineRef = useRef(false);
+  const videoStageNow = videoUpload.stage;
+  const continueVideoUpload = videoUpload.continueUpload;
+  useEffect(() => {
+    const connected = network?.isConnected ?? null;
+    if (connected === false) {
+      wasOfflineRef.current = true;
+      return;
+    }
+    if (connected === true && wasOfflineRef.current && videoStageNow.phase === "detached" && videoStageNow.reason === "offline") {
+      wasOfflineRef.current = false;
+      void continueVideoUpload();
+    }
+  }, [continueVideoUpload, network?.isConnected, videoStageNow]);
 
   // ----- issue #3485: settle a finished job when the app comes back ---------
   // The card was stuck on "Processing video…" (elapsed 4758m) for a job the
@@ -1756,6 +2095,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           return;
         }
       }
+      videoUpload.resetAppliedPreview();
       emitChange({
         coverMediaUrl: result.mediaUrl,
         coverMediaPosterUrl: result.posterUrl,
@@ -1768,7 +2108,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
       onShowToast("GIPHY cover selected.");
     },
-    [brandCover, disabled, emitChange, localCover.coverMediaUrl, onShowToast, showUploadError, target],
+    [brandCover, disabled, emitChange, localCover.coverMediaUrl, onShowToast, showUploadError, target, videoUpload],
   );
 
   const selectPexels = useCallback(
@@ -1810,6 +2150,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           return;
         }
       }
+      videoUpload.resetAppliedPreview();
       emitChange({
         coverMediaUrl: result.mediaUrl,
         coverMediaPosterUrl: result.mediaUrl,
@@ -1822,7 +2163,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       });
       onShowToast("Pexels cover selected.");
     },
-    [brandCover, disabled, emitChange, localCover.coverMediaUrl, onShowToast, showUploadError, target],
+    [brandCover, disabled, emitChange, localCover.coverMediaUrl, onShowToast, showUploadError, target, videoUpload],
   );
 
   const handleRemoveCover = useCallback((): void => {
@@ -1831,8 +2172,18 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
     setMediaDisplayError(null);
+    setRenderFailures(0);
+    setPickRefusal(null);
     // issue #1338 — removing the cover clears any lingering video-flow notice.
     setVideoPickNotice(null);
+    // #3040 H-17 — "This also stops the video that's uploading." A running
+    // job would otherwise land on top of the cover the host just removed.
+    if (lockedVideoOperation) {
+      void videoUpload.cancel().catch(() => {
+        onShowToast("Could not cancel video upload. Try again.");
+      });
+    }
+    videoUpload.resetAppliedPreview();
     // Emit the null patch. For brand the parent (BrandEditView /
     // BrandCreationFlow) mirrors into its draft and persists the cleared
     // cover on Save (the brand save path already writes cover_media_url).
@@ -1848,7 +2199,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       coverMediaAlt: null,
     });
     onShowToast("Cover removed.");
-  }, [disabled, emitChange, onShowToast, setVideoPickNotice]);
+  }, [disabled, emitChange, lockedVideoOperation, onShowToast, setVideoPickNotice, videoUpload]);
 
   const handleMediaRenderError = useCallback(
     (event: EventCoverMediaErrorEvent): void => {
@@ -1864,15 +2215,30 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       ) {
         return;
       }
-      setMediaDisplayError(
-        "Uploaded, but this cover could not be displayed. Try another image or GIF.",
-      );
-      onShowToast(
-        "Uploaded, but this cover could not be displayed. Try another image or GIF.",
-      );
+      // #3040 B-C16 [A-16] / design H-16 — the SAVED cover's preview failed.
+      // The cover itself is still saved; say so, with copy that fits a video,
+      // and offer "Load preview again" (it used to blame the file and suggest
+      // "another image or GIF" for a video, with no retry at all).
+      setReloadingPreview(false);
+      setRenderFailures((count) => count + 1);
+      reportCoverPreviewRenderError(event.mediaUrl, event.mediaType);
     },
-    [activeVideoUpload, onShowToast, videoUpload.localPreviewUri],
+    [activeVideoUpload, videoUpload.localPreviewUri],
   );
+  // H-16 — remount the player with a fresh key (the PREVIEW only, never the
+  // stored URL). No new error within 8 s means it loaded.
+  const reloadPreview = useCallback((): void => {
+    setReloadingPreview(true);
+    setPreviewKey((key) => key + 1);
+    if (reloadTimerRef.current !== null) clearTimeout(reloadTimerRef.current);
+    reloadTimerRef.current = setTimeout(() => {
+      reloadTimerRef.current = null;
+      setReloadingPreview((stillReloading) => {
+        if (stillReloading) setRenderFailures(0);
+        return false;
+      });
+    }, RELOAD_PREVIEW_MAX_MS);
+  }, []);
 
   const switchTab = useCallback((tab: CoverTabId): void => {
     tickHaptic();
@@ -1881,7 +2247,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, []);
 
   const columns = isWideDesktop ? 3 : 2;
-  const hasCover = localCover.coverMediaUrl !== null;
 
   // META-ORCH-1059: which GIF / Pexels tile is the currently-applied cover.
   // Matched by the APPLIED media URL (result.mediaUrl), not the preview URL —
@@ -2010,54 +2375,41 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       {/* Tab bodies */}
       {activeTab === "library" ? (
         <LibraryTab
-          hasCover={hasCover}
+          coverKind={coverKind}
           hue={initialCoverHue}
-          activeMediaUrl={activeMediaUrl}
-          activeMediaType={activeMediaType}
+          activeMedia={activeMedia}
+          posterUrl={activeMedia.isNewClip ? null : localCover.coverMediaPosterUrl}
           alt={localCover.coverMediaAlt}
           credit={selectedCredit}
-          // issue #3280 — the Image / Video / Remove / retry buttons are cover
-          // actions, so an in-flight gallery upload makes them busy too. This is
-          // the same set of buttons that was busy before the gallery got its own
-          // flag, when the gallery upload still set `uploading`.
+          // issue #3280 — the cover buttons are cover actions, so an in-flight
+          // gallery upload makes them busy too.
           uploading={uploading || galleryUploading}
-          // issue #3318 — the Replace/Image SPINNER is the cover's own upload
-          // only (the buttons above stay disabled, not spinning, during a photo
-          // add); a photo add used to make the cover look like it was uploading.
-          // Issue #3073 — and only an IMAGE cover upload: a video pick spins
-          // the Video button instead.
+          // issue #3318 / #3073 — spinners: the cover's own image upload, and a
+          // video pick in progress.
           spinning={uploading && coverUploadKind === "image"}
           videoSpinning={uploading && coverUploadKind === "video"}
-          activeVideoUpload={lockedVideoOperation}
+          jobActive={lockedVideoOperation}
           videoStage={projectedVideoStage}
           videoStatus={videoUpload.status}
-          // Issue #3073 — ONE error, ONE retry. A failed video used to say the
-          // same sentence three times: in the status card (with Try again and
-          // Discard upload), again in red under the buttons, and a third time
-          // as an "Upload failed - try again" button. The card owns the error
-          // whenever it is showing it; this row is only for an error the card
-          // is not showing.
-          videoErrorMessage={
-            videoUpload.stage.phase === "error" && projectedVideoStage.phase !== "error"
-              ? videoUpload.stage.message
-              : null
-          }
-          canRetryVideo={lastVideoUploadFileRef.current !== null}
+          cardModel={cardModel}
+          statusRow={statusRow}
+          phaseStartedAt={phaseStartedAt}
           videoOnly={mediaMode === "video-only"}
           disabled={disabled}
-          onPickImage={pickImageOrGifCover}
+          renderError={renderFailures > 0 && activeMediaUrl !== null && !activeMedia.isNewClip
+            ? { failures: renderFailures, reloading: reloadingPreview }
+            : null}
+          previewKey={previewKey}
+          onPickImage={() => { void pickImageOrGifCover(); }}
           onPickVideo={() => {
             void pickVideoCover();
           }}
           onRemove={handleRemoveCover}
-          onCancelVideo={cancelVideoCoverUpload}
-          onReplaceVideo={() => { void pickVideoCover(true); }}
-          onRetryVideo={retryVideoCoverUpload}
-          onResumeVideo={() => { if (Platform.OS === "web") void pickVideoCover(); else void videoUpload.resume(); }}
-          onCheckVideo={() => { void videoUpload.checkNow(); }}
-          onRetryReadyVideo={() => { void persistReadyVideo(); }}
+          onCardAction={handleCardAction}
+          onConfirmCancel={cancelVideoCoverUpload}
+          onConfirmSwap={() => { void pickVideoCover(true); }}
+          onReloadPreview={reloadPreview}
           onMediaError={handleMediaRenderError}
-          mediaDisplayError={mediaDisplayError}
           videoPickNotice={videoPickNotice}
         />
       ) : null}
@@ -2174,7 +2526,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   );
 };
 
-// ----- Library tab (preview + action row + video affordance) -------------
+// ----- Library tab (preview + status/upload card + actions + limits) ------
+//
+// #3040 B-C15 — the approved design's Host cover sheet (Appendix A §2–§5).
+// Hierarchy: preview (what guests see now) → status row OR upload card (what
+// is happening) → actions (what can I do) → limits. Copy, states and actions
+// come from the pure `coverUploadCardModel` / `coverPickerActionLabels`
+// rules, so they are tested without mounting this file.
 
 // issue #3040 — mirrors `autoApplyEventCover` in
 // `supabase/functions/event-cover-video-webhook/index.ts`. If this predicate
@@ -2185,154 +2543,290 @@ const coverVideoFinishesWithoutYou = (
   status !== null && status.targetKind === "event" &&
   status.applyMode === "draft_auto";
 
+// orch-0776a — the card's ONE truthful percent. The provider's encode % only
+// when it reports a real value; upload % is server-confirmed and held below
+// 100 by the hook; nothing here is fabricated.
 const videoProjectionCopy = (
   stage: EventCoverVideoUploadStage,
-  status: EventCoverVideoStatus | null,
-): { title: string; body: string; percent: number | null; tone: "neutral" | "warning" | "error" | "success" } => {
+  _status: EventCoverVideoStatus | null,
+): { percent: number | null } => {
   switch (stage.phase) {
-    case "preparing": return { title: "Preparing video…", body: "Making a secure copy so the upload can resume if you leave.", percent: null, tone: "neutral" };
-    case "validating": return { title: "Checking video…", body: "Confirming the format, length, and file size.", percent: null, tone: "neutral" };
-    case "compressing": return { title: stage.percent === null ? "Optimizing video…" : "Optimizing video", body: "Preparing a browser-safe upload.", percent: stage.percent, tone: "neutral" };
-    case "intent_pending": return { title: "Starting upload…", body: "Creating a secure, resumable upload.", percent: null, tone: "neutral" };
-    case "uploading": return { title: "Uploading video", body: "You can close this sheet. Mingla will continue or resume when you return.", percent: stage.percent, tone: "neutral" };
-    case "ack_pending": return { title: "Finishing upload…", body: "The video is uploaded. Confirming it arrived safely.", percent: null, tone: "neutral" };
-    // issue #3040 invariants 4 + 5 — the sheet must not promise something it
-    // does not do. "We'll finish automatically" is true for exactly ONE
-    // configuration: an EVENT target in `draft_auto`, which the Bunny webhook
-    // auto-applies server-side (`autoApplyEventCover`, gated on
-    // `target_kind === "event" && apply_mode === "draft_auto"`). Every other
-    // target — a published event, a brand, a venue — applies through the
-    // CLIENT on the next visit, so closing the sheet is safe but NOT
-    // self-completing, and the copy now says which one you are in.
-    case "processing": {
-      const finishesWithoutYou = coverVideoFinishesWithoutYou(status);
-      if (stage.timing === "breached") {
-        return {
-          title: "Still preparing video",
-          body: finishesWithoutYou
-            ? "This is taking longer than expected. Mingla recorded the delay; we’ll finish automatically if you leave."
-            : "This is taking longer than expected. Mingla recorded the delay and will keep working; return to apply it when ready.",
-          percent: stage.percent,
-          tone: "warning",
-        };
-      }
-      if (stage.timing === "delayed") {
-        return {
-          title: "Preparing video is taking longer",
-          body: finishesWithoutYou
-            ? "You can leave this sheet; we’ll finish automatically."
-            : "You can leave this sheet. Mingla will keep working; we’ll apply it when you come back.",
-          percent: stage.percent,
-          tone: "neutral",
-        };
-      }
-      return {
-        title: "Preparing video",
-        body: finishesWithoutYou
-          ? "Usually under a minute. You can leave this sheet—we’ll finish automatically."
-          : "Usually under a minute. You can leave this sheet and Mingla will keep working.",
-        percent: stage.percent,
-        tone: "neutral",
-      };
-    }
-    case "reattaching": return { title: "Reconnecting to your video…", body: "Checking the latest progress without starting over.", percent: null, tone: "neutral" };
-    case "detached": return stage.sourceAcknowledged
-      ? { title: "Still working in the background", body: "We can’t refresh the status right now. Your video is safe, and Mingla will check again when you’re connected.", percent: null, tone: "warning" }
-      : { title: "Upload paused — you’re offline", body: "Reconnect to continue this video from where it stopped.", percent: null, tone: "warning" };
-    case "ready": return { title: "Video ready", body: "The video is ready, but the cover could not be saved. Retry saving it.", percent: null, tone: "warning" };
-    case "applying": return { title: "Applying cover…", body: "The video is ready. Saving it to the right cover now.", percent: null, tone: "neutral" };
-    case "applied": return { title: "Video cover added", body: "Your new cover is ready.", percent: null, tone: "success" };
-    case "error": return { title: "We couldn’t finish this video", body: stage.message, percent: null, tone: "error" };
-    case "picking": return { title: "Preparing video…", body: "Making a secure copy so the upload can resume if you leave.", percent: null, tone: "neutral" };
-    case "reading": return { title: "Reading video…", body: "Checking the length of the video you chose.", percent: null, tone: "neutral" };
-    case "idle": return { title: "", body: "", percent: null, tone: "neutral" };
+    case "processing":
+      return { percent: stage.percent !== null && stage.percent > 0 ? stage.percent : null };
+    case "reattaching":
+      return { percent: null };
+    case "compressing":
+    case "uploading":
+      return { percent: stage.percent };
+    default:
+      return { percent: null };
   }
 };
 
-const VideoStatusCard: React.FC<{
+/** A 3-high stepper: Optimize → Check → Upload → Finish (web: no Optimize). */
+const UploadStepper: React.FC<{ steps: readonly UploadStep[]; current: UploadStep }> = ({ steps, current }) => {
+  const currentIndex = steps.indexOf(current);
+  return (
+    <View
+      style={styles.stepper}
+      accessible
+      accessibilityLabel={`Step ${currentIndex + 1} of ${steps.length}: ${STEP_LABEL[current]}`}
+    >
+      {steps.map((step, index) => {
+        const state = index < currentIndex ? "done" : index === currentIndex ? "now" : "todo";
+        return (
+          <View key={step} style={styles.stepperColumn}>
+            <View
+              style={[
+                styles.stepperBar,
+                state === "now" ? styles.stepperBarNow : state === "done" ? styles.stepperBarDone : styles.stepperBarTodo,
+              ]}
+            />
+            <Text
+              style={[
+                styles.stepperLabel,
+                state === "now" ? styles.stepperLabelNow : state === "done" ? styles.stepperLabelDone : styles.stepperLabelTodo,
+              ]}
+            >
+              {STEP_LABEL[step]}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+};
+
+/** Indeterminate bar: a 32%-wide segment sweeping on a 1400 ms loop. */
+const IndeterminateTrack: React.FC = () => {
+  const sweep = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => { if (alive) setReduceMotion(enabled); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => {
+    if (reduceMotion) return undefined;
+    const loop = Animated.loop(
+      Animated.timing(sweep, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: Platform.OS !== "web" }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [reduceMotion, sweep]);
+  return (
+    <View
+      style={styles.progressTrack}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Video upload progress"
+      accessibilityValue={{ text: "In progress" }}
+    >
+      {reduceMotion ? (
+        <View style={[styles.progressFill, styles.progressFillStatic]} />
+      ) : (
+        <Animated.View
+          style={[
+            styles.progressSegment,
+            {
+              transform: [{
+                translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-120, 320] }),
+              }],
+            },
+          ]}
+        />
+      )}
+    </View>
+  );
+};
+
+type ConfirmKind = "cancel" | "swap" | "remove" | "remove_ad";
+
+/** H-17 / H-18 / stop-upload confirms, inline (a second native modal is dropped on iOS). */
+const InlineConfirm: React.FC<{
+  kind: ConfirmKind;
+  hasCover: boolean;
+  jobActive: boolean;
+  videoOnly: boolean;
+  onKeep: () => void;
+  onConfirm: () => void;
+}> = ({ kind, hasCover, jobActive, videoOnly, onKeep, onConfirm }) => {
+  const copy = kind === "cancel"
+    ? {
+      title: "Stop this upload?",
+      body: hasCover ? "Your current cover stays." : "Nothing will be added.",
+      keep: "Keep uploading",
+      act: "Stop upload",
+      variant: "destructive" as const,
+    }
+    : kind === "swap"
+      ? videoOnly
+        ? {
+          title: "Swap this ad video?",
+          body: "We'll stop preparing this one and use the new one instead. Nothing has been sent to ad platforms.",
+          keep: "Keep this one",
+          act: "Choose another video",
+          variant: "primary" as const,
+        }
+        : {
+          title: "Swap the video that's uploading?",
+          body: "We'll stop the current upload and start the new one. Your current cover stays until the new video is ready.",
+          keep: "Keep uploading",
+          act: "Choose another video",
+          variant: "primary" as const,
+        }
+      : kind === "remove_ad"
+        ? {
+          title: "Remove this ad video?",
+          body: "The ad won't have a video until you add one.",
+          keep: "Keep video",
+          act: "Remove video",
+          variant: "destructive" as const,
+        }
+        : {
+          title: "Remove this cover?",
+          body: `Guests will see a plain colour until you add a new one.${jobActive ? " This also stops the video that's uploading." : ""}`,
+          keep: "Keep cover",
+          act: "Remove cover",
+          variant: "destructive" as const,
+        };
+  return (
+    <View
+      style={[styles.uploadCard, Platform.OS === "android" && styles.uploadCardAndroid]}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+    >
+      <Text style={styles.uploadCardTitle}>{copy.title}</Text>
+      <Text style={[styles.uploadCardBody, styles.confirmBody]}>{copy.body}</Text>
+      <View style={styles.uploadCardActions}>
+        <Button label={copy.keep} variant="secondary" size="md" onPress={onKeep} />
+        <Button
+          label={copy.act}
+          variant={copy.variant}
+          size="md"
+          onPress={onConfirm}
+          {...(copy.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel } : {})}
+        />
+      </View>
+    </View>
+  );
+};
+
+/** H-01…H-03, H-15, AD-01, AD-04 — what the saved cover is, in one line. */
+const CoverStatusRow: React.FC<{ row: StatusRowModel }> = ({ row }) => (
+  <View style={styles.statusRow} accessible accessibilityLiveRegion="polite">
+    <View
+      style={[
+        styles.statusIcon,
+        row.tone === "ok" ? styles.statusIconOk : row.tone === "warning" ? styles.statusIconWarn : styles.statusIconNeutral,
+      ]}
+    >
+      <Icon
+        name={row.tone === "ok" ? "check" : row.tone === "warning" ? "shield" : "plus"}
+        size={16}
+        color={row.tone === "ok" ? canvas.depth : row.tone === "warning" ? semantic.warning : textTokens.secondary}
+      />
+    </View>
+    <View style={styles.statusText}>
+      <Text style={styles.uploadCardTitle}>{row.title}</Text>
+      <Text style={styles.uploadCardBody}>{row.body}</Text>
+    </View>
+  </View>
+);
+
+/** H-04…H-14, H-19, H-20, AD-03, AD-05, AD-06 — the upload card. */
+const VideoUploadCard: React.FC<{
+  model: UploadCardModel;
   stage: EventCoverVideoUploadStage;
   status: EventCoverVideoStatus | null;
-  hasExistingCover: boolean;
-  onCancel: () => void;
-  onReplace: () => void;
-  onRetry: () => void;
-  onRetryReady: () => void;
-  onResume: () => void;
-  onCheck: () => void;
-}> = ({ stage, status, hasExistingCover, onCancel, onReplace, onRetry, onRetryReady, onResume, onCheck }) => {
-  const [confirming, setConfirming] = useState<"cancel" | "replace" | null>(null);
+  phaseStartedAt: number;
+  onAction: (id: CardActionId) => void;
+}> = ({ model, stage, status, phaseStartedAt, onAction }) => {
   const copy = videoProjectionCopy(stage, status);
-  // Processing is the only genuinely long phase, and the only one where the
-  // card can sit unchanged for a minute or more. Anchor on the moment the
-  // source was acknowledged — that is when the provider actually took over.
-  const elapsed = useElapsedSince(
-    status?.sourceUploadedAt ?? status?.createdAt ?? null,
-    stage.phase === "processing",
-  );
-  const active = !["idle", "applied", "error"].includes(stage.phase);
-  if (confirming !== null) {
-    const replacing = confirming === "replace";
-    return (
-      <View style={styles.videoStatusCard} accessibilityLiveRegion="polite">
-        <Text style={styles.videoStatusTitle}>{replacing ? "Replace this video?" : "Cancel this video?"}</Text>
-        <Text style={styles.videoStatusBody}>{replacing ? "Your current upload keeps going unless a new video is accepted." : hasExistingCover ? "We’ll stop this job and keep your current cover." : "We’ll stop this job. No cover will be added."}</Text>
-        <View style={styles.videoStatusActions}>
-          <Button label="Keep current" accessibilityLabel="Keep current video upload" variant="secondary" size="md" onPress={() => setConfirming(null)} />
-          <Button label={replacing ? "Choose replacement" : "Cancel video"} accessibilityLabel={replacing ? "Choose replacement video" : "Cancel video upload"} variant={replacing ? "primary" : "destructive"} size="md" onPress={replacing ? onReplace : onCancel} />
-        </View>
-      </View>
-    );
-  }
-  const color = copy.tone === "warning" ? semantic.warning : copy.tone === "error" ? semantic.error : copy.tone === "success" ? semantic.success : textTokens.primary;
-  const isIndeterminate = copy.percent === null && [
-    "picking",
-    "preparing",
-    "validating",
-    "compressing",
-    "intent_pending",
-    "ack_pending",
-    "processing",
-    "reattaching",
-    "applying",
-  ].includes(stage.phase);
+  const elapsedAnchor = model.elapsedFrom === "sourceUploaded"
+    ? status?.sourceUploadedAt ?? status?.createdAt ?? null
+    : model.elapsedFrom === "stage"
+      ? new Date(phaseStartedAt).toISOString()
+      : null;
+  const elapsed = useElapsedSince(elapsedAnchor, model.elapsedFrom !== "none");
+  const showElapsed = elapsed !== null && (model.elapsedFrom !== "stage" || Date.now() - phaseStartedAt >= 3_000);
+  const determinate = model.progress.kind === "determinate" && copy.percent !== null;
+  const titleColor = model.tone === "warning" ? semantic.warning : model.tone === "error" ? semantic.errorText : textTokens.primary;
   return (
-    <View style={[styles.videoStatusCard, Platform.OS === "android" && styles.videoStatusCardAndroid]} accessible accessibilityLiveRegion="polite" accessibilityRole={copy.tone === "error" ? "alert" : undefined}>
-      <View style={styles.videoStatusHeader}>
-        {copy.tone === "success" ? <Icon name="check" size={20} color={color} /> : null}
-        {copy.tone === "warning" ? <Icon name="shield" size={20} color={color} /> : null}
-        {copy.tone === "error" ? <Icon name="x" size={20} color={color} /> : null}
-        {isIndeterminate ? <ActivityIndicator color={color} accessibilityLabel={copy.title} /> : null}
-        <Text style={[styles.videoStatusTitle, { color }]}>{copy.title}</Text>
-        {copy.percent !== null
-          ? <Text style={styles.videoStatusPercent}>{Math.round(copy.percent)}%</Text>
-          : elapsed !== null
-          // Hidden from assistive tech on purpose: this card is a polite live
-          // region, so a value that changes every second would re-announce the
-          // whole card every second. The body copy stays the announced content.
-          ? <Text style={styles.videoStatusPercent} accessibilityElementsHidden importantForAccessibility="no">{elapsed}</Text>
-          : null}
+    <View
+      style={[
+        styles.uploadCard,
+        Platform.OS === "android" && styles.uploadCardAndroid,
+        model.tone === "warning" && styles.uploadCardWarn,
+        model.tone === "error" && styles.uploadCardError,
+      ]}
+      accessible={false}
+      accessibilityLiveRegion="polite"
+      accessibilityRole={model.role === "alert" ? "alert" : undefined}
+    >
+      <View style={styles.uploadCardHeader}>
+        <View style={[styles.uploadThumb, model.stateId === "H-12" && styles.uploadThumbGone]}>
+          <Icon
+            name={model.tone === "error" ? "x" : model.stateId === "H-12" ? "upload" : "play"}
+            size={18}
+            color={model.tone === "error" ? semantic.errorText : textTokens.primary}
+          />
+        </View>
+        <View style={styles.uploadCardHeaderText}>
+          <Text style={[styles.uploadCardTitle, { color: titleColor }]} accessibilityRole="header">{model.title}</Text>
+          {model.sub !== null ? <Text style={styles.uploadCardSub}>{model.sub}</Text> : null}
+        </View>
+        {determinate && copy.percent !== null ? (
+          <Text style={styles.uploadCardPercent}>{Math.round(copy.percent)}%</Text>
+        ) : showElapsed ? (
+          // Hidden from assistive tech: the card is a polite live region, and a
+          // value that changes every second would re-announce it every second.
+          <Text style={styles.uploadCardElapsed} accessibilityElementsHidden importantForAccessibility="no">{elapsed}</Text>
+        ) : model.progress.kind === "indeterminate" ? (
+          <ActivityIndicator color={textTokens.secondary} accessibilityLabel={model.title} />
+        ) : null}
       </View>
-      <Text style={styles.videoStatusBody}>{copy.body}</Text>
-      {copy.percent !== null ? (
-        <View accessibilityRole="progressbar" accessibilityLabel={stage.phase === "processing" ? "Video processing progress" : "Video upload progress"} accessibilityValue={{ min: 0, now: Math.round(copy.percent), max: 100, text: `${Math.round(copy.percent)} percent` }} style={styles.progressTrack}>
+      {determinate && copy.percent !== null ? (
+        <View
+          accessibilityRole="progressbar"
+          accessibilityLabel={stage.phase === "processing" ? "Video preparation progress" : "Video upload progress"}
+          accessibilityValue={{ min: 0, now: Math.round(copy.percent), max: 100, text: `${Math.round(copy.percent)} percent` }}
+          style={styles.progressTrack}
+        >
           <View style={[styles.progressFill, { transform: [{ scaleX: copy.percent / 100 }] }]} />
         </View>
+      ) : model.progress.kind === "frozen" ? (
+        <View
+          accessibilityRole="progressbar"
+          accessibilityLabel="Video upload progress"
+          accessibilityValue={{ min: 0, now: model.progress.percent, max: 100, text: `Paused at ${model.progress.percent} percent` }}
+          style={styles.progressTrack}
+        >
+          <View style={[styles.progressFill, styles.progressFillFrozen, { transform: [{ scaleX: model.progress.percent / 100 }] }]} />
+        </View>
+      ) : model.progress.kind === "indeterminate" ? (
+        <IndeterminateTrack />
       ) : null}
-      <View style={styles.videoStatusActions}>
-        {stage.phase === "processing" && stage.timing === "breached" ? <Button label="Check again" accessibilityLabel="Check video preparation again" variant="secondary" size="md" onPress={onCheck} /> : null}
-        {stage.phase === "detached" ? <Button label={stage.sourceAcknowledged ? "Check now" : "Resume upload"} accessibilityLabel={stage.sourceAcknowledged ? "Check video status now" : "Resume video upload"} variant="secondary" size="md" onPress={stage.sourceAcknowledged ? onCheck : onResume} /> : null}
-        {stage.phase === "ready" ? <Button label="Retry saving" accessibilityLabel="Retry saving ready video cover" variant="secondary" size="md" onPress={onRetryReady} /> : null}
-        {stage.phase === "error" ? <Button label="Try again" variant="secondary" size="md" onPress={onRetry} /> : null}
-        {/* issue #2974 — the error copy used to tell people to "cancel it first"
-            while `active` excludes the error phase, so NEITHER the Cancel nor the
-            Replace button rendered and there was no reachable cancel control
-            anywhere in the sheet. This is that control: it drops the local upload
-            record (and cancels the server job when one exists) so the next pick
-            starts clean. */}
-        {stage.phase === "error" ? <Button label="Discard upload" accessibilityLabel="Discard this video upload and start over" variant="ghost" size="md" onPress={onCancel} /> : null}
-        {active && stage.phase !== "reattaching" && stage.phase !== "applying" ? <Button label="Replace" accessibilityLabel="Replace video upload" variant="secondary" size="md" onPress={() => setConfirming("replace")} /> : null}
-        {active && stage.phase !== "reattaching" && stage.phase !== "ready" && stage.phase !== "applying" ? <Button label="Cancel" accessibilityLabel="Cancel video upload" variant="ghost" size="md" onPress={() => setConfirming("cancel")} /> : null}
-      </View>
+      {model.meta !== null ? <Text style={styles.uploadCardMeta}>{model.meta}</Text> : null}
+      <Text style={styles.uploadCardBody}>{model.body}</Text>
+      {model.steps !== null && model.currentStep !== null ? (
+        <UploadStepper steps={model.steps} current={model.currentStep} />
+      ) : null}
+      {model.actions.length > 0 ? (
+        <View style={styles.uploadCardActions}>
+          {model.actions.map((cardAction) => (
+            <Button
+              key={cardAction.id}
+              label={cardAction.label}
+              variant={cardAction.variant}
+              size="md"
+              onPress={() => onAction(cardAction.id)}
+              {...(cardAction.variant === "primary" ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel } : {})}
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -2341,9 +2835,6 @@ const VideoStatusCard: React.FC<{
  * issue #1338 — in-sheet cover-VIDEO feedback (cancel/over-cap/failure/added).
  * Renders INSIDE CoverPickerSheet's Sheet — a plain View/Text, NOT a native
  * <Modal>, so iOS never drops it while the sheet is up.
- *
- * issue #3485 — extracted so the SAME row can render while a video job owns the
- * cover, where the action row it used to sit under is not rendered at all.
  */
 const VideoPickNoticeRow: React.FC<{ notice: NativeEditorNotice | null }> = ({ notice }) =>
   notice === null ? null : (
@@ -2358,194 +2849,243 @@ const VideoPickNoticeRow: React.FC<{ notice: NativeEditorNotice | null }> = ({ n
   );
 
 const LibraryTab: React.FC<{
-  hasCover: boolean;
+  coverKind: CoverKind;
   hue: number;
-  activeMediaUrl: string | null;
-  activeMediaType: EventCoverMediaType | null;
+  activeMedia: ActiveMedia;
+  posterUrl: string | null;
   alt: string | null;
   credit: string | null;
   /** Disables the cover buttons: a cover upload OR a gallery photo upload. */
   uploading: boolean;
-  /**
-   * issue #3318 — the Replace/Image spinner: the COVER's own upload only, so a
-   * gallery photo add never makes the cover look like it is uploading.
-   */
+  /** issue #3318 — the photo button's spinner: the cover's own image upload only. */
   spinning: boolean;
-  /** Issue #3073 — the Video button's spinner: a video pick in progress. */
+  /** Issue #3073 — the video button's spinner: a video pick in progress. */
   videoSpinning: boolean;
-  activeVideoUpload: boolean;
+  jobActive: boolean;
   videoStage: EventCoverVideoUploadStage;
   videoStatus: EventCoverVideoStatus | null;
-  videoErrorMessage: string | null;
-  canRetryVideo: boolean;
+  cardModel: UploadCardModel | null;
+  statusRow: StatusRowModel;
+  phaseStartedAt: number;
   videoOnly: boolean;
   disabled: boolean;
+  renderError: { failures: number; reloading: boolean } | null;
+  previewKey: number;
   onPickImage: () => void;
   onPickVideo: () => void;
   onRemove: () => void;
-  onCancelVideo: () => void;
-  onReplaceVideo: () => void;
-  onRetryVideo: () => void;
-  onRetryReadyVideo: () => void;
-  onResumeVideo: () => void;
-  onCheckVideo: () => void;
+  onCardAction: (id: CardActionId) => void;
+  onConfirmCancel: () => void;
+  onConfirmSwap: () => void;
+  onReloadPreview: () => void;
   onMediaError: (e: EventCoverMediaErrorEvent) => void;
-  mediaDisplayError: string | null;
   // issue #1338 — in-sheet feedback for the cover-VIDEO flow (never a root Toast).
-  videoPickNotice: { tone: "info" | "error"; text: string } | null;
+  videoPickNotice: NativeEditorNotice | null;
 }> = ({
-  hasCover,
+  coverKind,
   hue,
-  activeMediaUrl,
-  activeMediaType,
+  activeMedia,
+  posterUrl,
   alt,
   credit,
   uploading,
   spinning,
   videoSpinning,
-  activeVideoUpload,
+  jobActive,
   videoStage,
   videoStatus,
-  videoErrorMessage,
-  canRetryVideo,
+  cardModel,
+  statusRow,
+  phaseStartedAt,
   videoOnly,
   disabled,
+  renderError,
+  previewKey,
   onPickImage,
   onPickVideo,
   onRemove,
-  onCancelVideo,
-  onReplaceVideo,
-  onRetryVideo,
-  onRetryReadyVideo,
-  onResumeVideo,
-  onCheckVideo,
+  onCardAction,
+  onConfirmCancel,
+  onConfirmSwap,
+  onReloadPreview,
   onMediaError,
-  mediaDisplayError,
   videoPickNotice,
-}) => (
-  <View>
-    <View style={[styles.coverPreview, hasCover && !activeVideoUpload && styles.coverPreviewSelected]}>
-      <EventCoverMedia
-        hue={hue}
-        mediaUrl={activeMediaUrl}
-        mediaType={activeMediaType}
-        radius={radiusTokens.md}
-        label={alt ?? "cover"}
-        height={180}
-        onMediaError={onMediaError}
-        muted={true}
-        showAudioControl={activeMediaType === "video"}
+}) => {
+  const [confirming, setConfirming] = useState<ConfirmKind | null>(null);
+  const [sheetWidth, setSheetWidth] = useState(0);
+  // The selected ring + badge mean "this cover is applied": never while a
+  // video job is still deciding what the cover will be.
+  const activeVideoUpload = jobActive;
+  const wide = sheetWidth >= bpRegular;
+  const hasCover = coverKind !== "empty";
+  const needsAction = cardModel?.needsAction === true;
+  const coverActions = resolveCoverActions(coverKind, jobActive, needsAction, videoOnly);
+  // Cancel is immediate while nothing has left the phone (H-04/H-05); from the
+  // upload on it asks first ("Stop this upload?").
+  const handleCardAction = (id: CardActionId): void => {
+    if (id === "choose_different") {
+      setConfirming("swap");
+      return;
+    }
+    if (id === "cancel_upload" || (id === "cancel" && !["compressing", "picking", "reading", "validating", "preparing"].includes(videoStage.phase))) {
+      setConfirming("cancel");
+      return;
+    }
+    onCardAction(id);
+  };
+  const pill = activeMedia.isNewClip
+    ? videoOnly ? "New ad video · preparing" : "New video · not live yet"
+    : !hasCover
+      ? null
+      : jobActive
+        ? "Current cover"
+        : coverKind === "video" ? "Current video cover" : "Current photo cover";
+  const previewLabel = coverKind === "video" ? "Current video cover" : coverKind === "photo" ? "Current photo cover" : "No cover yet";
+  return (
+    <View onLayout={(event) => setSheetWidth(event.nativeEvent.layout.width)}>
+      <View
+        style={[
+          styles.coverPreview,
+          hasCover && !activeVideoUpload && styles.coverPreviewSelected,
+          activeMedia.isNewClip && styles.coverPreviewDimmed,
+          renderError !== null && styles.coverPreviewDimmed,
+        ]}
+        accessible
+        accessibilityLabel={previewLabel}
       >
-      </EventCoverMedia>
-      {/* META-ORCH-1059: a check badge on the live preview signals the current
-          cover is applied (parity with the GIF/Stock tile selected state). */}
-      {hasCover && !activeVideoUpload ? (
-        <View style={styles.selectedBadge} pointerEvents="none">
-          <Icon name="check" size={14} color={textTokens.inverse} />
-        </View>
-      ) : null}
-    </View>
-    {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
-
-    {videoStage.phase !== "idle" ? (
-      <VideoStatusCard
-        stage={videoStage}
-        status={videoStatus}
-        hasExistingCover={hasCover}
-        onCancel={onCancelVideo}
-        onReplace={onReplaceVideo}
-        onRetry={onRetryVideo}
-        onRetryReady={onRetryReadyVideo}
-        onResume={onResumeVideo}
-        onCheck={onCheckVideo}
-      />
-    ) : null}
-
-    {/* issue #3485 — the notice has to survive an ACTIVE job. It used to live
-        only inside the branch below, which renders nothing while a video
-        operation owns the cover — so the sentence explaining a refused Replace
-        would have been set and never shown, and the dead tap would look
-        identical. Same component, both branches, mutually exclusive. */}
-    {activeVideoUpload ? <VideoPickNoticeRow notice={videoPickNotice} /> : (
-      <>
-        <View style={styles.actionRow}>
-          {!videoOnly ? (
-            <Button
-              label={hasCover ? "Replace" : "Image"}
-              leadingIcon="upload"
-              variant="secondary"
-              size="md"
-              shape="square"
-              onPress={onPickImage}
-              loading={spinning}
-              disabled={uploading || disabled}
-              style={styles.actionButton}
-            />
-          ) : null}
-          <Button
-            label="Video"
-            leadingIcon="play"
-            variant="secondary"
-            size="md"
-            shape="square"
-            onPress={onPickVideo}
-            loading={videoSpinning}
-            disabled={uploading || disabled}
-            style={styles.actionButton}
-          />
-          {hasCover ? (
-            <Button
-              label="Remove"
-              leadingIcon="trash"
-              variant="ghost"
-              size="md"
-              shape="square"
-              onPress={onRemove}
-              disabled={uploading || disabled}
-              style={styles.removeButton}
-            />
-          ) : null}
-        </View>
-
-        {videoErrorMessage !== null ? (
-          <View style={styles.videoErrorRow}>
-            <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-              {videoErrorMessage}
-            </Text>
-            {canRetryVideo ? (
-              <Button
-                label="Upload failed - try again"
-                variant="secondary"
-                size="sm"
-                shape="square"
-                onPress={onRetryVideo}
-                disabled={uploading || disabled}
-                style={styles.retryButton}
-              />
-            ) : null}
+        <EventCoverMedia
+          key={previewKey}
+          hue={hue}
+          mediaUrl={activeMedia.url}
+          mediaType={activeMedia.type as EventCoverMediaType | null}
+          posterUrl={posterUrl}
+          radius={radiusTokens.md}
+          label={alt ?? "cover"}
+          height={wide ? coverUpload.previewHeightWide : coverUpload.previewHeightCompact}
+          onMediaError={onMediaError}
+          muted={true}
+          showAudioControl={activeMedia.type === "video"}
+        >
+        </EventCoverMedia>
+        {!hasCover && !activeMedia.isNewClip ? (
+          <View style={styles.previewEmptyLabel} pointerEvents="none">
+            <Text style={styles.previewEmptyText}>No cover yet</Text>
           </View>
         ) : null}
-
-        <VideoPickNoticeRow notice={videoPickNotice} />
-
-        <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
-        {Platform.OS === "web" ? (
-          <Text style={styles.helperText}>
-            On the web, video covers upload the clip as-is into Mingla&apos;s
-            deterministic preparation step.
-          </Text>
+        {pill !== null ? (
+          <View style={[styles.previewPill, Platform.OS === "android" && styles.previewPillAndroid]} pointerEvents="none">
+            <View style={[styles.previewPillDot, activeMedia.isNewClip || jobActive ? styles.previewPillDotNew : styles.previewPillDotCurrent]} />
+            <Text style={styles.previewPillText}>{pill}</Text>
+          </View>
         ) : null}
-        <Text style={styles.uploadLimitText}>{EVENT_COVER_VIDEO_PROCESSING_COPY}</Text>
-
-        {mediaDisplayError !== null ? (
-          <Text accessibilityRole="alert" style={styles.mediaErrorText}>
-            {mediaDisplayError}
-          </Text>
+        {renderError !== null ? (
+          <View style={styles.previewErrorOverlay} pointerEvents="none">
+            <Icon name="swap" size={22} color={textTokens.primary} />
+            <Text style={styles.previewEmptyText}>Preview didn&apos;t load</Text>
+          </View>
         ) : null}
-      </>
-    )}
-  </View>
-);
+        {/* META-ORCH-1059: a check badge on the live preview signals the current
+            cover is applied (decorative — the pill and label carry the state). */}
+        {hasCover && !activeVideoUpload ? (
+          <View style={styles.selectedBadge} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Icon name="check" size={14} color={textTokens.inverse} />
+          </View>
+        ) : null}
+      </View>
+      {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
+
+      {confirming !== null ? (
+        <InlineConfirm
+          kind={confirming}
+          hasCover={hasCover}
+          jobActive={jobActive}
+          videoOnly={videoOnly}
+          onKeep={() => setConfirming(null)}
+          onConfirm={() => {
+            const kind = confirming;
+            setConfirming(null);
+            if (kind === "cancel") onConfirmCancel();
+            else if (kind === "swap") onConfirmSwap();
+            else onRemove();
+          }}
+        />
+      ) : renderError !== null ? (
+        <View style={[styles.uploadCard, Platform.OS === "android" && styles.uploadCardAndroid, styles.uploadCardWarn]} accessibilityLiveRegion="polite">
+          <Text style={[styles.uploadCardTitle, { color: semantic.warning }]}>
+            {resolveRenderErrorCopy(coverKind === "video" ? "video" : "photo", renderError.failures).title}
+          </Text>
+          <Text style={styles.uploadCardBody}>
+            {resolveRenderErrorCopy(coverKind === "video" ? "video" : "photo", renderError.failures).body}
+          </Text>
+          <View style={styles.uploadCardActions}>
+            <Button
+              label="Load preview again"
+              variant="secondary"
+              size="md"
+              loading={renderError.reloading}
+              onPress={onReloadPreview}
+            />
+          </View>
+        </View>
+      ) : cardModel !== null ? (
+        <VideoUploadCard
+          model={cardModel}
+          stage={videoStage}
+          status={videoStatus}
+          phaseStartedAt={phaseStartedAt}
+          onAction={handleCardAction}
+        />
+      ) : (
+        <CoverStatusRow row={statusRow} />
+      )}
+
+      <VideoPickNoticeRow notice={videoPickNotice} />
+
+      {coverActions.showActions && confirming === null ? (
+        <View style={[styles.actionColumn, wide && styles.actionGrid]}>
+          {coverActions.actions.map((coverAction) => (
+            <Button
+              key={coverAction.label}
+              label={coverAction.label}
+              leadingIcon={coverAction.icon}
+              variant={coverAction.primary ? "primary" : "secondary"}
+              size="lg"
+              shape="square"
+              fullWidth={!wide}
+              onPress={coverAction.opens === "video" ? onPickVideo : onPickImage}
+              loading={coverAction.opens === "video" ? videoSpinning : spinning}
+              disabled={uploading || disabled}
+              accessibilityLabel={coverAction.label}
+              style={wide ? styles.actionGridItem : undefined}
+              // #3040 D3 (Seth, Q1) — dark ink on the flat orange: 6.87:1.
+              {...(coverAction.primary ? { accentColor: accent.warm, labelStyle: styles.darkInkLabel } : {})}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {coverActions.showRemove && confirming === null ? (
+        <Button
+          label={coverActions.removeLabel}
+          leadingIcon="trash"
+          variant="ghost"
+          size="md"
+          onPress={() => setConfirming(videoOnly ? "remove_ad" : "remove")}
+          disabled={disabled || uploading}
+          accessibilityLabel={coverActions.removeLabel}
+          style={styles.removeButton}
+          labelStyle={styles.removeLabel}
+        />
+      ) : null}
+
+      <View style={styles.limitsBlock}>
+        {coverLimitsLines(coverKind, videoOnly).map((line, index) => (
+          <Text key={line} style={[styles.uploadLimitText, index > 0 && styles.limitsSecondLine]}>{line}</Text>
+        ))}
+      </View>
+    </View>
+  );
+};
 
 // ----- Provider grid (GIF/Stock masonry + 9 states) ----------------------
 
@@ -3170,17 +3710,37 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     marginBottom: spacing.xs,
   },
-  actionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  // #3040 B-C15 — stacked below 600pt of sheet width, two-up at ≥600 (D8).
+  actionColumn: {
     gap: spacing.sm,
   },
-  actionButton: {
-    flex: 1,
-    minWidth: 140,
+  actionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  actionGridItem: {
+    flexBasis: "48%",
+    flexGrow: 1,
   },
   removeButton: {
-    minWidth: 96,
+    alignSelf: "center",
+    marginTop: spacing.xs,
+  },
+  removeLabel: {
+    color: semantic.errorText,
+  },
+  darkInkLabel: {
+    color: canvas.depth,
+  },
+  limitsBlock: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+    alignItems: "center",
+  },
+  limitsSecondLine: {
+    marginTop: spacing.xs,
   },
   helperText: {
     fontSize: typography.caption.fontSize,
@@ -3192,7 +3752,7 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
-    marginTop: spacing.xs,
+    textAlign: "center",
   },
   mediaErrorText: {
     fontSize: typography.caption.fontSize,
@@ -3236,54 +3796,158 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     fontWeight: "700",
   },
-  videoStatusCard: {
-    minHeight: 88,
+  // #3040 — upload card (Appendix A §2). Android is opaque
+  // (ANDROID_GLASS_USES_OPAQUE_FALLBACK): no translucent fill, no elevation.
+  uploadCard: {
     padding: spacing.md,
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
     borderRadius: radiusTokens.md,
     borderWidth: 1,
     borderColor: glass.border.profileElevated,
     backgroundColor: glass.tint.profileElevated,
     overflow: "hidden",
   },
-  videoStatusCardAndroid: {
+  uploadCardAndroid: {
     backgroundColor: ariThread.ariBubbleAndroid,
     borderColor: androidOpaque.rowBorder,
     elevation: 0,
   },
-  videoStatusHeader: {
+  uploadCardWarn: {
+    borderColor: coverUpload.warnBorder,
+  },
+  uploadCardError: {
+    borderColor: coverUpload.errorBorder,
+  },
+  uploadCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.sm + spacing.xs,
   },
-  videoStatusTitle: {
+  uploadThumb: {
+    width: coverUpload.thumb,
+    height: coverUpload.thumb,
+    borderRadius: coverUpload.thumbRadius,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  uploadThumbGone: {
+    backgroundColor: "#1b1e24",
+  },
+  uploadCardHeaderText: {
     flex: 1,
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
-    fontWeight: typography.bodyLg.fontWeight,
+    minWidth: 0,
+  },
+  uploadCardTitle: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
     color: textTokens.primary,
   },
-  videoStatusBody: {
+  uploadCardSub: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+  },
+  uploadCardPercent: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+    fontVariant: ["tabular-nums"],
+  },
+  uploadCardElapsed: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "500",
+    color: textTokens.tertiary,
+    fontVariant: ["tabular-nums"],
+  },
+  uploadCardMeta: {
+    marginTop: spacing.sm,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    fontVariant: ["tabular-nums"],
+  },
+  uploadCardBody: {
+    marginTop: spacing.sm + spacing.xs,
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
   },
-  videoStatusPercent: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
+  confirmBody: {
+    marginTop: spacing.xs,
   },
-  videoStatusActions: {
+  uploadCardActions: {
+    marginTop: spacing.md,
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
   },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm + spacing.xs,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  statusIcon: {
+    width: coverUpload.statusIcon,
+    height: coverUpload.statusIcon,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statusIconOk: {
+    backgroundColor: semantic.success,
+  },
+  statusIconWarn: {
+    backgroundColor: semantic.warningTint,
+  },
+  statusIconNeutral: {
+    backgroundColor: glass.tint.profileElevated,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+  },
+  statusText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  stepper: {
+    marginTop: 14,
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  stepperColumn: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  stepperBar: {
+    height: coverUpload.stepperBar,
+    borderRadius: 999,
+  },
+  stepperBarNow: { backgroundColor: accent.warm },
+  stepperBarDone: { backgroundColor: coverUpload.stepDone },
+  stepperBarTodo: { backgroundColor: coverUpload.stepTodo },
+  stepperLabel: {
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    fontWeight: "600",
+    letterSpacing: typography.micro.letterSpacing,
+  },
+  stepperLabelNow: { color: textTokens.primary },
+  stepperLabelDone: { color: textTokens.tertiary },
+  stepperLabelTodo: { color: textTokens.quaternary },
   progressTrack: {
-    height: 4,
+    marginTop: spacing.sm + spacing.xs,
+    height: coverUpload.trackHeight,
     borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: "rgba(255, 255, 255, 0.24)",
+    backgroundColor: coverUpload.track,
   },
   progressFill: {
     width: "100%",
@@ -3291,6 +3955,69 @@ const styles = StyleSheet.create({
     transformOrigin: "left",
     borderRadius: 999,
     backgroundColor: accent.warm,
+  },
+  progressFillFrozen: {
+    backgroundColor: coverUpload.frozenFill,
+  },
+  progressFillStatic: {
+    opacity: 0.45,
+  },
+  progressSegment: {
+    width: "32%",
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: accent.warm,
+  },
+  coverPreviewDimmed: {
+    opacity: 0.55,
+  },
+  previewEmptyLabel: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewEmptyText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.8)",
+  },
+  previewErrorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+  previewPill: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    height: coverUpload.pillHeight,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: glass.tint.badge.idle,
+    borderWidth: 1,
+    borderColor: glass.border.badge,
+  },
+  previewPillAndroid: {
+    backgroundColor: ariThread.ariBubbleAndroid,
+    overflow: "hidden",
+  },
+  previewPillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  previewPillDotCurrent: { backgroundColor: semantic.success },
+  previewPillDotNew: { backgroundColor: accent.warm },
+  previewPillText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
   },
   gridStateHost: {
     alignItems: "center",
