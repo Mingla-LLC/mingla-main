@@ -182,5 +182,7 @@ DELETE FROM auth.users WHERE id='30400000-0000-4000-8000-000000000101';
 -- INSERT-time contract again) for every suite that runs after this one.
 \ir ../20271108003040_issue_3040_video_lane_1080p_owners.sql
 \ir ../20271108013040_issue_3040_ready_owner_alerts.sql
+-- Issue #3697: the lifecycle migration redefines a function M-1 also defines.
+\ir ../20271109003697_issue_3697_creative_library_lifecycle.sql
 
 \echo 'issue_3040_deleted_event_backfill_bridge.implementor.pg17: PASS'
