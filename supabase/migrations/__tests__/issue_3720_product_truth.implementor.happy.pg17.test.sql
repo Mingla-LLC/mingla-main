@@ -45,6 +45,14 @@ DECLARE
   )),'hex');
   v_denied boolean := false;
 BEGIN
+  UPDATE public.product_capabilities
+     SET verification_due_at = now() + interval '90 days'
+   WHERE capability_key IN (
+     'official-brand-groups',
+     'brand-files-and-guides',
+     'product-inbox-avengers'
+   );
+
   SET LOCAL ROLE service_role;
   IF (SELECT count(*) FROM public.product_capabilities
        WHERE claimed_status='live'
