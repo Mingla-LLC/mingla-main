@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3720_support_availability.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-support-availability",
+  "profile": "deno-1.46-stripe"
+}
