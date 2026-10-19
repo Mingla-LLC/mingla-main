@@ -229,6 +229,8 @@ export interface EventCoverVideoStatus {
   creativeId?: string | null;
   /** #3040 E-10b — the provider rendition height the lane served. */
   renditionHeight?: number | null;
+  /** #3040 D1 — the server's hint for the next status poll, when it gives one. */
+  retryAfterMs?: number | null;
 }
 
 interface StatusResponse extends Partial<EventCoverVideoStatus> {
@@ -1341,6 +1343,9 @@ const mapStatusResponse = (
       : null,
     creativeId: readCreativeId(payload),
     renditionHeight: readRenditionHeight(payload),
+    retryAfterMs: typeof payload.retryAfterMs === "number" && Number.isFinite(payload.retryAfterMs)
+      ? payload.retryAfterMs
+      : null,
   };
 };
 
@@ -1434,6 +1439,51 @@ export const cancelEventCoverVideoJob = async (
   return mapStatusResponse(data as StatusResponse, "event-cover-video-cancel");
 };
 
+// #3040 D1 — the status watch must see a server-side `ready`/`applied` within
+// seconds. Observed 2026-10-19 (job a79a090d): the server applied the job at
+// 17:30:08, but the poll that started at 17:30:06.6 hung for 30.5 s inside the
+// edge function's auth check and came back 401; the old loop awaited it with
+// no deadline and then backed off exponentially, so the sheet said
+// "Preparing 5%" until 17:30:45. Three rules now hold:
+//   1. no single status request may hold the loop: each one is aborted after
+//      STATUS_REQUEST_TIMEOUT_MS and the next one starts right away;
+//   2. the gap between polls is at most 3 s for the first 2 minutes of the
+//      watch and at most 10 s after that — a failure never stretches it;
+//   3. a server `retryAfterMs` hint is honoured, but clamped to those caps.
+export const STATUS_POLL_FAST_WINDOW_MS = 120_000;
+export const STATUS_POLL_FAST_MAX_MS = 3_000;
+export const STATUS_POLL_SLOW_MS = 5_000;
+export const STATUS_POLL_SLOW_MAX_MS = 10_000;
+export const STATUS_REQUEST_TIMEOUT_MS = 4_000;
+const STATUS_POLL_FLOOR_MS = 250;
+
+/** The longest gap allowed between two status polls at this point of the watch. */
+export const statusPollCapMs = (watchElapsedMs: number): number =>
+  watchElapsedMs < STATUS_POLL_FAST_WINDOW_MS ? STATUS_POLL_FAST_MAX_MS : STATUS_POLL_SLOW_MAX_MS;
+
+/**
+ * The gap before the next status poll: the caller's cadence (slower after the
+ * fast window), a server hint when one is given, a short ramp after
+ * consecutive failures — and never more than `statusPollCapMs`.
+ */
+export const nextStatusPollDelayMs = (input: {
+  watchElapsedMs: number;
+  pollIntervalMs: number;
+  retryAfterMs?: number | null;
+  failureCount?: number;
+}): number => {
+  const cap = statusPollCapMs(input.watchElapsedMs);
+  const cadence = input.watchElapsedMs < STATUS_POLL_FAST_WINDOW_MS
+    ? input.pollIntervalMs
+    : Math.max(input.pollIntervalMs, STATUS_POLL_SLOW_MS);
+  const failures = input.failureCount ?? 0;
+  const ramped = failures > 0 ? cadence * 2 ** Math.min(failures - 1, 3) : cadence;
+  const hinted = typeof input.retryAfterMs === "number" && Number.isFinite(input.retryAfterMs)
+    ? Math.max(ramped, input.retryAfterMs)
+    : ramped;
+  return Math.max(0, Math.min(cap, Math.max(Math.min(STATUS_POLL_FLOOR_MS, cadence), hinted)));
+};
+
 export const waitForEventCoverVideoReady = async (
   jobId: string,
   options: WaitForEventCoverVideoReadyOptions | number = {},
@@ -1443,24 +1493,58 @@ export const waitForEventCoverVideoReady = async (
   const onStatus = typeof options === "number" ? undefined : options.onStatus;
   const signal = typeof options === "number" ? undefined : options.signal;
   const delay = (ms: number): Promise<void> => new Promise((resolve, reject) => {
+    // An ALREADY-aborted signal never fires "abort" again; check it first.
+    if (signal?.aborted) { reject(cancelledUploadError()); return; }
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => { clearTimeout(timer); reject(cancelledUploadError()); }, { once: true });
   });
+  // One status request, bounded: aborted when the caller aborts or when it
+  // has run for STATUS_REQUEST_TIMEOUT_MS, whichever comes first.
+  const boundedFetch = async (): Promise<EventCoverVideoStatus> => {
+    if (signal?.aborted) throw cancelledUploadError();
+    const request = new AbortController();
+    const onAbort = (): void => request.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        request.abort();
+        reject(new EventCoverVideoProcessingError(
+          "status_request_timeout",
+          "Could not check video processing status.",
+          { phase: "status" },
+        ));
+      }, STATUS_REQUEST_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([fetchEventCoverVideoStatus(jobId, request.signal), timedOut]);
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+  };
+  const watchStartedAt = Date.now();
   let lastStatus: EventCoverVideoStatus | undefined;
   let failureCount = 0;
   while (true) {
     let status: EventCoverVideoStatus;
+    const requestStartedAt = Date.now();
     try {
-      status = await fetchEventCoverVideoStatus(jobId, signal);
+      status = await boundedFetch();
       failureCount = 0;
     } catch (error) {
+      if (signal?.aborted) throw cancelledUploadError();
       if (
         error instanceof EventCoverVideoProcessingError &&
         ["forbidden", "not_found", "validation_error", "unauthenticated"].includes(error.code)
       ) throw error;
       failureCount += 1;
-      const backoff = Math.min(30_000, pollIntervalMs * 2 ** Math.min(failureCount, 5));
-      await delay(backoff + Math.floor(Math.random() * 250));
+      // A timed-out request already cost its whole budget: poll again now.
+      const timedOut = error instanceof EventCoverVideoProcessingError &&
+        error.code === "status_request_timeout";
+      await delay(timedOut ? 0 : nextStatusPollDelayMs({
+        watchElapsedMs: Date.now() - watchStartedAt, pollIntervalMs, failureCount,
+      }));
       continue;
     }
     lastStatus = status;
@@ -1487,6 +1571,11 @@ export const waitForEventCoverVideoReady = async (
         { lastStatus: status, phase: "status" },
       );
     }
-    await delay(pollIntervalMs);
+    // The gap is measured from when this poll STARTED, so a slow response
+    // never adds to the cadence.
+    const gap = nextStatusPollDelayMs({
+      watchElapsedMs: Date.now() - watchStartedAt, pollIntervalMs, retryAfterMs: status.retryAfterMs ?? null,
+    });
+    await delay(Math.max(0, gap - (Date.now() - requestStartedAt)));
   }
 };
