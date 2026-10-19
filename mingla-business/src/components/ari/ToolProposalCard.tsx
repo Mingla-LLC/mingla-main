@@ -45,6 +45,7 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { adCreativeCoverTarget, type CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
+import { useAdVideoFitSummary } from "../../hooks/useAdVideoFitSummary";
 import { randomId } from "../../utils/randomId";
 import { ariAdOwnerKey, isValidAdCreativeOwnerKey } from "../../services/eventCoverVideoEdgeContract";
 import type { ConfirmOutcome } from "./toolProposalTypes";
@@ -1037,6 +1038,14 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             coverMediaApplyMode: "draft_auto",
           }
         : null;
+  // #3040 AD-04 — the same per-platform fit sentence Host Ads shows, from the
+  // same server-computed fit, for the video this proposal will run.
+  const adVideoFitSummary = useAdVideoFitSummary(
+    isAdPlanCreativeProposal && typeof args.brand_id === "string" ? args.brand_id : null,
+    isAdPlanCreativeProposal && typeof editedArgs.creative_library_id === "string"
+      ? editedArgs.creative_library_id
+      : null,
+  );
   const adVideoTarget: CoverTarget | null =
     isAdPlanCreativeProposal && typeof args.brand_id === "string" && adOwnerKey !== null
       ? adCreativeCoverTarget(args.brand_id, adOwnerKey)
@@ -1441,6 +1450,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               emptyHelp="Required — upload the video Ari will run"
               selectedLabel="Ad video"
             />
+            {adVideoFitSummary !== null ? (
+              <Text style={styles.adFitText} testID="ari-ad-video-fit">
+                {adVideoFitSummary}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -1736,6 +1750,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           mediaMode="video-only"
           title="Ad video"
           confirmLabel="Use this ad video"
+          adFitSummary={adVideoFitSummary}
         />
       ) : null}
     </GlassChrome>
@@ -1743,6 +1758,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920."
+  adFitText: {
+    marginTop: spacing.xs,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
   card: {
     marginVertical: 6,
     marginLeft: 24 + ariThread.orbGap,
