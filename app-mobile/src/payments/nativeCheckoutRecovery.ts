@@ -12,7 +12,8 @@ export const NATIVE_CHECKOUT_PENDING_BODY =
   "You can leave this screen. We’ll update the booking as soon as the payment provider confirms it.";
 export const NATIVE_CHECKOUT_SUCCESS_TITLE = "You’re booked";
 
-const RECOVERY_KEY = "mingla:checkout-recovery:v1";
+// SecureStore keys may only contain letters, digits, ".", "-" and "_" (#3978).
+const RECOVERY_KEY = "mingla_checkout_recovery_v1";
 const RECOVERY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TOKEN_LENGTH = 1024;
 
