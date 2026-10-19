@@ -253,3 +253,77 @@ export function dragSummary(counts) {
 export function refusalTitle(count) {
   return count === 1 ? "1 file wasn't added" : `${count} files weren't added`;
 }
+
+// ── Library view state (#3697 archived-view fix) ─────────────────────────────
+
+/** The Creative Library filter chips and the server filter each one asks for. */
+export const LIBRARY_FILTERS = Object.freeze([
+  { id: "all", label: "All", count: "all", query: { status: "active" } },
+  { id: "images", label: "Images", count: "images", query: { status: "active", kind: "image" } },
+  { id: "videos", label: "Videos", count: "videos", query: { status: "active", kind: "video" } },
+  { id: "hosts", label: "From hosts", count: "from_hosts", query: { status: "active", source: "host" } },
+  { id: "archived", label: "Archived", count: "archived", query: { status: "archived" } },
+]);
+
+export function libraryFilter(filterId) {
+  return LIBRARY_FILTERS.find((item) => item.id === filterId) ?? LIBRARY_FILTERS[0];
+}
+
+/** The `listAdCreatives` filters for one chip, search and cursor. */
+export function libraryRequest(filterId, q, before) {
+  return {
+    ...libraryFilter(filterId).query,
+    q: q || undefined,
+    before: before ?? undefined,
+  };
+}
+
+/** Identifies the view a set of rows belongs to (chip + search). */
+export function libraryViewKey(filterId, q) {
+  return `${libraryFilter(filterId).id}|${q ?? ""}`;
+}
+
+/**
+ * What the library body shows. Rows belong to the view they were loaded for,
+ * so a chip change shows "loading" until that view's answer (or error) lands,
+ * and re-selecting the current chip never strands the spinner.
+ */
+export function libraryBodyState({ error, rowsKey, viewKey, empty }) {
+  if (error) return "error";
+  if (rowsKey !== viewKey) return "loading";
+  return empty ? "empty" : "content";
+}
+
+/**
+ * Rows to render. `hidden` are optimistic removals (archive, restore, delete)
+ * made in THIS view; a fresh server answer replaces them.
+ */
+export function visibleLibraryRows(rows, hidden) {
+  const gone = hidden instanceof Set ? hidden : new Set();
+  return (Array.isArray(rows) ? rows : []).filter((row) => !gone.has(row.id));
+}
+
+export const LIBRARY_LOAD_TIMEOUT_MS = 20000;
+export const LIBRARY_TIMEOUT_MESSAGE = "The Creative Library took too long to load. Check your connection and try again.";
+
+/**
+ * Resolves `{ data, error }` from `call()`, or a timeout error after `ms`. A
+ * throw becomes an error too, so the library never waits forever.
+ */
+export async function loadWithDeadline(call, ms = LIBRARY_LOAD_TIMEOUT_MS, timers = globalThis) {
+  let timer = null;
+  const deadline = new Promise((resolve) => {
+    timer = timers.setTimeout(() => resolve({ data: null, error: { timeout: true, message: LIBRARY_TIMEOUT_MESSAGE } }), ms);
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve().then(call).catch((thrown) => ({
+        data: null,
+        error: { message: thrown?.message ? String(thrown.message) : "The Creative Library could not be loaded." },
+      })),
+      deadline,
+    ]);
+  } finally {
+    timers.clearTimeout(timer);
+  }
+}

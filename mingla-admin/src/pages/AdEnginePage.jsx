@@ -23,7 +23,17 @@ import { AppDownloadReadinessPanel } from "../components/app-readiness/AppDownlo
 import { CreativeDropZone } from "../components/ad-engine/CreativeDropZone";
 import { CreativeCard, UploadCard } from "../components/ad-engine/CreativeCard";
 import { useAdminVideoUploads } from "../components/ad-engine/useAdminVideoUploads";
-import { canManageLifecycle, refusalTitle } from "../components/ad-engine/creativeLibraryModel";
+import {
+  LIBRARY_FILTERS,
+  canManageLifecycle,
+  libraryBodyState,
+  libraryFilter,
+  libraryRequest,
+  libraryViewKey,
+  loadWithDeadline,
+  refusalTitle,
+  visibleLibraryRows,
+} from "../components/ad-engine/creativeLibraryModel";
 import { ADMIN_VIDEO_ACCEPT, formatMegabytes, isVideoFile } from "../services/adminVideoUpload";
 import { precheckImageFile, uploadAdImage } from "../services/mediaUpload";
 import {
@@ -349,14 +359,6 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
 // the library row is made by the server from the finished job. Removing a
 // creative means archiving it; "Delete permanently" is guarded by the server.
 
-const LIBRARY_FILTERS = [
-  { id: "all", label: "All", count: "all", query: { status: "active" } },
-  { id: "images", label: "Images", count: "images", query: { status: "active", kind: "image" } },
-  { id: "videos", label: "Videos", count: "videos", query: { status: "active", kind: "video" } },
-  { id: "hosts", label: "From hosts", count: "from_hosts", query: { status: "active", source: "host" } },
-  { id: "archived", label: "Archived", count: "archived", query: { status: "archived" } },
-];
-
 const IMAGE_ACCEPT = "image/jpeg,image/png";
 const LIBRARY_ACCEPT = `${IMAGE_ACCEPT},${ADMIN_VIDEO_ACCEPT}`;
 const DROP_SUB =
@@ -377,6 +379,10 @@ function CreativeLibraryPanel() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [rows, setRows] = useState(null);
+  // #3697 — the view (chip + search) the rows were loaded for. The body shows
+  // "Loading" only while this differs from the selected view, so every load
+  // ends in content, empty or an error.
+  const [rowsKey, setRowsKey] = useState(null);
   const [pending, setPending] = useState([]);
   const [counts, setCounts] = useState(null);
   const [cursor, setCursor] = useState(null);
@@ -398,25 +404,35 @@ function CreativeLibraryPanel() {
   const fileForRef = useRef(null);
   const requestRef = useRef(0);
 
-  const filter = LIBRARY_FILTERS.find((item) => item.id === filterId) ?? LIBRARY_FILTERS[0];
+  const filter = libraryFilter(filterId);
+  const viewKey = libraryViewKey(filter.id, debouncedQuery);
 
   const load = useCallback(async ({ append = false, before = null } = {}) => {
     const request = (requestRef.current += 1);
+    const key = libraryViewKey(filter.id, debouncedQuery);
     if (!append) setError(null);
-    const { data, error: loadError } = await listAdCreatives({
-      ...filter.query,
-      q: debouncedQuery || undefined,
-      before: before ?? undefined,
-    });
+    // #3697 — a deadline, so a request that never answers ends in an error
+    // with Retry instead of "Loading creatives…" forever.
+    const { data, error: loadError } = await loadWithDeadline(() =>
+      listAdCreatives(libraryRequest(filter.id, debouncedQuery, before)),
+    );
     if (request !== requestRef.current) return;
     if (loadError) {
-      const parsed = await parseEdgeError(loadError);
+      const parsed = loadError.timeout ? loadError : await parseEdgeError(loadError);
       setError(String(parsed?.message ?? "The Creative Library could not be loaded."));
-      if (!append) setRows([]);
+      if (!append) {
+        setRows([]);
+        setRowsKey(key);
+      }
       return;
     }
     setRows((current) => (append ? [...(current ?? []), ...(data?.creatives ?? [])] : data?.creatives ?? []));
-    if (!append) setPending(data?.pending ?? []);
+    if (!append) {
+      setRowsKey(key);
+      setPending(data?.pending ?? []);
+      // A fresh server answer replaces this view's optimistic removals.
+      setHidden(new Set());
+    }
     setCounts(data?.counts ?? null);
     setCursor(data?.next_cursor ?? null);
   }, [filter, debouncedQuery]);
@@ -662,9 +678,13 @@ function CreativeLibraryPanel() {
   // L-06: the picked file is not the one the paused upload started with.
   const differentEntry = uploads.entries.find((entry) => entry.differentFile) ?? null;
 
-  const visibleRows = (rows ?? []).filter((row) => !hidden.has(row.id));
-  const libraryEmpty =
-    rows !== null && visibleRows.length === 0 && (!showUploads || (uploads.entries.length === 0 && serverOnly.length === 0));
+  const visibleRows = visibleLibraryRows(rows, hidden);
+  const bodyState = libraryBodyState({
+    error,
+    rowsKey,
+    viewKey,
+    empty: visibleRows.length === 0 && (!showUploads || (uploads.entries.length === 0 && serverOnly.length === 0)),
+  });
 
   return (
     <SectionCard
@@ -740,8 +760,11 @@ function CreativeLibraryPanel() {
                 role="radio"
                 aria-checked={selected}
                 onClick={() => {
+                  // Re-selecting the current chip changes nothing (it used to
+                  // clear the rows without a new request: an endless spinner).
+                  if (selected) return;
                   setFilterId(item.id);
-                  setRows(null);
+                  setHidden(new Set());
                 }}
                 className={[
                   "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors duration-150 motion-reduce:transition-none",
@@ -769,18 +792,26 @@ function CreativeLibraryPanel() {
         />
       </div>
 
-      {error ? (
+      {bodyState === "error" ? (
         <AlertCard variant="error" title="Creative Library unavailable">
           <p>{error}</p>
-          <Button className="mt-3" size="sm" variant="secondary" onClick={() => void load()}>
+          <Button
+            className="mt-3"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setRowsKey(null);
+              void load();
+            }}
+          >
             Retry
           </Button>
         </AlertCard>
-      ) : rows === null ? (
+      ) : bodyState === "loading" ? (
         <div className="flex items-center gap-2 py-4">
           <Spinner size="sm" /> Loading creatives…
         </div>
-      ) : libraryEmpty ? (
+      ) : bodyState === "empty" ? (
         debouncedQuery ? (
           <p className="py-6 text-sm text-[var(--color-text-secondary)]">
             No media matches &quot;{debouncedQuery}&quot;.{" "}
