@@ -152,7 +152,7 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
             const selected = section.id === activeSection;
             const showUnread = section.id === "announcements" && unreadCount > 0;
             return (
-              <Pressable key={section.id} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => onSectionChange(section.id)} style={[styles.sectionTab, selected && styles.sectionTabActive]}>
+              <Pressable key={section.id} accessibilityRole="tab" accessibilityLabel={section.label} accessibilityState={{ selected }} onPress={() => onSectionChange(section.id)} style={[styles.sectionTab, selected && styles.sectionTabActive]}>
                 <Text style={[styles.sectionTabText, selected && styles.sectionTabTextActive]}>{section.label}</Text>
                 {showUnread ? <View style={styles.unreadDot} /> : null}
               </Pressable>
@@ -176,7 +176,7 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
               <CommunityMarkdown body={expanded.body_md} />
               {expanded.action_line ? <View style={styles.actionBox}><Text style={styles.actionHeading}>What you need to do</Text><Text style={styles.cardBodyTight}>{expanded.action_line}</Text></View> : null}
               {expanded.roadmap_card_id && roadmapById.get(expanded.roadmap_card_id) ? (
-                <Pressable accessibilityRole="button" onPress={() => onSectionChange("roadmap")} style={styles.roadmapLink}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Open roadmap item: ${roadmapById.get(expanded.roadmap_card_id)?.public_title ?? "Roadmap"}`} onPress={() => onSectionChange("roadmap")} style={styles.roadmapLink}>
                   <Text style={styles.roadmapLinkLabel}>On the roadmap</Text>
                   <Text style={styles.cardTitle}>{roadmapById.get(expanded.roadmap_card_id)?.public_title}</Text>
                 </Pressable>

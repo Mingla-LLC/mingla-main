@@ -173,7 +173,7 @@ export default function SupportRoute(): React.ReactElement {
             <View style={styles.sectionRail}>
               <Text style={styles.railGroup}>COMMUNITY</Text>
               {COMMUNITY_SECTIONS.map((section) => (
-                <Pressable key={section.id} onPress={() => handleCommunitySectionChange(section.id)} style={[styles.railRow, communitySection === section.id && styles.railRowActive]} accessibilityRole="tab" accessibilityState={{ selected: communitySection === section.id }}>
+                <Pressable key={section.id} onPress={() => handleCommunitySectionChange(section.id)} style={[styles.railRow, communitySection === section.id && styles.railRowActive]} accessibilityRole="tab" accessibilityLabel={section.label} accessibilityState={{ selected: communitySection === section.id }}>
                   <Text style={[styles.railRowText, communitySection === section.id && styles.railRowTextActive]}>{section.label}</Text>
                   {section.id === "announcements" && unreadCount > 0 ? <View style={styles.unreadDot} /> : null}
                 </Pressable>

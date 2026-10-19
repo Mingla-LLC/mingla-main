@@ -211,7 +211,7 @@ function ComposerSheet({
             <View style={styles.similarBox}>
               <Text style={styles.similarHeading}>Vote instead?</Text>
               {similar.map((idea) => (
-                <Pressable key={idea.id} onPress={() => onOpenIdea(idea.id)} style={styles.similarRow} accessibilityRole="button">
+                <Pressable key={idea.id} onPress={() => onOpenIdea(idea.id)} style={styles.similarRow} accessibilityRole="button" accessibilityLabel={`Open similar idea: ${idea.title}`}>
                   <Text style={styles.similarTitle} numberOfLines={2}>{idea.title}</Text>
                   <Text style={styles.meta}>{idea.vote_count} votes</Text>
                 </Pressable>
