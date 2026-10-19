@@ -203,22 +203,47 @@ jobs:
             exit 1
           fi
 
-      # ─── SC-13: no dependency added, removed or version-changed. The whole
-      # fix is layout and CSS; a lockfile line here means something else landed.
-      - name: "SC-13 — zero dependency changes"
+      # ─── SC-13: no dependency added, removed or version-changed BY A CHANGE
+      # TO THE COMPOSER #2262 OWNS. The #2262 fix is layout and CSS; a lockfile
+      # line in a change to the composer means something else landed with it.
+      #
+      # Before (#3040): this step failed ANY pull request that moved a
+      # manifest or lockfile, because this workflow also re-runs on shared
+      # primitives it does not own (designSystem.ts, Sheet.web.tsx,
+      # useResponsiveLayout.ts, SmartScrollView.tsx, keyboardClearance.ts) so
+      # a primitive change re-proves the composer. An unrelated feature that
+      # touched a design token and added a workspace package went red here.
+      # After: the dependency check still fires, unchanged, whenever the
+      # pull request changes a composer-owned file (the composer screens and
+      # components, ComposerV2/**, and the #2262 jest/Playwright harness). A
+      # pull request that touches only shared primitives or CI gate files
+      # still runs every other #2262 step in full, and this step says out
+      # loud that it did not apply.
+      - name: "SC-13 — zero dependency changes in a composer change"
         shell: bash
         run: |
           set -euo pipefail
-          if ! git diff --quiet origin/main -- \
+          owned_re='^mingla-business/(app/\(tabs\)/marketing/(campaigns/compose\.tsx|_layout\.tsx)|src/components/marketing/(ComposerCommitBar|ComposerHeader|ComposerStepWho|SmsComposeCard)\.tsx|src/components/marketing/ComposerV2/|src/components/marketing/__tests__/orch1100ComposerInteraction\.test\.ts|jest\.issue2262\.|playwright\.issue2262\.|playwright/issue2262/)'
+          changed="$(git diff --name-only origin/main)"
+          owned="$(printf '%s\n' "$changed" | grep -E "$owned_re" || true)"
+          deps="$(git diff --name-only origin/main -- \
                  mingla-business/package.json mingla-business/package-lock.json \
-                 mingla-admin/package.json mingla-admin/package-lock.json; then
-            echo "::error::#2262 changes no dependency. A manifest or lockfile moved."
+                 mingla-admin/package.json mingla-admin/package-lock.json)"
+          if [ -z "$deps" ]; then
+            echo "OK — no dependency added, removed or bumped."
+            exit 0
+          fi
+          if [ -n "$owned" ]; then
+            echo "::error::#2262 changes no dependency. A manifest or lockfile moved in a change to the composer."
+            echo "Composer-owned files in this change:"
+            printf '  %s\n' $owned
             git diff --stat origin/main -- mingla-business/package.json \
               mingla-business/package-lock.json mingla-admin/package.json \
               mingla-admin/package-lock.json
             exit 1
           fi
-          echo "OK — no dependency added, removed or bumped."
+          echo "::notice::SC-13 not applied — a manifest or lockfile moved, but this change touches no composer-owned #2262 file (only shared primitives this suite re-proves). Every other #2262 step ran in full."
+          printf '  dependency file moved: %s\n' $deps
 
       # ─── The composer touches web-graph files, so the eager `__common` budget
       # must not move.
