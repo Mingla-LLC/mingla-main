@@ -60,6 +60,11 @@ export type AvengersSnapshot = {
 type Fetcher = typeof fetch;
 type Json = Record<string, unknown>;
 
+export type RepositoryPinnedSource = {
+  commit: string;
+  path: string;
+};
+
 function stableError(code: string): Error {
   return new Error(code);
 }
@@ -182,6 +187,80 @@ export class ProductAvengersClient {
       throw stableError("GITHUB_GRAPHQL_FAILED");
     }
     return (json.data as Json | undefined) ?? {};
+  }
+
+  private async repositoryTree(ref: string): Promise<Map<string, string>> {
+    const json = await this.rest(
+      "GET",
+      `/repos/${AVENGERS_REPOSITORY}/git/trees/${
+        encodeURIComponent(ref)
+      }?recursive=1`,
+    );
+    if (json.truncated === true || !Array.isArray(json.tree)) {
+      throw stableError("GITHUB_TREE_INCOMPLETE");
+    }
+    const blobs = new Map<string, string>();
+    for (const item of json.tree as Json[]) {
+      if (
+        item.type === "blob" && typeof item.path === "string" &&
+        typeof item.sha === "string"
+      ) {
+        blobs.set(item.path, item.sha);
+      }
+    }
+    return blobs;
+  }
+
+  async changedPinnedSources<T extends RepositoryPinnedSource>(
+    sources: T[],
+  ): Promise<T[]> {
+    if (sources.length === 0) return [];
+    const current = await this.repositoryTree("main");
+    const pinnedTrees = new Map<string, Map<string, string>>();
+    for (const commit of new Set(sources.map((source) => source.commit))) {
+      pinnedTrees.set(commit, await this.repositoryTree(commit));
+    }
+    return sources.filter((source) => {
+      const pinned = pinnedTrees.get(source.commit)?.get(source.path);
+      const latest = current.get(source.path);
+      return !pinned || pinned !== latest;
+    });
+  }
+
+  async ensureIssueComment(
+    issueNumber: number,
+    marker: string,
+    body: string,
+  ): Promise<string> {
+    const data = await this.graphql(
+      `
+      query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          issue(number: $number) {
+            comments(last: 100) { nodes { databaseId body } }
+          }
+        }
+      }
+    `,
+      { owner: AVENGERS_OWNER, repo: AVENGERS_REPO, number: issueNumber },
+    );
+    const repository = data.repository as Json | undefined;
+    const issue = repository?.issue as Json | undefined;
+    const comments = issue?.comments as Json | undefined;
+    const nodes = Array.isArray(comments?.nodes)
+      ? comments.nodes as Json[]
+      : [];
+    const existing = nodes.find((node) =>
+      typeof node.body === "string" && node.body.includes(marker)
+    );
+    if (existing?.databaseId != null) return String(existing.databaseId);
+    const created = await this.rest(
+      "POST",
+      `/repos/${AVENGERS_REPOSITORY}/issues/${issueNumber}/comments`,
+      { body },
+    );
+    if (created.id == null) throw stableError("GITHUB_COMMENT_INVALID");
+    return String(created.id);
   }
 
   async searchIssues(review: PublicProductReview): Promise<CandidateIssue[]> {
