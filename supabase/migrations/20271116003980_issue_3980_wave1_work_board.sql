@@ -683,10 +683,12 @@ BEGIN
 END;
 $$;
 
+-- "Seth <seth@usemingla.com>, Gia <gia@usemingla.com>": each teammate with
+-- the address, so an agent can tell apart two people with the same name.
 CREATE FUNCTION public.ops_team_names() RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-  SELECT COALESCE(string_agg(public.crm_display_name(d.email), ', ' ORDER BY (d.role = 'owner') DESC, d.email), 'nobody yet')
+  SELECT COALESCE(string_agg(public.crm_display_name(d.email) || ' <' || d.email || '>', ', ' ORDER BY (d.role = 'owner') DESC, d.email), 'nobody yet')
   FROM public.admin_team_directory() d WHERE d.status = 'active'
 $$;
 
@@ -2215,37 +2217,65 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION public.ops_my_counts(p_today date DEFAULT NULL) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+-- To review (#3980 rework 2): what the tabs list is exactly what the menu
+-- badge and the page header count. Spend or publish lists the cards waiting
+-- for a person with the reason spend, publish or other. A card waiting with
+-- the reason send is listed on Messages as "Draft needed" until a message
+-- draft for it is waiting (a waiting draft for a host or creator linked to
+-- the card, or one named in its proof); from then on the draft itself is
+-- what waits, so the card is not counted a second time.
+CREATE FUNCTION public.ops_send_draft_waiting(p_card_id uuid, p_proof jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v record; v_today date := public.ops_today(p_today); v_admin boolean := public.is_admin_user();
-BEGIN
-  SELECT * INTO v FROM public.crm_ctx();
-  RETURN (SELECT jsonb_build_object(
-    'open_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner'),
-    'needs_person_mine', (SELECT count(*) FROM public.ops_work_cards x WHERE x.archived_at IS NULL AND x.status = 'person'
-                            AND (v_admin OR EXISTS (SELECT 1 FROM public.ops_work_people y WHERE y.card_id = x.id AND y.email = v.actor_email AND y.role = 'owner'))),
-    'overdue_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner' AND w.due_on < v_today),
-    'watching_open', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'watcher'))
-    FROM public.ops_work_cards w JOIN public.ops_work_people p ON p.card_id = w.id AND p.email = v.actor_email
-   WHERE w.archived_at IS NULL);
-END;
+  SELECT EXISTS (
+    SELECT 1 FROM public.team_drafts d
+     WHERE d.state = 'waiting'
+       AND (d.record_id IN (SELECT l.target_id FROM public.ops_work_links l WHERE l.card_id = p_card_id AND l.kind IN ('host','creator'))
+            OR d.id::text IN (SELECT e->>'id' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_proof) = 'array' THEN p_proof ELSE '[]'::jsonb END) e
+                               WHERE e->>'kind' = 'draft')))
 $$;
 
 CREATE FUNCTION public.ops_review_list(p_today date DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v record; v_today date := public.ops_today(p_today); v_admin boolean := public.is_admin_user();
+DECLARE v record; v_today date := public.ops_today(p_today); v_admin boolean := public.is_admin_user(); v_out jsonb; v_need jsonb;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
-  RETURN (SELECT jsonb_build_object(
+  SELECT jsonb_build_object(
     'cards', COALESCE(jsonb_agg(public.ops_card_json(w, v_today) ORDER BY array_position(ARRAY['spend','publish','other'], w.person_reason), w.due_on, w.number), '[]'::jsonb),
     'counts', jsonb_build_object('spend', count(*) FILTER (WHERE w.person_reason = 'spend'),
                                  'publish', count(*) FILTER (WHERE w.person_reason = 'publish'),
                                  'other', count(*) FILTER (WHERE w.person_reason = 'other')))
+    INTO v_out
     FROM public.ops_work_cards w
    WHERE w.archived_at IS NULL AND w.status = 'person' AND w.person_reason IN ('spend','publish','other')
-     AND (v_admin OR EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = w.id AND p.email = v.actor_email)));
+     AND (v_admin OR EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = w.id AND p.email = v.actor_email));
+  SELECT COALESCE(jsonb_agg(public.ops_card_json(w, v_today) ORDER BY w.due_on, w.number), '[]'::jsonb) INTO v_need
+    FROM public.ops_work_cards w
+   WHERE w.archived_at IS NULL AND w.status = 'person' AND w.person_reason = 'send'
+     AND NOT public.ops_send_draft_waiting(w.id, w.proof)
+     AND (v_admin OR EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = w.id AND p.email = v.actor_email));
+  RETURN v_out || jsonb_build_object('draft_needed', v_need,
+    'counts', (v_out->'counts') || jsonb_build_object('draft_needed', jsonb_array_length(v_need)));
+END;
+$$;
+
+-- needs_person_mine is what Spend or publish lists; draft_needed_mine is the
+-- "Draft needed" cards on Messages. Both come from ops_review_list itself.
+CREATE FUNCTION public.ops_my_counts(p_today date DEFAULT NULL) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record; v_today date := public.ops_today(p_today); v_review jsonb := public.ops_review_list(p_today);
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  RETURN (SELECT jsonb_build_object(
+    'open_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner'),
+    'needs_person_mine', jsonb_array_length(v_review->'cards'),
+    'draft_needed_mine', jsonb_array_length(v_review->'draft_needed'),
+    'overdue_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner' AND w.due_on < v_today),
+    'watching_open', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'watcher'))
+    FROM public.ops_work_cards w JOIN public.ops_work_people p ON p.card_id = w.id AND p.email = v.actor_email
+   WHERE w.archived_at IS NULL);
 END;
 $$;
 

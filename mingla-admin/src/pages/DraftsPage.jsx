@@ -15,6 +15,7 @@ import * as service from "../services/draftService";
 import { DRAFT_STATES, draftErrorWords, remainingUndoMs } from "../lib/draftModel";
 import { useToast } from "../context/ToastContext";
 import { ReviewQueue } from "../components/ops/ReviewQueue";
+import { DraftNeededList } from "../components/ops/DraftNeededList";
 import { parseReviewSearch } from "../lib/opsModel";
 import { announceReviewChange, useReviewCount } from "../hooks/useReviewCount";
 
@@ -109,8 +110,9 @@ export function DraftsPage() {
     setSearch(p.toString());
   };
 
-  // #3980: the header counts exactly what the menu badge counts: your waiting
-  // messages plus your cards that need a person.
+  // #3980: the header counts exactly what the menu badge counts and the tabs
+  // list: waiting messages, cards that still need a draft, and cards waiting
+  // to spend or publish.
   const reviewCount = useReviewCount();
   const totalWaiting = reviewCount.total;
   const meta = `${totalWaiting} waiting`;
@@ -134,6 +136,7 @@ export function DraftsPage() {
       ) : (<>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:!w-fit" /></div>
+      {query.state === "waiting" && !filtered && <DraftNeededList />}
       {filtered && <AlertCard variant="info" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); }}>Clear filter</Button>}>Showing drafts for {filterRecordName || "a record that is no longer available"}</AlertCard>}
       {!online && <div id="drafts-offline"><AlertCard variant="warning" title="You’re offline">{queue.drafts.length ? "You can read these drafts, but saving, marking, discarding, restoring and Undo need a connection." : "Drafts will load when you’re back online."}</AlertCard></div>}
       {queue.stale && <AlertCard variant="warning" title="Drafts may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => queue.refetch()}>Try again</Button>} />}

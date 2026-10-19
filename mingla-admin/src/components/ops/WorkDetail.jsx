@@ -1,6 +1,6 @@
 // Issue #3980 — the right column of the Work board: one card, live. Changes
 // save as they are made; most offer Undo for a few seconds.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Copy, Link2, X } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -33,11 +33,12 @@ import { ProofForm } from "./ProofForm";
 import { PushBackForm } from "./PushBackForm";
 import { CardHistory } from "./CardHistory";
 import { NoteBox } from "./NoteBox";
+import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
-// Done means wraps to show its whole text (it is one line to the server).
-const DONE_MEANS_CLASS = "min-h-[56px] w-full resize-y whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60";
+// Done means wraps and grows to show its whole text (it is one line to the server).
+const DONE_MEANS_CLASS = "min-h-[56px] w-full whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60";
 const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]";
 
 function Section({ title, children, action }) {
@@ -73,6 +74,14 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [doneMeans, setDoneMeans] = useState("");
   const [result, setResult] = useState("");
   const [blockReason, setBlockReason] = useState("");
+  // Title and Done means grow with their text and never clip it.
+  const titleGrow = useAutoGrow(title);
+  const doneMeansGrow = useAutoGrow(doneMeans);
+  const titleRef = useCallback((el) => {
+    titleGrow(el);
+    if (headingRef && typeof headingRef === "object") headingRef.current = el;
+    else if (typeof headingRef === "function") headingRef(el);
+  }, [titleGrow, headingRef]);
   const [removeReason, setRemoveReason] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   const [saveState, setSaveState] = useState("");
@@ -172,15 +181,17 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
 
       <label className="flex min-w-0 flex-col gap-1">
         <span className="sr-only">Title</span>
-        <input
-          ref={headingRef}
+        <textarea
+          ref={titleRef}
           value={title}
+          rows={1}
           maxLength={160}
           disabled={locked || card.status === "done"}
           aria-label="Title"
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
           onBlur={() => saveText("title", title, card.title)}
-          className={`min-h-11 w-full rounded-lg border border-transparent bg-transparent px-1 text-[16px] font-semibold text-[var(--color-text-primary)] hover:border-[var(--gray-200)] disabled:opacity-100 ${FOCUS}`}
+          className={`min-h-11 w-full whitespace-pre-wrap break-words rounded-lg border border-transparent bg-transparent px-1 py-2 text-[16px] font-semibold leading-snug text-[var(--color-text-primary)] hover:border-[var(--gray-200)] disabled:opacity-100 ${AUTO_GROW_CLASS} ${FOCUS}`}
         />
       </label>
 
@@ -269,7 +280,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
       </Section>
 
       <Section title="Done means">
-        <textarea value={doneMeans} maxLength={300} rows={2} disabled={locked || card.status === "done"} aria-label="Done means" onChange={(e) => setDoneMeans(e.target.value)} onBlur={() => saveText("done_means", doneMeans, card.done_means)} className={`${DONE_MEANS_CLASS} ${FOCUS}`} />
+        <textarea value={doneMeans} ref={doneMeansGrow} maxLength={300} rows={2} disabled={locked || card.status === "done"} aria-label="Done means" onChange={(e) => setDoneMeans(e.target.value)} onBlur={() => saveText("done_means", doneMeans, card.done_means)} className={`${DONE_MEANS_CLASS} ${AUTO_GROW_CLASS} ${FOCUS}`} />
         {card.kind === "gate_live" && <p className="text-[12px] text-[var(--color-text-tertiary)]">Closes itself the moment the event goes public.</p>}
       </Section>
 

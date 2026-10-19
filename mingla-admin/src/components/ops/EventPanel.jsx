@@ -41,7 +41,7 @@ function Loading({ label }) {
   );
 }
 
-function RunwayList({ onSelect }) {
+const RunwayList = forwardRef(function RunwayList({ onSelect }, headingRef) {
   const runway = useOpsRunway();
   if (runway.loading) return <Loading label="Loading the runway list…" />;
   if (runway.error && !runway.data) {
@@ -54,7 +54,7 @@ function RunwayList({ onSelect }) {
   const rows = Array.isArray(runway.data?.rows) ? runway.data.rows : [];
   const counts = runway.data?.counts || {};
   return (
-    <SectionCard title="Runway" subtitle="Next 90 days">
+    <SectionCard title={<span ref={headingRef} tabIndex={-1} className="focus-visible:outline-none">Runway</span>} subtitle="Next 90 days">
       <div className="flex min-w-0 flex-col gap-3">
         <div className="flex min-w-0 flex-wrap gap-1.5">
           <OpsChip tone="success">{counts.full || 0} full launch</OpsChip>
@@ -71,6 +71,7 @@ function RunwayList({ onSelect }) {
               <li key={`${row.anchor_kind}:${row.anchor_id}`}>
                 <button
                   type="button"
+                  data-runway-row={`${row.anchor_kind}:${row.anchor_id}`}
                   onClick={() => onSelect({ kind: row.anchor_kind, id: row.anchor_id }, row.start_on)}
                   className={`flex min-h-11 w-full min-w-0 items-start justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}
                 >
@@ -87,7 +88,7 @@ function RunwayList({ onSelect }) {
       </div>
     </SectionCard>
   );
-}
+});
 
 const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack, online }, headingRef) {
   const detail = useOpsAnchor(selection);
@@ -194,5 +195,5 @@ const SelectedEvent = forwardRef(function SelectedEvent({ selection, onBack, onl
 export const EventPanel = forwardRef(function EventPanel({ selection, onSelect, onBack, online }, headingRef) {
   return selection
     ? <SelectedEvent key={`${selection.kind}:${selection.id}`} ref={headingRef} selection={selection} onBack={onBack} online={online} />
-    : <RunwayList onSelect={onSelect} />;
+    : <RunwayList ref={headingRef} onSelect={onSelect} />;
 });

@@ -315,29 +315,72 @@ export function mentionToken(person) {
   return `@${String(person?.name || person?.email || "").trim()}`;
 }
 
+const lower = (value) => String(value || "").trim().toLowerCase();
+const localPart = (email) => String(email || "").trim().split("@")[0];
+// "alex.kim@x" -> "Alex Kim"; null when the address holds one word only.
+function fullNameFromEmail(email) {
+  const words = localPart(email).split(/[._+-]+/).filter(Boolean);
+  if (words.length < 2) return null;
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+/**
+ * The mention text for one teammate, unique across the team: "@Name" when
+ * nobody else has that name, else "@Alex Kim" (the full name from the
+ * address), else the address's local part ("@alex.kim"), else the whole
+ * address. Two teammates never get the same mention text.
+ */
+export function mentionTokenFor(person, team) {
+  const email = lower(person?.email);
+  const others = (Array.isArray(team) ? team : []).filter((p) => lower(p?.email) && lower(p?.email) !== email);
+  const name = String(person?.name || "").trim();
+  if (name && !others.some((p) => lower(p.name) === lower(name))) return `@${name}`;
+  const full = fullNameFromEmail(email);
+  if (full && !others.some((p) => lower(p.name) === lower(full) || lower(fullNameFromEmail(p.email)) === lower(full))) return `@${full}`;
+  const local = localPart(email);
+  if (local && !others.some((p) => lower(localPart(p.email)) === lower(local))) return `@${local}`;
+  return `@${email || name}`;
+}
+
+const pickToken = (p) => String(p?.token || mentionToken(p));
+function tokenCount(token, text) {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (String(text || "").match(new RegExp(`(?:^|\\s)${escaped}(?![\\w.@-]*[\\w@])`, "g")) || []).length;
+}
+
+/**
+ * The picks still in a note after an edit: a pick whose mention text is no
+ * longer in the text (as a whole token) is dropped at once, so typing the
+ * same name back by hand never tells that person.
+ */
+export function keepPicksInText(picks, body) {
+  return (Array.isArray(picks) ? picks : []).filter((p) => pickToken(p) !== "@" && tokenCount(pickToken(p), body) > 0);
+}
+
 /**
  * The emails to tell about a note: only teammates picked from the mention
- * list (each pick carries its email), and only while the picked "@Name" is
- * still in the text as a whole token. Names typed by hand never match, so two
- * teammates with the same first name, or a name that starts another, are
- * never confused. When the same "@Name" was picked for two people, each
- * occurrence left in the text keeps one pick, in the order they were picked.
+ * list (each pick carries its email and its mention text), and only while
+ * that mention text is still in the note as a whole token. Names typed by
+ * hand never match. Mention text is unique per teammate (mentionTokenFor);
+ * if two different people still share one text and fewer copies are left
+ * than people, nobody behind that text is told, because Mingla cannot know
+ * which one was taken out.
  */
 export function mentionedEmails(picks, body) {
   const text = String(body || "");
   const byToken = new Map();
   for (const p of Array.isArray(picks) ? picks : []) {
     const email = String(p?.email || "").trim().toLowerCase();
-    const token = mentionToken(p);
+    const token = pickToken(p);
     if (!email || token === "@") continue;
     if (!byToken.has(token)) byToken.set(token, []);
     if (!byToken.get(token).includes(email)) byToken.get(token).push(email);
   }
   const out = [];
   for (const [token, emails] of byToken) {
-    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const count = (text.match(new RegExp(`(?:^|\\s)${escaped}(?![\\w.@-]*[\\w@])`, "g")) || []).length;
-    for (const email of emails.slice(0, count)) if (!out.includes(email)) out.push(email);
+    const count = tokenCount(token, text);
+    if (count === 0 || count < emails.length) continue;
+    for (const email of emails) if (!out.includes(email)) out.push(email);
   }
   return out;
 }

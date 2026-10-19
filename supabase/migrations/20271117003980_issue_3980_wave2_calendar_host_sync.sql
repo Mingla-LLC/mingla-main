@@ -578,6 +578,7 @@ DECLARE
   v_cats text[] := ARRAY[]::text[]; v_action text; v_event uuid; v_out jsonb; v_gate jsonb; v_week date; v_who text;
   v_status text; v_reason text; v_result text; v_breason text; v_owners text[]; v_watchers text[]; v_anchor_changed boolean := false;
   v_back boolean := false; v_back_reason text; -- Wave 2: leaving Needs a person
+  v_removed_words text; -- #3980 rework 2: who was taken off, for the agent log
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   IF p_changes IS NULL OR jsonb_typeof(p_changes) <> 'object' OR p_changes = '{}'::jsonb THEN
@@ -748,6 +749,9 @@ BEGIN
    WHERE id = c.id RETURNING * INTO n;
   v_action := CASE WHEN cardinality(v_cats) = 1 THEN v_cats[1] ELSE 'updated' END;
   v_event := public.ops_card_event(c.id, v.actor_email, v.via, v_action, CASE WHEN v_back THEN v_back_reason END, v_before, public.ops_card_snapshot(c.id), c.revision, n.revision);
+  -- "Gia, Hal": the people taken off the card, by name, for the agent log.
+  SELECT string_agg(public.ops_name(x.email), ', ' ORDER BY x.ord) INTO v_removed_words
+    FROM jsonb_array_elements_text(COALESCE(v_people->'removed', '[]'::jsonb)) WITH ORDINALITY AS x(email, ord);
   PERFORM public.ops_notify_people(c.id, v_event, ARRAY(SELECT jsonb_array_elements_text(v_people->'new_owners')), v.actor_email,
     format('%s added you as owner: %s', v_who, n.title));
   PERFORM public.ops_notify_people(c.id, v_event, ARRAY(SELECT jsonb_array_elements_text(v_people->'new_watchers')), v.actor_email,
@@ -777,6 +781,11 @@ BEGIN
       CASE WHEN v_action = 'plan' THEN format('Plan on Card %s: %s of %s steps done.', n.number,
              (SELECT count(*) FROM jsonb_array_elements(n.plan) s WHERE s->>'status' = 'done'), jsonb_array_length(n.plan))
            WHEN v_action = 'blocked' THEN format('Card %s blocked: %s', n.number, n.blocked_reason)
+           -- #3980 rework 2: a removal says who was taken off, not "Updated".
+           WHEN v_action = 'people' AND v_removed_words IS NOT NULL
+                AND jsonb_array_length(v_people->'new_owners') = 0 AND jsonb_array_length(v_people->'new_watchers') = 0
+             THEN format('Took %s off Card %s: %s', v_removed_words, n.number, n.title)
+           WHEN v_removed_words IS NOT NULL THEN format('Updated Card %s: %s. Took %s off it.', n.number, n.title, v_removed_words)
            ELSE format('Updated Card %s: %s', n.number, n.title) END, jsonb_build_object('changed', to_jsonb(v_cats)));
   END IF;
   v_out := jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', v_event, 'changed', true);
