@@ -14,6 +14,7 @@
 -- §6  Server-computed refunds and refund_preview (F4).
 -- §7  Proportional partner reversal on refunds (F5).
 -- §8  Event cancellation refunds return the charged total, fees included.
+-- §9  Stripe provider-fee snapshots exclude Mingla's application fee.
 --
 -- APPLY ORDER: this migration is applied to production BEFORE the pull request
 -- merges. Merged edge functions call §3 (non-fatal), §7's
@@ -811,7 +812,7 @@ BEGIN
         ),0)) mingla_fee_cents,
         coalesce((SELECT sum(ps.partner_share_cents)::int FROM public.partner_splits ps
           WHERE ps.order_id=o.id),0) partner_share_cents,
-        fs.provider_fee_cents,occ.event_date_id::text occurrence_key
+        (fs.provider_fee_cents-coalesce(fc.application_fee_cents,0)) provider_fee_cents,occ.event_date_id::text occurrence_key
       FROM public.orders o JOIN public.events e ON e.id=o.event_id
       JOIN public.brands b ON b.id=e.brand_id
       JOIN LATERAL public.resolve_payout_live_occurrence(
@@ -819,6 +820,8 @@ BEGIN
       ) occ ON true
       JOIN public.payout_source_fee_snapshots fs
         ON fs.source_type='order' AND fs.source_id=o.id
+      -- Issue #3872 §9: pre-#3872 Stripe snapshots included Mingla's fee.
+      LEFT JOIN public.issue_3872_fee_snapshot_corrections fc ON fc.snapshot_id=fs.id
       WHERE o.payment_status IN ('paid','partial_refund')
         AND o.total_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
         AND o.created_at>b.payout_hold_cutover_at AND e.status<>'cancelled'
@@ -837,7 +840,7 @@ BEGIN
           FROM public.source_refunds sr
           WHERE sr.source_type='rsvp_contribution' AND sr.source_id=c.id
             AND sr.fee_state='processed'
-        ),0)),0,fs.provider_fee_cents,
+        ),0)),0,(fs.provider_fee_cents-coalesce(fc.application_fee_cents,0)),
         occ.event_date_id::text
       FROM public.event_rsvp_contributions c JOIN public.events e ON e.id=c.event_id
       JOIN public.brands b ON b.id=c.brand_id
@@ -846,6 +849,8 @@ BEGIN
       ) occ ON true
       JOIN public.payout_source_fee_snapshots fs
         ON fs.source_type='rsvp_contribution' AND fs.source_id=c.id
+      -- Issue #3872 §9: pre-#3872 Stripe snapshots included Mingla's fee.
+      LEFT JOIN public.issue_3872_fee_snapshot_corrections fc ON fc.snapshot_id=fs.id
       WHERE c.status IN ('paid','partially_refunded') AND b.payout_hold_cutover_at IS NOT NULL
         AND coalesce(c.paid_at,c.created_at)>b.payout_hold_cutover_at AND e.status<>'cancelled'
         AND NOT EXISTS (
@@ -869,12 +874,14 @@ BEGIN
           FROM public.source_refunds sr
           WHERE sr.source_type='venue_reservation' AND sr.source_id=s.id
             AND sr.fee_state='processed'
-        ),0)),0,fs.provider_fee_cents,'reservation:'||s.id::text
+        ),0)),0,(fs.provider_fee_cents-coalesce(fc.application_fee_cents,0)),'reservation:'||s.id::text
       FROM public.reservation_checkout_sessions s
       JOIN public.reservations r ON r.id=s.reservation_id
       JOIN public.brands b ON b.id=s.brand_id
       JOIN public.payout_source_fee_snapshots fs
         ON fs.source_type='venue_reservation' AND fs.source_id=s.id
+      -- Issue #3872 §9: pre-#3872 Stripe snapshots included Mingla's fee.
+      LEFT JOIN public.issue_3872_fee_snapshot_corrections fc ON fc.snapshot_id=fs.id
       WHERE s.status='completed' AND s.amount_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
         AND r.created_at>b.payout_hold_cutover_at
         AND NOT EXISTS (
@@ -900,11 +907,13 @@ BEGIN
             AND sr.fee_state='processed'
         ),0)),
         0,
-        fs.provider_fee_cents,'venue_order:'||vo.id::text
+        (fs.provider_fee_cents-coalesce(fc.application_fee_cents,0)),'venue_order:'||vo.id::text
       FROM public.venue_orders vo
       JOIN public.brands b ON b.id=vo.brand_id
       JOIN public.payout_source_fee_snapshots fs
         ON fs.source_type='venue_menu_order' AND fs.source_id=vo.id
+      -- Issue #3872 §9: pre-#3872 Stripe snapshots included Mingla's fee.
+      LEFT JOIN public.issue_3872_fee_snapshot_corrections fc ON fc.snapshot_id=fs.id
       WHERE vo.money_path='mingla'
         AND vo.payment_status IN ('paid','partial_refund')
         AND vo.total_cents>0
@@ -2295,6 +2304,89 @@ GRANT EXECUTE ON FUNCTION public.issue_3872_cancel_refund_order(uuid, jsonb, tex
   TO service_role;
 COMMENT ON FUNCTION public.issue_3872_cancel_refund_order(uuid, jsonb, text, text) IS
   'Issue #3872: the pending refund row for an order on a cancelled event. Returns every remaining ticket and the whole charged remainder (buyer_total_cents minus earlier refunds), fees included, on every rail. Same response and idempotency shape as admin_refund_order; committed with admin_refund_order_commit. service_role only.';
+
+-- =============================================================================
+-- §9. Stripe provider-fee snapshots exclude Mingla's application fee
+-- =============================================================================
+-- Found by the Stripe sandbox end-to-end run on #3872: on a direct charge the
+-- connected account's balance transaction `fee` is Stripe's processing fee
+-- PLUS Mingla's application fee (fee_details lists both). The fee capture
+-- stored the whole `fee` as provider_fee_cents, so the release deducted
+-- Mingla's fee twice (once as mingla_fee_cents, once inside provider_fee_cents)
+-- and under-released every Stripe source by its application fee. The capture
+-- code now stores only the provider's own fee and records the part it took out
+-- in application_fee_excluded_cents. Snapshots captured before this change
+-- (application_fee_excluded_cents IS NULL) get one append-only correction row.
+ALTER TABLE public.payout_source_fee_snapshots
+  ADD COLUMN IF NOT EXISTS application_fee_excluded_cents integer
+    CHECK (application_fee_excluded_cents IS NULL OR application_fee_excluded_cents >= 0);
+COMMENT ON COLUMN public.payout_source_fee_snapshots.application_fee_excluded_cents IS
+  'Issue #3872: Stripe only. Mingla''s application fee taken out of the balance transaction fee so provider_fee_cents is the provider''s own fee. NULL on Paystack rows and on Stripe rows captured before #3872 (those are corrected through issue_3872_fee_snapshot_corrections).';
+
+-- Snapshots are append-only (payout_source_fee_snapshots_append_only), so a
+-- pre-#3872 Stripe snapshot is corrected by an append-only correction row that
+-- the release sweep subtracts, never by changing the snapshot.
+CREATE TABLE IF NOT EXISTS public.issue_3872_fee_snapshot_corrections (
+  snapshot_id uuid PRIMARY KEY REFERENCES public.payout_source_fee_snapshots(id) ON DELETE RESTRICT,
+  application_fee_cents integer NOT NULL CHECK (application_fee_cents >= 0),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.issue_3872_fee_snapshot_corrections ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.issue_3872_fee_snapshot_corrections FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.issue_3872_fee_snapshot_corrections TO service_role;
+DROP TRIGGER IF EXISTS issue_3872_fee_snapshot_corrections_append_only ON public.issue_3872_fee_snapshot_corrections;
+CREATE TRIGGER issue_3872_fee_snapshot_corrections_append_only
+  BEFORE UPDATE OR DELETE ON public.issue_3872_fee_snapshot_corrections
+  FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
+COMMENT ON TABLE public.issue_3872_fee_snapshot_corrections IS
+  'Issue #3872: Mingla''s application fee contained in a pre-#3872 Stripe provider-fee snapshot. The release sweep subtracts it from provider_fee_cents. Append-only, one row per snapshot.';
+
+CREATE OR REPLACE FUNCTION public.issue_3872_correct_stripe_fee_snapshots()
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_rows integer;
+BEGIN
+  INSERT INTO public.issue_3872_fee_snapshot_corrections (snapshot_id, application_fee_cents)
+  SELECT fs.id, LEAST(COALESCE(
+      CASE fs.source_type
+        WHEN 'order' THEN (SELECT o.stripe_application_fee_amount_cents FROM public.orders o WHERE o.id = fs.source_id)
+        WHEN 'rsvp_contribution' THEN (SELECT c.application_fee_amount_cents FROM public.event_rsvp_contributions c WHERE c.id = fs.source_id)
+        WHEN 'venue_reservation' THEN (SELECT s.application_fee_amount_cents FROM public.reservation_checkout_sessions s WHERE s.id = fs.source_id)
+        WHEN 'venue_menu_order' THEN (SELECT vo.mingla_fee_cents FROM public.venue_orders vo WHERE vo.id = fs.source_id)
+      END, 0), fs.provider_fee_cents)
+  FROM public.payout_source_fee_snapshots fs
+  WHERE fs.provider_balance_transaction_id LIKE 'txn\_%'
+    AND fs.application_fee_excluded_cents IS NULL
+  ON CONFLICT (snapshot_id) DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RETURN jsonb_build_object('corrected', v_rows);
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3872_correct_stripe_fee_snapshots() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_correct_stripe_fee_snapshots() TO service_role;
+COMMENT ON FUNCTION public.issue_3872_correct_stripe_fee_snapshots() IS
+  'Issue #3872: records, once per snapshot, the application fee inside Stripe provider-fee snapshots captured before #3872 (rows with application_fee_excluded_cents IS NULL). Idempotent. Run again right after the merge to cover snapshots the old capture code wrote in between. service_role only.';
+
+-- Release items already attached keep their values (they never re-read the
+-- snapshot); production had no Stripe item attached on 19 Oct 2026.
+DO $assert_no_stripe_items$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.payout_release_items i
+    JOIN public.payout_source_fee_snapshots fs
+      ON fs.source_type = i.source_type AND fs.source_id = i.source_id
+    WHERE fs.provider_balance_transaction_id LIKE 'txn\_%'
+      AND fs.application_fee_excluded_cents IS NULL
+  ) THEN
+    RAISE EXCEPTION 'issue-3872: a Stripe source with a pre-#3872 fee snapshot is already attached to a release; review before applying';
+  END IF;
+END
+$assert_no_stripe_items$;
+
+SELECT public.issue_3872_correct_stripe_fee_snapshots();
 
 COMMIT;
 

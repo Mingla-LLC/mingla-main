@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3872_money_truth_stripe_fee_snapshots.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3872-07-stripe-fee-snapshots",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
