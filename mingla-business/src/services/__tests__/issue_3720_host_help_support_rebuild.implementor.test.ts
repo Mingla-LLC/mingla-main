@@ -1,5 +1,7 @@
 /** Append-only source contracts for #3720 H1-H9. */
 
+// MINGLA-INVARIANT: I-3720-HOST-COMMUNITY-PROJECTION | issue #3720 | Host Community reads expose published content plus the caller's own review items, while staff-only notes and identity fields stay outside these projections.
+
 import fs from "node:fs";
 import path from "node:path";
 

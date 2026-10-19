@@ -1,9 +1,5 @@
 -- #3720 Host Help & Support presentation fields and host-safe Community reads.
 --
--- MINGLA-INVARIANT: I-3720-HOST-COMMUNITY-PROJECTION | issue #3720 | Host
--- Community reads expose only published content plus the caller's own review
--- items. Staff-only notes and identity fields never enter these projections.
-
 BEGIN;
 
 ALTER TABLE public.community_announcements

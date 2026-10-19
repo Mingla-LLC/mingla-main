@@ -4,6 +4,12 @@ import {
   assertMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
+// MINGLA-INVARIANT: I-3720-FEATURE-GUIDE-CATALOG-CONTENT | issue #3720 | Every catalog seed has a unique area-prefixed key, bounded customer wording, pinned static citations only, and no evidence capable of bypassing human promotion.
+// MINGLA-INVARIANT: I-3720-FEATURE-GUIDE-STATIC-SEED-MONEY | issue #3720 | Money catalog rows contain pinned static evidence only and require later human-reviewed live proof before promotion.
+// MINGLA-INVARIANT: I-3720-FEATURE-GUIDE-STATIC-SEED-HOST-OPERATIONS | issue #3720 | Host operations catalog rows contain pinned static evidence only and require later human-reviewed live proof before promotion.
+// MINGLA-INVARIANT: I-3720-FEATURE-GUIDE-STATIC-SEED-EXPLORER | issue #3720 | Explorer catalog rows contain pinned static evidence only and require later human-reviewed live proof before promotion.
+// MINGLA-INVARIANT: I-3720-FEATURE-GUIDE-STATIC-SEED-STAFF-HELP-WEBSITE | issue #3720 | Staff, help, and website catalog rows contain pinned static evidence only and require later human-reviewed live proof before promotion.
+
 const MIGRATIONS = [
   "20271106003720_issue_3720_feature_guide_money.sql",
   "20271106013720_issue_3720_feature_guide_host_operations.sql",
@@ -55,7 +61,6 @@ function parseCatalog(sql: string): CatalogRow[] {
   return JSON.parse(match[1]) as CatalogRow[];
 }
 
-// MINGLA-INVARIANT: I-3720-FEATURE-GUIDE-CATALOG-CONTENT | issue #3720 | Every catalog seed has a unique area-prefixed key, bounded customer wording, pinned static citations only, and no evidence capable of bypassing human promotion.
 Deno.test("#3720 Feature Guide catalog content is bounded, pinned, and static-only", async () => {
   const sqlFiles = await Promise.all(MIGRATIONS.map(readMigration));
   const rows = sqlFiles.flatMap(parseCatalog);

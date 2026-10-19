@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-3720-PUSH-NO-SUBSCRIPTION-TERMINAL | issue #3720 | A user without an active Host push subscription is a terminal skipped channel; provider, configuration and network failures remain failed so the durable outbox retries them.
+// MINGLA-INVARIANT: I-3720-PUSH-NO-SUBSCRIPTION-TERMINAL | issue #3720 | A user lacking a valid Host push subscription is a terminal skipped channel; provider, configuration and network failures keep their retryable outcome.
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { pushAdapter } from "./pushAdapter.ts";
