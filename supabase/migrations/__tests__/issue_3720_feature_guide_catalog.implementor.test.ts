@@ -11,11 +11,18 @@ import {
 // MINGLA-INVARIANT: I-3720-FEATURE-GUIDE-STATIC-SEED-STAFF-HELP-WEBSITE | issue #3720 | Staff, help, and website catalog rows contain pinned static evidence only and require later human-reviewed live proof before promotion.
 
 const MIGRATIONS = [
-  "20271106003720_issue_3720_feature_guide_money.sql",
-  "20271106013720_issue_3720_feature_guide_host_operations.sql",
-  "20271106023720_issue_3720_feature_guide_explorer.sql",
-  "20271106033720_issue_3720_feature_guide_staff_help_website.sql",
+  "20271108023720_issue_3720_feature_guide_money.sql",
+  "20271108033720_issue_3720_feature_guide_host_operations.sql",
+  "20271108043720_issue_3720_feature_guide_explorer.sql",
+  "20271108053720_issue_3720_feature_guide_staff_help_website.sql",
 ];
+const ISSUE_3720_SEQUENCED_MIGRATIONS = [
+  ...MIGRATIONS,
+  "20271108063720_issue_3720_community_console_rebuild.sql",
+  "20271108073720_issue_3720_host_help_support.sql",
+  "20271108083720_issue_3720_feature_guide_weekly_drift.sql",
+];
+const ISSUE_3040_LAST_RESERVED_VERSION = "20271108013040";
 const PINNED_URL = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(?:blob\/[0-9a-f]{40}\/.+|pull\/\d+|issues\/\d+#issuecomment-\d+|actions\/runs\/\d+)$/;
 const ALLOWED_PREFIXES = new Set([
   "account", "discover", "social", "plus", "brand", "events", "rsvp",
@@ -114,5 +121,21 @@ Deno.test("#3720 Feature Guide catalog content is bounded, pinned, and static-on
     const seededKinds = [...sql.matchAll(/SELECT capability_key, '([a-z_]+)'/g)].map((match) => match[1]);
     assertEquals(seededKinds, ["source", "test", "migration"]);
     assert(!/SELECT capability_key, '(?:live_check|release_record|deployment)'/.test(sql));
+  }
+});
+
+Deno.test("#3720 migrations stay after the reserved #3040 migration lane", async () => {
+  assertEquals(
+    ISSUE_3720_SEQUENCED_MIGRATIONS,
+    [...ISSUE_3720_SEQUENCED_MIGRATIONS].sort(),
+  );
+
+  for (const name of ISSUE_3720_SEQUENCED_MIGRATIONS) {
+    const version = name.split("_", 1)[0];
+    assert(
+      version > ISSUE_3040_LAST_RESERVED_VERSION,
+      `${name}: must sort after ${ISSUE_3040_LAST_RESERVED_VERSION}`,
+    );
+    await readMigration(name);
   }
 });
