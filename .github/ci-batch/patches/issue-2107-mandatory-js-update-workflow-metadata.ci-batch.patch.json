@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#2107",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-2107-mandatory-js-update",
+      "extension": "yml"
+    },
+    "baseRowSha256": "4b72e0dda16e83aaef74f6db75218ace9ddafe167865ef8de5c56cf3e728cf51"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "1641c83e6193acffd2da0bd1975397a47b1f44a2b8ae5a58d5868d66e8b0b08e",
+      "value": "c8fd668e688a3364240b595ade9c6774d7d95354072f79c275c01354941b529d"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #2107 adds the airtight update-gate suites to the existing mandatory-update jobs without changing its triggers or execution topology."
+}

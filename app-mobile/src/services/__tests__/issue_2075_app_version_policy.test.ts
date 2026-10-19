@@ -1,3 +1,8 @@
+// [TEST-MOD-APPROVED #2107] 2026-10-19: #2107 A3 makes `observe` a dry run that
+// never blocks, so the shared fixture below now uses `enforce` (the live mode
+// on all four lanes since 2026-08-23) wherever a test expects a block.
+// #2107 A1 also reverses the late-answer case: a required answer that lands
+// after the decision budget is now saved and applied, not ignored.
 import {
   VersionGateCoordinator,
   compareSemver,
@@ -23,7 +28,7 @@ const policy = (
   minimumVersion: "1.1.5",
   storeUrl: "https://apps.apple.com/app/id6760440898",
   message: "Update Mingla to keep using the app.",
-  enforcementMode: "observe",
+  enforcementMode: "enforce",
   updatedAt: "2026-08-14T12:00:00.000Z",
   ...overrides,
 });
@@ -112,7 +117,7 @@ describe("#2075 Consumer app-version happy path", () => {
     expect(reports).toContain("policy_cache_write_failed");
   });
 
-  it("ignores a required response that arrives after the 1.5-second decision budget", async () => {
+  it("applies a required response that arrives after the decision budget (#2107 A1)", async () => {
     let resolveFetch!: (value: AppVersionPolicy) => void;
     const coordinator = new VersionGateCoordinator({
       platform: "ios",
@@ -132,7 +137,8 @@ describe("#2075 Consumer app-version happy path", () => {
     });
     resolveFetch(policy());
     await Promise.resolve();
-    expect(coordinator.getSnapshot()).toMatchObject({ phase: "allowed" });
+    await Promise.resolve();
+    expect(coordinator.getSnapshot()).toMatchObject({ phase: "required" });
   });
 
   it("hydrates a slow required cache before the network deadline can allow", async () => {

@@ -53,6 +53,8 @@ jobs:
             echo "#2107 simulated revert unexpectedly passed"
             exit 1
           fi
+      - name: Publish scripts refuse an OTA without an integer criticalIndex
+        run: node --test .github/scripts/__tests__/issue-2107-critical-index-publish-guard.test.mjs
 
   consumer-ota-gate:
     if: ${{ github.event.pull_request.draft != true }}
@@ -72,6 +74,9 @@ jobs:
           npx jest --runInBand
           src/services/__tests__/issue_2107_ota_update_policy.test.ts
           src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_gate_airtight.test.ts
+          src/services/__tests__/issue_2107_update_gate_telemetry.test.ts
+          src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   host-ota-gate:
     if: ${{ github.event.pull_request.draft != true }}
@@ -91,6 +96,9 @@ jobs:
           npx jest --runInBand
           src/services/__tests__/issue_2107_ota_update_policy.test.ts
           src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_gate_airtight.test.ts
+          src/services/__tests__/issue_2107_update_gate_telemetry.test.ts
+          src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   edge-ota-policy:
     if: ${{ github.event.pull_request.draft != true }}
@@ -104,6 +112,7 @@ jobs:
           deno test --allow-env
           supabase/functions/_shared/appOtaPolicy.test.ts
           supabase/functions/_shared/appOtaPolicy.tester-adversarial.test.ts
+          supabase/functions/_shared/appOtaPolicy.issue2107-kill-switch.test.ts
       - run: >-
           deno check
           supabase/functions/app-ota-policy/index.ts

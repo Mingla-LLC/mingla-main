@@ -5,9 +5,10 @@
 //
 // SCOPE (#2107): this hook is now the OPTIONAL update path only — the small
 // dismissible banner offering an immediate restart once an update has landed.
-// A REQUIRED update is handled by OtaAcknowledgementLayer, which blocks the app
-// until the user taps once. Kept per the #2107 operator decision: it interrupts
-// nobody and gets a fix live sooner for anyone who takes it.
+// A CRITICAL update (a higher extra.criticalIndex) is handled by
+// OtaAcknowledgementLayer, which installs it and restarts. Kept per the #2107
+// operator decision: it interrupts nobody and gets a normal fix live sooner for
+// anyone who takes it.
 
 import { useCallback, useRef, useState } from 'react';
 import { createOtaUpdateBridge } from '../services/otaUpdateRuntime';

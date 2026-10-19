@@ -306,10 +306,12 @@ export class OtaGateCoordinator {
 
   /** Cold start and every foreground. Never re-enters an in-progress install. */
   check(): Promise<OtaGateSnapshot> {
-    if (this.inFlight !== null) return this.inFlight;
+    // An install in progress answers immediately with where it is; a resume
+    // never waits on, restarts or stacks a second download.
     if (this.snapshot.phase !== "open") {
       return Promise.resolve(this.snapshot);
     }
+    if (this.inFlight !== null) return this.inFlight;
     this.inFlight = this.resolve()
       .catch((error: unknown) => {
         // Any unexpected throw anywhere in the pipeline lets the person in.
@@ -334,7 +336,7 @@ export class OtaGateCoordinator {
     };
   }
 
-  private async readRecord(): Promise<CriticalAttemptRecord | null> {
+  private async readRecord(): Promise<Timed<CriticalAttemptRecord | null>> {
     const loaded = await withTimeout(
       this.dependencies.loadAttemptRecord(),
       this.dependencies.recordTimeoutMs ?? RECORD_IO_TIMEOUT_MS,
@@ -343,9 +345,9 @@ export class OtaGateCoordinator {
       this.dependencies.report("critical_update_record_unreadable", {
         reason: loaded.reason,
       });
-      return null;
+      return loaded;
     }
-    return parseAttemptRecord(loaded.value);
+    return { ok: true, value: parseAttemptRecord(loaded.value) };
   }
 
   /**
@@ -391,7 +393,11 @@ export class OtaGateCoordinator {
       return this.publish(OPEN);
     }
 
-    let record = await this.readRecord();
+    // The attempt record is the loop cap. A device that cannot read it cannot
+    // be loop-capped, so it is never put through a restart.
+    const loaded = await this.readRecord();
+    if (!loaded.ok) return this.publish(OPEN);
+    let record = loaded.value;
     if (!this.launchVerified) {
       this.launchVerified = true;
       record = await this.verifyLaunch(record);

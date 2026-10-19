@@ -44,6 +44,16 @@ const FILES = {
   config: "supabase/config.toml",
   migration:
     "supabase/migrations/20270413002107_issue_2107_app_ota_policies.sql",
+  // 2026-10-19 airtight build (critical-index flow, A1-A4, B1-B4, D).
+  consumerTelemetry: "app-mobile/src/services/updateGateTelemetry.ts",
+  hostTelemetry: "mingla-business/src/services/updateGateTelemetry.ts",
+  consumerGate: "app-mobile/src/components/MandatoryUpdateGate.tsx",
+  hostGate: "mingla-business/src/components/ui/MandatoryUpdateGate.tsx",
+  hostGateWeb: "mingla-business/src/components/ui/MandatoryUpdateGate.web.tsx",
+  consumerConfig: "app-mobile/app.config.js",
+  hostConfig: "mingla-business/app.config.js",
+  consumerPublish: "app-mobile/scripts/ota/publish-production-ota.sh",
+  hostPublish: "mingla-business/scripts/ota/publish-production-ota.sh",
 };
 
 // Directories scanned for stray expo-updates importers. Only the two runtime
@@ -119,8 +129,55 @@ export function validate(sources, { simulateRevert = false } = {}) {
     );
   }
   for (const key of ["consumerCore", "hostCore"]) {
-    requireText(key, "FORCE_RESTART_MAX_ATTEMPTS", `${key} must bound force_restart attempts`);
-    requireText(key, '"force_restart"', `${key} must carry the dormant emergency mode`);
+    // #2107 B2 — the restart cap is persisted, the restart is verified by id,
+    // and expo-updates' own recovery signals always let the person in.
+    requireText(key, "CRITICAL_UPDATE_MAX_ATTEMPTS", `${key} must bound critical-update restarts`);
+    requireText(key, "isEmergencyLaunch", `${key} must let an emergency launch in`);
+    requireText(key, '"updatePreviouslyFailed"', `${key} must let a previously-failed update in`);
+    requireText(key, "runningUpdateId === record.targetUpdateId", `${key} must verify the restart by update id`);
+    const persistAt = sources[key].indexOf("this.dependencies.saveAttemptRecord(");
+    const reloadAt = sources[key].indexOf("updates.reload()");
+    if (persistAt === -1 || reloadAt === -1 || persistAt > reloadAt) {
+      failures.push(`${key} must persist the attempt record BEFORE reloading — an in-memory cap resets on every reload`);
+    }
+    // #2107 B4 — the kill switch is ON by default and the server marker matches.
+    const marker = /ABSENT_POLICY_ROW_UPDATED_AT = "([^"]+)"/.exec(sources[key]);
+    const edgeMarker = /ABSENT_POLICY_ROW_UPDATED_AT = "([^"]+)"/.exec(sources.edgePolicy);
+    if (marker === null || edgeMarker === null || marker[1] !== edgeMarker[1]) {
+      failures.push(`${key} absent-row marker must equal the edge function's — otherwise "no row" stops enforcing`);
+    }
+  }
+
+  // D — telemetry: one byte-identical module per app, through the existing
+  // analytics wrapper, never a direct SDK import.
+  if (sources.consumerTelemetry !== sources.hostTelemetry) {
+    failures.push("updateGateTelemetry.ts drifted between app-mobile and mingla-business");
+  }
+  for (const key of ["consumerTelemetry", "hostTelemetry"]) {
+    if (/(from\s+|require\(\s*)["']posthog-react-native["']/.test(sources[key])) {
+      failures.push(`${key} must not import posthog-react-native — go through postHogService (orch-1296)`);
+    }
+    requireText(key, 'require("./postHogService")', `${key} must report through the existing postHogService wrapper, lazily`);
+  }
+
+  // A1-A4 — the native store-floor gate.
+  for (const key of ["consumerGate", "hostGate"]) {
+    requireText(key, "resolveGateLayout(", `${key} must keep a mounted app mounted (A2)`);
+    requireText(key, "check(false)", `${key} foreground recheck must not veil the app (A2)`);
+    requireText(key, "decision.message", `${key} must show the policy message (A4)`);
+  }
+
+  // B1 — every build and OTA carries the counter; publishing refuses without it.
+  for (const key of ["consumerConfig", "hostConfig"]) {
+    requireText(key, "criticalIndex: readCriticalIndex()", `${key} must emit extra.criticalIndex`);
+  }
+  for (const key of ["consumerPublish", "hostPublish"]) {
+    requireText(key, "ABORT [#2107 preflight]", `${key} must refuse a config without an integer criticalIndex`);
+    const guardAt = sources[key].indexOf("ABORT [#2107 preflight]");
+    const publishAt = sources[key].indexOf("${MINGLA_EAS_BIN} update");
+    if (guardAt === -1 || publishAt === -1 || guardAt > publishAt) {
+      failures.push(`${key} must check criticalIndex BEFORE the publish command`);
+    }
   }
 
   // 3 — a single expo-updates owner per app, enforced not commented.
@@ -173,7 +230,7 @@ export function validate(sources, { simulateRevert = false } = {}) {
   // A runtime Platform check is not enough: it still ships the native layer, its
   // policy core and expo-updates inside the EAGER __common chunk. Measured at
   // 3,761 B on #2107, against #2099's 1,024 B ceiling.
-  for (const key of ["consumerLayerWeb", "hostLayerWeb"]) {
+  for (const key of ["consumerLayerWeb", "hostLayerWeb", "hostGateWeb"]) {
     const imports = [...sources[key].matchAll(/^import .*? from ["']([^"']+)["'];?$/gm)]
       .map((match) => match[1])
       .filter((specifier) => specifier !== "react");
@@ -182,7 +239,8 @@ export function validate(sources, { simulateRevert = false } = {}) {
         `${key} must import nothing but react — ${imports.join(", ")} would land in the web boot payload`,
       );
     }
-    if (!sources[key].includes("export function OtaAcknowledgementLayer")) {
+    const exported = key === "hostGateWeb" ? "export function MandatoryUpdateGate" : "export function OtaAcknowledgementLayer";
+    if (!sources[key].includes(exported)) {
       failures.push(`${key} must export the same component name so Metro can resolve it for web`);
     }
   }
@@ -217,7 +275,7 @@ function selfTest() {
   }
   const drifted = validate({
     ...sources,
-    hostCore: sources.hostCore.replace("FORCE_RESTART_MAX_ATTEMPTS", "MAX_ATTEMPTS"),
+    hostCore: sources.hostCore.replace("CRITICAL_UPDATE_MAX_ATTEMPTS", "MAX_ATTEMPTS"),
   });
   if (drifted.length === 0) {
     console.error("#2107 self-test: core drift between the two apps was not detected");
@@ -240,8 +298,46 @@ function selfTest() {
     console.error("#2107 self-test: an import added to the web stub was not detected — the boot-payload guard proves nothing");
     process.exit(1);
   }
+  const reloadFirst = validate({
+    ...sources,
+    consumerCore: sources.consumerCore.replace(
+      "this.dependencies.saveAttemptRecord(",
+      "this.dependencies.saveAttemptRecordAfterReload(",
+    ),
+  });
+  if (reloadFirst.length === 0) {
+    console.error("#2107 self-test: an attempt record that is no longer persisted before reload was not detected");
+    process.exit(1);
+  }
+  const markerDrift = validate({
+    ...sources,
+    edgePolicy: sources.edgePolicy.replace(
+      'ABSENT_POLICY_ROW_UPDATED_AT = "1970-01-01T00:00:00.000Z"',
+      'ABSENT_POLICY_ROW_UPDATED_AT = "1970-01-01T00:00:00.001Z"',
+    ),
+  });
+  if (markerDrift.length === 0) {
+    console.error("#2107 self-test: an absent-row marker drift between edge and client was not detected");
+    process.exit(1);
+  }
+  const unguardedPublish = validate({
+    ...sources,
+    hostPublish: sources.hostPublish.split("ABORT [#2107 preflight]").join("WARN"),
+  });
+  if (unguardedPublish.length === 0) {
+    console.error("#2107 self-test: a publish script without the criticalIndex guard was not detected");
+    process.exit(1);
+  }
+  const blockingForeground = validate({
+    ...sources,
+    hostGate: sources.hostGate.split("check(false)").join("check(true)"),
+  });
+  if (blockingForeground.length === 0) {
+    console.error("#2107 self-test: a foreground recheck that veils the app was not detected");
+    process.exit(1);
+  }
   console.log(
-    "#2107 self-test passed (clean green; revert, drift, seeded-row and fattened web stub all caught).",
+    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish and blocking foreground all caught).",
   );
 }
 
