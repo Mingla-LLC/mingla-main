@@ -296,11 +296,19 @@ export async function extendTransportLease(
   expiresAtIso: string,
 ): Promise<{ ok: true; degraded?: "migration_not_applied" } | { ok: false }> {
   try {
-    const { error } = await supabase.rpc("cover_video_extend_transport_lease", {
-      p_job_id: jobId,
-      p_expires_at: expiresAtIso,
-    });
-    if (!error) return { ok: true };
+    const { data, error } = await supabase.rpc(
+      "cover_video_extend_transport_lease",
+      { p_job_id: jobId, p_expires_at: expiresAtIso },
+    );
+    // D-7 — the RPC answers NULL (or PostgREST's all-null projection) when no
+    // row moved: the job is no longer source_uploading (e.g. the reaper ended
+    // it between the replay read and this call). Handing out a signature the
+    // server will not honour is a silent success; answer retryable instead,
+    // and the replay then settles the job's real terminal status.
+    if (!error) {
+      const id = (data as { id?: unknown } | null)?.id;
+      return typeof id === "string" && id.length > 0 ? { ok: true } : { ok: false };
+    }
     if (isMissingRpc(error)) {
       return { ok: true, degraded: "migration_not_applied" };
     }
