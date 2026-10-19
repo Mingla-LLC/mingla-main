@@ -46,8 +46,6 @@ import {
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
-// Lazy: expo-video loads only when a host opens a finished video.
-const FullScreenVideoViewer = lazy(() => import("../ui/FullScreenVideoViewer"));
 import {
   MOTION_SPEC,
   useIosAnnouncement,
@@ -103,6 +101,9 @@ import {
   curatedPexelsCovers,
   trendingGiphyCovers,
 } from "../../services/coverProviderBrowseService";
+
+// Lazy: expo-video loads only when a host opens a finished video.
+const FullScreenVideoViewer = lazy(() => import("../ui/FullScreenVideoViewer"));
 
 // Library tab MIME allowlist (image + video) — matches event_covers bucket.
 const LIBRARY_ACCEPT =

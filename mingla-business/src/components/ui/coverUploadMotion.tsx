@@ -17,6 +17,8 @@ import {
   Easing,
   LayoutAnimation,
   Platform,
+  StyleSheet,
+  View,
   findNodeHandle,
   type StyleProp,
   type ViewStyle,
@@ -325,4 +327,77 @@ export const prefersStackedActions = (input: {
   const columnWidth = (input.sheetWidth - 8) / 2;
   const needed = input.longestLabelChars * 16 * 0.55 * input.fontScale + 18 + 8 + 40;
   return needed > columnWidth;
+};
+
+// ---------------------------------------------------------------------------
+// H-15 cover swap (§10): a TRUE crossfade — the old media layer stays on top
+// and fades out while the new one fades in underneath (320 ms; reduced motion
+// 120 ms). Only an applied video job swaps this way, once per job.
+
+/**
+ * The H-15 swap signal: the applied job's id, but only once the preview is
+ * showing that job's video — so the crossfade never runs against a stale URL.
+ */
+export const coverSwapSignal = (input: {
+  justAppliedJobId: string | null;
+  appliedUrl: string | null | undefined;
+  shownUrl: string | null;
+}): string | null =>
+  input.justAppliedJobId !== null &&
+  typeof input.appliedUrl === "string" &&
+  input.appliedUrl.length > 0 &&
+  input.shownUrl === input.appliedUrl
+    ? input.justAppliedJobId
+    : null;
+
+export const CrossfadeLayers: React.FC<{
+  /** A fresh non-null value starts one crossfade. */
+  signal: string | null;
+  /** The old media layer, kept on screen until the fade completes. */
+  outgoing: React.ReactNode | null;
+  /** Called when the fade has finished (drop the old layer). */
+  onSettled: () => void;
+  children: React.ReactNode;
+}> = ({ signal, outgoing, onSettled, children }) => {
+  const reduce = useReduceMotion();
+  const incoming = useRef(new Animated.Value(1)).current;
+  const fading = useRef(new Animated.Value(0)).current;
+  const lastSignal = useRef<string | null>(null);
+  const settledRef = useRef(onSettled);
+  settledRef.current = onSettled;
+  const hasOutgoing = outgoing !== null && outgoing !== undefined;
+  useEffect(() => {
+    if (signal === null || signal === lastSignal.current || !hasOutgoing) return undefined;
+    lastSignal.current = signal;
+    const duration = reduce ? MOTION_SPEC.coverSwap.reducedMs : MOTION_SPEC.coverSwap.durationMs;
+    incoming.setValue(0);
+    fading.setValue(1);
+    const animation = Animated.parallel([
+      Animated.timing(incoming, { toValue: 1, duration, easing: EASE_IN_OUT, useNativeDriver: useNative }),
+      Animated.timing(fading, { toValue: 0, duration, easing: EASE_IN_OUT, useNativeDriver: useNative }),
+    ]);
+    animation.start(({ finished }) => {
+      if (finished) settledRef.current();
+    });
+    return () => {
+      animation.stop();
+      incoming.setValue(1);
+      fading.setValue(0);
+    };
+  }, [fading, hasOutgoing, incoming, reduce, signal]);
+  return (
+    <View>
+      <Animated.View style={{ opacity: incoming }}>{children}</Animated.View>
+      {hasOutgoing ? (
+        <Animated.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[StyleSheet.absoluteFill, { opacity: fading }]}
+        >
+          {outgoing}
+        </Animated.View>
+      ) : null}
+    </View>
+  );
 };

@@ -25,7 +25,7 @@
  * Per SPEC_ORCH-0989 §3/§4/§6/§7 + SPEC_ORCH-0989_..._DESIGN.md.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -124,6 +124,7 @@ import { coverKindOf, resolveCoverActions } from "./coverPickerActionLabels";
 import {
   AnimatedProgressFill,
   CardPresence,
+  CrossfadeLayers,
   FadeOnChange,
   MOTION_SPEC,
   NudgeOnSignal,
@@ -131,6 +132,7 @@ import {
   StepperSegmentFill,
   animateInlineConfirmSwap,
   announceBucket,
+  coverSwapSignal,
   prefersStackedActions,
   progressValueText,
   uploadAnnouncement,
@@ -814,6 +816,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     const timer = setTimeout(() => setJustAppliedJobId(null), 3_000);
     return () => clearTimeout(timer);
   }, [appliedJobId, videoUpload]);
+  // #3040 §10 H-15 — crossfade + badge pop once per applied job, when its
+  // video is what the preview shows.
+  const coverSwapSignalForPreview = coverSwapSignal({
+    justAppliedJobId,
+    appliedUrl: videoUpload.status?.processedUrl,
+    shownUrl: activeMediaUrl,
+  });
 
   // #3040 — how long the current phase has shown (the 20 s "Big file" and
   // "Still confirming" rules, and the elapsed timer from 3 s).
@@ -2433,6 +2442,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           onMediaError={handleMediaRenderError}
           videoPickNotice={videoPickNotice}
           nudgeSignal={offlineNudge}
+          coverSwapSignal={coverSwapSignalForPreview}
         />
       ) : null}
 
@@ -2941,6 +2951,8 @@ const LibraryTab: React.FC<{
   videoPickNotice: NativeEditorNotice | null;
   /** #3040 H-10 — bumps when "Resume upload" is tapped while still offline. */
   nudgeSignal: number;
+  /** #3040 H-15 — the applied job's id once its video is the preview, else null. */
+  coverSwapSignal: string | null;
 }> = ({
   coverKind,
   hue,
@@ -2971,6 +2983,7 @@ const LibraryTab: React.FC<{
   onMediaError,
   videoPickNotice,
   nudgeSignal,
+  coverSwapSignal,
 }) => {
   const [confirming, setConfirmingState] = useState<ConfirmKind | null>(null);
   const [sheetWidth, setSheetWidth] = useState(0);
@@ -2981,10 +2994,28 @@ const LibraryTab: React.FC<{
     animateInlineConfirmSwap(reduceMotion);
     setConfirmingState(kind);
   };
-  // #3040 §10 H-15 — the new cover crossfades in and the badge pops, once per
-  // applied job (latched, so the 3 s return to H-03 does not replay it).
-  const appliedSwapRef = useRef<string | null>(null);
-  if (statusRow.stateId === "H-15" && activeMedia.url !== null) appliedSwapRef.current = `h15:${activeMedia.url}`;
+  // #3040 §10 H-15 — a true crossfade: the media shown before the swap stays
+  // as a layer over the new cover and fades out while the new one fades in.
+  // `previousMediaRef` remembers the last DIFFERENT media this preview showed.
+  type PreviewLayer = { url: string | null; type: ActiveMedia["type"]; poster: string | null };
+  const shownMediaRef = useRef<PreviewLayer>({ url: activeMedia.url, type: activeMedia.type, poster: posterUrl });
+  const previousMediaRef = useRef<PreviewLayer | null>(null);
+  if (activeMedia.url !== shownMediaRef.current.url) {
+    previousMediaRef.current = shownMediaRef.current;
+    shownMediaRef.current = { url: activeMedia.url, type: activeMedia.type, poster: posterUrl };
+  }
+  const [swapFade, setSwapFade] = useState<{ signal: string; layer: PreviewLayer } | null>(null);
+  const handledSwapRef = useRef<string | null>(null);
+  // Before paint, so the old layer never blinks out for a frame.
+  useLayoutEffect(() => {
+    if (coverSwapSignal === null || coverSwapSignal === handledSwapRef.current) return;
+    handledSwapRef.current = coverSwapSignal;
+    const previous = previousMediaRef.current;
+    if (previous !== null && previous.url !== null && previous.url !== activeMedia.url) {
+      setSwapFade({ signal: coverSwapSignal, layer: previous });
+    }
+  }, [activeMedia.url, coverSwapSignal]);
+  const settleSwapFade = useCallback(() => setSwapFade(null), []);
   // The selected ring + badge mean "this cover is applied": never while a
   // video job is still deciding what the cover will be.
   const activeVideoUpload = jobActive;
@@ -3032,11 +3063,21 @@ const LibraryTab: React.FC<{
         accessible
         accessibilityLabel={previewLabel}
       >
-        <FadeOnChange
-          swapKey={appliedSwapRef.current ?? "steady"}
-          durationMs={MOTION_SPEC.coverSwap.durationMs}
-          reducedMs={MOTION_SPEC.coverSwap.reducedMs}
-          animateInitial={false}
+        <CrossfadeLayers
+          signal={swapFade?.signal ?? null}
+          onSettled={settleSwapFade}
+          outgoing={swapFade !== null ? (
+            <EventCoverMedia
+              hue={hue}
+              mediaUrl={swapFade.layer.url}
+              mediaType={swapFade.layer.type as EventCoverMediaType | null}
+              posterUrl={swapFade.layer.poster}
+              radius={radiusTokens.md}
+              label={alt ?? "cover"}
+              height={twoUpWidth ? coverUpload.previewHeightWide : coverUpload.previewHeightCompact}
+              muted={true}
+            />
+          ) : null}
         >
           <EventCoverMedia
             key={previewKey}
@@ -3052,7 +3093,7 @@ const LibraryTab: React.FC<{
             showAudioControl={activeMedia.type === "video"}
           >
           </EventCoverMedia>
-        </FadeOnChange>
+        </CrossfadeLayers>
         {!hasCover && !activeMedia.isNewClip ? (
           <View style={styles.previewEmptyLabel} pointerEvents="none">
             <Text style={styles.previewEmptyText}>No cover yet</Text>
@@ -3073,7 +3114,7 @@ const LibraryTab: React.FC<{
         {/* META-ORCH-1059: a check badge on the live preview signals the current
             cover is applied (decorative — the pill and label carry the state). */}
         {hasCover && !activeVideoUpload ? (
-          <PopOnSignal signal={appliedSwapRef.current} style={styles.selectedBadge}>
+          <PopOnSignal signal={coverSwapSignal} style={styles.selectedBadge}>
             <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
               <Icon name="check" size={14} color={textTokens.inverse} />
             </View>

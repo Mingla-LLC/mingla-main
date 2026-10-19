@@ -13,7 +13,9 @@ import { AccessibilityInfo, Animated, LayoutAnimation, Text } from "react-native
 
 import {
   CardPresence,
+  CrossfadeLayers,
   FadeOnChange,
+  coverSwapSignal,
   MOTION_SPEC,
   announceBucket,
   prefersStackedActions,
@@ -113,6 +115,55 @@ describe("#3040 §10 components", () => {
   });
 });
 
+describe("#3040 §10 H-15 true crossfade", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  const run = async (reduce: boolean) => {
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(reduce);
+    const timing = jest.spyOn(Animated, "timing");
+    const settled = jest.fn();
+    let renderer!: ReturnType<typeof TestRenderer.create>;
+    const tree = (signal: string | null, outgoing: React.ReactNode) => (
+      <CrossfadeLayers signal={signal} outgoing={outgoing} onSettled={settled}>
+        <Text>NEW</Text>
+      </CrossfadeLayers>
+    );
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(tree(null, null));
+    });
+    await TestRenderer.act(async () => {
+      renderer.update(tree("job-1", <Text>OLD</Text>));
+    });
+    return { renderer, timing, settled, tree };
+  };
+
+  it("keeps the old layer over the new one and fades both for 320 ms", async () => {
+    const { renderer, timing, settled } = await run(false);
+    const texts = renderer.root.findAll((node) => node.type === Text).map((node) => node.props.children);
+    expect(texts).toEqual(["NEW", "OLD"]);
+    const durations = timing.mock.calls.map((call) => (call[1] as { duration: number }).duration);
+    expect(durations).toEqual([320, 320]);
+    const targets = timing.mock.calls.map((call) => (call[1] as { toValue: number }).toValue);
+    expect(targets).toEqual([1, 0]);
+    expect(settled).toHaveBeenCalledTimes(1);
+    renderer.unmount();
+  });
+
+  it("is still a crossfade under reduced motion, at 120 ms", async () => {
+    const { renderer, timing } = await run(true);
+    const durations = timing.mock.calls.map((call) => (call[1] as { duration: number }).duration);
+    expect(durations.slice(-2)).toEqual([120, 120]);
+    expect(renderer.root.findAll((node) => node.type === Text).map((node) => node.props.children)).toEqual(["NEW", "OLD"]);
+    renderer.unmount();
+  });
+
+  it("runs once per applied job, and only once the job's video is on screen", () => {
+    expect(coverSwapSignal({ justAppliedJobId: "j", appliedUrl: "https://v/new.mp4", shownUrl: "https://v/old.mp4" })).toBeNull();
+    expect(coverSwapSignal({ justAppliedJobId: "j", appliedUrl: "https://v/new.mp4", shownUrl: "https://v/new.mp4" })).toBe("j");
+    expect(coverSwapSignal({ justAppliedJobId: null, appliedUrl: "https://v/new.mp4", shownUrl: "https://v/new.mp4" })).toBeNull();
+  });
+});
+
 describe("#3040 §10/§11 CoverPicker wiring", () => {
   it("the determinate bar eases, and jumps under reduced motion", () => {
     expect(picker).toMatch(/\{reduceMotion \? \(\s*<View style=\{\[styles\.progressFill, \{ transform: \[\{ scaleX: copy\.percent \/ 100 \}\] \}\]\} \/>\s*\) : \(\s*<AnimatedProgressFill fraction=\{copy\.percent \/ 100\}/);
@@ -135,8 +186,8 @@ describe("#3040 §10/§11 CoverPicker wiring", () => {
     expect(picker).toContain("<CardPresence visible={cardModel !== null}>");
     expect(picker).toContain("animateInlineConfirmSwap(reduceMotion);");
     expect(picker).toMatch(/<FadeOnChange\s+swapKey=\{confirming\}/);
-    expect(picker).toMatch(/<FadeOnChange\s+swapKey=\{appliedSwapRef\.current \?\? "steady"\}/);
-    expect(picker).toContain("<PopOnSignal signal={appliedSwapRef.current} style={styles.selectedBadge}>");
+    expect(picker).toMatch(/<CrossfadeLayers\s+signal=\{swapFade\?\.signal \?\? null\}/);
+    expect(picker).toContain("<PopOnSignal signal={coverSwapSignal} style={styles.selectedBadge}>");
     expect(picker).toContain('<NudgeOnSignal signal={model.stateId === "H-10" ? nudgeSignal : 0}>');
     expect(picker).toContain("setOfflineNudge((count) => count + 1);");
   });
