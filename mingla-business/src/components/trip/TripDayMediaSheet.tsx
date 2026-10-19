@@ -17,7 +17,7 @@
  * files the experience-stop sheet cites; this sheet adds NO new external API.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import Svg, { Circle } from "react-native-svg";
 import {
   ActivityIndicator,
@@ -46,6 +46,8 @@ import {
 } from "../../constants/designSystem";
 import { Sheet } from "../ui/Sheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
+// Lazy: expo-video loads only when a host opens a finished video.
+const FullScreenVideoViewer = lazy(() => import("../ui/FullScreenVideoViewer"));
 import {
   MOTION_SPEC,
   useIosAnnouncement,
@@ -269,7 +271,8 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
   }, []);
   // In-sheet alert: the wizard's toast sits under this modal sheet.
   const [tileNotice, setTileNotice] = useState<string | null>(null);
-  const [playingTileKey, setPlayingTileKey] = useState<string | null>(null);
+  // G-05 — a ready video opens full screen; it never plays inside the tile.
+  const [viewingUrl, setViewingUrl] = useState<string | null>(null);
   const network = useNetInfoSafe();
   const networkConnectedRef = useRef<boolean | null>(network?.isConnected ?? null);
   networkConnectedRef.current = network?.isConnected ?? null;
@@ -462,7 +465,13 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
         setVideoProgress(progress);
         updateTile(key, tileFromProgress(progress));
       }, { dayKey, signal: controller.signal });
-      updateTile(key, { state: "ready", percent: null, reason: null, mediaUrl: media.url });
+      updateTile(key, {
+        state: "ready",
+        percent: null,
+        reason: null,
+        mediaUrl: media.url,
+        ...(typeof media.durationMs === "number" ? { durationMs: media.durationMs } : {}),
+      });
       releaseTileSource(key);
       return { media };
     } catch (itemError) {
@@ -853,8 +862,8 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                   const visual = tileVisual(tile);
                   const tap = visual.tap === "retry"
                     ? () => { void retryTile(tile.key); }
-                    : visual.tap === "play"
-                      ? () => setPlayingTileKey((current) => (current === tile.key ? null : tile.key))
+                    : visual.tap === "view"
+                      ? () => setViewingUrl(tile.mediaUrl)
                       : undefined;
                   return (
                     <Pressable
@@ -868,6 +877,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                       ]}
                       accessibilityRole={tap !== undefined ? "button" : "image"}
                       accessibilityLabel={tileA11yLabel(tile, index)}
+                      accessibilityHint={visual.tap === "view" ? "Opens the video full screen." : undefined}
                       testID={`trip-day-tile-${visual.stateId}`}
                     >
                       {tile.state === "ready" && tile.kind === "video" && tile.mediaUrl !== null ? (
@@ -875,7 +885,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                           mediaUrl={tile.mediaUrl}
                           mediaType="video"
                           autoplay={false}
-                          playbackActive={playingTileKey === tile.key}
+                          playbackActive={false}
                           muted
                           loop={false}
                           radius={radius.md}
@@ -982,6 +992,15 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
           />
         ) : null}
       </View>
+      {viewingUrl !== null ? (
+        <Suspense fallback={null}>
+          <FullScreenVideoViewer
+            uri={viewingUrl}
+            title="Trip day video"
+            onClose={() => setViewingUrl(null)}
+          />
+        </Suspense>
+      ) : null}
     </Sheet>
   );
 };

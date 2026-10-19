@@ -38,6 +38,7 @@ import {
 import { Icon } from "../ui/Icon";
 import type { TripDayMedia } from "../../services/tripsService";
 import { MAX_TRIP_DAY_MEDIA } from "../../services/tripDayMediaService";
+import { tripDayVideoChip, tripDayVideoChipLabel } from "./tripDayTileModel";
 
 export interface TripDayDraft {
   ordinal: number;
@@ -215,8 +216,16 @@ export const TripDayEditor: React.FC<TripDayEditorProps> = ({
                   />
                 )}
                 {m.type === "video" ? (
-                  <View style={styles.videoBadge} pointerEvents="none">
-                    <Icon name="play" size={10} color="#FFFFFF" />
+                  // #3040 Appendix A §6 G-05 — the "▶ m:ss" duration chip
+                  // (▶ alone for videos saved before lengths were recorded).
+                  <View
+                    style={styles.videoBadge}
+                    pointerEvents="none"
+                    accessible
+                    accessibilityLabel={tripDayVideoChipLabel(m.durationMs ?? null)}
+                    testID={`trip-day-${day.ordinal}-media-${mi}-chip`}
+                  >
+                    <Text style={styles.videoBadgeText}>{tripDayVideoChip(m.durationMs ?? null)}</Text>
                   </View>
                 ) : null}
                 {/* Reorder: move-left button on all but the first tile. */}
@@ -366,16 +375,24 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: radiusTokens.md,
   },
+  // #3040 §2 — duration chip: 20 high, inset 6, rgba(0,0,0,0.64), caption 600.
   videoBadge: {
     position: "absolute",
-    left: 4,
-    bottom: 4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    left: 6,
+    bottom: 6,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.64)",
+  },
+  videoBadgeText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    fontVariant: ["tabular-nums"],
   },
   removeBtn: {
     position: "absolute",

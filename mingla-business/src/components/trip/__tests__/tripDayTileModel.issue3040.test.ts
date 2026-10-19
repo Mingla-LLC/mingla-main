@@ -55,9 +55,9 @@ describe("#3040 trip-day tiles — the seven states", () => {
     expect(tileA11yLabel(video({ state: "paused" }), 0)).toBe("Video 1, paused offline");
   });
 
-  it("G-05 Ready: duration chip ▶ m:ss, tap plays, no scrim", () => {
+  it("G-05 Ready: duration chip ▶ m:ss, tap opens the full-screen viewer, no scrim", () => {
     const tile = video({ state: "ready", mediaUrl: "https://cdn/x/play_1080p.mp4" });
-    expect(tileVisual(tile)).toMatchObject({ indicator: "none", durationChip: "▶ 0:45", tap: "play", scrim: false, cancel: null });
+    expect(tileVisual(tile)).toMatchObject({ indicator: "none", durationChip: "▶ 0:45", tap: "view", scrim: false, cancel: null });
     expect(tileA11yLabel(tile, 0)).toBe("Video 1, 0:45");
   });
 

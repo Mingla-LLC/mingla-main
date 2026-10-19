@@ -37,6 +37,12 @@ jest.mock("../../ui/Sheet", () => ({
   Sheet: ({ children }: { children: React.ReactNode }) => children,
 }));
 jest.mock("../../ui/EventCoverMedia", () => ({ EventCoverMedia: "EventCoverMedia" }));
+jest.mock("../../ui/FullScreenVideoViewer", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ReactModule = require("react");
+  const Viewer = (props: Record<string, unknown>) => ReactModule.createElement("FullScreenVideoViewer", props);
+  return { __esModule: true, default: Viewer, FullScreenVideoViewer: Viewer };
+});
 jest.mock("../../ui/Icon", () => ({ Icon: "Icon" }));
 jest.mock("../../ui/Button", () => ({ Button: "Button" }));
 jest.mock("react-native-svg", () => ({ __esModule: true, default: "Svg", Circle: "Circle" }));
@@ -188,6 +194,42 @@ describe("#3040 trip-day sheet tiles (rendered)", () => {
     });
     expect(sheet.tile("G-07")).toHaveLength(0);
     expect(upload).toHaveBeenCalledTimes(1);
+    sheet.renderer.unmount();
+  });
+
+  it("a ready video opens the full-screen viewer and never plays in the tile (G-05)", async () => {
+    const props = { onAddMedia: jest.fn(), onClose: jest.fn(), onShowToast: jest.fn() };
+    // Two picks: one fails (keeps the sheet open), one is ready.
+    const { pickBrowserFiles } = jest.requireMock("../../../utils/browserFilePicker") as { pickBrowserFiles: jest.Mock };
+    pickBrowserFiles.mockResolvedValueOnce({
+      canceled: false,
+      files: [
+        { name: "a.mp4", size: 40_000_000, mimeType: "video/mp4", uri: "blob:a", file: {} },
+        { name: "b.mp4", size: 40_000_000, mimeType: "video/mp4", uri: "blob:b", file: {} },
+      ],
+    });
+    upload.mockResolvedValueOnce({ ...MEDIA, durationMs: 45_000 }).mockRejectedValueOnce(coded("edge_error"));
+    const sheet = await mount(props);
+    await sheet.pick();
+    const [ready] = sheet.tile("G-05");
+    expect(ready).toBeDefined();
+    expect(ready.props.accessibilityLabel).toBe("Video 1, 0:45");
+    const players = sheet.renderer.root.findAll((node) => node.type === "EventCoverMedia");
+    expect(players.every((node) => node.props.playbackActive === false)).toBe(true);
+    expect(sheet.renderer.root.findAll((node) => node.type === "FullScreenVideoViewer")).toHaveLength(0);
+    await TestRenderer.act(async () => {
+      (ready.props.onPress as () => void)();
+      await flush();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flush();
+    });
+    const [viewer] = sheet.renderer.root.findAll((node) => node.type === "FullScreenVideoViewer");
+    expect(viewer.props.uri).toBe(MEDIA.url);
+    await TestRenderer.act(async () => {
+      (viewer.props.onClose as () => void)();
+      await flush();
+    });
+    expect(sheet.renderer.root.findAll((node) => node.type === "FullScreenVideoViewer")).toHaveLength(0);
     sheet.renderer.unmount();
   });
 

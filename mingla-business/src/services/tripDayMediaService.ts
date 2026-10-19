@@ -416,6 +416,11 @@ const uploadTripDayVideo = async (
       url: status.processedUrl,
       type: "video",
       provider: "bunny",
+      // #3040 §6 — the day grid's "▶ m:ss" chip: the processed length, else
+      // the length the host picked (the lane never changes a clip's length).
+      durationMs: typeof status.processedDurationMs === "number" && status.processedDurationMs > 0
+        ? Math.round(status.processedDurationMs)
+        : prepared.durationMs,
     };
   } catch (error) {
     // A definite failure ends the operation; the next pick starts fresh.

@@ -159,6 +159,11 @@ export interface TripDayMedia {
   provider?: string;
   width?: number;
   height?: number;
+  /**
+   * #3040 Appendix A §6 — a video's length, so the day grid can show its
+   * "▶ m:ss" chip. Optional: items saved before #3040 have none.
+   */
+  durationMs?: number;
 }
 
 /**
@@ -181,6 +186,9 @@ export function coerceTripDayMedia(raw: unknown): TripDayMedia[] {
     if (typeof o.provider === "string") next.provider = o.provider;
     if (typeof o.width === "number") next.width = o.width;
     if (typeof o.height === "number") next.height = o.height;
+    if (type === "video" && typeof o.durationMs === "number" && Number.isFinite(o.durationMs) && o.durationMs > 0) {
+      next.durationMs = Math.round(o.durationMs);
+    }
     out.push(next);
   }
   return out;

@@ -10,7 +10,7 @@
  *   G-02 uploading         scrim + 36 ring + "{n}%"             × cancels
  *   G-03 preparing         scrim + spinner + "Preparing"       × cancels
  *   G-04 paused            scrim + wifi-off + "Paused"         auto-resumes on reconnect
- *   G-05 ready             duration chip ▶ {m:ss}              tap plays it
+ *   G-05 ready             duration chip ▶ {m:ss}              tap opens the full-screen viewer
  *   G-06 failed_retryable  error ring + "Tap to retry" + ×     tap retries; × removes
  *   G-07 failed_terminal   error ring + "Can't use" + ×        × removes; the reason is shown
  */
@@ -184,7 +184,7 @@ export type TileVisual = {
   /** The × in the corner, and what it does. */
   cancel: "abort" | "dismiss" | null;
   /** What a tap on the tile body does. */
-  tap: "retry" | "play" | null;
+  tap: "retry" | "view" | null;
   failedRing: boolean;
   scrim: boolean;
   durationChip: string | null;
@@ -217,7 +217,7 @@ export const tileVisual = (tile: TripDayTile): TileVisual => {
         indicator: "none",
         label: null,
         cancel: null,
-        tap: tile.kind === "video" && tile.mediaUrl !== null ? "play" : null,
+        tap: tile.kind === "video" && tile.mediaUrl !== null ? "view" : null,
         failedRing: false,
         scrim: false,
         durationChip: clock === null ? null : `▶ ${clock}`,
@@ -273,3 +273,14 @@ export const tripDayMediaKey = (
   typeof day?.ordinal === "number" && Number.isFinite(day.ordinal)
     ? `day-${day.ordinal}`
     : `day-index-${index + 1}`;
+
+/** #3040 §6 G-05 — the saved day grid's video chip: "▶ 0:45", or "▶" with no length. */
+export const tripDayVideoChip = (durationMs: number | null): string => {
+  const clock = formatTileClock(durationMs);
+  return clock === null ? "▶" : `▶ ${clock}`;
+};
+
+export const tripDayVideoChipLabel = (durationMs: number | null): string => {
+  const clock = formatTileClock(durationMs);
+  return clock === null ? "Video" : `Video, ${clock}`;
+};

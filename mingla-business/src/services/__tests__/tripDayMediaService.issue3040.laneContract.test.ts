@@ -84,6 +84,21 @@ describe("#3040 T-A12 — trip-day lane contract", () => {
     expect(mockRuntime.prepareEventCoverVideoSource).toHaveBeenCalledWith(expect.objectContaining({ ownedTemporary: true }));
   });
 
+  test("the finished video carries its length for the day grid's ▶ m:ss chip", async () => {
+    mockRuntime.waitForEventCoverVideoReady.mockImplementationOnce((async () => ({
+      jobId: "job-t", status: "applied", applicationVersion: 1,
+      processedUrl: "https://cdn.example/t/play_1080p.mp4", processedDurationMs: 44_960.4,
+    })) as never);
+    const processed = await uploadTripDayMedia("brand-1", "event-1", {
+      uri: "file:///library/day.mp4", mimeType: "video/mp4", fileName: "day.mp4", fileSize: 1000, durationMs: 45_000,
+    });
+    expect(processed.durationMs).toBe(44_960);
+    const picked = await uploadTripDayMedia("brand-1", "event-1", {
+      uri: "file:///library/day.mp4", mimeType: "video/mp4", fileName: "day.mp4", fileSize: 1000, durationMs: 12_000,
+    });
+    expect(picked.durationMs).toBe(12_000);
+  });
+
   test("the ready watch gets an abort signal and an 11-minute deadline", async () => {
     await uploadTripDayMedia("brand-1", "event-1", {
       uri: "file:///library/day.mp4", mimeType: "video/mp4", fileName: "day.mp4", fileSize: 1000, durationMs: 9_000,
