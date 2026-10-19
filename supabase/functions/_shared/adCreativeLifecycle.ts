@@ -296,6 +296,10 @@ export function decorateLibraryRows(
       width: typeof source.width === "number" ? source.width : null,
       height: typeof source.height === "number" ? source.height : null,
       has_audio: typeof source.has_audio === "boolean" ? source.has_audio : null,
+      // The processed MP4 the card preview plays (muted, with controls).
+      playback_url: source.kind === "video" && typeof source.source_url === "string"
+        ? source.source_url
+        : null,
       brand_name: brandId ? names.brands.get(brandId) ?? null : null,
       created_by_name: typeof source.created_by === "string"
         ? displayName(names.profiles.get(source.created_by))

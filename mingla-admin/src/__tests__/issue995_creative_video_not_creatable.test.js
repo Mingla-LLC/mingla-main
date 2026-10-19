@@ -147,14 +147,21 @@ describe("ISSUE-995 rework · component + page honesty wiring", () => {
   // [TEST-MOD-APPROVED #3697] v1.4 removes pre-plan preparation from the
   // creative step and explains the confirmed-plan boundary instead.
   it("StepCreative keeps provider preparation out of creative selection", () => {
-    assert.match(stepCreative, /One canonical video, safely reused/);
-    assert.match(stepCreative, /nothing\s+is uploaded to an ad platform/i);
+    // [TEST-MOD-APPROVED #3697] The "One canonical video, safely reused" and
+    // "nothing is uploaded to an ad platform" paragraphs are SUPERSEDED by the
+    // approved #3697 Builder design (§9), which removes infrastructure copy.
+    // What survives: no provider preparation inside the creative step.
+    assert.doesNotMatch(stepCreative, /One canonical video, safely reused/);
     assert.doesNotMatch(stepCreative, /VideoPreparationPanel/);
   });
 
   it("StepCreative uses the server-owned Creative Library", () => {
+    // [TEST-MOD-APPROVED #3697] The "Storage IDs … stay server-owned" helper
+    // is SUPERSEDED (#3697 design §9 removes it); the library stays the
+    // server-owned source, and video reuse is judged server-side.
     assert.match(stepCreative, /listAdCreatives/);
-    assert.match(stepCreative, /Storage IDs, master URLs and\s+poster URLs stay server-owned/);
+    assert.match(stepCreative, /getAdCreativeForReuse/);
+    assert.doesNotMatch(stepCreative, /Storage IDs, master URLs/);
   });
 
   it("CampaignBuilderPage passes creative.kind into the build partition", () => {

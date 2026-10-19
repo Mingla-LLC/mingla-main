@@ -7,21 +7,35 @@
  * no quick-create or direct-launch bypass.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Megaphone, RefreshCw, Rocket } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, Megaphone, RefreshCw, Rocket, Upload } from "lucide-react";
 import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Spinner } from "../components/ui/Spinner";
+import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { SearchInput } from "../components/ui/SearchInput";
 import { useToast } from "../context/ToastContext";
 import { loadFeatureFlags } from "../lib/featureFlags";
+import { invokeWithRefresh } from "../lib/supabase";
 import { AdConnectionsPanel } from "../components/AdConnectionsPanel";
 import { AppDownloadReadinessPanel } from "../components/app-readiness/AppDownloadReadinessPanel";
+import { CreativeDropZone } from "../components/ad-engine/CreativeDropZone";
+import { CreativeCard, UploadCard } from "../components/ad-engine/CreativeCard";
+import { useAdminVideoUploads } from "../components/ad-engine/useAdminVideoUploads";
+import { canManageLifecycle, refusalTitle } from "../components/ad-engine/creativeLibraryModel";
+import { ADMIN_VIDEO_ACCEPT, formatMegabytes, isVideoFile } from "../services/adminVideoUpload";
+import { precheckImageFile, uploadAdImage } from "../services/mediaUpload";
 import {
+  archiveCreative,
+  checkCreativePurge,
+  creativeUpload,
   listAdCreatives,
   loadAdsOperationsOverview,
   parseEdgeError,
+  purgeCreative,
   runPreflight,
+  unarchiveCreative,
 } from "../services/adEngineService";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Tabs } from "../components/ui/Tabs";
@@ -40,22 +54,6 @@ const ADS_TABS = [
   { id: "creative-library", label: "Creative Library" },
   { id: "connections", label: "Connections" },
 ];
-
-const PROCESSING_LABEL = {
-  not_started: "Not prepared",
-  partial: "Partly prepared",
-  preparing: "Preparing",
-  ready: "Provider ready",
-  needs_attention: "Needs attention",
-};
-
-const PROCESSING_VARIANT = {
-  ready: "success",
-  preparing: "warning",
-  partial: "warning",
-  needs_attention: "error",
-  not_started: "default",
-};
 
 const AD_PLATFORMS = ["meta", "tiktok", "snapchat", "google", "reddit"];
 
@@ -345,198 +343,597 @@ function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
   );
 }
 
+// ── Issue #3697 — Creative Library (design §8) ───────────────────────────────
+// Upload once, reuse in any campaign. Videos go through the shared #3040 lane
+// (useAdminVideoUploads → services/adminVideoUpload.js → packages/video-upload);
+// the library row is made by the server from the finished job. Removing a
+// creative means archiving it; "Delete permanently" is guarded by the server.
+
+const LIBRARY_FILTERS = [
+  { id: "all", label: "All", count: "all", query: { status: "active" } },
+  { id: "images", label: "Images", count: "images", query: { status: "active", kind: "image" } },
+  { id: "videos", label: "Videos", count: "videos", query: { status: "active", kind: "video" } },
+  { id: "hosts", label: "From hosts", count: "from_hosts", query: { status: "active", source: "host" } },
+  { id: "archived", label: "Archived", count: "archived", query: { status: "archived" } },
+];
+
+const IMAGE_ACCEPT = "image/jpeg,image/png";
+const LIBRARY_ACCEPT = `${IMAGE_ACCEPT},${ADMIN_VIDEO_ACCEPT}`;
+const DROP_SUB =
+  "Images: JPG or PNG · Under 30 MB\nVideos: MP4, MOV, M4V or WebM · 5 seconds to 1 minute · Under 100 MB";
+
+function imageRefusal(file) {
+  const problems = precheckImageFile(file);
+  if (problems.length === 0) return null;
+  if (file.size > 30 * 1024 * 1024) {
+    return `${file.name} is ${formatMegabytes(file.size)} MB. Images must be under 30 MB.`;
+  }
+  return `${file.name} isn't a supported type.`;
+}
+
 function CreativeLibraryPanel() {
+  const { addToast } = useToast();
+  const [filterId, setFilterId] = useState("all");
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [rows, setRows] = useState(null);
+  const [pending, setPending] = useState([]);
+  const [counts, setCounts] = useState(null);
+  const [cursor, setCursor] = useState(null);
   const [error, setError] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [refusals, setRefusals] = useState([]);
+  const [imageUploads, setImageUploads] = useState(0);
+  const [purge, setPurge] = useState({});
+  const [archiveTarget, setArchiveTarget] = useState(null);
+  const [archiving, setArchiving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePhrase, setDeletePhrase] = useState("");
+  const [deleteError, setDeleteError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [playing, setPlaying] = useState(null);
+  const [hidden, setHidden] = useState(() => new Set());
+  const uploadInputRef = useRef(null);
+  const fileForRef = useRef(null);
+  const requestRef = useRef(0);
+
+  const filter = LIBRARY_FILTERS.find((item) => item.id === filterId) ?? LIBRARY_FILTERS[0];
+
+  const load = useCallback(async ({ append = false, before = null } = {}) => {
+    const request = (requestRef.current += 1);
+    if (!append) setError(null);
+    const { data, error: loadError } = await listAdCreatives({
+      ...filter.query,
+      q: debouncedQuery || undefined,
+      before: before ?? undefined,
+    });
+    if (request !== requestRef.current) return;
+    if (loadError) {
+      const parsed = await parseEdgeError(loadError);
+      setError(String(parsed?.message ?? "The Creative Library could not be loaded."));
+      if (!append) setRows([]);
+      return;
+    }
+    setRows((current) => (append ? [...(current ?? []), ...(data?.creatives ?? [])] : data?.creatives ?? []));
+    if (!append) setPending(data?.pending ?? []);
+    setCounts(data?.counts ?? null);
+    setCursor(data?.next_cursor ?? null);
+  }, [filter, debouncedQuery]);
 
   useEffect(() => {
-    let mounted = true;
-    listAdCreatives().then(({ data, error: loadError }) => {
-      if (!mounted) return;
-      setRows(data?.creatives ?? []);
-      setError(loadError?.message ?? null);
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    // Server snapshot; state transitions live inside the async loader.
+    void load();
+  }, [load]);
+
+  const uploads = useAdminVideoUploads({
+    onFinished: ({ name }) => {
+      addToast({ variant: "success", title: "Video ready", description: `${name} is in the library.` });
+      void load();
+    },
+  });
+
+  // In-flight uploads from another tab or browser: refresh while any exist.
+  useEffect(() => {
+    if (pending.length === 0) return undefined;
+    const timer = setInterval(() => void load(), 10000);
+    return () => clearInterval(timer);
+  }, [pending.length, load]);
+
+  const localOps = new Set(uploads.entries.map((entry) => entry.record?.opId).filter(Boolean));
+  const serverOnly = filter.id === "all" || filter.id === "videos"
+    ? pending.filter((item) => !localOps.has(item.clientOperationId))
+    : [];
+  const showUploads = filter.id === "all" || filter.id === "videos";
+
+  const addFiles = async (files) => {
+    setRefusals([]);
+    const lines = [];
+    const images = [];
+    const videos = [];
+    for (const file of files) {
+      if (isVideoFile(file)) videos.push(file);
+      else if (String(file.type).startsWith("image/")) {
+        const refusal = imageRefusal(file);
+        if (refusal) lines.push(refusal);
+        else images.push(file);
+      } else {
+        lines.push(`${file.name} isn't a supported type.`);
+      }
+    }
+    const result = await uploads.addVideos(videos);
+    lines.push(...result.refusals);
+    setRefusals(lines);
+    if (images.length > 0) void uploadImages(images);
+  };
+
+  const uploadImages = async (images) => {
+    setImageUploads((n) => n + images.length);
+    for (const file of images) {
+      try {
+        const { publicUrl, path } = await uploadAdImage(file);
+        const { error: recordError } = await creativeUpload({
+          action: "record",
+          kind: "image",
+          name: file.name.replace(/\.[a-z0-9]+$/i, "").slice(0, 120) || "Image",
+          source_url: publicUrl,
+          storage_bucket: "meta-ad-creatives",
+          storage_path: path,
+        });
+        if (recordError) {
+          const parsed = await parseEdgeError(recordError);
+          throw new Error(String(parsed?.message ?? "The image could not be added."));
+        }
+      } catch (uploadError) {
+        addToast({ variant: "error", title: `${file.name} wasn't added`, description: uploadError.message });
+      } finally {
+        setImageUploads((n) => n - 1);
+      }
+    }
+    void load();
+  };
+
+  const openPicker = (forEntry = null) => {
+    fileForRef.current = forEntry;
+    uploadInputRef.current?.click();
+  };
+
+  const onPickerFiles = (fileList) => {
+    const files = Array.from(fileList ?? []);
+    const target = fileForRef.current;
+    fileForRef.current = null;
+    if (files.length === 0) return;
+    if (target?.serverItem) uploads.adopt(target.serverItem, files[0]);
+    else if (target?.localId) uploads.chooseFileFor(target, files[0]);
+    else void addFiles(files);
+  };
+
+  const checkPurge = async (creative) => {
+    if (creative.kind !== "video") return;
+    setPurge((current) => ({ ...current, [creative.id]: { loading: true } }));
+    const { data, error: checkError } = await checkCreativePurge(creative.id);
+    if (checkError) {
+      const parsed = await parseEdgeError(checkError);
+      setPurge((current) => ({
+        ...current,
+        [creative.id]: { error: String(parsed?.message ?? "Couldn't check what uses it. Try again.") },
+      }));
+      return;
+    }
+    setPurge((current) => ({ ...current, [creative.id]: { blockers: data?.blockers ?? [] } }));
+  };
+
+  const hide = (id) => setHidden((current) => new Set([...current, id]));
+  const unhide = (id) =>
+    setHidden((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
     });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+
+  const confirmArchive = async () => {
+    const target = archiveTarget;
+    setArchiving(true);
+    const { error: archiveError } = await archiveCreative(target.id);
+    setArchiving(false);
+    if (archiveError) {
+      const parsed = await parseEdgeError(archiveError);
+      addToast({ variant: "error", title: "Couldn't archive it", description: String(parsed?.message ?? "Try again.") });
+      return;
+    }
+    setArchiveTarget(null);
+    hide(target.id);
+    addToast({
+      variant: "success",
+      title: "Archived. Running ads aren't affected.",
+      duration: 6000,
+      action: {
+        label: "Undo",
+        onClick: async () => {
+          const { error: undoError } = await unarchiveCreative(target.id);
+          if (undoError) {
+            addToast({ variant: "error", title: "Couldn't undo the archive", description: "Restore it from Archived." });
+            return;
+          }
+          unhide(target.id);
+          void load();
+        },
+      },
+    });
+    void load();
+  };
+
+  const restore = async (creative) => {
+    const { error: restoreError } = await unarchiveCreative(creative.id);
+    if (restoreError) {
+      const parsed = await parseEdgeError(restoreError);
+      addToast({ variant: "error", title: "Couldn't restore it", description: String(parsed?.message ?? "Try again.") });
+      return;
+    }
+    hide(creative.id);
+    addToast({ variant: "success", title: "Restored. It's available for new campaigns again." });
+    void load();
+  };
+
+  const confirmDelete = async () => {
+    const target = deleteTarget;
+    setDeleting(true);
+    setDeleteError(null);
+    const { error: purgeError } = await purgeCreative(target.id);
+    setDeleting(false);
+    if (purgeError) {
+      const parsed = await parseEdgeError(purgeError);
+      if (parsed?.body?.error === "creative_in_use") {
+        setDeleteError("Something started using this video. Archive it instead.");
+        setPurge((current) => ({ ...current, [target.id]: { blockers: parsed.body.blockers ?? ["campaign"] } }));
+        return;
+      }
+      setDeleteError(
+        parsed?.body?.error === "media_delete_failed"
+          ? "Couldn't delete the file right now. Nothing changed. Try again in a moment."
+          : String(parsed?.message ?? "Couldn't delete it. Try again."),
+      );
+      return;
+    }
+    setDeleteTarget(null);
+    setDeletePhrase("");
+    hide(target.id);
+    addToast({ variant: "success", title: "Deleted permanently." });
+    void load();
+  };
+
+  const requestCancel = (entry) => {
+    if (Number(entry.percent ?? 0) >= 50) {
+      setCancelTarget(entry);
+      return;
+    }
+    void cancelUpload(entry);
+  };
+
+  const cancelUpload = async (entry) => {
+    setCancelTarget(null);
+    try {
+      if (entry.serverItem) await createAdminVideoUploaderCancel(entry.serverItem.jobId);
+      else await uploads.cancel(entry);
+      void load();
+    } catch (cancelError) {
+      addToast({ variant: "error", title: "Couldn't cancel the upload", description: cancelError.message });
+    }
+  };
+
+  const createAdminVideoUploaderCancel = async (jobId) => {
+    const { error: cancelError } = await invokeWithRefresh("event-cover-video-cancel", { body: { jobId } });
+    if (cancelError) {
+      const parsed = await parseEdgeError(cancelError);
+      throw new Error(String(parsed?.message ?? "Try again."));
+    }
+  };
+
+  // L-06: the picked file is not the one the paused upload started with.
+  const differentEntry = uploads.entries.find((entry) => entry.differentFile) ?? null;
+
+  const visibleRows = (rows ?? []).filter((row) => !hidden.has(row.id));
+  const libraryEmpty =
+    rows !== null && visibleRows.length === 0 && (!showUploads || (uploads.entries.length === 0 && serverOnly.length === 0));
 
   return (
     <SectionCard
       title="Creative Library"
-      subtitle="Canonical ad media, processing truth, placement fit and reusable provider handoff start here. Infrastructure IDs stay hidden from operators."
+      subtitle="Upload once, reuse in any campaign. Each video shows which platforms it fits."
       action={
-        <Button
-          size="sm"
-          icon={Rocket}
-          onClick={() => {
-            window.location.hash = "#/campaign-builder?step=creative";
-          }}
-        >
-          Build a campaign
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            size="md"
+            icon={Rocket}
+            onClick={() => {
+              window.location.hash = "#/campaign-builder?step=creative";
+            }}
+          >
+            Build a campaign
+          </Button>
+          <Button variant="brandContrast" icon={Upload} onClick={() => openPicker()}>
+            Upload media
+          </Button>
+        </div>
       }
     >
+      <input
+        ref={uploadInputRef}
+        type="file"
+        multiple
+        accept={LIBRARY_ACCEPT}
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          onPickerFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      <CreativeDropZone
+        accept={LIBRARY_ACCEPT}
+        onFiles={(files) => void addFiles(files)}
+        title={
+          <>
+            Drop images or videos here, or{" "}
+            <u className="text-[var(--color-brand-700)] underline-offset-[3px]">browse</u>
+          </>
+        }
+        sub={DROP_SUB}
+      />
+
+      {refusals.length > 0 && (
+        <div role="alert" className="mt-3">
+          <AlertCard variant="error" title={refusalTitle(refusals.length)}>
+            <ul className="space-y-0.5">
+              {refusals.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          </AlertCard>
+        </div>
+      )}
+      {imageUploads > 0 && (
+        <p className="mt-3 flex items-center gap-2 text-sm text-[var(--color-text-secondary)]" aria-live="polite">
+          <Spinner size="sm" /> Adding {imageUploads} image{imageUploads === 1 ? "" : "s"}…
+        </p>
+      )}
+
+      <div className="my-4 flex flex-wrap items-center justify-between gap-3">
+        <div role="radiogroup" aria-label="Filter creatives" className="flex flex-wrap items-center gap-1.5">
+          {LIBRARY_FILTERS.map((item) => {
+            const selected = item.id === filterId;
+            const count = counts?.[item.count];
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => {
+                  setFilterId(item.id);
+                  setRows(null);
+                }}
+                className={[
+                  "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] transition-colors duration-150 motion-reduce:transition-none",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
+                  selected
+                    ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] font-semibold text-[var(--color-brand-700)]"
+                    : "border-[var(--gray-200)] bg-[var(--color-background-primary)] font-medium text-[var(--color-text-secondary)]",
+                ].join(" ")}
+              >
+                {item.label}
+                {typeof count === "number" && (
+                  <span className="font-medium tabular-nums text-[var(--color-text-tertiary-strong)]">{count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <SearchInput
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onClear={() => setQuery("")}
+          placeholder="Search by name"
+          aria-label="Search creatives by name"
+          className="w-full max-w-[320px]"
+        />
+      </div>
+
       {error ? (
         <AlertCard variant="error" title="Creative Library unavailable">
-          {error}
+          <p>{error}</p>
+          <Button className="mt-3" size="sm" variant="secondary" onClick={() => void load()}>
+            Retry
+          </Button>
         </AlertCard>
       ) : rows === null ? (
         <div className="flex items-center gap-2 py-4">
           <Spinner size="sm" /> Loading creatives…
         </div>
-      ) : rows.length === 0 ? (
-        <div className="space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <p>No canonical ad creatives have been recorded yet.</p>
-          <p>
-            Images can be added in Campaign Builder. Video must first complete
-            Mingla&apos;s shared resumable media flow; the builder will then list
-            the ready canonical video without exposing storage or provider IDs.
+      ) : libraryEmpty ? (
+        debouncedQuery ? (
+          <p className="py-6 text-sm text-[var(--color-text-secondary)]">
+            No media matches &quot;{debouncedQuery}&quot;.{" "}
+            <button type="button" className="font-medium text-[var(--color-brand-700)] underline" onClick={() => setQuery("")}>
+              Clear search
+            </button>
           </p>
-        </div>
+        ) : filterId === "archived" ? (
+          <p className="py-6 text-sm text-[var(--color-text-secondary)]">
+            Nothing archived. Archived media stays here and never affects running ads.
+          </p>
+        ) : (
+          <div className="px-5 py-8 text-center">
+            <p className="text-[15px] font-semibold">No media yet</p>
+            <p className="mx-auto mb-4 mt-1.5 max-w-md text-sm text-[var(--color-text-secondary)]">
+              Drop an image or video to start. Event covers can show up here once a host approves ad use.
+            </p>
+            <Button variant="brandContrast" icon={Upload} onClick={() => openPicker()}>
+              Upload media
+            </Button>
+          </div>
+        )
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {rows.map((creative) => {
-            const preview = creative.preview_url;
-            const processingLabel =
-              PROCESSING_LABEL[creative.processing_summary] ??
-              sentenceCase(creative.processing_summary);
-            const rightsLabel =
-              creative.rights?.state === "confirmed"
-                ? `Rights confirmed · ${sentenceCase(creative.rights.basis)}`
-                : creative.rights?.state === "missing"
-                  ? "Rights missing on latest plan"
-                  : "Rights attested when used";
-            return (
-              <article
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {showUploads && uploads.entries.map((entry) => (
+              <UploadCard
+                key={entry.localId}
+                entry={entry}
+                onCancel={requestCancel}
+                onRemove={(item) => void cancelUpload(item)}
+                onRetry={(item) => {
+                  if (!uploads.retry(item)) openPicker(item);
+                }}
+                onChooseFile={(item) => openPicker(item)}
+                onCheckAgain={(item) => void uploads.checkAgain(item)}
+              />
+            ))}
+            {serverOnly.map((item) => {
+              const entry = {
+                localId: `server-${item.jobId}`,
+                serverItem: item,
+                name: item.fileName ?? "Video",
+                durationMs: item.sourceDurationMs,
+                totalBytes: item.sourceBytes,
+                phase: item.status === "source_uploading" ? "needs_file" : item.status === "ready" ? "saving" : "preparing",
+                sourceUploadedAt: item.sourceUploadedAt,
+              };
+              return (
+                <UploadCard
+                  key={entry.localId}
+                  entry={entry}
+                  onCancel={() => void cancelUpload(entry)}
+                  onRemove={() => void cancelUpload(entry)}
+                  onChooseFile={() => openPicker(entry)}
+                  onCheckAgain={() => void load()}
+                />
+              );
+            })}
+            {visibleRows.map((creative) => (
+              <CreativeCard
                 key={creative.id}
-                className="overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)]"
+                creative={creative}
+                purge={purge[creative.id]}
+                canManage={canManageLifecycle(creative)}
+                onUse={(row) => {
+                  window.location.hash = `#/campaign-builder?step=creative&creative=${encodeURIComponent(row.id)}`;
+                }}
+                onPlay={(row) => setPlaying(row)}
+                onArchive={(row) => setArchiveTarget(row)}
+                onRestore={(row) => void restore(row)}
+                onOpenMenu={(row) => void checkPurge(row)}
+                onDelete={(row) => {
+                  setDeleteTarget(row);
+                  setDeletePhrase("");
+                  setDeleteError(null);
+                }}
+              />
+            ))}
+          </div>
+          {cursor && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={loadingMore}
+                onClick={async () => {
+                  setLoadingMore(true);
+                  await load({ append: true, before: cursor });
+                  setLoadingMore(false);
+                }}
               >
-                <div className="flex aspect-video items-center justify-center bg-[var(--gray-100)]">
-                  {preview ? (
-                    <img
-                      src={preview}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <Megaphone
-                      aria-hidden="true"
-                      className="h-8 w-8 text-[var(--color-text-tertiary)]"
-                    />
-                  )}
-                </div>
-                <div className="space-y-3 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">
-                        {creative.name || "Untitled creative"}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-secondary)]">
-                        {sentenceCase(creative.kind)} ·{" "}
-                        {creative.source_summary}
-                        {creative.duration_seconds
-                          ? ` · ${creative.duration_seconds}s`
-                          : ""}
-                      </p>
-                      {creative.kind === "video" && (
-                        <p className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
-                          {creative.house_reuse_allowed
-                            ? "Eligible for Mingla house campaigns"
-                            : "Host-only media · house reuse not approved"}
-                        </p>
-                      )}
-                    </div>
-                    <Badge
-                      variant={PROCESSING_VARIANT[creative.processing_summary]}
-                    >
-                      {processingLabel}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {(creative.placement_formats ?? []).length > 0 ? (
-                      creative.placement_formats.map((format) => (
-                        <Badge key={format} variant="default">
-                          {format}
-                        </Badge>
-                      ))
-                    ) : (
-                      <Badge variant="warning">Placement fit pending</Badge>
-                    )}
-                  </div>
-                  <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    <div>
-                      <dt className="text-[var(--color-text-tertiary)]">
-                        Plan version
-                      </dt>
-                      <dd className="font-medium">{creative.version_label}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[var(--color-text-tertiary)]">
-                        Campaign use
-                      </dt>
-                      <dd className="font-medium">
-                        {creative.usage?.campaign_count ?? 0} total ·{" "}
-                        {creative.usage?.active_campaign_count ?? 0} active
-                      </dd>
-                    </div>
-                  </dl>
-                  <p
-                    className={`text-xs ${
-                      creative.rights?.state === "missing"
-                        ? "text-[var(--color-warning-700)]"
-                        : "text-[var(--color-text-secondary)]"
-                    }`}
-                  >
-                    {rightsLabel}
-                    {creative.ai_generated ? " · AI-generated" : ""}
-                  </p>
-                  {(creative.provider_readiness ?? []).length > 0 && (
-                    <div>
-                      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--color-text-tertiary)]">
-                        Provider copies
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {creative.provider_readiness.map((row) => (
-                          <Badge
-                            key={`${row.platform}:${row.lane}`}
-                            variant={
-                              row.status === "ready"
-                                ? "success"
-                                : ["failed", "timed_out"].includes(row.status)
-                                  ? "error"
-                                  : "warning"
-                            }
-                          >
-                            {sentenceCase(row.platform)} ·{" "}
-                            {sentenceCase(row.status)}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between gap-2 border-t border-[var(--gray-100)] pt-2">
-                    <p className="text-[11px] text-[var(--color-text-tertiary)]">
-                      {creative.usage?.last_used_at
-                        ? `Last used ${new Date(creative.usage.last_used_at).toLocaleDateString()}`
-                        : `Added ${new Date(creative.created_at).toLocaleDateString()}`}
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        window.location.hash = `#/campaign-builder?step=creative&creative=${encodeURIComponent(creative.id)}`;
-                      }}
-                    >
-                      Reuse
-                    </Button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                Load more
+              </Button>
+            </div>
+          )}
+        </>
       )}
+
+      <Modal open={Boolean(archiveTarget)} onClose={() => setArchiveTarget(null)} title={`Archive "${archiveTarget?.name ?? ""}"?`} size="sm">
+        <ModalBody>
+          <p className="text-sm leading-relaxed text-[var(--color-text-secondary)]">
+            It won&apos;t show up when you build new campaigns.{" "}
+            {Number(archiveTarget?.usage?.campaign_count ?? 0) > 0
+              ? `The ${archiveTarget.usage.campaign_count} campaign${archiveTarget.usage.campaign_count === 1 ? "" : "s"} already using it keep${archiveTarget.usage.campaign_count === 1 ? "s" : ""} running, and nothing is deleted.`
+              : "Nothing is deleted."}{" "}
+            You can restore it any time from Archived.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setArchiveTarget(null)}>Cancel</Button>
+          <Button variant="brandContrast" loading={archiving} onClick={() => void confirmArchive()}>Archive</Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} title={`Delete "${deleteTarget?.name ?? ""}" permanently?`} size="sm" destructive>
+        <ModalBody>
+          <div role="alertdialog" aria-label="Delete permanently" className="space-y-3">
+            <p className="text-sm leading-relaxed text-[var(--color-text-secondary)]">
+              This deletes the video file from Mingla. It isn&apos;t used by any campaign, ad platform, event or brand. This can&apos;t be undone.
+            </p>
+            <label className="block text-[12.5px] font-semibold" htmlFor="creative-delete-phrase">
+              Type DELETE to confirm
+            </label>
+            <input
+              id="creative-delete-phrase"
+              value={deletePhrase}
+              onChange={(event) => setDeletePhrase(event.target.value)}
+              autoComplete="off"
+              className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 font-mono text-sm outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
+            />
+            {deleteError && (
+              <p role="alert" className="text-sm text-[var(--color-error-700)]">{deleteError}</p>
+            )}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+          <Button variant="danger" loading={deleting} disabled={deletePhrase !== "DELETE"} onClick={() => void confirmDelete()}>
+            Delete permanently
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal open={Boolean(cancelTarget)} onClose={() => setCancelTarget(null)} title="Cancel this upload?" size="sm">
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)]">You&apos;ll need to start it again.</p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setCancelTarget(null)}>Keep uploading</Button>
+          <Button variant="danger" onClick={() => void cancelUpload(cancelTarget)}>Cancel upload</Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal open={Boolean(differentEntry)} onClose={() => uploads.keepWaitingForFile(differentEntry)} title="That's a different file. Start a new upload instead?" size="sm">
+        <ModalBody>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            The paused upload needs the same file it started with. A new upload starts from the beginning.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => uploads.keepWaitingForFile(differentEntry)}>Cancel</Button>
+          <Button
+            variant="brandContrast"
+            onClick={() => void uploads.startOverWith(differentEntry)}
+          >
+            Start new upload
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal open={Boolean(playing)} onClose={() => setPlaying(null)} title={playing?.name ?? "Video"} size="md">
+        <ModalBody>
+          {playing?.playback_url && (
+            <video src={playing.playback_url} controls muted autoPlay playsInline className="mx-auto max-h-[65vh] w-full rounded-lg bg-black" />
+          )}
+        </ModalBody>
+      </Modal>
     </SectionCard>
   );
 }
@@ -547,7 +944,14 @@ export function AdEnginePage() {
   const [preflightRunning, setPreflightRunning] = useState(false);
   const [appDownloadReadinessEnabled, setAppDownloadReadinessEnabled] =
     useState(false);
+  // #3697 (C-20) — the Creative Library follows enable_ads_console (fail-open).
+  const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
   const [activeTab, setActiveTab] = useState(tabFromHash);
+  const visibleTabs = ADS_TABS.filter(
+    (tab) => adsConsoleEnabled || tab.id !== "creative-library",
+  );
+  const shownTab =
+    !adsConsoleEnabled && activeTab === "creative-library" ? "overview" : activeTab;
 
   useEffect(() => {
     const applyHash = () => setActiveTab(tabFromHash());
@@ -568,6 +972,7 @@ export function AdEnginePage() {
         setAppDownloadReadinessEnabled(
           flags.enable_app_download_readiness === true,
         );
+        setAdsConsoleEnabled(flags.enable_ads_console !== false);
       }
     });
     return () => {
@@ -609,14 +1014,14 @@ export function AdEnginePage() {
           </Button>
         }
         tabs={
-          <Tabs tabs={ADS_TABS} activeTab={activeTab} onChange={changeTab} />
+          <Tabs tabs={visibleTabs} activeTab={shownTab} onChange={changeTab} />
         }
       />
 
-      {activeTab === "campaigns" && <CampaignsPage embedded />}
-      {activeTab === "creative-library" && <CreativeLibraryPanel />}
+      {shownTab === "campaigns" && <CampaignsPage embedded />}
+      {shownTab === "creative-library" && <CreativeLibraryPanel />}
 
-      {activeTab === "connections" && (
+      {shownTab === "connections" && (
         <>
           <AdConnectionsPanel />
 
@@ -634,7 +1039,7 @@ export function AdEnginePage() {
         </>
       )}
 
-      {activeTab === "overview" && (
+      {shownTab === "overview" && (
         <>
           <section
             aria-labelledby="governed-campaign-operations-heading"
