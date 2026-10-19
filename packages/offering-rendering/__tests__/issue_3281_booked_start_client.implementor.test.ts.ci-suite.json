@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3281_booked_start_client.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-04-booked-start-client",
+  "profile": "deno-2-unit"
+}

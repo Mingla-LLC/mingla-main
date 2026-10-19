@@ -1,5 +1,9 @@
 -- issue #3281 Round 1 PR 1b — validate refuses bad starts; flag-on requires
 -- a start for open-daily.
+--
+-- Negative cases compare SQLERRM EXACTLY to the raise token. Substring
+-- matching against WHEN OTHERS would pass if the PERFORM wrongly succeeded
+-- and the test then raised 'expected booked_start_*' itself.
 
 \set ON_ERROR_STOP on
 
@@ -69,70 +73,70 @@ BEGIN
   PERFORM public.issue_3281_validate_booked_start(v_event, v_date, v_ok);
   PERFORM pg_temp.i3281b_assert(true, 'on-grid start ok');
 
+  v_err := NULL;
   BEGIN
     PERFORM public.issue_3281_validate_booked_start(
       v_event, v_date, v_start + interval '15 minutes'
     );
-    RAISE EXCEPTION 'expected booked_start_off_grid';
   EXCEPTION WHEN OTHERS THEN
     v_err := SQLERRM;
-    PERFORM pg_temp.i3281b_assert(
-      position('booked_start_off_grid' IN v_err) > 0,
-      'off-grid → booked_start_off_grid'
-    );
   END;
+  PERFORM pg_temp.i3281b_assert(
+    v_err = 'booked_start_off_grid',
+    'off-grid → booked_start_off_grid'
+  );
 
+  v_err := NULL;
   BEGIN
     PERFORM public.issue_3281_validate_booked_start(
       v_event, v_date, v_start - interval '30 minutes'
     );
-    RAISE EXCEPTION 'expected booked_start_invalid';
   EXCEPTION WHEN OTHERS THEN
     v_err := SQLERRM;
-    PERFORM pg_temp.i3281b_assert(
-      position('booked_start_invalid' IN v_err) > 0,
-      'before window → booked_start_invalid'
-    );
   END;
+  PERFORM pg_temp.i3281b_assert(
+    v_err = 'booked_start_invalid',
+    'before window → booked_start_invalid'
+  );
 
+  v_err := NULL;
   BEGIN
     PERFORM public.issue_3281_validate_booked_start(
       v_event, v_date, now() - interval '1 hour'
     );
-    RAISE EXCEPTION 'expected booked_start_in_past';
   EXCEPTION WHEN OTHERS THEN
     v_err := SQLERRM;
-    PERFORM pg_temp.i3281b_assert(
-      position('booked_start_in_past' IN v_err) > 0,
-      'past → booked_start_in_past'
-    );
   END;
+  PERFORM pg_temp.i3281b_assert(
+    v_err = 'booked_start_in_past',
+    'past → booked_start_in_past'
+  );
 
+  v_err := NULL;
   BEGIN
     PERFORM public.issue_3281_validate_booked_start(v_event, v_other_date, v_ok);
-    RAISE EXCEPTION 'expected booked_start_invalid (foreign date)';
   EXCEPTION WHEN OTHERS THEN
     v_err := SQLERRM;
-    PERFORM pg_temp.i3281b_assert(
-      position('booked_start_invalid' IN v_err) > 0,
-      'foreign date → booked_start_invalid'
-    );
   END;
+  PERFORM pg_temp.i3281b_assert(
+    v_err = 'booked_start_invalid',
+    'foreign date → booked_start_invalid'
+  );
 
   UPDATE public.feature_flags
      SET is_enabled = true
    WHERE flag_key = 'experience_require_booked_start';
 
+  v_err := NULL;
   BEGIN
     PERFORM public.issue_3281_validate_booked_start(v_event, v_date, NULL);
-    RAISE EXCEPTION 'expected booked_start_required';
   EXCEPTION WHEN OTHERS THEN
     v_err := SQLERRM;
-    PERFORM pg_temp.i3281b_assert(
-      position('booked_start_required' IN v_err) > 0,
-      'flag-on NULL → booked_start_required'
-    );
   END;
+  PERFORM pg_temp.i3281b_assert(
+    v_err = 'booked_start_required',
+    'flag-on NULL → booked_start_required'
+  );
 
   UPDATE public.feature_flags
      SET is_enabled = false

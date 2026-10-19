@@ -512,14 +512,25 @@ function CheckoutExperienceConfirmScreenInner({
     if (Number.isNaN(d.getTime())) return null;
     const tz = experience?.timezone ?? "UTC";
     try {
+      // issue #3281 — date + clock in the experience zone so a Friday booking
+      // is not shown next to a Monday "Next:" subline with only the time.
+      const date = new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        timeZone: tz,
+      }).format(d);
       const time = new Intl.DateTimeFormat(undefined, {
         hour: "numeric",
         minute: "2-digit",
         timeZone: tz,
       }).format(d);
-      return `Booked ${time}`;
+      return `Booked ${date} · ${time}`;
     } catch {
-      return `Booked ${d.toLocaleTimeString(undefined, {
+      return `Booked ${d.toLocaleString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
         hour: "numeric",
         minute: "2-digit",
       })}`;

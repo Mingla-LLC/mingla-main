@@ -403,6 +403,11 @@ const FREE_CHECKOUT_MESSAGE_BY_CODE: Readonly<Record<string, string>> = Object
     // Raised BEFORE any write, so "nothing was reserved" is provable.
     // (ticket-checkout-create/index.ts:1077-1086)
     intake_form_required: FREE_CHECKOUT_INTAKE_REQUIRED_MESSAGE,
+    // issue #3281 — edge returns these as bare `error` codes (no `detail`).
+    booked_start_required: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_required,
+    booked_start_invalid: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_invalid,
+    booked_start_in_past: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_in_past,
+    booked_start_off_grid: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_off_grid,
   });
 
 const lookup = (code: string | null): string | undefined =>

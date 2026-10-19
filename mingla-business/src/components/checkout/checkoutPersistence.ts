@@ -40,6 +40,12 @@ export interface CheckoutResumePayload {
    * which now names the days, would have had nothing to name.
    */
   eventDateIds?: string[];
+  /**
+   * issue #3281 — singular experience occurrence the open-daily picker chose.
+   * Optional for older entries; restore with `bookedStartAt` so a provider
+   * cancel does not retry a start without its date.
+   */
+  eventDateId?: string | null;
   /** issue #3281 — open-daily booked start (ISO). Optional for older entries. */
   bookedStartAt?: string | null;
 }
@@ -90,6 +96,9 @@ export const isCheckoutResumePayload = (
     (v.eventDateIds === undefined ||
       (Array.isArray(v.eventDateIds) &&
         v.eventDateIds.every((id) => typeof id === "string"))) &&
+    (v.eventDateId === undefined ||
+      v.eventDateId === null ||
+      typeof v.eventDateId === "string") &&
     (v.bookedStartAt === undefined ||
       v.bookedStartAt === null ||
       typeof v.bookedStartAt === "string")

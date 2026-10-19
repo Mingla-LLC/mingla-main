@@ -1217,9 +1217,12 @@ export const createTicketCheckoutCreateHandler = (
     // EVENT that field is the guest's chosen day: it was validated above
     // (ORCH-1072: belongs to this event, not yet ended), and treating it as a
     // one-day set gives the pass its day row and the order its payout anchor.
-    // Experiences and trips keep their ORCH-1072 single-occurrence path.
+    // Experiences with a picker-named day (and trips' ORCH-1072 single
+    // occurrence) also need that id on the session so #3281 validate sees
+    // the window. Entitlement for a lone day is one row — same as events.
     if (
-      tripGateRow?.event_type === "event" &&
+      (tripGateRow?.event_type === "event" ||
+        tripGateRow?.event_type === "experience") &&
       orderedEventDateIds.length === 0 &&
       eventDateId !== null
     ) {
@@ -1743,6 +1746,7 @@ export const createTicketCheckoutCreateHandler = (
           ) => line),
           eventDateId: anchorEventDateId ?? eventDateId,
           eventDateIds: orderedEventDateIds,
+          bookedStartAt,
           intakeFormData: canonicalIntakeFormData,
           quote: {
             currency,

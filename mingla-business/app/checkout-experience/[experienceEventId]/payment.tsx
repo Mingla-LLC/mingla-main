@@ -122,6 +122,7 @@ function CheckoutExperiencePaymentScreenContent({
     setLineQuantity,
     setBuyer,
     eventDateId,
+    setEventDateId,
     bookedStartAt,
     setBookedStartAt,
     checkoutAttemptIdFor,
@@ -205,6 +206,14 @@ function CheckoutExperiencePaymentScreenContent({
         });
       }
       setBuyer(payload.buyer);
+      // issue #3281 — restore occurrence + start together (provider-cancel).
+      if (
+        payload.eventDateId !== undefined &&
+        payload.eventDateId !== null &&
+        payload.eventDateId.length > 0
+      ) {
+        setEventDateId(payload.eventDateId);
+      }
       if (
         payload.bookedStartAt !== undefined &&
         payload.bookedStartAt !== null &&
@@ -409,6 +418,7 @@ function CheckoutExperiencePaymentScreenContent({
           buyerStatusToken: handoff.buyerStatusToken,
           lines,
           buyer,
+          ...(eventDateId !== null ? { eventDateId } : {}),
           ...(bookedStartAt !== null ? { bookedStartAt } : {}),
         });
         if (assignLocation(handoff.redirectUrl)) return;

@@ -792,6 +792,7 @@ export const useNativeCheckoutFlow = (): ((
           })),
           eventDateId: input.eventDateId ?? null,
           eventDateIds: normalizedEventDateIds(input),
+          bookedStartAt: input.bookedStartAt ?? null,
           intakeFormData: input.intakeFormData ?? [],
         });
       } catch {

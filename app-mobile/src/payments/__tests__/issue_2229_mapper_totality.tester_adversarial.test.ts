@@ -320,7 +320,7 @@ describe("#2229 adversarial — hostile and degenerate inputs", () => {
 
 describe("#2229 adversarial — the #2188 money clause holds on every string", () => {
   it("each owned constant states whether the buyer was charged", () => {
-    expect(NATIVE_CHECKOUT_MESSAGES).toHaveLength(13);
+    expect(NATIVE_CHECKOUT_MESSAGES).toHaveLength(17);
     for (const message of NATIVE_CHECKOUT_MESSAGES) {
       expect(message).toMatch(/charge/i);
       // ...and states it as a NEGATIVE or a NOT-TWICE, never an ambiguity.

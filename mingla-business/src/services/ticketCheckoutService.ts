@@ -4,6 +4,7 @@ import { supabase } from "./supabase";
 // drive the REAL edge handler and the REAL mapper in one process. Re-exported
 // below so every existing import site is untouched.
 import {
+  checkoutRefusalRaiseMessage,
   codeOf,
   httpStatusOf,
   readEdgeRefusal,
@@ -708,6 +709,11 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   }
   if (code === "checkout_in_progress") return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
   if (code === "checkout_unavailable") return PAID_CHECKOUT_UNAVAILABLE_MESSAGE;
+  // issue #3281 — booked-start refusals arrive as bare error codes on paid too.
+  {
+    const bookedStartCopy = checkoutRefusalRaiseMessage(code);
+    if (bookedStartCopy !== undefined) return bookedStartCopy;
+  }
   // #2198 — the return leg's verified outcomes. Ahead of the bare-409 fallback
   // because these carry a real, specific reason and must never be softened into
   // "wait about a minute and try again".

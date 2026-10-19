@@ -10,9 +10,8 @@
 -- Edge auto-deploys after merge; clients send bookedStartAt behind the same
 -- PR with the flag still off.
 --
--- DRAFT invariants:
---   I-PROPOSED-3281-BOOKED-START-SAVED
---   I-PROPOSED-3281-REMINDER-AND-SCAN-USE-BOOKED-START
+-- MINGLA-INVARIANT: I-PROPOSED-3281-BOOKED-START-SAVED | issue #3281 | a checkout that names a start stores it on session and order and every receipt surface prints it
+-- MINGLA-INVARIANT: I-PROPOSED-3281-REMINDER-AND-SCAN-USE-BOOKED-START | issue #3281 | experience reminders and scan admit windows key off booked_start_at when present
 
 BEGIN;
 
@@ -1899,6 +1898,68 @@ BEGIN
         IF v_ticket.status NOT IN ('valid', 'used') THEN
           v_scan_result := 'void';
         ELSE
+          -- issue #3281 — experience checkouts that promote a day set land
+          -- here (v_day_count > 0). Booked-start windows must still bind;
+          -- otherwise a 17:00 booking admits at 10:00 under the occurrence
+          -- window. Per-day duplicate detection and consumption stay below.
+          SELECT o.booked_start_at, e.event_type
+            INTO v_booked_start, v_order_event_type
+            FROM public.orders o
+            JOIN public.events e ON e.id = o.event_id
+           WHERE o.id = v_ticket.order_id;
+
+          IF v_order_event_type = 'experience' AND v_booked_start IS NOT NULL THEN
+            SELECT ted.event_date_id INTO v_target_day
+              FROM public.ticket_event_dates ted
+              JOIN public.event_dates ed ON ed.id = ted.event_date_id
+             WHERE ted.ticket_id = v_ticket.id
+             ORDER BY ed.start_at ASC, ed.id ASC
+             LIMIT 1;
+
+            SELECT COALESCE(ed.end_at - ed.start_at, interval '2 hours')
+              INTO v_booked_duration
+              FROM public.event_dates ed
+             WHERE ed.id = v_target_day;
+            IF v_booked_duration IS NULL OR v_booked_duration < interval '2 hours' THEN
+              v_booked_duration := interval '2 hours';
+            END IF;
+
+            IF EXISTS (
+              SELECT 1 FROM public.scan_events se
+               WHERE se.ticket_id = v_ticket.id
+                 AND se.event_date_id = v_target_day
+                 AND se.scan_result = 'success'
+            ) THEN
+              v_scan_result := 'duplicate';
+            ELSIF now() BETWEEN (v_booked_start - c_grace_before)
+                            AND (v_booked_start + v_booked_duration + c_grace_after) THEN
+              v_scan_result := 'success';
+              v_admitted_day := v_target_day;
+
+              SELECT NOT EXISTS (
+                SELECT 1 FROM public.ticket_event_dates ted
+                 WHERE ted.ticket_id = v_ticket.id
+                   AND ted.event_date_id <> v_target_day
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.scan_events se
+                      WHERE se.ticket_id = v_ticket.id
+                        AND se.event_date_id = ted.event_date_id
+                        AND se.scan_result = 'success')
+              ) INTO v_all_days_consumed;
+
+              UPDATE public.tickets
+                 SET used_at = COALESCE(used_at, now()),
+                     used_by_scanner_id = p_scanner_user_id,
+                     status = CASE WHEN v_all_days_consumed THEN 'used' ELSE status END
+               WHERE id = v_ticket.id;
+            ELSIF now() < (v_booked_start - c_grace_before) THEN
+              v_scan_result := 'not_yet_open';
+              v_next_start := v_booked_start;
+            ELSE
+              v_scan_result := 'event_ended';
+              v_last_end := v_booked_start + v_booked_duration;
+            END IF;
+          ELSE
           -- WHICH DAY IS THIS PASS BEING PRESENTED AGAINST RIGHT NOW?
           -- Two occurrences of one event CAN overlap once the 8-hour combined
           -- grace is applied (a day ending 18:00 and the next starting 11:00 do
@@ -1985,6 +2046,7 @@ BEGIN
                    -- between day 1 and day 2 and can be scanned again.
                    status = CASE WHEN v_all_days_consumed THEN 'used' ELSE status END
              WHERE id = v_ticket.id;
+          END IF;
           END IF;
         END IF;
       END IF;
