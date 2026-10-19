@@ -103,10 +103,20 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  v_state text;
 BEGIN
   IF NULLIF(btrim(COALESCE(p_comment_id, '')), '') IS NULL
      OR jsonb_typeof(COALESCE(p_summary, '{}'::jsonb)) <> 'object' THEN
     RAISE EXCEPTION 'invalid_drift_completion' USING ERRCODE = '22023';
+  END IF;
+  SELECT state
+    INTO v_state
+    FROM public.feature_guide_drift_runs
+   WHERE week_start = p_week_start
+   FOR UPDATE;
+  IF v_state IS DISTINCT FROM 'running' THEN
+    RAISE EXCEPTION 'drift_run_not_claimed' USING ERRCODE = '55000';
   END IF;
   UPDATE public.feature_guide_drift_runs
      SET state = 'posted',
