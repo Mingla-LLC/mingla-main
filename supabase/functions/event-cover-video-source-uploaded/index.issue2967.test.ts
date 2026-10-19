@@ -11,7 +11,10 @@
 // breach DESTROYED the provider asset (#3039). Acknowledgement is now gated on
 // exact TUS offset equality, which is complete proof the bytes arrived, so
 // there is no window to bound and nothing to destroy.
-import { handleEventCoverVideoSourceUploaded } from "./index.ts";
+import {
+  handleEventCoverVideoSourceUploaded,
+  readTusTransfer,
+} from "./index.ts";
 
 const JOB_ID = "11a18413-bfbf-4087-9ba7-45f70deba0f3";
 const USER_ID = "44a18413-bfbf-4087-9ba7-45f70deba0f3";
@@ -70,6 +73,7 @@ const harness = (options: { storageSize: number; job?: JobRow }) => {
   const updates: JobRow[] = [];
   const transitions: Record<string, unknown>[] = [];
   let destroys = 0;
+  let metadataReads = 0;
 
   // Faithful to the shipped `cover_video_transition_job` matrix: there is NO
   // source_uploading -> ready edge and there never was one here.
@@ -124,6 +128,9 @@ const harness = (options: { storageSize: number; job?: JobRow }) => {
     get destroys() {
       return destroys;
     },
+    get metadataReads() {
+      return metadataReads;
+    },
     get row() {
       return row;
     },
@@ -132,8 +139,9 @@ const harness = (options: { storageSize: number; job?: JobRow }) => {
       bunnyStatus = status;
     },
     deps: {
-      bunnyGetVideo: () =>
-        Promise.resolve({
+      bunnyGetVideo: () => {
+        metadataReads += 1;
+        return Promise.resolve({
           ok: true as const,
           video: {
             guid: GUID,
@@ -145,7 +153,8 @@ const harness = (options: { storageSize: number; job?: JobRow }) => {
             outputCodecs: null,
             originalHash: null,
           },
-        }),
+        });
+      },
       bunnyPresignTusUpload: () =>
         Promise.resolve({
           authorizationSignature: "sig",
@@ -168,7 +177,9 @@ const harness = (options: { storageSize: number; job?: JobRow }) => {
 // Bunny's own HEAD reports the transfer as EXACTLY complete — the precondition
 // for every branch under test. The bytes really are delivered; the object is
 // simply never committed.
-const withCompletedTusHead = async (run: () => Promise<void>): Promise<void> => {
+const withCompletedTusHead = async (
+  run: () => Promise<void>,
+): Promise<void> => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = (() =>
     Promise.resolve(
@@ -323,6 +334,10 @@ Deno.test("#3040 acknowledgement is one write with the PROVEN offset, and never 
       h.transitions.length === 0,
       "a healthy acknowledgement used the failure transition RPC",
     );
+    assert(
+      h.metadataReads === 0,
+      "provider metadata was awaited in the transfer acknowledgement path",
+    );
     // No `source_ack` clock is written any more — there is no window to time.
     const payload = h.row.provider_payload as Record<string, unknown>;
     assert(
@@ -330,6 +345,39 @@ Deno.test("#3040 acknowledgement is one write with the PROVEN offset, and never 
       "an acknowledgement clock was written for a deadline that no longer exists",
     );
   }
+});
+
+Deno.test("#3040 a hanging Bunny TUS HEAD is aborted inside the acknowledgement SLO", async () => {
+  const verdict = await readTusTransfer(
+    SOURCE_BYTES,
+    GUID,
+    "https://tus/resource",
+    {
+      bunnyPresignTusUpload: () =>
+        Promise.resolve({
+          authorizationSignature: "sig",
+          authorizationExpire: 9999999999,
+          libraryId: "lib",
+          videoId: GUID,
+          tusEndpoint: "https://tus",
+        }),
+      fetchImpl:
+        ((_url: string | URL | Request, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("timed out", "AbortError")),
+              { once: true },
+            );
+          })) as typeof fetch,
+      tusHeadTimeoutMs: 5,
+    },
+  );
+  assert(verdict.kind === "unreadable", "a hanging HEAD was not bounded");
+  assert(
+    verdict.kind === "unreadable" && verdict.reason === "tus_head_timeout",
+    `expected tus_head_timeout, got ${JSON.stringify(verdict)}`,
+  );
 });
 
 // [TEST-MOD-APPROVED #3040] TWO SUPERSEDED ASSERTIONS, named precisely.

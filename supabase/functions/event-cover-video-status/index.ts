@@ -25,7 +25,7 @@ serve(async (req) => {
 
   let body: {
     jobId?: string;
-    target?: "event" | "brand" | "venue" | "venue_draft";
+    target?: "event" | "brand" | "venue" | "venue_draft" | "trip_day_media";
     eventId?: string;
     brandId?: string;
     venueId?: string;
@@ -59,7 +59,9 @@ serve(async (req) => {
   }
   if (
     hasTargetSelector &&
-    !["event", "brand", "venue", "venue_draft"].includes(body.target ?? "")
+    !["event", "brand", "venue", "venue_draft", "trip_day_media"].includes(
+      body.target ?? "",
+    )
   ) {
     return jsonResponse({
       error: "validation_error",
@@ -79,7 +81,9 @@ serve(async (req) => {
     const targetKind = body.target ?? "event";
     const selector = {
       targetKind,
-      eventId: targetKind === "event" ? body.eventId ?? null : null,
+      eventId: targetKind === "event" || targetKind === "trip_day_media"
+        ? body.eventId ?? null
+        : null,
       brandId: body.brandId,
       venueId: targetKind === "venue" ? body.venueId ?? null : null,
       draftOwnerKey: targetKind === "venue_draft"
@@ -94,7 +98,9 @@ serve(async (req) => {
     );
     if (selectorAllowed instanceof Response) return selectorAllowed;
     query = query.eq("target_kind", targetKind).eq("brand_id", body.brandId);
-    if (targetKind === "event") query = query.eq("event_id", body.eventId);
+    if (targetKind === "event" || targetKind === "trip_day_media") {
+      query = query.eq("event_id", body.eventId);
+    }
     if (targetKind === "venue") query = query.eq("venue_id", body.venueId);
     if (targetKind === "venue_draft") {
       query = query.eq("draft_owner_key", body.draftOwnerKey).eq(

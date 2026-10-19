@@ -13,7 +13,8 @@
  * FIX (ORCH-1312): space the retries out with a DELAY so a later attempt lands
  * after the tab has settled. The happy path still returns immediately.
  *
- * RULE — all must hold against coverPickerDeviceMedia.ts (comment-stripped):
+ * RULE — all must hold against pickedVideoDuration.ts (comment-stripped), the
+ * shared leaf used by cover and trip-day video pickers:
  *   A. a retry-delay schedule exists (VIDEO_DURATION_RETRY_DELAYS_MS) and is a
  *      non-empty array of millisecond waits.
  *   B. the read AWAITS a delay between attempts (await + setTimeout-backed delay)
@@ -32,7 +33,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 
-const REL = "mingla-business/src/components/ui/coverPickerDeviceMedia.ts";
+const REL = "mingla-business/src/components/ui/pickedVideoDuration.ts";
 
 function stripComments(src) {
   return src
@@ -49,7 +50,7 @@ function scan(src) {
   // A: a non-empty delay schedule array.
   if (!/VIDEO_DURATION_RETRY_DELAYS_MS\s*=\s*\[\s*\d+/.test(s)) {
     failures.push(
-      "A: coverPickerDeviceMedia.ts has no VIDEO_DURATION_RETRY_DELAYS_MS delay " +
+      "A: pickedVideoDuration.ts has no VIDEO_DURATION_RETRY_DELAYS_MS delay " +
         "schedule — the duration read has no spaced retries (ORCH-1312).",
     );
   }
@@ -61,7 +62,7 @@ function scan(src) {
     /const delay\s*=\s*\([^)]*\)\s*(:|=>)[\s\S]{0,80}setTimeout/.test(s);
   if (!awaitsDelay || !hasSetTimeoutDelayHelper) {
     failures.push(
-      "B: coverPickerDeviceMedia.ts does not AWAIT a setTimeout-backed delay " +
+      "B: pickedVideoDuration.ts does not AWAIT a setTimeout-backed delay " +
         "between duration-read retries — retries fire back-to-back inside the " +
         "unstable tab-resume window (ORCH-1312).",
     );
@@ -69,7 +70,7 @@ function scan(src) {
   // C: ORCH-1311 robustness preserved.
   if (!/currentTime\s*=\s*Number\.MAX_SAFE_INTEGER/.test(s)) {
     failures.push(
-      "C: coverPickerDeviceMedia.ts dropped the ORCH-1311 seek-to-end — " +
+      "C: pickedVideoDuration.ts dropped the ORCH-1311 seek-to-end — " +
         "non-finite durations no longer resolve (ORCH-1312 must preserve ORCH-1311).",
     );
   }

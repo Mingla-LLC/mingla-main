@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+export { readPickedVideoDurationMs } from "./pickedVideoDuration";
 
 type CoverPickerAsset = {
   uri: string;

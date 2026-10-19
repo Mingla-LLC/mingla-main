@@ -133,7 +133,12 @@ export interface EventCoverVideoStatus {
   eventId: string | null;
   brandId: string;
   // ORCH-0989: "event" (default) or "brand".
-  targetKind?: "event" | "brand" | "venue" | "venue_draft";
+  targetKind?:
+    | "event"
+    | "brand"
+    | "venue"
+    | "venue_draft"
+    | "trip_day_media";
   venueId: string | null;
   draftOwnerKey: string | null;
   clientOperationId: string | null;
@@ -698,7 +703,7 @@ const edgeError = async (
 
 type EventCoverVideoUploadIntentInput = {
   // ORCH-0989: "event" (default) or "brand". Brand-target jobs carry no eventId.
-  target?: "event" | "brand" | "venue" | "venue_draft";
+  target?: "event" | "brand" | "venue" | "venue_draft" | "trip_day_media";
   eventId?: string;
   venueId?: string;
   draftOwnerKey?: string;
@@ -1194,7 +1199,7 @@ export const fetchEventCoverVideoStatus = async (
 };
 
 export const fetchEventCoverVideoStatusByTarget = async (input: {
-  target: "event" | "brand" | "venue" | "venue_draft"; eventId?: string; brandId: string; venueId?: string; draftOwnerKey?: string; signal?: AbortSignal;
+  target: "event" | "brand" | "venue" | "venue_draft" | "trip_day_media"; eventId?: string; brandId: string; venueId?: string; draftOwnerKey?: string; signal?: AbortSignal;
 }): Promise<EventCoverVideoStatus | null> => {
   const { signal, ...body } = input;
   const { data, error } = await supabase.functions.invoke<StatusResponse>("event-cover-video-status", { body, signal });
@@ -1232,7 +1237,7 @@ const mapStatusResponse = (
     createdAt: payload.createdAt ?? null,
     // ORCH-0989: null for brand-target jobs (the edge fn returns null eventId).
     eventId: typeof payload.eventId === "string" ? payload.eventId : null,
-    targetKind: payload.targetKind === "brand" || payload.targetKind === "venue" || payload.targetKind === "venue_draft"
+    targetKind: payload.targetKind === "brand" || payload.targetKind === "venue" || payload.targetKind === "venue_draft" || payload.targetKind === "trip_day_media"
       ? payload.targetKind
       : "event",
     venueId: typeof payload.venueId === "string" ? payload.venueId : null,
@@ -1267,7 +1272,7 @@ const mapStatusResponse = (
 
 export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
   // ORCH-0989: "event" (default) or "brand". Brand-target carries no eventId.
-  target?: "event" | "brand" | "venue" | "venue_draft";
+  target?: "event" | "brand" | "venue" | "venue_draft" | "trip_day_media";
   jobId: string;
   eventId?: string;
   brandId: string;

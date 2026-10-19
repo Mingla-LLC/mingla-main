@@ -68,7 +68,9 @@ import type { ToastKind } from "./toastTimings";
 // only ever mounted inside this Sheet (opened on user action), so a Suspense
 // fallback is the natural, correct UX. Type-only `CoverPatch` above stays erased.
 const CoverPicker = React.lazy(() =>
-  import("./CoverPicker").then((m) => ({ default: m.CoverPicker })),
+  import("../../services/eventCoverVideoAuthoringRuntime").then((runtime) => ({
+    default: runtime.CoverPicker,
+  })),
 );
 
 // issue #1356 [cover-nested-toast] — the picker's onShowToast(msg) seam carries
