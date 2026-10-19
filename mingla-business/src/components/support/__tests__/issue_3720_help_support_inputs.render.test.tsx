@@ -2,6 +2,7 @@
 
 import React from "react";
 import { StyleSheet, Text, TextInput } from "react-native";
+// @ts-expect-error -- installed only in the dedicated render-test workflow, not the Host bundle.
 import TestRenderer, { act } from "react-test-renderer";
 
 import { SupportTabPanel } from "../SupportTabPanel";
@@ -28,6 +29,6 @@ describe("#3720 Help & Support input rendering", () => {
     const input = tree!.root.findByType(TextInput);
     expect(input.props.placeholder).toBe("What's it about? (e.g. payouts, a stuck event)");
     expect(StyleSheet.flatten(input.props.style).letterSpacing).toBe(0);
-    expect(tree!.root.findAllByType(Text).some((node) => node.props.children === "Add a subject to start")).toBe(true);
+    expect(tree!.root.findAllByType(Text).some((node: { props: { children?: React.ReactNode } }) => node.props.children === "Add a subject to start")).toBe(true);
   });
 });
