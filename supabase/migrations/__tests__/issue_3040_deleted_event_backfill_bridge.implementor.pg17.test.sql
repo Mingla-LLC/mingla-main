@@ -8,6 +8,13 @@
 
 \set ON_ERROR_STOP on
 
+-- Issue #3040 (B-4, 20271108003040) made identity validation INSERT-only, so
+-- the canonical chain no longer reproduces the production rejection this
+-- suite proves. Rebuild the trigger exactly as production had it when the
+-- backfill failed (20271105003040) before reproducing it; the canonical chain
+-- is restored at the end of this file so later suites see current truth.
+\ir ../20271105003040_issue_3040_trip_day_bunny_transport.sql
+
 INSERT INTO auth.users(id,email)
 VALUES('30400000-0000-4000-8000-000000000101','issue-3040-deleted@test.local');
 INSERT INTO public.creator_accounts(id,email,display_name)
@@ -170,5 +177,10 @@ DELETE FROM public.events WHERE id='30400000-0000-4000-8000-000000000103';
 DELETE FROM public.brands WHERE id='30400000-0000-4000-8000-000000000102';
 DELETE FROM public.creator_accounts WHERE id='30400000-0000-4000-8000-000000000101';
 DELETE FROM auth.users WHERE id='30400000-0000-4000-8000-000000000101';
+
+-- Issue #3040: restore the canonical chain (identity validation is an
+-- INSERT-time contract again) for every suite that runs after this one.
+\ir ../20271108003040_issue_3040_video_lane_1080p_owners.sql
+\ir ../20271108013040_issue_3040_ready_owner_alerts.sql
 
 \echo 'issue_3040_deleted_event_backfill_bridge.implementor.pg17: PASS'
