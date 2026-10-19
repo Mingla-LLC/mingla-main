@@ -69,6 +69,10 @@
   --color-text-tertiary:  #6b7280;
   --color-text-inverse:   #ffffff;
   --color-text-muted:     #9ca3af;
+  /* #3697 — tertiary text on the new Creative Library and Builder video
+     screens only. Same as tertiary in light mode; readable (6.1:1) in dark.
+     The global --color-text-tertiary is unchanged. */
+  --color-text-tertiary-strong: #6b7280;
 
   --gray-50:  #f9fafb;
   --gray-100: #f3f4f6;
@@ -135,6 +139,7 @@
   --color-text-primary:   #f3f4f6;
   --color-text-secondary: #9ca3af;
   --color-text-tertiary:  #6b7280;
+  --color-text-tertiary-strong: #8b93a1;
 
   --gray-50:  #1a1d27;
   --gray-100: #242833;

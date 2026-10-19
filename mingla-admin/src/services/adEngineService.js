@@ -161,16 +161,59 @@ export async function loadAdsOperationsOverview() {
   return supabase.rpc("ad_admin_operations_overview");
 }
 
-/** Creative Library inventory for the unified Admin Ads surface. */
-export async function listAdCreatives() {
-  return adPlanAction({ action: "creative_library" });
+/**
+ * Creative Library inventory for the unified Admin Ads surface.
+ * #3697: optional `{ status: 'active'|'archived', kind, source: 'house'|'host',
+ * q, before }`. The answer adds `pending` (in-flight uploads), `counts` and
+ * `next_cursor`; a permanently deleted creative never appears.
+ */
+export async function listAdCreatives(filters = {}) {
+  const body = { action: "creative_library" };
+  for (const key of ["status", "kind", "source", "q", "before"]) {
+    if (filters[key] !== undefined && filters[key] !== null && filters[key] !== "") {
+      body[key] = filters[key];
+    }
+  }
+  return adPlanAction(body);
 }
 
-/** Privileged builder handoff for one operator-selected library asset. */
-export async function getAdCreativeForReuse(creativeId) {
+/**
+ * Privileged builder handoff for one operator-selected library asset. #3697:
+ * the answer carries the per-channel report for `platforms`, judged from the
+ * creative's stored probe facts.
+ */
+export async function getAdCreativeForReuse(creativeId, platforms) {
   return adPlanAction({
     action: "creative_reuse",
     creative_id: creativeId,
+    ...(Array.isArray(platforms) && platforms.length > 0 ? { platforms } : {}),
+  });
+}
+
+/** #3697 — hide from new campaigns. Running campaigns are not affected. */
+export async function archiveCreative(creativeId) {
+  return adPlanAction({ action: "creative_archive", creative_id: creativeId });
+}
+
+/** #3697 — make an archived creative available for new campaigns again. */
+export async function unarchiveCreative(creativeId) {
+  return adPlanAction({ action: "creative_unarchive", creative_id: creativeId });
+}
+
+/** #3697 — everything that stops a permanent delete (empty = allowed). */
+export async function checkCreativePurge(creativeId) {
+  return adPlanAction({ action: "creative_purge_check", creative_id: creativeId });
+}
+
+/**
+ * #3697 — delete the media file permanently. The server re-checks every
+ * reference first and keeps an immutable record of the deletion.
+ */
+export async function purgeCreative(creativeId) {
+  return adPlanAction({
+    action: "creative_purge",
+    creative_id: creativeId,
+    confirm_phrase: "DELETE",
   });
 }
 

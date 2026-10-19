@@ -54,6 +54,10 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  creativeSelectionError,
+  frozenPlanCarriesCreative,
+} from "../_shared/adCreativeLifecycle.ts";
+import {
   AdApiError,
   type AdConnectionRow,
   AdNotConnectedError,
@@ -682,6 +686,8 @@ serve(async (req: Request): Promise<Response> => {
     }
     const { data: hostCreativeRow, error: hostCreativeError } = await supabase
       .from("ad_creatives")
+      // A purged creative is never referenced by a plan version (the purge
+      // blockers forbid it), so the frozen check below also excludes it.
       .select("id, brand_id, kind, status")
       .eq("id", hostCreativeId)
       .maybeSingle();
@@ -697,8 +703,19 @@ serve(async (req: Request): Promise<Response> => {
         403,
       );
     }
+    // #3697 (C-13) — an archived video stays usable for the exact frozen
+    // plan version that carries it; a validate-only probe or any other
+    // request is a new selection and refuses it.
+    const hostCreativeFrozen = hostCreativeRow.status === "archived" &&
+      body.validate_only !== true &&
+      await frozenPlanCarriesCreative(supabase, {
+        planVersionId: body.plan_version_id,
+        planHash: body.plan_hash,
+        creativeId: hostCreativeId,
+      });
     if (
-      hostCreativeRow.kind !== "video" || hostCreativeRow.status !== "active"
+      hostCreativeRow.kind !== "video" ||
+      creativeSelectionError(hostCreativeRow, { frozen: hostCreativeFrozen })
     ) {
       return json({
         error: "validation_error",
@@ -861,6 +878,8 @@ serve(async (req: Request): Promise<Response> => {
   let providerAmountCents = amountCents as number;
   let frozenExecutionTargeting: Record<string, unknown> | null = null;
   let boundPlanVersionId: string | null = null;
+  // #3697 (C-13) — the creative the verified frozen plan version carries.
+  let frozenCreativeLibraryId: string | null = null;
   let boundPlanHash: string | null = null;
   let planMoney: Omit<
     Wave2MoneyPersist,
@@ -994,6 +1013,9 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     const canonicalPlan = version.canonical_plan as Record<string, unknown>;
+    frozenCreativeLibraryId = typeof canonicalPlan.creative_library_id === "string"
+      ? canonicalPlan.creative_library_id
+      : null;
     const requestMismatch = immutableRequestMismatch(
       canonicalPlan,
       body,
@@ -4673,12 +4695,16 @@ serve(async (req: Request): Promise<Response> => {
     }
     const { data: libCreative } = await supabase
       .from("ad_creatives")
-      .select("id, kind, status, content_hash")
+      .select("id, kind, status, content_hash, purged_at")
       .eq("id", creativeLibraryId)
       .maybeSingle();
     if (
       !libCreative || libCreative.kind !== "video" ||
-      libCreative.status !== "active" || !libCreative.content_hash
+      // #3697 (C-13): archived stays usable only for the frozen plan's creative.
+      creativeSelectionError(libCreative, {
+        frozen: frozenCreativeLibraryId !== null &&
+          libCreative.id === frozenCreativeLibraryId,
+      }) || !libCreative.content_hash
     ) {
       return json({ error: "creative_not_found" }, 422);
     }

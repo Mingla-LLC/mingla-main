@@ -38,7 +38,10 @@ describe("#3697 Admin Ads v1.4 IA", () => {
     }
     assert.match(page, /<CampaignsPage embedded \/>/);
     assert.match(page, /<CreativeLibraryPanel \/>/);
-    assert.match(page, /Infrastructure IDs stay hidden from operators/);
+    // [TEST-MOD-APPROVED #3697] The old subtitle is SUPERSEDED by the approved
+    // Creative Library design (§8.1); infrastructure ids stay off the page.
+    assert.match(page, /Upload once, reuse in any campaign/);
+    assert.doesNotMatch(page, /bunny_video_id|source_job_id/);
   });
 
   it("presents exactly the five approved campaign stages", () => {

@@ -10,6 +10,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore Deno ESM runtime import.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { creativeSelectionError } from "../_shared/adCreativeLifecycle.ts";
 import {
   AdApiError,
   type AdConnectionRow,
@@ -205,10 +206,13 @@ async function loadCreative(
   externalAccountId: string,
 ): Promise<LoadedCreative> {
   const { data: creative, error } = await db.from("ad_creatives").select(
-    "id,kind,source_url,mp4_master_url,poster_url,content_hash,ai_generated,status",
+    "id,kind,source_url,mp4_master_url,poster_url,content_hash,ai_generated,status,purged_at",
   ).eq("id", creativeId).maybeSingle();
+  // #3697 (C-13): the creative id always comes from the frozen plan version,
+  // so an archived creative stays usable; a purged one has no media.
   if (
-    error || !creative || creative.status !== "active" ||
+    error || !creative ||
+    creativeSelectionError(creative, { frozen: true }) ||
     !["image", "video"].includes(creative.kind) || !creative.content_hash
   ) {
     throw new NativeAppPlanError("native_creative_not_found");

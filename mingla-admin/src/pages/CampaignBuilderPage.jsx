@@ -477,20 +477,21 @@ export function CampaignBuilderPage() {
         return;
       }
       const row = data.creative;
-      const validationPayload = {
-        action: "validate",
-        kind: row.kind,
-        name: row.name,
-        source_url: row.source_url,
-        storage_bucket: row.storage_bucket,
-        storage_path: row.storage_path,
-        bunny_video_id: row.bunny_video_id,
-        poster_url: row.poster_url,
-        mp4_master_url: row.mp4_master_url,
-        variants: row.variants ?? {},
-        ai_generated: row.ai_generated === true,
-      };
-      const validated = await creativeUpload(validationPayload);
+      // #3697 — a library video's per-channel report comes with the reuse
+      // answer (server-judged from stored probe facts). Video validation by
+      // media URL was retired with the #3040 lane.
+      const validated = row.kind === "video"
+        ? { data: { validation: data.validation ?? null }, error: null }
+        : await creativeUpload({
+          action: "validate",
+          kind: row.kind,
+          name: row.name,
+          source_url: row.source_url,
+          storage_bucket: row.storage_bucket,
+          storage_path: row.storage_path,
+          variants: row.variants ?? {},
+          ai_generated: row.ai_generated === true,
+        });
       if (!mounted) return;
       if (validated.error) {
         const parsed = await parseEdgeError(validated.error);
@@ -988,6 +989,11 @@ export function CampaignBuilderPage() {
             ? Boolean(creative.creativeRow)
             : Boolean(creative.publicUrl);
         if (!hasMedia || !creative.validation || !creative.rightsConfirmed)
+          return false;
+        // #3697 (design §9) — the Builder blocks a video that does not fit a
+        // platform this campaign runs on; change platforms or pick another.
+        // The server backstop is the ad-plan funding fit gate.
+        if (creative.kind === "video" && creativePartition.excluded.length > 0)
           return false;
         // ISSUE-995 PROCEED-WITH-PASSING: Next is enabled as long as AT LEAST
         // ONE funded channel can build with this creative — the failing ones are
@@ -2019,6 +2025,7 @@ export function CampaignBuilderPage() {
                 fundedPlatforms={fundedPlatforms}
                 creativeExcluded={creativePartition.excluded}
                 creativeBuildable={creativePartition.buildable}
+                onChangePlatforms={() => jumpToStepId("promote")}
               />
               <section className="border-t border-[var(--gray-100)] pt-6">
                 <StepCopy

@@ -9,6 +9,10 @@
     "optional_top_level": [],
     "required_bundle_fields": {},
     "required_top_level": [
+      "BUNNY_ACCOUNT_API_KEY",
+      "BUNNY_STREAM_API_KEY",
+      "BUNNY_STREAM_CDN_HOSTNAME",
+      "BUNNY_STREAM_LIBRARY_ID",
       "MAPBOX_ACCESS_TOKEN",
       "SENTRY_DSN",
       "SENTRY_ENVIRONMENT"
