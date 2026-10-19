@@ -342,7 +342,290 @@ GRANT EXECUTE ON FUNCTION public.issue_3872_record_ticket_provider_total(uuid, t
 COMMENT ON FUNCTION public.issue_3872_record_ticket_provider_total(uuid, text, bigint, bigint) IS
   'Issue #3872: records the amount the provider charged for a ticket session (and its order, when finalized). Any difference from the create-time total is tax the provider added on top (hosted Checkout automatic tax). Refuses a provider amount below the computed subtotal and fees. service_role only.';
 
+-- =============================================================================
+-- §4. Operator backfill: reconcile existing orders from the provider's records
+-- =============================================================================
+-- The provider records are the signed webhook payloads Mingla already stores in
+-- payment_webhook_events (Stripe payment_intent.succeeded / charge.succeeded /
+-- checkout.session.completed; Paystack charge.success). Idempotent: only orders
+-- without buyer_total_cents are touched, one audit row per changed order.
+-- Run by an operator: SELECT * FROM issue_3872_backfill_order_totals(false)
+-- prints what WOULD change; (true) applies it.
+CREATE TABLE IF NOT EXISTS public.issue_3872_order_totals_backfill_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL REFERENCES public.orders(id) ON DELETE RESTRICT,
+  pricing_source text NOT NULL,
+  before_values jsonb NOT NULL,
+  after_values jsonb NOT NULL,
+  evidence jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.issue_3872_order_totals_backfill_audit ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.issue_3872_order_totals_backfill_audit FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.issue_3872_order_totals_backfill_audit TO service_role;
+COMMENT ON TABLE public.issue_3872_order_totals_backfill_audit IS
+  'Issue #3872: one row per order whose explicit totals the operator backfill wrote, with the values before and after and the provider evidence used.';
+
+CREATE OR REPLACE FUNCTION public.issue_3872_backfill_order_totals(
+  p_apply boolean DEFAULT false,
+  p_limit integer DEFAULT 500
+) RETURNS TABLE (
+  order_id uuid,
+  path text,
+  legacy_total_cents bigint,
+  provider_total_cents bigint,
+  net_subtotal_cents bigint,
+  buyer_fees_cents bigint,
+  tax_cents bigint,
+  pricing_source text,
+  breakdown_filled boolean,
+  verdict text,
+  evidence jsonb
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  o record;
+  v_cfg record;
+  v_path text;
+  v_net bigint;
+  v_total bigint;
+  v_fees bigint;
+  v_tax bigint;
+  v_exp_fees bigint;
+  v_source text;
+  v_pi_amount bigint;
+  v_charge_amount bigint;
+  v_cs_total bigint;
+  v_cs_tax bigint;
+  v_ps_amount bigint;
+  v_ps_fees bigint;
+  v_lines bigint;
+  v_region text;
+  v_service bigint;
+  v_breakdown jsonb;
+  v_evidence jsonb;
+  v_verdict text;
+  v_split text;
+BEGIN
+  FOR o IN
+    SELECT x.* FROM public.orders x
+     WHERE x.buyer_total_cents IS NULL
+     ORDER BY x.created_at, x.id
+     LIMIT greatest(1, least(p_limit, 5000))
+     FOR UPDATE OF x
+  LOOP
+    v_pi_amount := NULL; v_charge_amount := NULL; v_cs_total := NULL; v_cs_tax := NULL;
+    v_ps_amount := NULL; v_ps_fees := NULL; v_split := 'not_needed';
+    SELECT coalesce(sum(li.total_cents), 0) INTO v_lines
+      FROM public.order_line_items li WHERE li.order_id = o.id;
+    SELECT * INTO v_cfg FROM public.resolve_event_pricing_inputs(o.event_id) LIMIT 1;
+
+    v_path := CASE
+      WHEN coalesce(o.total_cents, 0) = 0 AND coalesce(o.stripe_payment_intent_id, '') = '' THEN 'free'
+      WHEN o.stripe_payment_intent_id LIKE 'pi\_%' THEN
+        CASE WHEN EXISTS (
+          SELECT 1 FROM public.ticket_checkout_sessions s
+           WHERE s.order_id = o.id AND s.stripe_checkout_session_id IS NOT NULL
+        ) THEN 'stripe_hosted' ELSE 'stripe_native' END
+      WHEN o.stripe_payment_intent_id IS NOT NULL THEN 'paystack'
+      ELSE 'unknown'
+    END;
+
+    IF v_path IN ('stripe_hosted', 'stripe_native') THEN
+      SELECT (w.payload #>> '{data,object,amount_received}')::bigint INTO v_pi_amount
+        FROM public.payment_webhook_events w
+       WHERE w.type = 'payment_intent.succeeded'
+         AND w.payload #>> '{data,object,id}' = o.stripe_payment_intent_id
+       ORDER BY w.created_at DESC LIMIT 1;
+      SELECT (w.payload #>> '{data,object,amount}')::bigint INTO v_charge_amount
+        FROM public.payment_webhook_events w
+       WHERE w.type = 'charge.succeeded'
+         AND w.payload #>> '{data,object,payment_intent}' = o.stripe_payment_intent_id
+       ORDER BY w.created_at DESC LIMIT 1;
+      SELECT (w.payload #>> '{data,object,amount_total}')::bigint,
+             (w.payload #>> '{data,object,total_details,amount_tax}')::bigint
+        INTO v_cs_total, v_cs_tax
+        FROM public.payment_webhook_events w
+       WHERE w.type = 'checkout.session.completed'
+         AND w.payload #>> '{data,object,payment_intent}' = o.stripe_payment_intent_id
+       ORDER BY w.created_at DESC LIMIT 1;
+      v_total := coalesce(v_cs_total, v_pi_amount, v_charge_amount);
+      -- Stripe sessions keep the ticket base (the deposit on a plan) in total_cents.
+      v_net := coalesce((o.pricing_breakdown ->> 'base_cents')::bigint, o.total_cents);
+    ELSIF v_path = 'paystack' THEN
+      SELECT (w.payload #>> '{data,amount}')::bigint, (w.payload #>> '{data,fees}')::bigint
+        INTO v_ps_amount, v_ps_fees
+        FROM public.payment_webhook_events w
+       WHERE w.type = 'charge.success'
+         AND w.payload #>> '{data,reference}' = o.stripe_payment_intent_id
+       ORDER BY w.created_at DESC LIMIT 1;
+      v_total := v_ps_amount;
+      v_net := coalesce((o.pricing_breakdown ->> 'base_cents')::bigint, v_lines);
+    ELSE
+      v_total := 0;
+      v_net := 0;
+    END IF;
+
+    v_evidence := jsonb_strip_nulls(jsonb_build_object(
+      'path', v_path,
+      'line_items_cents', v_lines,
+      'stripe_payment_intent_amount_received', v_pi_amount,
+      'stripe_charge_amount', v_charge_amount,
+      'stripe_checkout_amount_total', v_cs_total,
+      'stripe_checkout_amount_tax', v_cs_tax,
+      'paystack_amount', v_ps_amount,
+      'paystack_fees', v_ps_fees
+    ));
+
+    IF v_path = 'free' THEN
+      v_source := 'legacy_reconstructed';
+      v_fees := 0; v_tax := 0; v_total := 0; v_net := 0;
+    ELSIF v_total IS NULL THEN
+      -- No stored provider record: rebuild from the order and the event's
+      -- current fee switches, and say so.
+      v_source := 'legacy_reconstructed';
+      v_total := CASE WHEN v_path = 'paystack' THEN o.total_cents
+        ELSE coalesce((o.pricing_breakdown ->> 'buyer_total_cents')::bigint,
+          o.total_cents
+          + CASE WHEN coalesce(v_cfg.pass_mingla_fee, false)
+              THEN round(o.total_cents * coalesce(v_cfg.effective_take_rate_bps, 0) / 10000.0)::bigint ELSE 0 END
+          + CASE WHEN coalesce(v_cfg.pass_service_fee, false)
+              THEN round(o.total_cents * 300 / 10000.0)::bigint ELSE 0 END)
+      END;
+    ELSE
+      v_source := 'provider_reconciled';
+    END IF;
+
+    IF v_path <> 'free' THEN
+      IF o.pricing_breakdown IS NOT NULL THEN
+        v_fees := (o.pricing_breakdown ->> 'buyer_subtotal_cents')::bigint - v_net;
+        v_tax := v_total - v_net - v_fees;
+        v_split := 'from_breakdown';
+      ELSE
+        v_exp_fees :=
+          CASE WHEN coalesce(v_cfg.pass_mingla_fee, false)
+            THEN round(v_net * coalesce(v_cfg.effective_take_rate_bps, 0) / 10000.0)::bigint ELSE 0 END
+          + CASE WHEN coalesce(v_cfg.pass_service_fee, false)
+            THEN round(v_net * 300 / 10000.0)::bigint ELSE 0 END;
+        IF v_total = v_net THEN
+          v_fees := 0; v_tax := 0; v_split := 'nothing_added';
+        ELSIF v_total - v_net = v_exp_fees THEN
+          v_fees := v_exp_fees; v_tax := 0; v_split := 'matches_fee_switches';
+        ELSIF coalesce(v_cs_tax, 0) > 0 AND v_total - v_net - v_cs_tax >= 0 THEN
+          v_tax := v_cs_tax; v_fees := v_total - v_net - v_cs_tax; v_split := 'provider_tax';
+        ELSE
+          v_fees := v_total - v_net; v_tax := 0; v_split := 'fees_unverified';
+        END IF;
+      END IF;
+    END IF;
+    v_evidence := v_evidence || jsonb_build_object('fee_tax_split', v_split);
+
+    v_verdict := CASE
+      WHEN v_path = 'unknown' THEN 'conflict'
+      WHEN v_net IS NULL OR v_net < 0 OR v_fees < 0 OR v_tax < 0 THEN 'conflict'
+      WHEN v_path IN ('stripe_hosted', 'stripe_native')
+        AND (
+          (v_pi_amount IS NOT NULL AND v_pi_amount <> v_total)
+          OR (v_charge_amount IS NOT NULL AND v_charge_amount <> v_total)
+        ) THEN 'conflict'
+      ELSE 'apply'
+    END;
+
+    v_breakdown := o.pricing_breakdown;
+    IF v_verdict = 'apply' AND v_breakdown IS NULL THEN
+      v_region := CASE
+        WHEN v_path = 'paystack' OR v_cfg.payment_provider = 'paystack' THEN 'NG'
+        WHEN upper(coalesce(v_cfg.pricing_region, '')) IN ('GB', 'US', 'EU', 'CH') THEN upper(v_cfg.pricing_region)
+        ELSE 'GB' END;
+      v_service := round(v_net * 300 / 10000.0)::bigint;
+      v_breakdown := jsonb_build_object(
+        'region', v_region,
+        'currency', lower(trim(o.currency::text)),
+        'tax_behavior', CASE WHEN v_region IN ('US', 'NG') THEN 'exclusive' ELSE 'inclusive' END,
+        'tax_basis', CASE v_path WHEN 'paystack' THEN 'config_vat'
+          WHEN 'stripe_hosted' THEN 'provider_hosted_checkout' ELSE 'unresolved_flat_absorb' END,
+        'switches', jsonb_build_object(
+          'pass_tax', coalesce(v_cfg.pass_tax, false),
+          'pass_mingla_fee', coalesce(v_cfg.pass_mingla_fee, false),
+          'pass_service_fee', coalesce(v_cfg.pass_service_fee, false)),
+        'base_cents', v_net,
+        'buyer_subtotal_cents', v_net + v_fees,
+        'buyer_total_cents', v_total,
+        'components', jsonb_build_object(
+          'mingla_fee_cents', coalesce(o.stripe_application_fee_amount_cents, 0),
+          'service_fee_cents', v_service,
+          'tax_cents', v_tax),
+        'passed', jsonb_build_object(
+          'mingla_fee_cents', CASE WHEN coalesce(v_cfg.pass_mingla_fee, false)
+            THEN coalesce(o.stripe_application_fee_amount_cents, 0) ELSE 0 END,
+          'service_fee_cents', CASE WHEN coalesce(v_cfg.pass_service_fee, false) THEN v_service ELSE 0 END,
+          'tax_cents', v_tax),
+        'absorbed', jsonb_build_object(
+          'mingla_fee_cents', CASE WHEN coalesce(v_cfg.pass_mingla_fee, false)
+            THEN 0 ELSE coalesce(o.stripe_application_fee_amount_cents, 0) END,
+          'service_fee_cents', CASE WHEN coalesce(v_cfg.pass_service_fee, false) THEN 0 ELSE v_service END,
+          'tax_cents', 0),
+        'application_fee_amount_cents', coalesce(o.stripe_application_fee_amount_cents, 0),
+        'connected_account_payout_cents', v_total - coalesce(o.stripe_application_fee_amount_cents, 0) - v_tax,
+        'stripe_tax_calculation_id', NULL,
+        'effective_take_rate_bps', coalesce(v_cfg.effective_take_rate_bps, 0),
+        'take_rate_source', coalesce(v_cfg.take_rate_source, 'platform_default'),
+        'reconstructed_by', 'issue_3872_backfill',
+        'fee_tax_split', v_split
+      );
+    END IF;
+
+    IF p_apply AND v_verdict = 'apply' THEN
+      UPDATE public.orders x
+      SET list_subtotal_cents = v_net,
+          discount_cents = 0,
+          net_subtotal_cents = v_net,
+          buyer_fees_cents = v_fees,
+          tax_cents = v_tax,
+          buyer_total_cents = v_total,
+          pricing_source = v_source,
+          pricing_breakdown = coalesce(x.pricing_breakdown, v_breakdown),
+          updated_at = now()
+      WHERE x.id = o.id AND x.buyer_total_cents IS NULL;
+      INSERT INTO public.issue_3872_order_totals_backfill_audit(
+        order_id, pricing_source, before_values, after_values, evidence
+      ) VALUES (
+        o.id, v_source,
+        jsonb_build_object('total_cents', o.total_cents,
+          'pricing_breakdown_present', o.pricing_breakdown IS NOT NULL),
+        jsonb_build_object('list_subtotal_cents', v_net, 'net_subtotal_cents', v_net,
+          'buyer_fees_cents', v_fees, 'tax_cents', v_tax, 'buyer_total_cents', v_total,
+          'pricing_breakdown_filled', o.pricing_breakdown IS NULL),
+        v_evidence
+      );
+    END IF;
+
+    order_id := o.id;
+    path := v_path;
+    legacy_total_cents := o.total_cents;
+    provider_total_cents := v_total;
+    net_subtotal_cents := v_net;
+    buyer_fees_cents := v_fees;
+    tax_cents := v_tax;
+    pricing_source := v_source;
+    breakdown_filled := (o.pricing_breakdown IS NULL AND v_verdict = 'apply');
+    verdict := v_verdict;
+    evidence := v_evidence;
+    RETURN NEXT;
+  END LOOP;
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3872_backfill_order_totals(boolean, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_backfill_order_totals(boolean, integer)
+  TO service_role;
+COMMENT ON FUNCTION public.issue_3872_backfill_order_totals(boolean, integer) IS
+  'Issue #3872 operator backfill. Reconciles orders without buyer_total_cents from the stored provider webhook payloads (legacy_reconstructed when none exists), fills a missing pricing_breakdown, and writes one audit row per changed order. p_apply=false is a dry run. Idempotent. service_role only.';
+
 -- @@M3@@
+
 
 COMMIT;
 
