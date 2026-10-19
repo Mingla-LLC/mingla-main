@@ -83,6 +83,26 @@ export const tileFromProgress = (
 };
 
 /**
+ * The sheet's one-line progress text. #3040 (2026-10-19): the uploading
+ * number is the tile's own (floored, never 100 while uploading), so the line,
+ * the tile and the tile's accessibility label always say the same percent.
+ */
+export const sheetProgressLine = (progress: TripDayVideoUploadProgress): string => {
+  switch (progress.phase) {
+    case "checking":
+      return "Checking video…";
+    case "uploading": {
+      const percent = tileFromProgress(progress).percent;
+      return `Uploading${percent === null ? "…" : ` · ${percent}%`}`;
+    }
+    case "confirming":
+      return "Confirming upload…";
+    case "processing":
+      return `Preparing${progress.percent === null || progress.percent <= 0 ? "…" : ` · ${progress.percent}%`}`;
+  }
+};
+
+/**
  * Codes after which the SAME item can simply be tried again (our side, the
  * network, or a watch that ran out while the server kept working). Everything
  * else is a definite answer about the file itself.

@@ -6,14 +6,12 @@
  *
  * FAILS ON REVERT:
  *   L1  tileAnnouncement goes back to the 25/50/75 step text
- *   L2  the sheet's "Uploading · n%" line reads the raw service percent again
- *       (it showed 100 while the tile said 99)
+ *   L2  `sheetProgressLine` reads the raw service percent again (it showed
+ *       100 while the tile said 99)
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import {
   newTripDayTile,
+  sheetProgressLine,
   tileA11yLabel,
   tileAnnouncement,
   tileFromProgress,
@@ -50,9 +48,16 @@ describe("#3040 — the accessibility label equals the visible percent", () => {
   });
 
   it("L2 the sheet's progress line shows the tile's number, not the raw service percent", () => {
-    const sheet = readFileSync(join(__dirname, "..", "TripDayMediaSheet.tsx"), "utf8");
-    expect(sheet).toContain("tileFromProgress(videoProgress).percent");
-    expect(sheet).not.toMatch(/Uploading\$\{videoProgress\.percent/);
-    expect(tileFromProgress({ phase: "uploading", percent: 100 }).percent).toBe(99);
+    for (let percent = 0; percent <= 100; percent += 1) {
+      const progress = { phase: "uploading" as const, percent };
+      const tile = uploadingTile(percent);
+      expect(sheetProgressLine(progress)).toBe(`Uploading · ${tile.percent}%`);
+      expect(tileA11yLabel(tile, 0)).toContain(`${tile.percent} percent`);
+    }
+    // The service reports 100 the instant every byte is confirmed; the tile
+    // still says 99 until "Confirming", so the line must too.
+    expect(sheetProgressLine({ phase: "uploading", percent: 100 })).toBe("Uploading · 99%");
+    expect(sheetProgressLine({ phase: "uploading", percent: null })).toBe("Uploading…");
+    expect(sheetProgressLine({ phase: "confirming", percent: null })).toBe("Confirming upload…");
   });
 });
