@@ -14,13 +14,25 @@ export interface UsePoolMatchSearchResult {
   loading: boolean;
   error: string | null;
   clearError: () => void;
+  /** #3040 B-C17 — run the same search again (the "Retry" button). */
+  retry: () => void;
+  /** #3040 B-C17 — true while a rate-limited Retry is held back (6 s). */
+  retryWaiting: boolean;
 }
+
+/** #3040 B-C17 [A-17] — honest search copy: rate limit is not "offline". */
+export const POOL_SEARCH_RATE_LIMITED_COPY = "Searching too fast — try again in a moment";
+export const POOL_SEARCH_UNAVAILABLE_COPY = "Couldn't search right now";
+export const POOL_SEARCH_RATE_LIMIT_RETRY_MS = 6_000;
 
 export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
   const [match, setMatch] = useState<PoolMatch | null>(null);
   const [matches, setMatches] = useState<PoolMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [retryWaiting, setRetryWaiting] = useState(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -63,9 +75,16 @@ export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
           if (controller.signal.aborted) return;
           const msg = e instanceof Error ? e.message : "search_failed";
           if (msg === "rate_limited") {
-            setError("Too many searches — wait a moment and try again.");
+            setError(POOL_SEARCH_RATE_LIMITED_COPY);
+            // Retry is held back so it cannot hit the same limit again.
+            setRetryWaiting(true);
+            if (retryTimerRef.current !== null) clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = setTimeout(() => {
+              retryTimerRef.current = null;
+              setRetryWaiting(false);
+            }, POOL_SEARCH_RATE_LIMIT_RETRY_MS);
           } else {
-            setError("Could not search our directory. Check your connection.");
+            setError(POOL_SEARCH_UNAVAILABLE_COPY);
           }
           setMatch(null);
           setMatches([]);
@@ -83,7 +102,16 @@ export function usePoolMatchSearch(query: string): UsePoolMatchSearchResult {
       }
       abortRef.current?.abort();
     };
-  }, [query]);
+  }, [attempt, query]);
 
-  return { match, matches, loading, error, clearError };
+  useEffect(() => () => {
+    if (retryTimerRef.current !== null) clearTimeout(retryTimerRef.current);
+  }, []);
+
+  const retry = useCallback((): void => {
+    if (retryWaiting) return;
+    setAttempt((value) => value + 1);
+  }, [retryWaiting]);
+
+  return { match, matches, loading, error, clearError, retry, retryWaiting };
 }

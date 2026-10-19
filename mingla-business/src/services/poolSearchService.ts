@@ -67,6 +67,13 @@ function mapMatchRow(raw: Record<string, unknown>): PoolMatch {
   };
 }
 
+/** #3040 B-C17 — the HTTP status behind a supabase-js FunctionsHttpError. */
+export const poolSearchHttpStatus = (error: unknown): number | null => {
+  if (error === null || typeof error !== "object") return null;
+  const context = (error as { context?: { status?: unknown } }).context;
+  return context !== undefined && typeof context?.status === "number" ? context.status : null;
+};
+
 /**
  * Search place_pool by name (authenticated). Returns [] when query too short.
  */
@@ -79,15 +86,33 @@ export async function searchPoolMatches(
     return [];
   }
 
-  const { data, error } = await supabase.functions.invoke("claim-search-pool", {
-    body: {
-      query: q,
-      limit: POOL_SEARCH_DEFAULT_LIMIT,
-      fetch_all: true,
-    },
-  });
+  const invoke = (): ReturnType<typeof supabase.functions.invoke> =>
+    supabase.functions.invoke("claim-search-pool", {
+      body: {
+        query: q,
+        limit: POOL_SEARCH_DEFAULT_LIMIT,
+        fetch_all: true,
+      },
+      // #3040 B-C17 [A-17] — a superseded keystroke's search is cancelled for
+      // real, so it stops spending the 10-per-minute rate budget.
+      signal: options.signal,
+    });
+
+  const aborted = (): boolean => options.signal?.aborted === true;
+  let { data, error } = await invoke();
+  // #3040 B-C17 — one quiet retry after 1 s for a server hiccup (5xx).
+  if (error !== null && (poolSearchHttpStatus(error) ?? 0) >= 500 && !aborted()) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+    if (aborted()) throw error;
+    ({ data, error } = await invoke());
+  }
 
   if (error !== null) {
+    // #3040 B-C17 [A-17] — a 429 arrives as a FunctionsHttpError whose message
+    // is generic, so the hook read it as "check your connection". Name it.
+    if (poolSearchHttpStatus(error) === 429) throw new Error("rate_limited");
+    const status = poolSearchHttpStatus(error);
+    if (status !== null && status >= 500) throw new Error("search_unavailable");
     throw error;
   }
 

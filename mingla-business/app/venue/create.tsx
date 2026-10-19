@@ -243,6 +243,8 @@ export default function VenueCreateRoute(): React.ReactElement {
     matches: poolMatches,
     loading: poolSearchLoading,
     error: poolSearchError,
+    retry: retryPoolSearch,
+    retryWaiting: poolSearchRetryWaiting,
   } = usePoolMatchSearch(phase === "gate" ? workingName : "");
 
   useEffect(() => {
@@ -535,7 +537,19 @@ export default function VenueCreateRoute(): React.ReactElement {
               <Text style={styles.hint}>Searching our directory…</Text>
             ) : null}
             {poolSearchError !== null ? (
-              <Text style={styles.warn}>{poolSearchError}</Text>
+              <>
+                <Text style={styles.warn}>{poolSearchError}</Text>
+                {/* #3040 B-C17 — a real way to try again (only editing the
+                    name used to re-run the search). Held 6 s after a 429. */}
+                <Button
+                  label="Retry"
+                  variant="secondary"
+                  size="sm"
+                  onPress={retryPoolSearch}
+                  disabled={poolSearchRetryWaiting}
+                  accessibilityLabel="Retry the directory search"
+                />
+              </>
             ) : null}
             {gateMatches.length > 0 && placePoolId === null ? (
               <View style={styles.matchList}>
