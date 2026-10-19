@@ -88,6 +88,9 @@ on:
       - ".github/scripts/strict-grep/issue-2063-ari-brand-management.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-2063-ari-brand-management.yml"
+  # Input-free by design: scripts/ci/main-health.mjs may admit a successful
+  # exact-current-main dispatch as audited recovery evidence for a stale red.
+  workflow_dispatch:
 
 permissions:
   contents: read

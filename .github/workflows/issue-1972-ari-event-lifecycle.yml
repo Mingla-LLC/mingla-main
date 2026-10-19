@@ -61,6 +61,9 @@ on:
       - "mingla-business/src/**"
       - ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs"
       - ".github/workflows/issue-1972-ari-event-lifecycle.yml"
+  # Input-free by design: scripts/ci/main-health.mjs may admit a successful
+  # exact-current-main dispatch as audited recovery evidence for a stale red.
+  workflow_dispatch:
 
 concurrency:
   group: ci-issue-1972-ari-event-lifecycle-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}

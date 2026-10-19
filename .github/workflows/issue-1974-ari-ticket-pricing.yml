@@ -54,6 +54,9 @@ on:
       - "docs/contracts/ari-capability-ledger.json"
       - ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs"
       - ".github/workflows/issue-1974-ari-ticket-pricing.yml"
+  # Input-free by design: scripts/ci/main-health.mjs may admit a successful
+  # exact-current-main dispatch as audited recovery evidence for a stale red.
+  workflow_dispatch:
 
 permissions:
   contents: read
