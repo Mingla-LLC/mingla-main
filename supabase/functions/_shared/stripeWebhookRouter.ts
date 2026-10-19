@@ -28,6 +28,7 @@ import { fireAdConversion } from "./adConversionFire.ts";
 // #3682 — auto-follow brand after signed-in purchase (fail-open).
 import { autoFollowBrandBestEffort } from "./autoFollowBrand.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
+import { recordTicketProviderTotal } from "./orderMoneyTruth.ts";
 import {
   isEvidenceHoldCandidate,
   releaseTicketEvidenceHold,
@@ -1557,6 +1558,9 @@ async function handleTicketCheckoutPaymentIntent(
       session,
       "stripe_checkout_session_id",
     );
+    // Issue #3872 (F3) — what the provider charged, recorded before finalize.
+    let providerChargedCents: number | null = null;
+    let providerTaxCents: number | null = null;
     if (hostedCheckoutId) {
       if (!observedAccount) {
         throw new Error("ticket hosted Stripe account missing");
@@ -1604,6 +1608,18 @@ async function handleTicketCheckoutPaymentIntent(
           `ticket hosted Stripe PI persist failed: ${persistError.message}`,
         );
       }
+      // The hosted line item is the pre-tax subtotal; Stripe's automatic tax
+      // may add tax on top. amount_total is what the buyer paid.
+      const hostedTotal = (checkoutSession as Record<string, unknown>)
+        .amount_total;
+      const hostedDetails = (checkoutSession as Record<string, unknown>)
+        .total_details as Record<string, unknown> | null | undefined;
+      providerChargedCents = typeof hostedTotal === "number"
+        ? hostedTotal
+        : null;
+      providerTaxCents = typeof hostedDetails?.amount_tax === "number"
+        ? hostedDetails.amount_tax as number
+        : null;
     }
     // A checkout held only because an earlier signal lacked evidence (this
     // is where Stripe's own retry of this event lands) completes the sale
@@ -1611,6 +1627,13 @@ async function handleTicketCheckoutPaymentIntent(
     // for the ordinary verify + finalize below; any other answer keeps the
     // hold, and the same path continues to the refund.
     const providerAmount = stripePaymentIntentAmount(paymentIntent);
+    await recordTicketProviderTotal(supabase, {
+      checkoutSessionId: String(session.id),
+      provider: "stripe",
+      providerTotalCents: providerChargedCents ??
+        providerAmount?.amountCents ?? null,
+      providerTaxCents,
+    });
     if (
       isEvidenceHoldCandidate(session) && providerAmount && observedChargeId
     ) {

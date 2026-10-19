@@ -602,6 +602,13 @@ export async function handleChargeReversal(
   }
   if (!applicationFeeId) return; // no fee → no partner split → no reversal
 
+  if (source === "refund") {
+    // Issue #3872 (F5): a refund gives back the partner share in proportion
+    // to the application fee Stripe returned; it is no longer a full reversal.
+    await reversePartnerShareForRefund(supabase, stripe, obj, applicationFeeId);
+    return;
+  }
+
   const { data: row, error } = await supabase
     .from("partner_splits")
     .select("id, status, stripe_transfer_id, partner_share_cents")
@@ -664,6 +671,98 @@ export async function handleChargeReversal(
       p_application_fee_id: applicationFeeId,
       p_reversal_transfer_id: null,
     });
+  }
+}
+
+/**
+ * Issue #3872 (F5) — proportional partner give-back on `charge.refunded`.
+ *
+ * The partner share is 10% of Mingla's application fee. Stripe refunds the
+ * application fee in proportion when a refund passes refund_application_fee,
+ * so the partner gives back:
+ *   target = floor(original share x fee refunded / fee)
+ * minus what was already given back. The database decides (row lock):
+ *   - not yet transferred → reduced in place, no Stripe call;
+ *   - transferred → one TransferReversal for the difference, keyed by the
+ *     cumulative target (`partner_split_reversal_<fee>_to_<target>`), so a
+ *     replayed or out-of-order event can never reverse twice and a second
+ *     partial refund reverses only its own part.
+ * The refund id is not used in the key: since Stripe API 2022-11-15 a
+ * charge.refunded payload no longer lists its refunds, while the cumulative
+ * target is derived from Stripe's own application-fee totals.
+ *   https://docs.stripe.com/api/application_fees/object (amount_refunded)
+ *   https://docs.stripe.com/api/transfer_reversals/create (amount)
+ */
+export async function reversePartnerShareForRefund(
+  supabase: SupabaseClient,
+  stripe: StripeClient,
+  charge: Record<string, unknown>,
+  applicationFeeId: string,
+): Promise<void> {
+  let feeAmount: number | null = chargeApplicationFeeAmount(charge);
+  let feeRefunded: number | null = null;
+  const af = charge["application_fee"];
+  if (af && typeof af === "object") {
+    feeRefunded = objectNumber(af as Record<string, unknown>, "amount_refunded");
+  }
+  if (feeRefunded === null) {
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve of the platform's own fee
+    // @ts-ignore — Stripe SDK ApplicationFees namespace is runtime-provided.
+    const fee = await stripe.applicationFees.retrieve(applicationFeeId);
+    feeRefunded = objectNumber(fee as Record<string, unknown>, "amount_refunded");
+    feeAmount = objectNumber(fee as Record<string, unknown>, "amount") ?? feeAmount;
+  }
+  if (feeAmount === null || feeAmount <= 0 || feeRefunded === null) {
+    throw new Error(`partner split refund: fee totals unavailable for ${applicationFeeId}`);
+  }
+
+  const { data: plan, error: planError } = await supabase.rpc(
+    "issue_3872_partner_split_refund_plan",
+    {
+      p_application_fee_id: applicationFeeId,
+      p_fee_amount_cents: feeAmount,
+      p_fee_refunded_cents: feeRefunded,
+    },
+  );
+  if (planError) {
+    throw new Error(`partner split refund plan failed: ${planError.message}`);
+  }
+  const outcome = (plan as Record<string, unknown> | null)?.outcome;
+  if (outcome !== "reverse") return; // reduced in place, nothing due, or no split
+
+  const planRow = plan as Record<string, unknown>;
+  const transferId = String(planRow.transfer_id ?? "");
+  const target = Number(planRow.target_reversed_cents);
+  const amount = Number(planRow.reverse_cents);
+  if (!transferId || !Number.isInteger(target) || !Number.isInteger(amount) || amount <= 0) {
+    throw new Error(`partner split refund plan malformed for ${applicationFeeId}`);
+  }
+  // @ts-ignore — Stripe SDK Transfers.createReversal runtime-provided.
+  const reversal = await stripe.transfers.createReversal(
+    transferId,
+    {
+      amount,
+      metadata: {
+        mingla_application_fee_id: applicationFeeId,
+        mingla_source: "refund",
+        mingla_target_reversed_cents: String(target),
+        mingla_issue: "3872",
+      },
+    },
+    { idempotencyKey: `partner_split_reversal_${applicationFeeId}_to_${target}` },
+  );
+  const { error: recordError } = await supabase.rpc(
+    "issue_3872_partner_split_record_reversal",
+    {
+      p_application_fee_id: applicationFeeId,
+      p_target_reversed_cents: target,
+      p_reversal_id: String((reversal as { id: string }).id),
+    },
+  );
+  if (recordError) {
+    // The Stripe call is idempotent on the same key: a redelivery repeats it
+    // safely and records again.
+    throw new Error(`partner split reversal record failed: ${recordError.message}`);
   }
 }
 

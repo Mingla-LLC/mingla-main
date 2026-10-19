@@ -121,9 +121,12 @@ GRANT EXECUTE ON FUNCTION public.complete_notification_email_delivery(uuid,uuid,
 
 -- ===== M-1174-04 =====
 -- terminal: the no-partner sale was not underpaid (net_release_cents = 890000).
+-- Issue #3872 (F1): the late-partner release now ALSO nets 890000 (the partner
+-- is paid from Mingla's fee, not the organiser's cash), so the mutation is
+-- scoped to the no-partner release it describes.
 CREATE OR REPLACE FUNCTION public.l5_mutant() RETURNS trigger LANGUAGE plpgsql AS $l5$
 BEGIN
-  IF NEW.net_release_cents = 890000 THEN
+  IF NEW.id = '11740000-0000-4000-8000-000000000008' AND NEW.net_release_cents = 890000 THEN
     NEW.net_release_cents := 890001;
   END IF;
   RETURN NEW;
@@ -134,7 +137,7 @@ ALTER TABLE public.brand_payout_releases ENABLE ALWAYS TRIGGER l5_mutant;
 CREATE OR REPLACE FUNCTION public.l5_witness() RETURNS trigger LANGUAGE plpgsql AS $w$
 BEGIN PERFORM nextval('public.l5_fired'); RETURN NULL; END $w$;
 CREATE TRIGGER l5_verify AFTER INSERT OR UPDATE ON public.brand_payout_releases
-  FOR EACH ROW WHEN (NEW.net_release_cents = 890001) EXECUTE FUNCTION public.l5_witness();
+  FOR EACH ROW WHEN (NEW.id = '11740000-0000-4000-8000-000000000008' AND NEW.net_release_cents = 890001) EXECUTE FUNCTION public.l5_witness();
 ALTER TABLE public.brand_payout_releases ENABLE ALWAYS TRIGGER l5_verify;
 -- @l5-verify: SELECT is_called FROM public.l5_fired
 

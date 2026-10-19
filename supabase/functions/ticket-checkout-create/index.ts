@@ -82,6 +82,13 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+// Issue #3872 — explicit order totals written from the breakdown whose total is
+// the provider amount, on every path (hosted, native, Paystack, free).
+import {
+  freeCheckoutBreakdown,
+  hostedCheckoutBreakdown,
+  persistTicketSessionMoneyTruth,
+} from "../_shared/orderMoneyTruth.ts";
 // issue #2216 — a free reservation lands the guest on the SAME confirmation
 // carousel a paid one does, so it owes the guest the SAME rendered pass.
 import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
@@ -2171,6 +2178,56 @@ export const createTicketCheckoutCreateHandler = (
       } catch {
         return refuse({ error: "qr_token_pepper_missing" }, 500);
       }
+      // Issue #3872 (F2) — free orders carry the same explicit totals (all zero)
+      // and a breakdown recording the event's pricing configuration. Best
+      // effort: a pricing-config read failure never blocks a free ticket.
+      {
+        const { data: freePricingRows } = await supabase.rpc(
+          "resolve_event_pricing_inputs",
+          { p_event_id: eventId },
+        );
+        const freePricing = Array.isArray(freePricingRows) &&
+            freePricingRows.length > 0
+          ? freePricingRows[0] as {
+            pass_tax?: boolean;
+            pass_mingla_fee?: boolean;
+            pass_service_fee?: boolean;
+            pricing_region?: string | null;
+            pricing_currency?: string | null;
+            payment_provider?: string | null;
+            effective_take_rate_bps?: number;
+            take_rate_source?: "brand_override" | "platform_default";
+          }
+          : null;
+        const freeRegionRaw = (freePricing?.pricing_region ?? "").trim()
+          .toUpperCase();
+        const freeRegion: PricingRegion = freePricing?.payment_provider ===
+            "paystack"
+          ? "NG"
+          : (["GB", "US", "EU", "CH"].includes(freeRegionRaw)
+            ? freeRegionRaw as PricingRegion
+            : "GB");
+        await persistTicketSessionMoneyTruth(
+          supabase,
+          checkoutSessionId,
+          freeCheckoutBreakdown({
+            region: freeRegion,
+            currency: String(
+              freePricing?.pricing_currency ?? session.currency ?? "",
+            ).toLowerCase(),
+            switches: {
+              pass_tax: freePricing?.pass_tax === true,
+              pass_mingla_fee: freePricing?.pass_mingla_fee === true,
+              pass_service_fee: freePricing?.pass_service_fee === true,
+            },
+            effectiveTakeRateBps: Number(
+              freePricing?.effective_take_rate_bps ?? 0,
+            ),
+            takeRateSource: freePricing?.take_rate_source ??
+              "platform_default",
+          }),
+        );
+      }
       const { data: finalized, error: finalizeError } = await supabase.rpc(
         "biz_ticket_checkout_finalize",
         {
@@ -2631,6 +2688,14 @@ export const createTicketCheckoutCreateHandler = (
           409,
         );
       }
+      // Issue #3872 (F2/F3) — the explicit totals and the breakdown come from
+      // psBreakdown, whose buyer_total_cents IS psBuyerTotalCents (the amount
+      // Paystack is initialized with below). Finalize copies them to the order.
+      await persistTicketSessionMoneyTruth(
+        supabase,
+        checkoutSessionId,
+        psBreakdown,
+      );
 
       // Callback the in-app browser intercepts. The buyer never parses payment
       // state from this URL — the client polls ticket-checkout-status, driven by
@@ -3039,6 +3104,22 @@ export const createTicketCheckoutCreateHandler = (
         typeof session.eventName === "string" && session.eventName.length > 0
           ? session.eventName
           : "Tickets";
+
+      // Issue #3872 (F2/F3) — the hosted branch used to return before any
+      // breakdown was written, and the session kept total_cents = base while the
+      // line item below bills buyerSubtotal.buyerSubtotalCents. Record the
+      // breakdown and explicit totals from that SAME variable before the
+      // provider call; Stripe's automatic tax (if any) is reconciled from the
+      // paid Checkout Session in the webhook.
+      const hostedBreakdown = hostedCheckoutBreakdown(
+        engineInput,
+        buyerSubtotal.buyerSubtotalCents,
+      );
+      await persistTicketSessionMoneyTruth(
+        supabase,
+        checkoutSessionId,
+        hostedBreakdown,
+      );
 
       let stripeWeb: ReturnType<typeof stripeTicketCheckout>;
       let checkoutSession: { id: string; url: string | null };
@@ -3648,6 +3729,15 @@ export const createTicketCheckoutCreateHandler = (
         updated_at: new Date().toISOString(),
       })
       .eq("id", checkoutSessionId);
+    // Issue #3872 (F3) — the PaymentIntent below is created for
+    // pricingBreakdown.buyer_total_cents; the explicit totals come from the same
+    // breakdown, so orders.buyer_total_cents is the charged amount (the session's
+    // total_cents stays the ticket base, its legacy meaning).
+    await persistTicketSessionMoneyTruth(
+      supabase,
+      checkoutSessionId,
+      pricingBreakdown,
+    );
 
     if (mode === "preview") {
       return jsonResponse({

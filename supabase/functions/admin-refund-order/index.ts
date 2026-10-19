@@ -27,6 +27,7 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
+import { isRefundLineRequest, serverRefundLines } from "../_shared/refundServerLines.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -64,23 +65,10 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-interface RefundLineInput {
-  order_line_item_id: string;
-  quantity: number;
-  amount_cents: number;
-}
-
-function isRefundLine(value: unknown): value is RefundLineInput {
-  const row = value as Partial<RefundLineInput>;
-  return (
-    typeof row.order_line_item_id === "string" &&
-    row.order_line_item_id.length > 0 &&
-    Number.isInteger(row.quantity) &&
-    Number(row.quantity) > 0 &&
-    Number.isInteger(row.amount_cents) &&
-    Number(row.amount_cents) > 0
-  );
-}
+// Issue #3872 (F4): a line names an order line and a quantity. Any
+// amount_cents is accepted for older clients, but admin_refund_order prices the
+// line on the server and the response's lines are what this function uses.
+const isRefundLine = isRefundLineRequest;
 
 function mapRpcErrorToHttp(
   errorMessage: string,
@@ -491,7 +479,7 @@ serve(async (req: Request): Promise<Response> => {
           reference: `mingla_admin_refund:${refundId}`,
           expand: ["line_items"],
           ...(isFullRefund ? {} : {
-            line_items: (lines as RefundLineInput[]).map((line) => ({
+            line_items: serverRefundLines(pending).map((line) => ({
               amount: -line.amount_cents,
               reference: `line:${line.order_line_item_id}`,
             })),

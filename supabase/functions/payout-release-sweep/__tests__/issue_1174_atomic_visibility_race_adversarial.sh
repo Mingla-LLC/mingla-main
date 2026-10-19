@@ -520,21 +520,26 @@ BEGIN
   FROM public.brand_payout_releases
   WHERE id = '1174b000-0000-4000-8000-000000000043';
 
+  -- Issue #3872 (F1): the partner principal is 10% OF Mingla's fee and is paid
+  -- from Mingla's platform balance, so it no longer reduces the organiser's
+  -- cash: $10,000 gross - $1,000 Mingla fee - $100 processing fee = $8,900.
+  -- partner_share_cents stays recorded for reporting.
   IF v_stripe.partner_share_cents <> 10000
-     OR v_stripe.net_release_cents <> 880000 THEN
+     OR v_stripe.net_release_cents <> 890000 THEN
     RAISE EXCEPTION
       'Stripe committed outcome has wrong release math: share %, cash %',
       v_stripe.partner_share_cents,
       v_stripe.net_release_cents;
   END IF;
 
-  -- Exact approved NG fixture:
-  -- ₦10,000 gross - ₦1,000 Mingla fee - ₦100 partner principal
-  -- - ₦100 processing fee - ₦10 partner movement fee = ₦8,790.
+  -- Exact approved NG fixture, corrected by issue #3872 (F1):
+  -- ₦10,000 gross - ₦1,000 Mingla fee - ₦100 processing fee = ₦8,900.
+  -- The ₦100 partner principal and its ₦10 movement fee are paid by Mingla out
+  -- of its own fee; before #3872 the organiser's cash funded them as well.
   IF v_paystack.partner_share_cents <> 10000
-     OR v_paystack.net_release_cents <> 879000 THEN
+     OR v_paystack.net_release_cents <> 890000 THEN
     RAISE EXCEPTION
-      'Paystack committed outcome expected 879000: share %, cash %',
+      'Paystack committed outcome expected 890000: share %, cash %',
       v_paystack.partner_share_cents,
       v_paystack.net_release_cents;
   END IF;

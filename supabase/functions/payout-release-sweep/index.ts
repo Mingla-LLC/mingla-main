@@ -189,6 +189,9 @@ type FeeCandidate = {
 type FeeSnapshot = {
   provider_fee_cents: number;
   provider_balance_transaction_id: string | null;
+  // Issue #3872: Stripe only — Mingla's application fee removed from the
+  // balance transaction fee. Paystack snapshots leave it unset.
+  application_fee_excluded_cents?: number;
 };
 
 type PayoutReleaseAlert = {
@@ -291,11 +294,12 @@ export function providerReferenceRoute(
   throw new Error("unsupported_stripe_provider_reference");
 }
 
-function stripeFeeSnapshot(
+export function stripeFeeSnapshot(
   balanceTransaction:
     | {
       id: string;
       fee: number;
+      fee_details?: Array<{ type?: string; amount?: number }> | null;
     }
     | string
     | null,
@@ -309,9 +313,26 @@ function stripeFeeSnapshot(
   ) {
     throw new Error("invalid_stripe_provider_fee");
   }
+  // Issue #3872: on a direct charge the connected account's balance
+  // transaction `fee` is Stripe's processing fee PLUS Mingla's application fee
+  // (fee_details lists both). The release deducts Mingla's fee separately
+  // (mingla_fee_cents), so the snapshot keeps only the provider's own fee;
+  // storing the whole `fee` deducted Mingla's fee twice.
+  //   https://docs.stripe.com/api/balance_transactions/object#balance_transaction_object-fee_details
+  // Stripe always sends fee_details on a balance transaction.
+  const applicationFee = (balanceTransaction.fee_details ?? [])
+    .filter((detail) => detail?.type === "application_fee")
+    .reduce((sum, detail) => sum + Number(detail?.amount ?? 0), 0);
+  if (
+    !Number.isInteger(applicationFee) || applicationFee < 0 ||
+    applicationFee > balanceTransaction.fee
+  ) {
+    throw new Error("invalid_stripe_application_fee_detail");
+  }
   return {
-    provider_fee_cents: balanceTransaction.fee,
+    provider_fee_cents: balanceTransaction.fee - applicationFee,
     provider_balance_transaction_id: balanceTransaction.id,
+    application_fee_excluded_cents: applicationFee,
   };
 }
 
