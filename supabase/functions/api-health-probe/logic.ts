@@ -331,7 +331,103 @@ export function computeEffectiveStatus(rows: MinimalCheckRow[]): {
     }
   }
 
+  // #3040 — the video lane verdict is a passive `degraded` that must reach the
+  // existing alert path (a degraded lane is never paged by `down`). It opts in
+  // explicitly with detail.alert_on_degraded===true; nothing else does.
+  if (!failedTick) {
+    const lane = rows.find(
+      (r) => r.layer === "passive" && r.status === "degraded" && r.detail?.alert_on_degraded === true,
+    );
+    if (lane) {
+      failedTick = true;
+      failingLayer = "passive";
+      failingDetail = lane.detail;
+    }
+  }
+
   return { effectiveStatus: worst, failedTick, failingLayer, failingDetail, mode };
+}
+
+// ── #3040 video lane health (pure) ──
+// The reaper and the SLO ledger write passive Bunny rows; until #3040 nothing
+// read them. This verdict turns them, the lane health view and the Bunny
+// library settings into ONE passive Bunny row that reaches the alert rail.
+// MINGLA-INVARIANT: I-VIDEO-LANE-OBSERVED | issue #3040 | SLO breaches, ready-unclaimed jobs, reaper step failures and Bunny library config drift reach the existing alert rail
+export const VIDEO_LANE_SIGNALS = [
+  "cover_video_processing_slo_breach",
+  "cover_video_ready_unclaimed",
+  "cover_video_reaper_step_failed",
+] as const;
+export const VIDEO_LANE_WINDOW_MS = 10 * 60 * 1000;
+export const VIDEO_LANE_SLO_BREACH_LIMIT = 2;
+
+export interface VideoLanePassiveRow {
+  checked_at: string | null;
+  detail: Record<string, unknown> | null;
+}
+export interface VideoLaneView {
+  ready_unclaimed_count?: number | string | null;
+  stuck_nonterminal_count?: number | string | null;
+  slo_breaches_1h?: number | string | null;
+  oldest_ready_age_s?: number | string | null;
+}
+export type VideoLaneLibrarySettings =
+  | { ok: true; settings: { enabledResolutions: string[]; mp4Fallback: boolean } }
+  | { ok: false; reason: string };
+
+export function evaluateVideoLaneHealth(input: {
+  passiveRows: VideoLanePassiveRow[];
+  laneView: VideoLaneView | null;
+  librarySettings: VideoLaneLibrarySettings | null;
+  nowMs: number;
+}): { status: HealthStatus; reasons: string[]; detail: Record<string, unknown> } {
+  const since = input.nowMs - VIDEO_LANE_WINDOW_MS;
+  const count = (signal: string) =>
+    input.passiveRows.filter((row) => {
+      const at = Date.parse(String(row.checked_at ?? ""));
+      return Number.isFinite(at) && at > since && row.detail?.signal === signal;
+    }).length;
+  const n = (value: unknown): number => {
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const sloBreaches = count("cover_video_processing_slo_breach");
+  const readyAlerts = count("cover_video_ready_unclaimed");
+  const stepFailures = count("cover_video_reaper_step_failed");
+  const readyUnclaimed = n(input.laneView?.ready_unclaimed_count);
+  const stuck = n(input.laneView?.stuck_nonterminal_count);
+  const reasons: string[] = [];
+  if (readyAlerts > 0 || readyUnclaimed > 0) reasons.push("cover_video_ready_unclaimed");
+  if (stepFailures > 0) reasons.push("cover_video_reaper_step_failed");
+  if (sloBreaches > VIDEO_LANE_SLO_BREACH_LIMIT) reasons.push("cover_video_processing_slo_breach");
+  if (stuck > 0) reasons.push("cover_video_stuck_past_bound");
+  let library: string = "not_read";
+  if (input.librarySettings?.ok) {
+    const { enabledResolutions, mp4Fallback } = input.librarySettings.settings;
+    const has1080 = enabledResolutions.map((r) => r.toLowerCase()).includes("1080p");
+    library = mp4Fallback && has1080 ? "ok" : "drift";
+    if (library === "drift") reasons.push("bunny_library_config_drift");
+  } else if (input.librarySettings && !input.librarySettings.ok) {
+    library = `unreadable:${input.librarySettings.reason}`;
+  }
+  const status: HealthStatus = reasons.length > 0 ? "degraded" : "healthy";
+  return {
+    status,
+    reasons,
+    detail: {
+      signal: "cover_video_lane_verdict",
+      reasons,
+      alert_on_degraded: status === "degraded",
+      slo_breaches_10m: sloBreaches,
+      ready_unclaimed_alerts_10m: readyAlerts,
+      reaper_step_failures_10m: stepFailures,
+      ready_unclaimed_count: readyUnclaimed,
+      stuck_nonterminal_count: stuck,
+      slo_breaches_1h: n(input.laneView?.slo_breaches_1h),
+      oldest_ready_age_s: input.laneView?.oldest_ready_age_s ?? null,
+      library_config: library,
+    },
+  };
 }
 
 // ── availability state-machine decision (pure) ──
