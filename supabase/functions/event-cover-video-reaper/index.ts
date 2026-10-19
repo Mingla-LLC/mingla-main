@@ -571,6 +571,89 @@ export const handleReaper = async (
       stepFailed("allocation_abandoned_failed", { error: errorName(error) });
     }
 
+    const claimedRows = (claimed ?? []) as ReapCandidate[];
+    // #3040 (B-4) — parent state for every claimed job: a soft-deleted event or
+    // brand fails its jobs, and the ready owner needs the current cover. A
+    // failed read is reported and leaves this tick's soft-delete and
+    // server-apply decisions undecided (never guessed).
+    const eventState = new Map<string, TargetState>();
+    const brandState = new Map<string, TargetState>();
+    let targetStateKnown = true;
+    try {
+      // D-8 — the sweep's in-transfer rows need their parents too.
+      const parentRows = [...claimedRows, ...sweepRows];
+      const eventIds = [
+        ...new Set(
+          parentRows.flatMap((row) =>
+            (row.target_kind === "event" ||
+                row.target_kind === "trip_day_media") &&
+              typeof row.event_id === "string"
+              ? [row.event_id]
+              : []
+          ),
+        ),
+      ];
+      const brandIds = [
+        ...new Set(
+          parentRows.flatMap((row) =>
+            typeof row.brand_id === "string" ? [row.brand_id] : []
+          ),
+        ),
+      ];
+      if (eventIds.length > 0) {
+        const events = await supabase.from("events")
+          .select("id,deleted_at,cover_media_url").in("id", eventIds)
+          .limit(eventIds.length);
+        if (events.error) throw new Error("event_read_failed");
+        for (const row of (events.data ?? []) as Array<Record<string, unknown>>) {
+          if (typeof row.id !== "string") continue;
+          eventState.set(row.id, {
+            deleted: row.deleted_at != null,
+            coverUrl: typeof row.cover_media_url === "string"
+              ? row.cover_media_url
+              : null,
+          });
+        }
+      }
+      if (brandIds.length > 0) {
+        const brands = await supabase.from("brands")
+          .select("id,deleted_at,cover_media_url").in("id", brandIds)
+          .limit(brandIds.length);
+        if (brands.error) throw new Error("brand_read_failed");
+        for (const row of (brands.data ?? []) as Array<Record<string, unknown>>) {
+          if (typeof row.id !== "string") continue;
+          brandState.set(row.id, {
+            deleted: row.deleted_at != null,
+            coverUrl: typeof row.cover_media_url === "string"
+              ? row.cover_media_url
+              : null,
+          });
+        }
+      }
+    } catch (error) {
+      targetStateKnown = false;
+      stepFailed("target_state_read_failed", { error: errorName(error) });
+    }
+    const parentDeleted = (row: ReapCandidate): boolean => {
+      if (!targetStateKnown) return false;
+      const event = typeof row.event_id === "string"
+        ? eventState.get(row.event_id)
+        : undefined;
+      const brand = typeof row.brand_id === "string"
+        ? brandState.get(row.brand_id)
+        : undefined;
+      return event?.deleted === true || brand?.deleted === true;
+    };
+    const currentCover = (row: ReapCandidate): string | null | undefined => {
+      if (!targetStateKnown) return undefined;
+      const state = row.target_kind === "event" && typeof row.event_id === "string"
+        ? eventState.get(row.event_id)
+        : row.target_kind === "brand" && typeof row.brand_id === "string"
+        ? brandState.get(row.brand_id)
+        : undefined;
+      return state === undefined ? undefined : state.coverUrl;
+    };
+
     // ── #3040 ABANDONED source_uploading SWEEP ──────────────────────────
     // Invariant 7: a job whose client never comes back must still reach a
     // terminal state SERVER-SIDE. Every write goes through
@@ -590,6 +673,22 @@ export const handleReaper = async (
       if (overBudget()) break;
       if (candidate.reaped_at != null) continue;
       if (!hasAssetId(candidate.source_asset_id)) continue;
+      // D-8 (B-4) — an in-transfer upload whose event or brand was
+      // soft-deleted ends now, named, instead of at its lease expiry.
+      if (parentDeleted(candidate)) {
+        if (
+          await failSourceUploading(
+            candidate,
+            "target_deleted",
+            "The item this video was for was deleted.",
+          )
+        ) {
+          targetDeleted += 1;
+          logReaper("target_deleted_failed_job", { jobId: candidate.id });
+          addTarget({ ...candidate, failure_code: "target_deleted" });
+        }
+        continue;
+      }
       const guid = typeof candidate.source_asset_id === "string"
         ? candidate.source_asset_id
         : null;
@@ -662,87 +761,6 @@ export const handleReaper = async (
       );
       addTarget(candidate);
     }
-
-    const claimedRows = (claimed ?? []) as ReapCandidate[];
-    // #3040 (B-4) — parent state for every claimed job: a soft-deleted event or
-    // brand fails its jobs, and the ready owner needs the current cover. A
-    // failed read is reported and leaves this tick's soft-delete and
-    // server-apply decisions undecided (never guessed).
-    const eventState = new Map<string, TargetState>();
-    const brandState = new Map<string, TargetState>();
-    let targetStateKnown = true;
-    try {
-      const eventIds = [
-        ...new Set(
-          claimedRows.flatMap((row) =>
-            (row.target_kind === "event" ||
-                row.target_kind === "trip_day_media") &&
-              typeof row.event_id === "string"
-              ? [row.event_id]
-              : []
-          ),
-        ),
-      ];
-      const brandIds = [
-        ...new Set(
-          claimedRows.flatMap((row) =>
-            typeof row.brand_id === "string" ? [row.brand_id] : []
-          ),
-        ),
-      ];
-      if (eventIds.length > 0) {
-        const events = await supabase.from("events")
-          .select("id,deleted_at,cover_media_url").in("id", eventIds)
-          .limit(eventIds.length);
-        if (events.error) throw new Error("event_read_failed");
-        for (const row of (events.data ?? []) as Array<Record<string, unknown>>) {
-          if (typeof row.id !== "string") continue;
-          eventState.set(row.id, {
-            deleted: row.deleted_at != null,
-            coverUrl: typeof row.cover_media_url === "string"
-              ? row.cover_media_url
-              : null,
-          });
-        }
-      }
-      if (brandIds.length > 0) {
-        const brands = await supabase.from("brands")
-          .select("id,deleted_at,cover_media_url").in("id", brandIds)
-          .limit(brandIds.length);
-        if (brands.error) throw new Error("brand_read_failed");
-        for (const row of (brands.data ?? []) as Array<Record<string, unknown>>) {
-          if (typeof row.id !== "string") continue;
-          brandState.set(row.id, {
-            deleted: row.deleted_at != null,
-            coverUrl: typeof row.cover_media_url === "string"
-              ? row.cover_media_url
-              : null,
-          });
-        }
-      }
-    } catch (error) {
-      targetStateKnown = false;
-      stepFailed("target_state_read_failed", { error: errorName(error) });
-    }
-    const parentDeleted = (row: ReapCandidate): boolean => {
-      if (!targetStateKnown) return false;
-      const event = typeof row.event_id === "string"
-        ? eventState.get(row.event_id)
-        : undefined;
-      const brand = typeof row.brand_id === "string"
-        ? brandState.get(row.brand_id)
-        : undefined;
-      return event?.deleted === true || brand?.deleted === true;
-    };
-    const currentCover = (row: ReapCandidate): string | null | undefined => {
-      if (!targetStateKnown) return undefined;
-      const state = row.target_kind === "event" && typeof row.event_id === "string"
-        ? eventState.get(row.event_id)
-        : row.target_kind === "brand" && typeof row.brand_id === "string"
-        ? brandState.get(row.brand_id)
-        : undefined;
-      return state === undefined ? undefined : state.coverUrl;
-    };
 
     for (const candidate of claimedRows) {
       if (overBudget()) break;
