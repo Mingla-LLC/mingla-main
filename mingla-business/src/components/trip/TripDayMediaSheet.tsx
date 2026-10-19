@@ -50,7 +50,7 @@ import {
   MOTION_SPEC,
   useIosAnnouncement,
   useReduceMotion,
-} from "../ui/coverUploadMotion";
+} from "../../hooks/useMotionPreferences";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import {
   TILE_RING,

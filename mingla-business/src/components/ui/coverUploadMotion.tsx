@@ -22,52 +22,17 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { durations } from "../../constants/designSystem";
+import { MOTION_SPEC, useReduceMotion } from "../../hooks/useMotionPreferences";
+
+// The shared motion numbers and preference hooks live in
+// `hooks/useMotionPreferences` (also used by the trip-day tiles); this module
+// holds the cover sheet's own animated pieces.
+export { MOTION_SPEC, useIosAnnouncement, useReduceMotion } from "../../hooks/useMotionPreferences";
 
 /** Design easing curves (designSystem `easings`) as RN Animated easings. */
 const EASE_OUT = Easing.bezier(0.33, 1, 0.68, 1);
 const EASE_IN = Easing.bezier(0.32, 0, 0.67, 0);
 const EASE_IN_OUT = Easing.bezier(0.65, 0, 0.35, 1);
-
-/**
- * Appendix A §10, row by row. `reduced` is the reduced-motion variant: a
- * duration in ms (opacity only), or 0 for "instant / jump / none".
- */
-export const MOTION_SPEC = {
-  determinateBar: { durationMs: durations.normal, reducedMs: 0 },
-  indeterminateBar: { durationMs: 1400, reducedMs: 0 },
-  cardTitle: { durationMs: durations.fast, reducedMs: 0 },
-  stepperSegment: { durationMs: durations.entry, reducedMs: 0 },
-  cardEnter: { durationMs: durations.entry, reducedMs: durations.fast, translateY: 8 },
-  cardExit: { durationMs: durations.exit, reducedMs: durations.fast },
-  coverSwap: { durationMs: durations.slow, reducedMs: durations.fast },
-  badgePop: { from: 0.6, mass: 1, stiffness: 260, damping: 18 },
-  inlineConfirm: { durationMs: durations.normal, reducedMs: 0 },
-  offlineNudge: { totalMs: 240, cycles: 3, distance: 4, reducedMs: 0 },
-  galleryRing: { durationMs: durations.normal, reducedMs: 0 },
-} as const;
-
-/** The device's reduce-motion setting, live (null until read = full motion). */
-export const useReduceMotion = (): boolean => {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    void AccessibilityInfo.isReduceMotionEnabled()
-      .then((enabled) => {
-        if (alive) setReduce(enabled === true);
-      })
-      .catch(() => undefined);
-    const subscription = AccessibilityInfo.addEventListener?.(
-      "reduceMotionChanged",
-      (enabled: boolean) => setReduce(enabled === true),
-    );
-    return () => {
-      alive = false;
-      subscription?.remove?.();
-    };
-  }, []);
-  return reduce;
-};
 
 const useNative = Platform.OS !== "web";
 
@@ -315,20 +280,6 @@ export const progressValueText = (
   if (typeof totalBytes !== "number" || totalBytes <= 0) return pct;
   const sent = typeof confirmedBytes === "number" && confirmedBytes > 0 ? confirmedBytes : 0;
   return `${pct}, ${megabytes(sent)} of ${megabytes(totalBytes)} megabytes`;
-};
-
-/**
- * iOS has no polite live region: it announces only when told. Announce the
- * text whenever it changes (it changes only on a phase change or a % step).
- * Android and web read the visually hidden live-region Text instead.
- */
-export const useIosAnnouncement = (text: string | null): void => {
-  const last = useRef<string | null>(null);
-  useEffect(() => {
-    if (Platform.OS !== "ios" || text === null || text === last.current) return;
-    last.current = text;
-    AccessibilityInfo.announceForAccessibility?.(text);
-  }, [text]);
 };
 
 /**
