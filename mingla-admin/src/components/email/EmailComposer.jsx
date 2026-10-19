@@ -27,6 +27,12 @@ import { Input } from "../ui/Input";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
+import {
+  EMAIL_DRAFT_KEY,
+  EMAIL_DRAFT_VERSION,
+  LEGACY_EMAIL_DRAFT_KEYS,
+  restoreDraftAudience,
+} from "../../lib/emailDraftAudience";
 
 const TOKENS = [
   { value: "{first_name}", label: "First name", example: "Maya" },
@@ -39,7 +45,7 @@ const TOKENS = [
 
 const SAMPLE_VALUES = Object.fromEntries(TOKENS.map((token) => [token.value, token.example]));
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-const DRAFT_KEY = "mingla_admin_email_draft_v1";
+const DRAFT_KEY = EMAIL_DRAFT_KEY;
 const EMPTY_FILTERS = {
   userType: "host",
   country: "all",
@@ -237,11 +243,18 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
-      if (!saved || saved.version !== 1) return;
-      if (["everyone", "segment", "person"].includes(saved.audienceMode)) setAudienceMode(saved.audienceMode);
-      if (saved.filters && typeof saved.filters === "object") setFilters({ ...EMPTY_FILTERS, ...saved.filters });
-      if (saved.selectedRecipient?.profile_id) setSelectedRecipient(saved.selectedRecipient);
+      let raw = localStorage.getItem(DRAFT_KEY);
+      for (const legacyKey of LEGACY_EMAIL_DRAFT_KEYS) {
+        if (!raw) raw = localStorage.getItem(legacyKey);
+        localStorage.removeItem(legacyKey);
+      }
+      const saved = JSON.parse(raw || "null");
+      if (!saved || ![1, EMAIL_DRAFT_VERSION].includes(saved.version)) return;
+      // A restored draft never pre-selects an Explorer-reaching audience.
+      const restored = restoreDraftAudience(saved, EMPTY_FILTERS);
+      setAudienceMode(restored.audienceMode);
+      setFilters(restored.filters);
+      if (restored.audienceMode === "person") setSelectedRecipient(saved.selectedRecipient);
       if (typeof saved.subject === "string") setSubject(saved.subject);
       if (Array.isArray(saved.document) && saved.document.length) setDocumentValue(saved.document);
       if (["now", "later"].includes(saved.scheduleMode)) setScheduleMode(saved.scheduleMode);
@@ -254,7 +267,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   useEffect(() => {
     const timer = setTimeout(() => {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
-        version: 1,
+        version: EMAIL_DRAFT_VERSION,
         audienceMode,
         filters,
         selectedRecipient,
