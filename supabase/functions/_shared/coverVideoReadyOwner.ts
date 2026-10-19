@@ -9,8 +9,11 @@
 //   materialize    ad_creative: create its library row, then apply. Every tick
 //                  until it succeeds; failing past the TTL ends the job.
 //   apply_observed a live surface already serves this video: record it.
-//   apply_server   event/brand cover, older than the grace, and the cover is
-//                  still exactly what it was at upload: the server applies it.
+//   apply_server   event/brand cover, older than the grace, younger than the
+//                  TTL, with a baseline cover RECORDED at upload that the
+//                  target still shows: the server applies it. A job without
+//                  a recorded baseline (legacy, pre-migration) or past the
+//                  TTL is never auto-applied; it expires.
 //   expire         older than the TTL: ready -> failed(ready_unclaimed); the
 //                  asset is reclaimed only through the guarded destroy.
 //   alert          older than the grace with nothing else to do: one durable
@@ -42,6 +45,7 @@ export type ReadyOwnerJob = MaterializableJob & {
   completed_at?: string | null;
   created_at?: string | null;
   target_cover_base_url?: string | null;
+  target_cover_base_captured?: boolean | null;
   ready_alerted_at?: string | null;
   application_version?: number | null;
   application_receipt?: unknown;
@@ -88,8 +92,12 @@ export function decideReadyOwnership(input: {
       return { action: "apply_observed", reason: references.join(",") };
     }
   }
+  // Server auto-apply needs proof the host still wants it: a baseline cover
+  // recorded at upload, the target still showing exactly that baseline, and a
+  // job inside the TTL. Nothing else is ever auto-applied.
   if (
-    coverTargets.has(kind) && age >= READY_GRACE_MS &&
+    coverTargets.has(kind) && job.target_cover_base_captured === true &&
+    age >= READY_GRACE_MS && age < READY_TTL_MS &&
     targetCoverNow !== undefined &&
     targetCoverNow === (job.target_cover_base_url ?? null)
   ) {
@@ -97,6 +105,14 @@ export function decideReadyOwnership(input: {
   }
   if (age >= READY_TTL_MS && references !== null) {
     return { action: "expire", reason: "ready_ttl_elapsed" };
+  }
+  // A cover job with no recorded baseline can never be auto-applied, so once
+  // its grace has passed it is ended rather than left waiting.
+  if (
+    coverTargets.has(kind) && job.target_cover_base_captured !== true &&
+    age >= READY_GRACE_MS && references !== null
+  ) {
+    return { action: "expire", reason: "no_recorded_baseline" };
   }
   if (age >= READY_GRACE_MS && !job.ready_alerted_at) {
     return { action: "alert", reason: "ready_unclaimed" };

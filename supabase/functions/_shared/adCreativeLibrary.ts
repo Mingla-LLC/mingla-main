@@ -217,7 +217,7 @@ export function buildCreativeLibrary(input: CreativeLibraryInput) {
       // a brand that happens to be missing.
       house_reuse_allowed: isHouseReusable(creative),
       source: text(creative.source),
-      source_job_id: text(creative.source_job_id),
+      source_job_id: text(creative.source_job_ref) ?? text(creative.source_job_id),
       rendition_height: typeof creative.rendition_height === "number"
         ? creative.rendition_height
         : null,

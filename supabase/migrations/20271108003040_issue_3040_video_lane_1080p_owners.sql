@@ -11,11 +11,23 @@ BEGIN;
 
 -- ── Step 0: ad_creatives provenance (must exist before cover_video_apply_once
 --    below references ad_creatives.source_job_id). ────────────────────────────
+-- Ad media must never block account or brand deletion (#3660, GDPR): the live
+-- link to the lane job is ON DELETE SET NULL, and provenance survives in
+-- immutable snapshot columns (source, source_job_ref, source_brand_id,
+-- bunny_video_id) that no deletion touches.
 ALTER TABLE public.ad_creatives
   ADD COLUMN IF NOT EXISTS source text,
   ADD COLUMN IF NOT EXISTS source_job_id uuid
-    REFERENCES public.event_cover_video_jobs(id) ON DELETE RESTRICT,
+    REFERENCES public.event_cover_video_jobs(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS source_job_ref uuid,
+  ADD COLUMN IF NOT EXISTS source_brand_id uuid,
   ADD COLUMN IF NOT EXISTS rendition_height integer;
+
+-- The creator link likewise never blocks deleting the creator's account.
+ALTER TABLE public.ad_creatives DROP CONSTRAINT IF EXISTS ad_creatives_created_by_fkey;
+ALTER TABLE public.ad_creatives
+  ADD CONSTRAINT ad_creatives_created_by_fkey
+    FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL;
 
 DO $provenance_notice$
 DECLARE v_count bigint;
@@ -37,6 +49,8 @@ $provenance_notice$;
 UPDATE public.ad_creatives
 SET source = CASE WHEN brand_id IS NULL THEN 'admin_upload' ELSE 'host_upload' END
 WHERE source IS NULL;
+UPDATE public.ad_creatives SET source_brand_id = brand_id
+WHERE source_brand_id IS NULL AND brand_id IS NOT NULL;
 
 -- Older deployed writers do not send `source`. Fill it from the same rule the
 -- backfill used so they keep working until the new functions deploy; new code
@@ -47,6 +61,9 @@ BEGIN
   IF NEW.source IS NULL THEN
     NEW.source := CASE WHEN NEW.brand_id IS NULL THEN 'admin_upload' ELSE 'host_upload' END;
   END IF;
+  -- Snapshots taken at creation; they outlive the job and the brand.
+  NEW.source_job_ref := coalesce(NEW.source_job_ref, NEW.source_job_id);
+  NEW.source_brand_id := coalesce(NEW.source_brand_id, NEW.brand_id);
   RETURN NEW;
 END $f$;
 DROP TRIGGER IF EXISTS trg_ad_creatives_default_source ON public.ad_creatives;
@@ -64,11 +81,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ad_creatives_source_job_id_key
   ON public.ad_creatives(source_job_id) WHERE source_job_id IS NOT NULL;
 
 -- MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse keys on source='admin_upload', never on brand_id IS NULL
+-- MINGLA-INVARIANT: I-AD-MEDIA-NEVER-BLOCKS-DELETION | issue #3040 | deleting a brand or account never fails because of ad media; provenance snapshots survive it
 CREATE OR REPLACE FUNCTION public.ad_creatives_provenance_immutable() RETURNS trigger
 LANGUAGE plpgsql SET search_path=public,pg_temp AS $f$
 BEGIN
-  IF (NEW.source, NEW.source_job_id, NEW.bunny_video_id)
-     IS DISTINCT FROM (OLD.source, OLD.source_job_id, OLD.bunny_video_id) THEN
+  -- Snapshots never change. The live job link may only be cleared (by the
+  -- ON DELETE SET NULL of a deleted job), never re-pointed.
+  IF (NEW.source, NEW.source_job_ref, NEW.source_brand_id, NEW.bunny_video_id)
+     IS DISTINCT FROM (OLD.source, OLD.source_job_ref, OLD.source_brand_id, OLD.bunny_video_id)
+     OR (NEW.source_job_id IS DISTINCT FROM OLD.source_job_id AND NEW.source_job_id IS NOT NULL) THEN
     RAISE EXCEPTION 'ad_creative_provenance_immutable';
   END IF;
   RETURN NEW;
@@ -80,7 +101,11 @@ FOR EACH ROW EXECUTE FUNCTION public.ad_creatives_provenance_immutable();
 COMMENT ON COLUMN public.ad_creatives.source IS
   'Issue #3040/#3697 immutable provenance: admin_upload | host_upload | ari_upload | event_cover. House reuse requires admin_upload.';
 COMMENT ON COLUMN public.ad_creatives.source_job_id IS
-  'Issue #3040 the READY video lane job this creative was materialized from (unique; immutable).';
+  'Issue #3040 live link to the READY lane job this creative was made from (unique). Cleared, never re-pointed, when the job is deleted.';
+COMMENT ON COLUMN public.ad_creatives.source_job_ref IS
+  'Issue #3040 immutable snapshot of the lane job id; survives job, brand and account deletion.';
+COMMENT ON COLUMN public.ad_creatives.source_brand_id IS
+  'Issue #3040 immutable snapshot of the owning brand at creation; survives brand deletion.';
 COMMENT ON COLUMN public.ad_creatives.rendition_height IS
   'Issue #3040 the processed MP4 rendition height (short side) chosen by the lane.';
 
@@ -138,12 +163,15 @@ ALTER TABLE public.event_cover_video_jobs
 
 -- ── Step 4: owner columns. ───────────────────────────────────────────────────
 ALTER TABLE public.event_cover_video_jobs
+  ADD COLUMN IF NOT EXISTS target_cover_base_captured boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS target_cover_base_url text,
   ADD COLUMN IF NOT EXISTS ready_alerted_at timestamptz,
   ADD COLUMN IF NOT EXISTS transport_lease_extended_at timestamptz;
 
 COMMENT ON COLUMN public.event_cover_video_jobs.target_cover_base_url IS
   'Issue #3040 the event/brand cover URL captured when the job was created; the server applies a finished video only while the cover is still this value.';
+COMMENT ON COLUMN public.event_cover_video_jobs.target_cover_base_captured IS
+  'Issue #3040 true when target_cover_base_url was recorded at intent (NULL then means "no cover"). Legacy rows are false and are never applied by the server.';
 COMMENT ON COLUMN public.event_cover_video_jobs.ready_alerted_at IS
   'Issue #3040 the one durable ready-but-unclaimed alert for this job.';
 COMMENT ON COLUMN public.event_cover_video_jobs.transport_lease_extended_at IS
@@ -230,10 +258,11 @@ BEGIN
     (p_target_kind='venue_draft' AND target_kind='venue_draft' AND requested_by=p_requested_by AND brand_id=p_brand_id AND draft_owner_key=p_draft_owner_key));
   INSERT INTO public.event_cover_video_jobs(requested_by,client_operation_id,target_kind,event_id,brand_id,venue_id,draft_owner_key,
    apply_mode,provider,status,source_file_name,source_mime_type,source_extension,source_sha256,source_bytes,source_duration_ms,
-   trim_start_ms,trim_end_ms,tus_upload_offset,tus_upload_length,target_cover_base_url)
+   trim_start_ms,trim_end_ms,tus_upload_offset,tus_upload_length,target_cover_base_captured,target_cover_base_url)
   VALUES(p_requested_by,p_client_operation_id,p_target_kind,p_event_id,p_brand_id,p_venue_id,nullif(btrim(p_draft_owner_key),''),
    p_apply_mode,p_provider,'source_uploading',p_source_file_name,p_source_mime_type,p_source_extension,lower(p_source_sha256),
    p_source_bytes,p_source_duration_ms,p_trim_start_ms,p_trim_end_ms,0,p_source_bytes,
+   p_target_kind IN ('event','brand'),
    CASE
      WHEN p_target_kind='event' THEN (SELECT e.cover_media_url FROM public.events e WHERE e.id=p_event_id)
      WHEN p_target_kind='brand' THEN (SELECT b.cover_media_url FROM public.brands b WHERE b.id=p_brand_id)
@@ -437,6 +466,12 @@ BEGIN
       AND conname='event_cover_video_jobs_processed_max_bytes'
       AND pg_get_constraintdef(oid) LIKE '%67108864%'
   ) THEN RAISE EXCEPTION 'issue #3040: processed byte cap is not 64 MiB'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid='public.ad_creatives'::regclass AND contype='f'
+      AND confdeltype NOT IN ('n','c')
+      AND confrelid IN ('public.event_cover_video_jobs'::regclass,'auth.users'::regclass,'public.brands'::regclass)
+  ) THEN RAISE EXCEPTION 'issue #3040: an ad_creatives link can block job, brand or account deletion'; END IF;
   IF to_regprocedure('public.cover_video_guid_live_references(text,uuid)') IS NULL THEN
     RAISE EXCEPTION 'issue #3040: cover_video_guid_live_references missing';
   END IF;

@@ -746,7 +746,7 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "forbidden" }, 403);
     }
     const creatives = await db.from("ad_creatives").select(
-      "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_job_id,rendition_height,created_at,updated_at",
+      "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,ai_generated,variants,brand_id,source,source_job_id,source_job_ref,rendition_height,created_at,updated_at",
     ).order("created_at", { ascending: false }).limit(250);
     if (creatives.error) return databaseFailure(creatives.error);
     const creativeRows = creatives.data ?? [];

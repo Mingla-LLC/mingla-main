@@ -204,6 +204,9 @@ export async function materializeAdCreativeFromJob(
     brand_id: job.brand_id ?? null,
     source: creativeSourceForJob(job),
     source_job_id: job.id,
+    // Immutable snapshots: they survive deletion of the job, brand or account.
+    source_job_ref: job.id,
+    source_brand_id: job.brand_id ?? null,
     width: video.width,
     height: video.height,
     aspect_ratio: video.aspectRatio,

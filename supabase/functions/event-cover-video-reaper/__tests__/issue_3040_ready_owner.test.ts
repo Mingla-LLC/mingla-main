@@ -19,6 +19,7 @@ const readyJob = (id: string, overrides: Record<string, unknown>) => ({
   processed_url: `https://cdn.test/guid-${id}/play_1080p.mp4`,
   processed_poster_url: `https://cdn.test/guid-${id}/thumbnail.jpg`,
   target_cover_base_url: "https://cdn.test/old/brand.jpg",
+  target_cover_base_captured: true,
   completed_at: isoAgo(16 * MIN),
   created_at: isoAgo(17 * MIN),
   application_version: 0,
@@ -77,4 +78,51 @@ Deno.test("#3040 a trip-day video already in its gallery is recorded, never dest
   const job = reaper.job("trip-live");
   assert(job.status === "applied" && job.application_receipt?.source === "reaper_reference_observed", JSON.stringify(job));
   assert(reaper.destroyed.length === 0, "a referenced gallery video was destroyed");
+});
+
+// Conductor rule from the 2026-10-19 production check: the two legacy brand
+// `ready` jobs carry no recorded baseline. One brand has no cover (a month-old
+// video nobody asked for must not appear); the other has an image cover set
+// since. Both must EXPIRE, never auto-apply.
+// FAILS ON REVERT: drop the target_cover_base_captured / TTL guards in
+// decideReadyOwnership and the first job is applied to the brand.
+Deno.test("#3040 a legacy baseline-less ready job on a brand with no cover expires, never applies", async () => {
+  const reaper = makeReaper([
+    readyJob("legacy-0917", {
+      target_cover_base_captured: false,
+      target_cover_base_url: null,
+      completed_at: isoAgo(32 * 24 * 60 * MIN),
+      created_at: isoAgo(32 * 24 * 60 * MIN),
+    }),
+  ], { brands: [{ id: BRAND, deleted_at: null, cover_media_url: null }] });
+  await quietly(reaper.tick);
+  const job = reaper.job("legacy-0917");
+  assert(job.status === "failed" && job.failure_code === "ready_unclaimed", `${job.status}/${job.failure_code}`);
+  assert(!reaper.db.rpcs.some((rpc) => rpc.name === "cover_video_apply_once"), "a legacy video was offered to the brand cover");
+});
+
+Deno.test("#3040 a stale ready job whose brand now shows an image expires", async () => {
+  const reaper = makeReaper([
+    readyJob("legacy-1012", {
+      target_cover_base_captured: false,
+      target_cover_base_url: null,
+      completed_at: isoAgo(7 * 24 * 60 * MIN),
+    }),
+    readyJob("stale-recorded", {
+      brand_id: "brand-3040-other",
+      target_cover_base_url: null,
+      completed_at: isoAgo(25 * 60 * MIN),
+    }),
+  ], {
+    brands: [
+      { id: BRAND, deleted_at: null, cover_media_url: "https://cdn.test/new/image.jpg" },
+      { id: "brand-3040-other", deleted_at: null, cover_media_url: null },
+    ],
+  });
+  await quietly(reaper.tick);
+  for (const id of ["legacy-1012", "stale-recorded"]) {
+    const job = reaper.job(id);
+    assert(job.status === "failed" && job.failure_code === "ready_unclaimed", `${id}: ${job.status}/${job.failure_code}`);
+  }
+  assert(!reaper.db.rpcs.some((rpc) => rpc.name === "cover_video_apply_once"), "a stale video was auto-applied");
 });
