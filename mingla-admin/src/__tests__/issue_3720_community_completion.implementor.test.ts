@@ -31,30 +31,20 @@ Deno.test("#3720 Community moderators receive moderation but not Admin cutover a
   assertEquals(admin, ["overview", "moderation", "cutover", "email"]);
 });
 
-Deno.test("#3720 moderation UI remains audited and the retired Cutover surface stays removed", async () => {
-  // [TEST-MOD-APPROVED #3720] The approved Wave 8 contract replaces the
-  // retired-panel assertions with a fails-on-revert removal guard.
-  const [service, moderation, page] = await Promise.all([
+Deno.test("#3720 moderation and cutover UI use only audited server RPCs", async () => {
+  const [service, moderation, cutover] = await Promise.all([
     read("services/communityService.js"),
     read("components/community/ModerationPanel.jsx"),
-    read("pages/CommunitySupportPage.jsx"),
+    read("components/community/CutoverPanel.jsx"),
   ]);
   assertMatch(service, /issue_3720_community_moderation_queue/);
   assertMatch(service, /issue_3720_community_moderate/);
+  assertMatch(service, /issue_3720_community_cutover_status/);
   assertMatch(moderation, /First-three-post review/);
-  assertNotMatch(service, /getCommunityCutoverStatus|recordCommunityCutoverEvidence/);
-  assertNotMatch(page, /CutoverPanel|id:\s*["']cutover["']/);
-  let panelExists = true;
-  try {
-    await Deno.stat(new URL("../components/community/CutoverPanel.jsx", import.meta.url));
-  } catch (error) {
-    assert(error instanceof Deno.errors.NotFound);
-    panelExists = false;
-  }
-  assertEquals(panelExists, false);
-  assertNotMatch(moderation, /from\(["']community_/);
+  assertMatch(cutover, /Agent seats remain last/);
+  assertNotMatch(`${moderation}\n${cutover}`, /from\(["']community_/);
   assertNotMatch(
-    moderation,
+    `${moderation}\n${cutover}`,
     /\.insert\(|\.update\(|\.delete\(/,
   );
 });

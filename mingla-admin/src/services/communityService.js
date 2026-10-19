@@ -261,6 +261,23 @@ export async function moderateCommunityItem({ queueType, recordId, action }) {
   return data === true;
 }
 
+export async function getCommunityCutoverStatus() {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_cutover_status",
+  );
+  throwRpc(error);
+  return data;
+}
+
+export async function recordCommunityCutoverEvidence({ key, state, evidenceRef }) {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_record_cutover_evidence",
+    { p_key: key, p_state: state, p_evidence_ref: evidenceRef },
+  );
+  throwRpc(error);
+  return data === true;
+}
+
 // ── Support online + availability ────────────────────────────────────────────
 
 export async function fetchSupportIsOnline() {
