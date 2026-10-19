@@ -25,7 +25,8 @@
  *   7. #3040 — VIDEO creatives are no longer recorded here. A video becomes a
  *      library row only from a READY video-lane job (adCreativeMaterialize),
  *      so video `record` answers 410. Video `validate` names the lane job
- *      (`source_job_id`); the caller must be authorized on that job, and only
+ *      (`source_job_id`, an ad_creative job); the caller must be allowed to
+ *      drive that upload (adCreativeLaneAuth), and only
  *      the job's own processed media is probed — no video URL or asset id from
  *      the request is used.
  *
@@ -64,7 +65,7 @@ import {
   CreativeTrustError,
   probeTrustedVideoSources,
 } from "../_shared/adCreativePrepare.ts";
-import { requireCoverVideoTargetManager } from "../_shared/eventCoverVideo.ts";
+import { requireAdCreativeLaneAccess } from "../_shared/adCreativeLaneAuth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -96,7 +97,7 @@ const UUID_RE =
 const defaultDeps = {
   createClient,
   probeTrustedVideoSources,
-  requireCoverVideoTargetManager,
+  requireAdCreativeLaneAccess,
 };
 
 export const handleAdminAdCreativeUpload = async (
@@ -203,15 +204,15 @@ export const handleAdminAdCreativeUpload = async (
     if (!job) {
       return json({ error: "not_found", detail: "job_not_found" }, 404);
     }
-    const jobAllowed = await deps.requireCoverVideoTargetManager(supabase, {
-      targetKind: job.target_kind,
-      eventId: job.event_id,
+    if (job.target_kind !== "ad_creative") {
+      return json({ error: "validation_error", detail: "job_not_ad_creative" }, 409);
+    }
+    const jobDenied = await deps.requireAdCreativeLaneAccess(supabase, {
       brandId: job.brand_id,
-      venueId: job.venue_id,
       draftOwnerKey: job.draft_owner_key,
       requestedBy: job.requested_by,
     }, user.id);
-    if (jobAllowed instanceof Response) return jobAllowed;
+    if (jobDenied) return jobDenied;
     if (
       !["ready", "applied"].includes(String(job.status)) ||
       typeof job.source_asset_id !== "string" ||

@@ -11,8 +11,8 @@
 import {
   CreativeTrustError,
   probeTrustedVideoSources,
-} from "./adCreativePrepare.ts";
-import { parseAdCreativeOwnerKey } from "./eventCoverVideo.ts";
+} from "./adCreativeTrustedSource.ts";
+import { parseAdCreativeOwnerKey } from "./adCreativeLaneAuth.ts";
 
 // deno-lint-ignore no-explicit-any
 type Supabase = any;

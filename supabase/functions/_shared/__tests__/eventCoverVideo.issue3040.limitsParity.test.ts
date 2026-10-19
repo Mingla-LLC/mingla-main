@@ -11,6 +11,7 @@ import {
   MAX_RENDITION_HEIGHT,
   MAX_SOURCE_VIDEO_BYTES,
 } from "../eventCoverVideo.ts";
+import { VIDEO_LANE_FINAL_MAX_BYTES } from "../videoLaneLimits.ts";
 import { assert } from "./issue3040_fakeSupabase.ts";
 
 const MIGRATION = new URL(
@@ -25,6 +26,7 @@ Deno.test("#3040 edge defaults are the binding numeric contract", () => {
   assert(FINAL_MAX_BYTES === 67_108_864, "processed bytes");
   assert(AD_MIN_DURATION_MS === 5_000, "ad minimum");
   assert(MAX_RENDITION_HEIGHT === 1080, "rendition");
+  assert(VIDEO_LANE_FINAL_MAX_BYTES === FINAL_MAX_BYTES, "the ads fetch cap drifted from the lane budget");
 });
 
 Deno.test("#3040 the DB CHECKs carry the same numbers", async () => {

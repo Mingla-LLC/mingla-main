@@ -37,8 +37,8 @@ const harness = (jobs: Row[], allow = true) => {
         posterHash: "b".repeat(64),
       });
     },
-    requireCoverVideoTargetManager: () =>
-      Promise.resolve(allow ? { target: {} } : new Response(JSON.stringify({ error: "forbidden" }), { status: 403 })),
+    requireAdCreativeLaneAccess: () =>
+      Promise.resolve(allow ? null : new Response(JSON.stringify({ error: "forbidden" }), { status: 403 })),
   };
   return { db, deps, probes };
 };
@@ -107,4 +107,9 @@ Deno.test("#3040 video validation needs a lane job the caller may use", async ()
     harness([{ ...readyJob, status: "processing", processed_url: null }]).deps,
   );
   assert(notReady.status === 409, `an unfinished job was probed: ${notReady.status}`);
+  const coverJob = await post(
+    { action: "validate", kind: "video", name: "x", source_job_id: JOB },
+    harness([{ ...readyJob, target_kind: "event" }]).deps,
+  );
+  assert(coverJob.status === 409, `a cover job was validated as an ad video: ${coverJob.status}`);
 });
