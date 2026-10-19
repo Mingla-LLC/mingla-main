@@ -579,16 +579,16 @@ const loadVideoCompressor = (): VideoCompressorModule | null => {
 // on a phone. `compressionMethod: "auto"` sizes its target from that source, so
 // it tried to keep 4K — minutes of work, and on this device it never finished.
 //
-// Nothing downstream wants 4K. Bunny transcodes server-side and delivers a
-// 720p-max ladder (`play_720p.mp4` is what every applied cover here resolves
-// to), so every pixel above 1080p is spent to be thrown away twice — once by
+// Nothing downstream wants 4K. Bunny transcodes server-side and (before
+// #3040) delivered a 720p-max ladder (`play_720p.mp4`; #3040 raised it to
+// 1080p, see below), so every pixel above 1080p is spent to be thrown away twice — once by
 // the phone, once by the provider.
 //
 // So: downscale to 1080p on the way in. A quarter of the pixels of 4K, well
 // above anything the delivery ladder serves, and a job a phone can actually
 // finish.
-// #3134 — 1280, not 1920. Bunny's delivery ladder tops out at 720p in this
-// project (`play_720p.mp4` on every applied cover), so 1080p is a rung nobody
+// #3134 (superseded by #3040 below) — 1280, not 1920. Bunny's delivery ladder
+// then topped out at 720p in this project (`play_720p.mp4` on every applied cover), so 1080p is a rung nobody
 // is served: it costs the phone a bigger encode and the host a bigger upload to
 // produce pixels the provider then discards. 1280 is exactly what gets
 // delivered, and four times the pixels of the 640 the library's `auto` mode

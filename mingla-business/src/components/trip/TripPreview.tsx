@@ -603,7 +603,7 @@ const LegacyTripPreview: React.FC<{
   return (
     <View style={styles.legacyHost} testID={testID}>
       {/* ORCH-1299 — the trip cover on this review/checkout preview was a raw
-          Image, so a VIDEO cover (Bunny …/play_720p.mp4) rendered empty. Render
+          Image, so a VIDEO cover (Bunny …/play_{720,1080}p.mp4) rendered empty. Render
           it through the shared, media-aware EventCoverMedia (image / gif / video
           / empty hue fallback), matching the legacyCover box (full-width, 220,
           square). Calm still poster — no autoplay in a checkout summary. */}
