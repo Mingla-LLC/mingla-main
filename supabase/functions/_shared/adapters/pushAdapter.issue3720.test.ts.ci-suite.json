@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/adapters/pushAdapter.issue3720.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-3720-push-no-subscription-terminal",
+  "profile": "deno-1.46-notification"
+}

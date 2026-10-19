@@ -87,6 +87,9 @@ export interface PushPayload {
   // Lets the generic adapter retain OneSignal's accepted notification ID
   // without changing the longstanding boolean return contract.
   onAccepted?: (providerMessageId: string) => void;
+  // Lets generic callers distinguish an expected missing subscription from a
+  // provider/config failure without exposing the provider response.
+  onRejected?: (safeCode: string) => void;
   beforeProviderIo?: () => Promise<void>;
 }
 
@@ -106,7 +109,7 @@ export interface OfferingPushClaimReceipt {
 export interface OfferingPushPayload extends
   Omit<
     PushPayload,
-    "beforeProviderIo" | "oneSignalIdempotencyKey" | "onAccepted"
+    "beforeProviderIo" | "oneSignalIdempotencyKey" | "onAccepted" | "onRejected"
   > {
   offeringAttemptId: string;
   internalProviderClaimKey: string;
@@ -213,6 +216,10 @@ export async function sendPush(
   const appType: OneSignalAppType = payload.app ?? "consumer";
   const { appId, restKey } = resolveAppCredentials(appType);
   const offering = isOfferingPayload(payload);
+  const rejectGeneric = (safeCode: string): false => {
+    if (!offering) payload.onRejected?.(safeCode);
+    return false;
+  };
   const failed = (
     safeCode: string,
     retryable: boolean,
@@ -249,7 +256,9 @@ export async function sendPush(
     console.warn("[push-utils] OneSignal credentials unavailable", {
       app: appType,
     });
-    return offering ? failed("provider_config_missing", true, null) : false;
+    return offering
+      ? failed("provider_config_missing", true, null)
+      : rejectGeneric("provider_config_missing");
   }
 
   if (
@@ -265,7 +274,7 @@ export async function sendPush(
   if (
     !offering && payload.oneSignalIdempotencyKey &&
     !UUID.test(payload.oneSignalIdempotencyKey)
-  ) return false;
+  ) return rejectGeneric("local_payload_invalid");
 
   const oneSignalPayload = {
     app_id: appId,
@@ -352,7 +361,9 @@ export async function sendPush(
     });
   } catch {
     clearTimeout(timeoutId);
-    return offering ? failed("local_before_provider_io_failed", true) : false;
+    return offering
+      ? failed("local_before_provider_io_failed", true)
+      : rejectGeneric("local_before_provider_io_failed");
   }
   try {
     response = await providerPromise;
@@ -360,13 +371,28 @@ export async function sendPush(
     console.error("[push-utils] push provider outcome unknown", {
       app: appType,
     });
-    return offering ? ambiguous() : false;
+    return offering ? ambiguous() : rejectGeneric("provider_outcome_unknown");
   } finally {
     clearTimeout(timeoutId);
   }
 
   if (!response.ok) {
-    if (!offering) return false;
+    if (!offering) {
+      if (response.status === 429) {
+        return rejectGeneric("provider_rate_limited");
+      }
+      if (response.status === 400) {
+        return rejectGeneric("provider_request_invalid");
+      }
+      if (response.status === 401 || response.status === 403) {
+        return rejectGeneric("provider_config_rejected");
+      }
+      if (
+        response.status >= 400 && response.status < 500 &&
+        response.status !== 408
+      ) return rejectGeneric("provider_request_rejected");
+      return rejectGeneric("provider_outcome_unknown");
+    }
     if (response.status === 429) {
       return failed(
         "provider_rate_limited",
@@ -393,11 +419,11 @@ export async function sendPush(
   try {
     body = await response.json();
   } catch {
-    return offering ? ambiguous() : false;
+    return offering ? ambiguous() : rejectGeneric("provider_outcome_unknown");
   }
 
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return offering ? ambiguous() : false;
+    return offering ? ambiguous() : rejectGeneric("provider_outcome_unknown");
   }
 
   // A canonical id is authoritative even if OneSignal also supplies a warning.
@@ -420,18 +446,22 @@ export async function sendPush(
 
   // OneSignal can return 200 when every target is unsubscribed.
   if (body.errors) {
-    return offering ? failed("provider_no_valid_subscription", false) : false;
+    return offering
+      ? failed("provider_no_valid_subscription", false)
+      : rejectGeneric("provider_no_valid_subscription");
   }
 
   // Empty id means notification was not created (per OneSignal docs)
   if (!body.id) {
-    return offering ? failed("provider_no_valid_subscription", false) : false;
+    return offering
+      ? failed("provider_no_valid_subscription", false)
+      : rejectGeneric("provider_no_valid_subscription");
   }
 
   if (!UUID.test(body.id)) return offering ? ambiguous() : true;
 
   // Success — OneSignal accepted the notification with a valid ID
-  return false;
+  return rejectGeneric("provider_outcome_unknown");
 }
 
 /**

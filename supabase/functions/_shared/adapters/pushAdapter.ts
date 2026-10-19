@@ -138,6 +138,7 @@ async function send(
     });
   }
   let providerMessageId: string | null = null;
+  let rejectionCode: string | null = null;
   const ok = await sendPush({
     targetUserId: input.userId,
     title: input.title,
@@ -150,15 +151,22 @@ async function send(
     onAccepted: (id) => {
       providerMessageId = id;
     },
+    onRejected: (safeCode) => {
+      rejectionCode = safeCode;
+    },
     beforeProviderIo: input.beforeProviderIo,
   });
   // sendPush absorbs provider/network failures, but deliberately lets a
   // durable-marker failure escape so the worker can classify it as unsent.
   return {
     ok,
-    status: ok ? "sent" : "failed",
+    status: ok
+      ? "sent"
+      : rejectionCode === "provider_no_valid_subscription"
+      ? "skipped"
+      : "failed",
     providerMessageId,
-    error: ok ? undefined : "push_not_delivered",
+    error: ok ? undefined : rejectionCode ?? "push_not_delivered",
   };
 }
 
