@@ -71,7 +71,7 @@ describe("#3720 Host Help & Support rebuild", () => {
 
   test("Host reads stay on bounded v2 projections and Admin authors the action fields", () => {
     const service = read("mingla-business/src/services/communityService.ts");
-    const migration = read("supabase/migrations/20271106053720_issue_3720_host_help_support.sql");
+    const migration = read("supabase/migrations/20271108073720_issue_3720_host_help_support.sql");
     const admin = read("mingla-admin/src/components/community/AnnouncementsPanel.jsx");
     expect(service).toContain("issue_3720_community_feed_v2");
     expect(service).toContain("issue_3720_community_comments_v2");

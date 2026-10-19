@@ -74,7 +74,7 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
 });
 
 Deno.test("#3720 console migration keeps audited staff writes and posting-pause read access", async () => {
-  const sql = await Deno.readTextFile(new URL("../../../supabase/migrations/20271106043720_issue_3720_community_console_rebuild.sql", import.meta.url));
+  const sql = await Deno.readTextFile(new URL("../../../supabase/migrations/20271108063720_issue_3720_community_console_rebuild.sql", import.meta.url));
   assertMatch(sql, /community_posting_pauses/);
   assertMatch(sql, /community_audit_log/);
   assertMatch(sql, /p_action LIKE 'pause_%'/);
