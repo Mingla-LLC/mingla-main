@@ -309,8 +309,12 @@ export function useEventCoverVideoUpload(
       setStage(pendingPreparationStageRef.current);
     }, 300);
   }, [clearPreparationProjection]);
+  // #3040 B-C10 — the phase the FLOW is in, even while the 300 ms preparation
+  // projection is still hiding it from the card. Unmount reads this.
+  const flowPhaseRef = useRef<string>("idle");
   const projectPreparation = useCallback((next: EventCoverVideoUploadStage): void => {
     pendingPreparationStageRef.current = next;
+    flowPhaseRef.current = next.phase;
     if (preparationVisibleRef.current) setStage(next);
   }, []);
 
@@ -588,6 +592,7 @@ export function useEventCoverVideoUpload(
     let acceptedIntent = intent;
     setStatus(null);
     lastUploadProgressRef.current = { percent: prepared.bytes <= VIDEO_LIMITS.TUS_CHUNK_NATIVE_BYTES && Platform.OS !== "web" ? null : 0, totalBytes: prepared.bytes, confirmedBytes: 0 };
+    flowPhaseRef.current = "uploading";
     setStage({ phase: "uploading", ...lastUploadProgressRef.current });
     const upload = (): Promise<unknown> => uploadEventCoverVideoSource({
       bytes: prepared.bytes, fileName: prepared.fileName, jobId: acceptedIntent.jobId,
@@ -633,6 +638,7 @@ export function useEventCoverVideoUpload(
       // #3040 B-C2 — every byte is server-confirmed (the final HEAD agreed):
       // only now may the card say "Confirming upload".
       acknowledgingRef.current = true;
+      flowPhaseRef.current = "ack_pending";
       setStage({ phase: "ack_pending", percent: 0 });
       // issue #2967 — bounded acknowledgement.
       const ackDeadlineAt = Date.now() + EVENT_COVER_VIDEO_ACK_DEADLINE_MS;
@@ -1100,7 +1106,9 @@ export function useEventCoverVideoUpload(
       // remount, so a job that never received a byte cannot be continued:
       // cancel it (best effort) and drop the record, instead of leaving a 0-byte
       // job that a later open would mistake for "Finishing upload".
-      const phaseAtUnmount = stageRef.current.phase;
+      const phaseAtUnmount = ["idle", "reattaching"].includes(stageRef.current.phase)
+        ? flowPhaseRef.current
+        : stageRef.current.phase;
       const noBytesYet = ["reading", "validating", "compressing", "preparing", "intent_pending"].includes(phaseAtUnmount) ||
         (phaseAtUnmount === "uploading" && (lastUploadProgressRef.current.confirmedBytes ?? 0) === 0);
       if (Platform.OS === "web" && noBytesYet) {
