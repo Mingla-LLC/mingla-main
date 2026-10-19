@@ -130,6 +130,7 @@ DECLARE
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',
+    'ops_notify_people',
     'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
@@ -233,6 +234,7 @@ DECLARE
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',
+    'ops_notify_people',
     'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
