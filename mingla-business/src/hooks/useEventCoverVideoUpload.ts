@@ -384,13 +384,13 @@ export function useEventCoverVideoUpload(
     } else if (["source_uploaded", "processing_queued", "processing"].includes(next.status)) {
       // #3040 D2 / H-08 — a provider % only while it is real AND moving;
       // otherwise null, which the card renders as indeterminate + elapsed.
-      const tracked = trackProviderProgress(
-        providerProgressRef.current, next.jobId,
-        next.progressKind === "determinate" ? next.progressPercent : null,
-      );
+      // The provider's reading counts only when it is determinate (orch-0776a)…
+      const reported = { phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null } as const;
+      // …and is shown only while it is moving (H-08).
+      const tracked = trackProviderProgress(providerProgressRef.current, next.jobId, reported.percent);
       providerProgressRef.current = tracked.tracker;
       setStage({
-        phase: "processing", percent: tracked.percent,
+        ...reported, percent: tracked.percent,
         timing: coverVideoProcessingTiming(next.sourceUploadedAt),
       });
     } else if (["failed", "cancelled", "superseded"].includes(next.status)) {
