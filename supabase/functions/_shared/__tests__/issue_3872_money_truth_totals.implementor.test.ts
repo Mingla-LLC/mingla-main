@@ -2,8 +2,7 @@
 // buyer_total_cents, the same amount it sends to the payment provider, and
 // every path persists a pricing breakdown (F2, F3).
 //
-// MINGLA-INVARIANT: I-3872-PROVIDER-AMOUNT-EQUALS-BUYER-TOTAL | issue #3872 |
-// the provider amount and the stored buyer_total_cents come from one variable.
+// MINGLA-INVARIANT: I-3872-PROVIDER-AMOUNT-EQUALS-BUYER-TOTAL | issue #3872 | On every ticket path the amount sent to the payment provider and the stored buyer_total_cents come from the same pricing breakdown, and that breakdown is persisted.
 //
 // Fails before #3872: `_shared/orderMoneyTruth.ts` does not exist, the hosted
 // and Paystack arms persisted no breakdown, and no webhook recorded what the

@@ -1,8 +1,6 @@
 -- Issue #3872 PR 1 (money truth) — refunds are computed on the server (F4) (PG17).
 --
--- MINGLA-INVARIANT: I-3872-SERVER-REFUND-AMOUNT | issue #3872 | A refund's amount
--- is quantity x order_line_items.unit_price_cents per refunded line, computed
--- by the server; a client-sent amount is ignored and logged when it differs.
+-- MINGLA-INVARIANT: I-3872-SERVER-REFUND-AMOUNT | issue #3872 | A refund's amount is quantity times order_line_items.unit_price_cents per refunded line, computed by the server; a client-sent amount is ignored and logged when it differs.
 --
 -- Policy parity: the Host app's RefundSheet has always sent
 -- round(qty x unit_price_cents/100 x 100) = qty x unit_price_cents per line, with

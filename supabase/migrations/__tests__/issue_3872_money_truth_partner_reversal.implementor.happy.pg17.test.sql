@@ -1,9 +1,7 @@
 -- Issue #3872 PR 1 (money truth, F5) — proportional partner reversal, the real
 -- database functions (PG17).
 --
--- MINGLA-INVARIANT: I-3872-PROPORTIONAL-PARTNER-REVERSAL | issue #3872 | a refund
--- gives back floor(original share x fee refunded / fee); untransferred splits
--- are reduced in place; recording a reversal is idempotent and bounded.
+-- MINGLA-INVARIANT: I-3872-PROPORTIONAL-PARTNER-REVERSAL | issue #3872 | A refund gives back floor(original partner share times fee refunded divided by fee), untransferred splits are reduced in place, and recording a reversal is idempotent and bounded by the original share.
 --
 -- Fails before 20271107003872_issue_3872_money_truth.sql: the plan/record
 -- functions and partner_splits.reversed_cents do not exist; the only tool was

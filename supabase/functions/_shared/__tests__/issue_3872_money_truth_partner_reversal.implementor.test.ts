@@ -1,10 +1,6 @@
 // Issue #3872 PR 1 (money truth, F5) — partner reversals are proportional.
 //
-// MINGLA-INVARIANT: I-3872-PROPORTIONAL-PARTNER-REVERSAL | issue #3872 | on a
-// refund the partner gives back floor(original share x fee refunded / fee),
-// minus what was already given back; an untransferred split is reduced in
-// place; a replayed refund event never reverses twice; disputes keep their
-// full treatment.
+// MINGLA-INVARIANT: I-3872-PARTNER-REVERSAL-STRIPE-CALLS | issue #3872 | A refund makes at most one Stripe transfer reversal per cumulative target, for only the part not yet given back, and a dispute keeps its full reversal.
 //
 // The database half (issue_3872_partner_split_refund_plan / _record_reversal)
 // is exercised for real by

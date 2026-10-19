@@ -1,9 +1,6 @@
 // Issue #3872 PR 1 (money truth, F4) — refund edges use the server-priced lines.
 //
-// MINGLA-INVARIANT: I-3872-SERVER-REFUND-AMOUNT | issue #3872 | refund-order and
-// admin-refund-order never use a client amount_cents for money: the Stripe tax
-// reversal and the buyer's refund notice use the lines biz_refund_order /
-// admin_refund_order priced on the server.
+// MINGLA-INVARIANT: I-3872-REFUND-EDGES-USE-SERVER-LINES | issue #3872 | refund-order and admin-refund-order never use a client amount_cents for money; the Stripe tax reversal and the buyer's refund notice use the lines the refund RPC priced on the server.
 //
 // Fails before #3872: `_shared/refundServerLines.ts` does not exist, both edges
 // required a client amount_cents, and the tax reversal mapped the request lines.

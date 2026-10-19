@@ -1,11 +1,8 @@
 -- Issue #3872 PR 1 (money truth) — the payout release equation (PG17).
 --
--- MINGLA-INVARIANT: I-3872-RELEASE-EQUALS-PROVIDER-NET | issue #3872 | For every
--- payout source, the net released to the host equals what landed in the host's
--- provider balance for that source:
---   charged − Mingla's retained fee − provider fee − net refunds − open disputes,
--- where "Mingla's retained fee" is the application fee minus any application fee
--- the provider returned to the host on a refund.
+-- MINGLA-INVARIANT: I-3872-RELEASE-EQUALS-PROVIDER-NET | issue #3872 | The net released to the host for every payout source equals what landed in the host's provider balance: charged minus the fee Mingla kept minus the provider fee minus net refunds and open disputes.
+-- "The fee Mingla kept" is the application fee minus any application fee the
+-- provider returned to the host on a refund.
 --
 -- Every case below FAILS on the formula that shipped before #3872 and passes after
 -- 20271107003872_issue_3872_money_truth.sql:

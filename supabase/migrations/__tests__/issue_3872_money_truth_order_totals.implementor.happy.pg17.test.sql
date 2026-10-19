@@ -2,9 +2,7 @@
 -- ticket path, through the REAL create-session, attempt claim and finalize RPCs
 -- (PG17).
 --
--- MINGLA-INVARIANT: I-3872-PROVIDER-AMOUNT-EQUALS-BUYER-TOTAL | issue #3872 | the
--- order's buyer_total_cents is what the provider charged, its parts add up, and
--- pricing_breakdown is never null on a finalized order whose session carried one.
+-- MINGLA-INVARIANT: I-3872-ORDER-TOTALS-REACH-THE-ORDER | issue #3872 | Finalize copies the session's explicit totals and pricing breakdown to the order, and a later provider record of the charged amount reconciles both without ever overwriting reconciled totals.
 --
 -- Proves:
 --   1. Paystack (paid): the totals and breakdown the edge writes at create land on

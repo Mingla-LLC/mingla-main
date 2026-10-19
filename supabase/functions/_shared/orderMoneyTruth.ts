@@ -1,7 +1,8 @@
 // Issue #3872 PR 1 (money truth) — the explicit order totals every ticket path
 // writes from the SAME pricing breakdown whose total is sent to the provider.
 //
-// MINGLA-INVARIANT: I-3872-PROVIDER-AMOUNT-EQUALS-BUYER-TOTAL | issue #3872 | On
+// Invariant I-3872-PROVIDER-AMOUNT-EQUALS-BUYER-TOTAL (declared in
+// _shared/__tests__/issue_3872_money_truth_totals.implementor.test.ts): on
 // every ticket path (hosted Stripe, native Stripe, Paystack, free, installment
 // deposit) the amount sent to the payment provider and the stored
 // buyer_total_cents come from the same variable; finalize copies the session's
