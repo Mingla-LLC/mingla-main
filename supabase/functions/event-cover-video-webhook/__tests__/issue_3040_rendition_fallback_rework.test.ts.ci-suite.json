@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/event-cover-video-webhook/__tests__/issue_3040_rendition_fallback_rework.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3040-webhook-rendition-fallback-rework",
+  "profile": "deno-2-unit"
+}

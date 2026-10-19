@@ -98,6 +98,7 @@ const headWithRetry = async (
   url: string,
   attempts: number,
   delayMs: number,
+  sleep: (ms: number) => Promise<void> = realSleep,
 ): Promise<Response | null> => {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     let response: Response | null = null;
@@ -111,39 +112,124 @@ const headWithRetry = async (
       response = null;
     }
     if (response !== null && response.ok) return response;
-    if (attempt < attempts - 1) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
+    if (attempt < attempts - 1) await sleep(delayMs);
   }
   return null;
 };
 
-// #3040 (B-2, C-10) — rendition selection, highest first and at most 1080p.
-// A rendition the CDN does not serve yet stops the walk (retryable 503): it is
-// propagation lag, and settling for a lower rendition would downgrade the
-// video for good. A rendition that is served but over the processed byte
-// budget falls to the next one down, and says so.
+// #3040 rework (P1-4) — how long, after Bunny reports the encode FINISHED,
+// the lane keeps waiting for a preferred rendition the CDN does not serve yet
+// before it settles for the next one down. Each webhook / reconciler call
+// asks 3 times (5 s timeouts); across calls the wait is anchored on the first
+// absence, recorded in provider_payload.rendition_wait.
+export const RENDITION_WAIT_MS = 90_000;
+const HEAD_ATTEMPTS = 3;
+const HEAD_RETRY_DELAY_MS = 2_000;
+
+export type RenditionFallbackReason = "absent" | "over_budget" | "size_unknown";
+
+export type RenditionSelection =
+  | {
+    kind: "selected";
+    url: string;
+    heightP: number;
+    head: Response;
+    fallback: { fromHeightP: number; reason: RenditionFallbackReason } | null;
+  }
+  // The highest rendition still worth waiting for is not served yet.
+  | { kind: "absent"; heightP: number }
+  // Nothing is deliverable at all (every candidate absent or over budget).
+  | { kind: "none" };
+
+// #3040 (B-2, C-10) + rework (P1-4) — rendition selection, highest first and
+// at most 1080p. A rendition that is served but over the processed byte
+// budget, or whose size the CDN does not state, falls to the next one down.
+// A rendition the CDN does not serve stops the walk (retryable) UNTIL the
+// wait window after the encode finished has passed; after that it falls to
+// the highest rendition that is served. The lane never fails a job only
+// because 1080p is missing; a source below 1080p simply starts lower. When
+// nothing is deliverable the answer stays retryable and the reconciler's
+// encode stall deadline (10 min after the final byte) ends the job.
 // MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
-export const selectDeliverableRendition = async (
+// MINGLA-INVARIANT: I-VIDEO-RENDITION-FALLBACK | issue #3040 | a missing or over-budget 1080p falls back to the highest served rendition once the wait window has passed; it never fails the job by itself
+export const selectRendition = async (
   candidates: Array<{ url: string; heightP: number }>,
   context: { jobId: string; videoGuid: string },
-): Promise<{ url: string; heightP: number; head: Response } | null> => {
+  options: {
+    absentFallback?: boolean;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
+): Promise<RenditionSelection> => {
+  let fallback: { fromHeightP: number; reason: RenditionFallbackReason } | null =
+    null;
+  const fallFrom = (
+    heightP: number,
+    reason: RenditionFallbackReason,
+    extra: Record<string, unknown> = {},
+  ): void => {
+    fallback ??= { fromHeightP: heightP, reason };
+    logWebhook("rendition_fallback", {
+      ...context,
+      heightP,
+      reason,
+      ...extra,
+    }, "warn");
+  };
   for (const candidate of candidates) {
-    const head = await headWithRetry(candidate.url, 3, 2000);
-    if (head === null) return null;
-    const bytes = Number(head.headers.get("content-length"));
-    if (Number.isFinite(bytes) && bytes > FINAL_MAX_BYTES) {
+    const head = await headWithRetry(
+      candidate.url,
+      HEAD_ATTEMPTS,
+      HEAD_RETRY_DELAY_MS,
+      options.sleep,
+    );
+    if (head === null) {
+      if (!options.absentFallback) {
+        return { kind: "absent", heightP: candidate.heightP };
+      }
+      fallFrom(candidate.heightP, "absent");
+      continue;
+    }
+    const length = head.headers.get("content-length");
+    const bytes = length === null ? Number.NaN : Number(length);
+    if (!Number.isFinite(bytes)) {
+      // An unstated size is not "within budget".
+      fallFrom(candidate.heightP, "size_unknown");
+      continue;
+    }
+    if (bytes > FINAL_MAX_BYTES) {
       logWebhook("rendition_over_budget_fallback", {
         ...context,
         bytes,
         finalMaxBytes: FINAL_MAX_BYTES,
         heightP: candidate.heightP,
       }, "warn");
+      fallFrom(candidate.heightP, "over_budget", { bytes });
       continue;
     }
-    return { ...candidate, head };
+    return { kind: "selected", ...candidate, head, fallback };
   }
-  return null;
+  return { kind: "none" };
+};
+
+// The pre-rework entry point: the highest deliverable rendition, never
+// settling for a lower one while a higher one is merely not served yet.
+export const selectDeliverableRendition = async (
+  candidates: Array<{ url: string; heightP: number }>,
+  context: { jobId: string; videoGuid: string },
+): Promise<{ url: string; heightP: number; head: Response } | null> => {
+  const selection = await selectRendition(candidates, context);
+  return selection.kind === "selected" ? selection : null;
+};
+
+// When did this job first find its preferred rendition missing after the
+// encode finished? Read from provider_payload; NaN when it never has.
+export const renditionWaitStartedMs = (payload: unknown): number => {
+  if (payload === null || typeof payload !== "object") return Number.NaN;
+  const wait = (payload as { rendition_wait?: { first_absent_at?: unknown } })
+    .rendition_wait;
+  return typeof wait?.first_absent_at === "string"
+    ? Date.parse(wait.first_absent_at)
+    : Number.NaN;
 };
 
 const mergeBunnyPayload = (
@@ -481,16 +567,50 @@ export const handleBunnyWebhook = async (
   if (best === null) {
     return jsonResponse({ error: "derivative_not_ready" }, 503);
   }
-  const selected = await selectDeliverableRendition(candidates, {
+  // #3040 rework (P1-4) — the encode is finished (this is the ready path).
+  const nowMs = Date.now();
+  const waitStartedMs = renditionWaitStartedMs(existingJob.provider_payload);
+  const waitedOut = Number.isFinite(waitStartedMs) &&
+    nowMs - waitStartedMs >= RENDITION_WAIT_MS;
+  const selection = await selectRendition(candidates, {
     jobId: existingJob.id,
     videoGuid,
-  });
+  }, { absentFallback: waitedOut, sleep: deps.sleep });
+  if (selection.kind === "absent" && !Number.isFinite(waitStartedMs)) {
+    // Start the wait window once; later calls fall back after it.
+    try {
+      await supabase.from("event_cover_video_jobs")
+        .update({
+          provider_payload: mergeBunnyPayload(existingJob.provider_payload, {
+            rendition_wait: {
+              first_absent_at: new Date(nowMs).toISOString(),
+              height: selection.heightP,
+            },
+          }),
+        })
+        .eq("id", existingJob.id)
+        .in("status", [
+          "source_uploading",
+          "source_uploaded",
+          "processing_queued",
+          "processing",
+        ]);
+    } catch (error) {
+      logWebhook("rendition_wait_record_failed", {
+        jobId: existingJob.id,
+        error: error instanceof Error ? error.name : "error",
+      }, "warn");
+    }
+  }
+  const selected = selection.kind === "selected" ? selection : null;
   const head = selected?.head ?? null;
   logWebhook("derivative_head", {
     jobId: existingJob.id,
     reachable: head !== null,
     url: selected?.url ?? best.url,
     heightP: selected?.heightP ?? null,
+    waiting: selection.kind === "absent" ? selection.heightP : null,
+    waitedOut,
     videoGuid,
   }, head === null ? "warn" : "info");
   if (head === null) {
@@ -570,6 +690,8 @@ export const handleBunnyWebhook = async (
     bunny_thumbnail: posterUrl,
     // #3040 — the delivered rendition, read by status, ads and the live matrix.
     rendition_height: chosen.heightP,
+    // #3040 rework (P1-4) — why a lower rendition was delivered, if it was.
+    rendition_fallback: selected?.fallback ?? null,
   });
   const { data: readyJob, error: readyError } = await supabase.rpc(
     "cover_video_transition_job",
