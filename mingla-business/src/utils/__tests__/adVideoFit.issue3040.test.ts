@@ -2,7 +2,7 @@
  * #3040 design AD-04 — Host Ads "Ad video ready" names where the video fits:
  * "Fits Meta and TikTok. Snapchat needs 1080×1920." The fit is judged on the
  * server by the shared ads matrix; this pins the sentence and the wiring.
- * MINGLA-INVARIANT: I-ADS-FIT-ONE-MATRIX | issue #3040 | Host fit text comes from adCreativeMatrix, never a client copy of its rules
+ * Invariant I-ADS-FIT-ONE-MATRIX (declared in supabase/functions/_shared/__tests__/adCreativeFit.issue3040.test.ts): Host fit text comes from adCreativeMatrix, never a client copy of its rules
  * FAILS ON REVERT: drop the formatter, or pick the wrong video's fit.
  */
 import { adVideoFitSummaryFor, formatAdFitSummary, joinWithAnd } from "../adVideoFit";

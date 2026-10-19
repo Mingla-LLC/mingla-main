@@ -4,7 +4,7 @@
  * edge sends; native requests carry the version headers the edge logs; web
  * sends none (the lane's CORS allow-list would reject them in a browser).
  *
- * MINGLA-INVARIANT: I-VIDEO-OLD-CLIENT-TOLD | issue #3040 | a client too old for the lane always receives human "update" copy, and the rejection is logged
+ * Invariant I-VIDEO-OLD-CLIENT-TOLD (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_old_client_426.test.ts): a client too old for the lane always receives human "update" copy, and the rejection is logged
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 

@@ -1,7 +1,7 @@
 -- Issue #3040 (conductor decision): ad media never blocks brand or account
 -- deletion, and a creative whose brand is deleted never becomes house media.
 -- MINGLA-INVARIANT: I-AD-MEDIA-NEVER-BLOCKS-DELETION | issue #3040 | deleting a brand or account never fails because of ad media; provenance snapshots survive it
--- MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse requires source='admin_upload', never brand_id IS NULL
+-- Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): house reuse requires source='admin_upload', never brand_id IS NULL
 --
 -- FAILS ON REVERT: put ad_creatives.source_job_id back to ON DELETE RESTRICT
 -- (or make the provenance trigger refuse the FK's SET NULL) and the brand

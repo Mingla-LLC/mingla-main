@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-AD-VIDEO-REPLACE-WINS | issue #3040 | a replaced ad video finishing late is never applied or linked to the ad
 /**
  * #3040 — INDEPENDENT TESTER adversarial suite for useEventCoverVideoUpload.
  * Written by the tester, not the implementor. Different angles from the
@@ -17,8 +18,8 @@
  *             still processing; when the FIRST job then finishes it is never
  *             applied, linked or emitted.
  *
- * MINGLA-INVARIANT: I-VIDEO-NO-RESURRECT | issue #3040 | a reopened sheet never re-emits a finished job this device did not start, even from a server that ignores activeOnly
- * MINGLA-INVARIANT: I-AD-VIDEO-REPLACE-WINS | issue #3040 | a replaced ad video finishing late is never applied or linked to the ad
+ * Invariant I-VIDEO-NO-RESURRECT (declared in supabase/functions/event-cover-video-status/__tests__/issue_3040_active_only.test.ts): a reopened sheet never re-emits a finished job this device did not start, even from a server that ignores activeOnly
+ * Invariant I-AD-VIDEO-REPLACE-WINS (declared in mingla-business/src/hooks/__tests__/useEventCoverVideoUpload.issue3040.tester.adversarial.test.ts): a replaced ad video finishing late is never applied or linked to the ad
  *
  * FAILS ON REVERT:
  *   J1 drop the client-side isActiveLaneStatus filter in resume()

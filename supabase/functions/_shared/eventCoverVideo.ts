@@ -28,7 +28,7 @@ export const corsHeaders = {
 // than the old 25 MiB budget, so the processed cap is 64 MiB (the same cap the
 // ads byte fetch already used). These defaults are pinned against the DB
 // CHECKs and packages/video-upload/limits.js by I-VIDEO-LIMITS-PARITY.
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | edge defaults equal the DB CHECKs and the client limits table
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): edge defaults equal the DB CHECKs and the client limits table
 export const FINAL_MAX_BYTES = Number.parseInt(
   Deno.env.get("EVENT_COVER_FINAL_MAX_BYTES") ?? "67108864",
   10,

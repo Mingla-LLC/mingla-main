@@ -11,7 +11,7 @@
 //        highest served rendition, records why, and the job is ready — never
 //        failed for a missing 1080p.
 //
-// MINGLA-INVARIANT: I-VIDEO-RENDITION-FALLBACK | issue #3040 | the wait for a missing 1080p is anchored once and finished by the server owner within its bound
+// Invariant I-VIDEO-RENDITION-FALLBACK (declared in supabase/functions/event-cover-video-webhook/__tests__/issue_3040_rendition_fallback_rework.test.ts): the wait for a missing 1080p is anchored once and finished by the server owner within its bound
 //
 // FAILS ON REVERT:
 //   RW1  drop the `!Number.isFinite(waitStartedMs)` guard before recording

@@ -7,7 +7,7 @@
 // ad_creatives.source_job_id unique index) and is driven by
 // event-cover-video-apply (client present) and the reaper (client gone).
 //
-// MINGLA-INVARIANT: I-CREATIVE-FROM-JOB-ONLY | issue #3697 | video creatives are created only from a READY lane job
+// Invariant I-CREATIVE-FROM-JOB-ONLY (declared in supabase/functions/_shared/__tests__/adCreativeMaterialize.issue3040.test.ts): video creatives are created only from a READY lane job
 import {
   CreativeTrustError,
   probeTrustedVideoSources,

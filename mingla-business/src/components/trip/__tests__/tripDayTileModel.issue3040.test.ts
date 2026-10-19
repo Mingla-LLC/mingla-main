@@ -4,7 +4,7 @@
  * classification (paused only when the device is offline, T4); the live-region
  * thresholds (§11). The rendered sheet is driven in
  * TripDayMediaSheet.issue3040.tiles.test.tsx.
- * MINGLA-INVARIANT: I-VIDEO-NO-RESURRECT | issue #3040 | a trip-day tile shows only its own item's truth
+ * Invariant I-VIDEO-NO-RESURRECT (declared in supabase/functions/event-cover-video-status/__tests__/issue_3040_active_only.test.ts): a trip-day tile shows only its own item's truth
  * FAILS ON REVERT: collapse a state, drop the offline-only pause, announce
  * every %, or key a day by its list position while it has an ordinal.
  */

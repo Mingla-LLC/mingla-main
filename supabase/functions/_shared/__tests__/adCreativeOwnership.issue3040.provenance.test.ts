@@ -1,5 +1,5 @@
 // Issue #3040 (T-C12) — house reuse follows immutable provenance.
-// MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse requires source='admin_upload'; provenance is immutable
+// Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): house reuse requires source='admin_upload'; provenance is immutable
 //
 // FAILS ON REVERT: restore `house_reuse_allowed: !creative.brand_id` or the
 // brand-only ownership check and the brandless Host row below becomes reusable.

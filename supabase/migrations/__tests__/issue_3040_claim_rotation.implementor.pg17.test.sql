@@ -1,5 +1,5 @@
 -- Issue #3040 (T-B12): the reconcile claim rotates, so long-lived ready rows cannot starve live work.
--- MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every claimable job is reached within a bounded number of ticks
+-- Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): every claimable job is reached within a bounded number of ticks
 --
 -- FAILS ON REVERT: restore the 20270604002715 claim ordering
 -- (coalesce(provider_checked_at,created_at)) and the same 100 old ready rows

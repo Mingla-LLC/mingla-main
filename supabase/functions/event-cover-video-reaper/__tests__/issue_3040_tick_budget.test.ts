@@ -1,6 +1,6 @@
 // Issue #3040 (T-B6 reaper half, B-6) — a tick stops starting new work after
 // its 45 s budget, so a slow provider can never make ticks overlap.
-// MINGLA-INVARIANT: I-VIDEO-BOUNDED-IO | issue #3040 | the reaper tick has a work budget
+// Invariant I-VIDEO-BOUNDED-IO (declared in supabase/functions/_shared/__tests__/bunnyStream.issue3040.timeouts.test.ts): the reaper tick has a work budget
 //
 // FAILS ON REVERT: remove the overBudget() checks and the second candidate is
 // still worked after the first one consumed the whole budget.

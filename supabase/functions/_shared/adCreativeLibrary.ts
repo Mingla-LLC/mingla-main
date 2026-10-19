@@ -114,7 +114,7 @@ function summarizeProviderRefs(rows: UnknownRow[]) {
 // #3040 rework — and no owning-brand snapshot: media that ever belonged to a
 // brand never becomes house media when that brand is deleted. A row read
 // without the snapshot column is refused (fail closed).
-// MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse requires source='admin_upload', no brand and no brand snapshot
+// Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): house reuse requires source='admin_upload', no brand and no brand snapshot
 export function isHouseReusable(creative: UnknownRow): boolean {
   return creative.source === "admin_upload" && creative.brand_id === null &&
     creative.source_brand_id === null;

@@ -5,7 +5,7 @@
  * `activeOnly` must not bring a finished video back when the sheet reopens
  * and the normal resume is slow.
  *
- * MINGLA-INVARIANT: I-VIDEO-NO-RESURRECT | issue #3040 | a reopened sheet never re-emits a finished job this device did not start, even from a server that ignores activeOnly and even on the re-attach deadline path
+ * Invariant I-VIDEO-NO-RESURRECT (declared in supabase/functions/event-cover-video-status/__tests__/issue_3040_active_only.test.ts): a reopened sheet never re-emits a finished job this device did not start, even from a server that ignores activeOnly and even on the re-attach deadline path
  *
  * FAILS ON REVERT: drop `(byTarget && !isActiveLaneStatus(canonical.status))`
  * from the deadline fallback and the finished video is settled as applied.

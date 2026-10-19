@@ -11,8 +11,8 @@
 //   P5  an abort while a PATCH is on the wire rejects at once, with no 100%.
 //   P6  a source over 100 MiB is refused before ANY network call.
 //
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the client tolerance maps 60,001–60,500 ms to an integer 60,000 and nothing past it
-// MINGLA-INVARIANT: I-VIDEO-ONE-UPLOADER | issue #3040 | the one web uploader never reports success it did not confirm with the server
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): the client tolerance maps 60,001–60,500 ms to an integer 60,000 and nothing past it
+// Invariant I-VIDEO-ONE-UPLOADER (declared in packages/video-upload/__tests__/videoUpload.test.mjs): the one web uploader never reports success it did not confirm with the server
 //
 // FAILS ON REVERT:
 //   P1  drop Math.round in resolveRawClipDurationMs

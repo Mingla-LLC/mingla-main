@@ -7,7 +7,7 @@
  * G-06 "Tap to retry" and a tap retries the SAME file in place; a refusal is
  * G-07 "Can't use"; a failure keeps the sheet open with an in-sheet alert and
  * the sheet closes once everything settled. The itinerary passes the day key.
- * MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | a trip-day item that failed in flight keeps a visible owner (retry, resume or remove), never a silent drop
+ * Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): a trip-day item that failed in flight keeps a visible owner (retry, resume or remove), never a silent drop
  * FAILS ON REVERT: drop the paused auto-resume, the in-place retry, the
  * keep-open-on-failure close rule, or the dayKey the parent passes.
  */

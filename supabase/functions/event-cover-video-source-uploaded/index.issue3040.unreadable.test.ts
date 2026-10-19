@@ -1,7 +1,7 @@
 // Issue #3040 (T-B8, B-8) — an unreadable provider HEAD after the TUS lease is
 // not proof of anything: the upload is asked about again, and is called
 // unverifiable only once the 30-minute grace is over.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | an unreadable provider HEAD never fails a transfer inside its bound
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): an unreadable provider HEAD never fails a transfer inside its bound
 //
 // FAILS ON REVERT: let the expiry branch run for `unreadable` again and the
 // first test fails the job with source_transport_expired.

@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | duration, size and rendition limits are identical across this package, the edge defaults and the DB CHECKs
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): duration, size and rendition limits are identical across this package, the edge defaults and the DB CHECKs
 //
 // The single client copy of the shared video lane's numeric contract. Every
 // value here is mirrored by `supabase/functions/_shared/eventCoverVideo.ts`

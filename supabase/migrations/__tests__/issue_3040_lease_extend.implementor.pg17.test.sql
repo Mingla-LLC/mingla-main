@@ -1,5 +1,5 @@
 -- Issue #3040 (T-B7): a replayed upload signature extends the server lease, and only forwards.
--- MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | the transfer bound follows the latest signature the server handed out
+-- Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): the transfer bound follows the latest signature the server handed out
 --
 -- FAILS ON REVERT: drop cover_video_extend_transport_lease (or make it assign
 -- p_expires_at without greatest()) and the assertions below raise.

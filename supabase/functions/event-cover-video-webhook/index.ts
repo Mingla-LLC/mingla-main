@@ -150,8 +150,8 @@ export type RenditionSelection =
 // because 1080p is missing; a source below 1080p simply starts lower. When
 // nothing is deliverable the answer stays retryable and the reconciler's
 // encode stall deadline (10 min after the final byte) ends the job.
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
-// MINGLA-INVARIANT: I-VIDEO-RENDITION-FALLBACK | issue #3040 | a missing or over-budget 1080p falls back to the highest served rendition once the wait window has passed; it never fails the job by itself
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
+// Invariant I-VIDEO-RENDITION-FALLBACK (declared in supabase/functions/event-cover-video-webhook/__tests__/issue_3040_rendition_fallback_rework.test.ts): a missing or over-budget 1080p falls back to the highest served rendition once the wait window has passed; it never fails the job by itself
 export const selectRendition = async (
   candidates: Array<{ url: string; heightP: number }>,
   context: { jobId: string; videoGuid: string },

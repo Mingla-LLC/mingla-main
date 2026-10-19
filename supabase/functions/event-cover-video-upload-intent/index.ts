@@ -37,7 +37,7 @@ import { destroyIfUnreferenced, isMissingRpc } from "../_shared/coverVideoReap.t
 // #3040 (B-1, A-1) — a store build too old for the deterministic lane gets a
 // human sentence, not a raw code. Pre-#2827 clients render `detail` for codes
 // they do not know, so this copy reaches build 37 with no native change.
-// MINGLA-INVARIANT: I-VIDEO-OLD-CLIENT-TOLD | issue #3040 | a client too old for the lane always receives human "update" copy, and the rejection is logged
+// Invariant I-VIDEO-OLD-CLIENT-TOLD (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_old_client_426.test.ts): a client too old for the lane always receives human "update" copy, and the rejection is logged
 export const CLIENT_VERSION_REQUIRED_DETAIL =
   "Update Mingla Host to upload videos. This version can\u2019t upload videos anymore. Updating takes a minute.";
 // #3040 (B-6) — the provider TUS-create POST is bounded.

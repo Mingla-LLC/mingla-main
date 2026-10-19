@@ -1,6 +1,6 @@
 // Issue #3040 (T-B11, B-11, B-9) — a database object that is not deployed yet
 // skips its step, destroys nothing, and is reported on the health rail.
-// MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | an unknown reference answer never destroys
+// Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): an unknown reference answer never destroys
 //
 // FAILS ON REVERT: treat a failed reference read as "no references" and the
 // expired job's asset below is destroyed without proof.

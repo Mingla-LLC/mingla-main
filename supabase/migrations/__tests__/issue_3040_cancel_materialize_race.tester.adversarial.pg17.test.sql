@@ -13,7 +13,7 @@
 --       then sees the cancel and is refused (ad_creative_job_not_materializable).
 --   Invariant after both: no job is both cancelled and in the library.
 --
--- MINGLA-INVARIANT: I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES | issue #3040 | a cancelled ad video job never becomes an ad_creatives row, even when cancel and materialize overlap
+-- Invariant I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES (declared in supabase/migrations/__tests__/issue_3040_rework1.implementor.pg17.test.sql): a cancelled ad video job never becomes an ad_creatives row, even when cancel and materialize overlap
 --
 -- FAILS ON REVERT: drop FOR SHARE from ad_creatives_job_not_cancelled (M2's
 -- insert reads the pre-cancel snapshot and lands a creative on a cancelled

@@ -1,7 +1,7 @@
 // @mingla/video-upload — the ONE web TUS uploader for the shared video lane.
 //
-// MINGLA-INVARIANT: I-VIDEO-ONE-UPLOADER | issue #3040 | exactly one web TUS implementation exists; Host web and Admin both import this package
-// MINGLA-INVARIANT: I-VIDEO-OTA-PURE-JS | issue #3040 | this package contains no native code and imports no react-native or expo module
+// Invariant I-VIDEO-ONE-UPLOADER (declared in packages/video-upload/__tests__/videoUpload.test.mjs): exactly one web TUS implementation exists; Host web and Admin both import this package
+// Invariant I-VIDEO-OTA-PURE-JS (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): this package contains no native code and imports no react-native or expo module
 //
 // Plain ES module JavaScript with no dependencies. It runs in browsers (Host
 // web through Metro, Admin through Vite) and under Node for tests. It never

@@ -3,7 +3,7 @@
  * video's `processedUrl` never outranks a photo picked after it, and the
  * "added" state hides once the cover is no longer that job's output.
  *
- * MINGLA-INVARIANT: I-VIDEO-NO-RESURRECT | issue #3040 | opening a sheet never re-emits a finished, failed or cancelled job not started by this device
+ * Invariant I-VIDEO-NO-RESURRECT (declared in supabase/functions/event-cover-video-status/__tests__/issue_3040_active_only.test.ts): opening a sheet never re-emits a finished, failed or cancelled job not started by this device
  */
 import { describe, expect, test } from "@jest/globals";
 

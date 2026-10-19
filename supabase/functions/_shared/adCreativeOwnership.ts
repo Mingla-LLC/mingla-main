@@ -14,7 +14,7 @@
 // (source_brand_id). A brand that is deleted later clears brand_id but never
 // the snapshot, so Host media can never be laundered into house media. A
 // caller that does not pass the snapshot is refused (fail closed).
-// MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse requires source='admin_upload', no brand and no brand snapshot
+// Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): house reuse requires source='admin_upload', no brand and no brand snapshot
 export function adCreativeOwnershipError(input: {
   ownerKind: "mingla" | "host";
   planBrandId: string | null;

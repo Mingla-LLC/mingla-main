@@ -9,9 +9,9 @@
 //   I3  the 60.0–60.5 s band: the client's 500 ms tolerance is CLIENT-only; the
 //       edge stays strict at 60,000 ms (60,001 and 60,500 refused, 60,000 ok).
 //
-// MINGLA-INVARIANT: I-VIDEO-OLD-CLIENT-TOLD | issue #3040 | a too-old client always gets human update copy first, whatever else is wrong with its body
-// MINGLA-INVARIANT: I-AD-VIDEO-MIN-5S | issue #3040 | the edge refuses an ad video under 5,000 ms and accepts exactly 5,000 ms; covers have no minimum
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the edge duration cap is strict 60,000 ms; the 500 ms tolerance never reaches the server
+// Invariant I-VIDEO-OLD-CLIENT-TOLD (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_old_client_426.test.ts): a too-old client always gets human update copy first, whatever else is wrong with its body
+// Invariant I-AD-VIDEO-MIN-5S (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_ad_min_duration.test.ts): the edge refuses an ad video under 5,000 ms and accepts exactly 5,000 ms; covers have no minimum
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): the edge duration cap is strict 60,000 ms; the 500 ms tolerance never reaches the server
 //
 // FAILS ON REVERT:
 //   I1  move the clientOperationId/426 check below the brand/event checks, or

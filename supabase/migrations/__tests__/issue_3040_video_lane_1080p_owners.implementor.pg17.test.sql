@@ -1,9 +1,9 @@
 -- Issue #3040 (T-SQL-LANE, T-C12 SQL half): the 1080p lane migration contract.
--- MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | DB caps equal packages/video-upload/limits.js
--- MINGLA-INVARIANT: I-AD-VIDEO-MIN-5S | issue #3040 | an ad_creative source shorter than 5 s is refused by the DB; covers have no minimum
--- MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | ready may fail only with an owned failure code
--- MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | provenance is immutable
--- MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | live references are reported per surface
+-- Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): DB caps equal packages/video-upload/limits.js
+-- Invariant I-AD-VIDEO-MIN-5S (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_ad_min_duration.test.ts): an ad_creative source shorter than 5 s is refused by the DB; covers have no minimum
+-- Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): ready may fail only with an owned failure code
+-- Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): provenance is immutable
+-- Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): live references are reported per surface
 --
 -- FAILS ON REVERT: drop 20271108003040 (or any single clause below) and the
 -- matching assertion raises: brandless ad_creative insert, the 100 MiB source

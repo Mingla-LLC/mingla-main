@@ -3,7 +3,7 @@
 // request header the lane's CORS allow-list does not name, which would break
 // every web upload, so the allow-list and the client's header names are pinned
 // together here.
-// MINGLA-INVARIANT: I-VIDEO-OLD-CLIENT-TOLD | issue #3040 | the lane CORS allow-list names every header the Host client sends
+// Invariant I-VIDEO-OLD-CLIENT-TOLD (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_old_client_426.test.ts): the lane CORS allow-list names every header the Host client sends
 // FAILS ON REVERT: drop either name from corsHeaders, or rename a client header.
 import { corsHeaders } from "../eventCoverVideo.ts";
 import { assert } from "./issue3040_fakeSupabase.ts";

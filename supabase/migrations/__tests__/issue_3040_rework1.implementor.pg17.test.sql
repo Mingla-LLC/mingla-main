@@ -18,7 +18,7 @@
 --   R5 (D-9)  the server owner (NULL requester) never overwrites a cover the
 --      host changed after the upload began; a client caller still applies.
 --
--- MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040 | a venue-draft video that reached ready is reported as referenced, even to its own job
+-- Invariant I-VENUE-DRAFT-VIDEO-RETAINED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_venue_draft_retained.test.ts): a venue-draft video that reached ready is reported as referenced, even to its own job
 -- MINGLA-INVARIANT: I-CREATIVE-HOUSE-PROVENANCE-RECORDED | issue #3040 | source='admin_upload' is only ever recorded with no brand snapshot
 -- MINGLA-INVARIANT: I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES | issue #3040 | a cancelled ad video job never becomes an ad_creatives row
 --

@@ -2,7 +2,7 @@
 // brand was soft-deleted ends at once as failed(target_deleted), not at its
 // TUS lease expiry an hour later under the wrong code. Its asset is then
 // reclaimed through the guarded destroy like every other terminal asset.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | a deleted parent ends every live job of that parent, including uploads still in transfer
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): a deleted parent ends every live job of that parent, including uploads still in transfer
 //
 // FAILS ON REVERT: drop the parentDeleted check from the source_uploading sweep
 // (or stop reading the sweep rows' parents) and the job stays source_uploading.

@@ -1,5 +1,5 @@
 -- Issue #3040 (T-B17): a unique violation never hands the caller another operation's job.
--- MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | a caller only ever receives its own operation's job and transport
+-- Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): a caller only ever receives its own operation's job and transport
 --
 -- FAILS ON REVERT: restore the any-active-row fallback in the
 -- cover_video_create_or_replay_job unique_violation handler and the call below

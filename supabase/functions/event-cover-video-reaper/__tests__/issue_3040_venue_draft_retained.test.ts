@@ -10,7 +10,7 @@
 //   - a venue-draft upload that never reached ready (the device never got a
 //     URL) is reclaimed normally.
 //
-// MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040 | a venue-draft video that reached ready is never destroyed by expiry, terminal reap, cancel or supersede
+// MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040 | a venue_draft target video that reached ready is never destroyed by expiry, terminal reap, cancel or supersede
 //
 // FAILS ON REVERT: drop the venue_draft `retain` branch in decideReadyOwnership
 // (the ready job expires and its asset is destroyed), drop isClientRetainedAsset

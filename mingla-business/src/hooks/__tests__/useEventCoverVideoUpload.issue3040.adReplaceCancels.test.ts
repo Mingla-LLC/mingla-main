@@ -8,7 +8,7 @@
  * pg17 suite issue_3040_rework1 R4). Cover targets are untouched: the server
  * supersedes those itself.
  *
- * MINGLA-INVARIANT: I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES | issue #3040 | replacing an ad video cancels the replaced job server-side at the start of the new one
+ * Invariant I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES (declared in supabase/migrations/__tests__/issue_3040_rework1.implementor.pg17.test.sql): replacing an ad video cancels the replaced job server-side at the start of the new one
  *
  * FAILS ON REVERT: remove the `cancelReplacedAdVideo(replacedJobId)` call in
  * uploadPrepared's replacing branch and the first case fails.

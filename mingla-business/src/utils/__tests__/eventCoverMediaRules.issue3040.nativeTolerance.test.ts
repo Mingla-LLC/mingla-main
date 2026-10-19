@@ -2,7 +2,7 @@
  * #3040 T-A13a [A-13a] — the 500 ms one-minute tolerance applies on NATIVE as
  * well as web, so a phone's own "1 minute" recording does not open the trimmer.
  *
- * MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | duration, size and rendition limits are identical across client package, edge defaults and DB CHECKs
+ * Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): duration, size and rendition limits are identical across client package, edge defaults and DB CHECKs
  */
 import { describe, expect, test } from "@jest/globals";
 

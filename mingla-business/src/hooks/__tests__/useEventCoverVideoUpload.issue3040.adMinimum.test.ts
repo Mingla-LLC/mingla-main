@@ -3,7 +3,7 @@
  * reaches prepare or the intent, even if a caller skips the pick check.
  * Covers have no minimum.
  *
- * MINGLA-INVARIANT: I-AD-VIDEO-MIN-5S | issue #3040 | an ad_creative source shorter than 5 s never leaves the device (pick check), and the edge and DB refuse it; covers have no minimum
+ * Invariant I-AD-VIDEO-MIN-5S (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_ad_min_duration.test.ts): an ad_creative source shorter than 5 s never leaves the device (pick check), and the edge and DB refuse it; covers have no minimum
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 

@@ -1,5 +1,5 @@
 // Issue #3040 (T-PKG server half, T-SQL-LANE) — one limits table.
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | duration, size and rendition limits are identical across edge defaults and DB CHECKs
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): duration, size and rendition limits are identical across edge defaults and DB CHECKs
 //
 // The client half (packages/video-upload/limits.js) is pinned by the package
 // parity suite against these same edge defaults.

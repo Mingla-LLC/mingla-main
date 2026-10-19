@@ -3,7 +3,7 @@
  * `ad_creative` lane target with a stable owner key, and the client-side
  * creative recorder is gone (the server creates the row from the READY job).
  *
- * MINGLA-INVARIANT: I-CREATIVE-FROM-JOB-ONLY | issue #3697 | video creatives are created only from a READY lane job
+ * Invariant I-CREATIVE-FROM-JOB-ONLY (declared in supabase/functions/_shared/__tests__/adCreativeMaterialize.issue3040.test.ts): video creatives are created only from a READY lane job
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";

@@ -2,7 +2,7 @@
  * #3040 T-A1 [A-1, A-19] — an app too old for the lane gets "Update Mingla
  * Host", never a generic retry, and the stage carries the REAL code.
  *
- * MINGLA-INVARIANT: I-VIDEO-OLD-CLIENT-TOLD | issue #3040 | a client too old for the lane always receives human "update" copy, and the rejection is logged
+ * Invariant I-VIDEO-OLD-CLIENT-TOLD (declared in supabase/functions/event-cover-video-upload-intent/__tests__/issue_3040_old_client_426.test.ts): a client too old for the lane always receives human "update" copy, and the rejection is logged
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 

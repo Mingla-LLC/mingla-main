@@ -1,5 +1,5 @@
 // Issue #3040 (T-B3, B-3, B-9) — the reaper owns every `ready` job.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every non-terminal and ready job has a server owner with a finite bound
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): every non-terminal and ready job has a server owner with a finite bound
 //
 // FAILS ON REVERT: restore `if (candidate.status === "ready") { reconciled += 1; continue; }`
 // with no owner and every job below stays `ready` forever.

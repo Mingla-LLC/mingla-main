@@ -1,5 +1,5 @@
 // Issue #3040 (T-B7, B-7) — the server lease follows every signature it hands out.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | the transfer bound follows the latest signature the server handed out
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): the transfer bound follows the latest signature the server handed out
 //
 // FAILS ON REVERT: drop the extendTransportLease step before the transport
 // response and the first test sees a 200 with no lease extension.

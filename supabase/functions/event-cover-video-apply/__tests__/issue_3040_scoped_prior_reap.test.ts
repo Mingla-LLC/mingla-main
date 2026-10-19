@@ -1,7 +1,7 @@
 // Issue #3040 (T-B5, B-5, B-14, C-5..C-8) — applying a cover reclaims only the
 // cover it replaced; applying an ad video creates its library row first.
-// MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | prior reaps are scoped to the same target_kind and target, and never destroy a referenced asset
-// MINGLA-INVARIANT: I-CREATIVE-FROM-JOB-ONLY | issue #3697 | video creatives are created only from a READY lane job
+// Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): prior reaps are scoped to the same target_kind and target, and never destroy a referenced asset
+// Invariant I-CREATIVE-FROM-JOB-ONLY (declared in supabase/functions/_shared/__tests__/adCreativeMaterialize.issue3040.test.ts): video creatives are created only from a READY lane job
 //
 // FAILS ON REVERT: restore the event_id-only prior reap and the trip-day
 // gallery assets below are destroyed; drop the reference guard and the

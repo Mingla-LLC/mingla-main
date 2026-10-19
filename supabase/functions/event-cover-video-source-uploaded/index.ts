@@ -104,7 +104,7 @@ export const TUS_HEAD_TIMEOUT_MS = 8_000;
 // #3040 (B-8) — after the TUS lease expires, an UNREADABLE HEAD proves nothing
 // either way. The upload is given this long past the lease to be read before it
 // is called unverifiable; until then the client is told to ask again.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | an unreadable provider HEAD never fails a transfer inside its bound
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): an unreadable provider HEAD never fails a transfer inside its bound
 export const SOURCE_UNVERIFIABLE_GRACE_MS = 30 * 60 * 1000;
 export const SOURCE_VERIFICATION_RETRY_AFTER_MS = 5_000;
 

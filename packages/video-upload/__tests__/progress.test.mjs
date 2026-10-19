@@ -1,5 +1,5 @@
 // #3040 T-A8 (web half) — upload progress tells the truth.
-// MINGLA-INVARIANT: I-VIDEO-ONE-UPLOADER | issue #3040 | exactly one web TUS implementation exists (this package)
+// Invariant I-VIDEO-ONE-UPLOADER (declared in packages/video-upload/__tests__/videoUpload.test.mjs): exactly one web TUS implementation exists (this package)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

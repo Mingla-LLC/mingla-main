@@ -1,7 +1,7 @@
 /**
  * #3040 T-A3 [A-3, A-6] — opening the sheet never re-emits an older job.
  *
- * MINGLA-INVARIANT: I-VIDEO-NO-RESURRECT | issue #3040 | opening a sheet never re-emits a finished, failed or cancelled job not started by this device
+ * Invariant I-VIDEO-NO-RESURRECT (declared in supabase/functions/event-cover-video-status/__tests__/issue_3040_active_only.test.ts): opening a sheet never re-emits a finished, failed or cancelled job not started by this device
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 

@@ -5,9 +5,9 @@
 // yet applied) never destroys: a leaked asset is recoverable, a deleted live
 // video is not.
 //
-// MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | no code path destroys a provider asset whose guid has a live reference; prior reaps are scoped to the same target_kind and target
-// MINGLA-INVARIANT: I-VIDEO-SINGLE-GUARDED-DELETE | issue #3040 | destroyIfUnreferenced is the only caller of the provider delete; every reaper, cancel, apply, supersede, fail and purge path goes through it (enforced by coverVideoReap.singleDeletePath.issue3040.test.ts)
-// MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040 | a venue-draft video that reached ready lives in the host's local draft, which no database reference can see; it is never destroyed by expiry, terminal reap, cancel or supersede (only an explicitly enabled, draft-aware orphan reclaim may ever touch it)
+// Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): no code path destroys a provider asset whose guid has a live reference; prior reaps are scoped to the same target_kind and target
+// Invariant I-VIDEO-SINGLE-GUARDED-DELETE (declared in supabase/functions/_shared/__tests__/coverVideoReap.singleDeletePath.issue3040.test.ts): destroyIfUnreferenced is the only caller of the provider delete; every reaper, cancel, apply, supersede, fail and purge path goes through it (enforced by coverVideoReap.singleDeletePath.issue3040.test.ts)
+// Invariant I-VENUE-DRAFT-VIDEO-RETAINED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_venue_draft_retained.test.ts): a venue-draft video that reached ready lives in the host's local draft, which no database reference can see; it is never destroyed by expiry, terminal reap, cancel or supersede (only an explicitly enabled, draft-aware orphan reclaim may ever touch it)
 import { destroyCoverVideoAsset } from "./eventCoverVideo.ts";
 
 // deno-lint-ignore no-explicit-any

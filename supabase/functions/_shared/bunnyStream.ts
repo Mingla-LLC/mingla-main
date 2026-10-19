@@ -102,7 +102,7 @@ const networkReason = (prefix: string, error: unknown): string =>
 // it), so even a transport that ignores the abort signal cannot hold a caller
 // past its budget. A timeout surfaces as each helper's existing network-failure
 // shape, with the error name `TimeoutError`.
-// MINGLA-INVARIANT: I-VIDEO-BOUNDED-IO | issue #3040 | every outbound provider call has a timeout
+// Invariant I-VIDEO-BOUNDED-IO (declared in supabase/functions/_shared/__tests__/bunnyStream.issue3040.timeouts.test.ts): every outbound provider call has a timeout
 export const BUNNY_TIMEOUTS_MS = Object.freeze({
   create: 10_000,
   findByTitle: 8_000,

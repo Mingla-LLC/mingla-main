@@ -6,7 +6,7 @@
 // A platform "fits" when the matrix raises no reject, no needs_transcode and no
 // fail-safe not_evaluable for it (the rows the funding gate fails closed on).
 // Each misfit names what the platform needs, as a short phrase.
-// MINGLA-INVARIANT: I-ADS-FIT-ONE-MATRIX | issue #3040 | Host fit text comes from adCreativeMatrix, never a client copy of its rules
+// Invariant I-ADS-FIT-ONE-MATRIX (declared in supabase/functions/_shared/__tests__/adCreativeFit.issue3040.test.ts): Host fit text comes from adCreativeMatrix, never a client copy of its rules
 import type { Platform } from "./adChannel.ts";
 import {
   type CreativeCheck,

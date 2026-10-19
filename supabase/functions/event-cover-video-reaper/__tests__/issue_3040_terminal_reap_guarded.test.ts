@@ -8,7 +8,7 @@
 // replacement — which supersedes the ready job — and then cancels the
 // replacement. The live venue cover must survive.
 //
-// MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | no code path destroys a provider asset whose guid has a live reference
+// Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): no code path destroys a provider asset whose guid has a live reference
 //
 // FAILS ON REVERT: restore the reaper's unguarded `deps.destroyCoverVideoAsset(target)`
 // for non-"guarded" failure codes (or any status), and the live cover is destroyed.

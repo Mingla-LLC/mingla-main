@@ -6,11 +6,11 @@
 -- provenance laundering into house media, account deletion of a house
 -- uploader, and a claim window full of applied rows.
 --
--- MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | every live surface that serves a guid is reported, and only exact /<guid>/ path segments match
--- MINGLA-INVARIANT: I-VIDEO-SOFTDELETE-NO-WEDGE | issue #3040 | a parent deleted mid-job never blocks the job's own transitions, and the server never applies to a deleted parent
--- MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | ready may fail only with an owned failure code; applied never moves
--- MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | no single-column write and no deletion turns Host media into house media
--- MINGLA-INVARIANT: I-AD-MEDIA-NEVER-BLOCKS-DELETION | issue #3040 | deleting a house uploader's account never fails and leaves the creative house-owned
+-- Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): every live surface that serves a guid is reported, and only exact /<guid>/ path segments match
+-- Invariant I-VIDEO-SOFTDELETE-NO-WEDGE (declared in supabase/migrations/__tests__/issue_3040_softdelete_no_wedge.implementor.pg17.test.sql): a parent deleted mid-job never blocks the job's own transitions, and the server never applies to a deleted parent
+-- Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): ready may fail only with an owned failure code; applied never moves
+-- Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): no single-column write and no deletion turns Host media into house media
+-- Invariant I-AD-MEDIA-NEVER-BLOCKS-DELETION (declared in supabase/migrations/__tests__/issue_3040_ad_media_never_blocks_deletion.implementor.pg17.test.sql): deleting a house uploader's account never fails and leaves the creative house-owned
 --
 -- FAILS ON REVERT (each case names the clause it guards):
 --   T1  supersede predicate widened to every target_kind of an event/brand

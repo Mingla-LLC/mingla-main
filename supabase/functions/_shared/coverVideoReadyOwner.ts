@@ -24,7 +24,7 @@
 //                  destroyed (I-VENUE-DRAFT-VIDEO-RETAINED).
 //   wait           younger than the grace.
 //
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every non-terminal and ready job has a server owner with a finite bound
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): every non-terminal and ready job has a server owner with a finite bound
 import {
   type MaterializableJob,
   materializeAdCreativeFromJob,

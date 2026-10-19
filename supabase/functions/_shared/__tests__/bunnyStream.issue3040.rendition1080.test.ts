@@ -1,5 +1,5 @@
 // Issue #3040 (T-B2, B-2, C-10) — the lane selects up to 1080p, highest first.
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
 //
 // FAILS ON REVERT: restore the 720 ceiling (or drop bunnyMp4Candidates) and the
 // first candidate is play_720p.mp4, never play_1080p.mp4.

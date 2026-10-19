@@ -352,7 +352,7 @@ export function computeEffectiveStatus(rows: MinimalCheckRow[]): {
 // The reaper and the SLO ledger write passive Bunny rows; until #3040 nothing
 // read them. This verdict turns them, the lane health view and the Bunny
 // library settings into ONE passive Bunny row that reaches the alert rail.
-// MINGLA-INVARIANT: I-VIDEO-LANE-OBSERVED | issue #3040 | SLO breaches, ready-unclaimed jobs, reaper step failures and Bunny library config drift reach the existing alert rail
+// Invariant I-VIDEO-LANE-OBSERVED (declared in supabase/functions/api-health-probe/issue3040_video_lane_signals.test.ts): SLO breaches, ready-unclaimed jobs, reaper step failures and Bunny library config drift reach the existing alert rail
 export const VIDEO_LANE_SIGNALS = [
   "cover_video_processing_slo_breach",
   "cover_video_ready_unclaimed",

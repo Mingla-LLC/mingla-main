@@ -2,7 +2,7 @@
 // success. The RPC answers NULL (or an all-null projection) when the job is no
 // longer source_uploading; the intent must answer retryable instead of handing
 // out a signature the server will not honour.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | the transfer bound follows the latest signature the server handed out, and only a moved row counts
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): the transfer bound follows the latest signature the server handed out, and only a moved row counts
 //
 // FAILS ON REVERT: treat `error === null` alone as success again and the
 // first two cases report ok.

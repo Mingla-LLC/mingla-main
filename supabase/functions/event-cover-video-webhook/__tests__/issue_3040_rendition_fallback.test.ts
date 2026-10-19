@@ -1,8 +1,8 @@
 // Issue #3040 (T-B2 webhook half, B-2, B-14, C-10) — the webhook delivers the
 // highest served rendition up to 1080p within the 64 MB budget, records it, and
 // an auto-applied cover reclaims only the cover it replaced.
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
-// MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | prior reaps are scoped to the same target_kind and target
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): the lane selects the highest served rendition <= 1080p within FINAL_MAX_BYTES
+// Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): prior reaps are scoped to the same target_kind and target
 //
 // FAILS ON REVERT: restore bunnyBestMp4 (720 ceiling) and the first test
 // promotes play_720p even though 1080p fits; drop the over-budget fallback and

@@ -2,7 +2,7 @@
 // client-owned and kept, so it is never "unclaimed": a row naming one never
 // degrades the Bunny tile or fires the alert path. Every other target still
 // does.
-// MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040 | retained venue-draft videos never feed the ready-unclaimed alert
+// Invariant I-VENUE-DRAFT-VIDEO-RETAINED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_venue_draft_retained.test.ts): retained venue-draft videos never feed the ready-unclaimed alert
 //
 // FAILS ON REVERT: drop the venue_draft exclusion in evaluateVideoLaneHealth's
 // passive-row count and the first case degrades.

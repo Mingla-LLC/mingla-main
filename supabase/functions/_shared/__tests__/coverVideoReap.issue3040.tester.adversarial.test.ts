@@ -14,8 +14,8 @@
 //       (propagation lag never downgrades a video by itself).
 //   W4  candidates never exceed 1080p, ignore junk tokens and duplicates.
 //
-// MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | a provider asset is destroyed only on a definite empty answer for that exact guid
-// MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | the lane delivers the highest served rendition <= 1080p whose bytes are <= 67,108,864
+// Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): a provider asset is destroyed only on a definite empty answer for that exact guid
+// Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): the lane delivers the highest served rendition <= 1080p whose bytes are <= 67,108,864
 //
 // FAILS ON REVERT:
 //   G1  `references.kinds.length > 0` check removed in destroyIfUnreferenced

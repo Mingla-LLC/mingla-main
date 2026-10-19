@@ -17,7 +17,7 @@
 --       stay active (a cover-target lock or supersede here would discard a
 --       video the host chose).
 --
--- MINGLA-INVARIANT: I-VIDEO-ONE-ACTIVE-COVER-PER-TARGET | issue #3040 | overlapping replacements serialize per target and leave exactly one active job; ad videos never supersede
+-- MINGLA-INVARIANT: I-VIDEO-ONE-ACTIVE-COVER-PER-TARGET | issue #3040 | overlapping replacements serialize per target and leave exactly one live job; ad videos never supersede
 --
 -- FAILS ON REVERT: drop the pg_advisory_xact_lock in
 -- cover_video_create_or_replay_job (C1 raises unique_violation in session B /

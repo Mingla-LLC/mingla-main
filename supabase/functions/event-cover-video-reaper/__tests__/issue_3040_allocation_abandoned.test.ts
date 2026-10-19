@@ -1,6 +1,6 @@
 // Issue #3040 (T-B13, B-13) — a job whose client vanished before the provider
 // was ever asked for an asset still ends, server-side.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every non-terminal job has a server owner with a finite bound
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): every non-terminal job has a server owner with a finite bound
 //
 // FAILS ON REVERT: remove the allocation-abandoned step and the 11-minute job
 // stays `source_uploading` forever (no read, no claim ever sees it).

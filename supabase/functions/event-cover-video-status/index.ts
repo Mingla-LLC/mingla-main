@@ -13,7 +13,7 @@ import {
 // flight (or finished and waiting to be applied). A finished, failed or
 // cancelled job from an earlier visit is never handed back to be re-emitted.
 // Without the flag the latest job is returned exactly as before (old clients).
-// MINGLA-INVARIANT: I-VIDEO-NO-RESURRECT | issue #3040 | opening a sheet never re-emits a finished, failed or cancelled job not started by this device
+// Invariant I-VIDEO-NO-RESURRECT (declared in supabase/functions/event-cover-video-status/__tests__/issue_3040_active_only.test.ts): opening a sheet never re-emits a finished, failed or cancelled job not started by this device
 export const ACTIVE_STATUS_SET = [
   "source_uploading",
   "source_uploaded",

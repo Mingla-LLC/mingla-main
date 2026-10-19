@@ -1,7 +1,7 @@
 // Issue #3040 (T-B10, T-B12, B-10, B-12) — encode bounds come from the final
 // byte, a vanished provider asset fails at once, and the reaper's reads are
 // ordered so old applied history can never starve live work.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every non-terminal job has a finite bound measured from its own clock
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): every non-terminal job has a finite bound measured from its own clock
 //
 // FAILS ON REVERT: restore the 12 h created_at-only stall (or gate a 404 on
 // age) and the first two tests fail; restore the unordered `.limit(1000)`

@@ -84,7 +84,7 @@ ALTER TABLE public.ad_creatives VALIDATE CONSTRAINT ad_creatives_source_check;
 -- a brand keeps that brand in its immutable snapshot, so it can never become
 -- house media later, whatever happens to brand_id. Every house-reuse check
 -- (edge and SQL) also requires source_brand_id IS NULL.
--- MINGLA-INVARIANT: I-CREATIVE-HOUSE-PROVENANCE-RECORDED | issue #3040 | source='admin_upload' is only ever recorded with no brand snapshot; house reuse requires both
+-- Invariant I-CREATIVE-HOUSE-PROVENANCE-RECORDED (declared in supabase/migrations/__tests__/issue_3040_rework1.implementor.pg17.test.sql): source='admin_upload' is only ever recorded with no brand snapshot; house reuse requires both
 ALTER TABLE public.ad_creatives DROP CONSTRAINT IF EXISTS ad_creatives_admin_upload_is_house;
 ALTER TABLE public.ad_creatives
   ADD CONSTRAINT ad_creatives_admin_upload_is_house
@@ -94,8 +94,8 @@ ALTER TABLE public.ad_creatives VALIDATE CONSTRAINT ad_creatives_admin_upload_is
 CREATE UNIQUE INDEX IF NOT EXISTS ad_creatives_source_job_id_key
   ON public.ad_creatives(source_job_id) WHERE source_job_id IS NOT NULL;
 
--- MINGLA-INVARIANT: I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE | issue #3697 | house reuse keys on source='admin_upload', never on brand_id IS NULL
--- MINGLA-INVARIANT: I-AD-MEDIA-NEVER-BLOCKS-DELETION | issue #3040 | deleting a brand or account never fails because of ad media; provenance snapshots survive it
+-- Invariant I-CREATIVE-HOUSE-REUSE-BY-PROVENANCE (declared in supabase/functions/_shared/__tests__/adCreativeHouseProvenance.issue3040.test.ts): house reuse keys on source='admin_upload', never on brand_id IS NULL
+-- Invariant I-AD-MEDIA-NEVER-BLOCKS-DELETION (declared in supabase/migrations/__tests__/issue_3040_ad_media_never_blocks_deletion.implementor.pg17.test.sql): deleting a brand or account never fails because of ad media; provenance snapshots survive it
 CREATE OR REPLACE FUNCTION public.ad_creatives_provenance_immutable() RETURNS trigger
 LANGUAGE plpgsql SET search_path=public,pg_temp AS $f$
 BEGIN
@@ -156,7 +156,7 @@ ALTER TABLE public.event_cover_video_jobs
   VALIDATE CONSTRAINT event_cover_video_jobs_exact_target;
 
 -- ── Step 3: byte and duration caps. ──────────────────────────────────────────
--- MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | DB caps equal packages/video-upload/limits.js
+-- Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): DB caps equal packages/video-upload/limits.js
 ALTER TABLE public.event_cover_video_jobs
   DROP CONSTRAINT IF EXISTS event_cover_video_jobs_processed_max_bytes,
   DROP CONSTRAINT IF EXISTS event_cover_video_jobs_source_max_bytes,
@@ -192,7 +192,7 @@ COMMENT ON COLUMN public.event_cover_video_jobs.transport_lease_extended_at IS
   'Issue #3040 last time a replayed upload signature extended tus_expires_at.';
 
 -- ── Step 5: identity validation is an INSERT-time contract. ──────────────────
--- MINGLA-INVARIANT: I-VIDEO-SOFTDELETE-NO-WEDGE | issue #3040 | parent soft-delete never blocks job UPDATEs
+-- Invariant I-VIDEO-SOFTDELETE-NO-WEDGE (declared in supabase/migrations/__tests__/issue_3040_softdelete_no_wedge.implementor.pg17.test.sql): parent soft-delete never blocks job UPDATEs
 CREATE OR REPLACE FUNCTION public.cover_video_require_new_identity() RETURNS trigger
 LANGUAGE plpgsql SET search_path=public,pg_temp AS $f$
 DECLARE v_brand_id uuid;
@@ -293,7 +293,7 @@ EXCEPTION WHEN unique_violation THEN
 END $f$;
 
 -- ── Step 7: transition matrix gains exactly one owned edge: ready -> failed. ─
--- MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040
+-- Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts)
 CREATE OR REPLACE FUNCTION public.cover_video_transition_job(p_job_id uuid,p_from_statuses text[],p_to_status text,p_provider_status integer DEFAULT NULL,p_provider_progress integer DEFAULT NULL,p_patch jsonb DEFAULT '{}'::jsonb)
 RETURNS public.event_cover_video_jobs LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $f$
 DECLARE v public.event_cover_video_jobs;
@@ -382,7 +382,7 @@ BEGIN
 END $f$;
 
 -- ── Step 11: live references to a provider asset. ────────────────────────────
--- MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040
+-- Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts)
 -- p_exclude_job_id names the job whose own asset the caller is about to
 -- reclaim, so that job is not counted as a reference to itself.
 CREATE OR REPLACE FUNCTION public.cover_video_guid_live_references(p_guid text,p_exclude_job_id uuid DEFAULT NULL)
@@ -415,7 +415,7 @@ BEGIN
  -- A venue-draft video that reached ready was handed to the host's device and
  -- lives in a local draft no table can see. It is client-owned and kept, so
  -- its own job counts too (p_exclude_job_id does not apply to this arm).
- -- MINGLA-INVARIANT: I-VENUE-DRAFT-VIDEO-RETAINED | issue #3040
+ -- Invariant I-VENUE-DRAFT-VIDEO-RETAINED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_venue_draft_retained.test.ts)
  IF EXISTS (SELECT 1 FROM public.event_cover_video_jobs j
       WHERE j.source_asset_id=p_guid AND j.target_kind='venue_draft'
         AND j.processed_url IS NOT NULL) THEN
@@ -436,7 +436,7 @@ END $f$;
 -- cancelled while no creative row exists for it; once cancelled, no creative
 -- can ever be created for it. The job row lock serializes the two: cancel
 -- takes FOR UPDATE, a creative insert takes FOR SHARE.
--- MINGLA-INVARIANT: I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES | issue #3040 | a cancelled ad video job never becomes an ad_creatives row
+-- Invariant I-AD-VIDEO-CANCELLED-NEVER-MATERIALIZES (declared in supabase/migrations/__tests__/issue_3040_rework1.implementor.pg17.test.sql): a cancelled ad video job never becomes an ad_creatives row
 CREATE OR REPLACE FUNCTION public.cover_video_cancel_once(p_job_id uuid) RETURNS public.event_cover_video_jobs
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $f$ DECLARE v public.event_cover_video_jobs;
 BEGIN

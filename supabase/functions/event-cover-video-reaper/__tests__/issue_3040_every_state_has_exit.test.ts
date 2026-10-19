@@ -1,7 +1,7 @@
 // Issue #3040 (T-B-SM) — every non-terminal state, and `ready`, has a server
 // exit once its bound has passed. `created` and `processing_queued` have no
 // writer (B-15) and are excluded; terminal states have nothing to leave.
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every non-terminal and ready job has a server owner with a finite bound
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): every non-terminal and ready job has a server owner with a finite bound
 //
 // FAILS ON REVERT: remove any single owner (allocation abandon, transfer
 // expiry, encode stall, ready TTL) and its row below is still in its start

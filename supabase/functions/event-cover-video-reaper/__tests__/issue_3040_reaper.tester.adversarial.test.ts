@@ -8,9 +8,9 @@
 // failures), a legacy event job with no baseline column at all, an unknown
 // reference answer on a month-old job, and a backlog of 1,200 applied rows.
 //
-// MINGLA-INVARIANT: I-VIDEO-READY-HAS-OWNER | issue #3040 | every non-terminal and ready job ends within its bound, and never on an unknown answer
-// MINGLA-INVARIANT: I-VIDEO-NO-DESTROY-WHILE-REFERENCED | issue #3040 | a deleted parent or an expired job never destroys an asset a live surface still serves
-// MINGLA-INVARIANT: I-VIDEO-SOFTDELETE-NO-WEDGE | issue #3040 | a deleted brand ends its ad video job; it is never turned into a library creative
+// Invariant I-VIDEO-READY-HAS-OWNER (declared in supabase/functions/_shared/__tests__/coverVideoReadyOwner.issue3040.test.ts): every non-terminal and ready job ends within its bound, and never on an unknown answer
+// Invariant I-VIDEO-NO-DESTROY-WHILE-REFERENCED (declared in supabase/functions/event-cover-video-reaper/__tests__/issue_3040_orphan_reclaim.test.ts): a deleted parent or an expired job never destroys an asset a live surface still serves
+// Invariant I-VIDEO-SOFTDELETE-NO-WEDGE (declared in supabase/migrations/__tests__/issue_3040_softdelete_no_wedge.implementor.pg17.test.sql): a deleted brand ends its ad video job; it is never turned into a library creative
 //
 // FAILS ON REVERT (each test names the clause it guards):
 //   A1  parentDeleted() branch removed       -> the ad job stays ready / is materialized

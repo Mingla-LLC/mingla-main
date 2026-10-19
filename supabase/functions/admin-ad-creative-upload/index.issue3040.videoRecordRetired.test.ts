@@ -1,5 +1,5 @@
 // Issue #3040 (T-C4 edge half, E-13) — video creatives come only from the lane.
-// MINGLA-INVARIANT: I-CREATIVE-FROM-JOB-ONLY | issue #3697 | video creatives are created only from a READY lane job
+// Invariant I-CREATIVE-FROM-JOB-ONLY (declared in supabase/functions/_shared/__tests__/adCreativeMaterialize.issue3040.test.ts): video creatives are created only from a READY lane job
 //
 // FAILS ON REVERT: restore the video `record` branch (or let `validate` use the
 // request's bunny_video_id / mp4_master_url / poster_url) and the assertions

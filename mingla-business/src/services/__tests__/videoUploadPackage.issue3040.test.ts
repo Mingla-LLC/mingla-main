@@ -3,8 +3,8 @@
  * package through THIS app's required jest gate, so the package's truth rules
  * are enforced in CI even though its node:test suites live beside it.
  *
- * MINGLA-INVARIANT: I-VIDEO-ONE-UPLOADER | issue #3040 | exactly one web TUS implementation exists (packages/video-upload); Host web imports it
- * MINGLA-INVARIANT: I-VIDEO-LIMITS-PARITY | issue #3040 | duration, size and rendition limits are identical across client package, edge defaults and DB CHECKs
+ * Invariant I-VIDEO-ONE-UPLOADER (declared in packages/video-upload/__tests__/videoUpload.test.mjs): exactly one web TUS implementation exists (packages/video-upload); Host web imports it
+ * Invariant I-VIDEO-LIMITS-PARITY (declared in packages/video-upload/__tests__/purity_and_parity.test.mjs): duration, size and rendition limits are identical across client package, edge defaults and DB CHECKs
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

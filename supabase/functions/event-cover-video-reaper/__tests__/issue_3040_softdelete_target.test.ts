@@ -1,6 +1,6 @@
 // Issue #3040 (E-8f, B-4) — a job whose event or brand was soft-deleted ends,
 // named, and its asset is reclaimed only through the reference guard.
-// MINGLA-INVARIANT: I-VIDEO-SOFTDELETE-NO-WEDGE | issue #3040 | a parent soft-delete never blocks a job, it ends it
+// Invariant I-VIDEO-SOFTDELETE-NO-WEDGE (declared in supabase/migrations/__tests__/issue_3040_softdelete_no_wedge.implementor.pg17.test.sql): a parent soft-delete never blocks a job, it ends it
 //
 // FAILS ON REVERT: remove the target_deleted step and the encoding job on the
 // deleted event stays `processing` until its stall bound.
