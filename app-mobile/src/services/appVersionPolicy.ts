@@ -311,9 +311,10 @@ export class VersionGateCoordinator {
         return this.publish({ phase: "allowed", decision });
       } catch (error) {
         markCacheHydrated();
-        this.dependencies.report(
-          error instanceof Error ? error.message : "policy_check_failed",
-        );
+        const failure =
+          error instanceof Error ? error.message : "policy_check_failed";
+        // Console-only: the raw message carries no captured prefix.
+        this.dependencies.report(failure);
         if (timedOut || generation < this.answeredGeneration) {
           return this.snapshot;
         }
@@ -323,6 +324,12 @@ export class VersionGateCoordinator {
           });
           return this.publish({ phase: "required", decision: cachedRequired });
         }
+        // F1 (#2107 device test): "let in because we could not ask" is a
+        // fail-open like any other, so it reaches PostHog as a captured outcome.
+        this.dependencies.report("version_gate_unreachable", {
+          error: failure,
+          had_cached_policy: hadValidCache,
+        });
         return this.publish({ phase: "allowed", decision: { state: "unknown" } });
       }
     })();

@@ -127,6 +127,21 @@ export type OtaGateDependencies = {
   loadAttemptRecord: () => Promise<string | null>;
   saveAttemptRecord: (value: string) => Promise<void>;
   clearAttemptRecord: () => Promise<void>;
+  /**
+   * F2 (#2107 device test): a one-shot "this gate just restarted the app"
+   * marker, stored apart from the attempt record (which stays the loop cap,
+   * unchanged). Set right before reload, consumed on the next launch's first
+   * read. Only a launch that consumes a marker for the recorded target reports
+   * `critical_update_attempt_failed {stage:"relaunch"}`; later cold starts stay
+   * quiet. A record with no marker (written before this existed, or a marker
+   * that could not be read) is never reported: fail open.
+   * Omitted (unit harnesses only): every mismatched launch reports, as before.
+   */
+  relaunchMarker?: {
+    load: () => Promise<string | null>;
+    save: (targetUpdateId: string) => Promise<void>;
+    clear: () => Promise<void>;
+  };
   report: (event: string, detail?: OtaReportDetail) => void;
   policyTimeoutMs?: number;
   checkTimeoutMs?: number;
@@ -358,6 +373,7 @@ export class OtaGateCoordinator {
   private async verifyLaunch(
     record: CriticalAttemptRecord | null,
   ): Promise<CriticalAttemptRecord | null> {
+    const pendingTarget = await this.consumeRelaunchMarker();
     if (record === null) return null;
     const { updates, report } = this.dependencies;
     if (updates.runningUpdateId !== null && updates.runningUpdateId === record.targetUpdateId) {
@@ -372,6 +388,14 @@ export class OtaGateCoordinator {
       if (!cleared.ok) report("critical_update_record_clear_failed");
       return null;
     }
+    // Only the launch right after a restart this gate triggered reports the
+    // restart as failed. The record itself is kept: it is the per-target cap.
+    if (
+      this.dependencies.relaunchMarker !== undefined &&
+      pendingTarget !== record.targetUpdateId
+    ) {
+      return record;
+    }
     report(
       "critical_update_attempt_failed",
       this.detail({
@@ -381,6 +405,36 @@ export class OtaGateCoordinator {
       }),
     );
     return record;
+  }
+
+  /** Reads and clears the one-shot relaunch marker. Unreadable means "none". */
+  private async consumeRelaunchMarker(): Promise<string | null> {
+    const marker = this.dependencies.relaunchMarker;
+    if (marker === undefined) return null;
+    const timeoutMs = this.dependencies.recordTimeoutMs ?? RECORD_IO_TIMEOUT_MS;
+    const loaded = await withTimeout(marker.load(), timeoutMs);
+    const cleared = await withTimeout(marker.clear(), timeoutMs);
+    if (!loaded.ok || !cleared.ok) {
+      // Console-only diagnostic (no captured prefix): telemetry, not the cap.
+      this.dependencies.report("relaunch_marker_io_failed", {
+        stage: loaded.ok ? "clear" : "load",
+      });
+    }
+    return loaded.ok ? loaded.value : null;
+  }
+
+  private async writeRelaunchMarker(targetUpdateId: string | null): Promise<void> {
+    const marker = this.dependencies.relaunchMarker;
+    if (marker === undefined) return;
+    const written = await withTimeout(
+      targetUpdateId === null ? marker.clear() : marker.save(targetUpdateId),
+      this.dependencies.recordTimeoutMs ?? RECORD_IO_TIMEOUT_MS,
+    );
+    if (!written.ok) {
+      this.dependencies.report("relaunch_marker_io_failed", {
+        stage: targetUpdateId === null ? "clear" : "save",
+      });
+    }
   }
 
   private async resolve(): Promise<OtaGateSnapshot> {
@@ -534,12 +588,16 @@ export class OtaGateCoordinator {
       return this.publish(OPEN);
     }
 
+    // Marks the NEXT launch as "right after a restart this gate triggered".
+    await this.writeRelaunchMarker(targetUpdateId);
     report(
       "critical_update_reloading",
       this.detail({ target_update_id: targetUpdateId, attempt: attempts }),
     );
     const reloaded = await withTimeout(updates.reload(), this.dependencies.reloadGraceMs ?? RELOAD_GRACE_MS);
     if (!reloaded.ok && reloaded.reason === "error") {
+      // No restart happened, and this failure is reported right here.
+      await this.writeRelaunchMarker(null);
       report(
         "critical_update_attempt_failed",
         this.detail({ stage: "reload", target_update_id: targetUpdateId, attempt: attempts }),
@@ -554,6 +612,8 @@ export class OtaGateCoordinator {
         setTimeout(resolve, this.dependencies.reloadGraceMs ?? RELOAD_GRACE_MS),
       );
     }
+    // Still alive: no restart, and this failure is reported right here.
+    await this.writeRelaunchMarker(null);
     report(
       "critical_update_attempt_failed",
       this.detail({ stage: "reload_did_not_restart", target_update_id: targetUpdateId, attempt: attempts }),

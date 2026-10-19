@@ -139,6 +139,12 @@ export function createOtaGateCoordinator(): OtaGateCoordinator {
     loadAttemptRecord: () => AsyncStorage.getItem(recordKey),
     saveAttemptRecord: (value) => AsyncStorage.setItem(recordKey, value),
     clearAttemptRecord: () => AsyncStorage.removeItem(recordKey),
+    relaunchMarker: {
+      load: () => AsyncStorage.getItem(`${recordKey}.relaunchPending`),
+      save: (targetUpdateId) =>
+        AsyncStorage.setItem(`${recordKey}.relaunchPending`, targetUpdateId),
+      clear: () => AsyncStorage.removeItem(`${recordKey}.relaunchPending`),
+    },
     report: (event, detail) => {
       reportUpdateGateEvent("ota-update-gate", event, {
         app_id: OTA_POLICY_APP_ID,
