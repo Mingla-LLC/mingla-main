@@ -9,6 +9,12 @@
 //   I-2107-OBSERVE-NEVER-BLOCKS         only enforcementMode `enforce` produces `required`
 //   I-2107-CRITICAL-ATTEMPTS-PERSISTED  the restart cap survives restarts; a restart is verified by update id
 //   I-2107-KILL-SWITCH-DEFAULT-ON       no policy row (or no answer) enforces; only a real `silent` row switches off
+//
+// MINGLA-INVARIANT: I-2107-LATE-POLICY-ANSWER-APPLIED | issue #2107 | A store-floor policy answer is persisted and applied whenever it lands, even after the first render.
+// MINGLA-INVARIANT: I-2107-GATE-NEVER-UNMOUNTS-APP | issue #2107 | Once the app tree has mounted, the update gate never replaces it with the veil.
+// MINGLA-INVARIANT: I-2107-OBSERVE-NEVER-BLOCKS | issue #2107 | Only enforcementMode enforce produces a required update; observe never blocks the user.
+// MINGLA-INVARIANT: I-2107-CRITICAL-ATTEMPTS-PERSISTED | issue #2107 | The critical-update restart cap survives app restarts, and a restart is verified by update id.
+// MINGLA-INVARIANT: I-2107-KILL-SWITCH-DEFAULT-ON | issue #2107 | No policy row or no policy answer enforces critical updates; only a real silent row switches enforcement off.
 
 jest.mock("../supabase", () => ({
   supabaseUrl: "https://example.supabase.co",

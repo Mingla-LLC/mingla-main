@@ -4,6 +4,8 @@
 // critical_update_* outcomes are captured through postHogService (never a
 // direct posthog-react-native import), buffered until the client is ready,
 // and telemetry can never throw into the gate.
+//
+// MINGLA-INVARIANT: I-2107-UPDATE-GATE-TELEMETRY | issue #2107 | Update-gate outcomes are captured through postHogService, buffered until ready, and telemetry never throws into the gate.
 
 const mockService = {
   ready: false,

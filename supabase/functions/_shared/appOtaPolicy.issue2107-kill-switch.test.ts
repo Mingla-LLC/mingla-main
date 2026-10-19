@@ -7,6 +7,8 @@
 //   timestamp. Redesigned clients read that marker as "no row => enforce
 //   critical updates"; a real `silent` row is the only off switch.
 //
+// MINGLA-INVARIANT: I-2107-OTA-ABSENT-ROW-MARKER | issue #2107 | An absent app_ota_policies row is served as silent with the exact absent-row timestamp, and no real row may carry it.
+//
 // FAILS ON REVERT: changing the absent-row timestamp, or letting a real row
 // echo it, breaks the assertions below.
 

@@ -4,6 +4,9 @@
 // Invariants declared here (machine-readable; enforced by this suite):
 //   I-2107-UNREACHABLE-FAIL-OPEN-CAPTURED  a store-floor check that throws and lets the person in reports a captured `version_gate_unreachable`
 //   I-2107-RELAUNCH-FAILURE-ONCE           `critical_update_attempt_failed {stage:"relaunch"}` fires only on the launch right after a restart this gate triggered
+//
+// MINGLA-INVARIANT: I-2107-UNREACHABLE-FAIL-OPEN-CAPTURED | issue #2107 | A store-floor check that throws and lets the person in reports a captured version_gate_unreachable event.
+// MINGLA-INVARIANT: I-2107-RELAUNCH-FAILURE-ONCE | issue #2107 | A relaunch-stage critical_update_attempt_failed event fires only on the launch right after a restart this gate triggered.
 
 jest.mock("../supabase", () => ({
   supabaseUrl: "https://example.supabase.co",

@@ -304,7 +304,7 @@ export class VersionGateCoordinator {
           return this.publish({ phase: "allowed", decision });
         }
         if (decision.state === "allowed") {
-          this.dependencies.report("version_gate_allowed", { late });
+          this.dependencies.report("allowed", { late });
           return this.publish({ phase: "allowed", decision });
         }
         this.dependencies.report("installed_version_unavailable");
@@ -413,6 +413,15 @@ async function fetchPolicy(): Promise<AppVersionPolicy> {
   }
 }
 
+/**
+ * The coordinator keeps its "allowed" outcome name (the #2443 identity suite
+ * pins it); analytics captures that outcome as `version_gate_allowed` so it
+ * carries the captured prefix. Every other outcome passes through unchanged.
+ */
+export function capturedVersionGateOutcome(outcome: string): string {
+  return outcome === "allowed" ? "version_gate_allowed" : outcome;
+}
+
 export function createAppVersionCoordinator(): VersionGateCoordinator {
   const platform = getNativeAppPlatform();
   const installedVersion = getInstalledNativeVersion();
@@ -427,11 +436,15 @@ export function createAppVersionCoordinator(): VersionGateCoordinator {
     saveCache: (value) => AsyncStorage.setItem(cacheKey, value),
     fetchPolicy,
     report: (outcome, detail) =>
-      reportUpdateGateEvent("app-version-policy", outcome, {
-        app_id: APP_VERSION_APP_ID,
-        platform,
-        installed_version: installedVersion,
-        ...(detail ?? {}),
-      }),
+      reportUpdateGateEvent(
+        "app-version-policy",
+        capturedVersionGateOutcome(outcome),
+        {
+          app_id: APP_VERSION_APP_ID,
+          platform,
+          installed_version: installedVersion,
+          ...(detail ?? {}),
+        },
+      ),
   });
 }

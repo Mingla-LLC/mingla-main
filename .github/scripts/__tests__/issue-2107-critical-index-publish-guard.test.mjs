@@ -6,6 +6,8 @@
 // and both publish-production-ota.sh wrappers abort BEFORE the publish step when
 // the resolved value is not a non-negative integer.
 //
+// MINGLA-INVARIANT: I-2107-OTA-CARRIES-CRITICAL-INDEX | issue #2107 | Both apps emit extra.criticalIndex and both production OTA wrappers abort before publishing without a non-negative integer.
+//
 // Driven through the wrappers' MINGLA_EAS_BIN seam pointed at a stub that never
 // publishes, against a throwaway COPY of each app directory, so the real
 // update-critical-index.json files are never touched.
