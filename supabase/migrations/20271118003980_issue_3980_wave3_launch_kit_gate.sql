@@ -16,7 +16,9 @@
 --     with 21 days or more left; otherwise it waits for go-live, or is held
 --     as organic only. The owner or an admin can override it, with a reason
 --     that is written to the agent log; an override is never undone by the
---     housekeeping run, and a card blocked by hand is left alone.
+--     housekeeping run, and a card blocked by hand is left alone. When the
+--     run frees a held card, its owners and watchers are told and the agent
+--     log says so.
 --   * A go-live gate card closes itself once its event is public on Mingla,
 --     with the public time as its proof; its owners and watchers are told.
 --   * The Team dashboard's overview for the owner and admins: runway counts
@@ -24,8 +26,11 @@
 --     cards have no owner.
 --   * For the owner only: a preview of every open host and creator with a
 --     free-text next step, and a convert that turns the chosen ones into
---     cards once each. It reads the records and never changes them. This
---     migration does not run it.
+--     cards once each. Each card is titled "<next step> · <record name>",
+--     so the same next step on different records gives different cards;
+--     two records with the same name and next step give one card, and the
+--     preview lists every record that is skipped, with the reason. It reads
+--     the records and never changes them. This migration does not run it.
 --   * The connector's plan_work tool now answers.
 --   * A launch kit card sent back with the date the kit counted for it is
 --     counted from the event (it keeps following the event's date).
@@ -94,12 +99,18 @@ $$;
 
 -- Open hosts and creators with a free-text next step, each with the card it
 -- would become and what stops it, if anything. Reads the records only.
+-- A card's title is "<next step> · <record name>" (at most 160 characters;
+-- when it is longer, the next step is cut short with an ellipsis), so the
+-- same next step on two different records gives two different cards. Two
+-- records with the same name and the same next step give one card: the
+-- later one is listed as duplicate_record, naming the one it repeats.
 CREATE FUNCTION public.ops_next_action_rows(p_ids uuid[], p_limit integer, p_today date) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
-  r record; v_rows jsonb := '[]'::jsonb; v_seen text[] := ARRAY[]::text[]; v_title text; v_key text; v_owners text[];
-  v_issue text; v_singular text; v_due date; v_name text; v_step text;
+  r record; v_rows jsonb := '[]'::jsonb; v_seen jsonb := '{}'::jsonb; v_title text; v_key text; v_owners text[];
+  v_issue text; v_singular text; v_due date; v_name text; v_step text; v_room integer; v_part text;
+  v_dup jsonb; v_open record; v_reason text;
 BEGIN
   FOR r IN SELECT c.id, c.pipeline, c.name, c.stage, c.next_action, c.due_on FROM public.crm_records c
             WHERE c.deleted_at IS NULL AND c.pipeline IN ('hosts', 'creators') AND c.stage NOT IN ('lost', 'passed')
@@ -107,20 +118,50 @@ BEGIN
             ORDER BY c.due_on NULLS LAST, c.name, c.id
             LIMIT p_limit LOOP
     v_step := public.ops_one_line(r.next_action);
-    v_title := left(v_step, 160);
-    v_key := CASE WHEN v_title IS NULL THEN '' ELSE public.crm_name_key(v_title) END;
     v_singular := CASE r.pipeline WHEN 'hosts' THEN 'host' ELSE 'creator' END;
     v_name := COALESCE(public.ops_one_line(r.name), 'this ' || v_singular);
+    -- The title: "<next step> · <name>", cut to the 160-character card title
+    -- rule. A very long name keeps its first 80 characters; the next step
+    -- takes the room left and ends with an ellipsis when it is cut.
+    v_part := CASE WHEN char_length(v_name) > 80 THEN rtrim(left(v_name, 79)) || '…' ELSE v_name END;
+    IF v_step IS NULL THEN
+      v_title := NULL;
+    ELSIF char_length(v_step) + 3 + char_length(v_part) <= 160 THEN
+      v_title := v_step || ' · ' || v_part;
+    ELSE
+      v_room := 160 - 3 - char_length(v_part);
+      v_title := rtrim(left(v_step, v_room - 1)) || '…' || ' · ' || v_part;
+    END IF;
+    v_key := CASE WHEN v_title IS NULL THEN '' ELSE public.crm_name_key(v_title) END;
     v_owners := public.ops_record_team_owners(r.id);
     v_due := CASE WHEN r.due_on IS NOT NULL AND r.due_on >= p_today THEN r.due_on ELSE p_today + 2 END;
+    v_dup := NULL; v_reason := NULL;
+    SELECT w.id, w.number, w.title INTO v_open FROM public.ops_work_cards w
+     WHERE v_key <> '' AND w.title_key = v_key AND w.status <> 'done' AND w.archived_at IS NULL
+     ORDER BY w.number LIMIT 1;
     v_issue := CASE
       WHEN EXISTS (SELECT 1 FROM public.ops_next_action_conversions x WHERE x.record_id = r.id) THEN 'already_converted'
-      WHEN v_title IS NULL OR char_length(v_title) < 3 OR v_key = '' OR public.ops_has_control(v_title) THEN 'too_short'
-      WHEN v_key = ANY (v_seen)
-        OR EXISTS (SELECT 1 FROM public.ops_work_cards w WHERE w.title_key = v_key AND w.status <> 'done' AND w.archived_at IS NULL)
-        THEN 'duplicate_title'
+      WHEN v_step IS NULL OR char_length(v_step) < 3 OR public.crm_name_key(v_step) = '' OR public.ops_has_control(v_step)
+        OR public.ops_has_control(v_title) THEN 'too_short'
+      WHEN v_seen ? v_key THEN 'duplicate_record'
+      WHEN v_open.id IS NOT NULL THEN 'duplicate_title'
       WHEN cardinality(v_owners) = 0 THEN 'no_owner' END;
-    IF v_issue IS NULL OR v_issue = 'no_owner' THEN v_seen := v_seen || v_key; END IF;
+    IF v_issue = 'duplicate_record' THEN
+      v_dup := v_seen->v_key;
+      v_reason := format('Same name and next step as %s, which becomes the one card for both.', v_dup->>'name');
+    ELSIF v_issue = 'duplicate_title' THEN
+      v_dup := jsonb_build_object('card_id', v_open.id, 'card_number', v_open.number, 'title', v_open.title);
+      v_reason := format('Card %s already has this title and is still open. Update that card, or change the next step on the record.', v_open.number);
+    ELSIF v_issue = 'already_converted' THEN
+      v_reason := 'This record''s next step is already a card. Each record is turned into a card once.';
+    ELSIF v_issue = 'too_short' THEN
+      v_reason := 'The next step is too short to be a card title. Write it out on the record first.';
+    ELSIF v_issue = 'no_owner' THEN
+      v_reason := 'Nobody on the team owns this record. It becomes a card only if you pick an owner for records nobody owns.';
+    END IF;
+    IF (v_issue IS NULL OR v_issue IN ('no_owner', 'already_converted')) AND v_key <> '' AND NOT v_seen ? v_key THEN
+      v_seen := v_seen || jsonb_build_object(v_key, jsonb_build_object('record_id', r.id, 'name', r.name));
+    END IF;
     v_rows := v_rows || jsonb_build_array(jsonb_build_object(
       'record_id', r.id, 'pipeline', r.pipeline, 'name', r.name, 'stage', r.stage, 'next_action', r.next_action, 'due_on', r.due_on,
       'owners', COALESCE((SELECT jsonb_agg(jsonb_build_object('email', x, 'name', public.ops_name(x)) ORDER BY x) FROM unnest(v_owners) x), '[]'::jsonb),
@@ -130,7 +171,7 @@ BEGIN
         'done_means', left(format('The next step for %s is done and logged on the record.', v_name), 300),
         'owners', to_jsonb(v_owners), 'due_on', v_due,
         'links', jsonb_build_array(jsonb_build_object('kind', v_singular, 'id', r.id))),
-      'issue', v_issue));
+      'issue', v_issue, 'reason', v_reason, 'duplicate_of', v_dup));
   END LOOP;
   RETURN v_rows;
 END;
@@ -327,7 +368,12 @@ BEGIN
   SELECT count(*) INTO v_eligible FROM public.crm_records c
    WHERE c.deleted_at IS NULL AND c.pipeline IN ('hosts', 'creators') AND c.stage NOT IN ('lost', 'passed')
      AND btrim(COALESCE(c.next_action, '')) <> '';
+  -- Every record that will not simply become a card, with the reason.
   RETURN jsonb_build_object('today', v_today, 'rows', v_rows,
+    'skipped', COALESCE((SELECT jsonb_agg(jsonb_build_object('record_id', r->'record_id', 'pipeline', r->'pipeline', 'name', r->'name',
+                          'next_action', r->'next_action', 'title', r->'proposed'->'title', 'issue', r->'issue', 'reason', r->'reason',
+                          'duplicate_of', r->'duplicate_of') ORDER BY o)
+                          FROM jsonb_array_elements(v_rows) WITH ORDINALITY AS t(r, o) WHERE r->>'issue' IS NOT NULL), '[]'::jsonb),
     'totals', jsonb_build_object(
       'rows', jsonb_array_length(v_rows),
       'eligible', v_eligible,
@@ -336,6 +382,8 @@ BEGIN
       'no_owner', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'issue' = 'no_owner'),
       'already_converted', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'issue' = 'already_converted'),
       'duplicate_title', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'issue' = 'duplicate_title'),
+      'duplicate_record', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'issue' = 'duplicate_record'),
+      'skipped', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'issue' IS NOT NULL),
       'too_short', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'issue' = 'too_short')));
 END;
 $$;
@@ -375,14 +423,28 @@ BEGIN
 
   v_rows := public.ops_next_action_rows(v_ids, 600, v_today);
   FOREACH v_id IN ARRAY v_ids LOOP
-    SELECT e INTO r FROM jsonb_array_elements(v_rows) e WHERE e->>'record_id' = v_id::text;
-    IF r IS NULL THEN
-      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
-        jsonb_build_object('field', 'record', 'message', 'This record has no next step to turn into a card, or it is closed or removed.'))));
-      v_refused := v_refused + 1;
+    CONTINUE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) e WHERE e->>'record_id' = v_id::text);
+    v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
+      jsonb_build_object('field', 'record', 'message', 'This record has no next step to turn into a card, or it is closed or removed.'))));
+    v_refused := v_refused + 1;
+  END LOOP;
+  -- In the preview's order, so the record a repeat points at is done first.
+  FOR r IN SELECT e FROM jsonb_array_elements(v_rows) e LOOP
+    v_id := (r->>'record_id')::uuid;
+    IF r->>'issue' = 'duplicate_record' THEN
+      -- Same name and next step as a record above: one card for both. When
+      -- that record's card exists, this record is recorded against it too,
+      -- so it is never turned into a second card.
+      v_card := (SELECT x.card_id FROM public.ops_next_action_conversions x WHERE x.record_id = (r->'duplicate_of'->>'record_id')::uuid);
+      IF v_card IS NOT NULL THEN
+        INSERT INTO public.ops_next_action_conversions (record_id, card_id, next_action_text, converted_by)
+        VALUES (v_id, v_card, r->>'next_action', v.actor_email);
+      END IF;
+      v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'skipped', 'reason', 'duplicate_record',
+        'message', r->>'reason', 'duplicate_of', r->'duplicate_of', 'card_id', v_card));
+      v_skipped := v_skipped + 1;
       CONTINUE;
-    END IF;
-    IF r->>'issue' = 'already_converted' THEN
+    ELSIF r->>'issue' = 'already_converted' THEN
       v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'skipped', 'reason', 'already_converted'));
       v_skipped := v_skipped + 1;
       CONTINUE;
@@ -393,7 +455,8 @@ BEGIN
       CONTINUE;
     ELSIF r->>'issue' = 'duplicate_title' THEN
       v_results := v_results || jsonb_build_array(jsonb_build_object('record_id', v_id, 'status', 'refused', 'fixes', jsonb_build_array(
-        jsonb_build_object('field', 'title', 'message', format('An open card already has the title "%s". Change the next step on the record, or update that card.', r->'proposed'->>'title')))));
+        jsonb_build_object('field', 'title', 'message', format('Card %s already has the title "%s" and is still open. Change the next step on the record, or update that card.',
+          r->'duplicate_of'->>'card_number', r->'proposed'->>'title')))));
       v_refused := v_refused + 1;
       CONTINUE;
     ELSIF r->>'issue' = 'no_owner' AND v_fb IS NULL THEN
@@ -424,7 +487,7 @@ BEGIN
     END IF;
   END LOOP;
   PERFORM public.ops_log_write(v.actor_email, NULL, 'converted', 'info', NULL, NULL, NULL,
-    format('Turned %s next steps into cards (%s already done before, %s not turned).', v_added, v_skipped, v_refused),
+    format('Turned %s next steps into cards (%s skipped as already a card, %s not turned).', v_added, v_skipped, v_refused),
     jsonb_build_object('added', v_added, 'skipped', v_skipped, 'refused', v_refused));
   v_out := jsonb_build_object('results', v_results, 'added', v_added, 'skipped', v_skipped, 'refused', v_refused, 'replayed', false);
   PERFORM public.ops_request_finish(v.actor_email, p_request_key || '-convert', 'convert', v_out);
@@ -683,7 +746,8 @@ BEGIN
               AND w.anchor_id IS NOT NULL AND (w.blocked_kind IS NULL OR w.blocked_kind <> 'manual')
             ORDER BY w.number LOOP
     BEGIN
-      v_gate := public.ops_promo_gate(public.ops_anchor(c.anchor_kind, c.anchor_id, v_today), v_today);
+      a := public.ops_anchor(c.anchor_kind, c.anchor_id, v_today);
+      v_gate := public.ops_promo_gate(a, v_today);
       CONTINUE WHEN ROW((v_gate->>'blocked')::boolean, CASE WHEN (v_gate->>'blocked')::boolean THEN v_gate->>'kind' END,
                         CASE WHEN (v_gate->>'blocked')::boolean THEN v_gate->>'reason' END)
                     IS NOT DISTINCT FROM ROW(c.blocked, c.blocked_kind, c.blocked_reason);
@@ -700,10 +764,16 @@ BEGIN
         v_words := format('Go-live met: %s days ahead.', COALESCE(v_gate->>'lead_days', '21 or more'));
         v_unblocked := v_unblocked + 1;
       END IF;
-      PERFORM public.ops_card_event(c.id, 'system@usemingla.com', 'system', CASE WHEN n.blocked THEN 'blocked' ELSE 'unblocked' END,
+      v_event := public.ops_card_event(c.id, 'system@usemingla.com', 'system', CASE WHEN n.blocked THEN 'blocked' ELSE 'unblocked' END,
         v_words, v_before, public.ops_card_snapshot(c.id), c.revision, n.revision);
       PERFORM public.ops_log_write('system@usemingla.com', 'system', CASE WHEN n.blocked THEN 'blocked' ELSE 'unblocked' END, 'info',
         c.id, 'work_card', c.id, format('Card %s: %s', n.number, v_words), jsonb_build_object('blocked_kind', n.blocked_kind));
+      -- Freed: its owners and watchers are told, as when a gate card closes.
+      IF NOT n.blocked THEN
+        PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), 'system@usemingla.com',
+          format('Go-live met: %s is public on Mingla with %s days left. The giveaway and ads card can start.',
+            COALESCE(a->>'title', 'the event'), COALESCE(v_gate->>'lead_days', '21 or more')));
+      END IF;
     EXCEPTION WHEN others THEN RAISE WARNING 'ops_reconcile: giveaway card % stopped (% %)', c.id, SQLSTATE, SQLERRM;
     END;
   END LOOP;
@@ -1083,7 +1153,8 @@ BEGIN
   IF v_src ~ 'not_ready' OR v_src !~ 'ops_launch_kit_preview' THEN
     RAISE EXCEPTION 'issue 3980 wave 3 self-check: a work tool still answers not ready'; END IF;
   v_src := (SELECT p.prosrc FROM pg_catalog.pg_proc p WHERE p.oid = 'public.ops_reconcile()'::regprocedure);
-  IF v_src !~ 'gate_closed' OR v_src !~ 'ops_promo_gate' OR v_src !~ 'override_at IS NULL' THEN
+  IF v_src !~ 'gate_closed' OR v_src !~ 'ops_promo_gate' OR v_src !~ 'override_at IS NULL'
+     OR v_src !~ 'The giveaway and ads card can start' THEN
     RAISE EXCEPTION 'issue 3980 wave 3 self-check: housekeeping does not keep the giveaway and ads rule'; END IF;
   IF jsonb_array_length(public.ops_kit_template()) <> 8 THEN
     RAISE EXCEPTION 'issue 3980 wave 3 self-check: the launch kit does not have eight steps'; END IF;

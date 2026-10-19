@@ -13,6 +13,7 @@ import {
   HOSTS_WITHOUT_OWNER_PROMPT,
   addResultSummary,
   conversionIssue,
+  conversionResultWords,
   conversionSelectable,
   dueOrder,
   hostsWithoutOwnerWords,
@@ -168,4 +169,20 @@ Deno.test("#3980 W3 new ops components use tokens only, no overlay, and text tha
     assertNotMatch(src, /from "[^"]*(Modal|Drawer)"/, file);
     assertNotMatch(src, /\btruncate\b/, file);
   }
+});
+
+Deno.test("#3980 W3 the next-step preview shows each card's title and why a record is skipped", () => {
+  assertEquals(conversionIssue("duplicate_record")?.label, "Same name and next step as another record");
+  assertEquals(conversionSelectable({ issue: "duplicate_record" }, "bo@usemingla.com"), false);
+  assertEquals(
+    conversionResultWords({ added: 4, skipped: 1, refused: 0 }),
+    "Last convert: 4 added, 1 skipped because they are already a card, 0 not converted.",
+  );
+  assertEquals(conversionResultWords(null), "Last convert: 0 added, 0 skipped because they are already a card, 0 not converted.");
+  const panels = read("components/ops/TeamOpsPanels.jsx");
+  assertMatch(panels, /r\.proposed\?\.title \? `Card: \$\{r\.proposed\.title\}`/);
+  assertMatch(panels, /\{r\.reason && <span[^>]*>\{r\.reason\}<\/span>\}/);
+  assertMatch(panels, /\{preview\?\.totals\?\.skipped \|\| 0\} skipped/);
+  assertMatch(panels, /\{conversionResultWords\(result\)\}/);
+  assert(panels.includes("Each card is titled with the next step and the name"));
 });

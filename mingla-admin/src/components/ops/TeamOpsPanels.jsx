@@ -16,6 +16,7 @@ import {
   bandShort,
   bandTone,
   conversionIssue,
+  conversionResultWords,
   conversionSelectable,
   dayLabel,
   hostsWithoutOwnerWords,
@@ -171,10 +172,10 @@ function NextStepConversion({ online, team }) {
   return (
     <SectionCard title="Turn next steps into cards" subtitle="Owner only">
       <div className="flex min-w-0 flex-col gap-3">
-        <p className="text-[13px] text-[var(--color-text-secondary)]">Each host or creator is converted once. Their next step text stays on the card, and the host and creator cards are not changed.</p>
+        <p className="text-[13px] text-[var(--color-text-secondary)]">Each host or creator is converted once. Their next step text stays on the card, and the host and creator cards are not changed. Each card is titled with the next step and the name, so the same next step on two records makes two cards; a host and a creator with the same name and next step share one card.</p>
         {error && <p role="alert" className="break-words text-[13px] text-[var(--color-error-700)]">{opsErrorWords(error)}</p>}
         {result && (
-          <p role="status" className="text-[13px] text-[var(--color-text-primary)]">Last convert: {result.added} added, {result.skipped} already converted, {result.refused} not converted.</p>
+          <p role="status" className="text-[13px] text-[var(--color-text-primary)]">{conversionResultWords(result)}</p>
         )}
         {state === "idle" || state === "loading" ? (
           <Button variant="secondary" className="min-h-11 self-start" disabled={!online || state === "loading"} onClick={load}>{state === "loading" ? "Loading…" : "Preview"}</Button>
@@ -184,6 +185,7 @@ function NextStepConversion({ online, team }) {
               <OpsChip tone="success">{preview?.totals?.ready || 0} ready</OpsChip>
               <OpsChip tone="warning">{preview?.totals?.no_owner || 0} no owner</OpsChip>
               <OpsChip>{preview?.totals?.already_converted || 0} already converted</OpsChip>
+              <OpsChip>{preview?.totals?.skipped || 0} skipped</OpsChip>
               {preview?.totals?.truncated && <OpsChip tone="info">First {rows.length} of {preview.totals.eligible}</OpsChip>}
             </div>
             <label className="flex min-w-0 flex-col gap-1 sm:max-w-sm">
@@ -212,7 +214,8 @@ function NextStepConversion({ online, team }) {
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block break-words text-[13px] font-medium text-[var(--color-text-primary)]">{r.name}</span>
-                        <span className="block break-words text-[12px] text-[var(--color-text-secondary)]">{r.next_action}</span>
+                        <span className="block break-words text-[12px] text-[var(--color-text-secondary)]">{r.proposed?.title ? `Card: ${r.proposed.title}` : r.next_action}</span>
+                        {r.reason && <span className="block break-words text-[12px] text-[var(--color-text-tertiary)]">{r.reason}</span>}
                         <span className="block text-[12px] text-[var(--color-text-tertiary)]">Due {dayLabel(r.proposed?.due_on)}{Array.isArray(r.owners) && r.owners.length ? ` · ${r.owners.map((o) => o.name).join(", ")}` : ""}</span>
                       </span>
                       {issue && <OpsChip tone={issue.tone}>{issue.label}</OpsChip>}

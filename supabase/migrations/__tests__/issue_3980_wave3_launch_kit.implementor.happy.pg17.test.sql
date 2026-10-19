@@ -27,6 +27,14 @@
 --                preview writes nothing; each record is converted once; a
 --                repeat changes nothing; host and creator records are never
 --                changed; nothing was converted by the migration itself
+--   W3-TITLES    a converted card is titled "<next step> · <record name>":
+--                the same next step on two records gives two cards; two
+--                records with the same name and next step give one card; a
+--                long next step is cut with an ellipsis to the 160-character
+--                title rule; the preview lists every skipped record with
+--                its reason
+--   W3-FREED     when housekeeping frees a held giveaway and ads card, its
+--                owners and watchers are told and the agent log says so
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -412,6 +420,18 @@ begin
   perform pg_temp.t3980_check('W3-GATE', 'the agent log says go-live was met',
     (select summary from public.ops_agent_log where card_id = c.id and action = 'unblocked' order by id desc limit 1),
     format('Card %s: Go-live met: 30 days ahead.', c.number));
+  perform pg_temp.t3980_check('W3-FREED', 'freeing the giveaway and ads card is one agent log entry by housekeeping',
+    (select count(*) || '/' || min(via) || '/' || min(outcome) from public.ops_agent_log where card_id = c.id and action = 'unblocked'), '1/system/info');
+  perform pg_temp.t3980_check('W3-FREED', 'every owner and watcher of the freed card is told',
+    (select string_agg(p.who, ',' order by p.who) from public.team_mentions m join t3980_people p on p.id = m.target_user_id
+      where m.source_kind = 'work_card' and m.deep_link like '%' || c.id::text
+        and m.body_excerpt = 'Go-live met: W3980 Kit Night is public on Mingla with 30 days left. The giveaway and ads card can start.'),
+    (select string_agg(p.who, ',' order by p.who) from public.ops_work_people wp join t3980_people p on p.email = wp.email where wp.card_id = c.id));
+  perform pg_temp.t3980_check('W3-FREED', 'the watcher named when the kit was planned is among them',
+    (select count(*) from public.team_mentions m join t3980_people p on p.id = m.target_user_id
+       join public.ops_work_people wp on wp.card_id = c.id and wp.email = p.email and wp.role = 'watcher'
+      where p.who = 'admin' and m.source_kind = 'work_card' and m.deep_link like '%' || c.id::text
+        and m.body_excerpt like 'Go-live met: W3980 Kit Night is public on Mingla with 30 days left.%')::text, '1');
   c := pg_temp.t3980_kit('e_kit', -28);
   perform pg_temp.t3980_check('W3-GATE', 'the go-live gate card closed itself',
     c.status || '/' || c.close_kind || '/' || c.closed_via || '/' || c.closed_by, 'done/system/system/system@usemingla.com');
@@ -558,7 +578,7 @@ insert into public.crm_record_owners (record_id, owner_email, added_by) values
   ('39800000-0000-4000-c200-000000000007', 'ada.w3980@test.local', 'w3980-fixture');
 -- an open card already has the title record 7's next step would get
 insert into public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
-values ('W3980 Late Night recap check', 'Check the recap numbers with the host.', 'The recap is checked.', (now() AT TIME ZONE 'UTC')::date + 3,
+values ('W3980 Late Night recap check · W3980 Same Host', 'Check the recap numbers with the host.', 'The recap is checked.', (now() AT TIME ZONE 'UTC')::date + 3,
         'explicit', public.ops_sprint_ensure((now() AT TIME ZONE 'UTC')::date + 3), 'ed.w3980@test.local', 'ed.w3980@test.local');
 
 select pg_temp.t3980_keep('crm_hash', (select md5(string_agg(to_jsonb(c)::text, '|' order by c.id)) from public.crm_records c));
@@ -597,7 +617,7 @@ begin
     (pg_temp.t3980_row(v, h1)->'proposed'->>'title') || '|' || (pg_temp.t3980_row(v, h1)->'proposed'->>'instructions') || '|'
       || (pg_temp.t3980_row(v, h1)->'proposed'->>'done_means') || '|' || (pg_temp.t3980_row(v, h1)->'proposed'->>'due_on') || '|'
       || (pg_temp.t3980_row(v, h1)->'proposed'->>'owners'),
-    'Send the menu photos|Follow up with W3980 Menu Host (host): Send the menu photos. Log what happens on the card.|The next step for W3980 Menu Host is done and logged on the record.|'
+    'Send the menu photos · W3980 Menu Host|Follow up with W3980 Menu Host (host): Send the menu photos. Log what happens on the card.|The next step for W3980 Menu Host is done and logged on the record.|'
       || (v_today + 2)::text || '|["ada.w3980@test.local"]');
   perform pg_temp.t3980_check('W3-CONVERT', 'a due date ahead is kept, and a former teammate is not an owner',
     (pg_temp.t3980_row(v, h2)->'proposed'->>'due_on') || '|' || (pg_temp.t3980_row(v, h3)->'proposed'->>'owners'),
@@ -647,6 +667,74 @@ begin
     (select count(*)::text from public.ops_agent_log where action = 'converted' and actor_email = 'ed.w3980@test.local'), '2');
 end;
 $convert$;
+
+-- ---------------------------------------------------------------------------
+-- W3-TITLES: titles carry the record name; same name and next step dedupe
+-- ---------------------------------------------------------------------------
+insert into public.crm_records (id, pipeline, name, stage, next_action, created_by, updated_by) values
+  ('39800000-0000-4000-c200-000000000008', 'hosts', 'W3980 Twin A', 'contacted', 'Send the welcome pack', 'w3980-fixture', 'w3980-fixture'),
+  ('39800000-0000-4000-c200-000000000009', 'hosts', 'W3980 Twin B', 'contacted', 'Send the welcome pack', 'w3980-fixture', 'w3980-fixture'),
+  ('39800000-0000-4000-c200-000000000010', 'hosts', 'W3980 Double Host', 'contacted', 'Confirm the double booking', 'w3980-fixture', 'w3980-fixture'),
+  -- a live name is unique within a pipeline, so the same name is a host and a creator
+  ('39800000-0000-4000-c200-000000000011', 'creators', 'W3980 Double Host', 'contacted', 'Confirm the double booking', 'w3980-fixture', 'w3980-fixture'),
+  ('39800000-0000-4000-c200-000000000012', 'creators', 'W3980 Long Creator', 'contacted', repeat('Walk through the whole partnership plan ', 4), 'w3980-fixture', 'w3980-fixture');
+insert into public.crm_record_owners (record_id, owner_email, added_by)
+select x::uuid, 'ada.w3980@test.local', 'w3980-fixture' from unnest(array[
+  '39800000-0000-4000-c200-000000000008', '39800000-0000-4000-c200-000000000009', '39800000-0000-4000-c200-000000000010',
+  '39800000-0000-4000-c200-000000000011', '39800000-0000-4000-c200-000000000012']) x;
+
+do $titles$
+declare v text; v_conv text; v_long text;
+        h2 text := '39800000-0000-4000-c200-000000000002'; h5 text := '39800000-0000-4000-c200-000000000005';
+        h7 text := '39800000-0000-4000-c200-000000000007';
+        a text := '39800000-0000-4000-c200-000000000008'; b text := '39800000-0000-4000-c200-000000000009';
+        d1 text := '39800000-0000-4000-c200-000000000010'; d2 text := '39800000-0000-4000-c200-000000000011';
+        lg text := '39800000-0000-4000-c200-000000000012';
+begin
+  v := pg_temp.t3980_person('owner', 'select public.ops_next_action_preview()::text');
+  perform pg_temp.t3980_check('W3-TITLES', 'the same next step on two records gives two titles, each naming its record',
+    (pg_temp.t3980_row(v, a)->'proposed'->>'title') || '|' || (pg_temp.t3980_row(v, b)->'proposed'->>'title') || '|'
+      || coalesce(pg_temp.t3980_row(v, a)->>'issue', '-') || '|' || coalesce(pg_temp.t3980_row(v, b)->>'issue', '-'),
+    'Send the welcome pack · W3980 Twin A|Send the welcome pack · W3980 Twin B|-|-');
+  perform pg_temp.t3980_check('W3-TITLES', 'the same name and next step: the later record repeats the earlier one',
+    coalesce(pg_temp.t3980_row(v, d1)->>'issue', '-') || '|' || (pg_temp.t3980_row(v, d2)->>'issue') || '|'
+      || (pg_temp.t3980_row(v, d2)->'duplicate_of'->>'record_id') || '|' || (pg_temp.t3980_row(v, d2)->>'reason'),
+    '-|duplicate_record|' || d1 || '|Same name and next step as W3980 Double Host, which becomes the one card for both.');
+  v_long := pg_temp.t3980_row(v, lg)->'proposed'->>'title';
+  perform pg_temp.t3980_check('W3-TITLES', 'a long next step is cut with an ellipsis and the name is kept',
+    char_length(v_long)::text || '|' || (v_long like 'Walk through the whole partnership plan Walk%… · W3980 Long Creator')::text, '160|true');
+  perform pg_temp.t3980_check('W3-TITLES', 'the preview lists every skipped record with its reason, and no ready one',
+    (select string_agg((e->>'record_id') || ':' || (e->>'issue') || ':' || ((e->>'reason') <> '')::text, ',' order by e->>'record_id')
+       from jsonb_array_elements(pg_temp.t3980_j(v)->'skipped') e
+      where e->>'record_id' in (h2, h5, h7, a, b, d1, d2, lg)),
+    h2 || ':already_converted:true,' || h5 || ':too_short:true,' || h7 || ':duplicate_title:true,' || d2 || ':duplicate_record:true');
+  perform pg_temp.t3980_check('W3-TITLES', 'the skipped list matches every row that is not ready',
+    (jsonb_array_length(pg_temp.t3980_j(v)->'skipped'))::text || '/' || pg_temp.t3980_get(v, 'totals', 'skipped'),
+    (select count(*) from jsonb_array_elements(pg_temp.t3980_j(v)->'rows') e where e->>'issue' is not null)::text || '/'
+      || (select count(*) from jsonb_array_elements(pg_temp.t3980_j(v)->'rows') e where e->>'issue' is not null)::text);
+  perform pg_temp.t3980_check('W3-TITLES', 'the open card the repeated title collides with is named',
+    (pg_temp.t3980_row(v, h7)->'duplicate_of'->>'title'), 'W3980 Late Night recap check · W3980 Same Host');
+
+  v_conv := pg_temp.t3980_person('owner', format('select public.ops_next_action_convert(%L::uuid[], null, %L)::text', array[a, b, d1, d2, lg], 'w3980-conv-3'));
+  perform pg_temp.t3980_check('W3-TITLES', 'twins become two cards, the repeated record joins its twin''s card, the long one adds',
+    pg_temp.t3980_get(v_conv, 'added') || '/' || pg_temp.t3980_get(v_conv, 'skipped') || '/' || pg_temp.t3980_get(v_conv, 'refused') || '/'
+      || (pg_temp.t3980_row(v_conv, a)->>'status') || '/' || (pg_temp.t3980_row(v_conv, b)->>'status') || '/'
+      || (pg_temp.t3980_row(v_conv, d1)->>'status') || '/' || (pg_temp.t3980_row(v_conv, d2)->>'status') || ':' || (pg_temp.t3980_row(v_conv, d2)->>'reason') || '/'
+      || (pg_temp.t3980_row(v_conv, lg)->>'status'),
+    '4/1/0/added/added/added/skipped:duplicate_record/added');
+  perform pg_temp.t3980_check('W3-TITLES', 'the two records with the same name and next step share one card',
+    (select count(distinct card_id)::text || '/' || count(*)::text from public.ops_next_action_conversions where record_id in (d1::uuid, d2::uuid)), '1/2');
+  perform pg_temp.t3980_check('W3-TITLES', 'the twins'' cards carry their titles',
+    (select string_agg(w.title, '|' order by w.title) from public.ops_work_cards w
+      where w.id in ((pg_temp.t3980_row(v_conv, a)->>'card_id')::uuid, (pg_temp.t3980_row(v_conv, b)->>'card_id')::uuid)),
+    'Send the welcome pack · W3980 Twin A|Send the welcome pack · W3980 Twin B');
+  v := pg_temp.t3980_person('owner', 'select public.ops_next_action_preview()::text');
+  perform pg_temp.t3980_check('W3-TITLES', 'afterwards the repeated record shows as converted',
+    pg_temp.t3980_row(v, d2)->>'issue', 'already_converted');
+  perform pg_temp.t3980_check('W3-TITLES', 'host and creator records were still never changed',
+    (select count(*)::text from public.crm_records c where c.id in (a::uuid, b::uuid, d1::uuid, d2::uuid, lg::uuid) and c.updated_by = 'w3980-fixture'), '5');
+end;
+$titles$;
 
 select count(*) as t3980_total, count(*) filter (where not ok) as t3980_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as t3980_failures

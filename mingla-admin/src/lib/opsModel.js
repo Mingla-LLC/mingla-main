@@ -515,12 +515,19 @@ const CONVERSION_ISSUES = {
   no_owner: { label: "No owner", tone: "warning" },
   already_converted: { label: "Already converted", tone: "default" },
   duplicate_title: { label: "Same title as an open card", tone: "error" },
+  duplicate_record: { label: "Same name and next step as another record", tone: "default" },
   too_short: { label: "Next step too short", tone: "error" },
 };
 
 /** The chip for a next step that cannot simply be converted. */
 export function conversionIssue(issue) {
   return issue ? CONVERSION_ISSUES[issue] || { label: "Cannot convert", tone: "error" } : null;
+}
+
+/** The words for the last convert: added, skipped (already a card) and not converted. */
+export function conversionResultWords(result) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return `Last convert: ${n(result?.added)} added, ${n(result?.skipped)} skipped because they are already a card, ${n(result?.refused)} not converted.`;
 }
 
 /** A row can be picked when it is ready, or has no owner and a fallback owner is chosen. */
