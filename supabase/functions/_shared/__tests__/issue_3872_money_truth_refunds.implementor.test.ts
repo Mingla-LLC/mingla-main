@@ -44,3 +44,10 @@ for (const fn of ["refund-order", "admin-refund-order"]) {
     }
   });
 }
+
+Deno.test("event-cancel-refund-fanout refunds the charged total through issue_3872_cancel_refund_order", async () => {
+  const src = await Deno.readTextFile(new URL("../../event-cancel-refund-fanout/index.ts", import.meta.url));
+  assert(src.includes('"issue_3872_cancel_refund_order",'), "the fan-out uses the charged-total refund RPC");
+  assert(!/supabase\.rpc\(\s*"admin_refund_order",/.test(src), "the fan-out no longer prices the refund by ticket lines");
+  assert(src.includes('"admin_refund_order_commit"'), "the commit twin is unchanged");
+});

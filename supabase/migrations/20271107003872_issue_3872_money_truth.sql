@@ -9,11 +9,18 @@
 -- §2  issue_3872_copy_session_totals_to_order + biz_ticket_checkout_finalize:
 --     finalize copies the totals and pricing_breakdown to the order (F2).
 -- §3  issue_3872_record_ticket_provider_total: what the provider charged.
+-- §4  Operator backfill of existing orders from stored provider records.
+-- §5  Payout release equation (F1, F10, refunded fees, reservation fee).
+-- §6  Server-computed refunds and refund_preview (F4).
+-- §7  Proportional partner reversal on refunds (F5).
+-- §8  Event cancellation refunds return the charged total, fees included.
 --
 -- APPLY ORDER: this migration is applied to production BEFORE the pull request
--- merges. The edge functions that merge with it call §3 and write §1's columns;
--- both calls are non-fatal, so an unapplied migration degrades to "totals not
--- recorded", never to a failed checkout.
+-- merges. Merged edge functions call §3 (non-fatal), §7's
+-- issue_3872_partner_split_refund_plan (stripe-webhook; a refund event would
+-- error and retry until it exists) and §8's issue_3872_cancel_refund_order
+-- (event-cancel-refund-fanout; cancellation refunds would fail and be retried
+-- until it exists).
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -1914,6 +1921,380 @@ COMMENT ON FUNCTION public.issue_3872_partner_split_record_reversal(text, intege
 
 
 
+
+-- =============================================================================
+-- §8. Event cancellation refunds return what the buyer was charged
+-- =============================================================================
+-- Decision (Seth, 19 Oct 2026, on #3872): when an event is cancelled, every
+-- buyer gets back what they were actually charged, including the fees they
+-- paid, on every rail. Before this, the cancellation refund was the sum of the
+-- ticket lines: on Stripe the buyer lost the fees they had paid, and on
+-- Paystack the provider refunded the whole transaction while the ledger
+-- recorded only the ticket lines.
+--
+-- Fees on that refund: on Stripe the refund passes refund_application_fee, so
+-- Stripe returns Mingla's fee to the host's balance in proportion (all of it on
+-- a full refund) and the release equation (§5) stops deducting it. On Paystack
+-- Mingla holds the money, refunds it from its own balance and keeps none of
+-- the charge; any post-release recovery from the organiser stays capped by
+-- organiser_refund_debt_room_cents (what was actually delivered to them).
+
+-- A refund may now reach the charged total, which exceeds total_cents on
+-- Stripe paths that pass fees (total_cents is the ticket base there).
+ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_refunded_amount_not_exceed_total;
+ALTER TABLE public.orders ADD CONSTRAINT orders_refunded_amount_not_exceed_total
+  CHECK (refunded_amount_cents <= COALESCE(buyer_total_cents, total_cents));
+
+-- Live body: 20270725003645_issue_3645_installment_cancel_and_ledger.sql
+-- (identical in production). Only change: the per-order refund amount.
+CREATE OR REPLACE FUNCTION public.cancel_event_refund_prepare(p_event_id uuid, p_now timestamp with time zone DEFAULT now())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_status text;
+  v_brand_id uuid;
+  v_provider text;
+  v_release record;
+  v_temp public.organiser_payout_debts;
+  v_total integer;
+  v_rsvp_count integer;
+  v_run_status text;
+  v_pending_ids uuid[];
+  v_installments_cancelled integer := 0;
+BEGIN
+  -- 1. Status-first guard (binding race guard + the SOLE authorization).
+  SELECT status, brand_id INTO v_status, v_brand_id
+  FROM public.events WHERE id = p_event_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'event_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_status IS DISTINCT FROM 'cancelled' THEN
+    RAISE EXCEPTION 'event_not_cancelled' USING ERRCODE = 'P0002';
+  END IF;
+
+  SELECT CASE WHEN b.payment_provider = 'paystack' THEN 'paystack' ELSE 'stripe' END
+  INTO v_provider FROM public.brands b WHERE b.id = v_brand_id;
+  v_provider := COALESCE(v_provider, 'stripe');
+
+  -- 1b. #3645 PR2 — freeze sales (idempotent).
+  UPDATE public.ticket_types
+  SET sale_end_at = p_now,
+      is_disabled = true,
+      updated_at = p_now
+  WHERE event_id = p_event_id
+    AND deleted_at IS NULL
+    AND is_hidden IS NOT TRUE
+    AND available_online IS TRUE
+    AND (
+      sale_end_at IS NULL
+      OR sale_end_at > p_now
+      OR is_disabled IS NOT TRUE
+    );
+
+  UPDATE public.events
+  SET bookings_closed = true,
+      bookings_closed_at = COALESCE(bookings_closed_at, p_now)
+  WHERE id = p_event_id
+    AND bookings_closed IS NOT TRUE;
+
+  -- 1c. #3645 PR5 / #2030 — cancel scheduled/failed installments on this event's
+  --     orders (mirror biz_cancel_trip_booking_begin). Collected rows stay.
+  UPDATE public.order_installments oi
+  SET status = 'cancelled',
+      cancelled_at = p_now
+  FROM public.orders o
+  WHERE o.id = oi.order_id
+    AND o.event_id = p_event_id
+    AND oi.status IN ('scheduled', 'failed')
+    AND oi.cancelled_at IS NULL;
+  GET DIAGNOSTICS v_installments_cancelled = ROW_COUNT;
+
+  -- 2. Stop releases (event-scoped; NEVER releases).
+  WITH locked AS (
+    SELECT id FROM public.brand_payout_releases
+    WHERE event_id = p_event_id
+      AND status IN (
+        'pending','blocked_kyc','blocked_balance','blocked_otp','blocked_over_cap',
+        'fee_unreconciled','blocked_anchor','reanchored'
+      )
+    FOR UPDATE SKIP LOCKED
+  )
+  UPDATE public.brand_payout_releases r
+  SET status = 'cancelled_event', updated_at = p_now
+  FROM locked WHERE r.id = locked.id;
+
+  -- 3. Atomic debt conversion BEFORE any refund (Stripe only).
+  FOR v_release IN
+    SELECT r.id AS release_id
+    FROM public.brand_payout_releases r
+    WHERE r.event_id = p_event_id
+      AND r.status = 'released'
+      AND r.provider = 'stripe'
+    FOR UPDATE OF r SKIP LOCKED
+  LOOP
+    SELECT * INTO v_temp FROM public.organiser_payout_debts
+    WHERE origin_release_id = v_release.release_id
+      AND kind = 'post_release_postponement'
+      AND status = 'open'
+    FOR UPDATE;
+    IF FOUND AND v_temp.principal_cents > 0 THEN
+      PERFORM public.convert_postponement_debt_to_permanent(
+        v_release.release_id, 'post_release_cancellation', v_temp.principal_cents, p_now
+      );
+    END IF;
+  END LOOP;
+
+  -- 4. Open / refresh the backstop run.
+  INSERT INTO public.event_cancel_refund_runs (event_id, status, last_attempt_at, opened_at)
+  VALUES (p_event_id, 'awaiting_review', p_now, p_now)
+  ON CONFLICT (event_id) DO UPDATE SET
+    last_attempt_at = p_now;
+
+  -- 5. Enumerate + persist per-object progress rows (orders only).
+  INSERT INTO public.event_cancel_refund_progress (
+    event_id, source_type, source_id, provider, amount_cents, status
+  )
+  -- Issue #3872: a cancelled event returns what each buyer was charged
+  -- (buyer_total_cents, which includes passed fees and added tax), on every
+  -- rail. orders.total_cents is the ticket base on Stripe paths.
+  SELECT p_event_id, 'order', o.id, v_provider,
+         (COALESCE(o.buyer_total_cents, o.total_cents)::integer
+           - COALESCE(o.refunded_amount_cents, 0)), 'pending'
+  FROM public.orders o
+  WHERE o.event_id = p_event_id
+    AND o.payment_status IN ('paid','partial_refund')
+    AND (COALESCE(o.buyer_total_cents, o.total_cents)::integer
+           - COALESCE(o.refunded_amount_cents, 0)) > 0
+  ON CONFLICT (source_type, source_id) DO NOTHING;
+
+  SELECT count(*)::integer INTO v_total
+  FROM public.event_cancel_refund_progress WHERE event_id = p_event_id;
+
+  -- 5b. RSVP chip-in contributions.
+  SELECT count(*)::integer INTO v_rsvp_count
+  FROM public.event_rsvp_contributions c
+  WHERE c.event_id = p_event_id
+    AND c.status IN ('paid','partially_refunded')
+    AND c.buyer_total_cents > c.refunded_amount_cents;
+
+  -- 6. Resolve the run status from the refund work.
+  UPDATE public.event_cancel_refund_runs
+  SET total_objects = v_total,
+      status = CASE
+        WHEN status = 'completed' THEN status
+        WHEN v_total = 0 AND v_rsvp_count = 0 THEN 'completed'
+        ELSE status
+      END,
+      completed_at = CASE
+        WHEN status <> 'completed' AND v_total = 0 AND v_rsvp_count = 0
+             AND completed_at IS NULL THEN p_now
+        ELSE completed_at
+      END
+  WHERE event_id = p_event_id
+  RETURNING status INTO v_run_status;
+
+  SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]) INTO v_pending_ids
+  FROM public.event_cancel_refund_progress
+  WHERE event_id = p_event_id AND status IN ('pending','failed_retryable');
+
+  RETURN jsonb_build_object(
+    'run_status', v_run_status,
+    'total_objects', v_total,
+    'pending_object_ids', to_jsonb(v_pending_ids),
+    'rsvp_pending_count', v_rsvp_count,
+    'installments_cancelled', v_installments_cancelled
+  );
+END;
+$function$;
+
+-- The cancellation refund row: the remaining ticket lines (priced by the server
+-- rule) and an amount equal to what the buyer was charged and has not had back.
+-- The line amounts are the refund amount allocated across the lines in
+-- proportion to their ticket value, so the lines still add up to the refund.
+-- Same response shape and idempotency as admin_refund_order, so
+-- event-cancel-refund-fanout continues with admin_refund_order_commit.
+CREATE OR REPLACE FUNCTION public.issue_3872_cancel_refund_order(
+  p_order_id uuid,
+  p_lines jsonb,
+  p_reason text,
+  p_idempotency_key text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_lines jsonb;
+  v_line jsonb;
+  v_item public.order_line_items%ROWTYPE;
+  v_existing_refunded integer;
+  v_existing public.refunds%ROWTYPE;
+  v_manifest jsonb;
+  v_line_base bigint := 0;
+  v_other bigint;
+  v_charged bigint;
+  v_amount bigint;
+  v_allocated bigint := 0;
+  v_alloc bigint;
+  v_idx integer := 0;
+  v_count integer;
+  v_full boolean;
+  v_status text;
+  v_refund_id uuid;
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  IF p_reason IS NULL OR length(trim(p_reason)) < 10 OR length(trim(p_reason)) > 200 THEN
+    RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = 'P0003';
+  END IF;
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
+  v_lines := public.issue_3872_refund_server_lines(p_order_id, p_lines);
+
+  SELECT * INTO v_existing FROM public.refunds
+   WHERE metadata->>'idempotency_key' = p_idempotency_key AND order_id = p_order_id
+   LIMIT 1 FOR UPDATE;
+  IF FOUND THEN
+    v_manifest := v_existing.metadata->'refund_request_manifest';
+    IF v_manifest IS NULL
+       OR v_manifest->>'reason' IS DISTINCT FROM trim(p_reason)
+       OR (SELECT coalesce(jsonb_agg(jsonb_build_object(
+             'order_line_item_id', l->>'order_line_item_id', 'quantity', (l->>'quantity')::int)
+             ORDER BY l->>'order_line_item_id'), '[]'::jsonb)
+           FROM jsonb_array_elements(v_manifest->'lines') l)
+          IS DISTINCT FROM
+          (SELECT coalesce(jsonb_agg(jsonb_build_object(
+             'order_line_item_id', l->>'order_line_item_id', 'quantity', (l->>'quantity')::int)
+             ORDER BY l->>'order_line_item_id'), '[]'::jsonb)
+           FROM jsonb_array_elements(v_lines) l) THEN
+      RAISE EXCEPTION 'idempotency_request_mismatch' USING ERRCODE = '23505';
+    END IF;
+    RETURN jsonb_build_object(
+      'refund_id', v_existing.id, 'order_id', p_order_id,
+      'amount_cents', v_existing.amount_cents, 'currency', v_existing.currency,
+      'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+      'stripe_charge_id', v_order.stripe_charge_id,
+      'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+      'proposed_new_payment_status', v_manifest->>'proposed_new_payment_status',
+      'is_full_refund', (v_manifest->>'is_full_refund')::boolean,
+      'lines', v_manifest->'lines', 'reason', v_manifest->>'reason',
+      'idempotent_replay', true
+    );
+  END IF;
+
+  IF v_order.payment_status NOT IN ('paid', 'partial_refund') THEN
+    RAISE EXCEPTION 'order_not_refundable: status=%', v_order.payment_status USING ERRCODE = 'P0002';
+  END IF;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_lines) LOOP
+    SELECT * INTO v_item FROM public.order_line_items
+     WHERE id::text = v_line->>'order_line_item_id' AND order_id = p_order_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'line_item_not_found: %', v_line->>'order_line_item_id' USING ERRCODE = 'P0004';
+    END IF;
+    IF COALESCE((v_line->>'quantity')::int, 0) <= 0 THEN
+      RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+    END IF;
+    SELECT COALESCE(SUM(rli.quantity), 0) INTO v_existing_refunded
+    FROM public.refund_line_items rli JOIN public.refunds r ON r.id = rli.refund_id
+    WHERE rli.order_line_item_id = v_item.id AND r.status IN ('pending', 'succeeded');
+    IF v_existing_refunded + (v_line->>'quantity')::int > v_item.quantity THEN
+      RAISE EXCEPTION 'line_overrefund: line=% requested=% existing=% capacity=%',
+        v_item.id, v_line->>'quantity', v_existing_refunded, v_item.quantity USING ERRCODE = 'P0005';
+    END IF;
+    v_line_base := v_line_base + (v_line->>'amount_cents')::bigint;
+  END LOOP;
+  v_count := jsonb_array_length(v_lines);
+  IF v_count = 0 OR v_line_base <= 0 THEN
+    RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+  END IF;
+
+  -- Would every line be fully refunded after this?
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.order_line_items oli
+    WHERE oli.order_id = p_order_id
+      AND oli.quantity > (
+        SELECT COALESCE(SUM(rli.quantity), 0) FROM public.refund_line_items rli
+        JOIN public.refunds r ON r.id = rli.refund_id
+        WHERE rli.order_line_item_id = oli.id AND r.status IN ('pending', 'succeeded')
+      ) + COALESCE((SELECT (l->>'quantity')::int FROM jsonb_array_elements(v_lines) l
+                    WHERE l->>'order_line_item_id' = oli.id::text), 0)
+  ) INTO v_full;
+
+  SELECT COALESCE(SUM(amount_cents), 0) INTO v_other
+  FROM public.refunds WHERE order_id = p_order_id AND status IN ('pending', 'succeeded');
+  v_charged := COALESCE(v_order.buyer_total_cents, v_order.total_cents);
+  -- Everything that remains when the last tickets go back; otherwise the lines
+  -- (a cancellation always returns every remaining ticket, so this is the norm).
+  v_amount := CASE WHEN v_full THEN v_charged - v_other ELSE LEAST(v_line_base, v_charged - v_other) END;
+  IF v_amount <= 0 THEN
+    RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+  END IF;
+  v_status := CASE WHEN v_full THEN 'refunded' ELSE 'partial_refund' END;
+
+  INSERT INTO public.refunds (
+    order_id, amount_cents, currency, reason, initiated_by, status,
+    stripe_payment_intent_id, stripe_charge_id, metadata
+  ) VALUES (
+    p_order_id, v_amount::integer, v_order.currency, trim(p_reason), NULL, 'pending',
+    v_order.stripe_payment_intent_id, v_order.stripe_charge_id,
+    jsonb_build_object('idempotency_key', p_idempotency_key)
+  ) RETURNING id INTO v_refund_id;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_lines) ORDER BY value->>'order_line_item_id' LOOP
+    v_idx := v_idx + 1;
+    v_alloc := CASE WHEN v_idx = v_count THEN v_amount - v_allocated
+      ELSE floor(v_amount::numeric * (v_line->>'amount_cents')::bigint / v_line_base)::bigint END;
+    v_allocated := v_allocated + v_alloc;
+    INSERT INTO public.refund_line_items (refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents)
+    SELECT v_refund_id, oli.id, oli.ticket_type_id, (v_line->>'quantity')::int, v_alloc::integer
+    FROM public.order_line_items oli WHERE oli.id::text = v_line->>'order_line_item_id';
+  END LOOP;
+
+  v_manifest := jsonb_build_object(
+    'lines', (SELECT jsonb_agg(jsonb_build_object(
+        'order_line_item_id', rli.order_line_item_id::text, 'quantity', rli.quantity,
+        'amount_cents', rli.amount_cents) ORDER BY rli.order_line_item_id::text)
+      FROM public.refund_line_items rli WHERE rli.refund_id = v_refund_id),
+    'reason', trim(p_reason),
+    'amount_cents', v_amount,
+    'proposed_new_payment_status', v_status,
+    'is_full_refund', v_full,
+    'issue_3872_cancellation', jsonb_build_object(
+      'ticket_lines_cents', v_line_base,
+      'fees_and_tax_cents', GREATEST(0, v_amount - v_line_base),
+      'charged_total_cents', v_charged)
+  );
+  UPDATE public.refunds
+  SET metadata = metadata || jsonb_build_object('refund_request_manifest', v_manifest)
+  WHERE id = v_refund_id;
+
+  RETURN jsonb_build_object(
+    'refund_id', v_refund_id, 'order_id', p_order_id,
+    'amount_cents', v_amount, 'currency', v_order.currency,
+    'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+    'stripe_charge_id', v_order.stripe_charge_id,
+    'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+    'proposed_new_payment_status', v_status,
+    'is_full_refund', v_full,
+    'lines', v_manifest->'lines', 'reason', trim(p_reason),
+    'idempotent_replay', false
+  );
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3872_cancel_refund_order(uuid, jsonb, text, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3872_cancel_refund_order(uuid, jsonb, text, text)
+  TO service_role;
+COMMENT ON FUNCTION public.issue_3872_cancel_refund_order(uuid, jsonb, text, text) IS
+  'Issue #3872: the pending refund row for an order on a cancelled event. Returns every remaining ticket and the whole charged remainder (buyer_total_cents minus earlier refunds), fees included, on every rail. Same response and idempotency shape as admin_refund_order; committed with admin_refund_order_commit. service_role only.';
 
 COMMIT;
 
