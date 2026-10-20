@@ -46,6 +46,9 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+// #2107 (U1): the launch guard installs when this file is imported, before
+// Sentry.init below wraps the global error handler.
+import { UpdateLaunchBoundary } from "../src/components/ui/UpdateLaunchBoundary";
 import {
   MandatoryUpdateGate,
   type VersionForegroundEvent,
@@ -848,9 +851,10 @@ export default function RootLayout(): React.ReactElement {
   }, []);
 
   // #2075 folds the version trigger into Host's one existing root AppState
-  // owner. The event state is set during the background→active callback, so
-  // MandatoryUpdateGate replaces the old snapshot with its opaque veil before
-  // the route tree can accept a foreground tap.
+  // owner. #2107 A2: the foreground recheck this event starts runs BEHIND the
+  // mounted route tree — MandatoryUpdateGate no longer veils while it is
+  // pending, so returning after 15+ minutes keeps navigation and any flow in
+  // progress. Only a confirmed `required` covers the app.
   useEffect(() => {
     const handleAppStateChange = (status: AppStateStatus): void => {
       focusManager.setFocused(status === "active");
@@ -918,6 +922,10 @@ export default function RootLayout(): React.ReactElement {
             }
           }}
         >
+          {/* #2107 (U1): catches first, so a broken update's render error
+              shows the restart screen and is reported. ORCH-0964's boundary
+              stays as the backstop around it. */}
+          <UpdateLaunchBoundary>
           <QueryClientProvider client={queryClient}>
             <AuthProvider>
               {/* ORCH-0892-A: KeyboardRoot wraps the app shell and stays OUTSIDE
@@ -943,6 +951,7 @@ export default function RootLayout(): React.ReactElement {
               </KeyboardRoot>
             </AuthProvider>
           </QueryClientProvider>
+          </UpdateLaunchBoundary>
         </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>

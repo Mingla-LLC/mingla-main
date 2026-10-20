@@ -19,6 +19,10 @@ import {
   PREPARATION_ORDER,
   retryDelayMs,
 } from "../lib/adBuilder/preparationState";
+import {
+  preparationPlatformsFor,
+  templatesCreativeKind,
+} from "../lib/adBuilder/housePlanPath";
 
 /** Extract { status, body } from a supabase.functions.invoke error (SC-7). */
 export async function parseEdgeError(error) {
@@ -138,10 +142,21 @@ export async function recordAppReadinessEvent(event) {
 
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
+// #3697: the row also needs the plan's schedule zone (dates are shown in the
+// campaign's own zone), the connection's provider account id (Open in Meta)
+// and the spend-sync rows (spend vs cap). All are admin-RLS reads.
+export const CAMPAIGN_LIST_SELECT = [
+  "*",
+  "ad_sets(*, ads(*))",
+  "plan_version:ad_plan_versions(schedule_time_zone:canonical_plan->schedule->>time_zone)",
+  "connection:ad_connections(external_account_id,platform)",
+  "ad_spend_daily(spend_cents,currency,synced_at)",
+].join(", ");
+
 export async function listCampaigns() {
   return supabase
     .from("ad_campaigns")
-    .select("*, ad_sets(*, ads(*))")
+    .select(CAMPAIGN_LIST_SELECT)
     .order("created_at", { ascending: false });
 }
 
@@ -354,26 +369,27 @@ async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
   );
   finish("confirm");
 
-  const isVideoPlan = Object.values(templates).some((template) => {
-    if (!template || typeof template !== "object" || Array.isArray(template)) {
-      return false;
-    }
-    return template.creative?.kind === "video" ||
-      template.creative_intent?.kind === "video";
+  // #3697: a video prepares on every platform; an image prepares only where
+  // the provider needs its own uploaded copy (Snapchat media), so a Snapchat
+  // image plan that failed at create runs the image step before creating.
+  const creativeKind = templatesCreativeKind(templates);
+  const preparePlatforms = preparationPlatformsFor({
+    platforms: (aggregate.provider_allocations ?? []).map((row) => row.platform),
+    kind: creativeKind,
   });
-  if (isVideoPlan) {
+  if (preparePlatforms.length > 0) {
     const creativeLibraryId = version.canonical_plan?.creative_library_id;
     if (!creativeLibraryId) {
-      throw new Error("The frozen video plan has no creative-library binding.");
+      throw new Error(
+        `The frozen ${creativeKind} plan has no creative-library binding.`,
+      );
     }
-    const videoPlatforms = (aggregate.provider_allocations ?? []).map((row) =>
-      row.platform
-    );
     try {
-      for (const platform of videoPlatforms) step(`prepare:${platform}`, "pending");
+      for (const platform of preparePlatforms) step(`prepare:${platform}`, "pending");
       await prepareBoundVideoCreative({
         creativeLibraryId,
-        platforms: videoPlatforms,
+        platforms: preparePlatforms,
+        noun: creativeKind,
         // #3697: the frozen plan's lane, never a hard-coded one — a business
         // lane plan prepares against its business-lane connection.
         lane: version.canonical_plan?.lane === "business" ? "business" : "consumer",
@@ -446,6 +462,31 @@ async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
   return aggregate;
 }
 
+/**
+ * #3697 — "Check with <provider>" on a dead plan. The server reads every
+ * recorded provider object; with none left it releases the hold and closes
+ * the plan. `deleteOnProvider` (typed DELETE ON PROVIDER) deletes surviving
+ * objects first, then re-checks.
+ */
+export async function reconcileAdminAdPlan(
+  item,
+  { deleteOnProvider = false, phrase = "" } = {},
+) {
+  const version = item?.version;
+  if (!version?.id || !version?.plan_hash) {
+    throw new Error("The frozen plan binding is missing.");
+  }
+  return planActionOrThrow(
+    {
+      action: "reconcile_provider_objects",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      ...(deleteOnProvider ? { delete_on_provider: true, phrase } : {}),
+    },
+    "The provider check failed. Nothing was changed.",
+  );
+}
+
 /** Cancel a frozen Mingla plan only while provider-object evidence is absent. */
 export async function cancelAdminAdPlan(item, reason) {
   const version = item?.version;
@@ -466,8 +507,9 @@ export async function cancelAdminAdPlan(item, reason) {
 }
 
 /**
- * action: 'launch' | 'pause' | 'end'
- * Launch and End require an exact phrase + reason; Pause is reversible.
+ * action: 'launch' | 'pause' | 'end' | 'change_budget'
+ * Launch and End require an exact phrase + reason; Pause is reversible;
+ * Change budget requires a reason.
  */
 export async function campaignAction(campaignId, action, extras = {}) {
   const body = { campaign_id: campaignId, action };
@@ -478,6 +520,14 @@ export async function campaignAction(campaignId, action, extras = {}) {
     if (typeof extras.reason === "string") {
       body.reason = extras.reason;
     }
+  }
+  // #3697: governed budget change — plan totals in provider minor units.
+  if (action === "change_budget") {
+    if (typeof extras.reason === "string") body.reason = extras.reason;
+    if (Number.isSafeInteger(extras.daily_budget_cents)) {
+      body.daily_budget_cents = extras.daily_budget_cents;
+    }
+    if (Number.isSafeInteger(extras.cap_cents)) body.cap_cents = extras.cap_cents;
   }
   return invokeWithRefresh("admin-ad-campaign-action", { body });
 }
@@ -612,6 +662,7 @@ function videoPreparationError(platform, message) {
 export async function prepareBoundVideoCreative({
   creativeLibraryId,
   platforms,
+  noun = "video",
   lane,
   brandId,
   planVersionId,
@@ -640,7 +691,7 @@ export async function prepareBoundVideoCreative({
           platform,
           String(
             parsed?.body?.detail ?? parsed?.message ??
-              "The provider could not prepare this video.",
+              `The provider could not prepare this ${noun}.`,
           ),
         );
       }
@@ -654,7 +705,7 @@ export async function prepareBoundVideoCreative({
       if (next === "give_up") {
         throw videoPreparationError(
           platform,
-          row.error?.message ?? "The provider could not prepare this video.",
+          row.error?.message ?? `The provider could not prepare this ${noun}.`,
         );
       }
       if (next === "retry") retried = true;
@@ -666,8 +717,8 @@ export async function prepareBoundVideoCreative({
         throw videoPreparationError(
           platform,
           neverReachedProvider
-            ? `The provider is still preparing this video, or the last attempt never reached it. Resume the exact plan after ${new Date(startedAt + 15 * 60 * 1000).toLocaleTimeString()}; from then a stalled attempt is retried automatically.`
-            : "The provider is still preparing this video; resume the exact plan shortly.",
+            ? `The provider is still preparing this ${noun}, or the last attempt never reached it. Resume the exact plan after ${new Date(startedAt + 15 * 60 * 1000).toLocaleTimeString()}; from then a stalled attempt is retried automatically.`
+            : `The provider is still preparing this ${noun}; resume the exact plan shortly.`,
         );
       }
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs(row)));

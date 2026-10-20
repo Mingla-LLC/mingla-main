@@ -59,6 +59,8 @@ export interface ExperienceStopsStepProps {
    */
   brandLocation?: LatLngLike;
   timeZone?: string | null;
+  /** issue #3281 R3 — open-hours → offset minutes instead of clock start. */
+  useStartOffsets?: boolean;
 }
 
 export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
@@ -73,6 +75,7 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
   onToast,
   brandLocation,
   timeZone,
+  useStartOffsets = false,
 }) => {
   // Issue #3291 — one rank-only proximity for every stop's address field:
   // brand → the first stop already placed → the experience's time zone. A
@@ -234,6 +237,7 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
           onRemovePhoto={removePhoto}
           onOpenPhotoSheet={openPhotoSheet}
           addressSearchProximity={addressSearchProximity}
+          useStartOffsets={useStartOffsets}
         />
       ))}
 

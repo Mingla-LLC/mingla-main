@@ -11,6 +11,12 @@
  *     BALANCE_EXCEED / NO_BUDGET / audit states are surfaced as the same
  *     200 + `warning`, NEVER a silent clamp and never a hard error.
  *   - pause: campaign level PAUSED (children stay as-is; the parent blocks them).
+ *   - change_budget (#3697, admin + Mingla plans only): a new daily budget
+ *     and/or hard cap with a required reason. Refuses a cap below
+ *     spend-to-date, pushes the daily budget to the provider object the create
+ *     set it on, then records an append-only amendment, moves the
+ *     provider-account hold and audits (ad_plan_amend_budget). See
+ *     _shared/adBudgetChangeAction.ts.
  *
  * The adapter interface can only express PAUSED|ACTIVE (AdvertiserStatus) —
  * the "Google REMOVED-never" rule is encoded at the type level; no action here
@@ -32,6 +38,7 @@ import {
 } from "../_shared/adChannel.ts";
 import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
 import { isLaunchConfirmPhrase } from "../_shared/adLaunchConfirm.ts";
+import { runBudgetChange } from "../_shared/adBudgetChangeAction.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
@@ -564,10 +571,17 @@ serve(async (req: Request): Promise<Response> => {
       detail: "campaign_id_invalid_uuid",
     }, 400);
   }
-  if (action !== "launch" && action !== "pause" && action !== "end") {
+  if (
+    action !== "launch" && action !== "pause" && action !== "end" &&
+    action !== "change_budget"
+  ) {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
   }
   if (!adminRow && action === "end") {
+    return json({ error: "forbidden" }, 403);
+  }
+  // #3697: budget changes are staff-only until Host credit re-checks exist.
+  if (!adminRow && action === "change_budget") {
     return json({ error: "forbidden" }, 403);
   }
 
@@ -604,6 +618,15 @@ serve(async (req: Request): Promise<Response> => {
     if (permissionError || allowed !== true) {
       return json({ error: "forbidden" }, 403);
     }
+  }
+
+  // #3697 — governed budget change (admin only; Host plans refused inside).
+  if (action === "change_budget") {
+    const result = await runBudgetChange(
+      { db: supabase, getAdapter },
+      { campaign, actorId: user.id, body },
+    );
+    return json(result.body, result.status);
   }
 
   // LAUNCH and END PLAN are challenge-gated. Pause remains a one-click,

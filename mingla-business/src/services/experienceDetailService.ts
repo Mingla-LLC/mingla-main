@@ -38,6 +38,8 @@ export interface ExperienceStopRow {
   lng: number | null;
   imageUrls: string[];
   startTime: string | null;
+  /** issue #3281 R3 — minutes after guest start (open-hours). */
+  startOffsetMinutes?: number | null;
   priceCents: number;
   /** META-ORCH-1059 CHANGE 3 — per-stop blurb (experience_stops.ai_description). */
   description: string;
@@ -149,6 +151,12 @@ export interface ExperienceDetail {
    * append-only constructions stay valid); the wizard reads `?? null`.
    */
   refundPolicy?: RefundPolicy | null;
+  /** issue #3281 R3 — total | per_day | per_start. */
+  capacityScope?: "total" | "per_day" | "per_start";
+  /** issue #3281 R3 — start grid minutes. */
+  bookingSpacingMinutes?: number;
+  /** issue #3281 R3 — min notice minutes. */
+  minNoticeMinutes?: number;
 }
 
 interface RawEventRow {
@@ -180,6 +188,10 @@ interface RawEventRow {
   theme_animation_override?: string | null;
   // issue #3284 — events.refund_policy (jsonb).
   refund_policy?: unknown;
+  // issue #3281 R3
+  capacity_scope?: string | null;
+  booking_spacing_minutes?: number | null;
+  min_notice_minutes?: number | null;
   brands: { slug: string | null } | { slug: string | null }[] | null;
 }
 
@@ -279,7 +291,7 @@ export async function getExperienceDetail(
     .select(
       // #1022 — this select is EXPLICIT (not a star), so the three theme override
       // columns must be named here or the wizard cannot display what is set.
-      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, refund_policy, brands(slug)",
+      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, refund_policy, capacity_scope, booking_spacing_minutes, min_notice_minutes, brands(slug)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")
@@ -296,7 +308,7 @@ export async function getExperienceDetail(
       supabase
         .from("experience_stops")
         .select(
-          "id, stop_order, place_id, place_name, address, city, region, country_code, lat, lng, image_urls, start_time, price_cents, ai_description",
+          "id, stop_order, place_id, place_name, address, city, region, country_code, lat, lng, image_urls, start_time, start_offset_minutes, price_cents, ai_description",
         )
         .eq("event_id", eventId)
         .order("stop_order", { ascending: true }),
@@ -445,6 +457,10 @@ export async function getExperienceDetail(
       lng: s.lng,
       imageUrls: Array.isArray(s.image_urls) ? s.image_urls : [],
       startTime: s.start_time,
+      startOffsetMinutes:
+        typeof s.start_offset_minutes === "number"
+          ? s.start_offset_minutes
+          : null,
       priceCents: s.price_cents,
       description: typeof s.ai_description === "string" ? s.ai_description : "",
     })),
@@ -457,6 +473,18 @@ export async function getExperienceDetail(
       timezone: d.timezone,
       isMaster: d.is_master === true,
     })),
+    capacityScope:
+      raw.capacity_scope === "per_day" || raw.capacity_scope === "per_start"
+        ? raw.capacity_scope
+        : "total",
+    bookingSpacingMinutes:
+      typeof raw.booking_spacing_minutes === "number"
+        ? raw.booking_spacing_minutes
+        : 30,
+    minNoticeMinutes:
+      typeof raw.min_notice_minutes === "number"
+        ? raw.min_notice_minutes
+        : 120,
   };
 }
 

@@ -513,6 +513,56 @@ while the app keeps running; in release it is the stuck splash screen (#990 §3)
   in the profile (copy `app-mobile/eas.json` `demo-simulator`) and read the "Resolved … environment" line
   before spending a build.
 
+**Critical updates and the store floor (#2107).** Two separate mechanisms keep installs current:
+
+- **Critical JavaScript (OTA).** Each app has a committed counter, `<app>/update-critical-index.json`,
+  which `app.config.js` emits as `extra.criticalIndex` into every store build and every OTA. To make a
+  publish critical, raise that integer by one in a reviewed commit and publish from that commit with the
+  wrapper. Running code with a lower index shows "Updating Mingla" / "Updating Host", downloads the update,
+  records the attempt, and restarts into it; after two failed restarts (counted across restarts), an
+  emergency launch, an `updatePreviouslyFailed` result, offline or a timeout, it lets the person in.
+  Never lower the counter, and never raise it for a change that can wait for the next cold start. A
+  normal publish leaves it alone and stays silent. Both wrappers refuse to publish if the resolved config
+  has no integer `criticalIndex`.
+- **Off switch.** `app_ota_policies` is now a kill switch, ON by default: a runtime with no row enforces
+  critical updates. Insert a row with `mode = 'silent'` for that app, platform and runtime only to switch
+  enforcement off in an emergency (for example a critical update that breaks a lane). `acknowledge` and
+  `force_restart` rows both mean "enforce".
+- **Store floor (`app_version_policies`).** Raise the Android `minimum_version` only after the Play
+  production rollout of that version has reached 100%; raise iOS once the version is live on the App
+  Store (a phased release is downloadable by anyone, so it does not need to finish). Raising the floor
+  earlier sends people to a store page that cannot give them the version yet. `enforcement_mode =
+  'observe'` is a dry run that only reports who would be blocked; only `enforce` blocks. The `message`
+  column is shown on the store screen.
+
+**Critical update release checklist (#2107).** A raised counter restarts every running install into
+the new bundle, so a broken critical update reaches everyone at once:
+
+1. **Open it on a release build before publishing.** Export the exact commit with `--no-dev --minify`
+   (or install a release build carrying it) and cold start it to Home on iOS and Android. A dev build
+   does not count: in dev a launch error is a dismissible red box, in release it is the restart screen.
+2. **Know the off switch before you publish.** Insert an `app_ota_policies` row with `mode = 'silent'`
+   for the app, platform and runtime. It stops the "Updating" screen and further restarts; it does not
+   remove the update from devices that already have it.
+3. **Know the rollback.** `eas update:roll-back-to-embedded --branch production --platform
+   <ios|android>`, or republish the previous good group to the same branch. Devices pick it up on their
+   next update check.
+
+**What the app does by itself when an update throws at launch (#2107 U1).** Both roots mount
+`UpdateLaunchBoundary`. React Native reports render errors as non-fatal, so without it a broken update
+left a blank screen. Every caught render error now shows the "Something went wrong" restart screen, on
+every launch, and is reported as `update_launch_error` (update id, reason, and `unconfirmed_download`:
+whether it was a downloaded update never confirmed good). Healthy launches report
+`update_launch_confirmed_good`. **There is no automatic rollback for an update that throws while
+rendering.** expo-updates 29 rolls back only on a fatal raised before native content appears, and on a
+release build content appears before the root layout first renders (measured on Android, PR #3985: two
+commits with a native view landed before the throw; raising it as fatal only crashed, "could not recover
+from error, crashing", and every later cold start reopened the same update). So the app never raises a
+render error as fatal. A bundle that throws while its modules load is already fatal and still rolls
+back natively; the app does not touch that path. Recovery from a broken critical update is the
+checklist above: open it on a release build first, know the `silent` off switch, and publish the
+rollback (step 3), which reaches devices on their next update check.
+
 ### 7.7 Pull requests
 
 For merging `Seth` → `main`, Seth handles via GitHub PR with a pre-merge gate. You don't open PRs directly.

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_plan_campaign_binding.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-v14-02b-plan-campaign-binding",
+  "profile": "deno-2-unit"
+}

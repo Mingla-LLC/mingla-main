@@ -30,10 +30,14 @@ import {
 } from "../../constants/designSystem";
 import {
   createAppVersionCoordinator,
+  resolveGateLayout,
   type VersionGateSnapshot,
 } from "../../services/appVersionPolicy";
 
 const STORE_TAP_LOCK_MS = 700;
+/** #2107 A4 — shown only when the policy carries no message of its own. */
+const FALLBACK_BODY =
+  "This version is no longer supported. Update now to keep your workspace, events, and payouts working properly.";
 
 export type VersionForegroundEvent = {
   id: number;
@@ -57,6 +61,7 @@ export function MandatoryUpdateGate({
   if (coordinatorRef.current === null)
     coordinatorRef.current = createAppVersionCoordinator();
   const coordinator = coordinatorRef.current;
+  const childrenMountedRef = useRef(false);
   const snapshot = useSyncExternalStore(
     coordinator.subscribe,
     coordinator.getSnapshot,
@@ -78,22 +83,50 @@ export function MandatoryUpdateGate({
 
   useEffect(() => {
     if (foregroundEvent === null) return;
+    // #2107 A2 — a foreground recheck runs BEHIND the app. It never publishes
+    // `checking` and this gate no longer veils while it is pending, so the
+    // tree (navigation, event creation in progress) stays mounted; only a
+    // confirmed `required` covers it.
     void coordinator
-      .check(true)
+      .check(false)
       .finally(() => onForegroundCheckComplete(foregroundEvent.id));
   }, [coordinator, foregroundEvent, onForegroundCheckComplete]);
 
   if (Platform.OS === "web") {
     return <>{children}</>;
   }
-  if (
-    snapshot.phase === "checking" ||
-    (foregroundEvent !== null && snapshot.phase !== "required")
-  ) {
-    return <VersionDecisionVeil />;
+  return resolveGateLayers(snapshot, childrenMountedRef, children);
+}
+
+/**
+ * #2107 A2 — once the app tree has mounted it is never unmounted by this gate.
+ * Before the first mount, the cold-launch veil and a cold `required` render
+ * alone (the app must not boot behind a store screen). After it, `required`
+ * is an overlay above the still-mounted tree.
+ */
+function resolveGateLayers(
+  snapshot: VersionGateSnapshot,
+  childrenMountedRef: React.MutableRefObject<boolean>,
+  children: React.ReactNode,
+): React.ReactElement {
+  if (snapshot.phase === "allowed") childrenMountedRef.current = true;
+  switch (resolveGateLayout(snapshot.phase, childrenMountedRef.current)) {
+    case "veil":
+      return <VersionDecisionVeil />;
+    case "store_screen":
+      return <MandatoryUpdateScreen snapshot={snapshot} />;
+    case "app_with_store_overlay":
+      return (
+        <>
+          {children}
+          <View style={styles.overlay}>
+            <MandatoryUpdateScreen snapshot={snapshot} />
+          </View>
+        </>
+      );
+    case "app":
+      return <>{children}</>;
   }
-  if (snapshot.phase === "allowed") return <>{children}</>;
-  return <MandatoryUpdateScreen snapshot={snapshot} />;
 }
 
 function VersionDecisionVeil(): React.ReactElement {
@@ -201,8 +234,9 @@ function MandatoryUpdateScreen({
             Update Host to continue
           </Text>
           <Text style={styles.body}>
-            This version is no longer supported. Update now to keep your
-            workspace, events, and payouts working properly.
+            {decision.message.trim().length > 0
+              ? decision.message
+              : FALLBACK_BODY}
           </Text>
           <Text style={styles.context}>
             Version {decision.minimumVersion} or later is required.
@@ -241,6 +275,7 @@ const styles = StyleSheet.create({
     backgroundColor: backgroundWarmGlow,
   },
   veilLogo: { width: 88, height: 31 },
+  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 10_001 },
   page: { flex: 1, backgroundColor: backgroundWarmGlow },
   scrollContent: {
     flexGrow: 1,

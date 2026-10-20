@@ -49,11 +49,32 @@ import {
   priceDecimals,
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
+import { experienceRemainingChipText } from "@mingla/offering-rendering/experienceR3";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
+import { supabase } from "../../services/supabase";
 import type { ExperienceOccurrence } from "./ExperienceOccurrencePicker";
 import { ExperienceDayStep } from "./ExperienceDayStep";
+
+function wallMinuteInZone(iso: string, timeZone: string): number | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "numeric",
+      hourCycle: "h23",
+      timeZone: timeZone || "UTC",
+    }).formatToParts(d);
+    const h = Number(parts.find((p) => p.type === "hour")?.value);
+    const m = Number(parts.find((p) => p.type === "minute")?.value);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  } catch {
+    return null;
+  }
+}
 
 export type ExperienceReserveMode = "slots" | "open-daily";
 
@@ -88,6 +109,14 @@ export interface ExperienceReservePickerProps {
   currency?: string | null;
   /** issue #3281 R2 — sellable options; length > 1 → option row on day step. */
   options?: ReadonlyArray<ExperienceOfferingTicket>;
+  /** issue #3281 R3 — start grid minutes (15/30/60/120). Default 30. */
+  spacingMinutes?: number | null;
+  /** issue #3281 R3 — earliest start = now + notice. Default 120. */
+  minNoticeMinutes?: number | null;
+  /** issue #3281 R3 — experience id for slot-availability fetch. */
+  eventId?: string | null;
+  /** issue #3281 R3 — capacity scope (drives slot remaining fetch). */
+  capacityScope?: "total" | "per_day" | "per_start" | null;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
 }
@@ -164,10 +193,10 @@ function formatWindow(
 }
 
 function remainingChip(remaining: number | null): string | null {
+  // issue #3281 R3 — "N left" / "Full" (experienceRemainingChipText parity).
   if (remaining === null) return null;
-  if (remaining <= 0) return "Sold out";
-  if (remaining <= 10) return `${remaining} left`;
-  return "Available";
+  if (remaining <= 0) return "Full";
+  return `${remaining} left`;
 }
 
 export const ExperienceReservePicker: React.FC<
@@ -183,6 +212,10 @@ export const ExperienceReservePicker: React.FC<
   unitAllInCents = null,
   currency = null,
   options,
+  spacingMinutes: propsSpacingMinutes = null,
+  minNoticeMinutes: propsMinNoticeMinutes = null,
+  eventId = null,
+  capacityScope = null,
   onCancel,
   onConfirm,
 }) => {
@@ -228,16 +261,97 @@ export const ExperienceReservePicker: React.FC<
     [occurrences, selectedDateId],
   );
 
-  // Open-daily: 30-min-step time choices in the EXPERIENCE zone (#3281).
+  // Open-daily: spacing grid (R3; default 30) in the EXPERIENCE zone (#3281),
+  // earliest start = now + minimum notice (R3; default 120).
+  const spacingMinutes =
+    typeof propsSpacingMinutes === "number" && propsSpacingMinutes > 0
+      ? propsSpacingMinutes
+      : 30;
+  const noticeMinutes =
+    typeof propsMinNoticeMinutes === "number" && propsMinNoticeMinutes >= 0
+      ? propsMinNoticeMinutes
+      : 120;
   const timeChoices = useMemo<number[]>(() => {
     if (mode !== "open-daily" || selectedDate === null) return [];
     return experienceTimeChoices(
       selectedDate.startAt,
       selectedDate.endAt,
       timezone,
-      30,
+      spacingMinutes,
+      Date.now() + noticeMinutes * 60_000,
     );
-  }, [mode, selectedDate, timezone]);
+  }, [mode, selectedDate, timezone, spacingMinutes, noticeMinutes]);
+
+  // issue #3281 R3 — per-start (and per-day) remaining from slot RPC.
+  const [slotRemainingByMinute, setSlotRemainingByMinute] = useState<
+    Map<number, number | null>
+  >(() => new Map());
+  useEffect(() => {
+    if (
+      !visible ||
+      mode !== "open-daily" ||
+      selectedDate === null ||
+      typeof eventId !== "string" ||
+      eventId.length === 0 ||
+      (capacityScope !== "per_start" && capacityScope !== "per_day")
+    ) {
+      setSlotRemainingByMinute(new Map());
+      return;
+    }
+    // Keep the selected start's remaining through the party step; only the
+    // time step refetches (partyMax still reads this map).
+    if (step !== "time" && step !== "party") {
+      setSlotRemainingByMinute(new Map());
+      return;
+    }
+    if (step === "party") return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.rpc(
+        "pg_experience_slot_availability",
+        {
+          p_event_id: eventId,
+          p_event_date_id: selectedDate.eventDateId,
+          p_ticket_type_id: selectedOption?.ticketTypeId ?? null,
+        },
+      );
+      if (cancelled || error || data == null || typeof data !== "object") {
+        if (!cancelled) setSlotRemainingByMinute(new Map());
+        return;
+      }
+      const slots = (data as { slots?: unknown }).slots;
+      const next = new Map<number, number | null>();
+      if (Array.isArray(slots)) {
+        for (const raw of slots) {
+          if (raw == null || typeof raw !== "object") continue;
+          const startAt = (raw as { startAt?: unknown }).startAt;
+          const remaining = (raw as { remaining?: unknown }).remaining;
+          if (typeof startAt !== "string") continue;
+          const minute = wallMinuteInZone(startAt, timezone);
+          if (minute === null) continue;
+          next.set(
+            minute,
+            typeof remaining === "number" && Number.isFinite(remaining)
+              ? remaining
+              : null,
+          );
+        }
+      }
+      if (!cancelled) setSlotRemainingByMinute(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    visible,
+    mode,
+    step,
+    selectedDate,
+    eventId,
+    capacityScope,
+    selectedOption?.ticketTypeId,
+    timezone,
+  ]);
 
   const isBlockOption = selectedOption?.priceBasis === "block";
   const isGroupOption = selectedOption?.priceBasis === "group";
@@ -273,7 +387,7 @@ export const ExperienceReservePicker: React.FC<
       blockMinutes,
       minBlocks,
       maxBlocks,
-      30,
+      spacingMinutes,
     );
   }, [
     isBlockOption,
@@ -284,6 +398,7 @@ export const ExperienceReservePicker: React.FC<
     blockMinutes,
     minBlocks,
     maxBlocks,
+    spacingMinutes,
   ]);
 
   useEffect(() => {
@@ -304,6 +419,14 @@ export const ExperienceReservePicker: React.FC<
     selectedOption?.ticketsRemaining !== undefined
       ? selectedOption.ticketsRemaining
       : eventRemaining;
+  const slotRemainingForSelection =
+    selectedMinute !== null && slotRemainingByMinute.has(selectedMinute)
+      ? slotRemainingByMinute.get(selectedMinute) ?? null
+      : null;
+  const remainingForParty =
+    typeof slotRemainingForSelection === "number"
+      ? slotRemainingForSelection
+      : optionRemaining;
   const groupCap =
     isGroupOption &&
     typeof selectedOption?.groupMax === "number" &&
@@ -312,7 +435,7 @@ export const ExperienceReservePicker: React.FC<
       : MAX_PARTY;
   const partyMax = Math.min(
     groupCap,
-    optionRemaining === null ? groupCap : Math.max(1, optionRemaining),
+    remainingForParty === null ? groupCap : Math.max(1, remainingForParty),
   );
 
   useEffect(() => {
@@ -409,7 +532,7 @@ export const ExperienceReservePicker: React.FC<
       selectedDate.endAt,
       timezone,
       selectedMinute,
-      30,
+      spacingMinutes,
     );
     // issue #3281 — never confirm open-daily without a resolvable start
     // (past / spring-forward gaps convert to null).
@@ -642,17 +765,34 @@ export const ExperienceReservePicker: React.FC<
           <View style={styles.timeWrap}>
             {timeChoices.map((min) => {
               const selected = selectedMinute === min;
+              const slotRem = slotRemainingByMinute.get(min);
+              const full =
+                typeof slotRem === "number" && Number.isFinite(slotRem)
+                  ? slotRem <= 0
+                  : false;
+              const chip = experienceRemainingChipText(
+                typeof slotRem === "number" ? slotRem : null,
+              );
               return (
                 <Pressable
                   key={min}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedMinute(min);
-                    if (!isBlockOption) setStep("party");
-                  }}
+                  onPress={
+                    full
+                      ? undefined
+                      : () => {
+                          void Haptics.impactAsync(
+                            Haptics.ImpactFeedbackStyle.Light,
+                          );
+                          setSelectedMinute(min);
+                          if (!isBlockOption) setStep("party");
+                        }
+                  }
+                  disabled={full}
                   accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  accessibilityLabel={formatMinute(min)}
+                  accessibilityState={{ checked: selected, disabled: full }}
+                  accessibilityLabel={`${formatMinute(min)}${
+                    chip !== null ? `, ${chip}` : ""
+                  }`}
                   style={[
                     styles.timeChip,
                     {
@@ -665,6 +805,7 @@ export const ExperienceReservePicker: React.FC<
                           backgroundColor: palette.accentWash,
                         }
                       : null,
+                    full ? { opacity: 0.45 } : null,
                   ]}
                 >
                   <Text
@@ -677,6 +818,7 @@ export const ExperienceReservePicker: React.FC<
                     ]}
                   >
                     {formatMinute(min)}
+                    {chip !== null ? ` · ${chip}` : ""}
                   </Text>
                 </Pressable>
               );

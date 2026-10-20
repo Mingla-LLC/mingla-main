@@ -57,11 +57,17 @@ function validate(sources) {
   }
   requireText("consumerGate", "createAppVersionCoordinator", "Consumer gate must use bounded coordinator");
   requireText("hostGate", "foregroundEvent", "Host gate must consume the existing root lifecycle signal");
-  requireText(
-    "hostGate",
-    'foregroundEvent !== null && snapshot.phase !== "required"',
-    "Host must veil a pending native foreground check before old UI can render",
-  );
+  // #2107 A2 (2026-10-19) reverses the original #2075 foreground veil: a
+  // foreground recheck runs BEHIND the mounted app and only a confirmed
+  // `required` covers it. Re-introducing the veil would unmount navigation and
+  // any in-progress flow every time someone returns after 15+ minutes.
+  for (const key of ["consumerGate", "hostGate"]) {
+    if (sources[key].includes('foregroundEvent !== null && snapshot.phase !== "required"')) {
+      failures.push(`${key} must not veil (unmount the app) for a pending foreground check — #2107 A2`);
+    }
+    requireText(key, "check(false)", `${key} foreground recheck must be non-blocking — #2107 A2`);
+    requireText(key, "resolveGateLayout(", `${key} must keep the app mounted via resolveGateLayout — #2107 A2`);
+  }
   if (sources.hostGate.includes("AppState.addEventListener")) {
     failures.push("Host gate must not add a duplicate AppState listener");
   }
@@ -159,19 +165,27 @@ if (process.argv.includes("--self-test")) {
   if (!validate(reverted).some((failure) => failure.includes("Consumer root"))) {
     throw new Error("self-test failed: true gate revert was not detected");
   }
-  const foregroundRaceReverted = {
+  const foregroundVeilReintroduced = {
     ...sources,
-    hostGate: sources.hostGate.replace(
-      'foregroundEvent !== null && snapshot.phase !== "required"',
-      'foregroundEvent === null && snapshot.phase !== "required"',
-    ),
+    hostGate: `${sources.hostGate}\nconst veil = foregroundEvent !== null && snapshot.phase !== "required";`,
   };
   if (
-    !validate(foregroundRaceReverted).some((failure) =>
-      failure.includes("pending native foreground check")
+    !validate(foregroundVeilReintroduced).some((failure) =>
+      failure.includes("pending foreground check")
     )
   ) {
-    throw new Error("self-test failed: Host foreground race revert was not detected");
+    throw new Error("self-test failed: a re-introduced Host foreground veil was not detected (#2107 A2)");
+  }
+  const blockingForegroundReverted = {
+    ...sources,
+    consumerGate: sources.consumerGate.replace("check(false)", "check(true)"),
+  };
+  if (
+    !validate(blockingForegroundReverted).some((failure) =>
+      failure.includes("must be non-blocking")
+    )
+  ) {
+    throw new Error("self-test failed: a blocking Consumer foreground recheck was not detected (#2107 A2)");
   }
   const geometryReverted = {
     ...sources,

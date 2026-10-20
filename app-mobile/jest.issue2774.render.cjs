@@ -58,5 +58,8 @@ module.exports = {
     // are spawned below without depending on app-mobile/node_modules.
     "**/__tests__/issue_3859_public_installment_capability.implementor.happy.test.ts",
     "**/__tests__/issue_3859_node_guards_ci.render.test.ts",
+    // issue #2107 — mounts the Explorer welcome video, runs a restart whose
+    // reloadAsync fails, and proves the released player is never touched again.
+    "**/__tests__/issue_2107_welcome_video_released_on_restart.render.test.tsx",
   ],
 };

@@ -8,8 +8,8 @@
 //     all-gender target emits ZERO demographic ops (byte-identical broad build).
 //   - googleAgeRangesForRange bucket-widening (21-30 ⇒ 18-24 + 25-34).
 //   - parseGoogleUserInterests / filterGoogleUserInterests over the search page.
-//   - buildSnapchatCircleGeos groups circles under country_code (never fabricates)
-//     + buildSnapchatAdSquadBody nests circles under targeting.geos and emits SCLS
+//   - buildSnapchatCircleLocations collects circles (never fabricates)
+//     + buildSnapchatAdSquadBody puts circles in targeting.locations (#3697) and emits SCLS
 //     targeting.interests[{category_id}].
 //   - parseSnapchatInterests / filterSnapchatInterests over the SCLS page.
 //   - create-campaign + targeting-search source wiring (the fn actually consumes
@@ -34,7 +34,7 @@ import {
 } from "../../_shared/google.ts";
 import {
   buildSnapchatAdSquadBody,
-  buildSnapchatCircleGeos,
+  buildSnapchatCircleLocations,
   filterSnapchatInterests,
   parseSnapchatInterests,
   type SnapchatAdSquadSpec,
@@ -157,8 +157,13 @@ Deno.test("parseGoogleUserInterests + filterGoogleUserInterests over a search pa
   assertEquals(music[0].id, "80546");
 });
 
-// ── Snap circle geos — grouped under country_code, never fabricated ────────────
-Deno.test("buildSnapchatCircleGeos groups circles under country_code + drops junk", () => {
+// ── Snap circle locations — documented targeting.locations, never fabricated ──
+// [TEST-MOD-APPROVED #3697] Snapchat's documented targeting shape
+// (developers.snap.com/api/marketing-api/Ads-API/targeting) carries circles in
+// targeting.locations[{circles, operation:"INCLUDE"}], not nested under
+// geos[].circles (that nesting was rejected live with HTTP 400). This replaces
+// the old buildSnapchatCircleGeos grouping assertion.
+Deno.test("buildSnapchatCircleLocations collects circles into one INCLUDE location + drops junk", () => {
   const circles: SnapchatCircleGeo[] = [
     { country_code: "GB", latitude: 51.5, longitude: -0.12, radius: 10, unit: "mile" },
     { country_code: "gb", latitude: 53.4, longitude: -2.24, radius: 5, unit: "mile" },
@@ -166,13 +171,12 @@ Deno.test("buildSnapchatCircleGeos groups circles under country_code + drops jun
     // junk (NaN coords) is dropped — never fabricated.
     { country_code: "FR", latitude: NaN, longitude: 2.3, radius: 5, unit: "mile" },
   ];
-  const geos = buildSnapchatCircleGeos(circles)!;
-  // GB (two circles, case-folded to one country) + US.
-  assertEquals(geos.length, 2);
-  const gb = geos.find((g) => g.country_code === "gb")!;
-  assertEquals((gb.circles as unknown[]).length, 2);
-  // empty ⇒ null (caller keeps country-only geos).
-  assertEquals(buildSnapchatCircleGeos([]), null);
+  const locations = buildSnapchatCircleLocations(circles)!;
+  assertEquals(locations.length, 1);
+  assertEquals(locations[0].operation, "INCLUDE");
+  assertEquals((locations[0].circles as unknown[]).length, 3);
+  // empty ⇒ null (caller omits targeting.locations).
+  assertEquals(buildSnapchatCircleLocations([]), null);
 });
 
 // ── Snap ad-squad body — circles nested under geos + SCLS interests ────────────
@@ -185,18 +189,21 @@ function snapSpec(over: Partial<SnapchatAdSquadSpec> = {}): SnapchatAdSquadSpec 
   };
 }
 
-Deno.test("buildSnapchatAdSquadBody: FAILS-ON-REVERT circle present ⇒ geos[0].circles[0].latitude exists", () => {
+// [TEST-MOD-APPROVED #3697] Snapchat's documented shape puts circles in
+// targeting.locations with uppercase units; geos stays country-only.
+Deno.test("buildSnapchatAdSquadBody: FAILS-ON-REVERT circle present ⇒ locations[0].circles[0].latitude exists", () => {
   const body = buildSnapchatAdSquadBody("camp-id", snapSpec({
     circles: [{ country_code: "GB", latitude: 51.5, longitude: -0.12, radius: 12, unit: "mile" }],
     interestCategoryIds: ["1417", "1502"],
   }));
   const targeting = body.targeting as Record<string, unknown>;
-  const geos = targeting.geos as Record<string, unknown>[];
-  assertEquals(geos[0].country_code, "gb");
-  const circle = (geos[0].circles as Record<string, unknown>[])[0];
+  assertEquals(targeting.geos, [{ country_code: "gb" }]);
+  const locations = targeting.locations as Record<string, unknown>[];
+  assertEquals(locations[0].operation, "INCLUDE");
+  const circle = (locations[0].circles as Record<string, unknown>[])[0];
   assert(typeof circle.latitude === "number", "circle latitude must be present");
   assertEquals(circle.radius, 12);
-  assertEquals(circle.unit, "mile");
+  assertEquals(circle.unit, "MILES");
   // SCLS interests ride as targeting.interests[{category_id:[...]}].
   assertEquals(targeting.interests, [{ category_id: ["1417", "1502"] }]);
 });
