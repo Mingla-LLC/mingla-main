@@ -840,6 +840,23 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_feature_guide_release: {
     excluded: "the agent reads the Feature Guide through its product truth tools",
   },
+  // #3980 synced program, Wave 3: the operations redesign's screens.
+  ops_people_directory: {
+    excluded: "the agent reads the team with get_started; names go through the server's name check",
+  },
+  ops_settings_get: {
+    excluded: "only the owner, in person, switches automatic steps and brand cards",
+  },
+  ops_setting_set: {
+    excluded: "only the owner, in person, switches automatic steps and brand cards",
+  },
+  ops_host_next: {
+    excluded: "the agent reads a host's next event with list_calendar and the host card with get_record",
+  },
+  ops_attention: { tools: ["list_work", "my_work"] },
+  ops_recent_changes: {
+    excluded: "the agent reads what Mingla did by itself with read_log",
+  },
 };
 
 const WORK_BY_NAME = new Map(
