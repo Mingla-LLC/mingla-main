@@ -51,6 +51,13 @@ export interface ExperienceTicketRow {
   quantityTotal: number | null;
   isUnlimited: boolean;
   isFree: boolean;
+  /** issue #3281 R2 — person | group | block (defaults person for legacy). */
+  priceBasis?: "person" | "group" | "block";
+  blockMinutes?: number | null;
+  minBlocks?: number | null;
+  maxBlocks?: number | null;
+  groupMax?: number | null;
+  isHidden?: boolean;
 }
 
 export interface ExperienceDateRow {
@@ -119,6 +126,8 @@ export interface ExperienceDetail {
   experienceIntent: ExperienceIntentId | null;
   stops: ExperienceStopRow[];
   ticket: ExperienceTicketRow | null;
+  /** issue #3281 R2 — all sellable options (ticket first = default). */
+  tickets?: ExperienceTicketRow[];
   dates: ExperienceDateRow[];
   /**
    * #1022 — raw theme override. null = fully inherited from the brand.
@@ -291,7 +300,9 @@ export async function getExperienceDetail(
         .order("stop_order", { ascending: true }),
       supabase
         .from("ticket_types")
-        .select("id, name, price_cents, currency, quantity_total, is_unlimited, is_free")
+        .select(
+          "id, name, price_cents, currency, quantity_total, is_unlimited, is_free, is_hidden, price_basis, block_minutes, min_blocks, max_blocks, group_max",
+        )
         .eq("event_id", eventId)
         .is("deleted_at", null)
         .order("display_order", { ascending: true }),
@@ -315,7 +326,44 @@ export async function getExperienceDetail(
   const isRecurring = raw.is_recurring === true;
   const isMultiDate = raw.is_multi_date === true;
 
-  const ticket = (ticketRows ?? [])[0];
+  const mapTicket = (ticket: {
+    id: string;
+    name: string;
+    price_cents: number;
+    currency: string;
+    quantity_total: number | null;
+    is_unlimited: boolean | null;
+    is_free: boolean | null;
+    is_hidden?: boolean | null;
+    price_basis?: string | null;
+    block_minutes?: number | null;
+    min_blocks?: number | null;
+    max_blocks?: number | null;
+    group_max?: number | null;
+  }): ExperienceTicketRow => {
+    const basis =
+      ticket.price_basis === "group" || ticket.price_basis === "block"
+        ? ticket.price_basis
+        : "person";
+    return {
+      id: ticket.id,
+      name: ticket.name,
+      priceCents: ticket.price_cents,
+      currency: ticket.currency,
+      quantityTotal: ticket.quantity_total,
+      isUnlimited: ticket.is_unlimited === true,
+      isFree: ticket.is_free === true,
+      priceBasis: basis,
+      blockMinutes: ticket.block_minutes ?? null,
+      minBlocks: ticket.min_blocks ?? null,
+      maxBlocks: ticket.max_blocks ?? null,
+      groupMax: ticket.group_max ?? null,
+      isHidden: ticket.is_hidden === true,
+    };
+  };
+
+  const tickets = (ticketRows ?? []).map(mapTicket);
+  const ticket = tickets[0];
 
   return {
     id: raw.id,
@@ -377,18 +425,8 @@ export async function getExperienceDetail(
       priceCents: s.price_cents,
       description: typeof s.ai_description === "string" ? s.ai_description : "",
     })),
-    ticket:
-      ticket !== undefined
-        ? {
-            id: ticket.id,
-            name: ticket.name,
-            priceCents: ticket.price_cents,
-            currency: ticket.currency,
-            quantityTotal: ticket.quantity_total,
-            isUnlimited: ticket.is_unlimited === true,
-            isFree: ticket.is_free === true,
-          }
-        : null,
+    ticket: ticket ?? null,
+    tickets,
     dates: (dateRows ?? []).map((d) => ({
       id: d.id,
       startAt: d.start_at,

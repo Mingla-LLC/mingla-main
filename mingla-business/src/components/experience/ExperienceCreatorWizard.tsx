@@ -258,6 +258,8 @@ export interface ExperienceWizardInitialDraft {
   pricingMode: ExperiencePricingMode;
   stops: ExperienceStopDraft[];
   wholePriceMajor: string;
+  /** issue #3281 R2 — optional seed of sellable price options. */
+  priceOptions?: ExperiencePriceOptionDraft[];
   isFree: boolean;
   capacity: string;
   unlimited: boolean;
@@ -456,18 +458,23 @@ export const ExperienceCreatorWizard: React.FC<
   const [isFree, setIsFree] = useState(initialDraft?.isFree ?? false);
   const [capacity, setCapacity] = useState(initialDraft?.capacity ?? "20");
   const [unlimited, setUnlimited] = useState(initialDraft?.unlimited ?? false);
-  // issue #3281 R2 — price options (ticket_types). Seed one Standard option that
-  // tracks the whole-price field until the Pricing step grows a full editor.
+  // issue #3281 R2 — price options (ticket_types). Seed from the draft when
+  // present; otherwise one Standard person option mirroring wholePriceMajor.
   const [priceOptions, setPriceOptions] = useState<ExperiencePriceOptionDraft[]>(
-    () => [
-      emptyPriceOption({
-        name: "Standard",
-        priceMajor: initialWholePriceInput(
-          initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor,
-        ),
-        priceBasis: "person",
-      }),
-    ],
+    () => {
+      if (initialDraft?.priceOptions && initialDraft.priceOptions.length > 0) {
+        return initialDraft.priceOptions;
+      }
+      return [
+        emptyPriceOption({
+          name: "Standard",
+          priceMajor: initialWholePriceInput(
+            initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor,
+          ),
+          priceBasis: "person",
+        }),
+      ];
+    },
   );
   const [pricingSwitches, setPricingSwitches] =
     useState<PricingSwitchOverrides>(
@@ -479,18 +486,14 @@ export const ExperienceCreatorWizard: React.FC<
   );
 
   // Keep the lead option's amount in sync with the whole-price / free toggle.
+  // Do NOT reset priceBasis — the Pricing step owns the unit selector.
   useEffect(() => {
     setPriceOptions((prev) => {
       if (prev.length === 0) return prev;
       const lead = prev[0];
       const nextMajor = isFree ? "0" : wholePriceMajor;
-      if (lead.priceMajor === nextMajor && lead.priceBasis === "person") {
-        return prev;
-      }
-      return [
-        { ...lead, priceMajor: nextMajor, priceBasis: "person" },
-        ...prev.slice(1),
-      ];
+      if (lead.priceMajor === nextMajor) return prev;
+      return [{ ...lead, priceMajor: nextMajor }, ...prev.slice(1)];
     });
   }, [wholePriceMajor, isFree]);
 

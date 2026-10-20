@@ -41,7 +41,10 @@ import {
   type ExperienceWizardInitialDraft,
 } from "../../../src/components/experience/LazyExperienceCreatorWizard";
 import {
+  emptyPriceOption,
   newStopClientId,
+  type ExperienceBlockMinutes,
+  type ExperiencePriceOptionDraft,
   type ExperienceStopDraft,
 } from "../../../src/components/experience/experienceWizardTypes";
 // issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
@@ -213,6 +216,41 @@ function detailToInitialDraft(
     );
   }
 
+  const ticketList = exp.tickets ?? (exp.ticket !== null ? [exp.ticket] : []);
+  const priceOptions: ExperiencePriceOptionDraft[] =
+    ticketList.length > 0
+      ? ticketList.map((t) => {
+          const blockMinutes = (
+            [15, 30, 45, 60].includes(t.blockMinutes ?? -1)
+              ? (t.blockMinutes as ExperienceBlockMinutes)
+              : 60
+          );
+          return emptyPriceOption({
+            ticketTypeId: t.id,
+            name: t.name,
+            priceMajor: centsToMajor(t.priceCents),
+            priceBasis: t.priceBasis ?? "person",
+            groupMax: t.groupMax ?? 4,
+            blockMinutes,
+            minBlocks: t.minBlocks ?? 1,
+            maxBlocks: t.maxBlocks ?? 4,
+            capacity: t.isUnlimited ? null : t.quantityTotal,
+            isHidden: t.isHidden === true,
+            soldCount: 0,
+          });
+        })
+      : [
+          emptyPriceOption({
+            name: "Standard",
+            priceMajor: centsToMajor(
+              exp.pricingMode === "whole"
+                ? exp.wholePriceCents ?? 0
+                : 0,
+            ),
+            priceBasis: "person",
+          }),
+        ];
+
   return {
     title: exp.title,
     description: exp.description ?? "",
@@ -230,6 +268,7 @@ function detailToInitialDraft(
         ? exp.wholePriceCents ?? exp.ticket?.priceCents ?? 0
         : 0,
     ),
+    priceOptions,
     isFree: exp.ticket?.isFree ?? false,
     capacity:
       exp.ticket === null || exp.ticket.isUnlimited || exp.ticket.quantityTotal === null
