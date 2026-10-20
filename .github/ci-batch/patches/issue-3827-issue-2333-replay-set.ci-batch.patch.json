@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3827",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-2333-online-event-publish",
+      "extension": "yml"
+    },
+    "baseRowSha256": "02a4a5c7f7b9eaaeb769036f06c52461d1f93f9dfa96164bf1be3b99cdb850c8"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "24458dbb697fa7b995e00ae5c538b407234c1a39258b31209134b00d40790297",
+      "value": "9c6b2cec53795c14cc91482b8c2f8c96d4ed1c63bbc5c9c6c0a6452077e7db49"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3827 drops the redundant #3313 re-apply from the #2333 replay-safety step: later files own the final definition and the #3313 probe is ambiguous after #3281's overloads. Execution topology unchanged."
+}
