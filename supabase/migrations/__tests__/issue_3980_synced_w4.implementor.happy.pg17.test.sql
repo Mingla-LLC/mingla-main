@@ -30,8 +30,6 @@
 --               audit row each from this change, statuses unchanged, no
 --               evidence added, no old names or old state words, the new
 --               planned entry Release records and the synced system
---   W4-WORDS    the giveaway and ads rule and the go-live step use the plain
---               states
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -532,27 +530,6 @@ begin
     'When a pull request merges, a bot posts its release record on each linked issue: PR, merge commit, migrations added and applied, deploy, live check and the Feature Guide entries it ships. Admin follows every linked GitHub issue, so Work cards, tickets and roadmap cards show its status, and an entry turns Live by itself when its record is complete. Search words: release record, live, shipped, GitHub status, Feature Guide, merge bot. || Mingla''s team records every release and checks it in production before telling hosts it is live.');
 end;
 $guide$;
-
--- ---------------------------------------------------------------------------
--- W4-WORDS: the plain states in the rule and the launch kit
--- ---------------------------------------------------------------------------
-do $words$
-begin
-  perform pg_temp.w4_check('W4-WORDS', 'public too late: held, in plain words',
-    public.ops_promo_gate('{"title":"W4 Night","runway":{"band":"organic","lead_days":15}}'::jsonb, current_date)::text,
-    '{"kind": "organic_only", "reason": "Too late for promo: W4 Night went public 15 days before it starts. No giveaway or ads.", "blocked": true}');
-  perform pg_temp.w4_check('W4-WORDS', 'never public in time: held, in plain words',
-    public.ops_promo_gate('{"title":"W4 Night","runway":{"band":"missed"}}'::jsonb, current_date)->>'reason',
-    'Too late for promo: W4 Night was not public 21 days before it starts. No giveaway or ads.');
-  perform pg_temp.w4_check('W4-WORDS', 'public early enough: not held',
-    public.ops_promo_gate('{"title":"W4 Night","runway":{"band":"tight","lead_days":24}}'::jsonb, current_date)::text, '{"blocked": false, "lead_days": 24}');
-  perform pg_temp.w4_check('W4-WORDS', 'the go-live step names the plain states',
-    (select k->>'instructions_template' from jsonb_array_elements(public.ops_kit_template()) k where k->>'key' = 'go_live_gate'),
-    '{title} must be public on Mingla by {date}, 28 days before it starts, to be Ready to promote. Public by {date21}, it is Promote now. After that it is Too late for promo: no giveaway or ads.');
-  perform pg_temp.w4_check('W4-WORDS', 'no step of the launch kit uses the old words',
-    (select count(*)::text from jsonb_array_elements(public.ops_kit_template()) k where k::text ~* '(full launch|organic only|To review|missed)'), '0');
-end;
-$words$;
 
 select count(*) as w4_total, count(*) filter (where not ok) as w4_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as w4_failures

@@ -17,8 +17,6 @@
 --     brands the owner chose, once per request key.
 --     All four are for the owner, signed in as a person, and nothing in any
 --     migration runs them: a backfill happens only when the owner confirms.
---   * The words for the four plain states in the launch kit and the giveaway
---     and ads rule, replacing "full launch", "organic only" and "missed".
 --   * Feature Guide text for Needs you, Work, Agent activity, the Calendar,
 --     the host and creator pipelines, Team and roles and My agent, written
 --     from the production text read on 20 Oct, and a new planned entry,
@@ -35,9 +33,7 @@
 --
 -- ROLLBACK (no down-migration file): roll the admin web client back first,
 -- then in one transaction drop the four new functions and the internal
--- helpers, restore ops_kit_template and ops_promo_gate from
--- 20271116003980_issue_3980_wave1_work_board.sql, restore
--- ops_agent_log_action_check from 20271124003980, and restore the eight
+-- helpers, restore ops_agent_log_action_check from 20271124003980, and restore the eight
 -- Feature Guide rows from their audit history (the new entry can be deleted
 -- while it is planned). Links and host cards made by a confirmed backfill
 -- stay as history.
@@ -76,80 +72,7 @@ ALTER TABLE public.ops_agent_log ADD CONSTRAINT ops_agent_log_action_check CHECK
   'backfill_confirmed'));
 
 -- ---------------------------------------------------------------------------
--- 2. The four plain states in the words the launch kit and the giveaway and
--- ads rule use. Kinds and keys stay as they are (blocked_kind 'organic_only'
--- is an internal name); only the sentences people and agents read change.
--- ---------------------------------------------------------------------------
-
--- From 20271116003980. The go-live step's instructions use the plain states.
-CREATE OR REPLACE FUNCTION public.ops_kit_template() RETURNS jsonb
-LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
-AS $$ SELECT $kit$[
-  {"step":-35,"key":"host_materials","who":"host_owner","kind":"task","gate":false,
-   "title_template":"Collect flyer, logo, prices and date for {title}",
-   "instructions_template":"Ask {host} for the flyer, logo, ticket prices and the exact date and time for {title}. Write the message with save_drafts; a person sends it. Put what arrives on the host card.",
-   "done_means_template":"Flyer, logo, prices and date are on the host card."},
-  {"step":-31,"key":"listing_built","who":"host_owner","kind":"task","gate":false,
-   "title_template":"Build the {title} listing with the host",
-   "instructions_template":"Walk {host} through Mingla Business: connect the bank and country first (a draft locks the currency), then build the listing from the flyer. Check the date, the price and the cover.",
-   "done_means_template":"A draft listing exists under the host's brand and the host has checked it."},
-  {"step":-28,"key":"go_live_gate","who":"host_owner","kind":"gate_live","gate":true,
-   "title_template":"Go-live gate: {title} public by {date}",
-   "instructions_template":"{title} must be public on Mingla by {date}, 28 days before it starts, to be Ready to promote. Public by {date21}, it is Promote now. After that it is Too late for promo: no giveaway or ads.",
-   "done_means_template":"The event is public on Mingla."},
-  {"step":-26,"key":"content_brief","who":"marketing","kind":"task","gate":false,
-   "title_template":"Content brief and creator picks for {title}",
-   "instructions_template":"Write the content brief and pick creators from the Creators board for {title}. Add the planned posts to the Calendar.",
-   "done_means_template":"A brief is on the card, creators are linked and the posts are on the Calendar."},
-  {"step":-21,"key":"giveaway_ads","who":"marketing","kind":"promo","gate":true,
-   "title_template":"Start the giveaway and ads for {title}",
-   "instructions_template":"Open the giveaway (two tickets for Mingla users) and get the ads plan approved by a person. Money is spent only after a person approves it in Needs you.",
-   "done_means_template":"The giveaway is open and the ads plan is approved by a person."},
-  {"step":-14,"key":"creator_posts","who":"marketing","kind":"task","gate":false,
-   "title_template":"Creator posts go out for {title}",
-   "instructions_template":"Check that each booked creator has posted and that every post is on the Calendar with its live link.",
-   "done_means_template":"Every creator post for {title} is live and linked."},
-  {"step":-7,"key":"reminder","who":"marketing","kind":"task","gate":false,
-   "title_template":"Reminder push and last-call post for {title}",
-   "instructions_template":"Write the reminder push and the last-call post. A person approves and sends them.",
-   "done_means_template":"The reminder and the last-call post are scheduled on the Calendar."},
-  {"step":2,"key":"recap","who":"host_owner","kind":"task","gate":false,
-   "title_template":"Recap {title}: sales, check-ins, what to repeat",
-   "instructions_template":"Pull ticket sales and check-ins, ask {host} what worked, and write what to repeat on the host card.",
-   "done_means_template":"A recap note is on the host card and a follow-up card exists for the next event."}
-]$kit$::jsonb $$;
-
--- From 20271116003980. A held giveaway and ads card says "Too late for promo"
--- in plain words; when it is held and why are unchanged.
-CREATE OR REPLACE FUNCTION public.ops_promo_gate(p_anchor jsonb, p_today date) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
-AS $$
-DECLARE v_band text := p_anchor->'runway'->>'band'; v_title text := COALESCE(p_anchor->>'title', 'The event');
-BEGIN
-  IF p_anchor IS NULL THEN
-    RETURN jsonb_build_object('blocked', true, 'kind', 'waiting_go_live',
-      'reason', 'Waiting for go-live: the event must be public with at least 21 days left.');
-  END IF;
-  IF v_band IN ('full', 'tight') THEN
-    RETURN jsonb_build_object('blocked', false, 'lead_days', (p_anchor->'runway'->>'lead_days')::integer);
-  ELSIF v_band = 'organic' THEN
-    RETURN jsonb_build_object('blocked', true, 'kind', 'organic_only', 'reason',
-      left(format('Too late for promo: %s went public %s days before it starts. No giveaway or ads.', v_title, p_anchor->'runway'->>'lead_days'), 300));
-  ELSIF v_band = 'not_live' THEN
-    RETURN jsonb_build_object('blocked', true, 'kind', 'waiting_go_live', 'reason',
-      left(format('Waiting for go-live: %s must be public with at least 21 days left (by %s).', v_title,
-        public.ops_day_words((p_anchor->'runway'->>'promo_from')::date)), 300));
-  ELSIF v_band = 'missed' THEN
-    RETURN jsonb_build_object('blocked', true, 'kind', 'organic_only', 'reason',
-      left(format('Too late for promo: %s was not public 21 days before it starts. No giveaway or ads.', v_title), 300));
-  END IF;
-  RETURN jsonb_build_object('blocked', true, 'kind', 'waiting_go_live',
-    'reason', left(format('Waiting for go-live: %s has no date yet.', v_title), 300));
-END;
-$$;
-
--- ---------------------------------------------------------------------------
--- 3. P3 backfills. Internal helpers first (service_role only), then the four
+-- 2. P3 backfills. Internal helpers first (service_role only), then the four
 -- client functions (owner, signed in as a person).
 -- ---------------------------------------------------------------------------
 
@@ -413,7 +336,7 @@ COMMENT ON FUNCTION public.ops_brand_cards_confirm(uuid[], text) IS
   'Issue #3980 P3. Owner only, signed in as a person. Runs ops_brand_autolink_one for the chosen brands; replay-safe per request key. Never run by a migration.';
 
 -- ---------------------------------------------------------------------------
--- 4. Feature Guide text (W4.2). Same shape as 20271119003980.
+-- 3. Feature Guide text (W4.2). Same shape as 20271119003980.
 -- ---------------------------------------------------------------------------
 DO $foundation3980sync$
 BEGIN
@@ -723,7 +646,7 @@ END;
 $postcheck3980sync$;
 
 -- ---------------------------------------------------------------------------
--- 5. Self-check. The apply stops here if anything above is not as stated.
+-- 4. Self-check. The apply stops here if anything above is not as stated.
 -- ---------------------------------------------------------------------------
 DO $w4sync3980$
 DECLARE
@@ -736,11 +659,10 @@ BEGIN
              FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'public'
               AND p.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_rows', 'ops_roadmap_links_preview',
-                                'ops_roadmap_links_confirm', 'ops_brand_cards_preview', 'ops_brand_cards_confirm',
-                                'ops_kit_template', 'ops_promo_gate') LOOP
+                                'ops_roadmap_links_confirm', 'ops_brand_cards_preview', 'ops_brand_cards_confirm') LOOP
     IF NOT EXISTS (SELECT 1 FROM unnest(r.proconfig) x WHERE x = 'search_path=pg_catalog, pg_temp') THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % does not pin search_path = pg_catalog, pg_temp', r.sig; END IF;
-    IF NOT r.prosecdef AND r.proname <> 'ops_kit_template' THEN
+    IF NOT r.prosecdef THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % is not SECURITY DEFINER', r.sig; END IF;
     IF has_function_privilege('anon', r.oid, 'EXECUTE')
        OR (SELECT bool_or(a.grantee = 0) FROM pg_catalog.pg_proc p2, aclexplode(COALESCE(p2.proacl, acldefault('f', p2.proowner))) a WHERE p2.oid = r.oid) THEN
@@ -754,8 +676,6 @@ BEGIN
     -- No new writer of pipeline tables, roadmap cards or ad tables.
     IF r.prosrc ~* '(update|insert\s+into|delete\s+from)\s+public\.(crm_|community_|ops_roadmap_links)' OR r.prosrc ~* '(public\.ad_|ad_plans|ad_campaigns)' THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % writes a table it must not', r.sig; END IF;
-    IF r.proname IN ('ops_kit_template', 'ops_promo_gate') AND r.prosrc ~* '(full launch|organic only|missed go-live|for the full)' THEN
-      RAISE EXCEPTION 'issue 3980 synced W4 self-check: % still uses the old state words', r.sig; END IF;
   END LOOP;
   IF (SELECT count(*) FROM unnest(c_new_client) s WHERE has_function_privilege('authenticated', 'public.' || s, 'EXECUTE')) <> 4 THEN
     RAISE EXCEPTION 'issue 3980 synced W4 self-check: a client function is missing'; END IF;
