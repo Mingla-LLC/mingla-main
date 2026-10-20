@@ -42,6 +42,7 @@ import {
   listCampaigns,
   loadAdminAdRecoveryQueue,
   parseEdgeError,
+  reconcileAdminAdPlan,
   resolveAdBrandNames,
   resumeAdminAdPlan,
   syncCampaigns,
@@ -59,12 +60,16 @@ import {
   canLaunchCampaign,
   canPauseCampaign,
   formatCampaignMoney,
-  scheduleWindowLabel,
   spendCapProgress,
 } from "../lib/adSpendCap";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { PageHeader } from "../components/ui/PageHeader";
 import { filterAndSortCampaigns } from "../lib/adCampaignWorkspace";
+import { CampaignRow } from "../components/ad-engine/CampaignRow";
+import { campaignScheduleInZone } from "../lib/adCampaignRow";
+import { DeadPlanCard } from "../components/ad-engine/DeadPlanCard";
+import { ChangeBudgetModal } from "../components/ad-engine/ChangeBudgetModal";
+import { clearedPlanNote, deadPlanFacts } from "../lib/adBuilder/deadPlan";
 import {
   housePlanCreateSteps,
   housePlanNextAction,
@@ -151,13 +156,17 @@ function providerMoneyAuthority(campaign) {
     /^[A-Z]{3}$/.test(campaign.provider_currency)
       ? campaign.provider_currency
       : null;
-  const frozenProviderCap = Number(campaign?.provider_budget_cents);
+  // #3697: a governed budget amendment supersedes the frozen allocation.
+  const frozenProviderCap = Number(
+    campaign?.amended_provider_budget_cents ?? campaign?.provider_budget_cents,
+  );
   const providerCapCents =
     Number.isSafeInteger(frozenProviderCap) && frozenProviderCap > 0
       ? frozenProviderCap
       : null;
   const frozenProviderDelivery = Number(
-    campaign?.provider_delivery_budget_cents,
+    campaign?.amended_provider_delivery_budget_cents ??
+      campaign?.provider_delivery_budget_cents,
   );
   const providerDeliveryCents =
     Number.isSafeInteger(frozenProviderDelivery) && frozenProviderDelivery > 0
@@ -208,6 +217,26 @@ function canEndPlan(campaign, campaigns) {
   );
 }
 
+/**
+ * #3697 Change budget is offered on a Mingla plan's live or paused provider
+ * campaigns; Host plans say why not, instead of hiding the action.
+ */
+function budgetChangeAvailability(campaign) {
+  const bound =
+    typeof campaign?.plan_version_id === "string" &&
+    /^[0-9a-f]{64}$/.test(campaign?.plan_hash ?? "");
+  if (!bound || !["ACTIVE", "PAUSED"].includes(campaign?.status)) {
+    return { can: false, reason: null };
+  }
+  if (campaign.owner_kind !== "mingla") {
+    return { can: false, reason: "Change budget: not available for Host campaigns yet" };
+  }
+  if (campaign.lifetime_budget_cents != null) {
+    return { can: false, reason: "Change budget: not available for lifetime budgets yet" };
+  }
+  return { can: true, reason: null };
+}
+
 function hasProviderObjectEvidence(item) {
   if ((item?.campaigns ?? []).length > 0) return true;
   return (item?.provider_attempts ?? []).some((attempt) => {
@@ -242,6 +271,13 @@ export function CampaignsPage({ embedded = false }) {
   const [recoveryTarget, setRecoveryTarget] = useState(null);
   const [recoverySteps, setRecoverySteps] = useState(null);
   const [cancelRecoveryTarget, setCancelRecoveryTarget] = useState(null);
+  // #3697 dead-plan reconcile: the last provider answer per plan, the plans
+  // a reconcile cleared recently, and the typed delete-then-clear target.
+  const [reconcileResults, setReconcileResults] = useState({});
+  const [reconcileBusy, setReconcileBusy] = useState({});
+  const [recentlyCleared, setRecentlyCleared] = useState([]);
+  const [reconcileDeleteTarget, setReconcileDeleteTarget] = useState(null);
+  const [budgetTarget, setBudgetTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
   const [roiPayload, setRoiPayload] = useState(null);
   const [roiLoading, setRoiLoading] = useState(false);
@@ -301,6 +337,7 @@ export function CampaignsPage({ embedded = false }) {
       setRecoveryQueue([]);
     } else {
       setRecoveryQueue(recoveryResult.data?.queue ?? []);
+      setRecentlyCleared(recoveryResult.data?.recently_cleared ?? []);
     }
     const brandIds = [
       ...(data ?? []).map((campaign) => campaign.brand_id),
@@ -327,6 +364,48 @@ export function CampaignsPage({ embedded = false }) {
         "Only missing platforms were retried from the exact frozen hash. Nothing was launched or spent.",
     });
     await load();
+  };
+
+  const handleReconcile = async (item, options = {}) => {
+    const planId = item?.plan?.id;
+    if (!planId) throw new Error("Plan ID is missing");
+    const provider = deadPlanFacts(item).providerLabel;
+    setReconcileBusy((prev) => ({ ...prev, [planId]: true }));
+    const outcome = await reconcileAdminAdPlan(item, options).then(
+      (result) => ({ result, error: null }),
+      (error) => ({ result: null, error }),
+    );
+    setReconcileBusy((prev) => ({ ...prev, [planId]: false }));
+    if (outcome.error) {
+      addToast({
+        variant: "error",
+        title: "Provider check failed",
+        description: outcome.error?.message ?? "Nothing was changed.",
+      });
+      throw outcome.error;
+    }
+    const result = outcome.result;
+    if (result?.verdict === "cleared") {
+      addToast({
+        variant: "success",
+        title: `Nothing from this attempt is on ${provider}.`,
+        description:
+          "The hold was released and the plan was cleared. The check is in the audit log.",
+      });
+      setReconcileResults((prev) => ({ ...prev, [planId]: null }));
+      await load();
+      return result;
+    }
+    setReconcileResults((prev) => ({ ...prev, [planId]: result }));
+    addToast({
+      variant: "warning",
+      title:
+        result?.verdict === "still_exists"
+          ? `Something from this attempt is still on ${provider}`
+          : `Couldn't confirm with ${provider}`,
+      description: "Nothing was changed. The hold stays in place.",
+    });
+    return result;
   };
 
   const handleCancelRecovery = async (item, reason) => {
@@ -516,7 +595,10 @@ export function CampaignsPage({ embedded = false }) {
       );
       addToast({
         variant: "error",
-        title: `${action} failed`,
+        title:
+          action === "change_budget"
+            ? "Budget change failed"
+            : `${action} failed`,
         description: detail,
       });
       setRowBusy((prev) => ({ ...prev, [campaign.id]: null }));
@@ -541,6 +623,13 @@ export function CampaignsPage({ embedded = false }) {
         addToast({
           variant: "success",
           title: `Live on ${PLATFORM_LABELS[campaign.platform] ?? campaign.platform}. It'll be in review before it starts delivering.`,
+        });
+      } else if (action === "change_budget") {
+        addToast({
+          variant: "success",
+          title: "Budget changed",
+          description:
+            "The provider has the new daily budget, the hold follows the new cap and auto-pause moved to 98% of it.",
         });
       } else if (action === "end") {
         addToast({
@@ -679,6 +768,19 @@ export function CampaignsPage({ embedded = false }) {
           }
         />
       )}
+      {(() => {
+        // #3697: a cleared dead plan leaves the page; one line says so.
+        const note = clearedPlanNote(recentlyCleared);
+        return note ? (
+          <AlertCard variant="info" title={note.headline}>
+            {note.details.map((line) => (
+              <span key={line} className="block">
+                {line}
+              </span>
+            ))}
+          </AlertCard>
+        ) : null;
+      })()}
       <SectionCard
         title="Host plans awaiting staff review"
         subtitle="The first three campaigns for each Host, plus flagged plans, stop here before any provider object is created. Funds are held, not spent."
@@ -860,6 +962,148 @@ export function CampaignsPage({ embedded = false }) {
         )}
       </SectionCard>
       <SectionCard
+        title="Campaign workspace"
+        subtitle="Search and filter the governed provider objects without exposing internal owner identifiers."
+      >
+        <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
+          <label className="relative block xl:col-span-2">
+            <span className="sr-only">Search campaigns</span>
+            <Search
+              size={15}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-3 text-[var(--color-text-tertiary)]"
+            />
+            <input
+              type="search"
+              value={campaignQuery}
+              onChange={(event) => setCampaignQuery(event.target.value)}
+              placeholder="Search campaign, brand, platform or objective"
+              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] pl-9 pr-3 text-sm"
+            />
+          </label>
+          <label>
+            <span className="sr-only">Filter campaign lifecycle</span>
+            <select
+              value={campaignLifecycleFilter}
+              onChange={(event) =>
+                setCampaignLifecycleFilter(event.target.value)
+              }
+              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-sm"
+            >
+              <option value="all">All lifecycle states</option>
+              <option value="needs_attention">Needs attention</option>
+              <option value="live">Live</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="paused">Paused</option>
+              <option value="ended">Ended</option>
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Filter campaign platform</span>
+            <select
+              value={campaignPlatformFilter}
+              onChange={(event) =>
+                setCampaignPlatformFilter(event.target.value)
+              }
+              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-sm"
+            >
+              <option value="all">All platforms</option>
+              {campaignPlatforms.map((platform) => (
+                <option key={platform} value={platform}>
+                  {PLATFORM_LABELS[platform] ?? platform}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="sr-only">Sort campaigns</span>
+            <select
+              value={campaignSort}
+              onChange={(event) => setCampaignSort(event.target.value)}
+              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-sm"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name">Name A–Z</option>
+              <option value="attention">Attention first</option>
+            </select>
+          </label>
+        </div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            {[
+              ["all", "All owners"],
+              ["mingla", "Mingla"],
+              ["host", "Hosts"],
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                size="sm"
+                variant={
+                  campaignOwnerFilter === value ? "primary" : "secondary"
+                }
+                onClick={() => setCampaignOwnerFilter(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            {visibleCampaigns.length} of {workspaceCampaigns.length} provider
+            campaigns
+          </span>
+        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 py-4">
+            <Spinner size="sm" /> Loading campaigns…
+          </div>
+        ) : !campaigns || campaigns.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            No campaigns yet — build one in the Campaign Builder. It will start
+            paused.
+          </p>
+        ) : visibleCampaigns.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            No campaigns match these filters.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {/* #3697: one plain status chip per row (not the raw advertiser +
+                delivery badges), dates in the campaign's own zone, spend vs
+                cap, and End plan / Sync inside the overflow menu. */}
+            {visibleCampaigns.map((campaign) => (
+              <CampaignRow
+                key={campaign.id}
+                campaign={campaign}
+                selected={selectedId === campaign.id}
+                warning={rowWarning[campaign.id] ?? null}
+                busy={rowBusy[campaign.id] ?? null}
+                canLaunch={canLaunchWithProviderMoney(campaign, campaigns)}
+                launchBlocked={
+                  canLaunchCampaign(campaign.status) &&
+                  !canLaunchWithProviderMoney(campaign, campaigns)
+                }
+                canPause={canPauseCampaign(campaign.status)}
+                canEnd={canEndPlan(campaign, campaigns)}
+                canChangeBudget={budgetChangeAvailability(campaign).can}
+                changeBudgetUnavailableReason={
+                  budgetChangeAvailability(campaign).reason
+                }
+                onChangeBudget={() => setBudgetTarget(campaign)}
+                onOpen={() => {
+                  window.location.hash = `#/campaigns?campaignId=${campaign.id}`;
+                }}
+                onLaunch={() => setLaunchTarget(campaign)}
+                onPause={() => handleAction(campaign, "pause")}
+                onEnd={() => setEndTarget(campaign)}
+                onSync={() => handleSync(campaign.id)}
+              />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard
         title="Mingla plans that need recovery"
         subtitle="These plans are server-owned and survive a browser reload. Resume retries only missing paused provider objects from the exact frozen hash; it never launches spend."
       >
@@ -887,6 +1131,20 @@ export function CampaignsPage({ embedded = false }) {
               const sealed = Boolean(canonical.execution_payloads);
               const terminal = plan.state === "creation_failed_terminal";
               const providerEvidence = hasProviderObjectEvidence(item);
+              if (terminal && sealed) {
+                return (
+                  <DeadPlanCard
+                    key={plan.id}
+                    item={item}
+                    result={reconcileResults[plan.id] ?? null}
+                    checking={Boolean(reconcileBusy[plan.id])}
+                    onCheck={() => {
+                      void handleReconcile(item).catch(() => {});
+                    }}
+                    onDeleteThenClear={() => setReconcileDeleteTarget(item)}
+                  />
+                );
+              }
               const canCancel =
                 !providerEvidence &&
                 [
@@ -1009,243 +1267,6 @@ export function CampaignsPage({ embedded = false }) {
           </div>
         )}
       </SectionCard>
-      <SectionCard
-        title="Campaign workspace"
-        subtitle="Search and filter the governed provider objects without exposing internal owner identifiers."
-      >
-        <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
-          <label className="relative block xl:col-span-2">
-            <span className="sr-only">Search campaigns</span>
-            <Search
-              size={15}
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-3 text-[var(--color-text-tertiary)]"
-            />
-            <input
-              type="search"
-              value={campaignQuery}
-              onChange={(event) => setCampaignQuery(event.target.value)}
-              placeholder="Search campaign, brand, platform or objective"
-              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] pl-9 pr-3 text-sm"
-            />
-          </label>
-          <label>
-            <span className="sr-only">Filter campaign lifecycle</span>
-            <select
-              value={campaignLifecycleFilter}
-              onChange={(event) =>
-                setCampaignLifecycleFilter(event.target.value)
-              }
-              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-sm"
-            >
-              <option value="all">All lifecycle states</option>
-              <option value="needs_attention">Needs attention</option>
-              <option value="live">Live</option>
-              <option value="scheduled">Scheduled</option>
-              <option value="paused">Paused</option>
-              <option value="ended">Ended</option>
-            </select>
-          </label>
-          <label>
-            <span className="sr-only">Filter campaign platform</span>
-            <select
-              value={campaignPlatformFilter}
-              onChange={(event) =>
-                setCampaignPlatformFilter(event.target.value)
-              }
-              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-sm"
-            >
-              <option value="all">All platforms</option>
-              {campaignPlatforms.map((platform) => (
-                <option key={platform} value={platform}>
-                  {PLATFORM_LABELS[platform] ?? platform}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="sr-only">Sort campaigns</span>
-            <select
-              value={campaignSort}
-              onChange={(event) => setCampaignSort(event.target.value)}
-              className="h-10 w-full rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-sm"
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="name">Name A–Z</option>
-              <option value="attention">Attention first</option>
-            </select>
-          </label>
-        </div>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-2">
-            {[
-              ["all", "All owners"],
-              ["mingla", "Mingla"],
-              ["host", "Hosts"],
-            ].map(([value, label]) => (
-              <Button
-                key={value}
-                size="sm"
-                variant={
-                  campaignOwnerFilter === value ? "primary" : "secondary"
-                }
-                onClick={() => setCampaignOwnerFilter(value)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-          <span className="text-xs text-[var(--color-text-secondary)]">
-            {visibleCampaigns.length} of {workspaceCampaigns.length} provider
-            campaigns
-          </span>
-        </div>
-        {loading ? (
-          <div className="flex items-center gap-2 py-4">
-            <Spinner size="sm" /> Loading campaigns…
-          </div>
-        ) : !campaigns || campaigns.length === 0 ? (
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            No campaigns yet — build one in the Campaign Builder. It will start
-            paused.
-          </p>
-        ) : visibleCampaigns.length === 0 ? (
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            No campaigns match these filters.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {visibleCampaigns.map((campaign) => (
-              <div
-                key={campaign.id}
-                className={[
-                  "border rounded-lg p-3 flex flex-wrap items-center gap-3",
-                  selectedId === campaign.id
-                    ? "border-[var(--color-brand-500)] ring-1 ring-[var(--color-brand-500)]"
-                    : "border-[var(--gray-200)]",
-                ].join(" ")}
-              >
-                <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    className="font-medium text-sm truncate hover:underline text-left"
-                    onClick={() => {
-                      window.location.hash = `#/campaigns?campaignId=${campaign.id}`;
-                    }}
-                  >
-                    {campaign.name}
-                  </button>
-                  <div className="text-xs text-[var(--color-text-secondary)]">
-                    {campaign.owner_label} ·{" "}
-                    {PLATFORM_LABELS[campaign.platform] ?? campaign.platform} ·{" "}
-                    {campaign.objective} ·{" "}
-                    {formatCampaignMoney(
-                      campaign.currency,
-                      campaign.daily_budget_cents,
-                    )}
-                    /day
-                    {campaign.cap_cents != null && (
-                      <>
-                        {" "}
-                        · cap{" "}
-                        {formatCampaignMoney(
-                          campaign.currency,
-                          campaign.cap_cents,
-                        )}
-                      </>
-                    )}
-                    {" · "}
-                    <a
-                      className="underline inline-flex items-center gap-1"
-                      href={campaign.dest_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      destination <ExternalLink size={10} />
-                    </a>
-                  </div>
-                  {scheduleWindowLabel({
-                    startsAt: campaign.starts_at,
-                    endsAt: campaign.ends_at,
-                  }) && (
-                    <div className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">
-                      {scheduleWindowLabel({
-                        startsAt: campaign.starts_at,
-                        endsAt: campaign.ends_at,
-                      })}
-                    </div>
-                  )}
-                  {rowWarning[campaign.id] && (
-                    <div className="text-xs text-[var(--color-warning-700)] mt-1">
-                      {rowWarning[campaign.id]}
-                    </div>
-                  )}
-                </div>
-                {/* DUAL badges: advertiser status + delivery status. */}
-                <Badge
-                  variant={campaign.status === "ACTIVE" ? "success" : "default"}
-                >
-                  {campaign.status}
-                </Badge>
-                <Badge
-                  variant={
-                    DELIVERY_BADGE_VARIANTS[campaign.delivery_status] ?? "info"
-                  }
-                >
-                  {campaign.delivery_status ?? "unknown"}
-                </Badge>
-                {canLaunchWithProviderMoney(campaign, campaigns) && (
-                  <Button
-                    size="sm"
-                    icon={Rocket}
-                    loading={rowBusy[campaign.id] === "launch"}
-                    onClick={() => setLaunchTarget(campaign)}
-                  >
-                    Launch plan
-                  </Button>
-                )}
-                {canLaunchCampaign(campaign.status) &&
-                  !canLaunchWithProviderMoney(campaign, campaigns) && (
-                    <Badge variant="error">Provider money unresolved</Badge>
-                  )}
-                {canPauseCampaign(campaign.status) && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={Pause}
-                    loading={rowBusy[campaign.id] === "pause"}
-                    onClick={() => handleAction(campaign, "pause")}
-                  >
-                    Pause
-                  </Button>
-                )}
-                {canEndPlan(campaign, campaigns) && (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    icon={XCircle}
-                    loading={rowBusy[campaign.id] === "end"}
-                    onClick={() => setEndTarget(campaign)}
-                  >
-                    End plan
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={RefreshCw}
-                  loading={rowBusy[campaign.id] === "sync"}
-                  onClick={() => handleSync(campaign.id)}
-                >
-                  Sync
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
-
       {/* ── Detail (?campaignId=) — review_detail with the §1.9b cause→fix map ── */}
       {selectedId && (
         <SectionCard
@@ -1577,10 +1598,19 @@ export function CampaignsPage({ embedded = false }) {
                     Schedule
                   </div>
                   <div className="text-sm font-medium">
-                    {scheduleWindowLabel({
-                      startsAt: selectedCampaign?.starts_at,
-                      endsAt: selectedCampaign?.ends_at,
-                    }) ?? "—"}
+                    {(() => {
+                      // #3697: the campaign's own schedule zone, labelled.
+                      const zoned = campaignScheduleInZone({
+                        startsAt: selectedCampaign?.starts_at,
+                        endsAt: selectedCampaign?.ends_at,
+                        timeZone:
+                          selectedCampaign?.plan_version?.schedule_time_zone ??
+                          null,
+                      });
+                      return zoned.range
+                        ? `${zoned.range} ${zoned.zoneLabel}`
+                        : "—";
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1763,6 +1793,44 @@ export function CampaignsPage({ embedded = false }) {
           </ol>
         )}
       </HighRiskActionModal>
+
+      <ChangeBudgetModal
+        open={budgetTarget !== null}
+        campaign={budgetTarget}
+        planCampaigns={
+          budgetTarget ? campaignsForPlan(workspaceCampaigns, budgetTarget) : []
+        }
+        onClose={() => setBudgetTarget(null)}
+        onSave={async (change) => {
+          const target = budgetTarget;
+          if (!target) throw new Error("No campaign selected");
+          const result = await handleAction(target, "change_budget", change);
+          if (!result.ok) {
+            throw new Error(result.detail || "The budget was not changed.");
+          }
+        }}
+      />
+
+      <HighRiskActionModal
+        open={reconcileDeleteTarget !== null}
+        onClose={() => setReconcileDeleteTarget(null)}
+        title={`Delete on ${reconcileDeleteTarget ? deadPlanFacts(reconcileDeleteTarget).providerLabel : "the provider"}, then clear?`}
+        description="Mingla deletes each object listed as still there, asks the provider again, and releases the hold only if nothing is left. Deleting on the provider cannot be undone. Type DELETE ON PROVIDER below."
+        confirmLabel="Delete, then clear"
+        confirmPhrase="DELETE ON PROVIDER"
+        requireReason={false}
+        destructive
+        successMessage={null}
+        onConfirm={async () => {
+          const target = reconcileDeleteTarget;
+          if (!target) throw new Error("No plan selected");
+          await handleReconcile(target, {
+            deleteOnProvider: true,
+            phrase: "DELETE ON PROVIDER",
+          });
+          setReconcileDeleteTarget(null);
+        }}
+      />
 
       <HighRiskActionModal
         open={cancelRecoveryTarget !== null}

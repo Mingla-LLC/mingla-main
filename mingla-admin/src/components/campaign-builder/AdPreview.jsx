@@ -10,6 +10,7 @@ import { requestVideoPreview } from "../../services/adEngineService";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
 import { VIDEO_API_AD_PREVIEWS_ENABLED } from "../../lib/adBuilder/flags";
 import { previewRequestFingerprint } from "../../lib/adBuilder/preparationState";
+import { safeMetaPreviewUrl } from "../../lib/adBuilder/previewUrl";
 import { openExternal } from "../../lib/openExternal";
 import { Button } from "../ui/Button";
 
@@ -141,6 +142,9 @@ export function AdPreview({
   const visibleMetaPreview = metaPreview.fingerprint === metaPreviewFingerprint
     ? metaPreview
     : { status: "idle", url: null };
+  // #3697: decode Meta's HTML-escaped iframe src (`&amp;t=`) and refuse any
+  // non-Meta URL, so neither the frame nor the link opens "Not Found".
+  const metaPreviewUrl = safeMetaPreviewUrl(visibleMetaPreview.url);
   const tiktokPreviewFingerprint = [
     activePlatform,
     preparationRows.tiktok?.state ?? "not_started",
@@ -298,20 +302,36 @@ export function AdPreview({
           <div className="aspect-[9/16] rounded-xl bg-[var(--gray-100)] grid place-items-center text-xs px-4 text-center">
             Prepare Meta to request its real preview.
           </div>
-        ) : visibleMetaPreview.status === "ready" && visibleMetaPreview.url ? (
+        ) : visibleMetaPreview.status === "ready" && metaPreviewUrl ? (
           <>
             <iframe
-              src={visibleMetaPreview.url}
+              src={metaPreviewUrl}
               title={`Meta ${placement} platform-rendered preview`}
               sandbox="allow-scripts allow-same-origin allow-presentation"
               referrerPolicy="no-referrer"
               allow="autoplay; fullscreen"
               className="w-full aspect-[9/16] rounded-xl border border-[var(--gray-200)]"
             />
-            <a href={visibleMetaPreview.url} target="_blank" rel="noopener noreferrer" className="text-xs underline">
-              Open preview in new tab <ExternalLink size={11} className="inline" />
-            </a>
+            <p className="text-xs">
+              Rendered by Meta ·{" "}
+              <a href={metaPreviewUrl} target="_blank" rel="noopener noreferrer" className="underline inline-flex min-h-11 items-center gap-1">
+                Open full preview <ExternalLink size={11} className="inline" aria-hidden="true" />
+              </a>
+            </p>
+            <p className="text-[11px] text-[var(--color-text-tertiary)]">
+              If the frame above stays blank, Meta didn&apos;t allow it to embed here — the full preview still opens.
+            </p>
           </>
+        ) : visibleMetaPreview.status === "ready" ? (
+          <div className="space-y-2">
+            {approximation}
+            <p className="text-xs">
+              Meta sent a preview link Mingla can&apos;t open safely, so it isn&apos;t shown. Your prepared video is still safe.
+            </p>
+            <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => setMetaPreviewNonce((value) => value + 1)}>
+              Retry preview
+            </Button>
+          </div>
         ) : visibleMetaPreview.status === "failed" ? (
           <div className="space-y-2">
             {approximation}

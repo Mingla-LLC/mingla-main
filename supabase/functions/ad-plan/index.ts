@@ -46,6 +46,18 @@ import {
 } from "../_shared/adCreativeLifecycle.ts";
 import { destroyIfUnreferenced, type ReapDeps } from "../_shared/coverVideoReap.ts";
 import { PLATFORMS } from "../_shared/adChannelCore.ts";
+import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
+import {
+  deletionOrder,
+  type ProviderObjectProbe,
+  probeMetaObjects,
+  RECONCILE_DELETE_PHRASE,
+  reconcileDecision,
+  reconcileEvidence,
+  type RecordedProviderObject,
+  recordedProviderObjects,
+  unsupportedProbes,
+} from "../_shared/adPlanReconcile.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -570,7 +582,151 @@ export type AdPlanDeps = {
   db?: Db;
   /** The provider delete inside the guarded path (tests stub the network). */
   reapDeps?: ReapDeps;
+  /** #3697 reconcile: provider reads/deletes (tests stub the network). */
+  reconcileProvider?: ReconcileProvider;
 };
+
+/**
+ * #3697 — the provider side of a dead-plan reconcile. `probe` asks whether
+ * each recorded object still exists; `remove` deletes one object. Only Meta is
+ * wired; every other provider answers "unknown" and is never deleted.
+ */
+export type ReconcileProvider = {
+  probe(
+    connection: AdConnectionRow,
+    objects: RecordedProviderObject[],
+  ): Promise<ProviderObjectProbe[]>;
+  remove(
+    connection: AdConnectionRow,
+    object: RecordedProviderObject,
+  ): Promise<void>;
+};
+
+const liveReconcileProvider: ReconcileProvider = {
+  async probe(connection, objects) {
+    const meta = objects.filter((object) => object.platform === "meta");
+    const others = unsupportedProbes(objects);
+    if (meta.length === 0) return others;
+    let client;
+    try {
+      client = resolveMetaClient(connection);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return [
+        ...meta.map((object) => ({
+          ...object,
+          verdict: "unknown" as const,
+          provider_status: null,
+          detail,
+        })),
+        ...others,
+      ];
+    }
+    const probes = await probeMetaObjects(
+      (method, path, params) => metaGraph(client, method, path, params),
+      client.config.adAccountId,
+      meta,
+    );
+    return [...probes, ...others];
+  },
+  async remove(connection, object) {
+    if (object.platform !== "meta") {
+      throw new Error(`${object.platform}_delete_not_supported_yet`);
+    }
+    const client = resolveMetaClient(connection);
+    await metaGraph(client, "DELETE", object.external_id);
+  },
+};
+
+/** Provider account ids so the page can link each surviving object. */
+async function reconcileAccounts(
+  db: Db,
+  allocations: Array<Record<string, unknown>>,
+): Promise<Record<string, string>> {
+  const accounts: Record<string, string> = {};
+  for (const allocation of allocations) {
+    const { data } = await db.from("ad_connections")
+      .select("external_account_id")
+      .eq("id", String(allocation.connection_id)).maybeSingle();
+    if (typeof data?.external_account_id === "string") {
+      accounts[String(allocation.platform)] = data.external_account_id;
+    }
+  }
+  return accounts;
+}
+
+/** Loads what a reconcile needs, straight from the plan-bound rows. */
+async function reconcileFacts(db: Db, versionId: string, planHash: string) {
+  const [attempts, events, campaigns, allocations] = await Promise.all([
+    db.from("ad_provider_attempts").select("*")
+      .eq("plan_version_id", versionId).eq("command", "create_paused_objects"),
+    db.from("ad_status_events").select("*")
+      .is("campaign_id", null)
+      .in("action", ["create_failed", "rollback"])
+      .eq("external_ids->>plan_version_id", versionId),
+    db.from("ad_campaigns").select("id,platform,external_campaign_id")
+      .eq("plan_version_id", versionId),
+    db.from("ad_plan_provider_allocations").select("*")
+      .eq("plan_version_id", versionId),
+  ]);
+  const failed = [attempts, events, campaigns, allocations].find((result) =>
+    result.error
+  );
+  if (failed) return { error: failed.error };
+  const failureEvents = (events.data ?? []).filter(
+    (event: Record<string, unknown>) =>
+      asRecord(event.external_ids)?.plan_hash === planHash,
+  );
+  return {
+    error: null,
+    campaigns: campaigns.data ?? [],
+    allocations: allocations.data ?? [],
+    objects: recordedProviderObjects({
+      attempts: attempts.data ?? [],
+      failureEvents,
+      campaigns: campaigns.data ?? [],
+    }),
+  };
+}
+
+async function probeAll(
+  db: Db,
+  provider: ReconcileProvider,
+  allocations: Array<Record<string, unknown>>,
+  objects: RecordedProviderObject[],
+): Promise<ProviderObjectProbe[]> {
+  const probes: ProviderObjectProbe[] = [];
+  const platforms = [...new Set(objects.map((object) => object.platform))];
+  for (const platform of platforms) {
+    const own = objects.filter((object) => object.platform === platform);
+    const allocation = allocations.find((row) => row.platform === platform);
+    const { data: connection } = allocation
+      ? await db.from("ad_connections").select("*")
+        .eq("id", String(allocation.connection_id)).maybeSingle()
+      : { data: null };
+    if (!connection) {
+      probes.push(...own.map((object) => ({
+        ...object,
+        verdict: "unknown" as const,
+        provider_status: null,
+        detail: `${platform}_connection_missing`,
+      })));
+      continue;
+    }
+    try {
+      probes.push(...await provider.probe(connection as AdConnectionRow, own));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      probes.push(...own.map((object) => ({
+        ...object,
+        verdict: "unknown" as const,
+        provider_status: null,
+        detail: detail.slice(0, 300),
+      })));
+    }
+  }
+  return probes;
+}
 
 export async function handleAdPlan(
   req: Request,
@@ -1191,7 +1347,15 @@ export async function handleAdPlan(
     const queue = await Promise.all(
       (plans ?? []).map((plan: Plan) => getPlanAggregate(db, plan)),
     );
-    return json({ ok: true, queue });
+    // #3697: plans a reconcile cleared in the last 7 days, so the page can
+    // say "1 old plan was cleared" instead of the plan silently vanishing.
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: cleared } = await db.from("ad_status_events")
+      .select("id,platform,created_at,external_ids,provider_response")
+      .is("campaign_id", null).eq("action", "reconcile_cleared")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false }).limit(10);
+    return json({ ok: true, queue, recently_cleared: cleared ?? [] });
   }
 
   if (action === "open") {
@@ -1715,7 +1879,8 @@ export async function handleAdPlan(
     : action === "confirm_launch" || action === "assert_launchable" ||
         action === "record_create_failure"
     ? "launch"
-    : action === "cancel_before_create" || action === "request_stop"
+    : action === "cancel_before_create" || action === "request_stop" ||
+        action === "reconcile_provider_objects"
     ? "end"
     : "plan";
   const authorized = versionId
@@ -1728,6 +1893,125 @@ export async function handleAdPlan(
       error: "plan_conflict",
       detail: "plan_version_hash_mismatch",
     }, 409);
+  }
+
+  // #3697 — "Check with <provider>": read every provider object the dead plan
+  // recorded. None left → the RPC releases the hold and closes the plan.
+  // Something left → list it and keep the hold; an optional typed-phrase
+  // delete removes it on the provider first, then re-checks.
+  if (action === "reconcile_provider_objects") {
+    if (
+      authorized.plan.owner_kind !== "mingla" ||
+      !(await isActiveAdmin(db, actor))
+    ) {
+      return json({ error: "forbidden" }, 403);
+    }
+    if (authorized.plan.state !== "creation_failed_terminal") {
+      return json({
+        error: "plan_conflict",
+        detail: "reconcile_state_invalid",
+        plan_state: authorized.plan.state,
+      }, 409);
+    }
+    const deleteFirst = body.delete_on_provider === true;
+    if (deleteFirst && body.phrase !== RECONCILE_DELETE_PHRASE) {
+      return json({
+        error: "reconcile_confirm_required",
+        detail: "confirm_phrase_must_be_DELETE_ON_PROVIDER",
+      }, 400);
+    }
+    const facts = await reconcileFacts(db, versionId, planHash);
+    if (facts.error) return databaseFailure(facts.error);
+    if ((facts.campaigns ?? []).length > 0) {
+      return json({
+        error: "plan_conflict",
+        detail: "plan_has_campaign_rows_use_end_plan",
+      }, 409);
+    }
+    const provider = deps.reconcileProvider ?? liveReconcileProvider;
+    const objects = facts.objects ?? [];
+    let probes = await probeAll(db, provider, facts.allocations ?? [], objects);
+    const deleted: Array<Record<string, unknown>> = [];
+    if (deleteFirst) {
+      for (const probe of deletionOrder(probes)) {
+        const allocation = (facts.allocations ?? []).find((row: Record<string, unknown>) =>
+          row.platform === probe.platform
+        );
+        const { data: connection } = allocation
+          ? await db.from("ad_connections").select("*")
+            .eq("id", String(allocation.connection_id)).maybeSingle()
+          : { data: null };
+        let outcome = "deleted";
+        try {
+          if (!connection) throw new Error(`${probe.platform}_connection_missing`);
+          await provider.remove(connection as AdConnectionRow, probe);
+        } catch (error) {
+          outcome = (error instanceof Error ? error.message : String(error))
+            .slice(0, 300);
+        }
+        deleted.push({
+          platform: probe.platform,
+          level: probe.level,
+          external_id: probe.external_id,
+          outcome,
+        });
+        await db.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: probe.platform,
+          entity: "campaign",
+          action: "reconcile_deleted",
+          actor: actor.id,
+          from_status: probe.provider_status,
+          to_status: outcome === "deleted" ? "DELETED" : null,
+          external_ids: {
+            plan_version_id: versionId,
+            plan_hash: planHash,
+            [`external_${probe.level}_id`]: probe.external_id,
+          },
+          provider_response: { outcome },
+        });
+      }
+      probes = await probeAll(db, provider, facts.allocations ?? [], objects);
+    }
+    const decision = reconcileDecision(probes);
+    await db.from("ad_status_events").insert({
+      campaign_id: null,
+      platform: objects[0]?.platform ?? null,
+      entity: "campaign",
+      action: "reconcile_check",
+      actor: actor.id,
+      from_status: authorized.plan.state,
+      to_status: decision.verdict,
+      external_ids: { plan_version_id: versionId, plan_hash: planHash },
+      provider_response: {
+        verdict: decision.verdict,
+        objects: reconcileEvidence(probes),
+        ...(deleted.length > 0 ? { deleted } : {}),
+      },
+    });
+    if (decision.verdict !== "clear") {
+      return json({
+        ok: true,
+        verdict: decision.verdict,
+        objects: probes,
+        deleted,
+        accounts: await reconcileAccounts(db, facts.allocations ?? []),
+      });
+    }
+    const { data, error } = await db.rpc("ad_plan_reconcile_clear", {
+      p_plan_version_id: versionId,
+      p_plan_hash: planHash,
+      p_evidence: reconcileEvidence(probes),
+      p_actor_id: actor.id,
+    });
+    if (error) return databaseFailure(error);
+    return json({
+      ok: true,
+      verdict: "cleared",
+      objects: probes,
+      deleted,
+      cleared: data,
+    });
   }
 
   if (action === "record_create_failure") {
