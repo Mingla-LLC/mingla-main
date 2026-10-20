@@ -178,7 +178,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
 
       {offline ? (
         <View style={[styles.banner, styles.bannerError]} accessibilityLiveRegion="polite">
-          <Text style={styles.bannerText}>You're offline. Connect to search the guest list.</Text>
+          <Text style={styles.bannerText}>{"You're offline. Connect to search the guest list."}</Text>
         </View>
       ) : text.trim().length > 0 && text.trim().length < MIN_CHARS ? (
         <Text style={styles.helper}>Type at least 2 letters.</Text>

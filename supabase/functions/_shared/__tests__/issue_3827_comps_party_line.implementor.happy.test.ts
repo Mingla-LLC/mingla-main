@@ -83,3 +83,12 @@ Deno.test("#3827 dispatcher party line: comps with a lead name only, host vs lin
   assertEquals(guestListPartyLine("comp", { party_lead_name: "Ada", party_origin: "other" }), null);
   assertEquals(guestListPartyLine(null, null), null);
 });
+
+Deno.test("#3827 dispatcher wiring: selects source + metadata and sets partyLine in buildRenderContext only", async () => {
+  const src = await Deno.readTextFile(
+    new URL("../../ticket-confirmation-dispatch/index.ts", import.meta.url),
+  );
+  assertStringIncludes(src, "partyLine: guestListPartyLine(order.source, order.metadata),");
+  assertStringIncludes(src, "      source,\n      metadata,\n      event_date_id,");
+  assertEquals(src.split("guestListPartyLine(").length - 1, 1);
+});

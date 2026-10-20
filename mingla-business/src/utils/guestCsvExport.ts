@@ -201,11 +201,12 @@ export const serializeGuestsToCsv = (
     "Refunded currency",
     "Net",
     "Net currency",
+    // issue #3827 — the guest a named plus-one came with. Inserted BEFORE
+    // "Day" so the first 17 columns keep their index and "Day" stays last.
+    "Came with",
     // issue #2160 — APPENDED LAST so every existing column keeps its index.
     // Blank for door sales and any pass that is not day-scoped.
     "Day",
-    // issue #3827 — the guest a named plus-one came with. Appended last.
-    "Came with",
   ];
 
   // Cycle 13 — optional summary stanza (5 lines of `#`-prefixed metadata)
@@ -254,8 +255,8 @@ export const serializeGuestsToCsv = (
         "",
         "0.00",
         "",
-        orderDayCell(o, dayLabels),
         o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
+        orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else if (row.kind === "order") {
@@ -281,8 +282,8 @@ export const serializeGuestsToCsv = (
         o.currency,
         formatMoneyForCsv(net),
         o.currency,
-        orderDayCell(o, dayLabels),
         "",
+        orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else {

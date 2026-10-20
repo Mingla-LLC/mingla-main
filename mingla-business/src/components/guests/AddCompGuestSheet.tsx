@@ -678,7 +678,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
       <View style={styles.body}>
         <Text style={styles.title} accessibilityRole="header">Add to guest list</Text>
         <Text style={styles.subhead}>
-          They get a free ticket with a QR code by email. Guest-list tickets take a place but aren't sales.
+          {"They get a free ticket with a QR code by email. Guest-list tickets take a place but aren't sales."}
         </Text>
 
         <ScrollView
@@ -756,7 +756,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
                 })}
               </View>
               {showErrors && eventDateId === null ? (
-                <Text style={styles.errorText}>Pick which date they're coming.</Text>
+                <Text style={styles.errorText}>{"Pick which date they're coming."}</Text>
               ) : null}
             </>
           ) : null}

@@ -26,7 +26,10 @@
  */
 
 import React, { useCallback, useEffect } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+// orch-0892 / #1841 — the door search panel has an input, so the body scrolls
+// through the SmartScrollView wrapper (a plain ScrollView on web).
+import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
