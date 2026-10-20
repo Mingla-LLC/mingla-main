@@ -193,3 +193,28 @@ export function normalizePreparationInvoke(result, parsedError) {
   }
   return result?.error ? { ...result, parsedError } : result;
 }
+
+/**
+ * Issue #3697 — the next preparation call for one platform row.
+ *
+ * A row stuck in `uploading` with no provider id (the attempt began but never
+ * reached the provider, e.g. its audit write failed) is not "in progress": the
+ * server flags it `retryable` with `provider_ref_not_recorded` once its
+ * 15-minute guard passes, and only an explicit `retry` re-initiates it. Polling
+ * `status` forever would hide that, so it is retried once like a terminal row.
+ *
+ * @returns {"done"|"start"|"status"|"retry"|"give_up"}
+ */
+export function nextPreparationAction(row, { retried = false } = {}) {
+  const state = row?.state;
+  if (state === "ready") return "done";
+  if (state === "not_started") return "start";
+  const stuckWithoutProviderRef =
+    state === "uploading" &&
+    row?.retryable === true &&
+    row?.error?.code === "provider_ref_not_recorded";
+  if (state === "failed" || state === "timed_out" || stuckWithoutProviderRef) {
+    return retried ? "give_up" : "retry";
+  }
+  return "status";
+}

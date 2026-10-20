@@ -21,6 +21,11 @@ import {
   splitBudget,
   unfundedEligibleChannels,
 } from "../../lib/adBuilder/channelPlan";
+import {
+  scheduleTimeZoneOptions,
+  timeZoneLabel,
+  zonedLocalToIso,
+} from "../../lib/adBuilder/scheduleTimeZone";
 
 const STRATEGIES = [
   { id: "auto", label: "Auto" },
@@ -46,6 +51,7 @@ export function StepBudget({
   channelRows,
   currency,
   currencyBlockedReason = null,
+  scheduleTimeZone = "UTC",
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const currencyCode =
@@ -242,9 +248,44 @@ export function StepBudget({
         </div>
       </div>
 
+      {/* #3697: the schedule is entered in a NAMED zone, never silently the
+          browser's. A Lagos event is scheduled in Lagos time from anywhere. */}
+      <label className="space-y-1.5 block max-w-sm">
+        <span className="block text-sm font-medium">Schedule time zone</span>
+        <select
+          aria-label="Schedule time zone"
+          className="w-full h-9 rounded-md border border-[var(--gray-300)] px-2 text-sm bg-[var(--color-background-primary)]"
+          value={scheduleTimeZone}
+          onChange={(e) => {
+            const zone = e.target.value;
+            set({
+              timeZone: zone,
+              startsAt: budget.startsAtLocal
+                ? zonedLocalToIso(budget.startsAtLocal, zone)
+                : null,
+              endsAt: budget.endsAtLocal
+                ? zonedLocalToIso(budget.endsAtLocal, zone)
+                : null,
+            });
+          }}
+        >
+          {scheduleTimeZoneOptions(scheduleTimeZone).map((zone) => (
+            <option key={zone} value={zone}>
+              {timeZoneLabel(zone)}
+            </option>
+          ))}
+        </select>
+        <span className="block text-xs text-[var(--color-text-tertiary)]">
+          Start and end below are {timeZoneLabel(scheduleTimeZone)} wall-clock
+          times.
+        </span>
+      </label>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="space-y-1.5 block">
-          <span className="block text-sm font-medium">Start</span>
+          <span className="block text-sm font-medium">
+            Start ({scheduleTimeZone})
+          </span>
           <input
             type="datetime-local"
             className="w-full h-9 rounded-md border border-[var(--gray-300)] px-2 text-sm"
@@ -253,14 +294,16 @@ export function StepBudget({
               const local = e.target.value;
               set({
                 startsAtLocal: local,
-                startsAt: local ? new Date(local).toISOString() : null,
+                startsAt: local
+                  ? zonedLocalToIso(local, scheduleTimeZone)
+                  : null,
               });
             }}
           />
         </label>
         <label className="space-y-1.5 block">
           <span className="block text-sm font-medium">
-            End{mode === "lifetime" ? " (required)" : ""}
+            End ({scheduleTimeZone}){mode === "lifetime" ? " (required)" : ""}
           </span>
           <input
             type="datetime-local"
@@ -270,7 +313,7 @@ export function StepBudget({
               const local = e.target.value;
               set({
                 endsAtLocal: local,
-                endsAt: local ? new Date(local).toISOString() : null,
+                endsAt: local ? zonedLocalToIso(local, scheduleTimeZone) : null,
               });
             }}
           />

@@ -53,9 +53,21 @@ import {
 import { classifyCreateResult } from "../lib/adBuilder/createResult";
 import {
   applyChannelSelection,
+  budgetCurrencyPlatforms,
   planChannels,
   splitBudget,
 } from "../lib/adBuilder/channelPlan";
+import {
+  CREATE_PAUSED_PHRASE,
+  housePlanCreateSteps,
+  initialStepStates,
+  setStepState,
+} from "../lib/adBuilder/housePlanPath";
+import {
+  defaultScheduleTimeZone,
+  isValidTimeZone,
+  zonedLocalToIso,
+} from "../lib/adBuilder/scheduleTimeZone";
 import { complianceExclusions } from "../lib/adBuilder/compliance";
 import {
   validateAudience,
@@ -323,6 +335,10 @@ export function CampaignBuilderPage() {
   const [planPreview, setPlanPreview] = useState(null);
   const [broaderAccepted, setBroaderAccepted] = useState(false);
   const [launchPhrase, setLaunchPhrase] = useState("");
+  // #3697: the visible create sequence (bind → fund → confirm → prepare →
+  // create paused) and the last failure, kept on screen — never toast-only.
+  const [createSteps, setCreateSteps] = useState(null);
+  const [createError, setCreateError] = useState(null);
   const [certificationState, setCertificationState] = useState(null);
   const [certificationApprovalReference, setCertificationApprovalReference] =
     useState("");
@@ -785,10 +801,62 @@ export function CampaignBuilderPage() {
   );
 
   // toward #3697 Wave 3 — money currency from ad_connections (not hardcoded USD).
-  const planCurrency = useMemo(
-    () => resolvePlanCurrency(connections, effectivePlatforms),
-    [connections, effectivePlatforms],
+  // #3697: budget-entry currency ignores the budget floor. Typing "30" passes
+  // "3" first; that keystroke is below Meta's floor, which used to drop Meta,
+  // make the currency unresolved and DISABLE the budget input mid-typing (the
+  // saved draft froze at 300 minor units). The floor still blocks create via
+  // the allocations, never via the currency.
+  const currencyPlatforms = useMemo(
+    () =>
+      budgetCurrencyPlatforms({
+        planInput: {
+          preflightRows: preflightRows ?? [],
+          goalIds,
+          countries: audience.countries,
+          allowlist: budget.allowlist,
+          connections,
+          metaGoal,
+        },
+        selectedPlatforms,
+        excluded: complianceExcluded,
+      }),
+    [
+      preflightRows,
+      goalIds,
+      audience.countries,
+      budget.allowlist,
+      connections,
+      metaGoal,
+      selectedPlatforms,
+      complianceExcluded,
+    ],
   );
+  const planCurrency = useMemo(
+    () => resolvePlanCurrency(connections, currencyPlatforms),
+    [connections, currencyPlatforms],
+  );
+  // #3697: schedule times are wall-clock in a named zone (operator-chosen, or
+  // the single targeted country's zone, e.g. Nigeria → Africa/Lagos).
+  const scheduleZone = isValidTimeZone(budget.timeZone)
+    ? budget.timeZone
+    : defaultScheduleTimeZone(audience.countries);
+  useEffect(() => {
+    const startsAt = budget.startsAtLocal
+      ? zonedLocalToIso(budget.startsAtLocal, scheduleZone)
+      : null;
+    const endsAt = budget.endsAtLocal
+      ? zonedLocalToIso(budget.endsAtLocal, scheduleZone)
+      : null;
+    if (startsAt !== budget.startsAt || endsAt !== budget.endsAt) {
+      setBudget((current) => ({ ...current, startsAt, endsAt }));
+    }
+  }, [
+    scheduleZone,
+    budget.startsAtLocal,
+    budget.endsAtLocal,
+    budget.startsAt,
+    budget.endsAt,
+  ]);
   const currencyBlockedReason = planCurrency.unresolved
     ? "Connect the selected ad account and load its billing currency before creating anything."
     : planCurrency.mixed
@@ -940,6 +1008,8 @@ export function CampaignBuilderPage() {
     setPlanPreview(null);
     setBroaderAccepted(false);
     setLaunchPhrase("");
+    setCreateSteps(null);
+    setCreateError(null);
   }, [planFingerprint]);
 
   // ── Per-step gate (Next disabled until the step is valid) ──
@@ -1191,6 +1261,7 @@ export function CampaignBuilderPage() {
         schedule: {
           starts_at: budget.startsAt,
           ends_at: budget.endsAt,
+          time_zone: scheduleZone,
         },
         audience_intent: audienceIntent,
         creative_library_id: creative.creativeRow?.id ?? null,
@@ -1359,7 +1430,22 @@ export function CampaignBuilderPage() {
       addToast({
         variant: "error",
         title: "Currency setup is incomplete",
-        message: currencyBlockedReason,
+        description: currencyBlockedReason,
+      });
+      return;
+    }
+    // #3697: the typed phrase is checked BEFORE anything is bound, and the
+    // field is visible before the first click. It used to be checked only
+    // after the plan was bound and marked ready, so the first click silently
+    // left a ready_for_funding plan behind with no funding, no provider call
+    // and a disabled button.
+    if (!validateOnly && launchPhrase !== CREATE_PAUSED_PHRASE) {
+      const message = `Type ${CREATE_PAUSED_PHRASE} in the confirmation field, then press Create again. Nothing was created.`;
+      setCreateError({ title: "Confirmation phrase required", message });
+      addToast({
+        variant: "warning",
+        title: `Type ${CREATE_PAUSED_PHRASE} to continue`,
+        description: message,
       });
       return;
     }
@@ -1405,7 +1491,7 @@ export function CampaignBuilderPage() {
       addToast({
         variant: "error",
         title: "One page per campaign",
-        message:
+        description:
           "Pick a single destination. Create a separate campaign for another page.",
       });
       if (validateOnly) setValidatingShapes(false);
@@ -1416,7 +1502,7 @@ export function CampaignBuilderPage() {
       addToast({
         variant: "error",
         title: "End date required",
-        message: "A total (lifetime) budget needs an end date.",
+        description: "A total (lifetime) budget needs an end date.",
       });
       if (validateOnly) setValidatingShapes(false);
       else setSubmitting(false);
@@ -1429,7 +1515,7 @@ export function CampaignBuilderPage() {
       addToast({
         variant: "error",
         title: "Lifetime is Meta-only",
-        message: "Deselect other platforms or switch to Daily before creating.",
+        description: "Deselect other platforms or switch to Daily before creating.",
       });
       if (validateOnly) setValidatingShapes(false);
       else setSubmitting(false);
@@ -1503,14 +1589,48 @@ export function CampaignBuilderPage() {
         buildExecutionPayload(allocation, firstDestination),
       ]),
     );
+    // #3697: visible progress for every required step, in order.
+    let steps = null;
+    let runningStepId = null;
+    const markStep = (id, state, detail = null) => {
+      if (!steps) return;
+      steps = setStepState(steps, id, state, detail);
+      runningStepId = state === "running" ? id : runningStepId === id ? null : runningStepId;
+      setCreateSteps(steps);
+    };
+    const failCreate = (title, message) => {
+      if (runningStepId) markStep(runningStepId, "failed", message);
+      setCreateError({ title, message });
+    };
+    if (!validateOnly) {
+      steps = initialStepStates(
+        housePlanCreateSteps({
+          platforms: executionAllocations
+            .map((row) => row.platform)
+            .filter((platform) => !creativeExcluded.has(platform)),
+          isVideo: creative.kind === "video",
+        }),
+      );
+      setCreateSteps(steps);
+      setCreateError(null);
+    }
     if (!validateOnly) {
       try {
+        markStep("bind", "running");
         immutablePlan = await prepareImmutablePlan(
           executionAllocations,
           capByPlatform,
           executionPayloads,
         );
         if (immutablePlan.status !== "ready") {
+          failCreate(
+            immutablePlan.status === "broader"
+              ? "Review the targeting differences"
+              : "The plan has targeting blockers",
+            immutablePlan.status === "broader"
+              ? "Accept each named provider widening below, then press Create again."
+              : "Return to Audience and resolve the provider checks shown in Review. Nothing was funded or created.",
+          );
           addToast({
             variant: immutablePlan.status === "broader" ? "warning" : "error",
             title:
@@ -1525,16 +1645,8 @@ export function CampaignBuilderPage() {
           setSubmitting(false);
           return;
         }
-        if (launchPhrase !== "CREATE PAUSED") {
-          addToast({
-            variant: "warning",
-            title: "Type CREATE PAUSED to continue",
-            description:
-              "The phrase confirms this exact hash and hard cap. Nothing launches yet.",
-          });
-          setSubmitting(false);
-          return;
-        }
+        markStep("bind", "done", immutablePlan.plan_hash ?? null);
+        markStep("fund", "running");
         if (!immutablePlan.funded) {
           await callPlan({
             action: "fund",
@@ -1542,6 +1654,8 @@ export function CampaignBuilderPage() {
             plan_hash: immutablePlan.plan_hash,
           });
         }
+        markStep("fund", "done");
+        markStep("confirm", "running");
         // Reconfirm idempotently on every real create attempt. Besides binding
         // the exact phrase/hash, the server uses this to move a durable partial
         // failure back into creating_paused_objects before an idempotent retry.
@@ -1553,6 +1667,7 @@ export function CampaignBuilderPage() {
         });
         immutablePlan = { ...immutablePlan, funded: true, confirmed: true };
         setPlanPreview(immutablePlan);
+        markStep("confirm", "done");
         if (certificationMode) {
           let cell = await loadCertificationCell();
           const samePlan =
@@ -1634,10 +1749,15 @@ export function CampaignBuilderPage() {
             await prepareBoundVideoCreative({
               creativeLibraryId: creative.creativeRow?.id,
               platforms: executionAllocations.map((row) => row.platform),
-              lane: "consumer",
+              lane,
               planVersionId: immutablePlan.plan_version_id,
               planHash: immutablePlan.plan_hash,
               onProgress: (platform, row) => {
+                markStep(
+                  `prepare:${platform}`,
+                  row?.state === "ready" ? "done" : "running",
+                  row?.state === "ready" ? null : `Provider state: ${row?.state ?? "pending"}`,
+                );
                 setPreparationRunningPlatform(platform);
                 setPreparationRows((current) => ({
                   ...current,
@@ -1647,6 +1767,7 @@ export function CampaignBuilderPage() {
             });
           } catch (error) {
             if (error?.platform) {
+              markStep(`prepare:${error.platform}`, "running");
               await adPlanAction({
                 action: "record_create_failure",
                 plan_version_id: immutablePlan.plan_version_id,
@@ -1661,10 +1782,12 @@ export function CampaignBuilderPage() {
           }
         }
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failCreate("Plan preparation failed", message);
         addToast({
           variant: "error",
           title: "Plan preparation failed",
-          description: error instanceof Error ? error.message : String(error),
+          description: message,
         });
         setSubmitting(false);
         return;
@@ -1696,9 +1819,22 @@ export function CampaignBuilderPage() {
           setCreateResults({ ...results });
           continue;
         }
+        if (!validateOnly) markStep(`create:${platform}`, "running");
         const { data, error } = await createCampaign(payload);
         if (error) {
           const parsed = await parseEdgeError(error);
+          if (!validateOnly) {
+            failCreate(
+              `${platform} create failed`,
+              String(
+                typeof parsed?.body?.detail === "string"
+                  ? parsed.body.detail
+                  : (parsed?.body?.detail?.message ??
+                      parsed?.message ??
+                      "Create failed."),
+              ),
+            );
+          }
           if (!validateOnly && immutablePlan) {
             await adPlanAction({
               action: "record_create_failure",
@@ -1739,6 +1875,7 @@ export function CampaignBuilderPage() {
             };
           } else if (outcome.outcome === "created") {
             results[resultKey] = { ...meta, campaign: outcome.campaign };
+            markStep(`create:${platform}`, "done", "Paused. Nothing is spending.");
             if (certificationMode) {
               await loadCertificationCell().catch(() => null);
             }
@@ -1755,6 +1892,10 @@ export function CampaignBuilderPage() {
                 platform,
                 error_detail: "Provider create returned no campaign object.",
               });
+              failCreate(
+                `${platform}: nothing was created`,
+                "The provider returned no campaign object. The failure is recorded on the plan; press Create again to retry it.",
+              );
             }
             // Honest "nothing happened": no dry-run exists on this platform (or the
             // create returned no object). Record it truthfully — never a false
@@ -1839,6 +1980,7 @@ export function CampaignBuilderPage() {
     startsAt: budget.startsAt,
     endsAt: budget.endsAt,
     currency: planCurrency.currency,
+    timeZone: scheduleZone,
   });
 
   const stepId = STEPS[activeIndex].id;
@@ -2013,6 +2155,7 @@ export function CampaignBuilderPage() {
               channelRows={plannedRows}
               currency={planCurrency.currency}
               currencyBlockedReason={currencyBlockedReason}
+              scheduleTimeZone={scheduleZone}
             />
           )}
           {stepId === "creative" && (
@@ -2072,6 +2215,8 @@ export function CampaignBuilderPage() {
               onBroaderAcceptedChange={setBroaderAccepted}
               confirmationPhrase={launchPhrase}
               onConfirmationPhraseChange={setLaunchPhrase}
+              createSteps={createSteps}
+              createError={createError}
               certificationMode={certificationMode}
               certificationState={certificationState}
               certificationApprovalReference={certificationApprovalReference}

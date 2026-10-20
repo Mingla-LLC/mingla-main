@@ -65,6 +65,43 @@ import {
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { PageHeader } from "../components/ui/PageHeader";
 import { filterAndSortCampaigns } from "../lib/adCampaignWorkspace";
+import {
+  housePlanCreateSteps,
+  housePlanNextAction,
+  initialStepStates,
+  setStepState,
+} from "../lib/adBuilder/housePlanPath";
+
+/** #3697: the platforms, video-ness and next action of one recovery item. */
+function recoveryPlanFacts(item) {
+  const canonical = item?.version?.canonical_plan ?? {};
+  const platforms = (item?.provider_allocations ?? []).map((row) => row.platform);
+  const createdPlatforms = (item?.campaigns ?? []).map((c) => c.platform);
+  const templates = canonical.execution_payloads;
+  const isVideo = Boolean(
+    templates &&
+      typeof templates === "object" &&
+      Object.values(templates).some(
+        (template) =>
+          template?.creative?.kind === "video" ||
+          template?.creative_intent?.kind === "video",
+      ),
+  );
+  const missing = platforms.filter((p) => !createdPlatforms.includes(p));
+  return {
+    platforms,
+    missing,
+    isVideo,
+    next: housePlanNextAction({
+      state: item?.plan?.state,
+      platforms,
+      createdPlatforms,
+      isVideo,
+      sealed: Boolean(templates),
+      hasFundingHold: Boolean(item?.funding_hold),
+    }),
+  };
+}
 
 function formatMinor(currency, minor) {
   const value = Number(minor);
@@ -203,6 +240,7 @@ export function CampaignsPage({ embedded = false }) {
   const [endTarget, setEndTarget] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
   const [recoveryTarget, setRecoveryTarget] = useState(null);
+  const [recoverySteps, setRecoverySteps] = useState(null);
   const [cancelRecoveryTarget, setCancelRecoveryTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
   const [roiPayload, setRoiPayload] = useState(null);
@@ -276,7 +314,12 @@ export function CampaignsPage({ embedded = false }) {
   const handleRecovery = async (item) => {
     const planId = item?.plan?.id;
     if (!planId) throw new Error("Plan ID is missing");
-    await resumeAdminAdPlan(planId);
+    await resumeAdminAdPlan(planId, {
+      onStep: (id, state, detail) =>
+        setRecoverySteps((current) =>
+          current ? setStepState(current, id, state, detail) : current,
+        ),
+    });
     addToast({
       variant: "success",
       title: "Paused provider objects recovered",
@@ -914,11 +957,36 @@ export function CampaignsPage({ embedded = false }) {
                       provider IDs before replacing the plan.
                     </AlertCard>
                   )}
+                  {(() => {
+                    const { next } = recoveryPlanFacts(item);
+                    return (
+                      <div
+                        className="rounded-lg bg-[var(--gray-50)] px-3 py-2 text-xs"
+                        aria-label="Next required action"
+                      >
+                        <p className="font-semibold">{next.title}</p>
+                        <p className="mt-0.5 text-[var(--color-text-secondary)]">
+                          {next.explanation}
+                        </p>
+                      </div>
+                    );
+                  })()}
                   {!terminal && sealed && missing.length > 0 && (
                     <Button
                       size="sm"
                       icon={RotateCcw}
-                      onClick={() => setRecoveryTarget(item)}
+                      onClick={() => {
+                        const facts = recoveryPlanFacts(item);
+                        setRecoverySteps(
+                          initialStepStates(
+                            housePlanCreateSteps({
+                              platforms: facts.platforms,
+                              isVideo: facts.isVideo,
+                            }),
+                          ),
+                        );
+                        setRecoveryTarget(item);
+                      }}
                     >
                       Resume exact paused create
                     </Button>
@@ -1637,11 +1705,14 @@ export function CampaignsPage({ embedded = false }) {
 
       <HighRiskActionModal
         open={recoveryTarget !== null}
-        onClose={() => setRecoveryTarget(null)}
+        onClose={() => {
+          setRecoveryTarget(null);
+          setRecoverySteps(null);
+        }}
         title="Resume this exact paused create?"
         description={
           recoveryTarget
-            ? `This retries only missing provider objects for ${recoveryTarget.version?.plan_hash}. Every object remains paused; no ad is launched and no spend begins.`
+            ? `${recoveryPlanFacts(recoveryTarget).next.explanation} Only missing provider objects for ${recoveryTarget.version?.plan_hash} are created, all paused. Type CREATE PAUSED below, then press Resume.`
             : ""
         }
         confirmLabel="Resume paused create"
@@ -1652,7 +1723,46 @@ export function CampaignsPage({ embedded = false }) {
           if (!recoveryTarget) throw new Error("No plan selected");
           await handleRecovery(recoveryTarget);
         }}
-      />
+      >
+        {recoverySteps && (
+          <ol aria-label="Resume progress" className="space-y-1 text-xs">
+            {recoverySteps.map((step, index) => (
+              <li
+                key={step.id}
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <span>
+                  {index + 1}. {step.label}
+                  {step.detail && (
+                    <span className="block break-all text-[var(--color-text-tertiary)]">
+                      {step.detail}
+                    </span>
+                  )}
+                </span>
+                <Badge
+                  variant={
+                    step.state === "done"
+                      ? "success"
+                      : step.state === "failed"
+                        ? "error"
+                        : step.state === "running"
+                          ? "warning"
+                          : "default"
+                  }
+                >
+                  {step.state === "done"
+                    ? "Done"
+                    : step.state === "failed"
+                      ? "Failed"
+                      : step.state === "running"
+                        ? "In progress"
+                        : "Waiting"}
+                </Badge>
+              </li>
+            ))}
+          </ol>
+        )}
+      </HighRiskActionModal>
 
       <HighRiskActionModal
         open={cancelRecoveryTarget !== null}
