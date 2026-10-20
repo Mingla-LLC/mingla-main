@@ -154,6 +154,46 @@ async function keepLiveChecks(data, records) {
   return out;
 }
 
+const STABLE_ROUNDS = 3;
+
+/** The newest trusted "Live check:" comment made after the merge, or null. */
+function newestLiveCheck(comments, mergedAt) {
+  let live = null;
+  for (const c of comments) {
+    const check = liveCheckFrom(c, mergedAt);
+    if (check && (!live || Date.parse(check.at) > Date.parse(live.at))) live = check;
+  }
+  return live;
+}
+
+/**
+ * #3980 W2 rework 2: after writing, read the record back and merge again
+ * until it holds, at most three rounds. Another run (a "Live check:" comment
+ * and a deploy status for the same merge) can write between this run's last
+ * read and its write; the write then overwrites a live check this run never
+ * saw. Each round reads every comment again, keeps the newest live check
+ * from the "Live check:" comments and from the records on the issue, and
+ * writes only when the record differs. Returns the rounds that wrote, as
+ * words for the log.
+ */
+async function stabilize(issue, number, data) {
+  let out = data;
+  for (let round = 1; round <= STABLE_ROUNDS; round += 1) {
+    const comments = await issueComments(issue);
+    const mine = recordCommentsFor(comments, number);
+    if (mine.length === 0) return " (record gone on re-read)";
+    const fresh = newestLiveCheck(comments, out.merged_at);
+    let next = fresh ? mergeRecordData(out, { pr: out.pr, live_check: fresh }) : out;
+    next = await keepLiveChecks(next, mine);
+    const body = renderRecord(next);
+    if (mine.length === 1 && mine[0].body === body) return round === 1 ? "" : ` (re-merged ${round - 1}x)`;
+    if (mine.length > 1) await settle(issue, number, next);
+    else await gh("PATCH", `/repos/${REPO}/issues/comments/${mine[0].id}`, { body });
+    out = next;
+  }
+  return ` (still changing after ${STABLE_ROUNDS} re-reads)`;
+}
+
 /** Which of the five events this payload is, read from its shape. */
 function eventKind(event) {
   if (event?.workflow_run) return "workflow_run";
@@ -345,6 +385,10 @@ async function refresh(number) {
       }
       written.push(`#${t} created (HTTP ${r.status})${await settle(t, number, merged)}`);
     }
+    // Read back and merge again, so a live check written in the window
+    // between this run's read and its write is never lost.
+    const settled = await stabilize(t, number, merged);
+    if (settled) written.push(`#${t}${settled}`);
   }
   console.log(`release-record: PR #${number}: ${written.length > 0 ? written.join(", ") : "unchanged"}`);
   if (failed.length > 0) throw new Error(`GitHub refused the record on ${failed.map((t) => `#${t}`).join(", ")}`);
