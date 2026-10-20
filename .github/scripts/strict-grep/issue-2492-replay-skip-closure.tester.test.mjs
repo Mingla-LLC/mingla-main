@@ -93,6 +93,8 @@
 // The #1931 lane then gains five more exact skips found by a local replay; +5 more.
 // Round 3 spacing/spots adds one exact skip on each lane; count pins move with it.
 // [TEST-MOD-APPROVED #3281] count pins only; assertion logic unchanged.
+// [TEST-MOD-APPROVED #2492] #4009 (422d52508) moved T-13/T-16/T-17/T-18 24 -> 25
+// but left T-12 at 23 while the lane read 24; T-12 23 -> 24. Count pin only.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -412,7 +414,7 @@ test("T-12 — independent fails-on-revert, built differently from the implement
 
   // The lane is still fully parsed — the red is the closure failure, not a parse failure.
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 23);
+  assert.equal(lane.globs.length, 24);
   assert.deepEqual(checksIn(violations), ["C-1"], "reverting the fix must red C-1 and ONLY C-1");
 
   // Assert the OTHER limb from the implementor's T-2: the column, which is the
