@@ -750,7 +750,12 @@ BEGIN
   v_action := CASE WHEN cardinality(v_cats) = 1 THEN v_cats[1] ELSE 'updated' END;
   v_event := public.ops_card_event(c.id, v.actor_email, v.via, v_action, CASE WHEN v_back THEN v_back_reason END, v_before, public.ops_card_snapshot(c.id), c.revision, n.revision);
   -- "Gia, Hal": the people taken off the card, by name, for the agent log.
-  SELECT string_agg(public.ops_name(x.email), ', ' ORDER BY x.ord) INTO v_removed_words
+  -- A name another teammate shares carries the address: "Gia <gia@...>".
+  SELECT string_agg(public.ops_name(x.email)
+           || CASE WHEN EXISTS (SELECT 1 FROM public.admin_team_directory() d
+                                 WHERE d.status = 'active' AND d.email <> x.email
+                                   AND lower(public.crm_display_name(d.email)) = lower(public.ops_name(x.email)))
+                   THEN ' <' || x.email || '>' ELSE '' END, ', ' ORDER BY x.ord) INTO v_removed_words
     FROM jsonb_array_elements_text(COALESCE(v_people->'removed', '[]'::jsonb)) WITH ORDINALITY AS x(email, ord);
   PERFORM public.ops_notify_people(c.id, v_event, ARRAY(SELECT jsonb_array_elements_text(v_people->'new_owners')), v.actor_email,
     format('%s added you as owner: %s', v_who, n.title));

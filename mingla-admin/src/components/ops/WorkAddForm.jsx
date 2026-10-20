@@ -19,6 +19,8 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
   const team = config?.team || [];
   const me = config?.me?.email;
   const [title, setTitle] = useState("");
+  // Title grows with its text like the card's own Title, never clipped.
+  const titleGrow = useAutoGrow(title);
   const [instructions, setInstructions] = useState("");
   const [doneMeans, setDoneMeans] = useState("");
   const doneMeansGrow = useAutoGrow(doneMeans);
@@ -85,7 +87,15 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
       )}
       <label className="flex min-w-0 flex-col gap-1">
         <span className={LABEL}>Title</span>
-        <input value={title} maxLength={160} onChange={(e) => setTitle(e.target.value)} className={INPUT} />
+        <textarea
+          value={title}
+          ref={titleGrow}
+          rows={1}
+          maxLength={160}
+          onChange={(e) => setTitle(e.target.value.replace(/[\r\n]+/g, " "))}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (online && !busy) e.currentTarget.form?.requestSubmit?.(); } }}
+          className={`min-h-11 w-full whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2.5 text-[13px] leading-snug text-[var(--color-text-primary)] ${AUTO_GROW_CLASS} ${FOCUS}`}
+        />
       </label>
       <label className="flex min-w-0 flex-col gap-1">
         <span className={LABEL}>Instructions</span>

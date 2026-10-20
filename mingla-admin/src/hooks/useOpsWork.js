@@ -8,8 +8,12 @@ import { useAuth } from "../context/AuthContext";
 import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
 
-export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true } = {}) {
-  const [state, setState] = useState({ key, data: null, error: null, loaded: false });
+export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true, cache = null } = {}) {
+  // With a cache (a Map), a remounted list shows its last answer for this key
+  // at once and refreshes behind it.
+  const [state, setState] = useState(() => (cache?.has(key)
+    ? { key, data: cache.get(key), error: null, loaded: true }
+    : { key, data: null, error: null, loaded: false }));
   const seq = useRef(0);
   const loadRef = useRef(load);
   useEffect(() => { loadRef.current = load; });
@@ -19,7 +23,7 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
     const mine = ++seq.current;
     try {
       const data = await loadRef.current();
-      if (mine === seq.current) setState({ key, data, error: null, loaded: true });
+      if (mine === seq.current) { setState({ key, data, error: null, loaded: true }); cache?.set(key, data); }
       return data;
     } catch (error) {
       if (mine === seq.current) {
@@ -27,7 +31,7 @@ export function useOpsPoll(load, { key = "", intervalMs = 30_000, enabled = true
       }
       return null;
     }
-  }, [enabled, key]);
+  }, [enabled, key, cache]);
 
   useEffect(() => {
     if (!enabled) return undefined;

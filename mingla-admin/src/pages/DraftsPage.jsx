@@ -124,8 +124,11 @@ export function DraftsPage() {
   const filtered = !!query.record;
   const loadedRecordName = queue.drafts.find((draft) => draft.record?.id === query.record)?.record?.name;
   const filterRecordName = loadedRecordName || "";
-  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
-  const emptyCopy = filtered ? "Clear the filter to see the full queue." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
+  // Cards listed under "Draft needed" are waiting too, so the empty queue
+  // below them never says "Nothing waiting."
+  const draftNeededShown = query.state === "waiting" && !filtered && reviewCount.draftNeeded > 0;
+  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
+  const emptyCopy = filtered ? "Clear the filter to see the full queue." : draftNeededShown ? "Ask your agent to write a draft for the cards above." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
 
   return (
     <div className="flex min-w-0 flex-col gap-6">

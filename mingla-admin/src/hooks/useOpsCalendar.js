@@ -16,9 +16,14 @@ export function useOpsCalendar(from, to) {
   });
 }
 
+// The runway list's last answer per signed-in person, kept across remounts so
+// Back to runway shows the rows (and can focus the one that opened the panel)
+// at once instead of a loading state.
+const RUNWAY_CACHE = new Map();
+
 export function useOpsRunway() {
   const { access } = useAuth();
-  return useOpsPoll(() => ops.fetchRunwayReport(null, null, todayIso()), { key: `${access?.email || ""}|runway`, intervalMs: 60_000 });
+  return useOpsPoll(() => ops.fetchRunwayReport(null, null, todayIso()), { key: `${access?.email || ""}|runway`, intervalMs: 60_000, cache: RUNWAY_CACHE });
 }
 
 export function useOpsAnchor(selection) {

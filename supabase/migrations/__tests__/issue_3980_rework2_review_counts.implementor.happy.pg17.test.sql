@@ -370,6 +370,24 @@ begin
 end;
 $log$;
 
+-- Final fix: two teammates share the name Gia, so a removal log names the
+-- one taken off with the address; a unique name stays just the name.
+do $log_same_name$
+declare v text; v_card text; v_number text; v_summary text;
+begin
+  v_card := pg_temp.tw_card('growth', 'V3980 Same name leaves', '["gia.v3980@test.local"]', '["gia.other.v3980@test.local","abe.v3980@test.local"]');
+  v_number := (select number::text from public.ops_work_cards where id = v_card::uuid);
+  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":["abe.v3980@test.local"]}}', v_card, pg_temp.tw_rev(v_card)));
+  select summary into v_summary from public.ops_agent_log where card_id = v_card::uuid order by at desc limit 1;
+  perform pg_temp.tw_check('R2-LOG', 'a shared name is logged as Name <email>',
+    v_summary, format('Took Gia <gia.other.v3980@test.local> off Card %s: V3980 Same name leaves', v_number));
+  v := pg_temp.tw_work('GC', 'update_work', format('{"id":"%s","expected_revision":%s,"changes":{"watchers":[]}}', v_card, pg_temp.tw_rev(v_card)));
+  select summary into v_summary from public.ops_agent_log where card_id = v_card::uuid order by at desc limit 1;
+  perform pg_temp.tw_check('R2-LOG', 'a unique name is still logged as just the name',
+    v_summary, format('Took Abe off Card %s: V3980 Same name leaves', v_number));
+end;
+$log_same_name$;
+
 select count(*) as tw_total, count(*) filter (where not ok) as tw_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as tw_failures
   from tw_results \gset
