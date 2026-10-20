@@ -851,6 +851,14 @@ test('T-9R the delete cannot come back under another name, in another file — t
     'src/hooks/useVisits.ts',
     'src/services/appVersionIdentity.ts',
     'src/services/placeReviewService.ts',
+    // #2107 (Sentry REACT-NATIVE-1C) reloadNetworkFence.ts joined this closure
+    // the same way appVersionIdentity.ts did: through the SHARED client,
+    //     src/services/supabase.ts
+    //       import { trackNetworkRequest } from './reloadNetworkFence';
+    // It counts Supabase requests on the wire and holds new ones while an
+    // in-app restart is in progress. It imports nothing and contains no delete
+    // or remove operation; DELETE_OWNERS is unchanged.
+    'src/services/reloadNetworkFence.ts',
     'src/services/supabase.ts',
     'src/services/visitService.ts',
     'src/utils/breadcrumbs.ts',

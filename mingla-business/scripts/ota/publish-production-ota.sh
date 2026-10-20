@@ -295,6 +295,36 @@ preflight_key EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    advisory pk.
 preflight_key EXPO_PUBLIC_MIXPANEL_TOKEN         advisory -
 preflight_key EXPO_PUBLIC_POSTHOG_KEY            advisory phc_
 
+# --- #2107 critical-update counter ------------------------------------------
+# Every OTA must carry an integer `extra.criticalIndex` (app.config.js reads it
+# from update-critical-index.json). Running code compares the index of the
+# update it is offered with its own: a HIGHER index means "critical — install
+# and restart now". An OTA without one cannot take part in that contract, and
+# a store build carrying a higher index than the OTA lane would never be
+# offered it as critical. So a config that does not resolve to a non-negative
+# integer is refused here, before anything is published.
+#   To mark THIS publish critical: raise criticalIndex in
+#   update-critical-index.json by one, in a reviewed commit, and publish from
+#   that commit. Never lower it.
+CRITICAL_INDEX=""
+if ! CRITICAL_INDEX="$(node -e '
+const base = require("./app.json").expo;
+const resolved = require("./app.config.js")({ config: base });
+const value = resolved && resolved.extra ? resolved.extra.criticalIndex : undefined;
+if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+  console.error("resolved extra.criticalIndex is " + JSON.stringify(value));
+  process.exit(3);
+}
+process.stdout.write(String(value));
+' 2>"${ERRLOG}")"; then
+  echo "ABORT [#2107 preflight] the resolved ${APP_LABEL} config has no integer extra.criticalIndex." >&2
+  echo "       Every OTA must carry one so installed apps can tell a critical update from a normal one." >&2
+  echo "       Fix ${APP_LABEL}/update-critical-index.json ({ \"criticalIndex\": <non-negative integer> }), then re-run." >&2
+  cat "${ERRLOG}" >&2
+  exit 1
+fi
+echo "[preflight] OK extra.criticalIndex = ${CRITICAL_INDEX} (update-critical-index.json; raise it to make this publish critical)"
+
 # --- Publish ----------------------------------------------------------------
 # --json makes stdout pure JSON and routes CLI logs to stderr, so the update
 # group comes out of parsed JSON instead of a grep over human text.

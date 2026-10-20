@@ -7,8 +7,22 @@ import {
   getNativeAppPlatform,
   type NativeAppPlatform,
 } from "./appVersionIdentity";
+import { reportUpdateGateEvent } from "./updateGateTelemetry";
 
-export const POLICY_CHECK_TIMEOUT_MS = 1_500;
+/**
+ * #2107 A1 — how long the cold-launch veil waits for the server before letting
+ * the person in. 4 s with no cached policy (first launch); 1.5 s when a valid
+ * cached policy exists. Either way the answer is still applied when it lands.
+ */
+export const POLICY_CHECK_TIMEOUT_MS = 4_000;
+export const POLICY_CHECK_CACHED_TIMEOUT_MS = 1_500;
+/** Cap on the local cache read before the network deadline starts anyway. */
+export const POLICY_CACHE_READ_CAP_MS = 3_000;
+/**
+ * The network request itself is allowed to outlive the veil deadline by a long
+ * way: that is what lets a slow-network answer arrive late and still block.
+ */
+export const POLICY_FETCH_ABORT_MS = 20_000;
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const POLICY_KEYS = [
@@ -38,6 +52,11 @@ export type UpdateDecision =
       storeUrl: string;
       message: string;
     }
+  | {
+      /** #2107 A3 — below the floor, but the policy is in `observe` mode. */
+      state: "observe_would_block";
+      minimumVersion: string;
+    }
   | { state: "allowed" | "unknown" };
 
 export type VersionGateSnapshot = {
@@ -51,8 +70,13 @@ export type VersionPolicyCoordinatorDependencies = {
   loadCache: () => Promise<string | null>;
   saveCache: (value: string) => Promise<void>;
   fetchPolicy: () => Promise<AppVersionPolicy>;
-  report: (outcome: string) => void;
+  report: (
+    outcome: string,
+    detail?: Record<string, string | number | boolean | null>,
+  ) => void;
   timeoutMs?: number;
+  cachedTimeoutMs?: number;
+  cacheTimeoutMs?: number;
 };
 
 export function compareSemver(a: string, b: string): number | null {
@@ -108,14 +132,40 @@ export function decidePolicy(
   if (installedVersion === null) return { state: "unknown" };
   const comparison = compareSemver(installedVersion, policy.minimumVersion);
   if (comparison === null) return { state: "unknown" };
-  return comparison < 0
-    ? {
-        state: "required",
-        minimumVersion: policy.minimumVersion,
-        storeUrl: policy.storeUrl,
-        message: policy.message,
-      }
-    : { state: "allowed" };
+  if (comparison >= 0) return { state: "allowed" };
+  // #2107 A3 — only `enforce` blocks. `observe` is a dry run: it reports who
+  // WOULD be blocked and lets them in.
+  if (policy.enforcementMode !== "enforce") {
+    return { state: "observe_would_block", minimumVersion: policy.minimumVersion };
+  }
+  return {
+    state: "required",
+    minimumVersion: policy.minimumVersion,
+    storeUrl: policy.storeUrl,
+    message: policy.message,
+  };
+}
+
+export type GateLayout =
+  | "veil"
+  | "store_screen"
+  | "app"
+  | "app_with_store_overlay";
+
+/**
+ * #2107 A2 — what MandatoryUpdateGate renders. Once the app tree has mounted
+ * it is NEVER unmounted by the gate: a foreground recheck keeps it, and a
+ * confirmed `required` covers it as an overlay. Before the first mount, the
+ * cold-launch veil and a cold `required` render alone, so the app never boots
+ * behind a store screen.
+ */
+export function resolveGateLayout(
+  phase: VersionGateSnapshot["phase"],
+  appMounted: boolean,
+): GateLayout {
+  if (phase === "allowed") return "app";
+  if (!appMounted) return phase === "required" ? "store_screen" : "veil";
+  return phase === "required" ? "app_with_store_overlay" : "app";
 }
 
 export function getPolicyCacheKey(
@@ -137,6 +187,8 @@ export class VersionGateCoordinator {
   private inFlight: Promise<VersionGateSnapshot> | null = null;
   private cacheWrite: Promise<void> = Promise.resolve();
   private generation = 0;
+  /** Newest check whose server answer has been applied. Older answers lose. */
+  private answeredGeneration = 0;
 
   constructor(
     private readonly dependencies: VersionPolicyCoordinatorDependencies,
@@ -156,24 +208,39 @@ export class VersionGateCoordinator {
     return () => this.listeners.delete(listener);
   };
 
+  /**
+   * `blocking` is the cold-launch check: it may show the veil. Foreground
+   * rechecks pass false and never publish `checking`, so the app tree stays
+   * mounted underneath; only a confirmed `required` changes what is on screen.
+   */
   check(blocking: boolean): Promise<VersionGateSnapshot> {
-    if (this.dependencies.platform === null)
+    if (this.dependencies.platform === null) {
       return Promise.resolve(this.snapshot);
+    }
     if (this.inFlight !== null) return this.inFlight;
+
     const generation = ++this.generation;
     if (blocking && this.snapshot.phase !== "required") {
       this.publish({ phase: "checking", decision: this.snapshot.decision });
     }
-    const timeoutMs = this.dependencies.timeoutMs ?? POLICY_CHECK_TIMEOUT_MS;
+
     let cachedRequired: UpdateDecision | null =
       this.snapshot.decision.state === "required"
         ? this.snapshot.decision
         : null;
+    let hadValidCache = false;
+    let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let markCacheHydrated!: () => void;
     const cacheHydrated = new Promise<void>((resolve) => {
       markCacheHydrated = resolve;
     });
+    // A storage read that never settles must not hold the veil forever.
+    const hydrateCap = setTimeout(
+      () => markCacheHydrated(),
+      this.dependencies.cacheTimeoutMs ?? POLICY_CACHE_READ_CAP_MS,
+    );
+
     const pipeline = (async (): Promise<VersionGateSnapshot> => {
       try {
         let cachedRaw: string | null = null;
@@ -183,10 +250,7 @@ export class VersionGateCoordinator {
           this.dependencies.report(
             error instanceof Error ? error.message : "policy_cache_read_failed",
           );
-        } finally {
-          markCacheHydrated();
         }
-        if (generation !== this.generation) return this.snapshot;
         if (cachedRaw !== null) {
           let cachedPolicy: AppVersionPolicy | null = null;
           try {
@@ -198,64 +262,112 @@ export class VersionGateCoordinator {
             this.dependencies.report("invalid_cached_policy");
           }
           if (cachedPolicy !== null) {
+            hadValidCache = true;
             const cachedDecision = decidePolicy(
               cachedPolicy,
               this.dependencies.installedVersion,
             );
             if (cachedDecision.state === "required") {
               cachedRequired = cachedDecision;
-              this.publish({ phase: "required", decision: cachedDecision });
+              if (generation > this.answeredGeneration) {
+                this.publish({ phase: "required", decision: cachedDecision });
+              }
             }
           }
         }
+        markCacheHydrated();
+
         const policy = await this.dependencies.fetchPolicy();
-        if (generation !== this.generation) return this.snapshot;
+        // A1: an answer is NEVER thrown away for being late. It is saved, and if
+        // it says required the store screen appears now — unless a newer check
+        // has already applied a fresher server answer.
+        if (generation < this.answeredGeneration) return this.snapshot;
+        this.answeredGeneration = generation;
+        this.persistPolicy(policy);
         const decision = decidePolicy(
           policy,
           this.dependencies.installedVersion,
         );
-        this.persistPolicy(policy);
+        const late = timedOut;
         if (decision.state === "required") {
           cachedRequired = decision;
-          this.dependencies.report("required");
+          this.dependencies.report(
+            late ? "version_gate_late_required" : "version_gate_required",
+            { minimum_version: decision.minimumVersion },
+          );
           return this.publish({ phase: "required", decision });
         }
+        if (decision.state === "observe_would_block") {
+          this.dependencies.report("version_gate_observe_would_block", {
+            minimum_version: decision.minimumVersion,
+          });
+          return this.publish({ phase: "allowed", decision });
+        }
         if (decision.state === "allowed") {
-          this.dependencies.report("allowed");
+          this.dependencies.report("allowed", { late });
           return this.publish({ phase: "allowed", decision });
         }
         this.dependencies.report("installed_version_unavailable");
         return this.publish({ phase: "allowed", decision });
       } catch (error) {
-        if (generation !== this.generation) return this.snapshot;
-        this.dependencies.report(
-          error instanceof Error ? error.message : "policy_check_failed",
-        );
-        return cachedRequired?.state === "required"
-          ? this.publish({ phase: "required", decision: cachedRequired })
-          : this.publish({ phase: "allowed", decision: { state: "unknown" } });
+        markCacheHydrated();
+        const failure =
+          error instanceof Error ? error.message : "policy_check_failed";
+        // Console-only: the raw message carries no captured prefix.
+        this.dependencies.report(failure);
+        if (timedOut || generation < this.answeredGeneration) {
+          return this.snapshot;
+        }
+        if (cachedRequired?.state === "required") {
+          this.dependencies.report("version_gate_offline_cached_required", {
+            minimum_version: cachedRequired.minimumVersion,
+          });
+          return this.publish({ phase: "required", decision: cachedRequired });
+        }
+        // F1 (#2107 device test): "let in because we could not ask" is a
+        // fail-open like any other, so it reaches PostHog as a captured outcome.
+        this.dependencies.report("version_gate_unreachable", {
+          error: failure,
+          had_cached_policy: hadValidCache,
+        });
+        return this.publish({ phase: "allowed", decision: { state: "unknown" } });
       }
     })();
+
     const timeout = cacheHydrated.then(
       () =>
         new Promise<VersionGateSnapshot>((resolve) => {
+          const timeoutMs = hadValidCache
+            ? (this.dependencies.cachedTimeoutMs ?? POLICY_CHECK_CACHED_TIMEOUT_MS)
+            : (this.dependencies.timeoutMs ?? POLICY_CHECK_TIMEOUT_MS);
           timer = setTimeout(() => {
-            if (generation !== this.generation) return resolve(this.snapshot);
-            this.generation += 1;
-            this.dependencies.report("policy_check_timeout");
+            if (generation < this.answeredGeneration) {
+              return resolve(this.snapshot);
+            }
+            // Fail open for now, but keep listening: the pipeline above still
+            // persists and applies the answer whenever it arrives.
+            timedOut = true;
+            this.dependencies.report("version_gate_timeout", {
+              had_cached_policy: hadValidCache,
+            });
+            if (cachedRequired?.state === "required") {
+              this.dependencies.report("version_gate_offline_cached_required", {
+                minimum_version: cachedRequired.minimumVersion,
+              });
+              return resolve(
+                this.publish({ phase: "required", decision: cachedRequired }),
+              );
+            }
             resolve(
-              cachedRequired?.state === "required"
-                ? this.publish({ phase: "required", decision: cachedRequired })
-                : this.publish({
-                    phase: "allowed",
-                    decision: { state: "unknown" },
-                  }),
+              this.publish({ phase: "allowed", decision: { state: "unknown" } }),
             );
           }, timeoutMs);
         }),
     );
+
     this.inFlight = Promise.race([pipeline, timeout]).finally(() => {
       if (timer !== null) clearTimeout(timer);
+      clearTimeout(hydrateCap);
       this.inFlight = null;
     });
     return this.inFlight;
@@ -288,7 +400,7 @@ async function fetchPolicy(): Promise<AppVersionPolicy> {
     "";
   if (supabaseUrl.length === 0) throw new Error("policy_endpoint_unavailable");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), POLICY_CHECK_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), POLICY_FETCH_ABORT_MS);
   try {
     const response = await fetch(
       `${supabaseUrl}/functions/v1/app-version-policy?app_id=${APP_VERSION_APP_ID}&platform=${platform}`,
@@ -308,6 +420,15 @@ async function fetchPolicy(): Promise<AppVersionPolicy> {
   }
 }
 
+/**
+ * The coordinator keeps its "allowed" outcome name (the #2443 identity suite
+ * pins it); analytics captures that outcome as `version_gate_allowed` so it
+ * carries the captured prefix. Every other outcome passes through unchanged.
+ */
+export function capturedVersionGateOutcome(outcome: string): string {
+  return outcome === "allowed" ? "version_gate_allowed" : outcome;
+}
+
 export function createAppVersionCoordinator(): VersionGateCoordinator {
   const platform = getNativeAppPlatform();
   const installedVersion = getInstalledNativeVersion();
@@ -321,6 +442,16 @@ export function createAppVersionCoordinator(): VersionGateCoordinator {
     loadCache: () => AsyncStorage.getItem(cacheKey),
     saveCache: (value) => AsyncStorage.setItem(cacheKey, value),
     fetchPolicy,
-    report: (outcome) => console.warn(`[app-version-policy] ${outcome}`),
+    report: (outcome, detail) =>
+      reportUpdateGateEvent(
+        "app-version-policy",
+        capturedVersionGateOutcome(outcome),
+        {
+          app_id: APP_VERSION_APP_ID,
+          platform,
+          installed_version: installedVersion,
+          ...(detail ?? {}),
+        },
+      ),
   });
 }

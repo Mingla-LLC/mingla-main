@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.issue_3281_r2_grants.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3281-r2-checkout-grants",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}

@@ -1,3 +1,6 @@
+// [TEST-MOD-APPROVED #2107] 2026-10-19: #2107 A3 makes `observe` a dry run that
+// never blocks, so the shared fixture below now uses `enforce` (the live mode
+// on all four lanes since 2026-08-23) wherever a test expects a block.
 import {
   VersionGateCoordinator,
   compareSemver,
@@ -21,7 +24,7 @@ const policy = (
   storeUrl:
     "https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness",
   message: "Update Mingla to keep using the app.",
-  enforcementMode: "observe",
+  enforcementMode: "enforce",
   updatedAt: "2026-08-14T12:00:00.000Z",
   ...overrides,
 });

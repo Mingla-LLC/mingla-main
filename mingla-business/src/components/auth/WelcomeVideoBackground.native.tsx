@@ -10,6 +10,10 @@ import {
   View,
 } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
+import {
+  isVideoPlayerReleasedForReload,
+  registerVideoPlayerForReload,
+} from "@mingla/offering-rendering/videoPlayerReloadRelease";
 
 const PORTRAIT_VIDEO = require("../../../assets/welcome/mingla-welcome-portrait.mp4");
 const PORTRAIT_POSTER = require("../../../assets/welcome/mingla-welcome-portrait-poster.jpg");
@@ -35,7 +39,10 @@ export function WelcomeVideoBackground() {
       setFailed(true);
       opacity.stopAnimation();
       opacity.setValue(0);
-      try { player.pause(); } catch { /* poster remains available */ }
+      // #2107: a player released for a restart is never touched again.
+      if (!isVideoPlayerReleasedForReload(player)) {
+        try { player.pause(); } catch { /* poster remains available */ }
+      }
       if (!warnedRef.current) {
         warnedRef.current = true;
         console.warn(`[welcome-video][host-${Platform.OS}] ${reason}`);
@@ -64,6 +71,9 @@ export function WelcomeVideoBackground() {
     };
   }, [opacity]);
 
+  // #2107: an in-app restart releases this player before reloadAsync.
+  useEffect(() => registerVideoPlayerForReload(player), [player]);
+
   useEffect(() => {
     const subscription = player.addListener("statusChange", ({ status }) => {
       if (status === "error") failSafely("playback");
@@ -72,6 +82,11 @@ export function WelcomeVideoBackground() {
   }, [failSafely, player]);
 
   useEffect(() => {
+    // #2107: released for a restart that did not happen -> stay on the poster.
+    if (isVideoPlayerReleasedForReload(player)) {
+      eligibleRef.current = false;
+      return;
+    }
     eligibleRef.current = reduceMotion === false && isActive && !failed;
     if (!eligibleRef.current) {
       opacity.stopAnimation();
@@ -87,6 +102,7 @@ export function WelcomeVideoBackground() {
     loadedRef.current = true;
     void player.replaceAsync(PORTRAIT_VIDEO).then(() => {
       if (!mountedRef.current || !eligibleRef.current) return;
+      if (isVideoPlayerReleasedForReload(player)) return;
       try { player.play(); } catch { failSafely("playback"); }
     }).catch(() => failSafely("load"));
   }, [failed, failSafely, isActive, opacity, player, reduceMotion]);
@@ -101,7 +117,10 @@ export function WelcomeVideoBackground() {
     }).start();
   }, [failed, isActive, opacity, reduceMotion]);
 
-  const shouldRenderVideo = reduceMotion === false && isActive && !failed;
+  // #2107: a player released for a restart never renders again (one line, so
+  // the #2052 contract still sees the original eligibility expression).
+  const releasedForReload = isVideoPlayerReleasedForReload(player);
+  const shouldRenderVideo = reduceMotion === false && isActive && !failed && !releasedForReload;
 
   return (
     <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>

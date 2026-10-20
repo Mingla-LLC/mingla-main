@@ -490,8 +490,14 @@ begin
   v_res := public.ops_reconcile();
   perform pg_temp.w3t_check('T-BRAND', 'an email with other letter case and spaces links the one card that has it',
     (select string_agg(name || '/' || stage, ',') from public.crm_records where brand_id = '39870000-0000-4000-b500-000000000001'), 'W3T Email Card/onboarded');
-  perform pg_temp.w3t_check('T-BRAND', 'a spaced national phone links the card that has it with the country code',
-    (select string_agg(name, ',') from public.crm_records where brand_id = '39870000-0000-4000-b500-000000000002'), 'W3T Phone Card');
+  -- #3980 W3 rework 3 [TEST-MOD-APPROVED #3980]: this brand has no country on record (no address, payment
+  -- country or launch city named Lagos here), so its national 0809 is never read in the card's +234 by
+  -- itself; it is a card for a person to pick that names the card, and nothing links.
+  perform pg_temp.w3t_check('T-BRAND', 'a spaced national phone on a brand with no country is a pick card naming the card with the country code, never a link',
+    coalesce((select string_agg(name, ',') from public.crm_records where brand_id = '39870000-0000-4000-b500-000000000002'), 'none') || '/' ||
+    (select count(*) from public.ops_work_cards w join public.ops_work_links l on l.card_id = w.id and l.kind = 'host'
+      where w.auto_key = 'brand_pick:39870000-0000-4000-b500-000000000002' and w.status <> 'done'
+        and l.target_id = '39870000-0000-4000-c200-000000000002')::text, 'none/1');
   perform pg_temp.w3t_check('T-BRAND', 'a card already linked to another brand is never re-linked',
     (select brand_id::text from public.crm_records where id = '39870000-0000-4000-c200-000000000003'), '39870000-0000-4000-b500-000000000098');
   perform pg_temp.w3t_like('T-BRAND', 'and that brand gets a card for a person to pick, naming the linked card',

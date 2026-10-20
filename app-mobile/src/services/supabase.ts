@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
 import { getNativeAppVersionHeaders } from './appVersionIdentity';
+import { trackNetworkRequest } from './reloadNetworkFence';
 // #1594 [consumer-map-url] — the project URL now comes from the ONE owner that
 // `app.config.js` can also read (`src/config/supabaseProject.js`), so the value
 // this client uses and the value emitted into `Constants.expoConfig.extra` can
@@ -28,7 +29,7 @@ const createAbortError = (message: string): Error => {
   return error;
 };
 
-const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
+const fetchWithTimeoutUntracked = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
   // 20-second hard cap. Raised from 12s after ORCH-0366: discover-cards + curated
   // functions routinely take 11-13s due to complex pool queries + Deno cold starts.
   // At 12s, success depended on sub-second variance — a race condition, not a safety net.
@@ -69,6 +70,16 @@ const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promis
 
   return Promise.race([fetchPromise, timeoutPromise]);
 };
+
+/**
+ * #2107 (Sentry REACT-NATIVE-1C): every Supabase request is counted while it is
+ * on the wire, and held — not sent, not rejected — while an in-app restart is in
+ * progress, so nothing reaches RCTNetworking while the bridge tears down. The
+ * hold wraps the timeout, so a held request's 20 s clock starts only when it is
+ * actually sent.
+ */
+const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> =>
+  trackNetworkRequest(() => fetchWithTimeoutUntracked(url, options));
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

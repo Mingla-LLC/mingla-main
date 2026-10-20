@@ -1059,7 +1059,12 @@ export function expectedSavedWords(result, madeWords = "Saved. It’s on the Cal
     // #3980 W3 rework 2: the server says how many of its steps are open; with
     // none (a series whose first date is still far off) the words never
     // claim steps exist.
-    if (n === 0 && steps.open !== undefined && Number(steps.open) === 0) return "Saved. It’s on the Calendar. No steps are needed yet; Mingla adds them nearer the date.";
+    if (n === 0 && steps.open !== undefined && Number(steps.open) === 0) {
+      // #3980 W3 rework 3: steps a person already finished or declined are
+      // not added again, so the words never promise them "nearer the date".
+      if (Number(steps.settled || 0) > 0) return "Saved. It’s on the Calendar. Its steps were already finished or declined in Work, so none were added.";
+      return "Saved. It’s on the Calendar. No steps are needed yet; Mingla adds them nearer the date.";
+    }
     return n > 0 ? madeWords : "Saved. It’s on the Calendar; its steps were already in Work.";
   }
   return "Saved. It’s on the Calendar.";
