@@ -147,7 +147,7 @@ CREATE FUNCTION public.ops_promotions(p_from date, p_to date) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 -- Seam: ads (#3697) and giveaway (#3922) records join here as further sources. This function reads no ad table today.
-DECLARE v_today date := public.ops_today(NULL); v_out jsonb;
+DECLARE v_today date := public.ops_today(NULL); v_out jsonb; v_tz constant text := 'UTC';
 BEGIN
   SELECT COALESCE(jsonb_agg(s.r ORDER BY s.r->>'date', s.r->>'label'), '[]'::jsonb) INTO v_out FROM (
     (SELECT jsonb_build_object('date', a->'runway'->'promo_from', 'source', 'promo_start', 'anchor_kind', 'event',
@@ -161,13 +161,13 @@ BEGIN
       WHERE x.status = 'open' AND x.expected_on - 21 BETWEEN p_from AND p_to AND v_today <= x.expected_on - 21)
     UNION ALL
     (SELECT DISTINCT ON (i.id, w.anchor_kind, w.anchor_id)
-            jsonb_build_object('date', (i.publish_at AT TIME ZONE 'UTC')::date, 'source', 'content', 'anchor_kind', w.anchor_kind,
+            jsonb_build_object('date', (i.publish_at AT TIME ZONE v_tz)::date, 'source', 'content', 'anchor_kind', w.anchor_kind,
               'anchor_id', w.anchor_id, 'label', i.title, 'content_id', i.id)
        FROM public.ops_work_links l
        JOIN public.ops_work_cards w ON w.id = l.card_id AND w.archived_at IS NULL AND w.anchor_id IS NOT NULL
        JOIN public.content_calendar_items i ON i.id = l.target_id AND i.deleted_at IS NULL
       WHERE l.kind = 'content' AND i.publish_at IS NOT NULL
-        AND (i.publish_at AT TIME ZONE 'UTC')::date BETWEEN p_from AND p_to)
+        AND (i.publish_at AT TIME ZONE v_tz)::date BETWEEN p_from AND p_to)
   ) s;
   RETURN v_out;
 END;
