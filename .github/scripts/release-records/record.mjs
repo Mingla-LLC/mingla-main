@@ -94,8 +94,8 @@ async function issueComments(number) {
 /**
  * After a write, the issue keeps exactly one record comment for the pull
  * request even when two runs raced: the oldest record comment stays and
- * carries this run's record (keeping the newest live check any of them
- * held), and every later one is deleted (or, if GitHub
+ * carries this run's record merged with all of them (mergeRecords), and
+ * every later one is deleted (or, if GitHub
  * refuses the delete, emptied of its marker so it is no longer a record).
  * Every racing run converges on the same survivor.
  */
@@ -103,8 +103,8 @@ async function settle(issue, number, data) {
   const mine = recordCommentsFor(await issueComments(issue), number);
   if (mine.length <= 1) return mine.length === 1 ? "" : "missing";
   const [keep, ...extra] = mine;
-  // The survivor carries the newest live check the racing records held.
-  const body = renderRecord(await keepLiveChecks(data, mine));
+  // The survivor carries every field the racing records held (forward only).
+  const body = renderRecord(await mergeRecords(data, mine));
   if (keep.body !== body) await gh("PATCH", `/repos/${REPO}/issues/comments/${keep.id}`, { body });
   for (const c of extra) {
     const del = await gh("DELETE", `/repos/${REPO}/issues/comments/${c.id}`);
@@ -131,25 +131,31 @@ function liveCheckFrom(c, mergedAt) {
 }
 
 /**
- * #3980 W2 rework: this run's record, keeping a newer live check that a
- * record already on the issue holds. Runs in different queues (a "Live
- * check:" comment and a deploy status for the same merge) can each read the
- * comments before the other wrote, so the later writer must not drop the
- * live check it never saw. The live check is kept only when its comment is
- * still there and still counts (read again from GitHub): a deleted or edited
- * comment stops counting.
+ * #3980 W2 rework: this run's record merged with every record already on the
+ * issue. Runs in different queues (a "Live check:" comment, a deploy status
+ * and the production migrations status for the same merge) can each read the
+ * comments before another wrote, so the later writer must not drop news it
+ * never saw. W2 rework 3: every field, not only the live check
+ * (mergeRecordData: forward only, pending -> value, and a field only the
+ * other record has survives). The records are the bot's own comments. A live
+ * check is kept only when its comment is still there and still counts (read
+ * again from GitHub): a deleted or edited comment stops counting.
  */
-async function keepLiveChecks(data, records) {
+async function mergeRecords(data, records) {
   let out = data;
   for (const c of records) {
-    const prev = readRecordData(c.body)?.live_check;
-    if (!prev || typeof prev.url !== "string" || prev.url === out.live_check?.url) continue;
-    if (out.live_check && !(Date.parse(prev.at) > Date.parse(out.live_check.at))) continue;
-    const m = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/.exec(prev.url);
+    const prev = readRecordData(c.body);
+    if (!prev || prev.pr !== out.pr) continue;
+    // Every field but the live check, which is checked against GitHub below.
+    out = mergeRecordData(out, { ...prev, live_check: null });
+    const lc = prev.live_check;
+    if (!lc || typeof lc.url !== "string" || lc.url === out.live_check?.url) continue;
+    if (out.live_check && !(Date.parse(lc.at) > Date.parse(out.live_check.at))) continue;
+    const m = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/.exec(lc.url);
     if (!m) continue;
     const r = await gh("GET", `/repos/${REPO}/issues/comments/${m[1]}`);
     const check = r.status === 200 ? liveCheckFrom(r.json, data.merged_at) : null;
-    if (check && check.url === prev.url) out = mergeRecordData(out, { pr: out.pr, live_check: check });
+    if (check && check.url === lc.url) out = mergeRecordData(out, { pr: out.pr, live_check: check });
   }
   return out;
 }
@@ -168,13 +174,14 @@ function newestLiveCheck(comments, mergedAt) {
 
 /**
  * #3980 W2 rework 2: after writing, read the record back and merge again
- * until it holds, at most three rounds. Another run (a "Live check:" comment
- * and a deploy status for the same merge) can write between this run's last
- * read and its write; the write then overwrites a live check this run never
- * saw. Each round reads every comment again, keeps the newest live check
- * from the "Live check:" comments and from the records on the issue, and
- * writes only when the record differs. Returns the rounds that wrote, as
- * words for the log.
+ * until it holds, at most three rounds. Another run (a "Live check:" comment,
+ * a deploy status or the migrations status for the same merge) can write
+ * between this run's last read and its write; the write then overwrites news
+ * this run never saw. Each round reads every comment again and (W2 rework 3)
+ * what GitHub says now about the pull request (collect), keeps the newest
+ * live check from the "Live check:" comments, merges every field of the
+ * records on the issue forward only, and writes only when the record
+ * differs. Returns the rounds that wrote, as words for the log.
  */
 async function stabilize(issue, number, data) {
   let out = data;
@@ -182,9 +189,13 @@ async function stabilize(issue, number, data) {
     const comments = await issueComments(issue);
     const mine = recordCommentsFor(comments, number);
     if (mine.length === 0) return " (record gone on re-read)";
-    const fresh = newestLiveCheck(comments, out.merged_at);
-    let next = fresh ? mergeRecordData(out, { pr: out.pr, live_check: fresh }) : out;
-    next = await keepLiveChecks(next, mine);
+    // W2 rework 3: what GitHub says now, kept forward only against what this
+    // run wrote, then merged with every record on the issue.
+    const now = await collect(number);
+    let next = now ? mergeRecordData(now.data, out) : out;
+    const fresh = newestLiveCheck(comments, next.merged_at);
+    if (fresh) next = mergeRecordData(next, { pr: next.pr, live_check: fresh });
+    next = await mergeRecords(next, mine);
     const body = renderRecord(next);
     if (mine.length === 1 && mine[0].body === body) return round === 1 ? "" : ` (re-merged ${round - 1}x)`;
     if (mine.length > 1) await settle(issue, number, next);
@@ -264,13 +275,19 @@ async function main() {
   return 0;
 }
 
-/** Writes or refreshes the record of one merged pull request. */
-async function refresh(number) {
+/**
+ * What GitHub says now about one merged pull request: its record data and
+ * the issues the record goes on, or null when it is not merged into main.
+ * #3980 W2 rework 3: read once before writing and again on every read-back
+ * round, so news another run wrote and this run's write overwrote (the
+ * production migrations status, a deploy, the Feature Guide line, a live
+ * check) is read from its source again and written back.
+ */
+async function collect(number) {
   const prRes = await gh("GET", `/repos/${REPO}/pulls/${number}`);
   const pr = prRes.json;
   if (prRes.status !== 200 || !pr?.merged_at || pr?.base?.ref !== "main" || !/^[0-9a-f]{40}$/.test(pr?.merge_commit_sha ?? "")) {
-    console.log(`release-record: PR #${number} is not merged into main; nothing to do`);
-    return;
+    return null;
   }
   const sha = pr.merge_commit_sha;
   const commit = await gh("GET", `/repos/${REPO}/commits/${sha}`);
@@ -356,6 +373,17 @@ async function refresh(number) {
     problems: [],
   };
   data.problems = recordProblems(data);
+  return { data, targets };
+}
+
+/** Writes or refreshes the record of one merged pull request. */
+async function refresh(number) {
+  const got = await collect(number);
+  if (!got) {
+    console.log(`release-record: PR #${number} is not merged into main; nothing to do`);
+    return;
+  }
+  const { data, targets } = got;
 
   // One record per pull request per issue. The comments are read in full
   // right before writing: an existing record is updated, never duplicated;
@@ -363,19 +391,19 @@ async function refresh(number) {
   // and a Vercel status for the same merge) posted at the same moment.
   const written = [];
   const failed = [];
+  const unread = [];
   for (const t of targets) {
     const mine = recordCommentsFor(await issueComments(t), number);
     const existing = mine[0];
     // Merged with what is on the issue now, so a live check another run
     // wrote since this run read the comments is kept.
-    const merged = await keepLiveChecks(data, mine);
+    const merged = await mergeRecords(data, mine);
     const body = renderRecord(merged);
     if (existing) {
       if (existing.body !== body) {
         const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${existing.id}`, { body });
         written.push(`#${t} updated (HTTP ${r.status})`);
       }
-      if (mine.length > 1) written.push(`#${t}${await settle(t, number, merged)}`);
     } else {
       const r = await gh("POST", `/repos/${REPO}/issues/${t}/comments`, { body });
       if (r.status !== 201) {
@@ -383,15 +411,29 @@ async function refresh(number) {
         failed.push(t);
         continue;
       }
-      written.push(`#${t} created (HTTP ${r.status})${await settle(t, number, merged)}`);
+      written.push(`#${t} created (HTTP ${r.status})`);
     }
-    // Read back and merge again, so a live check written in the window
-    // between this run's read and its write is never lost.
-    const settled = await stabilize(t, number, merged);
-    if (settled) written.push(`#${t}${settled}`);
+    // #3980 W2 rework 3: the record is written. Reading it back (to remove a
+    // duplicate a racing run posted, and to merge news written in the window
+    // between this run's read and its write) can fail; that is said loudly,
+    // the PR's other linked issues still get their record, and the run ends
+    // non-zero.
+    try {
+      if (!existing) written[written.length - 1] += await settle(t, number, merged);
+      else if (mine.length > 1) written.push(`#${t}${await settle(t, number, merged)}`);
+      const settled = await stabilize(t, number, merged);
+      if (settled) written.push(`#${t}${settled}`);
+    } catch (error) {
+      unread.push(t);
+      written.push(`#${t} written, read-back failed`);
+      console.log(`release-record: ERROR: PR #${number}: the record on #${t} was written but reading it back failed (${error.message}); a duplicate or a racing run's news may remain there until the next refresh. Carrying on with the other issues.`);
+    }
   }
   console.log(`release-record: PR #${number}: ${written.length > 0 ? written.join(", ") : "unchanged"}`);
-  if (failed.length > 0) throw new Error(`GitHub refused the record on ${failed.map((t) => `#${t}`).join(", ")}`);
+  const problems = [];
+  if (failed.length > 0) problems.push(`GitHub refused the record on ${failed.map((t) => `#${t}`).join(", ")}`);
+  if (unread.length > 0) problems.push(`the record could not be read back on ${unread.map((t) => `#${t}`).join(", ")}`);
+  if (problems.length > 0) throw new Error(problems.join("; "));
 }
 
 main().then((code) => {
