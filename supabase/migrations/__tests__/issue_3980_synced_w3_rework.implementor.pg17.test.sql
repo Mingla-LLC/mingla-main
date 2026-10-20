@@ -20,6 +20,8 @@
 --   R-MOVE a moved event re-words its go-live and giveaway cards with the new
 --          dates; a person's save re-dates only that host's cards; the save
 --          says whether automatic steps were on
+--   R-TOLD a "Recently shipped" wording card stays in To review (Wave 2's What
+--          hosts are told group) and on the owner's wording tab, counted once
 --   R-X4   "Done but not Live" reads the newest record of an issue, and two
 --          records merged at the same moment are told apart by the higher
 --          pull request number
@@ -457,6 +459,29 @@ begin
   update public.ops_settings set value = 'true'::jsonb where key = 'auto_steps';
 end;
 $mv$;
+
+-- ---------------------------------------------------------------------------
+-- R-TOLD: a "Recently shipped" wording card is listed in To review (Wave 2's
+-- What hosts are told group) and on the owner's wording tab, counted once.
+-- ---------------------------------------------------------------------------
+do $told$
+declare v jsonb; m jsonb; v_res jsonb;
+begin
+  v_res := public.ops_auto_card_upsert('roadmap_shipped:issue-990498', jsonb_build_object(
+    'title', 'Approve what hosts are told about W3R payouts', 'instructions', 'Read the drafted Recently shipped wording and publish it or say it is not needed.',
+    'done_means', 'The wording is published or marked not needed.', 'person_reason', 'publish',
+    'owners', jsonb_build_array('ed.w3r3980@test.local'), 'watchers', '[]'::jsonb, 'due_on', pg_temp.w3r_today() + 1), 'task', null);
+  perform pg_temp.w3_check('R-TOLD', 'the wording card is made, waiting for a person', v_res->>'status', 'added');
+  v := pg_temp.w3_j(pg_temp.w3_person('owner', 'select public.ops_review_list(null)::text'));
+  perform pg_temp.w3_check('R-TOLD', 'To review lists it (Wave 2 group) and the wording tab lists it',
+    (select count(*) from jsonb_array_elements(v->'cards') c where c->>'auto_kind' = 'roadmap_shipped')::text || '/' ||
+    (select count(*) from jsonb_array_elements(v->'wording') c where c->>'auto_kind' = 'roadmap_shipped')::text, '1/1');
+  m := pg_temp.w3_j(pg_temp.w3_person('owner', 'select public.ops_my_counts(null)::text'));
+  perform pg_temp.w3_check('R-TOLD', 'the owner''s counts hold it once, as wording',
+    (m->>'needs_person_mine') || '/' || (m->>'wording_mine'),
+    ((select count(*) from jsonb_array_elements(v->'cards') c where c->>'auto_kind' IS DISTINCT FROM 'roadmap_shipped'))::text || '/1');
+end;
+$told$;
 
 select count(*) as w3r_total, count(*) filter (where not ok) as w3r_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as w3r_failures

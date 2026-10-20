@@ -1430,8 +1430,10 @@ END;
 $$;
 
 -- From 20271116003980. The "Recently shipped" wording cards (Bridge D) are
--- listed on their own, for the owner and admins only, with the drafted
--- roadmap wording; everything else is unchanged.
+-- also listed on their own ("wording"), for the owner and admins only, with
+-- the drafted roadmap wording. They stay in "cards" too, where To review
+-- groups them under What hosts are told (Wave 2); everything else is
+-- unchanged.
 CREATE OR REPLACE FUNCTION public.ops_review_list(p_today date DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -1447,7 +1449,6 @@ BEGIN
     INTO v_out
     FROM public.ops_work_cards w
    WHERE w.archived_at IS NULL AND w.status = 'person' AND w.person_reason IN ('spend','publish','other')
-     AND (w.auto_key IS NULL OR w.auto_key NOT LIKE 'roadmap\_shipped:%')
      AND (v_admin OR EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = w.id AND p.email = v.actor_email));
   SELECT COALESCE(jsonb_agg(public.ops_card_json(w, v_today) ORDER BY w.due_on, w.number), '[]'::jsonb) INTO v_need
     FROM public.ops_work_cards w
@@ -1477,7 +1478,11 @@ BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   RETURN (SELECT jsonb_build_object(
     'open_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner'),
-    'needs_person_mine', jsonb_array_length(v_review->'cards'),
+    -- A wording card is listed under Spend or publish and on What hosts are
+    -- told; it is counted once, as wording.
+    'needs_person_mine', (SELECT count(*) FROM jsonb_array_elements(v_review->'cards') c
+                           WHERE c->>'auto_kind' IS DISTINCT FROM 'roadmap_shipped'
+                              OR jsonb_array_length(v_review->'wording') = 0),
     'draft_needed_mine', jsonb_array_length(v_review->'draft_needed'),
     'wording_mine', jsonb_array_length(v_review->'wording'),
     'overdue_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner' AND w.due_on < v_today),
