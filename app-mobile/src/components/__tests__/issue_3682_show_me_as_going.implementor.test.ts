@@ -9,13 +9,16 @@ const read = (rel: string): string =>
   Deno.readTextFileSync(new URL(rel, root));
 
 const sheet = read("app-mobile/src/components/EventGuestListSheet.tsx");
+// #3827 going-box — the header subtitle moved into a pure, tested helper.
+const headerCopy = read("app-mobile/src/components/guestSheetHeaderCopy.ts");
 const service = read("app-mobile/src/services/socialProofService.ts");
 const types = read("packages/offering-rendering/socialProofTypes.ts");
 
 Deno.test("#3682 sheet exposes Show me as going toggle and private-others copy", () => {
   assertStringIncludes(sheet, "issue-3682-show-me-as-going-switch");
   assertStringIncludes(sheet, "Show me as going");
-  assertStringIncludes(sheet, "keep it private");
+  assertStringIncludes(headerCopy, "keep it private");
+  assertStringIncludes(sheet, "guestSheetHeaderSubtitle(");
   assertStringIncludes(sheet, "setShowMeAsGoing");
 });
 

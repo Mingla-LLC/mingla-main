@@ -50,13 +50,16 @@ describe("ORCH-1339 (D5) — ExperiencePricingStep Guest-privacy accordion", () 
 
   test("SPEC §4.8 byte-exact copy — experience accordion rows", () => {
     expect(pricingStep).toContain('label="Private guest list"');
+    // [TEST-MOD-APPROVED #3827] going-box spec §4.5 experience copy + the Q1
+    // locked sub-line while the list is private.
     expect(pricingStep).toContain(
-      'sub="Hide who\'s booked. Guests still see the booked count."',
+      'sub="Hide who\'s booked and how many. Only you see the list."',
     );
     expect(pricingStep).toContain('label="Hide remaining count"');
     expect(pricingStep).toContain(
-      "sub={'Don\\'t show \"X spots left\" or how full it is.'}",
+      ": 'Don\\'t show \"X spots left\" or how full it is.'",
     );
+    expect(pricingStep).toContain("? HIDE_REMAINING_LOCKED_SUB");
   });
 });
 
@@ -84,7 +87,9 @@ describe("ORCH-1339 — ExperienceCreatorWizard persistence + hydration", () => 
     expect(wizard).toContain(
       'import { setEventGuestPrivacy } from "../../services/businessEvents"',
     );
-    const calls = wizard.match(/setEventGuestPrivacy\(savedId, \{/g) ?? [];
+    // [TEST-MOD-APPROVED #3827] both calls build the patch through
+    // guestPrivacyPatch() (extras travel only when changed).
+    const calls = wizard.match(/setEventGuestPrivacy\(savedId, guestPrivacyPatch\(\)\)/g) ?? [];
     expect(calls.length).toBeGreaterThanOrEqual(2); // handleSubmit + handleLiveSave
     // NON-BLOCKING contract: failure → toast, flow continues.
     expect(wizard).toContain(

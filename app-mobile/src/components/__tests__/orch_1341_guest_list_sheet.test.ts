@@ -339,7 +339,13 @@ Deno.test("T-16 ConsumerExperienceDetailScreen wires the experience body + mount
 
 Deno.test("T-17 header, a11y labels and hit targets", () => {
   assertStringIncludes(SHEET, "Who's going");
-  assertStringIncludes(SHEET, "${goingCount} going");
+  // [TEST-MOD-APPROVED #3827] the subtitle moved into the pure
+  // guestSheetHeaderSubtitle helper (it adds the host's own-list guests).
+  assertStringIncludes(SHEET, "guestSheetHeaderSubtitle(");
+  assertStringIncludes(
+    Deno.readTextFileSync(new URL("../guestSheetHeaderCopy.ts", import.meta.url)),
+    "${real + extra} going",
+  );
   assertStringIncludes(SHEET, 'accessibilityRole="header"');
   assertStringIncludes(SHEET, "Add ${name} as a friend");
   assertStringIncludes(SHEET, "Message ${name}");
