@@ -16,7 +16,7 @@ export function LogRow({ entry }) {
       </div>
       <p className="break-words text-[13px] text-[var(--color-text-secondary)]">{entry.summary}</p>
       {entry.card && (
-        <a href={`#/work-board?card=${entry.card.id}`} className={`self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {entry.card.number}: {entry.card.title}</a>
+        <a href={`#/work-board?card=${entry.card.id}`} className={`inline-flex min-h-11 items-center self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {entry.card.number}: {entry.card.title}</a>
       )}
     </li>
   );

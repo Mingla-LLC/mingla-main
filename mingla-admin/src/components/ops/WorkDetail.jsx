@@ -278,7 +278,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             {card.links.map((l) => (
               <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px]">
                 <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
-                <button type="button" aria-label={`Unlink ${l.label}`} disabled={locked || card.status === "done"} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`inline-grid min-h-8 min-w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label={`Unlink ${l.label}`} disabled={locked || card.status === "done"} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`-my-1.5 -mr-1 inline-grid h-11 w-11 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
               </li>
             ))}
           </ul>
@@ -545,7 +545,7 @@ function GithubLinks({ card, disabled, onSave }) {
                 <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0 text-[var(--color-text-tertiary)]" />
                 <span className="sr-only">(opens GitHub in a new tab)</span>
               </a>
-              <button type="button" aria-label={`Remove #${g.number}`} disabled={disabled} onClick={() => onSave(current.filter((_, j) => j !== i), `#${g.number} removed`)} className={`inline-grid min-h-8 min-w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+              <button type="button" aria-label={`Remove #${g.number}`} disabled={disabled} onClick={() => onSave(current.filter((_, j) => j !== i), `#${g.number} removed`)} className={`-my-1.5 -mr-1 inline-grid h-11 w-11 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
             </li>
           ))}
         </ul>

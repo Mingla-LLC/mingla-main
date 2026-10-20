@@ -3,7 +3,7 @@
 // person, and the host cards nobody owns. The owner also gets the one-time
 // "Turn next steps into cards": a preview first, then a convert of only the
 // rows the owner ticks and confirms. Nothing is converted without that.
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Copy } from "lucide-react";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -106,13 +106,17 @@ function SprintPanel({ sprint, hostsWithoutOwner }) {
             </thead>
             <tbody className="divide-y divide-[var(--gray-100)]">
               {people.map((p) => (
-                <tr key={p.email}>
-                  <th scope="row" className="break-words py-1.5 font-medium text-[var(--color-text-primary)]">{p.name}{sameName(p, people) && <span className="block break-all text-[11.5px] font-normal text-[var(--color-text-tertiary)]">{p.email}</span>}</th>
+                <Fragment key={p.email}>
+                <tr>
+                  <th scope="row" className="break-words py-1.5 font-medium text-[var(--color-text-primary)]">{p.name}{sameName(p, people) && <span className="sr-only"> ({p.email})</span>}</th>
                   <td className="py-1.5 tabular-nums">{p.open}</td>
                   <td className="py-1.5 tabular-nums">{p.needs_person}</td>
                   <td className="py-1.5 tabular-nums">{p.closed_by_agent}</td>
                   <td className="py-1.5 tabular-nums">{p.carried}</td>
                 </tr>
+                {/* Two teammates with one name: the address on its own line, the whole table wide, so it never breaks mid-word. */}
+                {sameName(p, people) && <tr aria-hidden="true" className="!border-t-0"><td colSpan={5} className="pb-1.5 pt-0 text-[11.5px] text-[var(--color-text-tertiary)]">{p.email}</td></tr>}
+                </Fragment>
               ))}
             </tbody>
           </table>

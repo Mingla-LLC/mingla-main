@@ -188,11 +188,14 @@ Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names
   assertMatch(code("components/people/PeopleField.jsx"), /-my-1\.5 -mr-1 inline-grid h-11 w-11/);
   assertMatch(code("components/ops/EventSteps.jsx"), /inline-flex min-h-11 min-w-11 items-center[^`]*`\}>Card \{s\.card\.number\}/);
   assertEquals((code("components/ops/AgentActivity.jsx").match(/inline-flex min-h-11 items-center self-start/g) || []).length, 2);
+  assertMatch(code("components/ops/LogRow.jsx"), /inline-flex min-h-11 items-center self-start/);
+  assertMatch(code("components/ops/WorkDetail.jsx"), /-my-1\.5 -mr-1 inline-grid h-11 w-11 place-items-center rounded-full hover:bg-\[var\(--gray-200\)\]/);
   const dash = code("pages/TeamDashboardPage.jsx");
   assertMatch(dash, /<button id=\{id\} type="button" role="switch" aria-checked=\{!!on\}/);
   assertNotMatch(dash, /type="checkbox" role="switch"/);
   assertMatch(dash, /Engineering follow-through \(merged but not live, release records, live checks\) starts from the moment you first switch on automatic steps/);
   const panels = code("components/ops/TeamOpsPanels.jsx");
-  assertMatch(panels, /\{p\.name\}\{sameName\(p, people\) && <span[^>]*>\{p\.email\}<\/span>\}/);
+  assertMatch(panels, /\{p\.name\}\{sameName\(p, people\) && <span className="sr-only"> \(\{p\.email\}\)<\/span>\}/);
+  assertMatch(panels, /\{sameName\(p, people\) && <tr aria-hidden="true" className="!border-t-0"><td colSpan=\{5\}[^>]*>\{p\.email\}<\/td><\/tr>\}/);
   assertMatch(code("components/ops/SprintStrip.jsx"), /data-sprint-strip="" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1\.5 rounded-xl border[^"]*px-2\.5 py-1\.5"/);
 });
