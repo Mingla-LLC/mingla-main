@@ -187,7 +187,7 @@ export function AdminPage() {
   }, []);
 
   const editProfile = (email, field, value) =>
-    setProfiles((prev) => ({ ...prev, [email]: { ...(prev[email] || { name: "", login: "", savedName: "", savedLogin: "", fallback: "" }), [field]: value, state: "", error: "" } }));
+    setProfiles((prev) => ({ ...prev, [email]: { ...(prev[email] || { name: "", login: "", savedName: "", savedLogin: "", fallback: "" }), [field]: value, state: "", error: "", warning: "" } }));
 
   const saveProfile = async (email) => {
     const p = profiles[email];
@@ -196,7 +196,7 @@ export function AdminPage() {
     try {
       const saved = await setProfile(email, p.name, p.login);
       if (!mountedRef.current) return;
-      setProfiles((prev) => ({ ...prev, [email]: { ...prev[email], name: saved?.display_name || "", login: saved?.github_login || "", savedName: saved?.display_name || "", savedLogin: saved?.github_login || "", state: "saved", error: "" } }));
+      setProfiles((prev) => ({ ...prev, [email]: { ...prev[email], name: saved?.display_name || "", login: saved?.github_login || "", savedName: saved?.display_name || "", savedLogin: saved?.github_login || "", state: "saved", error: "", warning: saved?.warning || "" } }));
     } catch (err) {
       if (!mountedRef.current) return;
       setProfiles((prev) => ({ ...prev, [email]: { ...prev[email], state: "", error: opsErrorWords(err) } }));
@@ -809,8 +809,8 @@ export function AdminPage() {
                     className="min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]"
                   />
                 </label>
-                <p id={`profile-state-${email}`} role="status" className={`text-xs sm:col-span-2 ${profiles[email].error ? "text-[var(--color-error-700)]" : "text-[var(--color-text-tertiary)]"}`}>
-                  {profiles[email].error || (profiles[email].state === "saving" ? "Saving…" : profiles[email].state === "saved" ? "Saved" : !online ? "You're offline. Names save when you're back online." : "")}
+                <p id={`profile-state-${email}`} role="status" className={`text-xs sm:col-span-2 ${profiles[email].error ? "text-[var(--color-error-700)]" : profiles[email].warning ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-tertiary)]"}`}>
+                  {profiles[email].error || (profiles[email].state === "saving" ? "Saving…" : profiles[email].state === "saved" ? (profiles[email].warning ? `Saved. ${profiles[email].warning}` : "Saved") : !online ? "You're offline. Names save when you're back online." : "")}
                 </p>
               </div>
             )}

@@ -176,6 +176,32 @@ export function workingWords(working, now = Date.now()) {
   return `${who} is on it · last update ${sinceWords(working.last_update_at, now)}`;
 }
 
+/**
+ * The lower-case names more than one teammate has, across every list given
+ * (two "Debrah"s, or an email-derived name that matches a chosen one). A
+ * picker shows the email next to each of those names so they can be told
+ * apart.
+ */
+export function sharedNames(...lists) {
+  const byName = new Map();
+  for (const list of lists) {
+    for (const p of Array.isArray(list) ? list : []) {
+      const name = String(p?.name ?? "").trim().toLowerCase();
+      const email = String(p?.email ?? "").trim().toLowerCase();
+      if (!name || !email) continue;
+      if (!byName.has(name)) byName.set(name, new Set());
+      byName.get(name).add(email);
+    }
+  }
+  return new Set([...byName].filter(([, emails]) => emails.size > 1).map(([name]) => name));
+}
+
+/** "Debrah", or "Debrah (debrah@x.com)" when another teammate is also Debrah. */
+export function personLabel(person, shared) {
+  const name = String(person?.name ?? "").trim() || String(person?.email ?? "");
+  return shared?.has(name.toLowerCase()) && person?.email ? `${name} (${person.email})` : name;
+}
+
 export function initials(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";

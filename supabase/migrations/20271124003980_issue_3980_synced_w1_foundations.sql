@@ -196,6 +196,7 @@ CREATE TABLE public.ops_github_items (
   merge_sha         text,
   closing_issues    integer[] NOT NULL DEFAULT '{}'::integer[],
   github_updated_at timestamptz,
+  done_since        timestamptz,
   not_found         boolean NOT NULL DEFAULT false,
   requested_at      timestamptz NOT NULL DEFAULT now(),
   synced_at         timestamptz,
@@ -480,6 +481,9 @@ BEGIN
     IF v_status NOT IN ('todo','done','failed','person') THEN
       RETURN format('%s: "status" must be todo, done, failed or person.', v_at);
     END IF;
+    IF s ? 'result' AND jsonb_typeof(s->'result') NOT IN ('string','null') THEN
+      RETURN format('%s: "result" must be words (what was done or seen), at most 300 characters.', v_at);
+    END IF;
     IF jsonb_typeof(s->'result') = 'string' AND char_length(COALESCE(public.ops_one_line(s->>'result'), '')) > 300 THEN
       RETURN format('%s: "result" must be at most 300 characters.', v_at);
     END IF;
@@ -490,6 +494,30 @@ BEGIN
   RETURN NULL;
 END;
 $$;
+
+-- When an issue went Done on the board, kept by the table itself so a later
+-- comment or edit (which moves github_updated_at) never restarts the clock.
+-- First sight of an issue that is already Done (a new row, or the first read
+-- of a placeholder row) takes the issue's last update as the best evidence;
+-- a move to Done seen later is stamped now; leaving Done clears it.
+CREATE FUNCTION public.ops_github_items_done_mark() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF NEW.board_status IS DISTINCT FROM 'Done' THEN
+    NEW.done_since := NULL;
+  ELSIF TG_OP = 'INSERT' OR OLD.synced_at IS NULL THEN
+    NEW.done_since := LEAST(COALESCE(NEW.done_since, NEW.github_updated_at, now()), now());
+  ELSIF OLD.board_status IS DISTINCT FROM 'Done' THEN
+    NEW.done_since := now();
+  ELSE
+    NEW.done_since := COALESCE(NEW.done_since, OLD.done_since, now());
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER ops_github_items_done_mark BEFORE INSERT OR UPDATE ON public.ops_github_items
+  FOR EACH ROW EXECUTE FUNCTION public.ops_github_items_done_mark();
 
 -- ---------------------------------------------------------------------------
 -- 4. Replaced functions: names, shared helpers and claims.
@@ -595,6 +623,7 @@ BEGIN
     IF v_tool IS NULL OR NOT v_tool = ANY (public.ops_plan_tools()) THEN RETURN NULL; END IF;
     v_status := COALESCE(CASE WHEN jsonb_typeof(s->'status') = 'string' THEN s->>'status' END, 'todo');
     IF v_status NOT IN ('todo','done','failed','person') THEN RETURN NULL; END IF;
+    IF s ? 'result' AND jsonb_typeof(s->'result') NOT IN ('string','null') THEN RETURN NULL; END IF;
     v_result := CASE WHEN jsonb_typeof(s->'result') = 'string' THEN public.ops_one_line(s->>'result') END;
     IF char_length(COALESCE(v_result, '')) > 300 THEN RETURN NULL; END IF;
     IF s ? 'checked_at' AND jsonb_typeof(s->'checked_at') NOT IN ('string','null') THEN RETURN NULL; END IF;
@@ -1534,6 +1563,8 @@ BEGIN
   n.due_on := (cl->>'due_on')::date; n.due_source := cl->>'due_source'; n.plan := cl->'plan';
   n.status := v_status; n.person_reason := v_reason;
   IF v_status = 'doing' AND c.status <> 'doing' THEN n.started_at := COALESCE(c.started_at, clock_timestamp()); n.working_by := v.actor_email; n.working_via := v.via; END IF;
+  -- Back to To do: nobody is working on it any more, so the mark ends.
+  IF v_status = 'todo' AND c.status = 'doing' THEN n.working_by := NULL; n.working_via := NULL; END IF;
   n.sprint_id := CASE WHEN v_week IS NOT NULL THEN public.ops_sprint_ensure(v_week) ELSE c.sprint_id END;
   IF c.kind = 'promo' AND v_anchor_changed AND c.override_at IS NULL THEN
     v_gate := public.ops_promo_gate(cl->'anchor', v_today);
@@ -1556,9 +1587,11 @@ BEGIN
     status = n.status, person_reason = n.person_reason, blocked = n.blocked, blocked_kind = n.blocked_kind, blocked_reason = n.blocked_reason,
     anchor_kind = n.anchor_kind, anchor_id = n.anchor_id, due_on = n.due_on, due_source = n.due_source, sprint_id = n.sprint_id,
     plan = n.plan, result = n.result, started_at = n.started_at, working_by = n.working_by, working_via = n.working_via,
-    working_chat = CASE WHEN v_status = 'doing' AND c.status <> 'doing' THEN v_chat ELSE working_chat END,
+    working_chat = CASE WHEN v_status = 'doing' AND c.status <> 'doing' THEN v_chat
+                        WHEN v_status = 'todo' AND c.status = 'doing' THEN NULL ELSE working_chat END,
     working_seen_at = CASE WHEN v_status = 'doing' AND c.status <> 'doing' AND v.via IS NOT NULL THEN clock_timestamp()
-                           WHEN v_status = 'doing' AND c.status <> 'doing' THEN NULL ELSE working_seen_at END
+                           WHEN v_status = 'doing' AND c.status <> 'doing' THEN NULL
+                           WHEN v_status = 'todo' AND c.status = 'doing' THEN NULL ELSE working_seen_at END
    WHERE id = c.id;
   v_owners := ARRAY(SELECT jsonb_array_elements_text(cl->'owners'));
   v_watchers := ARRAY(SELECT jsonb_array_elements_text(cl->'watchers'));
@@ -2523,10 +2556,27 @@ DECLARE
   r public.ops_release_records; m public.ops_main_commits; g public.ops_github_items; w public.ops_work_cards;
   v_added integer := 0; v_closed integer := 0; v_owner text; v_watch text; v_due date := public.ops_today(NULL) + 1;
   v_key text; v_res jsonb; v_list text; v_refused_at timestamptz; v_want jsonb := '{}'::jsonb; v_common jsonb;
-  v_proj text; v_live boolean; v_boss text := public.ops_owner_email();
+  v_proj text; v_live boolean; v_boss text := public.ops_owner_email(); v_aged boolean; v_keep_only jsonb := '{}'::jsonb;
+  v_before jsonb; v_target text; v_pending text[];
 BEGIN
-  -- Which keys should be open now, and the card each would make.
-  FOR r IN SELECT x.* FROM public.ops_release_records x WHERE x.merged_at > now() - interval '60 days' ORDER BY x.merged_at LOOP
+  -- Which keys should be open now, and the card each would make. Records
+  -- older than 60 days make no new cards, but one that still has an open
+  -- card keeps being checked: its card closes only when the problem is
+  -- really gone, never because the record aged out.
+  FOR r IN SELECT x.* FROM public.ops_release_records x
+            WHERE x.merged_at > now() - interval '60 days'
+               OR EXISTS (SELECT 1 FROM public.ops_work_cards oc
+                           WHERE oc.status <> 'done' AND oc.archived_at IS NULL
+                             AND oc.auto_key ~ ('^eng_[a-z_]+:pr-' || x.pr || '(:|$)'))
+            ORDER BY x.merged_at LOOP
+    v_aged := r.merged_at <= now() - interval '60 days';
+    v_before := v_want;
+    -- The production ledger is read afresh for a record with pending
+    -- migrations, so its card follows the ledger and not a stale copy.
+    IF 'migrations_pending' = ANY (r.problems) THEN
+      PERFORM public.ops_release_recompute(r.pr);
+      SELECT * INTO r FROM public.ops_release_records x WHERE x.pr = r.pr;
+    END IF;
     v_owner := public.ops_release_owner(r.merged_by_login, r.author_login);
     v_common := jsonb_build_object(
       'owners', CASE WHEN v_owner IS NOT NULL THEN jsonb_build_array(v_owner) ELSE '[]'::jsonb END,
@@ -2553,14 +2603,29 @@ BEGIN
         'instructions', format('PR #%s changed %s but its title had no [deploy], so Vercel built nothing. Merge a follow-up commit whose subject contains [deploy], then confirm the production deployment is READY.', r.pr, v_proj),
         'done_means', format('%s production deployment is READY for this change.', v_proj)));
     END LOOP;
+    -- One card per pull request and deploy target, each with its own title
+    -- (two cards with one title would be refused as duplicates).
     FOR v_proj IN SELECT e.k FROM jsonb_each_text(COALESCE(r.deploy->'web', '{}'::jsonb)) e(k, val) WHERE e.val = 'failed'
                   UNION ALL SELECT 'edge' WHERE r.deploy->>'edge' = 'failed' LOOP
+      v_target := CASE WHEN v_proj = 'edge' THEN 'edge function' ELSE v_proj || ' web' END;
       v_want := v_want || jsonb_build_object(format('eng_deploy_failed:pr-%s:%s', r.pr, v_proj), v_common || jsonb_build_object(
-        'title', format('Fix the failed deploy of PR #%s', r.pr),
-        'instructions', format('The %s deploy for PR #%s failed. Read the run, fix it and redeploy through the reviewed path.',
-          CASE WHEN v_proj = 'edge' THEN 'edge function' ELSE v_proj || ' web' END, r.pr),
-        'done_means', 'The deploy succeeded.'));
+        'title', format('Fix the failed %s deploy of PR #%s', v_target, r.pr),
+        'instructions', format('The %s deploy for PR #%s failed. Read the run, fix it and redeploy through the reviewed path.', v_target, r.pr),
+        'done_means', format('The %s deploy of PR #%s succeeded.', v_target, r.pr)));
     END LOOP;
+    -- A deploy whose result has not arrived two hours after the merge is
+    -- stuck, not quietly pending: one card per target.
+    IF r.merged_at < now() - interval '2 hours' THEN
+      FOR v_proj IN SELECT e.k FROM jsonb_each_text(COALESCE(r.deploy->'web', '{}'::jsonb)) e(k, val) WHERE e.val = 'pending'
+                    UNION ALL SELECT 'edge' WHERE r.deploy->>'edge' = 'pending' LOOP
+        v_target := CASE WHEN v_proj = 'edge' THEN 'edge function' ELSE v_proj || ' web' END;
+        v_want := v_want || jsonb_build_object(format('eng_deploy_pending:pr-%s:%s', r.pr, v_proj), v_common || jsonb_build_object(
+          'title', format('Deploy still pending: %s for PR #%s', v_target, r.pr),
+          'instructions', format('PR #%s merged more than two hours ago and its %s deploy has no result yet. Open %s, find the deploy for merge commit %s, and see whether it is still running, failed or never started. Then re-run "Release records" from the Actions tab with this PR number so the record shows the result.',
+            r.pr, v_target, CASE WHEN v_proj = 'edge' THEN 'the "Deploy Supabase Edge Functions" runs in the Actions tab' ELSE 'the ' || v_proj || ' project on Vercel' END, left(r.merge_sha, 7)),
+          'done_means', format('The release record of PR #%s shows the %s deploy result.', r.pr, v_target)));
+      END LOOP;
+    END IF;
     IF 'migrations_pending' = ANY (r.problems) AND r.merged_at < now() - interval '24 hours' THEN
       v_want := v_want || jsonb_build_object('eng_migrations:pr-' || r.pr, v_common || jsonb_build_object(
         'title', format('Apply the migrations of PR #%s to production', r.pr),
@@ -2581,10 +2646,17 @@ BEGIN
         'instructions', format('Check PR #%s''s change in production, then comment on the issue: "Live check: <what you checked and saw>".', r.pr),
         'done_means', 'The release record shows the live check.'));
     END IF;
+    -- An aged record only keeps the cards it already has open.
+    IF v_aged THEN
+      SELECT v_keep_only || COALESCE(jsonb_object_agg(e.key, true), '{}'::jsonb) INTO v_keep_only
+        FROM jsonb_each(v_want) e WHERE NOT v_before ? e.key;
+    END IF;
   END LOOP;
-  -- Issues Done on the board for a day without a complete record (once the bridge follows them).
+  -- Issues Done on the board for a day without a complete record (once the
+  -- bridge follows them). The day counts from the move to Done, never from
+  -- the issue's last update: a comment does not restart it.
   FOR g IN SELECT x.* FROM public.ops_github_items x
-            WHERE x.kind = 'issue' AND x.board_status = 'Done' AND NOT x.not_found AND x.github_updated_at < now() - interval '24 hours' LOOP
+            WHERE x.kind = 'issue' AND x.board_status = 'Done' AND NOT x.not_found AND x.done_since < now() - interval '24 hours' LOOP
     v_live := COALESCE((SELECT y.complete FROM public.ops_release_records y
                          WHERE y.issues @> jsonb_build_array(jsonb_build_object('number', g.number)) ORDER BY y.merged_at DESC LIMIT 1), false);
     CONTINUE WHEN v_live;
@@ -2628,6 +2700,7 @@ BEGIN
 
   -- Make the missing ones.
   FOR v_key, v_res IN SELECT e.key, e.value FROM jsonb_each(v_want) e ORDER BY e.key LOOP
+    CONTINUE WHEN v_keep_only ? v_key;
     BEGIN
       v_res := public.ops_auto_card_upsert(v_key, v_res, 'task', NULL);
       IF v_res->>'status' = 'added' THEN v_added := v_added + 1; END IF;
@@ -2639,12 +2712,20 @@ BEGIN
   FOR w IN SELECT x.* FROM public.ops_work_cards x
             WHERE x.auto_key LIKE 'eng\_%' AND x.status <> 'done' AND x.archived_at IS NULL
               AND x.auto_key NOT LIKE 'eng\_no\_pr\_push:%' AND NOT v_want ? x.auto_key LOOP
+    -- A migrations card closes only when the production ledger really has
+    -- every version of its pull request.
+    IF split_part(w.auto_key, ':', 1) = 'eng_migrations' THEN
+      SELECT ARRAY(SELECT mv FROM unnest(y.migrations_added) mv WHERE NOT mv = ANY (public.ops_ledger_applied(y.migrations_added)))
+        INTO v_pending FROM public.ops_release_records y WHERE y.pr = substring(w.auto_key FROM ':pr-([0-9]+)$')::integer;
+      CONTINUE WHEN v_pending IS NULL OR cardinality(v_pending) > 0;
+    END IF;
     BEGIN
       PERFORM public.ops_auto_card_close(w.id, CASE split_part(w.auto_key, ':', 1)
           WHEN 'eng_no_issue' THEN 'The pull request has an issue and a release record.'
           WHEN 'eng_guide_missing' THEN 'The release record shows a Feature Guide line.'
           WHEN 'eng_not_deployed' THEN 'A later production deployment of this project is READY.'
           WHEN 'eng_deploy_failed' THEN 'The deploy no longer shows as failed.'
+          WHEN 'eng_deploy_pending' THEN 'The release record shows the deploy result.'
           WHEN 'eng_migrations' THEN 'Every migration is in the production ledger.'
           WHEN 'eng_record_pending' THEN 'The release record is complete apart from the live check.'
           WHEN 'eng_live_check' THEN 'The release record shows the live check.'
@@ -2751,8 +2832,17 @@ BEGIN
     format('%s set the name of %s to %s%s.', public.ops_name(v.actor_email), v_email, COALESCE(v_name, 'the email name'),
       CASE WHEN v_login IS NOT NULL THEN ' (GitHub ' || v_login || ')' ELSE '' END),
     jsonb_build_object('email', v_email));
+  -- Two teammates may share a name (the tester's F5 case, and email-derived
+  -- names collide without anyone choosing it), so a shared name is not
+  -- refused. It is said out loud instead: pickers then show each address,
+  -- and an agent must use the address, because the name alone is ambiguous.
+  SELECT string_agg(public.ops_name(d.email) || ' <' || d.email || '>', ', ' ORDER BY d.email) INTO v_other
+    FROM public.admin_team_directory() d
+   WHERE d.status IN ('active', 'invited') AND d.email <> p.email AND lower(public.ops_name(d.email)) = lower(public.ops_name(p.email));
   RETURN jsonb_build_object('profile', jsonb_build_object('email', p.email, 'display_name', p.display_name, 'github_login', p.github_login,
-    'name', public.ops_name(p.email)));
+    'name', public.ops_name(p.email)),
+    'warning', CASE WHEN v_other IS NOT NULL THEN format('%s shares this name with %s. Pickers show each email, and agents must use the email to pick one of them.',
+      public.ops_name(p.email), v_other) END);
 END;
 $$;
 
@@ -3024,7 +3114,7 @@ BEGIN
     'public.ops_release_problem_words(text)', 'public.ops_engineering_cards_sync()', 'public.ops_owner_person_only(text)',
     'public.ops_bridge_cursor(text)', 'public.ops_bridge_cursor_set(text,timestamptz)', 'public.ops_release_records_ingest(jsonb)',
     'public.ops_release_status_due()', 'public.ops_release_status_posted(integer,text)', 'public.ops_release_status_refused()',
-    'public.ops_main_commits_ingest(jsonb)',
+    'public.ops_main_commits_ingest(jsonb)', 'public.ops_github_items_done_mark()',
     'public.ops_people_directory()', 'public.ops_profiles_list()', 'public.ops_profile_set(text,text,text)', 'public.ops_settings_get()',
     'public.ops_setting_set(text,jsonb)', 'public.ops_working_clear(uuid,text)'] LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);

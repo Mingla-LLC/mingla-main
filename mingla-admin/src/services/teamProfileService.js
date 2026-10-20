@@ -13,8 +13,13 @@ export async function listProfiles() {
   return Array.isArray(data?.profiles) ? data.profiles : [];
 }
 
-/** Sets one teammate's name and GitHub username; blank clears either. */
+/**
+ * Sets one teammate's name and GitHub username; blank clears either. The
+ * profile comes back with the server's warning, if any (a name another
+ * teammate already has: allowed, and said out loud).
+ */
 export async function setProfile(email, displayName, githubLogin) {
   const data = await setTeamProfile(email, String(displayName ?? "").trim(), String(githubLogin ?? "").trim());
-  return data?.profile ?? null;
+  if (!data?.profile) return null;
+  return { ...data.profile, warning: typeof data.warning === "string" && data.warning ? data.warning : "" };
 }

@@ -31,7 +31,7 @@ export const WorkItem = forwardRef(function WorkItem({ card, selected, onSelect 
         {card.status === "person" && <OpsChip tone="warning">{PERSON_REASONS[card.person_reason] || "Needs a person"}</OpsChip>}
         {card.anchor && <OpsChip dashed={card.anchor.kind === "expected"}>{card.anchor.title}</OpsChip>}
         {card.status === "done" && card.close_kind && card.close_kind !== "done" && <OpsChip>{closeKindLabel(card.close_kind)}</OpsChip>}
-        {card.claim && <OpsChip tone="brand"><span aria-hidden="true">●</span> {agentName(card.claim.holder_name, card.claim.holder_via)} is on it</OpsChip>}
+        {card.claim && <OpsChip tone="brand"><span aria-hidden="true">●</span> {agentName(card.claim.holder_name, card.claim.holder_via, card.claim.holder_chat_label)} is on it</OpsChip>}
       </span>
     </button>
   );
