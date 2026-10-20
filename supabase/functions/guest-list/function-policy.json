@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "guest-list",
+  "verify_jwt": true,
+  "gateway_reason": "Signed-in Mingla Business team members manage an event's guest list and door check-in; every operation passes the verified user id to service-role functions that recheck brand role or scanner permission.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {},
+    "required_top_level": [
+      "app.qr_token_pepper"
+    ]
+  }
+}

@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "24458dbb697fa7b995e00ae5c538b407234c1a39258b31209134b00d40790297",
-      "value": "9c6b2cec53795c14cc91482b8c2f8c96d4ed1c63bbc5c9c6c0a6452077e7db49"
+      "value": "e32dd1f69411d2c78bfa22e9cba7be6182f36a3013e2f7487633980ec5d22249"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3827 drops the redundant #3313 re-apply from the #2333 replay-safety step: later files own the final definition and the #3313 probe is ambiguous after #3281's overloads. Execution topology unchanged."
+  "reason": "Issue #3827 fixes the #2333 replay-safety re-apply set: drops the redundant #3313 re-apply (its probe is ambiguous after #3281 overloads) and appends #3281 many-dates, the new final owner of business_publish_event_draft. Execution topology unchanged."
 }

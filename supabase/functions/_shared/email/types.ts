@@ -26,6 +26,13 @@ export interface TicketBodyInput {
     // renders start-only and the ICS attachment omits DTEND (Constitution #9).
     endAt: string | null;
     timezone: string;
+    /**
+     * #3827 Q-A3 — the host turned on a private guest list
+     * (`theme.business_event.settings.privateGuestList`). The confirmation CTA
+     * then drops "who's going", because the app hides the going box. Omitted =
+     * public, so the PDF/SMS callers that never read it are unaffected.
+     */
+    privateGuestList?: boolean;
   };
   brand: {
     name: string;
@@ -50,6 +57,11 @@ export interface TicketBodyInput {
     taxBreakdown?: unknown[] | null;
     currency: string;
     buyerName: string | null;
+    /**
+     * issue #3827 — one line under the intro naming who a guest-list guest is
+     * with ("You're on the guest list with Ada Okoro."). Unset renders nothing.
+     */
+    partyLine?: string | null;
     lineItems: Array<{
       ticketName: string;
       quantity: number;

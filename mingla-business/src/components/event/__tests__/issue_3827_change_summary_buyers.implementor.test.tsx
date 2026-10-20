@@ -334,8 +334,6 @@ describe("issue #3827 — useEventBuyerCount", () => {
   test("BC-1: it asks the server's one definition of a buyer and returns its number", async () => {
     mockRpc.mockResolvedValue({ data: 0, error: null });
     const zero = await mountCount("server-event-3827");
-    // Not known until the server answers.
-    expect(zero.read()).toBeNull();
     await flush();
     expect(zero.read()).toBe(0);
     expect(mockRpc).toHaveBeenCalledWith("business_event_buyer_count", {
@@ -467,5 +465,76 @@ describe("issue #3827 — the editor is wired to the buyer count", () => {
     expect(screen).toContain(
       "...(patch.locationGeo !== undefined ? { coordinatePrecision: patch.locationGeo === null ? null : (editState.coordinatePrecision ?? null), } : {}),",
     );
+  });
+});
+
+// ── useEventBuyerCount, deterministic "not known until answered" ───────────
+//
+// WHY THIS EXISTS (#3827, CI run 39452190681): BC-1 answers the RPC with an
+// already-resolved promise and then reads the hook right after the mounting
+// act(). React 19's async act drains its queue with setImmediate, while React
+// Query hands the answer to React on a setTimeout(0). On a busy runner that
+// timer can fire inside the mounting act, so BC-1 reads the server's real 0
+// (correct behaviour, wrong moment) and fails. These cases hold the server's
+// answer back with a deferred promise, so "before the answer" is a fact of the
+// test, not of the scheduler, and they also pin that a pending request never
+// reads as 0 however many turns of the event loop pass.
+
+const deferredRpc = (): { resolve: (result: RpcResult) => void } => {
+  let resolve!: (result: RpcResult) => void;
+  mockRpc.mockImplementation(
+    () => new Promise<RpcResult>((settle) => {
+      resolve = settle;
+    }),
+  );
+  return { resolve: (result) => resolve(result) };
+};
+
+describe("issue #3827 — useEventBuyerCount, answer held back", () => {
+  beforeEach(() => {
+    mockRpc.mockReset();
+    mockAuth.isAuthReady = true;
+  });
+
+  test("BC-7: a pending request is 'not known' however long it waits, and a known 0 arrives only with the answer", async () => {
+    const pending = deferredRpc();
+    const count = await mountCount("server-event-3827-pending");
+    expect(mockRpc).toHaveBeenCalledWith("business_event_buyer_count", {
+      p_event_id: "server-event-3827-pending",
+    });
+    expect(count.read()).toBeNull();
+    await flush();
+    await flush();
+    expect(count.read()).toBeNull();
+
+    await act(async () => {
+      pending.resolve({ data: 0, error: null });
+    });
+    await flush();
+    expect(count.read()).toBe(0);
+    count.tree.unmount();
+    count.client.clear();
+  });
+
+  test("BC-8: while a fresh count is being fetched, the remembered 0 is not served", async () => {
+    mockRpc.mockResolvedValue({ data: 0, error: null });
+    const count = await mountCount("server-event-3827-refetch");
+    await flush();
+    expect(count.read()).toBe(0);
+
+    const refetch = deferredRpc();
+    await act(async () => {
+      void count.client.refetchQueries({ queryKey: ["event-buyer-count"] });
+    });
+    await flush();
+    expect(count.read()).toBeNull();
+
+    await act(async () => {
+      refetch.resolve({ data: 3, error: null });
+    });
+    await flush();
+    expect(count.read()).toBe(3);
+    count.tree.unmount();
+    count.client.clear();
   });
 });

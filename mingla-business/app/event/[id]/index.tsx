@@ -37,7 +37,7 @@ import {
 } from "../../../src/store/liveEventStore";
 import { useDraftById } from "../../../src/store/draftEventStore";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
-import { useGuestStore } from "../../../src/store/guestStore";
+import { guestListTicketCount, isCompOrder } from "../../../src/utils/compOrders";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
@@ -458,6 +458,8 @@ export default function EventDetailScreen(): React.ReactElement {
       allOrderEntries.reduce(
         (sum, order) => {
           if (order.status !== "paid" && order.status !== "refunded_partial") return sum;
+          // issue #3827 — "sold" is sales only; guest-list tickets are not sold.
+          if (isCompOrder(order)) return sum;
           return (
             sum +
             order.lines.reduce(
@@ -487,11 +489,12 @@ export default function EventDetailScreen(): React.ReactElement {
     }
     return count;
   }, [allDoorEntries, event]);
-  const allCompEntries = useGuestStore((s) => s.entries);
+  // issue #3827 — guest-list guests are server tickets now (not void), not
+  // this phone's legacy list.
   const compGuestCount = useMemo<number>(() => {
     if (event === null) return 0;
-    return allCompEntries.filter((c) => c.eventId === event.id).length;
-  }, [allCompEntries, event]);
+    return guestListTicketCount(allOrderEntries.filter((o) => o.eventId === event.id));
+  }, [allOrderEntries, event]);
   const totalGuestCount = totalSoldCount + doorSoldCount + compGuestCount;
   // #3645 — only when it is KNOWN that nobody holds a ticket do the cancel
   // dialog and toast say there is nothing to refund.
@@ -615,8 +618,10 @@ export default function EventDetailScreen(): React.ReactElement {
       const buyerName =
         o.buyer.name.trim().length > 0 ? o.buyer.name : "Anonymous";
       const totalQty = o.lines.reduce((s, l) => s + l.quantity, 0);
-      const purchaseSummary =
-        o.lines.length === 1
+      // issue #3827 — a guest-list guest did not buy anything.
+      const purchaseSummary = isCompOrder(o)
+        ? "was added to the guest list"
+        : o.lines.length === 1
           ? `bought ${o.lines[0].quantity}× ${o.lines[0].ticketNameAtPurchase}`
           : `bought ${totalQty}× tickets`;
       events.push({
@@ -645,7 +650,7 @@ export default function EventDetailScreen(): React.ReactElement {
           kind: "cancel",
           orderId: o.id,
           buyerName,
-          summary: "cancelled their order",
+          summary: isCompOrder(o) ? "guest-list ticket was cancelled" : "cancelled their order",
           at: o.cancelledAt,
         });
       }
@@ -947,6 +952,12 @@ export default function EventDetailScreen(): React.ReactElement {
             label="Group chat"
             sub="Read + reply + moderate"
             onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
+          />
+          <ActionTile
+            icon="ticket"
+            label="Dates"
+            sub="Titles and places per date"
+            onPress={() => router.push(`/event/${event.id}/dates` as never)}
           />
           <ActionTile
             icon="eye"

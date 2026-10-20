@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -17,10 +17,10 @@ import {
 } from "../../store/currentBrandStore";
 // Issue #1835 — brand deletion is owner-only.
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
-import { BrandCreationFlow } from "./BrandCreationFlow";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { TopSheet } from "../ui/TopSheet";
+import { LazyBrandCreationFlow } from "./LazyBrandCreationFlow";
 
 export interface BrandSwitcherSheetProps {
   visible: boolean;
@@ -95,13 +95,15 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
     <TopSheet visible={visible} onClose={onClose} testID={testID}>
       <View style={styles.host}>
         {mode === "create" ? (
-          <BrandCreationFlow
-            onComplete={() => onClose()}
-            onCancel={() => {
-              if (brands.length > 0) setMode("switch");
-              else onClose();
-            }}
-          />
+          <Suspense fallback={null}>
+            <LazyBrandCreationFlow
+              onComplete={() => onClose()}
+              onCancel={() => {
+                if (brands.length > 0) setMode("switch");
+                else onClose();
+              }}
+            />
+          </Suspense>
         ) : (
           <>
             <View style={styles.header}>

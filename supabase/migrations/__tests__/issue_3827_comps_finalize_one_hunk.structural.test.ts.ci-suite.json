@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3827_comps_finalize_one_hunk.structural.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3827-21-comps-structural",
+  "profile": "deno-1.46-stripe"
+}

@@ -1,5 +1,6 @@
 import type { TicketStub } from "../store/draftEventStore";
 import type { OrderRecord } from "../store/orderStore";
+import { guestListTicketCount, isCompOrder } from "./compOrders";
 import { formatCount, formatCurrencyRound, currencyCodeOrNull } from "./currency";
 import {
   summarizeEventMoney,
@@ -9,6 +10,10 @@ import {
 export interface EventSalesSummary {
   eventId: string;
   soldCount: number | null;
+  /** issue #3827 — live guest-list tickets (take a place, never sold). */
+  guestListCount?: number | null;
+  /** issue #3827 — sold + guest list: every place issued. */
+  issuedCount?: number | null;
   onlineRevenue: number | null;
   // #962 G3 — null when the brand has no established currency (pre-bank);
   // the revenue label is then "—" (never a fabricated GBP).
@@ -75,9 +80,11 @@ export const summarizeTicketCapacity = (
   };
 };
 
+// issue #3827 — sales only: guest-list tickets are never "sold".
 export const getEventTicketsSold = (orders: OrderRecord[]): number =>
   orders.reduce((sum, order) => {
     if (!liveOrderStatuses.has(order.status)) return sum;
+    if (isCompOrder(order)) return sum;
     return (
       sum +
       order.lines.reduce(
@@ -117,6 +124,8 @@ export const buildEventSalesSummary = ({
     return {
       eventId,
       soldCount: null,
+      guestListCount: null,
+      issuedCount: null,
       onlineRevenue: null,
       displayCurrency,
       mismatches: [],
@@ -131,6 +140,10 @@ export const buildEventSalesSummary = ({
   }
   const readyOrders = orders ?? [];
   const readySoldCount = getEventTicketsSold(readyOrders);
+  const readyGuestListCount = guestListTicketCount(readyOrders);
+  // issue #3827 — "12 sold · 30 guest list / 100" once anyone is on the list.
+  const guestListFragment =
+    readyGuestListCount > 0 ? ` · ${formatCount(readyGuestListCount)} guest list` : "";
   const moneySummary = summarizeEventMoney({
     expectedCurrency: displayCurrency,
     orders: readyOrders,
@@ -139,10 +152,12 @@ export const buildEventSalesSummary = ({
 
   const soldLabel =
     finiteCapacity !== null
-      ? `${formatCount(readySoldCount)} / ${formatCount(finiteCapacity)}`
+      ? readyGuestListCount > 0
+        ? `${formatCount(readySoldCount)} sold${guestListFragment} / ${formatCount(finiteCapacity)}`
+        : `${formatCount(readySoldCount)} / ${formatCount(finiteCapacity)}`
       : perNightCapacity !== null
-        ? `${formatCount(readySoldCount)} sold · ${formatCount(perNightCapacity)} per night`
-        : `${formatCount(readySoldCount)} sold`;
+        ? `${formatCount(readySoldCount)} sold${guestListFragment} · ${formatCount(perNightCapacity)} per night`
+        : `${formatCount(readySoldCount)} sold${guestListFragment}`;
   const revenueLabel =
     displayCurrency === null
       ? "—"
@@ -155,6 +170,8 @@ export const buildEventSalesSummary = ({
   return {
     eventId,
     soldCount: readySoldCount,
+    guestListCount: readyGuestListCount,
+    issuedCount: readySoldCount + readyGuestListCount,
     onlineRevenue: moneySummary.onlineRevenue,
     displayCurrency,
     mismatches: moneySummary.mismatches,

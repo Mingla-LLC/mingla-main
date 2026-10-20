@@ -226,6 +226,11 @@ jobs:
           # function it depends on is missing, which a full replay always has.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270830003645_issue_3645_offering_functions_use_shared_currency_source.sql
+          # Issue #3281's many-dates foundation re-emits `business_publish_event_draft`
+          # once more and now owns its final definition on a full replay, so the
+          # re-apply set must end with it (found on PR #4011).
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20271124003281_issue_3281_many_dates_foundation.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."
