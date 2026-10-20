@@ -63,7 +63,7 @@ type Harness = {
 };
 
 function harness(
-  options: { facts?: UpdateLaunchFacts | null; stored?: string | null; storeThrows?: boolean } = {},
+  options: { facts?: UpdateLaunchFacts | null; stored?: string | null; storeThrows?: boolean; writeThrows?: boolean } = {},
 ): Harness {
   const stored = { value: options.stored ?? null };
   const writes: string[] = [];
@@ -81,7 +81,7 @@ function harness(
         return stored.value;
       },
       write: (value) => {
-        if (options.storeThrows === true) throw new Error("no file system");
+        if (options.storeThrows === true || options.writeThrows === true) throw new Error("no file system");
         order.push("write");
         writes.push(value);
         stored.value = value;
@@ -192,6 +192,16 @@ describe("#2107 U1 launch guard — core", () => {
       kind: "restart_screen",
       reason: "confirmed_good",
     });
+  });
+
+  test("adversarial: a confirmation that could not be stored still stops escalation in this runtime", () => {
+    const h = harness({ writeThrows: true });
+    h.guard.noteHealthyCommit();
+    expect(h.guard.handleError(new Error("after content"), "root_boundary")).toEqual({
+      kind: "restart_screen",
+      reason: "confirmed_good",
+    });
+    expect(h.escalated).toEqual([]);
   });
 
   test("a launch that stays healthy for the whole window is confirmed by the timer", () => {
