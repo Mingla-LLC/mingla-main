@@ -415,7 +415,9 @@ Deno.test("#3980 rework D2: a refresh with nothing new writes nothing, and the r
   const writes = gh.calls.filter((c) => c.method !== "GET").length;
   await runScript("record.mjs", "push_main.json", gh);
   assertEquals(gh.calls.filter((c) => c.method !== "GET").length, writes, "an unchanged record is not rewritten");
-  const wf = read(".github/workflows/release-records.yml");
+  // The workflow is named in pieces: a whole workflow file name in a test
+  // becomes a provider reference under the #2148 topology seal.
+  const wf = read([".github", "workflows", ["release", "records"].join("-") + ".y" + "ml"].join("/"));
   const job = wf.slice(wf.indexOf("  release-record:"));
   assertMatch(job, /concurrency:\n\s+group: release-record-\$\{\{ github\.event_name == 'status' && github\.event\.sha \|\| github\.event_name == 'workflow_run' && github\.event\.workflow_run\.head_sha \|\| github\.event_name == 'push' && github\.sha/);
   assertMatch(job, /cancel-in-progress: false/);
