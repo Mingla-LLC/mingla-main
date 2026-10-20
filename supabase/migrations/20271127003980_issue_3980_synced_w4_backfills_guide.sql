@@ -143,23 +143,36 @@ BEGIN
 END;
 $$;
 
--- Every brand without a host card, with what brand auto-link would do for
--- it (ops_brand_match). Writes nothing.
-CREATE FUNCTION public.ops_brand_cards_rows() RETURNS jsonb
+-- How many brands have no host card. Cheap: no matching is done, so the
+-- Team dashboard can show the number without running the preview.
+CREATE FUNCTION public.ops_brand_cards_total() RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT count(*)::integer FROM public.brands br
+   WHERE br.deleted_at IS NULL
+     AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
+$$;
+
+-- One page of the brands without a host card, newest first, with what brand
+-- auto-link would do for each (ops_brand_match). Writes nothing. A page holds
+-- at most 100 brands; the totals count every brand without a card, and the
+-- actions of this page.
+CREATE FUNCTION public.ops_brand_cards_rows(p_offset integer, p_limit integer) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v_rows jsonb; v_total integer;
+DECLARE v_rows jsonb; v_total integer; v_offset integer := GREATEST(COALESCE(p_offset, 0), 0);
+  v_limit integer := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
 BEGIN
-  SELECT count(*) INTO v_total FROM public.brands br
-   WHERE br.deleted_at IS NULL
-     AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL);
-  WITH m AS (
-    SELECT br.id, br.created_at, public.ops_brand_match(br.id) AS d
+  v_total := public.ops_brand_cards_total();
+  WITH page AS (
+    SELECT br.id, br.created_at
       FROM public.brands br
      WHERE br.deleted_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
      ORDER BY br.created_at DESC, br.id
-     LIMIT 500
+     OFFSET v_offset LIMIT v_limit
+  ), m AS (
+    SELECT page.id, page.created_at, public.ops_brand_match(page.id) AS d FROM page
   )
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
       'brand_id', m.id, 'name', m.d->'brand'->>'name', 'created_at', m.created_at,
@@ -185,9 +198,16 @@ BEGIN
     'link', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'link'),
     'create', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'create'),
     'pick', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'pick'),
-    'reopen', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'reopen')));
+    'reopen', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'reopen')),
+    'page', jsonb_build_object('offset', v_offset, 'limit', v_limit,
+                               'more', v_offset + jsonb_array_length(v_rows) < v_total));
 END;
 $$;
+
+-- The first page.
+CREATE FUNCTION public.ops_brand_cards_rows() RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$ SELECT public.ops_brand_cards_rows(0, 50) $$;
 
 -- P3: the owner previews links between roadmap cards and GitHub issues.
 -- Writes nothing.
@@ -216,6 +236,16 @@ BEGIN
   END IF;
   v_replay := public.ops_request_begin(v.actor_email, p_request_key, 'roadmap_links', p_links);
   IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
+  -- The listed cards are locked, in id order, before they are checked again.
+  -- A confirm racing this one on the same card waits here, then reads the
+  -- card as already linked: a link is never written over.
+  IF jsonb_typeof(p_links) = 'array' THEN
+    PERFORM 1 FROM public.community_roadmap_cards rc
+     WHERE rc.id IN (SELECT (x.value->>'card_id')::uuid FROM jsonb_array_elements(p_links) x
+                      WHERE jsonb_typeof(x.value) = 'object' AND public.ops_is_uuid(x.value->>'card_id'))
+     ORDER BY rc.id
+       FOR UPDATE;
+  END IF;
   v_check := public.ops_roadmap_links_check(p_links);
   FOR r IN SELECT x.value FROM jsonb_array_elements(v_check->'rows') x LOOP
     IF r->>'status' = 'ready' THEN
@@ -242,13 +272,36 @@ BEGIN
 END;
 $$;
 
--- P3: the owner previews every brand without a host card. Writes nothing.
+-- P3: the owner previews the brands without a host card, the newest 50
+-- first. Writes nothing.
 CREATE FUNCTION public.ops_brand_cards_preview() RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
   PERFORM public.ops_owner_person_only('Only the owner adds host cards for brands in bulk.');
   RETURN public.ops_brand_cards_rows();
+END;
+$$;
+
+-- P3: the next pages of the same preview (at most 100 brands a page).
+-- Writes nothing.
+CREATE FUNCTION public.ops_brand_cards_preview_page(p_offset integer, p_limit integer) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  PERFORM public.ops_owner_person_only('Only the owner adds host cards for brands in bulk.');
+  RETURN public.ops_brand_cards_rows(p_offset, p_limit);
+END;
+$$;
+
+-- P3: the number of brands without a host card, for the Team dashboard
+-- heading. No matching is run. Writes nothing.
+CREATE FUNCTION public.ops_brand_cards_count() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  PERFORM public.ops_owner_person_only('Only the owner adds host cards for brands in bulk.');
+  RETURN jsonb_build_object('total', public.ops_brand_cards_total());
 END;
 $$;
 
@@ -260,7 +313,7 @@ CREATE FUNCTION public.ops_brand_cards_confirm(p_brand_ids uuid[], p_request_key
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v record; v_ids uuid[]; v_replay jsonb; v_id uuid; v_res jsonb; v_name text; v_linked integer := 0; v_created integer := 0;
-  v_skipped integer := 0; v_results jsonb := '[]'::jsonb; v_out jsonb; v_status text; v_words text;
+  v_skipped integer := 0; v_results jsonb := '[]'::jsonb; v_out jsonb; v_status text; v_words text; v_card jsonb;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   PERFORM public.ops_owner_person_only('Only the owner adds host cards for brands in bulk.');
@@ -284,13 +337,22 @@ BEGIN
     EXCEPTION WHEN others THEN
       v_status := 'failed'; v_res := jsonb_build_object('error', left(regexp_replace(SQLERRM, '^[a-z_]+: ', ''), 300));
     END;
-    v_words := CASE v_status
-      WHEN 'linked' THEN 'Linked to its host card.'
-      WHEN 'created' THEN 'Host card added.'
-      WHEN 'pick' THEN 'A card asks a person to pick the right host card.'
-      WHEN 'ask_reopen' THEN 'A card asks a person whether to reopen the Lost host card.'
-      WHEN 'has_card' THEN 'It already has a host card.'
-      WHEN 'gone' THEN 'This brand no longer exists.'
+    -- The words follow what happened to the card a person needs: "asks"
+    -- only when a card was added just now.
+    v_card := v_res->'card';
+    v_words := CASE
+      WHEN v_status = 'linked' THEN 'Linked to its host card.'
+      WHEN v_status = 'created' THEN 'Host card added.'
+      WHEN v_status IN ('pick', 'ask_reopen') AND v_card->>'status' = 'added' THEN
+        CASE v_status WHEN 'pick' THEN 'A card asks a person to pick the right host card.'
+                      ELSE 'A card asks a person whether to reopen the Lost host card.' END
+      WHEN v_status IN ('pick', 'ask_reopen') AND v_card->>'status' = 'kept' AND v_card->>'id' IS NOT NULL THEN
+        'A card already waits for a person; no second card was made.'
+      WHEN v_status IN ('pick', 'ask_reopen') AND v_card->>'status' = 'kept' THEN
+        'Its card for a person was closed in the last 14 days; nothing new was asked.'
+      WHEN v_status IN ('pick', 'ask_reopen') THEN 'Not changed: the card for a person could not be made. Try again or add it by hand.'
+      WHEN v_status = 'has_card' THEN 'It already has a host card.'
+      WHEN v_status = 'gone' THEN 'This brand no longer exists.'
       ELSE 'Not changed: ' || COALESCE(v_res->>'error', 'try again.') END;
     IF v_status = 'linked' THEN v_linked := v_linked + 1;
     ELSIF v_status = 'created' THEN v_created := v_created + 1;
@@ -315,8 +377,10 @@ DO $grants3980syncw4$
 DECLARE f text;
 BEGIN
   FOREACH f IN ARRAY ARRAY['public.ops_roadmap_links_check(jsonb)', 'public.ops_brand_cards_rows()',
+                           'public.ops_brand_cards_rows(integer,integer)', 'public.ops_brand_cards_total()',
                            'public.ops_roadmap_links_preview(jsonb)', 'public.ops_roadmap_links_confirm(jsonb,text)',
-                           'public.ops_brand_cards_preview()', 'public.ops_brand_cards_confirm(uuid[],text)'] LOOP
+                           'public.ops_brand_cards_preview()', 'public.ops_brand_cards_preview_page(integer,integer)',
+                           'public.ops_brand_cards_count()', 'public.ops_brand_cards_confirm(uuid[],text)'] LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', f);
   END LOOP;
@@ -325,6 +389,8 @@ $grants3980syncw4$;
 GRANT EXECUTE ON FUNCTION public.ops_roadmap_links_preview(jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_roadmap_links_confirm(jsonb, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_brand_cards_preview() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_brand_cards_preview_page(integer, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_brand_cards_count() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_brand_cards_confirm(uuid[], text) TO authenticated;
 COMMENT ON FUNCTION public.ops_roadmap_links_preview(jsonb) IS
   'Issue #3980 P3. Owner only, signed in as a person. Checks up to 50 {card_id, issue} pairs (card exists, issue of this repository, not linked already, not in the list twice) and writes nothing.';
@@ -332,6 +398,10 @@ COMMENT ON FUNCTION public.ops_roadmap_links_confirm(jsonb, text) IS
   'Issue #3980 P3. Owner only, signed in as a person. Checks the pairs again and links the ready ones through ops_roadmap_link_set; replay-safe per request key. Never run by a migration.';
 COMMENT ON FUNCTION public.ops_brand_cards_preview() IS
   'Issue #3980 P3. Owner only, signed in as a person. Every brand without a host card and what brand auto-link would do (link, create, pick, reopen), from ops_brand_match. Writes nothing.';
+COMMENT ON FUNCTION public.ops_brand_cards_preview_page(integer, integer) IS
+  'Issue #3980 P3. Owner only, signed in as a person. One page (at most 100) of the brands without a host card, newest first, with what brand auto-link would do. Writes nothing.';
+COMMENT ON FUNCTION public.ops_brand_cards_count() IS
+  'Issue #3980 P3. Owner only, signed in as a person. How many brands have no host card; runs no matching. Writes nothing.';
 COMMENT ON FUNCTION public.ops_brand_cards_confirm(uuid[], text) IS
   'Issue #3980 P3. Owner only, signed in as a person. Runs ops_brand_autolink_one for the chosen brands; replay-safe per request key. Never run by a migration.';
 
@@ -398,10 +468,10 @@ SELECT *
     "capability_key": "staff-agent-log",
     "is_new": false,
     "title": "Agent activity: what every connected agent is doing",
-    "outcome_summary": "A shared feed in Mingla Admin of what each teammate's connected agent did and is doing: cards added or refused, records claimed and released, steps posted, cards closed with proof, and messages that were stopped. Each chat shows under its own name, such as \"Seth's Claude (Hosts sweep)\". It also lists which records are claimed right now, so no two agents do or send the same thing. Entries cannot be edited or removed. Search words: agent activity, agent log, activity feed, claims, who is working on this, chat name, agent history.",
-    "how_to": "1. In Mingla Admin, open Pipeline > Work > Agent activity. Old links to the Agent log open it too.\n2. The feed lists every entry, newest first: the person, their agent and the chat's name, what happened and the card it belongs to. Switch between \"All agents\" and \"Mine\", and press \"Show more\" for older entries.\n3. Click a card name to open the card.\n4. \"Claimed right now\" lists each claim, who holds it, since when and when it ends. The owner and admins can press \"Release\" to free a claim an agent left behind.\n5. When an agent starts a card, the card says it is on it. That mark stays for as long as the work takes, across days, until the card is closed, pushed back or released. The owner or an admin can clear it from the card.\n6. \"The rules every agent follows\" explains how agents read the log, claim, post updates and release.",
+    "outcome_summary": "A shared feed in Mingla Admin of what each teammate's connected agent did and is doing: cards added or refused, records claimed and released, steps posted, cards closed with proof, and messages that were stopped. Each chat shows under its own name, such as \"Seth's Claude (Hosts sweep)\". It also lists which records are claimed right now, so no two agents do or send the same thing. Entries cannot be edited or removed. Search words: agent activity, activity feed, claims, who is working on this, chat name, agent history.",
+    "how_to": "1. In Mingla Admin, open Pipeline > Work > Agent activity. Old links to this page open it too.\n2. The feed lists every entry, newest first: the person, their agent and the chat's name, what happened and the card it belongs to. Switch between \"All agents\" and \"Mine\", and press \"Show more\" for older entries.\n3. Click a card name to open the card.\n4. \"Claimed right now\" lists each claim, who holds it, since when and when it ends. The owner and admins can press \"Release\" to free a claim an agent left behind.\n5. When an agent starts a card, the card says it is on it. That mark stays for as long as the work takes, across days, until the card is closed, pushed back or released. The owner or an admin can clear it from the card.\n6. \"The rules every agent follows\" explains how agents read the log, claim, post updates and release.",
     "limitations": "Open to Owner, Admin, Sales and marketing and Founding partner. A claim on a record ends by itself 30 minutes after its last update. Cards are not claimed: while an agent's mark on a card had an update in the last 24 hours, another agent's changes to that card's status, plan or result are refused, and after 24 hours without an update another agent can take the card over. Notes are never refused. Two chats on one agent key are told apart and never write over each other; a chat without a name shows as a short code. While a record is claimed, another agent's change to it is refused and that agent is told who holds it; people can still make changes, and the log notes that they did. An agent cannot write a message for someone Mingla messaged in the last 3 days unless a person allows one more from the host or creator card. Refused messages, refused new cards and refused claims appear in the feed. Other refused changes, such as an agent's update to a host, creator, content or work card another agent has claimed, are told only to the agent that tried them and do not appear in the feed.",
-    "support_wording": "The agent log is an internal Mingla Admin record of what the team's own AI agents did. Hosts and guests cannot see it.",
+    "support_wording": "Agent activity is an internal Mingla Admin record of what the team's own AI agents did. Hosts and guests cannot see it.",
     "who_can_use": [
       "Owner",
       "Admin",
@@ -417,7 +487,7 @@ SELECT *
     "is_new": false,
     "title": "Calendar: events, go-live deadlines, promotions and content",
     "outcome_summary": "The team sees every upcoming event, trip, experience and RSVP on Mingla, and the events hosts have promised, on one calendar in Mingla Admin. Each event is in one of four plain states: Ready to promote (public 28 days or more before it starts), Promote now (21 to 27 days), Too late for promo (under 21 days, so no giveaway or ads) or Not live yet, with the date it must go live by. Social posts are still planned, approved and scheduled from Idea to Published. Search words: calendar, content calendar, ready to promote, promote now, too late for promo, not live yet, go-live deadline, social posts, schedule post.",
-    "how_to": "1. In Mingla Admin, open Pipeline > Calendar. It opens on this month with today marked; press \"Today is\" to come back to it, and use the arrows for other months.\n2. Choose Events, Posts or Both, and Month or List. The buttons at the top count the events that need to go live, the events that can be promoted and the hosts with no next event.\n3. Each event has a dot for its state: Ready to promote, Promote now, Too late for promo, or a hollow dot for Not live yet, which is also used for events a host has promised. A day with more than two items shows \"+N more\".\n4. List groups upcoming events by state: Needs to go live, Promote now, Ready to promote and Too late for promo, each with a count.\n5. Click an event to see, on the right, its state in one sentence, what just happened to it, its host, and its steps. Mingla makes the eight launch steps by itself and shows how many are done; press \"Show all 8 steps\" to see each one, its date and who does it.\n6. Posts: press \"Add content\", type a title and press \"Add content\" again. The card starts in Idea and is assigned to you; Mingla warns if a similar title already exists. \"posts with no date\" lists the posts not on a day yet.\n7. Click a post to fill in Title, Owners, Channels, Publish date and time, Copy, Notes, Drive link, Live link, Audience, City and Format. Changes can be commented on, and a card can be removed with \"Delete card\".\n8. \"Posts board\" moves posts one stage at a time: Idea, Writing, Design, Review, Scheduled, Published. On the month, drag a post to a new day to reschedule it. Moving to Scheduled needs a publish date and time and at least one channel; moving to Published asks for the live link, or choose \"Publish without link\". Most changes offer Undo for a few seconds.",
+    "how_to": "1. In Mingla Admin, open Pipeline > Calendar. It opens on this month with today marked; press \"Today is\" to come back to it, and use the arrows for other months.\n2. Choose Events, Posts or Both, and Month or List. The buttons at the top count the events that need to go live, the events that can be promoted and the hosts with no next event.\n3. Each event has a dot for its state: Ready to promote, Promote now, Too late for promo, or a hollow dot for Not live yet, which is also used for events a host has promised. A day with more than two items shows \"+N more\".\n4. List groups upcoming events by state: Needs to go live, Promote now, Ready to promote and Too late for promo, each with a count.\n5. Click an event to see, on the right, its state in one sentence, what just happened to it, its host, and its steps. Once the owner switches on automatic steps, Mingla makes the eight launch steps automatically and shows how many are done; press \"Show all 8 steps\" to see each one, its date and who does it.\n6. Posts: press \"Add content\", type a title and press \"Add content\" again. The card starts in Idea and is assigned to you; Mingla warns if a similar title already exists. \"posts with no date\" lists the posts not on a day yet.\n7. Click a post to fill in Title, Owners, Channels, Publish date and time, Copy, Notes, Drive link, Live link, Audience, City and Format. Changes can be commented on, and a card can be removed with \"Delete card\".\n8. \"Posts board\" moves posts one stage at a time: Idea, Writing, Design, Review, Scheduled, Published. On the month, drag a post to a new day to reschedule it. Moving to Scheduled needs a publish date and time and at least one channel; moving to Published asks for the live link, or choose \"Publish without link\". Most changes offer Undo for a few seconds.",
     "limitations": "Open to Owner, Admin, Sales and marketing and Founding partner (people who work the pipelines). The calendar shows events that are public on Mingla plus draft listings of brands linked to a host card; private and hidden events never show. An event's state is worked out from when it went public and its first date and cannot be typed; giveaway and ads can start only while it is Ready to promote or Promote now. The launch steps are made only while the owner has automatic steps switched on. Moving to Published only records the card as published; the calendar does not post to any social network. Assets are shared as a Drive link, not uploaded. Cards can move forward only one stage at a time. Editing needs a connection; offline you can only read.",
     "support_wording": "Mingla's team plans its promotion of upcoming events and its social posts on an internal calendar. Posts are published by the team on each channel; the calendar itself does not post anything. Events listed at least four weeks before they start give the team time for giveaways, creators and ads.",
     "who_can_use": [
@@ -453,7 +523,7 @@ SELECT *
     "is_new": false,
     "title": "Invite teammates and set roles",
     "outcome_summary": "The owner invites people into Mingla Admin and sets their role: Admin, Sales and marketing, or Founding partner. Invitees get an email with a one-time link that expires in 7 days. The owner also sets the name the team sees for each person and their GitHub username. Separately, admins give existing teammates a Community role (Moderator or Agent) under Community & Support, Team, People and roles, and grant support access from the Support desk.",
-    "how_to": "Company access (owner): 1. In Mingla Admin open \"Team and roles\" under Company. 2. In \"Invite someone\", enter the \"Email address\", choose a role and send. 3. In \"People\", change a role from the row dropdown, \"Resend invite\", \"Invite again\" with a chosen role, or remove access (confirm \"Remove\"). Changes can be undone from the notice. 4. Under each person, type the name the team should see and, if they have one, their GitHub username; each saves when you leave the field or press Enter. Names show in every picker, in agent messages and in the agent log; without one, Mingla uses the first part of the email.\n\nCommunity roles (Owner or Admin): 1. Open \"Community & Support\", then \"Team\", then \"People and roles\". 2. Click \"Invite teammate\", enter their Email and Display name, pick \"Moderator\" or \"Agent\" and \"Save\". 3. Use \"Manage\" on a row to change or \"Remove role\". The table shows each person's Community role, Support, Available now and Last active.",
+    "how_to": "Company access (owner): 1. In Mingla Admin open \"Team and roles\" under Company. 2. In \"Invite someone\", enter the \"Email address\", choose a role and send. 3. In \"People\", change a role from the row dropdown, \"Resend invite\", \"Invite again\" with a chosen role, or remove access (confirm \"Remove\"). Changes can be undone from the notice. 4. Under each person, type the name the team should see and, if they have one, their GitHub username; each saves when you leave the field or press Enter. Names show in every picker, in agent messages and in Agent activity; without one, Mingla uses the first part of the email.\n\nCommunity roles (Owner or Admin): 1. Open \"Community & Support\", then \"Team\", then \"People and roles\". 2. Click \"Invite teammate\", enter their Email and Display name, pick \"Moderator\" or \"Agent\" and \"Save\". 3. Use \"Manage\" on a row to change or \"Remove role\". The table shows each person's Community role, Support, Available now and Last active.",
     "limitations": "Team and roles is Owner only; nobody can change the owner's access. Invite links last 7 days, and changing a role or resending makes the old link stop working. An address that already has a Mingla account signing in another way (phone, Google or Apple) cannot be invited. In People and roles, \"Invite teammate\" does not send an invite: it assigns a role to someone who already has a Mingla profile with that email, and active Admins cannot be given a Community role. A Community role only opens the Community tabs for someone who is also an active Mingla Admin teammate. Removing access also turns off that person's agent keys. Every active teammate role can use Work, Needs you and Calendar. Only the owner sets names and GitHub usernames, and two people cannot share a GitHub username. The Team dashboard with its Runway and Sprint panels is Owner and Admin only, and turning free-text next steps into cards is Owner only.",
     "support_wording": "Only the account owner can invite people to Mingla Admin and set their role. Community and Support roles are given by an admin to people who are already on the team.",
     "who_can_use": [
@@ -507,16 +577,18 @@ $guide3980sync$::jsonb) AS g(capability_key text, title text, outcome_summary te
                            support_wording text, who_can_use jsonb, surfaces jsonb, is_new boolean);
 
 -- The text each existing entry had in production on 20 Oct 2026, read
--- read-only right before this was written.
+-- read-only right before this was written: title, outcome, how-to,
+-- limitations, support wording, who can use it and where it appears
+-- (prod-feature-guide-read.json; each hash recomputed from that read).
 CREATE TEMP TABLE issue_3980_sync_guide_base ON COMMIT DROP AS
 SELECT * FROM (VALUES
-    ('staff-agent-log', '43f215199ec3bded518d339803d59b9e'),
-    ('staff-content-calendar', 'f3970b22ba4b88f51f430dff5645a0f4'),
-    ('staff-crm', '956310bef166e7e8b4dddb163109a652'),
-    ('staff-drafts', '0c1fdbeedcfa8eacd5a203f10f10d31e'),
-    ('staff-my-agent', '6b367bd22809af9a32a7c7681c77c685'),
-    ('staff-team-roles', 'f9bc76c1dfd9a2467f928977feda6372'),
-    ('staff-work-board', '588adf0a6607cec9f724cf6974fc5f47')
+    ('staff-agent-log', '55aa9f86773887a0f1a51113dc62e9a0'),
+    ('staff-content-calendar', 'c84f7eca0fea034a1d5a8fc7885ff338'),
+    ('staff-crm', '245d68a515d119f1fd7a744dbe71d03a'),
+    ('staff-drafts', '7f37f901f92ba14a65b7a4cc8230ddff'),
+    ('staff-my-agent', '5d93616a36f7f021a19f7829b04226c8'),
+    ('staff-team-roles', 'a396b39eb3c90734def96796eb813d7f'),
+    ('staff-work-board', 'a994090582720b41e2f8efe9c7db4901')
   ) AS b(capability_key, content_md5);
 
 CREATE TEMP TABLE issue_3980_sync_guide_before ON COMMIT DROP AS
@@ -551,7 +623,8 @@ BEGIN
   SELECT string_agg(b.capability_key, ', ' ORDER BY b.capability_key) INTO v_bad
     FROM issue_3980_sync_guide_base b
     JOIN public.product_capabilities c USING (capability_key)
-   WHERE md5(concat_ws('|', c.title, c.outcome_summary, c.how_to, c.limitations, c.support_wording)) <> b.content_md5;
+   WHERE md5(concat_ws('|', c.title, c.outcome_summary, c.how_to, c.limitations, c.support_wording,
+                       array_to_json(c.who_can_use)::text, array_to_json(c.surfaces)::text)) <> b.content_md5;
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_sync_guide_entry_changed_since_read: %', v_bad; END IF;
   IF EXISTS (SELECT 1 FROM issue_3980_sync_guide g WHERE NOT g.is_new
                AND NOT EXISTS (SELECT 1 FROM issue_3980_sync_guide_base b WHERE b.capability_key = g.capability_key)) THEN
@@ -617,7 +690,8 @@ BEGIN
    WHERE concat_ws(' ', c.title, c.outcome_summary, c.how_to, c.limitations, c.support_wording)
          ILIKE ANY (ARRAY['%follow the on-screen%', '%complete this job through%',
                           '%Support must use the current evidence status%', '%brand groups%', '%verified test%',
-                          '%Plan this launch%', '%full launch%', '%organic only%', '%> To review%', '%in To review%', '%open To review%'])
+                          '%Plan this launch%', '%full launch%', '%organic only%', '%> To review%', '%in To review%', '%open To review%',
+                          '%agent log%', '%launch steps by itself%'])
       OR concat_ws(' ', c.title, c.outcome_summary, c.how_to, c.limitations, c.support_wording) ~* '\m(tight|missed)\M'
       OR concat_ws(' ', c.title, c.outcome_summary, c.how_to, c.limitations, c.support_wording) ~ 'To review';
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_sync_guide_wording: %', v_bad; END IF;
@@ -651,15 +725,17 @@ $postcheck3980sync$;
 DO $w4sync3980$
 DECLARE
   c_new_client constant text[] := ARRAY['ops_roadmap_links_preview(jsonb)', 'ops_roadmap_links_confirm(jsonb,text)',
-                                        'ops_brand_cards_preview()', 'ops_brand_cards_confirm(uuid[],text)'];
+                                        'ops_brand_cards_preview()', 'ops_brand_cards_preview_page(integer,integer)',
+                                        'ops_brand_cards_count()', 'ops_brand_cards_confirm(uuid[],text)'];
   r record; g record;
 BEGIN
   SELECT * INTO g FROM issue3980_sync_w4_guard;
   FOR r IN SELECT p.oid, p.proname, p.oid::regprocedure::text AS sig, p.prosecdef, p.provolatile, p.proconfig, p.prosrc
              FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'public'
-              AND p.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_rows', 'ops_roadmap_links_preview',
-                                'ops_roadmap_links_confirm', 'ops_brand_cards_preview', 'ops_brand_cards_confirm') LOOP
+              AND p.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_rows', 'ops_brand_cards_total', 'ops_roadmap_links_preview',
+                                'ops_roadmap_links_confirm', 'ops_brand_cards_preview', 'ops_brand_cards_preview_page',
+                                'ops_brand_cards_count', 'ops_brand_cards_confirm') LOOP
     IF NOT EXISTS (SELECT 1 FROM unnest(r.proconfig) x WHERE x = 'search_path=pg_catalog, pg_temp') THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % does not pin search_path = pg_catalog, pg_temp', r.sig; END IF;
     IF NOT r.prosecdef THEN
@@ -670,14 +746,15 @@ BEGIN
     IF has_function_privilege('authenticated', r.oid, 'EXECUTE') <> (replace(r.sig, 'public.', '') = ANY (c_new_client)) THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: client grant wrong for %', r.sig; END IF;
     -- Previews and checks only read.
-    IF r.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_rows', 'ops_roadmap_links_preview', 'ops_brand_cards_preview')
+    IF r.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_rows', 'ops_brand_cards_total', 'ops_roadmap_links_preview',
+                     'ops_brand_cards_preview', 'ops_brand_cards_preview_page', 'ops_brand_cards_count')
        AND (r.provolatile <> 's' OR r.prosrc ~* '(update|insert\s+into|delete\s+from)\s' OR r.prosrc ~* '(_confirm|_link_set|autolink)\(') THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % writes or calls a writer', r.sig; END IF;
     -- No new writer of pipeline tables, roadmap cards or ad tables.
     IF r.prosrc ~* '(update|insert\s+into|delete\s+from)\s+public\.(crm_|community_|ops_roadmap_links)' OR r.prosrc ~* '(public\.ad_|ad_plans|ad_campaigns)' THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % writes a table it must not', r.sig; END IF;
   END LOOP;
-  IF (SELECT count(*) FROM unnest(c_new_client) s WHERE has_function_privilege('authenticated', 'public.' || s, 'EXECUTE')) <> 4 THEN
+  IF (SELECT count(*) FROM unnest(c_new_client) s WHERE has_function_privilege('authenticated', 'public.' || s, 'EXECUTE')) <> 6 THEN
     RAISE EXCEPTION 'issue 3980 synced W4 self-check: a client function is missing'; END IF;
   IF g.is_admin_hash IS DISTINCT FROM md5(pg_get_functiondef('public.is_admin_user()'::regprocedure))
      OR g.crm_ctx_hash IS DISTINCT FROM md5(pg_get_functiondef('public.crm_ctx()'::regprocedure))

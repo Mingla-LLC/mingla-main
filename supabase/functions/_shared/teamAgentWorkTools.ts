@@ -867,6 +867,12 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_brand_cards_preview: {
     excluded: "only the owner, in person, adds host cards for brands in bulk",
   },
+  ops_brand_cards_preview_page: {
+    excluded: "only the owner, in person, adds host cards for brands in bulk",
+  },
+  ops_brand_cards_count: {
+    excluded: "only the owner, in person, adds host cards for brands in bulk",
+  },
   ops_brand_cards_confirm: {
     excluded: "only the owner, in person, adds host cards for brands in bulk",
   },

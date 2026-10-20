@@ -33,7 +33,10 @@ import { PeopleField } from "../components/people/PeopleField";
 import { usePeopleDirectory } from "../hooks/usePeopleDirectory";
 import { useOpsPoll } from "../hooks/useOpsWork";
 import * as ops from "../services/opsService";
-import { brandActionChip, brandDefaultPicked, brandResultWords, brandSelectable, opsErrorWords, requestKey } from "../lib/opsModel";
+import {
+  BRAND_CONFIRM_MAX, BRAND_PAGE_SIZE, brandActionChip, brandDecidedWords, brandDefaultPicked, brandFirstPicked, brandResultWords,
+  brandSelectable, brandTogglePick, opsErrorWords, requestKey,
+} from "../lib/opsModel";
 import { OpsChip } from "../components/ops/OpsChip";
 
 const PAGE_ID = "team-dashboard";
@@ -92,6 +95,9 @@ function AutomaticSteps({ online }) {
 // brand auto-link would do for every brand that has no host card (nothing is
 // written), ticks the brands to act on and confirms. The server runs the same
 // brand auto-link for exactly those brands, once per confirm.
+// Opening the page reads only the count; the preview runs on Preview, a page
+// of 50 at a time, and never more than 100 brands are ticked (one confirm's
+// limit).
 function BrandCardsBackfill({ online }) {
   const { access } = useAuth();
   const settingsRead = useOpsPoll(() => ops.fetchOpsSettings(), { key: `${access?.email || ""}|ops-settings`, intervalMs: 0 });
@@ -106,21 +112,36 @@ function BrandCardsBackfill({ online }) {
   useEffect(() => {
     if (!canEdit) return undefined;
     let live = true;
-    ops.previewBrandCards().then((answer) => { if (live) setCount(Number(answer?.totals?.total ?? 0)); }).catch(() => { if (live) setCount(null); });
+    ops.countBrandCards().then((answer) => { if (live) setCount(Number(answer?.total ?? 0)); }).catch(() => { if (live) setCount(null); });
     return () => { live = false; };
   }, [canEdit]);
   if (!canEdit) return null;
   const rows = Array.isArray(preview?.rows) ? preview.rows : [];
   const chosen = picked.filter((id) => rows.some((r) => r.brand_id === id && brandSelectable(r)));
+  const atCap = chosen.length >= BRAND_CONFIRM_MAX;
+  const more = !!preview?.page?.more;
   const load = async () => {
     setState("loading"); setError(null); setResult(null);
     try {
       const answer = await ops.previewBrandCards();
       setPreview(answer);
       setCount(Number(answer?.totals?.total ?? 0));
-      setPicked(brandDefaultPicked(answer?.rows).filter((id) => (answer?.rows || []).some((r) => r.brand_id === id && brandSelectable(r))));
+      setPicked(brandDefaultPicked(answer?.rows));
       setState("preview");
     } catch (e) { setError(e); setState("idle"); }
+  };
+  const loadMore = async () => {
+    if (!preview) return;
+    setState("more"); setError(null);
+    try {
+      const answer = await ops.previewBrandCardsPage(rows.length, BRAND_PAGE_SIZE);
+      const seen = new Set(rows.map((r) => r.brand_id));
+      const added = (Array.isArray(answer?.rows) ? answer.rows : []).filter((r) => !seen.has(r.brand_id));
+      setPreview({ ...answer, rows: [...rows, ...added] });
+      setCount(Number(answer?.totals?.total ?? 0));
+      setPicked([...chosen, ...brandDefaultPicked(added, BRAND_CONFIRM_MAX - chosen.length)]);
+      setState("preview");
+    } catch (e) { setError(e); setState("preview"); }
   };
   const confirm = async () => {
     if (state !== "confirm" || chosen.length === 0) return;
@@ -134,7 +155,7 @@ function BrandCardsBackfill({ online }) {
       setState("preview");
     } catch (e) { setError(e); setState("confirm"); }
   };
-  const totals = preview?.totals || {};
+  const busy = state === "working" || state === "loading" || state === "more";
   return (
     <section aria-labelledby="brand-cards-heading" className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
       <h3 id="brand-cards-heading" className="border-b border-[var(--gray-200)] px-4 py-3.5 text-[15px] font-semibold text-[var(--color-text-primary)] sm:px-5">
@@ -142,14 +163,26 @@ function BrandCardsBackfill({ online }) {
       </h3>
       <div className="grid min-w-0 grid-cols-1 gap-4 px-4 py-3 sm:px-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <div className="flex min-w-0 flex-col gap-2">
-          <p className="break-normal text-[13px] text-[var(--color-text-secondary)]">Brands on Mingla with no host card yet. Preview shows what Mingla would do for each: link the one card with exactly its email, handle or phone, add a new card, or leave it for a person to pick. Nothing changes until you confirm.</p>
+          <p className="break-normal text-[13px] text-[var(--color-text-secondary)]">Brands on Mingla with no host card yet. Preview shows what Mingla would do for each: link the one card with exactly its email, handle or phone, add a new card, or leave it for a person to pick. A brand a person already decided about is left as it is. Nothing changes until you confirm.</p>
           {error && <p role="alert" className="break-words text-[13px] text-[var(--color-error-700)]">{opsErrorWords(error)}</p>}
           {result && <p role="status" className="break-normal text-[13px] font-semibold text-[var(--color-text-primary)]">{brandResultWords(result)}</p>}
           {preview && (
             <div className="flex min-w-0 flex-wrap gap-1.5">
-              <OpsChip tone="success">{totals.link || 0} link</OpsChip>
-              <OpsChip tone="info">{totals.create || 0} add card</OpsChip>
-              <OpsChip tone="warning">{(totals.pick || 0) + (totals.reopen || 0)} for a person</OpsChip>
+              <OpsChip tone="success">{rows.filter((r) => r.action === "link" && !r.decided).length} link</OpsChip>
+              <OpsChip tone="info">{rows.filter((r) => r.action === "create" && !r.decided).length} add card</OpsChip>
+              <OpsChip tone="warning">{rows.filter((r) => (r.action === "pick" || r.action === "reopen") && !r.decided).length} for a person</OpsChip>
+              {rows.some((r) => r.decided) && <OpsChip tone="default">{rows.filter((r) => r.decided).length} decided</OpsChip>}
+            </div>
+          )}
+          {preview && rows.length > 0 && (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <p role="status" className="break-normal text-[13px] text-[var(--color-text-secondary)]">
+                {chosen.length} of {rows.length} shown chosen{count !== null && count > rows.length ? ` (${count} in all)` : ""}.{atCap ? ` One confirm takes at most ${BRAND_CONFIRM_MAX}.` : ""}
+              </p>
+              <span className="flex flex-wrap gap-2">
+                <Button variant="ghost" className="min-h-11" disabled={busy || chosen.length === 0} onClick={() => setPicked([])}>Select none</Button>
+                <Button variant="ghost" className="min-h-11" disabled={busy} onClick={() => setPicked(brandFirstPicked(rows))}>First {BRAND_CONFIRM_MAX}</Button>
+              </span>
             </div>
           )}
           {state === "confirm" || state === "working" ? (
@@ -162,12 +195,12 @@ function BrandCardsBackfill({ online }) {
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" className="min-h-11" disabled={!online || state === "loading"} onClick={load}>{state === "loading" ? "Loading…" : preview ? "Preview again" : "Preview"}</Button>
-              {preview && <Button className="min-h-11" disabled={!online || chosen.length === 0} onClick={() => { setConfirmKey(requestKey("brand_cards")); setState("confirm"); }}>Confirm selected ({chosen.length})</Button>}
+              <Button variant="secondary" className="min-h-11" disabled={!online || busy} onClick={load}>{state === "loading" ? "Loading…" : preview ? "Preview again" : "Preview"}</Button>
+              {preview && <Button className="min-h-11" disabled={!online || busy || chosen.length === 0} onClick={() => { setConfirmKey(requestKey("brand_cards")); setState("confirm"); }}>Confirm selected ({chosen.length})</Button>}
             </div>
           )}
         </div>
-        <div className="min-w-0">
+        <div className="flex min-w-0 flex-col gap-2">
           {!preview ? (
             <p className="break-normal text-[13px] text-[var(--color-text-tertiary)]">Press Preview to see each brand, what would happen and the matching card.</p>
           ) : rows.length === 0 ? (
@@ -177,25 +210,35 @@ function BrandCardsBackfill({ online }) {
               {rows.map((r) => {
                 const chip = brandActionChip(r.action);
                 const can = brandSelectable(r);
+                const on = can && picked.includes(r.brand_id);
                 return (
                   <li key={r.brand_id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 px-3 py-2">
                     <label className="-my-2 -ml-2 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
-                      <input type="checkbox" className="h-5 w-5" disabled={!can || state === "working"} checked={can && picked.includes(r.brand_id)}
-                        aria-label={`${chip.label}: ${r.name}`}
-                        onChange={(e) => setPicked(e.target.checked ? [...picked, r.brand_id] : picked.filter((id) => id !== r.brand_id))} />
+                      <input type="checkbox" className="h-5 w-5" disabled={!can || state === "working" || (!on && atCap)} checked={on}
+                        aria-label={`${r.decided ? "Decided" : chip.label}: ${r.name}`}
+                        onChange={(e) => setPicked(brandTogglePick(chosen, r.brand_id, e.target.checked))} />
                     </label>
                     <span className="min-w-0">
                       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 break-normal text-[13px] font-medium text-[var(--color-text-primary)] [overflow-wrap:anywhere]">{r.name}</span>
-                        <OpsChip tone={chip.tone}>{chip.label}</OpsChip>
+                        {r.decided ? <OpsChip tone="default">Decided</OpsChip> : <OpsChip tone={chip.tone}>{chip.label}</OpsChip>}
                       </span>
-                      <span className="block break-words text-[12px] text-[var(--color-text-secondary)]">{r.words}</span>
+                      {r.decided ? (
+                        <span className="block break-words text-[12px] text-[var(--color-text-secondary)]">{brandDecidedWords(r.decided)}. Mingla leaves this brand as it is.</span>
+                      ) : (
+                        <span className="block break-words text-[12px] text-[var(--color-text-secondary)]">{r.words}</span>
+                      )}
                       {r.open_card && <span className="block break-words text-[12px] text-[var(--color-text-tertiary)]">A card already asks a person: {r.open_card.title}</span>}
                     </span>
                   </li>
                 );
               })}
             </ul>
+          )}
+          {preview && more && (
+            <Button variant="secondary" className="min-h-11 self-start" disabled={!online || busy} onClick={loadMore}>
+              {state === "more" ? "Loading…" : `Show ${Math.min(BRAND_PAGE_SIZE, Math.max(0, (count ?? 0) - rows.length)) || BRAND_PAGE_SIZE} more`}
+            </Button>
           )}
         </div>
       </div>

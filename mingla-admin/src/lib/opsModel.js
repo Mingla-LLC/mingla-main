@@ -1113,9 +1113,12 @@ export function parseRoadmapLinkLines(text, cards) {
     const line = i + 1;
     const value = raw.trim();
     if (!value) return;
-    const m = /^(.*?)\s*(?:→|->|=>)\s*([^→]*?)$/.exec(value);
-    const name = (m ? m[1] : value).trim();
-    const issue = m ? m[2].trim() : "";
+    // Split at the LAST arrow of any kind (→, -> or =>): a card title may
+    // itself hold an arrow, the issue never does.
+    let m = null;
+    for (const hit of value.matchAll(/\s*(?:→|->|=>)\s*/g)) m = hit;
+    const name = (m ? value.slice(0, m.index) : value).trim();
+    const issue = m ? value.slice(m.index + m[0].length).trim() : "";
     if (!m || !issue) {
       problems.push({ line, text: value, words: "Add the issue after an arrow, like → #123." });
       return;
@@ -1168,15 +1171,55 @@ export function brandActionChip(action) {
   return BRAND_ACTIONS[action] || { label: "Nothing to do", tone: "default" };
 }
 
-/** Ticked to start with: the rows that link or add a card by themselves. */
-export function brandDefaultPicked(rows) {
-  return (Array.isArray(rows) ? rows : []).filter((r) => r.action === "link" || r.action === "create").map((r) => r.brand_id);
+/** The most brands one confirm accepts (the server refuses more). */
+export const BRAND_CONFIRM_MAX = 100;
+
+/** Brands the preview shows a page at a time. */
+export const BRAND_PAGE_SIZE = 50;
+
+/**
+ * Ticked to start with: the rows that link or add a card by themselves, never
+ * more than `max` (100, what one confirm accepts) and never a decided brand.
+ */
+export function brandDefaultPicked(rows, max = BRAND_CONFIRM_MAX) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => (r.action === "link" || r.action === "create") && brandSelectable(r))
+    .map((r) => r.brand_id)
+    .slice(0, Math.max(0, max));
 }
 
-/** A pick or reopen row whose card already waits for a person adds nothing. */
+/**
+ * A pick or reopen row whose card already waits for a person adds nothing, and
+ * a brand a person already decided about is left as it is (brand auto-link
+ * skips it too).
+ */
 export function brandSelectable(row) {
   if (!row || !BRAND_ACTIONS[row.action]) return false;
+  if (row.decided) return false;
   return !((row.action === "pick" || row.action === "reopen") && row.open_card);
+}
+
+/** Ticks or unticks one brand; never more than `max` ticked at once. */
+export function brandTogglePick(picked, id, on, max = BRAND_CONFIRM_MAX) {
+  const list = Array.isArray(picked) ? picked.filter((x) => x !== id) : [];
+  if (!on) return list;
+  return list.length >= max ? list : [...list, id];
+}
+
+/** "First 100": the first `max` brands that can be ticked, in list order. */
+export function brandFirstPicked(rows, max = BRAND_CONFIRM_MAX) {
+  return (Array.isArray(rows) ? rows : []).filter(brandSelectable).map((r) => r.brand_id).slice(0, Math.max(0, max));
+}
+
+/** "Decided by Ola on 3 Oct 2026" for a brand a person already decided about. */
+export function brandDecidedWords(decided) {
+  if (!decided) return "";
+  const who = String(decided.by_name || decided.by || "a person").trim() || "a person";
+  const at = decided.at ? new Date(decided.at) : null;
+  const when = at && !Number.isNaN(at.getTime())
+    ? at.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+    : null;
+  return when ? `Decided by ${who} on ${when}` : `Decided by ${who}`;
 }
 
 export function brandResultWords(result) {

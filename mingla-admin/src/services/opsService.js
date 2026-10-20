@@ -138,5 +138,9 @@ export const previewRoadmapLinks = (links) => call(() => supabase.rpc("ops_roadm
 export const confirmRoadmapLinks = (links, requestKey) =>
   call(() => supabase.rpc("ops_roadmap_links_confirm", { p_links: links, p_request_key: requestKey }));
 export const previewBrandCards = () => call(() => supabase.rpc("ops_brand_cards_preview"));
+// The next pages of the same preview, and the cheap count for the heading.
+export const previewBrandCardsPage = (offset, limit) =>
+  call(() => supabase.rpc("ops_brand_cards_preview_page", { p_offset: offset, p_limit: limit }));
+export const countBrandCards = () => call(() => supabase.rpc("ops_brand_cards_count"));
 export const confirmBrandCards = (brandIds, requestKey) =>
   call(() => supabase.rpc("ops_brand_cards_confirm", { p_brand_ids: brandIds, p_request_key: requestKey }));
