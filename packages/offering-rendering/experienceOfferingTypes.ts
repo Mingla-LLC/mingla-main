@@ -46,6 +46,9 @@ export interface ExperienceOfferingStop {
 
 import type { RefundPolicyReadState } from "./offeringRefundPolicy";
 
+/** issue #3281 R2 — sellable unit beside a price option. */
+export type ExperiencePriceBasis = "person" | "group" | "block";
+
 /** The ONE sellable ticket — a single all-in charge (no installments/deposit). */
 export interface ExperienceOfferingTicket {
   ticketTypeId: string;
@@ -65,6 +68,19 @@ export interface ExperienceOfferingTicket {
   ticketsRemaining: number | null;
   /** Total capacity; null when unlimited / unknown. */
   quantityTotal: number | null;
+  /**
+   * issue #3281 R2 — unit beside the price. Absent → treat as "person" (legacy
+   * single-ticket experiences and older public payloads).
+   */
+  priceBasis?: ExperiencePriceBasis;
+  /** When priceBasis === "block": length of one hire block (15/30/45/60). */
+  blockMinutes?: number | null;
+  /** When priceBasis === "block": shortest hire in blocks. */
+  minBlocks?: number | null;
+  /** When priceBasis === "block": longest hire in blocks. */
+  maxBlocks?: number | null;
+  /** When priceBasis === "group": max party size (2–50). */
+  groupMax?: number | null;
 }
 
 /** One bookable occurrence (event_dates row) — drives the reserve picker. */
@@ -124,8 +140,14 @@ export interface ExperienceOfferingData {
   // itinerary
   stops: ExperienceOfferingStop[];
 
-  // pricing (ONE ticket)
+  // pricing (ONE ticket = default option; R2 may also carry options[])
   ticket: ExperienceOfferingTicket | null;
+  /**
+   * issue #3281 R2 — sellable price options (each a ticket_types row). Absent or
+   * empty → surfaces fall back to `[ticket]` when ticket is non-null. The first
+   * by display order is the default and mirrors `ticket`.
+   */
+  options?: ExperienceOfferingTicket[];
 
   // availability
   occurrences: ExperienceOfferingOccurrence[];

@@ -31,22 +31,28 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import type { ThemePalette } from "@mingla/offering-rendering";
+import {
+  experienceBlockChoicesThatFit,
+  experienceBlockLengthLabel,
+  experienceBookedEndIso,
+  experienceBookedStartIso,
+  experiencePriceBasisLabel,
+  experienceTimeChoices,
+  experienceZoneCityLabel,
+  experienceZoneDiffersFromViewer,
+  formatExperienceMinute,
+  type ExperienceOfferingTicket,
+  type ThemePalette,
+} from "@mingla/offering-rendering";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
   priceDecimals,
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
-import {
-  experienceBookedStartIso,
-  experienceTimeChoices,
-  experienceZoneCityLabel,
-  experienceZoneDiffersFromViewer,
-  formatExperienceMinute,
-} from "@mingla/offering-rendering/experienceTimeZone";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
 import type { PublicExperienceDate } from "../../services/publicExperienceService";
+import { ExperienceDayStep } from "./ExperienceDayStep";
 
 export type ExperienceReserveMode = "slots" | "open-daily";
 
@@ -57,6 +63,12 @@ export interface ExperienceReserveSelection {
   quantity: number;
   /** issue #3281 — open-daily booked start instant (ISO), when a time was chosen. */
   startAt?: string;
+  /** issue #3281 R2 — chosen price option (ticket_types.id). */
+  ticketTypeId?: string;
+  /** issue #3281 R2 — block hire end instant (ISO). */
+  bookedEndAt?: string;
+  /** issue #3281 R2 — party size for group options (may differ from quantity). */
+  partySize?: number;
 }
 
 export interface ExperienceReservePickerProps {
@@ -73,9 +85,15 @@ export interface ExperienceReservePickerProps {
   /**
    * issue #3281 Round 1 — server all-in unit price in CENTS. When set with
    * `currency`, the confirm button reads "Reserve · ₦70,000" (party × unit).
+   * Prefer `options` when present; this remains the single-ticket fallback.
    */
   unitAllInCents?: number | null;
   currency?: string | null;
+  /**
+   * issue #3281 R2 — sellable options. When length > 1, an option row sits at
+   * the top of the day step. Absent / length ≤ 1 → legacy single-ticket UI.
+   */
+  options?: ReadonlyArray<ExperienceOfferingTicket>;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
 }
@@ -164,13 +182,21 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   eventRemaining,
   unitAllInCents = null,
   currency = null,
+  options,
   onCancel,
   onConfirm,
 }) => {
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
+  const optionList = useMemo(
+    () => (Array.isArray(options) ? options : []),
+    [options],
+  );
+  const showOptionChoice = optionList.length > 1;
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [selectedDateId, setSelectedDateId] = useState<string | null>(null);
   // Open-daily: chosen time-within-window (minutes from midnight) + party size.
   const [selectedMinute, setSelectedMinute] = useState<number | null>(null);
+  const [selectedBlocks, setSelectedBlocks] = useState<number | null>(null);
   const [party, setParty] = useState<number>(2);
   // ORCH-1186 Fix 4 — open-daily is now a 3-step TAP-TO-ADVANCE wizard. Init
   // "day"; reset to "day" each open. (Slots mode ignores `step` — single list.)
@@ -183,12 +209,23 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   // consumer picker's expected fresh-open behavior.
   useEffect(() => {
     if (visible) {
+      setSelectedOptionId(optionList[0]?.ticketTypeId ?? null);
       setSelectedDateId(null);
       setSelectedMinute(null);
+      setSelectedBlocks(null);
       setParty(2);
       setStep("day");
     }
-  }, [visible]);
+  }, [visible, optionList]);
+
+  const selectedOption = useMemo(() => {
+    if (optionList.length === 0) return null;
+    return (
+      optionList.find((o) => o.ticketTypeId === selectedOptionId) ??
+      optionList[0] ??
+      null
+    );
+  }, [optionList, selectedOptionId]);
 
   const selectedDate = useMemo(
     () => dates.find((d) => d.id === selectedDateId) ?? null,
@@ -207,22 +244,128 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
     );
   }, [mode, selectedDate, timezone]);
 
+  const isBlockOption = selectedOption?.priceBasis === "block";
+  const isGroupOption = selectedOption?.priceBasis === "group";
+  const blockMinutes =
+    typeof selectedOption?.blockMinutes === "number" &&
+    selectedOption.blockMinutes > 0
+      ? selectedOption.blockMinutes
+      : 60;
+  const minBlocks =
+    typeof selectedOption?.minBlocks === "number" && selectedOption.minBlocks > 0
+      ? selectedOption.minBlocks
+      : 1;
+  const maxBlocks =
+    typeof selectedOption?.maxBlocks === "number" &&
+    selectedOption.maxBlocks >= minBlocks
+      ? selectedOption.maxBlocks
+      : minBlocks;
+
+  const blockChoices = useMemo<number[]>(() => {
+    if (
+      !isBlockOption ||
+      mode !== "open-daily" ||
+      selectedDate === null ||
+      selectedMinute === null
+    ) {
+      return [];
+    }
+    return experienceBlockChoicesThatFit(
+      selectedDate.startAt,
+      selectedDate.endAt,
+      timezone,
+      selectedMinute,
+      blockMinutes,
+      minBlocks,
+      maxBlocks,
+      30,
+    );
+  }, [
+    isBlockOption,
+    mode,
+    selectedDate,
+    selectedMinute,
+    timezone,
+    blockMinutes,
+    minBlocks,
+    maxBlocks,
+  ]);
+
+  useEffect(() => {
+    if (selectedMinute === null) {
+      setSelectedBlocks(null);
+      return;
+    }
+    if (!isBlockOption) {
+      setSelectedBlocks(null);
+      return;
+    }
+    if (blockChoices.length === 0) {
+      setSelectedBlocks(null);
+      return;
+    }
+    setSelectedBlocks((prev) =>
+      prev !== null && blockChoices.includes(prev) ? prev : blockChoices[0],
+    );
+  }, [selectedMinute, isBlockOption, blockChoices]);
+
+  const optionRemaining =
+    selectedOption?.ticketsRemaining !== undefined
+      ? selectedOption.ticketsRemaining
+      : eventRemaining;
+  const groupCap =
+    isGroupOption &&
+    typeof selectedOption?.groupMax === "number" &&
+    selectedOption.groupMax >= 2
+      ? selectedOption.groupMax
+      : MAX_PARTY;
   const partyMax = Math.min(
-    MAX_PARTY,
-    eventRemaining === null ? MAX_PARTY : Math.max(1, eventRemaining),
+    groupCap,
+    optionRemaining === null ? groupCap : Math.max(1, optionRemaining),
   );
+
+  useEffect(() => {
+    setParty((p) => Math.min(Math.max(1, p), partyMax));
+  }, [partyMax]);
+
+  const activeUnitCents = useMemo((): number | null => {
+    if (
+      selectedOption !== null &&
+      typeof selectedOption.priceAllInCents === "number" &&
+      selectedOption.priceAllInCents > 0
+    ) {
+      return selectedOption.priceAllInCents;
+    }
+    if (
+      selectedOption !== null &&
+      typeof selectedOption.priceCents === "number" &&
+      selectedOption.priceCents > 0
+    ) {
+      return selectedOption.priceCents;
+    }
+    return typeof unitAllInCents === "number" && unitAllInCents > 0
+      ? unitAllInCents
+      : null;
+  }, [selectedOption, unitAllInCents]);
 
   const canConfirm =
     mode === "slots"
       ? selectedDate !== null &&
         (selectedDate.ticketsRemaining === null ||
           selectedDate.ticketsRemaining > 0)
-      : selectedDate !== null && selectedMinute !== null;
+      : selectedDate !== null &&
+        selectedMinute !== null &&
+        (!isBlockOption || selectedBlocks !== null);
 
   const handleConfirm = (): void => {
     if (selectedDate === null) return;
+    const ticketTypeId = selectedOption?.ticketTypeId;
     if (mode === "slots") {
-      onConfirm({ eventDateId: selectedDate.id, quantity: 1 });
+      onConfirm({
+        eventDateId: selectedDate.id,
+        quantity: 1,
+        ...(ticketTypeId !== undefined ? { ticketTypeId } : {}),
+      });
       return;
     }
     if (selectedMinute === null) return;
@@ -236,10 +379,25 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
     // issue #3281 — never confirm open-daily without a resolvable start
     // (past / spring-forward gaps convert to null).
     if (bookedIso === null) return;
+    let bookedEndAt: string | undefined;
+    if (isBlockOption && selectedBlocks !== null) {
+      const endIso = experienceBookedEndIso(
+        bookedIso,
+        blockMinutes,
+        selectedBlocks,
+      );
+      if (endIso === null) return;
+      bookedEndAt = endIso;
+    }
+    // person: quantity = party; group/block: one unit + partySize guests.
+    const quantity = isGroupOption || isBlockOption ? 1 : party;
     onConfirm({
       eventDateId: selectedDate.id,
-      quantity: party,
+      quantity,
       startAt: bookedIso,
+      partySize: party,
+      ...(ticketTypeId !== undefined ? { ticketTypeId } : {}),
+      ...(bookedEndAt !== undefined ? { bookedEndAt } : {}),
     });
   };
 
@@ -249,14 +407,19 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   const showZoneHint = experienceZoneDiffersFromViewer(timezone);
 
   const confirmLabel = useMemo((): string => {
-    const qty = mode === "slots" ? 1 : party;
-    const unit =
-      typeof unitAllInCents === "number" && unitAllInCents > 0
-        ? unitAllInCents
-        : null;
-    const code = (currency ?? "").trim().toUpperCase();
+    const blocks =
+      isBlockOption && selectedBlocks !== null ? selectedBlocks : 1;
+    const groupsOrPeople = isGroupOption || isBlockOption ? 1 : party;
+    const unit = activeUnitCents;
+    const code = (
+      selectedOption?.currency ??
+      currency ??
+      ""
+    )
+      .trim()
+      .toUpperCase();
     if (unit === null || code.length !== 3) return "Reserve →";
-    const major = (unit * qty) / 100;
+    const major = (unit * groupsOrPeople * blocks) / 100;
     try {
       const money = withCurrencyGlyph(
         new Intl.NumberFormat(undefined, {
@@ -270,7 +433,22 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
     } catch {
       return `Reserve · ${major.toFixed(priceFallbackDecimals(major))} ${code}`;
     }
-  }, [mode, party, unitAllInCents, currency]);
+  }, [
+    isBlockOption,
+    isGroupOption,
+    selectedBlocks,
+    party,
+    activeUnitCents,
+    selectedOption,
+    currency,
+  ]);
+
+  const selectOption = (ticketTypeId: string): void => {
+    setSelectedOptionId(ticketTypeId);
+    setSelectedMinute(null);
+    setSelectedBlocks(null);
+    setParty(2);
+  };
 
   // ORCH-1186 Fix 4 — wizard step machine (open-daily only). Slots mode shows
   // the single date list as before (no wizard — a single tap reserves).
@@ -354,85 +532,93 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
-          {/* ---- STEP 1: DATE LIST (slots: always; wizard: step "day") ---- */}
+          {/* ---- STEP 1: OPTION (when multi) + DATE LIST ---- */}
           {showDayStep ? (
             <>
-              <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-                {mode === "open-daily" ? "CHOOSE A DAY" : "UPCOMING DATES"}
-              </Text>
-              {dates.length === 0 ? (
-                <Text style={[styles.empty, { color: palette.secondaryText }]}>
-                  No upcoming dates available.
-                </Text>
-              ) : (
-                <View accessibilityRole="radiogroup" style={styles.dateCol}>
-                  {dates.map((d) => {
-                    const soldOut =
-                      d.ticketsRemaining !== null && d.ticketsRemaining <= 0;
-                    const selected = selectedDateId === d.id;
-                    const chip = remainingChip(d.ticketsRemaining);
-                    return (
-                      <Pressable
-                        key={d.id}
-                        onPress={
-                          soldOut
-                            ? undefined
-                            : () => {
-                                // ORCH-1186 Fix 4 — tap a day → select, clear time,
-                                // advance to "time" (wizard). Slots: just select.
-                                setSelectedDateId(d.id);
-                                setSelectedMinute(null);
-                                if (isWizard) setStep("time");
-                              }
-                        }
-                        disabled={soldOut}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: selected, disabled: soldOut }}
-                        accessibilityLabel={`${
-                          mode === "open-daily"
-                            ? formatDayLabel(d.startAt, timezone)
-                            : formatDateLabel(d.startAt, timezone)
-                        }${chip !== null ? `, ${chip}` : ""}`}
-                        style={[
-                          styles.dateRow,
-                          { backgroundColor: palette.card, borderColor: palette.panelBorder },
-                          selected
-                            ? { borderColor: palette.accent, backgroundColor: palette.accentWash }
-                            : null,
-                          soldOut ? styles.dateRowDisabled : null,
-                        ]}
-                      >
-                        <Text
-                          style={[styles.dateLabel, { color: palette.primaryText }, fontStyle]}
-                          numberOfLines={1}
+              {showOptionChoice ? (
+                <>
+                  <Text
+                    style={[styles.sectionLabel, { color: palette.tertiaryText }]}
+                  >
+                    CHOOSE A PRICE
+                  </Text>
+                  <View
+                    accessibilityRole="radiogroup"
+                    style={styles.optionCol}
+                    testID="issue-3281-experience-option-choice"
+                  >
+                    {optionList.map((opt) => {
+                      const selected = selectedOption?.ticketTypeId === opt.ticketTypeId;
+                      const unit = experiencePriceBasisLabel(
+                        opt.priceBasis,
+                        opt.blockMinutes,
+                      );
+                      return (
+                        <Pressable
+                          key={opt.ticketTypeId}
+                          onPress={() => selectOption(opt.ticketTypeId)}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selected }}
+                          accessibilityLabel={`${opt.name}, ${unit}`}
+                          style={[
+                            styles.optionRow,
+                            {
+                              backgroundColor: palette.card,
+                              borderColor: palette.panelBorder,
+                            },
+                            selected
+                              ? {
+                                  borderColor: palette.accent,
+                                  backgroundColor: palette.accentWash,
+                                }
+                              : null,
+                          ]}
                         >
-                          {mode === "open-daily"
-                            ? formatDayLabel(d.startAt, timezone)
-                            : formatDateLabel(d.startAt, timezone)}
-                        </Text>
-                        {chip !== null ? (
                           <Text
                             style={[
-                              styles.chip,
-                              soldOut
-                                ? { color: "#f87171", backgroundColor: "rgba(248,113,113,0.14)" }
-                                : (d.ticketsRemaining ?? 99) <= 10
-                                  ? { color: "#fbbf24", backgroundColor: "rgba(251,191,36,0.14)" }
-                                  : { color: palette.accent, backgroundColor: palette.accentWash },
+                              styles.optionName,
+                              { color: palette.primaryText },
+                              fontStyle,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {opt.name}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.optionUnit,
+                              { color: palette.secondaryText },
                             ]}
                           >
-                            {chip}
+                            {unit}
                           </Text>
-                        ) : null}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
+              <ExperienceDayStep
+                mode={mode}
+                dates={dates}
+                timezone={timezone}
+                palette={palette}
+                fontStyle={fontStyle}
+                selectedDateId={selectedDateId}
+                formatDayLabel={formatDayLabel}
+                formatDateLabel={formatDateLabel}
+                remainingChip={remainingChip}
+                onSelectDate={(dateId) => {
+                  setSelectedDateId(dateId);
+                  setSelectedMinute(null);
+                  setSelectedBlocks(null);
+                  if (isWizard) setStep("time");
+                }}
+              />
             </>
           ) : null}
 
-          {/* ---- STEP 2: TIME WINDOW (wizard only) ---- */}
+          {/* ---- STEP 2: TIME (+ HOW LONG for block) (wizard only) ---- */}
           {showTimeStep && selectedDate !== null ? (
             <>
               <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
@@ -446,9 +632,9 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                     <Pressable
                       key={min}
                       onPress={() => {
-                        // ORCH-1186 Fix 4 — tap a time → select + advance to party.
                         setSelectedMinute(min);
-                        setStep("party");
+                        // Block options stay on time step for "How long"; else party.
+                        if (!isBlockOption) setStep("party");
                       }}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
@@ -474,6 +660,63 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                   );
                 })}
               </View>
+              {isBlockOption && selectedMinute !== null ? (
+                <>
+                  <Text
+                    style={[
+                      styles.sectionLabel,
+                      { color: palette.tertiaryText, marginTop: 16 },
+                    ]}
+                  >
+                    HOW LONG
+                  </Text>
+                  <View style={styles.timeWrap} testID="issue-3281-experience-how-long">
+                    {blockChoices.map((n) => {
+                      const selected = selectedBlocks === n;
+                      const label = experienceBlockLengthLabel(n, blockMinutes);
+                      return (
+                        <Pressable
+                          key={n}
+                          onPress={() => {
+                            setSelectedBlocks(n);
+                            setStep("party");
+                          }}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selected }}
+                          accessibilityLabel={label}
+                          style={[
+                            styles.timeChip,
+                            {
+                              backgroundColor: palette.card,
+                              borderColor: palette.panelBorder,
+                            },
+                            selected
+                              ? {
+                                  borderColor: palette.accent,
+                                  backgroundColor: palette.accentWash,
+                                }
+                              : null,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.timeChipText,
+                              {
+                                color: selected
+                                  ? palette.accent
+                                  : palette.primaryText,
+                              },
+                              fontStyle,
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
             </>
           ) : null}
 
@@ -494,7 +737,11 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                     Party size
                   </Text>
                   <Text style={[styles.partySub, { color: palette.tertiaryText }]}>
-                    {partyMax < MAX_PARTY ? `Up to ${partyMax}` : "How many in your group?"}
+                    {isGroupOption
+                      ? `Up to ${partyMax} people`
+                      : partyMax < MAX_PARTY
+                        ? `Up to ${partyMax}`
+                        : "How many in your group?"}
                   </Text>
                 </View>
                 <View style={styles.partyCtrl}>
@@ -610,9 +857,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     marginBottom: 8,
   },
-  empty: { fontSize: 15, paddingVertical: 16 },
-  dateCol: { gap: 10 },
-  dateRow: {
+  optionCol: { gap: 10, marginBottom: 16 },
+  optionRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -622,16 +868,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
   },
-  dateRowDisabled: { opacity: 0.45 },
-  dateLabel: { flex: 1, fontSize: 15, fontWeight: "700" },
-  chip: {
-    fontSize: 12,
-    fontWeight: "700",
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
+  optionName: { flex: 1, fontSize: 15, fontWeight: "700" },
+  optionUnit: { fontSize: 12, fontWeight: "700" },
   timeWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   timeChip: {
     borderRadius: 999,

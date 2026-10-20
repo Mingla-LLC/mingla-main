@@ -125,6 +125,10 @@ function CheckoutExperiencePaymentScreenContent({
     setEventDateId,
     bookedStartAt,
     setBookedStartAt,
+    bookedEndAt,
+    setBookedEndAt,
+    partySize,
+    setPartySize,
     checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
@@ -220,6 +224,20 @@ function CheckoutExperiencePaymentScreenContent({
         payload.bookedStartAt.length > 0
       ) {
         setBookedStartAt(payload.bookedStartAt);
+      }
+      if (
+        payload.bookedEndAt !== undefined &&
+        payload.bookedEndAt !== null &&
+        payload.bookedEndAt.length > 0
+      ) {
+        setBookedEndAt(payload.bookedEndAt);
+      }
+      if (
+        typeof payload.partySize === "number" &&
+        Number.isFinite(payload.partySize) &&
+        payload.partySize >= 1
+      ) {
+        setPartySize(Math.floor(payload.partySize));
       }
     }
     setRestoreChecked(true);
@@ -392,6 +410,8 @@ function CheckoutExperiencePaymentScreenContent({
           // picked a slot (adaptive Reserve); null → request byte-identical.
           ...(eventDateId !== null ? { eventDateId } : {}),
           ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+          ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+          ...(partySize !== null ? { partySize } : {}),
         });
         // issue #2190 — provider-neutral. Stripe brands answer with
         // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
@@ -420,6 +440,8 @@ function CheckoutExperiencePaymentScreenContent({
           buyer,
           ...(eventDateId !== null ? { eventDateId } : {}),
           ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+          ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+          ...(partySize !== null ? { partySize } : {}),
         });
         if (assignLocation(handoff.redirectUrl)) return;
         // Sandbox / test environments where location.assign is unavailable.
@@ -477,6 +499,8 @@ function CheckoutExperiencePaymentScreenContent({
         // ORCH-1138 Leg 3 — chosen occurrence ONLY when present; null → identical.
         ...(eventDateId !== null ? { eventDateId } : {}),
         ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+        ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+        ...(partySize !== null ? { partySize } : {}),
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -578,6 +602,8 @@ function CheckoutExperiencePaymentScreenContent({
     checkoutAttemptIdFor,
     eventDateId,
     bookedStartAt,
+    bookedEndAt,
+    partySize,
     experienceEventId,
     lines,
     nativeCheckout,

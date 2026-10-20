@@ -89,6 +89,10 @@ export interface NativeCheckoutInput {
   eventDateIds?: readonly string[];
   /** issue #3281 — open-daily booked start (ISO). Omitted when absent. */
   bookedStartAt?: string;
+  /** issue #3281 R2 — block hire end (ISO). Omitted when absent. */
+  bookedEndAt?: string;
+  /** issue #3281 R2 — guest party size. Omitted when absent. */
+  partySize?: number;
   /**
    * ORCH-1246 (Apple 4.9) — the on-screen event/trip/experience title, threaded
    * from the checkout route so the Apple Pay sheet's line item shows the PRODUCT
@@ -377,6 +381,14 @@ export const useNativeCheckoutFlow = (): (
             : {}),
           ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
             ? { bookedStartAt: input.bookedStartAt }
+            : {}),
+          ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
+            ? { bookedEndAt: input.bookedEndAt }
+            : {}),
+          ...(typeof input.partySize === "number" &&
+          Number.isFinite(input.partySize) &&
+          input.partySize >= 1
+            ? { partySize: Math.floor(input.partySize) }
             : {}),
         },
       },

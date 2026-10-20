@@ -33,6 +33,10 @@ export interface CheckoutClientAttemptInput {
   eventDateId: string | null;
   eventDateIds: readonly string[];
   bookedStartAt?: string | null;
+  /** issue #3281 R2 — block hire end; omit keeps fingerprint identical. */
+  bookedEndAt?: string | null;
+  /** issue #3281 R2 — group party size; omit / non-positive keeps identical. */
+  partySize?: number | null;
   intakeFormData: unknown;
 }
 
@@ -189,6 +193,15 @@ export function checkoutClientAttemptFingerprint(
     ...(input.bookedStartAt !== undefined && input.bookedStartAt !== null &&
         input.bookedStartAt.length > 0
       ? { bookedStartAt: input.bookedStartAt }
+      : {}),
+    ...(input.bookedEndAt !== undefined && input.bookedEndAt !== null &&
+        input.bookedEndAt.length > 0
+      ? { bookedEndAt: input.bookedEndAt }
+      : {}),
+    ...(typeof input.partySize === "number" &&
+        Number.isFinite(input.partySize) &&
+        input.partySize >= 1
+      ? { partySize: Math.trunc(input.partySize) }
       : {}),
     intakeFormData,
   });

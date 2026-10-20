@@ -218,6 +218,8 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     checkoutAttemptIdFor,
     eventDateId,
     bookedStartAt,
+    bookedEndAt,
+    partySize,
   } = useCart();
   const totals = useCartTotals();
 
@@ -428,6 +430,8 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           lines,
           ...(eventDateId !== null ? { eventDateId } : {}),
           ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+          ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+          ...(partySize !== null ? { partySize } : {}),
           ...(Platform.OS === "web"
             ? {
               checkoutContractVersion: 2 as const,
@@ -496,6 +500,8 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     phoneCountry,
     eventDateId,
     bookedStartAt,
+    bookedEndAt,
+    partySize,
   ]);
 
   const continueLabel = totals.isFree

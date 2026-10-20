@@ -77,12 +77,17 @@ Deno.test("#3281 R1: StopSpine shows shared-after-book copy when address null", 
   assertStringIncludes(spine, "EXPERIENCE_ADDRESS_SHARED_AFTER_BOOK");
 });
 
+// [TEST-MOD-APPROVED #3281] Round 2 (#3996) moved the unit label into
+// experiencePriceBasisLabel (per person | per group | per N min). The body must
+// use that helper, and the helper must still default to "per person".
 Deno.test("#3281 R1: ExperienceOfferingBody one-stop copy + per person + gate anchor", async () => {
   const body = await read("../ExperienceOfferingBody.tsx");
   assertStringIncludes(body, "(8) The itinerary");
   assertStringIncludes(body, "What you'll do");
   assertStringIncludes(body, '"EXPERIENCE"');
-  assertStringIncludes(body, "per person");
+  assertStringIncludes(body, "experiencePriceBasisLabel(");
+  const basis = await read("../experiencePriceBasis.ts");
+  assertStringIncludes(basis, 'return "per person";');
   assertStringIncludes(body, "priceDecimals");
 });
 

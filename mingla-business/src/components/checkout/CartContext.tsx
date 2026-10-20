@@ -214,6 +214,10 @@ export interface CartState {
    * ticket-checkout-create only when non-null.
    */
   bookedStartAt: string | null;
+  /** issue #3281 R2 — block hire end (ISO). null when absent. */
+  bookedEndAt: string | null;
+  /** issue #3281 R2 — guest party size. null when absent. */
+  partySize: number | null;
 }
 
 // ---- Reducer --------------------------------------------------------
@@ -247,6 +251,8 @@ type CartAction =
   // issue #2160 — set/clear the chosen multi-date day SET.
   | { type: "SET_EVENT_DATE_IDS"; eventDateIds: readonly string[] }
   | { type: "SET_BOOKED_START_AT"; bookedStartAt: string | null }
+  | { type: "SET_BOOKED_END_AT"; bookedEndAt: string | null }
+  | { type: "SET_PARTY_SIZE"; partySize: number | null }
   | { type: "RESET" };
 
 const EMPTY_BUYER: BuyerDetails = {
@@ -276,6 +282,8 @@ const INITIAL_STATE: CartState = {
   // issue #2160 — no days chosen by default. An explicit choice is required.
   eventDateIds: [],
   bookedStartAt: null,
+  bookedEndAt: null,
+  partySize: null,
 };
 
 const reducer = (state: CartState, action: CartAction): CartState => {
@@ -384,6 +392,10 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       return { ...state, eventDateIds: action.eventDateIds };
     case "SET_BOOKED_START_AT":
       return { ...state, bookedStartAt: action.bookedStartAt };
+    case "SET_BOOKED_END_AT":
+      return { ...state, bookedEndAt: action.bookedEndAt };
+    case "SET_PARTY_SIZE":
+      return { ...state, partySize: action.partySize };
     case "RESET":
       return INITIAL_STATE;
     default: {
@@ -451,6 +463,10 @@ export interface CartContextValue extends CartState {
   setEventDateIds: (eventDateIds: readonly string[]) => void;
   /** issue #3281 — set/clear the open-daily booked start from route params. */
   setBookedStartAt: (bookedStartAt: string | null) => void;
+  /** issue #3281 R2 — set/clear block hire end from route params. */
+  setBookedEndAt: (bookedEndAt: string | null) => void;
+  /** issue #3281 R2 — set/clear party size from route params. */
+  setPartySize: (partySize: number | null) => void;
   reset: () => void;
 }
 
@@ -540,6 +556,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         eventDateId: state.eventDateId,
         eventDateIds: state.eventDateIds,
         bookedStartAt: state.bookedStartAt,
+        bookedEndAt: state.bookedEndAt,
+        partySize: state.partySize,
         intakeFormData: Object.values(state.intakeFormData),
       }),
     [state],
@@ -566,6 +584,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     dispatch({ type: "SET_BOOKED_START_AT", bookedStartAt });
   }, []);
 
+  const setBookedEndAt = useCallback((bookedEndAt: string | null): void => {
+    dispatch({ type: "SET_BOOKED_END_AT", bookedEndAt });
+  }, []);
+
+  const setPartySize = useCallback((partySize: number | null): void => {
+    dispatch({ type: "SET_PARTY_SIZE", partySize });
+  }, []);
+
   const reset = useCallback((): void => {
     resetCheckoutAttempt();
     intakeUploadSessionRef.current = createCheckoutAttemptId();
@@ -588,6 +614,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setEventDateId,
       setEventDateIds,
       setBookedStartAt,
+      setBookedEndAt,
+      setPartySize,
       reset,
     }),
     [
@@ -604,6 +632,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setEventDateId,
       setEventDateIds,
       setBookedStartAt,
+      setBookedEndAt,
+      setPartySize,
       reset,
     ],
   );

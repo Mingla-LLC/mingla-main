@@ -121,6 +121,15 @@ export function checkoutIdempotencyKey(input: {
    * session.
    */
   bookedStartAt?: string | null;
+  /**
+   * issue #3281 R2 — block hire end. Omitted when absent so legacy keys stay
+   * identical; different end => different reservation.
+   */
+  bookedEndAt?: string | null;
+  /**
+   * issue #3281 R2 — group party size. Omitted when absent / non-positive.
+   */
+  partySize?: number | null;
 }): string {
   const lineKey = input.lines
     .map((line) => `${line.ticketTypeId}:${line.quantity}`)
@@ -130,6 +139,15 @@ export function checkoutIdempotencyKey(input: {
   const bookedStart = typeof input.bookedStartAt === "string"
     ? input.bookedStartAt.trim()
     : "";
+  const bookedEnd = typeof input.bookedEndAt === "string"
+    ? input.bookedEndAt.trim()
+    : "";
+  const party =
+    typeof input.partySize === "number" &&
+      Number.isFinite(input.partySize) &&
+      input.partySize >= 1
+      ? Math.trunc(input.partySize)
+      : null;
   return [
     "ticket_checkout",
     input.eventId,
@@ -140,6 +158,8 @@ export function checkoutIdempotencyKey(input: {
       ? [`days:${[...dayKeys].sort().join(",")}`]
       : []),
     ...(bookedStart.length > 0 ? [`start:${bookedStart}`] : []),
+    ...(bookedEnd.length > 0 ? [`end:${bookedEnd}`] : []),
+    ...(party !== null ? [`party:${party}`] : []),
     ...(input.paymentPlanChoice !== undefined && input.paymentPlanChoice !== "auto"
       ? [`choice:${input.paymentPlanChoice}`]
       : []),

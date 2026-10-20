@@ -98,6 +98,9 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
     eventDateId?: string;
     quantity?: string;
     bookedStartAt?: string;
+    bookedEndAt?: string;
+    partySize?: string;
+    ticketTypeId?: string;
   }>();
   const experienceEventId =
     typeof params.experienceEventId === "string"
@@ -115,12 +118,31 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
     typeof params.bookedStartAt === "string" && params.bookedStartAt.length > 0
       ? params.bookedStartAt
       : null;
+  const seedBookedEndAt =
+    typeof params.bookedEndAt === "string" && params.bookedEndAt.length > 0
+      ? params.bookedEndAt
+      : null;
+  const seedPartySize = (() => {
+    const n = typeof params.partySize === "string" ? Number(params.partySize) : NaN;
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
+  })();
+  const seedTicketTypeId =
+    typeof params.ticketTypeId === "string" && params.ticketTypeId.length > 0
+      ? params.ticketTypeId
+      : null;
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
   const brand = query.data?.brand ?? null;
 
-  const { lines, setLineQuantity, setEventDateId, setBookedStartAt } = useCart();
+  const {
+    lines,
+    setLineQuantity,
+    setEventDateId,
+    setBookedStartAt,
+    setBookedEndAt,
+    setPartySize,
+  } = useCart();
   const totals = useCartTotals();
 
   // META-ORCH-1187 P2 — fire `web_checkout_started` once the buyer lands on the
@@ -169,15 +191,32 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
     setBookedStartAt(seedBookedStartAt);
   }, [seedBookedStartAt, setBookedStartAt]);
 
+  React.useEffect(() => {
+    setBookedEndAt(seedBookedEndAt);
+  }, [seedBookedEndAt, setBookedEndAt]);
+
+  React.useEffect(() => {
+    setPartySize(seedPartySize);
+  }, [seedPartySize, setPartySize]);
+
   // ORCH-1138 Leg 3 — seed the party-size quantity (open-daily) onto the one line
   // once the experience + its ticket resolve. Runs once per (event, qty) seed.
+  // issue #3281 R2 — prefer the chosen option when ticketTypeId is threaded.
   const seededQtyRef = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (seedQuantity === null || experience?.ticket == null) return;
-    const key = `${experienceEventId}:${seedQuantity}`;
+    const options =
+      Array.isArray(experience.options) && experience.options.length > 0
+        ? experience.options
+        : [experience.ticket];
+    const t =
+      seedTicketTypeId !== null
+        ? (options.find((o) => o.ticketTypeId === seedTicketTypeId) ??
+          experience.ticket)
+        : experience.ticket;
+    const key = `${experienceEventId}:${seedQuantity}:${t.ticketTypeId}`;
     if (seededQtyRef.current === key) return;
     seededQtyRef.current = key;
-    const t = experience.ticket;
     setLineQuantity({
       ticketTypeId: t.ticketTypeId,
       ticketName: t.name,
@@ -187,7 +226,13 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
       isFree: t.isFree,
       quantity: seedQuantity,
     });
-  }, [seedQuantity, experience, experienceEventId, setLineQuantity]);
+  }, [
+    seedQuantity,
+    seedTicketTypeId,
+    experience,
+    experienceEventId,
+    setLineQuantity,
+  ]);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
