@@ -179,9 +179,11 @@ function BrandCardsBackfill({ online }) {
                 const can = brandSelectable(r);
                 return (
                   <li key={r.brand_id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 px-3 py-2">
-                    <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" disabled={!can || state === "working"} checked={can && picked.includes(r.brand_id)}
-                      aria-label={`${chip.label}: ${r.name}`}
-                      onChange={(e) => setPicked(e.target.checked ? [...picked, r.brand_id] : picked.filter((id) => id !== r.brand_id))} />
+                    <label className="-my-2 -ml-2 inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
+                      <input type="checkbox" className="h-5 w-5" disabled={!can || state === "working"} checked={can && picked.includes(r.brand_id)}
+                        aria-label={`${chip.label}: ${r.name}`}
+                        onChange={(e) => setPicked(e.target.checked ? [...picked, r.brand_id] : picked.filter((id) => id !== r.brand_id))} />
+                    </label>
                     <span className="min-w-0">
                       <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 break-normal text-[13px] font-medium text-[var(--color-text-primary)] [overflow-wrap:anywhere]">{r.name}</span>
