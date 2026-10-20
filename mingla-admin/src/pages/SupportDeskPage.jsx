@@ -21,8 +21,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  LifeBuoy, Send, UserCheck, RefreshCw,
+  LifeBuoy, Send, UserCheck, RefreshCw, ExternalLink,
 } from "lucide-react";
+import { fetchTicketEngineering } from "../services/opsService";
+import { githubChipClass } from "../lib/opsModel";
 import {
   supabase,
   invokeWithRefresh,
@@ -126,6 +128,50 @@ async function invokeSupportFn(fnName, body) {
 }
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
+
+// #3980 Wave 2 (Bridge C): one "Engineering" row under the ticket header,
+// from the Product Inbox issue this ticket or thread is linked to. Nothing
+// shows when it is not linked.
+function EngineeringRow({ sourceKind, sourceId }) {
+  const [attempt, setAttempt] = useState(0);
+  const key = `${sourceKind}:${sourceId}:${attempt}`;
+  // The answer is kept with the request it belongs to, so a new ticket (or
+  // Try again) shows the loading line until its own answer arrives.
+  const [answer, setAnswer] = useState({ key: null, error: null, data: null });
+  useEffect(() => {
+    let live = true;
+    fetchTicketEngineering(sourceKind, sourceId)
+      .then((data) => { if (live) setAnswer({ key, error: null, data }); })
+      .catch((error) => { if (live) setAnswer({ key, error, data: null }); });
+    return () => { live = false; };
+  }, [sourceKind, sourceId, key]);
+  const state = answer.key === key ? answer : { error: null, data: null, loading: true };
+  if (state.loading) {
+    return <div className="border-b border-[var(--gray-200)] px-4 py-2"><div aria-label="Reading engineering status" className="h-4 w-48 animate-pulse rounded bg-[var(--gray-100)]" /></div>;
+  }
+  if (state.error) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--gray-200)] px-4 py-2 text-sm">
+        <span role="alert" className="text-[var(--color-error-700)]">Couldn't read engineering status.</span>
+        <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button>
+      </div>
+    );
+  }
+  const data = state.data;
+  if (!data?.linked) return null;
+  const n = data.issue?.number;
+  return (
+    <div className="flex flex-col gap-1 border-b border-[var(--gray-200)] px-4 py-2 text-sm">
+      <a href={data.issue?.url} target="_blank" rel="noopener noreferrer" title={data.issue?.title || undefined}
+        className={`inline-flex min-h-8 items-center gap-1 self-start rounded-full px-2.5 font-medium hover:underline ${githubChipClass(data.label)}`}>
+        <span className="break-normal [overflow-wrap:normal]">Engineering: {data.label} · #{n}</span>
+        <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
+        <span className="sr-only">(opens GitHub in a new tab)</span>
+      </a>
+      {data.live && <p className="text-[var(--color-success-700)]">Live: you can tell the host it is fixed.</p>}
+    </div>
+  );
+}
 
 function profileLabel(p) {
   if (!p) return "Unknown user";
@@ -698,6 +744,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
         size="lg"
       >
         <ModalBody className="!p-0">
+          {selectedTicket && (selectedTicket.source_kind === "support_ticket" || selectedTicket.source_kind === "internal_thread") && (
+            <EngineeringRow sourceKind={selectedTicket.source_kind} sourceId={selectedTicket.id} />
+          )}
           {selectedTicket && (
             <div className="grid grid-cols-1 md:grid-cols-[1fr_280px]">
               {/* Thread */}

@@ -103,3 +103,19 @@ export const clearWorkingMark = (cardId, reason) =>
 export const listTeamProfiles = () => call(() => supabase.rpc("ops_profiles_list"));
 export const setTeamProfile = (email, displayName, githubLogin) =>
   call(() => supabase.rpc("ops_profile_set", { p_teammate: email, p_display_name: displayName || null, p_github_login: githubLogin || null }));
+
+// #3980 synced program, Wave 2 — the bridges. Status chips for linked GitHub
+// issues and pull requests, a ticket's engineering status, roadmap links and
+// GitHub's lane suggestions, release records and what shipped a Feature
+// Guide entry. Every function checks the caller on the server.
+export const fetchGithubStatuses = (numbers) =>
+  call(() => supabase.rpc("ops_github_status_list", { p_numbers: numbers }));
+export const fetchTicketEngineering = (sourceKind, sourceId) =>
+  call(() => supabase.rpc("ops_ticket_engineering", { p_source_kind: sourceKind, p_source_id: sourceId }));
+export const listRoadmapLinks = () => call(() => supabase.rpc("ops_roadmap_links_list"));
+export const setRoadmapLink = (cardId, issue) =>
+  call(() => supabase.rpc("ops_roadmap_link_set", { p_card_id: cardId, p_issue: issue || null }));
+export const decideRoadmapSuggestion = (cardId, decision) =>
+  call(() => supabase.rpc("ops_roadmap_suggestion_decide", { p_card_id: cardId, p_decision: decision }));
+export const listReleaseRecords = (query = {}) => call(() => supabase.rpc("ops_release_records_list", { p_query: query }));
+export const fetchFeatureGuideRelease = (key) => call(() => supabase.rpc("ops_feature_guide_release", { p_key: key }));

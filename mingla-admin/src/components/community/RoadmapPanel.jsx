@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Bell, Plus, RefreshCw, Save } from "lucide-react";
+import { ArrowDown, ArrowUp, Bell, ExternalLink, Plus, RefreshCw, Save } from "lucide-react";
 import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -15,6 +15,8 @@ import {
   reorderRoadmap,
   upsertRoadmapCard,
 } from "../../services/communityService";
+import { decideRoadmapSuggestion, listRoadmapLinks, setRoadmapLink } from "../../services/opsService";
+import { githubChipClass, githubChipWords, opsErrorWords, parseGithubInput, roadmapSuggestionWords } from "../../lib/opsModel";
 
 const LANES = [
   { id: "now", label: "Now" },
@@ -42,11 +44,24 @@ export function RoadmapPanel() {
   const [notifyStatus, setNotifyStatus] = useState(null);
   const [statusFilter, setStatusFilter] = useState("published");
   const [draggingId, setDraggingId] = useState(null);
+  // #3980 Wave 2: each card's GitHub issue, its status chip and the lane
+  // GitHub suggests. Null when the list could not be read (it is shown only
+  // to an owner or admin).
+  const [links, setLinks] = useState(null);
+  const [linksError, setLinksError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setRows(await listRoadmapCards());
+      try {
+        const data = await listRoadmapLinks();
+        setLinks(Object.fromEntries((data?.cards || []).map((c) => [c.card_id, c])));
+        setLinksError("");
+      } catch (err) {
+        setLinks(null);
+        setLinksError(opsErrorWords(err));
+      }
       const [preview, status] = await Promise.all([
         getRoadmapNotificationPreview(),
         getRoadmapNotificationStatus(),
@@ -141,6 +156,56 @@ export function RoadmapPanel() {
     try { await reorderRoadmap(ordered.map((row) => row.id)); await load(); }
     catch (err) { addToast({ variant: "error", title: "Reorder failed", description: err?.message }); }
     finally { setBusy(false); }
+  }
+
+  async function applySuggestion(row, suggestion) {
+    setBusy(true);
+    try {
+      const decided = await decideRoadmapSuggestion(row.id, "apply");
+      // The lane is saved through the existing roadmap editor: one writer, one audit row.
+      await upsertRoadmapCard({
+        id: row.id,
+        publicTitle: row.public_title,
+        publicBody: row.public_body || "",
+        internalNote: row.internal_note || "",
+        lane: decided?.lane || suggestion.lane,
+        status: row.status,
+      });
+      addToast({ variant: "success", title: `Moved to ${roadmapSuggestionWords({ lane: decided?.lane || suggestion.lane })}` });
+      await load();
+    } catch (err) {
+      addToast({ variant: "error", title: "Could not apply the suggestion", description: opsErrorWords(err) || err?.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dismissSuggestion(row) {
+    setBusy(true);
+    try {
+      await decideRoadmapSuggestion(row.id, "dismiss");
+      addToast({ variant: "success", title: "Suggestion dismissed" });
+      await load();
+    } catch (err) {
+      addToast({ variant: "error", title: "Could not dismiss the suggestion", description: opsErrorWords(err) || err?.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveLink(row, value) {
+    setBusy(true);
+    try {
+      await setRoadmapLink(row.id, value);
+      addToast({ variant: "success", title: value ? "GitHub issue linked" : "GitHub issue removed" });
+      await load();
+      return true;
+    } catch (err) {
+      addToast({ variant: "error", title: "Could not save the GitHub issue", description: opsErrorWords(err) || err?.message });
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
 
   function summary(value) {
@@ -247,6 +312,10 @@ export function RoadmapPanel() {
         </div>
       </div>
 
+      {linksError && !links ? (
+        <p className="text-xs text-[var(--color-text-tertiary)]">GitHub issues are not shown: {linksError}</p>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         {[["published", "Live"], ["draft", "Drafts"], ["archived", "Archived"]].map(([id, label]) => (
           <Button key={id} size="sm" variant={statusFilter === id ? "primary" : "secondary"} onClick={() => setStatusFilter(id)}>
@@ -310,6 +379,7 @@ export function RoadmapPanel() {
                         <Badge variant={STATUS_BADGE[row.status] || "default"}>
                           {row.status}
                         </Badge>
+                        {links?.[row.id]?.from_github && <Badge variant="brand">Draft from GitHub</Badge>}
                       </div>
                       {row.public_body && (
                         <p className="text-xs text-[var(--color-text-secondary)] mt-1 line-clamp-3">
@@ -320,6 +390,16 @@ export function RoadmapPanel() {
                         <button type="button" className="mt-1 rounded-full bg-[var(--color-warning-50)] px-2 py-1 text-xs font-medium text-[var(--color-warning-700)]" onClick={() => setEditor({ id: row.id, publicTitle: row.public_title, publicBody: row.public_body || "", internalNote: row.internal_note || "", lane: row.lane, status: row.status })}>Internal note</button>
                       )}
                     </div>
+                    {links && (
+                      <RoadmapGithubLine
+                        row={row}
+                        link={links[row.id]}
+                        busy={busy}
+                        onSave={(value) => saveLink(row, value)}
+                        onApply={(suggestion) => void applySuggestion(row, suggestion)}
+                        onDismiss={() => void dismissSuggestion(row)}
+                      />
+                    )}
                     <div className="flex flex-wrap gap-1">
                       <Button
                         variant="secondary"
@@ -470,6 +550,67 @@ export function RoadmapPanel() {
           </Button>
         </ModalFooter>
       </Modal>
+    </div>
+  );
+}
+
+// #3980 Wave 2: a roadmap card's GitHub issue. Linked: the status chip and
+// Change / Remove. Not linked: an issue field and Save. When GitHub's Status
+// or Horizon suggests another lane: Apply (through the roadmap editor) or
+// Dismiss. Nothing here moves a card by itself.
+function RoadmapGithubLine({ row, link, busy, onSave, onApply, onDismiss }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+  const issue = link?.issue || null;
+  const suggestion = link?.suggestion || null;
+  async function save(event) {
+    event.preventDefault();
+    const parsed = parseGithubInput(value);
+    if (parsed.error) { setError(parsed.error); return; }
+    if (parsed.kind === "pull") { setError("Link the issue, not a pull request."); return; }
+    if (await onSave(value.trim())) { setEditing(false); setValue(""); setError(""); }
+  }
+  return (
+    <div className="space-y-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="font-medium text-[var(--color-text-tertiary)]">GitHub issue</span>
+        {issue && !editing ? (
+          <>
+            <a href={issue.url} target="_blank" rel="noopener noreferrer" title={issue.title || undefined}
+              className={`inline-flex min-h-8 items-center gap-1 rounded-full px-2 font-medium hover:underline ${githubChipClass(issue.label)}`}>
+              <span className="break-normal [overflow-wrap:normal]">{githubChipWords(issue)}</span>
+              <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
+              <span className="sr-only">(opens GitHub in a new tab)</span>
+            </a>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setEditing(true); setValue(`#${issue.number}`); }}>Change</Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void onSave("")}>Remove</Button>
+          </>
+        ) : null}
+        {!issue && !editing ? (
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setEditing(true)}>Link issue</Button>
+        ) : null}
+      </div>
+      {editing && (
+        <form className="flex flex-wrap items-start gap-1.5" onSubmit={save}>
+          <label className="min-w-[8rem] flex-1">
+            <span className="sr-only">GitHub issue for {row.public_title}</span>
+            <input value={value} autoFocus maxLength={120} placeholder="#123" aria-invalid={error ? "true" : undefined}
+              onChange={(event) => { setValue(event.target.value); setError(""); }}
+              className="min-h-9 w-full rounded-md border border-[var(--color-border-primary)] bg-[var(--color-background-primary)] px-2 text-sm" />
+            {error && <span role="alert" className="mt-1 block text-[var(--color-error-700)]">{error}</span>}
+          </label>
+          <Button type="submit" size="sm" disabled={busy || !value.trim()}>Save</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => { setEditing(false); setValue(""); setError(""); }}>Cancel</Button>
+        </form>
+      )}
+      {suggestion && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-md bg-[var(--color-info-50)] px-2 py-1 text-[var(--color-info-700)]">
+          <span className="break-normal [overflow-wrap:normal]">GitHub suggests: {roadmapSuggestionWords(suggestion)}</span>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => onApply(suggestion)}>Apply</Button>
+          <Button variant="ghost" size="sm" disabled={busy} onClick={onDismiss}>Dismiss</Button>
+        </div>
+      )}
     </div>
   );
 }

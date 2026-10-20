@@ -153,6 +153,49 @@ export function githubChipWords(status) {
   return Number.isInteger(n) && n > 0 ? `#${n} · ${label}` : label;
 }
 
+/**
+ * #3980 Wave 2: the tone of a GitHub status chip (D-15 words). Planned and
+ * Closed neutral, In Progress and Open info, In Review warning, Shipped and
+ * Merged brand, Live success, Not on GitHub error, Checking GitHub a dashed
+ * outline.
+ */
+const GITHUB_CHIP_TONES = {
+  Planned: "neutral", "In Progress": "info", "In Review": "warning", Shipped: "brand", Live: "success",
+  "Not on GitHub": "error", "Checking GitHub": "checking", Open: "info", Merged: "brand", Closed: "neutral",
+};
+export function githubChipTone(label) {
+  return GITHUB_CHIP_TONES[label] || "checking";
+}
+const GITHUB_CHIP_CLASSES = {
+  neutral: "bg-[var(--gray-100)] text-[var(--gray-700)]",
+  info: "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
+  warning: "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
+  brand: "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]",
+  success: "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
+  error: "bg-[var(--color-error-50)] text-[var(--color-error-700)]",
+  checking: "border border-dashed border-[var(--gray-400)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)]",
+};
+/** The chip's colour classes (tokens only, light and dark). */
+export function githubChipClass(label) {
+  return GITHUB_CHIP_CLASSES[githubChipTone(label)];
+}
+
+/** "Next (Horizon Next)": GitHub's lane suggestion for a roadmap card, in words. */
+export function roadmapSuggestionWords(suggestion) {
+  const lanes = { now: "Now", next: "Next", later: "Later", shipped: "Recently shipped" };
+  const lane = lanes[suggestion?.lane];
+  if (!lane) return "";
+  const reason = typeof suggestion?.reason === "string" ? suggestion.reason.replace(/^GitHub: /, "").trim() : "";
+  return reason ? `${lane} (${reason})` : lane;
+}
+
+/** "Waiting for #3980 to be Live": the card waits for its GitHub links. */
+export function githubWaitWords(links) {
+  const numbers = (Array.isArray(links) ? links : []).map((g) => Number(g?.number)).filter((n) => Number.isInteger(n) && n > 0);
+  if (numbers.length === 0) return "";
+  return `Blocked until ${numbers.map((n) => `#${n}`).join(", ")} ${numbers.length > 1 ? "are" : "is"} Live`;
+}
+
 /** "2 h ago", "3 days ago": how long since an agent last updated a card. */
 export function sinceWords(iso, now = Date.now()) {
   const t = Date.parse(iso);

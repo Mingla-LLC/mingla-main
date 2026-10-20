@@ -17,7 +17,9 @@ import {
   agentPromptFor,
   closeKindLabel,
   dayLabel,
+  githubChipClass,
   githubChipWords,
+  githubWaitWords,
   mondayOf,
   opsErrorWords,
   parseGithubInput,
@@ -164,7 +166,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const ownerEmails = owners.map((p) => p.email);
   const watcherEmails = watchers.map((p) => p.email);
   const nameOf = (email) => team.find((p) => p.email === email)?.name || email;
-  const systemBlock = card.blocked && card.blocked_kind !== "manual";
+  // A card waiting for GitHub has its own row below (#3980 Wave 2, Bridge E).
+  const githubBlock = card.blocked && card.blocked_kind === "github";
+  const systemBlock = card.blocked && card.blocked_kind !== "manual" && !githubBlock;
   const today = todayIso();
   const thisWeek = mondayOf(today);
   const weeks = Array.from(new Set([card.sprint?.starts_on, ...[0, 7, 14, 21, 28].map((d) => addDays(thisWeek, d))].filter(Boolean))).sort();
@@ -248,7 +252,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           <ul className="flex min-w-0 flex-wrap gap-1.5">
             {card.links.map((l) => (
               <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px]">
-                <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
+                <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
                 <button type="button" aria-label={`Unlink ${l.label}`} disabled={locked || card.status === "done"} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`inline-grid min-h-8 min-w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
               </li>
             ))}
@@ -291,7 +295,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
 
       {card.status !== "done" && (
         <Section title="Blocked">
-          {systemBlock ? (
+          {githubBlock ? (
+            <GithubWait card={card} disabled={locked || !!busy} onChange={(on, words) => update({ blocked_on_github: on }, words)} />
+          ) : systemBlock ? (
             <div className="flex min-w-0 flex-col gap-2">
               <p className="break-words text-[13px] text-[var(--color-error-700)]">{card.blocked_reason}</p>
               {card.kind === "promo" && me.can_override && (form === "override" ? (
@@ -333,6 +339,11 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             </div>
           ) : card.override ? (
             <p className="break-words text-[13px] text-[var(--color-text-secondary)]">Started before go-live: {card.override.by_name} overrode the giveaway and ads rule on {dayLabel(card.override.at)}. {card.override.reason}</p>
+          ) : (card.github || []).length > 0 ? (
+            <div className="flex min-w-0 flex-col gap-2">
+              <p className="text-[13px] text-[var(--color-text-tertiary)]">Not blocked.</p>
+              <GithubWait card={card} disabled={locked || !!busy} onChange={(on, words) => update({ blocked_on_github: on }, words)} />
+            </div>
           ) : <p className="text-[13px] text-[var(--color-text-tertiary)]">Not blocked.</p>}
         </Section>
       )}
@@ -502,8 +513,8 @@ function GithubLinks({ card, disabled, onSave }) {
       {links.length === 0 ? <p className="text-[13px] text-[var(--color-text-tertiary)]">No issue or pull request linked.</p> : (
         <ul className="flex min-w-0 flex-wrap gap-1.5">
           {links.map((g, i) => (
-            <li key={g.number} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px]">
-              <a href={g.url} target="_blank" rel="noopener noreferrer" title={g.title || undefined} className={`inline-flex min-h-8 items-center gap-1 rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
+            <li key={g.number} className={`inline-flex max-w-full items-center gap-1 rounded-full py-0.5 pl-2.5 pr-0.5 text-[13px] ${githubChipClass(g.label)}`}>
+              <a href={g.url} target="_blank" rel="noopener noreferrer" title={g.title || undefined} className={`inline-flex min-h-8 items-center gap-1 rounded-full font-medium hover:underline ${FOCUS}`}>
                 <span className="break-normal [overflow-wrap:normal]">{githubChipWords(g)}</span>
                 <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0 text-[var(--color-text-tertiary)]" />
                 <span className="sr-only">(opens GitHub in a new tab)</span>
@@ -525,6 +536,33 @@ function GithubLinks({ card, disabled, onSave }) {
         </form>
       )}
     </Section>
+  );
+}
+
+// "Blocked until #3980 is Live": a person sets the card to wait for its GitHub
+// links; Mingla unblocks it by itself once every one is Live and tells its
+// owners. A person can switch it off; an agent cannot (the server refuses).
+function GithubWait({ card, disabled, onChange }) {
+  const on = card.blocked && card.blocked_kind === "github";
+  const words = githubWaitWords(card.github);
+  if (!words) return null;
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on ? "true" : "false"}
+        disabled={disabled}
+        onClick={() => onChange(!on, on ? "No longer waiting for GitHub" : "Waiting for GitHub. Mingla unblocks it when it is Live.")}
+        className={`inline-flex min-h-11 max-w-full items-center gap-2 self-start rounded-lg px-1 text-left text-[13px] font-medium text-[var(--color-text-primary)] hover:bg-[var(--gray-100)] disabled:opacity-50 ${FOCUS}`}
+      >
+        <span aria-hidden="true" className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${on ? "bg-[var(--color-brand-600)]" : "bg-[var(--gray-300)]"}`}>
+          <span className={`inline-block h-4 w-4 rounded-full bg-[var(--color-background-primary)] shadow transition-transform ${on ? "translate-x-4" : "translate-x-0.5"}`} />
+        </span>
+        <span className="break-normal [overflow-wrap:normal]">{words}</span>
+      </button>
+      {on && <p className="break-words text-[13px] text-[var(--color-error-700)]">{card.blocked_reason} It unblocks by itself and its owners are told.</p>}
+    </div>
   );
 }
 
