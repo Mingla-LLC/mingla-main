@@ -437,6 +437,8 @@ WEBSITE RULES:
 
 EXPERIENCE RULES:
 - Unknown timezone, date, location, coordinate, price, capacity, or media stays unset. Never fabricate it.
+- One stop is a whole experience (1–5 stops). Do not invent an itinerary just to fill a second stop.
+- Price options may be per person, per group, or per time block; the first option by display order is the default guests see.
 - Camera/file acquisition is a guided handoff to /experience/snap; explain that it creates reviewable drafts.
 - Publishing, updating, stop management, unpublishing, and discarding always require a proposal and confirmation.
 - Scheduled/live/ended/cancelled experiences are never discarded. Offer guarded unpublish for an eligible scheduled experience or cancellation where appropriate.

@@ -3,7 +3,7 @@
  * Step 2 — STOPS (the stops builder).
  *
  * Authoritative design: DESIGN_META-ORCH-1059_WIZARD_STOPS_PRICING.md §2.
- * Builds 2–5 ordered stops, each = a Mapbox-validated address + name + 1–5
+ * Builds 1–5 ordered stops, each = a Mapbox-validated address + name + 1–5
  * photos + OPTIONAL start time + OPTIONAL per-stop price (per_stop mode only).
  * A LOCATION MODE toggle (operator-locked) governs whether all stops share one
  * location (single, default) or each has its own (per_stop). Reorder via
@@ -104,7 +104,7 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
   const removeStop = useCallback(
     (clientId: string): void => {
       setStops((prev) =>
-        prev.length <= 2 ? prev : prev.filter((s) => s.clientId !== clientId),
+        prev.length <= 1 ? prev : prev.filter((s) => s.clientId !== clientId),
       );
     },
     [setStops],
@@ -176,8 +176,8 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
     if (n === 0) return { text: "Add your first stop to get started.", error: false };
     if (n === 1)
       return {
-        text: "Add at least 1 more — every experience needs 2–5 stops.",
-        error: showErrors,
+        text: "1 of 5 stops. One stop is enough — or add more.",
+        error: false,
       };
     if (n >= MAX_STOPS) return { text: "Maximum 5 stops reached.", error: false };
     return { text: `${n} of 5 stops. Add more or continue.`, error: false };
@@ -188,7 +188,7 @@ export const ExperienceStopsStep: React.FC<ExperienceStopsStepProps> = ({
     <View style={styles.stepBody}>
       <Text style={styles.title}>Build the itinerary</Text>
       <Text style={styles.body}>
-        Add 2–5 stops. Reorder them — the order is the route your buyers follow.
+        Add 1–5 stops. Reorder them — the order is the route your buyers follow.
       </Text>
 
       {/* LOCATION MODE toggle (operator-locked) */}

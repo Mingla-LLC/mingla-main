@@ -9,6 +9,40 @@
 export type ExperienceLocationMode = "single" | "per_stop";
 export type ExperiencePricingMode = "whole" | "per_stop";
 
+/** issue #3281 R2 — sellable unit beside a price option. */
+export type ExperiencePriceBasis = "person" | "group" | "block";
+
+/** issue #3281 R2 — hire block length (minutes). */
+export type ExperienceBlockMinutes = 15 | 30 | 45 | 60;
+
+export const EXPERIENCE_BLOCK_MINUTES: readonly ExperienceBlockMinutes[] = [
+  15, 30, 45, 60,
+];
+
+/**
+ * issue #3281 R2 — one host-authored price option (maps to a ticket_types row).
+ * `soldCount` is client-only: options with sales may be hidden, never removed.
+ */
+export interface ExperiencePriceOptionDraft {
+  clientId: string;
+  /** Persisted ticket_types.id when editing; null for a new option. */
+  ticketTypeId: string | null;
+  name: string;
+  priceMajor: string;
+  priceBasis: ExperiencePriceBasis;
+  /** When priceBasis === "group": party size cap (2–50). */
+  groupMax: number;
+  /** When priceBasis === "block": length of one block. */
+  blockMinutes: ExperienceBlockMinutes;
+  minBlocks: number;
+  maxBlocks: number;
+  /** Spots for this option; null means unlimited. */
+  capacity: number | null;
+  isHidden: boolean;
+  /** Confirmed sold quantity (live-edit). Never delete when > 0. */
+  soldCount: number;
+}
+
 /** One authored stop (1:1 with a CuratedStop being built). */
 export interface ExperienceStopDraft {
   /** Stable key for list reorder (NOT persisted). */
@@ -130,4 +164,107 @@ export function stopPriceEntryIsValid(priceMajor: string): boolean {
   if (!/^\d*(?:\.\d*)?$/.test(trimmed) || !/\d/.test(trimmed)) return false;
   const value = parseFloat(trimmed);
   return Number.isFinite(value) && value >= 0;
+}
+
+let priceOptionCounter = 0;
+export const newPriceOptionClientId = (): string => {
+  priceOptionCounter += 1;
+  return `price_opt_${Date.now().toString(36)}_${priceOptionCounter}`;
+};
+
+export const emptyPriceOption = (
+  seed?: Partial<ExperiencePriceOptionDraft>,
+): ExperiencePriceOptionDraft => ({
+  clientId: seed?.clientId ?? newPriceOptionClientId(),
+  ticketTypeId: seed?.ticketTypeId ?? null,
+  name: seed?.name ?? "Standard",
+  priceMajor: seed?.priceMajor ?? "",
+  priceBasis: seed?.priceBasis ?? "person",
+  groupMax: seed?.groupMax ?? 4,
+  blockMinutes: seed?.blockMinutes ?? 60,
+  minBlocks: seed?.minBlocks ?? 1,
+  maxBlocks: seed?.maxBlocks ?? 4,
+  capacity: seed?.capacity !== undefined ? seed.capacity : null,
+  isHidden: seed?.isHidden ?? false,
+  soldCount: seed?.soldCount ?? 0,
+});
+
+/** Wire a major-unit price string → cents for the RPC payload. */
+export const priceMajorToCents = (priceMajor: string): number =>
+  Math.round((parseFloat(priceMajor) || 0) * 100);
+
+/**
+ * issue #3281 R2 — payload shape for `price_options` on biz_* experience RPCs.
+ * Always emit at least one option (forward-compat); omit unit-only fields that
+ * do not apply to the chosen basis.
+ */
+export interface ExperiencePriceOptionPayload {
+  name: string;
+  price_cents: number;
+  price_basis: ExperiencePriceBasis;
+  block_minutes?: number;
+  min_blocks?: number;
+  max_blocks?: number;
+  group_max?: number;
+  capacity?: number | null;
+  is_hidden?: boolean;
+}
+
+export const priceOptionToPayload = (
+  opt: ExperiencePriceOptionDraft,
+): ExperiencePriceOptionPayload => {
+  const base: ExperiencePriceOptionPayload = {
+    name: opt.name.trim().length > 0 ? opt.name.trim() : "Standard",
+    price_cents: priceMajorToCents(opt.priceMajor),
+    price_basis: opt.priceBasis,
+    capacity: opt.capacity,
+    is_hidden: opt.isHidden,
+  };
+  if (opt.priceBasis === "group") {
+    return {
+      ...base,
+      group_max: Math.min(50, Math.max(2, Math.round(opt.groupMax) || 2)),
+    };
+  }
+  if (opt.priceBasis === "block") {
+    const minBlocks = Math.max(1, Math.round(opt.minBlocks) || 1);
+    const maxBlocks = Math.max(minBlocks, Math.round(opt.maxBlocks) || minBlocks);
+    return {
+      ...base,
+      block_minutes: opt.blockMinutes,
+      min_blocks: minBlocks,
+      max_blocks: maxBlocks,
+    };
+  }
+  return base;
+};
+
+export const priceOptionBasisLabel = (basis: ExperiencePriceBasis): string => {
+  if (basis === "group") return "per group";
+  if (basis === "block") return "per block";
+  return "per person";
+};
+
+/** A price option is valid for Continue (paid or free amount; unit fields coherent). */
+export function priceOptionEntryIsValid(
+  opt: ExperiencePriceOptionDraft,
+  isFree: boolean,
+): boolean {
+  if (opt.isHidden) return true;
+  if (!isFree && !stopPriceEntryIsValid(opt.priceMajor)) return false;
+  if (!isFree && priceMajorToCents(opt.priceMajor) <= 0 && opt.priceMajor.trim().length > 0) {
+    // Typed zero is allowed as free; empty is allowed when isFree.
+  }
+  if (opt.priceBasis === "group") {
+    return opt.groupMax >= 2 && opt.groupMax <= 50;
+  }
+  if (opt.priceBasis === "block") {
+    if (!EXPERIENCE_BLOCK_MINUTES.includes(opt.blockMinutes)) return false;
+    return (
+      opt.minBlocks >= 1 &&
+      opt.maxBlocks >= opt.minBlocks &&
+      opt.maxBlocks <= 48
+    );
+  }
+  return true;
 }

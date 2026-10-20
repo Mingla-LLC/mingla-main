@@ -104,11 +104,14 @@ import {
 } from "../../utils/bankSetupReturn";
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
+  emptyPriceOption,
   emptyStop,
   initialWholePriceInput,
+  priceOptionToPayload,
   stopHasValidatedLocation,
   stopHasValidDescription,
   type ExperienceLocationMode,
+  type ExperiencePriceOptionDraft,
   type ExperiencePricingMode,
   type ExperienceStopDraft,
   stopPriceEntryIsValid,
@@ -302,7 +305,7 @@ const RPC_ERROR_COPY: Record<string, string> = {
   event_currency_unsupported: "That currency isn't supported yet.",
   invalid_mode:
     "Something went wrong with the pricing/location setup. Try again.",
-  experience_stop_count_invalid: "An experience needs 2–5 stops.",
+  experience_stop_count_invalid: "An experience needs 1–5 stops.",
   stop_name_required: "Every stop needs a name.",
   stop_description_required: "Every stop needs a short description.",
   experience_intent_required: "Pick the best vibe for this experience.",
@@ -439,7 +442,7 @@ export const ExperienceCreatorWizard: React.FC<
   const [stops, setStops] = useState<ExperienceStopDraft[]>(
     initialDraft?.stops && initialDraft.stops.length > 0
       ? initialDraft.stops
-      : [emptyStop(), emptyStop()],
+      : [emptyStop()],
   );
 
   // Pricing
@@ -452,6 +455,19 @@ export const ExperienceCreatorWizard: React.FC<
   const [isFree, setIsFree] = useState(initialDraft?.isFree ?? false);
   const [capacity, setCapacity] = useState(initialDraft?.capacity ?? "20");
   const [unlimited, setUnlimited] = useState(initialDraft?.unlimited ?? false);
+  // issue #3281 R2 — price options (ticket_types). Seed one Standard option that
+  // tracks the whole-price field until the Pricing step grows a full editor.
+  const [priceOptions, setPriceOptions] = useState<ExperiencePriceOptionDraft[]>(
+    () => [
+      emptyPriceOption({
+        name: "Standard",
+        priceMajor: initialWholePriceInput(
+          initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor,
+        ),
+        priceBasis: "person",
+      }),
+    ],
+  );
   const [pricingSwitches, setPricingSwitches] =
     useState<PricingSwitchOverrides>(
     initialDraft?.pricingSwitches ?? {
@@ -460,6 +476,22 @@ export const ExperienceCreatorWizard: React.FC<
       passServiceFee: null,
     },
   );
+
+  // Keep the lead option's amount in sync with the whole-price / free toggle.
+  useEffect(() => {
+    setPriceOptions((prev) => {
+      if (prev.length === 0) return prev;
+      const lead = prev[0];
+      const nextMajor = isFree ? "0" : wholePriceMajor;
+      if (lead.priceMajor === nextMajor && lead.priceBasis === "person") {
+        return prev;
+      }
+      return [
+        { ...lead, priceMajor: nextMajor, priceBasis: "person" },
+        ...prev.slice(1),
+      ];
+    });
+  }, [wholePriceMajor, isFree]);
 
   // issue #3284 — the refund terms (Pricing step). Seeded from the live row in
   // live-edit and from the draft seed in draft-edit; null in create.
@@ -781,7 +813,7 @@ export const ExperienceCreatorWizard: React.FC<
 
   // Per-step Continue gate.
   const stopsValid = useMemo(() => {
-    if (stops.length < 2 || stops.length > 5) return false;
+    if (stops.length < 1 || stops.length > 5) return false;
     return stops.every((s, i) => {
       if (s.placeName.trim().length === 0) return false;
       // CHANGE 3 — every stop needs a description.
@@ -883,6 +915,9 @@ export const ExperienceCreatorWizard: React.FC<
         multiDates: whenPayload.multiDates,
         recurrence_rules: whenPayload.recurrence_rules,
         timezone: whenPayload.timezone,
+        // issue #3281 R2 — sellable options (ticket_types). Absent → server
+        // keeps today's single Standard path; present → helper upserts rows.
+        price_options: priceOptions.map(priceOptionToPayload),
         // META-ORCH-1059 BUG 3 — thread the cover so the RPC persists the 7
         // cover_media_* columns. Pexels/Giphy/Library picks only emit a patch
         // to wizard state; without this the RPC drops the cover entirely.
@@ -915,6 +950,7 @@ export const ExperienceCreatorWizard: React.FC<
       capacity,
       pricingSwitches,
       stops,
+      priceOptions,
       cover,
     ],
   );
