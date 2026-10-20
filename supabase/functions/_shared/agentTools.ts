@@ -1449,11 +1449,12 @@ const createExperience: AgentToolDefinition = {
       // experience_stops row per stop and the single ticket's price = the SUM
       // of the stops' prices (no free per-dish ticket). Absent = Ari/manual
       // shell (unchanged ORCH-1146 behavior).
+      // issue #3281 R2 — one stop is valid (1–5); do not invent a second stop.
       stops: {
         type: "array",
         maxItems: 5,
         description:
-          "Snap path only: the menu items / activities as ordered stops. Each becomes one experience_stops row; the experience price is the sum of stop prices.",
+          "Snap path only: the menu items / activities as ordered stops (1–5; one stop is a whole experience). Each becomes one experience_stops row; the experience price is the sum of stop prices.",
         items: {
           type: "object",
           properties: {
@@ -1507,6 +1508,31 @@ const createExperience: AgentToolDefinition = {
       pricing_mode: { type: "string", enum: ["whole", "per_stop"] },
       whole_price_cents: { type: "integer", minimum: 0 },
       capacity: { type: "integer", minimum: 1 },
+      // issue #3281 R2 — sellable options (person | group | block). Absent keeps
+      // today's single Standard person path.
+      price_options: {
+        type: "array",
+        maxItems: 20,
+        description:
+          "Optional price options. Each: name, price_cents, price_basis (person|group|block); group needs group_max 2–50; block needs block_minutes in 15/30/45/60 plus min_blocks/max_blocks. Non-person basis requires pricing_mode=whole.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            price_cents: { type: "integer", minimum: 0 },
+            price_basis: {
+              type: "string",
+              enum: ["person", "group", "block"],
+            },
+            block_minutes: { type: "integer", enum: [15, 30, 45, 60] },
+            min_blocks: { type: "integer", minimum: 1 },
+            max_blocks: { type: "integer", minimum: 1 },
+            group_max: { type: "integer", minimum: 2, maximum: 50 },
+            capacity: { type: "integer", minimum: 1, nullable: true },
+            is_hidden: { type: "boolean" },
+          },
+        },
+      },
       timezone: { type: "string" },
       whenMode: { type: "string", enum: ["single", "multi_date", "recurring"] },
       when: { type: "object" },

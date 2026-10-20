@@ -36,7 +36,7 @@ export const ExperienceMiniCard: React.FC<ExperienceMiniCardProps> = ({
       : `From ${formatCurrencyRound(
           experience.priceFromMinorUnits / 100,
           experience.currency,
-        )}`;
+        )} per person`;
 
   return (
     <Pressable
