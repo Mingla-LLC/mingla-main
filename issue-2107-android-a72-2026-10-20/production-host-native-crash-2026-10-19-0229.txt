@@ -1,0 +1,6 @@
+Process: com.sethogieva.minglabusiness
+Package: com.sethogieva.minglabusiness v37 (1.1.6)
+Foreground: Yes
+Process-Runtime: 4444491
+Processor: '1'
+Process uptime: 4444s

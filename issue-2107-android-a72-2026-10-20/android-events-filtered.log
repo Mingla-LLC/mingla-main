@@ -1,0 +1,633 @@
+2026-10-20T02:57:54.829Z update server :8300
+2026-10-20T02:57:54.831Z mock supabase :8199
+2026-10-20T03:16:27.162Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"down","delayMs":0}}
+--- EX OFFLINE no-cache first launch 03:16:27
+2026-10-20T03:16:30.464Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:16:31.271Z DEVICE JS_START bundle=AEMB
+2026-10-20T03:16:31.520Z REQ app-version-policy app=explorer mode=down delay=0
+2026-10-20T03:16:31.527Z REQ app-version-policy app=explorer mode=down delay=0
+2026-10-20T03:16:31.539Z REQ app-version-policy app=explorer mode=down delay=0
+2026-10-20T03:16:31.613Z DEVICE POSTHOG_CAPTURE version_gate_unreachable {"app_id":"explorer","platform":"android","installed_version":"1.1.6","error":"Network request failed","had_cached_policy":false}
+2026-10-20T03:16:32.547Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:16:37.162Z DEVICE STREAM_START
+2026-10-20T03:16:57.974Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"required","delayMs":3000}}
+--- EX A1 no-cache 3s required 03:16:57
+2026-10-20T03:17:00.275Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:17:00.887Z DEVICE JS_START bundle=AEMB
+2026-10-20T03:17:01.130Z REQ app-version-policy app=explorer mode=required delay=3000
+2026-10-20T03:17:04.183Z DEVICE POSTHOG_CAPTURE version_gate_required {"app_id":"explorer","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T03:17:06.849Z DEVICE STREAM_START
+2026-10-20T03:17:23.455Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"down","delayMs":0}}
+--- EX OFFLINE cached-required 03:17:23
+2026-10-20T03:17:27.667Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:17:28.406Z DEVICE JS_START bundle=AEMB
+2026-10-20T03:17:28.721Z REQ app-version-policy app=explorer mode=down delay=0
+2026-10-20T03:17:28.746Z REQ app-version-policy app=explorer mode=down delay=0
+2026-10-20T03:17:28.781Z REQ app-version-policy app=explorer mode=down delay=0
+2026-10-20T03:17:28.838Z DEVICE POSTHOG_CAPTURE version_gate_offline_cached_required {"app_id":"explorer","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T03:17:34.328Z DEVICE STREAM_START
+2026-10-20T03:17:44.874Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+2026-10-20T03:17:47.410Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:17:48.044Z DEVICE JS_START bundle=AEMB
+2026-10-20T03:17:48.264Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:17:48.361Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:17:48.945Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:17:53.995Z DEVICE STREAM_START
+2026-10-20T03:17:57.012Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"required","delayMs":3000}}
+--- EX A1-LATE cached allowed, 3s required 03:17:57
+2026-10-20T03:17:59.250Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:17:59.902Z DEVICE JS_START bundle=AEMB
+2026-10-20T03:18:00.139Z REQ app-version-policy app=explorer mode=required delay=3000
+2026-10-20T03:18:01.664Z DEVICE POSTHOG_CAPTURE version_gate_timeout {"app_id":"explorer","platform":"android","installed_version":"1.1.6","had_cached_policy":true}
+2026-10-20T03:18:02.299Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:18:03.306Z DEVICE POSTHOG_CAPTURE version_gate_late_required {"app_id":"explorer","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T03:18:05.835Z DEVICE STREAM_START
+2026-10-20T03:18:15.887Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+2026-10-20T03:18:18.257Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:18:18.944Z DEVICE JS_START bundle=AEMB
+2026-10-20T03:18:19.165Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:18:19.232Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:18:19.690Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:18:24.895Z DEVICE STREAM_START
+--- EX A2 backgrounded (fake clock 20s), pid 1193 03:18:43
+2026-10-20T03:19:08.104Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"required","delayMs":3000}}
+2026-10-20T03:19:08.722Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:19:08.768Z REQ app-version-policy app=explorer mode=required delay=3000
+2026-10-20T03:19:11.308Z DEVICE POSTHOG_CAPTURE version_gate_timeout {"app_id":"explorer","platform":"android","installed_version":"1.1.6","had_cached_policy":true}
+2026-10-20T03:19:13.547Z DEVICE POSTHOG_CAPTURE version_gate_late_required {"app_id":"explorer","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T03:19:18.598Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+2026-10-20T03:19:22.417Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> none
+2026-10-20T03:19:23.500Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:19:25.333Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:19:48.670Z CONTROL {"apps":{"explorer":{"current":"ex-ota","criticalIndex":1},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EX B2-GOOD criticalIndex 1 03:19:51
+2026-10-20T03:19:52.557Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> ex-ota
+2026-10-20T03:19:52.750Z MANIFEST_SERVE app=explorer ex-ota id=8c913251-a06c-4389-b336-1ba9bd306c8d criticalIndex=1
+2026-10-20T03:19:55.407Z MANIFEST_REQ app=explorer platform=android current_update=465a8a65-9499-4ec5-9944-925ad9c8f124 -> ex-ota
+2026-10-20T03:19:55.553Z MANIFEST_SERVE app=explorer ex-ota id=8c913251-a06c-4389-b336-1ba9bd306c8d criticalIndex=1
+2026-10-20T03:20:00.295Z DEVICE JS_START bundle=AOTA
+2026-10-20T03:23:03.905Z CONTROL {"apps":{"explorer":{"current":"ex-ota2","criticalIndex":1},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EX adopt ex-ota2 (non-critical, idx1) 03:23:03
+2026-10-20T03:23:06.468Z MANIFEST_REQ app=explorer platform=android current_update=8c913251-a06c-4389-b336-1ba9bd306c8d -> ex-ota2
+2026-10-20T03:23:06.662Z MANIFEST_SERVE app=explorer ex-ota2 id=d557c23d-2f3a-4c81-9f30-4029079ead76 criticalIndex=1
+2026-10-20T03:23:07.214Z DEVICE JS_START bundle=AOTA
+2026-10-20T03:23:07.519Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:23:07.592Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:23:08.171Z DEVICE POSTHOG_CAPTURE critical_update_applied_verified {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"8c913251-a06c-4389-b336-1ba9bd306c8d","running_critical_index":1,"target_update_id":"8c913251-a06c-4389-b336-1ba9bd306c8d","attempts":1}
+2026-10-20T03:23:08.500Z MANIFEST_REQ app=explorer platform=android current_update=8c913251-a06c-4389-b336-1ba9bd306c8d -> ex-ota2
+2026-10-20T03:23:08.690Z MANIFEST_SERVE app=explorer ex-ota2 id=d557c23d-2f3a-4c81-9f30-4029079ead76 criticalIndex=1
+2026-10-20T03:23:13.077Z DEVICE STREAM_START
+2026-10-20T03:23:32.828Z MANIFEST_REQ app=explorer platform=android current_update=d557c23d-2f3a-4c81-9f30-4029079ead76 -> ex-ota2
+2026-10-20T03:23:33.020Z MANIFEST_SERVE app=explorer ex-ota2 id=d557c23d-2f3a-4c81-9f30-4029079ead76 criticalIndex=1
+2026-10-20T03:23:33.419Z DEVICE JS_START bundle=AOTA2
+2026-10-20T03:23:33.653Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:23:33.708Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:23:34.179Z MANIFEST_REQ app=explorer platform=android current_update=d557c23d-2f3a-4c81-9f30-4029079ead76 -> ex-ota2
+2026-10-20T03:23:34.327Z MANIFEST_SERVE app=explorer ex-ota2 id=d557c23d-2f3a-4c81-9f30-4029079ead76 criticalIndex=1
+2026-10-20T03:23:39.367Z DEVICE STREAM_START
+2026-10-20T03:23:56.288Z CONTROL {"apps":{"explorer":{"current":"ex-crit2","criticalIndex":2},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EX B2-GOOD-2 criticalIndex 2 03:23:59
+2026-10-20T03:24:00.054Z MANIFEST_REQ app=explorer platform=android current_update=d557c23d-2f3a-4c81-9f30-4029079ead76 -> ex-crit2
+2026-10-20T03:24:00.288Z MANIFEST_SERVE app=explorer ex-crit2 id=68f1ddad-2666-47f1-a4ec-07a06fb71552 criticalIndex=2
+2026-10-20T03:24:00.367Z DEVICE POSTHOG_CAPTURE critical_update_offered {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"d557c23d-2f3a-4c81-9f30-4029079ead76","running_critical_index":1,"target_update_id":"68f1ddad-2666-47f1-a4ec-07a06fb71552","offered_critical_index":2,"attempt":1,"enforcement_source":"no_row"}
+2026-10-20T03:24:00.385Z MANIFEST_REQ app=explorer platform=android current_update=d557c23d-2f3a-4c81-9f30-4029079ead76 -> ex-crit2
+2026-10-20T03:24:00.600Z MANIFEST_SERVE app=explorer ex-crit2 id=68f1ddad-2666-47f1-a4ec-07a06fb71552 criticalIndex=2
+2026-10-20T03:24:02.370Z DEVICE POSTHOG_CAPTURE critical_update_reloading {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"d557c23d-2f3a-4c81-9f30-4029079ead76","running_critical_index":1,"target_update_id":"68f1ddad-2666-47f1-a4ec-07a06fb71552","attempt":1}
+2026-10-20T03:24:02.379Z DEVICE PAUSE_BEGIN
+2026-10-20T03:24:03.116Z DEVICE JS_START bundle=AOTA2
+2026-10-20T03:24:03.358Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:24:03.377Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:24:03.655Z DEVICE POSTHOG_CAPTURE critical_update_applied_verified {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"68f1ddad-2666-47f1-a4ec-07a06fb71552","running_critical_index":2,"target_update_id":"68f1ddad-2666-47f1-a4ec-07a06fb71552","attempts":1}
+2026-10-20T03:24:03.697Z MANIFEST_REQ app=explorer platform=android current_update=68f1ddad-2666-47f1-a4ec-07a06fb71552 -> ex-crit2
+2026-10-20T03:24:03.844Z MANIFEST_SERVE app=explorer ex-crit2 id=68f1ddad-2666-47f1-a4ec-07a06fb71552 criticalIndex=2
+2026-10-20T03:24:09.130Z DEVICE STREAM_START
+2026-10-20T03:24:42.675Z CONTROL {"apps":{"explorer":{"current":"ex-crash2","criticalIndex":3},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EX B2-BAD crash-on-launch criticalIndex 3 03:24:45
+2026-10-20T03:24:46.352Z MANIFEST_REQ app=explorer platform=android current_update=68f1ddad-2666-47f1-a4ec-07a06fb71552 -> ex-crash2
+2026-10-20T03:24:46.541Z MANIFEST_SERVE app=explorer ex-crash2 id=a125df55-ecad-43a8-bcbc-d5038c887779 criticalIndex=3
+2026-10-20T03:24:46.648Z DEVICE POSTHOG_CAPTURE critical_update_offered {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"68f1ddad-2666-47f1-a4ec-07a06fb71552","running_critical_index":2,"target_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","offered_critical_index":3,"attempt":1,"enforcement_source":"no_row"}
+2026-10-20T03:24:46.662Z MANIFEST_REQ app=explorer platform=android current_update=68f1ddad-2666-47f1-a4ec-07a06fb71552 -> ex-crash2
+2026-10-20T03:24:46.808Z MANIFEST_SERVE app=explorer ex-crash2 id=a125df55-ecad-43a8-bcbc-d5038c887779 criticalIndex=3
+2026-10-20T03:24:48.703Z DEVICE POSTHOG_CAPTURE critical_update_reloading {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"68f1ddad-2666-47f1-a4ec-07a06fb71552","running_critical_index":2,"target_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","attempt":1}
+2026-10-20T03:24:48.718Z DEVICE PAUSE_BEGIN
+2026-10-20T03:24:49.409Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:24:49.709Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:24:49.731Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:24:49.972Z DEVICE POSTHOG_CAPTURE critical_update_applied_verified {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","running_critical_index":3,"target_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","attempts":1}
+2026-10-20T03:24:49.993Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-crash2
+2026-10-20T03:24:50.138Z MANIFEST_SERVE app=explorer ex-crash2 id=a125df55-ecad-43a8-bcbc-d5038c887779 criticalIndex=3
+2026-10-20T03:24:55.419Z DEVICE STREAM_START
+2026-10-20T03:26:16.115Z CONTROL {"apps":{"explorer":{"current":"ex-crash3","criticalIndex":4},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EX B2-BAD3 crash-on-launch criticalIndex 4 03:26:19
+2026-10-20T03:26:19.900Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-crash3
+2026-10-20T03:26:20.092Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+2026-10-20T03:26:20.173Z DEVICE POSTHOG_CAPTURE critical_update_offered {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","running_critical_index":3,"target_update_id":"bc975a50-78c4-47dc-875d-0c871ca2086e","offered_critical_index":4,"attempt":1,"enforcement_source":"no_row"}
+2026-10-20T03:26:20.212Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-crash3
+2026-10-20T03:26:20.361Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+2026-10-20T03:26:22.162Z DEVICE POSTHOG_CAPTURE critical_update_reloading {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","running_critical_index":3,"target_update_id":"bc975a50-78c4-47dc-875d-0c871ca2086e","attempt":1}
+2026-10-20T03:26:22.173Z DEVICE PAUSE_BEGIN
+2026-10-20T03:26:22.817Z DEVICE CRASH_BUNDLE_LAUNCHING
+2026-10-20T03:26:22.818Z DEVICE JS_START bundle=ACRASH3
+--- EX B2-BAD3 cold start #1 after crash bundle 03:27:37
+2026-10-20T03:27:40.879Z MANIFEST_REQ app=explorer platform=android current_update=bc975a50-78c4-47dc-875d-0c871ca2086e -> ex-crash3
+2026-10-20T03:27:41.079Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+2026-10-20T03:27:41.412Z MANIFEST_REQ app=explorer platform=android current_update=bc975a50-78c4-47dc-875d-0c871ca2086e -> ex-crash3
+2026-10-20T03:27:41.560Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+--- EX B2-BAD3 cold start #2 after crash bundle 03:28:04
+2026-10-20T03:28:07.241Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-crash3
+2026-10-20T03:28:07.532Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+2026-10-20T03:28:07.828Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:28:08.032Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:28:08.096Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:28:08.586Z DEVICE POSTHOG_CAPTURE critical_update_attempt_failed {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","running_critical_index":3,"stage":"relaunch","target_update_id":"bc975a50-78c4-47dc-875d-0c871ca2086e","attempts":1}
+2026-10-20T03:28:08.628Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-crash3
+2026-10-20T03:28:08.773Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+2026-10-20T03:28:08.878Z DEVICE POSTHOG_CAPTURE critical_update_previously_failed {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","running_critical_index":3}
+2026-10-20T03:28:13.775Z DEVICE STREAM_START
+--- EX B2-BAD3 cold start #3 after crash bundle 03:28:32
+2026-10-20T03:28:34.743Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-crash3
+2026-10-20T03:28:34.973Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+2026-10-20T03:28:35.333Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:28:35.559Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:28:35.607Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:28:36.135Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-crash3
+2026-10-20T03:28:36.289Z MANIFEST_SERVE app=explorer ex-crash3 id=bc975a50-78c4-47dc-875d-0c871ca2086e criticalIndex=4
+2026-10-20T03:28:36.358Z DEVICE POSTHOG_CAPTURE critical_update_previously_failed {"app_id":"explorer","platform":"android","runtime_version":"1.1.6","running_update_id":"a125df55-ecad-43a8-bcbc-d5038c887779","running_critical_index":3}
+2026-10-20T03:28:41.271Z DEVICE STREAM_START
+2026-10-20T03:29:24.551Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EXLOOP TAP 1 03:29:26
+2026-10-20T03:29:26.764Z DEVICE BANNER_TAP
+2026-10-20T03:29:26.765Z DEVICE PAUSE_BEGIN
+2026-10-20T03:29:26.832Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:29:27.434Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:29:27.665Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:29:27.686Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:29:27.946Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:29:33.438Z DEVICE STREAM_START
+--- EXLOOP TAP 2 03:29:37
+2026-10-20T03:29:37.174Z DEVICE BANNER_TAP
+2026-10-20T03:29:37.182Z DEVICE PAUSE_BEGIN
+2026-10-20T03:29:37.251Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:29:37.832Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:29:38.070Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:29:38.095Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:29:38.352Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:29:43.844Z DEVICE STREAM_START
+--- EXLOOP TAP 3 03:29:47
+2026-10-20T03:29:47.574Z DEVICE BANNER_TAP
+2026-10-20T03:29:47.584Z DEVICE PAUSE_BEGIN
+2026-10-20T03:29:47.640Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:29:48.232Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:29:48.471Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:29:48.490Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:29:48.756Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:29:54.241Z DEVICE STREAM_START
+--- EXLOOP TAP 4 03:29:57
+2026-10-20T03:29:58.000Z DEVICE BANNER_TAP
+2026-10-20T03:29:58.009Z DEVICE PAUSE_BEGIN
+2026-10-20T03:29:58.077Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:29:58.635Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:29:58.872Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:29:58.899Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:29:59.149Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:04.647Z DEVICE STREAM_START
+--- EXLOOP TAP 5 03:30:08
+2026-10-20T03:30:08.447Z DEVICE BANNER_TAP
+2026-10-20T03:30:08.455Z DEVICE PAUSE_BEGIN
+2026-10-20T03:30:08.528Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:09.026Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:30:09.259Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:30:09.284Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:30:09.534Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:15.043Z DEVICE STREAM_START
+--- EXLOOP TAP 6 03:30:18
+2026-10-20T03:30:18.873Z DEVICE BANNER_TAP
+2026-10-20T03:30:18.879Z DEVICE PAUSE_BEGIN
+2026-10-20T03:30:18.941Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:19.554Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:30:19.786Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:30:19.804Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:30:20.055Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:25.578Z DEVICE STREAM_START
+--- EXLOOP TAP 7 03:30:29
+2026-10-20T03:30:29.329Z DEVICE BANNER_TAP
+2026-10-20T03:30:29.338Z DEVICE PAUSE_BEGIN
+2026-10-20T03:30:29.399Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:29.975Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:30:30.220Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:30:30.242Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:30:30.514Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:35.991Z DEVICE STREAM_START
+--- EXLOOP TAP 8 03:30:39
+2026-10-20T03:30:39.737Z DEVICE BANNER_TAP
+2026-10-20T03:30:39.745Z DEVICE PAUSE_BEGIN
+2026-10-20T03:30:39.811Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:40.377Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:30:40.616Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:30:40.637Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:30:40.891Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:46.389Z DEVICE STREAM_START
+--- EXLOOP TAP 9 03:30:50
+2026-10-20T03:30:50.160Z DEVICE BANNER_TAP
+2026-10-20T03:30:50.180Z DEVICE PAUSE_BEGIN
+2026-10-20T03:30:50.242Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:50.784Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:30:51.030Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:30:51.053Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:30:51.301Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:30:56.806Z DEVICE STREAM_START
+--- EXLOOP TAP 10 03:31:00
+2026-10-20T03:31:00.712Z DEVICE BANNER_TAP
+2026-10-20T03:31:00.721Z DEVICE PAUSE_BEGIN
+2026-10-20T03:31:00.793Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:01.318Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:31:01.556Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:31:01.583Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:31:01.839Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:07.339Z DEVICE STREAM_START
+--- EXLOOP TAP 11 03:31:11
+2026-10-20T03:31:11.166Z DEVICE BANNER_TAP
+2026-10-20T03:31:11.178Z DEVICE PAUSE_BEGIN
+2026-10-20T03:31:11.234Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:11.858Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:31:12.106Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:31:12.125Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:31:12.373Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:17.921Z DEVICE STREAM_START
+--- EXLOOP TAP 12 03:31:21
+2026-10-20T03:31:21.560Z DEVICE PAUSE_BEGIN
+2026-10-20T03:31:21.569Z DEVICE BANNER_TAP
+2026-10-20T03:31:21.622Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:22.262Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:31:22.504Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:31:22.524Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:31:22.775Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:28.279Z DEVICE STREAM_START
+--- EXLOOP TAP 13 03:31:31
+2026-10-20T03:31:31.993Z DEVICE BANNER_TAP
+2026-10-20T03:31:32.002Z DEVICE PAUSE_BEGIN
+2026-10-20T03:31:32.077Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:32.679Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:31:32.917Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:31:32.942Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:31:33.201Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:38.690Z DEVICE STREAM_START
+--- EXLOOP TAP 14 03:31:42
+2026-10-20T03:31:42.436Z DEVICE BANNER_TAP
+2026-10-20T03:31:42.444Z DEVICE PAUSE_BEGIN
+2026-10-20T03:31:42.502Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:43.118Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:31:43.358Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:31:43.382Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:31:43.652Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:49.134Z DEVICE STREAM_START
+--- EXLOOP TAP 15 03:31:52
+2026-10-20T03:31:52.823Z DEVICE BANNER_TAP
+2026-10-20T03:31:52.833Z DEVICE PAUSE_BEGIN
+2026-10-20T03:31:52.905Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:53.525Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:31:53.771Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:31:53.791Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:31:54.049Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:31:59.547Z DEVICE STREAM_START
+--- EXLOOP TAP 16 03:32:03
+2026-10-20T03:32:03.240Z DEVICE BANNER_TAP
+2026-10-20T03:32:03.247Z DEVICE PAUSE_BEGIN
+2026-10-20T03:32:03.314Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:03.956Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:32:04.207Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:32:04.222Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:32:04.470Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:09.974Z DEVICE STREAM_START
+--- EXLOOP TAP 17 03:32:13
+2026-10-20T03:32:13.652Z DEVICE BANNER_TAP
+2026-10-20T03:32:13.661Z DEVICE PAUSE_BEGIN
+2026-10-20T03:32:13.721Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:14.311Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:32:14.558Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:32:14.579Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:32:14.823Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:20.328Z DEVICE STREAM_START
+--- EXLOOP TAP 18 03:32:23
+2026-10-20T03:32:24.082Z DEVICE BANNER_TAP
+2026-10-20T03:32:24.089Z DEVICE PAUSE_BEGIN
+2026-10-20T03:32:24.164Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:24.751Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:32:24.984Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:32:25.001Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:32:25.247Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:30.754Z DEVICE STREAM_START
+--- EXLOOP TAP 19 03:32:34
+2026-10-20T03:32:34.462Z DEVICE BANNER_TAP
+2026-10-20T03:32:34.475Z DEVICE PAUSE_BEGIN
+2026-10-20T03:32:34.523Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:35.188Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:32:35.431Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:32:35.452Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:32:35.709Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:41.205Z DEVICE STREAM_START
+--- EXLOOP TAP 20 03:32:44
+2026-10-20T03:32:44.876Z DEVICE BANNER_TAP
+2026-10-20T03:32:44.884Z DEVICE PAUSE_BEGIN
+2026-10-20T03:32:44.959Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:45.546Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:32:45.795Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:32:45.816Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:32:46.063Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> none
+2026-10-20T03:32:51.552Z DEVICE STREAM_START
+2026-10-20T03:33:24.122Z CONTROL {"apps":{"explorer":{"current":"ex-fail3","criticalIndex":3},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EX adopt ex-fail3 03:33:24
+2026-10-20T03:33:26.325Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-fail3
+2026-10-20T03:33:26.559Z MANIFEST_SERVE app=explorer ex-fail3 id=55733850-d04c-4386-8db4-890cf81a3737 criticalIndex=3
+2026-10-20T03:33:27.368Z DEVICE JS_START bundle=ACRASH2
+2026-10-20T03:33:27.625Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:33:27.694Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:33:28.673Z MANIFEST_REQ app=explorer platform=android current_update=a125df55-ecad-43a8-bcbc-d5038c887779 -> ex-fail3
+2026-10-20T03:33:28.816Z MANIFEST_SERVE app=explorer ex-fail3 id=55733850-d04c-4386-8db4-890cf81a3737 criticalIndex=3
+2026-10-20T03:33:33.068Z DEVICE STREAM_START
+2026-10-20T03:33:52.973Z MANIFEST_REQ app=explorer platform=android current_update=55733850-d04c-4386-8db4-890cf81a3737 -> ex-fail3
+2026-10-20T03:33:53.163Z MANIFEST_SERVE app=explorer ex-fail3 id=55733850-d04c-4386-8db4-890cf81a3737 criticalIndex=3
+2026-10-20T03:33:53.571Z DEVICE JS_START bundle=AFAIL3
+2026-10-20T03:33:53.572Z DEVICE RELOAD_PATCHED ok=true
+2026-10-20T03:33:53.784Z REQ app-version-policy app=explorer mode=allowed delay=0
+2026-10-20T03:33:53.818Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"explorer","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T03:33:54.284Z MANIFEST_REQ app=explorer platform=android current_update=55733850-d04c-4386-8db4-890cf81a3737 -> ex-fail3
+2026-10-20T03:33:54.528Z MANIFEST_SERVE app=explorer ex-fail3 id=55733850-d04c-4386-8db4-890cf81a3737 criticalIndex=3
+2026-10-20T03:33:59.511Z DEVICE STREAM_START
+2026-10-20T03:34:07.642Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- EX FAIL TAP 03:34:08
+2026-10-20T03:34:08.952Z DEVICE PAUSE_BEGIN
+2026-10-20T03:34:08.952Z DEVICE BANNER_TAP
+2026-10-20T03:34:09.018Z MANIFEST_REQ app=explorer platform=android current_update=55733850-d04c-4386-8db4-890cf81a3737 -> none
+2026-10-20T03:34:09.177Z DEVICE RELOAD_REJECTED Error: harness: forced reload failure
+2026-10-20T03:34:09.179Z DEVICE FORCED_RELOAD_FAILURE
+2026-10-20T04:00:02.872Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"down","delayMs":0}}
+--- HO OFFLINE no-cache first launch 04:00:02
+2026-10-20T04:00:05.294Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:00:06.245Z DEVICE JS_START bundle=HEMB
+2026-10-20T04:00:06.250Z REQ app-version-policy app=business mode=down delay=0
+2026-10-20T04:00:06.274Z DEVICE POSTHOG_CAPTURE version_gate_unreachable {"app_id":"business","platform":"android","installed_version":"1.1.6","error":"Network request failed","had_cached_policy":false}
+2026-10-20T04:00:06.476Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:00:12.156Z DEVICE STREAM_START
+2026-10-20T04:00:27.632Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"required","delayMs":3000}}
+--- HO A1 no-cache 3s required 04:00:27
+2026-10-20T04:00:29.895Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:00:30.662Z DEVICE JS_START bundle=HEMB
+2026-10-20T04:00:30.700Z REQ app-version-policy app=business mode=required delay=3000
+2026-10-20T04:00:33.751Z DEVICE POSTHOG_CAPTURE version_gate_required {"app_id":"business","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T04:00:36.619Z DEVICE STREAM_START
+2026-10-20T04:00:56.195Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"down","delayMs":0}}
+--- HO OFFLINE cached-required 04:00:56
+2026-10-20T04:00:58.213Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:00:58.976Z DEVICE JS_START bundle=HEMB
+2026-10-20T04:00:59.002Z REQ app-version-policy app=business mode=down delay=0
+2026-10-20T04:00:59.055Z DEVICE POSTHOG_CAPTURE version_gate_offline_cached_required {"app_id":"business","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T04:01:04.928Z DEVICE STREAM_START
+2026-10-20T04:01:10.457Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+2026-10-20T04:01:12.583Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:01:13.311Z DEVICE JS_START bundle=HEMB
+2026-10-20T04:01:13.344Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:01:13.422Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:01:13.620Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:01:19.268Z DEVICE STREAM_START
+2026-10-20T04:01:24.212Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"required","delayMs":3000}}
+--- HO A1-LATE cached allowed 3s required 04:01:24
+2026-10-20T04:01:26.261Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:01:26.983Z DEVICE JS_START bundle=HEMB
+2026-10-20T04:01:27.014Z REQ app-version-policy app=business mode=required delay=3000
+2026-10-20T04:01:28.511Z DEVICE POSTHOG_CAPTURE version_gate_timeout {"app_id":"business","platform":"android","installed_version":"1.1.6","had_cached_policy":true}
+2026-10-20T04:01:28.665Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:01:30.053Z DEVICE POSTHOG_CAPTURE version_gate_late_required {"app_id":"business","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T04:01:32.941Z DEVICE STREAM_START
+2026-10-20T04:01:40.924Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+2026-10-20T04:01:42.892Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:01:43.644Z DEVICE JS_START bundle=HEMB
+2026-10-20T04:01:43.678Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:01:43.772Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:01:43.962Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:01:49.613Z DEVICE STREAM_START
+--- HO A2 backgrounded 25s (fake clock 20s) pid 11643 04:02:08
+2026-10-20T04:02:33.432Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"required","delayMs":3000}}
+2026-10-20T04:02:33.919Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:02:33.955Z REQ app-version-policy app=business mode=required delay=3000
+2026-10-20T04:02:35.455Z DEVICE POSTHOG_CAPTURE version_gate_timeout {"app_id":"business","platform":"android","installed_version":"1.1.6","had_cached_policy":true}
+2026-10-20T04:02:37.003Z DEVICE POSTHOG_CAPTURE version_gate_late_required {"app_id":"business","platform":"android","installed_version":"1.1.6","minimum_version":"9.9.9"}
+2026-10-20T04:02:43.737Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+2026-10-20T04:02:47.373Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> none
+2026-10-20T04:02:47.417Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:02:47.494Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:03:03.239Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":"ho-ota","criticalIndex":1}},"version":{"mode":"allowed","delayMs":0}}
+--- HO B2-GOOD criticalIndex 1 04:03:06
+2026-10-20T04:03:07.027Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> ho-ota
+2026-10-20T04:03:07.261Z MANIFEST_SERVE app=host ho-ota id=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 criticalIndex=1
+2026-10-20T04:03:07.438Z DEVICE POSTHOG_CAPTURE critical_update_offered {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c52b046f-c452-445d-88b5-cc0547cb1361","running_critical_index":0,"target_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","offered_critical_index":1,"attempt":1,"enforcement_source":"no_row"}
+2026-10-20T04:03:07.448Z MANIFEST_REQ app=host platform=android current_update=c52b046f-c452-445d-88b5-cc0547cb1361 -> ho-ota
+2026-10-20T04:03:07.611Z MANIFEST_SERVE app=host ho-ota id=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 criticalIndex=1
+2026-10-20T04:03:10.477Z DEVICE POSTHOG_CAPTURE critical_update_reloading {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c52b046f-c452-445d-88b5-cc0547cb1361","running_critical_index":0,"target_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","attempt":1}
+2026-10-20T04:03:10.485Z DEVICE PAUSE_BEGIN
+2026-10-20T04:03:11.422Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:03:11.522Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:03:11.543Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:03:11.688Z DEVICE POSTHOG_CAPTURE critical_update_applied_verified {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","running_critical_index":1,"target_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","attempts":1}
+2026-10-20T04:03:11.710Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-ota
+2026-10-20T04:03:11.863Z MANIFEST_SERVE app=host ho-ota id=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 criticalIndex=1
+2026-10-20T04:03:17.440Z DEVICE STREAM_START
+2026-10-20T04:03:44.175Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":"ho-crash","criticalIndex":2}},"version":{"mode":"allowed","delayMs":0}}
+--- HO B2-BAD crash-on-launch criticalIndex 2 04:03:47
+2026-10-20T04:03:47.774Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-crash
+2026-10-20T04:03:47.978Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+2026-10-20T04:03:48.066Z DEVICE POSTHOG_CAPTURE critical_update_offered {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","running_critical_index":1,"target_update_id":"6704ef71-0845-4af6-88f0-00cd91a0226f","offered_critical_index":2,"attempt":1,"enforcement_source":"no_row"}
+2026-10-20T04:03:48.076Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-crash
+2026-10-20T04:03:48.234Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+2026-10-20T04:03:50.981Z DEVICE POSTHOG_CAPTURE critical_update_reloading {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","running_critical_index":1,"target_update_id":"6704ef71-0845-4af6-88f0-00cd91a0226f","attempt":1}
+2026-10-20T04:03:50.988Z DEVICE PAUSE_BEGIN
+2026-10-20T04:03:51.928Z DEVICE CRASH_BUNDLE_LAUNCHING
+2026-10-20T04:03:51.931Z DEVICE JS_START bundle=HCRASH
+--- HO B2-BAD cold start #1 04:04:13
+2026-10-20T04:04:16.705Z MANIFEST_REQ app=host platform=android current_update=6704ef71-0845-4af6-88f0-00cd91a0226f -> ho-crash
+2026-10-20T04:04:16.910Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+2026-10-20T04:04:17.386Z MANIFEST_REQ app=host platform=android current_update=6704ef71-0845-4af6-88f0-00cd91a0226f -> ho-crash
+2026-10-20T04:04:17.537Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+--- HO B2-BAD cold start #2 04:04:40
+2026-10-20T04:04:43.681Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-crash
+2026-10-20T04:04:43.890Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+2026-10-20T04:04:44.478Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:04:44.509Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:04:44.539Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:04:44.686Z DEVICE POSTHOG_CAPTURE critical_update_attempt_failed {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","running_critical_index":1,"stage":"relaunch","target_update_id":"6704ef71-0845-4af6-88f0-00cd91a0226f","attempts":1}
+2026-10-20T04:04:44.730Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-crash
+2026-10-20T04:04:44.882Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+2026-10-20T04:04:44.966Z DEVICE POSTHOG_CAPTURE critical_update_previously_failed {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","running_critical_index":1}
+2026-10-20T04:04:50.434Z DEVICE STREAM_START
+--- HO B2-BAD cold start #3 04:05:08
+2026-10-20T04:05:10.887Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-crash
+2026-10-20T04:05:11.097Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+2026-10-20T04:05:11.645Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:05:11.676Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:05:11.696Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:05:11.895Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-crash
+2026-10-20T04:05:12.072Z MANIFEST_SERVE app=host ho-crash id=6704ef71-0845-4af6-88f0-00cd91a0226f criticalIndex=2
+2026-10-20T04:05:12.126Z DEVICE POSTHOG_CAPTURE critical_update_previously_failed {"app_id":"business","platform":"android","runtime_version":"1.1.6","running_update_id":"c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011","running_critical_index":1}
+2026-10-20T04:05:17.602Z DEVICE STREAM_START
+2026-10-20T04:05:47.144Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- HOLOOP TAP 1 04:05:53
+2026-10-20T04:05:53.550Z DEVICE BANNER_TAP
+2026-10-20T04:05:53.551Z DEVICE PAUSE_BEGIN
+2026-10-20T04:05:53.616Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:05:54.265Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:05:54.345Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:05:54.365Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:05:54.535Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:00.291Z DEVICE STREAM_START
+--- HOLOOP TAP 2 04:06:03
+2026-10-20T04:06:03.950Z DEVICE PAUSE_BEGIN
+2026-10-20T04:06:03.960Z DEVICE BANNER_TAP
+2026-10-20T04:06:04.029Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:04.742Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:06:04.819Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:06:04.834Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:06:04.982Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:10.758Z DEVICE STREAM_START
+--- HOLOOP TAP 3 04:06:14
+2026-10-20T04:06:14.390Z DEVICE BANNER_TAP
+2026-10-20T04:06:14.397Z DEVICE PAUSE_BEGIN
+2026-10-20T04:06:14.485Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:15.192Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:06:15.262Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:06:15.282Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:06:15.429Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:21.216Z DEVICE STREAM_START
+--- HOLOOP TAP 4 04:06:24
+2026-10-20T04:06:24.812Z DEVICE BANNER_TAP
+2026-10-20T04:06:24.822Z DEVICE PAUSE_BEGIN
+2026-10-20T04:06:24.886Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:25.655Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:06:25.723Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:06:25.742Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:06:25.888Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:31.665Z DEVICE STREAM_START
+--- HOLOOP TAP 5 04:06:35
+2026-10-20T04:06:35.256Z DEVICE BANNER_TAP
+2026-10-20T04:06:35.256Z DEVICE PAUSE_BEGIN
+2026-10-20T04:06:35.322Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:36.134Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:06:36.216Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:06:36.232Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:06:36.386Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:42.152Z DEVICE STREAM_START
+--- HOLOOP TAP 6 04:06:45
+2026-10-20T04:06:45.682Z DEVICE BANNER_TAP
+2026-10-20T04:06:45.690Z DEVICE PAUSE_BEGIN
+2026-10-20T04:06:45.768Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:46.443Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:06:46.528Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:06:46.543Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:06:46.697Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:52.467Z DEVICE STREAM_START
+--- HOLOOP TAP 7 04:06:55
+2026-10-20T04:06:56.106Z DEVICE BANNER_TAP
+2026-10-20T04:06:56.114Z DEVICE PAUSE_BEGIN
+2026-10-20T04:06:56.186Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:06:56.917Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:06:56.995Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:06:57.010Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:06:57.120Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:02.926Z DEVICE STREAM_START
+--- HOLOOP TAP 8 04:07:06
+2026-10-20T04:07:06.520Z DEVICE BANNER_TAP
+2026-10-20T04:07:06.527Z DEVICE PAUSE_BEGIN
+2026-10-20T04:07:06.620Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:07.339Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:07:07.416Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:07:07.431Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:07:07.580Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:13.353Z DEVICE STREAM_START
+--- HOLOOP TAP 9 04:07:16
+2026-10-20T04:07:16.928Z DEVICE BANNER_TAP
+2026-10-20T04:07:16.933Z DEVICE PAUSE_BEGIN
+2026-10-20T04:07:17.011Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:17.794Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:07:17.869Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:07:17.888Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:07:17.999Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:23.807Z DEVICE STREAM_START
+--- HOLOOP TAP 10 04:07:27
+2026-10-20T04:07:27.331Z DEVICE PAUSE_BEGIN
+2026-10-20T04:07:27.340Z DEVICE BANNER_TAP
+2026-10-20T04:07:27.410Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:28.153Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:07:28.224Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:07:28.242Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:07:28.397Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:34.173Z DEVICE STREAM_START
+--- HOLOOP TAP 11 04:07:37
+2026-10-20T04:07:37.727Z DEVICE BANNER_TAP
+2026-10-20T04:07:37.732Z DEVICE PAUSE_BEGIN
+2026-10-20T04:07:37.806Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:38.477Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:07:38.557Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:07:38.574Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:07:38.723Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:44.497Z DEVICE STREAM_START
+--- HOLOOP TAP 12 04:07:47
+2026-10-20T04:07:48.093Z DEVICE BANNER_TAP
+2026-10-20T04:07:48.101Z DEVICE PAUSE_BEGIN
+2026-10-20T04:07:48.173Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:48.972Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:07:49.046Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:07:49.064Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:07:49.180Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:54.987Z DEVICE STREAM_START
+--- HOLOOP TAP 13 04:07:58
+2026-10-20T04:07:58.508Z DEVICE BANNER_TAP
+2026-10-20T04:07:58.514Z DEVICE PAUSE_BEGIN
+2026-10-20T04:07:58.576Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:07:59.277Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:07:59.358Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:07:59.374Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:07:59.528Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:08:05.293Z DEVICE STREAM_START
+--- HOLOOP TAP 14 04:08:08
+2026-10-20T04:08:08.911Z DEVICE BANNER_TAP
+2026-10-20T04:08:08.916Z DEVICE PAUSE_BEGIN
+2026-10-20T04:08:08.996Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:08:09.763Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:08:09.833Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:08:09.861Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:08:10.009Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:08:15.766Z DEVICE STREAM_START
+--- HOLOOP TAP 15 04:08:19
+2026-10-20T04:08:19.324Z DEVICE PAUSE_BEGIN
+2026-10-20T04:08:19.330Z DEVICE BANNER_TAP
+2026-10-20T04:08:19.395Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:08:20.134Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:08:20.210Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:08:20.228Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:08:20.383Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> none
+2026-10-20T04:08:26.151Z DEVICE STREAM_START
+2026-10-20T04:08:41.606Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":"ho-fail","criticalIndex":1}},"version":{"mode":"allowed","delayMs":0}}
+--- HO adopt ho-fail 04:08:41
+2026-10-20T04:08:44.243Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-fail
+2026-10-20T04:08:44.505Z MANIFEST_SERVE app=host ho-fail id=80fef86b-46f9-4c60-a9ce-aa497799845e criticalIndex=1
+2026-10-20T04:08:45.128Z DEVICE JS_START bundle=HOTA
+2026-10-20T04:08:45.128Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:08:45.204Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:08:46.251Z MANIFEST_REQ app=host platform=android current_update=c0c7a0cd-8b25-4fc7-92e2-bd044cfc5011 -> ho-fail
+2026-10-20T04:08:46.431Z MANIFEST_SERVE app=host ho-fail id=80fef86b-46f9-4c60-a9ce-aa497799845e criticalIndex=1
+2026-10-20T04:08:51.008Z DEVICE STREAM_START
+2026-10-20T04:09:10.466Z MANIFEST_REQ app=host platform=android current_update=80fef86b-46f9-4c60-a9ce-aa497799845e -> ho-fail
+2026-10-20T04:09:10.669Z MANIFEST_SERVE app=host ho-fail id=80fef86b-46f9-4c60-a9ce-aa497799845e criticalIndex=1
+2026-10-20T04:09:11.198Z DEVICE RELOAD_PATCHED ok=true
+2026-10-20T04:09:11.199Z DEVICE JS_START bundle=HFAIL
+2026-10-20T04:09:11.236Z REQ app-version-policy app=business mode=allowed delay=0
+2026-10-20T04:09:11.268Z DEVICE POSTHOG_CAPTURE version_gate_allowed {"app_id":"business","platform":"android","installed_version":"1.1.6","late":false}
+2026-10-20T04:09:11.420Z MANIFEST_REQ app=host platform=android current_update=80fef86b-46f9-4c60-a9ce-aa497799845e -> ho-fail
+2026-10-20T04:09:11.568Z MANIFEST_SERVE app=host ho-fail id=80fef86b-46f9-4c60-a9ce-aa497799845e criticalIndex=1
+2026-10-20T04:09:17.157Z DEVICE STREAM_START
+2026-10-20T04:09:25.080Z CONTROL {"apps":{"explorer":{"current":null,"criticalIndex":null},"host":{"current":null,"criticalIndex":null}},"version":{"mode":"allowed","delayMs":0}}
+--- HO FAIL TAP 04:09:25
+2026-10-20T04:09:25.365Z DEVICE BANNER_TAP
+2026-10-20T04:09:25.379Z DEVICE PAUSE_BEGIN
+2026-10-20T04:09:25.439Z MANIFEST_REQ app=host platform=android current_update=80fef86b-46f9-4c60-a9ce-aa497799845e -> none
+2026-10-20T04:09:25.604Z DEVICE FORCED_RELOAD_FAILURE
+2026-10-20T04:09:25.605Z DEVICE RELOAD_REJECTED Error: harness: forced reload failure
