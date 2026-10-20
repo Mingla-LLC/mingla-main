@@ -152,6 +152,14 @@ BEGIN
   IF v_count > 20 THEN
     RAISE EXCEPTION 'experience_price_invalid';
   END IF;
+  -- Reject is_free / zero legacy total with a positive-priced option (paid guards
+  -- in create/publish key off legacy total; options must not bypass them).
+  IF p_legacy_total_cents <= 0 AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_price_options) o
+     WHERE COALESCE((o.value->>'price_cents')::integer, 0) > 0
+  ) THEN
+    RAISE EXCEPTION 'experience_price_invalid';
+  END IF;
 
   FOR v_opt IN SELECT value FROM jsonb_array_elements(p_price_options)
   LOOP
@@ -2573,6 +2581,80 @@ BEGIN
       WHERE id=p_event_id;
   END IF;
   RETURN public.issue_1973_read_experience_graph(p_event_id);
+END;
+$$;
+
+
+-- ---------------------------------------------------------------------------
+-- Re-emit issue_1973_current_experience_payload — round-trip price_options
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_1973_current_experience_payload(p_event_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_event public.events%ROWTYPE;
+  v_stops jsonb;
+  v_ticket public.ticket_types%ROWTYPE;
+  v_options jsonb;
+  v_when jsonb;
+BEGIN
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id AND deleted_at IS NULL;
+  IF NOT FOUND OR v_event.event_type <> 'experience' THEN RAISE EXCEPTION 'experience_not_found'; END IF;
+  IF public.biz_brand_effective_rank(v_event.brand_id,auth.uid()) < public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'insufficient_event_permission';
+  END IF;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+      'stop_order',s.stop_order,'place_id',s.place_id,'place_name',s.place_name,
+      'address',s.address,'city',s.city,'region',s.region,'country_code',s.country_code,
+      'lat',s.lat,'lng',s.lng,'coordinate_precision',s.coordinate_precision,
+      'image_urls',s.image_urls,'start_time',s.start_time,'price_cents',s.price_cents,
+      'ai_description',s.ai_description
+    ) ORDER BY s.stop_order),'[]'::jsonb)
+    INTO v_stops FROM public.experience_stops s WHERE s.event_id=p_event_id;
+  SELECT * INTO v_ticket FROM public.ticket_types
+   WHERE event_id=p_event_id AND deleted_at IS NULL ORDER BY display_order,created_at LIMIT 1;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+      'id', tt.id,
+      'name', tt.name,
+      'price_cents', tt.price_cents,
+      'price_basis', tt.price_basis,
+      'block_minutes', tt.block_minutes,
+      'min_blocks', tt.min_blocks,
+      'max_blocks', tt.max_blocks,
+      'group_max', tt.group_max,
+      'capacity', CASE WHEN tt.is_unlimited THEN NULL ELSE tt.quantity_total END,
+      'is_hidden', tt.is_hidden
+    ) ORDER BY tt.display_order, tt.created_at), '[]'::jsonb)
+    INTO v_options
+    FROM public.ticket_types tt
+   WHERE tt.event_id = p_event_id AND tt.deleted_at IS NULL;
+  v_when := COALESCE(v_event.theme->'experience_meta'->'when_draft','{}'::jsonb);
+  RETURN jsonb_build_object(
+    'title',v_event.title,'description',v_event.description,
+    'experience_intents',COALESCE(to_jsonb(v_event.experience_intents),'[]'::jsonb),
+    'currency',v_event.currency,'location_mode',v_event.location_mode,
+    'pricing_mode',v_event.pricing_mode,'whole_price_cents',v_event.whole_price_cents,
+    'is_free',COALESCE(v_ticket.is_free,v_event.whole_price_cents=0),
+    'capacity',CASE WHEN v_ticket.is_unlimited THEN NULL ELSE v_ticket.quantity_total END,
+    'pass_tax',v_event.pass_tax,'pass_mingla_fee',v_event.pass_mingla_fee,
+    'pass_service_fee',v_event.pass_service_fee,'stops',v_stops,
+    'price_options', v_options,
+    'whenMode',COALESCE(v_when->>'whenMode',CASE WHEN v_event.is_recurring THEN 'recurring' WHEN v_event.is_multi_date THEN 'multi_date' ELSE 'single' END),
+    'when',v_when->'when','multiDates',v_when->'multiDates',
+    'recurrence_rules',COALESCE(v_when->'recurrence_rules',v_event.recurrence_rules),
+    'timezone',COALESCE(v_when->>'timezone',v_event.timezone),
+    'cover',jsonb_build_object(
+      'coverMediaUrl',v_event.cover_media_url,'coverMediaPosterUrl',v_event.cover_media_poster_url,
+      'coverMediaType',v_event.cover_media_type,'coverMediaProvider',v_event.cover_media_provider,
+      'coverMediaSourceUrl',v_event.cover_media_source_url,'coverMediaCredit',v_event.cover_media_credit,
+      'coverMediaCreditUrl',v_event.cover_media_credit_url,'coverMediaAlt',v_event.cover_media_alt,
+      'coverGallery',COALESCE(v_event.cover_media_gallery,'[]'::jsonb)
+    )
+  );
 END;
 $$;
 
