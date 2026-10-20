@@ -381,7 +381,10 @@ export default function ConsumerExperienceDetailScreen({
   useEffect(() => {
     const proof = socialProofQuery.data;
     if (socialProofImpressionRef.current || !proof ||
-      proof.privateGuestList || proof.goingCount <= 0) return;
+      // issue #3827 going-box — fire when the box is visible (null-safe;
+      // real + the host's own-list guests).
+      proof.privateGuestList || proof.goingCount === null ||
+      proof.goingCount + (proof.extraGuestCount ?? 0) <= 0) return;
     socialProofImpressionRef.current = true;
     postHogService.capture("social_proof_teaser_impression", {
       surface: "experience_detail",
@@ -406,6 +409,8 @@ export default function ConsumerExperienceDetailScreen({
       socialProofQuery.isSuccess &&
       sp !== null &&
       sp.privateGuestList === false &&
+      // issue #3827 going-box — only with somebody REAL to list (null-safe).
+      sp.goingCount !== null &&
       sp.goingCount > 0
     ) {
       handleSeeWhosGoing();
@@ -1449,6 +1454,8 @@ export default function ConsumerExperienceDetailScreen({
         onClose={handleGuestSheetClose}
         eventId={seed.eventId}
         goingCount={socialProofQuery.data?.goingCount ?? 0}
+        // issue #3827 going-box — header "N going · X on the host's list".
+        extraGuestCount={socialProofQuery.data?.extraGuestCount ?? 0}
         onOpenProfile={setGuestProfileUserId}
         gateKind="ticket"
         onSignIn={handleGuestSignIn}

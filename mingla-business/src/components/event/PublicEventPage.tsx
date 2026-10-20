@@ -1225,10 +1225,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         palette={palette}
         startAtUtc={event.masterStartAtUtc ?? null}
         endAtUtc={event.masterEndAtUtc ?? null}
+        // issue #3827 going-box (R-5) — the server's real-count flag; the
+        // legacy compute is for older servers only, and a withheld (null)
+        // count is never read as 0.
         capacityFull={
-          event.rsvpCapacity !== null &&
-          event.rsvpCapacity !== undefined &&
-          (event.rsvpGoingCount ?? 0) >= event.rsvpCapacity
+          event.rsvpCapacityFull ??
+          (event.rsvpCapacity !== null &&
+            event.rsvpCapacity !== undefined &&
+            typeof event.rsvpGoingCount === "number" &&
+            event.rsvpGoingCount >= event.rsvpCapacity)
         }
         waitlistEnabled={event.rsvpWaitlistEnabled ?? false}
         manualApproval={event.rsvpApprovalMode === "manual"}
@@ -1609,7 +1614,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           contributionState={returnBanner === "paid" ? "paid" : "idle"}
           config={{
             capacity: event.rsvpCapacity ?? null,
-            goingCount: event.rsvpGoingCount ?? 0,
+            // issue #3827 going-box — null = withheld (private) or unknown;
+            // the shared body renders no box and never a "0 going".
+            goingCount:
+              typeof event.rsvpGoingCount === "number"
+                ? event.rsvpGoingCount
+                : null,
+            extraGuestCount:
+              event.rsvpExtraGuestCount ??
+              socialProofQuery.data?.extraGuestCount ??
+              0,
+            capacityFull: event.rsvpCapacityFull,
             allowPlusOnes: event.rsvpAllowPlusOnes ?? false,
             plusOnesMax: event.rsvpPlusOnesMax ?? 0,
             waitlistEnabled: event.rsvpWaitlistEnabled ?? false,

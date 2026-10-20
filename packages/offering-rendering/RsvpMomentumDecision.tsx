@@ -83,7 +83,11 @@ import { GuestAvatarCluster } from "./GuestAvatarCluster";
 import { type SocialProofSampleEntry } from "./socialProofTypes";
 
 // Pure, dep-free momentum derivation (Deno/node-testable; no renderer).
-import { deriveMomentum, rsvpMomentumSubLabel } from "./rsvpMomentum";
+import {
+  deriveMomentum,
+  rsvpCapacityChipLabel,
+  rsvpMomentumSubLabel,
+} from "./rsvpMomentum";
 // ORCH-1292 — the party chips now resolve to CANONICAL labels (via the shared
 // in-package resolver), matching the pills row — not the humanized partyTypeLabel.
 import { taxonomyLabel } from "./taxonomyLabels";
@@ -106,8 +110,22 @@ export type RsvpMomentumVariant = "inline" | "sticky-panel" | "floating-dock";
 export interface RsvpMomentumDecisionProps {
   palette: ThemePalette;
   theme: ResolvedTheme;
-  /** Confirmed-going headcount (each going+approved guest + their plus_count). */
-  goingCount: number;
+  /**
+   * Confirmed-going headcount (each going+approved guest + their plus_count).
+   * issue #3827 going-box — `null` = withheld (private list) or not known yet
+   * (loading, missing row). A null count never renders and is never 0.
+   */
+  goingCount: number | null;
+  /**
+   * issue #3827 going-box — guests on the host's own list. Added to the going
+   * NUMBER only; the meter, spots left and full stay on the real count.
+   */
+  extraGuestCount?: number;
+  /**
+   * issue #3827 going-box — the server's full flag (real count only). Used for
+   * the capacity chip shown when the going box is absent.
+   */
+  capacityFull?: boolean;
   /** Capacity cap; null = unlimited (no scarcity language). */
   capacity: number | null;
   /** From resolveRsvpCta (single owner of the CTA state machine). */
@@ -309,6 +327,8 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   hideStepper = false,
   privateGuestList = false,
   hideRemainingCount = false,
+  extraGuestCount = 0,
+  capacityFull = false,
   guestSample = [],
   onSeeWhosGoing,
   hostRow,
@@ -328,15 +348,31 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   const hintText = validationHint as string | null;
   const passAction = secondaryAction as RsvpMomentumDecisionProps["secondaryAction"];
   // ORCH-1339 (D2) — hideRemainingCount nulls the DISPLAY capacity only.
-  const momentum = deriveMomentum(goingCount, hideRemainingCount ? null : capacity);
+  // issue #3827 going-box — a withheld (null) count derives as 0 here, but
+  // `unitVisible` below never renders the unit for it; extras ride beside it.
+  const momentum = deriveMomentum(goingCount ?? 0, hideRemainingCount ? null : capacity, extraGuestCount);
   // The rendered sub-line adds the real capacity to the zero-state ("Be the
   // first to RSVP · 80 spots") and says "Full" when the waitlist is off. The
   // same DISPLAY capacity rule applies, so "Hide the spots-left count" hides it.
   const momentumSubLabel = rsvpMomentumSubLabel(
-    goingCount,
+    goingCount ?? 0,
     hideRemainingCount ? null : capacity,
-    { waitlistEnabled },
+    { waitlistEnabled, extraGuestCount },
   );
+  // issue #3827 going-box — R-1/R-2: the going box renders only when the list
+  // is not private, the count is known, and somebody (real or on the host's
+  // own list) is going. Never "0 going", never "Be the first to RSVP".
+  const unitVisible =
+    !privateGuestList && goingCount !== null && momentum.displayCount > 0;
+  // issue #3827 going-box — R-4: with no box, one capacity chip carries the
+  // total or the full state. It never reveals how many are going.
+  const capacityChipLabel = unitVisible
+    ? null
+    : rsvpCapacityChipLabel({
+        displayCapacity: hideRemainingCount ? null : capacity,
+        capacityFull,
+        waitlistEnabled,
+      });
 
   // Kicker dot pulse (1.8s) + meter fill width transition (0.5s ease) — subtle.
   // isInteraction:false — a looping/animating timing on the RSVP page must NOT hold an
@@ -419,7 +455,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
 
   // ── party-type vibe chips (accent-wash pills; glyph-free, per the mockup) ──
   const chips =
-    partyTypes.length > 0 ? (
+    partyTypes.length > 0 || capacityChipLabel !== null ? (
       <View style={styles.chips} testID="orch-1157-rsvp-chips">
         {partyTypes.map((slug) => (
           <View
@@ -437,6 +473,22 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
             </Text>
           </View>
         ))}
+        {capacityChipLabel !== null ? (
+          <View
+            style={[
+              styles.chip,
+              {
+                backgroundColor: palette.accentWash,
+                borderColor: palette.panelBorder,
+              },
+            ]}
+            testID="issue-3827-rsvp-capacity-chip"
+          >
+            <Text style={[styles.chipText, { color: palette.primaryText }]}>
+              {capacityChipLabel}
+            </Text>
+          </View>
+        ) : null}
       </View>
     ) : null;
 
@@ -453,25 +505,29 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
         <Text
           style={[styles.momCount, { color: palette.primaryText, fontFamily: boldFamily }]}
           testID="orch-1157-rsvp-going-count"
-          accessibilityLabel={`${momentum.hasGoing ? goingCount : 0} people going`}
+          accessibilityLabel={`${momentum.displayCount} people going`}
         >
-          {momentum.hasGoing ? goingCount : 0}
+          {momentum.displayCount}
         </Text>
         <Text style={[styles.momLabel, { color: palette.secondaryText }]}>going</Text>
       </View>
       <Text style={[styles.momSub, { color: palette.tertiaryText }]} testID="orch-1157-rsvp-momentum-sub">
         {momentumSubLabel}
       </Text>
-      {/* capacity meter — accent-gradient fill (theme dial), empty at goingCount=0 */}
-      <View style={[styles.meterTrack, { backgroundColor: palette.panelBorder }]}>
-        <Animated.View
-          style={[
-            styles.meterFill,
-            { width: meterFillWidth, backgroundColor: palette.accent },
-          ]}
-          testID="orch-1157-rsvp-meter"
-        />
-      </View>
+      {/* capacity meter — accent-gradient fill (theme dial). issue #3827
+          going-box — the fill is the REAL count only, and no empty track is
+          drawn beside a shown capacity when nobody real is going yet. */}
+      {momentum.showMeter ? (
+        <View style={[styles.meterTrack, { backgroundColor: palette.panelBorder }]}>
+          <Animated.View
+            style={[
+              styles.meterFill,
+              { width: meterFillWidth, backgroundColor: palette.accent },
+            ]}
+            testID="orch-1157-rsvp-meter"
+          />
+        </View>
+      ) : null}
       {/* guest cluster (ORCH-1340) — photos ONLY from the server-filtered
           sample; the glyph disk is the loading/fallback/anonymous state and
           private ≡ no-photo ≡ failed-photo by design. Rendered exclusively
@@ -484,7 +540,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           theme={theme}
           shownCount={momentum.shownAvatars}
           overflowCount={momentum.overflowCount}
-          goingCount={goingCount}
+          goingCount={momentum.displayCount}
           guestSample={guestSample}
           clusterNote="are pulling up"
           chipFill={opaqueCardFill(palette)}
@@ -744,7 +800,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
       {hostRow}
       {showMomentum ? kicker : null}
       {showMomentum ? chips : null}
-      {showMomentum ? momentumUnit : null}
+      {showMomentum && unitVisible ? momentumUnit : null}
       {showDecision ? decisionBlock : null}
     </View>
   );

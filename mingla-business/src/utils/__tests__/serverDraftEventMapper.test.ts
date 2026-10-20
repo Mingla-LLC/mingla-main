@@ -595,6 +595,8 @@ const DRAFT_EVENT_KEY_CLASS = {
   passwordProtected: "roundtrip",
   themeOverrides: "roundtrip",
   privateGuestList: "roundtrip",
+  // issue #3827 going-box — guests on the host's own list ride settings.
+  extraGuestCount: "roundtrip",
   isRsvp: "roundtrip",
   rsvpCapacity: "roundtrip",
   rsvpAllowPlusOnes: "roundtrip",
@@ -776,6 +778,8 @@ describe("#3287 — multi-day pricing choice survives the draft save round-trip"
       passwordProtected: true,
       themeOverrides: { color: "#2563eb", font: "poppins", animation: "confetti" },
       privateGuestList: true,
+      // issue #3827 going-box — a non-default value so the round trip is real.
+      extraGuestCount: 37,
       isRsvp: true,
       rsvpCapacity: 80,
       rsvpAllowPlusOnes: true,

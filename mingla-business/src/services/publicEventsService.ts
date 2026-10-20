@@ -97,6 +97,10 @@ interface BusinessPublicEventViewRow {
   rsvp_waitlist_enabled?: boolean | null;
   rsvp_approval_mode?: "auto" | "manual" | null;
   rsvp_going_count?: number | null;
+  // issue #3827 going-box — NULL rsvp_going_count = withheld (private list).
+  // The real-count full flag and the host's own-list guests (0 when private).
+  rsvp_capacity_full?: boolean | null;
+  extra_guest_count?: number | null;
   // ORCH-1291 [rsvp-chip-in] — voluntary contribution config, surfaced anon-safe
   // by business_public_events_view (the view SELECTs e.rsvp_contribution_*).
   // Arrives via the existing .select("*"); false/NULL for non-chip-in rows. Drive
@@ -1394,7 +1398,18 @@ export const publicEventViewRowToEvent = (
     rsvpWaitlistEnabled: row.rsvp_waitlist_enabled ?? false,
     rsvpApprovalMode: row.rsvp_approval_mode ?? "auto",
     rsvpDiscoverable: row.rsvp_discoverable ?? false,
-    rsvpGoingCount: row.rsvp_going_count ?? 0,
+    // issue #3827 going-box — a withheld (private) count stays null; it is
+    // never coerced to 0 for display or for the full decision.
+    rsvpGoingCount:
+      typeof row.rsvp_going_count === "number" ? row.rsvp_going_count : null,
+    rsvpCapacityFull:
+      typeof row.rsvp_capacity_full === "boolean"
+        ? row.rsvp_capacity_full
+        : undefined,
+    rsvpExtraGuestCount:
+      typeof row.extra_guest_count === "number"
+        ? row.extra_guest_count
+        : undefined,
     // ORCH-1291 [rsvp-chip-in] — thread the anon-view chip-in config into the
     // buyer-web LiveEvent so PublicEventPage builds it into RsvpOfferingConfig and
     // the shared body's guest panel renders on web (report §10.A). Inert defaults

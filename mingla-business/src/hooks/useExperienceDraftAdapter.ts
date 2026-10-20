@@ -71,11 +71,14 @@ export interface ExperienceBrandTimezoneHints {
 export interface ExperienceGuestPrivacyState {
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  /** issue #3827 going-box — guests on the host's own list (0..5000). */
+  extraGuestCount: number;
 }
 
 const GUEST_PRIVACY_DEFAULTS: ExperienceGuestPrivacyState = {
   privateGuestList: false,
   hideRemainingCount: false,
+  extraGuestCount: 0,
 };
 
 function synthDraft(
@@ -136,6 +139,7 @@ function synthDraft(
     passwordProtected: false,
     themeOverrides: null,
     privateGuestList: guestPrivacy.privateGuestList,
+    extraGuestCount: guestPrivacy.extraGuestCount,
     inPersonPaymentsEnabled: false,
     // ORCH-1291 [rsvp-chip-in] — inert for the experience When-adapter.
     rsvpContributionEnabled: false,

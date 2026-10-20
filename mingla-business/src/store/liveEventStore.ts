@@ -103,6 +103,8 @@ export type EditableLiveEventFields = Pick<
   | "hideRemainingCount"
   | "passwordProtected"
   | "privateGuestList"
+  // issue #3827 going-box — guests on the host's own list (SAFE key).
+  | "extraGuestCount"
   | "inPersonPaymentsEnabled"
   // ORCH-0824 hotfix: new taxonomy + city fields must be editable post-publish
   // so the diff/save pipeline detects pill toggles and address re-picks.
@@ -221,8 +223,14 @@ export interface LiveEvent {
    * ORCH-1150 — live confirmed-attending headcount (each going+approved guest
    * plus their plus_count), surfaced by business_public_events_view. 0 for
    * non-RSVP rows. Drives the public-page capacity-full state + Hub "N going".
+   * issue #3827 going-box — null on the PUBLIC read when the host keeps the
+   * guest list private (withheld). Host readers use the RLS path and keep `?? 0`.
    */
-  rsvpGoingCount?: number;
+  rsvpGoingCount?: number | null;
+  /** issue #3827 going-box — public-read full flag from the real count. */
+  rsvpCapacityFull?: boolean;
+  /** issue #3827 going-box — guests on the host's own list (public read; 0 when private). */
+  rsvpExtraGuestCount?: number;
   /**
    * ORCH-1291 [rsvp-chip-in] — voluntary contribution config snapshot (present
    * only on chip-in RSVP rows; optional for back-compat). Surfaced anon-safe by
@@ -348,6 +356,8 @@ export interface LiveEvent {
   passwordProtected: boolean;
   /** Cycle 10: hide attendee count from buyer-side surfaces. I-26 — operator-only flag; buyer surfaces honor this when added (NOT in Cycle 10). */
   privateGuestList: boolean;
+  /** issue #3827 going-box — guests on the host's own list (0..5000; absent = 0). */
+  extraGuestCount?: number;
   /** Cycle 12: when true, J-D1 "Door Sales" ActionTile + /event/{id}/door route reachable. Default false. */
   inPersonPaymentsEnabled: boolean;
   // Forward-compat for Cycle 9 (orders) — empty until B3 wires Stripe

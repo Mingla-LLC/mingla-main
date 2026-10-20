@@ -163,7 +163,15 @@ if (
 
 export interface RsvpOfferingConfig {
   capacity: number | null;
-  goingCount: number;
+  /**
+   * Real confirmed-going headcount. issue #3827 going-box — `null` = withheld
+   * (private list) or not known yet; never coerced to 0 for any decision.
+   */
+  goingCount: number | null;
+  /** issue #3827 going-box — guests on the host's own list (going number only). */
+  extraGuestCount?: number;
+  /** issue #3827 going-box — the server's full flag (real count only). */
+  capacityFull?: boolean;
   allowPlusOnes: boolean;
   plusOnesMax: number;
   waitlistEnabled: boolean;
@@ -406,6 +414,8 @@ interface RsvpDecisionState {
   surface: ReturnType<typeof offeringSurfaceStyles>;
   boldFamily: string;
   ctaState: RsvpCtaState;
+  /** issue #3827 going-box — server full flag (or the legacy compute). */
+  capacityFull: boolean;
   guestStatus: "going" | "not_going" | "waitlisted" | "maybe" | null;
   guestApproval: "pending" | "approved" | null;
   submitting: boolean;
@@ -711,8 +721,14 @@ export const useRsvpOfferingState = (
     [props.onAcquisitionClosed],
   );
 
+  // issue #3827 going-box (R-5) — the server's real-count flag wins; the
+  // legacy compute is for older servers only. A withheld (null) count with no
+  // flag is NOT full here; the server still enforces capacity at submit.
   const capacityFull =
-    config.capacity !== null && config.goingCount >= config.capacity;
+    config.capacityFull ??
+    (config.capacity !== null &&
+      config.goingCount !== null &&
+      config.goingCount >= config.capacity);
 
   const ctaState: RsvpCtaState = useMemo(
     () =>
@@ -1777,6 +1793,7 @@ export const useRsvpOfferingState = (
     surface,
     boldFamily,
     ctaState,
+    capacityFull,
     guestStatus,
     guestApproval,
     submitting,
@@ -1869,6 +1886,10 @@ const DecisionUnit: React.FC<{
       // ORCH-1339 (D2) — forward the two server-authoritative display gates.
       privateGuestList={config.privateGuestList ?? false}
       hideRemainingCount={config.hideRemainingCount ?? false}
+      // issue #3827 going-box — own-list guests (going number only) and the
+      // server full flag for the capacity chip when the box is absent.
+      extraGuestCount={config.extraGuestCount ?? 0}
+      capacityFull={state.capacityFull}
       // ORCH-1340 — the avatar sample + the see-who's-going affordance seam
       // (the floating-bar mount keeps showMomentum=false, so no cluster there).
       guestSample={config.guestSample ?? []}

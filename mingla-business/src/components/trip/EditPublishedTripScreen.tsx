@@ -120,6 +120,10 @@ import {
 // ORCH-1339 — guest-privacy leaf-write RPC (never biz_update_live_trip).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
 import {
+  EXTRA_GUESTS_ERROR,
+  isExtraGuestCountError,
+} from "../../constants/guestListPrivacy";
+import {
   computeRichTripFieldDiffs,
   computeTripDayDiffs,
   computeTripInclusionDiffs,
@@ -255,6 +259,8 @@ interface LocalTripEditState {
   // from buildLiveTripPatch; persisted via setEventGuestPrivacy).
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  /** issue #3827 going-box — guests on the host's own list (same side-channel). */
+  extraGuestCount: number;
 }
 
 function tripToLocalEditState(trip: Trip): LocalTripEditState {
@@ -345,6 +351,7 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     // ORCH-1339 — guest-privacy server snapshot (theme leaf; false defaults).
     privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
     hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
+    extraGuestCount: trip.guestPrivacy?.extraGuestCount ?? 0,
   };
 }
 
@@ -374,6 +381,7 @@ interface PatchComputeResult {
   guestPrivacyChanged: {
     privateGuestList?: boolean;
     hideRemainingCount?: boolean;
+    extraGuestCount?: number;
   } | null;
 }
 
@@ -652,13 +660,22 @@ function buildLiveTripPatch(
   const origPrivacy = {
     privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
     hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
+    extraGuestCount: trip.guestPrivacy?.extraGuestCount ?? 0,
   };
-  const privacyPatch: { privateGuestList?: boolean; hideRemainingCount?: boolean } = {};
+  const privacyPatch: {
+    privateGuestList?: boolean;
+    hideRemainingCount?: boolean;
+    extraGuestCount?: number;
+  } = {};
   if (state.privateGuestList !== origPrivacy.privateGuestList) {
     privacyPatch.privateGuestList = state.privateGuestList;
   }
   if (state.hideRemainingCount !== origPrivacy.hideRemainingCount) {
     privacyPatch.hideRemainingCount = state.hideRemainingCount;
+  }
+  // issue #3827 going-box — guests on the host's own list (dirty only).
+  if (state.extraGuestCount !== origPrivacy.extraGuestCount) {
+    privacyPatch.extraGuestCount = state.extraGuestCount;
   }
   const guestPrivacyChanged =
     Object.keys(privacyPatch).length > 0 ? privacyPatch : null;
@@ -1089,7 +1106,16 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   }, []);
   // ORCH-1339 — guest-privacy toggle lifts (side-channel; never enter `patch`).
   const handlePrivateGuestListChange = useCallback((next: boolean): void => {
-    setEditState((prev) => ({ ...prev, privateGuestList: next }));
+    // Q1 (#3827): turning private ON also hides the remaining count (locked).
+    setEditState((prev) =>
+      next
+        ? { ...prev, privateGuestList: true, hideRemainingCount: true }
+        : { ...prev, privateGuestList: false },
+    );
+  }, []);
+  // issue #3827 going-box — guests on the host's own list.
+  const handleExtraGuestCountChange = useCallback((next: number): void => {
+    setEditState((prev) => ({ ...prev, extraGuestCount: next }));
   }, []);
   const handleHideRemainingCountChange = useCallback((next: boolean): void => {
     setEditState((prev) => ({ ...prev, hideRemainingCount: next }));
@@ -1126,9 +1152,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 router.replace(`/trip/${trip.id}` as never);
               }
             }, TOAST_NAV_DELAY_MS);
-          } catch {
+          } catch (e) {
             setSubmitting(false);
-            showToast("Couldn't save guest privacy. Tap to try again.");
+            showToast(
+              isExtraGuestCountError(e)
+                ? EXTRA_GUESTS_ERROR
+                : "Couldn't save guest privacy. Tap to try again.",
+            );
           }
         })();
         return;
@@ -1411,8 +1441,12 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         if (computed.guestPrivacyChanged !== null) {
           try {
             await setEventGuestPrivacy(trip.id, computed.guestPrivacyChanged);
-          } catch {
-            showToast("Saved, but guest privacy didn't update. Try again from Settings.");
+          } catch (e) {
+            showToast(
+              isExtraGuestCountError(e)
+                ? EXTRA_GUESTS_ERROR
+                : "Saved, but guest privacy didn't update. Try again from Settings.",
+            );
           }
         }
         setSubmitting(false);
@@ -1495,8 +1529,12 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       if (computed.guestPrivacyChanged !== null) {
         try {
           await setEventGuestPrivacy(trip.id, computed.guestPrivacyChanged);
-        } catch {
-          showToast("Saved, but guest privacy didn't update. Try again from Settings.");
+        } catch (e) {
+          showToast(
+            isExtraGuestCountError(e)
+              ? EXTRA_GUESTS_ERROR
+              : "Saved, but guest privacy didn't update. Try again from Settings.",
+          );
         }
       }
 
@@ -2000,6 +2038,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
               onPrivateGuestListChange={handlePrivateGuestListChange}
               hideRemainingCount={editState.hideRemainingCount}
               onHideRemainingCountChange={handleHideRemainingCountChange}
+              extraGuestCount={editState.extraGuestCount}
+              onExtraGuestCountChange={handleExtraGuestCountChange}
               tripStartIso={trip.businessTrip.startAt}
               brandTimezone={trip.timezone}
               affectedOrderCount={totalConfirmedOrders}

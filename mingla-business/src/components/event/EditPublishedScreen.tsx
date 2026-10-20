@@ -265,6 +265,8 @@ const ISSUE_1972_CORE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "hideRemainingCount",
   "passwordProtected",
   "privateGuestList",
+  // issue #3827 going-box — rides the same leaf as the privacy toggles.
+  "extraGuestCount",
   "inPersonPaymentsEnabled",
 ]);
 
@@ -1835,6 +1837,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             changedKeys.has("allowTransfers") ||
             changedKeys.has("hideRemainingCount") ||
             changedKeys.has("passwordProtected") ||
+            // issue #3827 going-box — "Guests on your own list" sits in Settings.
+            changedKeys.has("extraGuestCount") ||
             // Cycle 12 — in-person payments toggle is a Settings field.
             changedKeys.has("inPersonPaymentsEnabled") ||
             // issue #3284 — the refund card is the first Settings block.
@@ -1851,6 +1855,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             changedKeys.has("rsvpDiscoverable") ||
             changedKeys.has("visibility") ||
             changedKeys.has("privateGuestList") ||
+            changedKeys.has("extraGuestCount") ||
             changedKeys.has("hideRemainingCount")))
       ) {
         out.add(sec.key);

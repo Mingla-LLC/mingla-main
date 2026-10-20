@@ -87,12 +87,20 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
   onSeeWhosGoing,
   testID,
 }) => {
-  if (socialProof === null) return null;
+  // issue #3827 going-box — a private guest list hides the WHOLE box (count,
+  // sub-line, meter, cluster), and a withheld (null) count never renders.
+  if (
+    socialProof === null ||
+    socialProof.privateGuestList === true ||
+    socialProof.goingCount === null
+  ) {
+    return null;
+  }
   const momentum = deriveSocialProofMomentum(socialProof);
   if (!momentum.visible) return null;
 
   const boldFamily = boldFontFamily(theme);
-  const a11yLabel = `${socialProof.goingCount} people ${momentum.countLabel}`;
+  const a11yLabel = `${momentum.displayCount} people ${momentum.countLabel}`;
 
   return (
     <View
@@ -107,7 +115,7 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
           style={[styles.momCount, { color: palette.primaryText, fontFamily: boldFamily }]}
           accessibilityLabel={a11yLabel}
         >
-          {socialProof.goingCount}
+          {momentum.displayCount}
         </Text>
         <Text style={[styles.momLabel, { color: palette.secondaryText }]}>
           {momentum.countLabel}
@@ -121,34 +129,43 @@ export const OfferingMomentum: React.FC<OfferingMomentumProps> = ({
           {momentum.subLabel}
         </Text>
       ) : null}
-      {/* capacity meter — accent fill (theme dial); STATIC width (no Animated). */}
-      <View style={[styles.meterTrack, { backgroundColor: palette.panelBorder }]}>
-        <View
-          style={[
-            styles.meterFill,
-            { width: `${momentum.meterPercent}%`, backgroundColor: palette.accent },
-          ]}
-          testID="orch-1339-momentum-meter"
-        />
-      </View>
+      {/* capacity meter — accent fill (theme dial); STATIC width (no Animated).
+          issue #3827 going-box — not drawn as an empty track (real 0 beside a
+          shown capacity); the fill is always the REAL count. */}
+      {momentum.showMeter ? (
+        <View style={[styles.meterTrack, { backgroundColor: palette.panelBorder }]}>
+          <View
+            style={[
+              styles.meterFill,
+              { width: `${momentum.meterPercent}%`, backgroundColor: palette.accent },
+            ]}
+            testID="orch-1339-momentum-meter"
+          />
+        </View>
+      ) : null}
       {/* guest cluster (ORCH-1340) — photos ONLY from the server-filtered
           sample via the shared GuestAvatarCluster (single photo owner); glyph
           = loading/fallback/anonymous, private ≡ no-photo by design. D2 —
           privateGuestList suppresses the WHOLE block, see-row included;
-          count/sub-line/meter above still render. */}
+          count/sub-line/meter above still render.
+          issue #3827 going-box — private now returns null above, so this gate
+          is unreachable; it stays as defence. The cluster (and "See who's
+          going") renders only when somebody REAL is going. */}
       {!socialProof.privateGuestList ? (
-        <GuestAvatarCluster
-          palette={palette}
-          theme={theme}
-          shownCount={momentum.shownGlyphs}
-          overflowCount={momentum.overflowCount}
-          goingCount={socialProof.goingCount}
-          guestSample={socialProof.sample}
-          clusterNote={momentum.clusterNote}
-          chipFill={opaqueCardFill(palette)}
-          onSeeWhosGoing={onSeeWhosGoing}
-          testID="orch-1339-momentum-cluster"
-        />
+        momentum.showCluster ? (
+          <GuestAvatarCluster
+            palette={palette}
+            theme={theme}
+            shownCount={momentum.shownGlyphs}
+            overflowCount={momentum.overflowCount}
+            goingCount={momentum.displayCount}
+            guestSample={socialProof.sample}
+            clusterNote={momentum.clusterNote}
+            chipFill={opaqueCardFill(palette)}
+            onSeeWhosGoing={onSeeWhosGoing}
+            testID="orch-1339-momentum-cluster"
+          />
+        ) : null
       ) : null}
     </View>
   );

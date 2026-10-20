@@ -47,6 +47,7 @@ import { setOfferingRefundPolicy } from "./refundPolicyWrites";
 import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { OfferingRefundTermsError } from "../utils/refundPolicyTerms";
 import { coverBasePayload } from "../utils/draftCoverBase";
+import { asExtraGuestCount } from "../constants/guestListPrivacy";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -566,6 +567,8 @@ const eventFromRow = (
     // three nulls over three nulls). Normalising collapses it to null.
     themeOverrides: themeOverridesFromColumns(row),
     privateGuestList: asBoolean(settings.privateGuestList, false),
+    // issue #3827 going-box — guests on the host's own list (0..5000).
+    extraGuestCount: asExtraGuestCount(settings.extraGuestCount),
     inPersonPaymentsEnabled: asBoolean(
       settings.inPersonPaymentsEnabled,
       tickets.some(
@@ -1553,12 +1556,27 @@ export const patchPublishedEventWhen = async (
  */
 export const setEventGuestPrivacy = async (
   eventId: string,
-  patch: { privateGuestList?: boolean; hideRemainingCount?: boolean },
-): Promise<{ privateGuestList: boolean; hideRemainingCount: boolean }> => {
+  patch: {
+    privateGuestList?: boolean;
+    hideRemainingCount?: boolean;
+    /** issue #3827 going-box — guests on the host's own list (0..5000). */
+    extraGuestCount?: number;
+  },
+): Promise<{
+  privateGuestList: boolean;
+  hideRemainingCount: boolean;
+  extraGuestCount: number;
+}> => {
+  // issue #3827 going-box — p_extra_guest_count is sent ONLY when the host
+  // changed it, so a privacy-only save still resolves against a server that
+  // predates the new parameter (forward-compatible rollout).
   const { data, error } = await supabase.rpc("biz_set_event_guest_privacy", {
     p_event_id: eventId,
     p_private_guest_list: patch.privateGuestList ?? null,
     p_hide_remaining_count: patch.hideRemainingCount ?? null,
+    ...(patch.extraGuestCount !== undefined
+      ? { p_extra_guest_count: patch.extraGuestCount }
+      : {}),
   });
   if (error !== null) {
     throw new Error(error.message ?? "set_event_guest_privacy_failed");
@@ -1566,6 +1584,7 @@ export const setEventGuestPrivacy = async (
   const echo = data as {
     privateGuestList?: boolean;
     hideRemainingCount?: boolean;
+    extraGuestCount?: number;
   } | null;
   if (echo === null) {
     throw new Error("set_event_guest_privacy_empty_response");
@@ -1573,5 +1592,6 @@ export const setEventGuestPrivacy = async (
   return {
     privateGuestList: echo.privateGuestList ?? false,
     hideRemainingCount: echo.hideRemainingCount ?? false,
+    extraGuestCount: asExtraGuestCount(echo.extraGuestCount ?? 0),
   };
 };

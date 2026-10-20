@@ -40,6 +40,8 @@ import type { RefundPolicy } from "../../services/refundPolicyService";
 // never import ./RefundPolicyEditor statically here.
 import { LazyRefundPolicyEditor as RefundPolicyEditor } from "../trip/LazyRefundPolicyEditor";
 import { GlassCard } from "../ui/GlassCard";
+import { ExtraGuestsField } from "../ui/ExtraGuestsField";
+import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 import { Icon } from "../ui/Icon";
 
 import { type StepBodyProps } from "./types";
@@ -73,15 +75,27 @@ interface ToggleRowProps {
   sub: string;
   on: boolean;
   onToggle: () => void;
+  /** issue #3827 going-box (Q1) — a locked switch shows its state, ignores taps. */
+  disabled?: boolean;
+  testID?: string;
 }
 
-const ToggleRow: React.FC<ToggleRowProps> = ({ label, sub, on, onToggle }) => (
+const ToggleRow: React.FC<ToggleRowProps> = ({
+  label,
+  sub,
+  on,
+  onToggle,
+  disabled = false,
+  testID,
+}) => (
   <Pressable
-    onPress={onToggle}
+    onPress={disabled ? undefined : onToggle}
     accessibilityRole="switch"
-    accessibilityState={{ checked: on }}
+    accessibilityState={{ checked: on, disabled }}
     accessibilityLabel={label}
-    style={styles.toggleRow}
+    disabled={disabled}
+    style={[styles.toggleRow, disabled && styles.toggleRowDisabled]}
+    testID={testID}
   >
     <View style={styles.toggleLabelCol}>
       <Text style={styles.toggleLabel}>{label}</Text>
@@ -104,6 +118,10 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
   // legacy draft already stored as `private` stays SELECTED rather than being silently
   // rewritten; Publish is blocked separately with the same actionable copy.
   const privateSelectable = canSelectPrivateVisibility();
+  // Q1 (#3827) — "Hide remaining count" is locked on while the list is
+  // private. An older private event saved before this rule keeps an unlocked
+  // switch showing its real state; turning it on then locks it.
+  const hideRemainingLocked = draft.privateGuestList && draft.hideRemainingCount;
 
   const handleSelectVisibility = useCallback(
     (visibility: DraftEventVisibility): void => {
@@ -222,12 +240,20 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
       <ToggleRow
         label="Hide remaining count"
         // ORCH-1339 — D2-honest sub-copy (SPEC §4.8, byte-exact): the flag
-        // hides scarcity + fill level; the going count stays visible.
-        sub={'Don\'t show "X left" or how full it is.'}
+        // hides scarcity + fill level. issue #3827 (Q1) — locked on while the
+        // guest list is private, because capacity minus "X left" gives the
+        // count away.
+        sub={
+          hideRemainingLocked
+            ? HIDE_REMAINING_LOCKED_SUB
+            : 'Don\'t show "X left" or how full it is.'
+        }
         on={draft.hideRemainingCount}
         onToggle={() =>
           updateDraft({ hideRemainingCount: !draft.hideRemainingCount })
         }
+        disabled={hideRemainingLocked}
+        testID="event-hide-remaining"
       />
 
       <ToggleRow
@@ -241,13 +267,28 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
 
       <ToggleRow
         label="Private guest list"
-        // ORCH-1339 — D2-honest sub-copy (SPEC §4.8, byte-exact): the flag
-        // hides WHO is going (the cluster/list), never the going count.
-        sub="Hide who's going. Guests still see the going count."
+        // issue #3827 going-box — private now hides the whole going box
+        // (count included) on every buyer surface, and the server withholds it.
+        sub="Hide who's going and how many. Guests won't see a going count."
         on={draft.privateGuestList}
         onToggle={() =>
-          updateDraft({ privateGuestList: !draft.privateGuestList })
+          // Q1 (#3827): turning private ON also hides the remaining count and
+          // locks it while the list stays private.
+          updateDraft(
+            draft.privateGuestList
+              ? { privateGuestList: false }
+              : { privateGuestList: true, hideRemainingCount: true },
+          )
         }
+        testID="event-private-guestlist"
+      />
+
+      {/* issue #3827 going-box — guests on the host's own list. */}
+      <ExtraGuestsField
+        value={draft.extraGuestCount ?? 0}
+        privateGuestList={draft.privateGuestList}
+        onChange={(n) => updateDraft({ extraGuestCount: n })}
+        testID="event-extra-guests"
       />
 
       {/* Cycle 12 — In-person payments */}
@@ -351,6 +392,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     marginBottom: spacing.sm,
+  },
+  toggleRowDisabled: {
+    opacity: 0.6,
   },
   toggleLabelCol: {
     flex: 1,

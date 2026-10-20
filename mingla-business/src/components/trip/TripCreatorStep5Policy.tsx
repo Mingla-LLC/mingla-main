@@ -32,6 +32,8 @@ import { BookingDeadlinePicker } from "./BookingDeadlinePicker";
 // never import ./RefundPolicyEditor statically here.
 import { LazyRefundPolicyEditor as RefundPolicyEditor } from "./LazyRefundPolicyEditor";
 import { GlassCard } from "../ui/GlassCard";
+import { ExtraGuestsField } from "../ui/ExtraGuestsField";
+import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 
 export interface Step5Draft {
   refundPolicy: RefundPolicy | null;
@@ -39,6 +41,8 @@ export interface Step5Draft {
   // ORCH-1339 — the two guest-privacy display gates (D2).
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  /** issue #3827 going-box — guests on the host's own list (0..5000). */
+  extraGuestCount: number;
 }
 
 export interface TripCreatorStep5PolicyProps {
@@ -99,6 +103,9 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
   brandTimezone,
   disabled = false,
 }) => {
+  // Q1 (#3827) — locked on while the guest list is private (an older private
+  // trip saved before this rule keeps an unlocked switch in its real state).
+  const hideRemainingLocked = draft.privateGuestList && draft.hideRemainingCount;
   return (
     <View style={styles.container}>
       <GlassCard variant="base" padding={spacing.md} radius="lg">
@@ -124,18 +131,36 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
         <Text style={styles.sectionLabel}>Guest privacy</Text>
         <ToggleRow
           label="Private guest list"
-          sub="Hide who's going. Travelers still see the going count."
+          // issue #3827 going-box — private hides the whole going box.
+          sub="Hide who's going and how many. Only you see the list."
           on={draft.privateGuestList}
-          onToggle={() => onChange({ privateGuestList: !draft.privateGuestList })}
+          onToggle={() =>
+            // Q1 (#3827): private ON also hides the remaining count, locked.
+            onChange(
+              draft.privateGuestList
+                ? { privateGuestList: false }
+                : { privateGuestList: true, hideRemainingCount: true },
+            )
+          }
           disabled={disabled}
           testID="trip-step5-private-guestlist"
         />
+        <ExtraGuestsField
+          value={draft.extraGuestCount}
+          privateGuestList={draft.privateGuestList}
+          onChange={(n) => onChange({ extraGuestCount: n })}
+          testID="trip-step5-extra-guests"
+        />
         <ToggleRow
           label="Hide remaining count"
-          sub={'Don\'t show "X spots left" or how full it is.'}
+          sub={
+            hideRemainingLocked
+              ? HIDE_REMAINING_LOCKED_SUB
+              : 'Don\'t show "X spots left" or how full it is.'
+          }
           on={draft.hideRemainingCount}
           onToggle={() => onChange({ hideRemainingCount: !draft.hideRemainingCount })}
-          disabled={disabled}
+          disabled={disabled || hideRemainingLocked}
           testID="trip-step5-hide-count"
         />
       </GlassCard>

@@ -24,7 +24,14 @@ export interface RsvpMomentumModel {
   overflowCount: number;
   /** How many faceless disks to draw (0..RSVP_CLUSTER_SHOWN). */
   shownAvatars: number;
+  /** #3827 — the going NUMBER to render: real + the host's own-list guests. */
+  displayCount: number;
+  /** #3827 — false when real is 0 beside a shown capacity (no empty track). */
+  showMeter: boolean;
 }
+
+const safeWhole = (n: number): number =>
+  Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 
 /**
  * Derive the HONEST momentum copy + meter from the real columns ONLY.
@@ -32,39 +39,76 @@ export interface RsvpMomentumModel {
  *   capacity=null/≤0       → "Open invite", low fixed meter (momentum, not scarcity)
  *   spotsLeft=0            → "Full · waitlist open", meter 100 (state, no number)
  *   else                   → "N spots left · filling up / filling fast"
+ *
+ * issue #3827 going-box — `extraGuestCount` (guests on the host's own list) is
+ * added to `displayCount` ONLY. `hasGoing`, the meter, spots left and full all
+ * stay on the real count: extras never consume a Mingla spot. Real 0 with
+ * extras says "N spots left" / "Open invite", never "Be the first to RSVP".
  */
 export const deriveMomentum = (
   goingCount: number,
   capacity: number | null,
+  extraGuestCount = 0,
 ): RsvpMomentumModel => {
-  const safeGoing =
-    Number.isFinite(goingCount) && goingCount > 0 ? Math.floor(goingCount) : 0;
+  const safeGoing = safeWhole(goingCount);
+  const extra = safeWhole(extraGuestCount);
+  const display = safeGoing + extra;
+  const capOk = capacity !== null && Number.isFinite(capacity) && capacity > 0;
   if (safeGoing === 0) {
+    if (extra === 0) {
+      return {
+        hasGoing: false,
+        subLabel: "Be the first to RSVP",
+        meterPercent: 0,
+        overflowCount: 0,
+        shownAvatars: 0,
+        displayCount: 0,
+        showMeter: !capOk,
+      };
+    }
+    // issue #3827 going-box — extras only: no faces, every spot still open.
+    if (capOk) {
+      const cap = Math.floor(capacity as number);
+      return {
+        hasGoing: false,
+        subLabel: `${cap} ${cap === 1 ? "spot" : "spots"} left`,
+        meterPercent: 0,
+        overflowCount: 0,
+        shownAvatars: 0,
+        displayCount: display,
+        showMeter: false,
+      };
+    }
     return {
       hasGoing: false,
-      subLabel: "Be the first to RSVP",
-      meterPercent: 0,
+      subLabel: "Open invite",
+      meterPercent: 18,
       overflowCount: 0,
       shownAvatars: 0,
+      displayCount: display,
+      showMeter: true,
     };
   }
 
-  const shownAvatars = Math.min(RSVP_CLUSTER_SHOWN, safeGoing);
+  const shownAvatars = Math.min(RSVP_CLUSTER_SHOWN, display);
   const overflowCount =
-    safeGoing > RSVP_CLUSTER_SHOWN ? safeGoing - RSVP_CLUSTER_SHOWN : 0;
+    display > RSVP_CLUSTER_SHOWN ? display - RSVP_CLUSTER_SHOWN : 0;
 
-  if (capacity === null || !Number.isFinite(capacity) || capacity <= 0) {
+  if (!capOk) {
     return {
       hasGoing: true,
       subLabel: "Open invite",
       meterPercent: 18,
       overflowCount,
       shownAvatars,
+      displayCount: display,
+      showMeter: true,
     };
   }
 
-  const spotsLeft = Math.max(0, Math.floor(capacity) - safeGoing);
-  const meterPercent = Math.min(100, Math.round((safeGoing / capacity) * 100));
+  const cap = capacity as number;
+  const spotsLeft = Math.max(0, Math.floor(cap) - safeGoing);
+  const meterPercent = Math.min(100, Math.round((safeGoing / cap) * 100));
   if (spotsLeft === 0) {
     return {
       hasGoing: true,
@@ -72,6 +116,8 @@ export const deriveMomentum = (
       meterPercent: 100,
       overflowCount,
       shownAvatars,
+      displayCount: display,
+      showMeter: true,
     };
   }
   const fillingFast = meterPercent >= 80;
@@ -83,6 +129,8 @@ export const deriveMomentum = (
     meterPercent,
     overflowCount,
     shownAvatars,
+    displayCount: display,
+    showMeter: true,
   };
 };
 
@@ -97,6 +145,8 @@ export const partyTypeLabel = (slug: string): string =>
 export interface RsvpMomentumSubLabelOptions {
   /** events.rsvp_waitlist_enabled — when known to be OFF a full list reads "Full". */
   waitlistEnabled?: boolean;
+  /** #3827 — guests on the host's own list (going number only). */
+  extraGuestCount?: number;
 }
 
 /**
@@ -119,7 +169,10 @@ export const rsvpMomentumSubLabel = (
   displayCapacity: number | null,
   options: RsvpMomentumSubLabelOptions = {},
 ): string => {
-  const model = deriveMomentum(goingCount, displayCapacity);
+  const extra = options.extraGuestCount ?? 0;
+  const model = deriveMomentum(goingCount, displayCapacity, extra);
+  // issue #3827 going-box — extras-only: the model's own line, no " · N spots".
+  if (!model.hasGoing && model.displayCount > 0) return model.subLabel;
   const cap =
     displayCapacity !== null && Number.isFinite(displayCapacity) && displayCapacity > 0
       ? Math.floor(displayCapacity)
@@ -134,4 +187,31 @@ export const rsvpMomentumSubLabel = (
     return "Full";
   }
   return model.subLabel;
+};
+
+export interface RsvpCapacityChipInput {
+  /** Capacity shown to guests: null under "Hide the spots-left count" or no cap. */
+  displayCapacity: number | null;
+  /** The server's full flag (real count only). */
+  capacityFull: boolean;
+  waitlistEnabled: boolean;
+}
+
+/**
+ * issue #3827 going-box (R-4) — the one capacity chip an RSVP page shows when
+ * the going box is absent (private list, or nobody going yet). It never reveals
+ * how many are going: a total, or a full state, only.
+ */
+export const rsvpCapacityChipLabel = (
+  input: RsvpCapacityChipInput,
+): string | null => {
+  if (input.capacityFull) {
+    return input.waitlistEnabled ? "Full · waitlist open" : "Full";
+  }
+  const cap = input.displayCapacity;
+  if (cap !== null && Number.isFinite(cap) && cap > 0) {
+    const n = Math.floor(cap);
+    return `${n} ${n === 1 ? "spot" : "spots"}`;
+  }
+  return null;
 };
