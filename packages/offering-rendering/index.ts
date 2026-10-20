@@ -252,6 +252,7 @@ export type { ExperienceWindowMinutes } from "./experienceTimeZone";
 export {
   filterUpcomingOccurrences,
   chooseEventDateLayout,
+  occurrenceLocalDay,
   placesLeftChip,
   weekStartForCountry,
 } from "./eventDateSchedule";

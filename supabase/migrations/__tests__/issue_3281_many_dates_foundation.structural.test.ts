@@ -20,9 +20,23 @@ Deno.test("many-dates foundation migration ships schedule helper + bundle keys",
   assert(text.includes("'placesLeftByTicket'"));
   assert(text.includes("business_set_event_date_override"));
   assert(text.includes("override_title"));
-  // Ended multi-date rows must NOT be filtered (F5).
-  assert(text.includes("do NOT filter ended multi-date"));
-  assertEquals(text.includes("GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule"), true);
+  // F5 — multi-date rows keep the same end_at filter as #3313 recurring-only.
+  assert(
+    /NOT \(COALESCE\(ev\.is_recurring,\s*false\) AND NOT COALESCE\(ev\.is_multi_date,\s*false\)\)\s*OR d\.end_at > now\(\)/
+      .test(text),
+  );
+  // #3284 R-15 — refundPolicy remains the final json key (no trailing comma).
+  assert(/'refundPolicy',\s*ev\.refund_policy\s*\) END/.test(text));
+  assertEquals(
+    text.includes("GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule"),
+    true,
+  );
   assert(text.includes("is_supported_offering_currency"));
   assert(text.includes("e ? 'overrides'"));
+  // Schedule helper evaluated once per bundle row.
+  assert(text.includes("LEFT JOIN LATERAL"));
+  assertEquals(
+    (text.match(/issue_3281_event_schedule\(ev\.id\)/g) ?? []).length,
+    1,
+  );
 });

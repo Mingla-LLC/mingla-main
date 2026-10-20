@@ -2,7 +2,7 @@
  * issue #3281 many-dates — Host Dates list (PR 3).
  * Edit per-date title / venue via business_set_event_date_override.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -61,9 +61,14 @@ export default function EventDatesScreen(): React.ReactElement {
   const [drafts, setDrafts] = useState<
     Record<string, { title: string; location: string }>
   >({});
+  /** Row ids with unsaved local edits — Refresh keeps these, reloads the rest. */
+  const dirtyIdsRef = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    if (typeof id !== "string" || id.length === 0) return;
+    if (typeof id !== "string" || id.length === 0) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const { data, error } = await supabase
       .from("event_dates")
@@ -76,11 +81,14 @@ export default function EventDatesScreen(): React.ReactElement {
       return;
     }
     const list = (data ?? []) as DateRow[];
+    const dirty = dirtyIdsRef.current;
     setRows(list);
     setDrafts((prev) => {
-      const next: Record<string, { title: string; location: string }> = { ...prev };
+      const next: Record<string, { title: string; location: string }> = {};
       for (const r of list) {
-        if (next[r.id] === undefined) {
+        if (dirty.has(r.id) && prev[r.id] !== undefined) {
+          next[r.id] = prev[r.id]!;
+        } else {
           next[r.id] = {
             title: r.override_title ?? "",
             location: r.override_location ?? "",
@@ -112,6 +120,7 @@ export default function EventDatesScreen(): React.ReactElement {
       return;
     }
     setToast("Saved");
+    dirtyIdsRef.current.delete(rowId);
     setRows((prev) =>
       prev.map((r) =>
         r.id === rowId
@@ -151,12 +160,13 @@ export default function EventDatesScreen(): React.ReactElement {
                   <Text style={styles.label}>Title for this date</Text>
                   <TextInput
                     value={d.title}
-                    onChangeText={(title) =>
+                    onChangeText={(title) => {
+                      dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
                         ...prev,
                         [r.id]: { ...d, title },
-                      }))
-                    }
+                      }));
+                    }}
                     placeholder="Inherits event title"
                     maxLength={120}
                     style={styles.input}
@@ -164,12 +174,13 @@ export default function EventDatesScreen(): React.ReactElement {
                   <Text style={styles.label}>Place for this date</Text>
                   <TextInput
                     value={d.location}
-                    onChangeText={(location) =>
+                    onChangeText={(location) => {
+                      dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
                         ...prev,
                         [r.id]: { ...d, location },
-                      }))
-                    }
+                      }));
+                    }}
                     placeholder="Inherits venue"
                     maxLength={120}
                     style={styles.input}
@@ -183,7 +194,12 @@ export default function EventDatesScreen(): React.ReactElement {
               );
             })
           )}
-          <Pressable onPress={() => void load()} style={styles.refresh}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Refresh dates"
+            onPress={() => void load()}
+            style={styles.refresh}
+          >
             <Text style={{ color: accent.warm }}>Refresh</Text>
           </Pressable>
         </ScrollView>

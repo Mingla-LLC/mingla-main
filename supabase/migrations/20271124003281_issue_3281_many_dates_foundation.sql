@@ -536,18 +536,22 @@ AS $function$
           THEN ev.recurrence_rules
         ELSE NULL
       END,
-      'refundPolicy', ev.refund_policy,
-      -- issue #3281 many-dates — APPENDED LAST (after #3284 refundPolicy).
+      -- issue #3281 many-dates — BEFORE refundPolicy so #3284 R-15 keeps
+      -- refundPolicy as the final key (exact source pin + LAST append).
       'allDaysPass', (
         COALESCE(ev.is_multi_date, false)
         AND NOT COALESCE(ev.is_recurring, false)
         AND COALESCE(ev.multi_date_pricing_mode, 'per_day') = 'all_days'
       ),
-      'nextStartAt', (public.issue_3281_event_schedule(ev.id) ->> 'nextStartAt')::timestamptz,
-      'nextEndAt', (public.issue_3281_event_schedule(ev.id) ->> 'nextEndAt')::timestamptz,
-      'upcomingCount', COALESCE((public.issue_3281_event_schedule(ev.id) ->> 'upcomingCount')::integer, 0)
+      'nextStartAt', (sched.schedule ->> 'nextStartAt')::timestamptz,
+      'nextEndAt', (sched.schedule ->> 'nextEndAt')::timestamptz,
+      'upcomingCount', COALESCE((sched.schedule ->> 'upcomingCount')::integer, 0),
+      'refundPolicy', ev.refund_policy
     ) END
-  FROM ev;
+  FROM ev
+  LEFT JOIN LATERAL (
+    SELECT public.issue_3281_event_schedule(ev.id) AS schedule
+  ) sched ON true;
 $function$;
 
 -- ---------------------------------------------------------------------------

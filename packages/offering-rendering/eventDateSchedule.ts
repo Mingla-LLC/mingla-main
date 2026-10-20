@@ -33,7 +33,49 @@ export type EventDateLayout = {
 
 const MS_DAY = 24 * 60 * 60 * 1000;
 
-/** Drop ended dates; keep start order. */
+const SUNDAY_FIRST_COUNTRIES = new Set([
+  "US",
+  "CA",
+  "JP",
+  "KR",
+  "TW",
+  "PH",
+  "IL",
+  "DO",
+  "GT",
+  "HN",
+  "MX",
+  "NI",
+  "PA",
+  "PR",
+  "SV",
+]);
+
+/** YYYY-MM-DD in the occurrence zone (UTC fallback); null if unparsable. */
+export const occurrenceLocalDay = (
+  startAt: string,
+  timezone?: string | null,
+): string | null => {
+  const ms = Date.parse(startAt);
+  if (!Number.isFinite(ms)) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone && timezone.length > 0 ? timezone : "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date(ms));
+    const y = parts.find((p) => p.type === "year")?.value;
+    const m = parts.find((p) => p.type === "month")?.value;
+    const d = parts.find((p) => p.type === "day")?.value;
+    if (!y || !m || !d) return null;
+    return `${y}-${m}-${d}`;
+  } catch {
+    return null;
+  }
+};
+
+/** Drop ended / unparsable dates; keep start order. */
 export const filterUpcomingOccurrences = (
   occurrences: readonly EventDateScheduleOccurrence[],
   nowMs: number = Date.now(),
@@ -41,7 +83,8 @@ export const filterUpcomingOccurrences = (
   occurrences
     .filter((o) => {
       const end = Date.parse(o.endAt);
-      return Number.isFinite(end) && end > nowMs;
+      const start = Date.parse(o.startAt);
+      return Number.isFinite(end) && Number.isFinite(start) && end > nowMs;
     })
     .slice()
     .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
@@ -65,28 +108,26 @@ export const chooseEventDateLayout = (
   if (upcoming.length === 1) return { kind: "single", upcoming };
   if (upcoming.length <= 6) return { kind: "chips", upcoming };
 
-  const first = Date.parse(upcoming[0]!.startAt);
-  const last = Date.parse(upcoming[upcoming.length - 1]!.startAt);
-  const spanDays = Math.max(1, Math.round((last - first) / MS_DAY) + 1);
+  const firstDay =
+    occurrenceLocalDay(upcoming[0]!.startAt, upcoming[0]!.timezone) ??
+    upcoming[0]!.startAt.slice(0, 10);
+  const lastDay =
+    occurrenceLocalDay(
+      upcoming[upcoming.length - 1]!.startAt,
+      upcoming[upcoming.length - 1]!.timezone,
+    ) ?? upcoming[upcoming.length - 1]!.startAt.slice(0, 10);
+  const firstMs = Date.parse(`${firstDay}T00:00:00.000Z`);
+  const lastMs = Date.parse(`${lastDay}T00:00:00.000Z`);
+  const spanDays = Number.isFinite(firstMs) && Number.isFinite(lastMs)
+    ? Math.max(1, Math.floor((lastMs - firstMs) / MS_DAY) + 1)
+    : upcoming.length;
   const density = upcoming.length / spanDays;
   if (density >= 0.4) return { kind: "chips", upcoming };
 
   const months = new Map<string, EventDateScheduleOccurrence[]>();
   for (const o of upcoming) {
-    let key: string;
-    try {
-      const parts = new Intl.DateTimeFormat("en-CA", {
-        timeZone: o.timezone && o.timezone.length > 0 ? o.timezone : "UTC",
-        year: "numeric",
-        month: "2-digit",
-      }).formatToParts(new Date(o.startAt));
-      const y = parts.find((p) => p.type === "year")?.value ?? "0000";
-      const m = parts.find((p) => p.type === "month")?.value ?? "01";
-      key = `${y}-${m}`;
-    } catch {
-      const d = new Date(o.startAt);
-      key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-    }
+    const day = occurrenceLocalDay(o.startAt, o.timezone);
+    const key = day !== null ? day.slice(0, 7) : "0000-01";
     const list = months.get(key) ?? [];
     list.push(o);
     months.set(key, list);
@@ -127,22 +168,5 @@ export const weekStartForCountry = (countryCode: string | null | undefined): 0 |
   } catch {
     /* fall through */
   }
-  const sundayFirst = new Set([
-    "US",
-    "CA",
-    "JP",
-    "KR",
-    "TW",
-    "PH",
-    "IL",
-    "DO",
-    "GT",
-    "HN",
-    "MX",
-    "NI",
-    "PA",
-    "PR",
-    "SV",
-  ]);
-  return sundayFirst.has(cc) ? 0 : 1;
+  return SUNDAY_FIRST_COUNTRIES.has(cc) ? 0 : 1;
 };

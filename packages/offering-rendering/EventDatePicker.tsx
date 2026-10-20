@@ -14,6 +14,7 @@ import {
 
 import {
   chooseEventDateLayout,
+  occurrenceLocalDay,
   placesLeftChip,
   type EventDateScheduleOccurrence,
   type EventDateScheduleStatus,
@@ -154,7 +155,7 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
           const isOn = selected.has(o.id);
           const full = o.soldOut === true;
           const chip = placesLeftChip(o.placesLeft);
-          const day = new Date(o.startAt).toISOString().slice(0, 10);
+          const day = occurrenceLocalDay(o.startAt, o.timezone) ?? "Date TBD";
           const title =
             typeof o.overrideTitle === "string" && o.overrideTitle.trim().length > 0
               ? o.overrideTitle.trim()
