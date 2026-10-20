@@ -250,7 +250,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                     >
                       <Text style={styles.ticketName} numberOfLines={2}>
                         {admittedEarlierDay(ticket) && ticket.usedAt !== null
-                          ? `${ticket.ticketName} · in on an earlier day (${formatClock(ticket.usedAt)})`
+                          ? `${ticket.ticketName} · first admitted ${formatClock(ticket.usedAt)}`
                           : ticket.ticketName}
                       </Text>
                       {state !== null ? (

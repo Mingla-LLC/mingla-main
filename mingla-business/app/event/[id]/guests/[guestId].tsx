@@ -716,7 +716,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                             ? "—"
                             : formatCurrency(t.unitPrice, order.currency)}{" "}
                         · #{idx + 1}
-                        {t.admittedEarlierDay && t.usedAt !== null ? ` · in on an earlier day (${formatClock(t.usedAt)})` : ""}
+                        {t.admittedEarlierDay && t.usedAt !== null ? ` · first admitted ${formatClock(t.usedAt)}` : ""}
                       </Text>
                     </View>
                     {t.state === "checked_in" ? (

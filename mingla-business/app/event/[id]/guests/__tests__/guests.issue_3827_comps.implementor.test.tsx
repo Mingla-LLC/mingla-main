@@ -281,7 +281,7 @@ describe("issue #3827 — guest page", () => {
     })];
     const r = await mount(<GuestDetailRoute />);
     expect(r.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Admit")).toHaveLength(1);
-    expect(text(r.root)).toContain("in on an earlier day");
+    expect(text(r.root)).toContain("first admitted");
     const [cancel] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Cancel guest-list ticket");
     expect(cancel.props.disabled).toBe(true);
   });
