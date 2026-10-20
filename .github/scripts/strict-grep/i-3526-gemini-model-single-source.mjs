@@ -202,6 +202,8 @@ const SCANNED_EXTENSIONS = [
   ".ts", ".tsx", ".mts", ".cts",
   ".js", ".jsx", ".mjs", ".cjs",
   ".json", ".sql",
+  // issue #3980: GraphQL query fixtures are text a model id could hide in.
+  ".graphql",
 ];
 
 // Extensions that legitimately carry no code — CAPPED, and every entry earns
