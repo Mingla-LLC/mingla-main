@@ -693,7 +693,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "set_expected_event",
     title: "Set an expected event",
     description:
-      "Record the next event a host has promised on their host card: title, type and date, or update or cancel one you set before, or link it to the real event once it is on Mingla. It shows dashed on the Calendar with its go-live deadline. The same request_key repeats safely. " +
+      "Record the next event a host has promised on their host card: title, type and date, or update or cancel one you set before, or link it to the real event once it is on Mingla. It shows dashed on the Calendar with its go-live deadline. repeats: none, week or month; send id with repeats to make a saved event repeat in place, without cancelling it. A venue's promo moment uses event_type promo_moment. The same request_key repeats safely. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       record_id: ID,
@@ -707,10 +707,18 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
       event_type: {
         type: "string",
         maxLength: 12,
-        enum: ["event", "experience", "trip", "rsvp"],
-        hint: "Use event, experience, trip or rsvp",
+        enum: ["event", "experience", "trip", "rsvp", "promo_moment"],
+        hint: "Use event, experience, trip, rsvp or promo_moment",
       },
       expected_on: DATE,
+      // #3980 proof fix P2-2: the same choices as the person's save on the
+      // host card (Does not repeat / Every week / Every month).
+      repeats: {
+        type: "string",
+        maxLength: 5,
+        enum: ["none", "week", "month"],
+        hint: "Use none, week or month",
+      },
       city: {
         type: "string",
         minLength: 1,

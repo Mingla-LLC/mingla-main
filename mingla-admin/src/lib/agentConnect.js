@@ -411,7 +411,7 @@ export const AGENT_WORK_ABILITIES = [
   { tool: "my_work", group: "Work", title: "Reads your cards", detail: "Your open cards, the ones you watch, its open claims and the cards it is working on." },
   { tool: "list_calendar", group: "Calendar", title: "Reads the Calendar", detail: "Events on Mingla with their runway, promised events, go-live deadlines, promotions and content." },
   { tool: "runway_report", group: "Calendar", title: "Reports runway", detail: "Which upcoming events are ready to promote, need promoting now, are too late for promo, or are not live yet." },
-  { tool: "set_expected_event", group: "Calendar", title: "Records a promised event", detail: "The next event a host has promised, so it shows on the Calendar with its go-live deadline." },
+  { tool: "set_expected_event", group: "Calendar", title: "Records a promised event", detail: "The next event a host has promised, so it shows on the Calendar with its go-live deadline. It can repeat every week or month, or be a venue's promo moment." },
 ];
 
 export const AGENT_WORK_GUARDRAILS = [
