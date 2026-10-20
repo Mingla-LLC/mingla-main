@@ -68,6 +68,8 @@ const lastPage = (link) => {
 };
 
 const MAX_COMMENT_PAGES = 50;
+// GitHub lists at most 3,000 files of a pull request (30 pages of 100).
+const MAX_FILE_PAGES = 30;
 
 /**
  * #3980 W2 rework 4: a GitHub read that did not answer 200 (with the shape
@@ -350,13 +352,23 @@ async function collect(number) {
   ok(commit, `merge commit ${sha.slice(0, 7)}`, { shape: (j) => j && typeof j === "object" });
   const subject = String(commit.json?.commit?.message ?? "").split("\n")[0];
 
+  // #3980 W2 follow-up: read the file list up to GitHub's own limit (30
+  // pages of 100). A list cut short (the last page read still full, or fewer
+  // files than the pull request says it changed) is an error, never a list:
+  // a migration past the cut would be recorded as "migrations applied: none".
   const files = [];
-  for (let page = 1; page <= 3; page += 1) {
+  let lastFull = false;
+  for (let page = 1; page <= MAX_FILE_PAGES; page += 1) {
     const r = await gh("GET", `/repos/${REPO}/pulls/${number}/files?per_page=100&page=${page}`);
     ok(r, `page ${page} of the files of #${number}`, { shape: Array.isArray });
+    lastFull = r.json.length >= 100;
     if (r.json.length === 0) break;
     files.push(...r.json.map((f) => ({ filename: f.filename, status: f.status })));
-    if (r.json.length < 100) break;
+    if (!lastFull) break;
+  }
+  const changed = Number.isInteger(pr.changed_files) ? pr.changed_files : null;
+  if (lastFull || (changed !== null && files.length < changed)) {
+    throw new GitHubReadError(`the file list of #${number} is cut short (read ${files.length} file${files.length === 1 ? "" : "s"}${changed !== null ? ` of ${changed}` : ""}; GitHub lists at most ${MAX_FILE_PAGES * 100}), so its migrations cannot be known`);
   }
   const paths = files.map((f) => f.filename);
   const status = await gh("GET", `/repos/${REPO}/commits/${sha}/status?per_page=100`);

@@ -38,8 +38,9 @@
 -- altered check constraints (no card or link may still use 'github' or
 -- 'roadmap_card'), drop ops_release_records.test_files, put back the plain
 -- ops_roadmap_links_issue index in place of ops_roadmap_links_issue_unique
--- drop the three roadmap approval guard triggers (ops_roadmap_card_agent_guard,
--- ops_roadmap_link_agent_guard, ops_roadmap_github_agent_guard) and drop the
+-- drop the four roadmap approval guard triggers (ops_roadmap_card_agent_guard,
+-- ops_roadmap_link_agent_guard, ops_roadmap_github_agent_guard,
+-- ops_roadmap_people_agent_guard) and drop the
 -- new ops_ functions. Feature Guide evidence and roadmap drafts written by the
 -- bridges stay as audited history.
 
@@ -346,7 +347,8 @@ $$;
 -- its draft: the key, kind, status, what it waits for, its close fields,
 -- blocked, anchor, archive, or who is working on it. A reopen (done back to
 -- To do) only reopens, so it stays allowed. Its title, wording, plan, result,
--- due date, sprint and people stay editable. People, the bridges and
+-- due date and sprint stay editable; its owners and watchers do not (W2
+-- follow-up, ops_roadmap_people_agent_guard). People, the bridges and
 -- housekeeping are not affected. An agent creating such a card is refused.
 CREATE FUNCTION public.ops_roadmap_card_agent_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -395,6 +397,29 @@ BEGIN
       OR (TG_OP = 'UPDATE' AND EXISTS (SELECT 1 FROM public.ops_work_cards w WHERE w.id = OLD.card_id AND w.auto_key LIKE 'roadmap\_shipped:%')))
      AND public.ops_agent_request() THEN
     RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person changes what this card links to.' USING ERRCODE = '42501';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+-- #3980 W2 follow-up: the same backstop for who owns and watches a "Recently
+-- shipped" approval card. An agent's request never adds, removes or changes
+-- the role of an owner or watcher on one (the person approving what hosts
+-- are told is chosen by people). A row rewritten with the same card, person
+-- and role is not a change. People, the bridges and housekeeping are not
+-- affected. AFTER triggers, so an upsert counts only as what it did.
+CREATE FUNCTION public.ops_roadmap_people_agent_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_card uuid := CASE WHEN TG_OP = 'DELETE' THEN OLD.card_id ELSE NEW.card_id END;
+BEGIN
+  IF TG_OP = 'UPDATE' AND ROW(NEW.card_id, NEW.email, NEW.role) IS NOT DISTINCT FROM ROW(OLD.card_id, OLD.email, OLD.role) THEN
+    RETURN NULL;
+  END IF;
+  IF (EXISTS (SELECT 1 FROM public.ops_work_cards w WHERE w.id = v_card AND w.auto_key LIKE 'roadmap\_shipped:%')
+      OR (TG_OP = 'UPDATE' AND EXISTS (SELECT 1 FROM public.ops_work_cards w WHERE w.id = OLD.card_id AND w.auto_key LIKE 'roadmap\_shipped:%')))
+     AND public.ops_agent_request() THEN
+    RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person changes who owns or watches this card.' USING ERRCODE = '42501';
   END IF;
   RETURN NULL;
 END;
@@ -1161,8 +1186,8 @@ BEGIN
   -- #3980 W2 rework 4: on a roadmap approval card an agent changes nothing
   -- that ties it to its draft or decides whether it is open: its links, its
   -- GitHub links, blocked or waiting, or its anchor. Its wording, plan,
-  -- result, due date and people stay editable. (A trigger refuses the same
-  -- for every other writer.)
+  -- result and due date stay editable. (A trigger refuses the same for every
+  -- other writer.)
   IF v.via IS NOT NULL AND c.auto_key LIKE 'roadmap\_shipped:%'
      AND (ROW(n.blocked, n.blocked_kind, n.blocked_reason, n.anchor_kind, n.anchor_id)
             IS DISTINCT FROM ROW(c.blocked, c.blocked_kind, c.blocked_reason, c.anchor_kind, c.anchor_id)
@@ -1174,6 +1199,16 @@ BEGIN
               (SELECT string_agg(k, ',' ORDER BY k COLLATE "C") FROM (
                  SELECT DISTINCT (x->>'kind') || ':' || lower(x->>'id') AS k FROM jsonb_array_elements(COALESCE(cl->'links', '[]'::jsonb)) x) b))) THEN
     RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person changes what this card links to or waits for.' USING ERRCODE = '42501';
+  END IF;
+  -- #3980 W2 follow-up: nor who owns or watches it (the same test
+  -- ops_people_set uses for "changed"; a trigger backstops every writer).
+  IF v.via IS NOT NULL AND c.auto_key LIKE 'roadmap\_shipped:%'
+     AND (public.ops_card_people(c.id, 'owner')
+            IS DISTINCT FROM ARRAY(SELECT x FROM jsonb_array_elements_text(COALESCE(cl->'owners', '[]'::jsonb)) x ORDER BY x)
+          OR public.ops_card_people(c.id, 'watcher')
+            IS DISTINCT FROM ARRAY(SELECT x FROM jsonb_array_elements_text(COALESCE(cl->'watchers', '[]'::jsonb)) x
+                                    WHERE NOT x = ANY (ARRAY(SELECT jsonb_array_elements_text(COALESCE(cl->'owners', '[]'::jsonb)))) ORDER BY x)) THEN
+    RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person changes who owns or watches this card.' USING ERRCODE = '42501';
   END IF;
 
   IF ROW(n.title, n.instructions, n.done_means, n.due_on, n.sprint_id, n.anchor_kind, n.anchor_id, n.result)
@@ -1797,7 +1832,9 @@ BEGIN
     'public.ops_feature_guide_release(text)',
     -- #3980 W2 rework 4
     'public.ops_roadmap_shipped_draft(text)', 'public.ops_agent_request()',
-    'public.ops_roadmap_card_agent_guard()', 'public.ops_roadmap_link_agent_guard()'] LOOP
+    'public.ops_roadmap_card_agent_guard()', 'public.ops_roadmap_link_agent_guard()',
+    -- #3980 W2 follow-up
+    'public.ops_roadmap_people_agent_guard()'] LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', f);
   END LOOP;
@@ -1824,12 +1861,17 @@ CREATE TRIGGER ops_roadmap_link_agent_guard AFTER INSERT OR UPDATE OR DELETE ON 
   FOR EACH ROW EXECUTE FUNCTION public.ops_roadmap_link_agent_guard();
 CREATE TRIGGER ops_roadmap_github_agent_guard AFTER INSERT OR UPDATE OR DELETE ON public.ops_work_github
   FOR EACH ROW EXECUTE FUNCTION public.ops_roadmap_link_agent_guard();
+-- #3980 W2 follow-up: and its owners and watchers.
+CREATE TRIGGER ops_roadmap_people_agent_guard AFTER INSERT OR UPDATE OR DELETE ON public.ops_work_people
+  FOR EACH ROW EXECUTE FUNCTION public.ops_roadmap_people_agent_guard();
 COMMENT ON FUNCTION public.ops_roadmap_shipped_draft(text) IS
   'Issue #3980. The draft a Recently shipped approval card is about, from Bridge D''s own audit row for the card''s issue; never from an editable link.';
 COMMENT ON FUNCTION public.ops_roadmap_card_agent_guard() IS
   'Issue #3980. Trigger: an agent''s request never changes the key, status, close, block, anchor, archive or working mark of a Recently shipped approval card (a reopen stays allowed).';
 COMMENT ON FUNCTION public.ops_roadmap_link_agent_guard() IS
   'Issue #3980. Trigger: an agent''s request never adds, removes or swaps a link or GitHub link on a Recently shipped approval card.';
+COMMENT ON FUNCTION public.ops_roadmap_people_agent_guard() IS
+  'Issue #3980. Trigger: an agent''s request never adds, removes or changes the role of an owner or watcher on a Recently shipped approval card.';
 COMMENT ON FUNCTION public.ops_roadmap_suggestion_decide(uuid, text) IS
   'Issue #3980. A person applies or dismisses the lane GitHub suggests; apply only returns the lane, which the screen saves through community_upsert_roadmap_card.';
 

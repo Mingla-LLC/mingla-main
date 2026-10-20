@@ -16,6 +16,7 @@ import {
   AdDestinationError,
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
+import { decodeHtmlAttribute } from "../_shared/adPreviewIframe.ts";
 import {
   buildMetaCreativeBody,
   metaGraph,
@@ -90,7 +91,8 @@ function extractTrustedMetaIframe(body: unknown): string {
   if (!srcMatch) throw new Error("preview_contract_unrecognized");
   let url: URL;
   try {
-    url = new URL(srcMatch[2]);
+    // #3697: the attribute is HTML-escaped (`&amp;t=`); decode it first.
+    url = new URL(decodeHtmlAttribute(srcMatch[2]));
   } catch {
     throw new Error("preview_contract_unrecognized");
   }
