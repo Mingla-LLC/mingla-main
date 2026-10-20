@@ -6,6 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { getNativeAppVersionHeaders } from "./appVersionIdentity";
+import { createTrackedFetch } from "./reloadNetworkFence";
 
 const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
 
@@ -153,7 +154,23 @@ export const laneEdgeEndpoint: {
   }
   : null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+/**
+ * #2107 (Sentry REACT-NATIVE-1C): every Supabase request is counted while it is
+ * on the wire, and held — not sent, not rejected — while an in-app restart is in
+ * progress, so nothing reaches RCTNetworking while the bridge tears down. The
+ * global fetch is read at call time, exactly like supabase-js's default. On web
+ * Metro resolves reloadNetworkFence.web.ts, a plain pass-through.
+ */
+function withRestartFence<O extends { global: { headers: Record<string, string> } }>(
+  options: O,
+): O & { global: O["global"] & { fetch: typeof fetch } } {
+  return {
+    ...options,
+    global: { ...options.global, fetch: createTrackedFetch(() => fetch) },
+  };
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, withRestartFence({
   auth: {
     storage,
     autoRefreshToken: true,
@@ -168,4 +185,4 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     ...(Platform.OS === "web" ? { lock: webResilientLock } : {}),
   },
   global: { headers: getNativeAppVersionHeaders() },
-});
+}));

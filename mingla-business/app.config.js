@@ -84,6 +84,26 @@ const iosUrlScheme = iosClientId
 // Re-add once approved. Used by Cycle 13 (Door Mode card-present payments).
 // Not needed for Cycles 0a–12.
 
+// #2107 B1 — the critical-update counter. A committed integer in
+// update-critical-index.json, emitted into `extra.criticalIndex` so EVERY store
+// build and EVERY OTA carries it (OTA manifests expose it as
+// extra.expoClient.extra.criticalIndex). Raising it marks the next publish as
+// critical: running code with a lower index shows "Updating" and restarts into
+// the new update. It only ever goes up. A malformed file fails the config load
+// loudly — a build or OTA without a readable index cannot take part in the
+// critical-update contract, and the publish scripts refuse it too.
+/** @returns {number} */
+const readCriticalIndex = () => {
+  const raw = require("./update-critical-index.json");
+  const value = raw === null || typeof raw !== "object" ? undefined : raw.criticalIndex;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(
+      "update-critical-index.json must hold { \"criticalIndex\": <non-negative integer> }. [#2107]",
+    );
+  }
+  return value;
+};
+
 /**
  * @param {import("expo/config").ConfigContext} context
  * @returns {import("expo/config").ExpoConfig}
@@ -200,6 +220,8 @@ module.exports = ({ config }) => {
     ],
     extra: {
       ...config.extra,
+      // #2107 B1 — see readCriticalIndex above.
+      criticalIndex: readCriticalIndex(),
       // NOTE (#1047 [business-jest-suite-audit], C-1): the earlier duplicate
       // EXPO_PUBLIC_POSTHOG_KEY / _HOST stanza (META-ORCH-1187 Phase 1) was
       // removed here — it was a duplicate object key with the LEG-2 block below

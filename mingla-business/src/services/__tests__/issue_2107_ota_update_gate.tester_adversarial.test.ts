@@ -1,17 +1,25 @@
 // #2107 tester adversarial proof — Host.
 //
+// [TEST-MOD-APPROVED #2107] 2026-10-19: rebased onto the approved critical-index
+// redesign (spec comment "DEEP INVESTIGATION + SPEC (2026-10-19)" on #2107).
+// Every "stays open" case and every resume-storm case below is the original
+// case against the new coordinator. The acknowledgement-tap cases are replaced
+// by their critical-update equivalents: there is no tap any more.
+//
 // Assumes the gate is BROKEN until proven otherwise. Every case here is a way
 // this layer could lock a user out of the app with no OTA path back in, which
 // is the one failure mode that cannot be fixed after the fact.
 //
-// The single invariant under attack: BLOCKING IS ONLY EVER THE RESULT OF A
-// SUCCESSFULLY PARSED, EXPLICITLY BLOCKING POLICY. Everything else is open.
+// The single invariant under attack: BLOCKING IS ONLY EVER A DELIBERATE,
+// BOUNDED BRANCH — a critical update that is offered, downloadable and not yet
+// tried twice. Everything else is open.
 
 import {
   OtaGateCoordinator,
   parseOtaPolicy,
   type AppOtaPolicy,
   type OtaGateDependencies,
+  type OtaUpdateBridge,
   type OtaUpdateCheck,
 } from "../otaUpdatePolicy";
 
@@ -29,122 +37,103 @@ const check = (overrides: Partial<OtaUpdateCheck> = {}): OtaUpdateCheck => ({
   isAvailable: true,
   isRollBackToEmbedded: false,
   updateId: "update-a",
+  criticalIndex: 5,
+  reason: null,
+  ...overrides,
+});
+
+const bridge = (overrides: Partial<OtaUpdateBridge> = {}): OtaUpdateBridge => ({
+  isEnabled: true,
+  runtimeVersion: "1.1.4",
+  runningUpdateId: "running-1",
+  runningCriticalIndex: 4,
+  isEmergencyLaunch: false,
+  checkForUpdate: async () => check(),
+  fetchUpdate: async () => ({ isNew: true, updateId: "update-a" }),
+  reload: async () => undefined,
   ...overrides,
 });
 
 function deps(overrides: Partial<OtaGateDependencies> = {}): OtaGateDependencies {
   return {
     platform: "ios",
-    updates: {
-      isEnabled: true,
-      runtimeVersion: "1.1.4",
-      checkForUpdate: async () => check(),
-      fetchUpdate: async () => undefined,
-      reload: async () => undefined,
-    },
+    updates: bridge(),
     fetchPolicy: async () => policy(),
-    loadAcknowledgement: async () => null,
-    saveAcknowledgement: async () => undefined,
+    loadAttemptRecord: async () => null,
+    saveAttemptRecord: async () => undefined,
+    clearAttemptRecord: async () => undefined,
     report: () => undefined,
-    timeoutMs: 30,
+    policyTimeoutMs: 30,
+    checkTimeoutMs: 30,
+    downloadTimeoutMs: 30,
+    recordTimeoutMs: 30,
+    reloadGraceMs: 5,
     ...overrides,
   };
 }
 
 const never = <T,>(): Promise<T> => new Promise<T>(() => undefined);
-const settle = async (): Promise<void> => {
-  await Promise.resolve();
-  await Promise.resolve();
-};
 
-describe("#2107 adversarial — nothing but an explicit policy may block", () => {
+describe("#2107 adversarial — nothing but a bounded critical update may block", () => {
   it.each([
-    [
-      "the policy endpoint throws",
-      deps({
-        fetchPolicy: async () => {
-          throw new Error("offline");
-        },
-      }),
-    ],
-    ["the policy endpoint hangs past the timeout", deps({ fetchPolicy: never })],
     [
       "the update check throws",
       deps({
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
+        updates: bridge({
           checkForUpdate: async () => {
             throw new Error("updates unreachable");
           },
-          fetchUpdate: async () => undefined,
-          reload: async () => undefined,
-        },
+        }),
       }),
     ],
-    [
-      "the update check hangs past the timeout",
-      deps({
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
-          checkForUpdate: never,
-          fetchUpdate: async () => undefined,
-          reload: async () => undefined,
-        },
-      }),
-    ],
+    ["the update check hangs past the timeout", deps({ updates: bridge({ checkForUpdate: never }) })],
     [
       "no update is actually available",
-      deps({
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
-          checkForUpdate: async () => check({ isAvailable: false, updateId: null }),
-          fetchUpdate: async () => undefined,
-          reload: async () => undefined,
-        },
-      }),
+      deps({ updates: bridge({ checkForUpdate: async () => check({ isAvailable: false, updateId: null }) }) }),
     ],
     [
       "the available update is a roll-back to embedded",
       deps({
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
+        updates: bridge({
           checkForUpdate: async () =>
             check({ isAvailable: false, isRollBackToEmbedded: true, updateId: null }),
-          fetchUpdate: async () => undefined,
-          reload: async () => undefined,
-        },
+        }),
       }),
     ],
     [
       "updates are disabled in this build",
+      deps({ updates: bridge({ isEnabled: false, runtimeVersion: null }) }),
+    ],
+    ["the runtime version is unreadable", deps({ updates: bridge({ runtimeVersion: "not-a-version" }) })],
+    ["the platform is web", deps({ platform: null })],
+    [
+      "the download throws",
       deps({
-        updates: {
-          isEnabled: false,
-          runtimeVersion: null,
-          checkForUpdate: async () => check(),
-          fetchUpdate: async () => undefined,
-          reload: async () => undefined,
+        updates: bridge({
+          fetchUpdate: async () => {
+            throw new Error("network died mid-download");
+          },
+        }),
+      }),
+    ],
+    ["the download hangs past the timeout", deps({ updates: bridge({ fetchUpdate: never }) })],
+    [
+      "the attempt record cannot be written",
+      deps({
+        saveAttemptRecord: async () => {
+          throw new Error("storage full");
         },
       }),
     ],
     [
-      "the runtime version is unreadable",
+      "the attempt record cannot be read",
       deps({
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "not-a-version",
-          checkForUpdate: async () => check(),
-          fetchUpdate: async () => undefined,
-          reload: async () => undefined,
+        loadAttemptRecord: async () => {
+          throw new Error("storage unreadable");
         },
       }),
     ],
-    ["the platform is web", deps({ platform: null })],
-  ])("stays open when %s", async (_label, dependencies) => {
+  ])("ends open when %s", async (_label, dependencies) => {
     const gate = new OtaGateCoordinator(dependencies);
     expect((await gate.check()).phase).toBe("open");
   });
@@ -153,13 +142,7 @@ describe("#2107 adversarial — nothing but an explicit policy may block", () =>
     let policyReads = 0;
     const gate = new OtaGateCoordinator(
       deps({
-        updates: {
-          isEnabled: false,
-          runtimeVersion: null,
-          checkForUpdate: async () => check(),
-          fetchUpdate: async () => undefined,
-          reload: async () => undefined,
-        },
+        updates: bridge({ isEnabled: false, runtimeVersion: null }),
         fetchPolicy: async () => {
           policyReads += 1;
           return policy();
@@ -170,17 +153,22 @@ describe("#2107 adversarial — nothing but an explicit policy may block", () =>
     expect(policyReads).toBe(0);
   });
 
-  it("re-prompts rather than silently un-enforcing when the acknowledgement store is unreadable", async () => {
-    // DELIBERATE ASYMMETRY. The acknowledgement record is a de-duplication
-    // convenience, not the blocking authority — the POLICY is. Failing open here
-    // would let a slow AsyncStorage disable enforcement entirely and look
-    // healthy doing it. Re-prompting costs one extra tap and cannot lock anyone
-    // out, so it is the safe direction for this specific failure.
-    const gate = new OtaGateCoordinator(deps({ loadAcknowledgement: never }));
-    expect((await gate.check()).phase).toBe("acknowledge");
-    await gate.acknowledge();
-    await settle();
-    expect(gate.getSnapshot().phase).toBe("open");
+  it("never restarts when the attempt record cannot be written", async () => {
+    let reloads = 0;
+    const gate = new OtaGateCoordinator(
+      deps({
+        saveAttemptRecord: async () => {
+          throw new Error("storage full");
+        },
+        updates: bridge({
+          reload: async () => {
+            reloads += 1;
+          },
+        }),
+      }),
+    );
+    await gate.check();
+    expect(reloads).toBe(0);
   });
 
   it("refuses a mode string it cannot name, even a plausible one", () => {
@@ -188,165 +176,72 @@ describe("#2107 adversarial — nothing but an explicit policy may block", () =>
       expect(parseOtaPolicy({ ...policy(), mode }, "ios", "1.1.4")).toBeNull();
     }
   });
-
-  it("does not replay a stale blocking decision after a failed refresh", async () => {
-    // A cached native block still has a working store exit; a cached JS block
-    // does not. So unlike #2075's coordinator, this one must DOWNGRADE.
-    let call = 0;
-    const gate = new OtaGateCoordinator(
-      deps({
-        fetchPolicy: async () => {
-          call += 1;
-          if (call === 1) return policy();
-          throw new Error("offline");
-        },
-      }),
-    );
-    expect((await gate.check()).phase).toBe("acknowledge");
-    await gate.acknowledge();
-    await settle();
-    expect((await gate.check()).phase).toBe("open");
-  });
-});
-
-describe("#2107 adversarial — the tap always releases the app", () => {
-  it("releases even when the background fetch fails outright", async () => {
-    const gate = new OtaGateCoordinator(
-      deps({
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
-          checkForUpdate: async () => check(),
-          fetchUpdate: async () => {
-            throw new Error("network died mid-download");
-          },
-          reload: async () => undefined,
-        },
-      }),
-    );
-    await gate.check();
-    await gate.acknowledge();
-    await settle();
-    expect(gate.getSnapshot().phase).toBe("open");
-  });
-
-  it("releases even when the device cannot persist the acknowledgement", async () => {
-    const gate = new OtaGateCoordinator(
-      deps({
-        saveAcknowledgement: async () => {
-          throw new Error("storage full");
-        },
-      }),
-    );
-    await gate.check();
-    await gate.acknowledge();
-    await settle();
-    expect(gate.getSnapshot().phase).toBe("open");
-  });
-
-  it("collapses a double tap into a single download", async () => {
-    let fetches = 0;
-    const gate = new OtaGateCoordinator(
-      deps({
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
-          checkForUpdate: async () => check(),
-          fetchUpdate: async () => {
-            fetches += 1;
-          },
-          reload: async () => undefined,
-        },
-      }),
-    );
-    await gate.check();
-    await Promise.all([gate.acknowledge(), gate.acknowledge()]);
-    await settle();
-    expect(fetches).toBe(1);
-    expect(gate.getSnapshot().phase).toBe("open");
-  });
-
-  it("ignores a tap that arrives when nothing is blocking", async () => {
-    let fetches = 0;
-    const gate = new OtaGateCoordinator(
-      deps({
-        fetchPolicy: async () => policy({ mode: "silent" }),
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
-          checkForUpdate: async () => check(),
-          fetchUpdate: async () => {
-            fetches += 1;
-          },
-          reload: async () => undefined,
-        },
-      }),
-    );
-    await gate.check();
-    await gate.acknowledge();
-    expect(fetches).toBe(0);
-    expect(gate.getSnapshot().phase).toBe("open");
-  });
 });
 
 describe("#2107 adversarial — resume storms cannot re-block or stack work", () => {
-  it("does not re-read policy while the user is already looking at the layer", async () => {
-    let policyReads = 0;
+  it("does not start a second install while the first is still downloading", async () => {
+    let fetches = 0;
+    let releaseFetch!: () => void;
     const gate = new OtaGateCoordinator(
       deps({
-        fetchPolicy: async () => {
-          policyReads += 1;
-          return policy();
-        },
+        updates: bridge({
+          fetchUpdate: () => {
+            fetches += 1;
+            return new Promise((resolve) => {
+              releaseFetch = () => resolve({ isNew: true, updateId: "update-a" });
+            });
+          },
+        }),
+        downloadTimeoutMs: 1_000,
       }),
     );
-    await gate.check();
-    await gate.check();
-    await gate.check();
-    expect(policyReads).toBe(1);
-    expect(gate.getSnapshot().phase).toBe("acknowledge");
+    const first = gate.check();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(gate.getSnapshot().phase).toBe("updating");
+    expect((await gate.check()).phase).toBe("updating");
+    expect(fetches).toBe(1);
+    releaseFetch();
+    await first;
   });
 
   it("deduplicates concurrent checks into one in-flight resolution", async () => {
-    let policyReads = 0;
+    let checks = 0;
     const gate = new OtaGateCoordinator(
       deps({
-        fetchPolicy: async () => {
-          policyReads += 1;
-          return policy();
-        },
+        updates: bridge({
+          checkForUpdate: async () => {
+            checks += 1;
+            return check({ isAvailable: false, updateId: null });
+          },
+        }),
       }),
     );
     const [a, b] = await Promise.all([gate.check(), gate.check()]);
-    expect(policyReads).toBe(1);
+    expect(checks).toBe(1);
     expect(a).toBe(b);
   });
 
-  it("does not interrupt an in-progress force_restart install", async () => {
+  it("does not interrupt an in-progress install with a foreground check", async () => {
     let reloads = 0;
     let releaseFetch!: () => void;
     const gate = new OtaGateCoordinator(
       deps({
-        fetchPolicy: async () => policy({ mode: "force_restart" }),
-        updates: {
-          isEnabled: true,
-          runtimeVersion: "1.1.4",
-          checkForUpdate: async () => check(),
+        updates: bridge({
           fetchUpdate: () =>
-            new Promise<void>((resolve) => {
-              releaseFetch = resolve;
+            new Promise((resolve) => {
+              releaseFetch = () => resolve({ isNew: true, updateId: "update-a" });
             }),
           reload: async () => {
             reloads += 1;
           },
-        },
+        }),
+        downloadTimeoutMs: 1_000,
       }),
     );
-    await gate.check();
-    const installing = gate.acknowledge();
-    await settle();
-    expect(gate.getSnapshot().phase).toBe("installing");
-    expect((await gate.check()).phase).toBe("installing");
+    const installing = gate.check();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(gate.getSnapshot().phase).toBe("updating");
+    expect((await gate.check()).phase).toBe("updating");
     releaseFetch();
     await installing;
     expect(reloads).toBe(1);

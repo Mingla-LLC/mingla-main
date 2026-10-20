@@ -10,6 +10,9 @@ import "../src/i18n"; // Must be first — initializes i18next before any compon
 // Originally tracked as DISC-QA-0892-A-RETEST-2-2 from ORCH-0892-A close.
 // See app-mobile/src/diagnostics/silenceStripeForwardRef.ts for full rationale.
 import "../src/diagnostics/silenceStripeForwardRef";
+// #2107 (U1): the launch guard installs when this file is imported, before
+// Sentry.init below wraps the global error handler.
+import { UpdateLaunchBoundary } from "../src/components/UpdateLaunchBoundary";
 import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
@@ -103,7 +106,7 @@ Sentry.init({
   enabled: !__DEV__,
 });
 
-export default Sentry.wrap(function RootLayout() {
+function RootLayout() {
   useFonts(MINGLA_THEME_FONTS);
 
   // ORCH-1056 — Stripe mode boot handshake. Verifies bundled pk prefix
@@ -228,5 +231,16 @@ export default Sentry.wrap(function RootLayout() {
         )}
       </StripeNativeProvider>
     </GestureHandlerRootView>
+  );
+}
+
+// #2107 (U1): the outermost boundary. Explorer had none, so a render error in
+// the root unmounted everything and left a blank white screen; it now shows the
+// restart screen and reports the error.
+export default Sentry.wrap(function RootLayoutWithLaunchGuard() {
+  return (
+    <UpdateLaunchBoundary>
+      <RootLayout />
+    </UpdateLaunchBoundary>
   );
 });
