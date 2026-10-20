@@ -71,7 +71,9 @@ Deno.test("#3980 W2 rework 3: the Roadmap panel's listener says nothing while th
 
 Deno.test("#3980 W2 rework 3: To review's description names roadmap approvals in plain words", () => {
   const d = read("pages/DraftsPage.jsx");
-  assertMatch(d, /<PageHeader title="To review" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it\."/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11, R8) renames the page "Needs you" (the menu label and the design);
+  // Wave 2 rework 3's description is kept word for word.
+  assertMatch(d, /<PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it\."/);
 });
 
 Deno.test("#3980 W2 rework 3: a Send card has its own To review group and its Mark sent action", () => {
