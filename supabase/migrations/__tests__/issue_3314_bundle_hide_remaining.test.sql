@@ -270,8 +270,11 @@ ROLLBACK;
 
 -- ─── H-07: additive only ───────────────────────────────────────────────────────────
 -- [TEST-MOD-APPROVED #3281] Many-dates foundation re-emits the checkout bundle
--- (schedule LATERAL + additive keys, still before recurrenceRule/refundPolicy).
--- H-07b/H-07c pins move from 20270704003314 / #3284 bodies to the #3281 body.
+-- (schedule LATERAL + additive keys before recurrenceRule/refundPolicy).
+-- H-07b pins the full #3281 body. H-07c keeps the #3314 CTE projection (schedule
+-- expressions still read hide_remaining_count_setting) and removes only the
+-- top-level hideRemainingCount key. H-07e/H-08d allow #3281 keys between
+-- hideRemainingCount and recurrenceRule.
 BEGIN;
 DO $h07$
 DECLARE
@@ -314,9 +317,10 @@ BEGIN
     'H-07a the installed bundle carries each #3314 hunk exactly once');
   PERFORM pg_temp.h3314_assert(md5(v_src) = 'f07629dbe9579d9c91fe1a9927ce9099',
     'H-07b the installed body is byte-identical to 20271124003281 (md5 ' || md5(v_src) || ')');
-  v_before_src := replace(replace(v_src, v_cte_hunk, ''), v_key_hunk, '');
-  PERFORM pg_temp.h3314_assert(md5(v_before_src) = 'e251fd4ac43d73909cb8e0d6c3b0263c',
-    'H-07c removing the two hunks gives back #3281''s body without #3314 (md5 ' || md5(v_before_src) || ')');
+  -- Keep the CTE projection: #3281 schedule sold-out/placesLeft still read it.
+  v_before_src := replace(v_src, v_key_hunk, '');
+  PERFORM pg_temp.h3314_assert(md5(v_before_src) = '679bd5d96a71bcf205c239c7990cd5aa',
+    'H-07c removing only the hideRemainingCount key gives the #3281 comparison body (md5 ' || md5(v_before_src) || ')');
   EXECUTE format(
     'CREATE FUNCTION pg_temp.h3314_bundle_before(p_event_id uuid, p_brand_slug text, p_event_slug text) '
     'RETURNS json LANGUAGE sql STABLE SET search_path TO '''' AS %L', v_before_src);
@@ -327,13 +331,25 @@ BEGIN
     PERFORM pg_temp.h3314_assert(v_before IS NOT NULL AND v_now IS NOT NULL,
       'H-07 fixture: both bodies serve the event');
     PERFORM pg_temp.h3314_assert((v_now::jsonb - 'hideRemainingCount') = v_before::jsonb,
-      'H-07d the bundle minus hideRemainingCount equals the #3284 body, value for value');
+      'H-07d the bundle minus hideRemainingCount equals the comparison body, value for value');
     SELECT array_agg(k ORDER BY n) INTO v_now_keys FROM json_object_keys(v_now) WITH ORDINALITY AS t(k, n);
     SELECT array_agg(k ORDER BY n) INTO v_before_keys FROM json_object_keys(v_before) WITH ORDINALITY AS t(k, n);
-    v_at := array_position(v_before_keys, 'recurrenceRule');
-    v_expected_keys := v_before_keys[1:v_at - 1] || ARRAY['hideRemainingCount'] || v_before_keys[v_at:];
-    PERFORM pg_temp.h3314_assert(v_at IS NOT NULL AND v_now_keys = v_expected_keys,
-      'H-07e every prior key keeps its order; hideRemainingCount sits straight before recurrenceRule');
+    PERFORM pg_temp.h3314_assert(
+      array_remove(v_now_keys, 'hideRemainingCount') = v_before_keys,
+      'H-07e every other key keeps its order; only hideRemainingCount is the #3314 addition');
+    PERFORM pg_temp.h3314_assert(
+      array_position(v_now_keys, 'hideRemainingCount') IS NOT NULL
+        AND array_position(v_now_keys, 'allDaysPass')
+          = array_position(v_now_keys, 'hideRemainingCount') + 1
+        AND array_position(v_now_keys, 'nextStartAt')
+          = array_position(v_now_keys, 'hideRemainingCount') + 2
+        AND array_position(v_now_keys, 'nextEndAt')
+          = array_position(v_now_keys, 'hideRemainingCount') + 3
+        AND array_position(v_now_keys, 'upcomingCount')
+          = array_position(v_now_keys, 'hideRemainingCount') + 4
+        AND array_position(v_now_keys, 'recurrenceRule')
+          = array_position(v_now_keys, 'hideRemainingCount') + 5,
+      'H-07e2 hideRemainingCount then #3281 schedule keys then recurrenceRule');
     PERFORM pg_temp.h3314_assert(
       v_now_keys[cardinality(v_now_keys)] = 'refundPolicy'
         AND v_now_keys[cardinality(v_now_keys) - 1] = 'recurrenceRule',
@@ -377,10 +393,14 @@ BEGIN
   PERFORM pg_temp.h3314_assert(
     v_keys[cardinality(v_keys)] = 'refundPolicy'
       AND v_keys[cardinality(v_keys) - 1] = 'recurrenceRule'
-      AND v_keys[cardinality(v_keys) - 2] = 'hideRemainingCount'
-      AND v_keys[cardinality(v_keys) - 3] = 'multiDatePricingMode',
-    'H-08d the tail is multiDatePricingMode, hideRemainingCount, recurrenceRule, refundPolicy (got '
-    || array_to_string(v_keys[greatest(cardinality(v_keys) - 3, 1):], ', ') || ')');
+      AND v_keys[cardinality(v_keys) - 2] = 'upcomingCount'
+      AND v_keys[cardinality(v_keys) - 3] = 'nextEndAt'
+      AND v_keys[cardinality(v_keys) - 4] = 'nextStartAt'
+      AND v_keys[cardinality(v_keys) - 5] = 'allDaysPass'
+      AND v_keys[cardinality(v_keys) - 6] = 'hideRemainingCount'
+      AND v_keys[cardinality(v_keys) - 7] = 'multiDatePricingMode',
+    'H-08d the tail is multiDatePricingMode, hideRemainingCount, #3281 schedule keys, recurrenceRule, refundPolicy (got '
+    || array_to_string(v_keys[greatest(cardinality(v_keys) - 7, 1):], ', ') || ')');
 END
 $h08$;
 ROLLBACK;
