@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
 import { useOpsPoll } from "./useOpsWork";
+import { onSignOut } from "../lib/signOutCleanup";
 
 export function useOpsCalendar(from, to) {
   const { access } = useAuth();
@@ -20,6 +21,8 @@ export function useOpsCalendar(from, to) {
 // Back to runway shows the rows (and can focus the one that opened the panel)
 // at once instead of a loading state.
 const RUNWAY_CACHE = new Map();
+// Signing out forgets it, so the next person never sees these rows.
+onSignOut(() => RUNWAY_CACHE.clear());
 
 export function useOpsRunway() {
   const { access } = useAuth();

@@ -43,6 +43,7 @@ Deno.test("#3980 final: the runway list keeps its rows across remounts so Back t
 
 Deno.test("#3980 final: Messages never says Nothing waiting under a Draft needed list", () => {
   const page = code("pages/DraftsPage.jsx");
-  assertMatch(page, /const draftNeededShown = query\.state === "waiting" && !filtered && reviewCount\.draftNeeded > 0;/);
+  // The copy follows the cards actually listed, never the menu count.
+  assertMatch(page, /const draftNeededShown = draftNeededListed && draftNeededCards\(draftNeeded\)\.length > 0;/);
   assertMatch(page, /: draftNeededShown \? "No drafts written yet\." : query\.state === "waiting" \? "Nothing waiting\."/);
 });

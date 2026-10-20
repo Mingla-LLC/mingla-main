@@ -15,7 +15,7 @@ import * as service from "../services/draftService";
 import { DRAFT_STATES, draftErrorWords, remainingUndoMs } from "../lib/draftModel";
 import { useToast } from "../context/ToastContext";
 import { ReviewQueue } from "../components/ops/ReviewQueue";
-import { DraftNeededList } from "../components/ops/DraftNeededList";
+import { DraftNeededContext, DraftNeededList, draftNeededCards, useDraftNeededReview } from "../components/ops/DraftNeededList";
 import { parseReviewSearch } from "../lib/opsModel";
 import { announceReviewChange, useReviewCount } from "../hooks/useReviewCount";
 
@@ -125,8 +125,12 @@ export function DraftsPage() {
   const loadedRecordName = queue.drafts.find((draft) => draft.record?.id === query.record)?.record?.name;
   const filterRecordName = loadedRecordName || "";
   // Cards listed under "Draft needed" are waiting too, so the empty queue
-  // below them never says "Nothing waiting."
-  const draftNeededShown = query.state === "waiting" && !filtered && reviewCount.draftNeeded > 0;
+  // below them never says "Nothing waiting." The copy follows the cards the
+  // list actually shows (one load, shared with the list), never the menu
+  // count, which can be slow, failing or out of date.
+  const draftNeededListed = review.tab !== "spend" && query.state === "waiting" && !filtered;
+  const draftNeeded = useDraftNeededReview({ enabled: draftNeededListed });
+  const draftNeededShown = draftNeededListed && draftNeededCards(draftNeeded).length > 0;
   const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
   const emptyCopy = filtered ? "Clear the filter to see the full queue." : draftNeededShown ? "Ask your agent to write a draft for the cards above." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
 
@@ -136,7 +140,7 @@ export function DraftsPage() {
       <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
       {review.tab === "spend" ? (
         <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
-      ) : (<>
+      ) : (<DraftNeededContext.Provider value={draftNeeded}>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:!w-fit" /></div>
       {query.state === "waiting" && !filtered && <DraftNeededList />}
@@ -167,7 +171,7 @@ export function DraftsPage() {
           {(queue.nextCursor || queue.moreError) && <div className="flex flex-col items-center gap-2 pt-2">{queue.moreError && <p role="alert" className="text-[13px] font-semibold text-[var(--color-error-700)]">Couldn’t load more drafts.</p>}<Button type="button" variant="secondary" loading={queue.loadingMore} className="min-h-11" disabled={busyAny || queue.loadingMore} onClick={() => queue.loadMore()}>{queue.loadingMore ? "Loading more…" : queue.moreError ? "Try again" : "Show more"}</Button></div>}
         </>
       )}
-      </>)}
+      </DraftNeededContext.Provider>)}
     </div>
   );
 }
