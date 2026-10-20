@@ -138,10 +138,21 @@ export async function recordAppReadinessEvent(event) {
 
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
+// #3697: the row also needs the plan's schedule zone (dates are shown in the
+// campaign's own zone), the connection's provider account id (Open in Meta)
+// and the spend-sync rows (spend vs cap). All are admin-RLS reads.
+export const CAMPAIGN_LIST_SELECT = [
+  "*",
+  "ad_sets(*, ads(*))",
+  "plan_version:ad_plan_versions(schedule_time_zone:canonical_plan->schedule->>time_zone)",
+  "connection:ad_connections(external_account_id,platform)",
+  "ad_spend_daily(spend_cents,currency,synced_at)",
+].join(", ");
+
 export async function listCampaigns() {
   return supabase
     .from("ad_campaigns")
-    .select("*, ad_sets(*, ads(*))")
+    .select(CAMPAIGN_LIST_SELECT)
     .order("created_at", { ascending: false });
 }
 
@@ -446,6 +457,31 @@ async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
   return aggregate;
 }
 
+/**
+ * #3697 — "Check with <provider>" on a dead plan. The server reads every
+ * recorded provider object; with none left it releases the hold and closes
+ * the plan. `deleteOnProvider` (typed DELETE ON PROVIDER) deletes surviving
+ * objects first, then re-checks.
+ */
+export async function reconcileAdminAdPlan(
+  item,
+  { deleteOnProvider = false, phrase = "" } = {},
+) {
+  const version = item?.version;
+  if (!version?.id || !version?.plan_hash) {
+    throw new Error("The frozen plan binding is missing.");
+  }
+  return planActionOrThrow(
+    {
+      action: "reconcile_provider_objects",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      ...(deleteOnProvider ? { delete_on_provider: true, phrase } : {}),
+    },
+    "The provider check failed. Nothing was changed.",
+  );
+}
+
 /** Cancel a frozen Mingla plan only while provider-object evidence is absent. */
 export async function cancelAdminAdPlan(item, reason) {
   const version = item?.version;
@@ -466,8 +502,9 @@ export async function cancelAdminAdPlan(item, reason) {
 }
 
 /**
- * action: 'launch' | 'pause' | 'end'
- * Launch and End require an exact phrase + reason; Pause is reversible.
+ * action: 'launch' | 'pause' | 'end' | 'change_budget'
+ * Launch and End require an exact phrase + reason; Pause is reversible;
+ * Change budget requires a reason.
  */
 export async function campaignAction(campaignId, action, extras = {}) {
   const body = { campaign_id: campaignId, action };
@@ -478,6 +515,14 @@ export async function campaignAction(campaignId, action, extras = {}) {
     if (typeof extras.reason === "string") {
       body.reason = extras.reason;
     }
+  }
+  // #3697: governed budget change — plan totals in provider minor units.
+  if (action === "change_budget") {
+    if (typeof extras.reason === "string") body.reason = extras.reason;
+    if (Number.isSafeInteger(extras.daily_budget_cents)) {
+      body.daily_budget_cents = extras.daily_budget_cents;
+    }
+    if (Number.isSafeInteger(extras.cap_cents)) body.cap_cents = extras.cap_cents;
   }
   return invokeWithRefresh("admin-ad-campaign-action", { body });
 }

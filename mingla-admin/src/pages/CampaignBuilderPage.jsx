@@ -92,6 +92,10 @@ import {
   targetingRefsFromState,
 } from "../lib/adBuilder/payload";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary";
+import {
+  placementGapsLine,
+  reviewPlacementGaps,
+} from "../lib/adBuilder/reviewPlacementGaps";
 import { areAllExpectedCreatePairsSuccessful } from "../lib/adBuilder/createProgress";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { AlertCard } from "../components/ui/Card";
@@ -2217,6 +2221,14 @@ export function CampaignBuilderPage() {
               onConfirmationPhraseChange={setLaunchPhrase}
               createSteps={createSteps}
               createError={createError}
+              placementGapsText={placementGapsLine(
+                reviewPlacementGaps({
+                  kind: creative.kind,
+                  probe: creative.validation?.probe ?? null,
+                  platforms: summary.channels.map((line) => line.platform),
+                  variants: creative.variants,
+                }),
+              )}
               certificationMode={certificationMode}
               certificationState={certificationState}
               certificationApprovalReference={certificationApprovalReference}
