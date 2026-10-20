@@ -91,6 +91,8 @@
 // (20271121003281 Round 2 checkout units, which this guard named, and its
 // 20271122003281 repair). Only lane counts move, by +2; no mutant or check changes.
 // The #1931 lane then gains five more exact skips found by a local replay; +5 more.
+// Round 3 spacing/spots adds one exact skip on each lane; count pins move with it.
+// [TEST-MOD-APPROVED #3281] count pins only; assertion logic unchanged.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";

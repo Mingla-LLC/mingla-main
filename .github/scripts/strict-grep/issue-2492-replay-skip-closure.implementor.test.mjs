@@ -264,6 +264,7 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // The #1931 lane then gains five more exact skips (#2947 queue admission x4 and
 // #3281 booked start), found by replaying it locally: #1931 19 -> 24, fixtures +5.
 // Round 3 spacing/spots adds one exact skip on each lane: #1931 24 -> 25, #2117 20 -> 21.
+// [TEST-MOD-APPROVED #3281] count pins only; assertion logic unchanged.
 test("T-10 — lane inventory is exactly 4 lanes at 25/1/3/21 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
