@@ -129,7 +129,7 @@ ALTER TABLE public.events VALIDATE CONSTRAINT events_extra_guest_count_valid;
 
 COMMENT ON CONSTRAINT events_extra_guest_count_valid ON public.events IS
   'issue #3827 going-box — theme.business_event.settings.extraGuestCount is absent, JSON '
-  'null, or a whole number 0..5000 (I-PROPOSED-3827-EXTRAS-BOUNDED). The business app '
+  'null, or a whole number 0..5000 (I-3827-EXTRAS-BOUNDED). The business app '
   'maps SQLSTATE 23514 on this name to "Enter a number from 0 to 5,000."';
 
 -- -------------------------------------------------------------------------------------
