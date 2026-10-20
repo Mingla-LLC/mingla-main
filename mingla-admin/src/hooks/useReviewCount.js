@@ -34,5 +34,8 @@ export function useReviewCount() {
   // #3980 (R8): the "Recently shipped" wording cards (owner and admins only;
   // the server counts none for anyone else).
   const wording = Number(counts.data?.wording_mine || 0);
-  return { waiting, needsPerson, draftNeeded, wording, total: waiting + needsPerson + draftNeeded + wording, refetch: counts.refetch };
+  // Loaded once both counts have answered (the work counts only when this
+  // person can open the page).
+  const loaded = drafts.data != null && (!enabled || counts.data != null);
+  return { waiting, needsPerson, draftNeeded, wording, total: waiting + needsPerson + draftNeeded + wording, loaded, refetch: counts.refetch };
 }

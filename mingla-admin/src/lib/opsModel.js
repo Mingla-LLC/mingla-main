@@ -360,15 +360,15 @@ export function parseReviewSearch(search) {
   return { tab: tab === "spend" ? "spend" : tab === "told" ? "told" : "messages", card: card && UUID_RE.test(card) ? card : null };
 }
 
-/** Runway words: how many days an event was public before it starts. */
+/** Runway words in the four plain states, with how many days an event was public before it starts. */
 export function runwayLabel(runway) {
   const band = runway?.band;
   const lead = Number(runway?.lead_days);
-  if (band === "full") return `Full launch · live ${lead} days ahead`;
-  if (band === "tight") return `Tight · live ${lead} days ahead`;
-  if (band === "organic") return `Organic only · live ${lead} days ahead`;
+  if (band === "full") return `Ready to promote · live ${lead} days ahead`;
+  if (band === "tight") return `Promote now · live ${lead} days ahead`;
+  if (band === "organic") return `Too late for promo · live ${lead} days ahead`;
   if (band === "not_live") return `Not live yet · go live by ${dayLabel(runway?.go_live_by)}`;
-  if (band === "missed") return "Missed go-live: organic only";
+  if (band === "missed") return "Too late for promo · not live by the 3-week line";
   return "No date yet";
 }
 
@@ -670,14 +670,14 @@ export function buildLayers(on) {
   return picked.length ? picked.join(",") : "none";
 }
 
-/** The short band label on chips and buttons. */
+/** The short band label on chips and buttons: one of the four plain states. */
 export function bandShort(runway) {
   const band = runway?.band;
-  if (band === "full") return "Full launch";
-  if (band === "tight") return "Tight";
-  if (band === "organic") return "Organic only";
-  if (band === "not_live") return `Go live by ${dayLabel(runway?.go_live_by)}`;
-  if (band === "missed") return "Missed";
+  if (band === "full") return "Ready to promote";
+  if (band === "tight") return "Promote now";
+  if (band === "organic") return "Too late for promo";
+  if (band === "not_live") return `Not live yet, live by ${dayLabel(runway?.go_live_by)}`;
+  if (band === "missed") return "Too late for promo";
   return "No date yet";
 }
 
@@ -981,4 +981,76 @@ export function attentionPrompt(groupLabel) {
 export function attentionCounts(data) {
   const groups = data?.groups || {};
   return Object.fromEntries(ATTENTION_GROUPS.map((g) => [g.key, Array.isArray(groups[g.key]) ? groups[g.key].length : 0]));
+}
+
+/**
+ * Issue #3980 W3 rework (D4): the upcoming rows of a host card, soonest
+ * first. A repeating series lists every one of its kept dates that is not
+ * yet stood for by a public event (those show as the event itself), each as
+ * "<title>, 31 Oct" with its own state; a one-off promise is one row.
+ */
+export function hostUpcomingRows(events, openExpected, today) {
+  const rows = [];
+  for (const e of Array.isArray(events) ? events : []) {
+    if (!e?.start_on || (today && e.start_on < today)) continue;
+    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.state, repeats: false, moment: false });
+  }
+  for (const x of Array.isArray(openExpected) ? openExpected : []) {
+    if (!x) continue;
+    const repeats = !!x.repeats && x.repeats !== "none";
+    const occ = repeats && Array.isArray(x.occurrences) ? x.occurrences.filter((o) => o && o.on && !o.live) : null;
+    if (occ) {
+      occ.forEach((o, i) => rows.push({
+        key: `x-${x.id}-${o.on}`, kind: "expected", id: x.id, title: `${x.title}, ${dayLabel(o.on)}`, on: o.on,
+        state: o.state || x.state, repeats: true, moment: !!x.promo_moment, row: i === 0 ? x : null,
+      }));
+      continue;
+    }
+    rows.push({ key: `x-${x.id}`, kind: "expected", id: x.id, title: x.title, on: x.next_on || x.expected_on, state: x.state,
+      repeats, moment: !!x.promo_moment, row: x });
+  }
+  return rows.sort((a, b) => String(a.on).localeCompare(String(b.on)) || String(a.title).localeCompare(String(b.title)));
+}
+
+/**
+ * Issue #3980 W3 rework (D7): the words after saving or cancelling a
+ * promised event, from what the server says it did. Steps are said to be in
+ * Work only when automatic steps were on and ran.
+ */
+export function expectedSavedWords(result, madeWords = "Saved. It’s on the Calendar and its steps are in Work.") {
+  if (result && result.auto_steps === false) return "Saved. Automatic steps are off, so no steps were added.";
+  const steps = result?.steps;
+  if (steps && steps.stopped) return "Saved. It’s on the Calendar. Its steps couldn’t be made just now; the next run adds them.";
+  if (steps && typeof steps === "object") {
+    const n = Number(steps.added || 0) + Number(steps.redated || 0);
+    return n > 0 ? madeWords : "Saved. It’s on the Calendar; its steps were already in Work.";
+  }
+  return "Saved. It’s on the Calendar.";
+}
+
+export function expectedCancelledWords(result) {
+  if (result && result.auto_steps === false) return "Cancelled. Automatic steps are off, so no steps were changed.";
+  const closed = Number(result?.steps?.closed || 0);
+  if (result?.steps?.stopped) return "Cancelled. Its steps close on the next run.";
+  if (closed === 1) return "Cancelled. Its 1 open step closed.";
+  if (closed > 1) return `Cancelled. Its ${closed} open steps closed.`;
+  return "Cancelled. It had no open steps.";
+}
+
+/**
+ * Issue #3980 W3 rework (D8): the Needs you tab to open when the address
+ * names none: the first tab that has something waiting (Messages, then Spend
+ * or publish, then What hosts are told for the owner and admins), else
+ * Messages.
+ */
+export function needsYouStartTab({ waiting = 0, draftNeeded = 0, needsPerson = 0, wording = 0 } = {}, canTell = false) {
+  if (Number(waiting) + Number(draftNeeded) > 0) return "messages";
+  if (Number(needsPerson) > 0) return "spend";
+  if (canTell && Number(wording) > 0) return "told";
+  return "messages";
+}
+
+/** Nothing anywhere needs a person (from loaded counts): the page says so. */
+export function needsYouCaughtUp(counts) {
+  return !!counts?.loaded && Number(counts?.total || 0) === 0;
 }

@@ -37,6 +37,8 @@ import { opsErrorWords } from "../lib/opsModel";
 
 const PAGE_ID = "team-dashboard";
 
+const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
+
 // #3980 (R2, R4) — the owner's switches for the steps Mingla makes by itself
 // and the host cards it makes for new brands, and who owns marketing steps.
 // Off until the owner switches them on; turning one off stops new cards.
@@ -54,12 +56,19 @@ function AutomaticSteps({ online }) {
     catch (error) { addToast({ variant: "error", title: "Not changed", description: opsErrorWords(error) }); }
     finally { setBusy(""); }
   };
+  // A real switch (a track and a thumb), not a checkbox: role="switch" with
+  // aria-checked, the whole row is the touch target.
   const switchRow = (id, label, on) => (
-    <label htmlFor={id} className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3 rounded-lg px-1 py-1.5">
-      <span className="min-w-0 break-normal text-[13.5px] text-[var(--color-text-primary)]">{label}</span>
-      <input id={id} type="checkbox" role="switch" className="h-5 w-9 shrink-0 cursor-pointer accent-[var(--color-brand-600)]" checked={!!on} disabled={!online || !!busy}
-        onChange={(e) => set(id === "switch-auto-steps" ? "auto_steps" : "brand_auto_cards", e.target.checked, e.target.checked ? "Switched on." : "Switched off. Cards already made stay.")} />
-    </label>
+    <div className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-lg px-1 py-1">
+      <label htmlFor={id} id={`${id}-label`} className="min-w-0 cursor-pointer break-normal text-[13.5px] text-[var(--color-text-primary)]">{label}</label>
+      <button id={id} type="button" role="switch" aria-checked={!!on} aria-labelledby={`${id}-label`} disabled={!online || !!busy}
+        onClick={() => set(id === "switch-auto-steps" ? "auto_steps" : "brand_auto_cards", !on, !on ? "Switched on." : "Switched off. Cards already made stay.")}
+        className={`group inline-grid min-h-11 min-w-14 shrink-0 cursor-pointer place-items-center rounded-full disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`}>
+        <span aria-hidden="true" className={`relative block h-6 w-11 rounded-full transition-colors ${on ? "bg-[var(--color-brand-800)]" : "bg-[var(--gray-300)]"}`}>
+          <span className={`absolute top-0.5 block h-5 w-5 rounded-full bg-white shadow transition-[left] ${on ? "left-[22px]" : "left-0.5"}`} />
+        </span>
+      </button>
+    </div>
   );
   return (
     <section aria-labelledby="automatic-steps-heading" className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
@@ -73,6 +82,7 @@ function AutomaticSteps({ online }) {
             onChange={(next) => set("marketing_owner", next[0] || null, next[0] ? "Marketing owner saved." : "No marketing owner: marketing steps go to the host's owners.")} />
         </div>
         <p className="break-normal text-[12.5px] text-[var(--color-text-tertiary)]">Off until you switch it on. Turning it off stops new cards; cards already made stay.</p>
+        <p className="break-normal text-[12.5px] text-[var(--color-text-tertiary)]">Engineering follow-through (merged but not live, release records, live checks) starts from the moment you first switch on automatic steps{settings.follow_through_since ? ` (that was ${new Date(settings.follow_through_since).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })})` : ""}. Earlier merges and issues only show their status.</p>
       </div>
     </section>
   );

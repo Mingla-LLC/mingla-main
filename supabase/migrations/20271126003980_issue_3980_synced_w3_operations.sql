@@ -971,6 +971,13 @@ DECLARE v_host jsonb := public.ops_host_json(x.record_id); v_today date := COALE
         v_next date;
 BEGIN
   v_occ := CASE WHEN x.repeats <> 'none' AND x.status = 'open' THEN public.ops_expected_occurrences(x, v_today, 4) ELSE NULL END;
+  -- Each kept date carries its own plain state, so the host card can list
+  -- every upcoming date of the series.
+  IF v_occ IS NOT NULL THEN
+    SELECT COALESCE(jsonb_agg(o || jsonb_build_object('state', public.ops_plain_state(public.ops_expected_anchor(x, (o->>'on')::date), v_today))
+                              ORDER BY (o->>'on')::date), '[]'::jsonb)
+      INTO v_occ FROM jsonb_array_elements(v_occ) o;
+  END IF;
   v_next := COALESCE((SELECT (o->>'on')::date FROM jsonb_array_elements(v_occ) o WHERE NOT (o->>'live')::boolean ORDER BY (o->>'on')::date LIMIT 1),
                      x.expected_on);
   RETURN jsonb_build_object('id', x.id, 'record_id', x.record_id, 'host_name', v_host->>'name', 'title', x.title,

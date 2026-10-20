@@ -84,7 +84,7 @@ export function AgentActivity() {
                   {claims.map((c) => (
                     <li key={c.id} className="flex min-w-0 flex-col gap-1 border-b border-[var(--gray-200)] px-4 py-2.5 last:border-b-0">
                       <p className="break-words text-[13px]"><span className="font-semibold text-[var(--color-text-primary)]">{agentName(c.holder_name, c.holder_via, c.holder_chat_label)}</span> <span className="text-[var(--color-text-secondary)]">holds {c.target.label}</span></p>
-                      {c.card && <a href={`#/work-board?card=${c.card.id}`} className={`self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {c.card.number}: {c.card.title}</a>}
+                      {c.card && <a href={`#/work-board?card=${c.card.id}`} className={`inline-flex min-h-11 items-center self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {c.card.number}: {c.card.title}</a>}
                       <p className="text-[12px] text-[var(--color-text-tertiary)]">since {timeLabel(c.since)} · ends {timeLabel(c.ends_at)}</p>
                       {canRelease && (confirm === c.id ? (
                         <div className="flex flex-wrap gap-2">
@@ -105,7 +105,7 @@ export function AgentActivity() {
                   {working.map((w) => (
                     <li key={w.card?.id} className="flex min-w-0 flex-col gap-1 border-b border-[var(--gray-200)] px-4 py-2.5 last:border-b-0">
                       <p className="break-normal [overflow-wrap:anywhere] text-[13px] text-[var(--color-text-primary)]"><span aria-hidden="true" className={w.quiet ? "text-[var(--color-warning-600)]" : "text-[var(--color-brand-700)]"}>● </span>{workingWords(w)}</p>
-                      {w.card && <a href={`#/work-board?card=${w.card.id}`} className={`self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {w.card.number}: {w.card.title}</a>}
+                      {w.card && <a href={`#/work-board?card=${w.card.id}`} className={`inline-flex min-h-11 items-center self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {w.card.number}: {w.card.title}</a>}
                       <p className="text-[12px] text-[var(--color-text-tertiary)]">since {timeLabel(w.since)}{w.stuck ? " · no update for 7 days" : ""}</p>
                     </li>
                   ))}

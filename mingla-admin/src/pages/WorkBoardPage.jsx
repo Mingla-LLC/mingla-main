@@ -11,9 +11,9 @@ import { Button } from "../components/ui/Button";
 import { AlertCard, SectionCard } from "../components/ui/Card";
 import { Drawer } from "../components/ui/Drawer";
 import { Skeleton } from "../components/ui/Skeleton";
-import { Segmented } from "../components/crm/fields";
+import { Segmented, Select } from "../components/crm/fields";
 import { SprintStrip } from "../components/ops/SprintStrip";
-import { WorkColumns } from "../components/ops/WorkColumns";
+import { WorkColumns, WorkGroups } from "../components/ops/WorkColumns";
 import { WorkCardDrawer } from "../components/ops/WorkCardDrawer";
 import { WorkAddForm } from "../components/ops/WorkAddForm";
 import { AttentionChips, NeedsAttention } from "../components/ops/NeedsAttention";
@@ -26,6 +26,14 @@ import { usePeopleDirectory } from "../hooks/usePeopleDirectory";
 import { useToast } from "../context/ToastContext";
 import * as ops from "../services/opsService";
 import { addDays, attentionCounts, buildWorkSearch, mondayOf, opsErrorWords, parseWorkSearch, parseWorkTab, todayIso } from "../lib/opsModel";
+
+// Group by: Status is the column board; Person and Event list the same cards
+// grouped (one board at a time, never two stacked).
+const GROUP_OPTIONS = [
+  { value: "status", label: "Status" },
+  { value: "person", label: "Person" },
+  { value: "event", label: "Event" },
+];
 
 const WHO_OPTIONS = [
   { value: "all", label: "Everyone" },
@@ -97,6 +105,10 @@ export function WorkBoardPage() {
           {attention.data && total > 0 && <AttentionChips data={attention.data} onlyHot onPick={(att) => go({ tab: "attention", att })} />}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Segmented label="Whose cards" options={WHO_OPTIONS} value={query.who} onChange={(who) => go({ who }, { replace: true })} />
+            <label className="flex min-w-0 items-center gap-2 text-[12.5px] font-semibold text-[var(--color-text-secondary)]">
+              <span className="whitespace-nowrap">Group by</span>
+              <Select aria-label="Group by" options={GROUP_OPTIONS} value={query.group} onChange={(e) => go({ group: e.target.value }, { replace: true })} className="!w-auto min-h-11 text-[13px]" />
+            </label>
           </div>
           <SprintStrip
             sprint={sprint}
@@ -120,7 +132,9 @@ export function WorkBoardPage() {
           ) : cards.length === 0 && query.who === "all" && !query.week ? (
             <SectionCard><p className="text-[13px] text-[var(--color-text-secondary)]">No cards yet. Add one, or set a host’s next event on their card: its steps appear here by themselves.</p></SectionCard>
           ) : (
-            <WorkColumns cards={cards} selectedId={query.card} onSelect={(card) => openCard(card.id)} />
+            query.group === "status"
+              ? <WorkColumns cards={cards} selectedId={query.card} onSelect={(card) => openCard(card.id)} />
+              : <WorkGroups cards={cards} group={query.group} selectedId={query.card} onSelect={(card) => openCard(card.id)} />
           )}
         </div>
       )}

@@ -11,6 +11,7 @@
 --          date); no card ever says "Repeats every none"; a cancelled series
 --          closes its card; a one-off that starts repeating closes its
 --          go-live card and gets one rolling card
+--   R-D4   each kept date of a repeating series carries its own plain state
 --   R-D11  brand auto-link links only on an exact match; a phone number that
 --          only ends the same makes a "Pick the right card" card naming the
 --          candidates and links nothing; a match on a Lost card is never
@@ -310,6 +311,20 @@ begin
     split_part(pg_temp.w3r_series('39880000-0000-4000-d100-000000000004'), '/', 1), '1');
 end;
 $d2$;
+
+-- ---------------------------------------------------------------------------
+-- R-D4: each kept date of a series carries its own state for the host card.
+-- ---------------------------------------------------------------------------
+do $d4$
+declare v jsonb;
+begin
+  select public.ops_expected_json(x, pg_temp.w3r_today()) into v from public.ops_expected_events x where x.id = '39880000-0000-4000-d100-000000000004';
+  perform pg_temp.w3_check('R-D4', 'a weekly series lists 4 kept dates, each with its own plain state',
+    jsonb_array_length(v->'occurrences')::text || '/' ||
+    (select string_agg(o->'state'->>'name', ',' order by (o->>'on')::date) from jsonb_array_elements(v->'occurrences') o),
+    '4/Too late for promo,Not live yet,Not live yet,Not live yet');
+end;
+$d4$;
 
 -- ---------------------------------------------------------------------------
 -- R-D11: brand auto-link only on exact matches.

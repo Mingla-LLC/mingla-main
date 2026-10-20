@@ -30,7 +30,7 @@ export function EventSteps({ steps = [], doneCount = 0 }) {
                 <span className={`block break-normal [overflow-wrap:normal] text-[13px] text-[var(--color-text-primary)] ${s.key ? "font-semibold" : ""} ${s.state === "skip" ? "line-through" : ""}`}>{s.title}</span>
                 <span className="block break-normal [overflow-wrap:normal] text-[12px] text-[var(--color-text-tertiary)]">
                   {s.state === "skip" ? "Skipped: went live too late" : s.who}
-                  {s.card ? <> · <a href={`#/work-board?card=${s.card.id}`} className={`rounded font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {s.card.number}</a></> : null}
+                  {s.card ? <> · <a href={`#/work-board?card=${s.card.id}`} className={`inline-flex min-h-11 min-w-11 items-center rounded font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {s.card.number}</a></> : null}
                 </span>
                 <span className="sr-only">{s.state === "done" ? "Done" : s.state === "skip" ? "Skipped" : "To come"}</span>
               </span>

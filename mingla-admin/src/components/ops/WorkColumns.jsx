@@ -3,7 +3,7 @@
 // "Nothing here." when empty. Columns keep at least 220px; when the board is
 // narrower they scroll sideways inside the board box only, never the page.
 import { Avatars } from "./OpsChip";
-import { WORK_COLUMNS, cardReasons, columnCards, dayLabel } from "../../lib/opsModel";
+import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
@@ -57,6 +57,31 @@ export function WorkColumns({ cards = [], selectedId, onSelect, today }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Group by Person or Event: the same cards as a grouped list (each group's
+ * name and count, its cards side by side as space allows). Never shown with
+ * the column board.
+ */
+export function WorkGroups({ cards = [], group, selectedId, onSelect }) {
+  const groups = groupCards(cards, group);
+  return (
+    <div data-work-groups={group} className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-2">
+      {groups.length === 0 && <p className="px-1.5 py-1 text-[12.5px] text-[var(--color-text-tertiary)]">Nothing here.</p>}
+      {groups.map((g) => (
+        <section key={g.key} aria-labelledby={`work-group-${g.key}`} className="flex min-w-0 flex-col gap-2">
+          <h2 id={`work-group-${g.key}`} className="flex items-center justify-between gap-2 px-1 pt-1 text-[12.5px] font-semibold text-[var(--color-text-primary)]">
+            <span className={`min-w-0 ${WORDS}`}>{g.title}</span>
+            <span className="rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]">{g.cards.length}</span>
+          </h2>
+          <ul className="grid min-w-0 gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))" }}>
+            {g.cards.map((card) => <li key={card.id} className="min-w-0"><WorkColumnCard card={card} selected={card.id === selectedId} onSelect={onSelect} /></li>)}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }

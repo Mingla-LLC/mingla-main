@@ -35,6 +35,7 @@ import {
 } from "../../lib/opsModel";
 import { OpsChip } from "./OpsChip";
 import { PeopleField } from "../people/PeopleField";
+import { suggestedPeople } from "../../lib/peopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { RecordPicker } from "./RecordPicker";
 import { PlanSteps } from "./PlanSteps";
@@ -238,9 +239,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           value={ownerEmails}
           team={team}
           me={directory.me}
-          suggested={[directory.me, ...ownerEmails].filter(Boolean)}
+          suggested={suggestedPeople(directory.me, ownerEmails)}
           exclude={watcherEmails}
-          min={card.auto ? 0 : 1}
+          min={ownerEmails.length ? 1 : 0}
+          minWords={card.auto ? "This card keeps one owner once it has one. Add someone else first, then remove this one." : undefined}
           disabled={locked || card.status === "done"}
           busy={!!busy}
           onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)}

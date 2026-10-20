@@ -18,7 +18,7 @@ import { ReviewQueue } from "../components/ops/ReviewQueue";
 import { WordingQueue } from "../components/ops/WordingQueue";
 import { useAuth } from "../context/AuthContext";
 import { DraftNeededContext, DraftNeededList, draftNeededCards, useDraftNeededReview } from "../components/ops/DraftNeededList";
-import { parseReviewSearch } from "../lib/opsModel";
+import { needsYouCaughtUp, needsYouStartTab, parseReviewSearch } from "../lib/opsModel";
 import { announceReviewChange, useReviewCount } from "../hooks/useReviewCount";
 
 
@@ -40,7 +40,7 @@ export function DraftsPage() {
   const [search, setSearch] = useHashQuery("drafts");
   const query = useMemo(() => paramsFrom(search), [search]);
   const review = useMemo(() => parseReviewSearch(search), [search]);
-  const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : tab === "told" ? "tab=told" : "");
+  const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : tab === "told" ? "tab=told" : "tab=messages");
   const { access } = useAuth();
   // What hosts are told is decided by the owner and admins only.
   const canTell = access?.role === "owner" || access?.role === "admin";
@@ -120,6 +120,18 @@ export function DraftsPage() {
   // to spend or publish.
   const reviewCount = useReviewCount();
   const totalWaiting = reviewCount.total;
+  // #3980 W3 rework (D8): opened with no tab named, the page starts on the
+  // first tab that has something waiting, once its counts have answered.
+  const startPicked = useRef(false);
+  const tabNamed = new URLSearchParams(search).has("tab") || query.hasDraft || !!query.record || query.state !== "waiting";
+  useEffect(() => {
+    if (startPicked.current || !reviewCount.loaded) return;
+    startPicked.current = true;
+    if (tabNamed) return;
+    const start = needsYouStartTab(reviewCount, canTell);
+    if (start !== "messages") setSearch(`tab=${start}`, { replace: true });
+  }, [reviewCount, canTell, tabNamed, setSearch]);
+  const caughtUp = needsYouCaughtUp(reviewCount);
   const meta = `${totalWaiting} waiting`;
   const reviewTabs = [
     { value: "messages", label: "Messages" },
@@ -160,6 +172,8 @@ export function DraftsPage() {
         <AlertCard variant="error" title="Couldn’t load your drafts" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => queue.refetch()}>Try again</Button>}>{draftErrorWords(queue.error)}</AlertCard>
       ) : notFound ? (
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">That draft isn’t here.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">It may have been removed, or this link is not available to you.</p><a href="#/drafts" className="mt-4 inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-[var(--color-brand-700)]">Back to drafts</a></SectionCard>
+      ) : queue.drafts.length === 0 && caughtUp && query.state === "waiting" && !filtered && !draftNeededShown ? (
+        <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">You’re all caught up.</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">Nothing needs a person right now: no messages to send, no money to spend, nothing to publish.</p></SectionCard>
       ) : queue.drafts.length === 0 ? (
         <SectionCard><h2 ref={emptyHeadingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">{emptyTitle}</h2><p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{emptyCopy}</p>{query.state === "waiting" && !filtered ? <a href="#/agent" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-sm font-semibold text-white hover:bg-[var(--color-brand-900)]">Open My agent</a> : <Button type="button" variant="secondary" className="mt-4 min-h-11" onClick={() => filtered ? (() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); })() : selectState("waiting")}>{filtered ? "Clear filter" : "Show waiting"}</Button>}</SectionCard>
       ) : (

@@ -410,7 +410,7 @@ export const AGENT_WORK_ABILITIES = [
   { tool: "list_work", group: "Work", title: "Lists the Work board", detail: "By status, owner, event, host or creator, or sprint week." },
   { tool: "my_work", group: "Work", title: "Reads your cards", detail: "Your open cards, the ones you watch, its open claims and the cards it is working on." },
   { tool: "list_calendar", group: "Calendar", title: "Reads the Calendar", detail: "Events on Mingla with their runway, promised events, go-live deadlines, promotions and content." },
-  { tool: "runway_report", group: "Calendar", title: "Reports runway", detail: "Which upcoming events have a full launch, a tight one, or are organic only." },
+  { tool: "runway_report", group: "Calendar", title: "Reports runway", detail: "Which upcoming events are ready to promote, need promoting now, are too late for promo, or are not live yet." },
   { tool: "set_expected_event", group: "Calendar", title: "Records a promised event", detail: "The next event a host has promised, so it shows on the Calendar with its go-live deadline." },
 ];
 

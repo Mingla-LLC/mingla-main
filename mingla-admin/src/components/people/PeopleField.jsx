@@ -48,7 +48,7 @@ function Chip({ person, team, onRemove, disabled }) {
         aria-label={`Remove ${shownName(person, team)}`}
         disabled={disabled}
         onClick={onRemove}
-        className={`inline-grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--color-text-tertiary)] hover:bg-[var(--gray-200)] hover:text-[var(--color-text-primary)] disabled:opacity-50 ${FOCUS}`}
+        className={`-my-1.5 -mr-1 inline-grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--color-text-tertiary)] hover:bg-[var(--gray-200)] hover:text-[var(--color-text-primary)] disabled:opacity-50 ${FOCUS}`}
       >
         <X aria-hidden="true" className="h-3.5 w-3.5" />
       </button>

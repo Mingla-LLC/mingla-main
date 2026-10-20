@@ -6,7 +6,7 @@
 import { PeopleField } from "../people/PeopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { displayName } from "../../lib/crmModel";
-import { normalizeTeam } from "../../lib/peopleField";
+import { normalizeTeam, suggestedPeople } from "../../lib/peopleField";
 
 export function OwnersField({ team, value, onChange, disabled = false, labelId }) {
   const directory = usePeopleDirectory();
@@ -23,7 +23,7 @@ export function OwnersField({ team, value, onChange, disabled = false, labelId }
         label="Owners"
         value={owners}
         team={people}
-        suggested={[directory.me, ...owners].filter(Boolean)}
+        suggested={suggestedPeople(directory.me, owners)}
         me={directory.me}
         disabled={disabled}
         onChange={(next) => onChange([...next].sort())}

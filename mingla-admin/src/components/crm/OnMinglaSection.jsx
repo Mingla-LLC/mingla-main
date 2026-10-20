@@ -17,7 +17,10 @@ import {
   EVENT_TYPE_LABELS,
   REPEAT_OPTIONS,
   dayLong,
+  expectedCancelledWords,
+  expectedSavedWords,
   hostMissing,
+  hostUpcomingRows,
   opsErrorWords,
   requestKey,
   todayIso,
@@ -79,10 +82,7 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
   const past = Array.isArray(data?.past) ? data.past : [];
   const work = Array.isArray(data?.work) ? data.work : [];
   const series = open.find((x) => x.repeats && x.repeats !== "none");
-  const upcoming = [
-    ...events.map((e) => ({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.state, repeats: false, moment: false })),
-    ...open.map((x) => ({ key: `x-${x.id}`, kind: "expected", id: x.id, title: x.title, on: x.next_on || x.expected_on, state: x.state, repeats: x.repeats && x.repeats !== "none", moment: !!x.promo_moment, row: x })),
-  ].sort((a, b) => String(a.on).localeCompare(String(b.on)));
+  const upcoming = hostUpcomingRows(events, open, today);
   const missing = hostMissing(record);
   const noOwner = !(record?.owners || []).length;
   const which = upcoming.length ? "another" : past.length || recent.length ? "their next" : "their first";
@@ -93,8 +93,8 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
     if (form.city.trim()) item.city = form.city.trim();
     if (form.note.trim()) item.note = form.note.trim();
     try {
-      await ops.setExpectedEvent(item, requestKey("web_expected"));
-      addToast({ variant: "success", title: "Saved. It’s on the Calendar and its steps are in Work." });
+      const result = await ops.setExpectedEvent(item, requestKey("web_expected"));
+      addToast({ variant: "success", title: expectedSavedWords(result, "Saved. It’s on the Calendar and its steps are in Work.") });
       setForm({ ...EMPTY_FORM, event_type: venue ? "promo_moment" : "event" });
       await load();
     } catch (error) {
@@ -105,8 +105,8 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
   const cancel = async (x) => {
     setBusy(true);
     try {
-      await ops.setExpectedEvent({ record_id: id, id: x.id, status: "cancelled", cancel_reason: cancelReason.trim() }, requestKey("web_expected_cancel"));
-      addToast({ variant: "success", title: "Cancelled. Its open steps close by themselves." });
+      const result = await ops.setExpectedEvent({ record_id: id, id: x.id, status: "cancelled", cancel_reason: cancelReason.trim() }, requestKey("web_expected_cancel"));
+      addToast({ variant: "success", title: expectedCancelledWords(result) });
       setCancelling(null); setCancelReason("");
       await load();
     } catch (error) {

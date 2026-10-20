@@ -2,7 +2,7 @@
 // of four plain states, today clearly marked and past days faded, posts
 // behind Events | Posts | Both, a List grouped by state, and the content
 // workflow board as its own view. With nothing open the month is full width
-// and the runway list sits under it; the selected event (its sentence and its
+// and nothing sits under it (the grouped list is List view); the selected event (its sentence and its
 // eight steps), a whole day or the posts with no date open in a right column
 // (two columns from 1180px). The grid never scrolls sideways and words never
 // break letter by letter.
@@ -62,8 +62,10 @@ const LIST_GROUPS = [
   { k: "ready", label: "Ready to promote" },
   { k: "late", label: "Too late for promo" },
 ];
-// A day shows at most two things, then "+N more" opens the whole day.
+// A day shows up to three things; with more than three it shows two, then
+// "+N more" opens the whole day (never "+1 more" in place of one entry).
 const DAY_LIMIT = 2;
+const DAY_ALL_UP_TO = 3;
 
 // A title that wraps only between words and stops at two lines with an
 // ellipsis. Each word is its own unbreakable piece, so a word is never split
@@ -125,7 +127,7 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
           const past = key < today;
           const entries = dayEntries(key, data, items, show);
           const dayWords = date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
-          const visible = entries.slice(0, DAY_LIMIT);
+          const visible = entries.length <= DAY_ALL_UP_TO ? entries : entries.slice(0, DAY_LIMIT);
           const hidden = entries.length - visible.length;
           const events = entries.filter((e) => e.type !== "post");
           return (
@@ -199,11 +201,11 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
   );
 }
 
-function Legend({ undated, onUndated }) {
+function Legend({ undated, onUndated, show }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--gray-200)] px-3 py-2.5 text-[12.5px] text-[var(--color-text-secondary)]">
       {STATE_LEGEND.map((k) => <span key={k} className="inline-flex items-center gap-1.5 whitespace-nowrap"><StateDot k={k} />{PLAIN_STATES[k]}</span>)}
-      <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>
+      {show !== "events" && <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>}
       <p className="w-full text-[11.5px] text-[var(--color-text-tertiary)]">Times shown in {Intl.DateTimeFormat().resolvedOptions().timeZone || "local time"}</p>
     </div>
   );
@@ -257,7 +259,7 @@ const DayPanel = forwardRef(function DayPanel({ day, entries, open, selectEvent,
   return <SectionCard><div className="flex min-w-0 flex-col gap-3">
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
       <h2 ref={headingRef} tabIndex={-1} className={`min-w-0 text-[16px] font-semibold text-[var(--color-text-primary)] focus-visible:outline-none ${WORDS}`}>{new Date(`${day}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", month: "long", day: "numeric" })}</h2>
-      <Button type="button" variant="ghost" size="sm" icon={ArrowLeft} className="min-h-11" onClick={onClose}>Back to runway</Button>
+      <Button type="button" variant="ghost" size="sm" icon={ArrowLeft} className="min-h-11" onClick={onClose}>Back to the calendar</Button>
     </div>
     {entries.length ? <ul className="flex min-w-0 flex-col gap-1.5">{entries.map((e) => <li key={e.id}>{e.type === "post"
       ? <ContentCard item={e.item} compact onOpen={open} />
@@ -271,7 +273,7 @@ const UndatedPanel = forwardRef(function UndatedPanel({ items, open, onClose }, 
   return <SectionCard><div className="flex min-w-0 flex-col gap-3">
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
       <h2 ref={headingRef} tabIndex={-1} className="text-[16px] font-semibold text-[var(--color-text-primary)] focus-visible:outline-none">Posts with no date</h2>
-      <Button type="button" variant="ghost" size="sm" icon={ArrowLeft} className="min-h-11" onClick={onClose}>Back to runway</Button>
+      <Button type="button" variant="ghost" size="sm" icon={ArrowLeft} className="min-h-11" onClick={onClose}>Back to the calendar</Button>
     </div>
     {items.length ? <div className="flex min-w-0 flex-col gap-2">{items.map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} />)}</div> : <p className="text-sm text-[var(--color-text-secondary)]">Every post has a date.</p>}
   </div></SectionCard>;
@@ -313,7 +315,7 @@ export function ContentCalendarPage() {
   const eventDetailRef = useRef(null);
   const eventHeadingRef = useRef(null);
   // The control that opened the right column (a day, "+N more" or an event),
-  // so Back to runway returns focus to it.
+  // so going back to the calendar returns focus to it.
   const openerRef = useRef(null);
   const focusBack = useRef(false);
   const days = monthDays(route.month);
@@ -331,7 +333,7 @@ export function ContentCalendarPage() {
     const attr = ["data-calendar-chip", "data-calendar-more", "data-calendar-day-dense", "data-calendar-date", "data-runway-row"].find((name) => el.hasAttribute?.(name));
     openerRef.current = { el, selector: attr ? `[${attr}="${el.getAttribute(attr)}"]` : null };
   };
-  const backToRunway = (name) => { focusBack.current = true; setParam(name, null); };
+  const backToCalendar = (name) => { focusBack.current = true; setParam(name, null); };
   const selectEvent = (selection, onDate) => {
     rememberOpener();
     const p = new URLSearchParams(search);
@@ -341,7 +343,7 @@ export function ContentCalendarPage() {
     setSearch(p.toString());
     revealDetail(eventDetailRef, eventHeadingRef);
   };
-  const clearEvent = () => backToRunway("event");
+  const clearEvent = () => backToCalendar("event");
   const openDay = (key) => {
     rememberOpener();
     const p = new URLSearchParams(search);
@@ -351,7 +353,7 @@ export function ContentCalendarPage() {
     setSearch(p.toString());
     revealDetail(eventDetailRef, eventHeadingRef);
   };
-  const clearDay = () => backToRunway("day");
+  const clearDay = () => backToCalendar("day");
   const openUndated = () => {
     rememberOpener();
     const p = new URLSearchParams(search);
@@ -488,10 +490,11 @@ export function ContentCalendarPage() {
   const runwayRows = Array.isArray(runway.data?.rows) ? runway.data.rows : [];
   const nonext = attention.data?.counts?.nonext;
   const monthName = monthWindow(route.month).first.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
-  const dayItems = route.day ? dayEntries(route.day, opsCal.data, calendar.items, route.show === "events" ? "both" : route.show) : [];
+  // Every list follows Show: a day opened under Events lists only events.
+  const dayItems = route.day ? dayEntries(route.day, opsCal.data, calendar.items, route.show) : [];
 
   const right = route.undated
-    ? <UndatedPanel ref={eventHeadingRef} items={undated} open={open} onClose={() => backToRunway("undated")} />
+    ? <UndatedPanel ref={eventHeadingRef} items={undated} open={open} onClose={() => backToCalendar("undated")} />
     : !route.event && route.day
       ? <DayPanel ref={eventHeadingRef} day={route.day} entries={dayItems} open={open} selectEvent={selectEvent} onClose={clearDay} />
       : <EventPanel ref={eventHeadingRef} selection={route.event} onSelect={selectEvent} onBack={clearEvent} online={online} />;
@@ -503,7 +506,7 @@ export function ContentCalendarPage() {
           <Button type="button" variant="secondary" icon={ChevronLeft} aria-label="Previous month" className="min-h-11 min-w-11" onClick={() => shiftMonth(-1)} />
           <span className="min-w-[8.5rem] text-center text-[14px] font-semibold tabular-nums text-[var(--color-text-primary)]">{monthName}</span>
           <Button type="button" variant="secondary" icon={ChevronRight} aria-label="Next month" className="min-h-11 min-w-11" onClick={() => shiftMonth(1)} />
-          <button type="button" onClick={() => { setParam("month", null); }} className={`min-h-11 whitespace-nowrap rounded-full bg-[var(--color-brand-700)] px-3.5 text-[12.5px] font-semibold text-white hover:bg-[var(--color-brand-600)] ${FOCUS}`}>Today is {dayLong(today)}</button>
+          <button type="button" onClick={() => { setParam("month", null); }} className={`min-h-11 whitespace-nowrap rounded-full bg-[var(--color-brand-800)] px-3.5 text-[12.5px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Today is {dayLong(today)}</button>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {route.view !== "board" && <Segmented label="Show" options={SHOW_OPTIONS} value={route.show} onChange={(v) => setParam("show", v, true)} />}
@@ -514,7 +517,7 @@ export function ContentCalendarPage() {
         <>
           {opsCal.error && !opsCal.data && <div className="p-3"><AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => opsCal.refetch()}>Try again</Button>}>{opsErrorWords(opsCal.error)} Posts still work.</AlertCard></div>}
           <MonthGrid month={route.month} data={opsCal.data} items={calendar.items} show={route.show} today={localDateKey()} open={open} selectEvent={selectEvent} currentEvent={route.event} onDay={openDay} openDay={route.event ? null : route.day} reschedule={reschedule} coarse={coarse} />
-          <Legend undated={undated.length} onUndated={openUndated} />
+          <Legend undated={undated.length} onUndated={openUndated} show={route.show} />
         </>
       ) : route.view === "list" ? (
         <>
@@ -522,7 +525,7 @@ export function ContentCalendarPage() {
             ? <div className="p-3"><AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => runway.refetch()}>Try again</Button>}>{opsErrorWords(runway.error)}</AlertCard></div>
             : <StateList rows={runwayRows} onSelect={selectEvent} today={today} />)}
           {route.show !== "events" && <PostsList items={calendar.items} open={open} />}
-          <Legend undated={undated.length} onUndated={openUndated} />
+          <Legend undated={undated.length} onUndated={openUndated} show={route.show} />
         </>
       ) : null}
     </div>
@@ -544,7 +547,7 @@ export function ContentCalendarPage() {
         ? (calendar.loading ? <SectionCard><p role="status" className="text-sm text-[var(--color-text-secondary)]">Loading posts…</p></SectionCard> : <>{box}<BoardView items={calendar.items} open={open} move={beginMove} coarse={coarse} /></>)
         : route.event || route.day || route.undated
           ? <TwoColumn ref={eventDetailRef} detailLabel="Event details" list={box} detail={right} />
-          : <div className="flex min-w-0 flex-col gap-4">{box}<section ref={eventDetailRef} aria-label="Event details" className="min-w-0">{right}</section></div>}
+          : <div className="flex min-w-0 flex-col gap-4">{box}</div>}
 
       <ContentDrawer activeId={route.card} detail={detail} config={calendar.config} online={online} loading={detailLoading} focusTarget={focusTarget} suspended={!!move} onFocusHandled={() => setFocusTarget(null)} onClose={close} onChanged={changed} onMove={beginMove} onDeleted={calendar.removeItem} />
       <Modal open={addOpen} onClose={closeAdd} title="Add content" size="sm"><ModalBody><label htmlFor="new-content-title" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Title</label><input id="new-content-title" autoFocus className={`${CONTROL_CLASS} min-h-11`} value={title} maxLength={160} disabled={busy} onChange={(event) => updateTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); create(); } }} /><p className="mt-2 text-sm text-[var(--color-text-secondary)]">It starts in Idea and is assigned to you. Add other owners here.</p><div className="mt-3"><PeopleField id="new-content-owners" label="Owners" value={addOwners} onChange={(next) => setAddOwners(next)} team={people.people} suggested={[people.me].filter(Boolean)} me={people.me} disabled={busy} /></div>{duplicate.checking && <p role="status" className="mt-2 text-sm text-[var(--color-text-secondary)]">Checking for similar titles…</p>}{duplicate.exact && <AlertCard variant="error" title="That title already exists" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { closeAdd(); open(duplicate.exact.id); }}>Open existing</Button>}>Use the existing card instead of creating a duplicate.</AlertCard>}{duplicate.similar.length > 0 && !duplicate.exact && <AlertCard variant="warning" title="This may be a duplicate" action={!similarAccepted ? <Button type="button" variant="secondary" className="min-h-11" onClick={() => setSimilarAccepted(true)}>Add anyway</Button> : null}>Similar: {duplicate.similar.map((row) => row.title).join(", ")}{similarAccepted ? ". You can continue." : ". Review before continuing."}</AlertCard>}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={closeAdd}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} disabled={!title.trim() || !online || duplicate.checking || duplicateBlocked} onClick={create}>Add content</Button></ModalFooter></Modal>

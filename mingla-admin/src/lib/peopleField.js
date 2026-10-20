@@ -28,18 +28,48 @@ export function initialOf(name) {
   return letter ? letter.toUpperCase() : "?";
 }
 
-/** The people the server sent, cleaned: email, name, role words, invited, workload, me. */
+/**
+ * The people the server sent, cleaned: email, name, role words, invited,
+ * workload, me. One row per address: a person listed twice (say as owner and
+ * as teammate) is shown once, so "you" never appears twice.
+ */
 export function normalizeTeam(people) {
-  return (Array.isArray(people) ? people : [])
-    .filter((p) => p && typeof p.email === "string" && p.email.trim())
-    .map((p) => ({
+  const seen = new Map();
+  for (const p of Array.isArray(people) ? people : []) {
+    if (!p || typeof p.email !== "string" || !p.email.trim()) continue;
+    const row = {
       email: lower(p.email),
       name: String(p.name || p.display_name || p.email).trim(),
       role: String(p.role_label || p.role || "").trim(),
       invited: p.status === "invited",
       open: Number.isFinite(Number(p.open_cards)) ? Number(p.open_cards) : 0,
       me: !!p.me,
-    }));
+    };
+    const had = seen.get(row.email);
+    if (!had) seen.set(row.email, row);
+    else seen.set(row.email, { ...had, me: had.me || row.me, invited: had.invited && row.invited });
+  }
+  return [...seen.values()];
+}
+
+/** One list of addresses, in order, each once (me first when given). */
+export function suggestedPeople(...lists) {
+  const out = [];
+  for (const list of lists) {
+    for (const email of Array.isArray(list) ? list : [list]) {
+      const e = lower(email);
+      if (e && !out.includes(e)) out.push(e);
+    }
+  }
+  return out;
+}
+
+/** Does a person's name (not the address) match what was typed? */
+export function nameMatches(person, query) {
+  const q = lower(query);
+  if (!q) return true;
+  const words = lower(person?.name).split(/[\s.\-_]+/).filter(Boolean);
+  return words.some((w) => w.startsWith(q)) || lower(person?.name).startsWith(q);
 }
 
 /**
@@ -60,19 +90,35 @@ export function shownName(person, team) {
 export function personMatches(person, query) {
   const q = lower(query);
   if (!q) return true;
-  const words = lower(person?.name).split(/[\s.\-_]+/).filter(Boolean);
-  if (words.some((w) => w.startsWith(q)) || lower(person?.name).startsWith(q)) return true;
+  if (nameMatches(person, q)) return true;
   return q.length >= 3 && lower(person?.email).includes(q);
 }
 
-/** The list under the field: Suggested first (in their order), then Everyone. */
+/**
+ * The list under the field: Suggested first (in their order), then Everyone,
+ * each person once. While typing, people whose name matches come before
+ * people who match only by address, so "kun" then Enter picks Kunle even
+ * when someone else's address has "kun" in it.
+ */
 export function peopleOptions(team, query, suggested = []) {
-  const people = Array.isArray(team) ? team : [];
+  const people = normalizeOnce(team);
   const matched = people.filter((p) => personMatches(p, query));
-  const order = suggested.map(lower);
-  const sug = order.map((email) => matched.find((p) => lower(p.email) === email)).filter(Boolean);
-  const rest = matched.filter((p) => !order.includes(lower(p.email)));
+  const byName = matched.filter((p) => nameMatches(p, query));
+  const byAddress = matched.filter((p) => !nameMatches(p, query));
+  const order = suggestedPeople(suggested);
+  const sug = order.map((email) => byName.find((p) => lower(p.email) === email)).filter(Boolean);
+  const rest = [...byName.filter((p) => !order.includes(lower(p.email))), ...byAddress];
   return { suggested: sug, everyone: rest, flat: [...sug, ...rest] };
+}
+
+function normalizeOnce(team) {
+  const seen = new Set();
+  return (Array.isArray(team) ? team : []).filter((p) => {
+    const e = lower(p?.email);
+    if (!e || seen.has(e)) return false;
+    seen.add(e);
+    return true;
+  });
 }
 
 export function canPick(person) {

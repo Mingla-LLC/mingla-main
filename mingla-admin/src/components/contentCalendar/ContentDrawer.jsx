@@ -16,6 +16,7 @@ import {
 } from "../../lib/contentCalendarModel";
 import * as service from "../../services/contentCalendarService";
 import { PeopleField } from "../people/PeopleField";
+import { suggestedPeople } from "../../lib/peopleField";
 import { NoteBox } from "../ops/NoteBox";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 
@@ -141,7 +142,7 @@ export function ContentDrawer({ activeId, detail, config, online, loading, focus
           <Field label="Stage" htmlFor="content-stage"><Select id="content-stage" className="min-h-11" disabled={disabled} value={item.stage} options={CONTENT_STAGES.map((stage) => ({ ...stage, disabled: stage.value !== item.stage && !canMoveTo(item, stage.value) }))} onChange={(event) => onMove(item, event.target.value)} /></Field>
           <Field label="Publish date and time" htmlFor="content-publish"><input id="content-publish" type="datetime-local" className={`${CONTROL_CLASS} min-h-11`} disabled={disabled} value={dateTimeLocal(item.publish_at)} onChange={(event) => setItem({ ...item, publish_at: localToIso(event.target.value) })} onBlur={() => save({ publish_at: item.publish_at })} /></Field>
         </div>
-        <PeopleField id={`content-${item.id}-owners`} label="Owners" value={item.owners || []} team={directory.people} me={directory.me} suggested={[directory.me, ...(item.owners || [])].filter(Boolean)} disabled={disabled} onChange={(next) => assign(next)} />
+        <PeopleField id={`content-${item.id}-owners`} label="Owners" value={item.owners || []} team={directory.people} me={directory.me} suggested={suggestedPeople(directory.me, item.owners)} disabled={disabled} onChange={(next) => assign(next)} />
         <fieldset><legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Channels</legend><div className="grid grid-cols-2 gap-1">{(config?.channels || []).map((channel, index) => <label key={channel.id} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-sm text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${FOCUS}`}><input id={index === 0 ? "content-channel-first" : undefined} type="checkbox" checked={(item.channels || []).includes(channel.id)} disabled={disabled} onChange={(event) => { const channels = event.target.checked ? [...new Set([...(item.channels || []), channel.id])] : (item.channels || []).filter((id) => id !== channel.id); setItem({ ...item, channels }); save({ channels }); }} />{channel.label}</label>)}</div></fieldset>
         <Field label="Copy" htmlFor="content-copy" helper={copyLocked ? "Copy is read-only after Writing. Move this card back to Writing to revise it." : undefined}><textarea id="content-copy" className={TEXTAREA_CLASS} rows={6} disabled={disabled || copyLocked} value={item.copy || ""} onChange={(event) => setItem({ ...item, copy: event.target.value })} onBlur={() => save({ copy: item.copy || "" })} /></Field>
         <Field label="Notes" htmlFor="content-notes"><textarea id="content-notes" className={TEXTAREA_CLASS} rows={4} disabled={disabled} value={item.notes || ""} onChange={(event) => setItem({ ...item, notes: event.target.value })} onBlur={() => save({ notes: item.notes || "" })} /></Field>

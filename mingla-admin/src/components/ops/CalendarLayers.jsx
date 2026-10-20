@@ -35,9 +35,9 @@ export function CalendarLayers({ layers, onToggle }) {
 /** The key under the month grid. */
 export function RunwayLegend() {
   const rows = [
-    ["bg-[var(--color-success-600)]", "28+ days: full launch"],
-    ["bg-[var(--color-warning-600)]", "21 to 27: tight"],
-    ["bg-[var(--color-error-600)]", "Under 21: organic only"],
+    ["bg-[var(--color-success-600)]", "Ready to promote"],
+    ["bg-[var(--color-warning-600)]", "Promote now"],
+    ["bg-[var(--color-error-600)]", "Too late for promo"],
     ["border-[1.5px] border-dashed border-[var(--gray-400)]", "Expected"],
   ];
   return (
