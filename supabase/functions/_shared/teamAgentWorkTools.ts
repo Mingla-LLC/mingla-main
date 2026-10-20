@@ -820,6 +820,26 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_next_action_convert: {
     excluded: "the owner turns next steps into cards in person",
   },
+  // #3980 synced program, Wave 2: the bridges' screens.
+  ops_github_status_list: { tools: ["list_work"] },
+  ops_ticket_engineering: {
+    excluded: "Support reads a ticket's engineering status in person on the ticket",
+  },
+  ops_roadmap_links_list: {
+    excluded: "what hosts are told is for the owner and admins, in person",
+  },
+  ops_roadmap_link_set: {
+    excluded: "what hosts are told is for the owner and admins, in person",
+  },
+  ops_roadmap_suggestion_decide: {
+    excluded: "only a person moves a roadmap card",
+  },
+  ops_release_records_list: {
+    excluded: "coding chats read release records on their GitHub issue",
+  },
+  ops_feature_guide_release: {
+    excluded: "the agent reads the Feature Guide through its product truth tools",
+  },
 };
 
 const WORK_BY_NAME = new Map(
