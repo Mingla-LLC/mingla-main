@@ -831,6 +831,28 @@ BEGIN
 END;
 $$;
 
+-- From 20271116003980. #3980 W2 rework 3: an approval card for a drafted
+-- "Recently shipped" card (auto_key roadmap_shipped:...) is a person's to
+-- close or push back, whatever its status, the way a gate card is never an
+-- agent's. Everything else is unchanged.
+CREATE OR REPLACE FUNCTION public.ops_close_rules(c public.ops_work_cards, p_actor text, p_via text) RETURNS void
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF p_via IS NOT NULL THEN
+    PERFORM public.ops_agent_owns(c, p_actor, p_via);
+    IF c.status = 'person' THEN RAISE EXCEPTION 'people_only: A person closes this card.' USING ERRCODE = '42501'; END IF;
+    IF c.auto_key LIKE 'roadmap\_shipped:%' THEN
+      RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person closes this card.' USING ERRCODE = '42501';
+    END IF;
+    IF c.kind = 'gate_live' THEN RAISE EXCEPTION 'gate_card: This card closes itself when the event is public.' USING ERRCODE = '42501'; END IF;
+    IF c.blocked THEN RAISE EXCEPTION '%', format('blocked: %s', c.blocked_reason) USING ERRCODE = '42501'; END IF;
+  ELSIF c.kind = 'gate_live' AND NOT (public.is_admin_user() AND c.anchor_kind = 'event' AND public.ops_event_public(c.anchor_id)) THEN
+    RAISE EXCEPTION 'gate_card: This card closes itself when the event is public.' USING ERRCODE = '42501';
+  END IF;
+END;
+$$;
+
 
 -- From 20271124003980. Takes blocked_on_github: the card waits until every
 -- linked issue or pull request is Live (Bridge E lifts it). A person can
@@ -932,6 +954,12 @@ BEGIN
     IF v.via IS NOT NULL AND v_back_reason IS NULL THEN
       RAISE EXCEPTION 'reason_required: Say why this card no longer needs a person. Your person and the card''s watchers are told.' USING ERRCODE = '22023';
     END IF;
+  END IF;
+  -- #3980 W2 rework 3: an agent never moves a roadmap approval card or
+  -- changes what it waits for, so it cannot send it back and then close it.
+  IF v.via IS NOT NULL AND c.auto_key LIKE 'roadmap\_shipped:%'
+     AND (v_status IS DISTINCT FROM c.status OR (p_changes ? 'person_reason' AND cl->>'person_reason' IS DISTINCT FROM c.person_reason)) THEN
+    RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person moves this card.' USING ERRCODE = '42501';
   END IF;
   n := c;
   -- Wave 2: the GitHub issues and pull requests the card waits for.
