@@ -9,11 +9,11 @@
 --
 -- Runs the REAL functions inside BEGIN … ROLLBACK; nothing persists.
 --
--- invariant: I-3827-COMP-NO-PAYOUT       A8 (sweep, cancel-refund prepare)
+-- MINGLA-INVARIANT: I-3827-COMP-NO-PAYOUT | issue #3827 | no comp produces payout release items, fee snapshots or cancel-refund work (A8)
 -- invariant: I-3827-COMP-NOT-SOLD        A8 (numbers rollups unchanged by comps)
 -- invariant: I-3827-COMP-NO-MONEY        A7 (every money column + source flip)
 -- invariant: I-3827-MANUAL-ADMIT-ONE-LADDER A5 (no scan row for a foreign ticket)
--- invariant: I-3827-PARTY-ONE-LEVEL      P (helper refuses nesting)
+-- MINGLA-INVARIANT: I-3827-PARTY-ONE-LEVEL | issue #3827 | a plus-one order points at a lead whose own lead is null; the helper refuses nesting (P)
 --
 -- FAILS-ON-REVERT (tester):
 --   a. drop the `v_ticket.event_id <> p_event_id` arm in biz_ticket_admit_by_id

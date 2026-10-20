@@ -1,7 +1,6 @@
 // issue #3827 — guest-list comps: sales vs places, on the client.
 //
-// invariant: I-3827-COMP-NOT-SOLD — client sold, revenue and Orders-list
-// helpers exclude comps; capacity-guard helpers include them.
+// MINGLA-INVARIANT: I-3827-COMP-NOT-SOLD | issue #3827 | client sold, revenue and Orders-list helpers exclude comps; capacity-guard helpers include them
 //
 // FAILS-ON-REVERT (recorded on #3827):
 //   5. delete the comp skip in liveCountsByTier / getEventTicketsSold

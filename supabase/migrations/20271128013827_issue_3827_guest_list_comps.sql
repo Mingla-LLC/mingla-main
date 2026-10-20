@@ -735,7 +735,7 @@ BEGIN
   IF v_note IS NOT NULL AND char_length(v_note) > 200 THEN
     RAISE EXCEPTION 'invalid_guests' USING HINT = 'note';
   END IF;
-  -- I-3827-COMP-HAS-ORIGIN: a team member or a link is responsible for it.
+  -- MINGLA-INVARIANT: I-3827-COMP-HAS-ORIGIN | issue #3827 | every comp order names its origin: a team member (comp_issued_by) or a link (ticket_link_id)
   IF p_issued_by IS NULL AND p_ticket_link_id IS NULL THEN
     RAISE EXCEPTION 'comp_origin_required';
   END IF;

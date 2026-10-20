@@ -4,12 +4,12 @@
 -- BEGIN … ROLLBACK. Each block names the spec case it proves.
 --
 -- ── INVARIANTS UNDER TEST (declared here, beside their enforcing tests) ─────
--- invariant: I-3827-COMP-NO-MONEY        orders_comp_shape_check; T-M1/T-M2
--- invariant: I-3827-COMP-COUNTS-CAPACITY H1 (sold_count), H7 (cancel frees), A1 (all-or-nothing)
--- invariant: I-3827-COMP-COUNTS-GOING    H1 (pg_public_social_proof)
--- invariant: I-3827-MANUAL-ADMIT-ONE-LADDER H10
--- invariant: I-3827-COMP-CANCEL-NO-REFUND H7
--- invariant: I-3827-ONE-PERSON-ONE-ORDER H-N8
+-- MINGLA-INVARIANT: I-3827-COMP-NO-MONEY | issue #3827 | a source=comp order has zero money columns and no provider ids (orders_comp_shape_check; T-M1/T-M2)
+-- MINGLA-INVARIANT: I-3827-COMP-COUNTS-CAPACITY | issue #3827 | comp tickets raise sold_count, an over-capacity batch inserts nothing, a cancel frees exactly the voided places (H1, A1, H7)
+-- MINGLA-INVARIANT: I-3827-COMP-COUNTS-GOING | issue #3827 | the public going count includes live comp tickets on a non-private event (H1)
+-- MINGLA-INVARIANT: I-3827-COMP-CANCEL-NO-REFUND | issue #3827 | biz_comp_cancel voids valid tickets and writes no refund row (H7)
+-- MINGLA-INVARIANT: I-3827-ONE-PERSON-ONE-ORDER | issue #3827 | a named plus-one is their own comp order of one ticket; blank plus-ones ride the guest's order (H-N8)
+-- (I-3827-MANUAL-ADMIT-ONE-LADDER is declared beside its structural test; H10 proves it at runtime.)
 --
 -- ── FAILS-ON-REVERT (recorded on #3827) ─────────────────────────────────────
 --   1. remove 'comp' from orders_source_check      -> H1 fails

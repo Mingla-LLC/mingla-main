@@ -8,7 +8,7 @@
 -- from the server.
 -- Same rules as 20271110003720: a human-verified Live entry is never edited, no
 -- evidence is added, and the number of effectively Live entries never changes.
--- INVARIANT: {"id":"I-3827-GUIDE-MATCHES-COMPS","rule":"The comp, check-in, guest-list and reconciliation Feature Guide entries describe server guest-list tickets (real ticket, QR, email optional, capacity yes, sales no, cancel voids without refund, find by name and Admit) and never the retired phone-only comp list."}
+-- MINGLA-INVARIANT: I-3827-GUIDE-MATCHES-COMPS | issue #3827 | the comp, check-in, guest-list and reconciliation guide entries describe server guest-list tickets, never the retired phone-only comp list (postcheck below)
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
