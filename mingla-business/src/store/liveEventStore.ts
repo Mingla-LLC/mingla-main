@@ -227,8 +227,6 @@ export interface LiveEvent {
    * guest list private (withheld). Host readers use the RLS path and keep `?? 0`.
    */
   rsvpGoingCount?: number | null;
-  /** issue #3827 going-box — public-read full flag from the real count. */
-  rsvpCapacityFull?: boolean;
   /** issue #3827 going-box — guests on the host's own list (public read; 0 when private). */
   rsvpExtraGuestCount?: number;
   /**

@@ -96,11 +96,8 @@ interface BusinessPublicEventViewRow {
   rsvp_plus_ones_max?: number | null;
   rsvp_waitlist_enabled?: boolean | null;
   rsvp_approval_mode?: "auto" | "manual" | null;
-  rsvp_going_count?: number | null;
   // issue #3827 going-box — NULL rsvp_going_count = withheld (private list).
-  // The real-count full flag and the host's own-list guests (0 when private).
-  rsvp_capacity_full?: boolean | null;
-  extra_guest_count?: number | null;
+  rsvp_going_count?: number | null;
   // ORCH-1291 [rsvp-chip-in] — voluntary contribution config, surfaced anon-safe
   // by business_public_events_view (the view SELECTs e.rsvp_contribution_*).
   // Arrives via the existing .select("*"); false/NULL for non-chip-in rows. Drive
@@ -1402,14 +1399,12 @@ export const publicEventViewRowToEvent = (
     // never coerced to 0 for display or for the full decision.
     rsvpGoingCount:
       typeof row.rsvp_going_count === "number" ? row.rsvp_going_count : null,
-    rsvpCapacityFull:
-      typeof row.rsvp_capacity_full === "boolean"
-        ? row.rsvp_capacity_full
-        : undefined,
-    rsvpExtraGuestCount:
-      typeof row.extra_guest_count === "number"
-        ? row.extra_guest_count
-        : undefined,
+    // issue #3827 going-box — guests on the host's own list, from the public
+    // theme the row already carries (0 when the list is private). The view
+    // gains no column for it: CI re-applies an older view definition.
+    rsvpExtraGuestCount: asBoolean(settings.privateGuestList, false)
+      ? 0
+      : asExtraGuestCount(settings.extraGuestCount),
     // ORCH-1291 [rsvp-chip-in] — thread the anon-view chip-in config into the
     // buyer-web LiveEvent so PublicEventPage builds it into RsvpOfferingConfig and
     // the shared body's guest panel renders on web (report §10.A). Inert defaults
@@ -2484,6 +2479,7 @@ import type {
 // through to any buyer-side render).
 import { coerceTripDayMedia } from "./tripsService";
 import { orderTripPricingTierRows } from "./tripPackages";
+import { asExtraGuestCount } from "../constants/guestListPrivacy";
 
 export interface PublicTripBrand {
   id: string;

@@ -1225,11 +1225,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         palette={palette}
         startAtUtc={event.masterStartAtUtc ?? null}
         endAtUtc={event.masterEndAtUtc ?? null}
-        // issue #3827 going-box (R-5) — the server's real-count flag; the
+        // issue #3827 going-box (R-5) — the server's real-count flag (social proof); the
         // legacy compute is for older servers only, and a withheld (null)
         // count is never read as 0.
         capacityFull={
-          event.rsvpCapacityFull ??
+          socialProofQuery.data?.capacityFull ??
           (event.rsvpCapacity !== null &&
             event.rsvpCapacity !== undefined &&
             typeof event.rsvpGoingCount === "number" &&
@@ -1624,7 +1624,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
               event.rsvpExtraGuestCount ??
               socialProofQuery.data?.extraGuestCount ??
               0,
-            capacityFull: event.rsvpCapacityFull,
+            capacityFull: socialProofQuery.data?.capacityFull,
             allowPlusOnes: event.rsvpAllowPlusOnes ?? false,
             plusOnesMax: event.rsvpPlusOnesMax ?? 0,
             waitlistEnabled: event.rsvpWaitlistEnabled ?? false,

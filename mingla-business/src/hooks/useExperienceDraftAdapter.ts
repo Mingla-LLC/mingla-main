@@ -139,7 +139,6 @@ function synthDraft(
     passwordProtected: false,
     themeOverrides: null,
     privateGuestList: guestPrivacy.privateGuestList,
-    extraGuestCount: guestPrivacy.extraGuestCount,
     inPersonPaymentsEnabled: false,
     // ORCH-1291 [rsvp-chip-in] — inert for the experience When-adapter.
     rsvpContributionEnabled: false,

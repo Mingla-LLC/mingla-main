@@ -14,7 +14,8 @@
 --   TA-5  an unlimited tier makes capacity NULL, so capacityFull stays false however
 --         many tickets and extras there are
 --   TA-6  RSVP pending / maybe never count; plus-ones do (capacity full = real seats)
---   TA-7  a non-RSVP row with a stray rsvp_capacity is never rsvp_capacity_full
+--   TA-7  the view and publicEventRow gained no column (CI re-applies 20270523002489,
+--         and CREATE OR REPLACE VIEW cannot drop columns)
 --   TA-8  huge and exotic JSON values for extraGuestCount are refused by the CHECK on
 --         every path; JSON null is accepted and reads as 0
 --   TA-9  an ended event still withholds a private count
@@ -154,8 +155,8 @@ BEGIN
   PERFORM pg_temp.ta_assert(jsonb_typeof(v -> 'goingCount') = 'null' AND (v ->> 'extraGuestCount')::int = 0,
     'TA-3a private: count withheld AND stored extras hidden (0)');
   PERFORM pg_temp.ta_assert(
-    (SELECT extra_guest_count FROM public.business_public_events_view WHERE id = ev.o_event) = 0,
-    'TA-3b private: the view shows 0 extras');
+    (SELECT rsvp_going_count FROM public.business_public_events_view WHERE id = ev.o_event) IS NULL,
+    'TA-3b private: the view withholds the count too');
 
   v := public.biz_set_event_guest_privacy(ev.o_event, false);
   v := public.pg_public_social_proof(ev.o_event)::jsonb;
@@ -164,9 +165,9 @@ BEGIN
 
   SELECT * INTO rs FROM pg_temp.ta_event(b.o_brand, 'ta3r', 'rsvp', true, 25, 'scheduled', 30);
   v := public.pg_public_rsvp_by_slug(b.o_slug, rs.o_slug)::jsonb;
-  PERFORM pg_temp.ta_assert((v #>> '{publicEventRow,extra_guest_count}')::int = 0
-      AND jsonb_typeof(v #> '{publicEventRow,rsvp_going_count}') = 'null',
-    'TA-3d private RSVP with stored extras: the row shows 0 extras and a null count');
+  PERFORM pg_temp.ta_assert(jsonb_typeof(v #> '{publicEventRow,rsvp_going_count}') = 'null'
+      AND jsonb_typeof(v -> 'rsvpGoingCount') = 'null',
+    'TA-3d private RSVP with stored extras: both reader counts are null');
 END
 $ta2$;
 ROLLBACK;
@@ -216,20 +217,16 @@ BEGIN
     (rs.o_event, 'Pending', 'ta6-p-' || gen_random_uuid() || '@example.test', '+15550003827', 'going', 'pending', 0),
     (rs.o_event, 'Maybe', 'ta6-m-' || gen_random_uuid() || '@example.test', '+15550003827', 'maybe', 'approved', 0),
     (rs.o_event, 'Going +2', 'ta6-g-' || gen_random_uuid() || '@example.test', '+15550003827', 'going', 'approved', 2);
-  SELECT rsvp_capacity_full INTO v_full FROM public.business_public_events_view WHERE id = rs.o_event;
+  v_full := (public.pg_public_social_proof(rs.o_event)::jsonb ->> 'capacityFull')::boolean;
   PERFORM pg_temp.ta_assert(v_full = false,
     'TA-6a 3 real seats of 4 (pending and maybe excluded, 3000 extras ignored) is not full');
   INSERT INTO public.event_rsvps(event_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
     VALUES (rs.o_event, 'Last seat', 'ta6-l-' || gen_random_uuid() || '@example.test', '+15550003827', 'going', 'approved');
-  SELECT rsvp_capacity_full INTO v_full FROM public.business_public_events_view WHERE id = rs.o_event;
+  v_full := (public.pg_public_social_proof(rs.o_event)::jsonb ->> 'capacityFull')::boolean;
   PERFORM pg_temp.ta_assert(v_full = true, 'TA-6b the fourth real seat fills it');
-  PERFORM pg_temp.ta_assert((public.pg_public_social_proof(rs.o_event)::jsonb ->> 'capacityFull')::boolean,
-    'TA-6c social proof agrees');
-
-  SELECT * INTO tk FROM pg_temp.ta_event(b.o_brand, 'ta7', 'event', false, 0, 'scheduled', 0);
   PERFORM pg_temp.ta_assert(
-    (SELECT rsvp_capacity_full FROM public.business_public_events_view WHERE id = tk.o_event) = false,
-    'TA-7 a ticketed row with a stray rsvp_capacity of 0 is never rsvp_capacity_full');
+    (public.pg_public_social_proof(rs.o_event)::jsonb ->> 'goingCount')::int = 4,
+    'TA-6c the count is the real seats (plus-ones in, pending / maybe out, extras out)');
 END
 $ta6$;
 ROLLBACK;
@@ -285,6 +282,31 @@ BEGIN
     'TA-9 an ended private event still withholds the count');
 END
 $ta9$;
+ROLLBACK;
+
+-- ─── TA-7: nothing appended to the re-applied view or its row copy ─────────────────
+-- CI lanes re-apply 20270523002489 on a fully migrated database; that only works while
+-- no later migration appends a column (CREATE OR REPLACE VIEW cannot drop one).
+BEGIN;
+DO $ta7$
+DECLARE b record; ev record; v jsonb;
+BEGIN
+  PERFORM pg_temp.ta_assert(NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'business_public_events_view'
+         AND column_name IN ('rsvp_capacity_full', 'extra_guest_count', 'going_count_withheld')),
+    'TA-7a business_public_events_view gained no going-box column');
+  SELECT * INTO b FROM pg_temp.ta_brand('ta7');
+  SELECT * INTO ev FROM pg_temp.ta_event(b.o_brand, 'ta7', 'rsvp', false, 9, 'scheduled', 10);
+  v := public.pg_public_rsvp_by_slug(b.o_slug, ev.o_slug)::jsonb;
+  PERFORM pg_temp.ta_assert(
+    (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(v -> 'publicEventRow') k)
+      = (SELECT array_agg(c.column_name::text ORDER BY c.column_name::text)
+           FROM information_schema.columns c
+          WHERE c.table_schema = 'public' AND c.table_name = 'business_public_events_view'),
+    'TA-7b publicEventRow keys are still exactly the view columns');
+END
+$ta7$;
 ROLLBACK;
 
 SELECT 'issue_3827_going_box_privacy.tester.adversarial.pg17: PASS' AS result;

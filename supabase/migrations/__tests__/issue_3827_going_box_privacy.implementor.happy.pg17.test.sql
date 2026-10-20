@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 
 -- MINGLA-INVARIANT: I-3827-PRIVATE-GUEST-LIST-WITHHOLDS-COUNT | issue #3827 | When privateGuestList is true, pg_public_social_proof.goingCount, pg_public_rsvp_by_slug.rsvpGoingCount, publicEventRow.rsvp_going_count and business_public_events_view.rsvp_going_count are SQL NULL for anon and authed callers, never 0.
--- MINGLA-INVARIANT: I-3827-EXTRAS-NEVER-SUPPLY | issue #3827 | Guests on the host's own list never enter capacity, remaining, full / sold-out, checkout or submit; capacityFull / rsvp_capacity_full are computed from the real count only.
+-- MINGLA-INVARIANT: I-3827-EXTRAS-NEVER-SUPPLY | issue #3827 | Guests on the host's own list never enter capacity, remaining, full / sold-out, checkout or submit; pg_public_social_proof.capacityFull is computed from the real count only.
 -- MINGLA-INVARIANT: I-3827-EXTRAS-BOUNDED | issue #3827 | events.theme.business_event.settings.extraGuestCount is absent, JSON null, or a whole number 0..5000 (CHECK events_extra_guest_count_valid); the client cap equals the SQL cap.
 -- MINGLA-INVARIANT: I-3827-PRIVACY-EDITS-NEVER-NOTIFY | issue #3827 | Changing privateGuestList or extraGuestCount on a live event tells no buyer and queues no guest alert.
 -- MINGLA-INVARIANT: I-3827-RSVP-READER-KEYSET-FROZEN | issue #3827 | New RSVP fields enter pg_public_rsvp_by_slug only inside publicEventRow; the top-level key list is unchanged.
@@ -15,10 +15,11 @@
 --   T-1  public ticketed, private on: social proof withholds goingCount (NULL, not 0)
 --        for anon AND authed; sample []; extraGuestCount 0; capacityFull real
 --   T-2  same, private off: real goingCount, extras, capacity unchanged
---   T-3  RSVP private: rsvpGoingCount NULL, publicEventRow.rsvp_going_count NULL,
---        rsvp_capacity_full real, extra_guest_count 0
---   T-4  business_public_events_view: same nulling; every pre-existing column keeps its
---        name, type and ordinal; the two new columns are appended last
+--   T-3  RSVP private: rsvpGoingCount NULL, publicEventRow.rsvp_going_count NULL;
+--        social proof capacityFull real
+--   T-4  business_public_events_view: same nulling; the column list is EXACTLY the
+--        previous one (no column appended: CI re-applies 20270523002489, and
+--        CREATE OR REPLACE VIEW cannot drop columns)
 --   T-5  unlisted RSVP through the exact-link reader: same nulling
 --   T-6  private off, real 0, extras 40: count 0 (real), extras 40, not full
 --   T-7  sold out with huge extras: capacityFull true; capacity and per-tier remaining
@@ -33,13 +34,12 @@
 --   T-15 grants
 --   T-16 malformed theme shapes: every read answers, helpers are total
 --   T-17 pg_public_rsvp_by_slug top-level key list unchanged (U-01e + publicEventRow)
---   T-18 publicEventRow carries the two new columns and equals the view row
---   T-19 private RSVP at capacity: rsvp_capacity_full true while the count is NULL
+--   T-18 publicEventRow equals the view row; own-list guests travel in public_theme
+--   T-19 private RSVP at capacity: social proof capacityFull true, every count NULL
 --
 -- FAILS-ON-REVERT (replay the chain without 20271128003827): T-1, T-3, T-4, T-5 and
 -- T-19 fail on the withheld count; T-2/T-6 on the missing extraGuestCount key; T-8 on
--- the 4-argument call; T-10 because the constraint does not exist; T-18 on the
--- missing columns.
+-- the 4-argument call; T-10 because the constraint does not exist.
 
 CREATE OR REPLACE FUNCTION pg_temp.gb_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $assert$
@@ -200,21 +200,18 @@ BEGIN
     'T-3a private RSVP: rsvpGoingCount is JSON null (got ' || COALESCE(v ->> 'rsvpGoingCount', 'null') || ')');
   PERFORM pg_temp.gb_assert(jsonb_typeof(v_row -> 'rsvp_going_count') = 'null',
     'T-3b publicEventRow.rsvp_going_count is null');
-  PERFORM pg_temp.gb_assert((v_row ->> 'rsvp_capacity_full')::boolean = false
-      AND (v_row ->> 'extra_guest_count')::int = 0,
-    'T-3c publicEventRow: rsvp_capacity_full real (5 of 80 = false), extra_guest_count 0 when private');
-  PERFORM pg_temp.gb_assert(v_view.rsvp_going_count IS NULL AND v_view.rsvp_capacity_full = false
-      AND v_view.extra_guest_count = 0,
-    'T-4a view (anon): rsvp_going_count NULL, rsvp_capacity_full false, extra_guest_count 0');
+  PERFORM pg_temp.gb_assert((pg_temp.gb_proof(ev.o_event) ->> 'capacityFull')::boolean = false,
+    'T-3c social proof: capacityFull real (5 of 80 = false) while the count is withheld');
+  PERFORM pg_temp.gb_assert(v_view.rsvp_going_count IS NULL,
+    'T-4a view (anon): rsvp_going_count NULL');
 
   -- T-19: at capacity while private.
   SELECT * INTO full_ev FROM pg_temp.gb_event(b.o_brand, 't19', 'rsvp', true, 0, 4);
   PERFORM pg_temp.gb_rsvps(full_ev.o_event, 4);
   v := public.pg_public_rsvp_by_slug(b.o_slug, full_ev.o_slug)::jsonb;
-  PERFORM pg_temp.gb_assert((v #>> '{publicEventRow,rsvp_capacity_full}')::boolean = true
-      AND jsonb_typeof(v -> 'rsvpGoingCount') = 'null'
+  PERFORM pg_temp.gb_assert(jsonb_typeof(v -> 'rsvpGoingCount') = 'null'
       AND jsonb_typeof(v #> '{publicEventRow,rsvp_going_count}') = 'null',
-    'T-19 private RSVP at capacity: rsvp_capacity_full true while every count stays null');
+    'T-19 private RSVP at capacity: every reader count stays null');
   PERFORM pg_temp.gb_assert((pg_temp.gb_proof(full_ev.o_event) ->> 'capacityFull')::boolean = true
       AND jsonb_typeof(pg_temp.gb_proof(full_ev.o_event) -> 'goingCount') = 'null',
     'T-19b social proof agrees: capacityFull true, goingCount null');
@@ -232,7 +229,7 @@ BEGIN
     FROM pg_attribute a
    WHERE a.attrelid = 'public.business_public_events_view'::regclass AND a.attnum > 0 AND NOT a.attisdropped;
   n := array_length(v_cols, 1);
-  PERFORM pg_temp.gb_assert(v_cols[1:n - 2] = ARRAY[
+  PERFORM pg_temp.gb_assert(v_cols = ARRAY[
       'id','brand_id','brand_slug','brand_name','brand_description','brand_profile_photo_url',
       'brand_display_attendee_count','brand_address','brand_cover_media_url','brand_theme_color',
       'brand_theme_font','brand_theme_animation','title','description','slug','event_type',
@@ -247,10 +244,8 @@ BEGIN
       'rsvp_plus_ones_max','rsvp_waitlist_enabled','rsvp_approval_mode','rsvp_going_count','city_geo',
       'rsvp_contribution_enabled','rsvp_contribution_suggested_cents','rsvp_contribution_min_cents',
       'cover_media_gallery']::text[],
-    'T-4b every pre-existing view column keeps its name and ordinal (got ' || array_to_string(v_cols, ',') || ')');
-  PERFORM pg_temp.gb_assert(v_cols[n - 1] = 'rsvp_capacity_full' AND v_types[n - 1] = 'boolean'
-      AND v_cols[n] = 'extra_guest_count' AND v_types[n] = 'integer',
-    'T-4c rsvp_capacity_full boolean then extra_guest_count integer are appended last');
+    'T-4b the view column list is EXACTLY the previous one, no column appended (got ' || array_to_string(v_cols, ',') || ')');
+  PERFORM pg_temp.gb_assert(n = 69, 'T-4c the view still has 69 columns');
   PERFORM pg_temp.gb_assert(v_types[array_position(v_cols, 'rsvp_going_count')] = 'integer',
     'T-4d rsvp_going_count stays integer');
   PERFORM pg_temp.gb_assert(
@@ -292,13 +287,14 @@ BEGIN
 
   v := public.pg_public_rsvp_by_slug(b.o_slug, pub.o_slug)::jsonb;
   SELECT to_jsonb(x) INTO v_view FROM public.business_public_events_view x WHERE x.id = pub.o_event;
-  PERFORM pg_temp.gb_assert((v -> 'publicEventRow') ? 'rsvp_capacity_full' AND (v -> 'publicEventRow') ? 'extra_guest_count'
-      AND v -> 'publicEventRow' = v_view,
-    'T-18 publicEventRow carries the two new columns and equals the view row');
+  PERFORM pg_temp.gb_assert(v -> 'publicEventRow' = v_view
+      AND NOT ((v -> 'publicEventRow') ? 'rsvp_capacity_full')
+      AND NOT ((v -> 'publicEventRow') ? 'extra_guest_count'),
+    'T-18 publicEventRow equals the view row and gains no column');
   PERFORM pg_temp.gb_assert((v ->> 'rsvpGoingCount')::int = 3
       AND (v #>> '{publicEventRow,rsvp_going_count}')::int = 3
-      AND (v #>> '{publicEventRow,extra_guest_count}')::int = 12,
-    'T-18b public: the count stays REAL (3) and extras (12) ride beside it');
+      AND (v #>> '{publicEventRow,public_theme,business_event,settings,extraGuestCount}')::int = 12,
+    'T-18b public: the count stays REAL (3); own-list guests (12) travel in public_theme');
 END
 $t05$;
 ROLLBACK;
@@ -650,7 +646,7 @@ BEGIN
     PERFORM count(*) FROM public.business_public_events_view WHERE id = ev.o_event;
     v := public.pg_public_rsvp_by_slug(b.o_slug, ev.o_slug)::jsonb;
     RESET ROLE;
-    PERFORM pg_temp.gb_assert(v IS NOT NULL AND (v #>> '{publicEventRow,extra_guest_count}')::int = 0,
+    PERFORM pg_temp.gb_assert(v IS NOT NULL AND v ? 'publicEventRow',
       'T-16c all three reads answer on theme ' || t::text);
   END LOOP;
 END

@@ -5,8 +5,9 @@
 //      resolves null (missing row / private) — never `?? 0`
 // A-M2 the social-proof impression fires for real 0 + extras > 0 (box visible), but
 //      the guest-list auto-open needs somebody REAL (trip, experience and event)
-// A-M3 rsvpDeckService maps rsvp_going_count NULL to null and reads the two new
-//      columns, with a fallback for a server that predates them
+// A-M3 rsvpDeckService maps rsvp_going_count NULL to null; on the exact-link path the
+//      host's own-list guests come from the row's public theme (0 when private); the
+//      public view gains no column (CI re-applies an older view definition)
 // A-M4 the sheet header adds and discloses the host's own-list guests; the tail
 //      stays on the real count
 //
@@ -17,6 +18,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 
 import { guestSheetHeaderSubtitle } from "../../../components/guestSheetHeaderCopy.ts";
+import { rsvpExtraGuestCountFromTheme } from "../../../services/publicEventSeedService.ts";
 
 const read = (rel: string): string => Deno.readTextFileSync(new URL(rel, import.meta.url));
 
@@ -30,7 +32,7 @@ Deno.test("A-M1 the RSVP count is null while loading / missing / private — nev
   assertStringIncludes(EVENT, "goingCount: rsvpMomentum ? rsvpMomentum.goingCount : null,");
   assert(!EVENT.includes("goingCount: rsvpMomentum?.goingCount ?? 0,"), "the `?? 0` fallback is back");
   assertStringIncludes(EVENT, "rsvpMomentum?.extraGuestCount ?? socialProofQuery.data?.extraGuestCount ?? 0");
-  assertStringIncludes(EVENT, "capacityFull: rsvpMomentum?.capacityFull ?? socialProofQuery.data?.capacityFull,");
+  assertStringIncludes(EVENT, "capacityFull: socialProofQuery.data?.capacityFull,");
 });
 
 Deno.test("A-M2 impression = box visible (extras count); auto-open = somebody real", () => {
@@ -51,9 +53,15 @@ Deno.test("A-M3 rsvpDeckService: NULL stays null; new columns read; old servers 
     'goingCount: typeof row.rsvp_going_count === "number" ? row.rsvp_going_count : null,',
   );
   assert(!DECK.includes("goingCount: row.rsvp_going_count ?? 0"), "the `?? 0` fallback is back");
-  assertStringIncludes(DECK, 'const RSVP_MOMENTUM_3827_COLUMNS = "rsvp_capacity_full,extra_guest_count";');
-  assertStringIncludes(DECK, 'error.code === "42703"');
-  assertStringIncludes(DECK, "({ data, error } = await select(RSVP_MOMENTUM_COLUMNS));");
+  assert(!DECK.includes("rsvp_capacity_full") && !DECK.includes("extra_guest_count"),
+    "the view has no going-box columns to select");
+  assertStringIncludes(DECK, "hostExtraGuestCount = rsvpExtraGuestCountFromTheme(direct.public_theme);");
+  const theme = (settings: Record<string, unknown>) => ({ business_event: { settings } });
+  assertEquals(rsvpExtraGuestCountFromTheme(theme({ extraGuestCount: 12 })), 12);
+  assertEquals(rsvpExtraGuestCountFromTheme(theme({ extraGuestCount: 12, privateGuestList: true })), 0);
+  assertEquals(rsvpExtraGuestCountFromTheme(theme({ extraGuestCount: 5001 })), 0);
+  assertEquals(rsvpExtraGuestCountFromTheme(theme({ extraGuestCount: 2.5 })), 0);
+  assertEquals(rsvpExtraGuestCountFromTheme(null), 0);
 });
 
 Deno.test("A-M4 sheet header: R+X going · X on the host's list; tail stays on R", () => {

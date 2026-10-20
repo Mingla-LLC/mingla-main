@@ -18,10 +18,13 @@
 --      is private, and add the host's own-list guests (0 when private) and a full
 --      flag computed from the REAL count:
 --        pg_public_social_proof      + extraGuestCount, capacityFull (keys appended last)
---        business_public_events_view + rsvp_capacity_full, extra_guest_count (columns
---                                      appended last; every existing ordinal kept)
---        pg_public_rsvp_by_slug      the same two columns ride INSIDE publicEventRow
---                                      only. No new top-level key (U-01d/e pin it).
+--        business_public_events_view rsvp_going_count only (NULL when private)
+--        pg_public_rsvp_by_slug      rsvpGoingCount and publicEventRow.rsvp_going_count
+--      The view and publicEventRow gain NO columns: CI lanes re-apply
+--      20270523002489 on a migrated database, and CREATE OR REPLACE VIEW cannot drop
+--      columns, so an appended column would break that re-apply. Own-list guests are
+--      read by clients from public_theme (business_event.settings.extraGuestCount,
+--      already public; 0 when private); the full flag comes from social proof.
 --   4. biz_set_event_guest_privacy gains p_extra_guest_count (DEFAULT NULL = keep).
 --      DROP + CREATE: the old 3-arg overload must go, or 3-arg calls turn ambiguous.
 --      Every caller (business app named params, Ari positional 2/3 args, the live
@@ -30,7 +33,7 @@
 --
 -- RULE (binding): extras are added to the going NUMBER only. They never enter
 -- capacity, spots left, the meter, full / sold out, checkout or submit. The real
--- count stays the only supply truth (capacityFull / rsvp_capacity_full use it).
+-- count stays the only supply truth (pg_public_social_proof.capacityFull uses it).
 --
 -- Every re-emit copies the latest definition forward byte for byte (read back from
 -- production 2026-10-20: md5(prosrc) equal for all five functions). Changed hunks are
@@ -697,17 +700,7 @@ AS $function$
             e.rsvp_contribution_enabled,
             e.rsvp_contribution_suggested_cents,
             e.rsvp_contribution_min_cents,
-            e.cover_media_gallery,
-            -- issue #3827 going-box — view-shaped trailing columns, same order as
-            -- business_public_events_view: the real-count full flag, then the
-            -- host's own-list guests (0 when private).
-            (e.event_type = 'rsvp'::text AND e.rsvp_capacity IS NOT NULL
-              AND ( SELECT COALESCE(sum(1 + rs.plus_count), 0::bigint)::integer
-                      FROM public.event_rsvps rs
-                     WHERE rs.event_id = e.id AND rs.rsvp_status = 'going'::text AND rs.approval_status = 'approved'::text)
-                  >= e.rsvp_capacity) AS rsvp_capacity_full,
-            CASE WHEN public.issue_3827_private_guest_list(e.theme) THEN 0
-            ELSE public.issue_3827_extra_guest_count(e.theme) END AS extra_guest_count
+            e.cover_media_gallery
           FROM public.events e
           JOIN public.brands b ON b.id = e.brand_id
           LEFT JOIN public.event_dates ed ON ed.event_id = e.id AND ed.is_master = true
@@ -720,7 +713,8 @@ $function$;
 
 -- -------------------------------------------------------------------------------------
 -- 6 — business_public_events_view. Body: 20270523002489 (security_invoker = false
--- RESTATED; a bare CREATE OR REPLACE VIEW drops it). Two columns appended last.
+-- RESTATED; a bare CREATE OR REPLACE VIEW drops it). Same columns, same ordinals:
+-- only rsvp_going_count changes (NULL when private).
 -- -------------------------------------------------------------------------------------
 CREATE OR REPLACE VIEW public.business_public_events_view WITH (security_invoker = false) AS
   SELECT e.id,
@@ -819,20 +813,7 @@ CREATE OR REPLACE VIEW public.business_public_events_view WITH (security_invoker
     e.rsvp_contribution_suggested_cents,
     e.rsvp_contribution_min_cents,
     -- issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items.
-    e.cover_media_gallery,
-    -- issue #3827 going-box — appended LAST (CREATE OR REPLACE VIEW keeps every
-    -- existing ordinal). The real-count full flag, then the host's own-list
-    -- guests (0 when private). False for non-RSVP rows.
-    (e.event_type = 'rsvp'::text AND e.rsvp_capacity IS NOT NULL
-      AND (
-        SELECT COALESCE(SUM(1 + r.plus_count), 0)::integer
-        FROM public.event_rsvps r
-        WHERE r.event_id = e.id
-          AND r.rsvp_status = 'going'
-          AND r.approval_status = 'approved'
-      ) >= e.rsvp_capacity) AS rsvp_capacity_full,
-    CASE WHEN public.issue_3827_private_guest_list(e.theme) THEN 0
-    ELSE public.issue_3827_extra_guest_count(e.theme) END AS extra_guest_count
+    e.cover_media_gallery
    FROM events e
      JOIN brands b ON b.id = e.brand_id
      LEFT JOIN event_dates ed ON ed.event_id = e.id AND ed.is_master = true
@@ -847,9 +828,8 @@ COMMENT ON VIEW public.business_public_events_view IS
   'theme''s business_event.location.address are withheld whenever '
   'issue_2489_address_withheld(theme) is true. city_geo is exempt by design. Do not '
   're-emit this view without the gate, and do not re-implement the predicate inline. '
-  'issue #3827 — rsvp_going_count is NULL when the guest list is private; '
-  'rsvp_capacity_full (real count) and extra_guest_count (host''s own list, 0 when '
-  'private) are appended last.';
+  'issue #3827 — rsvp_going_count is NULL when the guest list is private (never 0). '
+  'Never append columns here: CI re-applies 20270523002489 on a migrated database.';
 
 -- -------------------------------------------------------------------------------------
 -- 7 — business_update_live_event. Body: 20270828003827_issue_3827_live_edit_location_one_owner.sql.

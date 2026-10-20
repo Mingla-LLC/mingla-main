@@ -305,6 +305,20 @@ export async function fetchDirectRsvpEventRow(
  * unreadable -> false). The social-proof read answers NULL for an unlisted
  * event, so these are the only source of the host's choice on that page.
  */
+/**
+ * issue #3827 going-box — guests on the host's own list, read from the same
+ * sanitised theme (business_event.settings.extraGuestCount): a whole number
+ * 0..5000, else 0, and 0 whenever the list is private (the private rule above).
+ */
+export const rsvpExtraGuestCountFromTheme = (publicTheme: unknown): number => {
+  if (rsvpHostDisplayGatesFromTheme(publicTheme).privateGuestList) return 0;
+  const settings = asRecord(asRecord(asRecord(publicTheme).business_event).settings);
+  const value = settings.extraGuestCount;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 5000
+    ? value
+    : 0;
+};
+
 export const rsvpHostDisplayGatesFromTheme = (
   publicTheme: unknown,
 ): { privateGuestList: boolean; hideRemainingCount: boolean } => {

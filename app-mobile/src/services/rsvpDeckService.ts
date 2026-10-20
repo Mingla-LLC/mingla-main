@@ -15,6 +15,7 @@ import { getSupabaseFunctionHeaders, supabase, supabaseUrl } from "./supabase";
 // Unlisted RSVP invite link — the exact-link RSVP row, after the view misses.
 import {
   fetchDirectRsvpEventRow,
+  rsvpExtraGuestCountFromTheme,
   rsvpHostDisplayGatesFromTheme,
 } from "./publicEventSeedService";
 import type {
@@ -42,10 +43,12 @@ export interface RsvpMomentumSnapshot {
    * a withheld count.
    */
   goingCount: number | null;
-  /** issue #3827 going-box — server full flag (real count); undefined = older server. */
-  capacityFull?: boolean;
-  /** issue #3827 going-box — guests on the host's own list (0 when private / older server). */
-  extraGuestCount: number;
+  /**
+   * issue #3827 going-box — guests on the host's own list, set ONLY on the
+   * exact-link path (read from that row's public theme). Undefined on the
+   * public view path, where the social-proof payload carries it.
+   */
+  extraGuestCount?: number;
   capacity: number | null;
   allowPlusOnes: boolean;
   plusOnesMax: number;
@@ -70,9 +73,6 @@ export interface RsvpMomentumSnapshot {
 
 interface RsvpMomentumRow {
   rsvp_going_count: number | null;
-  // issue #3827 going-box — absent on a server without 20271128003827.
-  rsvp_capacity_full?: boolean | null;
-  extra_guest_count?: number | null;
   rsvp_capacity: number | null;
   rsvp_allow_plus_ones: boolean | null;
   rsvp_plus_ones_max: number | null;
@@ -84,57 +84,42 @@ interface RsvpMomentumRow {
   rsvp_contribution_min_cents: number | null;
 }
 
-const RSVP_MOMENTUM_COLUMNS =
-  "rsvp_going_count,rsvp_capacity,rsvp_allow_plus_ones,rsvp_plus_ones_max,rsvp_approval_mode,rsvp_waitlist_enabled,rsvp_contribution_enabled,rsvp_contribution_suggested_cents,rsvp_contribution_min_cents";
-// issue #3827 going-box — the real-count full flag and the host's own-list guests.
-const RSVP_MOMENTUM_3827_COLUMNS = "rsvp_capacity_full,extra_guest_count";
-
-const isUndefinedColumnError = (error: { code?: string; message?: string }): boolean =>
-  error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
-
 export const fetchRsvpMomentum = async (
   eventId: string,
   // Unlisted RSVP invite link — the page's exact slugs. When the public view has
   // no row, the exact-link reader is asked with them; without them, unchanged.
   exactLink?: { brandSlug: string; eventSlug: string },
 ): Promise<RsvpMomentumSnapshot | null> => {
-  const select = (columns: string) =>
-    supabase
-      .from("business_public_events_view")
-      .select(columns)
-      .eq("id", eventId)
-      .maybeSingle();
-  let { data, error } = await select(`${RSVP_MOMENTUM_COLUMNS},${RSVP_MOMENTUM_3827_COLUMNS}`);
-  // issue #3827 going-box — forward-compatible rollout: a server that predates
-  // the two new view columns answers 42703 (undefined column). Read the old
-  // column list instead of failing the whole RSVP page.
-  if (error !== null && isUndefinedColumnError(error)) {
-    ({ data, error } = await select(RSVP_MOMENTUM_COLUMNS));
-  }
+  const { data, error } = await supabase
+    .from("business_public_events_view")
+    .select(
+      "rsvp_going_count,rsvp_capacity,rsvp_allow_plus_ones,rsvp_plus_ones_max,rsvp_approval_mode,rsvp_waitlist_enabled,rsvp_contribution_enabled,rsvp_contribution_suggested_cents,rsvp_contribution_min_cents",
+    )
+    .eq("id", eventId)
+    .maybeSingle();
   if (error !== null) throw error;
   let row = data as RsvpMomentumRow | null;
   let hostGates: { privateGuestList: boolean | null; hideRemainingCount: boolean | null } = {
     privateGuestList: null,
     hideRemainingCount: null,
   };
+  let hostExtraGuestCount: number | undefined;
   if (row === null && exactLink !== undefined) {
     const direct = await fetchDirectRsvpEventRow(exactLink.brandSlug, exactLink.eventSlug);
     // Only the SAME event: slugs that now name a different row are not this page.
     if (direct !== null && direct.id === eventId) {
       row = direct as unknown as RsvpMomentumRow;
       hostGates = rsvpHostDisplayGatesFromTheme(direct.public_theme);
+      // issue #3827 going-box — the social-proof read answers NULL for an
+      // unlisted event, so the host's own-list guests come from this row.
+      hostExtraGuestCount = rsvpExtraGuestCountFromTheme(direct.public_theme);
     }
   }
   if (row === null) return null;
   return {
     // issue #3827 going-box — a withheld (private) count stays null.
     goingCount: typeof row.rsvp_going_count === "number" ? row.rsvp_going_count : null,
-    capacityFull:
-      typeof row.rsvp_capacity_full === "boolean" ? row.rsvp_capacity_full : undefined,
-    extraGuestCount:
-      typeof row.extra_guest_count === "number" && row.extra_guest_count > 0
-        ? Math.floor(row.extra_guest_count)
-        : 0,
+    extraGuestCount: hostExtraGuestCount,
     capacity: row.rsvp_capacity ?? null,
     allowPlusOnes: row.rsvp_allow_plus_ones ?? false,
     plusOnesMax: row.rsvp_plus_ones_max ?? 0,

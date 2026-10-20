@@ -1169,7 +1169,8 @@ export default function ConsumerEventDetailScreen({
     goingCount: rsvpMomentum ? rsvpMomentum.goingCount : null,
     extraGuestCount:
       rsvpMomentum?.extraGuestCount ?? socialProofQuery.data?.extraGuestCount ?? 0,
-    capacityFull: rsvpMomentum?.capacityFull ?? socialProofQuery.data?.capacityFull,
+    // issue #3827 going-box — the server's real-count full flag (social proof).
+    capacityFull: socialProofQuery.data?.capacityFull,
     allowPlusOnes: rsvpMomentum?.allowPlusOnes ?? false,
     plusOnesMax: rsvpMomentum?.plusOnesMax ?? 0,
     waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
