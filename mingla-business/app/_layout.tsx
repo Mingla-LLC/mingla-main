@@ -46,6 +46,9 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+// #2107 (U1): the launch guard installs when this file is imported, before
+// Sentry.init below wraps the global error handler.
+import { UpdateLaunchBoundary } from "../src/components/ui/UpdateLaunchBoundary";
 import {
   MandatoryUpdateGate,
   type VersionForegroundEvent,
@@ -919,6 +922,11 @@ export default function RootLayout(): React.ReactElement {
             }
           }}
         >
+          {/* #2107 (U1): catches first, so a broken update's render error is
+              handed to expo-updates' rollback inside the launch window, and
+              anything else shows the restart screen. ORCH-0964's boundary
+              stays as the backstop around it. */}
+          <UpdateLaunchBoundary>
           <QueryClientProvider client={queryClient}>
             <AuthProvider>
               {/* ORCH-0892-A: KeyboardRoot wraps the app shell and stays OUTSIDE
@@ -944,6 +952,7 @@ export default function RootLayout(): React.ReactElement {
               </KeyboardRoot>
             </AuthProvider>
           </QueryClientProvider>
+          </UpdateLaunchBoundary>
         </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>

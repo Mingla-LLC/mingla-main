@@ -535,6 +535,29 @@ while the app keeps running; in release it is the stuck splash screen (#990 §3)
   'observe'` is a dry run that only reports who would be blocked; only `enforce` blocks. The `message`
   column is shown on the store screen.
 
+**Critical update release checklist (#2107).** A raised counter restarts every running install into
+the new bundle, so a broken critical update reaches everyone at once:
+
+1. **Open it on a release build before publishing.** Export the exact commit with `--no-dev --minify`
+   (or install a release build carrying it) and cold start it to Home on iOS and Android. A dev build
+   does not count: in dev a launch error is a dismissible red box, in release it is the restart screen.
+2. **Know the off switch before you publish.** Insert an `app_ota_policies` row with `mode = 'silent'`
+   for the app, platform and runtime. It stops the "Updating" screen and further restarts; it does not
+   remove the update from devices that already have it.
+3. **Know the rollback.** `eas update:roll-back-to-embedded --branch production --platform
+   <ios|android>`, or republish the previous good group to the same branch. Devices pick it up on their
+   next update check.
+
+**What the app does by itself when an update throws at launch (#2107 U1).** Both roots mount
+`UpdateLaunchBoundary`. React Native reports render errors as non-fatal, so without it expo-updates
+never sees them. Inside the first 9 seconds of a non-embedded, never-confirmed update, in a fresh
+process, an error before the first healthy commit is raised once as a fatal. expo-updates then marks
+the launch failed and relaunches the previous update. Every other launch error shows the "Something
+went wrong" restart screen. expo-updates 29 cannot roll back an update whose content has already
+appeared (it counts that launch as successful), and on Android its recovery is not re-armed after an
+in-app reload. A bundle that breaks after its first screen therefore stays on devices until you roll
+it back with step 3. Treat the automatic path as a backstop, not a substitute for step 1.
+
 ### 7.7 Pull requests
 
 For merging `Seth` → `main`, Seth handles via GitHub PR with a pre-merge gate. You don't open PRs directly.

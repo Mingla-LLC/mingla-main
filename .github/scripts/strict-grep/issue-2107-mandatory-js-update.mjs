@@ -21,6 +21,11 @@
 //      bridge tears down crashes RCTNetworking, so a bare reloadAsync anywhere
 //      is a crash waiting for a tap.
 //
+//   6. (U1) A broken update's launch error reaches expo-updates' rollback or the
+//      restart screen, never a blank screen: both roots mount UpdateLaunchBoundary,
+//      the guard core and runtime stay byte-identical, escalation persists the
+//      update id before raising, and the web stubs import nothing.
+//
 // ISSUE_2107_SIMULATE_REVERT=1 proves the gate fails when the root mount is
 // removed, so a green run means something.
 
@@ -69,6 +74,15 @@ const FILES = {
   hostSafeReloadRuntime: "mingla-business/src/services/safeReloadRuntime.ts",
   consumerSupabase: "app-mobile/src/services/supabase.ts",
   hostSupabase: "mingla-business/src/services/supabase.ts",
+  // U1 — launch-window escalation and the restart screen.
+  consumerLaunchGuard: "app-mobile/src/services/updateLaunchGuard.ts",
+  hostLaunchGuard: "mingla-business/src/services/updateLaunchGuard.ts",
+  consumerLaunchRuntime: "app-mobile/src/services/updateLaunchRuntime.ts",
+  hostLaunchRuntime: "mingla-business/src/services/updateLaunchRuntime.ts",
+  consumerLaunchBoundary: "app-mobile/src/components/UpdateLaunchBoundary.tsx",
+  hostLaunchBoundary: "mingla-business/src/components/ui/UpdateLaunchBoundary.tsx",
+  consumerLaunchBoundaryWeb: "app-mobile/src/components/UpdateLaunchBoundary.web.tsx",
+  hostLaunchBoundaryWeb: "mingla-business/src/components/ui/UpdateLaunchBoundary.web.tsx",
 };
 
 // The one routed restart each runtime is allowed to contain.
@@ -275,6 +289,69 @@ export function validate(sources, { simulateRevert = false } = {}) {
   }
   requireText("hostFenceWeb", "export function createTrackedFetch", "the web fence stub must export createTrackedFetch");
 
+  // 6 — U1: a broken update's launch error is escalated or shown, never blank.
+  for (const [rootKey, label] of [["consumerRoot", "Consumer"], ["hostRoot", "Host"]]) {
+    if (!sources[rootKey].includes("<UpdateLaunchBoundary>")) {
+      failures.push(`${label} root must mount UpdateLaunchBoundary — without it a broken update's render error is a blank screen`);
+    }
+  }
+  const hostBoundaryAt = sources.hostRoot.indexOf("<UpdateLaunchBoundary>");
+  const hostProvidersAt = sources.hostRoot.indexOf("<QueryClientProvider client={queryClient}>");
+  if (hostBoundaryAt === -1 || hostProvidersAt === -1 || hostBoundaryAt > hostProvidersAt) {
+    failures.push("Host UpdateLaunchBoundary must wrap the provider tree, so it catches before ORCH-0964's fallback");
+  }
+  const consumerExportAt = sources.consumerRoot.indexOf("export default Sentry.wrap(function RootLayoutWithLaunchGuard()");
+  if (consumerExportAt === -1 || sources.consumerRoot.indexOf("<RootLayout />", consumerExportAt) === -1) {
+    failures.push("Consumer root export must wrap RootLayout itself in UpdateLaunchBoundary — Explorer has no other root boundary");
+  }
+  for (const [a, b, label] of [
+    ["consumerLaunchGuard", "hostLaunchGuard", "updateLaunchGuard.ts"],
+    ["consumerLaunchRuntime", "hostLaunchRuntime", "updateLaunchRuntime.ts"],
+  ]) {
+    if (sources[a] !== sources[b]) failures.push(`${label} drifted between app-mobile and mingla-business`);
+  }
+  const normalizeBoundary = (source) => source.replace(/"(?:\.\.\/)+services\//g, '"<services>/');
+  if (normalizeBoundary(sources.consumerLaunchBoundary) !== normalizeBoundary(sources.hostLaunchBoundary)) {
+    failures.push("UpdateLaunchBoundary.tsx drifted between app-mobile and mingla-business (only the services path may differ)");
+  }
+  for (const key of ["consumerLaunchGuard", "hostLaunchGuard"]) {
+    if (/^import\s/m.test(sources[key])) failures.push(`${key} must import nothing`);
+    const persistAt = sources[key].indexOf("this.dependencies.store.write(serializeUpdateLaunchRecord(next));");
+    const raiseAt = sources[key].indexOf("this.dependencies.escalate(error);");
+    if (persistAt === -1 || raiseAt === -1 || persistAt > raiseAt) {
+      failures.push(`${key} must persist the escalated update id BEFORE raising the fatal — otherwise it can escalate the same update again`);
+    }
+    for (const [needle, what] of [
+      ['return skip("embedded_launch")', "never escalate an embedded launch"],
+      ['return skip("already_escalated")', "never escalate one update id twice"],
+      ['return skip("in_app_reload")', "never escalate straight after an in-app reload"],
+      ['return skip("window_elapsed")', "stop escalating once the launch window has passed"],
+      ['return skip("confirmed_good")', "never escalate a confirmed launch"],
+    ]) requireText(key, needle, `${key} must ${what}`);
+  }
+  for (const key of ["consumerLaunchRuntime", "hostLaunchRuntime"]) {
+    if (/^import .* from ["'](?!\.\/)/m.test(sources[key])) {
+      failures.push(`${key} must import only its sibling pure modules — native modules are required lazily`);
+    }
+    requireText(key, "if (environment.isDev) return;", `${key} must leave development's red box alone`);
+    requireText(key, "escalate: (error) => original(error, true)", `${key} must raise through the handler captured at install`);
+    requireText(key, "await createOtaUpdateBridge().reload();", `${key} restart must go through the safeReload bridge`);
+  }
+  for (const key of ["consumerLaunchBoundary", "hostLaunchBoundary"]) {
+    requireText(key, "installUpdateLaunchGuard();", `${key} must install the guard when the root imports it`);
+    requireText(key, "if (__DEV__) throw this.state.error;", `${key} must keep development's red box`);
+    requireText(key, "return <LaunchErrorRestartScreen />;", `${key} must show the restart screen, never a blank one`);
+    requireText(key, "onPress={onRestart}", `${key} restart button must be wired`);
+    requireText(key, "requestLaunchErrorRestart()", `${key} restart button must restart through safeReload`);
+  }
+  for (const key of ["consumerLaunchBoundaryWeb", "hostLaunchBoundaryWeb"]) {
+    const imports = [...sources[key].matchAll(/^import (?:type )?.*? from ["']([^"']+)["'];?$/gm)]
+      .map((match) => match[1])
+      .filter((specifier) => specifier !== "react");
+    if (imports.length > 0) failures.push(`${key} must import nothing but react — ${imports.join(", ")} would reach the web boot payload`);
+    requireText(key, "export function UpdateLaunchBoundary", `${key} must export the same component name`);
+  }
+
   // 4 — separate endpoint; the shipped native contract is untouched.
   requireText("edgeEndpoint", "readAppOtaPolicy", "the OTA endpoint must read the OTA policy table");
   requireText("edgeEndpoint", "runtime_version", "the OTA endpoint must be addressed per runtime, not per app");
@@ -467,8 +544,43 @@ function selfTest() {
     console.error("#2107 self-test: a Supabase client outside the restart fence was not detected");
     process.exit(1);
   }
+  const unmountedBoundary = validate({
+    ...sources,
+    consumerRoot: sources.consumerRoot.split("<UpdateLaunchBoundary>").join("<View>"),
+  });
+  if (!unmountedBoundary.some((failure) => failure.includes("UpdateLaunchBoundary"))) {
+    console.error("#2107 self-test: a root without the launch boundary was not detected");
+    process.exit(1);
+  }
+  const raiseBeforePersist = validate({
+    ...sources,
+    hostLaunchGuard: sources.hostLaunchGuard.replace(
+      "this.dependencies.store.write(serializeUpdateLaunchRecord(next));",
+      "this.dependencies.store.writeLater(serializeUpdateLaunchRecord(next));",
+    ),
+  });
+  if (raiseBeforePersist.length === 0) {
+    console.error("#2107 self-test: a guard that raises before persisting the update id was not detected");
+    process.exit(1);
+  }
+  const blankBoundary = validate({
+    ...sources,
+    hostLaunchBoundary: sources.hostLaunchBoundary.replace("return <LaunchErrorRestartScreen />;", "return null;"),
+  });
+  if (blankBoundary.length === 0) {
+    console.error("#2107 self-test: a boundary that renders blank instead of the restart screen was not detected");
+    process.exit(1);
+  }
+  const fattenedLaunchWeb = validate({
+    ...sources,
+    hostLaunchBoundaryWeb: `import { installUpdateLaunchGuard } from "../../services/updateLaunchRuntime";\n${sources.hostLaunchBoundaryWeb}`,
+  });
+  if (fattenedLaunchWeb.length === 0) {
+    console.error("#2107 self-test: an import added to the launch boundary web stub was not detected");
+    process.exit(1);
+  }
   console.log(
-    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish, blocking foreground, bypassed restart, stray restart, DevSettings restart, unpaused core and unfenced Supabase all caught).",
+    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish, blocking foreground, bypassed restart, stray restart, DevSettings restart, unpaused core, unfenced Supabase, unmounted launch boundary, raise-before-persist, blank boundary and fattened launch web stub all caught).",
   );
 }
 

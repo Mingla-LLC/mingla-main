@@ -25,6 +25,7 @@ import {
   type OtaUpdateBridge,
 } from "./otaUpdatePolicy";
 import { runSafeReload } from "./safeReloadRuntime";
+import type { UpdateLaunchFacts } from "./updateLaunchGuard";
 import { reportUpdateGateEvent } from "./updateGateTelemetry";
 import { supabaseUrl } from "./supabase";
 
@@ -98,6 +99,21 @@ export function createOtaUpdateBridge(): OtaUpdateBridge {
     // restart stops network work, flushes analytics, lets in-flight writes
     // finish (capped) and only then reloads. Fails open if no restart happens.
     reload: () => runSafeReload(() => Updates.reloadAsync()),
+  };
+}
+
+/**
+ * #2107 (U1) — what the launch guard needs to know about the running bundle.
+ * Read lazily by updateLaunchRuntime.ts, so this module stays the only
+ * expo-updates importer. Same double guard as the bridge above.
+ */
+export function readUpdateLaunchFacts(): UpdateLaunchFacts {
+  const enabled = !__DEV__ && Updates.isEnabled;
+  return {
+    enabled,
+    updateId: enabled ? Updates.updateId : null,
+    isEmbeddedLaunch: enabled ? Updates.isEmbeddedLaunch === true : true,
+    isEmergencyLaunch: enabled ? Updates.isEmergencyLaunch === true : false,
   };
 }
 

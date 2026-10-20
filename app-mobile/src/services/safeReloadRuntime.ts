@@ -148,6 +148,23 @@ export function buildSafeReloadDependencies(
   };
 }
 
+/**
+ * #2107 (U1): tell the launch guard that the next JS runtime was started by
+ * this in-app restart, not by a fresh process. Lazy, and it can never hold or
+ * fail the restart.
+ */
+function markInAppReload(): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { markInAppReloadForLaunchGuard } = require("./updateLaunchRuntime") as {
+      markInAppReloadForLaunchGuard: () => void;
+    };
+    markInAppReloadForLaunchGuard();
+  } catch (error) {
+    console.warn("[safe-reload] launch guard marker skipped", error);
+  }
+}
+
 let safeReloadImpl: (() => Promise<void>) | null = null;
 let nativeReload: (() => Promise<void>) | null = null;
 
@@ -160,7 +177,9 @@ export function runSafeReload(reload: () => Promise<void>): Promise<void> {
   if (safeReloadImpl === null) {
     safeReloadImpl = createSafeReload(
       buildSafeReloadDependencies(async () => {
-        if (nativeReload !== null) await nativeReload();
+        if (nativeReload === null) return;
+        markInAppReload();
+        await nativeReload();
       }),
     );
   }

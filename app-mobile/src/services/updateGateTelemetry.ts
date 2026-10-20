@@ -24,7 +24,7 @@ type AnalyticsFacade = {
 };
 
 /** Only these prefixes are product events; everything else is console-only. */
-const CAPTURED_PREFIXES = ["version_gate_", "critical_update_"] as const;
+const CAPTURED_PREFIXES = ["version_gate_", "critical_update_", "update_launch_"] as const;
 const MAX_BUFFERED = 50;
 const FLUSH_RETRY_MS = 3_000;
 const MAX_FLUSH_RETRIES = 40;
@@ -92,7 +92,7 @@ export function isCapturedUpdateGateEvent(event: string): boolean {
 }
 
 export function reportUpdateGateEvent(
-  channel: "app-version-policy" | "ota-update-gate",
+  channel: "app-version-policy" | "ota-update-gate" | "update-launch-guard",
   event: string,
   properties: TelemetryProps = {},
 ): void {
