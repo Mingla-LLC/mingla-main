@@ -343,6 +343,13 @@ insert into public.crm_records (id, pipeline, name, stage, created_by, updated_b
   ('39840000-0000-4000-c200-000000000006', 'hosts', 'W43980 National Number Cafe', 'prospect', 'w4-fixture', 'w4-fixture'),
   ('39840000-0000-4000-c200-000000000007', 'hosts', 'W43980 Same Name Club', 'prospect', 'w4-fixture', 'w4-fixture'),
   ('39840000-0000-4000-c200-000000000008', 'hosts', 'W43980 Already Linked', 'onboarded', 'w4-fixture', 'w4-fixture');
+-- #3980 W3 rework 3 reads a number written without its country code only in
+-- the country on record for its own side, so the national-number card sits
+-- in a Nigerian launch city (it linked through the brand's country before).
+insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng,
+                                   bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng) values
+  ('39840000-0000-4000-e000-000000000001', 'w43980-lagos', 'W43980 Lagos', 'Nigeria', 'NG', 6.5, 3.4, 6.4, 3.3, 6.6, 3.5);
+update public.crm_records set region_id = '39840000-0000-4000-e000-000000000001' where id = '39840000-0000-4000-c200-000000000006';
 insert into public.crm_records (id, pipeline, name, stage, stage_reason, created_by, updated_by) values
   ('39840000-0000-4000-c200-000000000004', 'hosts', 'W43980 Lost Lounge', 'lost', 'Closed for now.', 'w4-fixture', 'w4-fixture');
 insert into public.crm_record_identifiers (record_id, kind, value, value_key, created_by) values
