@@ -1201,7 +1201,7 @@ export const createTicketCheckoutCreateHandler = (
     // render the "Bookings closed" banner per DESIGN §4.4.
     const { data: tripGateRow, error: tripGateErr } = await supabase
       .from("events")
-      .select("event_type, bookings_closed, booking_deadline")
+      .select("event_type, bookings_closed, booking_deadline, capacity_scope")
       .eq("id", eventId)
       .maybeSingle();
     if (tripGateErr !== null) {
@@ -1241,10 +1241,16 @@ export const createTicketCheckoutCreateHandler = (
     // (ORCH-1072: belongs to this event, not yet ended), and treating it as a
     // one-day set gives the pass its day row and the order its payout anchor.
     // Events: lone eventDateId becomes the day set (issue #3313).
+    // issue #3281 R3 — scoped experience counters also need the day when the
+    // client sent only eventDateId (fixed-slot). Gate on capacity_scope so
+    // total-scope / no-start identity stays byte-identical (no experience
+    // event_type branch — issue #3313 pin).
     if (
-      tripGateRow?.event_type === "event" &&
       orderedEventDateIds.length === 0 &&
-      eventDateId !== null
+      eventDateId !== null &&
+      (tripGateRow?.event_type === "event" ||
+        tripGateRow?.capacity_scope === "per_day" ||
+        tripGateRow?.capacity_scope === "per_start")
     ) {
       orderedEventDateIds.push(eventDateId);
       anchorEventDateId = eventDateId;
@@ -1258,13 +1264,6 @@ export const createTicketCheckoutCreateHandler = (
       orderedEventDateIds.length === 0 &&
       eventDateId !== null
     ) {
-      orderedEventDateIds.push(eventDateId);
-      anchorEventDateId = eventDateId;
-    }
-    // issue #3281 R3 — fixed-slot checkouts send eventDateId without
-    // bookedStartAt; scoped capacity counters still need the day set. Do not
-    // name event_type here (issue #3313 pin: no experience branch).
-    if (orderedEventDateIds.length === 0 && eventDateId !== null) {
       orderedEventDateIds.push(eventDateId);
       anchorEventDateId = eventDateId;
     }

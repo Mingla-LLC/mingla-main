@@ -243,8 +243,10 @@ BEGIN
       RAISE EXCEPTION 'booked_start_required';
     END IF;
     -- Fixed-slot bookings omit bookedStartAt; still enforce min notice against
-    -- the selected occurrence's start (rule H).
-    IF p_event_date_id IS NOT NULL THEN
+    -- the selected occurrence's start (rule H). Open-daily windows use the
+    -- buyer's chosen start when present; without one, do not refuse a day
+    -- whose open is already past (afternoon walk-ups remain valid).
+    IF p_event_date_id IS NOT NULL AND NOT v_open_daily THEN
       SELECT ed.id, ed.event_id, ed.start_at, ed.end_at
         INTO v_date
         FROM public.event_dates ed
@@ -2604,6 +2606,13 @@ BEGIN
         'lng',v_stop->'lng',
         'coordinate_precision',v_stop->'coordinate_precision',
         'start_time',v_stop->'start_time',
+        'start_offset_minutes',CASE
+          WHEN jsonb_typeof(v_stop->'start_offset_minutes')='number'
+            THEN (v_stop->>'start_offset_minutes')::integer
+          WHEN jsonb_typeof(v_stop->'startOffsetMinutes')='number'
+            THEN (v_stop->>'startOffsetMinutes')::integer
+          ELSE NULL
+        END,
         'price_cents',v_price,
         'image_urls',CASE WHEN jsonb_typeof(v_stop->'image_urls')='array'
           THEN v_stop->'image_urls' ELSE '[]'::jsonb END
