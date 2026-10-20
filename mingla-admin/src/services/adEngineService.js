@@ -502,8 +502,9 @@ export async function cancelAdminAdPlan(item, reason) {
 }
 
 /**
- * action: 'launch' | 'pause' | 'end'
- * Launch and End require an exact phrase + reason; Pause is reversible.
+ * action: 'launch' | 'pause' | 'end' | 'change_budget'
+ * Launch and End require an exact phrase + reason; Pause is reversible;
+ * Change budget requires a reason.
  */
 export async function campaignAction(campaignId, action, extras = {}) {
   const body = { campaign_id: campaignId, action };
@@ -514,6 +515,14 @@ export async function campaignAction(campaignId, action, extras = {}) {
     if (typeof extras.reason === "string") {
       body.reason = extras.reason;
     }
+  }
+  // #3697: governed budget change — plan totals in provider minor units.
+  if (action === "change_budget") {
+    if (typeof extras.reason === "string") body.reason = extras.reason;
+    if (Number.isSafeInteger(extras.daily_budget_cents)) {
+      body.daily_budget_cents = extras.daily_budget_cents;
+    }
+    if (Number.isSafeInteger(extras.cap_cents)) body.cap_cents = extras.cap_cents;
   }
   return invokeWithRefresh("admin-ad-campaign-action", { body });
 }

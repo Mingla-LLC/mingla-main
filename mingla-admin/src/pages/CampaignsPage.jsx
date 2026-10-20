@@ -68,6 +68,7 @@ import { filterAndSortCampaigns } from "../lib/adCampaignWorkspace";
 import { CampaignRow } from "../components/ad-engine/CampaignRow";
 import { campaignScheduleInZone } from "../lib/adCampaignRow";
 import { DeadPlanCard } from "../components/ad-engine/DeadPlanCard";
+import { ChangeBudgetModal } from "../components/ad-engine/ChangeBudgetModal";
 import { clearedPlanNote, deadPlanFacts } from "../lib/adBuilder/deadPlan";
 import {
   housePlanCreateSteps,
@@ -155,13 +156,17 @@ function providerMoneyAuthority(campaign) {
     /^[A-Z]{3}$/.test(campaign.provider_currency)
       ? campaign.provider_currency
       : null;
-  const frozenProviderCap = Number(campaign?.provider_budget_cents);
+  // #3697: a governed budget amendment supersedes the frozen allocation.
+  const frozenProviderCap = Number(
+    campaign?.amended_provider_budget_cents ?? campaign?.provider_budget_cents,
+  );
   const providerCapCents =
     Number.isSafeInteger(frozenProviderCap) && frozenProviderCap > 0
       ? frozenProviderCap
       : null;
   const frozenProviderDelivery = Number(
-    campaign?.provider_delivery_budget_cents,
+    campaign?.amended_provider_delivery_budget_cents ??
+      campaign?.provider_delivery_budget_cents,
   );
   const providerDeliveryCents =
     Number.isSafeInteger(frozenProviderDelivery) && frozenProviderDelivery > 0
@@ -212,6 +217,26 @@ function canEndPlan(campaign, campaigns) {
   );
 }
 
+/**
+ * #3697 Change budget is offered on a Mingla plan's live or paused provider
+ * campaigns; Host plans say why not, instead of hiding the action.
+ */
+function budgetChangeAvailability(campaign) {
+  const bound =
+    typeof campaign?.plan_version_id === "string" &&
+    /^[0-9a-f]{64}$/.test(campaign?.plan_hash ?? "");
+  if (!bound || !["ACTIVE", "PAUSED"].includes(campaign?.status)) {
+    return { can: false, reason: null };
+  }
+  if (campaign.owner_kind !== "mingla") {
+    return { can: false, reason: "Change budget: not available for Host campaigns yet" };
+  }
+  if (campaign.lifetime_budget_cents != null) {
+    return { can: false, reason: "Change budget: not available for lifetime budgets yet" };
+  }
+  return { can: true, reason: null };
+}
+
 function hasProviderObjectEvidence(item) {
   if ((item?.campaigns ?? []).length > 0) return true;
   return (item?.provider_attempts ?? []).some((attempt) => {
@@ -252,6 +277,7 @@ export function CampaignsPage({ embedded = false }) {
   const [reconcileBusy, setReconcileBusy] = useState({});
   const [recentlyCleared, setRecentlyCleared] = useState([]);
   const [reconcileDeleteTarget, setReconcileDeleteTarget] = useState(null);
+  const [budgetTarget, setBudgetTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
   const [roiPayload, setRoiPayload] = useState(null);
   const [roiLoading, setRoiLoading] = useState(false);
@@ -569,7 +595,10 @@ export function CampaignsPage({ embedded = false }) {
       );
       addToast({
         variant: "error",
-        title: `${action} failed`,
+        title:
+          action === "change_budget"
+            ? "Budget change failed"
+            : `${action} failed`,
         description: detail,
       });
       setRowBusy((prev) => ({ ...prev, [campaign.id]: null }));
@@ -594,6 +623,13 @@ export function CampaignsPage({ embedded = false }) {
         addToast({
           variant: "success",
           title: `Live on ${PLATFORM_LABELS[campaign.platform] ?? campaign.platform}. It'll be in review before it starts delivering.`,
+        });
+      } else if (action === "change_budget") {
+        addToast({
+          variant: "success",
+          title: "Budget changed",
+          description:
+            "The provider has the new daily budget, the hold follows the new cap and auto-pause moved to 98% of it.",
         });
       } else if (action === "end") {
         addToast({
@@ -1049,6 +1085,11 @@ export function CampaignsPage({ embedded = false }) {
                 }
                 canPause={canPauseCampaign(campaign.status)}
                 canEnd={canEndPlan(campaign, campaigns)}
+                canChangeBudget={budgetChangeAvailability(campaign).can}
+                changeBudgetUnavailableReason={
+                  budgetChangeAvailability(campaign).reason
+                }
+                onChangeBudget={() => setBudgetTarget(campaign)}
                 onOpen={() => {
                   window.location.hash = `#/campaigns?campaignId=${campaign.id}`;
                 }}
@@ -1752,6 +1793,23 @@ export function CampaignsPage({ embedded = false }) {
           </ol>
         )}
       </HighRiskActionModal>
+
+      <ChangeBudgetModal
+        open={budgetTarget !== null}
+        campaign={budgetTarget}
+        planCampaigns={
+          budgetTarget ? campaignsForPlan(workspaceCampaigns, budgetTarget) : []
+        }
+        onClose={() => setBudgetTarget(null)}
+        onSave={async (change) => {
+          const target = budgetTarget;
+          if (!target) throw new Error("No campaign selected");
+          const result = await handleAction(target, "change_budget", change);
+          if (!result.ok) {
+            throw new Error(result.detail || "The budget was not changed.");
+          }
+        }}
+      />
 
       <HighRiskActionModal
         open={reconcileDeleteTarget !== null}
