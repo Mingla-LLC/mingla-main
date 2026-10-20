@@ -1,5 +1,11 @@
 \set ON_ERROR_STOP on
 
+-- MINGLA-INVARIANT: I-3827-PRIVATE-GUEST-LIST-WITHHOLDS-COUNT | issue #3827 | When privateGuestList is true, pg_public_social_proof.goingCount, pg_public_rsvp_by_slug.rsvpGoingCount, publicEventRow.rsvp_going_count and business_public_events_view.rsvp_going_count are SQL NULL for anon and authed callers, never 0.
+-- MINGLA-INVARIANT: I-3827-EXTRAS-NEVER-SUPPLY | issue #3827 | Guests on the host's own list never enter capacity, remaining, full / sold-out, checkout or submit; capacityFull / rsvp_capacity_full are computed from the real count only.
+-- MINGLA-INVARIANT: I-3827-EXTRAS-BOUNDED | issue #3827 | events.theme.business_event.settings.extraGuestCount is absent, JSON null, or a whole number 0..5000 (CHECK events_extra_guest_count_valid); the client cap equals the SQL cap.
+-- MINGLA-INVARIANT: I-3827-PRIVACY-EDITS-NEVER-NOTIFY | issue #3827 | Changing privateGuestList or extraGuestCount on a live event tells no buyer and queues no guest alert.
+-- MINGLA-INVARIANT: I-3827-RSVP-READER-KEYSET-FROZEN | issue #3827 | New RSVP fields enter pg_public_rsvp_by_slug only inside publicEventRow; the top-level key list is unchanged.
+
 -- Issue #3827 going-box — implementor proof for
 -- 20271128003827_issue_3827_going_box_privacy_extra_guests.sql.
 -- Run after the full migration chain on PostgreSQL 17, as the database owner.

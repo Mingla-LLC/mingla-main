@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-3827-NO-EMPTY-GOING-BOX | issue #3827 | No buyer surface or host preview renders a going box for a private list, a withheld count, or a display count of 0; faces and "See who's going" need somebody real; the meter is never an empty track beside a shown capacity.
 // issue #3827 going-box — implementor happy-path proof of the two derivations
 // (amendment §3.1, §3.2, §5.2, §5.3) and the component gates that use them.
 // Deno-runnable: socialProofMomentum.ts and rsvpMomentum.ts are pure.

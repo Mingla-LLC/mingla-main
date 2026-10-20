@@ -185,9 +185,11 @@ describe("H-5 / H-6 the live editors", () => {
   });
 
   test("H-5c an event saved before the field existed shows no phantom change", () => {
+    // The stored event has no key; the editor's copy carries the 0 it projects.
     const original = live({});
+    expect(original).not.toHaveProperty("extraGuestCount");
     const edited = liveEventToEditable(original);
-    delete (edited as { extraGuestCount?: number }).extraGuestCount;
+    expect(edited.extraGuestCount).toBe(0);
     expect(computeRichFieldDiffs(original, edited).map((d) => d.fieldKey)).not.toContain("extraGuestCount");
     expect(editableDraftToPatch(original, edited)).not.toHaveProperty("extraGuestCount");
   });
