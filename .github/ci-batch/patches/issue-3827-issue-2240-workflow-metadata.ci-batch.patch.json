@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3827",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-2240-email-app-link-tests",
+      "extension": "yml"
+    },
+    "baseRowSha256": "016604e8afe7920ca1aec2cf25176a36e1486528d5201a3ac84bf84e5099275c"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "dd00b5568af74dfa13d5251ec43d51818b86aebb33b6191b7236ea4b982ff80c",
+      "value": "3f530ab013b4f7063ba90ba32e976dcb707f6fd7f70cce8b43a2cc2372a44c13"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3827 Q-A3 adds one offline Deno test step for the private-guest-list confirmation CTA to the existing #2240 email lane without changing its triggers, jobs, runners, setup or trust boundary."
+}

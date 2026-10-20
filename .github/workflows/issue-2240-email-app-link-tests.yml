@@ -42,8 +42,6 @@ on:
       - "supabase/functions/_shared/email/index.ts"
       - "supabase/functions/_shared/email/types.ts"
       - "supabase/functions/_shared/email/__tests__/issue_3524_confirmation_email_single_cta.test.ts"
-      # #3827 Q-A3: a private guest list drops "who's going" from the same CTA.
-      - "supabase/functions/_shared/email/__tests__/issue_3827_private_guest_list_cta.test.ts"
       - "supabase/functions/_shared/attendanceClaim.ts"
       - "supabase/functions/ticket-confirmation-dispatch/index.ts"
       # The destination itself, and every layer that decides whether it resolves.
