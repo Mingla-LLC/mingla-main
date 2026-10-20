@@ -202,6 +202,42 @@ BEGIN
 END;
 $$;
 
+-- From 20271129003980. #3980 proof fix P2-3: a card counted from a repeating
+-- series (the rolling "Keep 4 weeks of ... dates live" card) names the
+-- series' next date that is not live yet, with that date's plain state, or,
+-- when every kept date is live, the event matched to the first of them. A
+-- one-off promised event and an event anchor are shown as before.
+CREATE OR REPLACE FUNCTION public.ops_card_anchor(p_kind text, p_id uuid, p_today date) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  v jsonb := public.ops_anchor(p_kind, p_id, p_today); x public.ops_expected_events; v_occ jsonb; v_o jsonb;
+  v_on date; v_start timestamptz; v_ev jsonb; v_today date := COALESCE(p_today, public.ops_today(NULL));
+BEGIN
+  IF v IS NULL OR p_kind IS DISTINCT FROM 'expected' THEN RETURN v; END IF;
+  SELECT * INTO x FROM public.ops_expected_events z WHERE z.id = p_id;
+  IF x.id IS NULL OR x.status <> 'open' OR x.repeats = 'none' THEN RETURN v; END IF;
+  v_occ := public.ops_expected_occurrences(x, v_today, 4);
+  SELECT o INTO v_o FROM jsonb_array_elements(v_occ) o WHERE NOT (o->>'live')::boolean ORDER BY (o->>'on')::date LIMIT 1;
+  IF v_o IS NOT NULL THEN
+    v_on := (v_o->>'on')::date;
+    v_start := (v_on::timestamp AT TIME ZONE 'UTC');
+    RETURN v || jsonb_build_object('start_on', v_on, 'start_at', v_start, 'series', true, 'repeats', x.repeats,
+      'runway', public.ops_runway(false, NULL, v_start, 'UTC', v_today),
+      'state', public.ops_plain_state(public.ops_expected_anchor(x, v_on), v_today));
+  END IF;
+  SELECT o INTO v_o FROM jsonb_array_elements(v_occ) o WHERE o->>'event_id' IS NOT NULL ORDER BY (o->>'on')::date LIMIT 1;
+  IF v_o IS NOT NULL THEN
+    v_ev := public.ops_anchor('event', (v_o->>'event_id')::uuid, v_today);
+    IF v_ev IS NOT NULL THEN
+      RETURN v_ev || jsonb_build_object('series', true, 'repeats', x.repeats, 'series_title', x.title,
+        'state', public.ops_plain_state(v_ev, v_today));
+    END IF;
+  END IF;
+  RETURN v;
+END;
+$$;
+
 -- True when a public event of the host's brand stands for a date of one of
 -- the host's open repeating series (it is then part of the series' one
 -- rolling card, never its own go-live or promo card).
@@ -1524,6 +1560,9 @@ BEGIN
        WHERE l.actor_email = 'system@usemingla.com' AND l.at > v_since
          AND ((l.target_kind = CASE p_kind WHEN 'host' THEN 'crm_record' ELSE p_kind END AND l.target_id = p_id)
               OR l.card_id = ANY (v_cards))
+         -- #3980 proof fix P3-4: a brand link is said once, by the host's own
+         -- activity line, not again by the agent log.
+         AND NOT (p_kind = 'host' AND l.action = 'brand_linked')
       UNION ALL
       SELECT a.occurred_at, a.body FROM public.crm_activity a
        WHERE a.record_id = v_host AND a.via = 'system' AND a.occurred_at > v_since AND btrim(COALESCE(a.body, '')) <> ''
@@ -2365,11 +2404,19 @@ BEGIN
         'github', jsonb_build_array('https://github.com/Mingla-LLC/mingla-main/pull/' || m.pr)));
     END IF;
   END LOOP;
-  -- The sync token was refused a status post in the last hour, with no successful post since.
+  -- The sync token was refused a status post in the last hour, with no
+  -- successful post since. #3980 proof fix P1-2: the key carries a ':' (the
+  -- auto_key shape ops_auto_card_upsert accepts), and an open card stays open
+  -- until a status post succeeds after the newest refusal, not merely
+  -- because an hour went by without a new refusal.
   SELECT max(l.at) INTO v_refused_at FROM public.ops_agent_log l
-   WHERE l.action = 'release_record' AND l.outcome = 'stopped' AND l.detail ? 'status_refused' AND l.at > clock_timestamp() - interval '1 hour';
-  IF v_refused_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.ops_release_records y WHERE y.status_posted_at > v_refused_at) THEN
-    v_want := v_want || jsonb_build_object('eng_status_token', jsonb_build_object(
+   WHERE l.action = 'release_record' AND l.outcome = 'stopped' AND l.detail ? 'status_refused';
+  IF v_refused_at IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.ops_release_records y WHERE y.status_posted_at > v_refused_at)
+     AND (v_refused_at > clock_timestamp() - interval '1 hour'
+          OR EXISTS (SELECT 1 FROM public.ops_work_cards sk WHERE sk.auto_key = 'eng_status_token:sync'
+                       AND sk.status <> 'done' AND sk.archived_at IS NULL)) THEN
+    v_want := v_want || jsonb_build_object('eng_status_token:sync', jsonb_build_object(
       'title', 'The sync token cannot post commit statuses',
       'instructions', 'Give the sync token permission to post commit statuses so release records show applied migrations.',
       'done_means', 'A migrations status shows on the latest merge commit.',
@@ -2698,7 +2745,7 @@ DO $grants3980syncw3$
 DECLARE f text;
 BEGIN
   FOREACH f IN ARRAY ARRAY[
-    'public.ops_day_long(date)', 'public.ops_plain_state(jsonb,date)',
+    'public.ops_day_long(date)', 'public.ops_plain_state(jsonb,date)', 'public.ops_card_anchor(text,uuid,date)',
     'public.ops_expected_anchor(public.ops_expected_events,date)',
     'public.ops_expected_occurrences(public.ops_expected_events,date,integer)', 'public.ops_event_in_series(uuid,uuid,date)',
     'public.ops_host_next_rows(uuid[],date)', 'public.ops_live_totals(date)', 'public.ops_host_missing(public.crm_records)',

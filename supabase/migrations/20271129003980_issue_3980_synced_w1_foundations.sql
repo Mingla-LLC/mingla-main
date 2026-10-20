@@ -711,6 +711,13 @@ AS $$
       'stuck', COALESCE(c.working_seen_at, c.started_at) < clock_timestamp() - interval '7 days') END
 $$;
 
+-- #3980 proof fix P2-3: the anchor a card shows. Here it is the card's own
+-- anchor; Wave 3 replaces it so a repeating series names its next date that
+-- is not live yet (or the event matched to it), never the series' first date.
+CREATE FUNCTION public.ops_card_anchor(p_kind text, p_id uuid, p_today date) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$ SELECT public.ops_anchor(p_kind, p_id, p_today) $$;
+
 -- From 20271116003980. Adds working, github, auto and auto_kind; claim keeps
 -- its shape and is built from the working mark (it ends 24 hours after the
 -- last update) so older screens still show who is on it.
@@ -724,7 +731,7 @@ BEGIN
     'id', c.id, 'number', c.number, 'title', c.title, 'instructions', c.instructions, 'done_means', c.done_means,
     'status', c.status, 'blocked', c.blocked, 'blocked_kind', c.blocked_kind, 'blocked_reason', c.blocked_reason,
     'person_reason', c.person_reason, 'kind', c.kind, 'kit_step', c.kit_step,
-    'anchor', public.ops_anchor(c.anchor_kind, c.anchor_id, p_today),
+    'anchor', public.ops_card_anchor(c.anchor_kind, c.anchor_id, p_today),
     'due_on', c.due_on, 'due_source', c.due_source, 'overdue', (c.due_on < p_today AND c.status <> 'done'),
     'sprint', jsonb_build_object('id', v_sprint.id, 'starts_on', v_sprint.starts_on, 'ends_on', v_sprint.ends_on, 'goal', v_sprint.goal),
     'carried_count', c.carried_count,
@@ -2264,7 +2271,12 @@ BEGIN
   v_event := public.ops_card_event(c.id, c_actor, 'system', 'auto_closed', v_reason, v_before, public.ops_card_snapshot(c.id), c.revision, n.revision);
   PERFORM public.ops_log_write(c_actor, 'system', 'auto_closed', 'ok', c.id, 'work_card', c.id,
     format('Card %s closed itself: %s', n.number, v_reason), jsonb_build_object('auto_key', c.auto_key));
-  PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), c_actor, format('Mingla closed: %s. %s', n.title, v_reason));
+  -- #3980 proof fix P3-5: a "Feature Guide: ... is Live" card is made and
+  -- closed at once only to tell Support; its "Mingla added" notice is the one
+  -- notice, so closing it tells nobody a second time.
+  IF c.auto_key IS NULL OR split_part(c.auto_key, ':', 1) <> 'guide_live' THEN
+    PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), c_actor, format('Mingla closed: %s. %s', n.title, v_reason));
+  END IF;
   RETURN jsonb_build_object('status', 'closed', 'id', c.id);
 END;
 $$;
@@ -2686,11 +2698,19 @@ BEGIN
         'github', jsonb_build_array('https://github.com/Mingla-LLC/mingla-main/pull/' || m.pr)));
     END IF;
   END LOOP;
-  -- The sync token was refused a status post in the last hour, with no successful post since.
+  -- The sync token was refused a status post in the last hour, with no
+  -- successful post since. #3980 proof fix P1-2: the key carries a ':' (the
+  -- auto_key shape ops_auto_card_upsert accepts), and an open card stays open
+  -- until a status post succeeds after the newest refusal, not merely
+  -- because an hour went by without a new refusal.
   SELECT max(l.at) INTO v_refused_at FROM public.ops_agent_log l
-   WHERE l.action = 'release_record' AND l.outcome = 'stopped' AND l.detail ? 'status_refused' AND l.at > clock_timestamp() - interval '1 hour';
-  IF v_refused_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.ops_release_records y WHERE y.status_posted_at > v_refused_at) THEN
-    v_want := v_want || jsonb_build_object('eng_status_token', jsonb_build_object(
+   WHERE l.action = 'release_record' AND l.outcome = 'stopped' AND l.detail ? 'status_refused';
+  IF v_refused_at IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.ops_release_records y WHERE y.status_posted_at > v_refused_at)
+     AND (v_refused_at > clock_timestamp() - interval '1 hour'
+          OR EXISTS (SELECT 1 FROM public.ops_work_cards sk WHERE sk.auto_key = 'eng_status_token:sync'
+                       AND sk.status <> 'done' AND sk.archived_at IS NULL)) THEN
+    v_want := v_want || jsonb_build_object('eng_status_token:sync', jsonb_build_object(
       'title', 'The sync token cannot post commit statuses',
       'instructions', 'Give the sync token permission to post commit statuses so release records show applied migrations.',
       'done_means', 'A migrations status shows on the latest merge commit.',
@@ -3108,7 +3128,7 @@ BEGIN
     'public.ops_ctx_chat()', 'public.ops_same_agent(text,text,text,text,text,text)', 'public.ops_chat_label(text,text,text)',
     'public.ops_actor_label(text,text,text)', 'public.ops_owner_email()', 'public.ops_login_email(text)', 'public.ops_setting(text)',
     'public.ops_github_parse(text)', 'public.ops_github_status(integer)', 'public.ops_plan_problem(jsonb)',
-    'public.ops_working_json(public.ops_work_cards)', 'public.ops_github_set(uuid,jsonb,text,text)',
+    'public.ops_working_json(public.ops_work_cards)', 'public.ops_card_anchor(text,uuid,date)', 'public.ops_github_set(uuid,jsonb,text,text)',
     'public.ops_auto_card_upsert(text,jsonb,text,jsonb)', 'public.ops_auto_card_close(uuid,text,jsonb)', 'public.ops_service_only()',
     'public.ops_ledger_applied(text[])', 'public.ops_release_recompute(integer)', 'public.ops_release_owner(text,text)',
     'public.ops_release_problem_words(text)', 'public.ops_engineering_cards_sync()', 'public.ops_owner_person_only(text)',

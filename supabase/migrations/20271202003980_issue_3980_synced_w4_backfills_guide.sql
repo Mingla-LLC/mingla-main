@@ -509,12 +509,111 @@ BEGIN
 END;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- 2b. #3980 proof fixes P2-4 and P2-5.
+-- ---------------------------------------------------------------------------
+-- P2-4: when a host card gains its first owner (Assign to me, the people
+-- field, or an agent's set_owners), the automatic cards for that host that
+-- have no owner yet ("Ask ... for their first event", go-live, the rolling
+-- card) get the host's owners too. Only cards with no owner: a card someone
+-- already owns is never taken from them. Called by crm_record_set_owners in
+-- the same transaction; never by a client.
+CREATE FUNCTION public.ops_host_adopt_cards(p_record_id uuid, p_actor text, p_via text) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  r public.crm_records; v_owners text[]; w public.ops_work_cards; n public.ops_work_cards;
+  v_before jsonb; v_event uuid; v_done integer := 0; v_words text;
+BEGIN
+  SELECT * INTO r FROM public.crm_records c WHERE c.id = p_record_id AND c.deleted_at IS NULL AND c.pipeline = 'hosts';
+  IF r.id IS NULL THEN RETURN 0; END IF;
+  v_owners := public.ops_record_team_owners(r.id);
+  IF cardinality(v_owners) = 0 THEN RETURN 0; END IF;
+  FOR w IN SELECT k.* FROM public.ops_work_cards k
+            WHERE k.auto_key IS NOT NULL AND k.status <> 'done' AND k.archived_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = k.id AND p.role = 'owner')
+              AND public.ops_card_of_host(k, r.id)
+            ORDER BY k.number FOR UPDATE LOOP
+    v_before := public.ops_card_snapshot(w.id);
+    INSERT INTO public.ops_work_people (card_id, email, role, added_by, added_via)
+    SELECT w.id, o, 'owner', p_actor, CASE WHEN p_via IN ('claude', 'codex') THEN p_via END FROM unnest(v_owners) o
+    ON CONFLICT (card_id, email) DO UPDATE SET role = 'owner' WHERE public.ops_work_people.role = 'watcher';
+    UPDATE public.ops_work_cards k SET revision = k.revision + 1, updated_by = p_actor,
+           updated_via = CASE WHEN p_via IN ('claude', 'codex') THEN p_via END, updated_at = now()
+     WHERE k.id = w.id RETURNING k.* INTO n;
+    v_words := left(format('Owned by %s with the host card %s.',
+      (SELECT string_agg(public.ops_name(o), ', ' ORDER BY o) FROM unnest(v_owners) o), r.name), 2000);
+    v_event := public.ops_card_event(w.id, p_actor, CASE WHEN p_via IN ('claude', 'codex') THEN p_via END, 'people', v_words,
+                                     v_before, public.ops_card_snapshot(w.id), w.revision, n.revision);
+    PERFORM public.ops_log_write(p_actor, CASE WHEN p_via IN ('claude', 'codex') THEN p_via END, 'updated', 'ok', w.id, 'crm_record', r.id,
+      format('Card %s now has an owner: %s', w.number, v_words), jsonb_build_object('adopted_with_host', r.id));
+    PERFORM public.ops_notify_people(w.id, v_event, v_owners, p_actor, format('You own "%s" with the host card %s.', w.title, r.name));
+    v_done := v_done + 1;
+  END LOOP;
+  RETURN v_done;
+END;
+$$;
+
+-- From 20271116003980. P2-5: a host or creator card that has owners keeps at
+-- least one, like a work card (the people field says so before it sends;
+-- this refuses anything else in plain words). A card with no owner yet can
+-- still be saved with none. P2-4: a host card's first owner also owns its
+-- automatic cards that have no owner (ops_host_adopt_cards).
+CREATE OR REPLACE FUNCTION public.crm_record_set_owners(p_id uuid, p_owner_emails text[]) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v        record;
+  v_rec    public.crm_records;
+  v_new    text[];
+  v_old    text[];
+  v_now    timestamptz := clock_timestamp();
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = p_id AND c.deleted_at IS NULL FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'not_found: That record is no longer here. It may have been deleted.' USING ERRCODE = 'P0002';
+  END IF;
+  PERFORM public.ops_claim_assert('crm_record', v_rec.id, v.actor_email, v.via);
+
+  v_new := public.crm_clean_owners(to_jsonb(COALESCE(p_owner_emails, ARRAY[]::text[])));
+  SELECT COALESCE(array_agg(o.owner_email ORDER BY o.owner_email), ARRAY[]::text[]) INTO v_old
+  FROM public.crm_record_owners o WHERE o.record_id = v_rec.id;
+
+  IF v_new = v_old THEN
+    RETURN jsonb_build_object('record', public.crm_record_json(v_rec), 'changed', false);
+  END IF;
+  IF cardinality(v_old) > 0 AND cardinality(v_new) = 0 THEN
+    RAISE EXCEPTION 'last_owner: A card always keeps one owner. Add someone else first, then remove this one.' USING ERRCODE = '22023';
+  END IF;
+
+  DELETE FROM public.crm_record_owners o
+   WHERE o.record_id = v_rec.id AND NOT (o.owner_email = ANY (v_new));
+  INSERT INTO public.crm_record_owners (record_id, owner_email, added_by, added_at)
+  SELECT v_rec.id, n.e, v.actor_email, v_now
+  FROM unnest(v_new) AS n(e)
+  WHERE NOT (n.e = ANY (v_old));
+  UPDATE public.crm_records SET updated_by = v.actor_email, updated_at = v_now WHERE id = v_rec.id;
+  PERFORM public.crm_audit(v.actor_email, 'crm.owners_set', 'crm_record', v_rec.id::text,
+    jsonb_strip_nulls(jsonb_build_object('via', v.via))
+      || jsonb_build_object('before', to_jsonb(v_old), 'after', to_jsonb(v_new)));
+  IF cardinality(v_old) = 0 AND v_rec.pipeline = 'hosts' THEN
+    PERFORM public.ops_host_adopt_cards(v_rec.id, v.actor_email, v.via);
+  END IF;
+
+  SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = p_id;
+  RETURN jsonb_build_object('record', public.crm_record_json(v_rec), 'changed', true);
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.crm_record_set_owners(uuid, text[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.crm_record_set_owners(uuid, text[]) TO authenticated, service_role;
+
 -- Grants. Internal helpers: service_role only. Client functions:
 -- authenticated (each checks the caller) and service_role.
 DO $grants3980syncw4$
 DECLARE f text;
 BEGIN
-  FOREACH f IN ARRAY ARRAY['public.ops_roadmap_links_check(jsonb)', 'public.ops_brand_cards_rows()',
+  FOREACH f IN ARRAY ARRAY['public.ops_host_adopt_cards(uuid,text,text)', 'public.ops_roadmap_links_check(jsonb)', 'public.ops_brand_cards_rows()',
                            'public.ops_brand_cards_rows(integer,integer)', 'public.ops_brand_cards_total()',
                            'public.ops_brand_cards_page(integer,timestamptz,uuid,integer)', 'public.ops_brand_cards_rows(timestamptz,uuid,integer)',
                            'public.ops_brand_cards_preview_page(timestamptz,uuid,integer)',

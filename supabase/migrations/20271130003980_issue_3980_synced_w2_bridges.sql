@@ -551,7 +551,10 @@ BEGIN
            WHERE r.complete AND r.issues @> jsonb_build_array(jsonb_build_object('number', v_issue))
              AND cardinality(COALESCE(r.feature_guide, ARRAY[]::text[])) > 0
            ORDER BY r.merged_at DESC, r.pr DESC LIMIT 1) f
-        JOIN public.product_capabilities pc ON pc.capability_key = f.k;
+        JOIN public.product_capabilities pc ON pc.capability_key = f.k
+       -- #3980 proof fix P3-8: a staff entry (staff-*) is team wording, never
+       -- what hosts are told. Its issue drafts only from a linked roadmap card.
+       WHERE pc.capability_key NOT LIKE 'staff-%';
       v_title := COALESCE(v_rc_title, v_cap_title);
       CONTINUE WHEN v_title IS NULL;
       v_body := 'Now live: ' || COALESCE(public.ops_first_sentence(v_cap_outcome), public.ops_first_sentence(v_rc_body), v_title || '.');
