@@ -50,6 +50,11 @@ export interface TicketBodyInput {
     taxBreakdown?: unknown[] | null;
     currency: string;
     buyerName: string | null;
+    /**
+     * issue #3827 — one line under the intro naming who a guest-list guest is
+     * with ("You're on the guest list with Ada Okoro."). Unset renders nothing.
+     */
+    partyLine?: string | null;
     lineItems: Array<{
       ticketName: string;
       quantity: number;

@@ -1218,6 +1218,7 @@ BEGIN
       'orderId', v_one ->> 'orderId',
       'ticketCount', (v_one ->> 'ticketCount')::integer,
       'emailQueued', COALESCE((v_one ->> 'emailQueued')::boolean, false),
+      'smsQueued', COALESCE((v_one ->> 'smsQueued')::boolean, false),
       'code', v_one ->> 'code'
     ));
   END LOOP;
