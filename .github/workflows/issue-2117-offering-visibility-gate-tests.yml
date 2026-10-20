@@ -187,6 +187,9 @@ jobs:
               # #3281 repair grants on the functions 20271121003281 creates; the lane
               # skips that migration, so it skips the grants too.
               *20271122003281_issue_3281_checkout_anon_revoke.sql) continue ;;
+              # #3281 R3 — rewrites public experience reader that calls helpers
+              # defined only in migrations this lane skips (#2117/#2489/#3313 prior).
+              *20271123003281_issue_3281_r3_spacing_spots.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

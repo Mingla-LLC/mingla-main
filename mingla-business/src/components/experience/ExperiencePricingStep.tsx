@@ -410,6 +410,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
                       selected ? styles.scopeChipSelected : null,
                     ]}
                     accessibilityRole="button"
+                    accessibilityLabel={label}
                     accessibilityState={{ selected }}
                   >
                     <Text
@@ -847,7 +848,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: glass.border,
+    borderColor: glass.border.profileBase,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: glass.tint.profileBase,
