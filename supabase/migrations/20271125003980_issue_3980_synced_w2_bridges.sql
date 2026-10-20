@@ -347,8 +347,14 @@ BEGIN
 END;
 $$;
 
--- B4, B5 and B6, run after every GitHub read and by housekeeping. Each card
--- and each issue in its own block, so one failure never stops the others.
+-- The GitHub bridges, in this order: B5 (Bridge E) unblocks cards that wait
+-- for GitHub, B6 stores roadmap lane suggestions, B4 (Bridge D) drafts
+-- "Recently shipped" cards with their approval cards, and then approval
+-- cards close themselves once a person published or archived their draft.
+-- Run by ops_github_items_apply after each batch GitHub answered and by
+-- ops_reconcile (housekeeping). Each card and each issue has its own block,
+-- as do the suggestions, so one failure never stops the others. Returns the
+-- counts: unblocked, suggested, drafted, approvals_closed.
 CREATE FUNCTION public.ops_github_bridges() RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -645,10 +651,16 @@ BEGIN
 END;
 $$;
 
--- What GitHub said about followed numbers. Only numbers Mingla follows are
--- taken; a number GitHub does not have is marked "Not on GitHub"; a link
--- saved as an issue that GitHub says is a pull request is corrected. Then
--- the bridges run. Status changes of numbers read before are logged.
+-- What GitHub said about followed numbers, at most 200 items. Only numbers
+-- Mingla follows (rows of ops_github_items) are taken; a malformed item (no
+-- number, no "found", or a kind that is neither issue nor pull) is skipped
+-- and nothing Mingla knew about it is cleared. A number GitHub does not have
+-- is marked "Not on GitHub". Otherwise the title is cleaned, the address is
+-- built here from the number (GitHub's own url is never stored), board
+-- fields and times are taken only when they are valid, and a link saved as
+-- an issue that GitHub says is a pull request is corrected. Status changes
+-- of numbers read before are logged. Then the bridges run once for the
+-- batch; a bridge failure is a warning and never undoes what was applied.
 CREATE FUNCTION public.ops_github_items_apply(p_items jsonb) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$

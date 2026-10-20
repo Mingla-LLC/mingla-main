@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3980_synced_w2_follow_query_union.tester.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-synced-w2-follow-query-union-tester-adversarial",
+  "profile": "deno-1.46-stripe"
+}

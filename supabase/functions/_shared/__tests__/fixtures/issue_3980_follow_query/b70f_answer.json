@@ -1,0 +1,42 @@
+{
+  "errors": [
+    {
+      "path": [
+        "query",
+        "repository",
+        "n3980",
+        "repository"
+      ],
+      "extensions": {
+        "code": "selectionMismatch",
+        "nodeName": "IssueOrPullRequest"
+      },
+      "locations": [
+        {
+          "line": 1,
+          "column": 88
+        }
+      ],
+      "message": "Selections can't be made directly on unions (see selections on IssueOrPullRequest)"
+    },
+    {
+      "path": [
+        "query",
+        "repository",
+        "n3991",
+        "repository"
+      ],
+      "extensions": {
+        "code": "selectionMismatch",
+        "nodeName": "IssueOrPullRequest"
+      },
+      "locations": [
+        {
+          "line": 1,
+          "column": 619
+        }
+      ],
+      "message": "Selections can't be made directly on unions (see selections on IssueOrPullRequest)"
+    }
+  ]
+}

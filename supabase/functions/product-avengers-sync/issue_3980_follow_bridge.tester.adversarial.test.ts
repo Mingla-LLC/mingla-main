@@ -36,6 +36,8 @@ import {
 } from "../_shared/opsBridges.ts";
 
 type Json = Record<string, unknown>;
+// #3980 W2 rework 2: the repository GitHub names on every node it answers for this repository.
+const OURS = { nameWithOwner: "Mingla-LLC/mingla-main" };
 
 function fakeAdmin(
   calls: { name: string; args?: Json }[],
@@ -158,7 +160,8 @@ Deno.test("#3980 tester parse: a node that is not the number asked (a transfer r
     data: { repository: {
       n10: { __typename: "Issue", number: 4410, title: "Moved", url: "https://github.com/Mingla-LLC/mingla-main/issues/4410", state: "OPEN" },
       n11: { __typename: "Discussion", number: 11, title: "A discussion" },
-      n12: { __typename: "Issue", number: 12, title: "Real", url: "https://github.com/Mingla-LLC/mingla-main/issues/12", state: "OPEN", projectItems: null },
+      // [TEST-MOD-APPROVED #3980] W2 rework 2: the follow query asks each Issue and PullRequest for its repository and a node without one is left out (fail closed), so this node names its repository
+      n12: { __typename: "Issue", repository: OURS, number: 12, title: "Real", url: "https://github.com/Mingla-LLC/mingla-main/issues/12", state: "OPEN", projectItems: null },
     } },
   });
   assertEquals(items.map((i) => i.number), [12]);
@@ -169,7 +172,8 @@ Deno.test("#3980 tester parse: a node that is not the number asked (a transfer r
 Deno.test("#3980 tester parse: board fields come only from the Avengers item; a missing column there is null, not another project's", () => {
   const items = parseFollowResponse([5], {
     data: { repository: {
-      n5: { __typename: "Issue", number: 5, title: "x", url: "u", state: "CLOSED", projectItems: { nodes: [
+      // [TEST-MOD-APPROVED #3980] W2 rework 2: the follow query asks each Issue and PullRequest for its repository and a node without one is left out (fail closed), so this node names its repository
+      n5: { __typename: "Issue", repository: OURS, number: 5, title: "x", url: "u", state: "CLOSED", projectItems: { nodes: [
         { project: { id: "PVT_someone_else" }, status: { name: "Done" }, horizon: { name: "Now" } },
         { project: { id: AVENGERS_PROJECT_ID }, status: null, horizon: {} },
       ] } },
@@ -182,6 +186,8 @@ Deno.test("#3980 tester parse: junk closing issues are dropped and at most ten a
   const nodes = [null, { number: "3" }, { number: -1 }, { number: 2.5 }, ...range(1, 12).map((n) => ({ number: n }))];
   const items = parseFollowResponse([77], {
     data: { repository: { n77: { __typename: "PullRequest", number: 77, title: "p", url: "u", state: "MERGED", merged: "yes",
+      // [TEST-MOD-APPROVED #3980] W2 rework 2: the follow query asks each Issue and PullRequest for its repository and a node without one is left out (fail closed), so this node names its repository
+      repository: OURS,
       mergedAt: 12345, mergeCommit: null, closingIssuesReferences: { nodes } } } },
   });
   assertEquals(items[0].closing_issues, [3, ...range(1, 9)]);
@@ -213,7 +219,8 @@ Deno.test("#3980 tester parse: a NOT_FOUND for one alias marks only that number,
   const items = parseFollowResponse([1, 2, 3], {
     data: { repository: {
       n1: null,
-      n2: { __typename: "Issue", number: 2, title: "two", url: "u", state: "OPEN" },
+      // [TEST-MOD-APPROVED #3980] W2 rework 2: the follow query asks each Issue and PullRequest for its repository and a node without one is left out (fail closed), so this node names its repository
+      n2: { __typename: "Issue", repository: OURS, number: 2, title: "two", url: "u", state: "OPEN" },
     } },
     errors: [{ type: "NOT_FOUND", path: ["repository", "n1"] }],
   });

@@ -1,5 +1,6 @@
 // Issue #3980 — To review, Spend or publish: work cards that wait for a
-// person to approve money or confirm an event is published. Two columns.
+// person to approve money, confirm an event is published, or approve what
+// hosts are told (a drafted "Recently shipped" roadmap card). Two columns.
 import { useRef, useState } from "react";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -7,19 +8,14 @@ import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import * as ops from "../../services/opsService";
-import { opsErrorWords, proofBadge, runwayLabel, dayLabel, todayIso } from "../../lib/opsModel";
+import { isRoadmapApproval, opsErrorWords, personActionFor, proofBadge, REVIEW_GROUPS, reviewGroupOf, roadmapDraftHref, runwayLabel, dayLabel, todayIso } from "../../lib/opsModel";
 import { useOpsPoll } from "../../hooks/useOpsWork";
 import { TwoColumn } from "./TwoColumn";
 import { revealDetail } from "./revealDetail";
 import { OpsChip } from "./OpsChip";
 import { PlanSteps } from "./PlanSteps";
 import { PersonActionForm } from "./WorkDetail";
-
-const GROUPS = [
-  { reason: "spend", title: "Spend money" },
-  { reason: "publish", title: "Publish an event" },
-  { reason: "other", title: "Other" },
-];
+import { ProofForm } from "./ProofForm";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
 export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
@@ -33,15 +29,17 @@ export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
   const cards = queue.data?.cards || [];
   const card = cards.find((c) => c.id === selectedId) || null;
 
-  const act = async (action, note) => {
+  const act = async (action, note, proof, result) => {
     if (!card) return;
     setBusy(true);
     try {
-      const answer = await ops.personAction(card.id, action, note, card.revision);
+      const answer = action === "close"
+        ? await ops.closeWork(card.id, proof, result || null, card.revision)
+        : await ops.personAction(card.id, action, note, card.revision);
       setForm("");
       await queue.refetch({ quiet: true });
       onChanged?.();
-      const title = action === "approve_spend" ? "Spend approved" : action === "mark_published" ? "Marked published" : "Sent back to the owner";
+      const title = action === "close" ? "Card closed" : action === "approve_spend" ? "Spend approved" : action === "mark_published" ? "Marked published" : "Sent back to the owner";
       addToast({ variant: "success", title, duration: 8000, action: answer?.event_id ? { label: "Undo", onClick: async () => {
         try { await ops.undoWork(answer.event_id); await queue.refetch({ quiet: true }); onChanged?.(); }
         catch (error) { addToast({ variant: "error", title: "Undo didn’t work", description: opsErrorWords(error) }); }
@@ -64,12 +62,12 @@ export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
       detailLabel="Card waiting for a person"
       list={
         <div className="flex min-w-0 flex-col gap-4">
-          {GROUPS.map((g) => {
-            const rows = cards.filter((c) => c.person_reason === g.reason);
+          {REVIEW_GROUPS.map((g) => {
+            const rows = cards.filter((c) => reviewGroupOf(c) === g.id);
             if (rows.length === 0) return null;
             return (
-              <section key={g.reason} aria-labelledby={`review-${g.reason}`} className="min-w-0">
-                <h2 id={`review-${g.reason}`} className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{g.title} · {rows.length}</h2>
+              <section key={g.id} aria-labelledby={`review-${g.id}`} className="min-w-0">
+                <h2 id={`review-${g.id}`} className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{g.title} · {rows.length}</h2>
                 <ul className="grid min-w-0 gap-2">
                   {rows.map((c) => (
                     <li key={c.id}>
@@ -98,12 +96,15 @@ export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
             <ul className="flex flex-col gap-1">{card.proof.map((p, i) => <li key={i} className="flex flex-wrap items-start gap-2 text-[13px]"><OpsChip tone={p.verified ? "success" : "default"}>{proofBadge(p)}</OpsChip><span className="min-w-0 flex-1 break-words">{p.text}</span></li>)}</ul>
           )}
           <div className="flex flex-wrap gap-2">
-            {card.person_reason === "spend" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("approve_spend")}>Approve spend</Button>}
-            {card.person_reason === "publish" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("mark_published")}>Mark published</Button>}
+            {personActionFor(card)?.action === "approve_spend" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("approve_spend")}>Approve spend</Button>}
+            {personActionFor(card)?.action === "mark_published" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("mark_published")}>Mark published</Button>}
+            {roadmapDraftHref(card) && <a href={roadmapDraftHref(card)} className={`inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Open the draft in Roadmap</a>}
+            {isRoadmapApproval(card) && <Button variant="secondary" className="min-h-11" disabled={!online || busy} onClick={() => setForm(form === "close" ? "" : "close")}>Close with proof</Button>}
             <Button variant="secondary" className="min-h-11" disabled={!online || busy} onClick={() => setForm("sendback")}>Send back</Button>
             <a href={`#/work-board?card=${card.id}`} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open on the Work board</a>
           </div>
-          {form && <PersonActionForm kind={form} busy={busy} disabled={!online} onCancel={() => setForm("")} onSubmit={(note) => act(form === "sendback" ? "send_back" : form, note)} />}
+          {form === "close" && <ProofForm busy={busy} disabled={!online} onCancel={() => setForm("")} onSubmit={(proof, result) => act("close", null, proof, result)} />}
+          {form && form !== "close" && <PersonActionForm kind={form} busy={busy} disabled={!online} onCancel={() => setForm("")} onSubmit={(note) => act(form === "sendback" ? "send_back" : form, note)} />}
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-[var(--gray-300)] p-4 text-[13px] text-[var(--color-text-tertiary)]">Pick a card to see what it needs.</div>
