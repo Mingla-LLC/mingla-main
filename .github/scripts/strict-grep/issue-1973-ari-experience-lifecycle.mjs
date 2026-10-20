@@ -206,6 +206,17 @@ function check(s) {
     "manage_experience_stops",
     "unpublish_experience",
     "/experience/snap",
+    // issue #3281 R2 — one-stop + unit pricing pins (extend, never delete).
+    "One stop is a whole experience",
+    "per person, per group, or per time block",
+  ]);
+  requireAll("tools", s.tools, [
+    "price_options",
+    "1–5; one stop is a whole experience",
+  ]);
+  requireAll("domain", s.domain, [
+    "price_options",
+    "One stop is a whole experience",
   ]);
   return failures;
 }

@@ -514,6 +514,30 @@ const updateExperience = writeTool(
     whole_price_cents: { type: "integer", minimum: 0 },
     is_free: { type: "boolean" },
     capacity: { type: "integer", minimum: 1, nullable: true },
+    // issue #3281 R2 — sellable options (person | group | block).
+    price_options: {
+      type: "array",
+      maxItems: 20,
+      description:
+        "Optional price options. Each: name, price_cents, price_basis (person|group|block); group needs group_max 2–50; block needs block_minutes in 15/30/45/60 plus min_blocks/max_blocks. Non-person basis requires pricing_mode=whole. Options with sales may be hidden, never deleted.",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          price_cents: { type: "integer", minimum: 0 },
+          price_basis: {
+            type: "string",
+            enum: ["person", "group", "block"],
+          },
+          block_minutes: { type: "integer", enum: [15, 30, 45, 60] },
+          min_blocks: { type: "integer", minimum: 1 },
+          max_blocks: { type: "integer", minimum: 1 },
+          group_max: { type: "integer", minimum: 2, maximum: 50 },
+          capacity: { type: "integer", minimum: 1, nullable: true },
+          is_hidden: { type: "boolean" },
+        },
+      },
+    },
     timezone: { type: "string" },
     whenMode: { type: "string", enum: ["single", "multi_date", "recurring"] },
     when: { type: "object" },
@@ -542,7 +566,7 @@ const updateExperience = writeTool(
 
 const manageExperienceStops = writeTool(
   "manage_experience_stops",
-  "Atomically replace the ordered experience stops and canonical intents using persisted media references only.",
+  "Atomically replace the ordered experience stops and canonical intents using persisted media references only. One stop is a whole experience (1–5); an empty list clears stops on a draft only.",
   {
     event_id: UUID,
     expected_revision: { type: "string", format: "date-time" },
