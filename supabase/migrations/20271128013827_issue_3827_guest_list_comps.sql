@@ -26,6 +26,7 @@
 --   §6  biz_comp_issue / biz_comp_cancel / biz_comp_resend_prepare
 --   §7  biz_door_guest_search / biz_ticket_admit_by_id
 --   §8  biz_guest_roster_project — two additive hunks (guestList)
+--   §8b stamp_event_pricing_lock_on_first_order — a comp does not lock pricing
 --   §9  postchecks
 
 BEGIN;
@@ -1318,6 +1319,16 @@ BEGIN
    WHERE order_id = p_order_id
      AND status = 'valid';
 
+  -- The guest must not receive a late "You're in" after this: retire every
+  -- confirmation or resend row that has not been sent yet.
+  UPDATE public.ticket_order_notifications
+     SET status = 'skipped',
+         last_error = 'comp_cancelled',
+         updated_at = v_now
+   WHERE order_id = p_order_id
+     AND status IN ('pending', 'failed_retryable', 'deferred')
+     AND (idempotency_key LIKE 'ticket_confirmation:%' OR idempotency_key LIKE 'ticket_resend:%');
+
   -- Q7 (Seth, 2026-10-20): the guest is told, with the existing cancellation
   -- email (template buyer_order_cancelled, routed by the dispatcher).
   IF v_order.buyer_email IS NOT NULL THEN
@@ -1580,7 +1591,7 @@ COMMENT ON FUNCTION public.biz_ticket_admit_by_id(uuid, uuid, uuid, text) IS
 -- Re-emitted from 20270319000873_issue_0873_guest_status_roster.sql. Added:
 --   (a) commerce lateral: comp_active_tickets
 --   (b) canonical_json / unlinked_orders: 'guestList'
--- Everything else is byte-identical (issue_3827_comps_roster_hunks.structural.test.ts).
+-- Everything else is byte-identical (issue_3827_comps_finalize_one_hunk.structural.test.ts, test (c)).
 CREATE OR REPLACE FUNCTION public.biz_guest_roster_project(p_event_id uuid)
 RETURNS TABLE(row_data jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp
@@ -1808,6 +1819,30 @@ UNION ALL SELECT row_data FROM unlinked_rsvps
 UNION ALL SELECT row_data FROM unlinked_orders
 $function$;
 
+
+-- =============================================================================
+-- §8b. stamp_event_pricing_lock_on_first_order — a comp does not lock pricing
+-- =============================================================================
+-- Re-emitted from 20260802000000_orch_1006_pricing_switches.sql. The lock
+-- protects buyers who were QUOTED a price ("event has >= 1 order"). A
+-- guest-list comp quotes nobody anything, so adding one guest must not freeze
+-- the event's fee and tax switches. One added condition: NEW.source <> 'comp'.
+CREATE OR REPLACE FUNCTION public.stamp_event_pricing_lock_on_first_order()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.event_id IS NOT NULL AND NEW.source IS DISTINCT FROM 'comp' THEN
+    UPDATE public.events
+       SET pricing_locked_at = now()
+     WHERE id = NEW.event_id
+       AND pricing_locked_at IS NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
 
 -- =============================================================================
 -- §9. Postchecks — fail the apply rather than ship a half-state

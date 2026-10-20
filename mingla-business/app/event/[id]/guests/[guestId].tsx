@@ -186,13 +186,21 @@ export interface GuestTicketRow {
   unitPrice: number;
   state: "checked_in" | "not_checked_in" | "cancelled" | "refunded" | "transferred";
   usedAt: string | null;
+  /** A multi-day pass already admitted on an earlier day; still admissible. */
+  admittedEarlierDay: boolean;
 }
 
 export const buildGuestTicketRows = (order: OrderRecord): GuestTicketRow[] =>
   (order.ticketDays ?? []).map((ticket) => {
     const line = order.lines.find((l) => l.ticketTypeId === ticket.ticketTypeId) ?? order.lines[0];
+    // biz_ticket_scan sets used_at on the FIRST admission and flips status to
+    // "used" only once every day of a multi-day pass is consumed.
+    const admittedEarlierDay =
+      ticket.status === "valid" && ticket.usedAt !== null && ticket.eventDateIds.length > 1;
     const state: GuestTicketRow["state"] =
-      ticket.status === "used" || ticket.usedAt !== null
+      admittedEarlierDay
+        ? "not_checked_in"
+        : ticket.status === "used" || ticket.usedAt !== null
         ? "checked_in"
         : ticket.status === "void"
           ? "cancelled"
@@ -208,6 +216,7 @@ export const buildGuestTicketRows = (order: OrderRecord): GuestTicketRow[] =>
       unitPrice: line?.unitPriceGbpAtPurchase ?? 0,
       state,
       usedAt: ticket.usedAt,
+      admittedEarlierDay,
     };
   });
 
@@ -547,7 +556,8 @@ export default function GuestDetailRoute(): React.ReactElement {
   const isOrder = parsed.kind === "order" && order !== null;
   const isGuestList = isOrder && isCompOrder(order);
   const isCancelled = isOrder && order.status === "cancelled";
-  const anyCheckedIn = orderCheckedCount > 0;
+  // The server refuses a cancel once ANY ticket has a first admission.
+  const anyCheckedIn = ticketRows.some((t) => t.usedAt !== null);
   // Cycle 12 — door narrowing. After the not-found shell guards above,
   // when parsed.kind === "door" then sale is non-null.
   const isDoor = parsed.kind === "door" && sale !== null;
@@ -706,6 +716,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                             ? "—"
                             : formatCurrency(t.unitPrice, order.currency)}{" "}
                         · #{idx + 1}
+                        {t.admittedEarlierDay && t.usedAt !== null ? ` · in on an earlier day (${formatClock(t.usedAt)})` : ""}
                       </Text>
                     </View>
                     {t.state === "checked_in" ? (
@@ -1033,19 +1044,19 @@ export default function GuestDetailRoute(): React.ReactElement {
                 ? "Their QR code stops working and the place is freed. No money is involved. Their guests keep their own tickets."
                 : "Their QR code stops working and the place is freed. No money is involved."}
             </Text>
-            <Text style={styles.removeReasonLabel}>Reason (optional)</Text>
+            <Text style={styles.removeReasonLabel}>Reason (optional, included in their email)</Text>
             <View style={[styles.removeReasonInputWrap, cancelReasonTooLong && styles.removeReasonInputError]}>
               <TextInput
                 value={cancelReason}
                 onChangeText={setCancelReason}
-                placeholder="Reason (optional)"
+                placeholder="Reason (optional, the guest sees it)"
                 placeholderTextColor={textTokens.quaternary}
                 multiline
                 numberOfLines={3}
                 maxLength={200}
                 style={styles.removeReasonInput}
                 editable={!cancelling}
-                accessibilityLabel="Reason (optional)"
+                accessibilityLabel="Reason (optional, included in their email)"
               />
             </View>
             {cancelReasonTooLong ? (

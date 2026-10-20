@@ -228,7 +228,7 @@ export const issueGuestListTickets = (input: GuestListIssueInput): Promise<Guest
 
 export const guestListIssueFailureCopy = (code: GuestListIssueFailureCode | null): string => {
   if (code === "already_on_guest_list") return "Already on the guest list for this event.";
-  if (code === "lead_not_added") return "Add their guest first, then try again.";
+  if (code === "lead_not_added") return "Couldn't attach this plus-one to their guest. Add them as their own guest.";
   return "Couldn't add this guest. Try again.";
 };
 

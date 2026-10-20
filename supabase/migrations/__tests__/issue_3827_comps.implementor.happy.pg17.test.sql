@@ -540,4 +540,35 @@ BEGIN
 END
 $acl$;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Tester P1-2 / P2-3 — a comp locks no pricing; a cancel retires its unsent
+-- "You're in" rows
+-- ═══════════════════════════════════════════════════════════════════════════
+DO $fixes$
+DECLARE
+  f record;
+  v_res jsonb;
+  v_order uuid;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i3827_event('fixes', 10);
+  UPDATE public.events SET pricing_locked_at = NULL WHERE id = f.o_event;
+  v_res := public.biz_comp_issue(f.o_owner, f.o_event, f.o_tt, NULL,
+    jsonb_build_array(jsonb_build_object('index', 0, 'name', 'Lock Probe', 'email', 'lock@example.test')),
+    NULL, gen_random_uuid(), pg_temp.i3827_pepper());
+  v_order := (v_res -> 'results' -> 0 ->> 'orderId')::uuid;
+  PERFORM pg_temp.i3827_assert(
+    (SELECT pricing_locked_at FROM public.events WHERE id = f.o_event) IS NULL,
+    'a guest-list comp does not lock the event fee/tax switches');
+  PERFORM public.biz_comp_cancel(f.o_owner, v_order, NULL, gen_random_uuid());
+  PERFORM pg_temp.i3827_assert(
+    (SELECT status FROM public.ticket_order_notifications
+      WHERE idempotency_key = 'ticket_confirmation:' || v_order::text || ':email') = 'skipped',
+    'cancel retires the unsent ticket confirmation (no late "You''re in")');
+  PERFORM pg_temp.i3827_assert(
+    EXISTS (SELECT 1 FROM public.ticket_order_notifications
+             WHERE order_id = v_order AND status = 'pending' AND payload ->> 'template_key' = 'buyer_order_cancelled'),
+    'the cancellation email row stays pending');
+END
+$fixes$;
+
 ROLLBACK;

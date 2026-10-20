@@ -275,6 +275,17 @@ describe("issue #3827 — guest page", () => {
     expect(mockCancel.mock.calls[0][0]).toMatchObject({ orderId: "comp-1", reason: null });
   });
 
+  test("D-1b a two-day pass admitted on night 1 can still be admitted on night 2", async () => {
+    mockOrders = [compOrder({
+      ticketDays: [{ ticketId: "tk-w", ticketTypeId: "tt-gl", eventDateIds: ["n1", "n2"], status: "valid", usedAt: "2026-11-01T21:04:00Z" }],
+    })];
+    const r = await mount(<GuestDetailRoute />);
+    expect(r.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Admit")).toHaveLength(1);
+    expect(text(r.root)).toContain("in on an earlier day");
+    const [cancel] = r.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Cancel guest-list ticket");
+    expect(cancel.props.disabled).toBe(true);
+  });
+
   test("D-3 a legacy comp- link renders the not-found shell", async () => {
     mockGuestId = "comp-cg_123";
     const r = await mount(<GuestDetailRoute />);

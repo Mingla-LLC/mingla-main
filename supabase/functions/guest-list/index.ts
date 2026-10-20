@@ -197,7 +197,8 @@ export function mapRpcError(error: { message: string; hint?: string | null }): R
   const code = error.message.trim();
   const status = STATUS_BY_CODE[code];
   if (status === undefined) {
-    console.error("[guest-list] unmapped rpc error", code.slice(0, 120));
+    // Never the raw text: a database message can carry an email or a name.
+    console.error("[guest-list] unmapped rpc error", { length: code.length });
     return json({ ok: false, code: "internal" }, 500);
   }
   const body: Record<string, unknown> = { ok: false, code };
@@ -221,6 +222,27 @@ async function rateLimited(deps: GuestListDeps, scope: string, limit: number): P
     return false;
   }
   return isObject(data) && data.allowed === false;
+}
+
+// Defence in depth: the door gets exactly these fields, whatever the SQL adds.
+export function projectDoorOrders(orders: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(orders)) return [];
+  return orders.filter(isObject).map((o) => ({
+    orderId: o.orderId,
+    displayName: o.displayName,
+    maskedEmail: o.maskedEmail ?? null,
+    isGuestList: o.isGuestList === true,
+    cameWithName: typeof o.cameWithName === "string" ? o.cameWithName : null,
+    tickets: Array.isArray(o.tickets)
+      ? o.tickets.filter(isObject).map((t) => ({
+        ticketId: t.ticketId,
+        ticketName: t.ticketName,
+        status: t.status,
+        usedAt: t.usedAt ?? null,
+        eventDateIds: Array.isArray(t.eventDateIds) ? t.eventDateIds : [],
+      }))
+      : [],
+  }));
 }
 
 type IssueResult = {
@@ -376,7 +398,7 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
         });
         if (error) return mapRpcError(error);
         const out = data as { orders: unknown[]; truncated: boolean };
-        return json({ ok: true, orders: out.orders, truncated: out.truncated });
+        return json({ ok: true, orders: projectDoorOrders(out.orders), truncated: out.truncated === true });
       }
 
       case "admit": {

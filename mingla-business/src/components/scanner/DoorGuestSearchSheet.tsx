@@ -62,7 +62,16 @@ const formatClock = (iso: string): string => {
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
+/**
+ * A multi-day pass admitted on an earlier day: biz_ticket_scan sets used_at on
+ * the FIRST admission and flips status to "used" only when every day is
+ * consumed, so it is still admissible tonight.
+ */
+export const admittedEarlierDay = (ticket: DoorGuestTicket): boolean =>
+  ticket.status === "valid" && ticket.usedAt !== null && ticket.eventDateIds.length > 1;
+
 export const ticketStateLabel = (ticket: DoorGuestTicket): string | null => {
+  if (admittedEarlierDay(ticket)) return null; // admissible; the server decides tonight
   if (ticket.status === "used" || ticket.usedAt !== null) {
     return ticket.usedAt !== null ? `Checked in ${formatClock(ticket.usedAt)}` : "Checked in";
   }
@@ -239,7 +248,11 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                       accessible={state !== null}
                       accessibilityLabel={state !== null ? `${guest.displayName}, ${ticket.ticketName}, ${state}` : undefined}
                     >
-                      <Text style={styles.ticketName} numberOfLines={1}>{ticket.ticketName}</Text>
+                      <Text style={styles.ticketName} numberOfLines={2}>
+                        {admittedEarlierDay(ticket) && ticket.usedAt !== null
+                          ? `${ticket.ticketName} · in on an earlier day (${formatClock(ticket.usedAt)})`
+                          : ticket.ticketName}
+                      </Text>
                       {state !== null ? (
                         <Text style={styles.ticketState}>{state}</Text>
                       ) : (

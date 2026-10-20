@@ -193,3 +193,28 @@ Deno.test("#3827 a missing QR pepper refuses issue and admit with qr_token_peppe
   assertEquals(res.status, 500);
   assertEquals((await res.json()).code, "qr_token_pepper_missing");
 });
+
+Deno.test("#3827 search is projected: fields the door must never see are dropped", async () => {
+  const h = harness({
+    rpc: (fn) =>
+      fn === "biz_door_guest_search"
+        ? {
+          data: {
+            truncated: false,
+            orders: [{
+              orderId: ORDER, displayName: "Ana", maskedEmail: "an***@example.test", isGuestList: true,
+              cameWithName: null, compReason: "secret note", buyerEmail: "ana@example.test", phone: "+447700900123",
+              tickets: [{ ticketId: TICKET, ticketName: "GA", status: "valid", usedAt: null, eventDateIds: [], qrCode: "mingla:v1:ticket:x" }],
+            }],
+          },
+          error: null,
+        }
+        : { data: { allowed: true }, error: null },
+  });
+  const res = await h.handler(post({ operation: "search", eventId: EVENT, query: "an" }));
+  const text = await res.text();
+  for (const leak of ["secret note", "ana@example.test", "+447700900123", "mingla:v1:ticket"]) {
+    assert(!text.includes(leak), leak);
+  }
+  assertEquals(JSON.parse(text).orders[0].maskedEmail, "an***@example.test");
+});
