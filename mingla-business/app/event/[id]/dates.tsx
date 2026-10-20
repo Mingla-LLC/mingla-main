@@ -63,6 +63,8 @@ export default function EventDatesScreen(): React.ReactElement {
   >({});
   /** Row ids with unsaved local edits — Refresh keeps these, reloads the rest. */
   const dirtyIdsRef = useRef<Set<string>>(new Set());
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
 
   const load = useCallback(async () => {
     if (typeof id !== "string" || id.length === 0) {
@@ -106,12 +108,13 @@ export default function EventDatesScreen(): React.ReactElement {
   const saveRow = async (rowId: string) => {
     if (typeof id !== "string") return;
     const d = drafts[rowId] ?? { title: "", location: "" };
+    const saved = { title: d.title, location: d.location };
     setSavingId(rowId);
     const { error } = await supabase.rpc("business_set_event_date_override", {
       p_event_id: id,
       p_event_date_id: rowId,
-      p_title: d.title,
-      p_location: d.location,
+      p_title: saved.title,
+      p_location: saved.location,
       p_reason: "Host updated this date's title or place for guests.",
     });
     setSavingId(null);
@@ -120,15 +123,20 @@ export default function EventDatesScreen(): React.ReactElement {
       return;
     }
     setToast("Saved");
-    dirtyIdsRef.current.delete(rowId);
+    // Keep dirty if the organiser typed more while the request was in flight.
+    const latest = draftsRef.current[rowId] ?? saved;
+    if (latest.title === saved.title && latest.location === saved.location) {
+      dirtyIdsRef.current.delete(rowId);
+    }
     setRows((prev) =>
       prev.map((r) =>
         r.id === rowId
           ? {
               ...r,
-              override_title: d.title.trim().length > 0 ? d.title.trim() : null,
+              override_title:
+                saved.title.trim().length > 0 ? saved.title.trim() : null,
               override_location:
-                d.location.trim().length > 0 ? d.location.trim() : null,
+                saved.location.trim().length > 0 ? saved.location.trim() : null,
             }
           : r,
       ),

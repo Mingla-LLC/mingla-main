@@ -26,7 +26,10 @@ Deno.test("many-dates foundation migration ships schedule helper + bundle keys",
       .test(text),
   );
   // #3284 R-15 — refundPolicy remains the final json key (no trailing comma).
-  assert(/'refundPolicy',\s*ev\.refund_policy\s*\) END/.test(text));
+  assert(/'recurrenceRule'[\s\S]*?'refundPolicy',\s*ev\.refund_policy\s*\) END/.test(text));
+  assert(!/'refundPolicy'[\s\S]*?'recurrenceRule'/.test(
+    text.slice(text.indexOf("'allDaysPass'"), text.indexOf("$function$;"))
+  ));
   assertEquals(
     text.includes("GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule"),
     true,

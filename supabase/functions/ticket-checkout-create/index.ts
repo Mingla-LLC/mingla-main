@@ -1191,18 +1191,45 @@ export const createTicketCheckoutCreateHandler = (
         if (upcoming.length === 0) {
           return refuse({ error: "occurrence_not_available" }, 422);
         }
-        orderedEventDateIds.push(...upcoming);
-        // Same as #2160 multi-select: latest-ENDING day is the payout/refund
-        // anchor so money does not mature while a later day is still open.
-        let latestEnd = Number.NEGATIVE_INFINITY;
-        for (const row of rows) {
-          if (typeof row.id !== "string" || row.id.length === 0) continue;
-          const end = typeof row.end_at === "string"
-            ? new Date(row.end_at).getTime()
-            : Number.NEGATIVE_INFINITY;
-          if (end >= latestEnd) {
-            latestEnd = end;
-            anchorEventDateId = row.id;
+        // Re-read mode after expanding: if the host flipped away from all_days
+        // before we bind, fall through to the normal client day-set path.
+        const { data: passConfirm, error: passConfirmErr } = await supabase
+          .from("events")
+          .select("multi_date_pricing_mode")
+          .eq("id", eventId)
+          .maybeSingle();
+        if (passConfirmErr !== null) {
+          console.error(
+            "[ticket-checkout-create] allDaysPass reconfirm failed",
+            passConfirmErr,
+          );
+          return jsonResponse(
+            {
+              error: "occurrence_lookup_failed",
+              detail: passConfirmErr.message,
+            },
+            500,
+          );
+        }
+        if (
+          (passConfirm as { multi_date_pricing_mode?: unknown } | null)
+            ?.multi_date_pricing_mode !== "all_days"
+        ) {
+          // Mode changed — do not keep a server-expanded day set.
+        } else {
+          orderedEventDateIds.push(...upcoming);
+          // Same as #2160 multi-select: latest-ENDING day is the payout/refund
+          // anchor so money does not mature while a later day is still open.
+          let latestEnd = Number.NEGATIVE_INFINITY;
+          for (const row of rows) {
+            if (typeof row.id !== "string" || row.id.length === 0) continue;
+            const end = typeof row.end_at === "string"
+              ? new Date(row.end_at).getTime()
+              : Number.NEGATIVE_INFINITY;
+            if (end >= latestEnd) {
+              latestEnd = end;
+              anchorEventDateId = row.id;
+            }
           }
         }
       }

@@ -792,17 +792,3 @@ export const resolveChosenDaysLine = (
   const lines = readableOccurrenceLines(event, occurrences);
   return lines.length > 0 ? lines[0] : formatDraftDateLine(event);
 };
-
-// issue #3281 many-dates — re-export shared schedule helpers (single owner).
-export {
-  filterUpcomingOccurrences,
-  chooseEventDateLayout,
-  placesLeftChip,
-  weekStartForCountry,
-} from "@mingla/offering-rendering";
-export type {
-  EventDateScheduleOccurrence,
-  EventDateLayout,
-  EventDateLayoutKind,
-  EventDateScheduleStatus,
-} from "@mingla/offering-rendering";

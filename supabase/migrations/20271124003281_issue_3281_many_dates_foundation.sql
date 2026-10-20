@@ -402,16 +402,13 @@ AS $function$
                  'isMaster',  d.is_master,
                  -- issue #3281 many-dates — APPENDED LAST on each occurrence
                  'soldOut', CASE
-                   WHEN (CASE
-                   WHEN ev.hide_remaining_count_setting IS NULL THEN false
-                   WHEN pg_catalog.pg_input_is_valid(ev.hide_remaining_count_setting, 'boolean')
-                     THEN ev.hide_remaining_count_setting::boolean
-                   ELSE true
-                 END) THEN NULL
                    WHEN NOT COALESCE(ev.is_recurring, false) THEN NULL
                    WHEN EXISTS (
                      SELECT 1 FROM public.ticket_types tt
                       WHERE tt.event_id = ev.id AND tt.deleted_at IS NULL
+                       AND COALESCE(tt.available_online, false)
+                       AND NOT COALESCE(tt.is_disabled, false)
+                       AND NOT COALESCE(tt.is_hidden, false)
                         AND COALESCE(tt.is_unlimited, false)
                    ) THEN NULL
                    ELSE COALESCE((
@@ -422,6 +419,9 @@ AS $function$
                      )
                      FROM public.ticket_types tt
                      WHERE tt.event_id = ev.id AND tt.deleted_at IS NULL
+                       AND COALESCE(tt.available_online, false)
+                       AND NOT COALESCE(tt.is_disabled, false)
+                       AND NOT COALESCE(tt.is_hidden, false)
                        AND NOT COALESCE(tt.is_unlimited, false)
                    ), false)
                  END,
@@ -436,6 +436,9 @@ AS $function$
                    WHEN EXISTS (
                      SELECT 1 FROM public.ticket_types tt
                       WHERE tt.event_id = ev.id AND tt.deleted_at IS NULL
+                       AND COALESCE(tt.available_online, false)
+                       AND NOT COALESCE(tt.is_disabled, false)
+                       AND NOT COALESCE(tt.is_hidden, false)
                         AND COALESCE(tt.is_unlimited, false)
                    ) THEN NULL
                    ELSE (
@@ -447,6 +450,9 @@ AS $function$
                      ))
                      FROM public.ticket_types tt
                      WHERE tt.event_id = ev.id AND tt.deleted_at IS NULL
+                       AND COALESCE(tt.available_online, false)
+                       AND NOT COALESCE(tt.is_disabled, false)
+                       AND NOT COALESCE(tt.is_hidden, false)
                        AND NOT COALESCE(tt.is_unlimited, false)
                        AND tt.quantity_total IS NOT NULL
                    )
@@ -462,6 +468,9 @@ AS $function$
                    WHEN EXISTS (
                      SELECT 1 FROM public.ticket_types tt
                       WHERE tt.event_id = ev.id AND tt.deleted_at IS NULL
+                       AND COALESCE(tt.available_online, false)
+                       AND NOT COALESCE(tt.is_disabled, false)
+                       AND NOT COALESCE(tt.is_hidden, false)
                         AND COALESCE(tt.is_unlimited, false)
                    ) THEN NULL
                    ELSE (
@@ -474,6 +483,9 @@ AS $function$
                      ), '{}'::json)
                      FROM public.ticket_types tt
                      WHERE tt.event_id = ev.id AND tt.deleted_at IS NULL
+                       AND COALESCE(tt.available_online, false)
+                       AND NOT COALESCE(tt.is_disabled, false)
+                       AND NOT COALESCE(tt.is_hidden, false)
                        AND NOT COALESCE(tt.is_unlimited, false)
                        AND tt.quantity_total IS NOT NULL
                    )
@@ -528,16 +540,8 @@ AS $function$
           THEN ev.hide_remaining_count_setting::boolean
         ELSE true
       END,
-      -- issue #3313 — APPENDED LAST. The stored repeat rule, so the public page
-      -- can say "Every Tuesday" over the real dates instead of "Recurring
-      -- (incomplete)".
-      'recurrenceRule', CASE
-        WHEN COALESCE(ev.is_recurring, false) AND jsonb_typeof(ev.recurrence_rules) = 'object'
-          THEN ev.recurrence_rules
-        ELSE NULL
-      END,
-      -- issue #3281 many-dates — BEFORE refundPolicy so #3284 R-15 keeps
-      -- refundPolicy as the final key (exact source pin + LAST append).
+      -- issue #3281 many-dates — before #3313 recurrenceRule / #3284 refundPolicy
+      -- so R-16e still sees recurrenceRule immediately before refundPolicy.
       'allDaysPass', (
         COALESCE(ev.is_multi_date, false)
         AND NOT COALESCE(ev.is_recurring, false)
@@ -546,6 +550,14 @@ AS $function$
       'nextStartAt', (sched.schedule ->> 'nextStartAt')::timestamptz,
       'nextEndAt', (sched.schedule ->> 'nextEndAt')::timestamptz,
       'upcomingCount', COALESCE((sched.schedule ->> 'upcomingCount')::integer, 0),
+      -- issue #3313 — APPENDED LAST. The stored repeat rule, so the public page
+      -- can say "Every Tuesday" over the real dates instead of "Recurring
+      -- (incomplete)".
+      'recurrenceRule', CASE
+        WHEN COALESCE(ev.is_recurring, false) AND jsonb_typeof(ev.recurrence_rules) = 'object'
+          THEN ev.recurrence_rules
+        ELSE NULL
+      END,
       'refundPolicy', ev.refund_policy
     ) END
   FROM ev
