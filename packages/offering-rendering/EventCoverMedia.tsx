@@ -28,6 +28,10 @@ import {
   shouldFreezeCoverForReduceMotion,
 } from "./coverMediaPresentation";
 import { EventCover } from "./EventCover";
+import {
+  isVideoPlayerReleasedForReload,
+  registerVideoPlayerForReload,
+} from "./videoPlayerReloadRelease";
 // META-ORCH-1270 Phase 3 (Vector A/C) — native "preload none" cache seam. On
 // native this returns the remote uri wrapped as a cached expo-video source
 // (useCaching:true) so a re-open replays from disk; on web it passes the uri
@@ -419,12 +423,18 @@ const EventCoverNativeVideo: React.FC<{
     sourcedRef.current = false;
   }, [uri]);
 
+  // #2107: an in-app restart releases this player before reloadAsync. After
+  // that it is never touched again: every call below checks
+  // isVideoPlayerReleasedForReload(), and the cover falls back to its poster
+  // (see the render).
+  useEffect(() => registerVideoPlayerForReload(player), [player]);
+
   useEffect(() => {
     const sub = player.addListener("statusChange", (payload) => {
       if (payload.status === "error") onError();
       // Only fires once a source has been attached (an unsourced player never
       // reaches readyToPlay) — belt-and-suspenders resume for a real play.
-      if (payload.status === "readyToPlay" && shouldPlay) {
+      if (payload.status === "readyToPlay" && shouldPlay && !isVideoPlayerReleasedForReload(player)) {
         callNativeVideoPlayer(() => player.play());
       }
     });
@@ -441,7 +451,7 @@ const EventCoverNativeVideo: React.FC<{
         onAspectRatio(size.width / size.height);
       }
     };
-    emit(player.videoTrack?.size);
+    if (!isVideoPlayerReleasedForReload(player)) emit(player.videoTrack?.size);
     const sub = player.addListener("sourceLoad", (payload) => {
       emit(payload.availableVideoTracks[0]?.size);
     });
@@ -449,10 +459,12 @@ const EventCoverNativeVideo: React.FC<{
   }, [onAspectRatio, player]);
 
   useEffect(() => {
+    if (isVideoPlayerReleasedForReload(player)) return;
     player.loop = loop;
   }, [loop, player]);
 
   useEffect(() => {
+    if (isVideoPlayerReleasedForReload(player)) return;
     player.muted = muted;
     player.volume = muted ? 0 : 1;
   }, [muted, player]);
@@ -462,6 +474,7 @@ const EventCoverNativeVideo: React.FC<{
   // shouldPlay=true attaches the source exactly ONCE (replaceAsync) and plays;
   // subsequent shouldPlay toggles just resume the already-sourced player.
   useEffect(() => {
+    if (isVideoPlayerReleasedForReload(player)) return;
     if (shouldPlay) {
       if (sourcedRef.current) {
         callNativeVideoPlayer(() => player.play());
@@ -470,7 +483,7 @@ const EventCoverNativeVideo: React.FC<{
         player
           .replaceAsync(source)
           .then(() => {
-            callNativeVideoPlayer(() => player.play());
+            if (!isVideoPlayerReleasedForReload(player)) callNativeVideoPlayer(() => player.play());
           })
           .catch((error) => {
             if (!isDisposedNativeVideoPlayerError(error)) onError();
@@ -485,13 +498,14 @@ const EventCoverNativeVideo: React.FC<{
 
   useEffect(() => {
     const playToEndSub = player.addListener("playToEnd", () => {
-      if (!loop || !shouldPlay) return;
+      if (!loop || !shouldPlay || isVideoPlayerReleasedForReload(player)) return;
       callNativeVideoPlayer(() => {
         player.replay();
         player.play();
       });
     });
     const appStateSub = AppState.addEventListener("change", (state) => {
+      if (isVideoPlayerReleasedForReload(player)) return;
       if (state === "active" && shouldPlay) {
         callNativeVideoPlayer(() => player.play());
         return;
@@ -523,18 +537,20 @@ const EventCoverNativeVideo: React.FC<{
           resizeMode={contentFit}
         />
       ) : null}
-      <VideoView
-        accessible={false}
-        accessibilityElementsHidden={true}
-        importantForAccessibility="no-hide-descendants"
-        player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit={contentFit}
-        nativeControls={false}
-        fullscreenOptions={{ enable: false }}
-        allowsPictureInPicture={false}
-        playsInline
-      />
+      {!isVideoPlayerReleasedForReload(player) ? (
+        <VideoView
+          accessible={false}
+          accessibilityElementsHidden={true}
+          importantForAccessibility="no-hide-descendants"
+          player={player}
+          style={StyleSheet.absoluteFill}
+          contentFit={contentFit}
+          nativeControls={false}
+          fullscreenOptions={{ enable: false }}
+          allowsPictureInPicture={false}
+          playsInline
+        />
+      ) : null}
     </View>
   );
 };

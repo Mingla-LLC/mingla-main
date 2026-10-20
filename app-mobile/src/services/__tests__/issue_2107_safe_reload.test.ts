@@ -169,6 +169,7 @@ describe("#2107 safeReload — no request starts while the app restarts", () => 
       "pause:app_network_fence",
       "pause:react_query",
       "pause:realtime",
+      "pause:video_players",
       "flush:posthog",
       "lockdown:xhr_lockdown",
       "settle",

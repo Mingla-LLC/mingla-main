@@ -88,6 +88,25 @@ function realtimeStep(): SafeReloadStep {
   };
 }
 
+function videoPlayersStep(): SafeReloadStep {
+  return {
+    name: "video_players",
+    // expo-video players are native shared objects. One still registered when
+    // reloadAsync tears the runtime down can crash iOS (use-after-free in
+    // SharedObjectRegistry.clear()). React unmount never runs on a reload, so
+    // release every live player here, while the runtime is alive. No resume: a
+    // released player is never touched again; its owner keeps the poster or
+    // still frame if the restart does not happen.
+    pause: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { releaseVideoPlayersForReload } = require("@mingla/offering-rendering/videoPlayerReloadRelease") as {
+        releaseVideoPlayersForReload: () => Promise<number>;
+      };
+      await releaseVideoPlayersForReload();
+    },
+  };
+}
+
 function xhrLockdownStep(): SafeReloadStep {
   return {
     name: "xhr_lockdown",
@@ -104,7 +123,7 @@ export function buildSafeReloadDependencies(
   reload: () => Promise<void>,
 ): SafeReloadDependencies {
   return {
-    pause: [appFenceStep(), reactQueryStep(), realtimeStep()],
+    pause: [appFenceStep(), reactQueryStep(), realtimeStep(), videoPlayersStep()],
     flush: [
       {
         name: "posthog",
