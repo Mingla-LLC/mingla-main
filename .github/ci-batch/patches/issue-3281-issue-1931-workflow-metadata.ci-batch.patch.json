@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3281",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-1931-private-event-access",
+      "extension": "yml"
+    },
+    "baseRowSha256": "2fc4c8c185969be55fbdc4c8f24df8571143be0f8039353c60c66589218a8ac3"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "d254d77692242a491396e9301490e295095ad188b125d6b5057e93d8edbef8eb",
+      "value": "470767f1992ea75c6e8665b0ab2293b60790e8c2bbcda8f97590526808bd1995"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3281 extends the existing private-event replay skip list (Round 2 checkout units and its grants-only repair) without changing its execution topology."
+}
