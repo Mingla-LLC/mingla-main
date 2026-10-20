@@ -80,6 +80,11 @@ function flush(): void {
   }
   retries += 1;
   retryTimer = setTimeout(flush, FLUSH_RETRY_MS);
+  // A telemetry retry must never be the thing that keeps a process alive. RN
+  // timers have no unref; Node's (jest, scripts) do, and without it a buffered
+  // event held a finished jest run open for 40 retries (~2 min) and then failed
+  // it by requiring the analytics wrapper after the environment was torn down.
+  (retryTimer as { unref?: () => void }).unref?.();
 }
 
 export function isCapturedUpdateGateEvent(event: string): boolean {

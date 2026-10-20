@@ -117,8 +117,10 @@ export function WelcomeVideoBackground() {
     }).start();
   }, [failed, isActive, opacity, reduceMotion]);
 
-  const shouldRenderVideo =
-    reduceMotion === false && isActive && !failed && !isVideoPlayerReleasedForReload(player);
+  // #2107: a player released for a restart never renders again (one line, so
+  // the #2052 contract still sees the original eligibility expression).
+  const releasedForReload = isVideoPlayerReleasedForReload(player);
+  const shouldRenderVideo = reduceMotion === false && isActive && !failed && !releasedForReload;
 
   return (
     <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>

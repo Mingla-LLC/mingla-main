@@ -498,7 +498,8 @@ const EventCoverNativeVideo: React.FC<{
 
   useEffect(() => {
     const playToEndSub = player.addListener("playToEnd", () => {
-      if (!loop || !shouldPlay || isVideoPlayerReleasedForReload(player)) return;
+      if (isVideoPlayerReleasedForReload(player)) return;
+      if (!loop || !shouldPlay) return;
       callNativeVideoPlayer(() => {
         player.replay();
         player.play();
