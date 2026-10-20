@@ -101,12 +101,17 @@ export function housePlanNextAction({
     };
   }
   if (state === "creation_failed_terminal") {
+    // #3697: one action, not a dead end. Reconcile asks the provider whether
+    // each recorded object still exists; nothing is resumed or launched.
+    const providers = [...new Set(platforms)].map(label).join(" and ") ||
+      "the provider";
     return {
-      kind: "inspect",
+      kind: "reconcile",
       canResume: false,
-      title: "Inspect the provider evidence",
+      canReconcile: true,
+      title: `Check with ${providers}`,
       explanation:
-        "A provider returned a terminal failure. Inspect it before creating a replacement plan.",
+        `This attempt didn't finish. ${providers} may still have objects from it, so check before anything else happens. If nothing is left, the hold is released and the plan is closed.`,
       steps: [],
     };
   }

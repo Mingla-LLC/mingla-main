@@ -38,6 +38,11 @@ const STEP_STATE_VARIANTS = {
   failed: "error",
 };
 
+/** planChannels' market exclusions read "Not available: …" (channelPlan.js). */
+function isMarketGap(reason) {
+  return typeof reason === "string" && reason.startsWith("Not available:");
+}
+
 function estimateLabel(estimate) {
   if (
     estimate?.state === "available" &&
@@ -76,6 +81,7 @@ export function StepReview({
   onApproveCertification,
   createSteps = null,
   createError = null,
+  placementGapsText = null,
 }) {
   const anySuccess = Object.values(createResults ?? {}).some(
     (r) => r?.campaign,
@@ -124,44 +130,78 @@ export function StepReview({
         placeholder="Lorne — Tuesdays — 2026-07-16"
       />
 
-      {/* Per-channel rows (§1.8 confirmation shape). */}
-      <div className="rounded-xl border border-[var(--gray-200)] divide-y divide-[var(--gray-100)]">
-        {summary.channels.map((line) => (
-          <div
-            key={line.platform}
-            className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm"
-          >
-            <span className="font-medium w-20">{line.label}</span>
-            <span className="font-mono text-xs">{line.dailyLabel}</span>
-            <span className="text-xs text-[var(--color-text-secondary)]">
-              {line.statusLine}
-            </span>
-            <span
-              className="text-xs text-[var(--color-text-tertiary)] font-mono"
-              title="The resolved objective this platform's create payload will actually send."
+      {/* #3697: "Where the money goes" — one card per platform with its daily
+          budget in money. A platform that can't run here is a greyed card
+          with its reason, or (market-excluded) one explaining line; never a
+          green card you can't use. */}
+      <section aria-label="Where the money goes" className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold">Where the money goes</h3>
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            {summary.budgetLine}
+            {summary.capLabel ? ` · cap ${summary.capLabel}` : ""}
+          </span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {summary.channels.map((line) => (
+            <div
+              key={line.platform}
+              className="rounded-xl border border-[var(--gray-200)] p-3 space-y-1"
             >
-              {line.objectiveLabel}
-            </span>
-            {line.videoReadiness && (
-              <span className="text-xs text-[var(--color-text-secondary)]">
-                {line.videoReadiness}
-              </span>
-            )}
-          </div>
-        ))}
-        {summary.blocked.map((line) => (
-          <div
-            key={line.platform}
-            className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm opacity-70"
-          >
-            <span className="font-medium w-20">{line.label}</span>
-            <span className="text-xs">—</span>
-            <span className="text-xs text-[var(--color-text-secondary)]">
-              {line.reason}
-            </span>
-          </div>
-        ))}
-      </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{line.label}</span>
+                <Badge variant="success" dot>
+                  Ready
+                </Badge>
+              </div>
+              <div className="text-lg font-semibold font-mono">
+                {line.dailyLabel}
+              </div>
+              <div className="text-xs text-[var(--color-text-secondary)]">
+                {line.statusLine}
+              </div>
+              <div
+                className="text-xs text-[var(--color-text-tertiary)] font-mono"
+                title="The resolved objective this platform's create payload will actually send."
+              >
+                {line.objectiveLabel}
+              </div>
+              {line.videoReadiness && (
+                <div className="text-xs text-[var(--color-text-secondary)]">
+                  {line.videoReadiness}
+                </div>
+              )}
+            </div>
+          ))}
+          {summary.blocked
+            .filter((line) => !isMarketGap(line.reason))
+            .map((line) => (
+              <div
+                key={line.platform}
+                aria-disabled="true"
+                className="rounded-xl border border-dashed border-[var(--gray-200)] bg-[var(--gray-50)] p-3 space-y-1 text-[var(--color-text-secondary)]"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{line.label}</span>
+                  <Badge variant="default">Can&apos;t run</Badge>
+                </div>
+                <div className="text-lg font-semibold font-mono">—</div>
+                <div className="text-xs">{line.reason}</div>
+              </div>
+            ))}
+        </div>
+        {summary.blocked
+          .filter((line) => isMarketGap(line.reason))
+          .map((line) => (
+            <p
+              key={line.platform}
+              className="text-xs text-[var(--color-text-secondary)]"
+            >
+              {line.label} isn&apos;t shown for this market —{" "}
+              {String(line.reason).replace(/^Not available:\s*/, "")}
+            </p>
+          ))}
+      </section>
 
       <div className="rounded-xl border border-[var(--gray-200)] px-3 py-2.5 text-xs space-y-1.5">
         <p>
@@ -193,6 +233,15 @@ export function StepReview({
           </p>
         )}
       </div>
+
+      {placementGapsText && (
+        <p
+          className="text-xs text-[var(--color-warning-700)]"
+          aria-label="Placement gaps"
+        >
+          {placementGapsText}
+        </p>
+      )}
 
       {summary.warnings.map((warning) => (
         <AlertCard key={warning} variant="warning" title="Heads-up">

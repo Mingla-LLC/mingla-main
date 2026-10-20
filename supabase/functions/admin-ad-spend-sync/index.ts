@@ -455,7 +455,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -489,6 +489,11 @@ serve(async (req: Request): Promise<Response> => {
       provider_budget_cents: typeof row.provider_budget_cents === "number"
         ? row.provider_budget_cents
         : null,
+      // #3697: a governed budget change moves the enforced cap.
+      amended_provider_budget_cents:
+        typeof row.amended_provider_budget_cents === "number"
+          ? row.amended_provider_budget_cents
+          : null,
       ends_at: typeof row.ends_at === "string" ? row.ends_at : null,
       provider_currency: typeof row.provider_currency === "string"
         ? row.provider_currency
