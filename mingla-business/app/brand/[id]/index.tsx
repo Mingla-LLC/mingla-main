@@ -12,12 +12,11 @@
  * Per spec §3.3.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Linking, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
 import { BrandProfileView } from "../../../src/components/brand/BrandProfileView";
 import { canvas } from "../../../src/constants/designSystem";
 import { useAuth } from "../../../src/context/AuthContext";
@@ -37,6 +36,13 @@ import {
   type BrandStripeRequirementsShape,
   deriveBrandStripePresentation,
 } from "../../../src/utils/brandStripeUiState";
+
+// #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
+// Account tab and Hub layout; a static import here kept it in `__common`.
+const LazyBrandDeleteSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/brand/BrandDeleteSheet");
+  return { default: mod.BrandDeleteSheet };
+});
 
 export default function BrandProfileRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -271,13 +277,17 @@ export default function BrandProfileRoute(): React.ReactElement {
         onOpenLink={handleOpenLink}
         onRequestDelete={handleRequestDelete}
       />
-      <BrandDeleteSheet
-        visible={deleteSheetVisible}
-        brand={brand}
-        accountId={user?.id ?? null}
-        onClose={handleCloseDeleteSheet}
-        onDeleted={handleBrandDeleted}
-      />
+      {deleteSheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandDeleteSheet
+            visible
+            brand={brand}
+            accountId={user?.id ?? null}
+            onClose={handleCloseDeleteSheet}
+            onDeleted={handleBrandDeleted}
+          />
+        </Suspense>
+      ) : null}
     </View>
   );
 }

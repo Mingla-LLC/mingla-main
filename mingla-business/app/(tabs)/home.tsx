@@ -19,6 +19,7 @@
  */
 
 import React, {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -42,7 +43,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { AnalyticsHomeTile } from "../../src/components/home/AnalyticsHomeTile";
@@ -124,6 +124,13 @@ import {
 // cleanly. The full HomeTab body below is unchanged for rank>=20.
 import { ScannerHome } from "../../src/components/scanners/ScannerHome";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
+
+// #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
+// Account tab and Hub layout; a static import here kept it in `__common`.
+const LazyBrandDeleteSheet = React.lazy(async () => {
+  const mod = await import("../../src/components/brand/BrandDeleteSheet");
+  return { default: mod.BrandDeleteSheet };
+});
 
 // ORCH-1143 — LayoutAnimation requires this guard on Android or the live-section
 // accordion collapse won't animate (BusinessTodoToggle.tsx:38-43 precedent).
@@ -1145,13 +1152,17 @@ export default function HomeTab(): React.ReactElement {
         onClose={() => setIsUniversalCreatorOpen(false)}
       />
 
-      <BrandDeleteSheet
-        visible={deleteSheetVisible}
-        brand={brandPendingDelete}
-        accountId={user?.id ?? null}
-        onClose={handleCloseDeleteSheet}
-        onDeleted={handleBrandDeleted}
-      />
+      {deleteSheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandDeleteSheet
+            visible
+            brand={brandPendingDelete}
+            accountId={user?.id ?? null}
+            onClose={handleCloseDeleteSheet}
+            onDeleted={handleBrandDeleted}
+          />
+        </Suspense>
+      ) : null}
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast

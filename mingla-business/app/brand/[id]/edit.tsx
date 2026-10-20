@@ -20,12 +20,11 @@
  * Per spec §3.3.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandDeleteSheet } from "../../../src/components/brand/BrandDeleteSheet";
 import {
   BrandEditView,
   type BrandEditSection,
@@ -43,6 +42,13 @@ import {
 } from "../../../src/utils/coldLoadAuthGates";
 import { joinBrandDescription } from "../../../src/services/brandMapping";
 import { computeDirtyFieldsPatch } from "../../../src/utils/brandPatch";
+
+// #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
+// Account tab and Hub layout; a static import here kept it in `__common`.
+const LazyBrandDeleteSheet = React.lazy(async () => {
+  const mod = await import("../../../src/components/brand/BrandDeleteSheet");
+  return { default: mod.BrandDeleteSheet };
+});
 
 // ORCH-1256 — validate the `?section=` deep-link param against the closed
 // BrandEditSection set. Anything else (bogus values, casing drift) →
@@ -187,13 +193,17 @@ export default function BrandEditRoute(): React.ReactElement {
         onRequestDelete={handleRequestDelete}
         initialSection={initialSection}
       />
-      <BrandDeleteSheet
-        visible={deleteSheetVisible}
-        brand={brand}
-        accountId={user?.id ?? null}
-        onClose={handleCloseDeleteSheet}
-        onDeleted={handleBrandDeleted}
-      />
+      {deleteSheetVisible ? (
+        <Suspense fallback={null}>
+          <LazyBrandDeleteSheet
+            visible
+            brand={brand}
+            accountId={user?.id ?? null}
+            onClose={handleCloseDeleteSheet}
+            onDeleted={handleBrandDeleted}
+          />
+        </Suspense>
+      ) : null}
     </View>
   );
 }

@@ -18,12 +18,12 @@
  * `onComplete={() => onClose()}` semantics).
  */
 
-import React, { useCallback } from "react";
+import React, { Suspense, useCallback } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandCreationFlow } from "../../src/components/brand/BrandCreationFlow";
+import { LazyBrandCreationFlow } from "../../src/components/brand/LazyBrandCreationFlow";
 import { canvas } from "../../src/constants/designSystem";
 
 export default function BrandNewRoute(): React.ReactElement {
@@ -54,7 +54,9 @@ export default function BrandNewRoute(): React.ReactElement {
     <View
       style={{ flex: 1, paddingTop: insets.top, backgroundColor: canvas.discover }}
     >
-      <BrandCreationFlow onComplete={handleComplete} onCancel={handleCancel} />
+      <Suspense fallback={null}>
+        <LazyBrandCreationFlow onComplete={handleComplete} onCancel={handleCancel} />
+      </Suspense>
     </View>
   );
 }
