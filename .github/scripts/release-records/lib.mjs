@@ -325,6 +325,8 @@ export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
 /**
  * The bot's own record comment for a pull request among an issue's comments,
  * or undefined: one per pull request per issue, found by its marker.
+ * Test helper only: record.mjs uses recordCommentsFor, which also finds the
+ * duplicates two racing runs can leave.
  */
 export function recordCommentFor(comments, pr) {
   const marker = `<!-- ${RECORD_MARKER_PREFIX}${pr} -->`;
@@ -340,6 +342,27 @@ export function recordCommentsFor(comments, pr) {
   return (comments ?? [])
     .filter((c) => c?.user?.login === "github-actions[bot]" && String(c?.body ?? "").includes(marker))
     .sort((a, b) => Number(a.id) - Number(b.id));
+}
+
+/**
+ * #3980 W2 rework: this run's record merged with the record already on the
+ * issue, read again right before writing. Runs in different queues (a "Live
+ * check:" comment and a deploy status for the same merge) can each start
+ * before the other wrote; the live check one of them saw is never lost: of
+ * the two, the newer one made after the merge is kept, and the problems are
+ * worked out again.
+ */
+export function mergeRecordData(fresh, previous) {
+  if (!previous || typeof previous !== "object" || previous.pr !== fresh?.pr) return fresh;
+  const after = (lc) => lc && typeof lc === "object" && typeof lc.url === "string" && lc.url !== ""
+    && !Number.isNaN(Date.parse(lc.at)) && Date.parse(lc.at) >= Date.parse(fresh.merged_at);
+  const mine = after(fresh.live_check) ? fresh.live_check : null;
+  const theirs = after(previous.live_check) ? previous.live_check : null;
+  const live = !mine ? theirs : !theirs ? mine : Date.parse(theirs.at) > Date.parse(mine.at) ? theirs : mine;
+  if (live === fresh.live_check) return fresh;
+  const out = { ...fresh, live_check: live };
+  out.problems = recordProblems(out);
+  return out;
 }
 
 /** The JSON block, escaped so the HTML comment cannot be closed early. */
