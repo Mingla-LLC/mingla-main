@@ -25,11 +25,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { backgroundWarmGlow, colors, spacing } from "../constants/designSystem";
 import {
   createAppVersionCoordinator,
+  resolveGateLayout,
   type VersionGateSnapshot,
 } from "../services/appVersionPolicy";
 import { VersionForegroundStateMachine } from "../services/appVersionForeground";
 
 const STORE_TAP_LOCK_MS = 700;
+/** #2107 A4 — shown only when the policy carries no message of its own. */
+const FALLBACK_BODY =
+  "This version is no longer supported. Update now to keep your plans, chats, and bookings working properly.";
 
 export function MandatoryUpdateGate({
   children,
@@ -51,6 +55,7 @@ export function MandatoryUpdateGate({
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   const foregroundStateRef = useRef(new VersionForegroundStateMachine());
+  const childrenMountedRef = useRef(false);
 
   useEffect(() => {
     void coordinator.check(true);
@@ -62,17 +67,48 @@ export function MandatoryUpdateGate({
         snapshotRef.current.phase === "required",
       );
       if (decision !== null) {
-        void coordinator.check(true);
+        // #2107 A2 — a foreground recheck runs BEHIND the app. It never
+        // publishes `checking`, so the tree (navigation, a checkout in
+        // progress) stays mounted; only a confirmed `required` covers it.
+        void coordinator.check(false);
       }
     });
     return () => subscription.remove();
   }, [coordinator]);
 
-  if (Platform.OS === "web" || snapshot.phase === "allowed") {
-    return <>{children}</>;
+  if (Platform.OS === "web") return <>{children}</>;
+  return resolveGateLayers(snapshot, childrenMountedRef, children);
+}
+
+/**
+ * #2107 A2 — once the app tree has mounted it is never unmounted by this gate.
+ * Before the first mount, the cold-launch veil and a cold `required` render
+ * alone (the app must not boot behind a store screen). After it, `required`
+ * is an overlay above the still-mounted tree.
+ */
+function resolveGateLayers(
+  snapshot: VersionGateSnapshot,
+  childrenMountedRef: React.MutableRefObject<boolean>,
+  children: React.ReactNode,
+): React.ReactElement {
+  if (snapshot.phase === "allowed") childrenMountedRef.current = true;
+  switch (resolveGateLayout(snapshot.phase, childrenMountedRef.current)) {
+    case "veil":
+      return <VersionDecisionVeil />;
+    case "store_screen":
+      return <MandatoryUpdateScreen snapshot={snapshot} />;
+    case "app_with_store_overlay":
+      return (
+        <>
+          {children}
+          <View style={styles.overlay}>
+            <MandatoryUpdateScreen snapshot={snapshot} />
+          </View>
+        </>
+      );
+    case "app":
+      return <>{children}</>;
   }
-  if (snapshot.phase === "checking") return <VersionDecisionVeil />;
-  return <MandatoryUpdateScreen snapshot={snapshot} />;
 }
 
 function VersionDecisionVeil(): React.ReactElement {
@@ -180,8 +216,9 @@ function MandatoryUpdateScreen({
             Update Mingla to continue
           </Text>
           <Text style={styles.body}>
-            This version is no longer supported. Update now to keep your plans,
-            chats, and bookings working properly.
+            {decision.message.trim().length > 0
+              ? decision.message
+              : FALLBACK_BODY}
           </Text>
           <Text style={styles.context}>
             Version {decision.minimumVersion} or later is required.
@@ -220,6 +257,7 @@ const styles = StyleSheet.create({
     backgroundColor: backgroundWarmGlow,
   },
   veilLogo: { width: 88, height: 31 },
+  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 10_001 },
   page: { flex: 1, backgroundColor: backgroundWarmGlow },
   scrollContent: {
     flexGrow: 1,

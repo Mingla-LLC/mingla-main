@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
+import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
 import { WebView } from "react-native-webview";
 
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
@@ -36,6 +37,10 @@ export function BrandGroupFilePreviewModal({ file, onClose }: { file: PreviewFil
   }, [file]);
   const videoSource = useMemo(() => request && file?.mime.startsWith("video/") ? { ...request, contentType: "auto" as const } : null, [file?.mime, request]);
   const player = useVideoPlayer(videoSource, (instance) => { instance.loop = false; });
+  // #2107: an in-app restart releases this player before reloadAsync. Nothing
+  // here calls the player from JS; if the restart does not happen the VideoView
+  // keeps its still frame and the native controls.
+  useEffect(() => registerVideoPlayerForReload(player), [player]);
   const size = file?.size ? `${(file.size / 1024 / 1024).toFixed(file.size > 1024 * 1024 ? 1 : 2)} MB` : null;
 
   return (
