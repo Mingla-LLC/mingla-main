@@ -385,9 +385,15 @@ begin
     ('39890000-0000-4000-b500-000000000007', '39890000-0000-4000-b600-000000000007', 'RT Lost Near Brand', 'rt3980-lost-near', 'Lagos', null, '9990099', now() - interval '5 minutes');
   set local session_replication_role = origin;
   v := public.ops_brand_autolink();
-  perform pg_temp.rt_check('RT-D11', 'the same Nigerian number, national form on the card and +234 on the brand, links',
-    (select coalesce(brand_id::text, 'none') from public.crm_records where id = '39890000-0000-4000-c200-000000000001'),
-    '39890000-0000-4000-b500-000000000001');
+  -- #3980 W3 rework 3 [TEST-MOD-APPROVED #3980]: this card has no region or place, so its national 0809 is
+  -- never read in the brand's +234 by itself; a person picks (one pick card naming it) and nothing links.
+  -- The link where the card's country is known is pinned in issue_3980_synced_w3_rework2.implementor.
+  perform pg_temp.rt_check('RT-D11', 'the same Nigerian number, national form on a card with no region and +234 on the brand, is a pick card, not a link',
+    (select coalesce(brand_id::text, 'none') from public.crm_records where id = '39890000-0000-4000-c200-000000000001') || '/' ||
+    (select count(*) from public.ops_work_cards w join public.ops_work_links l on l.card_id = w.id and l.kind = 'host'
+      where w.auto_key = 'brand_pick:39890000-0000-4000-b500-000000000001' and w.status <> 'done'
+        and l.target_id = '39890000-0000-4000-c200-000000000001')::text,
+    'none/1');
   perform pg_temp.rt_check('RT-D11', 'two brands share one card''s number: the card keeps the first brand',
     (select coalesce(brand_id::text, 'none') from public.crm_records where id = '39890000-0000-4000-c200-000000000003'),
     '39890000-0000-4000-b500-000000000002');
@@ -412,8 +418,9 @@ begin
     'none/lost/1');
   v := public.ops_brand_autolink();
   v := public.ops_brand_autolink();
+  -- #3980 W3 rework 3 [TEST-MOD-APPROVED #3980]: 6, not 5: RT Same Country now has its pick card (above).
   perform pg_temp.rt_check('RT-D11', 'two more runs make no second card for any of these brands',
-    (select count(*) from public.ops_work_cards where auto_key ~ '^brand_(pick|lost):39890000-0000-4000-b500')::text, '5');
+    (select count(*) from public.ops_work_cards where auto_key ~ '^brand_(pick|lost):39890000-0000-4000-b500')::text, '6');
   perform pg_temp.rt_check('RT-D11', 'and no brand is ever linked to a Lost card',
     (select count(*) from public.crm_records where stage = 'lost' and brand_id is not null and name like 'RT %')::text, '0');
 end;

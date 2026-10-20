@@ -147,8 +147,12 @@ begin
     pg_temp.w3t2_same('07911 123456', 'GB', '+44 7911 123456', null), 'true');
   perform pg_temp.w3t2_check('N2-T', 'a London card +44 (0)7911 and a London brand 07911 are the same',
     pg_temp.w3t2_same('+44 (0)7911 123456', 'GB', '07911 123456', 'GB'), 'true');
-  perform pg_temp.w3t2_check('N2-T', 'a card with no country 087 and +353 87 take the 3-digit Irish code from that number',
-    pg_temp.w3t2_same('087 123 4567', null, '+353 87 123 4567', null), 'true');
+  -- #3980 W3 rework 3 [TEST-MOD-APPROVED #3980]: a number on a side with no country is never read in a
+  -- country borrowed from the other side (here the +353 of the brand's number), so it is not the same by
+  -- itself; a person picks. The Irish code is still read at its real length where the card is Irish:
+  -- issue_3980_synced_w3_rework3.implementor (IE card 087 and +353 87).
+  perform pg_temp.w3t2_check('N2-T', 'a card with no country 087 is never read in the +353 of the brand''s number',
+    pg_temp.w3t2_same('087 123 4567', null, '+353 87 123 4567', null), 'false');
   perform pg_temp.w3t2_check('N2-T', 'a US card 1-901 (11 digits) and its +1 form are the same',
     pg_temp.w3t2_same('1 901 234 5678', 'US', '+1 901 234 5678', 'US'), 'true');
   perform pg_temp.w3t2_check('N2-T', 'a US card and a Canadian brand share +1',
