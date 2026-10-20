@@ -1,0 +1,99 @@
+name: Release records
+
+# Issue #3980 — the synced system's GitHub side.
+#
+# PR links: every pull request description carries an issue link and a
+# "Feature Guide:" line. For its first week this job only reminds (one comment
+# on the pull request); after that it fails when a line is missing. It never
+# fails a pull request opened before it landed, or a bot's pull request.
+#
+# Release record: when a pull request merges into main (admin squash merges
+# included), the merge bot writes one release-record comment on each linked
+# issue, or on the pull request when none is linked, and refreshes it when the
+# Vercel deploys, the edge function deploy, the production migrations status
+# or a person's "Live check:" comment change. It is the only writer of those
+# comments; Mingla reads them back every 5 minutes.
+#
+# Safety: both jobs check out the BASE branch only (never the pull request's
+# code), read the event from the event file inside the scripts, and never
+# interpolate event text into a shell command.
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review, closed]
+  status: {}
+  workflow_run:
+    workflows: ["Deploy Supabase Edge Functions"]
+    types: [completed]
+  issue_comment:
+    types: [created, edited]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to refresh
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-records-${{ github.event.pull_request.number || github.event.issue.number || github.event.sha || github.event.workflow_run.head_sha || inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  pr-links:
+    name: PR links (issue and Feature Guide)
+    if: github.event_name == 'pull_request_target' && github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/release-records
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Check the issue link and the Feature Guide line
+        run: node .github/scripts/release-records/pr-links.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-record:
+    name: Release record
+    if: >-
+      (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged == true)
+      || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations'))
+      || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:')
+          && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: read
+      checks: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/release-records
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Write or refresh the release record
+        run: node .github/scripts/release-records/record.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
