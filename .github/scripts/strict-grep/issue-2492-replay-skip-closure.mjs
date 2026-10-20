@@ -925,7 +925,7 @@ function selfTest() {
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
       if (!lane) record("M-5", "the #1931 lane VANISHED when rewritten to the basename nested-quote form (R-2)");
       else if (lane.subjectKind !== "basename") record("M-5", `subject read as "${lane.subjectKind}", expected "basename"`);
-      else if (lane.globs.length !== 26) record("M-5", `${lane.globs.length} globs extracted, expected 25`);
+      else if (lane.globs.length !== 26) record("M-5", `${lane.globs.length} globs extracted, expected 26`);
       else if (out.lanes.length !== 4) record("M-5", `inventory collapsed to ${out.lanes.length} lanes, expected 4`);
       else if (out.violations.length) record("M-5", `clean tree flagged after a semantics-preserving rewrite: ${out.violations.map((v) => v.check).join(",")}`);
     }
@@ -985,7 +985,7 @@ function selfTest() {
     if (mutate("M-9", tree, PINNED_LANE, "            esac", "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac")) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 25) record("M-9", `expected the 3-line branch to stay unread (branchCount 25), got ${lane.branchCount}`);
+      if (lane.branchCount !== 26) record("M-9", `expected the 3-line branch to stay unread (branchCount 26), got ${lane.branchCount}`);
       else if (!fired(out, "C-4c")) {
         record("M-9", "C-4c did NOT fire on a lane whose case region holds a branch the parser cannot read — under-counting is invisible");
       } else if (fired(out, "C-4b")) {
@@ -1001,8 +1001,8 @@ function selfTest() {
     if (mutate("M-10", tree, PINNED_LANE, "            esac", "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac")) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 26) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 26 (R-5)`);
-      else if (lane.globs.length !== 27) record("M-10", `${lane.globs.length} globs, expected 26`);
+      if (lane.branchCount !== 27) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 27 (R-5)`);
+      else if (lane.globs.length !== 27) record("M-10", `${lane.globs.length} globs, expected 27`);
       else if (out.violations.length) record("M-10", `a readable two-line branch flagged: ${out.violations.map((v) => v.check).join(",")}`);
     }
   }

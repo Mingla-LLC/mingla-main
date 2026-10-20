@@ -605,7 +605,7 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 26, "R-5 must read the two-line branch form");
+    assert.equal(lane.branchCount, 27, "R-5 must read the two-line branch form");
     assert.equal(lane.globs.length, 27, "and extract its glob");
     assert.ok(
       lane.skipped.includes(REAL_UNSKIPPED),
@@ -628,7 +628,7 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 25, "R-5 is scoped to the two-line form; a three-line branch stays unread");
+    assert.equal(lane.branchCount, 26, "R-5 is scoped to the two-line form; a three-line branch stays unread");
     assert.equal(
       lane.skipped.includes(REAL_UNSKIPPED),
       false,
