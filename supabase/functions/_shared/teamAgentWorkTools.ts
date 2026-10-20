@@ -679,7 +679,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "runway_report",
     title: "Runway report",
     description:
-      "Upcoming events by runway (how many days they were public before they start): full launch, tight, organic only, not live yet and missed, with the ones at risk first. " +
+      "Upcoming events in four plain states: Ready to promote (public 28 days or more before it starts), Promote now (21 to 27 days), Too late for promo (under 21 days, or not public 3 weeks before it starts: no giveaway or ads) and Not live yet (with the date it must go live by), with the ones at risk first. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({ from: DATE, to: DATE, today: DATE }),
     annotations: READ,
@@ -856,6 +856,19 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_attention: { tools: ["list_work", "my_work"] },
   ops_recent_changes: {
     excluded: "the agent reads what Mingla did by itself with read_log",
+  },
+  // #3980 synced program, Wave 4: the owner's opt-in backfills.
+  ops_roadmap_links_preview: {
+    excluded: "only the owner, in person, links roadmap cards to GitHub in bulk",
+  },
+  ops_roadmap_links_confirm: {
+    excluded: "only the owner, in person, links roadmap cards to GitHub in bulk",
+  },
+  ops_brand_cards_preview: {
+    excluded: "only the owner, in person, adds host cards for brands in bulk",
+  },
+  ops_brand_cards_confirm: {
+    excluded: "only the owner, in person, adds host cards for brands in bulk",
   },
 };
 

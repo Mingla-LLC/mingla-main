@@ -470,6 +470,7 @@ const LOG_ACTIONS = {
   brand_card_added: "added a host card for a brand",
   sprint_moved: "moved a card to this week",
   setting_changed: "changed a setting",
+  backfill_confirmed: "confirmed a backfill",
 };
 
 export function logActionWords(action) {
@@ -1070,4 +1071,96 @@ export function needsYouStartTab({ waiting = 0, draftNeeded = 0, needsPerson = 0
 /** Nothing anywhere needs a person (from loaded counts): the page says so. */
 export function needsYouCaughtUp(counts) {
   return !!counts?.loaded && Number(counts?.total || 0) === 0;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #3980 Wave 4 (P3): the owner's opt-in backfills.
+// ---------------------------------------------------------------------------
+
+export const ROADMAP_BACKFILL_MAX = 50;
+
+/**
+ * Lines like "Host payouts next day → #3801" (or "->", "=>") become
+ * { links: [{ card_id, issue, line }], problems: [{ line, text, words }] }.
+ * The card is its id or its exact title (any case); the issue is whatever
+ * follows the last arrow, checked on the server. Blank lines are skipped.
+ */
+export function parseRoadmapLinkLines(text, cards) {
+  const list = Array.isArray(cards) ? cards : [];
+  const links = [];
+  const problems = [];
+  const lines = String(text ?? "").split(/\r?\n/);
+  lines.forEach((raw, i) => {
+    const line = i + 1;
+    const value = raw.trim();
+    if (!value) return;
+    const m = /^(.*?)\s*(?:→|->|=>)\s*([^→]*?)$/.exec(value);
+    const name = (m ? m[1] : value).trim();
+    const issue = m ? m[2].trim() : "";
+    if (!m || !issue) {
+      problems.push({ line, text: value, words: "Add the issue after an arrow, like → #123." });
+      return;
+    }
+    let found = [];
+    if (UUID_RE.test(name)) found = list.filter((c) => String(c.id).toLowerCase() === name.toLowerCase());
+    else found = list.filter((c) => String(c.public_title || "").trim().toLowerCase() === name.toLowerCase());
+    if (found.length === 0) {
+      problems.push({ line, text: value, words: `No roadmap card is called “${name}”.` });
+      return;
+    }
+    if (found.length > 1) {
+      problems.push({ line, text: value, words: `${found.length} roadmap cards are called “${name}”. Use the card’s id instead.` });
+      return;
+    }
+    links.push({ card_id: found[0].id, issue, line });
+  });
+  if (links.length > ROADMAP_BACKFILL_MAX) {
+    problems.push({ line: 0, text: "", words: `Preview at most ${ROADMAP_BACKFILL_MAX} links at a time; this has ${links.length}.` });
+  }
+  return { links, problems };
+}
+
+/** The chip of a roadmap backfill row: { label, tone }. */
+export function roadmapBackfillChip(status) {
+  switch (status) {
+    case "ready": return { label: "Ready", tone: "success" };
+    case "linked": return { label: "Linked", tone: "success" };
+    case "already_linked": return { label: "Already linked", tone: "default" };
+    case "skipped": return { label: "Skipped", tone: "warning" };
+    default: return { label: "Can’t link", tone: "error" };
+  }
+}
+
+export function roadmapBackfillResultWords(result) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const linked = n(result?.linked);
+  return `${linked} ${linked === 1 ? "card" : "cards"} linked, ${n(result?.skipped)} skipped.${result?.replayed ? " This was already done; nothing changed again." : ""}`;
+}
+
+/** What the owner sees for one brand's proposed action. */
+export const BRAND_ACTIONS = {
+  link: { label: "Link", tone: "success" },
+  create: { label: "Add card", tone: "info" },
+  pick: { label: "Person picks", tone: "warning" },
+  reopen: { label: "Reopen?", tone: "warning" },
+};
+
+export function brandActionChip(action) {
+  return BRAND_ACTIONS[action] || { label: "Nothing to do", tone: "default" };
+}
+
+/** Ticked to start with: the rows that link or add a card by themselves. */
+export function brandDefaultPicked(rows) {
+  return (Array.isArray(rows) ? rows : []).filter((r) => r.action === "link" || r.action === "create").map((r) => r.brand_id);
+}
+
+/** A pick or reopen row whose card already waits for a person adds nothing. */
+export function brandSelectable(row) {
+  if (!row || !BRAND_ACTIONS[row.action]) return false;
+  return !((row.action === "pick" || row.action === "reopen") && row.open_card);
+}
+
+export function brandResultWords(result) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return `${n(result?.linked)} linked, ${n(result?.created)} added, ${n(result?.skipped)} left for a person.${result?.replayed ? " This was already done; nothing changed again." : ""}`;
 }

@@ -33,7 +33,8 @@ import { PeopleField } from "../components/people/PeopleField";
 import { usePeopleDirectory } from "../hooks/usePeopleDirectory";
 import { useOpsPoll } from "../hooks/useOpsWork";
 import * as ops from "../services/opsService";
-import { opsErrorWords } from "../lib/opsModel";
+import { brandActionChip, brandDefaultPicked, brandResultWords, brandSelectable, opsErrorWords, requestKey } from "../lib/opsModel";
+import { OpsChip } from "../components/ops/OpsChip";
 
 const PAGE_ID = "team-dashboard";
 
@@ -87,6 +88,119 @@ function AutomaticSteps({ online }) {
     </section>
   );
 }
+// #3980 Wave 4 (P3) — "Brands without a host card". The owner previews what
+// brand auto-link would do for every brand that has no host card (nothing is
+// written), ticks the brands to act on and confirms. The server runs the same
+// brand auto-link for exactly those brands, once per confirm.
+function BrandCardsBackfill({ online }) {
+  const { access } = useAuth();
+  const settingsRead = useOpsPoll(() => ops.fetchOpsSettings(), { key: `${access?.email || ""}|ops-settings`, intervalMs: 0 });
+  const canEdit = !!settingsRead.data?.can_edit;
+  const [count, setCount] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [state, setState] = useState("idle");
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [confirmKey, setConfirmKey] = useState(null);
+  useEffect(() => {
+    if (!canEdit) return undefined;
+    let live = true;
+    ops.previewBrandCards().then((answer) => { if (live) setCount(Number(answer?.totals?.total ?? 0)); }).catch(() => { if (live) setCount(null); });
+    return () => { live = false; };
+  }, [canEdit]);
+  if (!canEdit) return null;
+  const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+  const chosen = picked.filter((id) => rows.some((r) => r.brand_id === id && brandSelectable(r)));
+  const load = async () => {
+    setState("loading"); setError(null); setResult(null);
+    try {
+      const answer = await ops.previewBrandCards();
+      setPreview(answer);
+      setCount(Number(answer?.totals?.total ?? 0));
+      setPicked(brandDefaultPicked(answer?.rows).filter((id) => (answer?.rows || []).some((r) => r.brand_id === id && brandSelectable(r))));
+      setState("preview");
+    } catch (e) { setError(e); setState("idle"); }
+  };
+  const confirm = async () => {
+    if (state !== "confirm" || chosen.length === 0) return;
+    setState("working"); setError(null);
+    try {
+      const answer = await ops.confirmBrandCards(chosen, confirmKey);
+      setResult(answer);
+      setConfirmKey(null);
+      const fresh = await ops.previewBrandCards();
+      setPreview(fresh); setCount(Number(fresh?.totals?.total ?? 0)); setPicked([]);
+      setState("preview");
+    } catch (e) { setError(e); setState("confirm"); }
+  };
+  const totals = preview?.totals || {};
+  return (
+    <section aria-labelledby="brand-cards-heading" className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
+      <h3 id="brand-cards-heading" className="border-b border-[var(--gray-200)] px-4 py-3.5 text-[15px] font-semibold text-[var(--color-text-primary)] sm:px-5">
+        Brands without a host card{count !== null ? ` (${count})` : ""}
+      </h3>
+      <div className="grid min-w-0 grid-cols-1 gap-4 px-4 py-3 sm:px-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="break-normal text-[13px] text-[var(--color-text-secondary)]">Brands on Mingla with no host card yet. Preview shows what Mingla would do for each: link the one card with exactly its email, handle or phone, add a new card, or leave it for a person to pick. Nothing changes until you confirm.</p>
+          {error && <p role="alert" className="break-words text-[13px] text-[var(--color-error-700)]">{opsErrorWords(error)}</p>}
+          {result && <p role="status" className="break-normal text-[13px] font-semibold text-[var(--color-text-primary)]">{brandResultWords(result)}</p>}
+          {preview && (
+            <div className="flex min-w-0 flex-wrap gap-1.5">
+              <OpsChip tone="success">{totals.link || 0} link</OpsChip>
+              <OpsChip tone="info">{totals.create || 0} add card</OpsChip>
+              <OpsChip tone="warning">{(totals.pick || 0) + (totals.reopen || 0)} for a person</OpsChip>
+            </div>
+          )}
+          {state === "confirm" || state === "working" ? (
+            <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--color-warning-100)] bg-[var(--color-warning-50)] p-3">
+              <p className="break-normal text-[13px] text-[var(--color-warning-700)]">Act on {chosen.length} {chosen.length === 1 ? "brand" : "brands"} now? Each is checked again first; links and new cards are logged on the host card.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button className="min-h-11" disabled={!online || state === "working" || chosen.length === 0} onClick={confirm}>{state === "working" ? "Working…" : `Yes, confirm ${chosen.length}`}</Button>
+                <Button variant="ghost" className="min-h-11" disabled={state === "working"} onClick={() => setState("preview")}>Not yet</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" className="min-h-11" disabled={!online || state === "loading"} onClick={load}>{state === "loading" ? "Loading…" : preview ? "Preview again" : "Preview"}</Button>
+              {preview && <Button className="min-h-11" disabled={!online || chosen.length === 0} onClick={() => { setConfirmKey(requestKey("brand_cards")); setState("confirm"); }}>Confirm selected ({chosen.length})</Button>}
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          {!preview ? (
+            <p className="break-normal text-[13px] text-[var(--color-text-tertiary)]">Press Preview to see each brand, what would happen and the matching card.</p>
+          ) : rows.length === 0 ? (
+            <p className="text-[13px] text-[var(--color-text-secondary)]">Every brand has a host card.</p>
+          ) : (
+            <ul className="flex max-h-[440px] min-w-0 flex-col divide-y divide-[var(--gray-100)] overflow-y-auto rounded-lg border border-[var(--gray-200)]">
+              {rows.map((r) => {
+                const chip = brandActionChip(r.action);
+                const can = brandSelectable(r);
+                return (
+                  <li key={r.brand_id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 px-3 py-2">
+                    <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0" disabled={!can || state === "working"} checked={can && picked.includes(r.brand_id)}
+                      aria-label={`${chip.label}: ${r.name}`}
+                      onChange={(e) => setPicked(e.target.checked ? [...picked, r.brand_id] : picked.filter((id) => id !== r.brand_id))} />
+                    <span className="min-w-0">
+                      <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="min-w-0 break-normal text-[13px] font-medium text-[var(--color-text-primary)] [overflow-wrap:anywhere]">{r.name}</span>
+                        <OpsChip tone={chip.tone}>{chip.label}</OpsChip>
+                      </span>
+                      <span className="block break-words text-[12px] text-[var(--color-text-secondary)]">{r.words}</span>
+                      {r.open_card && <span className="block break-words text-[12px] text-[var(--color-text-tertiary)]">A card already asks a person: {r.open_card.title}</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const UNDO_MS = 8000;
 const OFFLINE_WORDS = "You're offline. You can look around, but the numbers won't update and targets can't be changed until you're back.";
 const NOT_READY_WORDS = "The team dashboard isn't switched on yet. Try again in a few minutes, or tell an admin.";
@@ -237,6 +351,7 @@ export function TeamDashboardPage() {
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
 
       <AutomaticSteps online={online} />
+      <BrandCardsBackfill online={online} />
       <TeamOpsPanels online={online} />
 
       {error ? (

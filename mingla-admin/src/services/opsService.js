@@ -131,3 +131,12 @@ export const fetchHostNext = (recordIds, today) =>
 export const fetchAttention = (today) => call(() => supabase.rpc("ops_attention", { p_today: today || null }));
 export const fetchRecentChanges = (kind, id, hours) =>
   call(() => supabase.rpc("ops_recent_changes", { p_kind: kind, p_id: id, p_hours: hours || 72 }));
+
+// Issue #3980 Wave 4 (P3): the owner's opt-in backfills. Previews write
+// nothing; a confirm runs once per request key.
+export const previewRoadmapLinks = (links) => call(() => supabase.rpc("ops_roadmap_links_preview", { p_links: links }));
+export const confirmRoadmapLinks = (links, requestKey) =>
+  call(() => supabase.rpc("ops_roadmap_links_confirm", { p_links: links, p_request_key: requestKey }));
+export const previewBrandCards = () => call(() => supabase.rpc("ops_brand_cards_preview"));
+export const confirmBrandCards = (brandIds, requestKey) =>
+  call(() => supabase.rpc("ops_brand_cards_confirm", { p_brand_ids: brandIds, p_request_key: requestKey }));

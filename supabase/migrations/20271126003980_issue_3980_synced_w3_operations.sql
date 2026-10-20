@@ -662,20 +662,32 @@ $$;
 -- crm_activity. Called by ops_reconcile while the owner has brand cards
 -- switched on; at most 25 brands a run, only brands made after the switch.
 -- ---------------------------------------------------------------------------
-CREATE FUNCTION public.ops_brand_autolink_one(p_brand_id uuid) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+-- The decision, and only the decision: what brand auto-link would do for one
+-- brand, read without writing anything. ops_brand_autolink_one acts on it and
+-- the owner's preview (Wave 4) shows it, so both always follow the same rules.
+--   gone      the brand is deleted or does not exist
+--   has_card  a host card already carries the brand
+--   link      exactly one host card has exactly its email, handle or whole
+--             phone number, it carries no other brand and nothing else
+--             matches at all
+--   reopen    that one exact match is a Lost card: a person decides
+--   create    nothing matches and no host card has the brand's name
+--   pick      everything else: two or more matches, only near matches, the
+--             one match already linked to another brand, or a card of that
+--             name
+CREATE FUNCTION public.ops_brand_match(p_brand_id uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
-  c_actor constant text := 'system@usemingla.com';
-  b record; v_idents jsonb := '[]'::jsonb; v_key text; v_hits jsonb; v_rec public.crm_records; v_kind text; v_res jsonb;
-  v_boss text := public.ops_owner_email(); v_names text; v_exact uuid[]; v_cands jsonb; v_contact text; v_how text;
-  v_sl record;
+  b record; v_idents jsonb := '[]'::jsonb; v_key text; v_kind text; v_hits jsonb; v_rec public.crm_records;
+  v_exact uuid[]; v_names text; v_contact text; v_how text; v_brand jsonb;
 BEGIN
   SELECT br.id, br.name, br.contact_email, br.contact_phone, br.account_id, br.social_links INTO b
     FROM public.brands br WHERE br.id = p_brand_id AND br.deleted_at IS NULL;
-  IF NOT FOUND THEN RETURN jsonb_build_object('status', 'gone'); END IF;
+  IF NOT FOUND THEN RETURN jsonb_build_object('status', 'gone', 'brand', jsonb_build_object('id', p_brand_id)); END IF;
+  v_brand := jsonb_build_object('id', b.id, 'name', b.name);
   IF EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = b.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL) THEN
-    RETURN jsonb_build_object('status', 'has_card');
+    RETURN jsonb_build_object('status', 'has_card', 'brand', v_brand);
   END IF;
   -- The brand's contact email, contact phone, its account's sign-in email
   -- and the handles on its social links.
@@ -714,72 +726,117 @@ BEGIN
   IF cardinality(v_exact) = 1 AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_hits) h
                                                WHERE (h->'record'->>'id')::uuid <> v_exact[1]) THEN
     SELECT * INTO v_rec FROM public.crm_records c
-     WHERE c.id = v_exact[1] AND c.deleted_at IS NULL AND c.pipeline = 'hosts' FOR UPDATE;
+     WHERE c.id = v_exact[1] AND c.deleted_at IS NULL AND c.pipeline = 'hosts';
     SELECT CASE WHEN bool_or(i.kind = 'email' AND i.value_key = w->>'value_key') THEN 'email'
                 WHEN bool_or(i.kind = 'phone') THEN 'phone' ELSE 'handle' END INTO v_kind
       FROM public.crm_record_identifiers i JOIN jsonb_array_elements(v_idents) w ON w->>'kind' = i.kind
      WHERE i.record_id = v_rec.id;
     -- A Lost card is never reopened silently: a person decides.
     IF v_rec.id IS NOT NULL AND v_rec.stage = 'lost' THEN
-      v_res := public.ops_auto_card_upsert('brand_lost:' || b.id, jsonb_build_object(
-        'title', left(format('Reopen %s? %s signed up on Mingla', v_rec.name, b.name), 160),
-        'instructions', left(format('%s signed up on Mingla with the same %s as %s, which is Lost. Reopen that card and link the brand if it is the same host, or leave it Lost and add a new card.',
-                                    b.name, v_kind, v_rec.name), 4000),
-        'done_means', left(format('%s is linked to a host card, or it is decided that %s stays Lost.', b.name, v_rec.name), 300),
-        'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END, 'watchers', '[]'::jsonb,
-        'due_on', public.ops_today(NULL) + 1,
-        'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', b.id), jsonb_build_object('kind', 'host', 'id', v_rec.id))),
-        'task', NULL);
-      RETURN jsonb_build_object('status', 'ask_reopen', 'card', v_res);
+      RETURN jsonb_build_object('status', 'reopen', 'brand', v_brand, 'matched', v_kind,
+        'record', jsonb_build_object('id', v_rec.id, 'name', v_rec.name, 'stage', v_rec.stage));
     END IF;
     IF v_rec.id IS NOT NULL AND v_rec.brand_id IS NULL THEN
-      UPDATE public.crm_records SET brand_id = b.id, updated_by = c_actor, updated_at = clock_timestamp() WHERE id = v_rec.id;
-      INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body)
-      VALUES (v_rec.id, 'note', NULL, 'system',
-              left(format('Brand %s linked by itself: same %s as this card.', b.name, v_kind), 4000));
-      PERFORM public.crm_apply_brand_link(v_rec.id);
-      PERFORM public.ops_log_write(c_actor, 'system', 'brand_linked', 'info', NULL, 'crm_record', v_rec.id,
-        format('Brand %s linked by itself to %s: same %s.', b.name, v_rec.name, v_kind),
-        jsonb_build_object('brand_id', b.id, 'matched', v_kind));
-      RETURN jsonb_build_object('status', 'linked', 'record_id', v_rec.id);
+      RETURN jsonb_build_object('status', 'link', 'brand', v_brand, 'matched', v_kind,
+        'record', jsonb_build_object('id', v_rec.id, 'name', v_rec.name, 'stage', v_rec.stage));
     END IF;
   END IF;
 
-  IF jsonb_array_length(v_hits) = 0 AND cardinality(v_exact) = 0 THEN
-    -- The new card keeps the brand's email or phone as its contact.
+  IF jsonb_array_length(v_hits) = 0 AND cardinality(v_exact) = 0
+     AND NOT EXISTS (SELECT 1 FROM public.crm_records c WHERE c.pipeline = 'hosts' AND c.deleted_at IS NULL
+                        AND c.name_key = public.crm_name_key(left(b.name, 200))) THEN
+    -- The new card keeps the brand's email or phone as its contact. It starts
+    -- in Onboarded, or Live when the brand already has a public listing.
     v_contact := COALESCE(NULLIF(btrim(COALESCE(b.contact_email, '')), ''), NULLIF(btrim(COALESCE(b.contact_phone, '')), ''),
                           (SELECT NULLIF(btrim(u.email::text), '') FROM auth.users u WHERE u.id = b.account_id));
-    v_res := public.crm_record_create_core('hosts',
-      jsonb_strip_nulls(jsonb_build_object('name', left(b.name, 200), 'brand_id', b.id, 'source', 'inbound', 'owners', '[]'::jsonb,
-                                           'contact', left(v_contact, 200))), c_actor, NULL);
-    IF v_res->>'status' = 'created' THEN
-      PERFORM public.ops_log_write(c_actor, 'system', 'brand_card_added', 'info', NULL, 'crm_record', (v_res->'record'->>'id')::uuid,
-        format('New brand on Mingla: %s. Host card made in %s.', b.name, COALESCE(initcap(v_res->>'moved_to'), 'the pipeline')),
-        jsonb_build_object('brand_id', b.id));
-      RETURN jsonb_build_object('status', 'created', 'record_id', v_res->'record'->'id');
-    END IF;
+    RETURN jsonb_build_object('status', 'create', 'brand', v_brand, 'contact', left(v_contact, 200),
+      'stage', CASE WHEN public.crm_brand_is_live(b.id) THEN 'live' ELSE 'onboarded' END);
   END IF;
 
-  -- Two or more matches, only near matches, the one match already linked to
-  -- another brand, or a card of that name: a person picks from every
-  -- candidate.
-  v_cands := v_hits;
+  -- A person picks from every candidate.
   SELECT string_agg(h->'record'->>'name', ', ' ORDER BY h->'record'->>'name') INTO v_names
-    FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h;
-  v_how := CASE WHEN cardinality(v_exact) = 0 AND v_names IS NOT NULL THEN 'near' ELSE 'exact' END;
-  v_res := public.ops_auto_card_upsert('brand_pick:' || b.id, jsonb_build_object(
-    'title', left(CASE WHEN v_how = 'near' THEN format('Pick the right card for %s', b.name)
-                       ELSE format('Pick the host card for %s', b.name) END, 160),
-    'instructions', left(CASE WHEN v_how = 'near'
-      THEN format('%s signed up on Mingla. These host cards have a phone number that ends the same but is not the same number, so nothing was linked: %s. Link the brand on the right card, or add a new card.', b.name, v_names)
+    FROM jsonb_array_elements(COALESCE(v_hits, '[]'::jsonb)) h;
+  v_how := CASE WHEN v_names IS NULL THEN 'name' WHEN cardinality(v_exact) = 0 THEN 'near' ELSE 'exact' END;
+  RETURN jsonb_build_object('status', 'pick', 'brand', v_brand, 'how', v_how, 'names', v_names,
+    'candidates', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', h->'record'->>'id', 'name', h->'record'->>'name')
+                                              ORDER BY h->'record'->>'name')
+                              FROM jsonb_array_elements(COALESCE(v_hits, '[]'::jsonb)) h), '[]'::jsonb));
+END;
+$$;
+
+-- Acts on ops_brand_match for one brand: links, makes the host card, or makes
+-- the card a person needs (pick, or reopen a Lost card).
+CREATE FUNCTION public.ops_brand_autolink_one(p_brand_id uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  c_actor constant text := 'system@usemingla.com';
+  m jsonb; v_rec public.crm_records; v_res jsonb; v_boss text := public.ops_owner_email(); v_name text; v_kind text; v_names text;
+BEGIN
+  m := public.ops_brand_match(p_brand_id);
+  -- A link is decided again once the card is locked, so a change made a
+  -- moment earlier is never written over.
+  IF m->>'status' IN ('link', 'reopen') THEN
+    PERFORM 1 FROM public.crm_records c WHERE c.id = (m->'record'->>'id')::uuid FOR UPDATE;
+    m := public.ops_brand_match(p_brand_id);
+  END IF;
+  v_name := m->'brand'->>'name';
+  v_kind := m->>'matched';
+  CASE m->>'status'
+  WHEN 'gone', 'has_card' THEN
+    RETURN jsonb_build_object('status', m->>'status');
+  WHEN 'reopen' THEN
+    v_res := public.ops_auto_card_upsert('brand_lost:' || p_brand_id, jsonb_build_object(
+      'title', left(format('Reopen %s? %s signed up on Mingla', m->'record'->>'name', v_name), 160),
+      'instructions', left(format('%s signed up on Mingla with the same %s as %s, which is Lost. Reopen that card and link the brand if it is the same host, or leave it Lost and add a new card.',
+                                  v_name, v_kind, m->'record'->>'name'), 4000),
+      'done_means', left(format('%s is linked to a host card, or it is decided that %s stays Lost.', v_name, m->'record'->>'name'), 300),
+      'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END, 'watchers', '[]'::jsonb,
+      'due_on', public.ops_today(NULL) + 1,
+      'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', p_brand_id), jsonb_build_object('kind', 'host', 'id', m->'record'->>'id'))),
+      'task', NULL);
+    RETURN jsonb_build_object('status', 'ask_reopen', 'card', v_res);
+  WHEN 'link' THEN
+    SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = (m->'record'->>'id')::uuid;
+    UPDATE public.crm_records SET brand_id = p_brand_id, updated_by = c_actor, updated_at = clock_timestamp() WHERE id = v_rec.id;
+    INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body)
+    VALUES (v_rec.id, 'note', NULL, 'system',
+            left(format('Brand %s linked by itself: same %s as this card.', v_name, v_kind), 4000));
+    PERFORM public.crm_apply_brand_link(v_rec.id);
+    PERFORM public.ops_log_write(c_actor, 'system', 'brand_linked', 'info', NULL, 'crm_record', v_rec.id,
+      format('Brand %s linked by itself to %s: same %s.', v_name, v_rec.name, v_kind),
+      jsonb_build_object('brand_id', p_brand_id, 'matched', v_kind));
+    RETURN jsonb_build_object('status', 'linked', 'record_id', v_rec.id);
+  WHEN 'create' THEN
+    v_res := public.crm_record_create_core('hosts',
+      jsonb_strip_nulls(jsonb_build_object('name', left(v_name, 200), 'brand_id', p_brand_id, 'source', 'inbound', 'owners', '[]'::jsonb,
+                                           'contact', m->>'contact')), c_actor, NULL);
+    IF v_res->>'status' = 'created' THEN
+      PERFORM public.ops_log_write(c_actor, 'system', 'brand_card_added', 'info', NULL, 'crm_record', (v_res->'record'->>'id')::uuid,
+        format('New brand on Mingla: %s. Host card made in %s.', v_name, COALESCE(initcap(v_res->>'moved_to'), 'the pipeline')),
+        jsonb_build_object('brand_id', p_brand_id));
+      RETURN jsonb_build_object('status', 'created', 'record_id', v_res->'record'->'id');
+    END IF;
+    -- The card could not be made (a card of that name appeared): a person picks.
+    m := jsonb_build_object('status', 'pick', 'brand', m->'brand', 'how', 'name', 'names', NULL, 'candidates', '[]'::jsonb);
+  ELSE
+    NULL;
+  END CASE;
+
+  v_names := m->>'names';
+  v_res := public.ops_auto_card_upsert('brand_pick:' || p_brand_id, jsonb_build_object(
+    'title', left(CASE WHEN m->>'how' = 'near' THEN format('Pick the right card for %s', v_name)
+                       ELSE format('Pick the host card for %s', v_name) END, 160),
+    'instructions', left(CASE WHEN m->>'how' = 'near'
+      THEN format('%s signed up on Mingla. These host cards have a phone number that ends the same but is not the same number, so nothing was linked: %s. Link the brand on the right card, or add a new card.', v_name, v_names)
       WHEN v_names IS NOT NULL
-      THEN format('%s signed up on Mingla. These host cards share its email or phone: %s. Link the brand on the right card, or add a new card.', b.name, v_names)
-      ELSE format('%s signed up on Mingla, and a host card with that name already exists. Link the brand on the right card, or add a new card.', b.name) END, 4000),
-    'done_means', left(format('%s is linked to one host card.', b.name), 300),
+      THEN format('%s signed up on Mingla. These host cards share its email or phone: %s. Link the brand on the right card, or add a new card.', v_name, v_names)
+      ELSE format('%s signed up on Mingla, and a host card with that name already exists. Link the brand on the right card, or add a new card.', v_name) END, 4000),
+    'done_means', left(format('%s is linked to one host card.', v_name), 300),
     'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END, 'watchers', '[]'::jsonb,
     'due_on', public.ops_today(NULL) + 1,
-    'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', b.id))
-             || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'host', 'id', h->'record'->>'id')) FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h), '[]'::jsonb)),
+    'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', p_brand_id))
+             || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'host', 'id', c->>'id')) FROM jsonb_array_elements(COALESCE(m->'candidates', '[]'::jsonb)) c), '[]'::jsonb)),
     'task', NULL);
   RETURN jsonb_build_object('status', 'pick', 'card', v_res);
 END;
@@ -2003,7 +2060,7 @@ BEGIN
     'public.ops_expected_anchor(public.ops_expected_events,date)',
     'public.ops_expected_occurrences(public.ops_expected_events,date,integer)', 'public.ops_event_in_series(uuid,uuid,date)',
     'public.ops_host_next_rows(uuid[],date)', 'public.ops_live_totals(date)', 'public.ops_host_missing(public.crm_records)',
-    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
+    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_match(uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
     'public.ops_host_next(uuid[],date)', 'public.ops_attention(date)', 'public.ops_recent_changes(text,uuid,integer)'] LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', f);
