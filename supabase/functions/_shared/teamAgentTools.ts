@@ -76,7 +76,9 @@ export interface TeamAgentTool {
     | "Drafts"
     | "Content"
     | "Beta leads"
-    | "Team";
+    | "Team"
+    | "Work"
+    | "Calendar";
 }
 
 /** The most items any list argument may carry. */
@@ -1702,6 +1704,7 @@ export const AGENT_WORDS: readonly (readonly [RegExp, string])[] = [
   [/crm_link_search\('(?:brand|place)', name\)/g, "find_mingla_link"],
   [/crm_record_move_stage/g, "move_stage"],
   [/crm_record_set_owners/g, "set_owners"],
+  [/\bops_[a-z0-9_]+(?:\([^)]*\))?/g, "Mingla Admin"],
   [
     /\b(?:crm|team_agent|team_draft|admin_team)_[a-z0-9_]+(?:\([^)]*\))?/g,
     "Mingla Admin",

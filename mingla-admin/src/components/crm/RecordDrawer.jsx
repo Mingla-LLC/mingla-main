@@ -12,6 +12,8 @@ import { MissingCityLayer } from "./MissingCityLayer";
 import { OwnersField } from "./OwnersField";
 import { MinglaLinkField } from "./MinglaLinkField";
 import { LogForm } from "./LogForm";
+import { RecentTouchNotice } from "./RecentTouchNotice";
+import { OnMinglaSection } from "./OnMinglaSection";
 import { ActivityLog } from "./ActivityLog";
 import {
   MOVE_BLOCK_COPY,
@@ -935,6 +937,10 @@ export function RecordDrawer({
             </ul>
           </section>
         )}
+
+        {isHosts && <OnMinglaSection key={`on-mingla-${record.id}`} record={record} online={online} />}
+
+        <RecentTouchNotice key={`signals-${record.id}`} record={record} online={online} />
 
         <div className="border-t border-[var(--gray-200)] pt-4">
           <LogForm key={record.id} record={record} config={config} disabled={locked} onSubmit={submitLog} />

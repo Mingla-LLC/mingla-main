@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3980_wave2_calendar_admin.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-w2-calendar-admin-source",
+  "profile": "deno-1.46-stripe"
+}
