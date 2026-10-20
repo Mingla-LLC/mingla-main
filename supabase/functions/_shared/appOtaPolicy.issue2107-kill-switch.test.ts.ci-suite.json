@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/appOtaPolicy.issue2107-kill-switch.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-2107-app-ota-policy-kill-switch",
+  "profile": "deno-2-unit"
+}

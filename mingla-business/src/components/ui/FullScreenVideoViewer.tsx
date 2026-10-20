@@ -7,9 +7,10 @@
  * shipped build, so this adds no native code. Callers load this module lazily,
  * so expo-video never evaluates on a screen that does not open a video.
  */
-import React from "react";
+import React, { useEffect } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
+import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
 
 import { canvas, glass, spacing, text as textTokens } from "../../constants/designSystem";
 import { Icon } from "./Icon";
@@ -25,6 +26,10 @@ export function FullScreenVideoViewer({ uri, title, onClose }: FullScreenVideoVi
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
   });
+  // #2107: an in-app restart releases this player before reloadAsync. Nothing
+  // here calls the player from JS; if the restart does not happen the VideoView
+  // keeps its still frame and the native controls.
+  useEffect(() => registerVideoPlayerForReload(player), [player]);
   return (
     <Modal visible={uri !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={styles.screen}>

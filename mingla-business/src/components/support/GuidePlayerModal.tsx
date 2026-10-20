@@ -1,6 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { bambooHlsUrl, type HelpVideoRecord } from "@mingla/help-content";
 import { VideoView, useVideoPlayer } from "expo-video";
+import {
+  isVideoPlayerReleasedForReload,
+  registerVideoPlayerForReload,
+} from "@mingla/offering-rendering/videoPlayerReloadRelease";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -49,11 +53,16 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
     return () => { active = false; };
   }, [guide.slug]);
 
+  // #2107: an in-app restart releases this player before reloadAsync. A
+  // released player is never touched again (the VideoView keeps its still frame).
+  useEffect(() => registerVideoPlayerForReload(player), [player]);
+
   useEffect(() => {
     let active = true;
     void AsyncStorage.getItem(progressKey(userId, guide.slug)).then((saved) => {
       const value = Number(saved);
-      if (active && Number.isFinite(value) && value > 0) player.currentTime = value;
+      if (!active || isVideoPlayerReleasedForReload(player)) return;
+      if (Number.isFinite(value) && value > 0) player.currentTime = value;
     });
     const timeSubscription = player.addListener("timeUpdate", ({ currentTime }) => {
       setTime(currentTime);
@@ -71,7 +80,7 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
       active = false;
       timeSubscription.remove();
       endSubscription.remove();
-      player.pause();
+      if (!isVideoPlayerReleasedForReload(player)) player.pause();
     };
   }, [guide.slug, player, userId]);
 
@@ -111,7 +120,11 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
           <View style={styles.panel}>
             <Text style={styles.sectionTitle}>Transcript</Text>
             {loadingTranscript ? <ActivityIndicator color={accent.warm} /> : cues.length ? cues.map((cue, index) => (
-              <Pressable key={`${cue.start}-${index}`} accessibilityRole="button" accessibilityLabel={`Jump to ${Math.floor(cue.start / 60)} minutes ${Math.floor(cue.start % 60)} seconds`} onPress={() => { player.currentTime = cue.start; player.play(); }} style={styles.transcriptRow}>
+              <Pressable key={`${cue.start}-${index}`} accessibilityRole="button" accessibilityLabel={`Jump to ${Math.floor(cue.start / 60)} minutes ${Math.floor(cue.start % 60)} seconds`} onPress={() => {
+                if (isVideoPlayerReleasedForReload(player)) return;
+                player.currentTime = cue.start;
+                player.play();
+              }} style={styles.transcriptRow}>
                 <Text style={styles.transcriptTime}>{Math.floor(cue.start / 60)}:{String(Math.floor(cue.start % 60)).padStart(2, "0")}</Text>
                 <Text style={styles.transcriptText}>{cue.text}</Text>
               </Pressable>

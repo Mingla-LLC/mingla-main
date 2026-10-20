@@ -66,8 +66,24 @@ export function isSupportedRuntimeVersion(value: unknown): value is string {
 }
 
 /**
- * The absent-row default. Every unknown runtime resolves to `silent`, so a lane
- * we have never rowed behaves exactly as it does today.
+ * #2107 B4 — the absent-row marker. CLIENT CONTRACT, do not change: apps built
+ * from #2107's critical-index flow read a `silent` policy carrying exactly this
+ * timestamp as "no row for this runtime", which means critical updates ARE
+ * enforced (the kill switch is ON by default). Only a real row with mode
+ * `silent` switches enforcement off. Mirrored as ABSENT_POLICY_ROW_UPDATED_AT in
+ * app-mobile/ and mingla-business/ src/services/otaUpdatePolicy.ts; the #2107
+ * structural gate fails if the three drift.
+ *
+ * Keeping the response shape and value unchanged is deliberate: clients that
+ * predate the redesign key-set-validate this body and still read an absent row
+ * as `silent`, exactly as before, so this server needs no deploy-time change in
+ * behaviour for anyone.
+ */
+export const ABSENT_POLICY_ROW_UPDATED_AT = "1970-01-01T00:00:00.000Z";
+
+/**
+ * The absent-row default. Pre-#2107-redesign clients read it as `silent`;
+ * redesigned clients recognise ABSENT_POLICY_ROW_UPDATED_AT and enforce.
  */
 export function silentPolicy(
   appId: "explorer" | "business",
@@ -80,7 +96,7 @@ export function silentPolicy(
     runtimeVersion,
     mode: "silent",
     message: "",
-    updatedAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: ABSENT_POLICY_ROW_UPDATED_AT,
   };
 }
 
@@ -100,7 +116,10 @@ function isPolicyRow(
     isOtaUpdateMode(row.mode) &&
     typeof row.message === "string" &&
     typeof row.updated_at === "string" &&
-    Number.isFinite(Date.parse(row.updated_at));
+    Number.isFinite(Date.parse(row.updated_at)) &&
+    // #2107 B4 — a real row may never echo the absent-row marker, or a client
+    // could not tell the off switch from "no row".
+    Date.parse(row.updated_at) !== Date.parse(ABSENT_POLICY_ROW_UPDATED_AT);
 }
 
 /**
