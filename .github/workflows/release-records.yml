@@ -25,8 +25,14 @@ name: Release records
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+    # The machine-written bundle baseline needs no issue link or release
+    # record; a baseline-only change starts nothing here (#2524).
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   push:
     branches: [main]
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   status: {}
   # One activity-types line per workflow (the #3095 projection probe reads
   # exactly one); the two below are flow mappings for that reason.
