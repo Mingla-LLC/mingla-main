@@ -77,6 +77,9 @@ jobs:
           done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.sql
+          # toward #3281 — the R2 checkout overloads stay server-only (named pin
+          # beside the anonymous allowlist step below).
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.issue_3281_r2_grants.test.sql
       - name: Anonymous SECURITY DEFINER allowlist
         env:
           PGPASSWORD: ${{ github.sha }}
