@@ -301,6 +301,10 @@ DECLARE
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',
     'ops_notify_people',
+    -- #3720 community staff replies: INSERT with an explicit NULL country_code
+    -- (push-only, no SMS channel). Added mid-list so the entry is a pure addition.
+    'issue_3720_admin_question_action',
+    'issue_3720_admin_update_idea',
     'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
@@ -326,6 +330,9 @@ DECLARE
     'complete_source_refund_notification_delivery',
     'issue_1427_admin_list_stay_operations',
     'issue_1427_admin_retry_stay_notification',
+    -- #3720: re-queues a failed announcement by UPDATE only; never inserts
+    -- (the writes_outbox check below proves it).
+    'issue_3720_admin_retry_announcement',
     -- #2079/#1221: resolves who a source-refund status notice goes to. It READS
     -- one notification_outbox row to reach the refund behind a delivery and
     -- never inserts, which the writes_outbox check below independently proves —
