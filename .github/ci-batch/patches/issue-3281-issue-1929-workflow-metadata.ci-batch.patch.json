@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3281",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-1929-hidden-direct-checkout-tests",
+      "extension": "yml"
+    },
+    "baseRowSha256": "c5b67ae412a919ec1d66c7154fd38618301985bd6e85cec690736ed0ef8a4075"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "14c9c2971935b326d9f5a22f2dd1793be4790a709fc6063b113903c8c5853cfc",
+      "value": "4c0bca5aaf18836293f2b01713348e13b01bd2458de9d3ba9d6316736b20a249"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3281 adds one read-only grants assertion for the Round 2 checkout overloads to this lane's existing post-replay psql step, without changing its execution topology."
+}

@@ -682,7 +682,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               style={styles.optionsList}
               testID="experience-body-price-options"
             >
-              {experienceOfferingOptions(data).map((opt) => {
+              {experienceOfferingOptions<ExperienceOfferingTicket>(data).map((opt) => {
                 const { label: optLabel } = experienceOptionPriceLabel(opt);
                 return (
                   <View key={opt.ticketTypeId} style={styles.optionRow}>
