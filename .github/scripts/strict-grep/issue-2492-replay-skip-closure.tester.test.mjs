@@ -93,13 +93,15 @@
 // The #1931 lane then gains five more exact skips found by a local replay; +5 more.
 // Round 3 spacing/spots adds one exact skip on each lane; count pins move with it.
 // [TEST-MOD-APPROVED #3281] count pins only; assertion logic unchanged.
+// [TEST-MOD-APPROVED #2492] #4009 (422d52508) moved T-13/T-16/T-17/T-18 24 -> 25
+// but left T-12 at 23 while the lane read 24; T-12 23 -> 24. Count pin only.
 // [TEST-MOD-APPROVED #3827] Counts only, same method: the #3827 going-box migration
 // (20271128003827, which re-emits `pg_public_rsvp_by_slug`, `pg_public_social_proof`
 // and `business_public_events_view`) is registered by exact filename in BOTH filtered
 // lanes; without it the analyser reports five C-1 violations. #1931 25 -> 26 (and the
 // fixtures built on it, +1). T-12 is set to the lane's true
 // value 25: #4009 added its Round 3 skip without bumping T-12, which left main red
-// (expected 23, actual 24 on main before this change). No assertion logic changed.
+// (#4016 then set it to 24; this file adds one skip, so 25). No assertion logic changed.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
