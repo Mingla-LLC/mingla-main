@@ -81,7 +81,8 @@ Deno.test("#3980 W4 P3-R: the chips and the result words", () => {
 Deno.test("#3980 W4 P3-R: the Roadmap panel shows the disclosure to the owner only, previews first, confirms ticked ready rows once", () => {
   const panel = code("components/community/RoadmapPanel.jsx");
   assertMatch(panel, /const canBackfill = !!opsConfig\.data\?\.settings\?\.can_edit;/);
-  assertMatch(panel, /\{canBackfill && links && !loading \? <RoadmapLinksBackfill cards=\{rows\} onLinked=\{\(\) => void load\(\)\} \/> : null\}/);
+  // It stays mounted while the cards reload after a confirm, so the result stays on screen.
+  assertMatch(panel, /\{canBackfill \? <RoadmapLinksBackfill cards=\{rows\} onLinked=\{\(\) => void load\(\)\} \/> : null\}/);
   assertMatch(panel, /<summary[^>]*>[\s\S]*Link roadmap cards to GitHub/);
   assertMatch(panel, /await previewRoadmapLinks\(links\)/);
   assertMatch(panel, /const links = chosen\.map\(\(r\) => sent\[r\.i\]\);/);

@@ -358,7 +358,8 @@ export function RoadmapPanel() {
         </div>
       </div>
 
-      {canBackfill && links && !loading ? <RoadmapLinksBackfill cards={rows} onLinked={() => void load()} /> : null}
+      {/* Stays mounted while the list reloads after a confirm, so its result stays on screen. */}
+      {canBackfill ? <RoadmapLinksBackfill cards={rows} onLinked={() => void load()} /> : null}
 
       {linksError && !links ? (
         <p className="text-xs text-[var(--color-text-tertiary)]">GitHub issues are not shown: {linksError}</p>
