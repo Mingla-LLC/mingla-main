@@ -1,6 +1,7 @@
 -- #3720 Completion Wave 6 — executable team collaboration happy path.
 -- MINGLA-INVARIANT: I-3720-TEAM-ACTIVE-IDENTITY | issue #3720 | Collaboration capabilities are derived from an accepted, non-removed, named team record without widening full-admin authority.
--- MINGLA-INVARIANT: I-3720-SUPPORT-ALL-ACTIVE-ROLES | issue #3720 | Every accepted, non-removed Admin team role can read, reply to, and assign Support work through the existing server gates, without refund, money, or account-change authority.
+-- [TEST-MOD-APPROVED #3988] Support is an explicit role: a teammate without an
+-- enabled Support row is not Support staff (supersedes the all-roles rule).
 -- MINGLA-INVARIANT: I-3720-MENTION-EMAIL-OPT-IN | issue #3720 | Team mentions are available in-app by default, while email is sent only after that recipient explicitly opts in.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -28,7 +29,7 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.sub',v_growth::text,true);
   PERFORM set_config('request.jwt.claim.role','authenticated',true);
-  IF NOT public.is_support_staff(v_growth) THEN RAISE EXCEPTION 'growth_support_gate_closed'; END IF;
+  IF public.is_support_staff(v_growth) THEN RAISE EXCEPTION 'growth_without_support_role_passed_support_gate'; END IF;
   v_result := public.issue_3720_team_my_permissions();
   IF v_result #>> '{permissions,support_read_reply_assign}' <> 'true'
      OR v_result #>> '{permissions,support_money_or_account_changes}' <> 'false'

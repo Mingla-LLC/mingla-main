@@ -25,6 +25,12 @@ INSERT INTO public.support_staff(user_id,enabled,available,display_name,role) VA
   ('37200000-0000-4000-b400-000000000004',false,true,'Disabled Support','staff'),
   ('37200000-0000-4000-b400-000000000005',true,false,'Active Support','staff');
 
+-- [TEST-MOD-APPROVED #3988] Support staff must also be on the Mingla team, so
+-- "enabled staff gets access, disabled loses it" is proven on real teammates.
+INSERT INTO public.admin_team_members(email,role,status,accepted_at) VALUES
+  ('wave2-adversarial-disabled@test.local','growth','active',now()),
+  ('wave2-adversarial-support@test.local','growth','active',now());
+
 INSERT INTO public.brands(id,account_id,name,slug) VALUES
   ('37200000-0000-4000-b500-000000000001','37200000-0000-4000-b400-000000000001','Adversarial Alpha','wave2-adversarial-alpha'),
   ('37200000-0000-4000-b500-000000000002','37200000-0000-4000-b400-000000000001','Adversarial Beta','wave2-adversarial-beta');

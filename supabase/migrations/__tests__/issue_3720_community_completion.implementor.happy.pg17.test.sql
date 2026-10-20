@@ -24,6 +24,12 @@ INSERT INTO public.brand_team_members(brand_id,user_id,role,accepted_at) VALUES
  ('37200000-0000-4000-c200-000000000001','37200000-0000-4000-c100-000000000003','marketing_manager',now());
 INSERT INTO public.community_staff(user_id,role,enabled,display_name)
 VALUES('37200000-0000-4000-c100-000000000004','moderator',true,'Moderator');
+-- [TEST-MOD-APPROVED #3988] Community moderation now comes from the Support
+-- teammate role on a current teammate, not from a community_staff row.
+INSERT INTO public.admin_team_members(email,role,status,accepted_at)
+VALUES('wave7-mod@test.local','growth','active',now());
+INSERT INTO public.support_staff(user_id,enabled,available,display_name,role)
+VALUES('37200000-0000-4000-c100-000000000004',true,false,'Moderator','staff');
 
 CREATE TEMP TABLE wave7_ids(k text PRIMARY KEY,id uuid NOT NULL) ON COMMIT DROP;
 GRANT SELECT,INSERT,UPDATE ON wave7_ids TO authenticated;
