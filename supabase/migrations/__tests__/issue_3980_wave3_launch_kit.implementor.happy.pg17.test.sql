@@ -455,9 +455,10 @@ begin
   perform pg_temp.t3980_publish('e_late', 30, 15);
   perform pg_temp.t3980_reconcile();
   c := pg_temp.t3980_kit('e_late', -21);
-  perform pg_temp.t3980_check('W3-GATE', 'published with 15 days left, the giveaway and ads card is organic only',
+  -- [TEST-MOD-APPROVED #3980] synced program Wave 4: the held reason uses the plain state Too late for promo (the kind is unchanged).
+  perform pg_temp.t3980_check('W3-GATE', 'published with 15 days left, the giveaway and ads card is held as too late for promo',
     c.blocked || '/' || c.blocked_kind || '/' || c.blocked_reason,
-    'true/organic_only/Organic only: W3980 Late Night went public 15 days before it starts. No giveaway or ads.');
+    'true/organic_only/Too late for promo: W3980 Late Night went public 15 days before it starts. No giveaway or ads.');
   perform pg_temp.t3980_check('W3-GATE', 'its gate card still closes itself, saying 15 days',
     (pg_temp.t3980_kit('e_late', -28)).status || '/' || ((pg_temp.t3980_kit('e_late', -28)).proof->0->>'text'),
     'done/Public on Mingla since ' || to_char(v_today + 15, 'FMDD Mon') || ', 15 days before it starts.');
