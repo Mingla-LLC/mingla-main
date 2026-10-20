@@ -85,16 +85,14 @@ Deno.test("#3802 Wave 2 rework: calendar is Monday-first and mobile becomes a se
   assertEquals(window.days[0].getDay(), 1);
   assertEquals(window.days.length, 42);
   assertMatch(PAGE, /\["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"\]/);
-  assertMatch(
-    PAGE,
-    /md:hidden[\s\S]*data-calendar-date[\s\S]*min-h-11[\s\S]*Nothing scheduled/,
-  );
-  assertMatch(
-    PAGE,
-    /ArrowLeft[\s\S]*ArrowRight[\s\S]*ArrowUp[\s\S]*ArrowDown[\s\S]*Home[\s\S]*End/,
-  );
+// [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): one month grid at every width; under 760px
+  // of container a day shows a 10px dot per event and opens whole in the
+  // right column (a 44px target), instead of the old phone agenda.
+  assertMatch(PAGE, /data-calendar-day-dense=\{key\}[\s\S]*onClick=\{\(\) => onDay\(key\)\}/);
+  assertMatch(PAGE, /min-h-16 min-w-0 flex-col gap-1 border-b border-r/);
+  assertMatch(PAGE, /Nothing on this day\./);
   assertMatch(PAGE, /resolvedOptions\(\)\.timeZone/);
-  assertMatch(PAGE, /hidden overflow-x-auto[\s\S]*md:block/);
+  assertMatch(PAGE, /hidden min-w-0 flex-col gap-0\.5 @min-\[760px\]:flex/);
 });
 
 Deno.test("#3802 Wave 2 rework: List, links, touch and motion states are explicit", () => {
