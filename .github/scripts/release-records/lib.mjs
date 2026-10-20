@@ -214,6 +214,45 @@ function deployLine(data) {
   return parts.length > 0 ? parts.join("; ") : "N/A (no web or edge function change)";
 }
 
+const EDGE_WORKFLOW = "Deploy Supabase Edge Functions";
+
+/** The deploy state of each web project and of the edge functions. */
+export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
+  const out = { web: {}, edge: "none" };
+  for (const project of web) {
+    if (!marker) {
+      out.web[project] = "not_deployed";
+      continue;
+    }
+    const seen = [
+      ...statuses.filter((s) => String(s.context ?? "").includes(project)).map((s) => s.state),
+      ...checks.filter((c) => String(c.name ?? "").includes(project))
+        .map((c) => (c.status === "completed" ? c.conclusion : "pending")),
+    ];
+    out.web[project] = seen.includes("success") ? "ready"
+      : seen.some((s) => s === "failure" || s === "error" || s === "timed_out" || s === "cancelled") ? "failed"
+      : "pending";
+  }
+  if (edge.some((n) => n.startsWith("brand-site-"))) out.edge = "manual";
+  else if (edge.length > 0) {
+    const run = edgeRuns.find((r) => r?.name === EDGE_WORKFLOW);
+    out.edge = !run || run.status !== "completed" ? "pending"
+      : run.conclusion === "success" ? "deployed"
+      : ["failure", "cancelled", "timed_out"].includes(run.conclusion) ? "failed"
+      : "pending";
+  }
+  return out;
+}
+
+/**
+ * The bot's own record comment for a pull request among an issue's comments,
+ * or undefined: one per pull request per issue, found by its marker.
+ */
+export function recordCommentFor(comments, pr) {
+  const marker = `<!-- ${RECORD_MARKER_PREFIX}${pr} -->`;
+  return (comments ?? []).find((c) => c?.user?.login === "github-actions[bot]" && String(c?.body ?? "").includes(marker));
+}
+
 /** The JSON block, escaped so the HTML comment cannot be closed early. */
 export function recordJson(data) {
   return JSON.stringify(data).replace(/--/g, "-\\u002d").replace(/</g, "\\u003c").replace(/>/g, "\\u003e");

@@ -9,6 +9,7 @@ import {
   assertMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  deployState,
   edgeFunctions,
   hasDeployMarker,
   migrationsAdded,
@@ -17,6 +18,7 @@ import {
   parseIssueRefs,
   prLinksVerdict,
   readRecordData,
+  recordCommentFor,
   recordMissing,
   recordProblems,
   renderRecord,
@@ -113,6 +115,33 @@ Deno.test("#3980 what a pull request touched: web projects, edge functions, migr
   ]), ["20271124003980"]);
   assertEquals(hasDeployMarker("[deploy] toward #3980: x (#4001)"), true);
   assertEquals(hasDeployMarker("toward #3980: x (#4001)"), false);
+});
+
+Deno.test("#3980 G6: the deploy state comes from the subject marker, Vercel and the edge deploy run", () => {
+  const base = { statuses: [], checks: [], edgeRuns: [] };
+  assertEquals(deployState({ ...base, web: ["mingla-admin"], edge: [], marker: false }), { web: { "mingla-admin": "not_deployed" }, edge: "none" });
+  assertEquals(deployState({ ...base, web: ["mingla-admin"], edge: [], marker: true, statuses: [{ context: "Vercel – mingla-admin", state: "success" }] }),
+    { web: { "mingla-admin": "ready" }, edge: "none" });
+  assertEquals(deployState({ ...base, web: ["mingla-admin"], edge: [], marker: true, checks: [{ name: "Vercel – mingla-admin", status: "completed", conclusion: "failure" }] }),
+    { web: { "mingla-admin": "failed" }, edge: "none" });
+  assertEquals(deployState({ ...base, web: ["mingla-admin"], edge: [], marker: true }), { web: { "mingla-admin": "pending" }, edge: "none" });
+  assertEquals(deployState({ ...base, web: [], edge: ["team-agent"], marker: false, edgeRuns: [{ name: "Deploy Supabase Edge Functions", status: "completed", conclusion: "failure" }] }),
+    { web: {}, edge: "failed" });
+  assertEquals(deployState({ ...base, web: [], edge: ["brand-site-control"], marker: true }), { web: {}, edge: "manual" });
+});
+
+Deno.test("#3980 G3: a refresh finds the one record comment for its pull request and renders the same body", () => {
+  const body = renderRecord(data());
+  assertEquals(renderRecord(data()), body, "the same facts render the same comment");
+  const mine = { id: 7, user: { login: "github-actions[bot]" }, body };
+  const comments = [
+    { id: 1, user: { login: "someone" }, body },
+    { id: 2, user: { login: "github-actions[bot]" }, body: renderRecord(data({ pr: 4002, pr_url: "https://github.com/Mingla-LLC/mingla-main/pull/4002" })) },
+    mine,
+  ];
+  assertEquals(recordCommentFor(comments, 4001)?.id, 7);
+  assertEquals(recordCommentFor(comments, 40011), undefined, "a longer number is another pull request");
+  assertEquals(recordCommentFor([comments[0]], 4001), undefined, "a copy by someone else is never the record");
 });
 
 Deno.test("#3980 G6: a web change merged without [deploy] is not deployed and is a problem", () => {

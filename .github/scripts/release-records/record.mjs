@@ -10,12 +10,14 @@
 
 import { readFileSync } from "node:fs";
 import {
+  deployState,
   edgeFunctions,
   hasDeployMarker,
   isTestFile,
   migrationsAdded,
   parseFeatureGuide,
   parseIssueRefs,
+  recordCommentFor,
   RECORD_MARKER_PREFIX,
   recordProblems,
   renderRecord,
@@ -25,7 +27,6 @@ import {
 } from "./lib.mjs";
 
 const API = "https://api.github.com";
-const EDGE_WORKFLOW = "Deploy Supabase Edge Functions";
 const MIGRATIONS_CONTEXT = "mingla/production-migrations";
 const TRUSTED = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 
@@ -109,34 +110,6 @@ async function resolvePr(eventName, event) {
     ? r.json.find((p) => p?.merged_at && p?.base?.ref === "main" && p?.merge_commit_sha === sha)
     : null;
   return merged ? merged.number : null;
-}
-
-/** The deploy state of each web project and of the edge functions. */
-function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
-  const out = { web: {}, edge: "none" };
-  for (const project of web) {
-    if (!marker) {
-      out.web[project] = "not_deployed";
-      continue;
-    }
-    const seen = [
-      ...statuses.filter((s) => String(s.context ?? "").includes(project)).map((s) => s.state),
-      ...checks.filter((c) => String(c.name ?? "").includes(project))
-        .map((c) => (c.status === "completed" ? c.conclusion : "pending")),
-    ];
-    out.web[project] = seen.includes("success") ? "ready"
-      : seen.some((s) => s === "failure" || s === "error" || s === "timed_out" || s === "cancelled") ? "failed"
-      : "pending";
-  }
-  if (edge.some((n) => n.startsWith("brand-site-"))) out.edge = "manual";
-  else if (edge.length > 0) {
-    const run = edgeRuns.find((r) => r?.name === EDGE_WORKFLOW);
-    out.edge = !run || run.status !== "completed" ? "pending"
-      : run.conclusion === "success" ? "deployed"
-      : ["failure", "cancelled", "timed_out"].includes(run.conclusion) ? "failed"
-      : "pending";
-  }
-  return out;
 }
 
 async function main() {
@@ -239,10 +212,9 @@ async function main() {
   data.problems = recordProblems(data);
   const body = renderRecord(data);
 
-  const marker_ = `<!-- ${RECORD_MARKER_PREFIX}${number} -->`;
   const written = [];
   for (const t of targets) {
-    const existing = (await issueComments(t)).find((c) => c?.user?.login === "github-actions[bot]" && String(c.body ?? "").includes(marker_));
+    const existing = recordCommentFor(await issueComments(t), number);
     if (existing) {
       if (existing.body === body) continue;
       const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${existing.id}`, { body });
