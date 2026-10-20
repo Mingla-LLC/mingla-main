@@ -1063,6 +1063,9 @@ export function expectedSavedWords(result, madeWords = "Saved. It’s on the Cal
       // #3980 W3 rework 3: steps a person already finished or declined are
       // not added again, so the words never promise them "nearer the date".
       if (Number(steps.settled || 0) > 0) return "Saved. It’s on the Calendar. Its steps were already finished or declined in Work, so none were added.";
+      // #3980 W4 rework (W3 retest P3): past the go-live line (3 weeks before
+      // it starts) no launch steps will come, so never "nearer the date".
+      if (steps.past_go_live === true) return "Saved. It’s on the Calendar. It’s past its go-live line (3 weeks before it starts), so no launch steps were added.";
       return "Saved. It’s on the Calendar. No steps are needed yet; Mingla adds them nearer the date.";
     }
     return n > 0 ? madeWords : "Saved. It’s on the Calendar; its steps were already in Work.";

@@ -29,6 +29,12 @@
 --   W4R-LONG    P3-1: a brand name over 160 characters previews "Add card"
 --               and its confirm adds the card with the first 160 characters;
 --               when a card already has that name both say a person picks
+--   W4R-TWO     W3 retest P3: the same digits on a London card and a Lagos
+--               brand (both countries on record) are "the same digits but
+--               different numbers in" both countries, never "no country is on
+--               record"
+--   W4R-GOLIVE  W3 retest P3: saving a promised event already past its
+--               go-live line says so (past_go_live), one well ahead does not
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -442,12 +448,75 @@ begin
 end;
 $long$;
 
+-- ---------------------------------------------------------------------------
+-- W4R-TWO: the same digits in two known countries
+-- ---------------------------------------------------------------------------
+insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng,
+                                   bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng) values
+  ('39850000-0000-4000-e000-000000000001', 'w4r3980-london', 'W4R London', 'United Kingdom', 'GB', 51.5, -0.1, 51.4, -0.2, 51.6, 0.0),
+  ('39850000-0000-4000-e000-000000000002', 'w4r3980-lagos', 'W4R Lagos', 'Nigeria', 'NG', 6.5, 3.4, 6.4, 3.3, 6.6, 3.5);
+insert into public.crm_records (id, pipeline, name, stage, region_id, created_by, updated_by) values
+  ('39850000-0000-4000-c600-000000000001', 'hosts', 'W4R London 07911', 'contacted', '39850000-0000-4000-e000-000000000001', 'w4r', 'w4r'),
+  ('39850000-0000-4000-c600-000000000002', 'hosts', 'W4R Regionless 07922', 'contacted', null, 'w4r', 'w4r');
+insert into public.crm_record_identifiers (record_id, kind, value, value_key, created_by) values
+  ('39850000-0000-4000-c600-000000000001', 'phone', '07911 123456', public.crm_ident_key('phone', '07911 123456'), 'w4r'),
+  ('39850000-0000-4000-c600-000000000002', 'phone', '07922 654321', public.crm_ident_key('phone', '07922 654321'), 'w4r');
+set local session_replication_role = replica;
+insert into public.brands (id, account_id, name, slug, city, country_code, contact_phone) values
+  ('39850000-0000-4000-b600-000000000001', gen_random_uuid(), 'W4R Lagos Same Digits', 'w4r-lagos-same', 'Lagos', 'NG', '07911 123456'),
+  ('39850000-0000-4000-b600-000000000002', gen_random_uuid(), 'W4R Lagos Regionless Twin', 'w4r-lagos-twin', 'Lagos', 'NG', '07922 654321');
+set local session_replication_role = origin;
+
+do $two$
+declare m jsonb;
+begin
+  m := public.ops_brand_match('39850000-0000-4000-b600-000000000001');
+  perform pg_temp.w4r_check('W4R-TWO', 'both countries known: a person picks, and the words name both countries',
+    concat_ws('|', m->>'status', m->>'near_words'), 'pick|the same digits but different numbers in United Kingdom and Nigeria');
+  perform public.ops_brand_autolink_one('39850000-0000-4000-b600-000000000001');
+  perform pg_temp.w4r_like('W4R-TWO', 'the pick card says the same, never "no country is on record"',
+    (select instructions from public.ops_work_cards where auto_key = 'brand_pick:39850000-0000-4000-b600-000000000001'),
+    '%the same digits but different numbers in United Kingdom and Nigeria%');
+  perform pg_temp.w4r_check('W4R-TWO', 'no "no country is on record" words when both countries are known',
+    (select (instructions like '%no country is on record%')::text from public.ops_work_cards where auto_key = 'brand_pick:39850000-0000-4000-b600-000000000001'), 'false');
+  -- A card with no country on record keeps the W3 words.
+  m := public.ops_brand_match('39850000-0000-4000-b600-000000000002');
+  perform pg_temp.w4r_like('W4R-TWO', 'one country missing: the W3 words stay',
+    concat_ws('|', m->>'status', m->>'near_words'), 'pick|the same phone number written without a country code, and no country is on record%');
+end;
+$two$;
+
+-- ---------------------------------------------------------------------------
+-- W4R-GOLIVE: saving a promised event past its go-live line says so
+-- ---------------------------------------------------------------------------
+insert into public.crm_records (id, pipeline, name, stage, icp, created_by, updated_by) values
+  ('39850000-0000-4000-c700-000000000001', 'hosts', 'W4R Steps Host', 'onboarded', 'event_organizer', 'w4r', 'w4r');
+insert into public.crm_record_owners (record_id, owner_email, added_by) values ('39850000-0000-4000-c700-000000000001', 'ed.w4r3980@test.local', 'w4r');
+insert into public.ops_settings (key, value, updated_by) values ('auto_steps', 'true'::jsonb, 'w4r')
+  on conflict (key) do update set value = excluded.value;
+
+do $golive$
+declare p20 jsonb; p60 jsonb;
+begin
+  p20 := pg_temp.w4r_j(pg_temp.w4r_person('owner', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+           jsonb_build_object('record_id', '39850000-0000-4000-c700-000000000001', 'title', 'W4R Late Night', 'event_type', 'event',
+                              'expected_on', ((now() AT TIME ZONE 'UTC')::date + 20)::text), 'w4r-golive-20')));
+  p60 := pg_temp.w4r_j(pg_temp.w4r_person('owner', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+           jsonb_build_object('record_id', '39850000-0000-4000-c700-000000000001', 'title', 'W4R Early Night', 'event_type', 'event',
+                              'expected_on', ((now() AT TIME ZONE 'UTC')::date + 60)::text), 'w4r-golive-60')));
+  perform pg_temp.w4r_check('W4R-GOLIVE', '20 days out (Too late for promo): no steps open, and past the go-live line',
+    concat_ws('|', p20->'expected'->'state'->>'name', p20->'steps'->>'open', p20->'steps'->>'past_go_live'), 'Too late for promo|0|true');
+  perform pg_temp.w4r_check('W4R-GOLIVE', '60 days out: not past the go-live line',
+    p60->'steps'->>'past_go_live', 'false');
+end;
+$golive$;
+
 select count(*) as w4r_total, count(*) filter (where not ok) as w4r_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as w4r_failures
   from t3980w4r_results \gset
 rollback;
 
-select (:w4r_total < 35 or :w4r_failed > 0) as w4r_bad \gset
+select (:w4r_total < 41 or :w4r_failed > 0) as w4r_bad \gset
 \if :w4r_bad
   \echo 'ISSUE-3980 SYNCED WAVE 4 REWORK FAILED:' :w4r_failed 'of' :w4r_total
   \echo :w4r_failures

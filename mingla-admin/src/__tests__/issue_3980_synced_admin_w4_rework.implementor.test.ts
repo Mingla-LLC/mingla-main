@@ -11,6 +11,8 @@
 //   P3-2  a roadmap line splits at its LAST arrow of any kind
 //   P3-4  the Feature Guide's "changed since read" check also covers who can
 //         use an entry and where it appears
+//   W3-P3 saving a promised event already past its go-live line says no
+//         launch steps were added, never "Mingla adds them nearer the date"
 import { assertEquals, assertMatch, assertNotMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   BRAND_CONFIRM_MAX,
@@ -20,6 +22,7 @@ import {
   brandFirstPicked,
   brandSelectable,
   brandTogglePick,
+  expectedSavedWords,
   parseRoadmapLinkLines,
 } from "../lib/opsModel.js";
 
@@ -112,4 +115,15 @@ Deno.test("#3980 W4 rework P3-4: the guide's base check hashes who can use an en
   // Seven base hashes, one per existing entry.
   const base = sql.slice(sql.indexOf("CREATE TEMP TABLE issue_3980_sync_guide_base"), sql.indexOf("AS b(capability_key, content_md5)"));
   assertEquals([...base.matchAll(/\('staff-[a-z-]+', '[0-9a-f]{32}'\)/g)].length, 7);
+});
+
+Deno.test("#3980 W4 rework (W3 retest P3): past the go-live line the save says no launch steps were added", () => {
+  const past = { auto_steps: true, steps: { added: 0, redated: 0, open: 0, settled: 0, past_go_live: true } };
+  assertEquals(expectedSavedWords(past), "Saved. It’s on the Calendar. It’s past its go-live line (3 weeks before it starts), so no launch steps were added.");
+  assertNotMatch(expectedSavedWords(past), /nearer the date/);
+  // Far off: the old words stay; finished steps still win.
+  assertEquals(expectedSavedWords({ auto_steps: true, steps: { added: 0, open: 0, settled: 0, past_go_live: false } }),
+    "Saved. It’s on the Calendar. No steps are needed yet; Mingla adds them nearer the date.");
+  assertEquals(expectedSavedWords({ auto_steps: true, steps: { added: 0, open: 0, settled: 2, past_go_live: true } }),
+    "Saved. It’s on the Calendar. Its steps were already finished or declined in Work, so none were added.");
 });

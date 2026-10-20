@@ -882,6 +882,16 @@ BEGIN
 END;
 $$;
 
+-- #3980 Wave 4 rework: a country's name for the words people read: the
+-- launch-city table's name for it, else its two-letter code.
+CREATE FUNCTION public.ops_country_words(p_cc text) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT COALESCE((SELECT min(btrim(s.country)) FROM public.seeding_cities s
+                    WHERE upper(btrim(s.country_code)) = upper(btrim(p_cc)) AND btrim(COALESCE(s.country, '')) <> ''),
+                  upper(btrim(p_cc)))
+$$;
+
 -- #3980 Wave 4 rework: the one place that says a person already decided
 -- about a brand. It is the newest pick or reopen card of the brand that a
 -- person closed (done, already done or declined; an agent's or Mingla's close
@@ -924,7 +934,7 @@ DECLARE
   v_names text; v_exact uuid[]; v_contact text; v_how text; v_brand jsonb;
   v_plat text; v_country text; v_rows jsonb; v_match text; v_near_phone boolean; v_near_handle boolean; v_near_words text;
   v_decided public.ops_work_cards; v_new uuid[]; v_reask boolean := false; v_new_names text;
-  v_same_digits boolean; v_different boolean; v_unsure boolean; v_name_key text;
+  v_same_digits boolean; v_different boolean; v_unsure boolean; v_name_key text; v_two_countries text;
 BEGIN
   SELECT br.id, br.name, br.contact_email, br.contact_phone, br.account_id, br.social_links INTO b
     FROM public.brands br WHERE br.id = p_brand_id AND br.deleted_at IS NULL;
@@ -1056,10 +1066,15 @@ BEGIN
   -- number (no country on record for one side); or a number that ends the
   -- same and is a different full number. Never "not the same number" when
   -- the digits are the same.
-  SELECT COALESCE(bool_or(i.value_key = w->>'value_key'), false),
+  -- #3980 W4 rework (W3 retest P3): the very same digits read in two
+  -- countries on record are two different numbers, and the words name both
+  -- countries; "no country is on record" only when one is missing.
+  SELECT COALESCE(bool_or(i.value_key = w->>'value_key' AND (f.fa IS NULL OR f.fb IS NULL)), false),
          COALESCE(bool_or(i.value_key <> w->>'value_key' AND f.fa IS NOT NULL AND f.fb IS NOT NULL), false),
-         COALESCE(bool_or(i.value_key <> w->>'value_key' AND (f.fa IS NULL OR f.fb IS NULL)), false)
-    INTO v_same_digits, v_different, v_unsure
+         COALESCE(bool_or(i.value_key <> w->>'value_key' AND (f.fa IS NULL OR f.fb IS NULL)), false),
+         min(CASE WHEN i.value_key = w->>'value_key' AND f.fa IS NOT NULL AND f.fb IS NOT NULL
+                  THEN public.ops_country_words(public.ops_record_country(i.record_id)) || ' and ' || public.ops_country_words(v_country) END)
+    INTO v_same_digits, v_different, v_unsure, v_two_countries
     FROM jsonb_array_elements(COALESCE(v_hits, '[]'::jsonb)) h
     JOIN public.crm_record_identifiers i ON i.record_id = (h->'record'->>'id')::uuid AND i.kind = 'phone'
     JOIN jsonb_array_elements(v_idents) w ON w->>'kind' = 'phone'
@@ -1071,8 +1086,9 @@ BEGIN
                                                   ELSE public.ops_country_calling_code(v_country) END) AS fb) f
    WHERE NOT COALESCE(f.fa = f.fb, false);
   v_near_words := concat_ws(' or ',
+    CASE WHEN v_two_countries IS NOT NULL THEN format('the same digits but different numbers in %s', v_two_countries) END,
     CASE WHEN v_same_digits THEN 'the same phone number written without a country code, and no country is on record to tell whose number it is' END,
-    CASE WHEN v_unsure OR ((v_near_phone OR NOT v_near_handle) AND NOT v_same_digits AND NOT v_different)
+    CASE WHEN v_unsure OR ((v_near_phone OR NOT v_near_handle) AND NOT v_same_digits AND NOT v_different AND v_two_countries IS NULL)
          THEN 'a phone number that ends the same, and no country is on record to tell if it is the same number' END,
     CASE WHEN v_different THEN 'a phone number that ends the same but is a different full number' END,
     CASE WHEN v_near_handle THEN 'the same handle on another platform' END);
@@ -1702,7 +1718,7 @@ DECLARE
   r public.crm_records; x public.ops_expected_events; n public.ops_expected_events; d public.ops_expected_events;
   v_update boolean := false; v_title text; v_type text; v_on date; v_city text; v_note text; v_cancel text;
   v_status text := 'open'; v_event uuid; v_result text; v_out jsonb; v_who text; v_moved integer := 0;
-  v_repeats text; v_steps jsonb; v_auto_on boolean;
+  v_repeats text; v_steps jsonb; v_auto_on boolean; v_json jsonb;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   IF p_request_key IS NULL THEN
@@ -1896,7 +1912,14 @@ BEGIN
                 OR EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = k.id AND l.kind = 'expected' AND l.target_id = n.id))));
     END IF;
   END IF;
-  v_out := jsonb_build_object('expected', public.ops_expected_json(n, v_today), 'status', v_result, 'cards_moved', v_moved,
+  v_json := public.ops_expected_json(n, v_today);
+  -- #3980 W4 rework (W3 retest P3): when its next date is already past the
+  -- go-live line (Too late for promo), no launch steps will come, so the
+  -- screen says that instead of "nearer the date".
+  IF v_steps IS NOT NULL AND NOT COALESCE((v_steps->>'stopped')::boolean, false) THEN
+    v_steps := v_steps || jsonb_build_object('past_go_live', n.status = 'open' AND v_json->'state'->>'k' = 'late');
+  END IF;
+  v_out := jsonb_build_object('expected', v_json, 'status', v_result, 'cards_moved', v_moved,
     'steps', v_steps, 'auto_steps', v_auto_on, 'replayed', false);
   PERFORM public.ops_request_finish(v.actor_email, p_request_key, 'expected', v_out);
   RETURN v_out;
@@ -2553,7 +2576,7 @@ BEGIN
     'public.ops_expected_anchor(public.ops_expected_events,date)',
     'public.ops_expected_occurrences(public.ops_expected_events,date,integer)', 'public.ops_event_in_series(uuid,uuid,date)',
     'public.ops_host_next_rows(uuid[],date)', 'public.ops_live_totals(date)', 'public.ops_host_missing(public.crm_records)',
-    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_card_ask(text,jsonb,uuid)', 'public.ops_brand_decided(uuid)', 'public.ops_brand_match(uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
+    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_card_ask(text,jsonb,uuid)', 'public.ops_country_words(text)', 'public.ops_brand_decided(uuid)', 'public.ops_brand_match(uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
     'public.ops_host_next(uuid[],date)', 'public.ops_attention(date)', 'public.ops_recent_changes(text,uuid,integer)',
     'public.ops_country_calling_code(text)', 'public.ops_phone_full(text,text)', 'public.ops_phone_same(text,text,text,text)',
     'public.ops_record_country(uuid)', 'public.ops_brand_country(uuid)'] LOOP
