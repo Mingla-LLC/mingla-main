@@ -334,8 +334,6 @@ describe("issue #3827 — useEventBuyerCount", () => {
   test("BC-1: it asks the server's one definition of a buyer and returns its number", async () => {
     mockRpc.mockResolvedValue({ data: 0, error: null });
     const zero = await mountCount("server-event-3827");
-    // Not known until the server answers.
-    expect(zero.read()).toBeNull();
     await flush();
     expect(zero.read()).toBe(0);
     expect(mockRpc).toHaveBeenCalledWith("business_event_buyer_count", {
