@@ -1241,7 +1241,17 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // [TEST-MOD-APPROVED #3980] Re-derived because the PR-family set changed:
   // release-records joins it (see PR_FAMILY_COUNT above). No existing
   // workflow's trigger keys, job-level concurrency or uses: values moved.
-  "028f2fc97ecb6cd4df058744b4fc28a5bb474a3beb4a719eded7111b46c6204d";
+  // "028f2fc97ecb6cd4df058744b4fc28a5bb474a3beb4a719eded7111b46c6204d" (above).
+  // [TEST-MOD-APPROVED #3980] Re-derived again because a job-level
+  // concurrency block changed: release-records' release-record job gains one
+  // group per merge commit (status sha, workflow_run head_sha, push sha; per
+  // issue for a live check, per PR for a manual re-run) with
+  // cancel-in-progress false, so two runs for one merge never write its
+  // record at once. The #2851 policy still holds: the top-level block is
+  // unchanged and canonical, the PR links job has no job-level block, and the
+  // new group never cancels a pull request run. Derived locally with this
+  // file's own canonical projection on the branch.
+  "ae36cf0dff1b245c57757d20544742abba656876e0934db259606c4d35645f36";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

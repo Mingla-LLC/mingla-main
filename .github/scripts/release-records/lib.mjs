@@ -91,6 +91,15 @@ export function parseIssueField(body) {
   return numbersIn(v).length > 0 ? { kind: "numbers", reason: null } : { kind: "missing", reason: null };
 }
 
+/** How many Feature Guide entries are wrong, in words that quote none of them. */
+export function invalidGuideWords(guide) {
+  const n = Number(guide?.badCount ?? 0);
+  const what = guide?.tooMany
+    ? `more than ${MAX_GUIDE_KEYS} entries`
+    : `${n} ${n === 1 ? "entry is not a key" : "entries are not keys"}`;
+  return `${what}; a key is lower-case letters, digits and single hyphens, as in the pull request template`;
+}
+
 /** The "Feature Guide:" line: keys, none, missing, or invalid with the bad keys. */
 export function parseFeatureGuide(body) {
   const v = fieldLine(body, "Feature Guide");
@@ -99,17 +108,56 @@ export function parseFeatureGuide(body) {
   const parts = v.split(/[\s,]+/).map((p) => p.replace(/[.;]+$/, "")).filter(Boolean);
   const bad = parts.filter((p) => !KEY.test(p));
   if (bad.length > 0 || parts.length > MAX_GUIDE_KEYS) {
-    return { kind: "invalid", bad: bad.length > 0 ? bad.slice(0, 5) : [`more than ${MAX_GUIDE_KEYS} keys`] };
+    return {
+      kind: "invalid",
+      bad: bad.length > 0 ? bad.slice(0, 5) : [`more than ${MAX_GUIDE_KEYS} keys`],
+      badCount: bad.length,
+      tooMany: bad.length === 0,
+    };
   }
   return { kind: "keys", keys: [...new Set(parts)] };
 }
 
-/** The Vercel projects a list of changed paths touches. */
+/**
+ * The web projects that build each shared package under packages/. A change
+ * to a package is a change to every web project that consumes it.
+ * mingla-business takes every package through a "file:../packages/<name>"
+ * dependency; mingla-admin imports brand-assets and video-upload by relative
+ * path; mingla-marketing maps search-measurement through tsconfig paths.
+ * packages/scripts holds CI scripts no web project builds. Maintained here
+ * (the runner checks out only this folder) and held to the real tree by
+ * issue_3980_release_records_rework.implementor.test.ts, which derives the
+ * consumers from each project's package.json, tsconfig paths and imports.
+ */
+export const PACKAGE_CONSUMERS = {
+  "brand-assets": ["mingla-admin", "mingla-business"],
+  "brand-rendering": ["mingla-business"],
+  "card-identity": ["mingla-business"],
+  "help-content": ["mingla-business"],
+  "location-input": ["mingla-business"],
+  "offering-rendering": ["mingla-business"],
+  "payments-native": ["mingla-business"],
+  "phone-input": ["mingla-business"],
+  "scripts": [],
+  "search-measurement": ["mingla-business", "mingla-marketing"],
+  "sharing": ["mingla-business"],
+  "theme-animations": ["mingla-business"],
+  "video-upload": ["mingla-admin", "mingla-business"],
+};
+// A package not in the map yet: mingla-business takes every package, so it
+// is the one project a new package certainly reaches until the map names it.
+const NEW_PACKAGE_CONSUMERS = ["mingla-business"];
+
+/** The Vercel projects a list of changed paths touches, packages included. */
 export function webProjects(paths) {
   const out = new Set();
   for (const p of paths ?? []) {
-    const top = String(p).split("/")[0];
-    if (WEB_PROJECTS.includes(top)) out.add(top);
+    const parts = String(p).split("/");
+    if (WEB_PROJECTS.includes(parts[0])) out.add(parts[0]);
+    else if (parts[0] === "packages" && parts.length > 2 && parts[1]) {
+      const consumers = Object.hasOwn(PACKAGE_CONSUMERS, parts[1]) ? PACKAGE_CONSUMERS[parts[1]] : NEW_PACKAGE_CONSUMERS;
+      for (const w of consumers) out.add(w);
+    }
   }
   return WEB_PROJECTS.filter((w) => out.has(w));
 }
@@ -151,6 +199,21 @@ export function isTestFile(path) {
 /** One line of other people's text, made safe for the visible part of a comment. */
 export function visible(text, max = 200) {
   return String(text ?? "").replace(/[\r\n\t]+/g, " ").replace(/[<>`]/g, "").trim().slice(0, max);
+}
+
+/**
+ * Other people's text shown as plain words in a comment: visible(), then
+ * every markdown control character escaped, so it can make no link, image,
+ * emphasis or table, and a word joiner after each "@" and inside each
+ * "://", so it can mention no one and autolink nothing. #123 references
+ * stay as they are.
+ */
+export function plainText(text, max = 200) {
+  return visible(text, max)
+    .replace(/[\\*_[\]()!~|{}]/g, (c) => `\\${c}`)
+    .replace(/@/g, "@\u2060")
+    .replace(/:\/\//g, ":\u2060//")
+    .replace(/\bwww\./gi, (w) => `${w.slice(0, 3)}\u2060.`);
 }
 
 function utcMinute(iso) {
@@ -216,6 +279,12 @@ function deployLine(data) {
 
 const EDGE_WORKFLOW = "Deploy Supabase Edge Functions";
 
+/** True for "Vercel – mingla-admin" or "Vercel - mingla-admin", exactly. */
+export function isVercelName(name, project) {
+  const v = String(name ?? "").trim();
+  return v === `Vercel \u2013 ${project}` || v === `Vercel - ${project}`;
+}
+
 /** The deploy state of each web project and of the edge functions. */
 export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
   const out = { web: {}, edge: "none" };
@@ -224,10 +293,16 @@ export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
       out.web[project] = "not_deployed";
       continue;
     }
+    // Only Vercel's own report for this project counts: a status context or
+    // check run named exactly "Vercel – <project>" (en dash, or the hyphen
+    // form). A CI job that merely mentions the project never stands in for
+    // the deploy. Of several check runs with that name, the newest counts.
+    const named = (n) => isVercelName(n, project);
+    const runs = checks.filter((c) => named(c?.name))
+      .sort((a, b) => Date.parse(b?.started_at ?? 0) - Date.parse(a?.started_at ?? 0) || Number(b?.id ?? 0) - Number(a?.id ?? 0));
     const seen = [
-      ...statuses.filter((s) => String(s.context ?? "").includes(project)).map((s) => s.state),
-      ...checks.filter((c) => String(c.name ?? "").includes(project))
-        .map((c) => (c.status === "completed" ? c.conclusion : "pending")),
+      ...statuses.filter((s) => named(s?.context)).map((s) => s.state),
+      ...runs.slice(0, 1).map((c) => (c.status === "completed" ? c.conclusion : "pending")),
     ];
     out.web[project] = seen.includes("success") ? "ready"
       : seen.some((s) => s === "failure" || s === "error" || s === "timed_out" || s === "cancelled") ? "failed"
@@ -235,7 +310,10 @@ export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
   }
   if (edge.some((n) => n.startsWith("brand-site-"))) out.edge = "manual";
   else if (edge.length > 0) {
-    const run = edgeRuns.find((r) => r?.name === EDGE_WORKFLOW);
+    // Only the edge deploy workflow itself, by its exact name; of several
+    // runs (re-runs), the newest.
+    const run = edgeRuns.filter((r) => r?.name === EDGE_WORKFLOW)
+      .sort((a, b) => Date.parse(b?.created_at ?? 0) - Date.parse(a?.created_at ?? 0) || Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
     out.edge = !run || run.status !== "completed" ? "pending"
       : run.conclusion === "success" ? "deployed"
       : ["failure", "cancelled", "timed_out"].includes(run.conclusion) ? "failed"
@@ -251,6 +329,17 @@ export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
 export function recordCommentFor(comments, pr) {
   const marker = `<!-- ${RECORD_MARKER_PREFIX}${pr} -->`;
   return (comments ?? []).find((c) => c?.user?.login === "github-actions[bot]" && String(c?.body ?? "").includes(marker));
+}
+
+/**
+ * Every record comment the bot wrote for a pull request on one issue, oldest
+ * first (by comment id). More than one only when two runs raced.
+ */
+export function recordCommentsFor(comments, pr) {
+  const marker = `<!-- ${RECORD_MARKER_PREFIX}${pr} -->`;
+  return (comments ?? [])
+    .filter((c) => c?.user?.login === "github-actions[bot]" && String(c?.body ?? "").includes(marker))
+    .sort((a, b) => Number(a.id) - Number(b.id));
 }
 
 /** The JSON block, escaped so the HTML comment cannot be closed early. */
@@ -280,7 +369,7 @@ export function renderRecord(data) {
     `<!-- ${RECORD_MARKER_PREFIX}${data.pr} -->`,
     `**Release record** for PR #${data.pr}. Written by the merge bot and refreshed when anything changes. Do not edit it; add the live check as a new comment starting with "Live check:".`,
     "",
-    `- PR: #${data.pr} ${visible(data.title)}, merged ${utcMinute(data.merged_at)} UTC by @${visible(data.merged_by, 39) || "unknown"}`,
+    `- PR: #${data.pr} ${plainText(data.title)}, merged ${utcMinute(data.merged_at)} UTC by @${visible(data.merged_by, 39) || "unknown"}`,
     `- Merge commit: ${data.merge_sha}`,
     `- Issues: ${issues}`,
     `- Migrations added: ${migrationsAdded}`,
@@ -338,7 +427,10 @@ export function prLinksVerdict({ title, body, author, createdAt, landedAt, now }
   if (parseIssueRefs(title, body).length === 0 && field.kind !== "none") missing.push("an issue link");
   const guide = parseFeatureGuide(body);
   if (guide.kind === "missing") missing.push('a "Feature Guide:" line');
-  if (guide.kind === "invalid") missing.push(`a "Feature Guide:" line with real entry keys (not ${guide.bad.join(", ")})`);
+  // Never repeat the pull request's own words here: the comment is posted by
+  // the bot, so echoed text could mention people or carry links and images.
+  // Say how many entries are wrong and where the rule is written.
+  if (guide.kind === "invalid") missing.push(`a "Feature Guide:" line with real entry keys (${invalidGuideWords(guide)})`);
   const landed = landedAt ? Date.parse(landedAt) : NaN;
   const created = Date.parse(createdAt);
   const at = now ? Date.parse(now) : Date.now();

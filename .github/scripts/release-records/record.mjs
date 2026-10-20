@@ -17,7 +17,7 @@ import {
   migrationsAdded,
   parseFeatureGuide,
   parseIssueRefs,
-  recordCommentFor,
+  recordCommentsFor,
   RECORD_MARKER_PREFIX,
   recordProblems,
   renderRecord,
@@ -65,16 +65,52 @@ const lastPage = (link) => {
   return m ? Number(m[1]) : 1;
 };
 
-/** The first page and, when there are more, the last page of an issue's comments. */
+const MAX_COMMENT_PAGES = 50;
+
+/**
+ * Every comment of an issue, all pages, oldest first. A page GitHub does not
+ * answer stops the run: an incomplete list could hide the record comment and
+ * make the bot post a second one.
+ */
 async function issueComments(number) {
   const first = await gh("GET", `/repos/${REPO}/issues/${number}/comments?per_page=100`);
-  const out = Array.isArray(first.json) ? [...first.json] : [];
-  const last = lastPage(first.link);
-  if (last > 1) {
-    const tail = await gh("GET", `/repos/${REPO}/issues/${number}/comments?per_page=100&page=${last}`);
-    if (Array.isArray(tail.json)) out.push(...tail.json);
+  if (first.status !== 200 || !Array.isArray(first.json)) {
+    throw new Error(`could not read the comments of #${number} (HTTP ${first.status})`);
+  }
+  const out = [...first.json];
+  const last = Math.min(lastPage(first.link), MAX_COMMENT_PAGES);
+  for (let page = 2; page <= last; page += 1) {
+    const r = await gh("GET", `/repos/${REPO}/issues/${number}/comments?per_page=100&page=${page}`);
+    if (r.status !== 200 || !Array.isArray(r.json)) {
+      throw new Error(`could not read page ${page} of the comments of #${number} (HTTP ${r.status})`);
+    }
+    out.push(...r.json);
   }
   return out;
+}
+
+/**
+ * After a write, the issue keeps exactly one record comment for the pull
+ * request even when two runs raced: the oldest record comment stays and
+ * carries this run's body, and every later one is deleted (or, if GitHub
+ * refuses the delete, emptied of its marker so it is no longer a record).
+ * Every racing run converges on the same survivor.
+ */
+async function settle(issue, number, body) {
+  const mine = recordCommentsFor(await issueComments(issue), number);
+  if (mine.length <= 1) return mine.length === 1 ? "" : "missing";
+  const [keep, ...extra] = mine;
+  if (keep.body !== body) await gh("PATCH", `/repos/${REPO}/issues/comments/${keep.id}`, { body });
+  for (const c of extra) {
+    const del = await gh("DELETE", `/repos/${REPO}/issues/comments/${c.id}`);
+    if (del.status === 204) continue;
+    // Not deleted by this run (refused, or the other run got there first):
+    // take the marker out, so it is not a record either way.
+    await gh("PATCH", `/repos/${REPO}/issues/comments/${c.id}`, {
+      body: `A second release record for PR #${number} was written at the same time; the record is ${keep.html_url ?? "the earlier comment"}.`,
+    });
+  }
+  return ` (${extra.length} duplicate${extra.length === 1 ? "" : "s"} removed)`;
 }
 
 /** Which of the five events this payload is, read from its shape. */
@@ -88,6 +124,28 @@ function eventKind(event) {
   return "unknown";
 }
 
+const MAX_LIVE_CHECK_RECORDS = 20;
+
+/**
+ * The merged pull requests this event is about (newest record first for a
+ * comment), or an empty list. A "Live check:" comment refreshes every record
+ * on its issue: each record then takes the newest trusted live check made
+ * after its own merge, so the comment counts for each record it applies to.
+ */
+async function resolvePrs(eventName, event) {
+  if (eventName === "issue_comment") {
+    const seen = [];
+    for (const c of (await issueComments(event.issue.number)).reverse()) {
+      if (c?.user?.login !== "github-actions[bot]") continue;
+      const m = new RegExp(`<!-- ${RECORD_MARKER_PREFIX}(\\d+) -->`).exec(String(c.body ?? ""));
+      if (m && !seen.includes(Number(m[1]))) seen.push(Number(m[1]));
+    }
+    return seen.slice(0, MAX_LIVE_CHECK_RECORDS);
+  }
+  const one = await resolvePr(eventName, event);
+  return one ? [one] : [];
+}
+
 /** The merged pull request this event is about, or null. */
 async function resolvePr(eventName, event) {
   if (eventName === "pull_request_target") return event.pull_request?.merged ? event.pull_request.number : null;
@@ -95,15 +153,6 @@ async function resolvePr(eventName, event) {
   if (eventName === "workflow_dispatch") {
     const n = Number(event.inputs?.pr);
     return Number.isInteger(n) && n > 0 ? n : null;
-  }
-  if (eventName === "issue_comment") {
-    const comments = await issueComments(event.issue.number);
-    for (const c of comments.reverse()) {
-      if (c?.user?.login !== "github-actions[bot]") continue;
-      const m = new RegExp(`<!-- ${RECORD_MARKER_PREFIX}(\\d+) -->`).exec(String(c.body ?? ""));
-      if (m) return Number(m[1]);
-    }
-    return null;
   }
   const sha = eventName === "status" ? event.sha
     : eventName === "workflow_run" ? event.workflow_run?.head_sha
@@ -125,16 +174,22 @@ async function main() {
   TOKEN = env("GITHUB_TOKEN");
   const event = JSON.parse(readFileSync(env("GITHUB_EVENT_PATH"), "utf8"));
   const eventName = eventKind(event);
-  const number = await resolvePr(eventName, event);
-  if (!number) {
+  const numbers = await resolvePrs(eventName, event);
+  if (numbers.length === 0) {
     console.log(`release-record: no merged pull request for this ${eventName} event; nothing to do`);
     return 0;
   }
+  for (const number of numbers) await refresh(number);
+  return 0;
+}
+
+/** Writes or refreshes the record of one merged pull request. */
+async function refresh(number) {
   const prRes = await gh("GET", `/repos/${REPO}/pulls/${number}`);
   const pr = prRes.json;
   if (prRes.status !== 200 || !pr?.merged_at || pr?.base?.ref !== "main" || !/^[0-9a-f]{40}$/.test(pr?.merge_commit_sha ?? "")) {
     console.log(`release-record: PR #${number} is not merged into main; nothing to do`);
-    return 0;
+    return;
   }
   const sha = pr.merge_commit_sha;
   const commit = await gh("GET", `/repos/${REPO}/commits/${sha}`);
@@ -150,8 +205,15 @@ async function main() {
   const paths = files.map((f) => f.filename);
   const status = await gh("GET", `/repos/${REPO}/commits/${sha}/status?per_page=100`);
   const statuses = Array.isArray(status.json?.statuses) ? status.json.statuses : [];
-  const checkRes = await gh("GET", `/repos/${REPO}/commits/${sha}/check-runs?per_page=100`);
-  const checks = Array.isArray(checkRes.json?.check_runs) ? checkRes.json.check_runs : [];
+  // A merge commit carries well over 100 check runs; read them all (up to
+  // five pages) so Vercel's own run is never missed.
+  const checks = [];
+  for (let page = 1; page <= 5; page += 1) {
+    const r = await gh("GET", `/repos/${REPO}/commits/${sha}/check-runs?per_page=100&page=${page}`);
+    const list = Array.isArray(r.json?.check_runs) ? r.json.check_runs : [];
+    checks.push(...list);
+    if (list.length < 100) break;
+  }
   const runRes = await gh("GET", `/repos/${REPO}/actions/runs?head_sha=${sha}&per_page=20`);
   const edgeRuns = Array.isArray(runRes.json?.workflow_runs) ? runRes.json.workflow_runs : [];
 
@@ -168,8 +230,14 @@ async function main() {
   // The newest "Live check:" comment by a trusted person on a target.
   let live = null;
   for (const t of targets) {
-    const r = await gh("GET", `/repos/${REPO}/issues/${t}/comments?since=${encodeURIComponent(pr.merged_at)}&per_page=100`);
-    for (const c of Array.isArray(r.json) ? r.json : []) {
+    const since = [];
+    const first = await gh("GET", `/repos/${REPO}/issues/${t}/comments?since=${encodeURIComponent(pr.merged_at)}&per_page=100`);
+    if (Array.isArray(first.json)) since.push(...first.json);
+    for (let page = 2; page <= Math.min(lastPage(first.link), MAX_COMMENT_PAGES); page += 1) {
+      const r = await gh("GET", `/repos/${REPO}/issues/${t}/comments?since=${encodeURIComponent(pr.merged_at)}&per_page=100&page=${page}`);
+      if (Array.isArray(r.json)) since.push(...r.json);
+    }
+    for (const c of since) {
       if (!String(c.body ?? "").startsWith("Live check:") || !TRUSTED.has(c.author_association)) continue;
       if (Date.parse(c.created_at) < Date.parse(pr.merged_at)) continue;
       if (!live || Date.parse(c.created_at) > Date.parse(live.at)) {
@@ -217,20 +285,33 @@ async function main() {
   data.problems = recordProblems(data);
   const body = renderRecord(data);
 
+  // One record per pull request per issue. The comments are read in full
+  // right before writing: an existing record is updated, never duplicated;
+  // a new one is checked again after posting, in case another run (a push
+  // and a Vercel status for the same merge) posted at the same moment.
   const written = [];
+  const failed = [];
   for (const t of targets) {
-    const existing = recordCommentFor(await issueComments(t), number);
+    const mine = recordCommentsFor(await issueComments(t), number);
+    const existing = mine[0];
     if (existing) {
-      if (existing.body === body) continue;
-      const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${existing.id}`, { body });
-      written.push(`#${t} updated (HTTP ${r.status})`);
+      if (existing.body !== body) {
+        const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${existing.id}`, { body });
+        written.push(`#${t} updated (HTTP ${r.status})`);
+      }
+      if (mine.length > 1) written.push(`#${t}${await settle(t, number, body)}`);
     } else {
       const r = await gh("POST", `/repos/${REPO}/issues/${t}/comments`, { body });
-      written.push(`#${t} created (HTTP ${r.status})`);
+      if (r.status !== 201) {
+        written.push(`#${t} created (HTTP ${r.status})`);
+        failed.push(t);
+        continue;
+      }
+      written.push(`#${t} created (HTTP ${r.status})${await settle(t, number, body)}`);
     }
   }
   console.log(`release-record: PR #${number}: ${written.length > 0 ? written.join(", ") : "unchanged"}`);
-  return 0;
+  if (failed.length > 0) throw new Error(`GitHub refused the record on ${failed.map((t) => `#${t}`).join(", ")}`);
 }
 
 main().then((code) => {

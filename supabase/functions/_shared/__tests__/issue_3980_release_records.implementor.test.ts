@@ -105,8 +105,12 @@ Deno.test("#3980 what a pull request touched: web projects, edge functions, migr
     "supabase/functions/__tests__/x.test.ts",
     "supabase/migrations/20271124003980_issue_3980_synced_w1_foundations.sql",
   ];
-  assertEquals(webProjects(paths), ["mingla-admin"]);
-  assertEquals(webProjects(["packages/location-input/index.ts"]), [], "a change in packages/ alone is not a web project");
+  // [TEST-MOD-APPROVED #3980] D10 (Wave 1 rework): a change under packages/
+  // is a change to every web project that builds that package, so
+  // location-input (taken by mingla-business through file:../packages/...)
+  // now names mingla-business. The old assertion encoded the defect.
+  assertEquals(webProjects(paths), ["mingla-admin", "mingla-business"]);
+  assertEquals(webProjects(["packages/location-input/index.ts"]), ["mingla-business"], "a change in packages/ reaches the projects that build it");
   assertEquals(edgeFunctions(paths), ["team-agent", "(shared code)"]);
   assertEquals(migrationsAdded([
     { filename: "supabase/migrations/20271124003980_issue_3980_synced_w1_foundations.sql", status: "added" },

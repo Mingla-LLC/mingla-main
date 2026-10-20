@@ -130,8 +130,13 @@ export type Gateway = (
 /** A session id a client may send back: 8 to 128 visible ASCII characters. */
 export const SESSION_ID_PATTERN = /^[\x21-\x7E]{8,128}$/;
 
-/** A chat's own name: 1 to 40 characters after trimming, no control characters. */
-export const CHAT_NAME_PATTERN = /^[^\x00-\x1F\x7F]{1,40}$/;
+/**
+ * A chat's own name: 1 to 40 characters after trimming, no control
+ * characters. Characters are counted as the database counts them
+ * (char_length: one per code point, so an emoji is one, not two) and the
+ * control characters are the database's [[:cntrl:]] (C0, DEL and C1).
+ */
+export const CHAT_NAME_PATTERN = /^[^\x00-\x1F\x7F-\x9F]{1,40}$/u;
 
 /** The words a chat name of the wrong shape is refused with. */
 export const CHAT_NAME_WORDS =
@@ -153,7 +158,9 @@ export function readSessionId(req: Request): string | null {
 export function chatName(args: Record<string, unknown>): string | null {
   const v = args.chat;
   if (typeof v !== "string") return null;
-  const t = v.trim();
+  // Trimmed as the database trims it (btrim: spaces only), so the connector
+  // and the database accept and refuse exactly the same names.
+  const t = v.replace(/^ +| +$/g, "");
   return CHAT_NAME_PATTERN.test(t) ? t : null;
 }
 
