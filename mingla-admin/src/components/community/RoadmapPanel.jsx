@@ -16,7 +16,7 @@ import {
   upsertRoadmapCard,
 } from "../../services/communityService";
 import { decideRoadmapSuggestion, listRoadmapLinks, setRoadmapLink } from "../../services/opsService";
-import { githubChipClass, githubChipWords, opsErrorWords, parseGithubInput, roadmapSuggestionWords } from "../../lib/opsModel";
+import { githubChipClass, githubChipWords, opsErrorWords, parseGithubInput, roadmapCardFromHash, roadmapSuggestionWords } from "../../lib/opsModel";
 
 const LANES = [
   { id: "now", label: "Now" },
@@ -49,6 +49,9 @@ export function RoadmapPanel() {
   // to an owner or admin).
   const [links, setLinks] = useState(null);
   const [linksError, setLinksError] = useState("");
+  // #3980 W2 rework 2: To review's "Open the draft in Roadmap" lands here
+  // with ?card=<id>; that card opens in the editor once the list is read.
+  const [openCardId, setOpenCardId] = useState(() => roadmapCardFromHash(window.location.hash));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,6 +85,31 @@ export function RoadmapPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const onHash = () => setOpenCardId(roadmapCardFromHash(window.location.hash));
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  useEffect(() => {
+    if (!openCardId || loading) return;
+    const row = rows.find((item) => item.id === openCardId);
+    setOpenCardId(null);
+    if (!row) {
+      addToast({ variant: "warning", title: "That roadmap card isn’t here any more", description: "It may have been removed. Refresh to see the latest." });
+      return;
+    }
+    setStatusFilter(row.status);
+    setEditor({
+      id: row.id,
+      publicTitle: row.public_title,
+      publicBody: row.public_body || "",
+      internalNote: row.internal_note || "",
+      lane: row.lane,
+      status: row.status,
+    });
+  }, [openCardId, loading, rows, addToast]);
 
   const byLane = useMemo(() => {
     const map = { now: [], next: [], later: [], shipped: [] };

@@ -31,6 +31,53 @@ export const PERSON_ACTIONS = {
   publish: { action: "mark_published", label: "Mark published" },
 };
 
+/**
+ * #3980 W2 rework 2: Bridge D's approval card asks a person to publish (or
+ * archive) a drafted "Recently shipped" roadmap card. It is not an event, so
+ * "Mark published" (which checks that an event is public) can never work
+ * on it.
+ */
+export function isRoadmapApproval(card) {
+  return card?.auto_kind === "roadmap_shipped";
+}
+
+/**
+ * The one-tap action a card waiting for a person offers, or null when it
+ * offers Close with proof instead. A roadmap approval card closes itself
+ * once its draft is published or archived in Community, Roadmap, and a
+ * person can close it with proof.
+ */
+export function personActionFor(card) {
+  if (isRoadmapApproval(card)) return null;
+  return PERSON_ACTIONS[card?.person_reason] || null;
+}
+
+/** Community, Roadmap with the drafted card open, or null when the card links none. */
+export function roadmapDraftHref(card) {
+  const link = (card?.links || []).find((l) => l?.kind === "roadmap_card" && typeof l.id === "string" && l.id);
+  return link ? `#/community-support?tab=roadmap&card=${encodeURIComponent(link.id)}` : null;
+}
+
+/** The roadmap card a Community, Roadmap address asks to open, or null. */
+export function roadmapCardFromHash(hash) {
+  const id = new URLSearchParams(String(hash || "").split("?")[1] || "").get("card");
+  return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
+/** To review's groups, in order. Roadmap approvals have their own. */
+export const REVIEW_GROUPS = [
+  { id: "spend", title: "Spend money" },
+  { id: "publish", title: "Publish an event" },
+  { id: "hosts", title: "What hosts are told" },
+  { id: "other", title: "Other" },
+];
+
+/** Which To review group a card waiting for a person belongs to. */
+export function reviewGroupOf(card) {
+  if (isRoadmapApproval(card)) return "hosts";
+  return ["spend", "publish"].includes(card?.person_reason) ? card.person_reason : "other";
+}
+
 export const KIT_STEPS = [
   { value: -35, label: "T-35 · host materials in" },
   { value: -31, label: "T-31 · listing built and checked" },

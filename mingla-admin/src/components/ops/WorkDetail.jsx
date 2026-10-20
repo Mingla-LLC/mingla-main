@@ -9,8 +9,9 @@ import { useToast } from "../../context/ToastContext";
 import { useOpsCard } from "../../hooks/useOpsCard";
 import * as ops from "../../services/opsService";
 import {
-  PERSON_ACTIONS,
+  personActionFor,
   personReasonLabel,
+  roadmapDraftHref,
   WORK_STATUSES,
   addDays,
   agentName,
@@ -173,7 +174,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const today = todayIso();
   const thisWeek = mondayOf(today);
   const weeks = Array.from(new Set([card.sprint?.starts_on, ...[0, 7, 14, 21, 28].map((d) => addDays(thisWeek, d))].filter(Boolean))).sort();
-  const action = PERSON_ACTIONS[card.person_reason];
+  // #3980 W2 rework 2: a roadmap approval card offers Close with proof, not
+  // Mark published (it is no event); it also opens its draft in Roadmap.
+  const action = personActionFor(card);
+  const draftHref = roadmapDraftHref(card);
   const statusLabel = WORK_STATUSES.find((s) => s.value === card.status)?.label || card.status;
 
   return (
@@ -385,6 +389,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             </>}
             {card.status === "person" && <>
               <Button variant="secondary" className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "sendback" ? "" : "sendback")}>Send back</Button>
+              {draftHref && <a href={draftHref} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
               {action && <Button className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(action.action)}>{action.label}</Button>}
               {!action && <Button className="min-h-11" disabled={locked || !!busy} onClick={() => setForm(form === "close" ? "" : "close")}>Close with proof</Button>}
             </>}
