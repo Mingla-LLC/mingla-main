@@ -148,7 +148,7 @@ insert into public.crm_records (id, pipeline, name, stage, stage_reason, created
 insert into public.crm_record_identifiers (record_id, kind, platform, value, value_key, created_by)
 select r::uuid, k, pl, val, public.crm_ident_key(k, val), 'w3b' from (values
   ('39910000-0000-4000-c100-000000000001', 'phone', null, '0901 234 5678'),
-  ('39910000-0000-4000-c100-000000000002', 'phone', null, '0902 234 5678'),
+  ('39910000-0000-4000-c100-000000000002', 'phone', null, '0902 765 4321'),
   ('39910000-0000-4000-c100-000000000003', 'phone', null, '0803 111 2233'),
   ('39910000-0000-4000-c100-000000000004', 'phone', null, '+2348044445566'),
   ('39910000-0000-4000-c100-000000000005', 'phone', null, '07911 123456'),
@@ -164,7 +164,7 @@ update public.ops_settings set value = to_jsonb(now() - interval '1 hour') where
 set local session_replication_role = replica;
 insert into public.brands (id, account_id, name, slug, city, country_code, contact_email, contact_phone, social_links, created_at) values
   ('39910000-0000-4000-b100-000000000001', '39910000-0000-4000-b900-000000000001', 'W3B Memphis Bar', 'w3b-memphis-bar', 'Memphis', 'US', null, '+1 901 234 5678', '{}', now() - interval '59 minutes'),
-  ('39910000-0000-4000-b100-000000000002', '39910000-0000-4000-b900-000000000002', 'W3B Memphis City', 'w3b-memphis-city', 'W3B Memphis', null, null, '+1 902 234 5678', '{}', now() - interval '58 minutes'),
+  ('39910000-0000-4000-b100-000000000002', '39910000-0000-4000-b900-000000000002', 'W3B Memphis City', 'w3b-memphis-city', 'W3B Memphis', null, null, '+1 902 765 4321', '{}', now() - interval '58 minutes'),
   ('39910000-0000-4000-b100-000000000003', '39910000-0000-4000-b900-000000000003', 'W3B Naija Plus', 'w3b-naija-plus', 'W3B Lagos', null, null, '+234 803 111 2233', '{}', now() - interval '57 minutes'),
   ('39910000-0000-4000-b100-000000000004', '39910000-0000-4000-b900-000000000004', 'W3B Naija Local', 'w3b-naija-local', 'W3B Lagos', null, null, '0804 444 5566', '{}', now() - interval '56 minutes'),
   ('39910000-0000-4000-b100-000000000005', '39910000-0000-4000-b900-000000000005', 'W3B Lagos Seven', 'w3b-lagos-seven', 'Lagos', 'NG', null, '+234 7911 123456', '{}', now() - interval '55 minutes'),
@@ -191,7 +191,7 @@ begin
   perform pg_temp.w3b_like('N2', 'it makes a card for a person to pick, naming that card',
     (select title || ' | ' || instructions from public.ops_work_cards where auto_key = 'brand_pick:39910000-0000-4000-b100-000000000001' and status <> 'done'),
     'Pick the right card for W3B Memphis Bar | %ends the same%W3B Lagos Region Card%');
-  perform pg_temp.w3b_check('N2', 'a card with no region: 0902 234 5678 read as a US number is not valid, so +1 902 234 5678 (brand city Memphis) never links',
+  perform pg_temp.w3b_check('N2', 'a card with no region: 0902 765 4321 read as a US number is not valid, so +1 902 765 4321 (brand city Memphis) never links',
     pg_temp.w3b_brand_of('39910000-0000-4000-c100-000000000002'), 'none');
   perform pg_temp.w3b_check('N2', 'the same Nigerian number, 0803 on a Lagos card and +234 on the brand, links',
     pg_temp.w3b_brand_of('39910000-0000-4000-c100-000000000003'), '39910000-0000-4000-b100-000000000003');
