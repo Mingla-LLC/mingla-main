@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3281",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-2117-offering-visibility-gate-tests",
+      "extension": "yml"
+    },
+    "baseRowSha256": "26694253031af0880fa2ac8026d8e0add21de02f356cd9ebc5836cd034a18df0"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "fe7bafad983fe62e48b4e155034504128ab0954f60fb018cb1576b4b1b564a69",
+      "value": "8fe386617b1e6c42b96b3f98e663ca2a4d61783ab637aac58f62c95882eb76d5"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3281 Round 3 adds the exact R3 spacing/spots migration skip to the visibility-gate replay lane without changing its execution topology."
+}
