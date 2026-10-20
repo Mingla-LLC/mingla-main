@@ -90,13 +90,20 @@ export function followNumbers(numbers: number[]): number[] {
 
 const SINGLE = "... on ProjectV2ItemFieldSingleSelectValue { name }";
 
-/** The one read-only query for a batch: an alias per number. */
+/**
+ * The one read-only query for a batch: an alias per number.
+ * issueOrPullRequest is the IssueOrPullRequest UNION: GitHub refuses the
+ * whole request when any field other than __typename is selected on it
+ * directly ("Selections can't be made directly on unions"), so every other
+ * field, repository included, sits inside "... on Issue" and
+ * "... on PullRequest" (#3980 W2 rework 2).
+ */
 export function buildFollowQuery(numbers: number[]): string {
   const fields = followNumbers(numbers).map((n) =>
-    `n${n}: issueOrPullRequest(number: ${n}) { __typename repository { nameWithOwner } ` +
-    `... on Issue { number title url state updatedAt projectItems(first: 10) { nodes { project { id } ` +
+    `n${n}: issueOrPullRequest(number: ${n}) { __typename ` +
+    `... on Issue { repository { nameWithOwner } number title url state updatedAt projectItems(first: 10) { nodes { project { id } ` +
     `status: fieldValueByName(name: "Status") { ${SINGLE} } horizon: fieldValueByName(name: "Horizon") { ${SINGLE} } } } } ` +
-    `... on PullRequest { number title url state merged mergedAt mergeCommit { oid } updatedAt ` +
+    `... on PullRequest { repository { nameWithOwner } number title url state merged mergedAt mergeCommit { oid } updatedAt ` +
     `closingIssuesReferences(first: 10) { nodes { number } } } }`
   ).join(" ");
   return `query { rateLimit { remaining } repository(owner: "${AVENGERS_OWNER}", name: "${AVENGERS_REPO}") { ${fields} } }`;
@@ -109,7 +116,8 @@ export function buildFollowQuery(numbers: number[]): string {
  * number counts as not found only when GitHub said NOT_FOUND for it; a
  * number missing from the answer for any other reason is left out. An
  * answer that names another repository (a transferred issue keeps its old
- * number here) is left out too, so its title is never stored.
+ * number here), or names no repository at all, is left out too, so its
+ * title is never stored.
  */
 export function parseFollowResponse(numbers: number[], json: unknown): FollowItem[] {
   const body = (json && typeof json === "object" ? json : {}) as Json;
@@ -163,16 +171,16 @@ export function parseFollowResponse(numbers: number[], json: unknown): FollowIte
 type Json = Record<string, unknown>;
 
 /**
- * #3980 W2 rework: is this answer about Mingla-LLC/mingla-main? The query
- * asks every node for its repository; when GitHub names one it must be this
- * repository, and a GitHub address must be this repository's issue or pull
- * request with this number.
+ * #3980 W2 rework 2: is this answer about Mingla-LLC/mingla-main? Fails
+ * closed: the query asks every Issue and PullRequest node for its
+ * repository, and a node is kept only when GitHub named exactly this
+ * repository. A node without a repository is left out. A GitHub address,
+ * when there is one, must also be this repository's issue or pull request
+ * with this number.
  */
 export function followNodeInRepo(node: Json, n: number): boolean {
-  if (Object.hasOwn(node, "repository")) {
-    const repo = node.repository as Json | null | undefined;
-    if (!repo || typeof repo !== "object" || repo.nameWithOwner !== AVENGERS_REPOSITORY) return false;
-  }
+  const repo = node.repository as Json | null | undefined;
+  if (!repo || typeof repo !== "object" || repo.nameWithOwner !== AVENGERS_REPOSITORY) return false;
   if (typeof node.url === "string" && /^[a-z]+:\/\//i.test(node.url)) {
     const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(issues|pull)\/(\d+)$/.exec(node.url);
     if (!m || `${m[1]}/${m[2]}` !== AVENGERS_REPOSITORY || Number(m[4]) !== n) return false;

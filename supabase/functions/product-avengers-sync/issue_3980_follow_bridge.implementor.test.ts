@@ -126,10 +126,12 @@ Deno.test("#3980 followBatch: one read-only GraphQL query per batch, board field
   const client = new ProductAvengersClient("token", fakeFetch(seen, {
     json: { data: { rateLimit: { remaining: 4321 }, repository: {
       n3980: { __typename: "Issue", number: 3980, title: "Synced", url: "https://github.com/Mingla-LLC/mingla-main/issues/3980", state: "OPEN",
+        repository: { nameWithOwner: "Mingla-LLC/mingla-main" }, // #3980 W2 rework 2: a node is kept only when GitHub names this repository
         updatedAt: "2026-10-20T10:00:00Z", projectItems: { nodes: [
           { project: { id: "PVT_other" }, status: { name: "Done" }, horizon: { name: "Later" } },
           { project: { id: AVENGERS_PROJECT_ID }, status: { name: "In Progress" }, horizon: { name: "Now" } }] } },
       n3991: { __typename: "PullRequest", number: 3991, title: "Ops board", url: "https://github.com/Mingla-LLC/mingla-main/pull/3991", state: "MERGED",
+        repository: { nameWithOwner: "Mingla-LLC/mingla-main" }, // #3980 W2 rework 2: a node is kept only when GitHub names this repository
         merged: true, mergedAt: "2026-10-20T02:28:00Z", mergeCommit: { oid: "2f1ef910d01119ba5248901ad6dbfa3e2ba63ee1" }, updatedAt: "2026-10-20T02:28:00Z",
         closingIssuesReferences: { nodes: [{ number: 3980 }] } },
       n9999999: null } },
