@@ -291,6 +291,20 @@ $$;
 -- has automatic steps switched on, and by ops_expected_event_set for one
 -- host right after a save. Never by a client.
 -- ---------------------------------------------------------------------------
+-- True when a work card belongs to a host card: linked to it, counted from
+-- one of its promised dates, or from an event of its brand. A save on one
+-- host re-dates and closes only that host's cards.
+CREATE FUNCTION public.ops_card_of_host(w public.ops_work_cards, p_record_id uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = w.id AND l.kind = 'host' AND l.target_id = p_record_id)
+      OR (w.anchor_kind = 'expected' AND EXISTS (SELECT 1 FROM public.ops_expected_events z WHERE z.id = w.anchor_id AND z.record_id = p_record_id))
+      OR (w.anchor_kind = 'event' AND EXISTS (SELECT 1 FROM public.events ev JOIN public.crm_records c ON c.brand_id = ev.brand_id
+                                               WHERE ev.id = w.anchor_id AND c.id = p_record_id AND c.deleted_at IS NULL))
+      OR (w.auto_key LIKE 'series:%' AND EXISTS (SELECT 1 FROM public.ops_expected_events z
+                                                  WHERE z.id::text = split_part(w.auto_key, ':', 2) AND z.record_id = p_record_id))
+$$;
+
 CREATE FUNCTION public.ops_auto_steps(p_today date, p_record_id uuid DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -318,6 +332,7 @@ BEGIN
                                                               WHERE ev.id = w0.anchor_id AND ev.deleted_at IS NULL AND ev.status <> 'cancelled'))
                    OR (w0.anchor_kind = 'expected' AND EXISTS (SELECT 1 FROM public.ops_expected_events z
                                                                 WHERE z.id = w0.anchor_id AND z.status = 'cancelled')))
+              AND (p_record_id IS NULL OR public.ops_card_of_host(w0, p_record_id))
             ORDER BY w0.number LOOP
     BEGIN
       v_res := public.ops_auto_card_close(c.id, 'Event cancelled.',
@@ -333,6 +348,7 @@ BEGIN
   FOR c IN SELECT w0.* FROM public.ops_work_cards w0
             WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND w0.due_source = 'kit' AND w0.kit_step IS NOT NULL
               AND w0.anchor_id IS NOT NULL
+              AND (p_record_id IS NULL OR public.ops_card_of_host(w0, p_record_id))
             ORDER BY w0.number LOOP
     BEGIN
       a := public.ops_anchor(c.anchor_kind, c.anchor_id, v_today);
@@ -342,10 +358,17 @@ BEGIN
       CONTINUE WHEN v_due IS NOT DISTINCT FROM c.due_on;
       v_before := public.ops_card_snapshot(c.id);
       v_new_title := c.title;
+      v_ins := c.instructions;
+      -- The card's words follow the new dates too.
       IF c.auto_key LIKE 'golive:%' THEN
         v_new_title := left(format('Get %s live by %s', left(COALESCE(a->>'title', 'the event'), 120), public.ops_day_words(v_start - 28)), 160);
+        v_ins := format('Host owner. Steps before it: get the flyer, logo, prices and date (%s), build the listing with the host (%s).',
+                        public.ops_day_words(v_start - 35), public.ops_day_words(v_start - 31));
+      ELSIF c.auto_key LIKE 'promo:%' THEN
+        v_ins := format('Starts %s. Creators post %s, reminder %s. Money is spent only after a person approves it in Needs you.',
+                        public.ops_day_words(v_start - 21), public.ops_day_words(v_start - 14), public.ops_day_words(v_start - 7));
       END IF;
-      UPDATE public.ops_work_cards w0 SET due_on = v_due, title = v_new_title, revision = w0.revision + 1,
+      UPDATE public.ops_work_cards w0 SET due_on = v_due, title = v_new_title, instructions = v_ins, revision = w0.revision + 1,
              updated_by = c_actor, updated_via = 'system', updated_at = now()
        WHERE w0.id = c.id RETURNING w0.* INTO n;
       v_words := format('Re-dated to %s: %s now starts %s.', public.ops_day_words(v_due), COALESCE(a->>'title', 'the event'), public.ops_day_words(v_start));
@@ -369,7 +392,8 @@ BEGIN
 
   -- 3. "Ask for their first or next event" closes once something is coming up.
   FOR c IN SELECT w0.* FROM public.ops_work_cards w0
-            WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND w0.auto_key LIKE 'ask:%' ORDER BY w0.number LOOP
+            WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND w0.auto_key LIKE 'ask:%'
+              AND (p_record_id IS NULL OR w0.auto_key = 'ask:' || p_record_id) ORDER BY w0.number LOOP
     BEGIN
       v_next := v_hostnext->split_part(c.auto_key, ':', 2)->'next';
       CONTINUE WHEN v_next IS NULL OR jsonb_typeof(v_next) <> 'object';
@@ -390,7 +414,8 @@ BEGIN
   -- it opens again when a new unpublished date comes into the window. A
   -- series that stops repeating, ends or is cancelled closes its card.
   FOR c IN SELECT w0.* FROM public.ops_work_cards w0
-            WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND w0.auto_key LIKE 'series:%' ORDER BY w0.number LOOP
+            WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND w0.auto_key LIKE 'series:%'
+              AND (p_record_id IS NULL OR public.ops_card_of_host(w0, p_record_id)) ORDER BY w0.number LOOP
     BEGIN
       x := NULL;
       SELECT z.* INTO x FROM public.ops_expected_events z WHERE z.id::text = split_part(c.auto_key, ':', 2);
@@ -437,6 +462,7 @@ BEGIN
   FOR c IN SELECT w0.* FROM public.ops_work_cards w0
              JOIN public.ops_expected_events z ON w0.auto_key = 'golive:expected:' || z.id
             WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND z.status = 'open' AND z.repeats <> 'none'
+              AND (p_record_id IS NULL OR z.record_id = p_record_id)
             ORDER BY w0.number LOOP
     BEGIN
       v_res := public.ops_auto_card_close(c.id, 'The dates now repeat. One rolling card keeps them live.',
@@ -1222,7 +1248,7 @@ DECLARE
   r public.crm_records; x public.ops_expected_events; n public.ops_expected_events; d public.ops_expected_events;
   v_update boolean := false; v_title text; v_type text; v_on date; v_city text; v_note text; v_cancel text;
   v_status text := 'open'; v_event uuid; v_result text; v_out jsonb; v_who text; v_moved integer := 0;
-  v_repeats text; v_steps jsonb;
+  v_repeats text; v_steps jsonb; v_auto_on boolean;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   IF p_request_key IS NULL THEN
@@ -1376,16 +1402,19 @@ BEGIN
       CASE n.repeats WHEN 'week' THEN ', repeating every week' WHEN 'month' THEN ', repeating every month' ELSE '' END),
     jsonb_build_object('record_id', r.id, 'status', v_result, 'cards_moved', v_moved, 'repeats', n.repeats));
   -- Automatic steps for this host, at once, while the owner has them on.
-  IF COALESCE((public.ops_setting('auto_steps') #>> '{}')::boolean, false) THEN
+  -- The answer says whether they were on, so the screen tells the truth
+  -- ("steps are in Work" only when they were made).
+  v_auto_on := COALESCE((public.ops_setting('auto_steps') #>> '{}')::boolean, false);
+  IF v_auto_on THEN
     BEGIN
       v_steps := public.ops_auto_steps(v_today, r.id);
     EXCEPTION WHEN others THEN
       RAISE WARNING 'ops_expected_event_set: automatic steps stopped (% %)', SQLSTATE, SQLERRM;
-      v_steps := NULL;
+      v_steps := jsonb_build_object('stopped', true);
     END;
   END IF;
   v_out := jsonb_build_object('expected', public.ops_expected_json(n, v_today), 'status', v_result, 'cards_moved', v_moved,
-    'steps', v_steps, 'replayed', false);
+    'steps', v_steps, 'auto_steps', v_auto_on, 'replayed', false);
   PERFORM public.ops_request_finish(v.actor_email, p_request_key, 'expected', v_out);
   RETURN v_out;
 EXCEPTION WHEN unique_violation THEN
@@ -1962,7 +1991,7 @@ BEGIN
     'public.ops_expected_anchor(public.ops_expected_events,date)',
     'public.ops_expected_occurrences(public.ops_expected_events,date,integer)', 'public.ops_event_in_series(uuid,uuid,date)',
     'public.ops_host_next_rows(uuid[],date)', 'public.ops_live_totals(date)', 'public.ops_host_missing(public.crm_records)',
-    'public.ops_auto_steps(date,uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
+    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
     'public.ops_host_next(uuid[],date)', 'public.ops_attention(date)', 'public.ops_recent_changes(text,uuid,integer)'] LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', f);

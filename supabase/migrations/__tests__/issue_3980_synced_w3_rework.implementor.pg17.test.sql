@@ -16,6 +16,9 @@
 --          candidates and links nothing; a match on a Lost card is never
 --          linked silently and makes a card asking whether to reopen it; a
 --          new host card keeps the brand's email as its contact
+--   R-MOVE a moved event re-words its go-live and giveaway cards with the new
+--          dates; a person's save re-dates only that host's cards; the save
+--          says whether automatic steps were on
 --   R-X4   "Done but not Live" reads the newest record of an issue, and two
 --          records merged at the same moment are told apart by the higher
 --          pull request number
@@ -381,6 +384,64 @@ begin
     (select count(*) from public.ops_work_cards where auto_key = 'eng_done_not_live:issue-990401' and status <> 'done')::text, '1');
 end;
 $x4$;
+
+-- ---------------------------------------------------------------------------
+-- R-MOVE: a moved event re-words its cards; a person's save re-dates only
+-- that host's cards; the save says whether automatic steps were on.
+-- ---------------------------------------------------------------------------
+do $mv$
+declare v text; v_e text; v_f text; v_p text;
+begin
+  set local session_replication_role = replica;
+  insert into public.brands (id, account_id, name, slug, city, created_at) values
+    ('39880000-0000-4000-b200-000000000005', '39880000-0000-4000-b300-000000000005', 'W3R East Brand', 'w3r-east-brand', 'Lagos', now() - interval '30 days'),
+    ('39880000-0000-4000-b200-000000000006', '39880000-0000-4000-b300-000000000006', 'W3R West Brand', 'w3r-west-brand', 'Lagos', now() - interval '30 days');
+  set local session_replication_role = origin;
+  insert into public.crm_records (id, pipeline, name, stage, brand_id, icp, created_by, updated_by) values
+    ('39880000-0000-4000-c100-000000000005', 'hosts', 'W3R East Host', 'onboarded', '39880000-0000-4000-b200-000000000005', 'event_organizer', 'w3r', 'w3r'),
+    ('39880000-0000-4000-c100-000000000006', 'hosts', 'W3R West Host', 'onboarded', '39880000-0000-4000-b200-000000000006', 'event_organizer', 'w3r', 'w3r');
+  insert into public.crm_record_owners (record_id, owner_email, added_by) values
+    ('39880000-0000-4000-c100-000000000005', 'ada.w3r3980@test.local', 'w3r'), ('39880000-0000-4000-c100-000000000006', 'ada.w3r3980@test.local', 'w3r');
+  perform pg_temp.w3_event('mv_e', '39880000-0000-4000-b200-000000000005', 'W3R East Night', 'discover', 'draft', 50, null);
+  perform pg_temp.w3_event('mv_f', '39880000-0000-4000-b200-000000000006', 'W3R West Night', 'discover', 'draft', 50, null);
+  perform pg_temp.w3_event('mv_p', '39880000-0000-4000-b200-000000000006', 'W3R West Party', 'discover', 'scheduled', 40, 30);
+  perform public.ops_auto_steps(null, null);
+  v_e := 'golive:event:' || pg_temp.w3_id('mv_e'); v_f := 'golive:event:' || pg_temp.w3_id('mv_f'); v_p := 'promo:event:' || pg_temp.w3_id('mv_p');
+  perform pg_temp.w3_check('R-MOVE', 'both drafts have their go-live card due 28 days before',
+    split_part(pg_temp.w3_card(v_e), '/', 3) || ',' || split_part(pg_temp.w3_card(v_f), '/', 3), '22,22');
+  update public.event_dates set start_at = start_at + interval '7 days', end_at = end_at + interval '7 days'
+   where event_id in (pg_temp.w3_id('mv_e')::uuid, pg_temp.w3_id('mv_f')::uuid);
+  update public.event_dates set start_at = start_at + interval '5 days', end_at = end_at + interval '5 days'
+   where event_id = pg_temp.w3_id('mv_p')::uuid;
+  -- A person saves a promised date on the East host only.
+  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+         jsonb_build_object('record_id', '39880000-0000-4000-c100-000000000005', 'title', 'W3R East Later', 'event_type', 'event',
+                            'expected_on', (pg_temp.w3r_today() + 120)::text, 'repeats', 'none'), 'w3r-mv-east-0001'));
+  perform pg_temp.w3_check('R-MOVE', 'the save says automatic steps were on', pg_temp.w3_j(v)->>'auto_steps', 'true');
+  perform pg_temp.w3_check('R-MOVE', 'that save re-dates the East card only',
+    split_part(pg_temp.w3_card(v_e), '/', 3) || ',' || split_part(pg_temp.w3_card(v_f), '/', 3), '29,22');
+  perform pg_temp.w3_check('R-MOVE', 'the East card''s words use the new dates',
+    (select instructions from public.ops_work_cards where auto_key = v_e and status <> 'done'),
+    format('Host owner. Steps before it: get the flyer, logo, prices and date (%s), build the listing with the host (%s).',
+           public.ops_day_words(pg_temp.w3r_today() + 57 - 35), public.ops_day_words(pg_temp.w3r_today() + 57 - 31)));
+  perform public.ops_auto_steps(null, null);
+  perform pg_temp.w3_check('R-MOVE', 'the housekeeping run then re-dates the West card',
+    split_part(pg_temp.w3_card(v_f), '/', 3), '29');
+  perform pg_temp.w3_check('R-MOVE', 'a moved public event''s giveaway card uses the new dates',
+    (select instructions from public.ops_work_cards where auto_key = v_p and status <> 'done'),
+    format('Starts %s. Creators post %s, reminder %s. Money is spent only after a person approves it in Needs you.',
+           public.ops_day_words(pg_temp.w3r_today() + 45 - 21), public.ops_day_words(pg_temp.w3r_today() + 45 - 14),
+           public.ops_day_words(pg_temp.w3r_today() + 45 - 7)));
+  -- With automatic steps off, the save says so and adds nothing.
+  update public.ops_settings set value = 'false'::jsonb where key = 'auto_steps';
+  v := pg_temp.w3_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
+         jsonb_build_object('record_id', '39880000-0000-4000-c100-000000000005', 'title', 'W3R East Off', 'event_type', 'event',
+                            'expected_on', (pg_temp.w3r_today() + 130)::text, 'repeats', 'none'), 'w3r-mv-east-0002'));
+  perform pg_temp.w3_check('R-MOVE', 'with automatic steps off the save says they were off and made no steps',
+    (pg_temp.w3_j(v)->>'auto_steps') || '/' || coalesce(pg_temp.w3_j(v)->>'steps', 'none'), 'false/none');
+  update public.ops_settings set value = 'true'::jsonb where key = 'auto_steps';
+end;
+$mv$;
 
 select count(*) as w3r_total, count(*) filter (where not ok) as w3r_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as w3r_failures
