@@ -250,6 +250,17 @@ export {
 } from "./experienceTimeZone";
 export type { ExperienceWindowMinutes } from "./experienceTimeZone";
 export {
+  experienceRemainingChipText,
+  experienceSeatsLabel,
+  experienceStopOffsetLabel,
+  parseExperienceCapacityScope,
+} from "./experienceR3";
+export type {
+  ExperienceCapacityScope,
+  ExperienceSeatsInput,
+  ExperienceSeatsOccurrence,
+} from "./experienceR3";
+export {
   experiencePriceBasisLabel,
   experienceOfferingOptions,
   experienceBlockLengthLabel,

@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "d254d77692242a491396e9301490e295095ad188b125d6b5057e93d8edbef8eb",
-      "value": "8ebd857e379943429597967e048a3457f8f84b062877a5e5c88bc7097a340a36"
+      "value": "273ccbe5460e0b0a68896efa9c57a6d010668caa50998b6b8fb16c36963deb69"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3281 extends the existing private-event replay skip list (Round 2 checkout units, its grants-only repair, and the #2947/#3281 checkout-base re-emissions this lane cannot build) without changing its execution topology."
+  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, and Round 3 spacing/spots) without changing its execution topology."
 }

@@ -144,6 +144,18 @@ export interface StepBodyProps {
    */
   offeringNoun?: "event" | "experience";
   /**
+   * issue #3281 Round 3 — experience booking spacing + minimum notice. ONLY the
+   * experience wizard passes this; when present, CreatorStep2When renders a
+   * spacing select (15/30/60/120 min) and a minimum-notice select. Events
+   * never pass it, so their When step is byte-identical.
+   */
+  experienceBooking?: {
+    spacingMinutes: number;
+    minNoticeMinutes: number;
+    onChangeSpacing: (minutes: number) => void;
+    onChangeMinNotice: (minutes: number) => void;
+  };
+  /**
    * ORCH-1150 — when true (RSVP wizard only), CreatorStep2When hides the
    * single/recurring/multi_date mode tabs and renders ONLY the single-date
    * body (steering #4). Default false; the event wizard never passes it, so

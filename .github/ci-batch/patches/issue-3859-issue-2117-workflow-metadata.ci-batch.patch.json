@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "94a8a540ab89cc662424629526b9be45e23ea38999e94bd0cc4d25c21a8d6338",
-      "value": "fe7bafad983fe62e48b4e155034504128ab0954f60fb018cb1576b4b1b564a69"
+      "value": "8fe386617b1e6c42b96b3f98e663ca2a4d61783ab637aac58f62c95882eb76d5"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3859 extends the existing visibility-gate replay skip list without changing its execution topology; #3281 adds its Round 2 checkout units and grants-only repair skips the same way."
+  "reason": "Issue #3859 and #3281 extend the visibility-gate replay skip list (installment capability, Round 2 checkout units/repair, and Round 3 spacing/spots) without changing its execution topology."
 }

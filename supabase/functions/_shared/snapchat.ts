@@ -1129,16 +1129,37 @@ export function buildSnapchatCampaignBody(
 
 // ── ISSUE-992 (3a): city circles + interest segments ─────────────────────────
 //
-// Snap geo circles nest UNDER a country_code inside targeting.geos; each circle
-// is a geocoded point + radius (create-time server geocode — coords never touch
-// the browser). SCLS interest segments ride as targeting.interests. Both are
-// SUSPECTED (documented Snap Marketing API contract) — Snap has NO validate-only
-// (refuseSnapchatValidateOnly), so the exact geos/interests nesting must be
-// proven with a PAUSED create + teardown at BUILD.
+// #3697: Snap radius targeting rides as targeting.locations, NOT nested under
+// targeting.geos. Documented shape (Ads API targeting,
+// https://developers.snap.com/api/marketing-api/Ads-API/targeting):
+//   targeting.geos      = [{ country_code: "ng" }]            (still required)
+//   targeting.locations = [{ circles: [{ latitude, longitude, radius, unit }],
+//                            operation: "INCLUDE" }]
+// unit ∈ METERS (default) | KILOMETERS | FEET | MILES; radius spans 96–100,000
+// metres (the same span in the chosen unit); up to 500 circles. The old
+// geos[].circles nesting was rejected live with HTTP 400 "Request body can not
+// be correctly processed". Each circle is a create-time server geocode — coords
+// never touch the browser. SCLS interest segments ride as targeting.interests.
 //
-// [SUSPECTED — Snap Marketing API] circle radius unit token.
+// Internal circle-unit token (frozen plans + the create fn's 422 gate validate
+// against it); translated to Snap's wire enum only by
+// SNAPCHAT_CIRCLE_WIRE_UNITS at the request boundary.
 export const SNAPCHAT_CIRCLE_UNITS = ["mile", "kilometer"] as const;
 export type SnapchatCircleUnit = (typeof SNAPCHAT_CIRCLE_UNITS)[number];
+
+/** Internal unit → Snap's documented wire enum, plus metres per unit. */
+const SNAPCHAT_CIRCLE_WIRE_UNITS: Record<
+  SnapchatCircleUnit,
+  { wire: "MILES" | "KILOMETERS"; metres: number }
+> = {
+  mile: { wire: "MILES", metres: 1609.344 },
+  kilometer: { wire: "KILOMETERS", metres: 1000 },
+};
+/** Snap's documented radius span, in metres. */
+export const SNAPCHAT_CIRCLE_RADIUS_MIN_METRES = 96;
+export const SNAPCHAT_CIRCLE_RADIUS_MAX_METRES = 100_000;
+/** Snap's documented per-location circle cap. */
+export const SNAPCHAT_MAX_CIRCLES = 500;
 
 /** A geocoded city circle — lat/lng resolved server-side (never fabricated). */
 export interface SnapchatCircleGeo {
@@ -1147,23 +1168,20 @@ export interface SnapchatCircleGeo {
   latitude: number;
   longitude: number;
   radius: number;
-  /** "mile" | "kilometer" — SUSPECTED enum, probe-confirmed at BUILD. */
+  /** Internal "mile" | "kilometer"; sent as MILES | KILOMETERS. */
   unit: string;
 }
 
-/**
- * Build the circle-geo array grouped by country_code (each country_code gets
- * ONE geo entry carrying all its circles). When circles are present the picked
- * countries are NOT added as separate country-only geos (that union would make
- * the circle inert — the Meta city-drops-country precedent). Empty circles ⇒
- * null so the caller keeps the existing country-only geos. Never fabricates a
- * coordinate — index.ts drops circles whose geocode returned null before here.
- */
-export function buildSnapchatCircleGeos(
+interface SnapchatValidCircle {
+  country_code: string;
+  circle: Record<string, unknown>;
+}
+
+function snapchatValidCircles(
   circles: readonly SnapchatCircleGeo[] | null | undefined,
-): Record<string, unknown>[] | null {
-  if (!Array.isArray(circles) || circles.length === 0) return null;
-  const byCountry = new Map<string, Record<string, unknown>[]>();
+): SnapchatValidCircle[] {
+  if (!Array.isArray(circles) || circles.length === 0) return [];
+  const out: SnapchatValidCircle[] = [];
   for (const c of circles) {
     if (
       !Number.isFinite(c?.latitude) || !Number.isFinite(c?.longitude) ||
@@ -1171,18 +1189,87 @@ export function buildSnapchatCircleGeos(
     ) continue;
     const cc = String(c.country_code ?? "").trim().toLowerCase();
     if (!cc) continue;
-    const unit = (SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(String(c.unit))
-      ? String(c.unit)
-      : "mile";
-    const list = byCountry.get(cc) ?? [];
-    list.push({ latitude: c.latitude, longitude: c.longitude, radius: c.radius, unit });
-    byCountry.set(cc, list);
+    const unit: SnapchatCircleUnit =
+      (SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(String(c.unit))
+        ? c.unit as SnapchatCircleUnit
+        : "mile";
+    const { wire, metres } = SNAPCHAT_CIRCLE_WIRE_UNITS[unit];
+    const radiusMetres = c.radius * metres;
+    if (
+      radiusMetres < SNAPCHAT_CIRCLE_RADIUS_MIN_METRES ||
+      radiusMetres > SNAPCHAT_CIRCLE_RADIUS_MAX_METRES
+    ) {
+      // Refuse rather than send a value Snap rejects (or silently resize it).
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "targeting_circle_radius_out_of_range",
+        message:
+          `circle radius ${c.radius} ${unit} is outside Snap's ${SNAPCHAT_CIRCLE_RADIUS_MIN_METRES}–${SNAPCHAT_CIRCLE_RADIUS_MAX_METRES} metre range.`,
+      });
+    }
+    out.push({
+      country_code: cc,
+      circle: {
+        latitude: c.latitude,
+        longitude: c.longitude,
+        radius: c.radius,
+        unit: wire,
+      },
+    });
   }
-  if (byCountry.size === 0) return null;
-  return [...byCountry.entries()].map(([country_code, circleList]) => ({
-    country_code,
-    circles: circleList,
-  }));
+  if (out.length > SNAPCHAT_MAX_CIRCLES) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "targeting_circles_too_many",
+      message:
+        `${out.length} circles exceeds Snap's ${SNAPCHAT_MAX_CIRCLES}-circle limit.`,
+    });
+  }
+  return out;
+}
+
+/**
+ * Build Snap's documented targeting.locations array for city circles:
+ * [{ circles: [...], operation: "INCLUDE" }]. Junk circles (non-finite coords,
+ * non-positive radius, empty country) are dropped — never fabricated; an
+ * out-of-range radius is refused. No valid circles ⇒ null (omit the key).
+ */
+export function buildSnapchatCircleLocations(
+  circles: readonly SnapchatCircleGeo[] | null | undefined,
+): Record<string, unknown>[] | null {
+  const valid = snapchatValidCircles(circles);
+  if (valid.length === 0) return null;
+  return [{ circles: valid.map((v) => v.circle), operation: "INCLUDE" }];
+}
+
+/**
+ * Snap geo targeting: country-only geos (lowercase, de-duplicated; every
+ * circle's country is included) plus targeting.locations when circles exist.
+ * Shared by the ad-squad create body and the audience-size estimate.
+ */
+export function buildSnapchatGeoTargeting(
+  countries: readonly string[],
+  circles: readonly SnapchatCircleGeo[] | null | undefined,
+): {
+  geos: { country_code: string }[];
+  locations?: Record<string, unknown>[];
+} {
+  const valid = snapchatValidCircles(circles);
+  const codes: string[] = [];
+  for (
+    const code of [
+      ...countries.map((c) => String(c).trim().toLowerCase()),
+      ...valid.map((v) => v.country_code),
+    ]
+  ) {
+    if (code && !codes.includes(code)) codes.push(code);
+  }
+  const geos = codes.map((country_code) => ({ country_code }));
+  if (valid.length === 0) return { geos };
+  return {
+    geos,
+    locations: [{ circles: valid.map((v) => v.circle), operation: "INCLUDE" }],
+  };
 }
 
 export interface SnapchatAdSquadSpec {
@@ -1192,7 +1279,7 @@ export interface SnapchatAdSquadSpec {
   countries: string[];
   /** GR-39: defaults to [{ min_age: "18" }] when absent. */
   demographics?: Record<string, unknown>[];
-  /** ISSUE-992 (3a): geocoded city circles → circle geos under targeting.geos. */
+  /** ISSUE-992 (3a): geocoded city circles → targeting.locations (#3697). */
   circles?: SnapchatCircleGeo[];
   /** ISSUE-992 (3a): SCLS interest-segment category ids → targeting.interests. */
   interestCategoryIds?: string[];
@@ -1264,16 +1351,17 @@ export function buildSnapchatAdSquadBody(
     });
   }
 
-  // ISSUE-992 (3a): circle geos REPLACE the country-only geos when present
-  // (keeps the radius laser — a country ∪ circle union makes the circle inert);
-  // fall back to country-only when no circles geocoded. [SUSPECTED nesting.]
-  const circleGeos = buildSnapchatCircleGeos(spec.circles);
-  const geos = circleGeos ??
-    // Probe shape (§4.0): lowercase ISO country codes.
-    spec.countries.map((code) => ({ country_code: code.trim().toLowerCase() }));
+  // ISSUE-992 (3a) / #3697: country-only geos (lowercase ISO, always present)
+  // plus Snap's documented targeting.locations circles when any geocoded —
+  // https://developers.snap.com/api/marketing-api/Ads-API/targeting.
+  const { geos, locations } = buildSnapchatGeoTargeting(
+    spec.countries,
+    spec.circles,
+  );
 
   const targeting: Record<string, unknown> = {
     geos,
+    ...(locations ? { locations } : {}),
     demographics,
   };
   const appDestination = spec.deviceOs !== undefined || spec.mobileAppId !== undefined;

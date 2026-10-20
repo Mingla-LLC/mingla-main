@@ -51,6 +51,8 @@ export type UpdateLiveExperienceRejectReason =
 export interface LiveExperiencePatch {
   /** New ticket capacity (events single-ticket quantity_total). null = unlimited. */
   capacity?: number | null;
+  /** issue #3281 R3 — proposed spots scope (drives client capacity floor). */
+  capacity_scope?: "total" | "per_day" | "per_start";
   /** Whether the experience is now free (forces resolved price to 0). */
   is_free?: boolean;
   /** Pricing mode at save time — drives which price source is compared. */
@@ -156,9 +158,11 @@ export const validateLiveExperienceFieldUpdate = (
   }
 
   // ---------- Capacity check ----------
-  // The single ticket's capacity can't drop below the confirmed sold count.
+  // Lifetime floor only for total scope. per_day / per_start use the busiest
+  // day/slot on the server (issue #3281 R3); client cannot see those counters.
   if (patch.capacity !== undefined && patch.capacity !== null) {
-    if (patch.capacity < totalConfirmedOrders) {
+    const scope = patch.capacity_scope ?? exp.capacityScope ?? "total";
+    if (scope === "total" && patch.capacity < totalConfirmedOrders) {
       return {
         ok: false,
         reason: "capacity_below_sold",

@@ -69,6 +69,11 @@ export interface ExperienceStopCardProps {
   onOpenPhotoSheet: (clientId: string) => void;
   /** Issue #3291 — rank-only proximity "longitude,latitude" for the address field. */
   addressSearchProximity?: string;
+  /**
+   * issue #3281 R3 — open-hours experiences author "how far in (minutes)"
+   * instead of a clock start time.
+   */
+  useStartOffsets?: boolean;
 }
 
 const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
@@ -86,6 +91,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   onRemovePhoto,
   onOpenPhotoSheet,
   addressSearchProximity,
+  useStartOffsets = false,
 }) => {
   const cid = stop.clientId;
   const isFirst = i === 0;
@@ -356,16 +362,51 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
         </View>
         <Text style={styles.helper}>First photo is the one buyers see first.</Text>
 
-        {/* Optional start time */}
-        <Text style={styles.fieldLabel}>Start time (optional)</Text>
-        <Input
-          variant="text"
-          value={stop.startTime ?? ""}
-          onChangeText={(v) => onPatch(cid, { startTime: v.trim().length > 0 ? v : null })}
-          placeholder="e.g. 19:00"
-          accessibilityLabel={`Stop ${i + 1} start time`}
-          leadingIcon="calendar"
-        />
+        {/* Optional start time — or offset minutes for open-hours (issue #3281 R3). */}
+        {useStartOffsets ? (
+          <>
+            <Text style={styles.fieldLabel}>How far in (minutes)</Text>
+            <Input
+              variant="number"
+              value={
+                typeof stop.startOffsetMinutes === "number"
+                  ? String(stop.startOffsetMinutes)
+                  : ""
+              }
+              onChangeText={(v) => {
+                const n = parseInt(v, 10);
+                onPatch(cid, {
+                  startOffsetMinutes:
+                    Number.isFinite(n) && n >= 0 ? n : null,
+                  startTime: null,
+                });
+              }}
+              placeholder={isFirst ? "0" : "e.g. 45"}
+              accessibilityLabel={`Stop ${i + 1} minutes from start`}
+              leadingIcon="calendar"
+            />
+            <Text style={styles.helper}>
+              Minutes after the guest&apos;s booked start. Guests see
+              &quot;about N min in&quot;.
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.fieldLabel}>Start time (optional)</Text>
+            <Input
+              variant="text"
+              value={stop.startTime ?? ""}
+              onChangeText={(v) =>
+                onPatch(cid, {
+                  startTime: v.trim().length > 0 ? v : null,
+                })
+              }
+              placeholder="e.g. 19:00"
+              accessibilityLabel={`Stop ${i + 1} start time`}
+              leadingIcon="calendar"
+            />
+          </>
+        )}
 
         {/* Per-stop price (per_stop pricing mode only) */}
         {pricingMode === "per_stop" ? (

@@ -2,8 +2,11 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 const ALLOWLIST_PATH = "supabase/security/anon_executable_definer_allowlist.txt";
 const WORKFLOW_PATH = ".github/workflows/issue-2117-offering-visibility-gate-tests.yml";
@@ -40,6 +43,21 @@ const I3426_BLOCK = [
 ].join("\n");
 const I3426_NAME = "pg_public_brand_offering_section(";
 
+// #3281 R3 — third binding amendment. Exactly ONE intended-public reader (buyer
+// time-step remaining for public live experiences) plus its justification
+// comment, inserted directly after pg_public_experiences_by_brand. The #2986
+// count header is deliberately NOT edited (the #2986 security suite pins it).
+const I3281_ANCHOR = "pg_public_experiences_by_brand(p_brand_slug text)";
+const I3281_SIGNATURE =
+  "pg_experience_slot_availability(p_event_id uuid, p_event_date_id uuid, p_ticket_type_id uuid)";
+const I3281_BLOCK = [
+  "# #3281 R3: buyer time-step remaining for public live experiences only. Returns",
+  "# empty slots (not an error) for private/draft/non-experience ids; exposes only",
+  "# startAt/remaining/full — no buyer identity, holds, or authoring fields.",
+  I3281_SIGNATURE,
+].join("\n");
+const I3281_NAME = "pg_experience_slot_availability(";
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -64,7 +82,26 @@ const expectedAfter3426 = (base) => {
   return base.replace(`${I3426_ANCHOR}\n`, `${I3426_ANCHOR}\n${I3426_BLOCK}\n`);
 };
 
-export const expectedAllowlist = (base) => expectedAfter3426(expectedAfter2986(base));
+// #3281 — applied on top of #3426. A base that already carries the exact block
+// is returned unchanged, so every later change must leave the file byte-equal.
+const expectedAfter3281 = (base) => {
+  if (
+    countExactLine(base, I3281_SIGNATURE) === 1 &&
+    base.includes(`${I3281_ANCHOR}\n${I3281_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (base.includes(I3281_NAME) || base.includes("#3281 R3:")) {
+    throw new Error("base contains a partial or lookalike #3281 R3 reader");
+  }
+  if (countExactLine(base, I3281_ANCHOR) !== 1) {
+    throw new Error("base #3281 R3 insertion anchor is absent or duplicated");
+  }
+  return base.replace(`${I3281_ANCHOR}\n`, `${I3281_ANCHOR}\n${I3281_BLOCK}\n`);
+};
+
+export const expectedAllowlist = (base) =>
+  expectedAfter3281(expectedAfter3426(expectedAfter2986(base)));
 
 export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   const failures = [];
@@ -75,9 +112,11 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
     failures.push(error instanceof Error ? error.message : String(error));
   }
   if (expected && currentAllowlist !== expected) {
-    failures.push("allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader");
+    failures.push(
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader plus the exact #3281 R3 slot reader",
+    );
   }
-  for (const signature of [...SIGNATURES, I3426_SIGNATURE]) {
+  for (const signature of [...SIGNATURES, I3426_SIGNATURE, I3281_SIGNATURE]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
   if (countExactLine(workflow, LIVE_GATE_LINE) !== 1) failures.push("the live ORCH-1392 anon-definer gate was removed, duplicated, or bypassed");
@@ -102,6 +141,7 @@ const fixtureBase = () => [
   "# === INTENDED-PUBLIC READS ===",
   I3426_ANCHOR,
   ANCHOR,
+  I3281_ANCHOR,
   "place_discovery_range_for_viewer(p_place_pool_id uuid)",
   "",
 ].join("\n");
@@ -146,16 +186,24 @@ const runSelfTest = () => {
     ["#3426 lookalike overload", `${head}pg_public_brand_offering_section(p_brand_slug text, p_section text)\n`, workflow, false],
     ["#3426 moved away from its anchor", head.replace(`${I3426_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3426_BLOCK}\n`), workflow, false],
     ["#3426 plus a forged neighbour", head.replace(`${I3426_BLOCK}\n`, `${I3426_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    // #3281 R3 — the third amendment is exactly one reader and its comment.
+    ["#3281 reader missing", head.replace(`${I3281_BLOCK}\n`, ""), workflow, false],
+    ["#3281 comment missing", head.replace(`${I3281_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#3281 comment substituted", head.replace("# #3281 R3: buyer time-step remaining", "# #3281 R3: approved somehow"), workflow, false],
+    ["#3281 signature changed", head.replace(I3281_SIGNATURE, I3281_SIGNATURE.replace("p_ticket_type_id uuid", "p_ticket uuid")), workflow, false],
+    ["#3281 lookalike overload", `${head}pg_experience_slot_availability(p_event_id uuid)\n`, workflow, false],
+    ["#3281 moved away from its anchor", head.replace(`${I3281_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3281_BLOCK}\n`), workflow, false],
+    ["#3281 plus a forged neighbour", head.replace(`${I3281_BLOCK}\n`, `${I3281_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
   ];
   for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // #3426 — once a base carries both amendments, the ONLY accepted head is that
+  // Once a base carries all three amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
-    throw new Error("self-test settled base with both amendments failed");
+    throw new Error("self-test settled base with all three amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n`, workflow }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -165,13 +213,15 @@ const runSelfTest = () => {
 
 const runReal = (baseSha) => {
   if (!/^[0-9a-f]{7,64}$/i.test(baseSha || "")) throw new Error("a concrete git base SHA is required");
-  const root = resolve(import.meta.dirname, "../..");
+  const root = resolve(SCRIPT_DIR, "../..");
   const baseAllowlist = execFileSync("git", ["show", `${baseSha}:${ALLOWLIST_PATH}`], { cwd: root, encoding: "utf8" });
   const currentAllowlist = readFileSync(resolve(root, ALLOWLIST_PATH), "utf8");
   const workflow = readFileSync(resolve(root, WORKFLOW_PATH), "utf8");
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
-  process.stdout.write("#2986 exact allowlist pair + #3426 exact reader + frozen #2117 live gate PASS\n");
+  process.stdout.write(
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + frozen #2117 live gate PASS\n",
+  );
 };
 
 if (process.argv.includes("--self-test")) {
