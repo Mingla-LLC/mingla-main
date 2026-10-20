@@ -2,14 +2,15 @@
  * META-ORCH-1104 Phase 2 — Admin Support Desk.
  *
  * A queue of support_tickets (mirroring the Users / Claims table) + a ticket
- * detail (left = the conversation thread; right = ticket meta + actions) + an
- * Agents panel (grant/revoke a user's support capability).
+ * detail (left = the conversation thread; right = ticket meta + actions).
+ * Who is on Support is managed in Community & Support → People and roles
+ * (#3988); Admins get a link there from this desk.
  *
  * Auth: the admin web client authenticates with the anon key under RLS. The
  * admin is treated as support staff everywhere via the `is_admin_user()`
  * umbrella (Phase 0 RLS), so it can read every support ticket, conversation,
  * and message and INSERT replies into a support conversation. Lifecycle writes
- * (claim / status / priority / staff-grant) flow through the deployed
+ * (claim / status / priority) flow through the deployed
  * `support-*` edge functions; reply is ONLY via support-send (#3720) through the
  * `messages_support_staff_insert` RLS policy.
  *
@@ -20,7 +21,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  LifeBuoy, Send, UserCheck, RefreshCw, Shield, UserPlus, UserX, Users,
+  LifeBuoy, Send, UserCheck, RefreshCw,
 } from "lucide-react";
 import {
   supabase,
@@ -31,7 +32,6 @@ import {
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { Input } from "../components/ui/Input";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
 import { Avatar } from "../components/ui/Avatar";
@@ -137,6 +137,11 @@ function hasActiveNextUpdate(ticket) {
   return Number.isFinite(nextUpdateMs) && nextUpdateMs > Date.now();
 }
 
+// #3988 — Support access is granted in People and roles, not from this desk.
+const MANAGE_SUPPORT_PEOPLE_HREF = "#/community-support?tab=team";
+const MANAGE_SUPPORT_PEOPLE_CLASS =
+  "inline-flex min-h-[32px] items-center px-2 text-sm font-medium text-[var(--color-brand-700)] underline-offset-2 hover:underline";
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function SupportDeskPage({ embedded = false, canManageAgents = true } = {}) {
@@ -181,13 +186,6 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
   const [nextUpdateSource, setNextUpdateSource] = useState(null);
   const [productSignalSource, setProductSignalSource] = useState(null);
   const [productInboxOpen, setProductInboxOpen] = useState(false);
-
-  // Agents panel state
-  const [agentsOpen, setAgentsOpen] = useState(false);
-  const [staff, setStaff] = useState([]);
-  const [staffLoading, setStaffLoading] = useState(false);
-  const [grantEmail, setGrantEmail] = useState("");
-  const [granting, setGranting] = useState(false);
 
   // ─── Queue fetch ────────────────────────────────────────────────────────────
 
@@ -472,79 +470,6 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
     if (mountedRef.current) setActing(false);
   }, [selectedTicket, addToast, loadQueue]);
 
-  // ─── Agents panel ─────────────────────────────────────────────────────────────
-
-  const loadStaff = useCallback(async () => {
-    setStaffLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("support_staff")
-        .select("user_id, enabled, available, display_name, role, created_at, updated_at")
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      const rows = data || [];
-      // Resolve staff profile labels.
-      const ids = rows.map((r) => r.user_id);
-      const profRes = ids.length
-        ? await supabase
-            .from("profiles_with_segment")
-            .select("id, display_name, username, email, avatar_url, segment")
-            .in("id", ids)
-        : { data: [] };
-      if (!mountedRef.current) return;
-      const pMap = {};
-      (profRes.data || []).forEach((p) => { pMap[p.id] = p; });
-      setStaff(rows.map((r) => ({ ...r, profile: pMap[r.user_id] ?? null })));
-    } catch (err) {
-      addToast({ variant: "error", title: "Couldn't load agents", description: err.message });
-      setStaff([]);
-    } finally {
-      if (mountedRef.current) setStaffLoading(false);
-    }
-  }, [addToast]);
-
-  const openAgents = useCallback(() => {
-    if (!canManageAgents) return;
-    setAgentsOpen(true);
-    setGrantEmail("");
-    void loadStaff();
-  }, [canManageAgents, loadStaff]);
-
-  const handleGrant = useCallback(async (e) => {
-    e?.preventDefault?.();
-    const email = grantEmail.trim().toLowerCase();
-    if (!email) return;
-    setGranting(true);
-    const res = await invokeSupportFn("support-grant-staff", { email, enabled: true });
-    if (res.ok) {
-      setSessionExpired(false);
-      addToast({ variant: "success", title: "Support access granted", description: email });
-      await logAdminAction("support.grant_staff", "support_staff", email, { enabled: true });
-      setGrantEmail("");
-      await loadStaff();
-    } else if (!noteInvokeResult(res)) {
-      addToast({ variant: "error", title: "Couldn't grant access", description: res.error });
-    }
-    if (mountedRef.current) setGranting(false);
-  }, [grantEmail, addToast, loadStaff]);
-
-  const handleRevoke = useCallback(async (member) => {
-    setGranting(true);
-    const res = await invokeSupportFn("support-grant-staff", {
-      userId: member.user_id,
-      enabled: false,
-    });
-    if (res.ok) {
-      setSessionExpired(false);
-      addToast({ variant: "success", title: "Support access revoked", description: profileLabel(member.profile) });
-      await logAdminAction("support.revoke_staff", "support_staff", member.user_id, { enabled: false });
-      await loadStaff();
-    } else if (!noteInvokeResult(res)) {
-      addToast({ variant: "error", title: "Couldn't revoke access", description: res.error });
-    }
-    if (mountedRef.current) setGranting(false);
-  }, [addToast, loadStaff]);
-
   // ─── Derived ──────────────────────────────────────────────────────────────────
 
   const unassignedCount = useMemo(
@@ -602,9 +527,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                 Product inbox
               </Button>
               {canManageAgents && (
-                <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
-                  Agents
-                </Button>
+                <a href={MANAGE_SUPPORT_PEOPLE_HREF} className={MANAGE_SUPPORT_PEOPLE_CLASS}>
+                  Manage who's on Support
+                </a>
               )}
               <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
                 Refresh
@@ -626,9 +551,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
               Product inbox
             </Button>
             {canManageAgents && (
-              <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
-                Agents
-              </Button>
+              <a href={MANAGE_SUPPORT_PEOPLE_HREF} className={MANAGE_SUPPORT_PEOPLE_CLASS}>
+                Manage who's on Support
+              </a>
             )}
             <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
               Refresh
@@ -1050,77 +975,6 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
         onError={handleWorkflowError}
       />
 
-      {/* Agents panel */}
-      {canManageAgents && (
-      <Modal open={agentsOpen} onClose={() => setAgentsOpen(false)} title="Support agents" size="md">
-        <ModalBody>
-          <p className="text-sm text-[var(--color-text-secondary)] mb-4">
-            Grant or revoke a user's support capability. Granted staff see the
-            Support console in the business app and can answer tickets.
-          </p>
-
-          <form onSubmit={handleGrant} className="flex items-end gap-2 mb-5">
-            <div className="flex-1">
-              <Input
-                label="Grant by email"
-                type="email"
-                placeholder="teammate@company.com"
-                value={grantEmail}
-                onChange={(e) => setGrantEmail(e.target.value)}
-              />
-            </div>
-            <Button type="submit" variant="primary" icon={UserPlus} loading={granting} disabled={!grantEmail.trim()}>
-              Grant
-            </Button>
-          </form>
-
-          <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide mb-2">
-            Current agents
-          </div>
-          {staffLoading ? (
-            <div className="flex justify-center py-6"><Spinner /></div>
-          ) : staff.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6">
-              <Users className="h-8 w-8 text-[var(--gray-300)]" />
-              <p className="text-sm text-[var(--color-text-tertiary)]">No support agents yet.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-[var(--gray-200)]">
-              {staff.map((member) => (
-                <div key={member.user_id} className="flex items-center gap-3 py-3">
-                  <Avatar src={member.profile?.avatar_url} name={profileLabel(member.profile)} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm text-[var(--color-text-primary)]">
-                      {member.display_name || profileLabel(member.profile)}
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <Badge variant={member.enabled ? "success" : "default"} dot>
-                        {member.enabled ? "Enabled" : "Disabled"}
-                      </Badge>
-                      {member.enabled && (
-                        <Badge variant={member.available ? "brand" : "default"}>
-                          {member.available ? "Available" : "Off shift"}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  {member.enabled ? (
-                    <Button variant="ghost" size="sm" icon={UserX} disabled={granting} onClick={() => void handleRevoke(member)}>
-                      Revoke
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-[var(--color-text-tertiary)]">revoked</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setAgentsOpen(false)}>Done</Button>
-        </ModalFooter>
-      </Modal>
-      )}
     </div>
   );
 }

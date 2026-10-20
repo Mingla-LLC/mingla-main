@@ -101,9 +101,11 @@ Deno.test("the page applies scoped tabs and keeps staff-management admin-only", 
     page,
     /<SupportDeskPage embedded canManageAgents=\{capabilities\.isAdmin\}/,
   );
+  // [TEST-MOD-APPROVED #3988] The teammate Overview now shows their fused
+  // Community and Support role cards instead of the old Moderation-only note.
   assertMatch(
     page,
-    /Use Moderation for first-post review, reports, and appeals/,
+    /You're a Support teammate: you work both Community and Support\./,
   );
   assertMatch(support, /canManageAgents\s*=\s*true/);
   assertMatch(support, /\{canManageAgents && \(/);

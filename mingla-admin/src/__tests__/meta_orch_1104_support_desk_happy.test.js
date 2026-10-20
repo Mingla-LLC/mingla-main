@@ -73,12 +73,14 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
 
   // [TEST-MOD-APPROVED #3720] reply is only via support-send with content
   // (was: direct messages.insert + notifyOnly, which never pushed the host).
+  // [TEST-MOD-APPROVED #3988] Support access moved to People and roles; the desk
+  // links there instead of granting by email.
   it("SupportDeskPage wires claim / reply / set-status / set-priority + agents grant", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
     // edge-fn lifecycle calls
     assert.match(page, /support-claim/);
     assert.match(page, /support-set-status/);
-    assert.match(page, /support-grant-staff/);
+    assert.equal(page.includes("support-grant-staff"), false);
     // #3720: reply goes through support-send with the message body
     assert.match(page, /support-send/);
     assert.match(page, /content:\s*body/);
@@ -89,9 +91,9 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
     // priority + status selects
     assert.match(page, /handleSetStatus/);
     assert.match(page, /handleSetPriority/);
-    // agents panel reads support_staff + can revoke
-    assert.match(page, /from\("support_staff"\)/);
-    assert.match(page, /handleRevoke/);
+    // who is on Support is managed in People and roles
+    assert.match(page, /Manage who's on Support/);
+    assert.match(page, /#\/community-support\?tab=team/);
   });
 
   it("UserManagementPage exposes All/Explorer/Business/Admin segment tabs", () => {

@@ -45,6 +45,12 @@ insert into public.admin_users (email, role, status)
 values ('admin3720e@example.com', 'admin', 'active')
 on conflict (email) do update set role = 'admin', status = 'active';
 
+-- [TEST-MOD-APPROVED #3988] Support and Community powers need a current team
+-- record; the support fixture is a Sales and marketing teammate.
+insert into public.admin_team_members (email, role, status, accepted_at)
+values ('mod3720e@example.com', 'growth', 'active', now())
+on conflict do nothing;
+
 insert into public.creator_accounts (id, created_at)
 values ('a3720000-0000-4000-8000-000000000001', now())
 on conflict (id) do nothing;
@@ -209,9 +215,17 @@ begin
   end;
   perform pg_temp.ok('staff_rejects_admin_role', v_ok);
 
-  perform public.community_set_staff(
-    'c3720000-0000-4000-8000-000000000003', 'moderator', true, 'Mod'
-  );
+  -- [TEST-MOD-APPROVED #3988] The separate Community role is retired; the
+  -- enabled Support row above is what makes this teammate a moderator.
+  v_ok := false;
+  begin
+    perform public.community_set_staff(
+      'c3720000-0000-4000-8000-000000000003', 'moderator', true, 'Mod'
+    );
+  exception when others then
+    v_ok := sqlerrm ilike '%role_retired%';
+  end;
+  perform pg_temp.ok('community_set_staff_retired', v_ok);
   perform pg_temp.ok(
     'staff_moderator_set',
     public.community_role('c3720000-0000-4000-8000-000000000003') = 'moderator'

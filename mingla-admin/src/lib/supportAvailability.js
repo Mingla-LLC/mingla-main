@@ -1,16 +1,19 @@
 /**
  * #3720 — the "Available for support" switch in the Community & Support header.
  *
- * Changing availability can fail (most often because the signed-in admin is
- * not an enabled support_staff row, which the RPC refuses with
- * `not_support_staff`). The switch must then stay where it was and say why in
+ * Changing availability can fail (most often because Support is not turned on
+ * for the signed-in teammate, which the RPC refuses with `not_support_staff`). The switch must then stay where it was and say why in
  * plain words, never fail silently or leak a raw database error.
  *
  * Pure module with no imports so the Deno suite can exercise it directly.
  */
 
 export const NOT_ON_SUPPORT_ROSTER_MESSAGE =
-  "You're not on the support roster yet. Ask an owner to add you under Team.";
+  "Support isn't turned on for you yet. Ask an Owner or Admin to turn it on in Community & Support → People and roles.";
+export const AVAILABLE_ON_MESSAGE =
+  "You're available. Hosts see Support is online and you'll get alerts.";
+export const AVAILABLE_OFF_MESSAGE =
+  "You're away. You can still answer tickets; you just won't get alerts.";
 export const AVAILABILITY_CHANGE_FAILED_MESSAGE =
   "Couldn't change your availability. Try again.";
 

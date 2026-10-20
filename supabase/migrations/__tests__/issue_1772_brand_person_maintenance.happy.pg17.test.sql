@@ -45,6 +45,10 @@ BEGIN
     (v_brand,v_event_manager,'event_manager',now());
   INSERT INTO public.support_staff(user_id,enabled,available,display_name,role)
     VALUES(v_support,true,true,'Privacy Staff','lead');
+  -- [TEST-MOD-APPROVED #3988] Support staff must also be on the Mingla team.
+  UPDATE auth.users SET email='issue1772-support@example.test' WHERE id=v_support;
+  INSERT INTO public.admin_team_members(email,role,status,accepted_at)
+    VALUES('issue1772-support@example.test','growth','active',now());
   UPDATE public.feature_flags SET is_enabled=true WHERE flag_key IN('manual_contact_groups_v1','contact_import_v1');
 
   INSERT INTO public.brand_people(id,brand_id,display_name) VALUES

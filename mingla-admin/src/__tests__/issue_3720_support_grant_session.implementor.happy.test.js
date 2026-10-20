@@ -30,19 +30,14 @@ describe("#3720 support grant + session (happy)", () => {
     assert.match(page, /sessionExpired &&/);
   });
 
-  it("handleGrant still sends email; handleRevoke sends userId only (no role wipe fields)", () => {
+  // [TEST-MOD-APPROVED #3988] Grant/revoke by email left the desk; Support is
+  // set per teammate in People and roles, which the desk links to.
+  it("the desk links Admins to People and roles instead of granting by email", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
-    const grant = page.match(/const handleGrant[\s\S]*?\}, \[/);
-    assert.ok(grant, "handleGrant must exist");
-    assert.match(grant[0], /support-grant-staff/);
-    assert.match(grant[0], /\{\s*email,\s*enabled:\s*true\s*\}/);
-
-    const revoke = page.match(/const handleRevoke[\s\S]*?\}, \[/);
-    assert.ok(revoke, "handleRevoke must exist");
-    assert.match(revoke[0], /userId:\s*member\.user_id/);
-    assert.match(revoke[0], /enabled:\s*false/);
-    assert.equal(revoke[0].includes("role:"), false);
-    assert.equal(revoke[0].includes("displayName"), false);
+    assert.equal(/const handleGrant|const handleRevoke|support-grant-staff/.test(page), false);
+    assert.match(page, /MANAGE_SUPPORT_PEOPLE_HREF = "#\/community-support\?tab=team"/);
+    assert.match(page, /\{canManageAgents && \(\s*<a href=\{MANAGE_SUPPORT_PEOPLE_HREF\}/);
+    assert.match(page, /Manage who's on Support/);
   });
 
   it("EmailPage callEdgeFunction retries once on 401 then SessionExpiredError", () => {
