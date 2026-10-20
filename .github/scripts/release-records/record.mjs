@@ -82,6 +82,7 @@ function eventKind(event) {
   if (event?.workflow_run) return "workflow_run";
   if (event?.comment && event?.issue) return "issue_comment";
   if (event?.pull_request) return "pull_request_target";
+  if (typeof event?.ref === "string" && typeof event?.after === "string") return "push";
   if (event?.inputs && Object.hasOwn(event.inputs, "pr")) return "workflow_dispatch";
   if (typeof event?.sha === "string" && typeof event?.context === "string") return "status";
   return "unknown";
@@ -90,6 +91,7 @@ function eventKind(event) {
 /** The merged pull request this event is about, or null. */
 async function resolvePr(eventName, event) {
   if (eventName === "pull_request_target") return event.pull_request?.merged ? event.pull_request.number : null;
+  if (eventName === "push" && event.ref !== "refs/heads/main") return null;
   if (eventName === "workflow_dispatch") {
     const n = Number(event.inputs?.pr);
     return Number.isInteger(n) && n > 0 ? n : null;
@@ -103,7 +105,10 @@ async function resolvePr(eventName, event) {
     }
     return null;
   }
-  const sha = eventName === "status" ? event.sha : eventName === "workflow_run" ? event.workflow_run?.head_sha : null;
+  const sha = eventName === "status" ? event.sha
+    : eventName === "workflow_run" ? event.workflow_run?.head_sha
+    : eventName === "push" ? event.after
+    : null;
   if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
   const r = await gh("GET", `/repos/${REPO}/commits/${sha}/pulls`);
   const merged = Array.isArray(r.json)

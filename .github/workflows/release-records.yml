@@ -8,24 +8,30 @@ name: Release records
 # fails a pull request opened before it landed, or a bot's pull request.
 #
 # Release record: when a pull request merges into main (admin squash merges
-# included), the merge bot writes one release-record comment on each linked
-# issue, or on the pull request when none is linked, and refreshes it when the
-# Vercel deploys, the edge function deploy, the production migrations status
-# or a person's "Live check:" comment change. It is the only writer of those
-# comments; Mingla reads them back every 5 minutes.
+# included: every merge is a push to main), the merge bot writes one
+# release-record comment on each linked issue, or on the pull request when
+# none is linked, and refreshes it when the Vercel deploys, the edge function
+# deploy, the production migrations status or a person's "Live check:"
+# comment change, or when someone re-runs it for a pull request. It is the
+# only writer of those comments; Mingla reads them back every 5 minutes.
+#
+# The pull-request trigger follows the repository's draft-gate (#2881) and
+# concurrency (#2851) policies: the four canonical activity types, a draft
+# condition leading every job, and the canonical run identity.
 #
 # Safety: both jobs check out the BASE branch only (never the pull request's
 # code), read the event from the event file inside the scripts, and never
 # interpolate event text into a shell command.
 on:
   pull_request_target:
-    types: [opened, edited, reopened, synchronize, ready_for_review, closed]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
   status: {}
-  workflow_run:
-    workflows: ["Deploy Supabase Edge Functions"]
-    types: [completed]
-  issue_comment:
-    types: [created, edited]
+  # One activity-types line per workflow (the #3095 projection probe reads
+  # exactly one); the two below are flow mappings for that reason.
+  workflow_run: { workflows: ["Deploy Supabase Edge Functions"], types: [completed] }
+  issue_comment: { types: [created, edited] }
   workflow_dispatch:
     inputs:
       pr:
@@ -37,13 +43,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-records-${{ github.event.pull_request.number || github.event.issue.number || github.event.sha || github.event.workflow_run.head_sha || inputs.pr }}
-  cancel-in-progress: false
+  group: ci-release-records-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   pr-links:
     name: PR links (issue and Feature Guide)
-    if: github.event_name == 'pull_request_target' && github.event.action != 'closed'
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'pull_request_target') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -67,12 +73,7 @@ jobs:
 
   release-record:
     name: Release record
-    if: >-
-      (github.event_name == 'pull_request_target' && github.event.action == 'closed' && github.event.pull_request.merged == true)
-      || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations'))
-      || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:')
-          && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'push' || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations')) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -2537,13 +2537,13 @@ BEGIN
     IF 'no_issue' = ANY (r.problems) AND NOT EXISTS (SELECT 1 FROM jsonb_object_keys(r.comment_urls) k WHERE k ~ '^[0-9]+$') THEN
       v_want := v_want || jsonb_build_object('eng_no_issue:pr-' || r.pr, v_common || jsonb_build_object(
         'title', format('Link an issue to PR #%s', r.pr),
-        'instructions', format('PR #%s (%s) merged without an issue link. Find or open its issue on the Mingla Avengers board and add a "toward #<issue>" comment to the PR; the merge bot then writes its release record.', r.pr, left(r.title, 200)),
+        'instructions', format('PR #%s (%s) merged without an issue link. Find or open its issue on the Mingla Avengers board, add "toward #<issue>" to the PR description, then re-run "Release records" from the Actions tab with this PR number; the merge bot then writes its release record on the issue.', r.pr, left(r.title, 200)),
         'done_means', format('PR #%s has an issue and a release record.', r.pr)));
     END IF;
     IF r.problems && ARRAY['feature_guide_missing','feature_guide_invalid'] THEN
       v_want := v_want || jsonb_build_object('eng_guide_missing:pr-' || r.pr, v_common || jsonb_build_object(
         'title', format('Add the Feature Guide line for PR #%s', r.pr),
-        'instructions', format('Edit PR #%s''s description and add "Feature Guide: <entry keys>" or "Feature Guide: none". The release record refreshes by itself.', r.pr),
+        'instructions', format('Edit PR #%s''s description and add "Feature Guide: <entry keys>" or "Feature Guide: none", then re-run "Release records" from the Actions tab with this PR number. The card closes by itself once the record shows the line.', r.pr),
         'done_means', 'The release record shows a Feature Guide line.'));
     END IF;
     FOR v_proj IN SELECT e.k FROM jsonb_each_text(COALESCE(r.deploy->'web', '{}'::jsonb)) e(k, val) WHERE e.val = 'not_deployed' ORDER BY e.k LOOP

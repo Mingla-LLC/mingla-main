@@ -358,6 +358,6 @@ export function prLinksVerdict({ title, body, author, createdAt, landedAt, now }
     : `From ${dayMonth(blocksFrom)} this check blocks merging.`;
   const words =
     'This PR needs two lines in its description before it merges: an issue link ("toward #123" or "Fixes #123", or "Issue: none, <reason>") and a "Feature Guide:" line (entry keys or "none"). ' +
-    `Missing: ${missing.join("; ")}. ${when}`;
+    `Missing: ${missing.join("; ")}. ${when} After you edit the description, push a commit or re-run this check.`;
   return { ok: phase !== "blocking", missing, phase, words, comment: true };
 }
