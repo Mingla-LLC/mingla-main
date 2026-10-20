@@ -43,7 +43,8 @@ Deno.test("#3980 W2 rework follow: an answer naming another repository is left o
   assertEquals(followNodeInRepo({ repository: null }, 1), false, "a repository GitHub would not name is not ours");
   assertEquals(followNodeInRepo({ url: "https://github.com/mingla-llc/MINGLA-MAIN/issues/1" }, 1), false, "the address must be exact");
   assertEquals(followNodeInRepo({ repository: { nameWithOwner: REPO }, url: `https://github.com/${REPO}/issues/7` }, 7), true);
-  assertMatch(buildFollowQuery([5]), /n5: issueOrPullRequest\(number: 5\) \{ __typename repository \{ nameWithOwner \} /);
+  // [TEST-MOD-APPROVED #3980] W2 rework 2: issueOrPullRequest is a union, so repository is asked inside both fragments, never directly on it
+  assertMatch(buildFollowQuery([5]), /n5: issueOrPullRequest\(number: 5\) \{ __typename \.\.\. on Issue \{ repository \{ nameWithOwner \} .*\.\.\. on PullRequest \{ repository \{ nameWithOwner \} /);
 });
 
 // ---------------------------------------------------------------------------
