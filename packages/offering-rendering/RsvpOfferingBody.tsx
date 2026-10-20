@@ -562,6 +562,11 @@ export const useRsvpOfferingState = (
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // issue #3827 going-box — the server refused a reply because the event is
+  // full (`rsvp_full`). Some reads carry no full flag (an unlisted private
+  // RSVP), so the page learns it here and switches into the full state: Going
+  // disabled and a "Full" chip, never a tap that refuses again.
+  const [serverSaidFull, setServerSaidFull] = useState(false);
   // #3380 — the server refused a signed-in reply for a missing (or unusable)
   // account phone, so the phone field is now shown even though the surface did
   // not know up front.
@@ -725,10 +730,11 @@ export const useRsvpOfferingState = (
   // legacy compute is for older servers only. A withheld (null) count with no
   // flag is NOT full here; the server still enforces capacity at submit.
   const capacityFull =
-    config.capacityFull ??
-    (config.capacity !== null &&
-      config.goingCount !== null &&
-      config.goingCount >= config.capacity);
+    serverSaidFull ||
+    (config.capacityFull ??
+      (config.capacity !== null &&
+        config.goingCount !== null &&
+        config.goingCount >= config.capacity));
 
   const ctaState: RsvpCtaState = useMemo(
     () =>
@@ -1020,6 +1026,7 @@ export const useRsvpOfferingState = (
         if (!isCurrent()) return;
         const code = err instanceof Error ? err.message : String(err);
         handleAcquisitionError(code);
+        if (code.includes("rsvp_full")) setServerSaidFull(true);
         setErrorMsg(askForAccountPhone(code) ?? mapErrorCode(code));
       } finally {
         if (isCurrent()) setSubmitting(false);
@@ -1190,6 +1197,7 @@ export const useRsvpOfferingState = (
       if (!isCurrent()) return;
       const code = err instanceof Error ? err.message : String(err);
       handleAcquisitionError(code);
+      if (code.includes("rsvp_full")) setServerSaidFull(true);
       setConfirmError(askForAccountPhone(code) ?? mapErrorCode(code));
     } finally {
       if (isCurrent()) setSubmitting(false);

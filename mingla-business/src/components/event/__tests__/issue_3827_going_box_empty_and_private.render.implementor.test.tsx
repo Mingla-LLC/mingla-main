@@ -349,3 +349,117 @@ describe("issue #3827 — the floating dock and the host preview", () => {
     expect(textOf(byTestID(inline, "orch-1157-rsvp-going-count")[0])).toBe("7");
   });
 });
+
+// ── A-R11: the unlisted private RSVP that is already full ──────────────────────
+// No read carries a full flag for an unlisted private RSVP, so the page offers
+// Going. The server refuses with `rsvp_full`. The guest must see the honest full
+// message, and the page must switch into the full state (Going disabled, "Full"
+// chip) — never a generic error, and never a tap that refuses again.
+const PageWithDialog: React.FC<{
+  config: RsvpOfferingConfig;
+  onSubmit: RsvpOfferingBodyProps["onSubmit"];
+}> = ({ config, onSubmit }) => {
+  const state = useRsvpOfferingState({
+    event,
+    brand: null,
+    palette,
+    theme,
+    config,
+    isLoggedIn: false,
+    onSubmit,
+  } as RsvpOfferingBodyProps);
+  return (
+    <View>
+      <RsvpDecisionBox palette={palette} theme={theme} config={config} state={state} />
+      {state.confirmDialog}
+    </View>
+  );
+};
+
+const typeInto = async (tree: Renderer, testID: string, value: string): Promise<void> => {
+  const input = byTestID(tree, testID)[0];
+  await act(async () => {
+    (input.props.onChangeText as (v: string) => void)(value);
+  });
+};
+const tap = async (node: TestNode | undefined): Promise<void> => {
+  const onPress = node?.props.onPress;
+  if (typeof onPress !== "function") throw new Error("not pressable");
+  await act(async () => {
+    (onPress as () => void)();
+  });
+};
+
+describe("issue #3827 — an unlisted private RSVP that filled up (A-R11)", () => {
+  it("shows the full message, then the full state; Going does not refuse again", async () => {
+    const onSubmit = jest.fn(async () => {
+      throw new Error("rsvp_full");
+    }) as unknown as RsvpOfferingBodyProps["onSubmit"];
+    const config: RsvpOfferingConfig = {
+      ...baseConfig,
+      waitlistEnabled: false,
+      privateGuestList: true,
+      hideRemainingCount: true,
+      goingCount: null,
+      // the unlisted invite-link read has no full flag
+      capacityFull: undefined,
+    };
+    let tree!: Renderer;
+    await act(async () => {
+      tree = TestRenderer.create(<PageWithDialog config={config} onSubmit={onSubmit} />);
+    });
+    await typeInto(tree, "orch-1150-rsvp-name", "Ada Lovelace");
+    await typeInto(tree, "orch-1150-rsvp-email", "ada@example.com");
+    await typeInto(tree, "orch-1150-rsvp-phone", "+1 555 123 4567");
+
+    // Before: nothing says full, so Going is offered.
+    const goingBefore = byTestID(tree, "orch-1150-rsvp-going")[0];
+    expect((goingBefore.props.accessibilityState as { disabled?: boolean }).disabled).toBe(false);
+    await tap(goingBefore);
+    await tap(byTestID(tree, "orch-1163-rsvp-going-confirm-cta")[0]);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    // The refusal reads honestly, never the generic fallback.
+    const text = allText(tree);
+    expect(text).toContain("This event just filled up.");
+    expect(text).not.toContain("Couldn't save your RSVP");
+
+    // After: the page is in the full state.
+    expect(textOf(byTestID(tree, "issue-3827-rsvp-capacity-chip")[0])).toBe("Full");
+    const goingAfter = byTestID(tree, "orch-1150-rsvp-going")[0];
+    expect((goingAfter.props.accessibilityState as { disabled?: boolean }).disabled).toBe(true);
+    await act(async () => {
+      (goingAfter.props.onPress as (() => void) | undefined)?.();
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("with the waitlist on, the same refusal-free path lands the guest on the waitlist", async () => {
+    const onSubmit = jest.fn(async () => ({
+      rsvpId: "rsvp-w1",
+      status: "waitlisted",
+      approvalStatus: "approved",
+      confirmationToken: null,
+    })) as unknown as RsvpOfferingBodyProps["onSubmit"];
+    const config: RsvpOfferingConfig = {
+      ...baseConfig,
+      waitlistEnabled: true,
+      privateGuestList: true,
+      hideRemainingCount: true,
+      goingCount: null,
+      capacityFull: undefined,
+    };
+    let tree!: Renderer;
+    await act(async () => {
+      tree = TestRenderer.create(<PageWithDialog config={config} onSubmit={onSubmit} />);
+    });
+    await typeInto(tree, "orch-1150-rsvp-name", "Ada Lovelace");
+    await typeInto(tree, "orch-1150-rsvp-email", "ada@example.com");
+    await typeInto(tree, "orch-1150-rsvp-phone", "+1 555 123 4567");
+    await tap(byTestID(tree, "orch-1150-rsvp-going")[0]);
+    await tap(byTestID(tree, "orch-1163-rsvp-going-confirm-cta")[0]);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(allText(tree)).toContain("On the waitlist");
+    expect(allText(tree)).not.toContain("Couldn't save your RSVP");
+  });
+});
