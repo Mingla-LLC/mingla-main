@@ -23,9 +23,10 @@ Deno.test("#3720 availability: not on the support roster keeps the switch and sa
     setAvailable: () => Promise.reject(refusal),
   });
   assertEquals(result, { available: false, message: NOT_ON_SUPPORT_ROSTER_MESSAGE });
+  // [TEST-MOD-APPROVED #3988] The copy now names where Support is turned on.
   assertEquals(
     NOT_ON_SUPPORT_ROSTER_MESSAGE,
-    "You're not on the support roster yet. Ask an owner to add you under Team.",
+    "Support isn't turned on for you yet. Ask an Owner or Admin to turn it on in Community & Support → People and roles.",
   );
 });
 
