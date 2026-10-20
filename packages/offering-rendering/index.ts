@@ -249,21 +249,12 @@ export {
   experienceZoneDiffersFromViewer,
 } from "./experienceTimeZone";
 export type { ExperienceWindowMinutes } from "./experienceTimeZone";
-export {
-  filterUpcomingOccurrences,
-  chooseEventDateLayout,
-  occurrenceLocalDay,
-  placesLeftChip,
-  weekStartForCountry,
-} from "./eventDateSchedule";
-export type {
-  EventDateScheduleStatus,
-  EventDateScheduleOccurrence,
-  EventDateLayoutKind,
-  EventDateLayout,
-} from "./eventDateSchedule";
-export { EventDatePicker } from "./EventDatePicker";
-export type { EventDatePickerProps } from "./EventDatePicker";
+// issue #3281 many-dates — EventDatePicker / eventDateSchedule stay off the
+// package barrel until a guest surface imports them. Star-imports of this
+// index (PublicEventPage) would otherwise hoist the picker into __common and
+// trip ORCH-1083. Deep-import:
+//   import { EventDatePicker } from "@mingla/offering-rendering/EventDatePicker";
+//   import { … } from "@mingla/offering-rendering/eventDateSchedule";
 export {
   experienceRemainingChipText,
   experienceSeatsLabel,

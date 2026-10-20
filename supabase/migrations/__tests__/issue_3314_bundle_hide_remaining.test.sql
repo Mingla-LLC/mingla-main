@@ -269,6 +269,9 @@ $h06$;
 ROLLBACK;
 
 -- ─── H-07: additive only ───────────────────────────────────────────────────────────
+-- [TEST-MOD-APPROVED #3281] Many-dates foundation re-emits the checkout bundle
+-- (schedule LATERAL + additive keys, still before recurrenceRule/refundPolicy).
+-- H-07b/H-07c pins move from 20270704003314 / #3284 bodies to the #3281 body.
 BEGIN;
 DO $h07$
 DECLARE
@@ -309,11 +312,11 @@ BEGIN
     (length(v_src) - length(replace(v_src, v_cte_hunk, ''))) = length(v_cte_hunk)
       AND (length(v_src) - length(replace(v_src, v_key_hunk, ''))) = length(v_key_hunk),
     'H-07a the installed bundle carries each #3314 hunk exactly once');
-  PERFORM pg_temp.h3314_assert(md5(v_src) = '116dfbfabf706c9b818c71c634717861',
-    'H-07b the installed body is byte-identical to 20270704003314 (md5 ' || md5(v_src) || ')');
+  PERFORM pg_temp.h3314_assert(md5(v_src) = 'f07629dbe9579d9c91fe1a9927ce9099',
+    'H-07b the installed body is byte-identical to 20271124003281 (md5 ' || md5(v_src) || ')');
   v_before_src := replace(replace(v_src, v_cte_hunk, ''), v_key_hunk, '');
-  PERFORM pg_temp.h3314_assert(md5(v_before_src) = 'e26e1b4fbc414b4f816ca18eae31a932',
-    'H-07c removing the two hunks gives back #3284''s exact body (md5 ' || md5(v_before_src) || ')');
+  PERFORM pg_temp.h3314_assert(md5(v_before_src) = 'e251fd4ac43d73909cb8e0d6c3b0263c',
+    'H-07c removing the two hunks gives back #3281''s body without #3314 (md5 ' || md5(v_before_src) || ')');
   EXECUTE format(
     'CREATE FUNCTION pg_temp.h3314_bundle_before(p_event_id uuid, p_brand_slug text, p_event_slug text) '
     'RETURNS json LANGUAGE sql STABLE SET search_path TO '''' AS %L', v_before_src);
