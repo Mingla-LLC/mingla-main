@@ -78,6 +78,11 @@ jobs:
           src/services/__tests__/issue_2107_update_gate_telemetry.test.ts
           src/services/__tests__/issue_2107_safe_reload.test.ts
           src/services/__tests__/issue_2107_video_player_release.test.ts
+          src/services/__tests__/issue_2107_allowed_outcome_contract.test.ts
+          src/services/__tests__/issue_2107_safe_reload_body_read.test.ts
+          src/services/__tests__/issue_2107_safe_reload_retap_window.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_gate_device_journeys.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_gate_device_rework.test.ts
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   host-ota-gate:
@@ -102,6 +107,12 @@ jobs:
           src/services/__tests__/issue_2107_update_gate_telemetry.test.ts
           src/services/__tests__/issue_2107_safe_reload.test.ts
           src/services/__tests__/issue_2107_video_player_release.test.ts
+          src/services/__tests__/issue_2107_allowed_outcome_contract.test.ts
+          src/services/__tests__/issue_2107_safe_reload_body_read.test.ts
+          src/services/__tests__/issue_2107_safe_reload_retap_window.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_gate_device_journeys.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_gate_device_rework.test.ts
+          src/components/auth/__tests__/issue_2107_welcome_video_released_on_restart.test.tsx
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   edge-ota-policy:
