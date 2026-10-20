@@ -153,6 +153,56 @@ export const experienceTimeChoices = (
   return out;
 };
 
+/**
+ * issue #3281 R2 — block counts (min..max) whose hire fits before occurrence
+ * close when starting at `selectedMinute`. End-exclusive vs `endAt`.
+ */
+export const experienceBlockChoicesThatFit = (
+  startAt: string,
+  endAt: string,
+  timeZone: string,
+  selectedMinute: number,
+  blockMinutes: number,
+  minBlocks: number,
+  maxBlocks: number,
+  stepMinutes: number = 30,
+): number[] => {
+  const startIso = experienceBookedStartIso(
+    startAt,
+    endAt,
+    timeZone,
+    selectedMinute,
+    stepMinutes,
+  );
+  if (startIso === null) return [];
+  const startMs = Date.parse(startIso);
+  const endMs = Date.parse(endAt);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return [];
+  }
+  const blockMs = Math.max(1, Math.round(blockMinutes)) * 60_000;
+  const minB = Math.max(1, Math.round(minBlocks) || 1);
+  const maxB = Math.max(minB, Math.round(maxBlocks) || minB);
+  const out: number[] = [];
+  for (let n = minB; n <= maxB; n++) {
+    if (startMs + n * blockMs <= endMs) out.push(n);
+  }
+  return out;
+};
+
+/** ISO end instant for a block hire (null when inputs are invalid). */
+export const experienceBookedEndIso = (
+  bookedStartIso: string,
+  blockMinutes: number,
+  blocks: number,
+): string | null => {
+  const startMs = Date.parse(bookedStartIso);
+  if (!Number.isFinite(startMs)) return null;
+  const n = Math.max(1, Math.round(blocks));
+  const mins = Math.max(1, Math.round(blockMinutes));
+  return new Date(startMs + n * mins * 60_000).toISOString();
+};
+
 /** Format minutes-from-midnight as "10:00 AM" (experience zone, not device). */
 export const formatExperienceMinute = (min: number): string => {
   const h = Math.floor(min / 60) % 24;

@@ -64,6 +64,8 @@ export interface PublicExperienceStop {
   lng: number | null;
 }
 
+export type PublicExperiencePriceBasis = "person" | "group" | "block";
+
 export interface PublicExperienceTicket {
   /** ticket_types.id — the line a buyer purchases through ticket-checkout-create. */
   ticketTypeId: string;
@@ -81,6 +83,12 @@ export interface PublicExperienceTicket {
    * falls back to `priceCents`/base. NEVER recompute fees in TS.
    */
   priceAllInGbp?: number | null;
+  /** issue #3281 R2 — unit beside the price (absent → person). */
+  priceBasis?: PublicExperiencePriceBasis;
+  blockMinutes?: number | null;
+  minBlocks?: number | null;
+  maxBlocks?: number | null;
+  groupMax?: number | null;
 }
 
 export interface PublicExperienceDate {
@@ -117,6 +125,11 @@ export interface PublicExperience {
   recurrenceRule: RecurrenceRule | null;
   stops: PublicExperienceStop[];
   ticket: PublicExperienceTicket | null;
+  /**
+   * issue #3281 R2 — sellable options when the public payload emits them.
+   * Absent → adapters fall back to `[ticket]`.
+   */
+  options?: PublicExperienceTicket[];
   dates: PublicExperienceDate[];
   /**
    * ORCH-1138 Leg 3 (§4.2) — the curated vibe ids (events.experience_intents).
@@ -334,6 +347,76 @@ async function resolveBookable(
   return data === true;
 }
 
+function parsePriceBasis(raw: unknown): PublicExperiencePriceBasis | undefined {
+  if (raw === "person" || raw === "group" || raw === "block") return raw;
+  return undefined;
+}
+
+function readOptionalPositiveInt(raw: unknown): number | null | undefined {
+  if (raw === null) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return undefined;
+  const n = Math.round(raw);
+  return n > 0 ? n : null;
+}
+
+/** issue #3281 R2 — additive unit fields from RPC (camel) or table row (snake). */
+function ticketUnitFields(raw: {
+  priceBasis?: unknown;
+  price_basis?: unknown;
+  blockMinutes?: unknown;
+  block_minutes?: unknown;
+  minBlocks?: unknown;
+  min_blocks?: unknown;
+  maxBlocks?: unknown;
+  max_blocks?: unknown;
+  groupMax?: unknown;
+  group_max?: unknown;
+}): Pick<
+  PublicExperienceTicket,
+  "priceBasis" | "blockMinutes" | "minBlocks" | "maxBlocks" | "groupMax"
+> {
+  const priceBasis = parsePriceBasis(raw.priceBasis ?? raw.price_basis);
+  const out: Pick<
+    PublicExperienceTicket,
+    "priceBasis" | "blockMinutes" | "minBlocks" | "maxBlocks" | "groupMax"
+  > = {};
+  if (priceBasis !== undefined) out.priceBasis = priceBasis;
+  const blockMinutes = readOptionalPositiveInt(
+    raw.blockMinutes ?? raw.block_minutes,
+  );
+  if (blockMinutes !== undefined) out.blockMinutes = blockMinutes;
+  const minBlocks = readOptionalPositiveInt(raw.minBlocks ?? raw.min_blocks);
+  if (minBlocks !== undefined) out.minBlocks = minBlocks;
+  const maxBlocks = readOptionalPositiveInt(raw.maxBlocks ?? raw.max_blocks);
+  if (maxBlocks !== undefined) out.maxBlocks = maxBlocks;
+  const groupMax = readOptionalPositiveInt(raw.groupMax ?? raw.group_max);
+  if (groupMax !== undefined) out.groupMax = groupMax;
+  return out;
+}
+
+function mapRpcTicket(
+  t: RpcExpTicket,
+  currencyFallback: string,
+): PublicExperienceTicket {
+  return {
+    ticketTypeId: t.ticketTypeId,
+    name: t.name,
+    priceCents: t.priceCents ?? 0,
+    currency: t.currency ?? currencyFallback,
+    quantityTotal: t.quantityTotal ?? null,
+    isUnlimited: t.isUnlimited === true,
+    isFree: t.isFree === true || (t.priceCents ?? 0) === 0,
+    ticketsRemaining: t.ticketsRemaining ?? null,
+    priceAllInGbp:
+      t.isFree === true || (t.priceCents ?? 0) === 0
+        ? null
+        : typeof t.allInCents === "number" && t.allInCents > 0
+          ? t.allInCents / 100
+          : null,
+    ...ticketUnitFields(t),
+  };
+}
+
 function mapExperience(input: MapInput): PublicExperience {
   const { event, brand, stops, tickets, dates } = input;
   const theme = (event.theme as Record<string, unknown> | null) ?? {};
@@ -345,9 +428,6 @@ function mapExperience(input: MapInput): PublicExperience {
       : (stops[0]?.address ?? null);
 
   const tt = tickets[0];
-  // ORCH-1147 — server fee-grossed all-in (MAJOR units) from the single-owner
-  // fetch; free tier / RPC miss → null; the cart seed owns the base fallback.
-  const allInCents = tt !== undefined ? input.allInById?.get(tt.id) : undefined;
   // ORCH-1138 Leg 3 (§4.3) — the ONE sellable ticket's event-level remaining from
   // the canonical reader (pg_public_ticket_types_remaining). null = unlimited /
   // unknown (RPC miss). Stamped onto the ticket + every occurrence date below.
@@ -355,28 +435,47 @@ function mapExperience(input: MapInput): PublicExperience {
     tt !== undefined && input.remainingById?.has(tt.id)
       ? (input.remainingById.get(tt.id) ?? null)
       : null;
+  const mapTableTicket = (
+    row: (typeof tickets)[number],
+    remaining: number | null,
+  ): PublicExperienceTicket => {
+    const rowAllIn = input.allInById?.get(row.id);
+    return {
+      ticketTypeId: row.id,
+      name: row.name,
+      priceCents: row.price_cents ?? 0,
+      currency: row.currency ?? "USD",
+      quantityTotal: row.quantity_total ?? null,
+      isUnlimited: row.is_unlimited === true,
+      isFree: row.is_free === true || (row.price_cents ?? 0) === 0,
+      ticketsRemaining: remaining,
+      priceAllInGbp:
+        row.is_free === true || (row.price_cents ?? 0) === 0
+          ? null
+          : typeof rowAllIn === "number"
+            ? rowAllIn / 100
+            : null,
+      ...ticketUnitFields(row),
+    };
+  };
+
   const ticket: PublicExperienceTicket | null =
-    tt !== undefined
-      ? {
-          ticketTypeId: tt.id,
-          name: tt.name,
-          priceCents: tt.price_cents ?? 0,
-          currency: tt.currency ?? "USD",
-          quantityTotal: tt.quantity_total ?? null,
-          isUnlimited: tt.is_unlimited === true,
-          isFree: tt.is_free === true || (tt.price_cents ?? 0) === 0,
-          // ORCH-1138 Leg 3 (§4.3) — event-level remaining from the canonical
-          // reader (was hardcoded null). Drives the page sold-out gate + the
-          // per-slot "N left" in the picker. null = unlimited / RPC miss.
-          ticketsRemaining: eventRemaining,
-          priceAllInGbp:
-            tt.is_free === true || (tt.price_cents ?? 0) === 0
-              ? null
-              : typeof allInCents === "number"
-                ? allInCents / 100
-                : null,
-        }
-      : null;
+    tt !== undefined ? mapTableTicket(tt, eventRemaining) : null;
+
+  // issue #3281 R2 — visible ticket_types rows become options when the by-id
+  // path has more than the default (or unit columns are present). Hidden rows
+  // stay out of the guest list.
+  const visibleTickets = tickets.filter((row) => row?.is_hidden !== true);
+  const options: PublicExperienceTicket[] | undefined =
+    visibleTickets.length > 0
+      ? visibleTickets.map((row) => {
+          const rem =
+            input.remainingById?.has(row.id)
+              ? (input.remainingById.get(row.id) ?? null)
+              : null;
+          return mapTableTicket(row, rem);
+        })
+      : undefined;
 
   return {
     id: event.id,
@@ -412,6 +511,7 @@ function mapExperience(input: MapInput): PublicExperience {
       lng: typeof s.lng === "number" ? s.lng : null,
     })),
     ticket,
+    ...(options !== undefined ? { options } : {}),
     dates: dates.map((d) => ({
       id: d.id,
       startAt: d.start_at,
@@ -473,7 +573,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
       supabase
         .from("ticket_types")
         .select(
-          "id, name, price_cents, currency, quantity_total, is_unlimited, is_free, display_order, available_online",
+          "id, name, price_cents, currency, quantity_total, is_unlimited, is_free, is_hidden, display_order, available_online, price_basis, block_minutes, min_blocks, max_blocks, group_max",
         )
         .eq("event_id", eventId)
         .is("deleted_at", null)
@@ -551,6 +651,12 @@ interface RpcExpTicket {
   isFree: boolean;
   ticketsRemaining: number | null;
   availableOnline: boolean;
+  /** issue #3281 R2 — additive; camelCase from RPC when present. */
+  priceBasis?: string | null;
+  blockMinutes?: number | null;
+  minBlocks?: number | null;
+  maxBlocks?: number | null;
+  groupMax?: number | null;
 }
 interface RpcExpDate {
   id: string;
@@ -601,6 +707,8 @@ interface RpcExpPayload {
   brand: RpcExpBrand;
   stops: RpcExpStop[];
   ticket: RpcExpTicket | null;
+  /** issue #3281 R2 — additive options[] when the public RPC emits them. */
+  options?: RpcExpTicket[] | null;
   dates: RpcExpDate[];
   bookable: boolean;
   /**
@@ -624,26 +732,10 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
 
   const t = p.ticket;
   const ticket: PublicExperienceTicket | null =
-    t !== null
-      ? {
-          ticketTypeId: t.ticketTypeId,
-          name: t.name,
-          priceCents: t.priceCents ?? 0,
-          currency: t.currency ?? "USD",
-          quantityTotal: t.quantityTotal ?? null,
-          isUnlimited: t.isUnlimited === true,
-          isFree: t.isFree === true || (t.priceCents ?? 0) === 0,
-          ticketsRemaining: t.ticketsRemaining ?? null,
-          // RPC emits allInCents in MINOR units (compute_all_in_cents); the existing
-          // payload contract is priceAllInGbp in MAJOR units → /100. Free → null.
-          priceAllInGbp:
-            t.isFree === true || (t.priceCents ?? 0) === 0
-              ? null
-              : typeof t.allInCents === "number" && t.allInCents > 0
-                ? t.allInCents / 100
-                : null,
-        }
-      : null;
+    t !== null ? mapRpcTicket(t, p.currency ?? "USD") : null;
+  const options: PublicExperienceTicket[] | undefined = Array.isArray(p.options)
+    ? p.options.map((opt) => mapRpcTicket(opt, p.currency ?? "USD"))
+    : undefined;
 
   const experience: PublicExperience = {
     id: p.id,
@@ -680,6 +772,7 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
       lng: typeof s.lng === "number" ? s.lng : null,
     })),
     ticket,
+    ...(options !== undefined && options.length > 0 ? { options } : {}),
     dates: (p.dates ?? []).map((d) => ({
       id: d.id,
       startAt: d.startAt,

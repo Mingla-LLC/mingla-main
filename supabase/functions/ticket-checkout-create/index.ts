@@ -957,6 +957,29 @@ export const createTicketCheckoutCreateHandler = (
       }
       bookedStartAt = new Date(parsed).toISOString();
     }
+    // issue #3281 R2 — block hire end + group party size (optional; legacy NULL).
+    const bookedEndRaw = typeof body.bookedEndAt === "string"
+      ? body.bookedEndAt.trim()
+      : "";
+    let bookedEndAt: string | null = null;
+    if (bookedEndRaw.length > 0) {
+      const parsedEnd = Date.parse(bookedEndRaw);
+      if (Number.isNaN(parsedEnd)) {
+        return refuse({ error: "booked_length_invalid" }, 422);
+      }
+      bookedEndAt = new Date(parsedEnd).toISOString();
+    }
+    const partySizeRaw = body.partySize;
+    let partySize: number | null = null;
+    if (typeof partySizeRaw === "number" && Number.isFinite(partySizeRaw)) {
+      partySize = Math.trunc(partySizeRaw);
+    } else if (typeof partySizeRaw === "string" && partySizeRaw.trim().length > 0) {
+      const n = Number.parseInt(partySizeRaw.trim(), 10);
+      if (!Number.isFinite(n)) {
+        return refuse({ error: "booked_party_invalid" }, 422);
+      }
+      partySize = n;
+    }
     // issue #2160 [multi-day multi-select] — the SET of days the guest chose,
     // as a sibling of `lines` rather than a per-line field (SPEC amendment §1).
     // De-duplicated here; ORDERED and validated server-side below. Absent or
@@ -1450,6 +1473,9 @@ export const createTicketCheckoutCreateHandler = (
         eventDateIds: orderedEventDateIds,
         // issue #3281 — start-aware. Absent => string-identical to today's key.
         bookedStartAt,
+        // issue #3281 R2 — end + party. Absent => string-identical to start-only.
+        bookedEndAt,
+        partySize,
       });
     const buyerStatusToken = randomBuyerStatusToken();
 
@@ -1495,6 +1521,9 @@ export const createTicketCheckoutCreateHandler = (
             : null,
           // issue #3281 — optional booked start. RPC validates; null omits.
           p_booked_start_at: bookedStartAt,
+          // issue #3281 R2 — block end + group party (null = legacy person path).
+          p_booked_end_at: bookedEndAt,
+          p_booked_party_size: partySize,
       },
       );
     const sessionResult: unknown = sessionCall.data;
@@ -1756,6 +1785,8 @@ export const createTicketCheckoutCreateHandler = (
           eventDateId: anchorEventDateId ?? eventDateId,
           eventDateIds: orderedEventDateIds,
           bookedStartAt,
+          bookedEndAt,
+          partySize,
           intakeFormData: canonicalIntakeFormData,
           quote: {
             currency,

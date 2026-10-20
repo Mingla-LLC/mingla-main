@@ -461,9 +461,21 @@ const ResolvedExperiencePage: React.FC<{
       : typeof ticket.priceAllInGbp === "number" && ticket.priceAllInGbp > 0
         ? Math.round(ticket.priceAllInGbp * 100)
         : ticket.priceCents;
+  const expBasisLabel = (() => {
+    const basis = ticket?.priceBasis;
+    if (basis === "group") return "per group";
+    if (basis === "block") {
+      const n =
+        typeof ticket?.blockMinutes === "number" && ticket.blockMinutes > 0
+          ? ticket.blockMinutes
+          : 60;
+      return `per ${n} min`;
+    }
+    return "per person";
+  })();
   const expPrice =
     expDisplayCents !== null && expDisplayCents > 0
-      ? `${formatExpPrice(expDisplayCents, ticket!.currency)} per person`
+      ? `${formatExpPrice(expDisplayCents, ticket!.currency)} ${expBasisLabel}`
       : ticket !== null
         ? "Free"
         : "";
@@ -537,6 +549,25 @@ const ResolvedExperiencePage: React.FC<{
           selection.startAt.length > 0
         ) {
           routeParams.bookedStartAt = selection.startAt;
+        }
+        if (
+          typeof selection.ticketTypeId === "string" &&
+          selection.ticketTypeId.length > 0
+        ) {
+          routeParams.ticketTypeId = selection.ticketTypeId;
+        }
+        if (
+          typeof selection.bookedEndAt === "string" &&
+          selection.bookedEndAt.length > 0
+        ) {
+          routeParams.bookedEndAt = selection.bookedEndAt;
+        }
+        if (
+          typeof selection.partySize === "number" &&
+          Number.isFinite(selection.partySize) &&
+          selection.partySize >= 1
+        ) {
+          routeParams.partySize = String(Math.floor(selection.partySize));
         }
       }
       router.push(
@@ -779,6 +810,66 @@ const ResolvedExperiencePage: React.FC<{
         eventRemaining={ticket?.ticketsRemaining ?? null}
         unitAllInCents={expDisplayCents}
         currency={ticket?.currency ?? null}
+        options={
+          Array.isArray(experience.options) && experience.options.length > 0
+            ? experience.options.map((opt) => ({
+                ticketTypeId: opt.ticketTypeId,
+                name: opt.name,
+                priceCents: opt.priceCents,
+                priceAllInCents:
+                  typeof opt.priceAllInGbp === "number" && opt.priceAllInGbp > 0
+                    ? Math.round(opt.priceAllInGbp * 100)
+                    : null,
+                currency: opt.currency,
+                isFree: opt.isFree,
+                isUnlimited: opt.isUnlimited,
+                ticketsRemaining: opt.ticketsRemaining,
+                quantityTotal: opt.quantityTotal,
+                ...(opt.priceBasis !== undefined
+                  ? { priceBasis: opt.priceBasis }
+                  : {}),
+                ...(opt.blockMinutes !== undefined
+                  ? { blockMinutes: opt.blockMinutes }
+                  : {}),
+                ...(opt.minBlocks !== undefined
+                  ? { minBlocks: opt.minBlocks }
+                  : {}),
+                ...(opt.maxBlocks !== undefined
+                  ? { maxBlocks: opt.maxBlocks }
+                  : {}),
+                ...(opt.groupMax !== undefined ? { groupMax: opt.groupMax } : {}),
+              }))
+            : ticket !== null
+              ? [
+                  {
+                    ticketTypeId: ticket.ticketTypeId,
+                    name: ticket.name,
+                    priceCents: ticket.priceCents,
+                    priceAllInCents: expDisplayCents,
+                    currency: ticket.currency,
+                    isFree: ticket.isFree,
+                    isUnlimited: ticket.isUnlimited,
+                    ticketsRemaining: ticket.ticketsRemaining,
+                    quantityTotal: ticket.quantityTotal,
+                    ...(ticket.priceBasis !== undefined
+                      ? { priceBasis: ticket.priceBasis }
+                      : {}),
+                    ...(ticket.blockMinutes !== undefined
+                      ? { blockMinutes: ticket.blockMinutes }
+                      : {}),
+                    ...(ticket.minBlocks !== undefined
+                      ? { minBlocks: ticket.minBlocks }
+                      : {}),
+                    ...(ticket.maxBlocks !== undefined
+                      ? { maxBlocks: ticket.maxBlocks }
+                      : {}),
+                    ...(ticket.groupMax !== undefined
+                      ? { groupMax: ticket.groupMax }
+                      : {}),
+                  },
+                ]
+              : undefined
+        }
         onCancel={() => setPickerVisible(false)}
         onConfirm={handlePickerConfirm}
       />

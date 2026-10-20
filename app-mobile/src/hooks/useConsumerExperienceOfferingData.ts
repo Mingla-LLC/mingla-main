@@ -150,8 +150,39 @@ export function buildExperienceOfferingDataFromDetail(
             isUnlimited: t.isUnlimited,
             ticketsRemaining: t.ticketsRemaining,
             quantityTotal: t.quantityTotal,
+            ...(t.priceBasis !== undefined ? { priceBasis: t.priceBasis } : {}),
+            ...(t.blockMinutes !== undefined
+              ? { blockMinutes: t.blockMinutes }
+              : {}),
+            ...(t.minBlocks !== undefined ? { minBlocks: t.minBlocks } : {}),
+            ...(t.maxBlocks !== undefined ? { maxBlocks: t.maxBlocks } : {}),
+            ...(t.groupMax !== undefined ? { groupMax: t.groupMax } : {}),
           }
         : null,
+    ...(Array.isArray(detail.options) && detail.options.length > 0
+      ? {
+          options: detail.options.map((opt) => ({
+            ticketTypeId: opt.ticketTypeId,
+            name: opt.name,
+            priceCents: opt.priceCents,
+            priceAllInCents: opt.priceAllInCents,
+            currency: opt.currency,
+            isFree: opt.isFree,
+            isUnlimited: opt.isUnlimited,
+            ticketsRemaining: opt.ticketsRemaining,
+            quantityTotal: opt.quantityTotal,
+            ...(opt.priceBasis !== undefined
+              ? { priceBasis: opt.priceBasis }
+              : {}),
+            ...(opt.blockMinutes !== undefined
+              ? { blockMinutes: opt.blockMinutes }
+              : {}),
+            ...(opt.minBlocks !== undefined ? { minBlocks: opt.minBlocks } : {}),
+            ...(opt.maxBlocks !== undefined ? { maxBlocks: opt.maxBlocks } : {}),
+            ...(opt.groupMax !== undefined ? { groupMax: opt.groupMax } : {}),
+          })),
+        }
+      : {}),
     occurrences: occ.map((o) => ({
       eventDateId: o.eventDateId,
       startAt: o.startAt,

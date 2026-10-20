@@ -101,6 +101,10 @@ export interface TicketCheckoutCreateInput {
    * the request stays byte-identical for slots / no-time paths.
    */
   bookedStartAt?: string;
+  /** issue #3281 R2 — block hire end (ISO). Omitted when absent. */
+  bookedEndAt?: string;
+  /** issue #3281 R2 — guest party size for group / open-daily. Omitted when absent. */
+  partySize?: number;
   /** #3859 — opt-in only; omitted callers remain on the legacy v1 rail. */
   checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
   /** One UUID retained by the cart across one logical create/retry. */
@@ -841,6 +845,14 @@ export const createTicketCheckout = async (
       : {}),
     ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
       ? { bookedStartAt: input.bookedStartAt }
+      : {}),
+    ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
+      ? { bookedEndAt: input.bookedEndAt }
+      : {}),
+    ...(typeof input.partySize === "number" &&
+    Number.isFinite(input.partySize) &&
+    input.partySize >= 1
+      ? { partySize: Math.floor(input.partySize) }
       : {}),
     // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
     // the request stays byte-identical for non-ad traffic. The edge fn persists
