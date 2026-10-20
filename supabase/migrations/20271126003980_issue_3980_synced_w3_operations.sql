@@ -751,8 +751,11 @@ $$;
 -- country writes national numbers: under +1 ten digits (after an optional
 -- leading 1) that start with 2 to 9; in Spain, Italy, Portugal, Norway,
 -- Denmark, Greece, Poland, Czechia, Mexico and Singapore the digits as
--- written; elsewhere the digits after one leading 0. 6 to 12 national
--- digits. NULL when it cannot be read that way.
+-- written; elsewhere the digits after one leading 0 (the 0 may be left off).
+-- 6 to 12 national digits. NULL when it cannot be read that way. #3980 W3
+-- rework 3: p_cc is only ever the number's own country (ops_phone_same never
+-- passes a country borrowed from the other side), so a left-off 0 is read
+-- only where that country is on record for the number itself.
 CREATE FUNCTION public.ops_phone_full(p_key text, p_cc text) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp
 AS $$
@@ -775,34 +778,24 @@ BEGIN
 END;
 $$;
 
--- #3980 W3 rework 2: true when a host card's phone and a brand's phone are
--- the same full international number. A number written without its country
--- code is read in its own side's country (p_card_country, p_brand_country).
--- A side with no country on record is read in the other side's country, or
--- else in the country code of the other side's number, and counts only when
--- it is written the way that country writes its national numbers. So a
--- Memphis +1 901 234 5678 and a Lagos 0901 234 5678 are never the same.
+-- #3980 W3 rework 3: true when a host card's phone and a brand's phone are
+-- the same full international number, each read only from what its own side
+-- knows. A number written with its country code is itself. A number written
+-- without one is read in its own side's country (p_card_country,
+-- p_brand_country); a side with no country on record is never read in the
+-- other side's country, so it is never the same by itself (false, never
+-- NULL). Such a pair goes to a person as a card to pick. So a Memphis
+-- (901) 234-5678 on a card with no region and a Lagos 0901 234 5678 never
+-- link by themselves.
 CREATE FUNCTION public.ops_phone_same(p_card_key text, p_card_country text, p_brand_key text, p_brand_country text) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, pg_temp
 AS $$
-DECLARE v_card_cc text; v_brand_cc text; a text; b text;
+DECLARE a text; b text;
 BEGIN
   IF p_card_key IS NULL OR p_brand_key IS NULL THEN RETURN false; END IF;
-  IF p_card_key !~ '^[+]' THEN
-    v_card_cc := CASE WHEN p_card_country IS NOT NULL THEN public.ops_country_calling_code(p_card_country)
-                      ELSE COALESCE(public.ops_country_calling_code(p_brand_country),
-                                    CASE WHEN p_brand_key ~ '^[+]' THEN substr(p_brand_key, 2,
-                                      char_length(p_brand_key) - 1 - char_length(public.crm_phone_national(p_brand_key))) END) END;
-  END IF;
-  IF p_brand_key !~ '^[+]' THEN
-    v_brand_cc := CASE WHEN p_brand_country IS NOT NULL THEN public.ops_country_calling_code(p_brand_country)
-                       ELSE COALESCE(public.ops_country_calling_code(p_card_country),
-                                     CASE WHEN p_card_key ~ '^[+]' THEN substr(p_card_key, 2,
-                                       char_length(p_card_key) - 1 - char_length(public.crm_phone_national(p_card_key))) END) END;
-  END IF;
-  a := public.ops_phone_full(p_card_key, v_card_cc);
-  b := public.ops_phone_full(p_brand_key, v_brand_cc);
-  RETURN a IS NOT NULL AND a = b;
+  a := public.ops_phone_full(p_card_key, CASE WHEN p_card_key ~ '^[+]' THEN NULL ELSE public.ops_country_calling_code(p_card_country) END);
+  b := public.ops_phone_full(p_brand_key, CASE WHEN p_brand_key ~ '^[+]' THEN NULL ELSE public.ops_country_calling_code(p_brand_country) END);
+  RETURN COALESCE(a IS NOT NULL AND b IS NOT NULL AND a = b, false);
 END;
 $$;
 
@@ -835,6 +828,60 @@ AS $$
      HAVING count(DISTINCT upper(btrim(s.country_code))) = 1))
 $$;
 
+-- #3980 W3 rework 3: put a brand's pick or reopen card in front of a
+-- person. p_card_id (a card a person closed, asked again because a new exact
+-- match appeared) opens that card again; else the newest card of that key an
+-- agent closed opens again (an agent's close is never a person's decision);
+-- else the card is added (ops_auto_card_upsert). Opening again keeps the
+-- card's history and puts the new words and links on it.
+CREATE FUNCTION public.ops_brand_card_ask(p_auto_key text, p_item jsonb, p_card_id uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  c_actor constant text := 'system@usemingla.com'; v_today date := public.ops_today(NULL);
+  v_id uuid := p_card_id; c public.ops_work_cards; n public.ops_work_cards; v_before jsonb; v_event uuid;
+BEGIN
+  IF v_id IS NULL THEN
+    IF EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.auto_key = p_auto_key AND k.archived_at IS NULL AND k.status <> 'done') THEN
+      RETURN public.ops_auto_card_upsert(p_auto_key, p_item, 'task', NULL);
+    END IF;
+    SELECT k.id INTO v_id FROM public.ops_work_cards k
+     WHERE k.auto_key = p_auto_key AND k.archived_at IS NULL AND k.status = 'done'
+     ORDER BY k.closed_at DESC NULLS LAST, k.number DESC LIMIT 1;
+    IF v_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.id = v_id AND k.closed_via IN ('claude', 'codex')
+                                     AND k.close_kind IN ('done', 'already_done', 'declined')) THEN
+      RETURN public.ops_auto_card_upsert(p_auto_key, p_item, 'task', NULL);
+    END IF;
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('ops_auto_card:' || p_auto_key, 0));
+  v_before := public.ops_card_snapshot(v_id);
+  SELECT * INTO c FROM public.ops_work_cards k WHERE k.id = v_id FOR UPDATE;
+  IF c.id IS NULL OR c.archived_at IS NOT NULL THEN RETURN jsonb_build_object('status', 'refused'); END IF;
+  IF c.status <> 'done' THEN RETURN jsonb_build_object('status', 'kept', 'id', c.id); END IF;
+  UPDATE public.ops_work_cards w0 SET status = 'todo', person_reason = NULL, close_kind = NULL, close_reason = NULL, closed_at = NULL,
+         closed_by = NULL, closed_via = NULL, proof = '[]'::jsonb,
+         title = left(p_item->>'title', 160), instructions = left(p_item->>'instructions', 4000),
+         done_means = left(p_item->>'done_means', 300), due_on = GREATEST((p_item->>'due_on')::date, v_today),
+         sprint_id = public.ops_sprint_ensure(v_today),
+         revision = w0.revision + 1, updated_by = c_actor, updated_via = 'system', updated_at = now()
+   WHERE w0.id = v_id RETURNING w0.* INTO n;
+  PERFORM public.ops_links_set(n.id, COALESCE((
+    SELECT jsonb_agg(jsonb_build_object('kind', x.kind, 'id', x.id, 'label', x.label))
+      FROM (SELECT l->>'kind' AS kind, l->>'id' AS id, public.ops_link_label(l->>'kind', (l->>'id')::uuid) AS label
+              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_item->'links') = 'array' THEN p_item->'links' ELSE '[]'::jsonb END) l
+             WHERE public.ops_is_uuid(l->>'id')) x
+     WHERE x.label IS NOT NULL), '[]'::jsonb), c_actor, NULL);
+  v_event := public.ops_card_event(n.id, c_actor, 'system', 'reopened',
+    CASE WHEN p_card_id IS NOT NULL THEN 'Opened again: a new host card matches exactly since this was decided.'
+         ELSE 'Opened again: an agent closed it, and only a person decides which host card a brand belongs to.' END,
+    v_before, public.ops_card_snapshot(n.id), c.revision, n.revision);
+  PERFORM public.ops_log_write(c_actor, 'system', 'auto_added', 'info', n.id, 'work_card', n.id,
+    format('Card %s opened again: %s', n.number, n.title), jsonb_build_object('auto_key', n.auto_key, 'reopened', true));
+  PERFORM public.ops_notify_people(n.id, v_event, public.ops_card_people(n.id, NULL), c_actor, format('Mingla opened "%s" again.', n.title));
+  RETURN jsonb_build_object('status', 'reopened', 'id', n.id, 'number', n.number);
+END;
+$$;
+
 CREATE FUNCTION public.ops_brand_autolink_one(p_brand_id uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -843,6 +890,8 @@ DECLARE
   b record; v_idents jsonb := '[]'::jsonb; v_key text; v_hits jsonb; v_rec public.crm_records; v_kind text; v_res jsonb;
   v_boss text := public.ops_owner_email(); v_names text; v_exact uuid[]; v_cands jsonb; v_contact text; v_how text;
   v_plat text; v_country text; v_rows jsonb; v_match text; v_near_phone boolean; v_near_handle boolean; v_near_words text;
+  v_decided public.ops_work_cards; v_new uuid[]; v_reask boolean := false; v_new_names text; v_links jsonb;
+  v_same_digits boolean; v_different boolean; v_unsure boolean;
 BEGIN
   SELECT br.id, br.name, br.contact_email, br.contact_phone, br.account_id, br.social_links INTO b
     FROM public.brands br WHERE br.id = p_brand_id AND br.deleted_at IS NULL;
@@ -886,8 +935,27 @@ BEGIN
           AND public.ops_phone_same(i.value_key, public.ops_record_country(i.record_id), w->>'value_key', v_country));
   v_exact := ARRAY(SELECT DISTINCT (e->>'id')::uuid FROM jsonb_array_elements(v_rows) e ORDER BY 1);
 
+  -- #3980 W3 rework 3: a person's close of this brand's pick or reopen card
+  -- is remembered (an agent's or Mingla's close is not a decision), until a
+  -- host card that matches exactly appears that was not on that card when
+  -- the person decided. Then a person is asked again on that same card;
+  -- nothing links by itself.
+  SELECT k.* INTO v_decided FROM public.ops_work_cards k
+   WHERE k.auto_key IN ('brand_pick:' || b.id, 'brand_lost:' || b.id) AND k.archived_at IS NULL AND k.status = 'done'
+     AND k.close_kind IN ('done', 'already_done', 'declined') AND k.closed_via IS NULL
+     AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards o WHERE o.auto_key IN ('brand_pick:' || b.id, 'brand_lost:' || b.id)
+                       AND o.archived_at IS NULL AND o.status <> 'done')
+   ORDER BY k.closed_at DESC NULLS LAST, k.number DESC LIMIT 1;
+  IF v_decided.id IS NOT NULL THEN
+    v_new := ARRAY(SELECT x FROM unnest(v_exact) x
+                    WHERE NOT EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = v_decided.id AND l.kind = 'host' AND l.target_id = x)
+                    ORDER BY 1);
+    IF cardinality(v_new) = 0 THEN RETURN jsonb_build_object('status', 'decided', 'card_id', v_decided.id); END IF;
+    v_reask := true;
+  END IF;
+
   -- It links only when that one card is the only candidate at all.
-  IF cardinality(v_exact) = 1 AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_hits) h
+  IF NOT v_reask AND cardinality(v_exact) = 1 AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_hits) h
                                                WHERE (h->'record'->>'id')::uuid <> v_exact[1]) THEN
     SELECT * INTO v_rec FROM public.crm_records c
      WHERE c.id = v_exact[1] AND c.deleted_at IS NULL AND c.pipeline = 'hosts' FOR UPDATE;
@@ -901,7 +969,7 @@ BEGIN
       FROM jsonb_array_elements(v_rows) e WHERE (e->>'id')::uuid = v_exact[1];
     -- A Lost card is never reopened silently: a person decides.
     IF v_rec.id IS NOT NULL AND v_rec.stage = 'lost' THEN
-      v_res := public.ops_auto_card_upsert('brand_lost:' || b.id, jsonb_build_object(
+      v_res := public.ops_brand_card_ask('brand_lost:' || b.id, jsonb_build_object(
         'title', left(format('Reopen %s? %s signed up on Mingla', v_rec.name, b.name), 160),
         'instructions', left(format('%s signed up on Mingla with the same %s as %s, which is Lost. Reopen that card and link the brand if it is the same host, or leave it Lost and add a new card.',
                                     b.name, v_kind, v_rec.name), 4000),
@@ -909,7 +977,7 @@ BEGIN
         'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END, 'watchers', '[]'::jsonb,
         'due_on', public.ops_today(NULL) + 1,
         'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', b.id), jsonb_build_object('kind', 'host', 'id', v_rec.id))),
-        'task', NULL);
+        NULL);
       RETURN jsonb_build_object('status', 'ask_reopen', 'card', v_res);
     END IF;
     IF v_rec.id IS NOT NULL AND v_rec.brand_id IS NULL THEN
@@ -951,13 +1019,47 @@ BEGIN
     INTO v_near_phone, v_near_handle
     FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h
     CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(h->'matched_on') = 'array' THEN h->'matched_on' ELSE '[]'::jsonb END) m;
+  -- #3980 W3 rework 3: the words say plainly why a person must pick. Each
+  -- near phone is one of: the very same digits with no country on record to
+  -- read them in; a number that ends the same that cannot be read as a full
+  -- number (no country on record for one side); or a number that ends the
+  -- same and is a different full number. Never "not the same number" when
+  -- the digits are the same.
+  SELECT COALESCE(bool_or(i.value_key = w->>'value_key'), false),
+         COALESCE(bool_or(i.value_key <> w->>'value_key' AND f.fa IS NOT NULL AND f.fb IS NOT NULL), false),
+         COALESCE(bool_or(i.value_key <> w->>'value_key' AND (f.fa IS NULL OR f.fb IS NULL)), false)
+    INTO v_same_digits, v_different, v_unsure
+    FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h
+    JOIN public.crm_record_identifiers i ON i.record_id = (h->'record'->>'id')::uuid AND i.kind = 'phone'
+    JOIN jsonb_array_elements(v_idents) w ON w->>'kind' = 'phone'
+         AND right(public.crm_phone_national(i.value_key), 6) = right(public.crm_phone_national(w->>'value_key'), 6)
+    CROSS JOIN LATERAL (SELECT
+      public.ops_phone_full(i.value_key, CASE WHEN i.value_key ~ '^[+]' THEN NULL
+                                              ELSE public.ops_country_calling_code(public.ops_record_country(i.record_id)) END) AS fa,
+      public.ops_phone_full(w->>'value_key', CASE WHEN w->>'value_key' ~ '^[+]' THEN NULL
+                                                  ELSE public.ops_country_calling_code(v_country) END) AS fb) f
+   WHERE NOT COALESCE(f.fa = f.fb, false);
   v_near_words := concat_ws(' or ',
-    CASE WHEN v_near_phone OR NOT v_near_handle THEN 'a phone number that ends the same but is not the same number' END,
+    CASE WHEN v_same_digits THEN 'the same phone number written without a country code, and no country is on record to tell whose number it is' END,
+    CASE WHEN v_unsure OR ((v_near_phone OR NOT v_near_handle) AND NOT v_same_digits AND NOT v_different)
+         THEN 'a phone number that ends the same, and no country is on record to tell if it is the same number' END,
+    CASE WHEN v_different THEN 'a phone number that ends the same but is a different full number' END,
     CASE WHEN v_near_handle THEN 'the same handle on another platform' END);
-  v_res := public.ops_auto_card_upsert('brand_pick:' || b.id, jsonb_build_object(
-    'title', left(CASE WHEN v_how = 'near' THEN format('Pick the right card for %s', b.name)
+  IF v_reask THEN
+    SELECT string_agg(c.name, ', ' ORDER BY c.name) INTO v_new_names FROM public.crm_records c WHERE c.id = ANY (v_new);
+  END IF;
+  SELECT jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', b.id))
+         || COALESCE(jsonb_agg(jsonb_build_object('kind', 'host', 'id', x.id) ORDER BY x.id), '[]'::jsonb)
+    INTO v_links
+    FROM (SELECT DISTINCT (h->'record'->>'id')::uuid AS id FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h
+          UNION SELECT unnest(COALESCE(v_new, ARRAY[]::uuid[]))) x;
+  v_res := public.ops_brand_card_ask(CASE WHEN v_reask THEN v_decided.auto_key ELSE 'brand_pick:' || b.id END, jsonb_build_object(
+    'title', left(CASE WHEN v_reask THEN format('Pick the host card for %s again', b.name)
+                       WHEN v_how = 'near' THEN format('Pick the right card for %s', b.name)
                        ELSE format('Pick the host card for %s', b.name) END, 160),
-    'instructions', left(CASE WHEN v_how = 'near'
+    'instructions', left(CASE WHEN v_reask
+      THEN format('%s signed up on Mingla, and a person closed this card before. Since then %s has the same email, phone or handle, so a person decides again and nothing was linked. Link the brand on the right card, or close this card again.', b.name, v_new_names)
+      WHEN v_how = 'near'
       THEN format('%s signed up on Mingla. These host cards have %s, so nothing was linked: %s. Link the brand on the right card, or add a new card.', b.name, v_near_words, v_names)
       WHEN v_names IS NOT NULL
       THEN format('%s signed up on Mingla. These host cards share its email or phone: %s. Link the brand on the right card, or add a new card.', b.name, v_names)
@@ -965,9 +1067,8 @@ BEGIN
     'done_means', left(format('%s is linked to one host card.', b.name), 300),
     'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END, 'watchers', '[]'::jsonb,
     'due_on', public.ops_today(NULL) + 1,
-    'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', b.id))
-             || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'host', 'id', h->'record'->>'id')) FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h), '[]'::jsonb)),
-    'task', NULL);
+    'links', v_links),
+    CASE WHEN v_reask THEN v_decided.id END);
   RETURN jsonb_build_object('status', 'pick', 'card', v_res);
 END;
 $$;
@@ -981,14 +1082,31 @@ BEGIN
   v_since := public.ops_try_timestamptz(public.ops_setting('brand_auto_since') #>> '{}');
   IF v_since IS NULL THEN RETURN jsonb_build_object('linked', 0, 'created', 0, 'pick', 0); END IF;
   -- #3980 W3 rework 2: a brand whose pick or reopen card a person closed is
-  -- decided ("stays Lost" included) and never asked about again; a brand the
-  -- last run could not settle waits until its next try.
+  -- decided ("stays Lost" included); a brand the last run could not settle
+  -- waits until its next try. #3980 W3 rework 3: only a person's close is a
+  -- decision (an agent's close is not), and a decided brand is looked at
+  -- again only when a host card not on that card gained the brand's email,
+  -- handle, or a phone ending the same since the decision (or since its last
+  -- look); ops_brand_autolink_one then asks again only for a new exact match.
   FOR b IN SELECT br.id FROM public.brands br
             WHERE br.deleted_at IS NULL AND br.created_at >= v_since
               AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
               AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.auto_key IN ('brand_pick:' || br.id, 'brand_lost:' || br.id)
-                                AND k.archived_at IS NULL
-                                AND (k.status <> 'done' OR (k.close_kind IN ('done', 'already_done', 'declined') AND k.closed_via IS DISTINCT FROM 'system')))
+                                AND k.archived_at IS NULL AND k.status <> 'done')
+              AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.auto_key IN ('brand_pick:' || br.id, 'brand_lost:' || br.id)
+                                AND k.archived_at IS NULL AND k.status = 'done'
+                                AND k.close_kind IN ('done', 'already_done', 'declined') AND k.closed_via IS NULL
+                                AND NOT EXISTS (
+                                  SELECT 1 FROM public.crm_record_identifiers i
+                                    JOIN public.crm_records c ON c.id = i.record_id AND c.pipeline = 'hosts' AND c.deleted_at IS NULL
+                                   WHERE i.created_at >= GREATEST(k.closed_at, COALESCE((SELECT t.updated_at FROM public.ops_brand_autolink_waits t
+                                                                                          WHERE t.brand_id = br.id AND t.last_status = 'decided'), '-infinity'::timestamptz))
+                                     AND NOT EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = k.id AND l.kind = 'host' AND l.target_id = c.id)
+                                     AND ((i.kind = 'email' AND (i.value_key = public.crm_ident_key('email', br.contact_email)
+                                                                 OR i.value_key = (SELECT public.crm_ident_key('email', u.email::text) FROM auth.users u WHERE u.id = br.account_id)))
+                                          OR (i.kind = 'phone' AND right(i.national, 6) = right(public.crm_phone_national(public.crm_ident_key('phone', br.contact_phone)), 6))
+                                          OR (i.kind = 'handle' AND EXISTS (SELECT 1 FROM jsonb_each_text(CASE WHEN jsonb_typeof(br.social_links) = 'object' THEN br.social_links ELSE '{}'::jsonb END) e
+                                                                             WHERE public.crm_ident_key('handle', e.value) = i.value_key)))))
               AND NOT EXISTS (SELECT 1 FROM public.ops_brand_autolink_waits t WHERE t.brand_id = br.id AND t.next_at > now())
             ORDER BY br.created_at, br.id LIMIT 25 LOOP
     v_settled := false; v_status := NULL;
@@ -998,7 +1116,7 @@ BEGIN
       CASE v_status WHEN 'linked' THEN v_linked := v_linked + 1; WHEN 'created' THEN v_created := v_created + 1;
                     WHEN 'pick' THEN v_pick := v_pick + 1; WHEN 'ask_reopen' THEN v_pick := v_pick + 1; ELSE NULL; END CASE;
       v_settled := v_status IN ('linked', 'created', 'has_card', 'gone')
-                   OR (v_status IN ('pick', 'ask_reopen') AND v_res->'card'->>'status' IN ('added', 'kept') AND v_res->'card'->>'id' IS NOT NULL);
+                   OR (v_status IN ('pick', 'ask_reopen') AND v_res->'card'->>'status' IN ('added', 'kept', 'reopened') AND v_res->'card'->>'id' IS NOT NULL);
       IF NOT v_settled THEN
         v_status := left(v_status || COALESCE(':' || (v_res->'card'->>'status'), ''), 40);
       END IF;
@@ -1007,7 +1125,13 @@ BEGIN
       v_status := 'stopped';
     END;
     BEGIN
-      IF v_settled THEN
+      IF v_status = 'decided' THEN
+        -- #3980 W3 rework 3: still decided. No wait; the time of this look is
+        -- kept so the brand is looked at again only for a newer match.
+        INSERT INTO public.ops_brand_autolink_waits AS t (brand_id, tries, next_at, last_status)
+        VALUES (b.id, 1, now(), 'decided')
+        ON CONFLICT (brand_id) DO UPDATE SET tries = 1, next_at = now(), last_status = 'decided', updated_at = now();
+      ELSIF v_settled THEN
         DELETE FROM public.ops_brand_autolink_waits t WHERE t.brand_id = b.id;
       ELSE
         INSERT INTO public.ops_brand_autolink_waits AS t (brand_id, tries, next_at, last_status)
@@ -1649,9 +1773,17 @@ BEGIN
     -- never says steps are in Work when none exist yet (a series whose first
     -- date is still far off).
     IF v_steps IS NOT NULL AND NOT COALESCE((v_steps->>'stopped')::boolean, false) THEN
+      -- #3980 W3 rework 3: and how many were already finished or declined
+      -- (Mingla does not add those again), so the screen never promises steps
+      -- "nearer the date" that will not come.
       v_steps := v_steps || jsonb_build_object('open', (
         SELECT count(*) FROM public.ops_work_cards k
          WHERE k.archived_at IS NULL AND k.status <> 'done'
+           AND ((k.anchor_kind = 'expected' AND k.anchor_id = n.id) OR k.auto_key = 'series:' || n.id
+                OR EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = k.id AND l.kind = 'expected' AND l.target_id = n.id))),
+        'settled', (
+        SELECT count(*) FROM public.ops_work_cards k
+         WHERE k.archived_at IS NULL AND k.status = 'done' AND k.close_kind IN ('done', 'already_done', 'declined')
            AND ((k.anchor_kind = 'expected' AND k.anchor_id = n.id) OR k.auto_key = 'series:' || n.id
                 OR EXISTS (SELECT 1 FROM public.ops_work_links l WHERE l.card_id = k.id AND l.kind = 'expected' AND l.target_id = n.id))));
     END IF;
@@ -2313,7 +2445,7 @@ BEGIN
     'public.ops_expected_anchor(public.ops_expected_events,date)',
     'public.ops_expected_occurrences(public.ops_expected_events,date,integer)', 'public.ops_event_in_series(uuid,uuid,date)',
     'public.ops_host_next_rows(uuid[],date)', 'public.ops_live_totals(date)', 'public.ops_host_missing(public.crm_records)',
-    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
+    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_card_ask(text,jsonb,uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
     'public.ops_host_next(uuid[],date)', 'public.ops_attention(date)', 'public.ops_recent_changes(text,uuid,integer)',
     'public.ops_country_calling_code(text)', 'public.ops_phone_full(text,text)', 'public.ops_phone_same(text,text,text,text)',
     'public.ops_record_country(uuid)', 'public.ops_brand_country(uuid)'] LOOP
