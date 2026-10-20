@@ -1,6 +1,6 @@
 // #3988 — support and product alerts for Mingla teammates.
 //
-// Producers live in SQL (20271123003988_issue_3988_support_email_alerts.sql)
+// Producers live in SQL (20271123023988_issue_3988_support_email_alerts.sql)
 // and write notification_outbox rows only. This module is the one place the
 // dispatcher and the outbox drain learn about those categories. Pure: no env
 // reads, no I/O.

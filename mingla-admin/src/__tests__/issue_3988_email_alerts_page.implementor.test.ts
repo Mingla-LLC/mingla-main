@@ -18,7 +18,7 @@ const read = (relative: string) =>
 const migration = () =>
   Deno.readTextFile(
     new URL(
-      "../../../supabase/migrations/20271123003988_issue_3988_support_email_alerts.sql",
+      "../../../supabase/migrations/20271123023988_issue_3988_support_email_alerts.sql",
       import.meta.url,
     ),
   );
