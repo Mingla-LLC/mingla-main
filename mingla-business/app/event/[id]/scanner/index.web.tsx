@@ -17,12 +17,16 @@
  * lens, honor the replacement-event redirect, and offer a clear way forward
  * (back to the event dashboard). No camera, no permission prompt, no crash.
  *
- * The native iOS/Android scanner (./index.tsx) is intentionally left
- * byte-unchanged — it is the primary scan surface.
+ * The native iOS/Android scanner (./index.tsx) is the primary scan surface.
+ *
+ * issue #3827 — the web door is no longer a dead end: below the "scan in the
+ * app" message sits "Find a guest by name", the same door search and Admit
+ * the native scanner opens (DoorGuestSearchPanel). On a laptop at the door the
+ * host can check people in by name through the same server check a QR uses.
  */
 
 import React, { useCallback, useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,6 +40,8 @@ import {
   offeringKindConfig,
   offeringKindFromEventType,
 } from "../../../../src/components/offering/offeringKind";
+
+import { DoorGuestSearchPanel } from "../../../../src/components/scanner/DoorGuestSearchSheet";
 
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -93,7 +99,7 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
         <View style={styles.chromeRightSlot} />
       </View>
 
-      <View style={styles.body}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <EmptyState
           illustration={<Icon name="qr" size={48} color={textTokens.primary} />}
           title="Scan tickets in the app"
@@ -109,7 +115,17 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
             accessibilityLabel={`Back to the ${kindCfg.noun} dashboard`}
           />
         </View>
-      </View>
+
+        {typeof eventId === "string" && event !== null ? (
+          <View style={styles.findPanel} testID="scanner-web-find-by-name">
+            <Text style={styles.findTitle} accessibilityRole="header">Find a guest by name</Text>
+            <Text style={styles.findCopy}>
+              {`No QR? Search this ${kindCfg.noun}'s guest list and ticket holders, then tap Admit.`}
+            </Text>
+            <DoorGuestSearchPanel eventId={event.id} noun={kindCfg.noun} />
+          </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }
@@ -139,13 +155,33 @@ const styles = StyleSheet.create({
   chromeRightSlot: {
     width: 36,
   },
-  body: {
+  scroll: {
     flex: 1,
+  },
+  body: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xl,
     justifyContent: "center",
     alignItems: "center",
     gap: spacing.lg,
+  },
+  findPanel: {
+    alignSelf: "stretch",
+    maxWidth: 560,
+    width: "100%",
+    marginHorizontal: "auto",
+    gap: spacing.sm,
+  },
+  findTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  findCopy: {
+    fontSize: 14,
+    color: textTokens.secondary,
+    lineHeight: 20,
   },
   actions: {
     alignSelf: "stretch",

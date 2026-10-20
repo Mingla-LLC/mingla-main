@@ -41,7 +41,12 @@ import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRo
 import { formatCurrency } from "../../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../../src/utils/deferAfterDismiss";
 import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
-import { resendTicketConfirmation } from "../../../../../src/services/ticketCheckoutService";
+import {
+  GuestListError,
+  guestListErrorCopy,
+  resendGuestListTicket,
+} from "../../../../../src/services/guestListService";
+import { isCompOrder } from "../../../../../src/utils/compOrders";
 import { useCurrentBrandRole } from "../../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../../src/utils/permissionGates";
 
@@ -177,6 +182,15 @@ const formatRelativeDay = (iso: string): string => {
   });
 };
 
+const newResendRequestId = (): string => {
+  const cryptoLike = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (cryptoLike?.randomUUID) return cryptoLike.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
+
 export default function OrderDetailRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -216,6 +230,18 @@ export default function OrderDetailRoute(): React.ReactElement {
   // returns false on null/empty rank which gates the buttons off until order resolves.
   const { rank: callerRank } = useCurrentBrandRole(orderQuery.data?.brandId ?? null);
   const canRefund = canPerformAction(callerRank, "REFUND_ORDER");
+  // issue #3827 Q10 — resend runs through guest-list `resend`, whose server
+  // gate is event manager and above.
+  const canResendRole = canPerformAction(callerRank, "EDIT_EVENT");
+
+  // issue #3827 — a guest-list ticket is not a sale: it lives on the guest
+  // page, never behind refund or cancel controls.
+  const isGuestListOrder = order !== null && isCompOrder(order);
+  useEffect(() => {
+    if (isGuestListOrder && typeof eventId === "string" && typeof orderId === "string") {
+      router.replace(`/event/${eventId}/guests/order-${orderId}` as never);
+    }
+  }, [isGuestListOrder, eventId, orderId, router]);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -249,23 +275,26 @@ export default function OrderDetailRoute(): React.ReactElement {
 
   // ---- canResend (J-M6 visibility) ----
   const canResend = useMemo<boolean>(() => {
-    if (order === null) return false;
+    if (order === null || !canResendRole) return false;
+    if (order.buyer.email.trim().length === 0) return false;
     if (order.status !== "paid" && order.status !== "refunded_partial") {
       return false;
     }
     return order.lines.some(
       (l) => l.quantity - l.refundedQuantity > 0,
     );
-  }, [order]);
+  }, [order, canResendRole]);
 
   const handleResend = useCallback(async (): Promise<void> => {
     if (order === null || event === null || resendSubmitting) return;
     setResendSubmitting(true);
     try {
-      await resendTicketConfirmation(order.id);
-      showToast(`Sent to ${order.buyer.email}`);
-    } catch {
-      showToast("Could not resend ticket. Try again.");
+      // issue #3827 D-1 — was a direct call to ticket-confirmation-dispatch
+      // with the host's token, which that function always refuses (403).
+      await resendGuestListTicket({ orderId: order.id, clientRequestId: newResendRequestId() });
+      showToast(`Ticket resent to ${order.buyer.email}.`);
+    } catch (error) {
+      showToast(error instanceof GuestListError ? error.message : guestListErrorCopy("internal", "resend"));
     } finally {
       setResendSubmitting(false);
     }
@@ -278,6 +307,18 @@ export default function OrderDetailRoute(): React.ReactElement {
       );
     }
   }, [routeEvent.replacementEventId, router, orderId]);
+
+  // issue #3827 — never render refund/cancel controls for a guest-list ticket,
+  // not even for the frame before the redirect lands.
+  if (isGuestListOrder) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Opening guest-list ticket…</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (event === null && routeEvent.isLoading && typeof eventId === "string") {
     return (

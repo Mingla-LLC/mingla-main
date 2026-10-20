@@ -21,7 +21,7 @@ import { Platform, Share } from "react-native";
 import { currencyCodeOrNull } from "./currency";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
-import type { CompGuestEntry } from "../store/guestStore";
+import { isCompOrder } from "./compOrders";
 import type {
   DoorPaymentMethod,
   DoorSaleRecord,
@@ -32,10 +32,10 @@ import type { ReconciliationSummary } from "./reconciliation";
 // here (keeps the utility decoupled from the J-G1 implementation).
 //
 // Cycle 12: extended with `kind: "door"` rows. CSV grouping: each row's
-// "Kind" column is ONLINE | COMP | DOOR per SPEC §4.20.
+// "Kind" column is ONLINE | COMP | DOOR per SPEC §4.20. issue #3827: COMP rows
+// are guest-list ORDERS (source = comp), not device-only entries.
 export type ExportGuestRow =
   | { kind: "order"; id: string; order: OrderRecord; sortKey: string }
-  | { kind: "comp"; id: string; comp: CompGuestEntry; sortKey: string }
   | { kind: "door"; id: string; sale: DoorSaleRecord; sortKey: string };
 
 const csvEscape = (value: string | null): string => {
@@ -202,8 +202,10 @@ export const serializeGuestsToCsv = (
     "Net",
     "Net currency",
     // issue #2160 — APPENDED LAST so every existing column keeps its index.
-    // Blank for comps, door sales and any pass that is not day-scoped.
+    // Blank for door sales and any pass that is not day-scoped.
     "Day",
+    // issue #3827 — the guest a named plus-one came with. Appended last.
+    "Came with",
   ];
 
   // Cycle 13 — optional summary stanza (5 lines of `#`-prefixed metadata)
@@ -231,7 +233,32 @@ export const serializeGuestsToCsv = (
   const lines: string[] = [...stanzaLines, headers.join(",")];
 
   for (const row of rows) {
-    if (row.kind === "order") {
+    if (row.kind === "order" && isCompOrder(row.order)) {
+      // issue #3827 — a guest-list ticket: no money, ever.
+      const o = row.order;
+      const fields = [
+        "COMP",
+        o.buyer.name,
+        o.buyer.email,
+        o.buyer.phone,
+        orderTicketSummary(o.lines),
+        String(orderQuantity(o.lines)),
+        o.status === "cancelled" ? "Cancelled" : "Guest list",
+        "Guest list",
+        o.id,
+        formatYmd(o.paidAt),
+        o.compReason ?? "",
+        "0.00",
+        "",
+        "0.00",
+        "",
+        "0.00",
+        "",
+        orderDayCell(o, dayLabels),
+        o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
+      ];
+      lines.push(fields.map(csvEscape).join(","));
+    } else if (row.kind === "order") {
       const o = row.order;
       const grossPaid = o.totalGbpAtPurchase;
       const refunded = o.refundedAmountGbp;
@@ -255,29 +282,6 @@ export const serializeGuestsToCsv = (
         formatMoneyForCsv(net),
         o.currency,
         orderDayCell(o, dayLabels),
-      ];
-      lines.push(fields.map(csvEscape).join(","));
-    } else if (row.kind === "comp") {
-      const c = row.comp;
-      const fields = [
-        "COMP",
-        c.name,
-        c.email,
-        c.phone,
-        c.ticketNameAtCreation ?? "General comp",
-        "1",
-        "Comp",
-        "",
-        c.id,
-        formatYmd(c.addedAt),
-        c.notes,
-        "0.00",
-        "",
-        "0.00",
-        "",
-        "0.00",
-        "",
-        // A comp is not sold through checkout, so it carries no chosen day.
         "",
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -308,6 +312,7 @@ export const serializeGuestsToCsv = (
         s.currency,
         // A door sale is rung up on the night, so its day is the night it was
         // rung up on — not a chosen occurrence. Left blank rather than guessed.
+        "",
         "",
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -450,7 +455,6 @@ export interface ExportReconciliationCsvArgs {
   /** Pre-filtered (eventId-scoped) at the route layer. */
   orders: OrderRecord[];
   doorSales: DoorSaleRecord[];
-  comps: CompGuestEntry[];
   /** ReconciliationSummary from computeReconciliation; populates the 5-line summary stanza prefix. */
   summary: ReconciliationSummary;
 }
@@ -485,16 +489,8 @@ export const exportReconciliationCsv = async (
         sortKey: s.recordedAt,
       }),
     ),
-    ...args.comps.map(
-      (c): ExportGuestRow => ({
-        kind: "comp",
-        id: c.id,
-        comp: c,
-        sortKey: c.addedAt,
-      }),
-    ),
   ];
-  // Newest-first sort across all 3 kinds for consistent reading
+  // Newest-first sort (sales, guest list and door) for consistent reading
   rows.sort((a, b) =>
     a.sortKey > b.sortKey ? -1 : a.sortKey < b.sortKey ? 1 : 0,
   );

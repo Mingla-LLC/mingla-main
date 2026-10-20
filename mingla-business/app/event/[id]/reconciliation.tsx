@@ -51,7 +51,6 @@ import { useAuth } from "../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
-import { useGuestStore } from "../../../src/store/guestStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventReconciliation } from "../../../src/hooks/useEventOrders";
 import {
@@ -101,7 +100,6 @@ export default function ReconciliationRoute(): React.ReactElement {
   const allOrderEntriesRead = useEventReconciliation(typeof eventId === "string" ? eventId : null);
   const allOrderEntries = allOrderEntriesRead.data ?? [];
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
-  const allCompEntries = useGuestStore((s) => s.entries);
   const allScanEntries = useScanStore((s) => s.entries);
 
   const summary = useMemo<ReconciliationSummary>(() => {
@@ -117,7 +115,6 @@ export default function ReconciliationRoute(): React.ReactElement {
       currency: currencyCodeOrNull(event.currency),
       orderEntries: allOrderEntries,
       doorEntries: allDoorEntries,
-      compEntries: allCompEntries,
       scanEntries: allScanEntries,
     });
   }, [
@@ -125,7 +122,6 @@ export default function ReconciliationRoute(): React.ReactElement {
     eventId,
     allOrderEntries,
     allDoorEntries,
-    allCompEntries,
     allScanEntries,
   ]);
 
@@ -143,13 +139,6 @@ export default function ReconciliationRoute(): React.ReactElement {
         ? []
         : allDoorEntries.filter((s) => s.eventId === event.id),
     [allDoorEntries, event],
-  );
-  const eventComps = useMemo(
-    () =>
-      event === null
-        ? []
-        : allCompEntries.filter((c) => c.eventId === event.id),
-    [allCompEntries, event],
   );
 
   // ---- UI state ----
@@ -198,7 +187,6 @@ export default function ReconciliationRoute(): React.ReactElement {
         event,
         orders: eventOrders,
         doorSales: eventDoorSales,
-        comps: eventComps,
         summary,
       });
       if (result.method === "downloaded") {
@@ -216,7 +204,6 @@ export default function ReconciliationRoute(): React.ReactElement {
     event,
     eventOrders,
     eventDoorSales,
-    eventComps,
     summary,
     hasAnyData,
     exportReady,

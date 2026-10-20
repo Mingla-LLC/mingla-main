@@ -64,6 +64,10 @@ import {
   scanTicket,
 } from "../../../../src/services/scanTicketService";
 
+import { DoorGuestSearchSheet } from "../../../../src/components/scanner/DoorGuestSearchSheet";
+import type { ScanResultCopy } from "../../../../src/components/scanner/scanResultCopy";
+import type { AdmitResponse } from "../../../../src/services/guestListService";
+
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
@@ -229,6 +233,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
   }, []);
 
   const [logExpanded, setLogExpanded] = useState<boolean>(false);
+  // issue #3827 — door "Find by name".
+  const [findOpen, setFindOpen] = useState<boolean>(false);
   const sessionStartRef = useRef<string>(new Date().toISOString());
 
   // Session log — raw subscription + useMemo (selector pattern rule).
@@ -335,6 +341,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
       orderId: string | null;
       buyerName: string | null;
       ticketName: string | null;
+      via?: "qr" | "manual";
     }): void => {
       if (event === null || scan.ticketId === null) return;
       useScanStore.getState().recordScan({
@@ -344,7 +351,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         brandId: event.brandId,
         scannerUserId: operatorAccountId,
         scanResult: scan.result,
-        via: "qr",
+        via: scan.via ?? "qr",
         offlineQueued: false,
         buyerNameAtScan: scan.buyerName ?? "",
         ticketNameAtScan: scan.ticketName ?? "",
@@ -443,6 +450,29 @@ export default function ScannerCameraRoute(): React.ReactElement {
       })();
     },
     [event, showResult, recordServerScan, kindCfg.noun],
+  );
+
+  // issue #3827 — a name admit gets the same result card, haptics and
+  // session-log line as a QR scan. The session log stays a mirror only.
+  const handleNameAdmitted = useCallback(
+    (copy: ScanResultCopy, response: AdmitResponse): void => {
+      recordServerScan({
+        result: copy.kind,
+        ticketId: response.ticketId,
+        orderId: response.orderId,
+        buyerName: response.buyerName,
+        ticketName: response.ticketName,
+        via: "manual",
+      });
+      void Haptics.notificationAsync(
+        copy.tone === "success"
+          ? Haptics.NotificationFeedbackType.Success
+          : copy.tone === "warning"
+            ? Haptics.NotificationFeedbackType.Warning
+            : Haptics.NotificationFeedbackType.Error,
+      );
+    },
+    [recordServerScan],
   );
 
   // ---- Not-found shell ---------------------------------------------
@@ -646,6 +676,20 @@ export default function ScannerCameraRoute(): React.ReactElement {
         ) : null}
       </View>
 
+      {/* issue #3827 — find a guest without their QR */}
+      <View style={styles.findWrap}>
+        <Pressable
+          onPress={() => setFindOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Find by name"
+          style={styles.findPill}
+          testID="scanner-find-by-name"
+        >
+          <Icon name="search" size={16} color="#ffffff" />
+          <Text style={styles.findPillText}>Find by name</Text>
+        </Pressable>
+      </View>
+
       {/* Session activity log (J-S4) */}
       <View
         style={[
@@ -690,6 +734,14 @@ export default function ScannerCameraRoute(): React.ReactElement {
           )
         ) : null}
       </View>
+
+      <DoorGuestSearchSheet
+        visible={findOpen}
+        onClose={() => setFindOpen(false)}
+        eventId={event.id}
+        noun={kindCfg.noun}
+        onAdmitted={handleNameAdmitted}
+      />
     </View>
   );
 }
@@ -897,6 +949,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: textTokens.secondary,
     textAlign: "center",
+  },
+  findWrap: {
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+  },
+  findPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.24)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  findPillText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#ffffff",
   },
   logHost: {
     backgroundColor: "rgba(0, 0, 0, 0.6)",
