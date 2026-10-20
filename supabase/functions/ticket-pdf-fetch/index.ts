@@ -65,6 +65,8 @@ interface OrderRow {
   // issue #2347 — the buyer's BOOKED occurrence. Rung 2 of the chosen-day
   // ladder (#2135 single-select / #2160 anchor); NULL is legitimate.
   event_date_id: string | null;
+  // issue #3281 — guest-chosen open-daily start; NULL = legacy / slots.
+  booked_start_at: string | null;
 }
 
 interface EventRow {
@@ -100,6 +102,8 @@ async function lazyBackfillPdf(
   buyerName: string | null,
   // issue #2347 — the #2135 single-select fallback in the chosen-day ladder.
   orderEventDateId: string | null,
+  // issue #3281 — open-daily booked start for the PDF date line.
+  orderBookedStartAt: string | null = null,
 ): Promise<string> {
   // Reload the inputs ticketPdf.ts expects, mirroring the assembly inside
   // ticket-confirmation-dispatch's buildRenderContext.
@@ -164,6 +168,7 @@ async function lazyBackfillPdf(
     event.id,
     orderEventDateId,
     "[ticket-pdf-fetch]",
+    orderBookedStartAt,
   );
   const md = (chosenDate ?? masterDate ?? null) as EventDateRow | null;
 
@@ -255,7 +260,7 @@ serve(async (req) => {
   const { data: orderRaw, error: orderError } = await supabase
     .from("orders")
     .select(
-      "id, buyer_user_id, payment_status, ticket_pdf_path, event_id, buyer_name, event_date_id",
+      "id, buyer_user_id, payment_status, ticket_pdf_path, event_id, buyer_name, event_date_id, booked_start_at",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -342,6 +347,7 @@ serve(async (req) => {
         order.event_id,
         order.buyer_name,
         order.event_date_id ?? null,
+        order.booked_start_at ?? null,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -368,6 +374,7 @@ serve(async (req) => {
         order.event_id,
         order.buyer_name,
         order.event_date_id ?? null,
+        order.booked_start_at ?? null,
       );
       const { data: retryData, error: retryError } = await supabase.storage
         .from(STORAGE_BUCKET)

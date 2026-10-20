@@ -74,12 +74,16 @@ export type VideoUploadProgress = {
   final: boolean;
 };
 
+/** #3040 — the bound on the HEAD that confirms a PATCH which already reported its offset. */
+export declare const CONFIRM_HEAD_TIMEOUT_MS: 1500;
+
 export declare const uploadSourceWeb: (input: {
   file: BlobLike;
   transport: { url: string; headers: Record<string, string> };
   signal?: AbortSignal;
   onProgress?: (progress: VideoUploadProgress) => void;
   chunkBytes?: number;
+  confirmHeadTimeoutMs?: number;
   fetchImpl?: FetchLike;
   XhrImpl?: unknown;
 }) => Promise<{ confirmedBytes: number; totalBytes: number }>;

@@ -118,8 +118,13 @@ describe("ORCH-1186 — Fix 4 three-step tap-to-advance wizard", () => {
     });
 
     test(`${label}: the {eventDateId, quantity} checkout handoff is unchanged`, () => {
-      expect(src).toMatch(/onConfirm\(\{ eventDateId: selectedDate\.\w+, quantity: party \}\)/);
-      expect(src).toMatch(/onConfirm\(\{ eventDateId: selectedDate\.\w+, quantity: 1 \}\)/);
+      // issue #3281 — open-daily also carries startAt; slots stay quantity: 1.
+      expect(src).toMatch(
+        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity: party/,
+      );
+      expect(src).toMatch(
+        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity: 1\s*\}\)/,
+      );
     });
   }
 });

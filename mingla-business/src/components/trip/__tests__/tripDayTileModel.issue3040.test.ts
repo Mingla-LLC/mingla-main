@@ -104,13 +104,16 @@ describe("#3040 trip-day tiles — truth rules", () => {
     expect(classifyTileFailure(coded("video_source_unreadable"), false)).toEqual({ state: "failed_retryable", sourceGone: true });
   });
 
-  it("live region: state on change, % only at 25/50/75/100 (§11)", () => {
+  it("live region: state on change, never every % (§11)", () => {
     const at = (percent: number) => tileAnnouncement(video({ state: "uploading", percent }), 0);
     expect(at(10)).toBe("Video 1, uploading");
     expect(at(24)).toBe(at(10));
-    expect(at(26)).toBe("Video 1, uploading, 25 percent");
-    expect(at(49)).toBe(at(26));
-    expect(at(99)).toBe("Video 1, uploading, 75 percent");
+    // [TEST-MOD-APPROVED #3040] 2026-10-19 (job 2ad825b6): the stepped
+    // "75 percent" stayed in the accessibility tree while the tile showed
+    // 99%. The live region now carries no number; the tile label carries the
+    // visible one (tripDayTileLabelMatchesPercent.issue3040.test.ts).
+    expect(at(26)).toBe(at(10));
+    expect(at(99)).toBe(at(10));
     expect(gridAnnouncement([video({ state: "preparing" }), video({ state: "failed_retryable" })]))
       .toBe("Video 1, preparing. Video 2, upload failed");
   });

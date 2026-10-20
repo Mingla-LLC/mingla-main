@@ -57,18 +57,99 @@ export const experienceWindowMinutes = (
   return { open, close };
 };
 
-/** 30-minute (or `stepMinutes`) grid inside the window, each entry 0..1439. */
+/**
+ * Minutes to add to `startAt`'s instant for a grid choice built like
+ * `experienceTimeChoices` (same end-exclusive loop). null when
+ * `selectedMinute` is not on the grid inside the window.
+ */
+export const experienceMinuteOffsetFromOpen = (
+  startAt: string,
+  endAt: string,
+  timeZone: string,
+  selectedMinute: number,
+  stepMinutes: number = 30,
+): number | null => {
+  const w = experienceWindowMinutes(startAt, endAt, timeZone);
+  if (w === null) return null;
+  const step = stepMinutes > 0 ? stepMinutes : 30;
+  const day = 24 * 60;
+  for (let m = w.open; m < w.close; m += step) {
+    if (m % day === selectedMinute) return m - w.open;
+  }
+  return null;
+};
+
+/**
+ * ISO instant for the buyer's open-daily time choice, or null when invalid.
+ * Probes real instants from `startAt` so DST transitions keep the selected
+ * wall clock (issue #3281) instead of adding wall-minute deltas to UTC.
+ */
+export const experienceBookedStartIso = (
+  startAt: string,
+  endAt: string,
+  timeZone: string,
+  selectedMinute: number,
+  stepMinutes: number = 30,
+): string | null => {
+  if (experienceMinuteOffsetFromOpen(
+    startAt,
+    endAt,
+    timeZone,
+    selectedMinute,
+    stepMinutes,
+  ) === null) {
+    return null;
+  }
+  const base = Date.parse(startAt);
+  const end = Date.parse(endAt);
+  if (!Number.isFinite(base) || !Number.isFinite(end) || end <= base) {
+    return null;
+  }
+  const step = stepMinutes > 0 ? stepMinutes : 30;
+  const stepMs = step * 60_000;
+  const want = ((selectedMinute % (24 * 60)) + 24 * 60) % (24 * 60);
+  for (let t = base; t < end; t += stepMs) {
+    const parts = wallParts(new Date(t).toISOString(), timeZone);
+    if (parts === null) continue;
+    if (parts.hour * 60 + parts.minute === want) {
+      return new Date(t).toISOString();
+    }
+  }
+  return null;
+};
+
+/**
+ * 30-minute (or `stepMinutes`) grid inside the window, each entry 0..1439.
+ * End-exclusive: a 10:00–18:00 window offers through 17:30, matching SQL
+ * `booked_start_at < event_dates.end_at` (issue #3281 Copilot).
+ *
+ * Only offers minutes that resolve to a real instant (spring-forward gaps
+ * excluded) and that are still in the future relative to `nowMs`.
+ */
 export const experienceTimeChoices = (
   startAt: string,
   endAt: string,
   timeZone: string,
   stepMinutes: number = 30,
+  nowMs: number = Date.now(),
 ): number[] => {
   const w = experienceWindowMinutes(startAt, endAt, timeZone);
   if (w === null) return [];
   const step = stepMinutes > 0 ? stepMinutes : 30;
   const out: number[] = [];
-  for (let m = w.open; m <= w.close; m += step) out.push(m % (24 * 60));
+  for (let m = w.open; m < w.close; m += step) {
+    const minute = m % (24 * 60);
+    const iso = experienceBookedStartIso(
+      startAt,
+      endAt,
+      timeZone,
+      minute,
+      step,
+    );
+    if (iso === null) continue;
+    if (Date.parse(iso) < nowMs) continue;
+    out.push(minute);
+  }
   return out;
 };
 

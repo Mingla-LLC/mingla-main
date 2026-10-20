@@ -532,6 +532,12 @@ const ResolvedExperiencePage: React.FC<{
         if (selection.quantity > 1) {
           routeParams.quantity = String(selection.quantity);
         }
+        if (
+          typeof selection.startAt === "string" &&
+          selection.startAt.length > 0
+        ) {
+          routeParams.bookedStartAt = selection.startAt;
+        }
       }
       router.push(
         {

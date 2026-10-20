@@ -143,11 +143,36 @@ export async function resolveChosenOccurrence(
   eventId: string,
   orderEventDateId: string | null,
   logPrefix = "[chosenOccurrence]",
+  /**
+   * issue #3281 — when the order carries a guest-chosen open-daily start,
+   * prefer it as `start_at` (end stays the occurrence end / null). Pass null
+   * to keep today's resolution order.
+   */
+  orderBookedStartAt: string | null = null,
 ): Promise<ChosenOccurrence | null> {
+  const withBookedStart = (
+    base: ChosenOccurrence | null,
+  ): ChosenOccurrence | null => {
+    if (
+      base === null ||
+      typeof orderBookedStartAt !== "string" ||
+      orderBookedStartAt.length === 0
+    ) {
+      return base;
+    }
+    return {
+      start_at: orderBookedStartAt,
+      end_at: base.end_at,
+      timezone: base.timezone,
+    };
+  };
+
   try {
     const days = await ticketDaysForOrder(supabase, orderId, logPrefix);
     if (days !== null && days.length > 0) {
-      return collapseDaysToRange(days);
+      // issue #3281 — ticket_event_dates win the day, but the guest-chosen
+      // open-daily clock still overrides start_at on the collapsed range.
+      return withBookedStart(collapseDaysToRange(days));
     }
 
     if (orderEventDateId !== null && orderEventDateId.length > 0) {
@@ -165,7 +190,19 @@ export async function resolveChosenOccurrence(
         );
         return null;
       }
-      return (occ as ChosenOccurrence | null) ?? null;
+      return withBookedStart((occ as ChosenOccurrence | null) ?? null);
+    }
+
+    // issue #3281 — booked start with no event_date_id (should be rare): still
+    // surface the chosen clock so confirmation/PDF name the right time.
+    if (
+      typeof orderBookedStartAt === "string" && orderBookedStartAt.length > 0
+    ) {
+      return {
+        start_at: orderBookedStartAt,
+        end_at: null,
+        timezone: null,
+      };
     }
   } catch (error) {
     console.error(

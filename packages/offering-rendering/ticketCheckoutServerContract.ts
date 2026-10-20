@@ -42,6 +42,8 @@ export function canonicalCheckoutV2FingerprintInput(input: {
   lines: CanonicalCheckoutLine[];
   eventDateId: string | null;
   eventDateIds: readonly string[];
+  /** issue #3281 — open-daily start; omit/empty keeps fingerprint identical. */
+  bookedStartAt?: string | null;
   intakeFormData: unknown;
   quote: {
     currency: string;
@@ -58,6 +60,9 @@ export function canonicalCheckoutV2FingerprintInput(input: {
       canonicalJson(a).localeCompare(canonicalJson(b))
     )
     : input.intakeFormData;
+  const bookedStart = typeof input.bookedStartAt === "string"
+    ? input.bookedStartAt.trim()
+    : "";
   return canonicalJson({
     contractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
     eventId: input.eventId,
@@ -68,6 +73,7 @@ export function canonicalCheckoutV2FingerprintInput(input: {
     lines,
     eventDateId: input.eventDateId,
     eventDateIds: [...input.eventDateIds].sort(),
+    ...(bookedStart.length > 0 ? { bookedStartAt: bookedStart } : {}),
     intakeFormData,
     quote: input.quote,
   });

@@ -1137,6 +1137,7 @@ export const handler = async (req: Request): Promise<Response> => {
       confirmed_at,
       notification_status,
       event_date_id,
+      booked_start_at,
       events!inner (
         id,
         title,
@@ -1207,6 +1208,8 @@ export const handler = async (req: Request): Promise<Response> => {
     (order as unknown as { event_date_id?: string | null }).event_date_id ??
       null,
     "[ticket-confirmation-dispatch]",
+    (order as unknown as { booked_start_at?: string | null }).booked_start_at ??
+      null,
   );
 
   const contextBase = buildRenderContext({
@@ -1377,6 +1380,39 @@ export const handler = async (req: Request): Promise<Response> => {
         start_time: string | null;
         price_cents: number | null;
       }>;
+      // issue #3281 F-D — experiences rarely set events.location_text; prefer
+      // the first stop address / place, else the hide-until-ticket copy from
+      // theme (same signal pg_public_experience_by_slug exposes).
+      let experienceVenue = context.bodyInput.event.locationText;
+      if (
+        experienceVenue === null ||
+        (typeof experienceVenue === "string" &&
+          experienceVenue.trim().length === 0)
+      ) {
+        const theme = (order.events as { theme?: unknown }).theme;
+        const hideUntil = Boolean(
+          theme &&
+            typeof theme === "object" &&
+            (theme as { business_event?: { hideAddressUntilTicket?: unknown } })
+                .business_event?.hideAddressUntilTicket === true,
+        );
+        const first = expStops[0] ?? null;
+        if (hideUntil) {
+          experienceVenue = "Address shared after you book";
+        } else if (
+          first !== null &&
+          typeof first.address === "string" &&
+          first.address.trim().length > 0
+        ) {
+          experienceVenue = first.address.trim();
+        } else if (
+          first !== null &&
+          typeof first.place_name === "string" &&
+          first.place_name.trim().length > 0
+        ) {
+          experienceVenue = first.place_name.trim();
+        }
+      }
       // #3524 A8 — keep the exact direct-call shape on one line.
       renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({
           appCtaClaimUrl,
@@ -1389,7 +1425,7 @@ export const handler = async (req: Request): Promise<Response> => {
             title: context.bodyInput.event.title,
             dateIso: context.bodyInput.event.startAt,
             timezone: context.bodyInput.event.timezone,
-            venueText: context.bodyInput.event.locationText,
+            venueText: experienceVenue,
             stops: expStops.map((s) => ({
               stopOrder: s.stop_order,
               placeName: s.place_name,

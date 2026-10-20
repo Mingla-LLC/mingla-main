@@ -468,6 +468,33 @@ export default function OrderDetailRoute(): React.ReactElement {
         {/* Lines table */}
         <GlassCard variant="base" padding={spacing.md} style={styles.lines}>
           <DetailRow label="Order" value={order.id} mono />
+          {order.bookedStartAt !== undefined &&
+          order.bookedStartAt !== null &&
+          order.bookedStartAt.length > 0 ? (
+            <DetailRow
+              label="Booked time"
+              value={(() => {
+                const d = new Date(order.bookedStartAt);
+                if (Number.isNaN(d.getTime())) return order.bookedStartAt;
+                const tz =
+                  typeof event?.timezone === "string" && event.timezone.length > 0
+                    ? event.timezone
+                    : "UTC";
+                try {
+                  return new Intl.DateTimeFormat(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    timeZone: tz,
+                  }).format(d);
+                } catch {
+                  return d.toLocaleString();
+                }
+              })()}
+            />
+          ) : null}
           {order.lines.map((line) => (
             <DetailRow
               key={line.ticketTypeId}

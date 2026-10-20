@@ -17,7 +17,9 @@ const cancelEdge = fs.readFileSync(
 );
 
 const failures = [];
-if (!/uploadAbortController\?\.abort\(\)[\s\S]*supabase\.functions\.invoke<StatusResponse>\(\s*"event-cover-video-cancel"/.test(service)) {
+// #3040 (2026-10-19) — lane calls go through invokeLaneFunction (laneEdgeInvoke.ts),
+// which never waits on the auth lock; the abort-before-invoke order is unchanged.
+if (!/uploadAbortController\?\.abort\(\)[\s\S]*(?:supabase\.functions\.invoke|invokeLaneFunction)<StatusResponse>\(\s*"event-cover-video-cancel"/.test(service)) {
   failures.push("cancelEventCoverVideoJob must abort the upload controller before invoking the cancel edge function.");
 }
 if (!/abortRef\.current\?\.abort\(\)[\s\S]*cancelEventCoverVideoJob\(jobIdRef\.current\)/.test(hook)) {

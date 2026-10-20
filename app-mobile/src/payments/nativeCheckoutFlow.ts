@@ -32,7 +32,10 @@ import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
-import { extractFunctionError } from "../utils/edgeFunctionError";
+import {
+  extractFunctionError,
+  extractFunctionErrorFields,
+} from "../utils/edgeFunctionError";
 import { buildApplePayCartItems } from "./applePayCartItem";
 // issue #2229 [raw checkout error tokens] — the ONE owner of native buyer copy.
 // extractFunctionError returns the server's MACHINE TOKEN; nothing here may put
@@ -42,6 +45,7 @@ import {
   CHECKOUT_DETAILS_INCOMPLETE_MESSAGE,
   CHECKOUT_NO_HANDOFF_MESSAGE,
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+  nativeCheckoutBookedStartRaiseMessage,
   nativeCheckoutErrorMessage,
   nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
@@ -131,6 +135,8 @@ export interface NativeCheckoutInput {
   // #2230: chosen multi-day EVENT occurrences. The existing singular field
   // above remains the experience authority and is deliberately untouched.
   eventDateIds?: readonly string[] | null;
+  /** issue #3281 — open-daily booked start (ISO). Omitted when absent. */
+  bookedStartAt?: string | null;
   // ORCH-1016: trip intake answers ride the existing ticket-checkout-create body
   // key → orders.intake_form_data. The key is already supported server-side
   // (ticket-checkout-create reads it for trip checkouts); this just forwards it
@@ -421,6 +427,11 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
     purchaseTermsAccepted: input.purchaseTermsAccepted === true,
     intakeFormData: input.intakeFormData ?? null,
     idempotencyKey: input.idempotencyKey ?? null,
+    ...(input.bookedStartAt !== undefined &&
+        input.bookedStartAt !== null &&
+        input.bookedStartAt.length > 0
+      ? { bookedStartAt: input.bookedStartAt }
+      : {}),
   });
 };
 
@@ -781,6 +792,7 @@ export const useNativeCheckoutFlow = (): ((
           })),
           eventDateId: input.eventDateId ?? null,
           eventDateIds: normalizedEventDateIds(input),
+          bookedStartAt: input.bookedStartAt ?? null,
           intakeFormData: input.intakeFormData ?? [],
         });
       } catch {
@@ -842,6 +854,11 @@ export const useNativeCheckoutFlow = (): ((
           ...(normalizedEventDateIds(input).length > 0
             ? { eventDateIds: normalizedEventDateIds(input) }
             : {}),
+          ...(input.bookedStartAt !== undefined &&
+              input.bookedStartAt !== null &&
+              input.bookedStartAt.length > 0
+            ? { bookedStartAt: input.bookedStartAt }
+            : {}),
           // ORCH-1130 / DISC-1130-A — forward the explicit pay-full vs
           // pay-over-time choice for plan trips. Omitted when absent (no-plan
           // trips) → byte-identical request, edge-fn default 'auto' path
@@ -863,8 +880,13 @@ export const useNativeCheckoutFlow = (): ((
       // can only be read once. Status is a property, not the stream.
       const status =
         (error as { context?: { status?: number } })?.context?.status ?? null;
-      const raw = await extractFunctionError(error, "");
-      const token = raw.length > 0 ? raw : null;
+      const { token: rawToken, detail: refusalDetail } =
+        await extractFunctionErrorFields(error, "");
+      const token = rawToken.length > 0 ? rawToken : null;
+      const raiseCopy = nativeCheckoutBookedStartRaiseMessage(
+        refusalDetail,
+        token,
+      );
       // #2227 QA F-1 — NO held page is offered back here. The refusal path has
       // no access to the cart fingerprint that the replay path above matches
       // on, so anything handed back from here could be the page for a DIFFERENT
@@ -875,7 +897,8 @@ export const useNativeCheckoutFlow = (): ((
       // against the fingerprint from the start, with its own spec.
       return {
         outcome: "failed",
-        message: nativeCheckoutErrorMessage(token, status),
+        message:
+          raiseCopy ?? nativeCheckoutErrorMessage(token, status),
         token,
       };
     }

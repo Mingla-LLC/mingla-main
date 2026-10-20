@@ -98,8 +98,16 @@ function CheckoutExperienceConfirmScreenInner({
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
   const experienceBrand = query.data?.brand ?? null;
-  const { lines, buyer, result, recordResult, setLineQuantity, setBuyer } =
-    useCart();
+  const {
+    lines,
+    buyer,
+    result,
+    recordResult,
+    setLineQuantity,
+    setBuyer,
+    bookedStartAt,
+    setBookedStartAt,
+  } = useCart();
 
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
   // Surface parity with the event and trip screens. A verified terminal
@@ -225,6 +233,13 @@ function CheckoutExperienceConfirmScreenInner({
     if (buyer.email.length === 0 && buyer.phone.length === 0) {
       setBuyer(payload.buyer);
     }
+    if (
+      payload.bookedStartAt !== undefined &&
+      payload.bookedStartAt !== null &&
+      payload.bookedStartAt.length > 0
+    ) {
+      setBookedStartAt(payload.bookedStartAt);
+    }
 
     let cancelled = false;
     // Arms the Realtime safety net below, ALONGSIDE the confirm poll.
@@ -250,6 +265,16 @@ function CheckoutExperienceConfirmScreenInner({
         const confirmResult = verdict.result;
         const order = verdict.order;
         const taxCents = Number(order.taxAmountCents ?? 0);
+        // issue #3281 — after a successful return the resume payload is cleared;
+        // confirm/status carry orders.booked_start_at so a reload still labels.
+        const orderBooked =
+          typeof order.bookedStartAt === "string" &&
+          order.bookedStartAt.length > 0
+            ? order.bookedStartAt
+            : null;
+        if (orderBooked !== null) {
+          setBookedStartAt(orderBooked);
+        }
         recordResult({
           orderId: order.orderId,
           ticketIds: order.tickets.map((t) => t.ticketId),
@@ -314,6 +339,14 @@ function CheckoutExperienceConfirmScreenInner({
       : null,
     onOrderReady: (order) => {
       const taxCents = Number(order.taxAmountCents ?? 0);
+      const orderBooked =
+        typeof order.bookedStartAt === "string" &&
+        order.bookedStartAt.length > 0
+          ? order.bookedStartAt
+          : null;
+      if (orderBooked !== null) {
+        setBookedStartAt(orderBooked);
+      }
       recordResult({
         orderId: order.orderId,
         ticketIds: order.tickets.map((t) => t.ticketId),
@@ -491,6 +524,36 @@ function CheckoutExperienceConfirmScreenInner({
         })
       : "";
 
+  const bookedStartLabel = ((): string | null => {
+    if (bookedStartAt === null || bookedStartAt.length === 0) return null;
+    const d = new Date(bookedStartAt);
+    if (Number.isNaN(d.getTime())) return null;
+    const tz = experience?.timezone ?? "UTC";
+    try {
+      // issue #3281 — date + clock in the experience zone so a Friday booking
+      // is not shown next to a Monday "Next:" subline with only the time.
+      const date = new Intl.DateTimeFormat(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        timeZone: tz,
+      }).format(d);
+      const time = new Intl.DateTimeFormat(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: tz,
+      }).format(d);
+      return `Booked ${date} · ${time}`;
+    } catch {
+      return `Booked ${d.toLocaleString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })}`;
+    }
+  })();
 
   return (
     <View style={styles.host}>
@@ -533,6 +596,11 @@ function CheckoutExperienceConfirmScreenInner({
             {dateSubline.length > 0 ? (
               <Text style={styles.summaryEventSubline} numberOfLines={1}>
                 {dateSubline}
+              </Text>
+            ) : null}
+            {bookedStartLabel !== null ? (
+              <Text style={styles.summaryEventSubline} numberOfLines={1}>
+                {bookedStartLabel}
               </Text>
             ) : null}
           </View>

@@ -230,6 +230,14 @@ const FREE_CHECKOUT_MESSAGE_BY_RAISE: Readonly<Record<string, string>> = Object
       "This event is not set up to take payment yet. Nothing was reserved.",
     stripe_account_not_ready:
       "This organiser has not finished setting up payments, so paid tickets cannot be sold yet. Nothing was reserved.",
+    booked_start_required:
+      "Choose a time within the open hours, then try again — nothing was reserved.",
+    booked_start_invalid:
+      "That time is not available for this day. Pick another time — nothing was reserved.",
+    booked_start_in_past:
+      "That time has already passed. Pick a later time — nothing was reserved.",
+    booked_start_off_grid:
+      "That time is not on the available schedule. Pick one of the listed times — nothing was reserved.",
   });
 
 /**
@@ -395,6 +403,11 @@ const FREE_CHECKOUT_MESSAGE_BY_CODE: Readonly<Record<string, string>> = Object
     // Raised BEFORE any write, so "nothing was reserved" is provable.
     // (ticket-checkout-create/index.ts:1077-1086)
     intake_form_required: FREE_CHECKOUT_INTAKE_REQUIRED_MESSAGE,
+    // issue #3281 — edge returns these as bare `error` codes (no `detail`).
+    booked_start_required: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_required,
+    booked_start_invalid: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_invalid,
+    booked_start_in_past: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_in_past,
+    booked_start_off_grid: FREE_CHECKOUT_MESSAGE_BY_RAISE.booked_start_off_grid,
   });
 
 const lookup = (code: string | null): string | undefined =>

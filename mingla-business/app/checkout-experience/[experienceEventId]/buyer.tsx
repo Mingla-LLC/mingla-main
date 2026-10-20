@@ -210,7 +210,15 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
-  const { lines, buyer, setBuyer, recordResult, checkoutAttemptIdFor } = useCart();
+  const {
+    lines,
+    buyer,
+    setBuyer,
+    recordResult,
+    checkoutAttemptIdFor,
+    eventDateId,
+    bookedStartAt,
+  } = useCart();
   const totals = useCartTotals();
 
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -418,6 +426,8 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           eventId: experienceEventId,
           buyer,
           lines,
+          ...(eventDateId !== null ? { eventDateId } : {}),
+          ...(bookedStartAt !== null ? { bookedStartAt } : {}),
           ...(Platform.OS === "web"
             ? {
               checkoutContractVersion: 2 as const,
@@ -484,6 +494,8 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     recordResult,
     router,
     phoneCountry,
+    eventDateId,
+    bookedStartAt,
   ]);
 
   const continueLabel = totals.isFree
