@@ -93,3 +93,13 @@ export const fetchTeamOverview = (today) => call(() => supabase.rpc("ops_team_ov
 export const previewNextActions = (limit) => call(() => supabase.rpc("ops_next_action_preview", { p_limit: limit || 600 }));
 export const convertNextActions = (recordIds, fallbackOwner, requestKey) =>
   call(() => supabase.rpc("ops_next_action_convert", { p_record_ids: recordIds, p_fallback_owner: fallbackOwner || null, p_request_key: requestKey }));
+
+// #3980 synced program, Wave 1 — the owner or an admin clears an agent's
+// working mark on a card, with a reason.
+export const clearWorkingMark = (cardId, reason) =>
+  call(() => supabase.rpc("ops_working_clear", { p_card_id: cardId, p_reason: reason }));
+// Display names and GitHub usernames (owner only). Screens use them through
+// services/teamProfileService.js; the call stays here, the one ops_ caller.
+export const listTeamProfiles = () => call(() => supabase.rpc("ops_profiles_list"));
+export const setTeamProfile = (email, displayName, githubLogin) =>
+  call(() => supabase.rpc("ops_profile_set", { p_teammate: email, p_display_name: displayName || null, p_github_login: githubLogin || null }));

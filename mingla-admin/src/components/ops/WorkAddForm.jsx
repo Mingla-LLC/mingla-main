@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button } from "../ui/Button";
 import { useToast } from "../../context/ToastContext";
 import * as ops from "../../services/opsService";
-import { KIT_STEPS, dayLabel, opsErrorWords, requestKey } from "../../lib/opsModel";
+import { KIT_STEPS, dayLabel, opsErrorWords, parseGithubInput, requestKey } from "../../lib/opsModel";
 import { FixesList } from "./FixesList";
 import { PeoplePicker } from "./PeoplePicker";
 import { RecordPicker } from "./RecordPicker";
@@ -29,6 +29,10 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
   const [due, setDue] = useState("");
   const [links, setLinks] = useState([]);
   const [kit, setKit] = useState("");
+  // GitHub issues and pull requests of Mingla-LLC/mingla-main, as typed.
+  const [github, setGithub] = useState([]);
+  const [ghValue, setGhValue] = useState("");
+  const [ghError, setGhError] = useState("");
   const [linking, setLinking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState(null);
@@ -39,9 +43,19 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
   const item = useMemo(() => {
     const out = { title, instructions, done_means: doneMeans, owners, watchers, links: links.map((l) => ({ kind: l.kind, id: l.id })) };
     if (due) out.due_on = due;
+    if (github.length > 0) out.github = github.map((g) => g.input);
     if (kit && eventLink) { out.kit_step = Number(kit); out.anchor = { kind: eventLink.kind, id: eventLink.id }; }
     return out;
-  }, [title, instructions, doneMeans, owners, watchers, links, due, kit, eventLink]);
+  }, [title, instructions, doneMeans, owners, watchers, links, due, kit, eventLink, github]);
+  const addGithub = () => {
+    const parsed = parseGithubInput(ghValue);
+    if (parsed.error) { setGhError(parsed.error); return; }
+    if (github.some((g) => g.number === parsed.number)) { setGhError(`#${parsed.number} is already linked.`); return; }
+    if (github.length >= 10) { setGhError("A card can link at most 10 GitHub issues or pull requests."); return; }
+    setGithub([...github, { ...parsed, input: ghValue.trim() }]);
+    setGhValue("");
+    setGhError("");
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -126,6 +140,36 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
         ) : (
           <button type="button" onClick={() => setLinking(true)} className={`min-h-11 self-start rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>+ Link</button>
         )}
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <span className={LABEL} id="work-add-github">GitHub</span>
+        {github.length > 0 && (
+          <ul aria-labelledby="work-add-github" className="flex min-w-0 flex-wrap gap-1.5">
+            {github.map((g) => (
+              <li key={g.number} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px]">
+                <span className="break-normal [overflow-wrap:normal]">#{g.number}{g.kind === "pull" ? " (pull request)" : ""}</span>
+                <button type="button" aria-label={`Remove #${g.number}`} onClick={() => setGithub(github.filter((x) => x.number !== g.number))} className={`inline-grid min-h-8 min-w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] ${FOCUS}`}>×</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex min-w-0 flex-wrap items-start gap-2">
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+            <span className="sr-only">GitHub issue or pull request</span>
+            <input
+              value={ghValue}
+              maxLength={120}
+              placeholder="#123 or a GitHub link"
+              aria-invalid={ghError ? "true" : undefined}
+              aria-describedby={ghError ? "work-add-github-error" : undefined}
+              onChange={(e) => { setGhValue(e.target.value); setGhError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (ghValue.trim()) addGithub(); } }}
+              className={INPUT}
+            />
+            {ghError && <span id="work-add-github-error" role="alert" className="text-[12px] text-[var(--color-error-700)]">{ghError}</span>}
+          </label>
+          <button type="button" disabled={!ghValue.trim()} onClick={addGithub} className={`min-h-11 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}>+ Link</button>
+        </div>
       </div>
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex min-w-0 flex-col gap-1">

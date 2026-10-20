@@ -19,6 +19,8 @@ import { useTeamAgentOverview } from "../hooks/useTeamAgentOverview";
 import { overviewRows, agentErrorWords } from "../lib/agentConnect";
 import { revokeKey } from "../services/teamAgentService";
 import { AgentStatusList } from "../components/agent/AgentTeamList";
+import { listProfiles, setProfile } from "../services/teamProfileService";
+import { opsErrorWords } from "../lib/opsModel";
 
 // Issue #3802 — Team and roles (owner only).
 //
@@ -117,6 +119,11 @@ export function AdminPage() {
   const [formInUse, setFormInUse] = useState("");
   const [rowsInUse, setRowsInUse] = useState({});  // email -> true
 
+  // #3980 Display names and GitHub usernames (owner only), keyed by email:
+  // { name, login, savedName, savedLogin, fallback, state, error }.
+  const [profiles, setProfiles] = useState({});
+  const [profilesError, setProfilesError] = useState("");
+
   // Activity modal
   const [activityTarget, setActivityTarget] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
@@ -163,6 +170,38 @@ export function AdminPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Names load beside the roster; admin_team_list stays as it is.
+  useEffect(() => {
+    let live = true;
+    listProfiles().then((rows) => {
+      if (!live) return;
+      const next = {};
+      for (const p of rows) {
+        next[p.email] = { name: p.display_name || "", login: p.github_login || "", savedName: p.display_name || "", savedLogin: p.github_login || "", fallback: p.fallback_name || "", state: "", error: "" };
+      }
+      setProfiles(next);
+      setProfilesError("");
+    }).catch((err) => { if (live) setProfilesError(opsErrorWords(err)); });
+    return () => { live = false; };
+  }, []);
+
+  const editProfile = (email, field, value) =>
+    setProfiles((prev) => ({ ...prev, [email]: { ...(prev[email] || { name: "", login: "", savedName: "", savedLogin: "", fallback: "" }), [field]: value, state: "", error: "" } }));
+
+  const saveProfile = async (email) => {
+    const p = profiles[email];
+    if (!p || (p.name.trim() === p.savedName && p.login.trim() === p.savedLogin)) return;
+    setProfiles((prev) => ({ ...prev, [email]: { ...prev[email], state: "saving", error: "" } }));
+    try {
+      const saved = await setProfile(email, p.name, p.login);
+      if (!mountedRef.current) return;
+      setProfiles((prev) => ({ ...prev, [email]: { ...prev[email], name: saved?.display_name || "", login: saved?.github_login || "", savedName: saved?.display_name || "", savedLogin: saved?.github_login || "", state: "saved", error: "" } }));
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setProfiles((prev) => ({ ...prev, [email]: { ...prev[email], state: "", error: opsErrorWords(err) } }));
+    }
+  };
 
   const setRowBusy = (email, action) =>
     setBusy((prev) => {
@@ -736,6 +775,45 @@ export function AdminPage() {
                 {stateCopy.line(row, findInviteState(row, inviteStates))}
               </p>
             )}
+            {(row.status === "active" || row.status === "invited") && profiles[email] && (
+              <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Name</span>
+                  <input
+                    value={profiles[email].name}
+                    maxLength={40}
+                    placeholder={profiles[email].fallback}
+                    disabled={!online || profiles[email].state === "saving"}
+                    aria-invalid={profiles[email].error ? "true" : undefined}
+                    aria-describedby={`profile-state-${email}`}
+                    onChange={(e) => editProfile(email, "name", e.target.value.replace(/[\r\n]+/g, " "))}
+                    onBlur={() => saveProfile(email)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+                    className="min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]"
+                  />
+                </label>
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">GitHub username</span>
+                  <input
+                    value={profiles[email].login}
+                    maxLength={39}
+                    placeholder="github username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    disabled={!online || profiles[email].state === "saving"}
+                    aria-invalid={profiles[email].error ? "true" : undefined}
+                    aria-describedby={`profile-state-${email}`}
+                    onChange={(e) => editProfile(email, "login", e.target.value.trim())}
+                    onBlur={() => saveProfile(email)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+                    className="min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm text-[var(--color-text-primary)] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]"
+                  />
+                </label>
+                <p id={`profile-state-${email}`} role="status" className={`text-xs sm:col-span-2 ${profiles[email].error ? "text-[var(--color-error-700)]" : "text-[var(--color-text-tertiary)]"}`}>
+                  {profiles[email].error || (profiles[email].state === "saving" ? "Saving…" : profiles[email].state === "saved" ? "Saved" : !online ? "You're offline. Names save when you're back online." : "")}
+                </p>
+              </div>
+            )}
             </div>
           </div>
           <AgentStatusList
@@ -856,7 +934,16 @@ export function AdminPage() {
       </SectionCard>
 
       {/* People */}
-      <SectionCard title="People" noPadding>
+      <SectionCard
+        title="People"
+        subtitle="Names show in every picker, in agent messages and in the agent log. Without one, Mingla uses the first part of the email."
+        noPadding
+      >
+        {profilesError && (
+          <div className="px-5 pt-4">
+            <AlertCard variant="warning" title="Names couldn’t load">{profilesError}</AlertCard>
+          </div>
+        )}
         {loading ? (
           <div className="p-5">
             {Array.from({ length: 3 }).map((_, i) => <ListItemSkeleton key={i} />)}

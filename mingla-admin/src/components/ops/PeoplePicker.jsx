@@ -1,5 +1,7 @@
 // Issue #3980 — owners or watchers picked from the active team. The list
-// opens inline under the field, never as a floating layer.
+// opens inline under the field, never as a floating layer. Names never break
+// letter by letter: a name keeps at least six characters of width and only
+// wraps between words, and a long role label drops under the name.
 import { useId, useState } from "react";
 import { Plus, X } from "lucide-react";
 
@@ -19,7 +21,7 @@ export function PeoplePicker({ label, people = [], team = [], onAdd, onRemove, d
         {people.length === 0 && <li className="text-[13px] text-[var(--color-text-tertiary)]">Nobody yet</li>}
         {people.map((p) => (
           <li key={p.email} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px] text-[var(--color-text-primary)]">
-            <span className="min-w-0 break-words">{p.name}</span>
+            <span className="min-w-[6ch] break-normal [overflow-wrap:normal]">{p.name}</span>
             <button type="button" aria-label={`Remove ${p.name}`} disabled={disabled} onClick={() => onRemove(p.email)} className={`inline-grid min-h-8 min-w-8 place-items-center rounded-full text-[var(--color-text-tertiary)] hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}>
               <X aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
@@ -48,9 +50,9 @@ export function PeoplePicker({ label, people = [], team = [], onAdd, onRemove, d
             <ul className="flex min-w-0 flex-col">
               {options.map((p) => (
                 <li key={p.email}>
-                  <button type="button" onClick={() => { onAdd(p.email); setQ(""); setOpen(false); }} className={`flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded-lg px-2 text-left text-[13px] hover:bg-[var(--gray-100)] ${FOCUS}`}>
-                    <span className="min-w-0 break-words font-medium text-[var(--color-text-primary)]">{p.name}</span>
-                    <span className="shrink-0 text-[12px] text-[var(--color-text-tertiary)]">{p.role_label}</span>
+                  <button type="button" onClick={() => { onAdd(p.email); setQ(""); setOpen(false); }} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5 rounded-lg px-2 py-1 text-left text-[13px] hover:bg-[var(--gray-100)] ${FOCUS}`}>
+                    <span className="min-w-[6ch] break-normal [overflow-wrap:normal] font-medium text-[var(--color-text-primary)]">{p.name}</span>
+                    <span className="text-[12px] text-[var(--color-text-tertiary)]">{p.role_label}</span>
                   </button>
                 </li>
               ))}

@@ -1,7 +1,7 @@
 // Issue #3980 — the right column of the Work board: one card, live. Changes
 // save as they are made; most offer Undo for a few seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Copy, Link2, X } from "lucide-react";
+import { Copy, ExternalLink, Link2, X } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
@@ -17,13 +17,16 @@ import {
   agentPromptFor,
   closeKindLabel,
   dayLabel,
+  githubChipWords,
   mondayOf,
   opsErrorWords,
+  parseGithubInput,
   proofBadge,
   requestKey,
   runwayLabel,
   sprintLabel,
   todayIso,
+  workingWords,
 } from "../../lib/opsModel";
 import { OpsChip } from "./OpsChip";
 import { PeoplePicker } from "./PeoplePicker";
@@ -195,8 +198,8 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
         />
       </label>
 
-      {card.claim && (
-        <AlertCard variant="info">{agentName(card.claim.holder_name, card.claim.holder_via)} is working on this card. The claim ends at {new Date(card.claim.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} unless it posts an update.</AlertCard>
+      {card.working && (
+        <WorkingMark card={card} canClear={!!me.can_archive && !locked} onCleared={refresh} />
       )}
       {card.anchor && (
         <p className="break-words text-[13px] text-[var(--color-text-secondary)]">
@@ -261,6 +264,8 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           />
         )}
       </Section>
+
+      <GithubLinks card={card} disabled={locked || card.status === "done" || !!busy} onSave={(github, words) => update({ github }, words)} />
 
       <Section title="Instructions">
         <textarea
@@ -429,6 +434,97 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
         <p className="whitespace-pre-wrap break-words rounded-lg bg-[var(--gray-50)] p-2 font-mono text-[12px] text-[var(--color-text-secondary)]">{agentPromptFor(card)}</p>
       </Section>
     </div>
+  );
+}
+
+// "● Seth's Claude (Hosts sweep) is on it · last update 2 h ago". The owner or
+// an admin can clear the mark, with a reason (inline confirm).
+function WorkingMark({ card, canClear, onCleared }) {
+  const { addToast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const words = workingWords(card.working);
+  return (
+    <div className={`flex min-w-0 flex-col gap-2 rounded-xl border p-3 text-[13px] ${card.working.quiet ? "border-[var(--gray-200)] bg-[var(--color-warning-50)]" : "border-[var(--gray-200)] bg-[var(--color-brand-50)]"}`}>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span aria-hidden="true" className={`inline-block h-2 w-2 shrink-0 rounded-full ${card.working.quiet ? "bg-[var(--color-warning-600)]" : "bg-[var(--color-brand-700)]"}`} />
+        <span className="min-w-0 flex-1 break-normal [overflow-wrap:anywhere] text-[var(--color-text-primary)]">{words}</span>
+        {canClear && !open && (
+          <button type="button" onClick={() => setOpen(true)} className={`min-h-11 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] ${FOCUS}`}>Clear working mark</button>
+        )}
+      </div>
+      {!card.working.quiet && <p className="text-[12px] text-[var(--color-text-secondary)]">Another agent cannot change this card until it has had no update for 24 hours. You can always change it.</p>}
+      {open && (
+        <form className="flex min-w-0 flex-wrap items-end gap-2" onSubmit={async (e) => {
+          e.preventDefault();
+          if (reason.trim().length < 5) return;
+          setBusy(true);
+          try {
+            await ops.clearWorkingMark(card.id, reason.trim());
+            addToast({ variant: "success", title: "Working mark cleared. Its person was told." });
+            setOpen(false); setReason("");
+            await onCleared?.();
+          } catch (error) {
+            addToast({ variant: "error", title: "That didn’t work", description: opsErrorWords(error) });
+          } finally { setBusy(false); }
+        }}>
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+            <span className={LABEL}>Why clear it</span>
+            <input value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} className={INPUT} />
+          </label>
+          <Button type="submit" variant="danger" className="min-h-11" disabled={busy || reason.trim().length < 5}>{busy ? "Clearing…" : "Clear it"}</Button>
+          <Button type="button" variant="ghost" className="min-h-11" onClick={() => { setOpen(false); setReason(""); }}>Cancel</Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// GitHub issues and pull requests of Mingla-LLC/mingla-main linked to the
+// card: chips that open GitHub in a new tab, a link field and remove.
+function GithubLinks({ card, disabled, onSave }) {
+  const [adding, setAdding] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+  const links = card.github || [];
+  const current = links.map((g) => (g.kind === "pull" ? `https://github.com/Mingla-LLC/mingla-main/pull/${g.number}` : `#${g.number}`));
+  const add = async () => {
+    const parsed = parseGithubInput(value);
+    if (parsed.error) { setError(parsed.error); return; }
+    if (links.some((g) => g.number === parsed.number)) { setError(`#${parsed.number} is already linked.`); return; }
+    if (links.length >= 10) { setError("A card can link at most 10 GitHub issues or pull requests."); return; }
+    const answer = await onSave([...current, value.trim()], `#${parsed.number} linked`);
+    if (answer) { setValue(""); setError(""); setAdding(false); }
+  };
+  return (
+    <Section title="GitHub" action={!adding && <button type="button" disabled={disabled} onClick={() => setAdding(true)} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link</button>}>
+      {links.length === 0 ? <p className="text-[13px] text-[var(--color-text-tertiary)]">No issue or pull request linked.</p> : (
+        <ul className="flex min-w-0 flex-wrap gap-1.5">
+          {links.map((g, i) => (
+            <li key={g.number} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[13px]">
+              <a href={g.url} target="_blank" rel="noopener noreferrer" title={g.title || undefined} className={`inline-flex min-h-8 items-center gap-1 rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
+                <span className="break-normal [overflow-wrap:normal]">{githubChipWords(g)}</span>
+                <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0 text-[var(--color-text-tertiary)]" />
+                <span className="sr-only">(opens GitHub in a new tab)</span>
+              </a>
+              <button type="button" aria-label={`Remove #${g.number}`} disabled={disabled} onClick={() => onSave(current.filter((_, j) => j !== i), `#${g.number} removed`)} className={`inline-grid min-h-8 min-w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && (
+        <form className="flex min-w-0 flex-wrap items-start gap-2" onSubmit={(e) => { e.preventDefault(); add(); }}>
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1">
+            <span className="sr-only">GitHub issue or pull request</span>
+            <input value={value} autoFocus maxLength={120} placeholder="#123 or a GitHub link" aria-invalid={error ? "true" : undefined} aria-describedby={error ? `gh-err-${card.id}` : undefined} onChange={(e) => { setValue(e.target.value); setError(""); }} className={INPUT} />
+            {error && <span id={`gh-err-${card.id}`} role="alert" className="text-[12px] text-[var(--color-error-700)]">{error}</span>}
+          </label>
+          <Button type="submit" className="min-h-11" disabled={disabled || !value.trim()}>Link</Button>
+          <Button type="button" variant="ghost" className="min-h-11" onClick={() => { setAdding(false); setValue(""); setError(""); }}>Cancel</Button>
+        </form>
+      )}
+    </Section>
   );
 }
 

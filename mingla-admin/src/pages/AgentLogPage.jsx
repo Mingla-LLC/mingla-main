@@ -1,5 +1,6 @@
 // Issue #3980 — the Agent log: what every connected agent did and is doing,
-// and what is claimed right now. Entries cannot be changed or removed.
+// what is claimed right now and which cards agents are working on. Each
+// chat on a key shows by its own name. Entries cannot be changed or removed.
 import { useMemo, useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
@@ -14,7 +15,7 @@ import { useOpsLog } from "../hooks/useOpsLog";
 import { useOpsConfig } from "../hooks/useOpsConfig";
 import { useToast } from "../context/ToastContext";
 import * as ops from "../services/opsService";
-import { AGENT_RULES, agentName, opsErrorWords, parseLogSearch, timeLabel } from "../lib/opsModel";
+import { AGENT_RULES, agentName, opsErrorWords, parseLogSearch, timeLabel, workingWords } from "../lib/opsModel";
 
 const WHO_OPTIONS = [
   { value: "all", label: "All agents" },
@@ -33,6 +34,7 @@ export function AgentLogPage() {
   const canRelease = !!config.data?.me?.can_override;
   const entries = [...(log.data?.entries || []), ...log.older];
   const claims = log.data?.claims || [];
+  const working = log.data?.working || [];
 
   const release = async (claim) => {
     try {
@@ -83,7 +85,7 @@ export function AgentLogPage() {
                 <ul className="min-w-0">
                   {claims.map((c) => (
                     <li key={c.id} className="flex min-w-0 flex-col gap-1 border-b border-[var(--gray-200)] px-4 py-2.5 last:border-b-0">
-                      <p className="break-words text-[13px]"><span className="font-semibold text-[var(--color-text-primary)]">{agentName(c.holder_name, c.holder_via)}</span> <span className="text-[var(--color-text-secondary)]">holds {c.target.label}</span></p>
+                      <p className="break-words text-[13px]"><span className="font-semibold text-[var(--color-text-primary)]">{agentName(c.holder_name, c.holder_via, c.holder_chat_label)}</span> <span className="text-[var(--color-text-secondary)]">holds {c.target.label}</span></p>
                       {c.card && <a href={`#/work-board?card=${c.card.id}`} className={`self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {c.card.number}: {c.card.title}</a>}
                       <p className="text-[12px] text-[var(--color-text-tertiary)]">since {timeLabel(c.since)} · ends {timeLabel(c.ends_at)}</p>
                       {canRelease && (confirm === c.id ? (
@@ -94,6 +96,19 @@ export function AgentLogPage() {
                       ) : (
                         <Button variant="secondary" size="sm" className="min-h-11 self-start" disabled={!online} onClick={() => setConfirm(c.id)}>Release</Button>
                       ))}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+            <SectionCard title="Working right now" noPadding>
+              {working.length === 0 ? <p className="p-4 text-[13px] text-[var(--color-text-tertiary)]">No agent is working on a card.</p> : (
+                <ul className="min-w-0">
+                  {working.map((w) => (
+                    <li key={w.card?.id} className="flex min-w-0 flex-col gap-1 border-b border-[var(--gray-200)] px-4 py-2.5 last:border-b-0">
+                      <p className="break-normal [overflow-wrap:anywhere] text-[13px] text-[var(--color-text-primary)]"><span aria-hidden="true" className={w.quiet ? "text-[var(--color-warning-600)]" : "text-[var(--color-brand-700)]"}>● </span>{workingWords(w)}</p>
+                      {w.card && <a href={`#/work-board?card=${w.card.id}`} className={`self-start break-words rounded text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:underline ${FOCUS}`}>Card {w.card.number}: {w.card.title}</a>}
+                      <p className="text-[12px] text-[var(--color-text-tertiary)]">since {timeLabel(w.since)}{w.stuck ? " · no update for 7 days" : ""}</p>
                     </li>
                   ))}
                 </ul>

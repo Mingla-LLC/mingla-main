@@ -781,6 +781,12 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_log_list: { tools: ["read_log"] },
   ops_claim: { tools: ["claim"] },
   ops_release: { tools: ["release"] },
+  ops_profiles_list: {
+    excluded: "the owner sets teammates' names in person on Team and roles",
+  },
+  ops_profile_set: {
+    excluded: "the owner sets teammates' names in person on Team and roles",
+  },
   ops_working_clear: {
     excluded:
       "only the owner or an admin, in person, clears an agent's working mark",

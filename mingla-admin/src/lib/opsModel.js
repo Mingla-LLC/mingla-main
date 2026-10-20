@@ -41,10 +41,10 @@ export const LINK_KINDS = [
   { value: "expected", label: "Expected" },
 ];
 
-/** The nine rules every agent follows, as people read them. */
+/** The eleven rules every agent follows, as people read them. */
 export const AGENT_RULES = [
   "Reads the agent log for the records it will touch, and checks the open claims, before any work.",
-  "Claims the card and every record it will change or message. A claim ends after 30 minutes without an update.",
+  "Claims every record it will change or message. A claim ends after 30 minutes without an update. Cards are not claimed: starting a card marks the agent as working on it for as long as it takes.",
   "Writes the plan on the card: each step names the connector tool that does it, or a person.",
   "After each step, reads the record back and marks the step done only if the change is really there.",
   "Never reports a step done that it could not do; it leaves it to a person with exact instructions.",
@@ -52,6 +52,8 @@ export const AGENT_RULES = [
   "Never sends, spends money or publishes: it sets the card to Needs a person and stops.",
   "Cannot write to someone Mingla messaged in the last 3 days, unless a person allows one more.",
   "Closing or pushing back releases its claims; it releases any other claim when it stops.",
+  "Names its chat, so claims and the log show which chat did what. Two chats on one key never write over each other.",
+  "Logs its operations work on the Work board: a card at the start, each step as it goes, and proof (with PR and merge links for code) when it closes.",
 ];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -108,13 +110,70 @@ export function sprintLabel(startsOn) {
   return sameMonth ? `Sprint ${Number(sd)} to ${dayLabel(end)}` : `Sprint ${dayLabel(startsOn)} to ${dayLabel(end)}`;
 }
 
-/** "Seth's Claude" for an agent, "Seth" for a person. */
-export function agentName(name, via) {
+/**
+ * "Seth's Claude" for an agent, "Seth's Claude (Hosts sweep)" when the chat
+ * has a name, "Seth" for a person.
+ */
+export function agentName(name, via, chatLabel) {
   const who = typeof name === "string" && name.trim() ? name.trim() : "A teammate";
-  if (via === "claude") return `${who}'s Claude`;
-  if (via === "codex") return `${who}'s Codex`;
+  const chat = typeof chatLabel === "string" && chatLabel.trim() ? ` (${chatLabel.trim()})` : "";
+  if (via === "claude") return `${who}'s Claude${chat}`;
+  if (via === "codex") return `${who}'s Codex${chat}`;
   if (via === "system") return "Mingla";
   return who;
+}
+
+/** The words a GitHub link may not break: the same rule as ops_github_parse. */
+export const GITHUB_LINK_WORDS =
+  "GitHub link must be an issue or pull request of Mingla-LLC/mingla-main, like #3980 or https://github.com/Mingla-LLC/mingla-main/pull/3991.";
+
+/**
+ * #3980, 3980, or an issue or pull request address of Mingla-LLC/mingla-main.
+ * { kind, number } or { error }. Mirrors ops_github_parse on the server.
+ */
+export function parseGithubInput(value) {
+  const v = String(value ?? "").trim();
+  let m = /^#?([0-9]{1,7})$/.exec(v);
+  if (m) {
+    const n = Number(m[1]);
+    return n >= 1 ? { kind: "issue", number: n } : { error: GITHUB_LINK_WORDS };
+  }
+  m = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(issues|pull)\/([0-9]{1,7})\/?([?#].*)?$/.exec(v);
+  if (m) {
+    const n = Number(m[2]);
+    if (n >= 1) return { kind: m[1] === "pull" ? "pull" : "issue", number: n };
+  }
+  return { error: GITHUB_LINK_WORDS };
+}
+
+/** "#3980 · In Progress": the chip of a linked GitHub issue or pull request. */
+export function githubChipWords(status) {
+  const n = Number(status?.number);
+  const label = typeof status?.label === "string" && status.label ? status.label : "Checking GitHub";
+  return Number.isInteger(n) && n > 0 ? `#${n} · ${label}` : label;
+}
+
+/** "2 h ago", "3 days ago": how long since an agent last updated a card. */
+export function sinceWords(iso, now = Date.now()) {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const minutes = Math.max(0, Math.round((now - t) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
+/** "● Seth's Claude (Hosts sweep) is on it · last update 2 h ago", or quiet. */
+export function workingWords(working, now = Date.now()) {
+  if (!working || typeof working !== "object") return "";
+  const who = typeof working.name === "string" && working.name ? working.name : "An agent";
+  if (working.quiet) {
+    const quietFor = sinceWords(working.last_update_at, now).replace(/ ago$/, "");
+    return `${who} is on it · quiet for ${quietFor}`;
+  }
+  return `${who} is on it · last update ${sinceWords(working.last_update_at, now)}`;
 }
 
 export function initials(name) {
@@ -242,6 +301,19 @@ const LOG_ACTIONS = {
   contact_override: "allowed one more message",
   converted: "turned next steps into cards",
   archived: "removed a card",
+  took_over: "took over a quiet card",
+  working_cleared: "ended a working mark",
+  chat_named: "named its chat",
+  auto_added: "added a card by itself",
+  auto_closed: "closed a card by itself",
+  auto_redated: "moved a card's date",
+  release_record: "read a release record",
+  guide_live: "turned a Feature Guide entry Live",
+  guide_incomplete: "left a Feature Guide entry as it was",
+  brand_linked: "linked a brand",
+  brand_card_added: "added a host card for a brand",
+  sprint_moved: "moved a card to this week",
+  setting_changed: "changed a setting",
 };
 
 export function logActionWords(action) {
@@ -415,6 +487,12 @@ const EVENT_WORDS = {
   re_anchored: "moved it to the real event",
   undone: "undid a change",
   archived: "removed it",
+  took_over: "took it over",
+  working_cleared: "ended the working mark",
+  auto_closed: "closed it by itself",
+  redated: "moved its date",
+  sprint_moved: "moved it to this week",
+  github: "changed GitHub links",
 };
 
 export function eventWords(action) {
