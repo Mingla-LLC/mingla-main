@@ -300,12 +300,6 @@ export function validate(sources, { simulateRevert = false } = {}) {
   if (hostBoundaryAt === -1 || hostProvidersAt === -1 || hostBoundaryAt > hostProvidersAt) {
     failures.push("Host UpdateLaunchBoundary must wrap the provider tree, so it catches before ORCH-0964's fallback");
   }
-  if (
-    !sources.hostRoot.includes("FallbackComponent={RootErrorFallback}") ||
-    !sources.hostRoot.includes("rethrowEscalatedLaunchError(props.error);")
-  ) {
-    failures.push("Host's ORCH-0964 root ErrorBoundary must pass an escalated launch error on (RootErrorFallback → rethrowEscalatedLaunchError), or its fallback commits and blocks the rollback");
-  }
   const consumerExportAt = sources.consumerRoot.indexOf("export default Sentry.wrap(function RootLayoutWithLaunchGuard()");
   if (consumerExportAt === -1 || sources.consumerRoot.indexOf("<RootLayout />", consumerExportAt) === -1) {
     failures.push("Consumer root export must wrap RootLayout itself in UpdateLaunchBoundary — Explorer has no other root boundary");
@@ -346,11 +340,6 @@ export function validate(sources, { simulateRevert = false } = {}) {
   for (const key of ["consumerLaunchBoundary", "hostLaunchBoundary"]) {
     requireText(key, "installUpdateLaunchGuard();", `${key} must install the guard when the root imports it`);
     requireText(key, "if (__DEV__) throw this.state.error;", `${key} must keep development's red box`);
-    requireText(
-      key,
-      'if (this.state.view === "escalated") throw this.state.error;',
-      `${key} must rethrow an escalated launch error — any committed view (even null inside providers) counts as native content and stops expo-updates' rollback`,
-    );
     requireText(key, "return <LaunchErrorRestartScreen />;", `${key} must show the restart screen, never a blank one`);
     requireText(key, "onPress={onRestart}", `${key} restart button must be wired`);
     requireText(key, "requestLaunchErrorRestart()", `${key} restart button must restart through safeReload`);
@@ -582,25 +571,6 @@ function selfTest() {
     console.error("#2107 self-test: a boundary that renders blank instead of the restart screen was not detected");
     process.exit(1);
   }
-  const committedEscalation = validate({
-    ...sources,
-    consumerLaunchBoundary: sources.consumerLaunchBoundary.replace(
-      'if (this.state.view === "escalated") throw this.state.error;',
-      'if (this.state.view === "escalated") return null;',
-    ),
-  });
-  if (!committedEscalation.some((failure) => failure.includes("rethrow an escalated launch error"))) {
-    console.error("#2107 self-test: a boundary that commits an escalated launch error was not detected");
-    process.exit(1);
-  }
-  const caughtByHostRoot = validate({
-    ...sources,
-    hostRoot: sources.hostRoot.replace("FallbackComponent={RootErrorFallback}", ""),
-  });
-  if (!caughtByHostRoot.some((failure) => failure.includes("RootErrorFallback"))) {
-    console.error("#2107 self-test: a Host root boundary that catches an escalated launch error was not detected");
-    process.exit(1);
-  }
   const fattenedLaunchWeb = validate({
     ...sources,
     hostLaunchBoundaryWeb: `import { installUpdateLaunchGuard } from "../../services/updateLaunchRuntime";\n${sources.hostLaunchBoundaryWeb}`,
@@ -610,7 +580,7 @@ function selfTest() {
     process.exit(1);
   }
   console.log(
-    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish, blocking foreground, bypassed restart, stray restart, DevSettings restart, unpaused core, unfenced Supabase, unmounted launch boundary, raise-before-persist, blank boundary, committed escalation, Host root catching an escalation and fattened launch web stub all caught).",
+    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish, blocking foreground, bypassed restart, stray restart, DevSettings restart, unpaused core, unfenced Supabase, unmounted launch boundary, raise-before-persist, blank boundary and fattened launch web stub all caught).",
   );
 }
 

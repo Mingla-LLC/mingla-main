@@ -7,9 +7,6 @@ export function LaunchErrorRestartScreen(): null {
   return null;
 }
 
-/** Web never escalates, so a boundary above always draws its own fallback. */
-export function rethrowEscalatedLaunchError(_error: unknown): void {}
-
 export function UpdateLaunchBoundary({
   children,
 }: {

@@ -25,15 +25,20 @@
 //   an in-app reload does not re-arm it, so a fatal after one tears the React
 //   host down with nothing to relaunch it.
 //
-// - Native content "appears" when the first native view is added to the root
-//   view (Android: ReactRootView.java:464-467 logs CONTENT_APPEARED from
-//   onViewAdded). ANY view counts, including a fallback or a provider's
-//   wrapper, and it may arrive while recovery is still waiting up to 5 s for a
-//   remote update (ErrorRecoveryHandler.kt:130-149): either way the cached
-//   relaunch is dropped. So an escalated render error must commit NOTHING: the
-//   root boundary rethrows it, no boundary above catches it, and React unmounts
-//   the root (an empty root adds no view) before reporting it as fatal
-//   (RN src/private/renderer/errorhandling/ErrorHandlers.js:59-63).
+// - LIMIT, measured on Android (Samsung A72, PR #3985, issue #2107): native
+//   content appears BEFORE the app's root layout first renders. A React
+//   DevTools commit probe on a release build logged two commits holding a
+//   native view (RCTView, from the providers above the root layout) before a
+//   first-render throw in the layout, so CONTENT_APPEARED (ReactRootView.java
+//   onViewAdded) has already marked the launch successful when the fatal
+//   arrives, and ErrorRecovery crashes instead of falling back
+//   (ErrorRecoveryHandler.kt:76-82, 116-122). Rethrowing so nothing more
+//   commits did not change that. Escalation can therefore only roll back an
+//   error raised before anything renders (a module-load throw); a broken
+//   critical update that throws while rendering is caught by the restart
+//   screen, and recovery relies on the release checklist: smoke-test the
+//   update on a release build, the `silent` off-switch, and publishing a
+//   rollback.
 //
 // So this guard escalates ONLY when escalation can roll back: a non-embedded,
 // never-confirmed update, in a fresh process (not straight after an in-app
@@ -42,6 +47,8 @@
 // id. Everything else gets the branded restart screen instead of a blank one.
 
 export const UPDATE_LAUNCH_WINDOW_MS = 9_000;
+/** How long the boundary waits for native recovery before showing the restart screen. */
+export const UPDATE_LAUNCH_ESCALATION_HOLD_MS = 8_000;
 /** A marker older than this is not the reload that started this process. */
 export const IN_APP_RELOAD_MARKER_MAX_AGE_MS = 60_000;
 export const MAX_REMEMBERED_UPDATE_IDS = 5;

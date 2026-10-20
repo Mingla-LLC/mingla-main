@@ -1,18 +1,14 @@
-// #2107 (U1, device rework) — a broken downloaded update must roll back, and
-// the in-app restart marker must never outlive the restart it describes.
+// #2107 (U1, device rework) — the in-app restart marker must never outlive the
+// restart it describes.
 //
-// Android device test on 0c16489c0: the boundary caught the first-render error,
-// escalated it, then committed a (null) fallback inside providers that still
-// add native views; CONTENT_APPEARED fired, expo-updates' ErrorRecovery counted
-// the launch successful and crashed without falling back. Now the escalated
-// error is rethrown, nothing commits, and React reports it as fatal from an
-// empty root. The tester also found the marker written by safeReload survived a
-// failed restart (P3) and was never consumed on an embedded launch.
+// Android device test on 0c16489c0 (tester P3): the marker written by
+// safeReload survived a failed restart, so a cold start within 60 s into a
+// broken downloaded update was treated as an in-app restart; and an embedded
+// launch never consumed it. The guard now consumes it at start() on every
+// launch, and safeReload's restore path clears it.
 //
-// Invariant I-2107-UPDATE-LAUNCH-NO-COMMIT is declared once, in the Explorer
+// Invariant I-2107-LAUNCH-MARKER-LIFETIME is declared once, in the Explorer
 // copy of this suite (app-mobile/src/services/__tests__/).
-//
-// Mechanism and native citations: src/services/updateLaunchGuard.ts header.
 
 import {
   UpdateLaunchGuard,
@@ -49,8 +45,6 @@ jest.mock("react-native", () => ({
 const runtime = require("../updateLaunchRuntime") as typeof import("../updateLaunchRuntime");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { runSafeReload } = require("../safeReloadRuntime") as typeof import("../safeReloadRuntime");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const boundaryModule = require("../../components/ui/UpdateLaunchBoundary") as typeof import("../../components/ui/UpdateLaunchBoundary");
 
 const UPDATE: UpdateLaunchFacts = {
   enabled: true,
@@ -103,36 +97,6 @@ function coreGuard(stored: string | null, facts: UpdateLaunchFacts): { guard: Up
 
 afterAll(() => {
   runtime.resetUpdateLaunchGuardForTests();
-});
-
-describe("#2107 U1 escalation commits nothing", () => {
-  test("happy path: an escalated render error is rethrown by the boundary, never drawn", () => {
-    const { original } = install(memoryStore(), UPDATE, 10);
-    const error = new TypeError("first render");
-    const state = boundaryModule.UpdateLaunchBoundary.getDerivedStateFromError(error);
-    expect(original.mock.calls).toEqual([[error, true]]);
-    const instance = new boundaryModule.UpdateLaunchBoundary({ children: null });
-    instance.state = state;
-    expect(() => instance.render()).toThrow(error);
-  });
-
-  test("adversarial: a root boundary above passes the escalated error on instead of drawing a fallback", () => {
-    install(memoryStore(), UPDATE, 10);
-    const error = new TypeError("first render");
-    boundaryModule.UpdateLaunchBoundary.getDerivedStateFromError(error);
-    expect(() => boundaryModule.rethrowEscalatedLaunchError(error)).toThrow(error);
-  });
-
-  test("adversarial: without an escalation (embedded launch) the restart screen still shows and nothing is rethrown", () => {
-    const { original } = install(memoryStore(), { ...UPDATE, isEmbeddedLaunch: true }, 10);
-    const error = new Error("embedded");
-    const state = boundaryModule.UpdateLaunchBoundary.getDerivedStateFromError(error);
-    expect(original).not.toHaveBeenCalled();
-    expect(() => boundaryModule.rethrowEscalatedLaunchError(error)).not.toThrow();
-    const instance = new boundaryModule.UpdateLaunchBoundary({ children: null });
-    instance.state = state;
-    expect((instance.render() as { type: unknown }).type).toBe(boundaryModule.LaunchErrorRestartScreen);
-  });
 });
 
 describe("#2107 U1 in-app reload marker never leaks (P3)", () => {

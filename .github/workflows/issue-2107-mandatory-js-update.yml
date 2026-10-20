@@ -121,7 +121,6 @@ jobs:
           src/components/ui/__tests__/issue_2107_update_launch_boundary.test.tsx
           src/services/__tests__/issue_2107_update_launch_journey.tester_adversarial.test.ts
           src/services/__tests__/issue_2107_update_launch_fallback.test.ts
-          src/components/ui/__tests__/issue_2107_update_launch_root_bypass.test.tsx
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   edge-ota-policy:

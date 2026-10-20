@@ -45,14 +45,10 @@ import * as SplashScreen from "expo-splash-screen";
 
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
-import type { FallbackProps } from "react-error-boundary";
-import { DefaultFallback, ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
 // #2107 (U1): the launch guard installs when this file is imported, before
 // Sentry.init below wraps the global error handler.
-import {
-  UpdateLaunchBoundary,
-  rethrowEscalatedLaunchError,
-} from "../src/components/ui/UpdateLaunchBoundary";
+import { UpdateLaunchBoundary } from "../src/components/ui/UpdateLaunchBoundary";
 import {
   MandatoryUpdateGate,
   type VersionForegroundEvent,
@@ -836,14 +832,6 @@ const authRoutingStyles = StyleSheet.create({
   },
 });
 
-// #2107 (U1): ORCH-0964's fallback, except for a launch error the update guard
-// escalated. That one must leave the root uncaught: drawing any fallback would
-// count as native content and stop expo-updates rolling the update back.
-function RootErrorFallback(props: FallbackProps): React.ReactElement {
-  rethrowEscalatedLaunchError(props.error);
-  return <DefaultFallback {...props} />;
-}
-
 export default function RootLayout(): React.ReactElement {
   const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   const versionForegroundStateRef = useRef(new VersionForegroundStateMachine());
@@ -924,7 +912,6 @@ export default function RootLayout(): React.ReactElement {
             fallback. Kept inside Gesture/SafeArea so the fallback has its
             required context. */}
         <ErrorBoundary
-          FallbackComponent={RootErrorFallback}
           onError={(error, info) => {
             if (sentryDsn) {
               Sentry.captureException(error, {

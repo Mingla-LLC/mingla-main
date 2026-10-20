@@ -15,7 +15,7 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "1641c83e6193acffd2da0bd1975397a47b1f44a2b8ae5a58d5868d66e8b0b08e",
-      "value": "1beca123ef987e2d646ad9e9793a5a59daafe31661b41067733611abce91bcf2"
+      "value": "ddceb563842f833344dbfd407ccb35f6f2d6afb9247800eb2a4fba5d2644b5ec"
     }
   ],
   "dependentSeals": [],
