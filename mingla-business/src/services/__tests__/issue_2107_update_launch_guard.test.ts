@@ -4,7 +4,7 @@
 // ONCE to a fatal so expo-updates marks the launch failed and relaunches the
 // previous update. Everything else gets the restart screen.
 //
-// Invariant I-2107-UPDATE-LAUNCH-ESCALATION is declared once, in the Explorer
+// Invariant I-2107-UPDATE-LAUNCH-RESTART-SCREEN is declared once, in the Explorer
 // copy of this suite (app-mobile/src/services/__tests__/).
 //
 // Mechanism and source citations: src/services/updateLaunchGuard.ts header.
@@ -73,7 +73,16 @@ function harness(
   const order: string[] = [];
   const clock = { now: 1_000_000 };
   const timers: Harness["timers"] = [];
+  // #2107 (no escalation): an `escalate` function is still offered, spread in so
+  // the type does not list it. The guard must never call it.
+  const offeredEscalate = {
+    escalate: (error: unknown) => {
+      order.push("escalate");
+      escalated.push(error);
+    },
+  };
   const dependencies: UpdateLaunchGuardDependencies = {
+    ...offeredEscalate,
     now: () => clock.now,
     readFacts: () => (options.facts === undefined ? UPDATE : options.facts),
     store: {
@@ -88,10 +97,6 @@ function harness(
         stored.value = value;
       },
     },
-    escalate: (error) => {
-      order.push("escalate");
-      escalated.push(error);
-    },
     report: (event, properties) => events.push({ event, properties }),
     setTimer: (callback, ms) => timers.push({ callback, ms }),
   };
@@ -101,25 +106,33 @@ function harness(
 }
 
 describe("#2107 U1 launch guard — core", () => {
-  test("happy path: an error inside the window of an unconfirmed update escalates once, persisted first", () => {
+  test("happy path: an error inside the window of an unconfirmed downloaded update shows the restart screen, is reported, and never escalates", () => {
     const h = harness();
     const error = new TypeError("boom at launch");
-    expect(h.guard.handleError(error, "root_boundary")).toEqual({ kind: "escalated" });
-    expect(h.escalated).toEqual([error]);
-    // The id is on disk BEFORE the fatal is raised.
-    expect(h.order).toEqual(["write", "escalate"]);
-    expect(parseUpdateLaunchRecord(h.stored.value)?.escalated).toEqual(["update-b"]);
+    expect(h.guard.handleError(error, "root_boundary")).toEqual({
+      kind: "restart_screen",
+      reason: "unconfirmed_download",
+    });
+    // Never raised as a fatal: on Android that only crashed, it never rolled back.
+    expect(h.escalated).toEqual([]);
+    expect(h.order).toEqual([]);
     expect(h.events).toEqual([
       {
-        event: "critical_update_launch_failed_escalated",
-        properties: { update_id: "update-b", error_class: "TypeError", source: "root_boundary" },
+        event: "update_launch_error",
+        properties: {
+          update_id: "update-b",
+          error_class: "TypeError",
+          source: "root_boundary",
+          reason: "unconfirmed_download",
+          unconfirmed_download: true,
+        },
       },
     ]);
-    // The same error handed over again (React retries) and a second error in
-    // the same runtime never raise a second fatal.
-    expect(h.guard.handleError(error, "root_boundary")).toEqual({ kind: "escalated" });
-    expect(h.guard.handleError(new Error("second"), "global_handler")).toEqual({ kind: "escalated" });
-    expect(h.escalated).toHaveLength(1);
+    // The same error handed over again (React retries) is reported once.
+    expect(h.guard.handleError(error, "root_boundary").kind).toBe("restart_screen");
+    expect(h.events).toHaveLength(1);
+    expect(h.guard.handleError(new Error("second"), "global_handler").kind).toBe("restart_screen");
+    expect(h.escalated).toEqual([]);
   });
 
   test("adversarial: an embedded launch never escalates", () => {
@@ -132,7 +145,13 @@ describe("#2107 U1 launch guard — core", () => {
     expect(h.writes).toEqual([]);
     expect(h.events[0]).toEqual({
       event: "update_launch_error",
-      properties: { update_id: "update-b", error_class: "Error", source: "root_boundary", reason: "embedded_launch" },
+      properties: {
+        update_id: "update-b",
+        error_class: "Error",
+        source: "root_boundary",
+        reason: "embedded_launch",
+        unconfirmed_download: false,
+      },
     });
   });
 
@@ -149,16 +168,16 @@ describe("#2107 U1 launch guard — core", () => {
     }
   });
 
-  test("adversarial: a second error for the same update id on a later launch never escalates again", () => {
+  test("adversarial: the same broken update on a later launch shows the restart screen again and still never escalates", () => {
     const first = harness();
     first.guard.handleError(new Error("launch 1"), "root_boundary");
-    expect(first.escalated).toHaveLength(1);
+    expect(first.escalated).toEqual([]);
 
-    // The next process reads what the first one persisted.
+    // The next process: still unconfirmed, still downloaded, still no fatal.
     const second = harness({ stored: first.stored.value });
     expect(second.guard.handleError(new Error("launch 2"), "root_boundary")).toEqual({
       kind: "restart_screen",
-      reason: "already_escalated",
+      reason: "unconfirmed_download",
     });
     expect(second.escalated).toEqual([]);
   });
@@ -241,7 +260,11 @@ describe("#2107 U1 launch guard — core", () => {
       inAppReloadAt: 1_000_000 - IN_APP_RELOAD_MARKER_MAX_AGE_MS - 1,
     });
     const h = harness({ stored });
-    expect(h.guard.handleError(new Error("x"), "root_boundary")).toEqual({ kind: "escalated" });
+    expect(h.guard.handleError(new Error("x"), "root_boundary")).toEqual({
+      kind: "restart_screen",
+      reason: "unconfirmed_download",
+    });
+    expect(h.escalated).toEqual([]);
   });
 
   test("adversarial: without a working store the guard fails open and never escalates", () => {
@@ -309,7 +332,7 @@ describe("#2107 U1 launch guard — runtime wiring", () => {
     expect(runtime.getUpdateLaunchGuard()).toBeNull();
   });
 
-  test("a non-fatal global error in the window is raised once as a fatal through the ORIGINAL handler", () => {
+  test("a non-fatal global error in the window is reported and passed on unchanged, never raised as a fatal", () => {
     const utils = errorUtils();
     const store = memoryStore();
     runtime.installUpdateLaunchGuard({
@@ -321,8 +344,8 @@ describe("#2107 U1 launch guard — runtime wiring", () => {
     });
     const error = new RangeError("soft");
     utils.current()(error, false);
-    expect(utils.original.mock.calls).toEqual([[error, true]]);
-    expect(parseUpdateLaunchRecord(store.value)?.escalated).toEqual(["update-b"]);
+    expect(utils.original.mock.calls).toEqual([[error, false]]);
+    expect(store.value).toBeNull();
 
     // A real fatal passes straight through, unchanged.
     const fatal = new Error("fatal");

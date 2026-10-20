@@ -1,6 +1,5 @@
-// #2107 (U1) — Explorer's root boundary: a caught root error is either handed
-// to expo-updates' rollback (hold, then the restart screen) or shown as the
-// restart screen — never a blank screen. Invariant I-2107-UPDATE-LAUNCH-ESCALATION
+// #2107 (U1) — Explorer's root boundary: every caught root error shows the
+// restart screen — never a blank screen, never a fatal. Invariant I-2107-UPDATE-LAUNCH-RESTART-SCREEN
 // is declared in src/services/__tests__/issue_2107_update_launch_guard.test.ts.
 //
 // Explorer's default jest config has no React renderer, so this drives the
@@ -21,8 +20,6 @@ jest.mock("react-native", () => ({
 const runtime = require("../../services/updateLaunchRuntime") as typeof import("../../services/updateLaunchRuntime");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const boundaryModule = require("../UpdateLaunchBoundary") as typeof import("../UpdateLaunchBoundary");
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { UPDATE_LAUNCH_ESCALATION_HOLD_MS } = require("../../services/updateLaunchGuard") as typeof import("../../services/updateLaunchGuard");
 
 const { UpdateLaunchBoundary, LaunchErrorRestartScreen } = boundaryModule;
 
@@ -43,7 +40,7 @@ function installGuard(facts: { isEmbeddedLaunch: boolean }): { original: jest.Mo
   return { original, store };
 }
 
-function boundaryWith(state: { error: unknown; view: "children" | "hold" | "restart" }): InstanceType<typeof UpdateLaunchBoundary> {
+function boundaryWith(state: { error: unknown; view: "children" | "restart" }): InstanceType<typeof UpdateLaunchBoundary> {
   const instance = new UpdateLaunchBoundary({ children: React.createElement("Child") });
   instance.state = state;
   return instance;
@@ -55,13 +52,14 @@ afterEach(() => {
 });
 
 describe("#2107 U1 Explorer root boundary", () => {
-  test("happy path: a launch-window error on an unconfirmed update escalates once and holds on nothing", () => {
+  test("happy path: a launch-window error on an unconfirmed downloaded update shows the restart screen and never escalates", () => {
     const { original } = installGuard({ isEmbeddedLaunch: false });
     const error = new Error("render boom");
     const state = UpdateLaunchBoundary.getDerivedStateFromError(error);
-    expect(state.view).toBe("hold");
-    expect(original.mock.calls).toEqual([[error, true]]);
-    expect(boundaryWith(state).render()).toBeNull();
+    expect(state.view).toBe("restart");
+    // Never raised as a fatal through the captured handler: no crash.
+    expect(original).not.toHaveBeenCalled();
+    expect((boundaryWith(state).render() as React.ReactElement).type).toBe(LaunchErrorRestartScreen);
   });
 
   test("adversarial: an embedded launch shows the restart screen and never escalates", () => {
@@ -73,17 +71,12 @@ describe("#2107 U1 Explorer root boundary", () => {
     expect(rendered.type).toBe(LaunchErrorRestartScreen);
   });
 
-  test("adversarial: a hold that native recovery does not end becomes the restart screen, never a blank one", () => {
-    jest.useFakeTimers();
-    installGuard({ isEmbeddedLaunch: false });
-    const instance = boundaryWith({ error: new Error("x"), view: "hold" });
-    const setState = jest.fn();
-    instance.setState = setState as typeof instance.setState;
-    instance.componentDidUpdate();
-    jest.advanceTimersByTime(UPDATE_LAUNCH_ESCALATION_HOLD_MS - 1);
-    expect(setState).not.toHaveBeenCalled();
-    jest.advanceTimersByTime(1);
-    expect(setState).toHaveBeenCalledWith({ view: "restart" });
+  test("adversarial: a second launch-window error in the same runtime still never escalates", () => {
+    const { original } = installGuard({ isEmbeddedLaunch: false });
+    UpdateLaunchBoundary.getDerivedStateFromError(new Error("first"));
+    const state = UpdateLaunchBoundary.getDerivedStateFromError(new Error("second"));
+    expect(state.view).toBe("restart");
+    expect(original).not.toHaveBeenCalled();
   });
 
   test("adversarial: with no guard installed (any failure) a caught error still shows the restart screen", () => {

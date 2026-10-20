@@ -21,10 +21,11 @@
 //      bridge tears down crashes RCTNetworking, so a bare reloadAsync anywhere
 //      is a crash waiting for a tap.
 //
-//   6. (U1) A broken update's launch error reaches expo-updates' rollback or the
-//      restart screen, never a blank screen: both roots mount UpdateLaunchBoundary,
-//      the guard core and runtime stay byte-identical, escalation persists the
-//      update id before raising, and the web stubs import nothing.
+//   6. (U1) A broken update's launch error shows the restart screen, never a
+//      blank screen and never a fatal: both roots mount UpdateLaunchBoundary, the
+//      guard core and runtime stay byte-identical, nothing in them raises an error
+//      as fatal (on Android that only crashed, it never rolled back), and the web
+//      stubs import nothing.
 //
 // ISSUE_2107_SIMULATE_REVERT=1 proves the gate fails when the root mount is
 // removed, so a green run means something.
@@ -74,7 +75,7 @@ const FILES = {
   hostSafeReloadRuntime: "mingla-business/src/services/safeReloadRuntime.ts",
   consumerSupabase: "app-mobile/src/services/supabase.ts",
   hostSupabase: "mingla-business/src/services/supabase.ts",
-  // U1 — launch-window escalation and the restart screen.
+  // U1 — the restart screen and launch telemetry (no escalation).
   consumerLaunchGuard: "app-mobile/src/services/updateLaunchGuard.ts",
   hostLaunchGuard: "mingla-business/src/services/updateLaunchGuard.ts",
   consumerLaunchRuntime: "app-mobile/src/services/updateLaunchRuntime.ts",
@@ -289,7 +290,7 @@ export function validate(sources, { simulateRevert = false } = {}) {
   }
   requireText("hostFenceWeb", "export function createTrackedFetch", "the web fence stub must export createTrackedFetch");
 
-  // 6 — U1: a broken update's launch error is escalated or shown, never blank.
+  // 6 — U1: a broken update's launch error is shown, never blank, never raised.
   for (const [rootKey, label] of [["consumerRoot", "Consumer"], ["hostRoot", "Host"]]) {
     if (!sources[rootKey].includes("<UpdateLaunchBoundary>")) {
       failures.push(`${label} root must mount UpdateLaunchBoundary — without it a broken update's render error is a blank screen`);
@@ -316,17 +317,14 @@ export function validate(sources, { simulateRevert = false } = {}) {
   }
   for (const key of ["consumerLaunchGuard", "hostLaunchGuard"]) {
     if (/^import\s/m.test(sources[key])) failures.push(`${key} must import nothing`);
-    const persistAt = sources[key].indexOf("this.dependencies.store.write(serializeUpdateLaunchRecord(next));");
-    const raiseAt = sources[key].indexOf("this.dependencies.escalate(error);");
-    if (persistAt === -1 || raiseAt === -1 || persistAt > raiseAt) {
-      failures.push(`${key} must persist the escalated update id BEFORE raising the fatal — otherwise it can escalate the same update again`);
+    if (/\bescalate\b/.test(sources[key].replace(/^\s*(?:\/\/|\*).*$/gm, ""))) {
+      failures.push(`${key} must not escalate a launch error — a render error raised as fatal only crashes the app; expo-updates cannot roll it back once content has appeared`);
     }
     for (const [needle, what] of [
-      ['return skip("embedded_launch")', "never escalate an embedded launch"],
-      ['return skip("already_escalated")', "never escalate one update id twice"],
-      ['return skip("in_app_reload")', "never escalate straight after an in-app reload"],
-      ['return skip("window_elapsed")', "stop escalating once the launch window has passed"],
-      ['return skip("confirmed_good")', "never escalate a confirmed launch"],
+      ['report("update_launch_error"', "report every launch error as update_launch_error"],
+      ["unconfirmed_download:", "say whether the failing launch was a downloaded, never-confirmed update"],
+      ['return outcome("embedded_launch")', "classify an embedded launch"],
+      ['return outcome("in_app_reload")', "classify a launch started by an in-app reload"],
     ]) requireText(key, needle, `${key} must ${what}`);
   }
   for (const key of ["consumerLaunchRuntime", "hostLaunchRuntime"]) {
@@ -334,7 +332,10 @@ export function validate(sources, { simulateRevert = false } = {}) {
       failures.push(`${key} must import only its sibling pure modules — native modules are required lazily`);
     }
     requireText(key, "if (environment.isDev) return;", `${key} must leave development's red box alone`);
-    requireText(key, "escalate: (error) => original(error, true)", `${key} must raise through the handler captured at install`);
+    requireText(key, "original(error, isFatal);", `${key} must pass every global error on unchanged`);
+    if (sources[key].includes("original(error, true)")) {
+      failures.push(`${key} must never turn an error into a fatal — module-load throws are already fatal, and raising a render error only crashes`);
+    }
     requireText(key, "await createOtaUpdateBridge().reload();", `${key} restart must go through the safeReload bridge`);
   }
   for (const key of ["consumerLaunchBoundary", "hostLaunchBoundary"]) {
@@ -552,15 +553,30 @@ function selfTest() {
     console.error("#2107 self-test: a root without the launch boundary was not detected");
     process.exit(1);
   }
-  const raiseBeforePersist = validate({
+  const escalatingGuard = validate({
     ...sources,
+    consumerLaunchGuard: sources.consumerLaunchGuard.replace(
+      'return outcome("unconfirmed_download");',
+      'this.dependencies.escalate(error);\n    return outcome("unconfirmed_download");',
+    ),
     hostLaunchGuard: sources.hostLaunchGuard.replace(
-      "this.dependencies.store.write(serializeUpdateLaunchRecord(next));",
-      "this.dependencies.store.writeLater(serializeUpdateLaunchRecord(next));",
+      'return outcome("unconfirmed_download");',
+      'this.dependencies.escalate(error);\n    return outcome("unconfirmed_download");',
     ),
   });
-  if (raiseBeforePersist.length === 0) {
-    console.error("#2107 self-test: a guard that raises before persisting the update id was not detected");
+  if (!escalatingGuard.some((failure) => failure.includes("must not escalate"))) {
+    console.error("#2107 self-test: a guard that escalates a launch error again was not detected");
+    process.exit(1);
+  }
+  const fatalRuntime = validate({
+    ...sources,
+    hostLaunchRuntime: sources.hostLaunchRuntime.replace(
+      "original(error, isFatal);",
+      "original(error, true);",
+    ),
+  });
+  if (!fatalRuntime.some((failure) => failure.includes("never turn an error into a fatal"))) {
+    console.error("#2107 self-test: a runtime that raises a non-fatal error as fatal was not detected");
     process.exit(1);
   }
   const blankBoundary = validate({
@@ -580,7 +596,7 @@ function selfTest() {
     process.exit(1);
   }
   console.log(
-    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish, blocking foreground, bypassed restart, stray restart, DevSettings restart, unpaused core, unfenced Supabase, unmounted launch boundary, raise-before-persist, blank boundary and fattened launch web stub all caught).",
+    "#2107 self-test passed (clean green; revert, drift, seeded-row, fattened web stub, reload-before-persist, marker drift, unguarded publish, blocking foreground, bypassed restart, stray restart, DevSettings restart, unpaused core, unfenced Supabase, unmounted launch boundary, re-introduced escalation, non-fatal raised as fatal, blank boundary and fattened launch web stub all caught).",
   );
 }
 

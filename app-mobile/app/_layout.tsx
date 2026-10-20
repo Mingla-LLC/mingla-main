@@ -235,8 +235,8 @@ function RootLayout() {
 }
 
 // #2107 (U1): the outermost boundary. Explorer had none, so a render error in
-// the root unmounted everything and left a blank white screen; it now either
-// hands a broken update to expo-updates' rollback or shows the restart screen.
+// the root unmounted everything and left a blank white screen; it now shows the
+// restart screen and reports the error.
 export default Sentry.wrap(function RootLayoutWithLaunchGuard() {
   return (
     <UpdateLaunchBoundary>

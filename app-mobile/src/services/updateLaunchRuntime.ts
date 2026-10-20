@@ -12,10 +12,10 @@
 //   marker can never outlive the launch it describes.
 // - In __DEV__ nothing is installed, so development keeps React Native's red
 //   box exactly as before.
-// - Escalation calls the global error handler captured at install time, which
-//   is React Native's own (installed before Sentry.init wraps it). Sentry's
-//   wrapper flushes before passing a fatal on, and that delay would let native
-//   content appear first, which is the one thing that stops a rollback.
+// - It never raises or changes an error. The global handler wrapper only
+//   reports a non-fatal error and then passes every error, fatal or not, to the
+//   handler it replaced, unchanged: a module-load throw is still fatal and
+//   expo-updates still rolls it back natively.
 
 import {
   UpdateLaunchGuard,
@@ -110,7 +110,6 @@ export function installUpdateLaunchGuard(
       now: environment.now,
       readFacts: environment.readFacts,
       store: environment.store,
-      escalate: (error) => original(error, true),
       report: (event, properties) =>
         reportUpdateGateEvent("update-launch-guard", event, properties),
       setTimer: (callback, ms) => {
@@ -125,20 +124,14 @@ export function installUpdateLaunchGuard(
     created.start();
     guard = created;
     errorUtils.setGlobalHandler((error, isFatal) => {
-      if (isFatal === true) {
-        // Already fatal: native recovery sees it on its own.
-        created.noteFatalError();
-        original(error, true);
-        return;
-      }
-      let outcome: ReturnType<UpdateLaunchGuard["handleError"]> | null = null;
       try {
-        outcome = created.handleError(error, "global_handler");
+        if (isFatal === true) created.noteFatalError();
+        else created.handleError(error, "global_handler");
       } catch (guardError) {
-        console.warn("[update-launch-guard] global handler check failed", guardError);
+        console.warn("[update-launch-guard] global handler report failed", guardError);
       }
-      // An escalated error already went to the original handler as a fatal.
-      if (outcome?.kind === "escalated") return;
+      // Unchanged: a fatal stays fatal (native recovery handles it on its own),
+      // a non-fatal stays non-fatal.
       original(error, isFatal);
     });
   } catch (error) {
@@ -152,9 +145,8 @@ export function getUpdateLaunchGuard(): UpdateLaunchGuard | null {
 }
 
 /**
- * Written by safeReloadRuntime right before the native restart. The process it
- * starts is not a fresh one: Android does not re-arm expo-updates' recovery
- * after an in-app reload, so that launch must never escalate.
+ * Written by safeReloadRuntime right before the native restart, so the launch
+ * it starts is reported as an in-app reload rather than a fresh process.
  */
 export function markInAppReloadForLaunchGuard(now: number = Date.now()): void {
   try {

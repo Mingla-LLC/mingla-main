@@ -549,14 +549,19 @@ the new bundle, so a broken critical update reaches everyone at once:
    next update check.
 
 **What the app does by itself when an update throws at launch (#2107 U1).** Both roots mount
-`UpdateLaunchBoundary`. React Native reports render errors as non-fatal, so without it expo-updates
-never sees them. Inside the first 9 seconds of a non-embedded, never-confirmed update, in a fresh
-process, an error before the first healthy commit is raised once as a fatal. expo-updates then marks
-the launch failed and relaunches the previous update. Every other launch error shows the "Something
-went wrong" restart screen. expo-updates 29 cannot roll back an update whose content has already
-appeared (it counts that launch as successful), and on Android its recovery is not re-armed after an
-in-app reload. A bundle that breaks after its first screen therefore stays on devices until you roll
-it back with step 3. Treat the automatic path as a backstop, not a substitute for step 1.
+`UpdateLaunchBoundary`. React Native reports render errors as non-fatal, so without it a broken update
+left a blank screen. Every caught render error now shows the "Something went wrong" restart screen, on
+every launch, and is reported as `update_launch_error` (update id, reason, and `unconfirmed_download`:
+whether it was a downloaded update never confirmed good). Healthy launches report
+`update_launch_confirmed_good`. **There is no automatic rollback for an update that throws while
+rendering.** expo-updates 29 rolls back only on a fatal raised before native content appears, and on a
+release build content appears before the root layout first renders (measured on Android, PR #3985: two
+commits with a native view landed before the throw; raising it as fatal only crashed, "could not recover
+from error, crashing", and every later cold start reopened the same update). So the app never raises a
+render error as fatal. A bundle that throws while its modules load is already fatal and still rolls
+back natively; the app does not touch that path. Recovery from a broken critical update is the
+checklist above: open it on a release build first, know the `silent` off switch, and publish the
+rollback (step 3), which reaches devices on their next update check.
 
 ### 7.7 Pull requests
 

@@ -922,9 +922,8 @@ export default function RootLayout(): React.ReactElement {
             }
           }}
         >
-          {/* #2107 (U1): catches first, so a broken update's render error is
-              handed to expo-updates' rollback inside the launch window, and
-              anything else shows the restart screen. ORCH-0964's boundary
+          {/* #2107 (U1): catches first, so a broken update's render error
+              shows the restart screen and is reported. ORCH-0964's boundary
               stays as the backstop around it. */}
           <UpdateLaunchBoundary>
           <QueryClientProvider client={queryClient}>

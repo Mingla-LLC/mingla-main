@@ -1,4 +1,4 @@
-// #2107 (U1) — launch-window escalation for a broken OTA, pure core.
+// #2107 (U1) — what a launch error means for the running update, pure core.
 //
 // Byte-identical in app-mobile and mingla-business (parity-gated by
 // .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs). It imports
@@ -6,49 +6,36 @@
 //
 // THE PROBLEM. React Native 0.81 reports a React render error as NON-fatal
 // (Libraries/Core/ReactFiberErrorDialog.js:55 calls handleException(error,
-// false)), so an update that throws while rendering leaves the process alive on
-// a blank screen and expo-updates' native error recovery never hears of it.
+// false)), so an update that throws while rendering left the process alive on
+// a blank screen. The root boundary now shows the restart screen instead, on
+// every launch, and this guard classifies the error for telemetry.
 //
-// WHAT REALLY ROLLS BACK (expo-updates 29.0.17, read from source):
-// - Recovery runs only for a FATAL JS error. Android: the fatal reaches
-//   ErrorRecovery.onReactInstanceException (ErrorRecovery.kt:56) through
-//   ExpoReactHostFactory.handleInstanceException; iOS: RCTFatal reaches the
-//   handler ErrorRecovery installs with RCTSetFatalHandler (ErrorRecovery.swift:338).
-// - It marks the launch failed ONLY if native content has not appeared yet
-//   (ErrorRecoveryHandler.kt:116-122, ErrorRecovery.swift:155-164), and only
-//   then can it relaunch the previous update (LAUNCH_CACHED_UPDATE). Content
-//   appearing marks the launch SUCCESSFUL and removes both relaunch tasks
-//   (ErrorRecoveryHandler.kt:76-82, ErrorRecovery.swift:306-316); a fatal after
-//   that only crashes the app, and the update stays launchable for good
-//   (UpdateDao.kt:16 keeps any update with successful_launch_count > 0).
-// - Android arms recovery once per process (ExpoReactHostFactory.kt:104-106);
-//   an in-app reload does not re-arm it, so a fatal after one tears the React
-//   host down with nothing to relaunch it.
+// WHY IT NEVER RAISES A FATAL (expo-updates 29.0.17, measured on Android).
+// - expo-updates rolls back only on a FATAL error raised before native content
+//   appears: content appearing marks the launch successful and drops the
+//   cached relaunch (ErrorRecoveryHandler.kt:76-82, 116-122; iOS
+//   ErrorRecovery.swift:155-164, 306-316).
+// - Content appears before the app's root layout first renders. On a release
+//   build (Samsung A72, PR #3985) a React commit probe logged two commits
+//   holding a native view (RCTView, from the providers above the root layout)
+//   before a first-render throw in the layout reached any boundary. Raising
+//   that error as fatal, even with nothing further committed, only crashed the
+//   app ("UpdatesErrorRecovery: could not recover from error, crashing") and
+//   every later cold start reopened the same update.
+// - So escalating a render error adds a crash and never a rollback. It is not
+//   done. A module-load throw (before anything renders) is fatal on its own and
+//   still rolls back natively; nothing here touches fatal errors.
+// - Recovery from a broken update that throws while rendering relies on the
+//   release checklist (docs/MINGLA_ENGINEERING_HANDBOOK.md §7.6): smoke-test on
+//   a release build, the `silent` off-switch, publishing a rollback.
 //
-// - LIMIT, measured on Android (Samsung A72, PR #3985, issue #2107): native
-//   content appears BEFORE the app's root layout first renders. A React
-//   DevTools commit probe on a release build logged two commits holding a
-//   native view (RCTView, from the providers above the root layout) before a
-//   first-render throw in the layout, so CONTENT_APPEARED (ReactRootView.java
-//   onViewAdded) has already marked the launch successful when the fatal
-//   arrives, and ErrorRecovery crashes instead of falling back
-//   (ErrorRecoveryHandler.kt:76-82, 116-122). Rethrowing so nothing more
-//   commits did not change that. Escalation can therefore only roll back an
-//   error raised before anything renders (a module-load throw); a broken
-//   critical update that throws while rendering is caught by the restart
-//   screen, and recovery relies on the release checklist: smoke-test the
-//   update on a release build, the `silent` off-switch, and publishing a
-//   rollback.
-//
-// So this guard escalates ONLY when escalation can roll back: a non-embedded,
-// never-confirmed update, in a fresh process (not straight after an in-app
-// reload), inside the launch window, before the app's first healthy commit (the
-// JS-side proxy for "native content appeared"), and never twice for one update
-// id. Everything else gets the branded restart screen instead of a blank one.
+// What it still records: `update_launch_confirmed_good` for a healthy launch,
+// and `update_launch_error` with whether the failing launch was a downloaded,
+// never-confirmed update (the case a rollback would have been for). The
+// in-app reload marker tells a launch started by the app's own restart apart
+// from a fresh process.
 
 export const UPDATE_LAUNCH_WINDOW_MS = 9_000;
-/** How long the boundary waits for native recovery before showing the restart screen. */
-export const UPDATE_LAUNCH_ESCALATION_HOLD_MS = 8_000;
 /** A marker older than this is not the reload that started this process. */
 export const IN_APP_RELOAD_MARKER_MAX_AGE_MS = 60_000;
 export const MAX_REMEMBERED_UPDATE_IDS = 5;
@@ -62,34 +49,37 @@ export type UpdateLaunchFacts = {
 };
 
 export type UpdateLaunchRecord = {
-  escalated: string[];
   confirmed: string[];
   inAppReloadAt: number | null;
 };
 
 export type LaunchErrorSource = "root_boundary" | "global_handler";
 
-export type LaunchSkipReason =
+export type LaunchErrorReason =
   | "updates_disabled"
   | "embedded_launch"
   | "emergency_launch"
   | "window_elapsed"
   | "confirmed_good"
-  | "already_escalated"
   | "in_app_reload"
   | "store_unavailable"
-  | "escalation_failed";
+  | "unconfirmed_download";
 
-export type LaunchErrorOutcome =
-  | { kind: "escalated" }
-  | { kind: "restart_screen"; reason: LaunchSkipReason };
+/** The reasons that mean "a downloaded update that was never confirmed good". */
+const UNCONFIRMED_DOWNLOAD_REASONS: readonly LaunchErrorReason[] = [
+  "unconfirmed_download",
+  "in_app_reload",
+  "window_elapsed",
+];
+
+/** Every launch error is shown on the restart screen; the reason is telemetry. */
+export type LaunchErrorOutcome = { kind: "restart_screen"; reason: LaunchErrorReason };
 
 type TelemetryValue = string | number | boolean | null;
 
 export type UpdateLaunchStore = {
   /** Null when nothing is stored yet. Throws when storage is unavailable. */
   read: () => string | null;
-  /** Synchronous: the record must be on disk before a fatal error is raised. */
   write: (value: string) => void;
 };
 
@@ -98,14 +88,11 @@ export type UpdateLaunchGuardDependencies = {
   /** Null when the updates runtime cannot be read. */
   readFacts: () => UpdateLaunchFacts | null;
   store: UpdateLaunchStore;
-  /** Raises the error as a fatal JS error. Must be synchronous. */
-  escalate: (error: unknown) => void;
   report: (event: string, properties: Record<string, TelemetryValue>) => void;
   setTimer: (callback: () => void, ms: number) => void;
 };
 
 export const EMPTY_UPDATE_LAUNCH_RECORD: UpdateLaunchRecord = {
-  escalated: [],
   confirmed: [],
   inAppReloadAt: null,
 };
@@ -114,17 +101,21 @@ function isIdList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
-/** Null means "stored but unreadable": the guard must not trust it. */
+/**
+ * Null means "stored but unreadable": the guard must not trust it. A record
+ * written by an earlier build may still carry an `escalated` list; it is
+ * ignored and dropped on the next write.
+ */
 export function parseUpdateLaunchRecord(raw: string | null): UpdateLaunchRecord | null {
   if (raw === null || raw.trim() === "") return { ...EMPTY_UPDATE_LAUNCH_RECORD };
   try {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
     const record = parsed as Record<string, unknown>;
-    if (!isIdList(record.escalated) || !isIdList(record.confirmed)) return null;
+    if (!isIdList(record.confirmed)) return null;
     const at = record.inAppReloadAt;
     if (at !== null && (typeof at !== "number" || !Number.isFinite(at))) return null;
-    return { escalated: record.escalated, confirmed: record.confirmed, inAppReloadAt: at };
+    return { confirmed: record.confirmed, inAppReloadAt: at };
   } catch {
     return null;
   }
@@ -163,7 +154,6 @@ export class UpdateLaunchGuard {
   private readonly startedAt: number;
   private confirmed = false;
   private errorSeen = false;
-  private escalated = false;
   private launchState: LaunchState | null | undefined = undefined;
   private lastError: { error: unknown; outcome: LaunchErrorOutcome } | null = null;
 
@@ -185,20 +175,17 @@ export class UpdateLaunchGuard {
     }
   }
 
-  /** The root rendered and committed without an error: native content is up. */
+  /** The root rendered and committed without an error. */
   noteHealthyCommit(): void {
     this.confirm("first_commit");
   }
 
-  /** A fatal error native recovery already sees; never confirm this launch. */
+  /** A fatal error passed through untouched; never confirm this launch. */
   noteFatalError(): void {
     this.errorSeen = true;
   }
 
-  isEscalated(): boolean {
-    return this.escalated;
-  }
-
+  /** Classifies and reports a non-fatal launch error. Never raises anything. */
   handleError(error: unknown, source: LaunchErrorSource): LaunchErrorOutcome {
     // React can hand the same error to a boundary more than once.
     if (this.lastError !== null && this.lastError.error === error) return this.lastError.outcome;
@@ -209,60 +196,31 @@ export class UpdateLaunchGuard {
 
   private decide(error: unknown, source: LaunchErrorSource): LaunchErrorOutcome {
     this.errorSeen = true;
-    if (this.escalated) return { kind: "escalated" };
-
     const facts = this.readFacts();
     const updateId = facts?.updateId ?? null;
-    const skip = (reason: LaunchSkipReason): LaunchErrorOutcome => {
+    const outcome = (reason: LaunchErrorReason): LaunchErrorOutcome => {
       this.dependencies.report("update_launch_error", {
         update_id: updateId,
         error_class: errorClassOf(error),
         source,
         reason,
+        unconfirmed_download: UNCONFIRMED_DOWNLOAD_REASONS.includes(reason),
       });
       return { kind: "restart_screen", reason };
     };
 
-    if (facts === null || !facts.enabled) return skip("updates_disabled");
-    if (facts.isEmbeddedLaunch || updateId === null) return skip("embedded_launch");
-    if (facts.isEmergencyLaunch) return skip("emergency_launch");
-    if (this.dependencies.now() - this.startedAt > UPDATE_LAUNCH_WINDOW_MS) {
-      return skip("window_elapsed");
-    }
-    if (this.confirmed) return skip("confirmed_good");
-
+    if (facts === null || !facts.enabled) return outcome("updates_disabled");
+    if (facts.isEmbeddedLaunch || updateId === null) return outcome("embedded_launch");
+    if (facts.isEmergencyLaunch) return outcome("emergency_launch");
+    if (this.confirmed) return outcome("confirmed_good");
     const state = this.readLaunchState();
-    if (state === null) return skip("store_unavailable");
-    if (state.record.confirmed.includes(updateId)) return skip("confirmed_good");
-    if (state.record.escalated.includes(updateId)) return skip("already_escalated");
-    if (state.startedByInAppReload) return skip("in_app_reload");
-
-    // Persist BEFORE raising: the fatal may end this process, and the same
-    // update id must never be escalated again on a later launch.
-    const next: UpdateLaunchRecord = {
-      ...state.record,
-      escalated: remember(state.record.escalated, updateId),
-    };
-    try {
-      this.dependencies.store.write(serializeUpdateLaunchRecord(next));
-      state.record = next;
-    } catch {
-      return skip("store_unavailable");
+    if (state === null) return outcome("store_unavailable");
+    if (state.record.confirmed.includes(updateId)) return outcome("confirmed_good");
+    if (this.dependencies.now() - this.startedAt > UPDATE_LAUNCH_WINDOW_MS) {
+      return outcome("window_elapsed");
     }
-
-    this.dependencies.report("critical_update_launch_failed_escalated", {
-      update_id: updateId,
-      error_class: errorClassOf(error),
-      source,
-    });
-    try {
-      this.escalated = true;
-      this.dependencies.escalate(error);
-    } catch {
-      this.escalated = false;
-      return skip("escalation_failed");
-    }
-    return { kind: "escalated" };
+    if (state.startedByInAppReload) return outcome("in_app_reload");
+    return outcome("unconfirmed_download");
   }
 
   private confirm(reason: "first_commit" | "window_elapsed"): void {

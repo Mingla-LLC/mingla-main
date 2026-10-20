@@ -5,20 +5,17 @@
 // only in the relative path to services/ (parity-gated by
 // .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs).
 //
-// - Inside the launch window of an eligible update, a caught render error is
-//   escalated to a fatal from getDerivedStateFromError: that is the render
-//   phase, BEFORE the fallback commits, so the fatal reaches expo-updates
-//   before any new native content can appear. The boundary then renders
-//   nothing while native recovery relaunches the previous update, and shows
-//   the restart screen if nothing has happened after the hold.
-// - Every other caught error shows the restart screen, never a blank one.
-// - The first healthy commit confirms the launch good (updateLaunchGuard.ts
-//   explains why that, and not a later screen, is the line).
+// - Every caught render error shows the restart screen, on every launch. It is
+//   never raised as a fatal: by the time the root renders, native content has
+//   already appeared, so expo-updates could only crash, not roll back
+//   (updateLaunchGuard.ts has the device evidence). The guard reports
+//   `update_launch_error`, including whether the launch was a downloaded,
+//   never-confirmed update.
+// - The first healthy commit confirms the launch good.
 // - In __DEV__ the error is rethrown, so development keeps the red box.
 
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { UPDATE_LAUNCH_ESCALATION_HOLD_MS } from "../services/updateLaunchGuard";
 import {
   getUpdateLaunchGuard,
   hideSplashForLaunchError,
@@ -30,7 +27,7 @@ import {
 // the global handler. Never throws.
 installUpdateLaunchGuard();
 
-type BoundaryView = "children" | "hold" | "restart";
+type BoundaryView = "children" | "restart";
 
 type BoundaryState = { error: unknown; view: BoundaryView };
 
@@ -84,26 +81,17 @@ export class UpdateLaunchBoundary extends React.Component<
 > {
   state: BoundaryState = { error: null, view: "children" };
 
-  private holdTimer: ReturnType<typeof setTimeout> | null = null;
-
   static getDerivedStateFromError(error: unknown): BoundaryState {
-    let view: BoundaryView = "restart";
     try {
-      const outcome = getUpdateLaunchGuard()?.handleError(error, "root_boundary");
-      if (outcome?.kind === "escalated") view = "hold";
+      getUpdateLaunchGuard()?.handleError(error, "root_boundary");
     } catch (guardError) {
-      console.warn("[update-launch-guard] boundary check failed", guardError);
+      console.warn("[update-launch-guard] boundary report failed", guardError);
     }
-    return { error, view };
+    return { error, view: "restart" };
   }
 
   componentDidMount(): void {
     if (this.state.view === "children") getUpdateLaunchGuard()?.noteHealthyCommit();
-    this.scheduleHoldEnd();
-  }
-
-  componentDidUpdate(): void {
-    this.scheduleHoldEnd();
   }
 
   componentDidCatch(error: unknown, info: React.ErrorInfo): void {
@@ -114,24 +102,9 @@ export class UpdateLaunchBoundary extends React.Component<
     );
   }
 
-  componentWillUnmount(): void {
-    if (this.holdTimer !== null) clearTimeout(this.holdTimer);
-    this.holdTimer = null;
-  }
-
-  private scheduleHoldEnd(): void {
-    if (this.state.view !== "hold" || this.holdTimer !== null) return;
-    // Native recovery should have relaunched by now; never leave a blank screen.
-    this.holdTimer = setTimeout(() => {
-      this.holdTimer = null;
-      this.setState({ view: "restart" });
-    }, UPDATE_LAUNCH_ESCALATION_HOLD_MS);
-  }
-
   render(): React.ReactNode {
     if (this.state.view === "children") return this.props.children;
     if (__DEV__) throw this.state.error;
-    if (this.state.view === "hold") return null;
     return <LaunchErrorRestartScreen />;
   }
 }

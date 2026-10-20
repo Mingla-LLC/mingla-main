@@ -80,13 +80,12 @@ function install(store: ReturnType<typeof memoryStore>, facts: UpdateLaunchFacts
   return { original };
 }
 
-function coreGuard(stored: string | null, facts: UpdateLaunchFacts): { guard: UpdateLaunchGuard; store: { value: string | null } } {
+function coreGuard(stored: string | null, facts: UpdateLaunchFacts, startedAt = 1_000_000): { guard: UpdateLaunchGuard; store: { value: string | null } } {
   const store = { value: stored };
   const dependencies: UpdateLaunchGuardDependencies = {
-    now: () => 1_000_000,
+    now: () => startedAt,
     readFacts: () => facts,
     store: { read: () => store.value, write: (value) => { store.value = value; } },
-    escalate: () => undefined,
     report: () => undefined,
     setTimer: () => undefined,
   };
@@ -132,12 +131,16 @@ describe("#2107 U1 in-app reload marker never leaks (P3)", () => {
     expect(onRestore).toHaveBeenCalledTimes(1);
   });
 
-  test("adversarial: the cold start after a failed restart escalates (the marker did not survive)", async () => {
+  test("adversarial: the cold start after a failed restart is a fresh launch, not an in-app reload (the marker did not survive)", async () => {
     const store = memoryStore();
     install(store, UPDATE, 10);
     await expect(runSafeReload(async () => { throw new Error("refused"); })).rejects.toThrow("refused");
-    const next = coreGuard(store.value, UPDATE);
-    expect(next.guard.handleError(new Error("broken"), "root_boundary")).toEqual({ kind: "escalated" });
+    // A cold start a few seconds later: inside the 60 s marker window.
+    const next = coreGuard(store.value, UPDATE, Date.now() + 5_000);
+    expect(next.guard.handleError(new Error("broken"), "root_boundary")).toEqual({
+      kind: "restart_screen",
+      reason: "unconfirmed_download",
+    });
   });
 
   test("adversarial: an embedded launch consumes the marker at install, with no error and no confirmation", () => {

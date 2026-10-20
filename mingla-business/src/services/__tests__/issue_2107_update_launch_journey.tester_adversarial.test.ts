@@ -7,9 +7,12 @@
 // 60 s marker window — after the in-app restart into the broken update.
 //
 // The property under attack: the in-app reload marker describes exactly ONE
-// process. If it were left armed, the person's very next cold start into the
-// broken update would also get the restart screen instead of the rollback, and
-// recovery would cost an extra broken launch every time.
+// process. If it were left armed, the person's very next cold start would be
+// reported as an in-app restart.
+//
+// #2107 change (escalation removed after the Android device test showed a
+// render-time fatal only crashes): no launch is ever escalated. Assertions on
+// launches 3, 4 and the final record were changed accordingly.
 
 import {
   UPDATE_LAUNCH_WINDOW_MS,
@@ -35,7 +38,10 @@ function launch(disk: Disk, running: UpdateLaunchFacts, startedAt: number) {
   const escalated: unknown[] = [];
   const events: string[] = [];
   const timers: Array<() => void> = [];
+  // Offered but outside the type: the guard must never call it.
+  const offeredEscalate = { escalate: (error: unknown) => escalated.push(error) };
   const guard = new UpdateLaunchGuard({
+    ...offeredEscalate,
     now: () => clock.now,
     readFacts: () => running,
     store: {
@@ -44,7 +50,6 @@ function launch(disk: Disk, running: UpdateLaunchFacts, startedAt: number) {
         disk.value = value;
       },
     },
-    escalate: (error) => escalated.push(error),
     report: (event) => events.push(event),
     setTimer: (callback) => timers.push(callback),
   });
@@ -58,7 +63,7 @@ function markInAppRestart(disk: Disk, at: number): void {
 }
 
 describe("#2107 tester — the U1 journey across processes on one disk", () => {
-  it("in-app restart shows the restart screen, the quick cold start after it rolls back, and nothing escalates twice", () => {
+  it("in-app restart shows the restart screen, the quick cold start after it is a fresh unconfirmed launch, and nothing ever escalates", () => {
     const disk: Disk = { value: null };
     const t0 = 5_000_000;
 
@@ -79,19 +84,21 @@ describe("#2107 tester — the U1 journey across processes on one disk", () => {
     expect(p2.escalated).toEqual([]);
 
     // Launch 3: the person force-closes and reopens 25 s later — still well
-    // inside the 60 s marker window. This is a fresh process, so it must escalate.
+    // inside the 60 s marker window. This is a fresh process: reported as an
+    // unconfirmed download, shown the restart screen, never escalated.
     const p3 = launch(disk, facts("update-x"), t0 + 45_000);
-    expect(p3.guard.handleError(new Error("X render"), "root_boundary")).toEqual({ kind: "escalated" });
-    expect(p3.escalated).toHaveLength(1);
-    expect(p3.events).toContain("critical_update_launch_failed_escalated");
-    expect(parseUpdateLaunchRecord(disk.value)?.escalated).toContain("update-x");
+    expect(p3.guard.handleError(new Error("X render"), "root_boundary")).toEqual({
+      kind: "restart_screen",
+      reason: "unconfirmed_download",
+    });
+    expect(p3.escalated).toEqual([]);
+    expect(p3.events).toContain("update_launch_error");
 
-    // Launch 4: if expo-updates launched X again anyway, it is never escalated
-    // twice (that would be a crash loop) — the restart screen shows instead.
+    // Launch 4: expo-updates launches X again — the restart screen again, no crash.
     const p4 = launch(disk, facts("update-x"), t0 + 120_000);
     expect(p4.guard.handleError(new Error("X render"), "global_handler")).toEqual({
       kind: "restart_screen",
-      reason: "already_escalated",
+      reason: "unconfirmed_download",
     });
     expect(p4.escalated).toEqual([]);
 
@@ -114,7 +121,6 @@ describe("#2107 tester — the U1 journey across processes on one disk", () => {
     expect(p6.escalated).toEqual([]);
 
     const record = parseUpdateLaunchRecord(disk.value);
-    expect(record?.escalated).toEqual(["update-x"]);
     expect(record?.confirmed).toEqual(expect.arrayContaining(["update-a", "update-y"]));
     expect(record?.inAppReloadAt).toBeNull();
   });

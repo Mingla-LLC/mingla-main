@@ -1,9 +1,9 @@
 // @ts-nocheck -- the test intentionally supplies a minimal host-component RN runtime.
 // #2107 (U1) — Host's launch boundary, mounted for real: a child that throws on
-// render is either handed to expo-updates' rollback (nothing rendered, then the
-// restart screen) or shown the restart screen — never a blank screen — and the
+// render shows the restart screen at once — never a blank screen, never a
+// fatal — and the
 // restart button goes through safeReload. Invariant
-// I-2107-UPDATE-LAUNCH-ESCALATION is declared in
+// I-2107-UPDATE-LAUNCH-RESTART-SCREEN is declared in
 // app-mobile/src/services/__tests__/issue_2107_update_launch_guard.test.ts.
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -57,7 +57,6 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 const runtime = require("../../../services/updateLaunchRuntime");
 const { UpdateLaunchBoundary } = require("../UpdateLaunchBoundary");
-const { UPDATE_LAUNCH_ESCALATION_HOLD_MS } = require("../../../services/updateLaunchGuard");
 
 function Broken(): React.ReactElement {
   throw new TypeError("broken update");
@@ -95,21 +94,17 @@ afterEach(() => {
 });
 
 describe("#2107 U1 Host launch boundary (mounted)", () => {
-  test("happy path: an eligible launch escalates once, renders nothing, then falls back to the restart screen", () => {
-    jest.useFakeTimers();
+  test("happy path: an unconfirmed downloaded launch shows the restart screen at once and never escalates", () => {
     const { original } = installGuard(false);
     let renderer: TestRenderer.ReactTestRenderer;
     act(() => {
       renderer = TestRenderer.create(<UpdateLaunchBoundary><Broken /></UpdateLaunchBoundary>);
     });
-    expect(original).toHaveBeenCalledTimes(1);
-    expect(original.mock.calls[0][1]).toBe(true);
-    expect(renderer.toJSON()).toBeNull();
-    act(() => {
-      jest.advanceTimersByTime(UPDATE_LAUNCH_ESCALATION_HOLD_MS);
-    });
-    expect(texts(renderer)).toContain("Something went wrong");
-    expect(original).toHaveBeenCalledTimes(1);
+    // Never raised as a fatal through the captured handler: no crash.
+    expect(original).not.toHaveBeenCalled();
+    expect(renderer.toJSON()).not.toBeNull();
+    expect(texts(renderer)).toEqual(["Something went wrong", "Restarting the app usually fixes this.", "Tap to restart"]);
+    expect(mockHideSplash).toHaveBeenCalledTimes(1);
   });
 
   test("adversarial: an embedded launch shows the restart screen at once, never blank, and never escalates", () => {
