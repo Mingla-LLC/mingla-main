@@ -13,7 +13,10 @@ Deno.test("#3281 R2 migration carries one-stop gate, columns, and price_options 
   const text = await Deno.readTextFile(MIG);
 
   assert(text.includes("v_stop_count < 1 OR v_stop_count > 5"));
-  assert(!text.includes("v_stop_count < 2 OR v_stop_count > 5"));
+  // Self-verify DO $verify$ may mention the old floor as a negative string;
+  // live CREATE bodies above it must not keep that gate.
+  const executable = text.split("DO $verify$")[0] ?? text;
+  assert(!/IF\s+v_stop_count\s*<\s*2\s+OR\s+v_stop_count\s*>\s*5/.test(executable));
 
   assert(text.includes("ADD COLUMN IF NOT EXISTS price_basis"));
   assert(text.includes("ticket_types_price_unit_coherence_check"));

@@ -107,6 +107,7 @@ import {
   emptyPriceOption,
   emptyStop,
   initialWholePriceInput,
+  priceOptionEntryIsValid,
   priceOptionToPayload,
   stopHasValidatedLocation,
   stopHasValidDescription,
@@ -826,12 +827,24 @@ export const ExperienceCreatorWizard: React.FC<
 
   const pricingValid = useMemo(() => {
     if (!unlimited && (parseInt(capacity, 10) || 0) <= 0) return false;
+    // issue #3281 R2 — every visible option must be coherent.
+    if (!priceOptions.every((o) => priceOptionEntryIsValid(o, isFree))) {
+      return false;
+    }
     if (isFree) return true;
     if (pricingMode === "whole") return resolvedTotalMajor > 0;
     // #3645 — per-stop: an EMPTY price means that stop is free (same as 0), so
     // only something typed that is not a valid amount stops Continue.
     return stops.every((s) => stopPriceEntryIsValid(s.priceMajor));
-  }, [unlimited, capacity, isFree, pricingMode, resolvedTotalMajor, stops]);
+  }, [
+    unlimited,
+    capacity,
+    isFree,
+    pricingMode,
+    resolvedTotalMajor,
+    stops,
+    priceOptions,
+  ]);
 
   const canContinue = useMemo(() => {
     if (step === 1)
@@ -1840,6 +1853,8 @@ export const ExperienceCreatorWizard: React.FC<
             setStops={setStops}
             wholePriceMajor={wholePriceMajor}
             setWholePriceMajor={setWholePriceMajor}
+            priceOptions={priceOptions}
+            setPriceOptions={setPriceOptions}
             isFree={isFree}
             setIsFree={setIsFree}
             capacity={capacity}
