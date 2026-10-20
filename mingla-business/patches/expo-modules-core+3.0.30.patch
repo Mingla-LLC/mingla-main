@@ -1,0 +1,173 @@
+Mingla #2107: backport of expo/expo#43937 ("iOS | SharedObjectRegistry: Fix
+crash when reloading javascript", merged upstream 2026-03-18 as 7d7ad101c).
+
+SharedObjectRegistry used a DispatchQueue whose async clear()/delete() freed JS
+weak objects on a background queue after Updates.reloadAsync() had torn the JS
+runtime down: use-after-free in -[EXJavaScriptWeakObject .cxx_destruct]. This
+swaps the queue for an NSLock so clear() and delete() free on the calling
+thread. Adapted to 3.0.30: explicit lock()/unlock() (NSLock.withLock needs
+iOS 16; the pod targets 15.1), and the lock is never held while native objects
+are released, release callbacks run, or a JS weak object is locked, so nothing
+that re-enters the registry can deadlock.
+
+NATIVE-ONLY (a Swift pod source file). It takes effect only in the NEXT store
+build; an OTA cannot ship it. The JS mitigation (release every expo-video player
+before reloadAsync) covers builds already in the stores.
+
+REMOVE this patch when Mingla moves to Expo SDK 55+ (expo-modules-core with the
+upstream fix). The same patch lives in app-mobile/patches and
+mingla-business/patches; keep both identical.
+
+diff --git a/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObjectRegistry.swift b/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObjectRegistry.swift
+index ac04246..2adc9f7 100644
+--- a/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObjectRegistry.swift
++++ b/node_modules/expo-modules-core/ios/Core/SharedObjects/SharedObjectRegistry.swift
+@@ -32,22 +32,28 @@ public final class SharedObjectRegistry {
+   internal var nextId: SharedObjectId = 1
+ 
+   /**
+-   A dictionary of shared object pairs.
++   A dictionary of shared object pairs. Guarded by `lock`.
+    */
+   internal var pairs = [SharedObjectId: SharedObjectPair]()
+ 
+   /**
+-   The lock queue to keep thread safety for internal data structures.
++   The lock to keep thread safety for internal data structures.
++   Mingla backport of expo/expo#43937: it replaces the `lockQueue` DispatchQueue,
++   whose async `clear()` and `delete()` freed JS weak objects on a background
++   queue after the JS runtime was torn down (use-after-free in
++   -[EXJavaScriptWeakObject .cxx_destruct] on reload). The lock is never held
++   while native objects are released or while calling back into shared objects,
++   so a callback that reaches the registry again cannot deadlock.
+    */
+-  private static let lockQueue = DispatchQueue(label: "expo.modules.core.SharedObjectRegistry")
++  private let lock = NSLock()
+ 
+   /**
+    A number of all pairs stored in the registry.
+    */
+   internal var size: Int {
+-    return Self.lockQueue.sync {
+-      return pairs.count
+-    }
++    lock.lock()
++    defer { lock.unlock() }
++    return pairs.count
+   }
+ 
+   /**
+@@ -69,20 +75,20 @@ public final class SharedObjectRegistry {
+    */
+   @discardableResult
+   internal func pullNextId() -> SharedObjectId {
+-    return Self.lockQueue.sync {
+-      let id = nextId
+-      nextId += 1
+-      return id
+-    }
++    lock.lock()
++    defer { lock.unlock() }
++    let id = nextId
++    nextId += 1
++    return id
+   }
+ 
+   /**
+    Returns a pair of shared objects with given ID or `nil` when there is no such pair in the registry.
+    */
+   internal func get(_ id: SharedObjectId) -> SharedObjectPair? {
+-    return Self.lockQueue.sync {
+-      return pairs[id]
+-    }
++    lock.lock()
++    defer { lock.unlock() }
++    return pairs[id]
+   }
+ 
+   /**
+@@ -117,9 +123,9 @@ public final class SharedObjectRegistry {
+ 
+     // Save the pair in the dictionary.
+     let jsWeakObject = jsObject.createWeak()
+-    Self.lockQueue.async {
+-      self.pairs[id] = (native: nativeObject, javaScript: jsWeakObject)
+-    }
++    lock.lock()
++    pairs[id] = (native: nativeObject, javaScript: jsWeakObject)
++    lock.unlock()
+ 
+     return id
+   }
+@@ -128,16 +134,17 @@ public final class SharedObjectRegistry {
+    Deletes the shared objects pair with a given ID.
+    */
+   internal func delete(_ id: SharedObjectId) {
+-    Self.lockQueue.async {
+-      if let pair = self.pairs[id] {
+-        pair.native.sharedObjectWillRelease()
+-        // Reset an ID on the objects.
+-        pair.native.sharedObjectId = 0
+-
+-        // Delete the pair from the dictionary.
+-        self.pairs[id] = nil
+-        pair.native.sharedObjectDidRelease()
+-      }
++    // Take the pair out under the lock, then run the release callbacks without
++    // it, synchronously on the calling thread (the JS thread for a JS release).
++    lock.lock()
++    let pair = pairs.removeValue(forKey: id)
++    lock.unlock()
++
++    if let pair {
++      pair.native.sharedObjectWillRelease()
++      // Reset an ID on the objects.
++      pair.native.sharedObjectId = 0
++      pair.native.sharedObjectDidRelease()
+     }
+   }
+ 
+@@ -146,9 +153,9 @@ public final class SharedObjectRegistry {
+    */
+   internal func toNativeObject(_ jsObject: JavaScriptObject) -> SharedObject? {
+     if let objectId = try? jsObject.getProperty(sharedObjectIdPropertyName).asInt() {
+-      return Self.lockQueue.sync {
+-        return pairs[objectId]?.native
+-      }
++      lock.lock()
++      defer { lock.unlock() }
++      return pairs[objectId]?.native
+     }
+     return nil
+   }
+@@ -158,9 +165,10 @@ public final class SharedObjectRegistry {
+    */
+   internal func toJavaScriptObject(_ nativeObject: SharedObject) -> JavaScriptObject? {
+     let objectId = nativeObject.sharedObjectId
+-    return Self.lockQueue.sync {
+-      return pairs[objectId]?.javaScript.lock()
+-    }
++    lock.lock()
++    let weakObject = pairs[objectId]?.javaScript
++    lock.unlock()
++    return weakObject?.lock()
+   }
+ 
+   /**
+@@ -184,8 +192,13 @@ public final class SharedObjectRegistry {
+   }
+ 
+   internal func clear() {
+-    Self.lockQueue.async {
+-      self.pairs.removeAll()
+-    }
++    // Swap the pairs out under the lock, then free them here, synchronously on
++    // the calling thread while the JS runtime is still alive, and without the
++    // lock held (a deinit that reaches the registry cannot deadlock).
++    lock.lock()
++    let removed = pairs
++    pairs = [:]
++    lock.unlock()
++    withExtendedLifetime(removed) {}
+   }
+ }
