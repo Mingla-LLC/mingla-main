@@ -327,7 +327,10 @@ DECLARE
   v_admin boolean;
   v_support boolean;
 BEGIN
-  IF v_uid IS NULL OR public.admin_team_role() IS NULL THEN
+  -- Same team predicate as the guards (is_support_staff / community_role go
+  -- through issue_3720_active_team_member), so areas can never disagree with
+  -- the RPCs they open.
+  IF v_uid IS NULL OR NOT public.issue_3720_active_team_member(v_uid) THEN
     RETURN v_caps;
   END IF;
   v_admin := public.is_admin_user();
@@ -368,9 +371,9 @@ DECLARE
 BEGIN
   IF auth.uid() IS NULL THEN RETURN v_areas; END IF;
   v_role := public.admin_team_role();
-  IF v_role IS NULL THEN RETURN v_areas; END IF;
 
-  -- Derived ONLY from the capability set, never from a staff row directly.
+  -- Community & Support areas are derived ONLY from the capability set (the
+  -- guards' own team predicate), never from a staff row or the team role.
   v_caps := public.issue_3988_capabilities();
 
   IF cardinality(v_caps) > 0 THEN
@@ -380,7 +383,9 @@ BEGIN
     v_areas := array_append(v_areas, 'community_support_support');
   END IF;
   -- Every current role sees its own team notifications.
-  v_areas := array_append(v_areas, 'team_notifications');
+  IF v_role IS NOT NULL THEN
+    v_areas := array_append(v_areas, 'team_notifications');
+  END IF;
   IF 'community.moderate' = ANY(v_caps) THEN
     v_areas := array_append(v_areas, 'community_support_community');
   END IF;
@@ -442,7 +447,11 @@ BEGIN
         EXISTS (SELECT 1 FROM public.support_staff ss WHERE ss.user_id = u.id AND ss.enabled)
         OR EXISTS (SELECT 1 FROM public.community_staff cs WHERE cs.user_id = u.id AND cs.enabled)
       )
-      AND NOT EXISTS (SELECT 1 FROM team t WHERE t.uid = u.id AND t.t_status = 'active')
+      -- Anyone already listed under the team (current or invited) appears once.
+      AND NOT EXISTS (
+        SELECT 1 FROM team t
+        WHERE t.uid = u.id OR t.key_email = lower(btrim(u.email))
+      )
   ),
   everyone AS (
     SELECT t.uid, t.key_email, t.t_role, t.t_status FROM team t
@@ -472,7 +481,8 @@ BEGIN
       e.t_status <> 'active'
       AND (COALESCE(ss.enabled, false) OR COALESCE(cs.enabled, false))
     ),
-    GREATEST(u.last_sign_in_at, ss.updated_at)
+    -- Sign-in activity only: a role change is not the person being active.
+    u.last_sign_in_at
   FROM everyone e
   LEFT JOIN auth.users u ON u.id = e.uid
   LEFT JOIN public.profiles p ON p.id = e.uid

@@ -93,6 +93,11 @@ export function initialRoleChoice(row) {
   return "off";
 }
 
+/** One React key per listed row, even if a person appears in two groups. */
+export function personRowKey(group, row) {
+  return `${group}:${row?.user_id || "no-account"}:${row?.email || ""}`;
+}
+
 /** Team (current), Invited, Not on the team (old access that no longer works). */
 export function groupPeople(rows) {
   /** @type {{ team: Array<Record<string, any>>, invited: Array<Record<string, any>>, former: Array<Record<string, any>> }} */

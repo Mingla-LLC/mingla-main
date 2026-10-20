@@ -112,6 +112,9 @@ export function CommunitySupportPage() {
   const [navCounts, setNavCounts] = useState({});
   const [myAvailable, setMyAvailable] = useState(false);
   const [myStaffRole, setMyStaffRole] = useState(null);
+  // Bumped after the signed-in admin changes their own availability so the
+  // People and roles list shows their new rota state.
+  const [peopleRefreshKey, setPeopleRefreshKey] = useState(0);
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [availabilityError, setAvailabilityError] = useState(null);
   const visibleTabs = useMemo(
@@ -167,6 +170,7 @@ export function CommunitySupportPage() {
     setMyAvailable(result.available);
     setAvailabilityError(result.message);
     setAvailabilityBusy(false);
+    if (!result.message) setPeopleRefreshKey((key) => key + 1);
   }
 
   useEffect(() => {
@@ -275,7 +279,7 @@ export function CommunitySupportPage() {
       )}
       {activeTab === "brand-groups" && <BrandGroupsPanel />}
       {activeTab === "email" && <EmailPage embedded />}
-      {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} />}
+      {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
     </div>
   );
 }

@@ -30,6 +30,7 @@ import {
   groupPeople,
   initialRoleChoice,
   isIncludedRole,
+  personRowKey,
   permissionsErrorMessage,
   roleChoiceDescription,
   roleChoiceDoes,
@@ -49,6 +50,8 @@ import {
   removeOrphanStaff,
   setPeoplePermissions,
 } from "../../services/communityService";
+
+const INVITE_HINT_ID = "people-roles-invite-hint";
 
 const ROLE_BADGE = {
   included: "brand",
@@ -307,7 +310,7 @@ function InviteSheet({ onClose, onSent }) {
   );
 }
 
-export function TeamRolesPanel({ canInvite = false }) {
+export function TeamRolesPanel({ canInvite = false, refreshKey = 0 }) {
   const { addToast } = useToast();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -328,7 +331,9 @@ export function TeamRolesPanel({ canInvite = false }) {
       setLoading(false);
     }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  // refreshKey changes when the page changes something shown here (for
+  // example the signed-in admin's own availability).
+  useEffect(() => { void load(); }, [load, refreshKey]);
 
   async function removeOldAccess(row) {
     setRemoving(row.user_id);
@@ -350,12 +355,18 @@ export function TeamRolesPanel({ canInvite = false }) {
         <Button size="sm" variant="secondary" icon={HelpCircle} onClick={() => setRolesOpen(true)}>
           What can each role do?
         </Button>
-        <Button size="sm" icon={UserPlus} disabled={!canInvite} onClick={() => setInviting(true)}>
+        <Button
+          size="sm"
+          icon={UserPlus}
+          disabled={!canInvite}
+          aria-describedby={!canInvite ? INVITE_HINT_ID : undefined}
+          onClick={() => setInviting(true)}
+        >
           Invite teammate
         </Button>
       </div>
       {!canInvite ? (
-        <span className="text-xs text-[var(--color-text-tertiary)]">{TEAM_INVITE_OWNER_ONLY}</span>
+        <span id={INVITE_HINT_ID} className="text-xs text-[var(--color-text-tertiary)]">{TEAM_INVITE_OWNER_ONLY}</span>
       ) : null}
     </div>
   );
@@ -397,7 +408,7 @@ export function TeamRolesPanel({ canInvite = false }) {
           <tbody>
             {groups.team.length > 0 ? <GroupHeading label="Team" count={groups.team.length} /> : null}
             {groups.team.map((row) => (
-              <tr key={row.user_id || row.email} className="border-b border-[var(--gray-100)]">
+              <tr key={personRowKey("team", row)} className="border-b border-[var(--gray-100)]">
                 <PersonCell row={row} />
                 <td className="p-3 text-[var(--color-text-secondary)]">{teamRoleLabel(row)}</td>
                 <td className="p-3"><Badge variant={ROLE_BADGE[row.role] || "default"}>{roleLabel(row)}</Badge></td>
@@ -420,7 +431,7 @@ export function TeamRolesPanel({ canInvite = false }) {
             ))}
             {groups.invited.length > 0 ? <GroupHeading label="Invited" count={groups.invited.length} /> : null}
             {groups.invited.map((row) => (
-              <tr key={`invited-${row.email}`} className="border-b border-[var(--gray-100)]">
+              <tr key={personRowKey("invited", row)} className="border-b border-[var(--gray-100)]">
                 <PersonCell row={row} />
                 <td className="p-3 text-[var(--color-text-secondary)]">{teamRoleLabel(row)}</td>
                 <td colSpan={3} className="p-3 text-sm text-[var(--color-text-secondary)]">
@@ -431,7 +442,7 @@ export function TeamRolesPanel({ canInvite = false }) {
             ))}
             {groups.former.length > 0 ? <GroupHeading label="Not on the team" count={groups.former.length} /> : null}
             {groups.former.map((row) => (
-              <tr key={`former-${row.user_id || row.email}`} className="border-b border-[var(--gray-100)]">
+              <tr key={personRowKey("former", row)} className="border-b border-[var(--gray-100)]">
                 <PersonCell row={row} />
                 <td className="p-3 text-[var(--color-text-secondary)]">{teamRoleLabel(row)}</td>
                 <td colSpan={3} className="p-3">
