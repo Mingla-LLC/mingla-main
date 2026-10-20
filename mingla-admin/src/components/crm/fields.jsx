@@ -57,12 +57,12 @@ export function Select({ options, placeholder, className = "", ...props }) {
 }
 
 /** A row of choices where exactly one is pressed. */
-export function Segmented({ label, options, value, onChange, disabled = false, variant = "default", fullWidth = false, className = "" }) {
+export function Segmented({ label, options, value, onChange, disabled = false, variant = "default", fullWidth = false, wrap = false, className = "" }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className={`${fullWidth ? "flex w-full" : "inline-flex w-fit"} admin-control-scroll max-w-full flex-nowrap gap-1 overflow-x-auto rounded-xl border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-1 shadow-[var(--shadow-sm)] ${className}`}
+      className={`${fullWidth ? "flex w-full" : "inline-flex w-fit"} admin-control-scroll max-w-full ${wrap ? "flex-wrap" : "flex-nowrap overflow-x-auto"} gap-1 rounded-xl border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-1 shadow-[var(--shadow-sm)] ${className}`}
     >
       {options.map((o) => {
         const pressed = o.value === value;

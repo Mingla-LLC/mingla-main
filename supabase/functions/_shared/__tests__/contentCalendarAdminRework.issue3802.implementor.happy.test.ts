@@ -92,7 +92,9 @@ Deno.test("#3802 Wave 2 rework: calendar is Monday-first and mobile becomes a se
   assertMatch(PAGE, /min-h-16 min-w-0 flex-col gap-1 border-b border-r/);
   assertMatch(PAGE, /Nothing on this day\./);
   assertMatch(PAGE, /resolvedOptions\(\)\.timeZone/);
-  assertMatch(PAGE, /hidden min-w-0 flex-col gap-0\.5 @min-\[760px\]:flex/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework 2 (N1): the month box became 640px
+  // of container (the design's dense-day line), so the titles show from 640px.
+  assertMatch(PAGE, /hidden min-w-0 flex-col gap-0\.5 @min-\[640px\]:flex/);
 });
 
 Deno.test("#3802 Wave 2 rework: List, links, touch and motion states are explicit", () => {

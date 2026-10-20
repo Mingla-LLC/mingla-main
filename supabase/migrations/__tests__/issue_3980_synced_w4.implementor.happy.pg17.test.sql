@@ -17,8 +17,8 @@
 --               skipped), logs once, makes no work card, needs a request key,
 --               and the same key returns the first answer and links nothing
 --               again (different details under that key are refused)
---   W4-BPREV    brand preview: link (exact email; a whole national number of
---               9+ digits), create (Onboarded, or Live with a public
+--   W4-BPREV    brand preview: link (exact email; a number without its
+--               country code read in its country), create (Onboarded, or Live with a public
 --               listing), pick (two exact matches; only a near match; a card
 --               of that name), reopen (a Lost match); brands with a card are
 --               left out; totals add up; the preview writes nothing
@@ -390,7 +390,7 @@ begin
     '1=link,2=create,3=pick,4=reopen,5=pick,6=link,7=pick,9=create');
   perform pg_temp.w4_check('W4-BPREV', 'an exact email links, naming the card and the match',
     (select words from t3980w4_preview where brand_id = '39840000-0000-4000-b400-000000000001'), 'Link to W43980 Email Match Host: same email.');
-  perform pg_temp.w4_check('W4-BPREV', 'a whole national number of 9 or more digits links',
+  perform pg_temp.w4_check('W4-BPREV', 'a number written without its country code links when it reads as the same full number in its country',
     (select words from t3980w4_preview where brand_id = '39840000-0000-4000-b400-000000000006'), 'Link to W43980 National Number Cafe: same phone.');
   perform pg_temp.w4_check('W4-BPREV', 'no match: a new card in Onboarded',
     (select words from t3980w4_preview where brand_id = '39840000-0000-4000-b400-000000000002'), 'Add a host card in Onboarded.');

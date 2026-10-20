@@ -48,6 +48,7 @@ export function PipelineToolbar({
     <div className="flex flex-wrap items-center gap-2">
       <SearchInput
         className="w-full sm:w-64"
+        inputClassName="min-h-11"
         value={state.q}
         disabled={disabled}
         placeholder="Search by name, email, phone or handle"

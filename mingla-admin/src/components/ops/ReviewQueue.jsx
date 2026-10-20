@@ -9,7 +9,7 @@ import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import * as ops from "../../services/opsService";
-import { isRoadmapApproval, opsErrorWords, personActionFor, proofBadge, REVIEW_GROUPS, reviewGroupOf, roadmapDraftHref, runwayLabel, dayLabel, todayIso } from "../../lib/opsModel";
+import { isRoadmapApproval, opsErrorWords, spendQueueCards, personActionFor, proofBadge, REVIEW_GROUPS, reviewGroupOf, roadmapDraftHref, runwayLabel, dayLabel, todayIso } from "../../lib/opsModel";
 import { useOpsPoll } from "../../hooks/useOpsWork";
 import { TwoColumn } from "./TwoColumn";
 import { revealDetail } from "./revealDetail";
@@ -19,7 +19,10 @@ import { PersonActionForm } from "./WorkDetail";
 import { ProofForm } from "./ProofForm";
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
-export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
+// #3980 W3 rework 2: for the owner and admins (hideHostsTold) a "Recently
+// shipped" wording card is listed only on What hosts are told, never here
+// too; anyone else on such a card still reaches it here.
+export function ReviewQueue({ selectedId, onSelect, online, onChanged, hideHostsTold = false }) {
   const { access } = useAuth();
   const { addToast } = useToast();
   const queue = useOpsPoll(() => ops.listReview(todayIso()), { key: access?.email || "", intervalMs: 30_000 });
@@ -27,7 +30,7 @@ export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
   const headingRef = useRef(null);
   const [form, setForm] = useState("");
   const [busy, setBusy] = useState(false);
-  const cards = queue.data?.cards || [];
+  const cards = spendQueueCards(queue.data?.cards, hideHostsTold);
   const card = cards.find((c) => c.id === selectedId) || null;
 
   const act = async (action, note, proof, result) => {
