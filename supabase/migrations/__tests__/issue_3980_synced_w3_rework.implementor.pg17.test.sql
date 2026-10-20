@@ -370,10 +370,10 @@ do $x4$
 begin
   update public.ops_settings set value = to_jsonb(now() - interval '3 days') where key = 'follow_through_since';
   insert into public.ops_release_records (pr, title, pr_url, merged_at, merge_sha, merged_by_login, issues, deploy_marker, problems, feature_guide, complete)
-  values (990402, 'W3R newer', 'https://github.com/Mingla-LLC/mingla-main/pull/990402', now() - interval '2 days',
-          repeat('d', 40), 'nobody', '[{"number":990401}]', false, '{live_check_missing}', '{}', false),
-         (990401, 'W3R older', 'https://github.com/Mingla-LLC/mingla-main/pull/990401', now() - interval '2 days',
-          repeat('c', 40), 'nobody', '[{"number":990401}]', false, '{}', '{}', true);
+  values (990401, 'W3R older', 'https://github.com/Mingla-LLC/mingla-main/pull/990401', now() - interval '2 days',
+          repeat('c', 40), 'nobody', '[{"number":990401}]', false, '{}', '{}', true),
+         (990402, 'W3R newer', 'https://github.com/Mingla-LLC/mingla-main/pull/990402', now() - interval '2 days',
+          repeat('d', 40), 'nobody', '[{"number":990401}]', false, '{live_check_missing}', '{}', false);
   insert into public.ops_github_items (number, kind, board_status, done_since, title)
   values (990401, 'issue', 'Done', now() - interval '30 hours', 'W3R tie');
   perform public.ops_engineering_cards_sync();
