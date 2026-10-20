@@ -2,7 +2,11 @@
 // Renders the buyer-facing email body (hero, event meta, line items, ticket
 // block). All caller-supplied strings flow through escapeHtml first.
 
-import { appCtaTextLine, renderAppCtaHtml } from "./appLink.ts";
+import {
+  appCtaHeadlineFor,
+  appCtaTextLine,
+  renderAppCtaHtml,
+} from "./appLink.ts";
 import { escapeHtml } from "./escape.ts";
 import { formatEventDateLine } from "./dateLine.ts";
 import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
@@ -172,9 +176,14 @@ function renderCalendarSection(input: TicketBodyInput): string {
 // URL, and this email's ONLY call to action. `appLink.ts` still owns both the
 // markup and the fallback destination: what is threaded through here is the
 // already-minted URL, never a path this file builds.
-function renderDownloadAppCta(appCtaClaimUrl?: string | null): string {
+//
+// #3827 Q-A3 — "who's going" drops out when the host made the guest list private.
+function renderDownloadAppCta(
+  privateGuestList: boolean | undefined,
+  appCtaClaimUrl?: string | null,
+): string {
   return renderAppCtaHtml(
-    "Your ticket, the event chat, and who's going — all in the app",
+    appCtaHeadlineFor("event", privateGuestList),
     appCtaClaimUrl,
   );
 }
@@ -211,6 +220,13 @@ export function renderTicketBody(
       escapeHtml(input.order.buyerName)
     },</p>`
     : "";
+  // issue #3827 — the guest-list party line. Empty string when unset, so the
+  // email is byte-identical for every other order.
+  const partyLineHtml = input.order.partyLine
+    ? `<p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(input.order.partyLine)
+    }</p>`
+    : "";
   const body = `${heroHtml}
     <div style="margin-top:24px;">
       ${greeting}
@@ -219,7 +235,7 @@ export function renderTicketBody(
   }</h1>
       <p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_MUTED};">${
     escapeHtml(copy.intro)
-  }</p>
+  }</p>${partyLineHtml}
     </div>
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid ${BRAND_BORDER};">
       <h2 style="margin:0;font-size:18px;color:${BRAND_INK};font-weight:700;">${
@@ -245,7 +261,7 @@ export function renderTicketBody(
         })
         : ""
     }
-    ${renderDownloadAppCta(appCtaClaimUrl)}`;
+    ${renderDownloadAppCta(input.event.privateGuestList, appCtaClaimUrl)}`;
 
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
@@ -262,6 +278,7 @@ export function renderTicketBody(
     : null;
   const textLines = [
     copy.heading,
+    ...(input.order.partyLine ? [input.order.partyLine] : []),
     "",
     input.event.title,
     `Hosted by ${input.brand.name}`,
@@ -291,7 +308,7 @@ export function renderTicketBody(
     // #2240 — the SAME working link the HTML body carries, from the same
     // resolver and the same `appCtaClaimUrl`, so the two bodies cannot diverge.
     appCtaTextLine(
-      "Your ticket, the event chat, and who's going — all in the app",
+      appCtaHeadlineFor("event", input.event.privateGuestList),
       appCtaClaimUrl,
     ),
     "",

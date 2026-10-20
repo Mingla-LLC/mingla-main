@@ -25,7 +25,6 @@
 
 import type { BrandTeamEntry } from "../store/brandTeamStore";
 import type { Brand } from "../store/currentBrandStore";
-import type { CompGuestEntry } from "../store/guestStore";
 import type { DoorSaleRecord } from "../store/doorSalesStore";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
@@ -41,7 +40,6 @@ export interface AccountDeletionPreview {
   soldOrdersCount: number;
   totalRevenueGbp: number;
   doorSalesCount: number;
-  compsCount: number;
   scannerInvitationsCount: number;
   teamInvitationsCount: number;
   /** True if any event is "live" or "upcoming" status — used for D-14-14 warn block. */
@@ -55,7 +53,6 @@ export interface AccountDeletionPreviewInputs {
   liveEvents: LiveEvent[];
   orderEntries: OrderRecord[];
   doorSalesEntries: DoorSaleRecord[];
-  compEntries: CompGuestEntry[];
   scanEntries: ScanRecord[];
 }
 
@@ -67,7 +64,6 @@ export const EMPTY_PREVIEW: AccountDeletionPreview = {
   soldOrdersCount: 0,
   totalRevenueGbp: 0,
   doorSalesCount: 0,
-  compsCount: 0,
   scannerInvitationsCount: 0,
   teamInvitationsCount: 0,
   hasActiveOrUpcomingEvents: false,
@@ -90,7 +86,6 @@ export const computeAccountDeletionPreview = (
     liveEvents,
     orderEntries,
     doorSalesEntries,
-    compEntries,
     scanEntries,
   } = inputs;
 
@@ -138,8 +133,8 @@ export const computeAccountDeletionPreview = (
   // Door sales count (each row is one sale; door buyers may be multi-line)
   const doorSalesCount = doorSalesEntries.length;
 
-  // Comps
-  const compsCount = compEntries.length;
+  // issue #3827 — guest-list tickets are server orders now; the device-only
+  // comp count is gone (a legacy phone list holds no account data to delete).
 
   // Scanner invitations sent by this user — Cycle 14 simplification (D-CYCLE14-SPEC-1):
   // useScannerInvitationsStore is NOT in inputs to keep aggregator scoped.
@@ -164,7 +159,6 @@ export const computeAccountDeletionPreview = (
     soldOrdersCount,
     totalRevenueGbp: Math.round(totalRevenueGbp * 100) / 100,
     doorSalesCount,
-    compsCount,
     scannerInvitationsCount,
     teamInvitationsCount,
     hasActiveOrUpcomingEvents,

@@ -30,7 +30,11 @@
 
 import type { SenderIdentity } from "./senders.ts";
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
-import { appCtaTextLine, renderAppCtaHtml } from "./appLink.ts";
+import {
+  appCtaHeadlineFor,
+  appCtaTextLine,
+  renderAppCtaHtml,
+} from "./appLink.ts";
 import {
   renderTicketFollowBlockHtml,
   ticketFollowFooterHtml,
@@ -72,6 +76,12 @@ interface TripConfirmationInput {
    * none, and the single CTA then falls back to the download page (appLink.ts).
    */
   appCtaClaimUrl?: string | null;
+  /**
+   * #3827 Q-A3 — the host turned on a private guest list
+   * (`theme.business_event.settings.privateGuestList`). The app hides the whole
+   * going box then, so the CTA must not promise "who's going". Omitted = public.
+   */
+  privateGuestList?: boolean;
   /** #3682 Wave 2.4 — follow status block inside the 600px message. */
   follow?: TicketBodyInput["follow"];
 }
@@ -142,9 +152,12 @@ function escapeHtml(text: string): string {
 // reach the unescaped headline slot. The `"event" | "trip"` discriminator this
 // function used to take is gone: only the `"trip"` arm was ever reachable from
 // this file, and the event arm's copy belongs to `ticketBody.ts`.
-function renderDownloadAppCta(appCtaClaimUrl?: string | null): string {
+function renderDownloadAppCta(
+  privateGuestList: boolean | undefined,
+  appCtaClaimUrl?: string | null,
+): string {
   return renderAppCtaHtml(
-    "Your ticket, the trip chat, and who's going — all in the app",
+    appCtaHeadlineFor("trip", privateGuestList),
     appCtaClaimUrl,
   );
 }
@@ -276,7 +289,7 @@ export function renderTripConfirmationEmail(
                   : ""
               }
 
-              ${renderDownloadAppCta(input.appCtaClaimUrl)}
+              ${renderDownloadAppCta(input.privateGuestList, input.appCtaClaimUrl)}
 
               <p style="font-size:13px;color:#475569;margin:24px 0 0 0;line-height:1.5;">Questions about your trip? Reply directly to ${escapeHtml(input.brand.name)} — they'll receive your message at the email they set up for the brand.</p>
             </td>
@@ -326,7 +339,7 @@ export function renderTripConfirmationEmail(
     // #2240 — the SAME working link the HTML body carries, from the same
     // resolver and the same claim URL, so the two bodies cannot diverge.
     appCtaTextLine(
-      "Your ticket, the trip chat, and who's going — all in the app",
+      appCtaHeadlineFor("trip", input.privateGuestList),
       input.appCtaClaimUrl,
     ),
     ``,

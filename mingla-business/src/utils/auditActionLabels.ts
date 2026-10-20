@@ -80,6 +80,9 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "partner_stripe_connect.account_session_created",
   "order_cancelled",
   "order_refund_issued",
+  // issue #3827 — guest-list comps (guest-list edge function).
+  "comp_issued",
+  "comp_cancelled",
   "mingla_tos_accept",
   "ops.webhook_silence_check_fired",
   // ORCH-0804 — Stripe Tax enablement on ticket Checkout Sessions.
@@ -489,6 +492,18 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "order_cancelled":
       return {
         title: "Order cancelled",
+        category: "orders",
+        iconHint: "ticket",
+      };
+    case "comp_issued":
+      return {
+        title: "Guests added to the guest list",
+        category: "orders",
+        iconHint: "ticket",
+      };
+    case "comp_cancelled":
+      return {
+        title: "Guest-list ticket cancelled",
         category: "orders",
         iconHint: "ticket",
       };

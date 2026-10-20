@@ -156,7 +156,8 @@ const EventListCardBody: React.FC<EventListCardProps> = ({
   );
   const pct =
     salesSummary.finiteCapacity !== null && salesSummary.soldCount !== null
-      ? Math.min(100, Math.round((salesSummary.soldCount / salesSummary.finiteCapacity) * 100))
+      // issue #3827 — the bar is places taken: sales plus guest list.
+      ? Math.min(100, Math.round(((salesSummary.issuedCount ?? salesSummary.soldCount) / salesSummary.finiteCapacity) * 100))
       : 0;
 
   // ORCH-1150 — RSVP "N going" metric (no money/sold). Reads the live

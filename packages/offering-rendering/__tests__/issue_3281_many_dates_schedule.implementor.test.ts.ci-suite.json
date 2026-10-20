@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3281_many_dates_schedule.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-many-dates-schedule-client",
+  "profile": "deno-2-unit"
+}

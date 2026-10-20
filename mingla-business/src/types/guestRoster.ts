@@ -93,6 +93,11 @@ export interface GuestRosterRow {
   canApprove: boolean;
   canDeny: boolean;
   isExportable: boolean;
+  /**
+   * issue #3827 — every live ticket of this row is a guest-list (comp) ticket.
+   * Absent on rows from before the #3827 roster re-emit; read as false.
+   */
+  guestList?: boolean;
 }
 
 export interface GuestRosterSummary {

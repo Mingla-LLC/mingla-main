@@ -571,9 +571,13 @@ BEGIN
   SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO v_minters
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public' AND p.prosrc ILIKE '%INSERT INTO public.orders%';
-  IF v_minters IS DISTINCT FROM 'issue_1930_ticket_checkout_finalize_base' THEN
-    RAISE EXCEPTION 'TA-14a FAIL: order minters are now [%] (expected only '
-      'issue_1930_ticket_checkout_finalize_base). A new minter must be audited for the #2136 '
+  -- [TEST-MOD-APPROVED #3827] issue_3827_comp_issue_one (guest-list comps) was
+  -- audited for the #2136 defect: it reads no checkout session and no admission
+  -- epoch; it mints zero-money comp orders under event + brand + tier locks after
+  -- an all-or-nothing capacity check. The list stays EXACT: a third minter fails.
+  IF v_minters IS DISTINCT FROM 'issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one' THEN
+    RAISE EXCEPTION 'TA-14a FAIL: order minters are now [%] (expected exactly '
+      'issue_1930_ticket_checkout_finalize_base, issue_3827_comp_issue_one). A new minter must be audited for the #2136 '
       'zero-total / NULL-admission-epoch defect before it ships.', COALESCE(v_minters, '<none>');
   END IF;
 

@@ -368,6 +368,7 @@ jobs:
               # #3281 R3 — rewrites public experience reader / create-session that
               # call helpers defined only in migrations this lane skips (#2489/#3313/#3281 prior).
               *20271123003281_issue_3281_r3_spacing_spots.sql) continue ;;
+              *20271124003281_issue_3281_many_dates_foundation.sql) continue ;;
               # #2947 queue admission and #3281 booked start — SKIPPED FOR THE SAME REASON.
               # Each re-emits or grants on issue_1930_ticket_checkout_create_session_base at a
               # signature this lane never creates (the checkout re-emissions it needs are

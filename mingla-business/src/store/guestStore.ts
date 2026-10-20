@@ -1,36 +1,24 @@
 /**
- * guestStore — persisted Zustand store for operator-created comp guests.
+ * guestStore — #3827: legacy device-only comps; read only to offer Re-add;
+ * never written.
  *
- * Cycle 10: comp guests live client-only. B-cycle migrates to backend
- * (decision deferred to B-cycle SPEC: either tickets table with
- * order_id IS NULL OR a new comp_guests table with its own RLS).
- *
- * I-25: Comp guests live in useGuestStore.entries ONLY — NEVER as
- * phantom OrderRecord rows (would violate I-19 immutable order
- * financials). CheckoutPaymentMethod union does NOT include "comp".
- *
- * Constitutional notes:
- *   - #2 one owner per truth: comp guests live ONLY here. NEVER duplicated
- *     in liveEventStore or orderStore.
- *   - #6 logout clears: extended via `clearAllStores`.
- *   - #9 no fabricated data: store starts EMPTY; never seeded.
+ * Before #3827 a host's "comp guest" was saved only on the phone that added
+ * it: no ticket, no QR, no email, invisible to the door scanner. Guest-list
+ * guests are now real server orders (source = comp) issued through the
+ * guest-list edge function. This store survives only so a phone that still
+ * holds old entries can show the Guests screen's one-time "Re-add" banner;
+ * each entry is removed once it is re-added on the server.
  *
  * API surface:
- *   - recordCompEntry — append-only mutation; returns the new entry so
- *     caller can fire side effects (audit log via useEventEditLogStore).
- *   - removeCompEntry — returns the removed entry or null; caller fires
- *     audit log entry. Side effects fired by COMPONENT layer to break
- *     potential require cycles (Cycle 9c v2 lesson).
- *   - reset — logout cascade.
- *   - getCompEntriesForEvent — fresh array; USE VIA .getState() ONLY,
- *     never via direct subscription (would break useSyncExternalStore).
+ *   - entries — the legacy entries (read only; never appended to).
+ *   - removeCompEntry — drop one entry after it was re-added on the server.
+ *   - reset — logout cascade (clearAllStores).
+ *   - getCompEntriesForEvent — fresh array; USE VIA .getState() ONLY.
  *   - getCompEntryById — single existing reference; safe to subscribe.
  *
- * [TRANSITIONAL] Zustand persist holds entries client-side. B-cycle
- * migrates to Supabase. When backend lands, this store contracts to a
- * cache + ID-only.
- *
- * Per Cycle 10 SPEC §4.4.
+ * [TRANSITIONAL] Exit: delete this store once no live install can hold
+ * pre-#3827 entries (after a native build that shipped #3827 has been the
+ * minimum supported version for one release).
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -70,10 +58,6 @@ export interface CompGuestEntry {
 export interface GuestStoreState {
   entries: CompGuestEntry[];
   // ---- Mutations ----
-  /** Returns the new entry (caller fires audit log + notification side effects). */
-  recordCompEntry: (
-    entry: Omit<CompGuestEntry, "id" | "addedAt">,
-  ) => CompGuestEntry;
   /** Returns the removed entry, or null if id not found. */
   removeCompEntry: (id: string) => CompGuestEntry | null;
   /** Logout reset — wired via clearAllStores. */
@@ -89,16 +73,6 @@ export interface GuestStoreState {
   /** Safe to subscribe — single existing reference. */
   getCompEntryById: (id: string) => CompGuestEntry | null;
 }
-
-// ---- ID generator ---------------------------------------------------
-
-const generateCompId = (): string => {
-  const ts36 = Date.now().toString(36);
-  const rand4 = Math.floor(Math.random() * 36 ** 4)
-    .toString(36)
-    .padStart(4, "0");
-  return `cg_${ts36}_${rand4}`;
-};
 
 // ---- Persistence ----------------------------------------------------
 
@@ -120,24 +94,11 @@ export const useGuestStore = create<GuestStoreState>()(
 
       // ---- Mutations ----
 
-      recordCompEntry: (entry): CompGuestEntry => {
-        const newEntry: CompGuestEntry = {
-          ...entry,
-          id: generateCompId(),
-          addedAt: new Date().toISOString(),
-        };
-        // Prepend so getCompEntriesForEvent returns newest-first naturally.
-        set((s) => ({ entries: [newEntry, ...s.entries] }));
-        // Side effects (audit log) fired by caller (AddCompGuestSheet) to
-        // keep the store pure-data and avoid require-cycle pitfalls.
-        return newEntry;
-      },
-
       removeCompEntry: (id): CompGuestEntry | null => {
         const existing = get().entries.find((e) => e.id === id);
         if (existing === undefined) return null;
         set((s) => ({ entries: s.entries.filter((e) => e.id !== id) }));
-        // Side effects fired by caller (J-G2 detail's remove handler).
+        // issue #3827: called after the entry was re-added on the server.
         return existing;
       },
 
