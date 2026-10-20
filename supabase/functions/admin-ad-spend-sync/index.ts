@@ -38,7 +38,8 @@ import {
 } from "../_shared/adSpendSync.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import { resolveTikTokClient, tiktokApi } from "../_shared/tiktok.ts";
-import { resolveSnapchatClient, snapchatApi } from "../_shared/snapchat.ts";
+import { resolveSnapchatClient } from "../_shared/snapchat.ts";
+import { fetchSnapchatCampaignStats } from "../_shared/snapchatSpendStats.ts";
 import { googleAdsRequest, resolveGoogleClient } from "../_shared/google.ts";
 import { redditRequest, resolveRedditClient } from "../_shared/reddit.ts";
 import {
@@ -154,24 +155,14 @@ async function fetchTikTokSpendDays(
 async function fetchSnapchatSpendDays(
   conn: AdConnectionRow,
   externalCampaignId: string,
+  timeZoneCache: Map<string, string | null>,
 ): Promise<SpendDayRow[]> {
   const client = await resolveSnapchatClient(conn);
-  const { since, until } = spendWindow();
-  const exclusiveEnd = new Date(`${until}T00:00:00.000Z`);
-  exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
-  const query = new URLSearchParams({
-    granularity: "DAY",
-    fields: "impressions,swipes,spend",
-    start_time: `${since}T00:00:00.000Z`,
-    end_time: exclusiveEnd.toISOString(),
+  // #3697: relative path (apiBase already ends in /v1) + account-timezone
+  // local-midnight window ≤ 28 days — Snap's DAY-granularity contract.
+  const payload = await fetchSnapchatCampaignStats(client, externalCampaignId, {
+    timeZoneCache,
   });
-  const payload = await snapchatApi(
-    client,
-    "GET",
-    `${client.apiBase}/v1/campaigns/${
-      encodeURIComponent(externalCampaignId)
-    }/stats?${query.toString()}`,
-  );
   return parseSnapchatStatsSpend(payload);
 }
 
@@ -470,6 +461,8 @@ serve(async (req: Request): Promise<Response> => {
   const results: Array<Record<string, unknown>> = [];
   let paused = 0;
   let upserted = 0;
+  // #3697: one Snap ad-account timezone read per account per sync run.
+  const snapchatTimeZoneCache = new Map<string, string | null>();
 
   for (const raw of campaigns ?? []) {
     const row = raw as Record<string, unknown>;
@@ -621,6 +614,7 @@ serve(async (req: Request): Promise<Response> => {
         days = await fetchSnapchatSpendDays(
           connection,
           target.external_campaign_id,
+          snapchatTimeZoneCache,
         );
       } else if (platform === "google") {
         days = await fetchGoogleSpendDays(
