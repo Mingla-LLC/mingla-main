@@ -42,6 +42,8 @@ on:
       - "supabase/functions/_shared/email/index.ts"
       - "supabase/functions/_shared/email/types.ts"
       - "supabase/functions/_shared/email/__tests__/issue_3524_confirmation_email_single_cta.test.ts"
+      # #3827 Q-A3: a private guest list drops "who's going" from the same CTA.
+      - "supabase/functions/_shared/email/__tests__/issue_3827_private_guest_list_cta.test.ts"
       - "supabase/functions/_shared/attendanceClaim.ts"
       - "supabase/functions/ticket-confirmation-dispatch/index.ts"
       # The destination itself, and every layer that decides whether it resolves.
@@ -101,6 +103,15 @@ jobs:
         run: >-
           deno test --allow-env --allow-read --no-check
           supabase/functions/_shared/email/__tests__/issue_3524_confirmation_email_single_cta.test.ts
+      # #3827 Q-A3: when the host makes the guest list private the app hides the
+      # going box, so the ticket, trip and experience CTAs drop "who's going".
+      # 5 tests, no network. Fails when any offering still promises it on a
+      # private list, when a public list loses it, or when the dispatch stops
+      # threading the flag into an offering arm.
+      - name: "#3827 a private guest list drops who's going from the confirmation CTA"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/_shared/email/__tests__/issue_3827_private_guest_list_cta.test.ts
       - run: deno check supabase/functions/_shared/email/appLink.ts
       - run: deno check supabase/functions/_shared/email/ticketBody.ts
       - run: deno check supabase/functions/_shared/email/tripConfirmationEmail.ts
