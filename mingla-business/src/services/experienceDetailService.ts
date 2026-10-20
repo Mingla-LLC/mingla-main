@@ -58,6 +58,8 @@ export interface ExperienceTicketRow {
   maxBlocks?: number | null;
   groupMax?: number | null;
   isHidden?: boolean;
+  /** Confirmed sold admissions for this option (locks price/unit in the wizard). */
+  soldCount?: number;
 }
 
 export interface ExperienceDateRow {
@@ -362,7 +364,28 @@ export async function getExperienceDetail(
     };
   };
 
-  const tickets = (ticketRows ?? []).map(mapTicket);
+  const ticketIds = (ticketRows ?? []).map((t: { id: string }) => t.id);
+  const soldByType = new Map<string, number>();
+  if (ticketIds.length > 0) {
+    const { data: soldRows, error: soldErr } = await supabase
+      .from("tickets")
+      .select("ticket_type_id")
+      .in("ticket_type_id", ticketIds)
+      .not("status", "in", "(void,refunded)");
+    if (soldErr) throw soldErr;
+    for (const row of soldRows ?? []) {
+      const tid = (row as { ticket_type_id: string }).ticket_type_id;
+      soldByType.set(tid, (soldByType.get(tid) ?? 0) + 1);
+    }
+  }
+
+  const tickets = (ticketRows ?? []).map((row) => {
+    const mapped = mapTicket(row);
+    return {
+      ...mapped,
+      soldCount: soldByType.get(mapped.id) ?? 0,
+    };
+  });
   const ticket = tickets[0];
 
   return {

@@ -236,7 +236,7 @@ function detailToInitialDraft(
             maxBlocks: t.maxBlocks ?? 4,
             capacity: t.isUnlimited ? null : t.quantityTotal,
             isHidden: t.isHidden === true,
-            soldCount: 0,
+            soldCount: t.soldCount ?? 0,
           });
         })
       : [

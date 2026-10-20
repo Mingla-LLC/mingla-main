@@ -199,6 +199,8 @@ export const priceMajorToCents = (priceMajor: string): number =>
  * do not apply to the chosen basis.
  */
 export interface ExperiencePriceOptionPayload {
+  /** Persisted ticket_types.id when updating an existing option. */
+  id?: string;
   name: string;
   price_cents: number;
   price_basis: ExperiencePriceBasis;

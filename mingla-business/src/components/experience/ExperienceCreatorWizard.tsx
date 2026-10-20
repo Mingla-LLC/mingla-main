@@ -890,6 +890,21 @@ export const ExperienceCreatorWizard: React.FC<
   const buildPayload = useCallback(
     (publish: boolean) => {
       const whenPayload = whenAdapter.toPayloadWhen();
+      // issue #3281 R2 — per-stop keeps the single summed ticket (omit options).
+      // Free zeroes every emitted option without discarding local drafts. Shared
+      // Total spots / Unlimited own capacity on every option.
+      const priceOptionsPayload =
+        pricingMode === "per_stop"
+          ? null
+          : priceOptions.map((opt) => {
+              const payload = priceOptionToPayload(opt);
+              return {
+                ...payload,
+                ...(opt.ticketTypeId ? { id: opt.ticketTypeId } : {}),
+                price_cents: isFree ? 0 : payload.price_cents,
+                capacity: unlimited ? null : parseInt(capacity, 10) || null,
+              };
+            });
       return {
         title: title.trim(),
         description: description.trim(),
@@ -931,9 +946,9 @@ export const ExperienceCreatorWizard: React.FC<
         multiDates: whenPayload.multiDates,
         recurrence_rules: whenPayload.recurrence_rules,
         timezone: whenPayload.timezone,
-        // issue #3281 R2 — sellable options (ticket_types). Absent → server
-        // keeps today's single Standard path; present → helper upserts rows.
-        price_options: priceOptions.map(priceOptionToPayload),
+        ...(priceOptionsPayload !== null
+          ? { price_options: priceOptionsPayload }
+          : {}),
         // META-ORCH-1059 BUG 3 — thread the cover so the RPC persists the 7
         // cover_media_* columns. Pexels/Giphy/Library picks only emit a patch
         // to wizard state; without this the RPC drops the cover entirely.

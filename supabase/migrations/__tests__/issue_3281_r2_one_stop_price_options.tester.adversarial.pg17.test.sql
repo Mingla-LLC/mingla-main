@@ -94,6 +94,23 @@ BEGIN
     v_err = 'experience_price_invalid',
     'per_stop + group basis → experience_price_invalid'
   );
+
+  -- Empty price_options with sales must refuse (never soft-delete sold inventory).
+  v_err := NULL;
+  BEGIN
+    PERFORM public.issue_3281_apply_experience_price_options(
+      gen_random_uuid(), 'NGN', 'whole', 0, NULL,
+      '[]'::jsonb,
+      true
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_err := SQLERRM;
+  END;
+  PERFORM pg_temp.i3281r2_assert(
+    v_err = 'price_change_with_sales',
+    'empty options + sales → price_change_with_sales'
+  );
+
 END
 $body$;
 

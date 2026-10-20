@@ -30,13 +30,15 @@ export const ExperienceMiniCard: React.FC<ExperienceMiniCardProps> = ({
   ]
     .filter((item): item is string => item !== null && item.length > 0)
     .join(" · ");
+  // Unit (per person / group / block) stays off until the public card contract
+  // carries the basis of priceFromMinorUnits (#3281 2e).
   const priceLabel =
     experience.isFree || experience.priceFromMinorUnits === null
       ? "Free"
       : `From ${formatCurrencyRound(
           experience.priceFromMinorUnits / 100,
           experience.currency,
-        )} per person`;
+        )}`;
 
   return (
     <Pressable

@@ -48,7 +48,6 @@ import type {
 import {
   EXPERIENCE_BLOCK_MINUTES,
   emptyPriceOption,
-  priceOptionBasisLabel,
 } from "./experienceWizardTypes";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
@@ -208,7 +207,13 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
           o.clientId === clientId ? { ...o, isHidden: true } : o,
         );
       }
-      return prev.filter((o) => o.clientId !== clientId);
+      const next = prev.filter((o) => o.clientId !== clientId);
+      // Removing the lead option promotes the next — mirror its price into
+      // wholePriceMajor so save/reopen stays coherent (#3281 Copilot).
+      if (prev[0]?.clientId === clientId && next[0] !== undefined) {
+        setWholePriceMajor(next[0].priceMajor);
+      }
+      return next;
     });
   };
 
@@ -234,19 +239,16 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
 
   const summaryCopy = (): string => {
     const t = formatSummaryTotal(resolvedTotalMajor);
-    const unit =
-      defaultOption !== undefined
-        ? priceOptionBasisLabel(defaultOption.priceBasis)
-        : "per person";
     const stopWord = n === 1 ? "stop" : "stops";
     if (isFree || resolvedTotalMajor === 0) {
       return `Free for buyers — they get ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} in one booking.`;
     }
+    // Leave unit off until public card contracts carry price_basis (#3281 2e).
     if (priceOptions.filter((o) => !o.isHidden).length > 1) {
-      return `From ${t} ${unit}. Buyers pick a price, then book the whole experience.`;
+      return `From ${t}. Buyers pick a price, then book the whole experience.`;
     }
     if (pricingMode === "whole") {
-      return `Buyers pay ${t} ${unit} for ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} — one booking.`;
+      return `Buyers pay ${t} for ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} — one booking.`;
     }
     return `Stops add up to ${t}. Buyers pay it once — one booking, the whole experience. They can't buy stops separately.`;
   };
