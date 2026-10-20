@@ -392,4 +392,45 @@ BEGIN
 END;
 $contracts$;
 
+-- 10. Rework: areas use the guards' own team predicate, even for a teammate
+--     whose email is not confirmed yet (admin_team_role() is NULL for them).
+INSERT INTO t3988_people VALUES
+  ('unconfirmed', '39880000-0000-4000-a100-000000000011', 'issue3988-unconfirmed@test.local'),
+  ('reinvited',   '39880000-0000-4000-a100-000000000012', 'issue3988-reinvited@test.local');
+INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+  ('39880000-0000-4000-a100-000000000011', 'issue3988-unconfirmed@test.local', NULL),
+  ('39880000-0000-4000-a100-000000000012', 'issue3988-reinvited@test.local', now());
+INSERT INTO public.admin_team_members (email, role, status, accepted_at) VALUES
+  ('issue3988-unconfirmed@test.local', 'growth', 'active', now()),
+  ('issue3988-reinvited@test.local', 'growth', 'invited', NULL);
+INSERT INTO public.support_staff (user_id, enabled, available, role) VALUES
+  ('39880000-0000-4000-a100-000000000011', true, false, 'staff'),
+  ('39880000-0000-4000-a100-000000000012', true, false, 'staff');
+
+DO $rework$
+DECLARE
+  v_areas text := pg_temp.t3988_areas('unconfirmed');
+  v_result text;
+BEGIN
+  -- The guards let this teammate in, so the areas must show the same tabs.
+  IF pg_temp.t3988_as('unconfirmed', '(SELECT count(*) FROM public.issue_3720_admin_list_posts(''idea'', ''all''))') LIKE 'ERR:%'
+     OR pg_temp.t3988_as('unconfirmed', '(SELECT count(*) FROM public.issue_3720_list_feature_guide(NULL::text))') LIKE 'ERR:%' THEN
+    RAISE EXCEPTION 'unconfirmed_fixture_guard_refused';
+  END IF;
+  IF v_areas NOT LIKE '%community_support_community%' OR v_areas NOT LIKE '%community_support_support%' THEN
+    RAISE EXCEPTION 'unconfirmed_teammate_areas_hide_permitted_tabs:%', v_areas;
+  END IF;
+
+  -- A re-invited person with an old enabled row is listed exactly once.
+  v_result := pg_temp.t3988_as('owner',
+    '(SELECT count(*) FROM public.issue_3988_admin_people() WHERE email = ''issue3988-reinvited@test.local'')');
+  IF v_result <> '1' THEN RAISE EXCEPTION 'reinvited_person_listed_twice:%', v_result; END IF;
+
+  -- Last active is sign-in activity only: a role change is not activity.
+  v_result := pg_temp.t3988_as('owner',
+    '(SELECT COALESCE(last_active::text, ''never'') FROM public.issue_3988_set_permissions(''39880000-0000-4000-a100-000000000011'', ''lead'', NULL))');
+  IF v_result <> 'never' THEN RAISE EXCEPTION 'role_change_counted_as_last_active:%', v_result; END IF;
+END;
+$rework$;
+
 ROLLBACK;

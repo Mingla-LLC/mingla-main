@@ -93,7 +93,7 @@ Deno.test("People and roles reads and writes only through the #3988 RPCs", async
   assertMatch(service, /rpc\("issue_3988_set_permissions", \{\s*p_user_id: userId,\s*p_role: role,/);
   assertMatch(service, /rpc\("issue_3988_remove_orphan_staff"/);
   assertMatch(page, /canInvite = Array\.isArray\(access\?\.areas\) && access\.areas\.includes\(AREA\.TEAM_MANAGE\)/);
-  assertMatch(page, /activeTab === "team" && capabilities\.isAdmin && <TeamRolesPanel canInvite=\{canInvite\} \/>/);
+  assertMatch(page, /activeTab === "team" && capabilities\.isAdmin && <TeamRolesPanel canInvite=\{canInvite\}/);
 });
 
 Deno.test("the Support desk no longer grants Support and links to People and roles", async () => {
@@ -107,4 +107,35 @@ Deno.test("the Support desk no longer grants Support and links to People and rol
 Deno.test("the availability refusal says where Support is turned on", () => {
   assertMatch(NOT_ON_SUPPORT_ROSTER_MESSAGE, /People and roles/);
   assertMatch(NOT_ON_SUPPORT_ROSTER_MESSAGE, /Owner or Admin/);
+});
+
+// Rework (tester CONDITIONAL PASS): unique row keys, a described disabled
+// Invite button, and the People list refreshing after own availability.
+Deno.test("every People row has a key unique to its group and person", async () => {
+  const { personRowKey } = await import("../lib/peopleAndRoles.js");
+  const row = { user_id: "u1", email: "a@example.test" };
+  assert(personRowKey("invited", row) !== personRowKey("former", row));
+  assert(personRowKey("team", { email: "a@example.test" }) !== personRowKey("team", { email: "b@example.test" }));
+  const panel = await read("components/community/TeamRolesPanel.jsx");
+  assertEquals((panel.match(/<tr key=\{personRowKey\(/g) ?? []).length, 3, "three person row kinds");
+  assertEquals(/<tr key=\{(?:row\.|`)/.test(panel), false, "no ad-hoc person row keys");
+  for (const group of ["team", "invited", "former"]) {
+    assertMatch(panel, new RegExp(`<tr key=\\{personRowKey\\("${group}", row\\)\\}`));
+  }
+});
+
+Deno.test("the disabled Invite button is described by its hint", async () => {
+  const panel = await read("components/community/TeamRolesPanel.jsx");
+  assertMatch(panel, /aria-describedby=\{!canInvite \? INVITE_HINT_ID : undefined\}/);
+  assertMatch(panel, /<span id=\{INVITE_HINT_ID\}[^>]*>\{TEAM_INVITE_OWNER_ONLY\}<\/span>/);
+});
+
+Deno.test("own availability changes refresh the People list", async () => {
+  const [panel, page] = await Promise.all([
+    read("components/community/TeamRolesPanel.jsx"),
+    read("pages/CommunitySupportPage.jsx"),
+  ]);
+  assertMatch(panel, /useEffect\(\(\) => \{ void load\(\); \}, \[load, refreshKey\]\);/);
+  assertMatch(page, /if \(!result\.message\) setPeopleRefreshKey\(\(key\) => key \+ 1\);/);
+  assertMatch(page, /<TeamRolesPanel canInvite=\{canInvite\} refreshKey=\{peopleRefreshKey\} \/>/);
 });

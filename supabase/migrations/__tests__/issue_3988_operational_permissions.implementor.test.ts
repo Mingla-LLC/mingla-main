@@ -48,3 +48,25 @@ Deno.test("one transaction, and the backfill names nobody", () => {
   assertEquals(/@[a-z0-9-]+\.[a-z]/i.test(sql), false, "no email addresses in the migration");
   assertStringIncludes(normalized, "SELECT public.issue_3988_backfill_permissions();");
 });
+
+// Rework (tester CONDITIONAL PASS).
+const body = (signature: string) => {
+  const start = normalized.indexOf(`CREATE OR REPLACE FUNCTION ${signature}`);
+  return normalized.slice(start, normalized.indexOf("$$;", start));
+};
+
+Deno.test("capabilities and guards share issue_3720_active_team_member", () => {
+  const caps = body("public.issue_3988_capabilities()");
+  assertStringIncludes(caps, "IF v_uid IS NULL OR NOT public.issue_3720_active_team_member(v_uid) THEN");
+  assertEquals(caps.includes("admin_team_role() IS NULL"), false);
+  const areas = body("public.admin_team_my_operational_areas()");
+  assertEquals(areas.includes("IF v_role IS NULL THEN RETURN v_areas; END IF;"), false);
+  assertStringIncludes(areas, "IF v_role IS NOT NULL THEN v_areas := array_append(v_areas, 'team_notifications');");
+});
+
+Deno.test("People lists each person once and Last active is sign-in only", () => {
+  const people = body("public.issue_3988_admin_people()");
+  assertStringIncludes(people, "WHERE t.uid = u.id OR t.key_email = lower(btrim(u.email))");
+  assertStringIncludes(people, "u.last_sign_in_at FROM everyone e");
+  assertEquals(people.includes("GREATEST("), false);
+});
