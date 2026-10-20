@@ -28,6 +28,7 @@ import type { RecurrenceRule } from "../store/draftEventStore";
 // ORCH-1147 — reuse the SINGLE owner of pg_public_event_tier_allin (no
 // duplicated RPC / fee math here). The trip + event paths use the same helper.
 import { fetchTierAllInCents } from "./publicEventsService";
+import { normalizeStopStartOffset } from "../utils/experienceBookingSettings";
 // ORCH-1138 Leg 3 — guard the brand theme + per-experience overrides into a
 // ThemeInput so the /exp/ route resolves a palette (Direction-A). Same guard the
 // trip path uses (usePublicTripBySlug.asThemeInput); identical validator imports.
@@ -55,6 +56,8 @@ export interface PublicExperienceStop {
   address: string;
   imageUrls: string[];
   startTime: string | null;
+  /** issue #3281 R3 — minutes after the booked start (open-hours stops). */
+  startOffsetMinutes?: number | null;
   // ORCH-1138 Leg 3 — close the §F.5 read-path gaps: the stop's authored blurb
   // (experience_stops.ai_description) + its coords (lat/lng) so the page renders
   // the real per-stop description + the stop-1 map (rule 9: null → omit, never
@@ -131,6 +134,12 @@ export interface PublicExperience {
    */
   options?: PublicExperienceTicket[];
   dates: PublicExperienceDate[];
+  /** issue #3281 R3 — total | per_day | per_start (absent → total). */
+  capacityScope?: "total" | "per_day" | "per_start";
+  /** issue #3281 R3 — start grid minutes (absent → 30). */
+  spacingMinutes?: number;
+  /** issue #3281 R3 — min notice minutes (absent → 120). */
+  minNoticeMinutes?: number;
   /**
    * ORCH-1138 Leg 3 (§4.2) — the curated vibe ids (events.experience_intents).
    * `[]` when the experience picked no vibes — NEVER fabricated (rule 9). The
@@ -636,6 +645,9 @@ interface RpcExpStop {
   address: string | null;
   description: string | null;
   startTime: string | null;
+  /** issue #3281 R3 — additive; camelCase (or snake) when the RPC emits it. */
+  startOffsetMinutes?: number | null;
+  start_offset_minutes?: number | null;
   lat: number | null;
   lng: number | null;
   imageUrls: unknown;
@@ -716,6 +728,10 @@ interface RpcExpPayload {
    * cached body) = unknown. Read only through readRefundPolicyState.
    */
   refundPolicy?: unknown;
+  /** issue #3281 R3 — additive when the public RPC emits them. */
+  capacityScope?: string | null;
+  spacingMinutes?: number | null;
+  minNoticeMinutes?: number | null;
 }
 
 function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
@@ -764,6 +780,14 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
         ? s.imageUrls.filter((u): u is string => typeof u === "string")
         : [],
       startTime: s.startTime ?? null,
+      ...(normalizeStopStartOffset(s.startOffsetMinutes ?? s.start_offset_minutes) !==
+      null
+        ? {
+            startOffsetMinutes: normalizeStopStartOffset(
+              s.startOffsetMinutes ?? s.start_offset_minutes,
+            ),
+          }
+        : {}),
       description:
         typeof s.description === "string" && s.description.length > 0
           ? s.description
@@ -790,6 +814,17 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
     bookable: p.bookable !== false,
     // issue #3284 — absent key → unknown; null → none; a valid policy → set.
     refundPolicyState: readRefundPolicyState(p),
+    ...(p.capacityScope === "total" ||
+    p.capacityScope === "per_day" ||
+    p.capacityScope === "per_start"
+      ? { capacityScope: p.capacityScope }
+      : {}),
+    ...(typeof p.spacingMinutes === "number"
+      ? { spacingMinutes: p.spacingMinutes }
+      : {}),
+    ...(typeof p.minNoticeMinutes === "number"
+      ? { minNoticeMinutes: p.minNoticeMinutes }
+      : {}),
   };
 
   return { experience, brand };

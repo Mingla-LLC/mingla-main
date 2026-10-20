@@ -350,6 +350,8 @@ const typeToPreference: Record<string, string> = {
   // support_replies column in v1 (D6 Option β deferred).
   "business.support_message": "messages",
   "business.support_new_ticket": "messages",
+  // #3988 — Host reply alert (v2 outbox category; listed for the legacy path).
+  "business.support_ticket_reply": "messages",
   "re_engagement": "marketing",
   "re_engagement_3d": "marketing",
   "re_engagement_7d": "marketing",

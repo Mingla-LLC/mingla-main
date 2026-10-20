@@ -21,11 +21,60 @@ export const CREATE_PAUSED_PHRASE = "CREATE PAUSED";
 const label = (platform) => PLATFORM_LABELS[platform] ?? platform;
 
 /**
+ * #3697 — platforms whose paused create needs a provider-native uploaded
+ * image (Snapchat references a Snap media id, never a URL). Meta and Reddit
+ * use the hosted image and TikTok uploads at create, so they have no image
+ * preparation step. Kept in lockstep with IMAGE_PREPARATION_PLATFORMS in
+ * supabase/functions/_shared/adCreativeImagePrepare.ts.
+ */
+export const IMAGE_PREPARATION_PLATFORMS = Object.freeze(["snapchat"]);
+
+/** The subset of `platforms` that needs an image prepared before create. */
+export function imagePreparationPlatforms(platforms = []) {
+  return platforms.filter((platform) =>
+    IMAGE_PREPARATION_PLATFORMS.includes(platform)
+  );
+}
+
+/**
+ * The creative kind a sealed plan's execution templates carry: "video",
+ * "image", or null when there is no template to read.
+ */
+export function templatesCreativeKind(templates) {
+  if (!templates || typeof templates !== "object" || Array.isArray(templates)) {
+    return null;
+  }
+  const kinds = Object.values(templates).flatMap((template) =>
+    template && typeof template === "object" && !Array.isArray(template)
+      ? [template.creative?.kind, template.creative_intent?.kind]
+      : []
+  );
+  if (kinds.includes("video")) return "video";
+  if (kinds.includes("image")) return "image";
+  return null;
+}
+
+/**
+ * The platforms the provider-preparation step runs on for this creative:
+ * every platform for a video, only the image-preparation platforms for an
+ * image, none otherwise.
+ */
+export function preparationPlatformsFor({ platforms = [], kind = null } = {}) {
+  if (kind === "video") return [...platforms];
+  if (kind === "image") return imagePreparationPlatforms(platforms);
+  return [];
+}
+
+/**
  * The ordered steps one "Create campaign (paused)" (or Resume) runs.
- * @param {{ platforms: string[], isVideo: boolean }} input
+ * @param {{ platforms: string[], isVideo: boolean, isImage?: boolean }} input
  * @returns {Array<{ id: string, platform: string|null, label: string }>}
  */
-export function housePlanCreateSteps({ platforms = [], isVideo = false } = {}) {
+export function housePlanCreateSteps({
+  platforms = [],
+  isVideo = false,
+  isImage = false,
+} = {}) {
   const steps = [
     { id: "bind", platform: null, label: "Bind the exact immutable plan" },
     {
@@ -45,6 +94,14 @@ export function housePlanCreateSteps({ platforms = [], isVideo = false } = {}) {
         id: `prepare:${platform}`,
         platform,
         label: `Prepare the video for ${label(platform)}`,
+      });
+    }
+  } else if (isImage) {
+    for (const platform of imagePreparationPlatforms(platforms)) {
+      steps.push({
+        id: `prepare:${platform}`,
+        platform,
+        label: `Prepare the image for ${label(platform)}`,
       });
     }
   }
@@ -77,13 +134,15 @@ export function setStepState(stepStates, id, state, detail = null) {
  * The exact next action for a recorded Mingla plan, so the recovery card can
  * say why Resume is needed and what it will do before anyone clicks.
  * @param {{ state: string, platforms: string[], createdPlatforms: string[],
- *   isVideo: boolean, sealed: boolean, hasFundingHold: boolean }} input
+ *   isVideo: boolean, isImage?: boolean, sealed: boolean,
+ *   hasFundingHold: boolean }} input
  */
 export function housePlanNextAction({
   state,
   platforms = [],
   createdPlatforms = [],
   isVideo = false,
+  isImage = false,
   sealed = true,
   hasFundingHold = false,
 } = {}) {
@@ -130,6 +189,10 @@ export function housePlanNextAction({
   }
   todo.push(`confirm ${CREATE_PAUSED_PHRASE} for this plan hash`);
   if (isVideo) todo.push(`prepare the video for ${missingLabels}`);
+  const imageMissing = isVideo ? [] : isImage ? imagePreparationPlatforms(missing) : [];
+  if (imageMissing.length > 0) {
+    todo.push(`prepare the image for ${imageMissing.map(label).join(", ")}`);
+  }
   todo.push(`create paused on ${missingLabels}`);
   const why =
     state === "ready_for_funding"

@@ -75,6 +75,7 @@ import {
   housePlanNextAction,
   initialStepStates,
   setStepState,
+  templatesCreativeKind,
 } from "../lib/adBuilder/housePlanPath";
 
 /** #3697: the platforms, video-ness and next action of one recovery item. */
@@ -83,25 +84,23 @@ function recoveryPlanFacts(item) {
   const platforms = (item?.provider_allocations ?? []).map((row) => row.platform);
   const createdPlatforms = (item?.campaigns ?? []).map((c) => c.platform);
   const templates = canonical.execution_payloads;
-  const isVideo = Boolean(
-    templates &&
-      typeof templates === "object" &&
-      Object.values(templates).some(
-        (template) =>
-          template?.creative?.kind === "video" ||
-          template?.creative_intent?.kind === "video",
-      ),
-  );
+  // #3697: the same kind the Resume reads, so a Snapchat image plan shows
+  // and runs its image-preparation step.
+  const creativeKind = templatesCreativeKind(templates);
+  const isVideo = creativeKind === "video";
+  const isImage = creativeKind === "image";
   const missing = platforms.filter((p) => !createdPlatforms.includes(p));
   return {
     platforms,
     missing,
     isVideo,
+    isImage,
     next: housePlanNextAction({
       state: item?.plan?.state,
       platforms,
       createdPlatforms,
       isVideo,
+      isImage,
       sealed: Boolean(templates),
       hasFundingHold: Boolean(item?.funding_hold),
     }),
@@ -1240,6 +1239,7 @@ export function CampaignsPage({ embedded = false }) {
                             housePlanCreateSteps({
                               platforms: facts.platforms,
                               isVideo: facts.isVideo,
+                              isImage: facts.isImage,
                             }),
                           ),
                         );

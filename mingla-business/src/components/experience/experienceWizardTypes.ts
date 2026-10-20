@@ -62,8 +62,13 @@ export interface ExperienceStopDraft {
   coordinatePrecision?: "exact" | "approximate" | null;
   /** ≤5; imageUrls[0] = primary. */
   imageUrls: string[];
-  /** "HH:mm" local, or null. */
+  /** "HH:mm" local, or null. Used for set-date experiences. */
   startTime: string | null;
+  /**
+   * issue #3281 R3 — minutes after the guest's booked start (open-hours).
+   * Null when unset; first stop is typically 0.
+   */
+  startOffsetMinutes?: number | null;
   /** Per-stop price major-unit string (used only in per_stop pricing mode). */
   priceMajor: string;
   /**
@@ -96,6 +101,7 @@ export const emptyStop = (): ExperienceStopDraft => ({
   coordinatePrecision: null,
   imageUrls: [],
   startTime: null,
+  startOffsetMinutes: null,
   // #3645 — starts EMPTY (the field shows "0.00" as a placeholder). An empty
   // per-stop price means that stop is free, exactly like typing 0.
   priceMajor: "",
