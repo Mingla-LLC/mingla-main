@@ -70,6 +70,33 @@ const lastPage = (link) => {
 const MAX_COMMENT_PAGES = 50;
 
 /**
+ * #3980 W2 rework 4: a GitHub read that did not answer 200 (with the shape
+ * asked for) is an error, never "nothing there": an error read as an empty
+ * file list would record "migrations applied: none" and let the issue turn
+ * Live before its migration is applied. Only the answers that really mean
+ * "not there" are passed in `gone` (a 404 for a pull request, issue or
+ * comment that does not exist); every other answer throws.
+ */
+class GitHubReadError extends Error {}
+
+function ok(r, what, { gone = [], shape = () => true } = {}) {
+  if (gone.includes(r.status)) return false;
+  if (r.status !== 200 || !shape(r.json)) {
+    throw new GitHubReadError(`GitHub did not answer the read of ${what} (HTTP ${r.status})`);
+  }
+  return true;
+}
+
+/** A write GitHub did not accept is an error too (expected status, or 200). */
+function wrote(r, what, want = 200) {
+  if (r.status !== want) throw new Error(`GitHub refused ${what} (HTTP ${r.status})`);
+  return r;
+}
+
+/** Errors this run met while reading back; the run ends non-zero if any. */
+const readBackErrors = [];
+
+/**
  * Every comment of an issue, all pages, oldest first. A page GitHub does not
  * answer stops the run: an incomplete list could hide the record comment and
  * make the bot post a second one.
@@ -105,15 +132,17 @@ async function settle(issue, number, data) {
   const [keep, ...extra] = mine;
   // The survivor carries every field the racing records held (forward only).
   const body = renderRecord(await mergeRecords(data, mine));
-  if (keep.body !== body) await gh("PATCH", `/repos/${REPO}/issues/comments/${keep.id}`, { body });
+  if (keep.body !== body) wrote(await gh("PATCH", `/repos/${REPO}/issues/comments/${keep.id}`, { body }), `the update of comment ${keep.id}`);
   for (const c of extra) {
     const del = await gh("DELETE", `/repos/${REPO}/issues/comments/${c.id}`);
     if (del.status === 204) continue;
     // Not deleted by this run (refused, or the other run got there first):
     // take the marker out, so it is not a record either way.
-    await gh("PATCH", `/repos/${REPO}/issues/comments/${c.id}`, {
+    const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${c.id}`, {
       body: `A second release record for PR #${number} was written at the same time; the record is ${keep.html_url ?? "the earlier comment"}.`,
     });
+    // Gone already (the other run deleted it) is fine; anything else leaves a duplicate.
+    if (r.status !== 404) wrote(r, `the clean-up of duplicate comment ${c.id}`);
   }
   return ` (${extra.length} duplicate${extra.length === 1 ? "" : "s"} removed)`;
 }
@@ -154,7 +183,8 @@ async function mergeRecords(data, records) {
     const m = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/.exec(lc.url);
     if (!m) continue;
     const r = await gh("GET", `/repos/${REPO}/issues/comments/${m[1]}`);
-    const check = r.status === 200 ? liveCheckFrom(r.json, data.merged_at) : null;
+    // A deleted comment (404) stops counting; a GitHub error is not news.
+    const check = ok(r, `comment ${m[1]}`, { gone: [404], shape: (j) => j && typeof j === "object" }) ? liveCheckFrom(r.json, data.merged_at) : null;
     if (check && check.url === lc.url) out = mergeRecordData(out, { pr: out.pr, live_check: check });
   }
   return out;
@@ -191,7 +221,17 @@ async function stabilize(issue, number, data) {
     if (mine.length === 0) return " (record gone on re-read)";
     // W2 rework 3: what GitHub says now, kept forward only against what this
     // run wrote, then merged with every record on the issue.
-    const now = await collect(number);
+    // W2 rework 4: when GitHub does not answer one of those reads, this run
+    // keeps its own record for this round (never an emptier one), says so as
+    // an ERROR, and the run ends non-zero.
+    let now = null;
+    try {
+      now = await collect(number);
+    } catch (error) {
+      if (!(error instanceof GitHubReadError)) throw error;
+      readBackErrors.push(`#${issue}: ${error.message}`);
+      console.log(`release-record: ERROR: PR #${number}: re-reading GitHub for the record on #${issue} failed (${error.message}); this run's record is kept as it is.`);
+    }
     let next = now ? mergeRecordData(now.data, out) : out;
     const fresh = newestLiveCheck(comments, next.merged_at);
     if (fresh) next = mergeRecordData(next, { pr: next.pr, live_check: fresh });
@@ -199,7 +239,7 @@ async function stabilize(issue, number, data) {
     const body = renderRecord(next);
     if (mine.length === 1 && mine[0].body === body) return round === 1 ? "" : ` (re-merged ${round - 1}x)`;
     if (mine.length > 1) await settle(issue, number, next);
-    else await gh("PATCH", `/repos/${REPO}/issues/comments/${mine[0].id}`, { body });
+    else wrote(await gh("PATCH", `/repos/${REPO}/issues/comments/${mine[0].id}`, { body }), `the update of comment ${mine[0].id}`);
     out = next;
   }
   return ` (still changing after ${STABLE_ROUNDS} re-reads)`;
@@ -252,9 +292,8 @@ async function resolvePr(eventName, event) {
     : null;
   if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
   const r = await gh("GET", `/repos/${REPO}/commits/${sha}/pulls`);
-  const merged = Array.isArray(r.json)
-    ? r.json.find((p) => p?.merged_at && p?.base?.ref === "main" && p?.merge_commit_sha === sha)
-    : null;
+  ok(r, `the pull requests of ${sha.slice(0, 7)}`, { shape: Array.isArray });
+  const merged = r.json.find((p) => p?.merged_at && p?.base?.ref === "main" && p?.merge_commit_sha === sha);
   return merged ? merged.number : null;
 }
 
@@ -271,8 +310,22 @@ async function main() {
     console.log(`release-record: no merged pull request for this ${eventName} event; nothing to do`);
     return 0;
   }
-  for (const number of numbers) await refresh(number);
-  return 0;
+  // W2 rework 4: one pull request that fails does not stop the others; the
+  // run ends non-zero at the end.
+  const stopped = [];
+  for (const number of numbers) {
+    try {
+      await refresh(number);
+    } catch (error) {
+      stopped.push(`PR #${number}: ${error.message}`);
+      console.log(`release-record: ERROR: PR #${number}: ${error.message}`);
+    }
+  }
+  if (readBackErrors.length > 0) {
+    console.log(`release-record: ERROR: ${readBackErrors.length} GitHub read${readBackErrors.length === 1 ? "" : "s"} failed while reading records back; the records written keep this run's data. ${readBackErrors.join("; ")}`);
+  }
+  if (stopped.length > 0) throw new Error(stopped.join("; "));
+  return readBackErrors.length > 0 ? 1 : 0;
 }
 
 /**
@@ -285,42 +338,53 @@ async function main() {
  */
 async function collect(number) {
   const prRes = await gh("GET", `/repos/${REPO}/pulls/${number}`);
+  // A pull request that does not exist (404) has no record; any other
+  // answer but 200 is an error (W2 rework 4), from here to the end.
+  if (!ok(prRes, `pull request #${number}`, { gone: [404], shape: (j) => j && typeof j === "object" })) return null;
   const pr = prRes.json;
-  if (prRes.status !== 200 || !pr?.merged_at || pr?.base?.ref !== "main" || !/^[0-9a-f]{40}$/.test(pr?.merge_commit_sha ?? "")) {
+  if (!pr?.merged_at || pr?.base?.ref !== "main" || !/^[0-9a-f]{40}$/.test(pr?.merge_commit_sha ?? "")) {
     return null;
   }
   const sha = pr.merge_commit_sha;
   const commit = await gh("GET", `/repos/${REPO}/commits/${sha}`);
+  ok(commit, `merge commit ${sha.slice(0, 7)}`, { shape: (j) => j && typeof j === "object" });
   const subject = String(commit.json?.commit?.message ?? "").split("\n")[0];
 
   const files = [];
   for (let page = 1; page <= 3; page += 1) {
     const r = await gh("GET", `/repos/${REPO}/pulls/${number}/files?per_page=100&page=${page}`);
-    if (!Array.isArray(r.json) || r.json.length === 0) break;
+    ok(r, `page ${page} of the files of #${number}`, { shape: Array.isArray });
+    if (r.json.length === 0) break;
     files.push(...r.json.map((f) => ({ filename: f.filename, status: f.status })));
     if (r.json.length < 100) break;
   }
   const paths = files.map((f) => f.filename);
   const status = await gh("GET", `/repos/${REPO}/commits/${sha}/status?per_page=100`);
-  const statuses = Array.isArray(status.json?.statuses) ? status.json.statuses : [];
+  ok(status, `the statuses of ${sha.slice(0, 7)}`, { shape: (j) => Array.isArray(j?.statuses) });
+  const statuses = status.json.statuses;
   // A merge commit carries well over 100 check runs; read them all (up to
   // five pages) so Vercel's own run is never missed.
   const checks = [];
   for (let page = 1; page <= 5; page += 1) {
     const r = await gh("GET", `/repos/${REPO}/commits/${sha}/check-runs?per_page=100&page=${page}`);
-    const list = Array.isArray(r.json?.check_runs) ? r.json.check_runs : [];
+    ok(r, `page ${page} of the check runs of ${sha.slice(0, 7)}`, { shape: (j) => Array.isArray(j?.check_runs) });
+    const list = r.json.check_runs;
     checks.push(...list);
     if (list.length < 100) break;
   }
   const runRes = await gh("GET", `/repos/${REPO}/actions/runs?head_sha=${sha}&per_page=20`);
-  const edgeRuns = Array.isArray(runRes.json?.workflow_runs) ? runRes.json.workflow_runs : [];
+  ok(runRes, `the workflow runs of ${sha.slice(0, 7)}`, { shape: (j) => Array.isArray(j?.workflow_runs) });
+  const edgeRuns = runRes.json.workflow_runs;
 
-  // Linked issues: drop pull requests and numbers that do not exist.
+  // Linked issues: drop pull requests and numbers that do not exist (404,
+  // or 410 for a deleted issue). Any other answer is an error, never a
+  // reason to drop the issue from the record.
   const issues = [];
   for (const ref of parseIssueRefs(pr.title, pr.body)) {
     if (ref.number === number) continue;
     const r = await gh("GET", `/repos/${REPO}/issues/${ref.number}`);
-    if (r.status !== 200 || r.json?.pull_request) continue;
+    if (!ok(r, `issue #${ref.number}`, { gone: [404, 410], shape: (j) => j && typeof j === "object" })) continue;
+    if (r.json.pull_request) continue;
     issues.push(ref);
   }
   const targets = issues.length > 0 ? issues.map((i) => i.number) : [number];
@@ -330,10 +394,12 @@ async function collect(number) {
   for (const t of targets) {
     const since = [];
     const first = await gh("GET", `/repos/${REPO}/issues/${t}/comments?since=${encodeURIComponent(pr.merged_at)}&per_page=100`);
-    if (Array.isArray(first.json)) since.push(...first.json);
+    ok(first, `the comments of #${t}`, { shape: Array.isArray });
+    since.push(...first.json);
     for (let page = 2; page <= Math.min(lastPage(first.link), MAX_COMMENT_PAGES); page += 1) {
       const r = await gh("GET", `/repos/${REPO}/issues/${t}/comments?since=${encodeURIComponent(pr.merged_at)}&per_page=100&page=${page}`);
-      if (Array.isArray(r.json)) since.push(...r.json);
+      ok(r, `page ${page} of the comments of #${t}`, { shape: Array.isArray });
+      since.push(...r.json);
     }
     for (const c of since) {
       const check = liveCheckFrom(c, pr.merged_at);
@@ -392,17 +458,34 @@ async function refresh(number) {
   const written = [];
   const failed = [];
   const unread = [];
+  const unwritten = [];
   for (const t of targets) {
-    const mine = recordCommentsFor(await issueComments(t), number);
+    // W2 rework 4: a GitHub read before the write that fails leaves this
+    // issue's record as it was (nothing emptier is written), is said as an
+    // ERROR, and the other issues still get theirs; the run ends non-zero.
+    let mine;
+    let merged;
+    try {
+      mine = recordCommentsFor(await issueComments(t), number);
+      // Merged with what is on the issue now, so a live check another run
+      // wrote since this run read the comments is kept.
+      merged = await mergeRecords(data, mine);
+    } catch (error) {
+      unwritten.push(t);
+      written.push(`#${t} not written, read failed`);
+      console.log(`release-record: ERROR: PR #${number}: reading the record on #${t} before writing failed (${error.message}); it was left as it was.`);
+      continue;
+    }
     const existing = mine[0];
-    // Merged with what is on the issue now, so a live check another run
-    // wrote since this run read the comments is kept.
-    const merged = await mergeRecords(data, mine);
     const body = renderRecord(merged);
     if (existing) {
       if (existing.body !== body) {
         const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${existing.id}`, { body });
         written.push(`#${t} updated (HTTP ${r.status})`);
+        if (r.status !== 200) {
+          failed.push(t);
+          continue;
+        }
       }
     } else {
       const r = await gh("POST", `/repos/${REPO}/issues/${t}/comments`, { body });
@@ -432,6 +515,7 @@ async function refresh(number) {
   console.log(`release-record: PR #${number}: ${written.length > 0 ? written.join(", ") : "unchanged"}`);
   const problems = [];
   if (failed.length > 0) problems.push(`GitHub refused the record on ${failed.map((t) => `#${t}`).join(", ")}`);
+  if (unwritten.length > 0) problems.push(`GitHub could not be read before writing the record on ${unwritten.map((t) => `#${t}`).join(", ")}`);
   if (unread.length > 0) problems.push(`the record could not be read back on ${unread.map((t) => `#${t}`).join(", ")}`);
   if (problems.length > 0) throw new Error(problems.join("; "));
 }
