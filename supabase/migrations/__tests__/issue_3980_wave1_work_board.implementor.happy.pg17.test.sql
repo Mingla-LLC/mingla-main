@@ -1,6 +1,7 @@
 -- Issue #3980 Wave 1 -- the Work board, the agent log, claims and the
 -- three-day repeat-message block, on the fully replayed PG17 schema.
--- MINGLA-INVARIANT: I-3980-WORK-CARD-SERVER-CHECKS | issue #3980 | Every work card write is checked on the server for title, instructions, a done-means line, at least one current teammate as owner, a due date, links to real records and no duplicate open card, and a failure returns plain-words fixes and writes nothing.
+-- [TEST-MOD-APPROVED #3980] the synced program restates this declaration in the contract's words.
+-- MINGLA-INVARIANT: I-3980-WORK-CARD-SERVER-CHECKS | issue #3980 | Every work card a person or an agent writes is checked on the server for title, instructions, a done-means line, at least one current teammate as owner, a due date, links to real records and no duplicate open card, and a failure returns plain-words fixes and writes nothing.
 -- MINGLA-INVARIANT: I-3980-CLAIMS-BIND-AGENT-WRITES | issue #3980 | An agent change to a host, creator, content or work card that another agent holds an unexpired claim on is refused on the server with who holds it and since when, and a claim ends 30 minutes after its last update.
 -- MINGLA-INVARIANT: I-3980-NO-REPEAT-MESSAGE-3-DAYS | issue #3980 | An agent cannot write a message for a host or creator that Mingla messaged in the last three days, or that a teammate's message is already waiting for, unless a person allowed one more for that record.
 -- MINGLA-INVARIANT: I-3980-AGENT-NEVER-SENDS-SPENDS-PUBLISHES | issue #3980 | No work, log or calendar path lets an agent mark a message sent, approve spend, mark an event published, override a giveaway or ads block, remove a card or close a card without proof.
@@ -29,7 +30,7 @@
 --   W1-NOTIFY  owners and watchers (never the actor) get work-card notices
 --              with no country code
 --   W1-CLOSED  no client can read or write an ops table; the log is append-only
---   W1-GUIDE   get_started has 23 rules and 8 routines
+--   W1-GUIDE   get_started has 25 rules and 9 routines (synced program, #3980)
 --   W1-LIST    tools/list says work is open to a teammate
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
@@ -342,7 +343,8 @@ declare v text; v_seen timestamptz;
 begin
   v := pg_temp.t3980_work('A', 'claim', format('{"card_id":"%s","targets":[{"kind":"crm_record","id":"%s"}]}', pg_temp.t3980_id('c1'), pg_temp.t3980_id('h1')));
   perform pg_temp.t3980_check('W1-CLAIMS', 'agent A claims the card and the host',
-    pg_temp.t3980_get(v, 'result', 'status') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,claims}'), 'claimed/2');
+    -- [TEST-MOD-APPROVED #3980] D-4: a card is never claimed; claim(card_id) claims only the records named.
+    pg_temp.t3980_get(v, 'result', 'status') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,claims}'), 'claimed/1');
   perform pg_temp.t3980_check('W1-CLAIMS', 'the claim is in the agent log',
     (select action || '/' || via from public.ops_agent_log where actor_email = 'ada.w3980@test.local' and action = 'claimed' order by id desc limit 1), 'claimed/claude');
 
@@ -458,7 +460,8 @@ begin
       || '/' || pg_temp.t3980_get(v, 'result', 'card', 'closed_via'), 'done/true/claude');
   perform pg_temp.t3980_check('W1-CLOSE', 'closing releases the card''s claims',
     (select count(*) from public.ops_claims where card_id = pg_temp.t3980_id('c2')::uuid and released_at is null)::text
-      || '/' || (select count(*) from public.ops_claims where card_id = pg_temp.t3980_id('c2')::uuid and release_reason = 'closed')::text, '0/3');
+      -- [TEST-MOD-APPROVED #3980] D-4: the card itself carries a working mark, not a claim, so two record claims end.
+      || '/' || (select count(*) from public.ops_claims where card_id = pg_temp.t3980_id('c2')::uuid and release_reason = 'closed')::text, '0/2');
   perform pg_temp.t3980_check('W1-CLOSE', 'the other owner and the watcher are told it closed',
     (select count(*) from public.team_mentions m where m.source_kind = 'work_card' and m.body_excerpt like 'Ada''s Claude closed: W3980 write the first message%'
        and m.target_user_id in ('39800000-0000-4000-a000-000000000005', '39800000-0000-4000-a000-000000000002'))::text, '2');
@@ -572,12 +575,13 @@ begin
   perform pg_temp.t3980_check('W1-GUIDE', 'get_started has 23 rules and 8 routines, one rule about today',
     jsonb_array_length(pg_temp.t3980_j(v) #> '{result,rules}') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,routines}') || '/'
       || (select count(*) from jsonb_array_elements_text(pg_temp.t3980_j(v) #> '{result,rules}') r where r like 'Today is your person''s own date.%'),
-    '23/8/1');
+    '25/9/1');  -- [TEST-MOD-APPROVED #3980] the synced program adds two rules and the log_this_chat routine
   v := pg_temp.t3980_gw('A', 'mcp:tools/list', '{}', 'team_agent_product_truth_call');
   perform pg_temp.t3980_check('W1-LIST', 'tools/list says the Work board is open to this teammate', pg_temp.t3980_get(v, 'me', 'work'), 'true');
   v := pg_temp.t3980_work('A', 'read_log', format('{"record_id":"%s"}', pg_temp.t3980_id('h1')));
   perform pg_temp.t3980_check('W1-LIST', 'read_log returns the record''s entries and the nine work rules',
-    (jsonb_array_length(pg_temp.t3980_j(v) #> '{result,entries}') > 0)::text || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,rules}'), 'true/9');
+    -- [TEST-MOD-APPROVED #3980] the synced program's eleven work rules
+    (jsonb_array_length(pg_temp.t3980_j(v) #> '{result,entries}') > 0)::text || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{result,rules}'), 'true/11');
   v := pg_temp.t3980_work('A', 'my_work', '{}');
   perform pg_temp.t3980_check('W1-LIST', 'my_work lists the person''s open cards',
     (jsonb_array_length(pg_temp.t3980_j(v) #> '{result,mine}') > 0)::text, 'true');

@@ -30,7 +30,9 @@ BEGIN
    WHERE c.capability_key IN ('staff-drafts','staff-content-calendar','staff-crm','staff-my-agent','staff-team-roles','staff-work-board','staff-agent-log')
      AND (SELECT count(*) FROM public.product_truth_audit a
            WHERE a.capability_id = c.id AND a.metadata->>'source' = 'issue_3980_ops_board_feature_guide'
-             AND (a.metadata->>'revision')::integer = c.revision AND a.metadata->>'issue' = '3980') <> 1;
+             -- [TEST-MOD-APPROVED #3980] the synced program's F1 turned the Work board and Agent log Live (one more revision)
+             AND (a.metadata->>'revision')::integer = c.revision - CASE WHEN c.capability_key IN ('staff-work-board','staff-agent-log') THEN 1 ELSE 0 END
+             AND a.metadata->>'issue' = '3980') <> 1;
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_guide_audit: %', v_bad; END IF;
 
   -- the five existing entries kept their status, and this change is their
@@ -90,7 +92,8 @@ BEGIN
   -- the three human-verified ones
   IF (SELECT count(*) FROM public.product_capabilities c
        WHERE c.claimed_status = 'live' AND public.issue_3720_feature_guide_effective_status(c.id) = 'Live'
-         AND c.capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers')) <> 0 THEN
+         -- [TEST-MOD-APPROVED #3980] the synced program's F1 makes the Work board and Agent log Live with their 20 Oct evidence
+         AND c.capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers', 'staff-work-board', 'staff-agent-log')) <> 0 THEN
     RAISE EXCEPTION 'issue3980_guide_promoted_an_entry';
   END IF;
 END;
