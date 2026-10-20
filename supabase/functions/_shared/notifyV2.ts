@@ -27,6 +27,16 @@ import { notificationSafeError } from "./notificationSafeError.ts";
 // #1529 — the single source of truth for E.164 → ISO-2, replacing the
 // two-country ternary that used to sit at the RSVP SMS call site below.
 import { countryFromE164 } from "./e164Country.ts";
+// #3988 — support and product alerts for Mingla teammates.
+import {
+  ISSUE_3988_ALERT_CATEGORIES,
+  ISSUE_3988_EMAIL_CATEGORIES,
+  issue3988DeepLinkValid,
+  issue3988EmailCta,
+  issue3988ProviderSafeKeys,
+  issue3988PushAllowed,
+  isIssue3988AlertCategory,
+} from "./issue3988SupportAlerts.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -179,7 +189,11 @@ type ChannelClaim = {
 function validDeepLink(
   category: string,
   deepLink: string | null | undefined,
+  payload: Record<string, unknown> = {},
 ): boolean {
+  if (isIssue3988AlertCategory(category)) {
+    return issue3988DeepLinkValid(category, deepLink, payload);
+  }
   if (category === "business.community_roadmap_updated") {
     return deepLink === "mingla-business://community/roadmap";
   }
@@ -237,6 +251,9 @@ export function providerSafePayload(
   if (category === "admin.team_mention") {
     return pick(["mention_id", "source_kind", "source_id"]);
   }
+  if (isIssue3988AlertCategory(category)) {
+    return pick(issue3988ProviderSafeKeys(category));
+  }
   return payload;
 }
 
@@ -247,6 +264,7 @@ const ISSUE_3720_CATEGORIES = new Set([
   "business.support_new_ticket",
   "business.brand_group_message",
   "admin.team_mention",
+  ...ISSUE_3988_ALERT_CATEGORIES,
 ]);
 const SAFE_DENIAL_REASONS = new Set([
   "category_inactive",
@@ -384,7 +402,7 @@ export async function dispatchV2(
     return { success: false, reason: "category_inactive_or_missing" };
   }
 
-  if (!validDeepLink(input.category_key, input.deep_link)) {
+  if (!validDeepLink(input.category_key, input.deep_link, input.payload)) {
     return { success: false, reason: "deep_link_invalid" };
   }
 
@@ -496,8 +514,20 @@ export async function dispatchV2(
   const requestedChannels = input.requested_channel
     ? [input.requested_channel]
     : cat.default_channels;
+  // #3988 — the email button for a support or product alert is the Mingla
+  // Admin page for the item, derived from the validated link only.
+  const emailCta = input.email_cta ??
+    issue3988EmailCta(input.category_key, input.deep_link, input.payload);
   for (const channel of requestedChannels) {
     if (channel === "inapp") continue;
+    // #3988 — push for a Host reply or a new product signal is decided per
+    // recipient by the producer (payload.push). No push attempt otherwise.
+    if (
+      channel === "push" &&
+      !issue3988PushAllowed(input.category_key, input.payload)
+    ) {
+      continue;
+    }
     const claim = await claimChannel(client, nid, channel);
     if (claim.outcome !== "claimed") {
       deliveries.push({
@@ -597,7 +627,7 @@ export async function dispatchV2(
       tasks.push((async () => {
         const r = await emailAdapter.send({
           to: contactEmail,
-          ...emailContent(rendered, input.email_cta),
+          ...emailContent(rendered, emailCta),
           idempotencyKey: `${input.idempotency_key}:email`,
         });
         await completeChannel(
@@ -645,7 +675,8 @@ export async function dispatchV2(
       // Channel allowed but no contact for it — record skipped (no silent drop).
       const missingReason = channel === "email" &&
           (input.category_key === "business.community_announcement" ||
-            input.category_key === "business.support_new_ticket")
+            input.category_key === "business.support_new_ticket" ||
+            ISSUE_3988_EMAIL_CATEGORIES.includes(input.category_key))
         ? "no_confirmed_email"
         : "no_contact";
       await completeChannel(
