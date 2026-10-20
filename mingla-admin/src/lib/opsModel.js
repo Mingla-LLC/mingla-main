@@ -1224,8 +1224,10 @@ export function brandDecidedWords(decided) {
   if (!decided) return "";
   const who = String(decided.by_name || decided.by || "a person").trim() || "a person";
   const at = decided.at ? new Date(decided.at) : null;
+  // The same "3 Oct 2026" the server writes in the preview and confirm words.
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const when = at && !Number.isNaN(at.getTime())
-    ? at.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+    ? `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`
     : null;
   return when ? `Decided by ${who} on ${when}` : `Decided by ${who}`;
 }

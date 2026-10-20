@@ -87,6 +87,8 @@ Deno.test("#3980 W4 rework P1-1: a decided brand says who decided and when, and 
   const decided = { brand_id: "d1", name: "Decided", action: "pick", words: "w", decided: { by: "ola@x.test", by_name: "Ola", at: "2026-10-03T10:00:00Z" } };
   assertEquals(brandDecidedWords(decided.decided), "Decided by Ola on 3 Oct 2026");
   assertEquals(brandDecidedWords({ by: "ola@x.test" }), "Decided by ola@x.test");
+  // September reads "Sep", as the server writes it.
+  assertEquals(brandDecidedWords({ by_name: "Seth", at: "2026-09-30T08:00:00Z" }), "Decided by Seth on 30 Sep 2026");
   assertEquals(brandSelectable(decided), false);
   assertEquals(brandDefaultPicked([{ ...decided, action: "link" }, { brand_id: "n1", action: "create" }]), ["n1"]);
   const page = code("pages/TeamDashboardPage.jsx");
