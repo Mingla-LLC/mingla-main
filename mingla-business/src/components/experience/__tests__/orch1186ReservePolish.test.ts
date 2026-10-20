@@ -119,11 +119,14 @@ describe("ORCH-1186 — Fix 4 three-step tap-to-advance wizard", () => {
 
     test(`${label}: the {eventDateId, quantity} checkout handoff is unchanged`, () => {
       // issue #3281 — open-daily also carries startAt; slots stay quantity: 1.
+      // [TEST-MOD-APPROVED #3281] Round 2 (#3996) charges per unit: open-daily
+      // sends the computed `quantity` plus `partySize: party`, and both paths may
+      // add an optional ticketTypeId (price option).
       expect(src).toMatch(
-        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity: party/,
+        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity,\s*startAt: bookedIso,\s*partySize: party,/,
       );
       expect(src).toMatch(
-        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity: 1\s*\}\)/,
+        /onConfirm\(\{\s*eventDateId: selectedDate\.\w+,\s*quantity: 1,\s*\.\.\.\(ticketTypeId !== undefined \? \{ ticketTypeId \} : \{\}\),\s*\}\)/,
       );
     });
   }
