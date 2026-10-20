@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3988_email_alerts_page.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3988-email-alerts-page",
+  "profile": "deno-1.46-stripe"
+}

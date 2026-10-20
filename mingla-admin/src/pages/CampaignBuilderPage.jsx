@@ -61,6 +61,7 @@ import {
   CREATE_PAUSED_PHRASE,
   housePlanCreateSteps,
   initialStepStates,
+  preparationPlatformsFor,
   setStepState,
 } from "../lib/adBuilder/housePlanPath";
 import {
@@ -1064,6 +1065,10 @@ export function CampaignBuilderPage() {
             : Boolean(creative.publicUrl);
         if (!hasMedia || !creative.validation || !creative.rightsConfirmed)
           return false;
+        // #3697: every plan binds a creative-library row (ad-plan refuses
+        // creative_library_id_required), so an image must be recorded with
+        // "Use this creative" before Next — never discovered at create.
+        if (!creative.creativeRow) return false;
         // #3697 (design §9) — the Builder blocks a video that does not fit a
         // platform this campaign runs on; change platforms or pick another.
         // The server backstop is the ad-plan funding fit gate.
@@ -1122,6 +1127,9 @@ export function CampaignBuilderPage() {
         if (!creative.validation) return "Validate the creative first.";
         if (!creative.rightsConfirmed)
           return "Confirm the brand's right to use this creative in paid ads.";
+        if (!creative.creativeRow) {
+          return "Press “Use this creative” to record it to the library before continuing.";
+        }
         if (
           creative.kind === "video" &&
           creativePartition.buildable.length === 0
@@ -1606,6 +1614,17 @@ export function CampaignBuilderPage() {
       if (runningStepId) markStep(runningStepId, "failed", message);
       setCreateError({ title, message });
     };
+    // #3697: a video prepares on every platform; an image prepares only where
+    // the provider needs its own uploaded copy (Snapchat media id).
+    const preparePlatforms = preparationPlatformsFor({
+      platforms:
+        creative.kind === "video"
+          ? executionAllocations.map((row) => row.platform)
+          : executionAllocations
+              .map((row) => row.platform)
+              .filter((platform) => !creativeExcluded.has(platform)),
+      kind: creative.kind,
+    });
     if (!validateOnly) {
       steps = initialStepStates(
         housePlanCreateSteps({
@@ -1613,6 +1632,7 @@ export function CampaignBuilderPage() {
             .map((row) => row.platform)
             .filter((platform) => !creativeExcluded.has(platform)),
           isVideo: creative.kind === "video",
+          isImage: creative.kind === "image",
         }),
       );
       setCreateSteps(steps);
@@ -1748,11 +1768,12 @@ export function CampaignBuilderPage() {
             );
           }
         }
-        if (creative.kind === "video") {
+        if (preparePlatforms.length > 0) {
           try {
             await prepareBoundVideoCreative({
               creativeLibraryId: creative.creativeRow?.id,
-              platforms: executionAllocations.map((row) => row.platform),
+              platforms: preparePlatforms,
+              noun: creative.kind,
               lane,
               planVersionId: immutablePlan.plan_version_id,
               planHash: immutablePlan.plan_hash,

@@ -57,9 +57,12 @@ export function hasOneSignalCredentials(appType: OneSignalAppType): boolean {
 export function resolveOneSignalApp(
   type: string | undefined | null,
 ): OneSignalAppType {
+  // #3988 — admin.* alerts go to Mingla teammates, who work Support from the
+  // Host app; never the Explorer app.
   if (
     typeof type === "string" &&
-    (type.startsWith("business.") || type.startsWith("stripe."))
+    (type.startsWith("business.") || type.startsWith("stripe.") ||
+      type.startsWith("admin."))
   ) {
     return "business";
   }
