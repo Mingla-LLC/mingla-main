@@ -25,6 +25,12 @@ import {
 } from "../_shared/adCreativePreparationPlan.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
 import { creativeFitGateFailure } from "../_shared/adCreativeLifecycle.ts";
+import {
+  createSupabaseCreativeRefDb,
+  type ImagePrepareOutcome,
+  isImagePreparationPlatform,
+  prepareCreativeImageRef,
+} from "../_shared/adCreativeImagePrepare.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -73,6 +79,13 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   provider_check_transient:
     "The platform status could not be checked. Try again shortly.",
   provider_rate_limited: "The platform asked us to wait before checking again.",
+  // #3697 — image preparation (Snapchat media upload).
+  provider_image_upload_failed:
+    "The platform could not accept this image. Retry this platform.",
+  creative_source_unavailable:
+    "The stored image could not be read. Try again shortly.",
+  provider_ref_not_recorded:
+    "The last upload attempt stopped before it finished. Retry this platform.",
 };
 
 function elapsedSeconds(startedAt: string | null): number {
@@ -424,14 +437,27 @@ serve(async (req: Request): Promise<Response> => {
   if ((creativeRow as { purged_at?: unknown }).purged_at) {
     return json({ error: "creative_purged", trace_id: traceId }, 409);
   }
+  // #3697 — an image is prepared only where the provider needs its own
+  // uploaded copy (Snapchat media). Meta and Reddit use the hosted image_url
+  // and TikTok uploads at create, so those refuse honestly here.
+  const isImage = creative.kind === "image";
   if (
     !["active", "archived"].includes(String(creative.status)) ||
-    creative.kind !== "video"
+    (creative.kind !== "video" && !isImage)
   ) {
     return json(
       { error: "creative_kind_or_status_invalid", trace_id: traceId },
       422,
     );
+  }
+  if (isImage && !isImagePreparationPlatform(platform)) {
+    return json({
+      error: "image_preparation_not_supported",
+      detail:
+        `${platform} uses the hosted image at create time; there is nothing to prepare.`,
+      platform,
+      trace_id: traceId,
+    }, 422);
   }
   // #3697 FG-2 — no provider preparation starts for a video that does not fit
   // the platform it is being prepared for (same matrix as the Builder).
@@ -451,12 +477,115 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
   if (
-    platform === "snapchat" && (creative.duration_seconds ?? Infinity) > 180
+    platform === "snapchat" && creative.kind === "video" &&
+    (creative.duration_seconds ?? Infinity) > 180
   ) {
     return json(
       { error: "snapchat_video_duration_invalid", trace_id: traceId },
       422,
     );
+  }
+
+  // #3697 — images run the #866 resolver (lock row, cache-first, READY ref)
+  // against the plan's exact connection. Every plan, ownership, connection and
+  // fit gate above has already passed; nothing here bypasses them.
+  if (isImage) {
+    const outcome: ImagePrepareOutcome = await prepareCreativeImageRef(
+      createSupabaseCreativeRefDb(
+        supabase as unknown as Parameters<
+          typeof createSupabaseCreativeRefDb
+        >[0],
+      ),
+      {
+        action: action as "start" | "status" | "retry",
+        creative,
+        connection,
+        platform,
+        lane,
+      },
+      { log: (message) => console.error(message) },
+    );
+    const refRow = (status: PrepareBeginRow["current_status"] | null) => {
+      const base = rowFromRef(
+        outcome.ref
+          ? outcome.ref as unknown as Record<string, unknown>
+          : { id: "", status: "pending", content_hash: creative.content_hash },
+      );
+      return status ? { ...base, current_status: status } : base;
+    };
+    const fresh = (outcome.kind === "ready" && !outcome.cached) ||
+      (outcome.kind === "failed" && !outcome.cached && outcome.ref !== null);
+    if (fresh && outcome.ref) {
+      const imageAuditAction: "prepare_ready" | "prepare_failed" =
+        outcome.kind === "ready" ? "prepare_ready" : "prepare_failed";
+      const { error: auditError } = await supabase.from("ad_status_events")
+        .insert({
+          creative_ref_id: outcome.ref.id,
+          platform,
+          entity: "creative_ref",
+          action: imageAuditAction,
+          actor: user.id,
+          from_status: null,
+          to_status: outcome.ref.status,
+          external_ids: null,
+          provider_response: {
+            decision: outcome.kind === "ready"
+              ? "image_ready"
+              : `image_${outcome.kind === "failed" ? outcome.code : "failed"}`,
+            external_kind: "image",
+            trace_id: traceId,
+          },
+        });
+      if (auditError) {
+        return json({ error: "audit_write_failed", trace_id: traceId }, 500);
+      }
+    }
+    if (outcome.kind === "ready") {
+      return json(envelope(refRow(null), creativeId, platform, lane, traceId, {
+        cached: outcome.cached,
+        retryable: false,
+        errorCode: null,
+      }));
+    }
+    if (outcome.kind === "not_started") {
+      return json(
+        envelope(refRow("pending"), creativeId, platform, lane, traceId, {
+          cached: false,
+          retryable: false,
+          errorCode: null,
+        }),
+      );
+    }
+    if (outcome.kind === "in_progress") {
+      return json(
+        envelope(refRow(null), creativeId, platform, lane, traceId, {
+          cached: false,
+          retryAfterSeconds: 5,
+          ...(outcome.stale
+            ? { errorCode: "provider_ref_not_recorded", retryable: true }
+            : { errorCode: null, retryable: false }),
+        }),
+        202,
+      );
+    }
+    // A provider-side failure is row data the Builder can retry; a gate
+    // failure (fit, identity, connection) is a plain refusal with its reason.
+    if (outcome.httpStatus === 200 || outcome.httpStatus >= 500) {
+      return json(
+        envelope(refRow("failed"), creativeId, platform, lane, traceId, {
+          cached: outcome.cached,
+          errorCode: outcome.code,
+          retryable: outcome.retryable,
+        }),
+        outcome.httpStatus,
+      );
+    }
+    return json({
+      error: outcome.code,
+      detail: outcome.message,
+      platform,
+      trace_id: traceId,
+    }, outcome.httpStatus);
   }
 
   const { data: beginData, error: beginError } = await supabase.rpc(

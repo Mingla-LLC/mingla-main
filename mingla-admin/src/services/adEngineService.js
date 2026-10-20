@@ -19,6 +19,10 @@ import {
   PREPARATION_ORDER,
   retryDelayMs,
 } from "../lib/adBuilder/preparationState";
+import {
+  preparationPlatformsFor,
+  templatesCreativeKind,
+} from "../lib/adBuilder/housePlanPath";
 
 /** Extract { status, body } from a supabase.functions.invoke error (SC-7). */
 export async function parseEdgeError(error) {
@@ -365,26 +369,27 @@ async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
   );
   finish("confirm");
 
-  const isVideoPlan = Object.values(templates).some((template) => {
-    if (!template || typeof template !== "object" || Array.isArray(template)) {
-      return false;
-    }
-    return template.creative?.kind === "video" ||
-      template.creative_intent?.kind === "video";
+  // #3697: a video prepares on every platform; an image prepares only where
+  // the provider needs its own uploaded copy (Snapchat media), so a Snapchat
+  // image plan that failed at create runs the image step before creating.
+  const creativeKind = templatesCreativeKind(templates);
+  const preparePlatforms = preparationPlatformsFor({
+    platforms: (aggregate.provider_allocations ?? []).map((row) => row.platform),
+    kind: creativeKind,
   });
-  if (isVideoPlan) {
+  if (preparePlatforms.length > 0) {
     const creativeLibraryId = version.canonical_plan?.creative_library_id;
     if (!creativeLibraryId) {
-      throw new Error("The frozen video plan has no creative-library binding.");
+      throw new Error(
+        `The frozen ${creativeKind} plan has no creative-library binding.`,
+      );
     }
-    const videoPlatforms = (aggregate.provider_allocations ?? []).map((row) =>
-      row.platform
-    );
     try {
-      for (const platform of videoPlatforms) step(`prepare:${platform}`, "pending");
+      for (const platform of preparePlatforms) step(`prepare:${platform}`, "pending");
       await prepareBoundVideoCreative({
         creativeLibraryId,
-        platforms: videoPlatforms,
+        platforms: preparePlatforms,
+        noun: creativeKind,
         // #3697: the frozen plan's lane, never a hard-coded one — a business
         // lane plan prepares against its business-lane connection.
         lane: version.canonical_plan?.lane === "business" ? "business" : "consumer",
@@ -657,6 +662,7 @@ function videoPreparationError(platform, message) {
 export async function prepareBoundVideoCreative({
   creativeLibraryId,
   platforms,
+  noun = "video",
   lane,
   brandId,
   planVersionId,
@@ -685,7 +691,7 @@ export async function prepareBoundVideoCreative({
           platform,
           String(
             parsed?.body?.detail ?? parsed?.message ??
-              "The provider could not prepare this video.",
+              `The provider could not prepare this ${noun}.`,
           ),
         );
       }
@@ -699,7 +705,7 @@ export async function prepareBoundVideoCreative({
       if (next === "give_up") {
         throw videoPreparationError(
           platform,
-          row.error?.message ?? "The provider could not prepare this video.",
+          row.error?.message ?? `The provider could not prepare this ${noun}.`,
         );
       }
       if (next === "retry") retried = true;
@@ -711,8 +717,8 @@ export async function prepareBoundVideoCreative({
         throw videoPreparationError(
           platform,
           neverReachedProvider
-            ? `The provider is still preparing this video, or the last attempt never reached it. Resume the exact plan after ${new Date(startedAt + 15 * 60 * 1000).toLocaleTimeString()}; from then a stalled attempt is retried automatically.`
-            : "The provider is still preparing this video; resume the exact plan shortly.",
+            ? `The provider is still preparing this ${noun}, or the last attempt never reached it. Resume the exact plan after ${new Date(startedAt + 15 * 60 * 1000).toLocaleTimeString()}; from then a stalled attempt is retried automatically.`
+            : `The provider is still preparing this ${noun}; resume the exact plan shortly.`,
         );
       }
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs(row)));

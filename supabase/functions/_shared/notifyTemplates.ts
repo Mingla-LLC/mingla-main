@@ -47,6 +47,38 @@ function communityExcerpt(value: unknown, maxLength = 180): string {
   return `${plain.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
+// #3988 — plain-text email lines for teammate alerts. Empty values are left
+// out rather than shown blank (never fabricate).
+function issue3988Lines(intro: string, rows: Array<[string, string]>): string {
+  const lines = rows
+    .filter(([, value]) => value.trim().length > 0)
+    .map(([label, value]) => `${label}: ${value}`);
+  return lines.length ? `${intro}\n\n${lines.join("\n")}` : intro;
+}
+
+function priorityLabel(value: unknown): string {
+  const v = str(value).toLowerCase();
+  return ["low", "normal", "high", "urgent"].includes(v)
+    ? v.charAt(0).toUpperCase() + v.slice(1)
+    : "";
+}
+
+function kindLabel(value: unknown): string {
+  switch (str(value)) {
+    case "question": return "Question";
+    case "account": return "Account";
+    case "bug": return "Bug";
+    case "feature": return "Feature";
+    case "trust_safety": return "Trust and safety";
+    default: return "";
+  }
+}
+
+function dueLabel(value: unknown): string {
+  const ms = Date.parse(str(value));
+  return Number.isFinite(ms) ? new Date(ms).toUTCString() : "";
+}
+
 // Format an integer cents amount into a currency-aware display string. Mirrors the
 // edge-side formatMoneyCents intent without importing the Stripe helper here (this
 // module must stay dependency-light + unit-testable). Falls back to a plain amount
@@ -185,6 +217,139 @@ export function renderCategoryMessage(
           body: subject ? `${publicBody}\n\nSubject: ${subject}` : publicBody,
         },
         sms: `Mingla: ${publicBody}`,
+      };
+    }
+    // #3988 — support and product alerts for Mingla teammates. IDs, subject
+    // or title, priority and due time only; never a message body, staff
+    // ticket details or a signal's problem statement.
+    case "business.support_ticket_reply": {
+      const subject = communityMarkdownToPlainText(payload.subject);
+      const body = subject ? `New message on: ${subject}` : "A Host replied on a support ticket.";
+      return {
+        push: { title: "Support reply", body },
+        email: {
+          subject: "A Host replied on a Mingla support ticket",
+          body: issue3988Lines("A Host replied on a support ticket.", [
+            ["Subject", subject],
+            ["Priority", priorityLabel(payload.priority)],
+            ["Ticket", str(payload.ticket_id)],
+          ]),
+        },
+        sms: "Mingla: A Host replied on a support ticket.",
+      };
+    }
+    case "admin.support_staff_ticket": {
+      const subject = communityMarkdownToPlainText(payload.subject);
+      return {
+        push: {
+          title: "New staff ticket",
+          body: subject || "A teammate opened a staff ticket.",
+        },
+        email: {
+          subject: "New Mingla staff ticket",
+          body: issue3988Lines("A teammate opened a staff ticket.", [
+            ["Subject", subject],
+            ["Priority", priorityLabel(payload.priority)],
+            ["Ticket", str(payload.thread_id)],
+          ]),
+        },
+        sms: "Mingla: A teammate opened a staff ticket.",
+      };
+    }
+    case "admin.support_assigned": {
+      const subject = communityMarkdownToPlainText(payload.subject);
+      return {
+        push: {
+          title: "Staff ticket assigned to you",
+          body: subject || "A staff ticket is now yours.",
+        },
+        email: {
+          subject: "A Mingla staff ticket is assigned to you",
+          body: issue3988Lines("A staff ticket is now assigned to you.", [
+            ["Subject", subject],
+            ["Priority", priorityLabel(payload.priority)],
+            ["Ticket", str(payload.thread_id)],
+          ]),
+        },
+        sms: "Mingla: A staff ticket is assigned to you.",
+      };
+    }
+    case "admin.support_overdue": {
+      const title = communityMarkdownToPlainText(payload.title);
+      const isSignal = payload.kind === "product_signal";
+      const what = isSignal ? "product signal" : "staff ticket";
+      const lead = payload.audience === "lead";
+      const intro = lead
+        ? `A ${what}'s promised update is more than 24 hours overdue.`
+        : `The promised update on your ${what} is overdue.`;
+      return {
+        push: {
+          title: lead ? "Update overdue for 24 hours" : "Update overdue",
+          body: title || intro,
+        },
+        email: {
+          subject: lead
+            ? `Mingla ${what} update overdue for 24 hours`
+            : `Your Mingla ${what} update is overdue`,
+          body: issue3988Lines(intro, [
+            [isSignal ? "Signal" : "Subject", title],
+            ["Priority", priorityLabel(payload.priority)],
+            ["Update was due", dueLabel(payload.due_at)],
+            [isSignal ? "Signal ID" : "Ticket", str(payload.item_id)],
+          ]),
+        },
+        sms: `Mingla: ${intro}`,
+      };
+    }
+    case "admin.product_signal_new": {
+      const title = communityMarkdownToPlainText(payload.title);
+      return {
+        push: {
+          title: "New product signal",
+          body: title || "A new product signal needs review.",
+        },
+        email: {
+          subject: "New Mingla product signal",
+          body: issue3988Lines("A new product signal needs review.", [
+            ["Signal", title],
+            ["Type", kindLabel(payload.signal_kind)],
+            ["Priority", priorityLabel(payload.priority)],
+            ["Signal ID", str(payload.signal_id)],
+          ]),
+        },
+        sms: "Mingla: A new product signal needs review.",
+      };
+    }
+    case "admin.product_signal_assigned": {
+      const title = communityMarkdownToPlainText(payload.title);
+      return {
+        push: {
+          title: "Product signal handed to you",
+          body: title || "A product signal is now yours.",
+        },
+        email: {
+          subject: "A Mingla product signal is now yours",
+          body: issue3988Lines("A product signal was handed to you.", [
+            ["Signal", title],
+            ["Priority", priorityLabel(payload.priority)],
+            ["Signal ID", str(payload.signal_id)],
+          ]),
+        },
+        sms: "Mingla: A product signal was handed to you.",
+      };
+    }
+    case "admin.product_signal_progress": {
+      const title = communityMarkdownToPlainText(payload.title);
+      const issue = Number(payload.issue_number);
+      const body = payload.event === "released"
+        ? "The product signal you raised is released."
+        : Number.isInteger(issue) && issue > 0
+        ? `The product signal you raised is linked to GitHub issue #${issue}.`
+        : "The product signal you raised is linked to GitHub.";
+      return {
+        push: { title: title || "Product signal update", body },
+        email: { subject: "Your Mingla product signal moved", body },
+        sms: `Mingla: ${body}`,
       };
     }
     case "business.brand_group_message": {

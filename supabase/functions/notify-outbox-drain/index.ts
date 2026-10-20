@@ -14,6 +14,11 @@ import { sourceRefundPayloadFingerprint } from "../_shared/sourceRefundNotificat
 // #1529 — the source-refund pool is the ONE path whose outbox row can never
 // carry a country (see the derivation comment in processSource below).
 import { countryFromE164 } from "../_shared/e164Country.ts";
+// #3988 — support and product alerts for Mingla teammates.
+import {
+  ISSUE_3988_ALERT_CATEGORIES,
+  ISSUE_3988_EMAIL_CATEGORIES,
+} from "../_shared/issue3988SupportAlerts.ts";
 // #3392 — the venue booking confirmation email's "Manage or cancel" link.
 import {
   readVenueReservationManageKeyRing,
@@ -101,6 +106,7 @@ const ISSUE_3720_CONTACT_CATEGORIES = new Set([
   "business.community_announcement",
   "business.support_new_ticket",
   "admin.team_mention",
+  ...ISSUE_3988_EMAIL_CATEGORIES,
 ]);
 const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   ...ISSUE_3720_CONTACT_CATEGORIES,
@@ -108,6 +114,7 @@ const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   "business.community_roadmap_updated",
   "business.brand_group_message",
   "admin.team_mention",
+  ...ISSUE_3988_ALERT_CATEGORIES,
 ]);
 const TERMINAL_DELIVERY_STATUSES = new Set([
   "sent",
