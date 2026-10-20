@@ -106,6 +106,8 @@ $ratchet$;
 --       content_calendar_comment_add_with_mentions → explicit NULL (no SMS channel)
 --       issue_3720_community_add_comment    → explicit NULL (no SMS channel)
 --       create_support_ticket               → explicit NULL (no SMS channel)
+--       issue_3988_enqueue_alert            → explicit NULL (no SMS channel; #3988
+--                                             support and product alerts)
 --       issue_3720_admin_update_idea        → explicit NULL (no SMS channel)
 --       issue_3720_admin_question_action    → explicit NULL (no SMS channel)
 --
@@ -135,6 +137,7 @@ DECLARE
     'ops_notify_people',
     'issue_3720_community_add_comment',
     'create_support_ticket',
+    'issue_3988_enqueue_alert',
     'issue_3720_admin_update_idea',
     'issue_3720_admin_question_action'
   ];
@@ -241,6 +244,7 @@ DECLARE
     'ops_notify_people',
     'issue_3720_community_add_comment',
     'create_support_ticket',
+    'issue_3988_enqueue_alert',
     'issue_3720_admin_update_idea',
     'issue_3720_admin_question_action'
   ];

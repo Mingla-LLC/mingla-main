@@ -7,10 +7,15 @@
  *
  * Fan-out rules:
  *   event = 'message'    → staff reply  → push the requester (business.support_message);
- *                          requester reply → push the assignee (if any) PLUS every
- *                          enabled+available staffer still on the team
- *                          (issue_3988_support_alert_recipients). EXCLUDE the sender.
- *                          business.support_message.
+ *                          requester reply → #3988: one outbox row per roster
+ *                          member + assignee (minus the sender) through
+ *                          issue_3988_enqueue_support_reply_alerts
+ *                          (business.support_ticket_reply: in-app + email for
+ *                          everyone, push for the available roster and the
+ *                          assignee). If that enqueue cannot run (no message id
+ *                          from an older caller, or a database error), the old
+ *                          push to the assignee + available roster
+ *                          (issue_3988_support_alert_recipients) still goes out.
  *
  * All pushes are app:"business" via the `business.` prefix → notify-dispatch's
  * resolveOneSignalApp routes to the business OneSignal app, and the business
@@ -25,6 +30,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 import { SUPPORT_HOST_FACING_AGENT } from "../_shared/supportHostFacing.ts";
 import { availableStaffIds } from "./alertRecipients.ts";
+import { enqueueReplyAlerts } from "./replyAlerts.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -65,6 +71,7 @@ serve(async (req) => {
         senderUserId?: string;
         senderIsStaff?: boolean;
         senderDisplayName?: string | null;
+        messageId?: string | null;
       }
       | null;
     const event = body?.event;
@@ -98,7 +105,25 @@ serve(async (req) => {
         recipients.add(ticket.requester_user_id as string);
       }
     } else {
-      // requester reply → notify the assignee (if any) + available roster.
+      // #3988 — requester reply → the outbox owns the whole fan-out.
+      const enqueued = await enqueueReplyAlerts(admin, {
+        ticketId,
+        messageId: body?.messageId ?? null,
+        senderUserId: sender,
+      });
+      if (enqueued.ok) {
+        return json({
+          ok: true,
+          event,
+          ticket_id: ticketId,
+          enqueued: enqueued.count,
+        });
+      }
+      // Fallback, never silence: the old push to assignee + available roster.
+      console.warn("[notify-support] reply alerts fell back to push", {
+        ticket_id: ticketId,
+        reason: enqueued.reason,
+      });
       if (ticket.assigned_staff_id) {
         recipients.add(ticket.assigned_staff_id as string);
       }
