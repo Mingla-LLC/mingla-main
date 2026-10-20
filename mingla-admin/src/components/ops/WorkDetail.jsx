@@ -28,7 +28,7 @@ import {
   parseGithubInput,
   proofBadge,
   requestKey,
-  runwayLabel,
+  cardAnchorWords,
   sprintLabel,
   todayIso,
   workingWords,
@@ -171,6 +171,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const watchers = card.watchers || [];
   const ownerEmails = owners.map((p) => p.email);
   const watcherEmails = watchers.map((p) => p.email);
+  const anchorWords = cardAnchorWords(card.anchor);
   const nameOf = (email) => team.find((p) => p.email === email)?.name || email;
   // A card waiting for GitHub has its own row below (#3980 Wave 2, Bridge E).
   const githubBlock = card.blocked && card.blocked_kind === "github";
@@ -225,10 +226,10 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
       {card.working && (
         <WorkingMark card={card} canClear={!!me.can_archive && !locked} onCleared={refresh} />
       )}
-      {card.anchor && (
+      {anchorWords && (
         <p className="break-words text-[13px] text-[var(--color-text-secondary)]">
-          Counted from <span className="font-semibold text-[var(--color-text-primary)]">{card.anchor.title}</span>
-          {card.anchor.start_on ? ` · ${dayLabel(card.anchor.start_on)}` : ""} · {runwayLabel(card.anchor.runway)}
+          {anchorWords.lead} <span className="font-semibold text-[var(--color-text-primary)]">{anchorWords.title}</span>
+          {anchorWords.rest}
         </p>
       )}
 

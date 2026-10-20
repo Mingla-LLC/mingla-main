@@ -814,6 +814,7 @@ export function RecordDrawer({
             team={config.team}
             value={Object.hasOwn(drafts, "owners") ? drafts.owners : record.owners}
             disabled={locked}
+            min={(record.owners || []).length ? 1 : 0}
             onChange={(owners) => save("owners", owners)}
           />
           {fieldError("owners") && (

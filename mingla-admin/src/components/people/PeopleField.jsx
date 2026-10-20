@@ -39,9 +39,13 @@ function Chip({ person, team, onRemove, disabled }) {
   return (
     <span className="inline-flex min-h-8 max-w-full min-w-0 items-center gap-1.5 rounded-full bg-[var(--gray-100)] py-0.5 pl-0.5 pr-0.5 text-[13px] font-semibold text-[var(--color-text-primary)]">
       <PersonAvatar person={person} />
-      <span className={`min-w-0 ${WORDS}`}>
-        {name}
-        {clash && <span title={person.email} className="ml-1 inline-block max-w-[18ch] truncate align-bottom text-[11.5px] font-normal text-[var(--color-text-tertiary)]">{person.email}</span>}
+      {/* #3980 proof fix P3-1: one long word (a name before the owner sets
+          it, such as "Debrahknyakundi") is cut with an ellipsis inside the
+          chip, full name on hover and in the remove label, instead of running
+          under the remove button. */}
+      <span className="flex min-w-0 items-baseline">
+        <span title={name} className="min-w-0 truncate">{name}</span>
+        {clash && <span title={person.email} className="ml-1 inline-block max-w-[18ch] shrink-0 truncate align-bottom text-[11.5px] font-normal text-[var(--color-text-tertiary)]">{person.email}</span>}
       </span>
       <button
         type="button"

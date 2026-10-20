@@ -114,6 +114,21 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
     } finally { setBusy(false); }
   };
 
+  // #3980 proof fix P2-2: a promised event changes how often it repeats in
+  // place (the same row, the same history), never by cancelling it and adding
+  // it again.
+  const changeRepeats = async (x, repeats) => {
+    if (!x || repeats === (x.repeats || "none")) return;
+    setBusy(true);
+    try {
+      const result = await ops.setExpectedEvent({ record_id: id, id: x.id, repeats }, requestKey("web_expected_repeats"));
+      addToast({ variant: "success", title: expectedSavedWords(result, repeats === "none" ? "Saved. It happens once now." : `Saved. It repeats every ${repeats}.`) });
+      await load();
+    } catch (error) {
+      addToast({ variant: "error", title: "Couldn’t change how often it repeats", description: opsErrorWords(error) });
+    } finally { setBusy(false); }
+  };
+
   const field = (key) => ({ value: form[key], onChange: (e) => setForm((f) => ({ ...f, [key]: e.target.value })), disabled: busy || !online });
   const fid = (key) => `on-mingla-${id}-${key}`;
   const canSave = online && !busy && form.title.trim().length >= 3 && /^\d{4}-\d{2}-\d{2}$/.test(form.expected_on);
@@ -183,7 +198,20 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
                         <Button variant="ghost" className="min-h-11" disabled={busy} onClick={() => { setCancelling(null); setCancelReason(""); }}>Keep it</Button>
                       </div>
                     ) : (
-                      <button type="button" disabled={!online || busy} onClick={() => { setCancelling(u.id); setCancelReason(""); }} className={`min-h-11 rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] disabled:opacity-50 ${FOCUS}`}>Cancel this promised event</button>
+                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                        <label htmlFor={`${fid("row-repeats")}-${u.id}`} className="text-[12.5px] font-semibold text-[var(--color-text-secondary)]">Repeats</label>
+                        <div className="w-44 max-w-full">
+                          <Select
+                            id={`${fid("row-repeats")}-${u.id}`}
+                            className="min-h-11"
+                            options={REPEAT_OPTIONS}
+                            value={u.row.repeats || "none"}
+                            disabled={busy || !online}
+                            onChange={(e) => changeRepeats(u.row, e.target.value)}
+                          />
+                        </div>
+                        <button type="button" disabled={!online || busy} onClick={() => { setCancelling(u.id); setCancelReason(""); }} className={`min-h-11 rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] disabled:opacity-50 ${FOCUS}`}>Cancel this promised event</button>
+                      </div>
                     ))}
                   </li>
                 ))}

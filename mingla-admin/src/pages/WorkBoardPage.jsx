@@ -89,7 +89,7 @@ export function WorkBoardPage() {
         description="What needs doing, who’s on it, and what’s slipping. Steps appear here by themselves from every host’s events."
         actions={
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Segmented label="Work tabs" options={tabs} value={view.tab} onChange={(tab) => go({ tab, att: null })} />
+            <Segmented label="Work tabs" wrap options={tabs} value={view.tab} onChange={(tab) => go({ tab, att: null })} />
             <Button className="min-h-11" icon={Plus} disabled={!online} onClick={() => go({ add: true, card: null })}>Add card</Button>
           </div>
         }

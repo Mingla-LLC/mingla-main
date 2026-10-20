@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3980_proof_fixes_admin.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-proof-fixes-admin",
+  "profile": "deno-1.46-stripe"
+}

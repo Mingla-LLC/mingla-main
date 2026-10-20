@@ -146,7 +146,8 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
               <p className={`text-[11.5px] tabular-nums ${isToday ? "font-bold text-[var(--color-brand-700)]" : inMonth ? "font-semibold text-[var(--color-text-secondary)]" : "text-[var(--color-text-tertiary)]"}`}>
                 {date.getDate()}{isToday && <span className="hidden @min-[640px]:inline"> · Today</span>}
               </p>
-              {/* Narrow: one 10px dot per event, the whole day opens on tap. */}
+              {/* Narrow: one 10px dot per event, the whole day opens on tap. The
+                  button runs to the cell's edges so it is a 44 px target (#3980 P3-3). */}
               {events.length > 0 && (
                 <button
                   type="button"
@@ -154,7 +155,7 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
                   onClick={() => onDay(key)}
                   aria-label={`${dayWords}: ${events.map((e) => `${e.title}, ${stateName(e.state)}`).join("; ")}`}
                   title={events.map((e) => e.title).join(", ")}
-                  className={`flex min-h-8 w-full flex-wrap content-start items-start gap-1 rounded-md p-0.5 hover:bg-[var(--gray-50)] @min-[640px]:hidden ${past ? "opacity-60" : ""} ${FOCUS}`}
+                  className={`-mx-1 flex min-h-11 w-[calc(100%+0.5rem)] flex-wrap content-start items-start gap-1 rounded-md px-1.5 py-1 hover:bg-[var(--gray-50)] @min-[640px]:hidden ${past ? "opacity-60" : ""} ${FOCUS}`}
                 >
                   {events.slice(0, 6).map((e) => <StateDot key={e.id} k={e.state?.k} size={10} />)}
                 </button>

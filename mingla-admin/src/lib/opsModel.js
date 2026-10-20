@@ -1281,3 +1281,24 @@ export function brandMoreCount(answer, pageSize) {
   const left = Number(answer?.page?.left);
   return Number.isFinite(left) && left > 0 ? Math.min(pageSize, left) : pageSize;
 }
+
+/**
+ * Issue #3980 proof fix P2-3: the "counted from" line of a work card. A card
+ * counted from a repeating series names the series' next date that is not
+ * live yet with that date's plain state (or, when every kept date is live,
+ * the event matched to it), never the series' first date.
+ */
+export function cardAnchorWords(anchor) {
+  if (!anchor || typeof anchor !== "object") return null;
+  const day = anchor.start_on ? dayLabel(anchor.start_on) : "";
+  if (anchor.series) {
+    const st = anchor.state && anchor.state.name ? anchor.state.name : runwayLabel(anchor.runway);
+    const by = anchor.state && anchor.state.k === "notlive" && anchor.state.by ? `, live by ${dayLabel(anchor.state.by)}` : "";
+    return {
+      lead: anchor.is_public ? "Next date, live:" : "Next date to publish:",
+      title: anchor.title || anchor.series_title || "",
+      rest: `${day ? ` · ${day}` : ""} · ${st}${by}`,
+    };
+  }
+  return { lead: "Counted from", title: anchor.title || "", rest: `${day ? ` · ${day}` : ""} · ${runwayLabel(anchor.runway)}` };
+}

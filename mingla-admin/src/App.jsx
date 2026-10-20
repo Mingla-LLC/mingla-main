@@ -68,7 +68,7 @@ import { RefundOperationsPage } from "./pages/RefundOperationsPage";
 import { HostsPage, CreatorsPage } from "./pages/PipelinePage";
 import { DraftsPage } from "./pages/DraftsPage";
 import { WorkBoardPage } from "./pages/WorkBoardPage";
-import { AgentLogPage } from "./pages/AgentLogPage";
+import { AGENT_LOG_REDIRECT, AgentLogPage } from "./pages/AgentLogPage";
 // Issue #3802 (Wave 4) — connect your own agent (#/agent).
 import { AgentPage } from "./pages/AgentPage";
 import { GuidePage } from "./pages/GuidePage";
@@ -173,6 +173,14 @@ function canonicalizeLegacyCommunityHashes() {
     if (window.location.hash !== next) {
       window.history.replaceState(null, "", next);
     }
+    return;
+  }
+  // Issue #3980 (R8, proof fix P2-1) — an old Agent log link, opened fresh
+  // from a bookmark or a message, lands straight on Work > Agent activity.
+  // Rewriting it here, before any page is chosen, means the "keep the address
+  // honest" effect never writes #/agent-log back over the redirect.
+  if (page === "agent-log") {
+    window.history.replaceState(null, "", AGENT_LOG_REDIRECT);
   }
 }
 
