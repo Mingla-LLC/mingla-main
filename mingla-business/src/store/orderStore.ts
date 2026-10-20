@@ -164,6 +164,8 @@ export interface OrderRecord {
    * stays valid without a migrator.
    */
   ticketDays?: OrderTicketDayRecord[];
+  /** issue #3281 — open-daily booked start on the order, when set. */
+  bookedStartAt?: string | null;
   totalGbpAtPurchase: number;
   /** Currency-neutral alias for new ORCH-0769 records. */
   totalAtPurchase?: number;

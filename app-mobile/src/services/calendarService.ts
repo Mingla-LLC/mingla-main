@@ -443,7 +443,7 @@ export class CalendarService {
       .from("orders")
       .select(
         `
-          id, event_id, payment_status, created_at, ticket_pdf_path, event_date_id,
+          id, event_id, payment_status, created_at, ticket_pdf_path, event_date_id, booked_start_at,
           events!inner (
             id, title, slug, event_type, cover_media_url, timezone,
             location_text, location_geo, is_online, online_url,
@@ -478,6 +478,8 @@ export class CalendarService {
       // biz_ticket_checkout_finalize from the session's selected event_date_id).
       // NULL for single-date events / legacy orders → fall back to the master date.
       event_date_id: string | null;
+      // issue #3281 — open-daily guest-chosen start; NULL = legacy / slots.
+      booked_start_at: string | null;
       events: {
         id: string;
         title: string;
@@ -581,6 +583,17 @@ export class CalendarService {
             masterDateUtc: masterDate?.start_at ?? null,
             masterDateEndUtc: masterDate?.end_at ?? null,
           },
+        }).map((day) => {
+          // issue #3281 — experience open-daily: show the guest-chosen start
+          // (day-scoped and fallback alike). NULL keeps occurrence opening time.
+          if (
+            event?.event_type === "experience" &&
+            typeof order.booked_start_at === "string" &&
+            order.booked_start_at.length > 0
+          ) {
+            return { ...day, masterDateUtc: order.booked_start_at };
+          }
+          return day;
         });
 
         return daysToEmit.map((day) => {

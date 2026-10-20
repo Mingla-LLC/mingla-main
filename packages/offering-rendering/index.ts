@@ -227,6 +227,7 @@ export {
   EXPERIENCE_VIBE_LABELS,
   experienceVibeLabels,
   experiencePriceLabel,
+  experienceOptionPriceLabel,
   experienceAvailabilityBanner,
 } from "./ExperienceOfferingBody";
 export type { ExperienceOfferingBodyProps, RightNowFacts } from "./ExperienceOfferingBody";
@@ -239,11 +240,21 @@ export type { StopSpineProps } from "./StopSpine";
 export {
   experienceWindowMinutes,
   experienceTimeChoices,
+  experienceMinuteOffsetFromOpen,
+  experienceBookedStartIso,
+  experienceBookedEndIso,
+  experienceBlockChoicesThatFit,
   formatExperienceMinute,
   experienceZoneCityLabel,
   experienceZoneDiffersFromViewer,
 } from "./experienceTimeZone";
 export type { ExperienceWindowMinutes } from "./experienceTimeZone";
+export {
+  experiencePriceBasisLabel,
+  experienceOfferingOptions,
+  experienceBlockLengthLabel,
+  parseExperiencePriceBasis,
+} from "./experiencePriceBasis";
 export type {
   ExperienceOfferingData,
   ExperienceOfferingBrand,
@@ -251,6 +262,7 @@ export type {
   ExperienceOfferingTicket,
   ExperienceOfferingOccurrence,
   ExperienceOfferingCallbacks,
+  ExperiencePriceBasis,
 } from "./experienceOfferingTypes";
 
 // ===========================================================================

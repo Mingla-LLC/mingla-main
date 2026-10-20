@@ -317,6 +317,15 @@ export default function ConsumerExperienceDetailScreen({
   const [selectedEventDateId, setSelectedEventDateId] = useState<string | null>(
     null,
   );
+  const [selectedBookedStartAt, setSelectedBookedStartAt] = useState<
+    string | null
+  >(null);
+  const [selectedBookedEndAt, setSelectedBookedEndAt] = useState<string | null>(
+    null,
+  );
+  const [selectedPartySize, setSelectedPartySize] = useState<number | null>(
+    null,
+  );
   const [selectedQuantity, setSelectedQuantity] = useState<number>(1);
 
   // float→dock CTA visibility tracking (mirror the event screen 1:1).
@@ -619,6 +628,9 @@ export default function ConsumerExperienceDetailScreen({
 
   const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
     setSelectedEventDateId(eventDateId);
+    setSelectedBookedStartAt(null);
+    setSelectedBookedEndAt(null);
+    setSelectedPartySize(null);
     setSelectedQuantity(1);
     setOccurrencePickerVisible(false);
     setCartVisible(true);
@@ -632,6 +644,29 @@ export default function ConsumerExperienceDetailScreen({
   const handleReserveConfirm = useCallback(
     (sel: ExperienceReserveSelection): void => {
       setSelectedEventDateId(sel.eventDateId);
+      setSelectedBookedStartAt(
+        typeof sel.startAt === "string" && sel.startAt.length > 0
+          ? sel.startAt
+          : null,
+      );
+      setSelectedBookedEndAt(
+        typeof sel.bookedEndAt === "string" && sel.bookedEndAt.length > 0
+          ? sel.bookedEndAt
+          : null,
+      );
+      setSelectedPartySize(
+        typeof sel.partySize === "number" &&
+          Number.isFinite(sel.partySize) &&
+          sel.partySize >= 1
+          ? Math.floor(sel.partySize)
+          : null,
+      );
+      if (
+        typeof sel.ticketTypeId === "string" &&
+        sel.ticketTypeId.length > 0
+      ) {
+        setInitialTicketTypeId(sel.ticketTypeId);
+      }
       setSelectedQuantity(sel.quantity >= 1 ? Math.floor(sel.quantity) : 1);
       setReservePickerVisible(false);
       setCartVisible(true);
@@ -684,6 +719,15 @@ export default function ConsumerExperienceDetailScreen({
           // request byte-identical to a one-off / no-date experience.
           ...(selectedEventDateId !== null
             ? { eventDateId: selectedEventDateId }
+            : {}),
+          ...(selectedBookedStartAt !== null
+            ? { bookedStartAt: selectedBookedStartAt }
+            : {}),
+          ...(selectedBookedEndAt !== null
+            ? { bookedEndAt: selectedBookedEndAt }
+            : {}),
+          ...(selectedPartySize !== null
+            ? { partySize: selectedPartySize }
             : {}),
           // issue #2265 — feed the cart sheet's pending copy.
           onPhase: setCheckoutPhase,
@@ -764,6 +808,7 @@ export default function ConsumerExperienceDetailScreen({
           // Drop the stale selection + invalidate the fresh detail so the picker
           // re-materializes with live, future slots, then re-open the right one.
           setSelectedEventDateId(null);
+          setSelectedBookedStartAt(null);
           freshDetailQuery.refetch();
           if (openDaily) {
             setReservePickerVisible(true);
@@ -782,6 +827,9 @@ export default function ConsumerExperienceDetailScreen({
       user,
       runNativeCheckout,
       selectedEventDateId,
+      selectedBookedStartAt,
+      selectedBookedEndAt,
+      selectedPartySize,
       queryClient,
       openDaily,
       freshDetailQuery,
@@ -1073,6 +1121,59 @@ export default function ConsumerExperienceDetailScreen({
   // shared body's adaptive availability banner reads "Open daily" rather than
   // "{N} upcoming dates" with a past "Next" — the exact Seth-device symptom.
   offeringData.openDaily = openDaily;
+  // issue #3281 R2 — prefer fresh by-slug options when the public payload emits them.
+  if (
+    freshDetail !== null &&
+    Array.isArray(freshDetail.options) &&
+    freshDetail.options.length > 0
+  ) {
+    offeringData.options = freshDetail.options.map((opt) => ({
+      ticketTypeId: opt.ticketTypeId,
+      name: opt.name,
+      priceCents: opt.priceCents,
+      priceAllInCents: opt.priceAllInCents,
+      currency: opt.currency,
+      isFree: opt.isFree,
+      isUnlimited: opt.isUnlimited,
+      ticketsRemaining: opt.ticketsRemaining,
+      quantityTotal: opt.quantityTotal,
+      ...(opt.priceBasis !== undefined ? { priceBasis: opt.priceBasis } : {}),
+      ...(opt.blockMinutes !== undefined
+        ? { blockMinutes: opt.blockMinutes }
+        : {}),
+      ...(opt.minBlocks !== undefined ? { minBlocks: opt.minBlocks } : {}),
+      ...(opt.maxBlocks !== undefined ? { maxBlocks: opt.maxBlocks } : {}),
+      ...(opt.groupMax !== undefined ? { groupMax: opt.groupMax } : {}),
+    }));
+    if (freshDetail.ticket !== null) {
+      offeringData.ticket = {
+        ticketTypeId: freshDetail.ticket.ticketTypeId,
+        name: freshDetail.ticket.name,
+        priceCents: freshDetail.ticket.priceCents,
+        priceAllInCents: freshDetail.ticket.priceAllInCents,
+        currency: freshDetail.ticket.currency,
+        isFree: freshDetail.ticket.isFree,
+        isUnlimited: freshDetail.ticket.isUnlimited,
+        ticketsRemaining: freshDetail.ticket.ticketsRemaining,
+        quantityTotal: freshDetail.ticket.quantityTotal,
+        ...(freshDetail.ticket.priceBasis !== undefined
+          ? { priceBasis: freshDetail.ticket.priceBasis }
+          : {}),
+        ...(freshDetail.ticket.blockMinutes !== undefined
+          ? { blockMinutes: freshDetail.ticket.blockMinutes }
+          : {}),
+        ...(freshDetail.ticket.minBlocks !== undefined
+          ? { minBlocks: freshDetail.ticket.minBlocks }
+          : {}),
+        ...(freshDetail.ticket.maxBlocks !== undefined
+          ? { maxBlocks: freshDetail.ticket.maxBlocks }
+          : {}),
+        ...(freshDetail.ticket.groupMax !== undefined
+          ? { groupMax: freshDetail.ticket.groupMax }
+          : {}),
+      };
+    }
+  }
   const offeringBrand = buildExperienceOfferingBrandFromSeed(seed);
 
   // State banner driven by the resolved CTA (one owner — resolveOfferingCta).
@@ -1303,6 +1404,13 @@ export default function ConsumerExperienceDetailScreen({
             : null
         }
         currency={sellableTicket?.currency ?? seed.currency ?? null}
+        options={
+          Array.isArray(offeringData.options) && offeringData.options.length > 0
+            ? offeringData.options
+            : offeringData.ticket !== null
+              ? [offeringData.ticket]
+              : undefined
+        }
         onCancel={handleReserveCancel}
         onConfirm={handleReserveConfirm}
       />

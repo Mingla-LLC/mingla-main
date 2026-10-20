@@ -345,3 +345,27 @@ export function unfundedEligibleChannels({ channelRows = [], allocations = [], t
       return { platform: r.platform, label: r.label, viabilityCents, reason };
     });
 }
+
+/**
+ * Issue #3697 — the platforms whose provider-account currency governs BUDGET
+ * ENTRY. This is the picked, compliant, connected set with the budget floor
+ * ignored (`totalDailyCents: 0`): typing an amount digit by digit passes below
+ * the floor on the first keystroke, and the currency must not become
+ * "unresolved" (and the input disabled) because of the amount being typed.
+ * The floor still excludes the channel from allocations, so create stays
+ * blocked until the amount clears it.
+ */
+export function budgetCurrencyPlatforms({
+  planInput,
+  selectedPlatforms = null,
+  excluded = {},
+}) {
+  const floorAgnosticRows = planChannels({ ...planInput, totalDailyCents: 0 });
+  return applyChannelSelection({
+    channelRows: floorAgnosticRows,
+    selectedPlatforms,
+    excluded,
+  })
+    .filter((row) => row.eligible)
+    .map((row) => row.platform);
+}

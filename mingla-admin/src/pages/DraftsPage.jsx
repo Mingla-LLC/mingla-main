@@ -14,6 +14,11 @@ import { announceDraftMutation, useDraftCountValue } from "../hooks/useDraftCoun
 import * as service from "../services/draftService";
 import { DRAFT_STATES, draftErrorWords, remainingUndoMs } from "../lib/draftModel";
 import { useToast } from "../context/ToastContext";
+import { ReviewQueue } from "../components/ops/ReviewQueue";
+import { DraftNeededContext, DraftNeededList, draftNeededCards, useDraftNeededReview } from "../components/ops/DraftNeededList";
+import { parseReviewSearch } from "../lib/opsModel";
+import { announceReviewChange, useReviewCount } from "../hooks/useReviewCount";
+
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -32,6 +37,8 @@ function paramsFrom(search) {
 export function DraftsPage() {
   const [search, setSearch] = useHashQuery("drafts");
   const query = useMemo(() => paramsFrom(search), [search]);
+  const review = useMemo(() => parseReviewSearch(search), [search]);
+  const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : "");
   const online = useOnline();
   const reduced = useReducedMotion();
   const counts = useDraftCountValue();
@@ -103,20 +110,40 @@ export function DraftsPage() {
     setSearch(p.toString());
   };
 
-  const totalWaiting = Number(counts.data?.waiting || 0);
+  // #3980: the header counts exactly what the menu badge counts and the tabs
+  // list: waiting messages, cards that still need a draft, and cards waiting
+  // to spend or publish.
+  const reviewCount = useReviewCount();
+  const totalWaiting = reviewCount.total;
   const meta = `${totalWaiting} waiting`;
+  const reviewTabs = [
+    { value: "messages", label: "Messages" },
+    { value: "spend", label: "Spend or publish" },
+  ];
   const notFound = query.hasDraft && queue.loaded && !queue.error && (query.draftInvalid || queue.drafts.length === 0);
   const filtered = !!query.record;
   const loadedRecordName = queue.drafts.find((draft) => draft.record?.id === query.record)?.record?.name;
   const filterRecordName = loadedRecordName || "";
-  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
-  const emptyCopy = filtered ? "Clear the filter to see the full queue." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
+  // Cards listed under "Draft needed" are waiting too, so the empty queue
+  // below them never says "Nothing waiting." The copy follows the cards the
+  // list actually shows (one load, shared with the list), never the menu
+  // count, which can be slow, failing or out of date.
+  const draftNeededListed = review.tab !== "spend" && query.state === "waiting" && !filtered;
+  const draftNeeded = useDraftNeededReview({ enabled: draftNeededListed });
+  const draftNeededShown = draftNeededListed && draftNeededCards(draftNeeded).length > 0;
+  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
+  const emptyCopy = filtered ? "Clear the filter to see the full queue." : draftNeededShown ? "Ask your agent to write a draft for the cards above." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div ref={headingRef} tabIndex={-1}><PageHeader title="Drafts to send" description="Your agent writes. You review and send." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
+      <div ref={headingRef} tabIndex={-1}><PageHeader title="To review" description="Only what needs a person: messages to send, money to spend, events to publish." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
+      <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
+      {review.tab === "spend" ? (
+        <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
+      ) : (<DraftNeededContext.Provider value={draftNeeded}>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:!w-fit" /></div>
+      {query.state === "waiting" && !filtered && <DraftNeededList />}
       {filtered && <AlertCard variant="info" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); }}>Clear filter</Button>}>Showing drafts for {filterRecordName || "a record that is no longer available"}</AlertCard>}
       {!online && <div id="drafts-offline"><AlertCard variant="warning" title="You’re offline">{queue.drafts.length ? "You can read these drafts, but saving, marking, discarding, restoring and Undo need a connection." : "Drafts will load when you’re back online."}</AlertCard></div>}
       {queue.stale && <AlertCard variant="warning" title="Drafts may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => queue.refetch()}>Try again</Button>} />}
@@ -144,6 +171,7 @@ export function DraftsPage() {
           {(queue.nextCursor || queue.moreError) && <div className="flex flex-col items-center gap-2 pt-2">{queue.moreError && <p role="alert" className="text-[13px] font-semibold text-[var(--color-error-700)]">Couldn’t load more drafts.</p>}<Button type="button" variant="secondary" loading={queue.loadingMore} className="min-h-11" disabled={busyAny || queue.loadingMore} onClick={() => queue.loadMore()}>{queue.loadingMore ? "Loading more…" : queue.moreError ? "Try again" : "Show more"}</Button></div>}
         </>
       )}
+      </DraftNeededContext.Provider>)}
     </div>
   );
 }

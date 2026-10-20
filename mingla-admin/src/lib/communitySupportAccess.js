@@ -3,6 +3,14 @@ import {
   COMMUNITY_OPERATIONS_AREA,
   SUPPORT_OPERATIONS_AREA,
 } from "./access.js";
+import { COMMUNITY_SUPPORT_TAB_AREA } from "./communitySupportCapabilityContract.js";
+
+/**
+ * #3988 — the area that shows each tab. The server derives these areas from
+ * the same predicates that guard each tab's RPCs, so this filter never shows a
+ * tab the server will refuse. See communitySupportCapabilityContract.js.
+ */
+export const COMMUNITY_SUPPORT_TAB_CAPABILITY = COMMUNITY_SUPPORT_TAB_AREA;
 
 export function communitySupportCapabilities(access) {
   const areas = Array.isArray(access?.areas) ? access.areas : [];

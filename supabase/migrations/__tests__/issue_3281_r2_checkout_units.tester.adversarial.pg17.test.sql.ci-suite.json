@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_r2_checkout_units.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3281-12-r2-checkout-units-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

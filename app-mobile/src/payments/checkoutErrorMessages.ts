@@ -62,6 +62,43 @@ export const CHECKOUT_NO_HANDOFF_MESSAGE =
 export const CHECKOUT_FAILED_MESSAGE =
   "We couldn't start your payment. You have not been charged — please try again.";
 
+export const CHECKOUT_BOOKED_START_REQUIRED_MESSAGE =
+  "Choose a time within the open hours, then try again — you have not been charged.";
+
+export const CHECKOUT_BOOKED_START_INVALID_MESSAGE =
+  "That time is not available for this day. Pick another time — you have not been charged.";
+
+export const CHECKOUT_BOOKED_START_IN_PAST_MESSAGE =
+  "That time has already passed. Pick a later time — you have not been charged.";
+
+export const CHECKOUT_BOOKED_START_OFF_GRID_MESSAGE =
+  "That time is not on the available schedule. Pick one of the listed times — you have not been charged.";
+
+const BOOKED_START_MESSAGE_BY_TOKEN: Readonly<Record<string, string>> =
+  Object.assign(Object.create(null) as Record<string, string>, {
+    booked_start_required: CHECKOUT_BOOKED_START_REQUIRED_MESSAGE,
+    booked_start_invalid: CHECKOUT_BOOKED_START_INVALID_MESSAGE,
+    booked_start_in_past: CHECKOUT_BOOKED_START_IN_PAST_MESSAGE,
+    booked_start_off_grid: CHECKOUT_BOOKED_START_OFF_GRID_MESSAGE,
+  });
+
+const BOOKED_START_TOKENS_LONGEST_FIRST = Object.keys(
+  BOOKED_START_MESSAGE_BY_TOKEN,
+).sort((a, b) => b.length - a.length);
+
+/** RPC raise tokens in `detail` or bare `error` — issue #3281 open-daily start. */
+export const nativeCheckoutBookedStartRaiseMessage = (
+  ...candidates: ReadonlyArray<string | null | undefined>
+): string | undefined => {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || candidate.length === 0) continue;
+    for (const token of BOOKED_START_TOKENS_LONGEST_FIRST) {
+      if (candidate.includes(token)) return BOOKED_START_MESSAGE_BY_TOKEN[token];
+    }
+  }
+  return undefined;
+};
+
 // ---------------------------------------------------------------------------
 // issue #2264 — the RETURN LEG. Everything above answers "the server refused to
 // CREATE the checkout"; everything below answers "the buyer came back from
@@ -166,6 +203,10 @@ export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
   CHECKOUT_ALREADY_RESERVED_MESSAGE,
   CHECKOUT_NO_HANDOFF_MESSAGE,
   CHECKOUT_FAILED_MESSAGE,
+  CHECKOUT_BOOKED_START_REQUIRED_MESSAGE,
+  CHECKOUT_BOOKED_START_INVALID_MESSAGE,
+  CHECKOUT_BOOKED_START_IN_PAST_MESSAGE,
+  CHECKOUT_BOOKED_START_OFF_GRID_MESSAGE,
 ];
 
 /**
@@ -255,6 +296,12 @@ export const nativeCheckoutErrorMessage = (
   }
   if (token === "free_reservation_already_exists") {
     return CHECKOUT_ALREADY_RESERVED_MESSAGE;
+  }
+  if (token !== null && Object.prototype.hasOwnProperty.call(
+    BOOKED_START_MESSAGE_BY_TOKEN,
+    token,
+  )) {
+    return BOOKED_START_MESSAGE_BY_TOKEN[token];
   }
   // A 409 whose body we could not read still means "the server refused because
   // of the state of this sale", which is the recoverable in-progress case far

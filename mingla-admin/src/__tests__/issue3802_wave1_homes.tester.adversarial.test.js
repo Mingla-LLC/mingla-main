@@ -294,7 +294,8 @@ describe("#3802 TA-3: access for every combination of areas", () => {
   it("a role with the pipelines but not Beta leads sees the CRM-backed calendar and no Beta Leads", () => {
     const p = person(["role_home", "crm"]);
     const ids = visibleNavGroups(NAV_GROUPS, p).flatMap((g) => g.items.map((i) => i.id));
-    assert.deepEqual(ids, ["home", "hosts", "creators", "drafts", "content-calendar", "agent", "guide"]);
+    // [TEST-MOD-APPROVED #3980] the Work board and Agent log follow the crm area.
+    assert.deepEqual(ids, ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "content-calendar", "agent", "guide"]);
     const known = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id));
     assert.deepEqual(resolveRoute("beta-leads", p, known), { pageId: homePageFor(p), denied: true, requestedId: "beta-leads" });
     assert.deepEqual(resolveRoute("team-dashboard", p, known), { pageId: "home", denied: true, requestedId: "team-dashboard" });

@@ -106,6 +106,8 @@ $ratchet$;
 --       content_calendar_comment_add_with_mentions → explicit NULL (no SMS channel)
 --       issue_3720_community_add_comment    → explicit NULL (no SMS channel)
 --       create_support_ticket               → explicit NULL (no SMS channel)
+--       issue_3720_admin_update_idea        → explicit NULL (no SMS channel)
+--       issue_3720_admin_question_action    → explicit NULL (no SMS channel)
 --
 --     DRAIN-DERIVED — emits source-refund-pool rows carrying contact NULL by
 --     #1221's privacy design, so the recipient (and therefore the country) can
@@ -130,8 +132,11 @@ DECLARE
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',
+    'ops_notify_people',
     'issue_3720_community_add_comment',
-    'create_support_ticket'
+    'create_support_ticket',
+    'issue_3720_admin_update_idea',
+    'issue_3720_admin_question_action'
   ];
   drain_derived text[] := ARRAY[
     'admin_request_source_refund_attention_recovery'
@@ -233,8 +238,11 @@ DECLARE
     'issue_3720_send_brand_group_message',
     'issue_3720_complete_brand_group_file',
     'content_calendar_comment_add_with_mentions',
+    'ops_notify_people',
     'issue_3720_community_add_comment',
-    'create_support_ticket'
+    'create_support_ticket',
+    'issue_3720_admin_update_idea',
+    'issue_3720_admin_question_action'
   ];
   v_missing text;
 BEGIN

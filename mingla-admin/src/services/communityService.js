@@ -161,7 +161,8 @@ export async function getRoadmapNotificationStatus(campaignId = null) {
   return data;
 }
 
-// ── Community staff (moderator / agent) ──────────────────────────────────────
+// ── Community staff (retired by #3988) ───────────────────────────────────────
+// The server now answers role_retired; kept for one release only.
 
 export async function setCommunityStaff({
   userId,
@@ -303,6 +304,35 @@ export async function listAdminTeamRoster() {
   const { data, error } = await supabase.rpc("issue_3720_admin_team_roster");
   throwRpc(error);
   return data ?? [];
+}
+
+// ── #3988 People and roles ──────────────────────────────────────────────────
+// One Community & Support role per teammate (off | teammate | lead), stored in
+// support_staff and written only by these Owner/Admin RPCs. Errors are thrown
+// as-is so the panel can say what happened from the server code.
+
+export async function listPeopleAndPermissions() {
+  const { data, error } = await supabase.rpc("issue_3988_admin_people");
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function setPeoplePermissions({ userId, role, displayName = null }) {
+  const { data, error } = await supabase.rpc("issue_3988_set_permissions", {
+    p_user_id: userId,
+    p_role: role,
+    p_display_name: displayName,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] ?? null : data ?? null;
+}
+
+export async function removeOrphanStaff(userId) {
+  const { data, error } = await supabase.rpc("issue_3988_remove_orphan_staff", {
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return Number(data || 0);
 }
 
 // ── Overview helpers ─────────────────────────────────────────────────────────

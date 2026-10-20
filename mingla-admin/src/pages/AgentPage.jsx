@@ -44,6 +44,8 @@ import {
   AGENTS,
   AGENT_GUARDRAILS,
   AGENT_NOT_YET,
+  AGENT_WORK_ABILITIES,
+  AGENT_WORK_GUARDRAILS,
   AGENT_OFFLINE_WORDS,
   COPY_WAIT_MS,
   KEY_HIDDEN_AFTER_WORDS,
@@ -799,6 +801,22 @@ export function AgentPage() {
               </SectionCard>
             </div>
           </div>
+
+          <SectionCard title="Work and calendar" subtitle="On the Work board and the Calendar" noPadding>
+            <ul className="divide-y divide-[var(--gray-200)]">
+              {AGENT_WORK_ABILITIES.map((item) => (
+                <li key={item.tool} className="min-w-0 px-4 py-3 sm:px-5">
+                  <p className="text-sm font-medium text-[var(--color-text-primary)]">{item.title}</p>
+                  <p className="text-[13px] text-[var(--color-text-secondary)]">{item.detail}</p>
+                </li>
+              ))}
+            </ul>
+            <ul className="list-disc space-y-1.5 border-t border-[var(--gray-200)] py-3 pl-9 pr-4 text-[13px] text-[var(--color-text-secondary)] sm:pr-5">
+              {AGENT_WORK_GUARDRAILS.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </SectionCard>
 
           <SectionCard title="Try these routines">
             {guideRead.loading ? (

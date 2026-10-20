@@ -122,6 +122,13 @@ function CheckoutExperiencePaymentScreenContent({
     setLineQuantity,
     setBuyer,
     eventDateId,
+    setEventDateId,
+    bookedStartAt,
+    setBookedStartAt,
+    bookedEndAt,
+    setBookedEndAt,
+    partySize,
+    setPartySize,
     checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
@@ -162,6 +169,7 @@ function CheckoutExperiencePaymentScreenContent({
   const cartFingerprint = JSON.stringify({
     eventId: experienceEventId,
     eventDateId,
+    bookedStartAt,
     email: buyer.email.trim().toLowerCase(),
     phone: buyer.phone.trim(),
     lines: lines.map((l) => [l.ticketTypeId, l.quantity]),
@@ -202,6 +210,35 @@ function CheckoutExperiencePaymentScreenContent({
         });
       }
       setBuyer(payload.buyer);
+      // issue #3281 — restore occurrence + start together (provider-cancel).
+      if (
+        payload.eventDateId !== undefined &&
+        payload.eventDateId !== null &&
+        payload.eventDateId.length > 0
+      ) {
+        setEventDateId(payload.eventDateId);
+      }
+      if (
+        payload.bookedStartAt !== undefined &&
+        payload.bookedStartAt !== null &&
+        payload.bookedStartAt.length > 0
+      ) {
+        setBookedStartAt(payload.bookedStartAt);
+      }
+      if (
+        payload.bookedEndAt !== undefined &&
+        payload.bookedEndAt !== null &&
+        payload.bookedEndAt.length > 0
+      ) {
+        setBookedEndAt(payload.bookedEndAt);
+      }
+      if (
+        typeof payload.partySize === "number" &&
+        Number.isFinite(payload.partySize) &&
+        payload.partySize >= 1
+      ) {
+        setPartySize(Math.floor(payload.partySize));
+      }
     }
     setRestoreChecked(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,6 +409,9 @@ function CheckoutExperiencePaymentScreenContent({
           // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when the buyer
           // picked a slot (adaptive Reserve); null → request byte-identical.
           ...(eventDateId !== null ? { eventDateId } : {}),
+          ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+          ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+          ...(partySize !== null ? { partySize } : {}),
         });
         // issue #2190 — provider-neutral. Stripe brands answer with
         // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
@@ -398,6 +438,10 @@ function CheckoutExperiencePaymentScreenContent({
           buyerStatusToken: handoff.buyerStatusToken,
           lines,
           buyer,
+          ...(eventDateId !== null ? { eventDateId } : {}),
+          ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+          ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+          ...(partySize !== null ? { partySize } : {}),
         });
         if (assignLocation(handoff.redirectUrl)) return;
         // Sandbox / test environments where location.assign is unavailable.
@@ -454,6 +498,9 @@ function CheckoutExperiencePaymentScreenContent({
           : {}),
         // ORCH-1138 Leg 3 — chosen occurrence ONLY when present; null → identical.
         ...(eventDateId !== null ? { eventDateId } : {}),
+        ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+        ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+        ...(partySize !== null ? { partySize } : {}),
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -554,6 +601,9 @@ function CheckoutExperiencePaymentScreenContent({
     buyer,
     checkoutAttemptIdFor,
     eventDateId,
+    bookedStartAt,
+    bookedEndAt,
+    partySize,
     experienceEventId,
     lines,
     nativeCheckout,

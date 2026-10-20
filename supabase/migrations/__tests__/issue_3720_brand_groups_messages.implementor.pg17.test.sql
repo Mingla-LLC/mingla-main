@@ -35,6 +35,11 @@ INSERT INTO public.support_staff(user_id,enabled,available,display_name,role)
 SELECT id,true,true,display_name,'staff'
 FROM t3720_brand_people WHERE who IN ('support','dual');
 
+-- [TEST-MOD-APPROVED #3988] Support staff must also be on the Mingla team.
+INSERT INTO public.admin_team_members(email,role,status,accepted_at)
+SELECT email,'growth','active',now()
+FROM t3720_brand_people WHERE who IN ('support','dual');
+
 INSERT INTO public.brands(id,account_id,name,slug)
 VALUES
   ('37200000-0000-4000-b200-000000000001', '37200000-0000-4000-b100-000000000001', 'Acme Social', 'wave2-acme-social'),

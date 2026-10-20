@@ -298,7 +298,8 @@ describe("#3802 M-5: who may open Home, the Team dashboard and Beta leads", () =
   it("a page nobody listed is still owner and admin only", () => {
     assert.equal(areaForPage("a-page-added-tomorrow"), AREA.ADMIN_CONSOLE);
     assert.equal(canOpenPage(growth, "a-page-added-tomorrow"), false);
-    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "beta-leads", "content-calendar", "creators", "drafts", "guide", "home", "hosts"]);
+    // [TEST-MOD-APPROVED #3980] two new crm-area pages.
+    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "agent-log", "beta-leads", "content-calendar", "creators", "drafts", "guide", "home", "hosts", "work-board"]);
   });
   it("the Team dashboard is in the Team group for owner and admin only", () => {
     const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);

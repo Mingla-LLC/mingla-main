@@ -4,10 +4,8 @@
  *
  * Authoritative design: DESIGN_META-ORCH-1059_WIZARD_STOPS_PRICING.md §4.
  * A two-mode toggle: "One price for the whole experience" vs "Price each stop."
- * The buyer ALWAYS buys the whole itinerary → exactly ONE sellable ticket
- * (I-1). Per-stop prices are an itemised breakdown, never separate SKUs.
- * Per-stop price for stop i is the SAME field the Stops step edits (one source).
- * A persistent SoldAsOneSummary makes the single-ticket truth unmissable.
+ * issue #3281 R2 — whole mode also supports multiple price options with a unit
+ * (person | group | block). Per-stop prices remain person-only itemised breakdown.
  * WhoCoversCostsSection (the 3 pass/absorb switches) is kept VERBATIM.
  *
  * issue #3284 [refund terms] — a REFUND POLICY card follows WhoCoversCostsSection
@@ -41,14 +39,23 @@ import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import type { PricingSwitchOverrides } from "../../services/pricingSwitchesService";
 import type {
+  ExperienceBlockMinutes,
+  ExperiencePriceBasis,
+  ExperiencePriceOptionDraft,
   ExperiencePricingMode,
   ExperienceStopDraft,
+} from "./experienceWizardTypes";
+import {
+  EXPERIENCE_BLOCK_MINUTES,
+  emptyPriceOption,
 } from "./experienceWizardTypes";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
   priceDecimals,
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
+
+const MAX_PRICE_OPTIONS = 8;
 
 export interface ExperiencePricingStepProps {
   currencySymbol: string;
@@ -60,6 +67,11 @@ export interface ExperiencePricingStepProps {
   setStops: React.Dispatch<React.SetStateAction<ExperienceStopDraft[]>>;
   wholePriceMajor: string;
   setWholePriceMajor: (v: string) => void;
+  /** issue #3281 R2 — sellable price options (1..N). */
+  priceOptions: ExperiencePriceOptionDraft[];
+  setPriceOptions: React.Dispatch<
+    React.SetStateAction<ExperiencePriceOptionDraft[]>
+  >;
   isFree: boolean;
   setIsFree: (v: boolean) => void;
   capacity: string;
@@ -78,25 +90,15 @@ export interface ExperiencePricingStepProps {
   onEditDefaults: () => void;
   onSetupVat: () => void;
   showErrors: boolean;
-  // ORCH-1339 (D5) — the two guest-privacy display gates (controlled; the
-  // wizard parent owns state + persists via the setEventGuestPrivacy leaf-write
-  // RPC — NEVER through biz_publish_experience / biz_update_live_experience).
   privateGuestList: boolean;
   setPrivateGuestList: (v: boolean) => void;
   hideRemainingCount: boolean;
   setHideRemainingCount: (v: boolean) => void;
-  /** issue #3284 — the organiser's refund terms (wizard-owned; null = none). */
   refundPolicy: RefundPolicy | null;
   setRefundPolicy: (policy: RefundPolicy | null) => void;
-  /**
-   * issue #3284 — confirmed bookings on a LIVE experience (live-edit only). When
-   * above 0 the refund card shows the can't-make-terms-worse warning. Create and
-   * draft-edit pass nothing.
-   */
   liveSoldCount?: number;
 }
 
-// issue #3284 — design §4.5 organiser copy (experience variants).
 const REFUND_HELPER_PAID =
   "Guests see these terms before they book. You issue refunds from Orders — Mingla doesn't refund automatically yet.";
 const REFUND_HELPER_FREE =
@@ -118,6 +120,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   setStops,
   wholePriceMajor,
   setWholePriceMajor,
+  priceOptions,
+  setPriceOptions,
   isFree,
   setIsFree,
   capacity,
@@ -141,15 +145,76 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   liveSoldCount = 0,
 }) => {
   const n = stops.length;
+  const defaultOption = priceOptions[0];
+  const hasNonPersonOption = priceOptions.some(
+    (o) => !o.isHidden && o.priceBasis !== "person",
+  );
+  const perStopAllowed = !hasNonPersonOption;
 
   const resolvedTotalMajor = isFree
     ? 0
     : pricingMode === "whole"
-      ? num(wholePriceMajor)
+      ? num(defaultOption?.priceMajor ?? wholePriceMajor)
       : stops.reduce((sum, s) => sum + num(s.priceMajor), 0);
 
   const updateStopPrice = (i: number, v: string): void => {
     setStops((prev) => prev.map((s, idx) => (idx === i ? { ...s, priceMajor: v } : s)));
+  };
+
+  const patchOption = (
+    clientId: string,
+    patch: Partial<ExperiencePriceOptionDraft>,
+  ): void => {
+    setPriceOptions((prev) =>
+      prev.map((o) => (o.clientId === clientId ? { ...o, ...patch } : o)),
+    );
+    if (
+      defaultOption !== undefined &&
+      clientId === defaultOption.clientId &&
+      patch.priceMajor !== undefined
+    ) {
+      setWholePriceMajor(patch.priceMajor);
+    }
+    if (
+      patch.priceBasis !== undefined &&
+      patch.priceBasis !== "person" &&
+      pricingMode === "per_stop"
+    ) {
+      setPricingMode("whole");
+    }
+  };
+
+  const addPriceOption = (): void => {
+    if (priceOptions.length >= MAX_PRICE_OPTIONS) return;
+    setPriceOptions((prev) => [
+      ...prev,
+      emptyPriceOption({
+        name: `Option ${prev.length + 1}`,
+        priceMajor: "",
+        priceBasis: "person",
+        capacity: unlimited ? null : parseInt(capacity, 10) || null,
+      }),
+    ]);
+  };
+
+  const removeOrHideOption = (clientId: string): void => {
+    setPriceOptions((prev) => {
+      if (prev.length <= 1) return prev;
+      const target = prev.find((o) => o.clientId === clientId);
+      if (target === undefined) return prev;
+      if (target.soldCount > 0) {
+        return prev.map((o) =>
+          o.clientId === clientId ? { ...o, isHidden: true } : o,
+        );
+      }
+      const next = prev.filter((o) => o.clientId !== clientId);
+      // Removing the lead option promotes the next — mirror its price into
+      // wholePriceMajor so save/reopen stays coherent (#3281 Copilot).
+      if (prev[0]?.clientId === clientId && next[0] !== undefined) {
+        setWholePriceMajor(next[0].priceMajor);
+      }
+      return next;
+    });
   };
 
   const formatSummaryTotal = (major: number): string => {
@@ -168,27 +233,29 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         return `${currencySymbol}${major.toFixed(priceFallbackDecimals(major))}`;
       }
     }
-    // Brand has no currency yet (#3645): keep the symbol-only preview honest.
     const decimals = priceFallbackDecimals(major);
     return `${currencySymbol}${major.toFixed(decimals)}`;
   };
 
   const summaryCopy = (): string => {
     const t = formatSummaryTotal(resolvedTotalMajor);
+    const stopWord = n === 1 ? "stop" : "stops";
     if (isFree || resolvedTotalMajor === 0) {
-      return `Free for buyers — they get all ${n} stops in one booking.`;
+      return `Free for buyers — they get ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} in one booking.`;
+    }
+    if (priceOptions.filter((o) => !o.isHidden).length > 1) {
+      return `From ${t}. Buyers pick a price, then book the whole experience.`;
     }
     if (pricingMode === "whole") {
-      return `Buyers pay ${t} for all ${n} stops — one booking, the whole itinerary.`;
+      return `Buyers pay ${t} for ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} — one booking.`;
     }
-    return `Stops add up to ${t}. Buyers pay it once — one booking, the whole itinerary. They can't buy stops separately.`;
+    return `Stops add up to ${t}. Buyers pay it once — one booking, the whole experience. They can't buy stops separately.`;
   };
 
   return (
     <View style={styles.stepBody}>
       <Text style={styles.title}>Pricing</Text>
 
-      {/* PRICING MODE toggle */}
       <View style={styles.modeToggle} accessibilityRole="tablist">
         <Pressable
           onPress={() => setPricingMode("whole")}
@@ -202,19 +269,39 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => setPricingMode("per_stop")}
+          onPress={() => {
+            if (!perStopAllowed) return;
+            setPricingMode("per_stop");
+          }}
           accessibilityRole="tab"
-          accessibilityState={{ selected: pricingMode === "per_stop" }}
+          accessibilityState={{
+            selected: pricingMode === "per_stop",
+            disabled: !perStopAllowed,
+          }}
           accessibilityLabel="Price each stop"
-          style={[styles.modeSeg, pricingMode === "per_stop" && styles.modeSegActive]}
+          style={[
+            styles.modeSeg,
+            pricingMode === "per_stop" && styles.modeSegActive,
+            !perStopAllowed && styles.modeSegDisabled,
+          ]}
         >
-          <Text style={[styles.modeSegText, pricingMode === "per_stop" && styles.modeSegTextActive]}>
+          <Text
+            style={[
+              styles.modeSegText,
+              pricingMode === "per_stop" && styles.modeSegTextActive,
+              !perStopAllowed && styles.modeSegTextDisabled,
+            ]}
+          >
             Price each stop
           </Text>
         </Pressable>
       </View>
+      {!perStopAllowed ? (
+        <Text style={styles.helper}>
+          Group and time-block prices use one price for the whole experience.
+        </Text>
+      ) : null}
 
-      {/* MODE A — whole experience */}
       {pricingMode === "whole" ? (
         <>
           <ToggleRow
@@ -224,23 +311,44 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
           />
           {!isFree ? (
             <>
-              <Text style={styles.fieldLabel}>Price</Text>
-              <Input
-                variant="number"
-                value={wholePriceMajor}
-                onChangeText={setWholePriceMajor}
-                placeholder="0.00"
-                accessibilityLabel="Whole experience price"
-                leadingIcon="ticket"
-              />
-              {showErrors && num(wholePriceMajor) <= 0 ? (
-                <Text style={styles.inlineError}>Set a price, or mark the experience free.</Text>
+              {priceOptions.map((opt, idx) => (
+                <PriceOptionRow
+                  key={opt.clientId}
+                  option={opt}
+                  index={idx}
+                  canRemove={priceOptions.length > 1}
+                  currencySymbol={currencySymbol}
+                  showErrors={showErrors}
+                  onPatch={patchOption}
+                  onRemoveOrHide={removeOrHideOption}
+                />
+              ))}
+              {priceOptions.length < MAX_PRICE_OPTIONS ? (
+                <Pressable
+                  onPress={addPriceOption}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add another price"
+                  style={({ pressed }) => [
+                    styles.addPriceCta,
+                    pressed && styles.pressed,
+                  ]}
+                  testID="experience-pricing-add-price"
+                >
+                  <Icon name="plus" size={18} color={accent.warm} />
+                  <Text style={styles.addPriceText}>Add another price</Text>
+                </Pressable>
+              ) : null}
+              {showErrors &&
+              num(defaultOption?.priceMajor ?? wholePriceMajor) <= 0 &&
+              !isFree ? (
+                <Text style={styles.inlineError}>
+                  Set a price, or mark the experience free.
+                </Text>
               ) : null}
             </>
           ) : null}
         </>
       ) : (
-        /* MODE B — per-stop */
         <>
           <Text style={styles.sectionLabel}>PER-STOP PRICES</Text>
           {stops.map((s, i) => (
@@ -270,7 +378,6 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         </>
       )}
 
-      {/* Capacity (both modes) */}
       <ToggleRow
         label="Unlimited spots"
         value={unlimited}
@@ -294,13 +401,11 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         </>
       ) : null}
 
-      {/* SoldAsOneSummary — the single-ticket anchor */}
       <View style={styles.summaryCard}>
         <Icon name="ticket" size={18} color={accent.warm} />
         <Text style={styles.summaryText}>{summaryCopy()}</Text>
       </View>
 
-      {/* WhoCoversCostsSection — VERBATIM (total-aware previewBaseCents) */}
       <WhoCoversCostsSection
         format="experience"
         overrides={pricingSwitches}
@@ -314,7 +419,6 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         onSetupVat={onSetupVat}
       />
 
-      {/* issue #3284 — Refund policy (after who-covers-costs, before guest privacy). */}
       <GlassCard
         variant="base"
         radius="lg"
@@ -352,10 +456,6 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
         </GlassCard>
       ) : null}
 
-      {/* ORCH-1339 (D5) — Guest privacy settings section, appended after the
-          pricing sections. Reuses the file's own ToggleRow (sub-capable).
-          Persisted by the wizard parent via biz_set_event_guest_privacy (leaf
-          write). Copy per SPEC §4.8 — byte-exact. */}
       <Text style={styles.sectionLabel}>GUEST PRIVACY</Text>
       <ToggleRow
         label="Private guest list"
@@ -375,9 +475,250 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   );
 };
 
+interface PriceOptionRowProps {
+  option: ExperiencePriceOptionDraft;
+  index: number;
+  canRemove: boolean;
+  currencySymbol: string;
+  showErrors: boolean;
+  onPatch: (
+    clientId: string,
+    patch: Partial<ExperiencePriceOptionDraft>,
+  ) => void;
+  onRemoveOrHide: (clientId: string) => void;
+}
+
+const BASIS_OPTIONS: readonly {
+  id: ExperiencePriceBasis;
+  label: string;
+}[] = [
+  { id: "person", label: "Person" },
+  { id: "group", label: "Group" },
+  { id: "block", label: "Block" },
+];
+
+const PriceOptionRow: React.FC<PriceOptionRowProps> = ({
+  option,
+  index,
+  canRemove,
+  currencySymbol,
+  showErrors,
+  onPatch,
+  onRemoveOrHide,
+}) => {
+  const cid = option.clientId;
+  const priceLocked = option.soldCount > 0;
+  const unitError =
+    showErrors &&
+    option.priceBasis === "group" &&
+    (option.groupMax < 2 || option.groupMax > 50)
+      ? "Group size must be 2–50 people."
+      : showErrors &&
+          option.priceBasis === "block" &&
+          option.maxBlocks < option.minBlocks
+        ? "Longest booking must be at least the shortest."
+        : undefined;
+
+  return (
+    <GlassCard
+      variant="base"
+      radius="lg"
+      padding={spacing.md}
+      style={option.isHidden ? styles.optionHidden : undefined}
+      testID={`experience-price-option-${index}`}
+    >
+      <View style={styles.optionHeader}>
+        <Text style={styles.optionTitle}>
+          {option.name.trim().length > 0 ? option.name : `Price ${index + 1}`}
+          {option.isHidden ? " (hidden)" : ""}
+        </Text>
+        {canRemove ? (
+          <Pressable
+            onPress={() => onRemoveOrHide(cid)}
+            accessibilityRole="button"
+            accessibilityLabel={
+              option.soldCount > 0 ? "Hide price" : "Remove price"
+            }
+            hitSlop={8}
+            style={styles.optionRemove}
+          >
+            <Icon
+              name={option.soldCount > 0 ? "eye" : "trash"}
+              size={18}
+              color={semantic.error}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {index > 0 ? (
+        <>
+          <Text style={styles.fieldLabel}>Name</Text>
+          <Input
+            variant="text"
+            value={option.name}
+            onChangeText={(v) => onPatch(cid, { name: v })}
+            placeholder="e.g. Private hire"
+            accessibilityLabel={`Price ${index + 1} name`}
+          />
+        </>
+      ) : null}
+
+      <Text style={styles.fieldLabel}>Price</Text>
+      <Input
+        variant="number"
+        value={option.priceMajor}
+        onChangeText={(v) => onPatch(cid, { priceMajor: v })}
+        placeholder="0.00"
+        accessibilityLabel={
+          index === 0 ? "Whole experience price" : `Price for option ${index + 1}`
+        }
+        leadingIcon="ticket"
+        disabled={priceLocked}
+      />
+      {priceLocked ? (
+        <Text style={styles.helper}>
+          {option.soldCount} booking{option.soldCount === 1 ? "" : "s"} — price
+          and unit are locked. You can hide this option.
+        </Text>
+      ) : (
+        <Text style={styles.helper}>
+          {currencySymbol.trim().length > 0
+            ? `Buyers see ${currencySymbol} amounts.`
+            : "Your currency is set when you choose a payout country."}
+        </Text>
+      )}
+
+      <Text style={styles.fieldLabel}>Unit</Text>
+      <View style={styles.basisToggle} accessibilityRole="tablist">
+        {BASIS_OPTIONS.map((b) => {
+          const active = option.priceBasis === b.id;
+          return (
+            <Pressable
+              key={b.id}
+              onPress={() => {
+                if (priceLocked) return;
+                onPatch(cid, { priceBasis: b.id });
+              }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active, disabled: priceLocked }}
+              accessibilityLabel={`${b.label} price`}
+              style={[styles.basisSeg, active && styles.basisSegActive]}
+            >
+              <Text
+                style={[
+                  styles.basisSegText,
+                  active && styles.basisSegTextActive,
+                ]}
+              >
+                {b.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {option.priceBasis === "group" ? (
+        <>
+          <Text style={styles.fieldLabel}>Up to N people</Text>
+          <Input
+            variant="number"
+            value={String(option.groupMax)}
+            onChangeText={(v) => {
+              const parsed = parseInt(v.replace(/[^\d]/g, ""), 10);
+              onPatch(cid, {
+                groupMax: Number.isFinite(parsed)
+                  ? Math.min(50, Math.max(2, parsed))
+                  : 2,
+              });
+            }}
+            placeholder="4"
+            accessibilityLabel="Maximum people per group"
+            disabled={priceLocked}
+          />
+          <Text style={styles.helper}>Buyers book one group of up to this many.</Text>
+        </>
+      ) : null}
+
+      {option.priceBasis === "block" ? (
+        <>
+          <Text style={styles.fieldLabel}>Block length</Text>
+          <View style={styles.basisToggle} accessibilityRole="tablist">
+            {EXPERIENCE_BLOCK_MINUTES.map((m) => {
+              const active = option.blockMinutes === m;
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => {
+                    if (priceLocked) return;
+                    onPatch(cid, {
+                      blockMinutes: m as ExperienceBlockMinutes,
+                    });
+                  }}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active, disabled: priceLocked }}
+                  accessibilityLabel={`${m} minute blocks`}
+                  style={[styles.basisSeg, active && styles.basisSegActive]}
+                >
+                  <Text
+                    style={[
+                      styles.basisSegText,
+                      active && styles.basisSegTextActive,
+                    ]}
+                  >
+                    {m}m
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.fieldLabel}>Shortest booking (blocks)</Text>
+          <Input
+            variant="number"
+            value={String(option.minBlocks)}
+            onChangeText={(v) => {
+              const parsed = parseInt(v.replace(/[^\d]/g, ""), 10) || 1;
+              onPatch(cid, { minBlocks: Math.max(1, parsed) });
+            }}
+            placeholder="1"
+            accessibilityLabel="Shortest booking in blocks"
+            disabled={priceLocked}
+          />
+          <Text style={styles.fieldLabel}>Longest booking (blocks)</Text>
+          <Input
+            variant="number"
+            value={String(option.maxBlocks)}
+            onChangeText={(v) => {
+              const parsed = parseInt(v.replace(/[^\d]/g, ""), 10) || 1;
+              onPatch(cid, { maxBlocks: Math.max(1, parsed) });
+            }}
+            placeholder="4"
+            accessibilityLabel="Longest booking in blocks"
+            disabled={priceLocked}
+          />
+        </>
+      ) : null}
+
+      {option.isHidden ? (
+        <Pressable
+          onPress={() => onPatch(cid, { isHidden: false })}
+          accessibilityRole="button"
+          accessibilityLabel="Show this price again"
+          style={styles.unhideCta}
+        >
+          <Text style={styles.addPriceText}>Show this price again</Text>
+        </Pressable>
+      ) : null}
+
+      {unitError !== undefined ? (
+        <Text style={styles.inlineError}>{unitError}</Text>
+      ) : null}
+    </GlassCard>
+  );
+};
+
 interface ToggleRowProps {
   label: string;
-  /** ORCH-1339 — optional sub-copy line under the label. */
   sub?: string;
   value: boolean;
   onToggle: () => void;
@@ -442,6 +783,81 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   modeSegTextActive: { color: textTokens.primary },
+  modeSegDisabled: { opacity: 0.4 },
+  modeSegTextDisabled: { color: textTokens.tertiary },
+  helper: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+  },
+  optionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xs,
+  },
+  optionTitle: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  optionRemove: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionHidden: { opacity: 0.55 },
+  basisToggle: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    backgroundColor: glass.tint.profileBase,
+    borderRadius: radius.md,
+    padding: spacing.xxs,
+  },
+  basisSeg: {
+    flex: 1,
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  basisSegActive: {
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  basisSegText: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  basisSegTextActive: { color: textTokens.primary },
+  addPriceCta: {
+    minHeight: 48,
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: accent.border,
+  },
+  addPriceText: {
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
+  },
+  unhideCta: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: spacing.xs,
+  },
+  pressed: { opacity: 0.7 },
   fieldLabel: {
     fontSize: typography.caption.fontSize,
     fontWeight: "500",
@@ -489,7 +905,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   toggleLabel: { flex: 1, fontSize: typography.body.fontSize, color: textTokens.primary },
-  // ORCH-1339 — label + sub column for the guest-privacy rows.
   toggleLabelCol: { flex: 1, marginRight: spacing.sm },
   toggleSub: {
     fontSize: typography.caption.fontSize,
@@ -534,14 +949,12 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xxs,
   },
-  // issue #3284 — refund honesty helper, pulled 4pt toward the card (parent gap 16).
   refundHelper: {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
     marginTop: -spacing.xs,
   },
-  // issue #3284 — refund sales banner (copied from the trip settings accordion).
   refundSalesBanner: {
     borderColor: semantic.warning,
     borderWidth: 1,

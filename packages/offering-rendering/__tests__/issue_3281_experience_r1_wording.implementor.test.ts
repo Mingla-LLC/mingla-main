@@ -31,9 +31,18 @@ Deno.test("#3281 R1: Lagos 10:00–18:00 window is zone-correct (not viewer loca
   assert(w !== null);
   assertEquals(w!.open, 10 * 60);
   assertEquals(w!.close, 18 * 60);
-  const choices = experienceTimeChoices(start, end, "Africa/Lagos", 60);
+  // End-exclusive: 10:00–18:00 with 60m steps offers through 17:00, matching
+  // SQL `booked_start_at < end_at` (issue #3281). Pin nowMs before the window
+  // so the "future-only" filter does not empty a historical fixture day.
+  const choices = experienceTimeChoices(
+    start,
+    end,
+    "Africa/Lagos",
+    60,
+    Date.parse(start),
+  );
   assertEquals(choices[0], 10 * 60);
-  assertEquals(choices[choices.length - 1], 18 * 60);
+  assertEquals(choices[choices.length - 1], 17 * 60);
   assertEquals(formatExperienceMinute(10 * 60), "10:00 AM");
 });
 
@@ -68,12 +77,17 @@ Deno.test("#3281 R1: StopSpine shows shared-after-book copy when address null", 
   assertStringIncludes(spine, "EXPERIENCE_ADDRESS_SHARED_AFTER_BOOK");
 });
 
+// [TEST-MOD-APPROVED #3281] Round 2 (#3996) moved the unit label into
+// experiencePriceBasisLabel (per person | per group | per N min). The body must
+// use that helper, and the helper must still default to "per person".
 Deno.test("#3281 R1: ExperienceOfferingBody one-stop copy + per person + gate anchor", async () => {
   const body = await read("../ExperienceOfferingBody.tsx");
   assertStringIncludes(body, "(8) The itinerary");
   assertStringIncludes(body, "What you'll do");
   assertStringIncludes(body, '"EXPERIENCE"');
-  assertStringIncludes(body, "per person");
+  assertStringIncludes(body, "experiencePriceBasisLabel(");
+  const basis = await read("../experiencePriceBasis.ts");
+  assertStringIncludes(basis, 'return "per person";');
   assertStringIncludes(body, "priceDecimals");
 });
 

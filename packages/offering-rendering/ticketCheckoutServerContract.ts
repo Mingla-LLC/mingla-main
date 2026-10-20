@@ -42,6 +42,12 @@ export function canonicalCheckoutV2FingerprintInput(input: {
   lines: CanonicalCheckoutLine[];
   eventDateId: string | null;
   eventDateIds: readonly string[];
+  /** issue #3281 — open-daily start; omit/empty keeps fingerprint identical. */
+  bookedStartAt?: string | null;
+  /** issue #3281 R2 — block hire end; omit/empty keeps fingerprint identical. */
+  bookedEndAt?: string | null;
+  /** issue #3281 R2 — group party; omit/non-positive keeps fingerprint identical. */
+  partySize?: number | null;
   intakeFormData: unknown;
   quote: {
     currency: string;
@@ -58,6 +64,18 @@ export function canonicalCheckoutV2FingerprintInput(input: {
       canonicalJson(a).localeCompare(canonicalJson(b))
     )
     : input.intakeFormData;
+  const bookedStart = typeof input.bookedStartAt === "string"
+    ? input.bookedStartAt.trim()
+    : "";
+  const bookedEnd = typeof input.bookedEndAt === "string"
+    ? input.bookedEndAt.trim()
+    : "";
+  const party =
+    typeof input.partySize === "number" &&
+      Number.isFinite(input.partySize) &&
+      input.partySize >= 1
+      ? Math.trunc(input.partySize)
+      : null;
   return canonicalJson({
     contractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
     eventId: input.eventId,
@@ -68,6 +86,9 @@ export function canonicalCheckoutV2FingerprintInput(input: {
     lines,
     eventDateId: input.eventDateId,
     eventDateIds: [...input.eventDateIds].sort(),
+    ...(bookedStart.length > 0 ? { bookedStartAt: bookedStart } : {}),
+    ...(bookedEnd.length > 0 ? { bookedEndAt: bookedEnd } : {}),
+    ...(party !== null ? { partySize: party } : {}),
     intakeFormData,
     quote: input.quote,
   });

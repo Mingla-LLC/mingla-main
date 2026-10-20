@@ -194,7 +194,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             <IconBtn
               icon="trash"
               onPress={() => onRemove(cid)}
-              disabled={n <= 2}
+              disabled={n <= 1}
               label="Remove stop"
               tint={semantic.error}
             />

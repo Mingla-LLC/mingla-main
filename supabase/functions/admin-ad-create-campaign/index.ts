@@ -173,6 +173,12 @@ import {
 } from "../_shared/adMoney.ts";
 import type { Platform } from "../_shared/adChannelCore.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
+import {
+  boundPlanCampaignCurrency,
+  boundPlanMoney,
+  type BoundPlanOwnership,
+  campaignPersistBrandId,
+} from "../_shared/adPlanCampaignBinding.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -482,7 +488,7 @@ type Wave2MoneyPersist = {
   currency: string;
   plan_version_id?: string;
   plan_hash?: string;
-  host_currency?: string;
+  host_currency?: string | null;
   provider_currency?: string;
   host_budget_cents?: number;
   provider_budget_cents?: number;
@@ -881,6 +887,9 @@ serve(async (req: Request): Promise<Response> => {
   // #3697 (C-13) — the creative the verified frozen plan version carries.
   let frozenCreativeLibraryId: string | null = null;
   let boundPlanHash: string | null = null;
+  // #3697: once a plan is bound, its owner_kind/brand_id are the only
+  // ownership authority for the ad_campaigns row (see adPlanCampaignBinding).
+  let boundPlanOwnership: BoundPlanOwnership | null = null;
   let planMoney: Omit<
     Wave2MoneyPersist,
     | "brand_id"
@@ -957,6 +966,34 @@ serve(async (req: Request): Promise<Response> => {
         { error: "plan_conflict", detail: "plan_binding_incomplete" },
         409,
       );
+    }
+    // #3697: one provider create per plan hash. A repeat (double click, a
+    // retry after a lost response, or a plan already in platform_review) must
+    // never reach the provider again; a terminal attempt needs reconciliation.
+    const [{ data: existingPlanCampaign }, { data: priorAttempt }] =
+      await Promise.all([
+        supabase.from("ad_campaigns").select("id")
+          .eq("plan_version_id", planVersionId).eq("platform", platform)
+          .limit(1).maybeSingle(),
+        supabase.from("ad_provider_attempts").select("state")
+          .eq("platform", platform)
+          .eq("idempotency_key", `${planHash}:${platform}:create`)
+          .maybeSingle(),
+      ]);
+    if (existingPlanCampaign) {
+      return json({
+        error: "plan_conflict",
+        detail: "provider_campaign_already_exists",
+      }, 409);
+    }
+    if (
+      priorAttempt?.state === "succeeded" ||
+      priorAttempt?.state === "failed_terminal"
+    ) {
+      return json({
+        error: "plan_conflict",
+        detail: `provider_attempt_${priorAttempt.state}`,
+      }, 409);
     }
     const suppliedIntent = body.audience_intent;
     if (
@@ -1058,19 +1095,18 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
     providerAmountCents = providerDeliveryAmount as number;
-    customerCurrency = String(allocation.host_currency);
-    planMoney = {
-      plan_version_id: planVersionId,
-      plan_hash: planHash,
-      host_currency: String(allocation.host_currency),
-      provider_currency: String(allocation.provider_currency),
-      host_budget_cents: Number(allocation.host_budget_cents),
-      provider_budget_cents: Number(allocation.provider_budget_cents),
-      provider_delivery_budget_cents: providerAmountCents,
-      fx_snapshot_id: allocation.fx_snapshot_id
-        ? String(allocation.fx_snapshot_id)
-        : null,
+    boundPlanOwnership = {
+      owner_kind: plan.owner_kind === "host" ? "host" : "mingla",
+      brand_id: typeof plan.brand_id === "string" ? plan.brand_id : null,
     };
+    customerCurrency = boundPlanCampaignCurrency(boundPlanOwnership, allocation);
+    planMoney = boundPlanMoney({
+      plan: boundPlanOwnership,
+      allocation,
+      planVersionId,
+      planHash,
+      providerDeliveryBudgetCents: providerAmountCents,
+    });
   } else if (requestedOwnerKind === "host") {
     const authority = await resolveAdBrandCurrency(supabase, requestedBrandId);
     if (!authority.ok) {
@@ -1508,9 +1544,11 @@ serve(async (req: Request): Promise<Response> => {
         // (7) Persist ONE campaign+ad_set+ad row set — objective DEMAND_GEN, PAUSED.
         const moneyGV: Wave2MoneyPersist = {
           // toward #3697 Wave 4 — marketing never binds a Host brands row.
-          brand_id: pageTypeGV === "marketing"
-            ? null
-            : await resolveBrandIdForSlug(supabase, brandSlugGV),
+          brand_id: await campaignPersistBrandId(
+            boundPlanOwnership,
+            pageTypeGV,
+            () => resolveBrandIdForSlug(supabase, brandSlugGV),
+          ),
           ...wave2MoneyBase,
         };
         const { data: campaignRowGV, error: campaignErrGV } = await supabase
@@ -2101,9 +2139,11 @@ serve(async (req: Request): Promise<Response> => {
 
       // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyG: Wave2MoneyPersist = {
-        brand_id: pageTypeG === "marketing"
-          ? null
-          : await resolveBrandIdForSlug(supabase, brandSlugG),
+        brand_id: await campaignPersistBrandId(
+          boundPlanOwnership,
+          pageTypeG,
+          () => resolveBrandIdForSlug(supabase, brandSlugG),
+        ),
         ...wave2MoneyBase,
       };
       const { data: campaignRowG, error: campaignErrG } = await supabase
@@ -2930,9 +2970,11 @@ serve(async (req: Request): Promise<Response> => {
 
       // (7) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyS: Wave2MoneyPersist = {
-        brand_id: pageTypeS === "marketing"
-          ? null
-          : await resolveBrandIdForSlug(supabase, brandSlugS),
+        brand_id: await campaignPersistBrandId(
+          boundPlanOwnership,
+          pageTypeS,
+          () => resolveBrandIdForSlug(supabase, brandSlugS),
+        ),
         ...wave2MoneyBase,
       };
       const { data: campaignRowS, error: campaignErrS } = await supabase
@@ -3814,9 +3856,11 @@ serve(async (req: Request): Promise<Response> => {
 
       // (9) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyT: Wave2MoneyPersist = {
-        brand_id: pageTypeT === "marketing"
-          ? null
-          : await resolveBrandIdForSlug(supabase, brandSlugT),
+        brand_id: await campaignPersistBrandId(
+          boundPlanOwnership,
+          pageTypeT,
+          () => resolveBrandIdForSlug(supabase, brandSlugT),
+        ),
         ...wave2MoneyBase,
       };
       const { data: campaignRowT, error: campaignErrT } = await supabase
@@ -4368,9 +4412,11 @@ serve(async (req: Request): Promise<Response> => {
 
       // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyR: Wave2MoneyPersist = {
-        brand_id: pageTypeR === "marketing"
-          ? null
-          : await resolveBrandIdForSlug(supabase, brandSlugR),
+        brand_id: await campaignPersistBrandId(
+          boundPlanOwnership,
+          pageTypeR,
+          () => resolveBrandIdForSlug(supabase, brandSlugR),
+        ),
         ...wave2MoneyBase,
       };
       const { data: campaignRowR, error: campaignErrR } = await supabase
@@ -5040,9 +5086,11 @@ serve(async (req: Request): Promise<Response> => {
 
     // ── Persist ONE campaign+ad_set+ad row set (only now that all IDs exist). ──
     const metaMoney: Wave2MoneyPersist = {
-      brand_id: pageType === "marketing"
-        ? null
-        : await resolveBrandIdForSlug(supabase, brandSlug),
+      brand_id: await campaignPersistBrandId(
+        boundPlanOwnership,
+        pageType,
+        () => resolveBrandIdForSlug(supabase, brandSlug),
+      ),
       ...wave2MoneyBase,
     };
     const { data: campaignRow, error: campaignInsertError } = await supabase
@@ -5123,7 +5171,22 @@ serve(async (req: Request): Promise<Response> => {
       if (campaignRow) {
         await supabase.from("ad_campaigns").delete().eq("id", campaignRow.id);
       }
-      // QA P2-5: the account-level creative does NOT cascade with the campaign.
+      // #3697: on a persist failure the ad EXISTS and still references the
+      // creative, and Meta refuses to delete a creative an ad is using. So the
+      // campaign goes FIRST (it cascades the ad set and ad), then the now
+      // unreferenced account-level creative (QA P2-5: it never cascades).
+      let rollbackOk = false;
+      try {
+        if (adapter.rollbackCampaign) {
+          await adapter.rollbackCampaign(
+            connection,
+            created.externalCampaignId,
+          );
+          rollbackOk = true;
+        }
+      } catch {
+        rollbackOk = false;
+      }
       let creativeRollbackOk: boolean | null = null;
       if (created.externalCreativeId && adapter.rollbackCreative) {
         try {
@@ -5137,18 +5200,6 @@ serve(async (req: Request): Promise<Response> => {
         }
       } else if (created.externalCreativeId) {
         creativeRollbackOk = false;
-      }
-      let rollbackOk = false;
-      try {
-        if (adapter.rollbackCampaign) {
-          await adapter.rollbackCampaign(
-            connection,
-            created.externalCampaignId,
-          );
-          rollbackOk = true;
-        }
-      } catch {
-        rollbackOk = false;
       }
       await supabase.from("ad_status_events").insert({
         campaign_id: null,
@@ -5171,6 +5222,9 @@ serve(async (req: Request): Promise<Response> => {
         ),
         provider_response: {
           db_error: persistError.message,
+          // #3697: say whether the paying objects are gone, separately from
+          // the inert creative residue, so reconciliation is not a guess.
+          campaign_rolled_back: rollbackOk,
           ...(creativeRollbackOk === false
             ? { creative_residue_id: created.externalCreativeId }
             : {}),

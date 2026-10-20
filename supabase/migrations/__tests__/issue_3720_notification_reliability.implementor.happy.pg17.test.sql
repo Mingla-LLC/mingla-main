@@ -104,6 +104,16 @@ values
   )
 on conflict do nothing;
 
+-- [TEST-MOD-APPROVED #3988] Support alerts reach staff who are on the team;
+-- the support fixtures are current Sales and marketing teammates.
+insert into public.admin_team_members (email, role, status, accepted_at)
+values
+  ('offline-staff-3720n@example.com', 'growth', 'active', now()),
+  ('online-staff-3720n@example.com', 'growth', 'active', now()),
+  ('disabled-staff-3720n@example.com', 'growth', 'active', now()),
+  ('requester-3720n@example.com', 'growth', 'active', now())
+on conflict do nothing;
+
 insert into public.support_staff (user_id, enabled, available, role)
 values
   ('e3720000-0000-4000-8000-000000000105', true, false, 'staff'),

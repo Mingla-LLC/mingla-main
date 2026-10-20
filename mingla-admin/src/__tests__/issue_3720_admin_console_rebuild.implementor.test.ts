@@ -55,7 +55,8 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assertMatch(composer, /userType: "host"/);
   assertMatch(composer, /Explorer users/);
   assertMatch(composer, /Insert ▾/);
-  assertMatch(team, /Community role[\s\S]+Support[\s\S]+Available now[\s\S]+Last active/);
+  // [TEST-MOD-APPROVED #3988] One "Community & Support" role column replaces the two role columns.
+  assertMatch(team, /Community &amp; Support[\s\S]+Available[\s\S]+Last active/);
   assertNotMatch(team, />\{row[.]user_id\}</);
   assertMatch(guide, /Apply evidence packet/);
   assertMatch(guide, /pinned Mingla GitHub URL/);

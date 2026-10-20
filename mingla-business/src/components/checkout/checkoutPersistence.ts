@@ -40,6 +40,18 @@ export interface CheckoutResumePayload {
    * which now names the days, would have had nothing to name.
    */
   eventDateIds?: string[];
+  /**
+   * issue #3281 — singular experience occurrence the open-daily picker chose.
+   * Optional for older entries; restore with `bookedStartAt` so a provider
+   * cancel does not retry a start without its date.
+   */
+  eventDateId?: string | null;
+  /** issue #3281 — open-daily booked start (ISO). Optional for older entries. */
+  bookedStartAt?: string | null;
+  /** issue #3281 R2 — block hire end (ISO). Optional for older entries. */
+  bookedEndAt?: string | null;
+  /** issue #3281 R2 — guest party size. Optional for older entries. */
+  partySize?: number | null;
 }
 
 export const checkoutResumeStorageKey = (eventId: string): string =>
@@ -87,7 +99,19 @@ export const isCheckoutResumePayload = (
     // whole payload rather than half-restoring a checkout.
     (v.eventDateIds === undefined ||
       (Array.isArray(v.eventDateIds) &&
-        v.eventDateIds.every((id) => typeof id === "string")))
+        v.eventDateIds.every((id) => typeof id === "string"))) &&
+    (v.eventDateId === undefined ||
+      v.eventDateId === null ||
+      typeof v.eventDateId === "string") &&
+    (v.bookedStartAt === undefined ||
+      v.bookedStartAt === null ||
+      typeof v.bookedStartAt === "string") &&
+    (v.bookedEndAt === undefined ||
+      v.bookedEndAt === null ||
+      typeof v.bookedEndAt === "string") &&
+    (v.partySize === undefined ||
+      v.partySize === null ||
+      (typeof v.partySize === "number" && Number.isFinite(v.partySize)))
   );
 };
 

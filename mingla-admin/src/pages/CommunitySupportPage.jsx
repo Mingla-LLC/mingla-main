@@ -27,6 +27,7 @@ import {
   CommunitySupportNavigation,
 } from "../components/community/CommunitySupportNavigation";
 import { useAuth } from "../context/AuthContext";
+import { AREA } from "../lib/access";
 import {
   communitySupportCapabilities,
   communitySupportTabsForAccess,
@@ -39,6 +40,7 @@ import {
   setSupportAvailable,
 } from "../services/communityService";
 import { changeSupportAvailability } from "../lib/supportAvailability";
+import { AVAILABLE_OFF_MESSAGE, AVAILABLE_ON_MESSAGE } from "../lib/supportAvailability";
 
 const COMMUNITY_SUPPORT_TABS = [
   { id: "overview", label: "Overview" },
@@ -65,6 +67,40 @@ function tabFromCommunityHash() {
   return communitySupportTabFromHash(window.location.hash, TAB_IDS);
 }
 
+/**
+ * #3988 — a teammate's own view of their Community & Support role. Every card
+ * here leads to a tab the server lets them open; nothing is counted or faked
+ * (the counts dashboard stays Admin-only).
+ */
+function TeammateOverview({ isLead, onGoTab }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <SectionCard title="Community">
+        <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
+          <p>
+            As a Support {isLead ? "lead" : "teammate"} you also look after the Community: review
+            Hosts' first posts and reports, answer Questions and update Ideas.
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => onGoTab("moderation")}>
+            Open Moderation
+          </Button>
+        </div>
+      </SectionCard>
+      <SectionCard title="Support">
+        <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">
+          <p>
+            Answer Host chats and tickets. While you're available, you get an alert for every
+            new ticket and reply.
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => onGoTab("support")}>
+            Open Tickets
+          </Button>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
 function communitySupportHashForTab(tabId) {
   const id = TAB_IDS.has(tabId) ? tabId : "overview";
   return `#/community-support?tab=${id}`;
@@ -75,6 +111,10 @@ export function CommunitySupportPage() {
   const [requestedTab, setRequestedTab] = useState(() => tabFromCommunityHash());
   const [navCounts, setNavCounts] = useState({});
   const [myAvailable, setMyAvailable] = useState(false);
+  const [myStaffRole, setMyStaffRole] = useState(null);
+  // Bumped after the signed-in admin changes their own availability so the
+  // People and roles list shows their new rota state.
+  const [peopleRefreshKey, setPeopleRefreshKey] = useState(0);
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [availabilityError, setAvailabilityError] = useState(null);
   const visibleTabs = useMemo(
@@ -86,6 +126,9 @@ export function CommunitySupportPage() {
     ? requestedTab
     : defaultTab;
   const capabilities = communitySupportCapabilities(access);
+  // Inviting is the Owner's team_manage power (the same area Admin → Team uses).
+  const canInvite = Array.isArray(access?.areas) && access.areas.includes(AREA.TEAM_MANAGE);
+  const isLead = myStaffRole === "lead";
 
   useEffect(() => {
     if (!capabilities.isAdmin) return;
@@ -108,7 +151,10 @@ export function CommunitySupportPage() {
     if (!capabilities.canSupport || !session?.user?.id) return;
     let cancelled = false;
     void listSupportStaffRoster().then((rows) => {
-      if (!cancelled) setMyAvailable(Boolean(rows.find((row) => row.user_id === session.user.id)?.available));
+      if (cancelled) return;
+      const mine = rows.find((row) => row.user_id === session.user.id);
+      setMyAvailable(Boolean(mine?.enabled && mine?.available));
+      setMyStaffRole(mine?.enabled ? mine.role : null);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [capabilities.canSupport, session?.user?.id]);
@@ -124,6 +170,7 @@ export function CommunitySupportPage() {
     setMyAvailable(result.available);
     setAvailabilityError(result.message);
     setAvailabilityBusy(false);
+    if (!result.message) setPeopleRefreshKey((key) => key + 1);
   }
 
   useEffect(() => {
@@ -165,7 +212,9 @@ export function CommunitySupportPage() {
         description={capabilities.isAdmin
           ? "Talk to hosts, show what's coming, and answer tickets. One place."
           : capabilities.canSupport && capabilities.canCommunity
-            ? "Your assigned Community and Support workspace."
+            ? isLead
+              ? "You're a Support lead: you work both Community and Support, and approve support issues for the product team."
+              : "You're a Support teammate: you work both Community and Support."
             : capabilities.canSupport
               ? "Your assigned Host support workspace."
               : "Your assigned Community workspace."}
@@ -206,19 +255,15 @@ export function CommunitySupportPage() {
         >
           {availabilityError}
         </p>
+      ) : capabilities.canSupport ? (
+        <p className="text-sm text-[var(--color-text-secondary)]" aria-live="polite">
+          {myAvailable ? AVAILABLE_ON_MESSAGE : AVAILABLE_OFF_MESSAGE}
+        </p>
       ) : null}
 
       {activeTab === "overview" && capabilities.isAdmin && <OverviewPanel onGoTab={changeTab} />}
       {activeTab === "overview" && !capabilities.isAdmin && (
-        <SectionCard title="Community access is active">
-          <div className="space-y-2 text-sm text-[var(--color-text-secondary)]">
-            <p>You are approved for Mingla Community work.</p>
-            <p>
-              Announcement publishing, roadmap management, email, and team settings remain
-              Admin-only. Use Moderation for first-post review, reports, and appeals.
-            </p>
-          </div>
-        </SectionCard>
+        <TeammateOverview isLead={isLead} onGoTab={changeTab} />
       )}
       {activeTab === "announcements" && <AnnouncementsPanel />}
       {activeTab === "roadmap" && <RoadmapPanel />}
@@ -234,7 +279,7 @@ export function CommunitySupportPage() {
       )}
       {activeTab === "brand-groups" && <BrandGroupsPanel />}
       {activeTab === "email" && <EmailPage embedded />}
-      {activeTab === "team" && <TeamRolesPanel />}
+      {activeTab === "team" && capabilities.isAdmin && <TeamRolesPanel canInvite={canInvite} refreshKey={peopleRefreshKey} />}
     </div>
   );
 }
