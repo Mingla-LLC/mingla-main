@@ -485,6 +485,8 @@ Deno.test("#3980 tester G3: only a trusted person's Live check after the merge c
   assertEquals(data.live_check.by_login, "teammate");
   assertEquals(data.live_check.text, "newest from a member");
   gh.comments.set(3980, (gh.comments.get(3980) ?? []).filter((c) => c.user.login !== "teammate"));
+  gh.addComment(3980, "Live check: a stranger has the newest word", "stranger", "User", "NONE", "2026-10-21T16:00:00Z");
+  gh.addComment(3980, "Live check: a first-time contributor too", "newcomer", "User", "FIRST_TIME_CONTRIBUTOR", "2026-10-21T16:05:00Z");
   await runScript("record.mjs", "comment_live_check_3980.json", gh);
   const again = readRecordData(records(gh, 3980)[0].body);
   assertEquals(again.live_check.by_login, "sethogieva");
