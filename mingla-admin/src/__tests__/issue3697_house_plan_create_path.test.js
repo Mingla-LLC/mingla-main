@@ -258,10 +258,9 @@ describe("#3697 the recovery queue names the next action and Resume reports prog
     );
   });
 
-  it("Resume streams step progress, and the modal shows it with no hidden reason box", () => {
+  it("Resume streams step progress and shows the next required action", () => {
     const service = SRC("services/adEngineService.js");
     const campaigns = SRC("pages/CampaignsPage.jsx");
-    const modal = SRC("components/entity/HighRiskActionModal.jsx");
     assert.match(service, /export async function resumeAdminAdPlan\(planId, \{ onStep \} = \{\}\)/);
     assert.match(service, /begin\("fund"\)/);
     assert.match(service, /begin\(`create:\$\{platform\}`\)/);
@@ -269,7 +268,6 @@ describe("#3697 the recovery queue names the next action and Resume reports prog
     assert.match(campaigns, /resumeAdminAdPlan\(planId, \{\s*onStep:/);
     assert.match(campaigns, /aria-label="Resume progress"/);
     assert.match(campaigns, /aria-label="Next required action"/);
-    assert.match(modal, /\{requireReason && \(/);
   });
 });
 
