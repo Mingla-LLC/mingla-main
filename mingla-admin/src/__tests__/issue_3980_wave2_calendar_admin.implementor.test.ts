@@ -90,23 +90,22 @@ Deno.test("#3980 W2 opsService stays the only caller, now for the Calendar and h
 });
 
 Deno.test("#3980 W2 the Calendar: new title, layer chips, two columns, the panel, the legend; content views kept", () => {
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): month first with four plain states; Events | Posts | Both and
+  // Month | List | Posts board replace the layers; the legend names the states;
+  // the content views keep their address values.
   const page = read("pages/ContentCalendarPage.jsx");
-  assertMatch(page, /<PageHeader title="Calendar" description="What is on Mingla, what hosts have promised, and what we post and promote\."/);
-  assertMatch(page, /<CalendarLayers layers=\{route\.layers\} onToggle=\{toggleLayer\} \/>/);
-  assertMatch(page, /<TwoColumn ref=\{eventDetailRef\}[\s\S]*<CalendarView[\s\S]*extras=\{eventLayers\}[\s\S]*<RunwayLegend \/>[\s\S]*<EventPanel/);
+  assertMatch(page, /<PageHeader title="Calendar" description="Every host’s events, and whether each is live early enough to promote\."/);
+  assertMatch(page, /<TwoColumn ref=\{eventDetailRef\} detailLabel="Event details" list=\{box\} detail=\{right\} \/>/);
+  assertMatch(page, /<MonthGrid [\s\S]*<Legend [\s\S]*<StateList [\s\S]*<PostsList /);
   assertMatch(page, /view: \["calendar", "board", "list"\]/);
-  assertMatch(page, /<CalendarView[\s\S]*<BoardView[\s\S]*<ListView/);
-  assertMatch(page, /hidden overflow-x-auto[\s\S]*md:block/);
+  assertMatch(page, /<BoardView items=\{calendar\.items\}/);
   assertMatch(page, /md:hidden">Stage:/);
-  assertMatch(page, /Nothing scheduled\./);
-  assertMatch(page, /"Go live: "|d\.label/);
+  assertMatch(page, /Nothing on this day\./);
   assertNotMatch(page, /ad_plans|ad_campaigns/);
-  const layers = read("components/ops/CalendarLayers.jsx");
-  assertMatch(layers, /aria-pressed=\{on\}/);
-  for (const words of ["28+ days: full launch", "21 to 27: tight", "Under 21: organic only", "Expected"]) assert(layers.includes(words), words);
+  for (const words of ["Ready to promote", "Promote now", "Too late for promo", "Not live yet"]) assert(read("lib/opsModel.js").includes(words), words);
   const panel = read("components/ops/EventPanel.jsx");
-  for (const words of ["Runway", "Launch kit", "Open host card", "Back to runway", "promised on the host card", "public since"]) {
-    assert(panel.includes(words), words);
+  for (const words of ["Runway", "Open host", "Back to runway", "Steps (made by themselves)"]) {
+    assert(panel.includes(words) || read("components/ops/EventSteps.jsx").includes(words), words);
   }
   assertNotMatch(panel, /Plan this launch/);
 });
@@ -122,19 +121,26 @@ Deno.test("#3980 W2 new ops components use tokens only and no overlay", () => {
 
 Deno.test("#3980 W2 the host card's On Mingla section: hosts only, its words, none of the banned ones", () => {
   const section = read("components/crm/OnMinglaSection.jsx");
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R1 host card, artifact hostCard()): the brand link words, upcoming dated
+  // things with their state, Add their first|next|another event, Work on this host.
   for (const words of [
     "On Mingla",
-    "Link the brand above to see its events.",
-    "No events on Mingla yet.",
-    "Expected next event",
-    "Cancel expected event",
-    "for the giveaway and ads. Until then it shows dashed on the Calendar.",
+    "Brand linked",
+    "Not on Mingla yet",
+    "When they sign up with this email, phone or handle, Mingla links the brand by itself.",
+    "No upcoming event.",
+    "Cancel this promised event",
+    "Save. Steps and Calendar fill in by themselves",
+    "Saved. It’s on the Calendar and its steps are in Work.",
     "Work on this host",
-    "No open work. Ask your agent to plan the next launch.",
+    "Nothing open.",
   ]) assert(section.includes(words), words);
   for (const banned of ["Drafts to send", "Draft, not sent", "@mention", "mention", "will get an email", "Getting started"]) {
     assert(!section.includes(banned), banned);
   }
   const drawer = read("components/crm/RecordDrawer.jsx");
-  assertMatch(drawer, /\{isHosts && <OnMinglaSection key=\{`on-mingla-\$\{record\.id\}`\} record=\{record\} online=\{online\} \/>\}\s*<RecentTouchNotice/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (artifact hostCard()): On Mingla now opens the host card,
+  // above its fields, with Assign to me and Fill in; hosts only.
+  assertMatch(drawer, /\{isHosts && \(\s*<OnMinglaSection\s+key=\{`on-mingla-\$\{record\.id\}`\}\s+record=\{record\}/);
+  assert(drawer.indexOf("<OnMinglaSection") < drawer.indexOf("<RecentTouchNotice"), "On Mingla comes before the touch notice");
 });

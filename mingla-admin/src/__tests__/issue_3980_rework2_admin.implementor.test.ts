@@ -128,21 +128,17 @@ Deno.test("#3980 rework 2: Title and Done means grow with their text", () => {
 Deno.test("#3980 rework 2: Calendar chip titles wrap by whole words, two lines, then an ellipsis", () => {
   const page = code("pages/ContentCalendarPage.jsx");
   assertNotMatch(page, /hyphens-auto|overflow-wrap:anywhere|break-all|break-words hyphens/);
-  for (const name of ["CONTENT_CHIP", "EVENT_CHIP"]) {
-    const line = page.match(new RegExp(`const ${name} = "([^"]+)"`));
-    assert(line, name);
-    assertMatch(line[1], /\bbreak-normal\b/, name);
-    assertMatch(line[1], /\bhyphens-none\b/, name);
-    assertMatch(line[1], /\boverflow-hidden\b/, name);
-    assertNotMatch(line[1], /break-words/, name);
-  }
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): month items are a dot and a title (MonthGrid); words keep whole.
+  assertMatch(page, /const WORDS = "break-normal \[overflow-wrap:normal\] hyphens-none";/);
+  assertNotMatch(page, /break-words/);
   const chip = page.slice(page.indexOf("function ChipWords"), page.indexOf("function useCoarsePointer"));
   assertMatch(chip, /line-clamp-2/);
   assertMatch(chip, /split\(\/\\s\+\/\)/);
   assertMatch(chip, /inline-block max-w-full truncate/);
-  assertMatch(page, /title=\{item\.title\} className=\{`\$\{CONTENT_CHIP\} min-h-6`\}><ChipWords text=\{item\.title\} \/>/);
-  assertMatch(page, /aria-label=\{words\} title=\{label\}/);
-  assertMatch(page, /<ChipWords text=\{label\} \/><\/button>\);/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): posts and events in the month both draw ChipWords, full title on hover.
+  assertMatch(page, /title=\{e\.title\}[^>]*>\s*<ChipWords text=\{e\.title\} \/>/);
+  assertMatch(page, /title=\{`\$\{e\.title\} · \$\{stateName\(e\.state\)\}`\}/);
+  assertMatch(page, /<ChipWords text=\{e\.title\} \/>\s*<\/button>/);
 });
 
 Deno.test("#3980 rework 2: To review counts exactly what its tabs list", () => {
@@ -169,7 +165,8 @@ Deno.test("#3980 rework 2: Back to runway returns focus to what opened the panel
   assertMatch(page, /"data-calendar-chip", "data-calendar-more", "data-calendar-day-dense", "data-calendar-date", "data-runway-row"/);
   assertMatch(page, /target\?\.focus\?\.\(\);/);
   assertMatch(page, /if \(!target \|\| document\.activeElement !== target\) eventHeadingRef\.current\?\.focus\?\.\(\);/);
-  assertMatch(page, /data-calendar-chip=\{`\$\{id\}-\$\{mode\}`\}/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): one chip id per event or promised date in the month.
+  assertMatch(page, /data-calendar-chip=\{e\.id\}/);
   assertMatch(page, /data-calendar-more=\{key\}/);
   const panel = code("components/ops/EventPanel.jsx");
   assertMatch(panel, /const RunwayList = forwardRef\(function RunwayList\(\{ onSelect \}, headingRef\)/);

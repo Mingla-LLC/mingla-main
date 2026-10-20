@@ -1578,10 +1578,11 @@ begin
   -- Who writes each table, by name, in every schema.
   for w in
     select * from (values
-      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update'),
+      -- [TEST-MOD-APPROVED #3980] D-9: brand auto-link (ops_brand_autolink_one) is the one new writer of crm_records and crm_activity.
+      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update,public.ops_brand_autolink_one'),
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
       ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
-      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.team_draft_unsend'),
+      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.ops_brand_autolink_one,public.team_draft_unsend'),
       ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)
   loop

@@ -21,6 +21,8 @@
 
 \set ON_ERROR_STOP on
 begin;
+-- [TEST-MOD-APPROVED #3980] X3: follow-through counts from the switch-on time; these G5 checks run as if it was switched on long ago.
+update public.ops_settings set value = to_jsonb(now() - interval '400 days') where key = 'follow_through_since';
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;

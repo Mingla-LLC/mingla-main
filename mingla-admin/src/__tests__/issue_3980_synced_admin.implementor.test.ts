@@ -78,7 +78,8 @@ Deno.test("#3980 synced F3 and D-4: work cards link GitHub safely and show the w
   assert(!/The claim ends at/.test(detail), "the 30-minute card claim line is gone");
   const add = read("components/ops/WorkAddForm.jsx");
   assertMatch(add, /out\.github = github\.map\(\(g\) => g\.input\)/);
-  const log = read("pages/AgentLogPage.jsx");
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R8): the Agent log is the Agent activity tab on Work.
+  const log = read("components/ops/AgentActivity.jsx");
   assertMatch(log, /title="Working right now"/);
   assertMatch(log, /agentName\(c\.holder_name, c\.holder_via, c\.holder_chat_label\)/);
   assertMatch(read("components/ops/LogRow.jsx"), /agentName\(entry\.actor_name, entry\.via, entry\.chat_label\)/);

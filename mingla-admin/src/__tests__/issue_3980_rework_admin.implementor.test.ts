@@ -66,7 +66,8 @@ Deno.test("#3980 rework: the note box sends the picks, not the team, and shows e
   assertMatch(box, /mentionedEmails\(picks, text\)/);
   assertNotMatch(box, /mentionedEmails\(team/);
   assertMatch(box, /setPicks\(\(list\) => \[\.\.\.list, \{ email: p\.email, name: p\.name, token \}\]\)/);
-  assertMatch(box, /\{p\.email\}<\/span>/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R9): the @ list is MentionBox; each row names the teammate's address.
+  assertMatch(code("components/people/MentionBox.jsx"), /aria-label=\{`Mention \$\{shownName\(p, team\)\}, \$\{p\.email\}`\}/);
   assertMatch(box, /setPicks\(\[\]\)/);
   const model = code("lib/opsModel.js");
   assertNotMatch(model, /new RegExp\(`\(\^\|\\\\s\)@\$\{p\.name/);
@@ -84,42 +85,34 @@ Deno.test("#3980 rework: My agent says what closing a card really needs", () => 
 });
 
 Deno.test("#3980 rework: the month grid beside the event panel never scrolls sideways", () => {
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): the month is MonthGrid inside an @container box; seven
+  // columns that may shrink, at most two items a day then "+N more" (the day
+  // opens in the right column), one 10px dot per event under 760px.
   const page = code("pages/ContentCalendarPage.jsx");
-  const start = page.indexOf('data-calendar-grid="panel"');
-  assert(start > 0, "the panel grid exists");
-  const panelGrid = page.slice(start, page.indexOf(": <div className=\"hidden overflow-x-auto", start));
-  assertMatch(panelGrid, /grid-cols-\[repeat\(7,minmax\(0,1fr\)\)\]/);
-  assertNotMatch(panelGrid, /min-w-\[700px\]|overflow-x-auto/);
-  assertNotMatch(panelGrid, /<ContentCard /);
-  assertMatch(panelGrid, /DAY_CHIP_LIMIT/);
-  assertMatch(panelGrid, /onDay\?\.\(key\)/);
-  assertMatch(panelGrid, /more<\/button>/);
-  // The old breakpoint swap that lost to md:hidden is gone.
-  assertNotMatch(page, /min-\[1180px\]:block 2xl:hidden|min-\[1180px\]:hidden 2xl:block/);
-  assertMatch(page, /const DAY_CHIP_LIMIT = 3;/);
-  assertMatch(page, /withPanel onDay=\{openDay\}/);
+  const start = page.indexOf('data-calendar-grid="month"');
+  assert(start > 0, "the month grid exists");
+  const grid = page.slice(start, page.indexOf("function Legend", start));
+  assertMatch(grid, /grid-cols-\[repeat\(7,minmax\(0,1fr\)\)\]/);
+  assertNotMatch(grid, /min-w-\[700px\]|overflow-x-auto/);
+  assertNotMatch(grid, /<ContentCard /);
+  assertMatch(page, /const DAY_LIMIT = 2;/);
+  assertMatch(grid, /onClick=\{\(\) => onDay\(key\)\}/);
+  assertMatch(grid, /more<\/button>/);
   assertMatch(page, /<DayPanel /);
-  // A day opened from "+N more" is in the address, so Back and reload keep it.
   assertMatch(page, /p\.set\("day", key\)/);
-  // Chips wrap by whole words only, never letter by letter and never
-  // hyphenated (rework 2: two lines, then an ellipsis).
   assertNotMatch(page, /overflow-wrap:anywhere|break-all|hyphens-auto/);
-  assertMatch(page, /const CONTENT_CHIP = "block w-full min-w-0 overflow-hidden break-normal hyphens-none /);
-  assertMatch(page, /const EVENT_CHIP = "block w-full min-w-0 overflow-hidden break-normal hyphens-none /);
-  // Where the grid is too narrow for words, each day shows one bar per entry
-  // and opens in the panel. The container classes are written out whole, or
-  // Tailwind never generates them.
-  assertMatch(panelGrid, /@container hidden min-w-0/);
-  assertMatch(panelGrid, /hidden min-w-0 space-y-1 @min-\[630px\]:block/);
-  assertMatch(panelGrid, /data-calendar-day-dense=\{key\} onClick=\{\(\) => onDay\?\.\(key\)\}/);
-  assertMatch(panelGrid, /@min-\[630px\]:hidden/);
+  assertMatch(page, /"@container min-w-0 overflow-hidden rounded-xl/);
+  assertMatch(grid, /hidden min-w-0 flex-col gap-0\.5 @min-\[760px\]:flex/);
+  assertMatch(grid, /data-calendar-day-dense=\{key\}/);
+  assertMatch(grid, /@min-\[760px\]:hidden/);
   assertNotMatch(page, /\$\{[A-Z_]+\}:(?:block|hidden|min-h)/);
-  assertMatch(page, /if \(mode === "dense"\)/);
 });
 
 Deno.test("#3980 rework: status chips in the event panel never wrap", () => {
   const panel = code("components/ops/EventPanel.jsx");
-  assertMatch(panel, /<OpsChip tone=\{chip\.tone\} className="shrink-0 whitespace-nowrap">/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): the panel's state pill never wraps (StatePill is whitespace-nowrap).
+  assertMatch(panel, /<StatePill state=\{data\.state\} \/>/);
+  assertMatch(code("components/ops/StateDot.jsx"), /inline-flex min-h-6 items-center gap-1\.5 whitespace-nowrap rounded-full/);
   assertMatch(panel, /tone=\{c\.status === "done" \? "success" : c\.blocked \? "error" : "brand"\} className="shrink-0 whitespace-nowrap"/);
 });
 
