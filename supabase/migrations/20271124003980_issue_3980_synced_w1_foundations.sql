@@ -3104,8 +3104,11 @@ $f1sync3980$;
 -- one they were made in move to this week, each with a history line. A card
 -- whose week a person or agent chose by hand is left where it is.
 -- ---------------------------------------------------------------------------
-DO $d3sync3980$
-DECLARE c public.ops_work_cards; n public.ops_work_cards; v_today date := (now() AT TIME ZONE 'UTC')::date; v_cur uuid;
+-- The correction is a function so the rule is tested, not only applied.
+CREATE FUNCTION public.ops_sprint_correct() RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE c public.ops_work_cards; n public.ops_work_cards; v_today date := (now() AT TIME ZONE 'UTC')::date; v_cur uuid; v_moved integer := 0;
 BEGIN
   v_cur := public.ops_sprint_ensure(v_today);
   FOR c IN SELECT w.* FROM public.ops_work_cards w JOIN public.ops_sprints s ON s.id = w.sprint_id
@@ -3114,16 +3117,26 @@ BEGIN
               AND s.starts_on > public.ops_monday(v_today)
               AND NOT EXISTS (SELECT 1 FROM public.ops_work_events e
                                WHERE e.card_id = w.id AND e.action NOT IN ('added', 'carried')
+                                 AND e.after IS NOT NULL AND e.before IS NOT NULL
                                  AND e.before->'fields'->>'sprint_id' IS DISTINCT FROM e.after->'fields'->>'sprint_id'
-                                 AND e.before->'fields'->>'due_on' IS NOT DISTINCT FROM e.after->'fields'->>'due_on'
-                                 AND e.after IS NOT NULL AND e.before IS NOT NULL)
+                                 AND e.before->'fields'->>'due_on' IS NOT DISTINCT FROM e.after->'fields'->>'due_on')
             ORDER BY w.number FOR UPDATE OF w LOOP
     UPDATE public.ops_work_cards w SET sprint_id = v_cur, revision = revision + 1, updated_by = 'system@usemingla.com',
            updated_via = 'system', updated_at = now()
      WHERE w.id = c.id RETURNING w.* INTO n;
     PERFORM public.ops_card_event(c.id, 'system@usemingla.com', 'system', 'sprint_moved',
       'Moved to this week: a card belongs to the week it is made, not the week it is due.', NULL, NULL, c.revision, n.revision);
+    v_moved := v_moved + 1;
   END LOOP;
+  RETURN v_moved;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.ops_sprint_correct() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_sprint_correct() TO service_role;
+
+DO $d3sync3980$
+BEGIN
+  PERFORM public.ops_sprint_correct();
 END;
 $d3sync3980$;
 
