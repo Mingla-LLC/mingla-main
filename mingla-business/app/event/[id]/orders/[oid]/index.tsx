@@ -41,11 +41,6 @@ import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRo
 import { formatCurrency } from "../../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../../src/utils/deferAfterDismiss";
 import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
-import {
-  GuestListError,
-  guestListErrorCopy,
-  resendGuestListTicket,
-} from "../../../../../src/services/guestListService";
 import { isCompOrder } from "../../../../../src/utils/compOrders";
 import { useCurrentBrandRole } from "../../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../../src/utils/permissionGates";
@@ -182,6 +177,13 @@ const formatRelativeDay = (iso: string): string => {
   });
 };
 
+// issue #3827 — the guest-list client loads on first use, so it stays out of
+// the business-web boot chunk (__common ceiling, orch-1083).
+const loadGuestList = () => import("../../../../../src/services/guestListService");
+const FALLBACK_COPY = "Something went wrong. Nothing was charged. Try again. Guests already added won't be added twice.";
+const guestListMessage = (error: unknown, fallback: string = FALLBACK_COPY): string =>
+  error instanceof Error && error.name === "GuestListError" ? error.message : fallback;
+
 const newResendRequestId = (): string => {
   const cryptoLike = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
   if (cryptoLike?.randomUUID) return cryptoLike.randomUUID();
@@ -291,10 +293,10 @@ export default function OrderDetailRoute(): React.ReactElement {
     try {
       // issue #3827 D-1 — was a direct call to ticket-confirmation-dispatch
       // with the host's token, which that function always refuses (403).
-      await resendGuestListTicket({ orderId: order.id, clientRequestId: newResendRequestId() });
+      await (await loadGuestList()).resendGuestListTicket({ orderId: order.id, clientRequestId: newResendRequestId() });
       showToast(`Ticket resent to ${order.buyer.email}.`);
     } catch (error) {
-      showToast(error instanceof GuestListError ? error.message : guestListErrorCopy("internal", "resend"));
+      showToast(guestListMessage(error));
     } finally {
       setResendSubmitting(false);
     }

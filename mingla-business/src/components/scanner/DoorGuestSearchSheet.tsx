@@ -32,20 +32,22 @@ import {
 } from "../../constants/designSystem";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { eventOrdersKeys } from "../../hooks/useEventOrders";
-import {
-  GuestListError,
-  admitTicket,
-  guestListErrorCopy,
-  searchDoorGuests,
-  type AdmitResponse,
-  type DoorGuest,
-  type DoorGuestTicket,
+import type {
+  AdmitResponse,
+  DoorGuest,
+  DoorGuestTicket,
 } from "../../services/guestListService";
 import { describeScanResult, type ScanResultCopy } from "./scanResultCopy";
 
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
+
+// issue #3827 — the guest-list client is its own chunk (__common ceiling).
+const loadGuestList = () => import("../../services/guestListService");
+const SEARCH_FAILED = "Couldn't search. Check your connection and try again.";
+const isGuestListError = (error: unknown): error is Error & { code?: string } =>
+  error instanceof Error && error.name === "GuestListError";
 
 const DEBOUNCE_MS = 300;
 const MIN_CHARS = 2;
@@ -115,7 +117,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
     queryKey: doorGuestSearchKeys.search(eventId, debounced),
     enabled,
     staleTime: 0,
-    queryFn: () => searchDoorGuests({ eventId, query: debounced }),
+    queryFn: async () => (await loadGuestList()).searchDoorGuests({ eventId, query: debounced }),
     retry: false,
   });
 
@@ -128,7 +130,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
         let copy: ScanResultCopy | null = null;
         let admitted = 0;
         for (const ticket of tickets) {
-          const res = await admitTicket({ eventId, ticketId: ticket.ticketId });
+          const res = await (await loadGuestList()).admitTicket({ eventId, ticketId: ticket.ticketId });
           copy = describeScanResult(
             res.result,
             { buyerName: res.buyerName ?? guest.displayName, ticketName: res.ticketName ?? ticket.ticketName, nextStartAt: res.nextStartAt, lastEndAt: res.lastEndAt },
@@ -142,7 +144,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
         }
         setLastResult(copy);
       } catch (error) {
-        setAdmitError(error instanceof GuestListError ? error.message : guestListErrorCopy("network", "admit"));
+        setAdmitError(isGuestListError(error) ? error.message : SEARCH_FAILED);
       } finally {
         setAdmitting(null);
         void query.refetch();
@@ -152,12 +154,12 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
     [admitting, eventId, noun, onAdmitted, query, queryClient],
   );
 
-  const errorCopy = query.error instanceof GuestListError
+  const errorCopy = isGuestListError(query.error)
     ? query.error.code === "network" || query.error.code === "internal"
-      ? "Couldn't search. Check your connection and try again."
+      ? SEARCH_FAILED
       : query.error.message
     : query.isError
-      ? "Couldn't search. Check your connection and try again."
+      ? SEARCH_FAILED
       : null;
 
   const results = query.data?.orders ?? [];

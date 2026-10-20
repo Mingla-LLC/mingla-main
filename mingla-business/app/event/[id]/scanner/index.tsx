@@ -14,6 +14,8 @@
  */
 
 import React, {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -64,7 +66,6 @@ import {
   scanTicket,
 } from "../../../../src/services/scanTicketService";
 
-import { DoorGuestSearchSheet } from "../../../../src/components/scanner/DoorGuestSearchSheet";
 import type { ScanResultCopy } from "../../../../src/components/scanner/scanResultCopy";
 import type { AdmitResponse } from "../../../../src/services/guestListService";
 
@@ -74,6 +75,14 @@ import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 
 // ---- Helpers --------------------------------------------------------
+
+// issue #3827 — the door "Find by name" sheet loads on first open, so it stays
+// out of the business-web boot chunk (__common ceiling, orch-1083).
+const DoorGuestSearchSheet = lazy(() =>
+  import("../../../../src/components/scanner/DoorGuestSearchSheet").then((m) => ({
+    default: m.DoorGuestSearchSheet,
+  })),
+);
 
 const RESULT_OVERLAY_DURATION_MS = 3000;
 
@@ -735,13 +744,17 @@ export default function ScannerCameraRoute(): React.ReactElement {
         ) : null}
       </View>
 
-      <DoorGuestSearchSheet
-        visible={findOpen}
-        onClose={() => setFindOpen(false)}
-        eventId={event.id}
-        noun={kindCfg.noun}
-        onAdmitted={handleNameAdmitted}
-      />
+      {findOpen ? (
+        <Suspense fallback={null}>
+          <DoorGuestSearchSheet
+            visible={findOpen}
+            onClose={() => setFindOpen(false)}
+            eventId={event.id}
+            noun={kindCfg.noun}
+            onAdmitted={handleNameAdmitted}
+          />
+        </Suspense>
+      ) : null}
     </View>
   );
 }

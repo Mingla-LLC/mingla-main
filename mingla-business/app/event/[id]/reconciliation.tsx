@@ -61,7 +61,6 @@ import { formatCurrency, currencyCodeOrNull } from "../../../src/utils/currency"
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
-import { exportReconciliationCsv } from "../../../src/utils/guestCsvExport";
 import {
   EMPTY_SUMMARY,
   computeReconciliation,
@@ -183,6 +182,8 @@ export default function ReconciliationRoute(): React.ReactElement {
       // Web → file actually downloaded. Native shared → user picked a
       // destination. Native dismissed → silent (no toast — user knew they
       // dismissed; pre-rework wrongly toasted success on this path).
+      // Loaded on press: the CSV writer stays out of the boot chunk (#3827, orch-1083).
+      const { exportReconciliationCsv } = await import("../../../src/utils/guestCsvExport");
       const result = await exportReconciliationCsv({
         event,
         orders: eventOrders,

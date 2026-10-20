@@ -41,13 +41,6 @@ import { canPerformAction } from "../../../../src/utils/permissionGates";
 import { BRAND_ROLE_RANK } from "../../../../src/utils/brandRole";
 import { isCompOrder } from "../../../../src/utils/compOrders";
 import {
-  GuestListError,
-  admitTicket,
-  cancelGuestListTicket,
-  guestListErrorCopy,
-  resendGuestListTicket,
-} from "../../../../src/services/guestListService";
-import {
   useDoorSalesStore,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
@@ -66,6 +59,13 @@ import { Sheet } from "../../../../src/components/ui/Sheet";
 import { Toast } from "../../../../src/components/ui/Toast";
 
 // ---- Helpers --------------------------------------------------------
+
+// issue #3827 — the guest-list client loads on first use, so it stays out of
+// the business-web boot chunk (__common ceiling, orch-1083).
+const loadGuestList = () => import("../../../../src/services/guestListService");
+const FALLBACK_COPY = "Something went wrong. Nothing was charged. Try again. Guests already added won't be added twice.";
+const guestListMessage = (error: unknown, fallback: string = FALLBACK_COPY): string =>
+  error instanceof Error && error.name === "GuestListError" ? error.message : fallback;
 
 const RELATIVE_TIME_MS = {
   minute: 60 * 1000,
@@ -391,7 +391,7 @@ export default function GuestDetailRoute(): React.ReactElement {
       if (typeof eventId !== "string" || admittingId !== null) return;
       setAdmittingId(ticketId);
       try {
-        const res = await admitTicket({ eventId, ticketId });
+        const res = await (await loadGuestList()).admitTicket({ eventId, ticketId });
         if (res.result === "success") showToast(`${guestName} checked in`);
         else if (res.result === "duplicate") showToast("Already checked in");
         else if (res.result === "void") showToast("Ticket not valid");
@@ -400,7 +400,7 @@ export default function GuestDetailRoute(): React.ReactElement {
         else showToast("Ticket not found");
         refreshGuestTruth();
       } catch (error) {
-        showToast(error instanceof GuestListError ? error.message : guestListErrorCopy("network", "admit"));
+        showToast(guestListMessage(error, "Couldn't reach Mingla. Check your connection and try again."));
       } finally {
         setAdmittingId(null);
       }
@@ -412,10 +412,10 @@ export default function GuestDetailRoute(): React.ReactElement {
     if (order === null || resending) return;
     setResending(true);
     try {
-      await resendGuestListTicket({ orderId: order.id, clientRequestId: newRequestId() });
+      await (await loadGuestList()).resendGuestListTicket({ orderId: order.id, clientRequestId: newRequestId() });
       showToast(`Ticket resent to ${order.buyer.email}.`);
     } catch (error) {
-      showToast(error instanceof GuestListError ? error.message : guestListErrorCopy("internal", "resend"));
+      showToast(guestListMessage(error));
     } finally {
       setResending(false);
     }
@@ -426,7 +426,7 @@ export default function GuestDetailRoute(): React.ReactElement {
     setCancelling(true);
     setCancelError(null);
     try {
-      await cancelGuestListTicket({
+      await (await loadGuestList()).cancelGuestListTicket({
         orderId: order.id,
         reason: cancelReason.trim() === "" ? null : cancelReason.trim(),
         clientRequestId: cancelRequestId.current,
@@ -437,7 +437,7 @@ export default function GuestDetailRoute(): React.ReactElement {
       deferAfterDismiss(() => showToast("Guest-list ticket cancelled."));
     } catch (error) {
       setCancelling(false);
-      setCancelError(error instanceof GuestListError ? error.message : guestListErrorCopy("internal", "cancel"));
+      setCancelError(guestListMessage(error));
     }
   }, [order, cancelling, cancelReasonTooLong, cancelReason, refreshGuestTruth, showToast]);
 

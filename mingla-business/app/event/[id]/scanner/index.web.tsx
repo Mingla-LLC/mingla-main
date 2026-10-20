@@ -25,7 +25,7 @@
  * host can check people in by name through the same server check a QR uses.
  */
 
-import React, { useCallback, useEffect } from "react";
+import React, { Suspense, lazy, useCallback, useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 // orch-0892 / #1841 — the door search panel has an input, so the body scrolls
 // through the SmartScrollView wrapper (a plain ScrollView on web).
@@ -44,7 +44,13 @@ import {
   offeringKindFromEventType,
 } from "../../../../src/components/offering/offeringKind";
 
-import { DoorGuestSearchPanel } from "../../../../src/components/scanner/DoorGuestSearchSheet";
+// issue #3827 — the door search panel loads as its own chunk, so it stays out
+// of the business-web boot chunk (__common ceiling, orch-1083).
+const DoorGuestSearchPanel = lazy(() =>
+  import("../../../../src/components/scanner/DoorGuestSearchSheet").then((m) => ({
+    default: m.DoorGuestSearchPanel,
+  })),
+);
 
 import { Button } from "../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
@@ -125,7 +131,9 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
             <Text style={styles.findCopy}>
               {`No QR? Search this ${kindCfg.noun}'s guest list and ticket holders, then tap Admit.`}
             </Text>
-            <DoorGuestSearchPanel eventId={event.id} noun={kindCfg.noun} />
+            <Suspense fallback={<Text style={styles.findCopy}>Loading guest search…</Text>}>
+              <DoorGuestSearchPanel eventId={event.id} noun={kindCfg.noun} />
+            </Suspense>
           </View>
         ) : null}
       </ScrollView>

@@ -62,7 +62,6 @@ import {
   offeringKindFromEventType,
 } from "../../../../src/components/offering/offeringKind";
 import { useAuth } from "../../../../src/context/AuthContext";
-import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
 import {
   createGuestRosterRequestId,
   getGuestRosterExport,
@@ -423,6 +422,8 @@ export default function EventGuestsListRoute(): React.ReactElement {
     try {
       // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
       // Native dismissed = silent (no false-positive success).
+      // Loaded on press: the CSV writer stays out of the boot chunk (#3827, orch-1083).
+      const { exportGuestsCsv } = await import("../../../../src/utils/guestCsvExport");
       const result = await exportGuestsCsv({
         event,
         rows: merged,

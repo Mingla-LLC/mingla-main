@@ -41,20 +41,23 @@ import { canPerformAction, gateCaptionFor } from "../../utils/permissionGates";
 import { formatOccurrenceDayLabel } from "../../utils/eventDateDisplay";
 import { isPerNightCapacity } from "../../utils/perNightCapacity";
 import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
-import {
-  GuestListError,
-  guestListErrorCopy,
-  guestListIssueFailureCopy,
-  issueGuestListTickets,
-  type GuestListGuestInput,
-  type GuestListIssueResponse,
-  type GuestListIssueResult,
+import type {
+  GuestListGuestInput,
+  GuestListIssueResponse,
+  GuestListIssueResult,
 } from "../../services/guestListService";
 
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
+
+// issue #3827 — the guest-list client loads on first use, so it stays out of
+// the business-web boot chunk (__common ceiling, orch-1083).
+const loadGuestList = () => import("../../services/guestListService");
+const FALLBACK_COPY = "Something went wrong. Nothing was charged. Try again. Guests already added won't be added twice.";
+const guestListMessage = (error: unknown, fallback: string = FALLBACK_COPY): string =>
+  error instanceof Error && error.name === "GuestListError" ? error.message : fallback;
 
 const MAX_GUESTS = 50;
 const MAX_PLUS_ONES = 9;
@@ -610,8 +613,11 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
     setSubmitting(true);
     setBanner(null);
     let response: GuestListIssueResponse;
+    let failureCopy: (code: GuestListIssueResult["code"]) => string;
     try {
-      response = await issueGuestListTickets({
+      const svc = await loadGuestList();
+      failureCopy = svc.guestListIssueFailureCopy;
+      response = await svc.issueGuestListTickets({
         eventId,
         ticketTypeId: tier.id,
         eventDateId: needsDate ? eventDateId : null,
@@ -623,7 +629,7 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
       setSubmitting(false);
       setBanner({
         kind: "error",
-        text: error instanceof GuestListError ? error.message : guestListErrorCopy("internal", "issue"),
+        text: guestListMessage(error),
       });
       return;
     }
@@ -640,12 +646,12 @@ export const AddCompGuestSheet: React.FC<AddCompGuestSheetProps> = ({
       return {
         ...g,
         outcome: ownOk ? ("added" as const) : ("failed" as const),
-        failCopy: ownOk ? null : guestListIssueFailureCopy(own?.code ?? null),
+        failCopy: ownOk ? null : failureCopy(own?.code ?? null),
         plusOnes: g.plusOnes.map((p, i) => {
           if (p.name.trim() === "") return { ...p, outcome: ownOk ? ("added" as const) : p.outcome };
           const r = resultFor(g.index as number, i);
           const ok = r !== undefined && r.status !== "failed";
-          return { ...p, outcome: ok ? ("added" as const) : ("failed" as const), failCopy: ok ? null : guestListIssueFailureCopy(r?.code ?? null) };
+          return { ...p, outcome: ok ? ("added" as const) : ("failed" as const), failCopy: ok ? null : failureCopy(r?.code ?? null) };
         }),
       };
     });
