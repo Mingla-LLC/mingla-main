@@ -159,13 +159,19 @@ Deno.test("Wave 4: create-campaign never resolves brand_id for marketing", async
       import.meta.url,
     ),
   );
-  assertEquals(src.includes('pageType === "marketing"\n        ? null'), true);
-  assertEquals(src.includes('pageTypeGV === "marketing"\n            ? null'), true);
-  // Must not call resolveBrandIdForSlug on the marketing-only path without the null guard.
-  const marketingMoneyBlocks = src.match(
-    /brand_id: pageType[A-Z]* === "marketing"\s*\n\s*\? null\s*\n\s*: await resolveBrandIdForSlug/g,
+  // [TEST-MOD-APPROVED #3697] The marketing null guard moved into
+  // campaignPersistBrandId, which also makes a bound plan's brand_id final
+  // (a Mingla plan promoting a Host event persisted the event's brand and the
+  // plan guard refused it). Every persist site must route through it.
+  const guardedBlocks = src.match(
+    /brand_id: await campaignPersistBrandId\(\s*\n\s*boundPlanOwnership,\s*\n\s*pageType[A-Z]*,\s*\n\s*\(\) => resolveBrandIdForSlug/g,
   );
-  assertEquals((marketingMoneyBlocks?.length ?? 0) >= 6, true);
+  assertEquals((guardedBlocks?.length ?? 0) >= 6, true);
+  assertEquals(/brand_id: pageType[A-Z]* === "marketing"/.test(src), false);
+  const helper = await Deno.readTextFile(
+    new URL("../adPlanCampaignBinding.ts", import.meta.url),
+  );
+  assertEquals(helper.includes('if (pageType === "marketing") return null;'), true);
 });
 
 Deno.test("Wave 4: adChannel MARKETING_ENTITY_SLUGS matches MARKETING_ROUTES", async () => {
