@@ -88,6 +88,13 @@ jobs:
           src/__tests__/issue3697_wave3_ads_console.test.js
           src/__tests__/issue3697_wave4_marketing_dest.test.js
           src/__tests__/issue3697_wave5_launch_confirm.test.js
+      # Issue #3697 — a Mingla campaign goes from plan to paused provider
+      # objects with no dead ends. This suite renders the real StepReview
+      # through Vite, so it needs the lockfile install first.
+      - name: Install admin dependencies (lockfile only)
+        run: npm ci --no-audit --no-fund
+      - name: "Issue #3697 — house plan create path (phrase before bind, visible steps, budget entry, named schedule zone)"
+        run: node --test src/__tests__/issue3697_house_plan_create_path.test.js
 
   issue-1002-edge-deno-test:
     if: ${{ github.event.pull_request.draft != true }}

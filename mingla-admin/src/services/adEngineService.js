@@ -264,8 +264,38 @@ async function planActionOrThrow(payload, fallback) {
   throw new Error(String(parsed?.message ?? fallback));
 }
 
-/** Resume only the missing PAUSED provider objects from a frozen Admin plan. */
-export async function resumeAdminAdPlan(planId) {
+/**
+ * Resume only the missing PAUSED provider objects from a frozen Admin plan.
+ * #3697: `onStep(id, state, detail)` reports each required step (ids from
+ * housePlanCreateSteps: fund, confirm, prepare:<platform>, create:<platform>)
+ * so the Campaigns page shows exactly where a resume is and why it stopped.
+ */
+export async function resumeAdminAdPlan(planId, { onStep } = {}) {
+  const step = (id, state, detail = null) => {
+    try {
+      onStep?.(id, state, detail);
+    } catch {
+      // A progress renderer can never change the server outcome.
+    }
+  };
+  let runningStep = null;
+  const begin = (id) => {
+    runningStep = id;
+    step(id, "running");
+  };
+  const finish = (id, detail = null) => {
+    if (runningStep === id) runningStep = null;
+    step(id, "done", detail);
+  };
+  try {
+    return await resumeAdminAdPlanSteps(planId, { begin, finish, step });
+  } catch (error) {
+    if (runningStep) step(runningStep, "failed", error?.message ?? null);
+    throw error;
+  }
+}
+
+async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
   let aggregate = await planActionOrThrow(
     { action: "get", plan_id: planId },
     "The frozen plan could not be loaded.",
@@ -297,6 +327,9 @@ export async function resumeAdminAdPlan(planId) {
       "This older plan has no sealed execution template. Rebuild it in Campaign Builder; no provider action was taken.",
     );
   }
+  begin("bind");
+  finish("bind", version.plan_hash);
+  begin("fund");
   if (plan.state === "ready_for_funding") {
     await planActionOrThrow(
       {
@@ -307,6 +340,8 @@ export async function resumeAdminAdPlan(planId) {
       "The provider-account funding binding failed.",
     );
   }
+  finish("fund");
+  begin("confirm");
   await planActionOrThrow(
     {
       action: "confirm_launch",
@@ -316,6 +351,7 @@ export async function resumeAdminAdPlan(planId) {
     },
     "The exact paused-create confirmation failed.",
   );
+  finish("confirm");
 
   const isVideoPlan = Object.values(templates).some((template) => {
     if (!template || typeof template !== "object" || Array.isArray(template)) {
@@ -329,17 +365,29 @@ export async function resumeAdminAdPlan(planId) {
     if (!creativeLibraryId) {
       throw new Error("The frozen video plan has no creative-library binding.");
     }
+    const videoPlatforms = (aggregate.provider_allocations ?? []).map((row) =>
+      row.platform
+    );
     try {
+      for (const platform of videoPlatforms) step(`prepare:${platform}`, "pending");
       await prepareBoundVideoCreative({
         creativeLibraryId,
-        platforms: (aggregate.provider_allocations ?? []).map((row) =>
-          row.platform
-        ),
-        lane: "consumer",
+        platforms: videoPlatforms,
+        // #3697: the frozen plan's lane, never a hard-coded one — a business
+        // lane plan prepares against its business-lane connection.
+        lane: version.canonical_plan?.lane === "business" ? "business" : "consumer",
         planVersionId: version.id,
         planHash: version.plan_hash,
+        onProgress: (platform, row) => {
+          if (row?.state === "ready") finish(`prepare:${platform}`);
+          else {
+            begin(`prepare:${platform}`);
+            step(`prepare:${platform}`, "running", `Provider state: ${row?.state ?? "pending"}`);
+          }
+        },
       });
     } catch (error) {
+      if (error?.platform) begin(`prepare:${error.platform}`);
       if (error?.platform) {
         await adPlanAction({
           action: "record_create_failure",
@@ -358,6 +406,9 @@ export async function resumeAdminAdPlan(planId) {
   );
   for (const allocation of aggregate.provider_allocations ?? []) {
     const platform = allocation.platform;
+    if (existingPlatforms.has(platform)) {
+      step(`create:${platform}`, "done", "Already created paused.");
+    }
     if (existingPlatforms.has(platform)) continue;
     const template = templates[platform];
     if (!template || typeof template !== "object" || Array.isArray(template)) {
@@ -366,6 +417,7 @@ export async function resumeAdminAdPlan(planId) {
     const payload = structuredClone(template);
     payload.plan_version_id = version.id;
     payload.plan_hash = version.plan_hash;
+    begin(`create:${platform}`);
     const { error } = await createCampaign(payload);
     if (error) {
       const parsed = await parseEdgeError(error);
@@ -384,6 +436,7 @@ export async function resumeAdminAdPlan(planId) {
       });
       throw new Error(`${platform}: ${detail}`);
     }
+    finish(`create:${platform}`, "Paused. Nothing is spending.");
   }
   aggregate = await planActionOrThrow(
     { action: "get", plan_id: planId },

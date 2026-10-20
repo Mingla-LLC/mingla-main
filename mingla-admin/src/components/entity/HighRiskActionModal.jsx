@@ -103,6 +103,9 @@ export function HighRiskActionModal({
             contract. Callers own this content's state and derive confirmPhrase from it. */}
         {children}
 
+        {/* #3697: a reason field that is not required is not shown — an
+            optional box labelled "(required)" read as a hidden blocker. */}
+        {requireReason && (
         <div className="flex flex-col gap-1.5">
           <label
             htmlFor="high-risk-reason"
@@ -119,6 +122,7 @@ export function HighRiskActionModal({
             className={textareaClass}
           />
         </div>
+        )}
 
         {confirmPhrase && (
           <div className="flex flex-col gap-1.5">

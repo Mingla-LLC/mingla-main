@@ -8,6 +8,7 @@
 
 import { learningLimitedWarning } from "./budgetRules.js";
 import { formatResolvedObjective } from "./objectiveResolver.js";
+import { formatInZone } from "./scheduleTimeZone.js";
 
 /**
  * @param {object} input
@@ -43,6 +44,8 @@ export function buildLaunchSummary(input) {
     endsAt = null,
     // Missing money authority is visible and blocks create; it never becomes USD.
     currency = null,
+    // #3697: the named schedule zone. Absent keeps the legacy browser format.
+    timeZone = null,
   } = input;
 
   const currencyCode = typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
@@ -143,8 +146,10 @@ export function buildLaunchSummary(input) {
   // toward #3697 Wave 3 — Review shows the same hard-cap / schedule truths the server enforces.
   const cap = typeof capCents === "number" && Number.isFinite(capCents) ? capCents : null;
   const scheduleBits = [];
-  if (startsAt) scheduleBits.push(`starts ${new Date(startsAt).toLocaleString()}`);
-  if (endsAt) scheduleBits.push(`ends ${new Date(endsAt).toLocaleString()}`);
+  const when = (iso) =>
+    timeZone ? formatInZone(iso, timeZone) : new Date(iso).toLocaleString();
+  if (startsAt) scheduleBits.push(`starts ${when(startsAt)}`);
+  if (endsAt) scheduleBits.push(`ends ${when(endsAt)}`);
   const scheduleLine = scheduleBits.length > 0 ? scheduleBits.join(" · ") : null;
   const hardCapLine = cap != null
     ? `Hard cap ${moneyLabel(cap)} — pauses at 98% of cap (server-enforced)`

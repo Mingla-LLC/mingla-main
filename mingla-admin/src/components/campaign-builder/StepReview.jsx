@@ -20,6 +20,23 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
+import {
+  CREATE_PAUSED_PHRASE,
+  createBlockReason,
+} from "../../lib/adBuilder/housePlanPath";
+
+const STEP_STATE_LABELS = {
+  pending: "Waiting",
+  running: "In progress",
+  done: "Done",
+  failed: "Failed",
+};
+const STEP_STATE_VARIANTS = {
+  pending: "default",
+  running: "warning",
+  done: "success",
+  failed: "error",
+};
 
 function estimateLabel(estimate) {
   if (
@@ -57,6 +74,8 @@ export function StepReview({
   onCertificationApprovalPhraseChange,
   certificationApprovalBusy = false,
   onApproveCertification,
+  createSteps = null,
+  createError = null,
 }) {
   const anySuccess = Object.values(createResults ?? {}).some(
     (r) => r?.campaign,
@@ -64,14 +83,21 @@ export function StepReview({
   const planBlocked =
     planPreview?.status === "blocked" ||
     (planPreview?.status === "broader" && !broaderAccepted);
-  const phraseRequired =
-    planPreview?.status === "ready" ||
-    (planPreview?.status === "broader" && broaderAccepted);
+  // #3697: the phrase is required for every real create and its field is
+  // visible before the first click. Validate (nothing created) never needs it.
   const hardBlocked =
     summary.channels.length === 0 ||
     Boolean(currencyBlockedReason) ||
-    planBlocked ||
-    (phraseRequired && confirmationPhrase !== "CREATE PAUSED");
+    planBlocked;
+  const createBlocked = createBlockReason({
+    channelCount: summary.channels.length,
+    currencyBlockedReason,
+    planBlocked,
+    phrase: confirmationPhrase,
+  });
+  const videoPreparedAtCreate = summary.channels.some(
+    (line) => line.videoReadiness === "Video not ready",
+  );
   const certificationAwaitingApproval =
     certificationMode && certificationState?.status === "approval_required";
   const approvalInputValid =
@@ -331,17 +357,64 @@ export function StepReview({
               created and no money has moved.
             </AlertCard>
           )}
-          {(planPreview.status === "ready" || broaderAccepted) && (
-            <Input
-              label="Type “CREATE PAUSED” to bind this exact plan"
-              value={confirmationPhrase}
-              onChange={(event) =>
-                onConfirmationPhraseChange?.(event.target.value)
-              }
-              placeholder="CREATE PAUSED"
-            />
-          )}
         </div>
+      )}
+
+      {videoPreparedAtCreate && (
+        <p className="text-xs text-[var(--color-text-secondary)]">
+          “Video not ready” means the provider copy does not exist yet. Create
+          prepares it on each platform after the plan is funded and confirmed —
+          you do not need to do anything first.
+        </p>
+      )}
+
+      {!planBlocked && (
+        <Input
+          label={`Type “${CREATE_PAUSED_PHRASE}” to bind this exact plan`}
+          value={confirmationPhrase}
+          onChange={(event) =>
+            onConfirmationPhraseChange?.(event.target.value)
+          }
+          placeholder={CREATE_PAUSED_PHRASE}
+          helper="Create binds the plan, holds the cap on Mingla's own ad account (no charge now), prepares the video, and creates everything paused. Launch stays a separate step on the Campaigns page."
+        />
+      )}
+
+      {createSteps && createSteps.length > 0 && (
+        <ol
+          aria-label="Create progress"
+          className="rounded-xl border border-[var(--gray-200)] divide-y divide-[var(--gray-100)]"
+        >
+          {createSteps.map((step, index) => (
+            <li
+              key={step.id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
+            >
+              <span>
+                {index + 1}. {step.label}
+                {step.detail && (
+                  <span className="block text-[var(--color-text-tertiary)] break-all">
+                    {step.detail}
+                  </span>
+                )}
+              </span>
+              <Badge variant={STEP_STATE_VARIANTS[step.state] ?? "default"}>
+                {STEP_STATE_LABELS[step.state] ?? step.state}
+              </Badge>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {createError && (
+        <AlertCard variant="error" title={createError.title}>
+          <p>{createError.message}</p>
+          <p className="mt-1">
+            Nothing launched and no spend began. Fix the cause, then press
+            Create again — it resumes this same plan. You can also resume it
+            from Ads → Campaigns → Mingla plans that need recovery.
+          </p>
+        </AlertCard>
       )}
 
       {certificationMode && certificationState && (
@@ -576,6 +649,8 @@ export function StepReview({
         <Button
           icon={Megaphone}
           loading={submitting}
+          // #3697: a missing phrase does NOT disable Create — pressing it
+          // names the missing phrase inline before anything is bound.
           disabled={
             hardBlocked ||
             allExpectedPairsSucceeded ||
@@ -594,10 +669,9 @@ export function StepReview({
                   ? "Bind accepted plan and create paused"
                   : (summary.primaryActionLabel ?? "Create campaign (paused)")}
         </Button>
-        {hardBlocked && (
-          <Badge variant="error">
-            {currencyBlockedReason ??
-              "No channel can run an ad right now. Fix at least one blocker to continue."}
+        {createBlocked && !allExpectedPairsSucceeded && (
+          <Badge variant={hardBlocked ? "error" : "warning"}>
+            {createBlocked}
           </Badge>
         )}
       </div>
