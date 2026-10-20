@@ -106,7 +106,12 @@ import type {
   ExperienceOfferingBrand,
   ExperienceOfferingCallbacks,
   ExperienceOfferingData,
+  ExperienceOfferingTicket,
 } from "./experienceOfferingTypes";
+import {
+  experienceOfferingOptions,
+  experiencePriceBasisLabel,
+} from "./experiencePriceBasis";
 // #3284 — section 10: the shared refund ladder.
 // #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
 // import ./OfferingRefundLadder statically here.
@@ -167,18 +172,16 @@ export function experienceAvailabilityBanner(
  * server all-in (priceAllInCents) — never the bare base under an all-in caption
  * (orch-1153-no-bare-base). Free / no-ticket fall through.
  */
-export function experiencePriceLabel(
-  data: ExperienceOfferingData,
+/** Format one option's all-in money + unit label (shared by headline + list). */
+export function experienceOptionPriceLabel(
+  t: ExperienceOfferingTicket,
 ): { label: string; isFree: boolean } {
-  const t = data.ticket;
-  if (t === null) return { label: "Pricing TBD", isFree: false };
   if (t.isFree || t.priceCents === 0) return { label: "Free", isFree: true };
   const cents =
     typeof t.priceAllInCents === "number" && t.priceAllInCents > 0
       ? t.priceAllInCents
       : t.priceCents;
-  // issue #3281 Round 1 — unit beside the price (person until Round 2 adds basis).
-  const basisLabel = "per person";
+  const basisLabel = experiencePriceBasisLabel(t.priceBasis, t.blockMinutes);
   try {
     const money = withCurrencyGlyph(
       new Intl.NumberFormat(undefined, {
@@ -195,6 +198,14 @@ export function experiencePriceLabel(
       isFree: false,
     };
   }
+}
+
+export function experiencePriceLabel(
+  data: ExperienceOfferingData,
+): { label: string; isFree: boolean } {
+  const t = data.ticket;
+  if (t === null) return { label: "Pricing TBD", isFree: false };
+  return experienceOptionPriceLabel(t);
 }
 
 export interface ExperienceOfferingBodyProps {
@@ -648,17 +659,47 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         ) : null}
       </View>
 
-      {/* (11) Price card — ONE combined all-in price (phone inline; desktop in panel). */}
+      {/* (11) Price card — ONE combined all-in price (phone inline; desktop in panel).
+          issue #3281 R2: when options.length > 1, list each option with its unit. */}
       {!isDesktop && data.ticket !== null ? (
         <View style={[styles.pricingCard, surface.card]} testID="experience-body-price-card">
-          <Text style={[styles.pricingLabel, surface.secondaryText]}>
-            {isFree ? "Price" : data.openDaily || data.occurrences.length > 1 ? "From" : "Price"}
-          </Text>
-          <Text
-            style={[styles.pricingPrice, surface.primaryText]}
-          >
-            {priceLabel}
-          </Text>
+          <View style={styles.pricingHeadline}>
+            <Text style={[styles.pricingLabel, surface.secondaryText]}>
+              {isFree
+                ? "Price"
+                : experienceOfferingOptions(data).length > 1 ||
+                    data.openDaily ||
+                    data.occurrences.length > 1
+                  ? "From"
+                  : "Price"}
+            </Text>
+            <Text style={[styles.pricingPrice, surface.primaryText]}>
+              {priceLabel}
+            </Text>
+          </View>
+          {experienceOfferingOptions(data).length > 1 ? (
+            <View
+              style={styles.optionsList}
+              testID="experience-body-price-options"
+            >
+              {experienceOfferingOptions(data).map((opt) => {
+                const { label: optLabel } = experienceOptionPriceLabel(opt);
+                return (
+                  <View key={opt.ticketTypeId} style={styles.optionRow}>
+                    <Text
+                      style={[styles.optionName, surface.primaryText]}
+                      numberOfLines={1}
+                    >
+                      {opt.name}
+                    </Text>
+                    <Text style={[styles.optionPrice, surface.secondaryText]}>
+                      {optLabel}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -814,6 +855,9 @@ const styles = StyleSheet.create({
     marginTop: 24,
     padding: 18,
     borderRadius: 18,
+    gap: 12,
+  },
+  pricingHeadline: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
@@ -827,6 +871,15 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontVariant: ["tabular-nums"],
   },
+  optionsList: { gap: 8, marginTop: 4 },
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  optionName: { flex: 1, fontSize: 14, fontWeight: "700" },
+  optionPrice: { fontSize: 13, fontWeight: "600", fontVariant: ["tabular-nums"] },
   reassure: { fontSize: 12, marginTop: 20, lineHeight: 17 },
 });
 

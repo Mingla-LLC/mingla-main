@@ -48,6 +48,10 @@ export interface CheckoutResumePayload {
   eventDateId?: string | null;
   /** issue #3281 — open-daily booked start (ISO). Optional for older entries. */
   bookedStartAt?: string | null;
+  /** issue #3281 R2 — block hire end (ISO). Optional for older entries. */
+  bookedEndAt?: string | null;
+  /** issue #3281 R2 — guest party size. Optional for older entries. */
+  partySize?: number | null;
 }
 
 export const checkoutResumeStorageKey = (eventId: string): string =>
@@ -101,7 +105,13 @@ export const isCheckoutResumePayload = (
       typeof v.eventDateId === "string") &&
     (v.bookedStartAt === undefined ||
       v.bookedStartAt === null ||
-      typeof v.bookedStartAt === "string")
+      typeof v.bookedStartAt === "string") &&
+    (v.bookedEndAt === undefined ||
+      v.bookedEndAt === null ||
+      typeof v.bookedEndAt === "string") &&
+    (v.partySize === undefined ||
+      v.partySize === null ||
+      (typeof v.partySize === "number" && Number.isFinite(v.partySize)))
   );
 };
 

@@ -45,6 +45,8 @@ export interface ConsumerExperienceStop {
   imageUrls: string[];
 }
 
+export type ConsumerExperiencePriceBasis = "person" | "group" | "block";
+
 export interface ConsumerExperienceTicket {
   ticketTypeId: string;
   name: string;
@@ -56,6 +58,12 @@ export interface ConsumerExperienceTicket {
   isUnlimited: boolean;
   isFree: boolean;
   ticketsRemaining: number | null;
+  /** issue #3281 R2 — unit beside the price (absent → person). */
+  priceBasis?: ConsumerExperiencePriceBasis;
+  blockMinutes?: number | null;
+  minBlocks?: number | null;
+  maxBlocks?: number | null;
+  groupMax?: number | null;
 }
 
 export interface ConsumerExperienceOccurrence {
@@ -99,6 +107,8 @@ export interface ConsumerExperienceDetail {
   intents: string[];
   stops: ConsumerExperienceStop[];
   ticket: ConsumerExperienceTicket | null;
+  /** issue #3281 R2 — when the public RPC emits options[]; else omit. */
+  options?: ConsumerExperienceTicket[];
   occurrences: ConsumerExperienceOccurrence[];
   /** false → PAID experience whose brand can't charge → CTA disabled. */
   bookable: boolean;
@@ -146,6 +156,11 @@ interface RpcTicket {
   isUnlimited: boolean;
   isFree: boolean;
   ticketsRemaining: number | null;
+  priceBasis?: string | null;
+  blockMinutes?: number | null;
+  minBlocks?: number | null;
+  maxBlocks?: number | null;
+  groupMax?: number | null;
 }
 interface RpcDate {
   id: string;
@@ -191,6 +206,7 @@ interface RpcPayload {
   brand: RpcBrand;
   stops: RpcStop[];
   ticket: RpcTicket | null;
+  options?: RpcTicket[] | null;
   dates: RpcDate[];
   bookable: boolean;
   /** issue #3284 — the reader's lifecycle status (scheduled/live/ended/cancelled). */
@@ -220,8 +236,44 @@ function firstRecurrenceRule(raw: unknown): ConsumerExperienceDetail["recurrence
   return null;
 }
 
+function parsePriceBasis(raw: unknown): ConsumerExperiencePriceBasis | undefined {
+  if (raw === "person" || raw === "group" || raw === "block") return raw;
+  return undefined;
+}
+
+function mapRpcTicket(
+  t: RpcTicket,
+  currencyFallback: string,
+): ConsumerExperienceTicket {
+  const priceBasis = parsePriceBasis(t.priceBasis);
+  return {
+    ticketTypeId: t.ticketTypeId,
+    name: t.name,
+    priceCents: t.priceCents ?? 0,
+    priceAllInCents:
+      t.isFree === true || (t.priceCents ?? 0) === 0
+        ? null
+        : typeof t.allInCents === "number" && t.allInCents > 0
+          ? t.allInCents
+          : null,
+    currency: t.currency ?? currencyFallback,
+    quantityTotal: t.quantityTotal ?? null,
+    isUnlimited: t.isUnlimited === true,
+    isFree: t.isFree === true || (t.priceCents ?? 0) === 0,
+    ticketsRemaining: t.ticketsRemaining ?? null,
+    ...(priceBasis !== undefined ? { priceBasis } : {}),
+    ...(t.blockMinutes !== undefined ? { blockMinutes: t.blockMinutes } : {}),
+    ...(t.minBlocks !== undefined ? { minBlocks: t.minBlocks } : {}),
+    ...(t.maxBlocks !== undefined ? { maxBlocks: t.maxBlocks } : {}),
+    ...(t.groupMax !== undefined ? { groupMax: t.groupMax } : {}),
+  };
+}
+
 function mapPayload(p: RpcPayload): ConsumerExperienceDetail {
   const t = p.ticket;
+  const options = Array.isArray(p.options)
+    ? p.options.map((opt) => mapRpcTicket(opt, p.currency ?? "USD"))
+    : undefined;
   return {
     experienceId: p.id,
     experienceSlug: p.experienceSlug,
@@ -259,25 +311,8 @@ function mapPayload(p: RpcPayload): ConsumerExperienceDetail {
         ? s.imageUrls.filter((u): u is string => typeof u === "string")
         : [],
     })),
-    ticket:
-      t !== null
-        ? {
-            ticketTypeId: t.ticketTypeId,
-            name: t.name,
-            priceCents: t.priceCents ?? 0,
-            priceAllInCents:
-              t.isFree === true || (t.priceCents ?? 0) === 0
-                ? null
-                : typeof t.allInCents === "number" && t.allInCents > 0
-                  ? t.allInCents
-                  : null,
-            currency: t.currency ?? p.currency ?? "USD",
-            quantityTotal: t.quantityTotal ?? null,
-            isUnlimited: t.isUnlimited === true,
-            isFree: t.isFree === true || (t.priceCents ?? 0) === 0,
-            ticketsRemaining: t.ticketsRemaining ?? null,
-          }
-        : null,
+    ticket: t !== null ? mapRpcTicket(t, p.currency ?? "USD") : null,
+    ...(options !== undefined && options.length > 0 ? { options } : {}),
     occurrences: (p.dates ?? []).map((d) => ({
       eventDateId: d.id,
       startAt: d.startAt,

@@ -151,8 +151,51 @@ export function buildExperienceOfferingData(
             isUnlimited: t.isUnlimited,
             ticketsRemaining: t.ticketsRemaining,
             quantityTotal: t.quantityTotal,
+            ...(t.priceBasis !== undefined ? { priceBasis: t.priceBasis } : {}),
+            ...(t.blockMinutes !== undefined
+              ? { blockMinutes: t.blockMinutes }
+              : {}),
+            ...(t.minBlocks !== undefined ? { minBlocks: t.minBlocks } : {}),
+            ...(t.maxBlocks !== undefined ? { maxBlocks: t.maxBlocks } : {}),
+            ...(t.groupMax !== undefined ? { groupMax: t.groupMax } : {}),
           }
         : null,
+    // issue #3281 R2 — map public options when present; else omit (body falls
+    // back to [ticket]).
+    ...(Array.isArray(exp.options) && exp.options.length > 0
+      ? {
+          options: exp.options.map((opt) => {
+            const optAllIn =
+              typeof opt.priceAllInGbp === "number" && opt.priceAllInGbp > 0
+                ? Math.round(opt.priceAllInGbp * 100)
+                : null;
+            return {
+              ticketTypeId: opt.ticketTypeId,
+              name: opt.name,
+              priceCents: opt.priceCents,
+              priceAllInCents: optAllIn,
+              currency: opt.currency,
+              isFree: opt.isFree,
+              isUnlimited: opt.isUnlimited,
+              ticketsRemaining: opt.ticketsRemaining,
+              quantityTotal: opt.quantityTotal,
+              ...(opt.priceBasis !== undefined
+                ? { priceBasis: opt.priceBasis }
+                : {}),
+              ...(opt.blockMinutes !== undefined
+                ? { blockMinutes: opt.blockMinutes }
+                : {}),
+              ...(opt.minBlocks !== undefined
+                ? { minBlocks: opt.minBlocks }
+                : {}),
+              ...(opt.maxBlocks !== undefined
+                ? { maxBlocks: opt.maxBlocks }
+                : {}),
+              ...(opt.groupMax !== undefined ? { groupMax: opt.groupMax } : {}),
+            };
+          }),
+        }
+      : {}),
     occurrences,
     openDaily: isOpenDailyExperience({
       isRecurring: exp.whenMode === "recurring",

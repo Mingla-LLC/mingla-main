@@ -137,6 +137,10 @@ export interface NativeCheckoutInput {
   eventDateIds?: readonly string[] | null;
   /** issue #3281 — open-daily booked start (ISO). Omitted when absent. */
   bookedStartAt?: string | null;
+  /** issue #3281 R2 — block hire end (ISO). Omitted when absent. */
+  bookedEndAt?: string | null;
+  /** issue #3281 R2 — guest party size. Omitted when absent. */
+  partySize?: number | null;
   // ORCH-1016: trip intake answers ride the existing ticket-checkout-create body
   // key → orders.intake_form_data. The key is already supported server-side
   // (ticket-checkout-create reads it for trip checkouts); this just forwards it
@@ -431,6 +435,16 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
         input.bookedStartAt !== null &&
         input.bookedStartAt.length > 0
       ? { bookedStartAt: input.bookedStartAt }
+      : {}),
+    ...(input.bookedEndAt !== undefined &&
+        input.bookedEndAt !== null &&
+        input.bookedEndAt.length > 0
+      ? { bookedEndAt: input.bookedEndAt }
+      : {}),
+    ...(typeof input.partySize === "number" &&
+    Number.isFinite(input.partySize) &&
+    input.partySize >= 1
+      ? { partySize: Math.floor(input.partySize) }
       : {}),
   });
 };
@@ -858,6 +872,16 @@ export const useNativeCheckoutFlow = (): ((
               input.bookedStartAt !== null &&
               input.bookedStartAt.length > 0
             ? { bookedStartAt: input.bookedStartAt }
+            : {}),
+          ...(input.bookedEndAt !== undefined &&
+              input.bookedEndAt !== null &&
+              input.bookedEndAt.length > 0
+            ? { bookedEndAt: input.bookedEndAt }
+            : {}),
+          ...(typeof input.partySize === "number" &&
+          Number.isFinite(input.partySize) &&
+          input.partySize >= 1
+            ? { partySize: Math.floor(input.partySize) }
             : {}),
           // ORCH-1130 / DISC-1130-A — forward the explicit pay-full vs
           // pay-over-time choice for plan trips. Omitted when absent (no-plan

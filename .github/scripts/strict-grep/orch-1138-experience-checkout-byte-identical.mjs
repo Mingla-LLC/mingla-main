@@ -7,13 +7,14 @@
  *   - `eventDateId` (when a slot/day is chosen)
  *   - line `quantity` (= party size)
  *   - `bookedStartAt` (when open-daily chose a start; issue #3281)
+ *   - `bookedEndAt` / `partySize` (R2 unit hire / group; issue #3281 2e)
  *
  * NO address, NO taxCalculationId, NO paymentPlanChoice, NO parallel money fn
  * on the Explorer experience detail screen.
  *
  * Host / shared native checkout carriers are also required to thread
- * `bookedStartAt` (type + body), but they intentionally serve trips/events too
- * so tax/plan tokens there are NOT forbidden by this gate.
+ * `bookedStartAt` (+ R2 `bookedEndAt` / `partySize`), but they intentionally
+ * serve trips/events too so tax/plan tokens there are NOT forbidden by this gate.
  *
  * FAILS-ON-REVERT: drop bookedStartAt threading, or add address/tax/plan on the
  * Explorer experience screen → FAIL.
@@ -63,6 +64,11 @@ function checkExplorerDetail(src, errors) {
       "Explorer detail: missing `bookedStartAt` thread (issue #3281).",
     );
   }
+  if (!/bookedEndAt/.test(src) || !/partySize/.test(src)) {
+    errors.push(
+      "Explorer detail: missing `bookedEndAt` / `partySize` thread (issue #3281 2e).",
+    );
+  }
   for (const re of FORBIDDEN_ON_EXPLORER) {
     if (re.test(src)) {
       errors.push(`Explorer detail forbidden field: ${re}`);
@@ -79,6 +85,12 @@ function checkExplorerDetail(src, errors) {
 function checkCarrier(src, label, errors) {
   if (!/bookedStartAt/.test(src)) {
     errors.push(`${label}: missing bookedStartAt carrier (issue #3281).`);
+  }
+  if (!/bookedEndAt/.test(src)) {
+    errors.push(`${label}: missing bookedEndAt carrier (issue #3281 2e).`);
+  }
+  if (!/partySize/.test(src)) {
+    errors.push(`${label}: missing partySize carrier (issue #3281 2e).`);
   }
 }
 
@@ -107,9 +119,15 @@ if (process.argv.includes("--self-test")) {
     "  payload = { eventDateId: selectedEventDateId, bookedStartAt: start };\n" +
     "}\n" +
     "runNativeCheckout({ lines });";
-  const goodFlow = "body.bookedStartAt = input.bookedStartAt;";
+  const goodFlow =
+    "body.bookedStartAt = input.bookedStartAt;\n" +
+    "body.bookedEndAt = input.bookedEndAt;\n" +
+    "body.partySize = input.partySize;";
+  const goodDetailR2 =
+    goodDetail +
+    "\nrunNativeCheckout({ bookedEndAt: end, partySize: party });";
   const good = {
-    [EXPLORER_DETAIL]: goodDetail,
+    [EXPLORER_DETAIL]: goodDetailR2,
     "mingla-business/src/payments/nativeCheckoutFlow.native.ts": goodFlow,
     "mingla-business/src/payments/nativeCheckoutFlow.ts": goodFlow,
     "mingla-business/src/services/ticketCheckoutService.ts": goodFlow,

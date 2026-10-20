@@ -243,7 +243,6 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
     if (isFree || resolvedTotalMajor === 0) {
       return `Free for buyers — they get ${n === 1 ? "this experience" : `all ${n} ${stopWord}`} in one booking.`;
     }
-    // Leave unit off until public card contracts carry price_basis (#3281 2e).
     if (priceOptions.filter((o) => !o.isHidden).length > 1) {
       return `From ${t}. Buyers pick a price, then book the whole experience.`;
     }
