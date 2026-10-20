@@ -1201,7 +1201,7 @@ export const createTicketCheckoutCreateHandler = (
     // render the "Bookings closed" banner per DESIGN §4.4.
     const { data: tripGateRow, error: tripGateErr } = await supabase
       .from("events")
-      .select("event_type, bookings_closed, booking_deadline, capacity_scope")
+      .select("event_type, bookings_closed, booking_deadline")
       .eq("id", eventId)
       .maybeSingle();
     if (tripGateErr !== null) {
@@ -1262,16 +1262,21 @@ export const createTicketCheckoutCreateHandler = (
       anchorEventDateId = eventDateId;
     }
     // issue #3281 R3 — fixed-slot scoped counters need the day when the client
-    // sent only eventDateId. Gate on capacity_scope (not event_type) so the
-    // #3313 "no experience branch" pin holds and total-scope identity stays.
-    if (
-      orderedEventDateIds.length === 0 &&
-      eventDateId !== null &&
-      (tripGateRow?.capacity_scope === "per_day" ||
-        tripGateRow?.capacity_scope === "per_start")
-    ) {
-      orderedEventDateIds.push(eventDateId);
-      anchorEventDateId = eventDateId;
+    // sent only eventDateId. Read capacity_scope in a separate select so the
+    // #3313 tripGate select pin stays byte-identical; do not name event_type.
+    if (orderedEventDateIds.length === 0 && eventDateId !== null) {
+      const { data: scopeRow } = await supabase
+        .from("events")
+        .select("capacity_scope")
+        .eq("id", eventId)
+        .maybeSingle();
+      if (
+        scopeRow?.capacity_scope === "per_day" ||
+        scopeRow?.capacity_scope === "per_start"
+      ) {
+        orderedEventDateIds.push(eventDateId);
+        anchorEventDateId = eventDateId;
+      }
     }
 
     // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake gate.
