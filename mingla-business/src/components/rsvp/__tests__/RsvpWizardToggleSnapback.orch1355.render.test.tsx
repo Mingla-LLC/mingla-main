@@ -381,11 +381,15 @@ describe("ORCH-1355 — capacity toggle snap-back (autosave must NOT drop the OF
     );
 
     const revs: number[] = [];
+    // [TEST-MOD-APPROVED #3827] Q1: turning the private guest list ON switches the
+    // spots-left count on and locks it, so a tap on the locked switch writes
+    // nothing. The spots-left tap therefore comes before the private tap; every
+    // tap is still a real write and the counter must still rise each time.
     for (const testId of [
       "rsvp-plusones-toggle",
       "rsvp-contribution-toggle",
-      "rsvp-private-guestlist",
       "rsvp-hide-count",
+      "rsvp-private-guestlist",
     ]) {
       await act(async () => {
         fireEvent.press(screen.getByTestId(testId));
