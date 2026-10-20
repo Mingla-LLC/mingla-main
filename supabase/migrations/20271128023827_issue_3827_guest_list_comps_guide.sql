@@ -8,7 +8,7 @@
 -- from the server.
 -- Same rules as 20271110003720: a human-verified Live entry is never edited, no
 -- evidence is added, and the number of effectively Live entries never changes.
--- MINGLA-INVARIANT: I-3827-GUIDE-MATCHES-COMPS | issue #3827 | the comp, check-in, guest-list and reconciliation guide entries describe server guest-list tickets, never the retired phone-only comp list (postcheck below)
+-- Invariant I-3827-GUIDE-MATCHES-COMPS is declared beside its test (issue_3827_comps.implementor.happy.pg17.test.sql).
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

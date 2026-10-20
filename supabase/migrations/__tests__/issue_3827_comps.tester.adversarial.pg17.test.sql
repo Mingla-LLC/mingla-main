@@ -13,6 +13,7 @@
 -- invariant: I-3827-COMP-NOT-SOLD        A8 (numbers rollups unchanged by comps)
 -- invariant: I-3827-COMP-NO-MONEY        A7 (every money column + source flip)
 -- invariant: I-3827-MANUAL-ADMIT-ONE-LADDER A5 (no scan row for a foreign ticket)
+-- MINGLA-INVARIANT: I-3827-COMP-HAS-ORIGIN | issue #3827 | every comp names its origin: a team member or a link; the helper raises comp_origin_required otherwise
 -- MINGLA-INVARIANT: I-3827-PARTY-ONE-LEVEL | issue #3827 | a plus-one order points at a lead whose own lead is null; the helper refuses nesting (P)
 --
 -- FAILS-ON-REVERT (tester):

@@ -9,6 +9,7 @@
 -- MINGLA-INVARIANT: I-3827-COMP-COUNTS-GOING | issue #3827 | the public going count includes live comp tickets on a non-private event (H1)
 -- MINGLA-INVARIANT: I-3827-COMP-CANCEL-NO-REFUND | issue #3827 | biz_comp_cancel voids valid tickets and writes no refund row (H7)
 -- MINGLA-INVARIANT: I-3827-ONE-PERSON-ONE-ORDER | issue #3827 | a named plus-one is their own comp order of one ticket; blank plus-ones ride the guest's order (H-N8)
+-- MINGLA-INVARIANT: I-3827-GUIDE-MATCHES-COMPS | issue #3827 | the comp, check-in, guest-list and reconciliation guide entries describe server guest-list tickets, never the old phone-only list (G)
 -- (I-3827-MANUAL-ADMIT-ONE-LADDER is declared beside its structural test; H10 proves it at runtime.)
 --
 -- ── FAILS-ON-REVERT (recorded on #3827) ─────────────────────────────────────
@@ -570,5 +571,26 @@ BEGIN
     'the cancellation email row stays pending');
 END
 $fixes$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- G — the Feature Guide describes server guest-list tickets
+-- ═══════════════════════════════════════════════════════════════════════════
+DO $guide$
+BEGIN
+  PERFORM pg_temp.i3827_assert(
+    (SELECT count(*) FROM public.product_capabilities
+      WHERE capability_key IN ('events-comp-guests','events-check-in','events-guest-list','events-reconciliation')) = 4,
+    'G the four guide entries exist');
+  PERFORM pg_temp.i3827_assert(
+    NOT EXISTS (SELECT 1 FROM public.product_capabilities
+                 WHERE capability_key IN ('events-comp-guests','events-check-in','events-guest-list','events-reconciliation')
+                   AND concat_ws(' ', outcome_summary, how_to, limitations, support_wording)
+                       ILIKE ANY (ARRAY['%Mark checked in%', '%saved only on the phone or browser%', '%no ticket, no QR%', '%Add comp guest%'])),
+    'G no guide entry describes the retired phone-only comps');
+  PERFORM pg_temp.i3827_assert(
+    (SELECT how_to FROM public.product_capabilities WHERE capability_key = 'events-check-in') ILIKE '%Find by name%',
+    'G check-in explains Find by name');
+END
+$guide$;
 
 ROLLBACK;
