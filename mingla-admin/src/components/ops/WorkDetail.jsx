@@ -10,7 +10,7 @@ import { useOpsCard } from "../../hooks/useOpsCard";
 import * as ops from "../../services/opsService";
 import {
   PERSON_ACTIONS,
-  PERSON_REASONS,
+  personReasonLabel,
   WORK_STATUSES,
   addDays,
   agentName,
@@ -19,6 +19,7 @@ import {
   dayLabel,
   githubChipClass,
   githubChipWords,
+  githubWaitOffered,
   githubWaitWords,
   mondayOf,
   opsErrorWords,
@@ -179,7 +180,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
     <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 shadow-[var(--shadow-sm)]">
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         <button type="button" onClick={onBack} className={`min-h-11 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] min-[1180px]:hidden ${FOCUS}`}>Back to list</button>
-        <OpsChip tone={statusTone(card)}>{card.status === "done" ? closeKindLabel(card.close_kind) : statusLabel}{card.status === "person" ? ` · ${PERSON_REASONS[card.person_reason] || ""}` : ""}</OpsChip>
+        <OpsChip tone={statusTone(card)}>{card.status === "done" ? closeKindLabel(card.close_kind) : statusLabel}{card.status === "person" ? ` · ${personReasonLabel(card)}` : ""}</OpsChip>
         {card.blocked && <OpsChip tone="error">Blocked</OpsChip>}
         <span className="text-[12px] text-[var(--color-text-tertiary)]">Card {card.number} · Added by {agentName(card.created_by_name, card.created_via)}</span>
         {saveState && <span role="status" className="ml-auto text-[12px] text-[var(--color-text-tertiary)]">{saveState}</span>}
@@ -545,7 +546,7 @@ function GithubLinks({ card, disabled, onSave }) {
 function GithubWait({ card, disabled, onChange }) {
   const on = card.blocked && card.blocked_kind === "github";
   const words = githubWaitWords(card.github);
-  if (!words) return null;
+  if (!words || !githubWaitOffered(card)) return null;
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <button

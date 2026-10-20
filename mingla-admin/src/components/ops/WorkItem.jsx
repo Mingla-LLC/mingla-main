@@ -1,7 +1,7 @@
 // Issue #3980 — one card in the Work board list.
 import { forwardRef } from "react";
 import { Avatars, OpsChip } from "./OpsChip";
-import { PERSON_REASONS, agentName, closeKindLabel, dayLabel } from "../../lib/opsModel";
+import { agentName, closeKindLabel, dayLabel, personReasonLabel } from "../../lib/opsModel";
 
 export const WorkItem = forwardRef(function WorkItem({ card, selected, onSelect }, ref) {
   const due = card.overdue ? `Overdue · ${dayLabel(card.due_on)}` : `Due ${dayLabel(card.due_on)}`;
@@ -28,7 +28,7 @@ export const WorkItem = forwardRef(function WorkItem({ card, selected, onSelect 
         <span className={`text-[12px] ${card.overdue ? "font-semibold text-[var(--color-error-700)]" : "text-[var(--color-text-tertiary)]"}`}>{card.status === "done" ? closeKindLabel(card.close_kind) : due}</span>
         {card.kind === "gate_live" && <OpsChip tone="info">Gate</OpsChip>}
         {card.blocked && <OpsChip tone="error">Blocked</OpsChip>}
-        {card.status === "person" && <OpsChip tone="warning">{PERSON_REASONS[card.person_reason] || "Needs a person"}</OpsChip>}
+        {card.status === "person" && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}
         {card.anchor && <OpsChip dashed={card.anchor.kind === "expected"}>{card.anchor.title}</OpsChip>}
         {card.status === "done" && card.close_kind && card.close_kind !== "done" && <OpsChip>{closeKindLabel(card.close_kind)}</OpsChip>}
         {card.claim && <OpsChip tone="brand"><span aria-hidden="true">●</span> {agentName(card.claim.holder_name, card.claim.holder_via, card.claim.holder_chat_label)} is on it</OpsChip>}

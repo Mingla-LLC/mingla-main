@@ -15,6 +15,16 @@ export const PERSON_REASONS = {
   other: "Needs a person",
 };
 
+/**
+ * #3980 W2 rework: why a card needs a person, in words. Bridge D's approval
+ * card (a drafted "Recently shipped" roadmap card) is about what hosts are
+ * told, not about publishing an event.
+ */
+export function personReasonLabel(card) {
+  if (card?.auto_kind === "roadmap_shipped") return "Approve what hosts are told";
+  return PERSON_REASONS[card?.person_reason] || "Needs a person";
+}
+
 export const PERSON_ACTIONS = {
   send: { action: "mark_sent", label: "Mark sent" },
   spend: { action: "approve_spend", label: "Approve spend" },
@@ -194,6 +204,18 @@ export function githubWaitWords(links) {
   const numbers = (Array.isArray(links) ? links : []).map((g) => Number(g?.number)).filter((n) => Number.isInteger(n) && n > 0);
   if (numbers.length === 0) return "";
   return `Blocked until ${numbers.map((n) => `#${n}`).join(", ")} ${numbers.length > 1 ? "are" : "is"} Live`;
+}
+
+/**
+ * #3980 W2 rework: is the "Blocked until #n is Live" switch offered? Always
+ * while the card waits (so a person can switch it off); otherwise only when
+ * at least one linked issue or pull request is not Live yet: waiting for
+ * what is already Live would unblock at once.
+ */
+export function githubWaitOffered(card) {
+  if (card?.blocked && card?.blocked_kind === "github") return true;
+  const links = (Array.isArray(card?.github) ? card.github : []).filter((g) => Number.isInteger(Number(g?.number)) && Number(g?.number) > 0);
+  return links.some((g) => g?.live !== true && g?.label !== "Live");
 }
 
 /** "2 h ago", "3 days ago": how long since an agent last updated a card. */
