@@ -1,6 +1,7 @@
 // MINGLA-INVARIANT: I-3697-HOUSE-CREATE-NO-SILENT-STOP | issue #3697 | the CREATE PAUSED phrase is visible before the first Create click and is checked before any plan is bound; a missing phrase never reads as "no channel can run".
 // MINGLA-INVARIANT: I-3697-HOUSE-CREATE-VISIBLE-STEPS | issue #3697 | Create and Resume report bind, fund, confirm, prepare and create-paused progress, and keep every failure on screen with its next action.
 // MINGLA-INVARIANT: I-3697-BUDGET-ENTRY-NEVER-DEADLOCKS | issue #3697 | the budget input's currency is resolved without the budget floor, so typing an amount digit by digit never disables the input.
+// MINGLA-INVARIANT: I-3697-STALLED-PREPARE-RETRIES | issue #3697 | a preparation row stuck uploading with no provider id is retried once the server marks it retryable, never polled forever
 // MINGLA-INVARIANT: I-3697-SCHEDULE-NAMED-ZONE | issue #3697 | campaign start and end are wall-clock times in a named, labelled zone, never silently the browser zone.
 /**
  * Issue #3697 — a Mingla (house) campaign goes from plan to PAUSED provider
@@ -41,6 +42,7 @@ import {
   zonedLocalToIso,
 } from "../lib/adBuilder/scheduleTimeZone.js";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary.js";
+import { nextPreparationAction } from "../lib/adBuilder/preparationState.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ADMIN_ROOT = resolve(__dirname, "..", "..");
@@ -359,5 +361,35 @@ describe("#3697 create readiness reasons are ordered and honest", () => {
     assert.match(createBlockReason({ channelCount: 1, planBlocked: true }), /targeting/);
     assert.match(createBlockReason({ channelCount: 1, phrase: "" }), /Type CREATE PAUSED/);
     assert.equal(createBlockReason({ channelCount: 1, phrase: CREATE_PAUSED_PHRASE }), null);
+  });
+});
+
+describe("#3697 a preparation that never reached the provider is recoverable", () => {
+  // Production 2026-10-20: the meta ref for the Femzy video was left
+  // `uploading` with no provider id after the prepare_begin audit failed.
+  const stalled = {
+    state: "uploading",
+    retryable: true,
+    error: { code: "provider_ref_not_recorded", message: "Retry is available." },
+  };
+
+  it("retries a stalled upload once the server flags it, then gives up honestly", () => {
+    assert.equal(nextPreparationAction(stalled), "retry");
+    assert.equal(nextPreparationAction(stalled, { retried: true }), "give_up");
+  });
+
+  it("keeps polling a genuine in-flight upload and handles every other state", () => {
+    assert.equal(nextPreparationAction({ state: "uploading", retryable: false }), "status");
+    assert.equal(nextPreparationAction({ state: "processing" }), "status");
+    assert.equal(nextPreparationAction({ state: "not_started" }), "start");
+    assert.equal(nextPreparationAction({ state: "ready" }), "done");
+    assert.equal(nextPreparationAction({ state: "failed" }), "retry");
+    assert.equal(nextPreparationAction({ state: "timed_out" }, { retried: true }), "give_up");
+  });
+
+  it("the shared preparation loop uses the decision table and names when to resume", () => {
+    const service = SRC("services/adEngineService.js");
+    assert.match(service, /const next = nextPreparationAction\(row, \{ retried \}\)/);
+    assert.match(service, /from then a stalled attempt is retried automatically/);
   });
 });

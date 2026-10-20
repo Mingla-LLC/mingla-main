@@ -14,6 +14,7 @@
 
 import { supabase, invokeWithRefresh } from "../lib/supabase";
 import {
+  nextPreparationAction,
   normalizePreparationInvoke,
   PREPARATION_ORDER,
   retryDelayMs,
@@ -646,25 +647,27 @@ export async function prepareBoundVideoCreative({
       const row = result.data ?? {};
       rows[platform] = row;
       onProgress?.(platform, row);
-      if (row.state === "ready") break;
-      if (row.state === "failed" || row.state === "timed_out") {
-        if (retried) {
-          throw videoPreparationError(
-            platform,
-            row.error?.message ?? "The provider could not prepare this video.",
-          );
-        }
-        action = "retry";
-        retried = true;
-      } else if (row.state === "not_started") {
-        action = "start";
-      } else {
-        action = "status";
-      }
-      if (attempt === 59) {
+      // #3697: one decision table, including the "uploading but never
+      // reached the provider" row that only an explicit retry can recover.
+      const next = nextPreparationAction(row, { retried });
+      if (next === "done") break;
+      if (next === "give_up") {
         throw videoPreparationError(
           platform,
-          "The provider is still preparing this video; resume the exact plan shortly.",
+          row.error?.message ?? "The provider could not prepare this video.",
+        );
+      }
+      if (next === "retry") retried = true;
+      action = next;
+      if (attempt === 59) {
+        const startedAt = Date.parse(row.started_at ?? "");
+        const neverReachedProvider =
+          row.state === "uploading" && Number.isFinite(startedAt);
+        throw videoPreparationError(
+          platform,
+          neverReachedProvider
+            ? `The provider is still preparing this video, or the last attempt never reached it. Resume the exact plan after ${new Date(startedAt + 15 * 60 * 1000).toLocaleTimeString()}; from then a stalled attempt is retried automatically.`
+            : "The provider is still preparing this video; resume the exact plan shortly.",
         );
       }
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs(row)));
