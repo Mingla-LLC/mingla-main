@@ -38,7 +38,9 @@
 -- altered check constraints (no card or link may still use 'github' or
 -- 'roadmap_card'), drop ops_release_records.test_files, put back the plain
 -- ops_roadmap_links_issue index in place of ops_roadmap_links_issue_unique
--- and drop the new ops_ functions. Feature Guide evidence and roadmap drafts written by the
+-- drop the three roadmap approval guard triggers (ops_roadmap_card_agent_guard,
+-- ops_roadmap_link_agent_guard, ops_roadmap_github_agent_guard) and drop the
+-- new ops_ functions. Feature Guide evidence and roadmap drafts written by the
 -- bridges stay as audited history.
 
 BEGIN;
@@ -300,6 +302,104 @@ BEGIN
 END;
 $$;
 
+-- #3980 W2 rework 4: the draft a "Recently shipped" approval card is about.
+-- It is read from what Bridge D itself recorded, never from anything on the
+-- card a person or an agent can edit: the card's server-set auto_key
+-- (roadmap_shipped:issue-<n>) names the issue, and the audit row
+-- ops_roadmap_draft_add wrote for that issue (actor NULL, source
+-- issue_3980_bridge_d) names the draft. Clients only read the audit log;
+-- only ops_roadmap_draft_add writes this action. NULL for any other card.
+CREATE FUNCTION public.ops_roadmap_shipped_draft(p_auto_key text) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  SELECT a.entity_id FROM public.community_audit_log a
+   WHERE p_auto_key ~ '^roadmap_shipped:issue-[0-9]{1,9}$'
+     AND a.action = 'draft_roadmap_card' AND a.entity_type = 'community_roadmap_card' AND a.actor_user_id IS NULL
+     AND a.metadata->>'source' = 'issue_3980_bridge_d'
+     AND a.metadata->>'issue' = substring(p_auto_key FROM '^roadmap_shipped:issue-([0-9]+)$')
+   ORDER BY a.created_at, a.id LIMIT 1
+$$;
+
+-- #3980 W2 rework 4: true when this transaction is a connected agent's
+-- request, answered by crm_ctx() itself (its "via": the request row the
+-- gateway wrote in THIS transaction for THIS person), so there is one rule
+-- for who is an agent. Someone crm_ctx() refuses (no signed-in person, or no
+-- team access) is not an agent's request: the gateway runs crm_ctx() first,
+-- so an agent always passes it. Any other error is raised, never read as
+-- "not an agent". The bridges and housekeeping have no signed-in person.
+CREATE FUNCTION public.ops_agent_request() RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_via text;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN false; END IF;
+  SELECT x.via INTO v_via FROM public.crm_ctx() x;
+  RETURN v_via IS NOT NULL;
+EXCEPTION WHEN insufficient_privilege THEN
+  RETURN false;
+END;
+$$;
+
+-- #3980 W2 rework 4: the backstop under every writer. On a "Recently
+-- shipped" approval card (auto_key roadmap_shipped:...) an agent's request
+-- can never change what decides whether the card is open, closed, or tied to
+-- its draft: the key, kind, status, what it waits for, its close fields,
+-- blocked, anchor, archive, or who is working on it. A reopen (done back to
+-- To do) only reopens, so it stays allowed. Its title, wording, plan, result,
+-- due date, sprint and people stay editable. People, the bridges and
+-- housekeeping are not affected. An agent creating such a card is refused.
+CREATE FUNCTION public.ops_roadmap_card_agent_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.auto_key LIKE 'roadmap\_shipped:%' AND public.ops_agent_request() THEN
+      RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only Mingla makes this card.' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (OLD.auto_key LIKE 'roadmap\_shipped:%' OR NEW.auto_key LIKE 'roadmap\_shipped:%') AND public.ops_agent_request() THEN
+    IF NEW.auto_key IS DISTINCT FROM OLD.auto_key OR NEW.kind IS DISTINCT FROM OLD.kind
+       OR NEW.archived_at IS DISTINCT FROM OLD.archived_at
+       OR ROW(NEW.blocked, NEW.blocked_kind, NEW.blocked_reason) IS DISTINCT FROM ROW(OLD.blocked, OLD.blocked_kind, OLD.blocked_reason)
+       OR ROW(NEW.anchor_kind, NEW.anchor_id) IS DISTINCT FROM ROW(OLD.anchor_kind, OLD.anchor_id)
+       OR (NEW.working_via IS NOT NULL AND ROW(NEW.working_by, NEW.working_via) IS DISTINCT FROM ROW(OLD.working_by, OLD.working_via))
+       OR (NOT (OLD.status = 'done' AND NEW.status = 'todo')
+           AND (ROW(NEW.status, NEW.person_reason) IS DISTINCT FROM ROW(OLD.status, OLD.person_reason)
+                OR ROW(NEW.close_kind, NEW.close_reason, NEW.closed_at, NEW.closed_by, NEW.closed_via, NEW.proof)
+                   IS DISTINCT FROM ROW(OLD.close_kind, OLD.close_reason, OLD.closed_at, OLD.closed_by, OLD.closed_via, OLD.proof))) THEN
+      RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person moves this card or changes what it is tied to.' USING ERRCODE = '42501';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- #3980 W2 rework 4: the same backstop for the card's links and GitHub
+-- links: an agent's request never adds, removes or swaps one on a
+-- "Recently shipped" approval card. A label refresh of an unchanged link
+-- (ON CONFLICT ... DO UPDATE SET label) is not a change. AFTER triggers, so
+-- an upsert that lands on an existing row only counts as the update it is.
+CREATE FUNCTION public.ops_roadmap_link_agent_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v_card uuid := CASE WHEN TG_OP = 'DELETE' THEN OLD.card_id ELSE NEW.card_id END;
+BEGIN
+  IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = 'ops_work_links' THEN
+    -- (nested: the row fields below exist only on ops_work_links)
+    IF ROW(NEW.card_id, NEW.kind, NEW.target_id) IS NOT DISTINCT FROM ROW(OLD.card_id, OLD.kind, OLD.target_id) THEN
+      RETURN NULL;
+    END IF;
+  END IF;
+  IF (EXISTS (SELECT 1 FROM public.ops_work_cards w WHERE w.id = v_card AND w.auto_key LIKE 'roadmap\_shipped:%')
+      OR (TG_OP = 'UPDATE' AND EXISTS (SELECT 1 FROM public.ops_work_cards w WHERE w.id = OLD.card_id AND w.auto_key LIKE 'roadmap\_shipped:%')))
+     AND public.ops_agent_request() THEN
+    RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person changes what this card links to.' USING ERRCODE = '42501';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
 -- B6: the lane GitHub suggests for linked roadmap cards (all, or one).
 -- Stored only when it differs from the card's lane and from a lane a person
 -- dismissed. Nothing here writes the card.
@@ -445,10 +545,12 @@ BEGIN
   END LOOP;
 
   -- The approval card closes itself once a person has published the draft
-  -- or archived it as not needed.
+  -- or archived it as not needed. #3980 W2 rework 4: the draft is the one
+  -- Bridge D recorded for the card's issue (ops_roadmap_shipped_draft), not
+  -- whatever the card's editable links point at, so adding, swapping or
+  -- removing a link never closes the card or keeps it open.
   FOR l IN SELECT w.id, rc.status FROM public.ops_work_cards w
-             JOIN public.ops_work_links k ON k.card_id = w.id AND k.kind = 'roadmap_card'
-             JOIN public.community_roadmap_cards rc ON rc.id = k.target_id
+             JOIN public.community_roadmap_cards rc ON rc.id = public.ops_roadmap_shipped_draft(w.auto_key)
             WHERE w.auto_key LIKE 'roadmap\_shipped:%' AND w.status <> 'done' AND w.archived_at IS NULL
               AND rc.status IN ('published', 'archived') LOOP
     BEGIN
@@ -1056,6 +1158,24 @@ BEGIN
     n.blocked_reason := CASE WHEN n.blocked THEN v_gate->>'reason' END;
   END IF;
 
+  -- #3980 W2 rework 4: on a roadmap approval card an agent changes nothing
+  -- that ties it to its draft or decides whether it is open: its links, its
+  -- GitHub links, blocked or waiting, or its anchor. Its wording, plan,
+  -- result, due date and people stay editable. (A trigger refuses the same
+  -- for every other writer.)
+  IF v.via IS NOT NULL AND c.auto_key LIKE 'roadmap\_shipped:%'
+     AND (ROW(n.blocked, n.blocked_kind, n.blocked_reason, n.anchor_kind, n.anchor_id)
+            IS DISTINCT FROM ROW(c.blocked, c.blocked_kind, c.blocked_reason, c.anchor_kind, c.anchor_id)
+          OR (p_changes ? 'github' AND v_gh_list IS DISTINCT FROM v_gh_cur)
+          OR (p_changes ? 'links' AND
+              (SELECT string_agg(k, ',' ORDER BY k COLLATE "C") FROM (
+                 SELECT DISTINCT l.kind || ':' || l.target_id::text AS k FROM public.ops_work_links l WHERE l.card_id = c.id) a)
+              IS DISTINCT FROM
+              (SELECT string_agg(k, ',' ORDER BY k COLLATE "C") FROM (
+                 SELECT DISTINCT (x->>'kind') || ':' || lower(x->>'id') AS k FROM jsonb_array_elements(COALESCE(cl->'links', '[]'::jsonb)) x) b))) THEN
+    RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person changes what this card links to or waits for.' USING ERRCODE = '42501';
+  END IF;
+
   IF ROW(n.title, n.instructions, n.done_means, n.due_on, n.sprint_id, n.anchor_kind, n.anchor_id, n.result)
      IS DISTINCT FROM ROW(c.title, c.instructions, c.done_means, c.due_on, c.sprint_id, c.anchor_kind, c.anchor_id, c.result) THEN
     v_cats := v_cats || 'updated'::text;
@@ -1154,6 +1274,82 @@ EXCEPTION WHEN unique_violation THEN
   RAISE EXCEPTION 'invalid_card: An open card already has this title. Update that card instead.' USING ERRCODE = '22023';
 END;
 
+$$;
+
+
+-- From 20271124003980. #3980 W2 rework 4: an agent starting a roadmap
+-- approval card (auto_key roadmap_shipped:...) is refused with people_only
+-- before anything is written. Everything else is unchanged.
+CREATE OR REPLACE FUNCTION public.ops_work_start(p_id uuid, p_expected_revision bigint) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record; c public.ops_work_cards; n public.ops_work_cards; v_today date := public.ops_today(NULL); v_before jsonb; v_event uuid;
+        v_chat text; v_sprint uuid; v_mon date; v_from text; v_takeover boolean := false; v_prev text;
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  v_chat := CASE WHEN v.via IS NOT NULL THEN public.ops_ctx_chat() END;
+  c := public.ops_card_lock(p_id, p_expected_revision);
+  -- #3980 W2 rework 4: an agent never starts a roadmap approval card, in any
+  -- status, and gets no working mark on it. A person still can.
+  IF v.via IS NOT NULL AND c.auto_key LIKE 'roadmap\_shipped:%' THEN
+    RAISE EXCEPTION 'people_only: A person approves what hosts are told. Only a person starts this card.' USING ERRCODE = '42501';
+  END IF;
+  IF c.status = 'done' THEN RAISE EXCEPTION 'card_closed: Reopen this card before changing it.' USING ERRCODE = '22023'; END IF;
+  IF c.status = 'doing' THEN
+    IF v.via IS NULL THEN
+      RETURN jsonb_build_object('card', public.ops_card_json(c, v_today), 'event_id', NULL, 'changed', false);
+    END IF;
+    PERFORM public.ops_agent_owns(c, v.actor_email, v.via);
+    IF c.working_via IS NOT NULL AND public.ops_same_agent(c.working_by, c.working_via, c.working_chat, v.actor_email, v.via, v_chat) THEN
+      UPDATE public.ops_work_cards SET working_seen_at = clock_timestamp() WHERE id = c.id RETURNING * INTO n;
+      RETURN jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', NULL, 'changed', false);
+    END IF;
+    IF c.working_via IS NOT NULL AND COALESCE(c.working_seen_at, c.started_at) > clock_timestamp() - interval '24 hours' THEN
+      PERFORM public.ops_claim_assert('work_card', c.id, v.actor_email, v.via);
+    END IF;
+    -- Quiet for 24 hours, or nobody's agent on it: this agent takes it.
+    v_takeover := c.working_via IS NOT NULL;
+    v_prev := CASE WHEN v_takeover THEN public.ops_actor_label(c.working_by, c.working_via, c.working_chat) END;
+    v_before := public.ops_card_snapshot(c.id);
+    UPDATE public.ops_work_cards SET working_by = v.actor_email, working_via = v.via, working_chat = v_chat, working_seen_at = clock_timestamp(),
+      revision = revision + 1, updated_by = v.actor_email, updated_via = v.via, updated_at = now()
+     WHERE id = c.id RETURNING * INTO n;
+    v_event := public.ops_card_event(c.id, v.actor_email, v.via, CASE WHEN v_takeover THEN 'took_over' ELSE 'started' END,
+      CASE WHEN v_takeover THEN format('Took over from %s after 24 hours without an update.', v_prev) END,
+      v_before, public.ops_card_snapshot(c.id), c.revision, n.revision);
+    PERFORM public.ops_log_write(v.actor_email, v.via, CASE WHEN v_takeover THEN 'took_over' ELSE 'started' END, 'ok', c.id, 'work_card', c.id,
+      CASE WHEN v_takeover THEN format('Took over Card %s from %s: %s', n.number, v_prev, n.title)
+           ELSE format('Started Card %s: %s', n.number, n.title) END, '{}'::jsonb);
+    IF v_takeover THEN
+      PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, 'owner') || c.working_by, v.actor_email,
+        format('%s took over %s from %s after 24 hours without an update.', public.ops_actor_label(v.actor_email, v.via, v_chat), n.title, v_prev));
+    END IF;
+    RETURN jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', v_event, 'changed', true);
+  END IF;
+  IF c.status <> 'todo' THEN RAISE EXCEPTION 'wrong_status: Only a card in To do can be started.' USING ERRCODE = '22023'; END IF;
+  IF c.blocked THEN RAISE EXCEPTION '%', format('blocked: %s', c.blocked_reason) USING ERRCODE = '42501'; END IF;
+  PERFORM public.ops_agent_owns(c, v.actor_email, v.via);
+  PERFORM public.ops_claim_assert('work_card', c.id, v.actor_email, v.via);
+  v_before := public.ops_card_snapshot(c.id);
+  v_mon := public.ops_monday(v_today);
+  SELECT CASE WHEN s.starts_on > v_mon THEN public.ops_sprint_ensure(v_today) ELSE c.sprint_id END,
+         CASE WHEN s.starts_on > v_mon THEN public.ops_day_words(s.starts_on) END
+    INTO v_sprint, v_from FROM public.ops_sprints s WHERE s.id = c.sprint_id;
+  UPDATE public.ops_work_cards SET status = 'doing', started_at = clock_timestamp(), working_by = v.actor_email, working_via = v.via,
+    working_chat = v_chat, working_seen_at = CASE WHEN v.via IS NOT NULL THEN clock_timestamp() END,
+    sprint_id = COALESCE(v_sprint, c.sprint_id),
+    revision = revision + 1, updated_by = v.actor_email, updated_via = v.via, updated_at = now()
+   WHERE id = c.id RETURNING * INTO n;
+  v_event := public.ops_card_event(c.id, v.actor_email, v.via, 'started', NULL, v_before, public.ops_card_snapshot(c.id), c.revision, n.revision);
+  IF v_from IS NOT NULL THEN
+    PERFORM public.ops_card_event(c.id, v.actor_email, v.via, 'sprint_moved',
+      format('Moved to this week from the week of %s: started cards belong to the week they start.', v_from), NULL, NULL, n.revision, n.revision);
+  END IF;
+  IF v.via IS NOT NULL THEN
+    PERFORM public.ops_log_write(v.actor_email, v.via, 'started', 'ok', c.id, 'work_card', c.id, format('Started Card %s: %s', n.number, n.title), '{}'::jsonb);
+  END IF;
+  RETURN jsonb_build_object('card', public.ops_card_json(n, v_today), 'event_id', v_event, 'changed', true);
+END;
 $$;
 
 
@@ -1598,7 +1794,10 @@ BEGIN
     'public.ops_release_guide_apply()', 'public.ops_github_follow_list(integer)', 'public.ops_github_items_apply(jsonb)',
     'public.ops_github_status_list(integer[])', 'public.ops_ticket_engineering(text,uuid)', 'public.ops_roadmap_links_list()',
     'public.ops_roadmap_link_set(uuid,text)', 'public.ops_roadmap_suggestion_decide(uuid,text)', 'public.ops_release_records_list(jsonb)',
-    'public.ops_feature_guide_release(text)'] LOOP
+    'public.ops_feature_guide_release(text)',
+    -- #3980 W2 rework 4
+    'public.ops_roadmap_shipped_draft(text)', 'public.ops_agent_request()',
+    'public.ops_roadmap_card_agent_guard()', 'public.ops_roadmap_link_agent_guard()'] LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', f);
   END LOOP;
@@ -1617,6 +1816,20 @@ COMMENT ON FUNCTION public.ops_release_guide_apply() IS
   'Issue #3980. Bridge B: a complete release record turns the Feature Guide entries it names Live only when every required kind of evidence is then current and verified; otherwise nothing changes and the record says what is missing.';
 COMMENT ON FUNCTION public.ops_roadmap_draft_add(text, text, integer) IS
   'Issue #3980. Bridge D: the only insert this program makes into community_roadmap_cards, always a draft. Hosts see nothing until a person publishes it.';
+-- #3980 W2 rework 4: the backstop under every writer of a roadmap approval
+-- card, its links and its GitHub links (see the guard functions above).
+CREATE TRIGGER ops_roadmap_card_agent_guard BEFORE INSERT OR UPDATE ON public.ops_work_cards
+  FOR EACH ROW EXECUTE FUNCTION public.ops_roadmap_card_agent_guard();
+CREATE TRIGGER ops_roadmap_link_agent_guard AFTER INSERT OR UPDATE OR DELETE ON public.ops_work_links
+  FOR EACH ROW EXECUTE FUNCTION public.ops_roadmap_link_agent_guard();
+CREATE TRIGGER ops_roadmap_github_agent_guard AFTER INSERT OR UPDATE OR DELETE ON public.ops_work_github
+  FOR EACH ROW EXECUTE FUNCTION public.ops_roadmap_link_agent_guard();
+COMMENT ON FUNCTION public.ops_roadmap_shipped_draft(text) IS
+  'Issue #3980. The draft a Recently shipped approval card is about, from Bridge D''s own audit row for the card''s issue; never from an editable link.';
+COMMENT ON FUNCTION public.ops_roadmap_card_agent_guard() IS
+  'Issue #3980. Trigger: an agent''s request never changes the key, status, close, block, anchor, archive or working mark of a Recently shipped approval card (a reopen stays allowed).';
+COMMENT ON FUNCTION public.ops_roadmap_link_agent_guard() IS
+  'Issue #3980. Trigger: an agent''s request never adds, removes or swaps a link or GitHub link on a Recently shipped approval card.';
 COMMENT ON FUNCTION public.ops_roadmap_suggestion_decide(uuid, text) IS
   'Issue #3980. A person applies or dismisses the lane GitHub suggests; apply only returns the lane, which the screen saves through community_upsert_roadmap_card.';
 
