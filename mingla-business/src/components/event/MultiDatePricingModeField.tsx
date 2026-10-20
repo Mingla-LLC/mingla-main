@@ -47,8 +47,9 @@ const PRICING_MODE_OPTIONS: ReadonlyArray<{
     value: "all_days",
     label: "One price for all days",
     helperPaid:
-      "A guest pays once no matter how many days they choose, and gets a single pass that works on every day they picked.",
-    helperFree: "A guest gets a single pass that works on every day they picked.",
+      "A guest pays once and gets one pass that works on every date of the event.",
+    helperFree:
+      "A guest gets one pass that works on every date of the event.",
   },
 ];
 

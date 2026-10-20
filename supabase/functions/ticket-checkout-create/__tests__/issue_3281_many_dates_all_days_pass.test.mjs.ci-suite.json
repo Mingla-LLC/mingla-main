@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3281_many_dates_all_days_pass.test.mjs",
+  "lane": "node-discovered",
+  "orderKey": "issue-3281-many-dates-all-days-pass",
+  "profile": "node-test"
+}

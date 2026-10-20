@@ -250,6 +250,20 @@ export {
 } from "./experienceTimeZone";
 export type { ExperienceWindowMinutes } from "./experienceTimeZone";
 export {
+  filterUpcomingOccurrences,
+  chooseEventDateLayout,
+  placesLeftChip,
+  weekStartForCountry,
+} from "./eventDateSchedule";
+export type {
+  EventDateScheduleStatus,
+  EventDateScheduleOccurrence,
+  EventDateLayoutKind,
+  EventDateLayout,
+} from "./eventDateSchedule";
+export { EventDatePicker } from "./EventDatePicker";
+export type { EventDatePickerProps } from "./EventDatePicker";
+export {
   experienceRemainingChipText,
   experienceSeatsLabel,
   experienceStopOffsetLabel,

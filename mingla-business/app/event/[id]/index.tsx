@@ -949,6 +949,12 @@ export default function EventDetailScreen(): React.ReactElement {
             onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
           />
           <ActionTile
+            icon="ticket"
+            label="Dates"
+            sub="Titles and places per date"
+            onPress={() => router.push(`/event/${event.id}/dates` as never)}
+          />
+          <ActionTile
             icon="eye"
             label="Public page"
             onPress={handleViewPublic}

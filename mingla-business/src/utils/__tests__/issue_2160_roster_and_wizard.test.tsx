@@ -568,9 +568,9 @@ describe("issue #2160 — the two properties that are genuinely text", () => {
       "Per day",
       "One price for all days",
       "A guest pays for each day they choose. Two days costs twice as much, and they get a pass for each day.",
-      "A guest pays once no matter how many days they choose, and gets a single pass that works on every day they picked.",
+      "A guest pays once and gets one pass that works on every date of the event.",
       "A guest gets a separate pass for each day they choose.",
-      "A guest gets a single pass that works on every day they picked.",
+      "A guest gets one pass that works on every date of the event.",
       "You can't change this once a guest has a ticket.",
       "A guest already has a ticket, so this can't be changed.",
     ]) {

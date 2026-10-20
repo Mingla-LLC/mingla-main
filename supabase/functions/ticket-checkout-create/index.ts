@@ -1139,7 +1139,49 @@ export const createTicketCheckoutCreateHandler = (
     // set, which is what keeps every ORCH-1072 write site below byte-identical.
     let anchorEventDateId: string | null = null;
     const orderedEventDateIds: string[] = [];
-    if (eventDateIds.length > 0) {
+    // issue #3281 many-dates — all-days pass binds every upcoming occurrence
+    // before validation / idempotency (ignore client day list).
+    {
+      const { data: passRow } = await supabase
+        .from("events")
+        .select("is_multi_date, is_recurring, multi_date_pricing_mode")
+        .eq("id", eventId)
+        .maybeSingle();
+      const allDaysPass =
+        passRow !== null &&
+        typeof passRow === "object" &&
+        (passRow as { is_multi_date?: unknown }).is_multi_date === true &&
+        (passRow as { is_recurring?: unknown }).is_recurring !== true &&
+        (passRow as { multi_date_pricing_mode?: unknown })
+            .multi_date_pricing_mode === "all_days";
+      if (allDaysPass) {
+        const { data: passDates, error: passDatesErr } = await supabase
+          .from("event_dates")
+          .select("id")
+          .eq("event_id", eventId)
+          .gt("end_at", new Date().toISOString())
+          .order("start_at", { ascending: true });
+        if (passDatesErr !== null) {
+          console.error(
+            "[ticket-checkout-create] allDaysPass dates lookup failed",
+            passDatesErr,
+          );
+          return jsonResponse(
+            { error: "occurrence_lookup_failed", detail: passDatesErr.message },
+            500,
+          );
+        }
+        const upcoming = (Array.isArray(passDates) ? passDates : [])
+          .map((r) => (r as { id?: unknown }).id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0);
+        if (upcoming.length === 0) {
+          return refuse({ error: "occurrence_not_available" }, 422);
+        }
+        orderedEventDateIds.push(...upcoming);
+        anchorEventDateId = upcoming[0] ?? null;
+      }
+    }
+    if (orderedEventDateIds.length === 0 && eventDateIds.length > 0) {
       const { data: occRows, error: occSetErr } = await supabase
         .from("event_dates")
         .select("id, end_at")
