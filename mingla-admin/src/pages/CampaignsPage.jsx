@@ -59,12 +59,13 @@ import {
   canLaunchCampaign,
   canPauseCampaign,
   formatCampaignMoney,
-  scheduleWindowLabel,
   spendCapProgress,
 } from "../lib/adSpendCap";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { PageHeader } from "../components/ui/PageHeader";
 import { filterAndSortCampaigns } from "../lib/adCampaignWorkspace";
+import { CampaignRow } from "../components/ad-engine/CampaignRow";
+import { campaignScheduleInZone } from "../lib/adCampaignRow";
 import {
   housePlanCreateSteps,
   housePlanNextAction,
@@ -1115,132 +1116,32 @@ export function CampaignsPage({ embedded = false }) {
             No campaigns match these filters.
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
+            {/* #3697: one plain status chip per row (not the raw advertiser +
+                delivery badges), dates in the campaign's own zone, spend vs
+                cap, and End plan / Sync inside the overflow menu. */}
             {visibleCampaigns.map((campaign) => (
-              <div
+              <CampaignRow
                 key={campaign.id}
-                className={[
-                  "border rounded-lg p-3 flex flex-wrap items-center gap-3",
-                  selectedId === campaign.id
-                    ? "border-[var(--color-brand-500)] ring-1 ring-[var(--color-brand-500)]"
-                    : "border-[var(--gray-200)]",
-                ].join(" ")}
-              >
-                <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    className="font-medium text-sm truncate hover:underline text-left"
-                    onClick={() => {
-                      window.location.hash = `#/campaigns?campaignId=${campaign.id}`;
-                    }}
-                  >
-                    {campaign.name}
-                  </button>
-                  <div className="text-xs text-[var(--color-text-secondary)]">
-                    {campaign.owner_label} ·{" "}
-                    {PLATFORM_LABELS[campaign.platform] ?? campaign.platform} ·{" "}
-                    {campaign.objective} ·{" "}
-                    {formatCampaignMoney(
-                      campaign.currency,
-                      campaign.daily_budget_cents,
-                    )}
-                    /day
-                    {campaign.cap_cents != null && (
-                      <>
-                        {" "}
-                        · cap{" "}
-                        {formatCampaignMoney(
-                          campaign.currency,
-                          campaign.cap_cents,
-                        )}
-                      </>
-                    )}
-                    {" · "}
-                    <a
-                      className="underline inline-flex items-center gap-1"
-                      href={campaign.dest_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      destination <ExternalLink size={10} />
-                    </a>
-                  </div>
-                  {scheduleWindowLabel({
-                    startsAt: campaign.starts_at,
-                    endsAt: campaign.ends_at,
-                  }) && (
-                    <div className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">
-                      {scheduleWindowLabel({
-                        startsAt: campaign.starts_at,
-                        endsAt: campaign.ends_at,
-                      })}
-                    </div>
-                  )}
-                  {rowWarning[campaign.id] && (
-                    <div className="text-xs text-[var(--color-warning-700)] mt-1">
-                      {rowWarning[campaign.id]}
-                    </div>
-                  )}
-                </div>
-                {/* DUAL badges: advertiser status + delivery status. */}
-                <Badge
-                  variant={campaign.status === "ACTIVE" ? "success" : "default"}
-                >
-                  {campaign.status}
-                </Badge>
-                <Badge
-                  variant={
-                    DELIVERY_BADGE_VARIANTS[campaign.delivery_status] ?? "info"
-                  }
-                >
-                  {campaign.delivery_status ?? "unknown"}
-                </Badge>
-                {canLaunchWithProviderMoney(campaign, campaigns) && (
-                  <Button
-                    size="sm"
-                    icon={Rocket}
-                    loading={rowBusy[campaign.id] === "launch"}
-                    onClick={() => setLaunchTarget(campaign)}
-                  >
-                    Launch plan
-                  </Button>
-                )}
-                {canLaunchCampaign(campaign.status) &&
-                  !canLaunchWithProviderMoney(campaign, campaigns) && (
-                    <Badge variant="error">Provider money unresolved</Badge>
-                  )}
-                {canPauseCampaign(campaign.status) && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={Pause}
-                    loading={rowBusy[campaign.id] === "pause"}
-                    onClick={() => handleAction(campaign, "pause")}
-                  >
-                    Pause
-                  </Button>
-                )}
-                {canEndPlan(campaign, campaigns) && (
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    icon={XCircle}
-                    loading={rowBusy[campaign.id] === "end"}
-                    onClick={() => setEndTarget(campaign)}
-                  >
-                    End plan
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon={RefreshCw}
-                  loading={rowBusy[campaign.id] === "sync"}
-                  onClick={() => handleSync(campaign.id)}
-                >
-                  Sync
-                </Button>
-              </div>
+                campaign={campaign}
+                selected={selectedId === campaign.id}
+                warning={rowWarning[campaign.id] ?? null}
+                busy={rowBusy[campaign.id] ?? null}
+                canLaunch={canLaunchWithProviderMoney(campaign, campaigns)}
+                launchBlocked={
+                  canLaunchCampaign(campaign.status) &&
+                  !canLaunchWithProviderMoney(campaign, campaigns)
+                }
+                canPause={canPauseCampaign(campaign.status)}
+                canEnd={canEndPlan(campaign, campaigns)}
+                onOpen={() => {
+                  window.location.hash = `#/campaigns?campaignId=${campaign.id}`;
+                }}
+                onLaunch={() => setLaunchTarget(campaign)}
+                onPause={() => handleAction(campaign, "pause")}
+                onEnd={() => setEndTarget(campaign)}
+                onSync={() => handleSync(campaign.id)}
+              />
             ))}
           </div>
         )}
@@ -1577,10 +1478,19 @@ export function CampaignsPage({ embedded = false }) {
                     Schedule
                   </div>
                   <div className="text-sm font-medium">
-                    {scheduleWindowLabel({
-                      startsAt: selectedCampaign?.starts_at,
-                      endsAt: selectedCampaign?.ends_at,
-                    }) ?? "—"}
+                    {(() => {
+                      // #3697: the campaign's own schedule zone, labelled.
+                      const zoned = campaignScheduleInZone({
+                        startsAt: selectedCampaign?.starts_at,
+                        endsAt: selectedCampaign?.ends_at,
+                        timeZone:
+                          selectedCampaign?.plan_version?.schedule_time_zone ??
+                          null,
+                      });
+                      return zoned.range
+                        ? `${zoned.range} ${zoned.zoneLabel}`
+                        : "—";
+                    })()}
                   </div>
                 </div>
               </div>

@@ -138,10 +138,21 @@ export async function recordAppReadinessEvent(event) {
 
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
+// #3697: the row also needs the plan's schedule zone (dates are shown in the
+// campaign's own zone), the connection's provider account id (Open in Meta)
+// and the spend-sync rows (spend vs cap). All are admin-RLS reads.
+export const CAMPAIGN_LIST_SELECT = [
+  "*",
+  "ad_sets(*, ads(*))",
+  "plan_version:ad_plan_versions(schedule_time_zone:canonical_plan->schedule->>time_zone)",
+  "connection:ad_connections(external_account_id,platform)",
+  "ad_spend_daily(spend_cents,currency,synced_at)",
+].join(", ");
+
 export async function listCampaigns() {
   return supabase
     .from("ad_campaigns")
-    .select("*, ad_sets(*, ads(*))")
+    .select(CAMPAIGN_LIST_SELECT)
     .order("created_at", { ascending: false });
 }
 
