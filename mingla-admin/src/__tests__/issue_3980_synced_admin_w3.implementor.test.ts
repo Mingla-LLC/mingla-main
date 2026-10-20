@@ -194,7 +194,8 @@ Deno.test("#3980 W3 R9: the one people field is used for every owner, watcher an
   assertMatch(field, /break-normal \[overflow-wrap:normal\] hyphens-none/);
   assertNotMatch(field, /break-all|overflow-wrap:anywhere/);
   // Work card owners keep one, except cards Mingla made by itself.
-  assertMatch(code("components/ops/WorkDetail.jsx"), /min=\{card\.auto \? 0 : 1\}/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D5): an automatic card keeps its last owner too once it has one; with none it shows the field empty.
+  assertMatch(code("components/ops/WorkDetail.jsx"), /min=\{ownerEmails\.length \? 1 : 0\}/);
 });
 
 Deno.test("#3980 W3 R6: the four plain states and their words", () => {

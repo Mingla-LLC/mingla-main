@@ -160,8 +160,9 @@ Deno.test("#3980 rework 2: Back to runway returns focus to what opened the panel
   assertMatch(openDay, /rememberOpener\(\);/);
   const selectEvent = page.slice(page.indexOf("const selectEvent = (selection, onDate) => {"), page.indexOf("const clearEvent"));
   assertMatch(selectEvent, /rememberOpener\(\);/);
-  assertMatch(page, /const clearEvent = \(\) => backToRunway\("event"\);/);
-  assertMatch(page, /const clearDay = \(\) => backToRunway\("day"\);/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D9, conductor decision X5a): no runway list remains to go back to; closing returns to the calendar and still focuses the opener.
+  assertMatch(page, /const clearEvent = \(\) => backToCalendar\("event"\);/);
+  assertMatch(page, /const clearDay = \(\) => backToCalendar\("day"\);/);
   assertMatch(page, /"data-calendar-chip", "data-calendar-more", "data-calendar-day-dense", "data-calendar-date", "data-runway-row"/);
   assertMatch(page, /target\?\.focus\?\.\(\);/);
   assertMatch(page, /if \(!target \|\| document\.activeElement !== target\) eventHeadingRef\.current\?\.focus\?\.\(\);/);
@@ -169,8 +170,7 @@ Deno.test("#3980 rework 2: Back to runway returns focus to what opened the panel
   assertMatch(page, /data-calendar-chip=\{e\.id\}/);
   assertMatch(page, /data-calendar-more=\{key\}/);
   const panel = code("components/ops/EventPanel.jsx");
-  assertMatch(panel, /const RunwayList = forwardRef\(function RunwayList\(\{ onSelect \}, headingRef\)/);
-  assertMatch(panel, /<RunwayList ref=\{headingRef\} onSelect=\{onSelect\} \/>/);
-  assertMatch(panel, /<span ref=\{headingRef\} tabIndex=\{-1\}/);
-  assertMatch(panel, /data-runway-row=/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D9, conductor decision X5a): the runway list left the event panel; its rows (data-runway-row) live in List view, where focus returns.
+  assertNotMatch(panel, /RunwayList/);
+  assertMatch(page, /data-runway-row=\{`\$\{r\.anchor_kind\}:\$\{r\.anchor_id\}`\}/);
 });

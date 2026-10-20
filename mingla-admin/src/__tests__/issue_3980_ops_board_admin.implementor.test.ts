@@ -89,11 +89,12 @@ Deno.test("#3980 opsService.js is the only browser caller of ops_ functions", ()
 });
 
 Deno.test("#3980 runway words for every band", () => {
-  assertEquals(runwayLabel({ band: "full", lead_days: 30 }), "Full launch · live 30 days ahead");
-  assertEquals(runwayLabel({ band: "tight", lead_days: 24 }), "Tight · live 24 days ahead");
-  assertEquals(runwayLabel({ band: "organic", lead_days: 10 }), "Organic only · live 10 days ahead");
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D10): the runway line uses the four plain states.
+  assertEquals(runwayLabel({ band: "full", lead_days: 30 }), "Ready to promote · live 30 days ahead");
+  assertEquals(runwayLabel({ band: "tight", lead_days: 24 }), "Promote now · live 24 days ahead");
+  assertEquals(runwayLabel({ band: "organic", lead_days: 10 }), "Too late for promo · live 10 days ahead");
   assertEquals(runwayLabel({ band: "not_live", go_live_by: "2026-11-02" }), "Not live yet · go live by 2 Nov");
-  assertEquals(runwayLabel({ band: "missed" }), "Missed go-live: organic only");
+  assertEquals(runwayLabel({ band: "missed" }), "Too late for promo · not live by the 3-week line");
   assertEquals(runwayLabel(null), "No date yet");
 });
 
@@ -171,7 +172,8 @@ Deno.test("#3980 the new screens: two columns, Undo, offline words, tokens only,
   assertMatch(detail, /This card changed\. Showing the latest\./);
   // [TEST-MOD-APPROVED #3980] synced Wave 3 (R9): the last owner is kept by the people field, which says why.
   assertMatch(read("lib/peopleField.js"), /A card always keeps one owner\. Add someone else first, then remove this one\./);
-  assertMatch(detail, /min=\{card\.auto \? 0 : 1\}/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D5): the last owner is kept on automatic cards too, once the card has an owner.
+  assertMatch(detail, /min=\{ownerEmails\.length \? 1 : 0\}/);
   assertMatch(detail, /Prompt copied\./);
   const opsFiles = [...Deno.readDirSync(new URL("components/ops/", SRC))].map((e) => read(`components/ops/${e.name}`));
   for (const source of [board, log, ...opsFiles]) {

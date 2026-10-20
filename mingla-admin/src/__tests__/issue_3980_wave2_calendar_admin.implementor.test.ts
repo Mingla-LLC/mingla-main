@@ -36,13 +36,15 @@ Deno.test("#3980 W2 five Calendar layers, in order, all on unless the address sa
 });
 
 Deno.test("#3980 W2 runway words for every band", () => {
-  assertEquals(bandShort({ band: "full" }), "Full launch");
-  assertEquals(bandShort({ band: "tight" }), "Tight");
-  assertEquals(bandShort({ band: "organic" }), "Organic only");
-  assertEquals(bandShort({ band: "not_live", go_live_by: "2026-11-01" }), "Go live by 1 Nov");
-  assertEquals(bandShort({ band: "missed" }), "Missed");
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D10): the four plain states replace full launch, tight, organic only and missed.
+  assertEquals(bandShort({ band: "full" }), "Ready to promote");
+  assertEquals(bandShort({ band: "tight" }), "Promote now");
+  assertEquals(bandShort({ band: "organic" }), "Too late for promo");
+  assertEquals(bandShort({ band: "not_live", go_live_by: "2026-11-01" }), "Not live yet, live by 1 Nov");
+  assertEquals(bandShort({ band: "missed" }), "Too late for promo");
   assertEquals(bandShort({ band: "no_date" }), "No date yet");
-  assertEquals(runwayLabel({ band: "full", lead_days: 30 }), "Full launch · live 30 days ahead");
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D10): the Work card's runway line uses the four plain states.
+  assertEquals(runwayLabel({ band: "full", lead_days: 30 }), "Ready to promote · live 30 days ahead");
   assertEquals(runwayLabel({ band: "not_live", go_live_by: "2026-11-01" }), "Not live yet · go live by 1 Nov");
 });
 
@@ -104,7 +106,9 @@ Deno.test("#3980 W2 the Calendar: new title, layer chips, two columns, the panel
   assertNotMatch(page, /ad_plans|ad_campaigns/);
   for (const words of ["Ready to promote", "Promote now", "Too late for promo", "Not live yet"]) assert(read("lib/opsModel.js").includes(words), words);
   const panel = read("components/ops/EventPanel.jsx");
-  for (const words of ["Runway", "Open host", "Back to runway", "Steps (made by themselves)"]) {
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (D9, conductor decision X5a): the runway list under the month is removed (List view holds it) and no Back to runway remains.
+  assertNotMatch(panel, /Runway|Back to runway/);
+  for (const words of ["Open host", "Back to the calendar", "Steps (made by themselves)"]) {
     assert(panel.includes(words) || read("components/ops/EventSteps.jsx").includes(words), words);
   }
   assertNotMatch(panel, /Plan this launch/);
