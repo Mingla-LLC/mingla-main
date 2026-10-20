@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_snap_radius_locations.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-shared-snap-radius-locations",
+  "profile": "deno-2-unit"
+}

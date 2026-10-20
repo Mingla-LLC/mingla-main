@@ -16,11 +16,10 @@
 //   C. Full-range ⇒ ZERO demographic ops proven by DEEP-EQUAL of the whole ops
 //      array to the no-demographic baseline (byte-identical broad build).
 //   D. userInterest positive-criteria shape `userInterests/{id}`, junk-id drop.
-//   E. buildSnapchatCircleGeos: null/junk ⇒ null (never fabricates); unit-token
-//      coercion (the documented "mile|kilometer" vs "mi|km" contradiction);
-//      case-fold + grouping.
-//   F. buildSnapchatAdSquadBody: circles REPLACE country geos (the non-circle
-//      country is DROPPED — "laser, not union").
+//   E. buildSnapchatCircleLocations: null/junk ⇒ null (never fabricates);
+//      unit-token mapping to Snap's MILES/KILOMETERS; case-fold + de-dup.
+//   F. buildSnapchatAdSquadBody: circles ride in targeting.locations; geos stay
+//      country-only (#3697 — Snap's documented shape; nesting was a live 400).
 //   G. parse tolerance (SCLS category_id / user_interest snake_case) + filter
 //      prefix-ordering.
 //   H. #1184 four-anchor adapter threading + the video-create 422 guard + the
@@ -30,7 +29,7 @@
 //   - delete `if (targetAges.includes(band)) continue;` (google.ts) ⇒ test C RED
 //     (full range would emit six exclusions instead of zero).
 //   - neutralise the gender opposite (`const opposite = ...`) ⇒ test B RED.
-//   - change `const geos = circleGeos ?? ...` to ignore circles ⇒ test F RED.
+//   - drop `locations` from the Snap targeting ⇒ test F RED.
 
 // adChannel.ts owns the adapter registry and forms a cycle with the leaf modules
 // — evaluate it FIRST (as the edge-fn entrypoints do) to dodge a TDZ error.
@@ -45,7 +44,7 @@ import {
 } from "../../_shared/google.ts";
 import {
   buildSnapchatAdSquadBody,
-  buildSnapchatCircleGeos,
+  buildSnapchatCircleLocations,
   filterSnapchatInterests,
   parseSnapchatInterests,
   type SnapchatAdSquadSpec,
@@ -180,65 +179,66 @@ Deno.test("adv D: audiences → POSITIVE userInterests/{id} criteria; blank/whit
   for (const c of aud) assertEquals(c.negative, undefined); // audiences are inclusions, not exclusions
 });
 
-// ── E. buildSnapchatCircleGeos — null/junk drop + unit-token coercion ──────────
-Deno.test("adv E: buildSnapchatCircleGeos returns null on empty / all-junk (never fabricates)", () => {
-  assertEquals(buildSnapchatCircleGeos(null), null);
-  assertEquals(buildSnapchatCircleGeos(undefined), null);
-  assertEquals(buildSnapchatCircleGeos([]), null);
+// ── E. buildSnapchatCircleLocations — null/junk drop + unit-token mapping ─────
+// [TEST-MOD-APPROVED #3697] Snapchat's documented targeting shape
+// (developers.snap.com/api/marketing-api/Ads-API/targeting) carries circles in
+// targeting.locations with units METERS|KILOMETERS|FEET|MILES; the old
+// geos[].circles nesting with "mile"/"kilometer" tokens was rejected live
+// (HTTP 400). These replace the buildSnapchatCircleGeos assertions.
+Deno.test("adv E: buildSnapchatCircleLocations returns null on empty / all-junk (never fabricates)", () => {
+  assertEquals(buildSnapchatCircleLocations(null), null);
+  assertEquals(buildSnapchatCircleLocations(undefined), null);
+  assertEquals(buildSnapchatCircleLocations([]), null);
   const allJunk: SnapchatCircleGeo[] = [
     { country_code: "FR", latitude: NaN, longitude: 2.3, radius: 5, unit: "mile" },
     { country_code: "US", latitude: 40.7, longitude: -74, radius: 0, unit: "mile" }, // radius 0 dropped
     { country_code: "", latitude: 1, longitude: 1, radius: 5, unit: "mile" }, // empty cc dropped
   ];
-  assertEquals(buildSnapchatCircleGeos(allJunk), null);
+  assertEquals(buildSnapchatCircleLocations(allJunk), null);
 });
 
-Deno.test("adv E: unit token — mile/kilometer preserved; an unrecognised token defaults to 'mile'", () => {
-  // The wire token emitted is EXACTLY what SNAPCHAT_CIRCLE_UNITS declares
-  // ("mile"|"kilometer") — NOT "mi"/"km". A "mi"/"km" (the documented-shape
-  // contradiction) is coerced to "mile"; the create fn's 422 gate keeps such a
-  // token from ever reaching here, but this documents the builder's own default.
-  const km = buildSnapchatCircleGeos([
+Deno.test("adv E: unit token — mile/kilometer map to MILES/KILOMETERS; an unrecognised token defaults to MILES", () => {
+  const km = buildSnapchatCircleLocations([
     { country_code: "GB", latitude: 51.5, longitude: -0.1, radius: 20, unit: "kilometer" },
   ])!;
-  assertEquals((km[0].circles as Record<string, unknown>[])[0].unit, "kilometer");
-  const coerced = buildSnapchatCircleGeos([
+  assertEquals((km[0].circles as Record<string, unknown>[])[0].unit, "KILOMETERS");
+  const coerced = buildSnapchatCircleLocations([
     { country_code: "GB", latitude: 51.5, longitude: -0.1, radius: 20, unit: "mi" },
   ])!;
-  assertEquals((coerced[0].circles as Record<string, unknown>[])[0].unit, "mile"); // "mi" → "mile"
+  assertEquals((coerced[0].circles as Record<string, unknown>[])[0].unit, "MILES"); // "mi" → MILES
 });
 
-Deno.test("adv E: case-folds country + groups mixed valid/junk under one geo", () => {
-  const geos = buildSnapchatCircleGeos([
-    { country_code: "GB", latitude: 51.5, longitude: -0.12, radius: 10, unit: "mile" },
-    { country_code: "gb", latitude: 53.4, longitude: -2.24, radius: 5, unit: "kilometer" },
-    { country_code: "FR", latitude: NaN, longitude: 2.3, radius: 5, unit: "mile" }, // dropped
-  ])!;
-  assertEquals(geos.length, 1); // both GB circles folded to one "gb" geo; junk FR dropped
-  assertEquals(geos[0].country_code, "gb");
-  assertEquals((geos[0].circles as unknown[]).length, 2);
+Deno.test("adv E: case-folds circle countries into de-duplicated country geos; junk dropped", () => {
+  const body = buildSnapchatAdSquadBody("camp-id", snapSpec({
+    countries: ["GB"],
+    circles: [
+      { country_code: "GB", latitude: 51.5, longitude: -0.12, radius: 10, unit: "mile" },
+      { country_code: "gb", latitude: 53.4, longitude: -2.24, radius: 5, unit: "kilometer" },
+      { country_code: "FR", latitude: NaN, longitude: 2.3, radius: 5, unit: "mile" }, // dropped
+    ],
+  }));
+  const targeting = body.targeting as Record<string, unknown>;
+  assertEquals(targeting.geos, [{ country_code: "gb" }]); // junk FR never added
+  const locations = targeting.locations as Record<string, unknown>[];
+  assertEquals((locations[0].circles as unknown[]).length, 2);
 });
 
-// ── F. buildSnapchatAdSquadBody — circles REPLACE the country-only geos ────────
+// ── F. buildSnapchatAdSquadBody — country geos + circle locations ─────────────
 function snapSpec(over: Partial<SnapchatAdSquadSpec> = {}): SnapchatAdSquadSpec {
   return { name: "adv — ad squad", optimizationGoal: "SWIPES", countries: ["GB"], ...over };
 }
 
-Deno.test("adv F: a circle REPLACES all country-only geos — the non-circle country is DROPPED", () => {
-  // Countries GB + US, but only GB geocoded a circle. The union (GB-circle ∪ US-
-  // country) would make the circle inert, so the builder emits ONLY the circle
-  // geo. US country-only targeting is dropped entirely (documented laser rule).
+Deno.test("adv F: circles ride in targeting.locations; geos stay country-only (no nesting)", () => {
   const body = buildSnapchatAdSquadBody("camp-id", snapSpec({
     countries: ["GB", "US"],
     circles: [{ country_code: "GB", latitude: 51.5, longitude: -0.12, radius: 12, unit: "mile" }],
   }));
   const targeting = body.targeting as Record<string, unknown>;
+  assertEquals(targeting.geos, [{ country_code: "gb" }, { country_code: "us" }]);
   const geos = targeting.geos as Record<string, unknown>[];
-  assertEquals(geos.length, 1);
-  assertEquals(geos[0].country_code, "gb");
-  assert("circles" in geos[0], "the sole geo must be the circle geo");
-  // The US country-only geo must be ABSENT (not unioned in).
-  assert(!geos.some((g) => g.country_code === "us"), "non-circle country must be dropped");
+  assert(!geos.some((g) => "circles" in g), "circles must never nest inside geos");
+  const locations = targeting.locations as Record<string, unknown>[];
+  assertEquals((locations[0].circles as unknown[]).length, 1);
 });
 
 Deno.test("adv F: no circles ⇒ country-only geos kept; interests key omitted when empty", () => {
