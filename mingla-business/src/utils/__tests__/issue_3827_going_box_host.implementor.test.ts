@@ -229,3 +229,34 @@ describe("H-7 / H-8 copy", () => {
     expect(isExtraGuestCountError(new Error("not_authorized"))).toBe(false);
   });
 });
+
+describe("H-9 the settings steps stay off the boot path", () => {
+  // CreatorStep6Settings and RsvpStep5Setup are shared by two lazy route chunks
+  // (create wizard + EditPublishedScreen); one static import hoists them into
+  // the eager __common chunk. Every importer must use lazySettingsSteps.tsx.
+  const SRC = path.resolve(__dirname, "../..");
+  const APP = path.resolve(__dirname, "../../../app");
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) return e.name === "__tests__" || e.name === "node_modules" ? [] : walk(p);
+      return /\.(ts|tsx)$/.test(e.name) ? [p] : [];
+    });
+
+  test("no production file statically imports either step", () => {
+    const offenders = [...walk(SRC), ...walk(APP)].filter((file) => {
+      if (file.endsWith("lazySettingsSteps.tsx")) return false;
+      const text = fs.readFileSync(file, "utf8");
+      return /^import [^;]*from "[^"]*\/(CreatorStep6Settings|RsvpStep5Setup)";/m.test(text);
+    });
+    expect(offenders.map((f) => path.relative(SRC, f))).toEqual([]);
+  });
+
+  test("the three importers render the lazy wrappers", () => {
+    const read = (rel: string): string => fs.readFileSync(path.join(SRC, rel), "utf8");
+    expect(read("components/event/EditPublishedScreen.tsx")).toContain("<CreatorStep6SettingsLazy");
+    expect(read("components/event/EditPublishedScreen.tsx")).toContain("<RsvpStep5SetupLazy");
+    expect(read("components/event/EventCreatorWizard.tsx")).toContain("<CreatorStep6SettingsLazy");
+    expect(read("components/rsvp/RsvpCreatorWizard.tsx")).toContain("<RsvpStep5SetupLazy");
+  });
+});

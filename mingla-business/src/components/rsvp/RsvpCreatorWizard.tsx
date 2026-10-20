@@ -130,7 +130,8 @@ import { CreatorStep2When } from "../event/CreatorStep2When";
 import { CreatorStep3Where } from "../event/CreatorStep3Where";
 import { CreatorStep4Cover } from "../event/CreatorStep4Cover";
 import { PublishErrorsSheet } from "../event/PublishErrorsSheet";
-import { RsvpStep5Setup } from "./RsvpStep5Setup";
+// issue #3827 — Step 5 loads lazily (see ../event/lazySettingsSteps.tsx).
+import { RsvpStep5SetupLazy } from "../event/lazySettingsSteps";
 import { RsvpStep7Preview } from "./RsvpStep7Preview";
 
 // ISSUE-1001 — the official business lockup now imports from the canonical
@@ -1186,7 +1187,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         // #3645 — only this step gets the callout's "Connect bank" action;
         // it is kept out of baseProps so the other steps' props stay stable.
         return (
-          <RsvpStep5Setup
+          <RsvpStep5SetupLazy
             {...baseProps}
             onConnectChipInBank={
               onOpenStripeOnboard !== undefined

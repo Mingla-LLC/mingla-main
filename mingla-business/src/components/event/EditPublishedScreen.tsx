@@ -122,7 +122,8 @@ import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
-import { CreatorStep6Settings } from "./CreatorStep6Settings";
+// issue #3827 — the two settings steps load lazily (see lazySettingsSteps.tsx).
+import { CreatorStep6SettingsLazy, RsvpStep5SetupLazy } from "./lazySettingsSteps";
 // issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
 // LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
 // route chunks (Event, Trip and Experience management), so a static import
@@ -159,7 +160,6 @@ import { setOfferingRefundPolicy } from "../../services/refundPolicyWrites";
 import { refundTermsSaveFailureCopy } from "../../utils/refundPolicyTerms";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
-import { RsvpStep5Setup } from "../rsvp/RsvpStep5Setup";
 import { rsvpEditNoticeCopy } from "../../utils/rsvpHubMetrics";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
@@ -1765,13 +1765,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         case "tickets":
           return <CreatorStep5Tickets {...stepBodyProps} />;
         case "settings":
-          return <CreatorStep6Settings {...stepBodyProps} />;
+          return <CreatorStep6SettingsLazy {...stepBodyProps} />;
         case "rsvp-setup":
           // ORCH-1172 — mount the SAME Step-5 host-control body the create RSVP
           // wizard uses. Cross-field logic (capacity→waitlist, private→discover-
           // off, plus-ones-max) runs identically in edit: it only calls
           // updateDraft, which is the local editState setter here.
-          return <RsvpStep5Setup {...stepBodyProps} />;
+          return <RsvpStep5SetupLazy {...stepBodyProps} />;
         default: {
           const _exhaust: never = key;
           return _exhaust;
