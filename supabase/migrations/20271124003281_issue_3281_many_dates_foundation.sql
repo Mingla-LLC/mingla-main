@@ -439,9 +439,11 @@ AS $function$
                         AND COALESCE(tt.is_unlimited, false)
                    ) THEN NULL
                    ELSE (
-                     SELECT GREATEST(0, MIN(
-                       tt.quantity_total
-                       - public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id)
+                     SELECT GREATEST(0, SUM(
+                       GREATEST(0,
+                         tt.quantity_total
+                         - public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id)
+                       )
                      ))
                      FROM public.ticket_types tt
                      WHERE tt.event_id = ev.id AND tt.deleted_at IS NULL
@@ -615,7 +617,6 @@ REVOKE ALL ON FUNCTION public.business_set_event_date_override(uuid, uuid, text,
 GRANT EXECUTE ON FUNCTION public.business_set_event_date_override(uuid, uuid, text, text, text)
   TO authenticated, service_role;
 
-
 CREATE OR REPLACE FUNCTION public.business_publish_event_draft(p_event_id uuid, p_draft_payload jsonb, p_client_revision integer DEFAULT NULL::integer)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -734,14 +735,10 @@ BEGIN
   -- issue #1014 delta (2): whitelist gains NGN (NG Paystack brands stamp
   -- brands.default_currency='NGN' at onboard) and runs only for a known
   -- currency — NULL means "no currency yet", not "unsupported currency".
-  IF v_currency IS NOT NULL AND v_currency <> ALL (
-    ARRAY[
-      'GBP'::bpchar, 'USD'::bpchar, 'CAD'::bpchar, 'CHF'::bpchar, 'EUR'::bpchar,
-      'BGN'::bpchar, 'CZK'::bpchar, 'DKK'::bpchar, 'HUF'::bpchar, 'ISK'::bpchar,
-      'NOK'::bpchar, 'PLN'::bpchar, 'RON'::bpchar, 'SEK'::bpchar,
-      'NGN'::bpchar
-    ]
-  ) THEN
+  -- issue #3645: public.supported_brand_currencies owns the list; this
+  -- function asks the shared helper and carries no list of its own.
+  IF v_currency IS NOT NULL
+     AND NOT public.is_supported_offering_currency(v_currency::text) THEN
     RAISE EXCEPTION 'event_currency_unsupported';
   END IF;
 
@@ -1830,8 +1827,8 @@ BEGIN
      AND NOT is_master;
 
 
-  -- issue #3281 many-dates — persist per-date title/place from multiDates overrides.
-  -- Match by start_at so retimed rows keep identity; blank clears to NULL; max 120.
+  -- issue #3281 many-dates — persist per-date title/place only when the payload
+  -- carries an overrides object (never wipe Dates-screen edits with absent keys).
   IF jsonb_typeof(p_when_payload->'multiDates') = 'array' THEN
     UPDATE public.event_dates d
        SET override_title = NULLIF(left(btrim(COALESCE(
@@ -1842,6 +1839,7 @@ BEGIN
            )), 120), '')
       FROM jsonb_array_elements(p_when_payload->'multiDates') e
      WHERE d.event_id = p_event_id
+       AND e ? 'overrides'
        AND d.start_at = (
          (NULLIF(e->>'date','') || ' ' || COALESCE(NULLIF(e->>'startTime',''), '00:00') || ':00')::timestamp
          AT TIME ZONE v_timezone

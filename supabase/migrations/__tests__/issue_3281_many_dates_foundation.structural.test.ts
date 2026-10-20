@@ -23,4 +23,6 @@ Deno.test("many-dates foundation migration ships schedule helper + bundle keys",
   // Ended multi-date rows must NOT be filtered (F5).
   assert(text.includes("do NOT filter ended multi-date"));
   assertEquals(text.includes("GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule"), true);
+  assert(text.includes("is_supported_offering_currency"));
+  assert(text.includes("e ? 'overrides'"));
 });

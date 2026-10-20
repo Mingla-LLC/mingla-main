@@ -15,6 +15,7 @@ Deno.test("allDaysPass reads multi_date_pricing_mode and fills orderedEventDateI
   const passAt = src.indexOf("allDaysPass");
   const idemAt = src.indexOf("const idempotencyKey");
   assert(passAt > 0 && idemAt > passAt, "allDaysPass must precede idempotencyKey");
+  assertMatch(src, /latestEnd/);
 });
 
 Deno.test("allDaysPass refuses when no upcoming dates remain", () => {

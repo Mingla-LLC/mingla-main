@@ -22,15 +22,31 @@ import { supabase } from "../../../src/services/supabase";
 import {
   accent,
   spacing,
-  text as textTokens,
+  typography,
 } from "../../../src/constants/designSystem";
 
 type DateRow = {
   id: string;
   start_at: string;
   end_at: string;
+  timezone: string | null;
   override_title: string | null;
   override_location: string | null;
+};
+
+const formatInZone = (iso: string, zone: string | null): string => {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: zone && zone.length > 0 ? zone : "UTC",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 };
 
 export default function EventDatesScreen(): React.ReactElement {
@@ -50,7 +66,7 @@ export default function EventDatesScreen(): React.ReactElement {
     setLoading(true);
     const { data, error } = await supabase
       .from("event_dates")
-      .select("id, start_at, end_at, override_title, override_location")
+      .select("id, start_at, end_at, timezone, override_title, override_location")
       .eq("event_id", id)
       .order("start_at", { ascending: true });
     setLoading(false);
@@ -60,14 +76,18 @@ export default function EventDatesScreen(): React.ReactElement {
     }
     const list = (data ?? []) as DateRow[];
     setRows(list);
-    const next: Record<string, { title: string; location: string }> = {};
-    for (const r of list) {
-      next[r.id] = {
-        title: r.override_title ?? "",
-        location: r.override_location ?? "",
-      };
-    }
-    setDrafts(next);
+    setDrafts((prev) => {
+      const next: Record<string, { title: string; location: string }> = { ...prev };
+      for (const r of list) {
+        if (next[r.id] === undefined) {
+          next[r.id] = {
+            title: r.override_title ?? "",
+            location: r.override_location ?? "",
+          };
+        }
+      }
+      return next;
+    });
   }, [id]);
 
   useEffect(() => {
@@ -91,7 +111,18 @@ export default function EventDatesScreen(): React.ReactElement {
       return;
     }
     setToast("Saved");
-    void load();
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === rowId
+          ? {
+              ...r,
+              override_title: d.title.trim().length > 0 ? d.title.trim() : null,
+              override_location:
+                d.location.trim().length > 0 ? d.location.trim() : null,
+            }
+          : r,
+      ),
+    );
   };
 
   return (
@@ -114,7 +145,7 @@ export default function EventDatesScreen(): React.ReactElement {
               return (
                 <View key={r.id} style={styles.card}>
                   <Text style={styles.when}>
-                    {new Date(r.start_at).toLocaleString()}
+                    {formatInZone(r.start_at, r.timezone)}
                   </Text>
                   <Text style={styles.label}>Title for this date</Text>
                   <TextInput
@@ -176,8 +207,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "#D0D5DD",
   },
-  when: { ...textTokens.body, fontWeight: "600" },
-  label: { ...textTokens.caption, color: "#667085" },
+  when: { ...typography.body, fontWeight: "600" },
+  label: { ...typography.caption, color: "#667085" },
   input: {
     borderWidth: 1,
     borderColor: "#D0D5DD",

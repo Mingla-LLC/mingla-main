@@ -1142,11 +1142,21 @@ export const createTicketCheckoutCreateHandler = (
     // issue #3281 many-dates — all-days pass binds every upcoming occurrence
     // before validation / idempotency (ignore client day list).
     {
-      const { data: passRow } = await supabase
+      const { data: passRow, error: passRowErr } = await supabase
         .from("events")
         .select("is_multi_date, is_recurring, multi_date_pricing_mode")
         .eq("id", eventId)
         .maybeSingle();
+      if (passRowErr !== null) {
+        console.error(
+          "[ticket-checkout-create] allDaysPass mode lookup failed",
+          passRowErr,
+        );
+        return jsonResponse(
+          { error: "occurrence_lookup_failed", detail: passRowErr.message },
+          500,
+        );
+      }
       const allDaysPass =
         passRow !== null &&
         typeof passRow === "object" &&
@@ -1157,7 +1167,7 @@ export const createTicketCheckoutCreateHandler = (
       if (allDaysPass) {
         const { data: passDates, error: passDatesErr } = await supabase
           .from("event_dates")
-          .select("id")
+          .select("id, end_at")
           .eq("event_id", eventId)
           .gt("end_at", new Date().toISOString())
           .order("start_at", { ascending: true });
@@ -1171,14 +1181,30 @@ export const createTicketCheckoutCreateHandler = (
             500,
           );
         }
-        const upcoming = (Array.isArray(passDates) ? passDates : [])
-          .map((r) => (r as { id?: unknown }).id)
+        const rows = (Array.isArray(passDates) ? passDates : []) as Array<{
+          id?: unknown;
+          end_at?: unknown;
+        }>;
+        const upcoming = rows
+          .map((r) => r.id)
           .filter((id): id is string => typeof id === "string" && id.length > 0);
         if (upcoming.length === 0) {
           return refuse({ error: "occurrence_not_available" }, 422);
         }
         orderedEventDateIds.push(...upcoming);
-        anchorEventDateId = upcoming[0] ?? null;
+        // Same as #2160 multi-select: latest-ENDING day is the payout/refund
+        // anchor so money does not mature while a later day is still open.
+        let latestEnd = Number.NEGATIVE_INFINITY;
+        for (const row of rows) {
+          if (typeof row.id !== "string" || row.id.length === 0) continue;
+          const end = typeof row.end_at === "string"
+            ? new Date(row.end_at).getTime()
+            : Number.NEGATIVE_INFINITY;
+          if (end >= latestEnd) {
+            latestEnd = end;
+            anchorEventDateId = row.id;
+          }
+        }
       }
     }
     if (orderedEventDateIds.length === 0 && eventDateIds.length > 0) {

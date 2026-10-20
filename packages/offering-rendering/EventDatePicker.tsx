@@ -154,10 +154,12 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
           const isOn = selected.has(o.id);
           const full = o.soldOut === true;
           const chip = placesLeftChip(o.placesLeft);
-          const label =
+          const day = new Date(o.startAt).toISOString().slice(0, 10);
+          const title =
             typeof o.overrideTitle === "string" && o.overrideTitle.trim().length > 0
               ? o.overrideTitle.trim()
-              : new Date(o.startAt).toISOString().slice(0, 10);
+              : null;
+          const label = title !== null ? `${day} · ${title}` : day;
           return (
             <Pressable
               key={o.id}

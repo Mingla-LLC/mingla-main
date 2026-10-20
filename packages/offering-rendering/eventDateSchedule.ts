@@ -73,8 +73,20 @@ export const chooseEventDateLayout = (
 
   const months = new Map<string, EventDateScheduleOccurrence[]>();
   for (const o of upcoming) {
-    const d = new Date(o.startAt);
-    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    let key: string;
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: o.timezone && o.timezone.length > 0 ? o.timezone : "UTC",
+        year: "numeric",
+        month: "2-digit",
+      }).formatToParts(new Date(o.startAt));
+      const y = parts.find((p) => p.type === "year")?.value ?? "0000";
+      const m = parts.find((p) => p.type === "month")?.value ?? "01";
+      key = `${y}-${m}`;
+    } catch {
+      const d = new Date(o.startAt);
+      key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    }
     const list = months.get(key) ?? [];
     list.push(o);
     months.set(key, list);
