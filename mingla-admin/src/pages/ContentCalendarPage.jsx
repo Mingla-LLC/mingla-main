@@ -125,7 +125,7 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
           const past = key < today;
           const entries = dayEntries(key, data, items, show);
           const dayWords = date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
-          const visible = entries.length > DAY_LIMIT + 1 ? entries.slice(0, DAY_LIMIT) : entries;
+          const visible = entries.slice(0, DAY_LIMIT);
           const hidden = entries.length - visible.length;
           const events = entries.filter((e) => e.type !== "post");
           return (
