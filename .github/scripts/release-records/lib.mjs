@@ -344,13 +344,43 @@ export function recordCommentsFor(comments, pr) {
     .sort((a, b) => Number(a.id) - Number(b.id));
 }
 
+/** A field with no result yet: absent, null or "pending". */
+const isPendingValue = (v) => v === undefined || v === null || v === "pending";
+const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+
 /**
- * #3980 W2 rework: this run's record merged with the record already on the
- * issue, read again right before writing. Runs in different queues (a "Live
- * check:" comment and a deploy status for the same merge) can each start
- * before the other wrote; the live check one of them saw is never lost: of
- * the two, the newer one made after the merge is kept, and the problems are
- * worked out again.
+ * #3980 W2 rework 3: one field, forward only. A value this run has wins,
+ * unless it is still pending and the other record already has a result
+ * (pending -> value, never back). Objects (the deploy states) merge key by
+ * key, so a key only the other record holds survives.
+ */
+function forwardField(mine, theirs) {
+  if (isPendingValue(mine)) return isPendingValue(theirs) ? mine : theirs;
+  if (isPlainObject(mine) && isPlainObject(theirs)) {
+    const out = { ...mine };
+    for (const k of Object.keys(theirs)) {
+      const v = forwardField(mine[k], theirs[k]);
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
+  }
+  return mine;
+}
+
+/**
+ * #3980 W2 rework: this run's record merged with a record already on the
+ * issue, read again right before writing (and again after writing). Runs in
+ * different queues (a "Live check:" comment, a deploy status and the
+ * production migrations status for the same merge) can each read before
+ * another wrote, so no news one of them wrote is lost (W2 rework 3: every
+ * field, not only the live check):
+ *   - the live check: of the two, the newer one made after the merge;
+ *   - migrations applied (with its status line) and the Feature Guide (with
+ *     its bad keys) move together, forward only;
+ *   - every other field moves forward only (pending -> value, never back),
+ *     key by key inside the deploy states;
+ *   - a field only the other record has (a newer run wrote it) survives;
+ *   - the problems are worked out again.
  */
 export function mergeRecordData(fresh, previous) {
   if (!previous || typeof previous !== "object" || previous.pr !== fresh?.pr) return fresh;
@@ -359,10 +389,25 @@ export function mergeRecordData(fresh, previous) {
   const mine = after(fresh.live_check) ? fresh.live_check : null;
   const theirs = after(previous.live_check) ? previous.live_check : null;
   const live = !mine ? theirs : !theirs ? mine : Date.parse(theirs.at) > Date.parse(mine.at) ? theirs : mine;
-  if (live === fresh.live_check) return fresh;
-  const out = { ...fresh, live_check: live };
+  const out = { ...fresh };
+  const paired = new Set(["live_check", "problems", "migrations_applied_state", "migrations_status", "feature_guide", "feature_guide_bad"]);
+  for (const k of Object.keys(previous)) {
+    if (paired.has(k)) continue;
+    const v = forwardField(fresh[k], previous[k]);
+    if (v !== undefined) out[k] = v;
+  }
+  if (fresh.migrations_applied_state === "pending" && previous.migrations_applied_state === "applied") {
+    out.migrations_applied_state = "applied";
+    out.migrations_status = previous.migrations_status ?? null;
+  }
+  if (isPendingValue(fresh.feature_guide) && Array.isArray(previous.feature_guide)) {
+    out.feature_guide = previous.feature_guide;
+    if (Array.isArray(previous.feature_guide_bad)) out.feature_guide_bad = previous.feature_guide_bad;
+    else delete out.feature_guide_bad;
+  }
+  out.live_check = live;
   out.problems = recordProblems(out);
-  return out;
+  return JSON.stringify(out) === JSON.stringify(fresh) ? fresh : out;
 }
 
 /** The JSON block, escaped so the HTML comment cannot be closed early. */

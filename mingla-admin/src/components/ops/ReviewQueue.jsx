@@ -1,6 +1,7 @@
 // Issue #3980 — To review, Spend or publish: work cards that wait for a
-// person to approve money, confirm an event is published, or approve what
-// hosts are told (a drafted "Recently shipped" roadmap card). Two columns.
+// person to send a message, approve money, confirm an event is published, or
+// approve what hosts are told (a drafted "Recently shipped" roadmap card).
+// Two columns.
 import { useRef, useState } from "react";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -39,7 +40,7 @@ export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
       setForm("");
       await queue.refetch({ quiet: true });
       onChanged?.();
-      const title = action === "close" ? "Card closed" : action === "approve_spend" ? "Spend approved" : action === "mark_published" ? "Marked published" : "Sent back to the owner";
+      const title = action === "close" ? "Card closed" : action === "approve_spend" ? "Spend approved" : action === "mark_sent" ? "Marked sent" : action === "mark_published" ? "Marked published" : "Sent back to the owner";
       addToast({ variant: "success", title, duration: 8000, action: answer?.event_id ? { label: "Undo", onClick: async () => {
         try { await ops.undoWork(answer.event_id); await queue.refetch({ quiet: true }); onChanged?.(); }
         catch (error) { addToast({ variant: "error", title: "Undo didn’t work", description: opsErrorWords(error) }); }
@@ -96,6 +97,7 @@ export function ReviewQueue({ selectedId, onSelect, online, onChanged }) {
             <ul className="flex flex-col gap-1">{card.proof.map((p, i) => <li key={i} className="flex flex-wrap items-start gap-2 text-[13px]"><OpsChip tone={p.verified ? "success" : "default"}>{proofBadge(p)}</OpsChip><span className="min-w-0 flex-1 break-words">{p.text}</span></li>)}</ul>
           )}
           <div className="flex flex-wrap gap-2">
+            {personActionFor(card)?.action === "mark_sent" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("mark_sent")}>Mark sent</Button>}
             {personActionFor(card)?.action === "approve_spend" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("approve_spend")}>Approve spend</Button>}
             {personActionFor(card)?.action === "mark_published" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("mark_published")}>Mark published</Button>}
             {roadmapDraftHref(card) && <a href={roadmapDraftHref(card)} className={`inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Open the draft in Roadmap</a>}
