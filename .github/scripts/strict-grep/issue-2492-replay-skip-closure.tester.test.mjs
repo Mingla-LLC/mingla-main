@@ -412,7 +412,8 @@ test("T-12 — independent fails-on-revert, built differently from the implement
 
   // The lane is still fully parsed — the red is the closure failure, not a parse failure.
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 23);
+  // [TEST-MOD-APPROVED #3281] Round 3 (422d52508) added one exact #1931-lane skip; T-12 tracks it.
+  assert.equal(lane.globs.length, 24);
   assert.deepEqual(checksIn(violations), ["C-1"], "reverting the fix must red C-1 and ONLY C-1");
 
   // Assert the OTHER limb from the implementor's T-2: the column, which is the
