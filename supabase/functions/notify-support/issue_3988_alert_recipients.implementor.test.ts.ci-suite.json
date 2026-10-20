@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/notify-support/issue_3988_alert_recipients.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3988-notify-support-alert-recipients",
+  "profile": "deno-1.46-stripe"
+}

@@ -8,7 +8,9 @@
  * Fan-out rules:
  *   event = 'message'    → staff reply  → push the requester (business.support_message);
  *                          requester reply → push the assignee (if any) PLUS every
- *                          enabled+available staffer. EXCLUDE the sender. business.support_message.
+ *                          enabled+available staffer still on the team
+ *                          (issue_3988_support_alert_recipients). EXCLUDE the sender.
+ *                          business.support_message.
  *
  * All pushes are app:"business" via the `business.` prefix → notify-dispatch's
  * resolveOneSignalApp routes to the business OneSignal app, and the business
@@ -22,6 +24,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
 import { SUPPORT_HOST_FACING_AGENT } from "../_shared/supportHostFacing.ts";
+import { availableStaffIds } from "./alertRecipients.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -41,17 +44,6 @@ function json(body: unknown, status = 200): Response {
 
 function deepLink(ticketId: string): string {
   return `mingla-business://support/${ticketId}`;
-}
-
-// deno-lint-ignore no-explicit-any
-async function availableStaffIds(admin: any): Promise<string[]> {
-  const { data, error } = await admin
-    .from("support_staff")
-    .select("user_id")
-    .eq("enabled", true)
-    .eq("available", true);
-  if (error || !Array.isArray(data)) return [];
-  return data.map((r: { user_id: string }) => r.user_id);
 }
 
 serve(async (req) => {
