@@ -888,8 +888,12 @@ begin
     pg_temp.t3802w_as('growth', format($q$select public.crm_record_set_owners(%L, (select array_agg('p' || g || '@test.local') from generate_series(1, 11) g))::text$q$, pg_temp.t3802w_id('full'))),
     'ERR:22023:too_many_owners:%');
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_set_owners(%L, null)::text$q$, pg_temp.t3802w_id('full')));
+  -- [TEST-MOD-APPROVED #3980] #3980 R9 / proof fix P2-5: a card that has
+  -- owners keeps at least one, like a work card; clearing every owner is
+  -- refused in plain words and the owners stay (a card with none stays valid).
   perform pg_temp.t3802w_check('W1-4', 'no owners means unassigned',
-    pg_temp.t3802w_get(r, 'changed') || '/' || pg_temp.t3802w_get(r, 'record', 'owners'), 'true/[]');
+    split_part(r, ':', 3) || '/' || (select count(*)::text from public.crm_record_owners o where o.record_id = pg_temp.t3802w_id('full')::uuid),
+    'last_owner/2');
 end;
 $fields$;
 
