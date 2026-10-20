@@ -246,8 +246,12 @@ begin
   v := public.ops_brand_autolink();
   perform pg_temp.w3c_check('DEC', 'the person''s decision is remembered: nothing opens again with nothing new',
     (select count(*) from public.ops_work_cards where auto_key = 'brand_pick:39920000-0000-4000-b100-000000000005' and status <> 'done')::text, '0');
-  perform pg_temp.w3c_check('DEC', 'a decided brand with nothing new is not even looked at (no try, no wait)',
-    (select count(*) from public.ops_brand_autolink_waits where brand_id = '39920000-0000-4000-b100-000000000005')::text, '0');
+  -- W4 rework 2 (P2-B): the cron now looks once after a person's close (the
+  -- shared ops_brand_new_exact test, no closed_at bound) and keeps the time of
+  -- that look; it still never tries, waits or backs off.
+  perform pg_temp.w3c_check('DEC', 'a decided brand with nothing new is never tried and never waits (one look kept)',
+    (select count(*) filter (where last_status <> 'decided' or next_at > now() or tries <> 1) from public.ops_brand_autolink_waits
+      where brand_id = '39920000-0000-4000-b100-000000000005')::text, '0');
   perform pg_temp.w3c_check('DEC', 'and the result says it is decided',
     (public.ops_brand_autolink_one('39920000-0000-4000-b100-000000000005')->>'status'), 'decided');
   -- The real host card with the brand's exact email is added later.

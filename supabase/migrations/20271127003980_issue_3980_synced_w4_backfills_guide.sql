@@ -112,6 +112,12 @@ $$;
 -- number (ops_brand_match); this index keeps that a lookup, not a scan.
 CREATE INDEX crm_record_identifiers_by_national6 ON public.crm_record_identifiers (right(national, 6)) WHERE national IS NOT NULL;
 
+-- #3980 W4 rework 2: who decided about a brand (ops_brand_decided) reads
+-- the brand's closed pick and reopen cards by key; the cron asks it for
+-- every brand it may look at. The only index on the key held open cards
+-- only, so this one keeps closed cards a lookup too.
+CREATE INDEX ops_work_cards_by_auto_key_any ON public.ops_work_cards (auto_key) WHERE auto_key IS NOT NULL AND archived_at IS NULL;
+
 -- ---------------------------------------------------------------------------
 -- 2. P3 backfills. Internal helpers first (service_role only), then the four
 -- client functions (owner, signed in as a person).
@@ -194,33 +200,49 @@ AS $$
      AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
 $$;
 
--- One page of the brands without a host card, newest first, with what brand
--- auto-link would do for each (ops_brand_match). Writes nothing. A page holds
--- at most 100 brands; the totals count every brand without a card, and the
--- actions of this page.
-CREATE FUNCTION public.ops_brand_cards_rows(p_offset integer, p_limit integer) RETURNS jsonb
+-- One page of the brands without a host card, newest first (by created_at,
+-- then id), with what brand auto-link would do for each (ops_brand_match).
+-- Writes nothing. A page holds at most 100 brands; the totals count every
+-- brand without a card, and the actions of this page.
+-- #3980 W4 rework 2: a page starts either at an offset or, for "Show more",
+-- right after the last brand already shown (p_after_created_at,
+-- p_after_id: keyset paging). Read after a brand, a page never skips a
+-- brand when earlier brands gain a host card between pages, and never
+-- repeats one. page.next is the brand to read after for the next page.
+CREATE FUNCTION public.ops_brand_cards_page(p_offset integer, p_after_created_at timestamptz, p_after_id uuid, p_limit integer) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_rows jsonb; v_total integer; v_offset integer := GREATEST(COALESCE(p_offset, 0), 0);
   v_limit integer := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
+  v_after boolean := p_after_created_at IS NOT NULL AND p_after_id IS NOT NULL; v_ids uuid[]; v_ats timestamptz[];
+  v_last_id uuid; v_last_at timestamptz; v_more boolean; v_left integer;
 BEGIN
+  IF v_after THEN v_offset := 0; END IF;
   v_total := public.ops_brand_cards_total();
-  WITH page AS (
-    SELECT br.id, br.created_at
-      FROM public.brands br
-     WHERE br.deleted_at IS NULL
-       AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
-     ORDER BY br.created_at DESC, br.id
-     OFFSET v_offset LIMIT v_limit
-  ), m AS MATERIALIZED (
+  SELECT COALESCE(array_agg(p.id ORDER BY p.created_at DESC, p.id), ARRAY[]::uuid[]),
+         COALESCE(array_agg(p.created_at ORDER BY p.created_at DESC, p.id), ARRAY[]::timestamptz[])
+    INTO v_ids, v_ats
+    FROM (SELECT br.id, br.created_at
+            FROM public.brands br
+           WHERE br.deleted_at IS NULL
+             AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
+             AND (NOT v_after OR br.created_at < p_after_created_at OR (br.created_at = p_after_created_at AND br.id > p_after_id))
+           ORDER BY br.created_at DESC, br.id
+          OFFSET v_offset LIMIT v_limit) p;
+  IF cardinality(v_ids) > 0 THEN
+    v_last_id := v_ids[cardinality(v_ids)]; v_last_at := v_ats[cardinality(v_ats)];
+  END IF;
+  WITH m AS MATERIALIZED (
     -- Materialized: each brand's decision is worked out once, not once for
     -- every field read from it below.
-    SELECT page.id, page.created_at, public.ops_brand_match(page.id) AS d FROM page
+    SELECT page.id, page.created_at, public.ops_brand_match(page.id) AS d
+      FROM unnest(v_ids, v_ats) AS page(id, created_at)
   )
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
       'brand_id', m.id, 'name', m.d->'brand'->>'name', 'created_at', m.created_at,
       'action', m.d->>'status',
       'record', m.d->'record', 'matched', m.d->>'matched', 'stage', m.d->>'stage', 'candidates', m.d->'candidates',
+      'reask', CASE WHEN COALESCE((m.d->>'reask')::boolean, false) THEN true END,
       'open_card', (SELECT jsonb_build_object('id', k.id, 'title', k.title) FROM public.ops_work_cards k
                      WHERE k.auto_key IN ('brand_pick:' || m.id, 'brand_lost:' || m.id) AND k.status <> 'done' AND k.archived_at IS NULL
                      ORDER BY k.created_at DESC LIMIT 1),
@@ -228,9 +250,12 @@ BEGIN
         WHEN 'link' THEN format('Link to %s: same %s.', m.d->'record'->>'name', m.d->>'matched')
         WHEN 'create' THEN format('Add a host card in %s.', CASE m.d->>'stage' WHEN 'live' THEN 'Live' ELSE 'Onboarded' END)
         WHEN 'reopen' THEN format('%s has the same %s and is Lost. A person decides whether to reopen it.', m.d->'record'->>'name', m.d->>'matched')
-        WHEN 'pick' THEN CASE m.d->>'how'
-          WHEN 'near' THEN format('Only near matches (%s). A person picks.', m.d->>'names')
-          WHEN 'name' THEN 'A host card with this name already exists. A person picks.'
+        WHEN 'pick' THEN CASE
+          -- #3980 W4 rework 2: a brand a person decided about, asked again.
+          WHEN COALESCE((m.d->>'reask')::boolean, false)
+          THEN format('Asks again: a person decided before, and since then %s matches exactly (not on that card). The card for a person opens again.', m.d->>'new_names')
+          WHEN m.d->>'how' = 'near' THEN format('Only near matches (%s). A person picks.', m.d->>'names')
+          WHEN m.d->>'how' = 'name' THEN 'A host card with this name already exists. A person picks.'
           ELSE format('Several host cards match (%s). A person picks.', m.d->>'names') END
         WHEN 'decided' THEN format('Decided by %s on %s. Mingla leaves this brand as it is.',
           COALESCE(public.ops_name(m.d->>'closed_by'), 'a person'), to_char((m.d->>'closed_at')::timestamptz AT TIME ZONE 'UTC', 'FMDD Mon YYYY'))
@@ -242,6 +267,21 @@ BEGIN
       ORDER BY CASE m.d->>'status' WHEN 'link' THEN 1 WHEN 'create' THEN 2 WHEN 'pick' THEN 3 WHEN 'reopen' THEN 4 WHEN 'decided' THEN 5 ELSE 6 END,
                lower(m.d->'brand'->>'name'), m.id), '[]'::jsonb)
     INTO v_rows FROM m;
+  -- More to come: offset paging counts (as before); keyset paging asks
+  -- whether any brand without a card comes after this page's last one.
+  -- page.left: how many brands without a card come after this page.
+  IF NOT v_after THEN
+    v_more := v_offset + jsonb_array_length(v_rows) < v_total;
+    v_left := GREATEST(v_total - v_offset - jsonb_array_length(v_rows), 0);
+  ELSIF v_last_id IS NULL THEN
+    v_more := false; v_left := 0;
+  ELSE
+    SELECT count(*)::integer INTO v_left FROM public.brands br
+     WHERE br.deleted_at IS NULL
+       AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
+       AND (br.created_at < v_last_at OR (br.created_at = v_last_at AND br.id > v_last_id));
+    v_more := v_left > 0;
+  END IF;
   RETURN jsonb_build_object('rows', v_rows, 'totals', jsonb_build_object(
     'total', v_total, 'shown', jsonb_array_length(v_rows),
     'link', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'link'),
@@ -249,10 +289,22 @@ BEGIN
     'pick', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'pick'),
     'reopen', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'reopen'),
     'decided', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'decided')),
-    'page', jsonb_build_object('offset', v_offset, 'limit', v_limit,
-                               'more', v_offset + jsonb_array_length(v_rows) < v_total));
+    'page', jsonb_strip_nulls(jsonb_build_object('offset', v_offset, 'limit', v_limit, 'more', v_more, 'left', v_left,
+      'after', CASE WHEN v_after THEN jsonb_build_object('created_at', p_after_created_at, 'id', p_after_id) END,
+      'next', CASE WHEN v_last_id IS NOT NULL THEN jsonb_build_object('created_at', v_last_at, 'id', v_last_id) END)));
 END;
 $$;
+
+-- One page by offset (the first page, and the offset reads kept for
+-- service callers).
+CREATE FUNCTION public.ops_brand_cards_rows(p_offset integer, p_limit integer) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$ SELECT public.ops_brand_cards_page(p_offset, NULL, NULL, p_limit) $$;
+
+-- #3980 W4 rework 2: one page right after the last brand already shown.
+CREATE FUNCTION public.ops_brand_cards_rows(p_after_created_at timestamptz, p_after_id uuid, p_limit integer) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$ SELECT public.ops_brand_cards_page(NULL, p_after_created_at, p_after_id, p_limit) $$;
 
 -- The first page.
 CREATE FUNCTION public.ops_brand_cards_rows() RETURNS jsonb
@@ -344,6 +396,21 @@ BEGIN
 END;
 $$;
 
+-- #3980 W4 rework 2: "Show more". The page right after the last brand
+-- already shown (page.next of the page before), so a brand is never skipped
+-- or shown twice when brands gain a host card between pages. Writes nothing.
+CREATE FUNCTION public.ops_brand_cards_preview_page(p_after_created_at timestamptz, p_after_id uuid, p_limit integer) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  PERFORM public.ops_owner_person_only('Only the owner adds host cards for brands in bulk.');
+  IF p_after_created_at IS NULL OR p_after_id IS NULL THEN
+    RAISE EXCEPTION 'invalid_page: Send the last brand already shown (its created_at and id).' USING ERRCODE = '22023';
+  END IF;
+  RETURN public.ops_brand_cards_rows(p_after_created_at, p_after_id, p_limit);
+END;
+$$;
+
 -- P3: the number of brands without a host card, for the Team dashboard
 -- heading. No matching is run. Writes nothing.
 CREATE FUNCTION public.ops_brand_cards_count() RETURNS jsonb
@@ -363,7 +430,7 @@ CREATE FUNCTION public.ops_brand_cards_confirm(p_brand_ids uuid[], p_request_key
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v record; v_ids uuid[]; v_replay jsonb; v_id uuid; v_res jsonb; v_name text; v_linked integer := 0; v_created integer := 0;
-  v_skipped integer := 0; v_results jsonb := '[]'::jsonb; v_out jsonb; v_status text; v_words text; v_card jsonb;
+  v_skipped integer := 0; v_busy integer := 0; v_unchanged integer := 0; v_results jsonb := '[]'::jsonb; v_out jsonb; v_status text; v_words text; v_card jsonb;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   PERFORM public.ops_owner_person_only('Only the owner adds host cards for brands in bulk.');
@@ -384,8 +451,13 @@ BEGIN
     BEGIN
       v_res := public.ops_brand_autolink_one(v_id);
       v_status := v_res->>'status';
-    EXCEPTION WHEN others THEN
-      v_status := 'failed'; v_res := jsonb_build_object('error', left(regexp_replace(SQLERRM, '^[a-z_]+: ', ''), 300));
+    EXCEPTION
+      -- #3980 W4 rework 2: Mingla was working on the same brand at that
+      -- moment. Nothing changed; it is busy, never "left for a person".
+      WHEN deadlock_detected OR lock_not_available OR serialization_failure THEN
+        v_status := 'busy'; v_res := '{}'::jsonb;
+      WHEN others THEN
+        v_status := 'failed'; v_res := jsonb_build_object('error', left(regexp_replace(SQLERRM, '^[a-z_]+: ', ''), 300));
     END;
     -- The words follow what happened to the card a person needs: "asks"
     -- only when a card was added just now.
@@ -396,6 +468,13 @@ BEGIN
       WHEN v_status IN ('pick', 'ask_reopen') AND v_card->>'status' = 'added' THEN
         CASE v_status WHEN 'pick' THEN 'A card asks a person to pick the right host card.'
                       ELSE 'A card asks a person whether to reopen the Lost host card.' END
+      -- #3980 W4 rework 2: a card a person closed, opened again.
+      WHEN v_status = 'pick' AND v_card->>'status' = 'reopened' AND COALESCE((v_res->>'reask')::boolean, false) THEN
+        'A card asks a person again: a host card now matches exactly that was not on the card they closed.'
+      WHEN v_status = 'pick' AND v_card->>'status' = 'reopened' THEN
+        'A card asks a person again: an agent closed it, and only a person decides which host card a brand belongs to.'
+      WHEN v_status = 'ask_reopen' AND v_card->>'status' = 'reopened' THEN
+        'A card asks a person again whether to reopen the Lost host card: an agent closed it, and only a person decides.'
       WHEN v_status IN ('pick', 'ask_reopen') AND v_card->>'status' = 'kept' AND v_card->>'id' IS NOT NULL THEN
         'A card already waits for a person; no second card was made.'
       WHEN v_status IN ('pick', 'ask_reopen') AND v_card->>'status' = 'kept' THEN
@@ -405,19 +484,26 @@ BEGIN
                                             to_char((v_res->>'closed_at')::timestamptz AT TIME ZONE 'UTC', 'FMDD Mon YYYY'))
       WHEN v_status = 'has_card' THEN 'It already has a host card.'
       WHEN v_status = 'gone' THEN 'This brand no longer exists.'
+      WHEN v_status = 'busy' THEN 'Busy: Mingla was working on this brand at the same moment. Nothing changed; try again.'
       ELSE 'Not changed: ' || COALESCE(v_res->>'error', 'try again.') END;
     IF v_status = 'linked' THEN v_linked := v_linked + 1;
     ELSIF v_status = 'created' THEN v_created := v_created + 1;
+    ELSIF v_status = 'busy' THEN v_busy := v_busy + 1;
     ELSE v_skipped := v_skipped + 1; END IF;
+    -- #3980 W4 rework 2: of the skipped, those no person needs to look at
+    -- (a host card already, gone, or decided and left as it is).
+    IF v_status IN ('has_card', 'gone', 'decided') THEN v_unchanged := v_unchanged + 1; END IF;
     v_results := v_results || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
       'brand_id', v_id, 'name', v_name, 'status', v_status, 'words', v_words,
       'record_id', v_res->>'record_id', 'card_id', v_res->'card'->>'id')));
   END LOOP;
   PERFORM public.ops_log_write(v.actor_email, NULL, 'backfill_confirmed', 'info', NULL, NULL, NULL,
-    format('%s confirmed host cards for %s brands: %s linked, %s added, %s left for a person.',
-           public.ops_name(v.actor_email), cardinality(v_ids), v_linked, v_created, v_skipped),
-    jsonb_build_object('backfill', 'brand_cards', 'linked', v_linked, 'created', v_created, 'skipped', v_skipped));
-  v_out := jsonb_build_object('linked', v_linked, 'created', v_created, 'skipped', v_skipped, 'replayed', false, 'results', v_results);
+    format('%s confirmed host cards for %s brands: %s linked, %s added, %s left for a person%s.',
+           public.ops_name(v.actor_email), cardinality(v_ids), v_linked, v_created, v_skipped,
+           CASE WHEN v_busy > 0 THEN format(', %s busy (try again)', v_busy) ELSE '' END),
+    jsonb_build_object('backfill', 'brand_cards', 'linked', v_linked, 'created', v_created, 'skipped', v_skipped, 'busy', v_busy, 'unchanged', v_unchanged));
+  v_out := jsonb_build_object('linked', v_linked, 'created', v_created, 'skipped', v_skipped, 'busy', v_busy, 'unchanged', v_unchanged,
+                              'replayed', false, 'results', v_results);
   PERFORM public.ops_request_finish(v.actor_email, p_request_key, 'brand_cards', v_out);
   RETURN v_out;
 END;
@@ -430,6 +516,8 @@ DECLARE f text;
 BEGIN
   FOREACH f IN ARRAY ARRAY['public.ops_roadmap_links_check(jsonb)', 'public.ops_brand_cards_rows()',
                            'public.ops_brand_cards_rows(integer,integer)', 'public.ops_brand_cards_total()',
+                           'public.ops_brand_cards_page(integer,timestamptz,uuid,integer)', 'public.ops_brand_cards_rows(timestamptz,uuid,integer)',
+                           'public.ops_brand_cards_preview_page(timestamptz,uuid,integer)',
                            'public.ops_roadmap_links_preview(jsonb)', 'public.ops_roadmap_links_confirm(jsonb,text)',
                            'public.ops_brand_cards_preview()', 'public.ops_brand_cards_preview_page(integer,integer)',
                            'public.ops_brand_cards_count()', 'public.ops_brand_cards_confirm(uuid[],text)'] LOOP
@@ -442,6 +530,7 @@ GRANT EXECUTE ON FUNCTION public.ops_roadmap_links_preview(jsonb) TO authenticat
 GRANT EXECUTE ON FUNCTION public.ops_roadmap_links_confirm(jsonb, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_brand_cards_preview() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_brand_cards_preview_page(integer, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_brand_cards_preview_page(timestamptz, uuid, integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_brand_cards_count() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_brand_cards_confirm(uuid[], text) TO authenticated;
 COMMENT ON FUNCTION public.ops_roadmap_links_preview(jsonb) IS
@@ -452,6 +541,8 @@ COMMENT ON FUNCTION public.ops_brand_cards_preview() IS
   'Issue #3980 P3. Owner only, signed in as a person. Every brand without a host card and what brand auto-link would do (link, create, pick, reopen), from ops_brand_match. Writes nothing.';
 COMMENT ON FUNCTION public.ops_brand_cards_preview_page(integer, integer) IS
   'Issue #3980 P3. Owner only, signed in as a person. One page (at most 100) of the brands without a host card, newest first, with what brand auto-link would do. Writes nothing.';
+COMMENT ON FUNCTION public.ops_brand_cards_preview_page(timestamptz, uuid, integer) IS
+  'Issue #3980 P3 (W4 rework 2). Owner only, signed in as a person. The page (at most 100) right after the last brand already shown (keyset: created_at, id; newest first), so no brand is skipped or repeated when brands gain a host card between pages. Writes nothing.';
 COMMENT ON FUNCTION public.ops_brand_cards_count() IS
   'Issue #3980 P3. Owner only, signed in as a person. How many brands have no host card; runs no matching. Writes nothing.';
 COMMENT ON FUNCTION public.ops_brand_cards_confirm(uuid[], text) IS
@@ -778,14 +869,15 @@ DO $w4sync3980$
 DECLARE
   c_new_client constant text[] := ARRAY['ops_roadmap_links_preview(jsonb)', 'ops_roadmap_links_confirm(jsonb,text)',
                                         'ops_brand_cards_preview()', 'ops_brand_cards_preview_page(integer,integer)',
-                                        'ops_brand_cards_count()', 'ops_brand_cards_confirm(uuid[],text)'];
+                                        'ops_brand_cards_count()', 'ops_brand_cards_confirm(uuid[],text)',
+                                        'ops_brand_cards_preview_page(timestamp with time zone,uuid,integer)'];
   r record; g record;
 BEGIN
   SELECT * INTO g FROM issue3980_sync_w4_guard;
   FOR r IN SELECT p.oid, p.proname, p.oid::regprocedure::text AS sig, p.prosecdef, p.provolatile, p.proconfig, p.prosrc
              FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'public'
-              AND p.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_rows', 'ops_brand_cards_total', 'ops_roadmap_links_preview',
+              AND p.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_page', 'ops_brand_cards_rows', 'ops_brand_cards_total', 'ops_roadmap_links_preview',
                                 'ops_roadmap_links_confirm', 'ops_brand_cards_preview', 'ops_brand_cards_preview_page',
                                 'ops_brand_cards_count', 'ops_brand_cards_confirm') LOOP
     IF NOT EXISTS (SELECT 1 FROM unnest(r.proconfig) x WHERE x = 'search_path=pg_catalog, pg_temp') THEN
@@ -798,7 +890,7 @@ BEGIN
     IF has_function_privilege('authenticated', r.oid, 'EXECUTE') <> (replace(r.sig, 'public.', '') = ANY (c_new_client)) THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: client grant wrong for %', r.sig; END IF;
     -- Previews and checks only read.
-    IF r.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_rows', 'ops_brand_cards_total', 'ops_roadmap_links_preview',
+    IF r.proname IN ('ops_roadmap_links_check', 'ops_brand_cards_page', 'ops_brand_cards_rows', 'ops_brand_cards_total', 'ops_roadmap_links_preview',
                      'ops_brand_cards_preview', 'ops_brand_cards_preview_page', 'ops_brand_cards_count')
        AND (r.provolatile <> 's' OR r.prosrc ~* '(update|insert\s+into|delete\s+from)\s' OR r.prosrc ~* '(_confirm|_link_set|autolink)\(') THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % writes or calls a writer', r.sig; END IF;
@@ -806,7 +898,7 @@ BEGIN
     IF r.prosrc ~* '(update|insert\s+into|delete\s+from)\s+public\.(crm_|community_|ops_roadmap_links)' OR r.prosrc ~* '(public\.ad_|ad_plans|ad_campaigns)' THEN
       RAISE EXCEPTION 'issue 3980 synced W4 self-check: % writes a table it must not', r.sig; END IF;
   END LOOP;
-  IF (SELECT count(*) FROM unnest(c_new_client) s WHERE has_function_privilege('authenticated', 'public.' || s, 'EXECUTE')) <> 6 THEN
+  IF (SELECT count(*) FROM unnest(c_new_client) s WHERE has_function_privilege('authenticated', 'public.' || s, 'EXECUTE')) <> 7 THEN
     RAISE EXCEPTION 'issue 3980 synced W4 self-check: a client function is missing'; END IF;
   IF g.is_admin_hash IS DISTINCT FROM md5(pg_get_functiondef('public.is_admin_user()'::regprocedure))
      OR g.crm_ctx_hash IS DISTINCT FROM md5(pg_get_functiondef('public.crm_ctx()'::regprocedure))

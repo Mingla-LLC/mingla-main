@@ -34,8 +34,8 @@ import { usePeopleDirectory } from "../hooks/usePeopleDirectory";
 import { useOpsPoll } from "../hooks/useOpsWork";
 import * as ops from "../services/opsService";
 import {
-  BRAND_CONFIRM_MAX, BRAND_PAGE_SIZE, brandActionChip, brandDecidedWords, brandDefaultPicked, brandFirstPicked, brandResultWords,
-  brandSelectable, brandTogglePick, opsErrorWords, requestKey,
+  BRAND_CONFIRM_MAX, BRAND_PAGE_SIZE, brandActionChip, brandDecidedWords, brandDefaultPicked, brandFirstPicked, brandMergePage, brandMoreCount, brandNextCursor, brandResultWords,
+  brandSelectable, brandShownWords, brandTogglePick, opsErrorWords, requestKey,
 } from "../lib/opsModel";
 import { OpsChip } from "../components/ops/OpsChip";
 
@@ -119,7 +119,8 @@ function BrandCardsBackfill({ online }) {
   const rows = Array.isArray(preview?.rows) ? preview.rows : [];
   const chosen = picked.filter((id) => rows.some((r) => r.brand_id === id && brandSelectable(r)));
   const atCap = chosen.length >= BRAND_CONFIRM_MAX;
-  const more = !!preview?.page?.more;
+  const next = brandNextCursor(preview);
+  const more = !!preview?.page?.more && !!next;
   const load = async () => {
     setState("loading"); setError(null); setResult(null);
     try {
@@ -131,13 +132,14 @@ function BrandCardsBackfill({ online }) {
     } catch (e) { setError(e); setState("idle"); }
   };
   const loadMore = async () => {
-    if (!preview) return;
+    if (!preview || !next) return;
     setState("more"); setError(null);
     try {
-      const answer = await ops.previewBrandCardsPage(rows.length, BRAND_PAGE_SIZE);
-      const seen = new Set(rows.map((r) => r.brand_id));
-      const added = (Array.isArray(answer?.rows) ? answer.rows : []).filter((r) => !seen.has(r.brand_id));
-      setPreview({ ...answer, rows: [...rows, ...added] });
+      // Read right after the last brand shown, never by how many are shown:
+      // brands that gain a card meanwhile cannot make a brand be skipped.
+      const answer = await ops.previewBrandCardsPage(next, BRAND_PAGE_SIZE);
+      const { preview: merged, added } = brandMergePage(preview, answer);
+      setPreview(merged);
       setCount(Number(answer?.totals?.total ?? 0));
       setPicked([...chosen, ...brandDefaultPicked(added, BRAND_CONFIRM_MAX - chosen.length)]);
       setState("preview");
@@ -177,7 +179,7 @@ function BrandCardsBackfill({ online }) {
           {preview && rows.length > 0 && (
             <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
               <p role="status" className="break-normal text-[13px] text-[var(--color-text-secondary)]">
-                {chosen.length} of {rows.length} shown chosen{count !== null && count > rows.length ? ` (${count} in all)` : ""}.{atCap ? ` One confirm takes at most ${BRAND_CONFIRM_MAX}.` : ""}
+                {brandShownWords({ chosen: chosen.length, shown: rows.length, more, left: preview?.page?.left })}{atCap ? ` One confirm takes at most ${BRAND_CONFIRM_MAX}.` : ""}
               </p>
               <span className="flex flex-wrap gap-2">
                 <Button variant="ghost" className="min-h-11" disabled={busy || chosen.length === 0} onClick={() => setPicked([])}>Select none</Button>
@@ -237,7 +239,7 @@ function BrandCardsBackfill({ online }) {
           )}
           {preview && more && (
             <Button variant="secondary" className="min-h-11 self-start" disabled={!online || busy} onClick={loadMore}>
-              {state === "more" ? "Loading…" : `Show ${Math.min(BRAND_PAGE_SIZE, Math.max(0, (count ?? 0) - rows.length)) || BRAND_PAGE_SIZE} more`}
+              {state === "more" ? "Loading…" : `Show ${brandMoreCount(preview, BRAND_PAGE_SIZE)} more`}
             </Button>
           )}
         </div>

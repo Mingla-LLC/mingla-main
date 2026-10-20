@@ -75,11 +75,12 @@ Deno.test("#3980 W4 rework P2-4: opening the dashboard reads the count only; the
   const effect = page.slice(at, page.indexOf("if (!canEdit) return null;", at));
   assertMatch(effect, /ops\.countBrandCards\(\)/);
   assertNotMatch(effect, /previewBrandCards/);
-  assertMatch(page, /await ops\.previewBrandCardsPage\(rows\.length, BRAND_PAGE_SIZE\)/);
+  // W4 rework 2 (P2-A): pages read after the last brand shown, not by offset.
+  assertMatch(page, /await ops\.previewBrandCardsPage\(next, BRAND_PAGE_SIZE\)/);
   assertMatch(page, /Show \$\{[^}]*BRAND_PAGE_SIZE[^}]*\} more/);
   assertEquals(BRAND_PAGE_SIZE, 50);
   const service = read("services/opsService.js");
-  assertMatch(service, /supabase\.rpc\("ops_brand_cards_preview_page", \{ p_offset: offset, p_limit: limit \}\)/);
+  assertMatch(service, /supabase\.rpc\("ops_brand_cards_preview_page", \{ p_after_created_at: after\?\.created_at \?\? null, p_after_id: after\?\.id \?\? null, p_limit: limit \}\)/);
   assertMatch(service, /supabase\.rpc\("ops_brand_cards_count"\)/);
 });
 

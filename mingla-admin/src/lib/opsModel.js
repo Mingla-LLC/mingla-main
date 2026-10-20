@@ -1234,5 +1234,50 @@ export function brandDecidedWords(decided) {
 
 export function brandResultWords(result) {
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  return `${n(result?.linked)} linked, ${n(result?.created)} added, ${n(result?.skipped)} left for a person.${result?.replayed ? " This was already done; nothing changed again." : ""}`;
+  // #3980 W4 rework 2: a brand Mingla was working on at that moment is
+  // "busy, try again", never counted as left for a person.
+  // Of the skipped, those that already had a host card, are gone, or were
+  // decided and left as they are need no person: they are said apart.
+  const unchanged = Math.min(n(result?.unchanged), n(result?.skipped));
+  const forPerson = n(result?.skipped) - unchanged;
+  const same = unchanged > 0 ? ` ${unchanged} already had a host card or ${unchanged === 1 ? "was" : "were"} left as ${unchanged === 1 ? "it was" : "they were"}.` : "";
+  const busy = n(result?.busy) > 0 ? ` ${n(result?.busy)} busy: Mingla was working on ${n(result?.busy) === 1 ? "it" : "them"} at the same moment, so try again.` : "";
+  return `${n(result?.linked)} linked, ${n(result?.created)} added, ${forPerson} left for a person.${same}${busy}${result?.replayed ? " This was already done; nothing changed again." : ""}`;
+}
+
+/**
+ * #3980 W4 rework 2: where "Show more" reads from, the page before's
+ * page.next (the last brand it showed, by created_at and id). Null when the
+ * server gave none: there is nothing more to read.
+ */
+export function brandNextCursor(answer) {
+  const next = answer?.page?.next;
+  return next && typeof next.created_at === "string" && typeof next.id === "string" ? { created_at: next.created_at, id: next.id } : null;
+}
+
+/**
+ * #3980 W4 rework 2: the preview after "Show more": the rows already shown,
+ * then the new page's rows not shown yet, and the new page's paging (its
+ * next, more and left). Returns the merged preview and the rows added.
+ */
+export function brandMergePage(preview, answer) {
+  const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+  const seen = new Set(rows.map((r) => r.brand_id));
+  const added = (Array.isArray(answer?.rows) ? answer.rows : []).filter((r) => !seen.has(r.brand_id));
+  return { preview: { ...answer, rows: [...rows, ...added] }, added };
+}
+
+/**
+ * The status line under the brand list: how many shown are chosen and, while
+ * the server says more come after the last one shown, how many.
+ */
+export function brandShownWords({ chosen, shown, more, left }) {
+  const n = Number.isFinite(Number(left)) ? Number(left) : 0;
+  return `${chosen} of ${shown} shown chosen.${more ? (n > 0 ? ` ${n} more to show.` : " More to show.") : ""}`;
+}
+
+/** How many brands "Show more" brings: a page, or fewer when fewer are left. */
+export function brandMoreCount(answer, pageSize) {
+  const left = Number(answer?.page?.left);
+  return Number.isFinite(left) && left > 0 ? Math.min(pageSize, left) : pageSize;
 }
