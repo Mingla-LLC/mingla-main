@@ -28,10 +28,9 @@
 --               writes nothing and makes a card for a person to pick, older
 --               brands are left alone
 --   W3-X3       engineering follow-through counts only from the time
---               automatic steps were switched on: an older merge, a merge
---               before switch-on, and an issue already Done when first read
---               make no card; a later merge and an issue seen moving to Done
---               do
+--               automatic steps were switched on: a merge before switch-on
+--               and an issue already Done before it make no card; a later
+--               merge and an issue seen moving to Done do
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -599,24 +598,22 @@ begin
   insert into public.ops_github_items (number, kind) values (990201, 'issue'), (990202, 'issue');
   perform pg_temp.w3_as('service', 'select public.ops_github_items_apply(''[{"number":990201,"found":true,"kind":"issue","title":"W33980 old done","state":"CLOSED","board_status":"Done","updated_at":"2026-01-01T00:00:00Z"},{"number":990202,"found":true,"kind":"issue","title":"W33980 moving","state":"OPEN","board_status":"In Progress","updated_at":"2026-01-01T00:00:00Z"}]''::jsonb)::text');
   perform pg_temp.w3_as('service', 'select public.ops_github_items_apply(''[{"number":990202,"found":true,"kind":"issue","title":"W33980 moving","state":"CLOSED","board_status":"Done","updated_at":"2026-01-01T00:00:00Z"}]''::jsonb)::text');
-  perform pg_temp.w3_check('W3-X3', 'an issue already Done when first read has no Done time (history)',
-    (select coalesce(done_seen_at::text, 'none') from public.ops_github_items where number = 990201), 'none');
-  perform pg_temp.w3_check('W3-X3', 'an issue seen moving to Done has one',
-    (select (done_seen_at is not null)::text from public.ops_github_items where number = 990202), 'true');
+  perform pg_temp.w3_check('W3-X3', 'an issue already Done when first read counts from its last update (history)',
+    (select (done_since < now() - interval '30 days')::text from public.ops_github_items where number = 990201), 'true');
+  perform pg_temp.w3_check('W3-X3', 'an issue seen moving to Done counts from now',
+    (select (done_since >= now() - interval '1 minute')::text from public.ops_github_items where number = 990202), 'true');
   -- A day later, with switch-on two days ago.
   update public.ops_settings set value = to_jsonb(now() - interval '2 days') where key = 'follow_through_since';
-  update public.ops_github_items set done_seen_at = now() - interval '25 hours' where number = 990202;
-  update public.ops_github_items set github_updated_at = now() - interval '300 days' where number = 990201;
+  update public.ops_github_items set done_since = now() - interval '25 hours' where number = 990202;
   perform public.ops_engineering_cards_sync();
   perform pg_temp.w3_check('W3-X3', 'the issue that was already Done makes no "Done but not Live" card',
     (select count(*) from public.ops_work_cards where auto_key = 'eng_done_not_live:issue-990201')::text, '0');
   perform pg_temp.w3_check('W3-X3', 'the one seen moving after switch-on does',
     (select count(*) from public.ops_work_cards where auto_key = 'eng_done_not_live:issue-990202' and status <> 'done')::text, '1');
-  -- Before any switch-on: nothing is followed up.
-  update public.ops_settings set value = 'null'::jsonb where key = 'follow_through_since';
+  -- A merge made before switch-on stays without a card on every later run.
   perform public.ops_engineering_cards_sync();
-  perform pg_temp.w3_check('W3-X3', 'with no switch-on time, the follow-through cards close themselves',
-    (select count(*) from public.ops_work_cards where auto_key in ('eng_no_issue:pr-990102', 'eng_done_not_live:issue-990202') and status <> 'done')::text, '0');
+  perform pg_temp.w3_check('W3-X3', 'a merge from before switch-on still has no card on a later run',
+    (select count(*) from public.ops_work_cards where auto_key like 'eng\_%:pr-990101%')::text, '0');
 end;
 $x3$;
 

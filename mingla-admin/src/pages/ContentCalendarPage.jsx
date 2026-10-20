@@ -325,7 +325,7 @@ export function ContentCalendarPage() {
     if (typeof document === "undefined") return;
     const el = document.activeElement;
     if (!el || el === document.body || ((route.event || route.day || route.undated) && eventDetailRef.current?.contains(el))) return;
-    const attr = ["data-calendar-chip", "data-calendar-more", "data-calendar-day-dense", "data-runway-row"].find((name) => el.hasAttribute?.(name));
+    const attr = ["data-calendar-chip", "data-calendar-more", "data-calendar-day-dense", "data-calendar-date", "data-runway-row"].find((name) => el.hasAttribute?.(name));
     openerRef.current = { el, selector: attr ? `[${attr}="${el.getAttribute(attr)}"]` : null };
   };
   const backToRunway = (name) => { focusBack.current = true; setParam(name, null); };
@@ -338,6 +338,7 @@ export function ContentCalendarPage() {
     setSearch(p.toString());
     revealDetail(eventDetailRef, eventHeadingRef);
   };
+  const clearEvent = () => backToRunway("event");
   const openDay = (key) => {
     rememberOpener();
     const p = new URLSearchParams(search);
@@ -347,6 +348,7 @@ export function ContentCalendarPage() {
     setSearch(p.toString());
     revealDetail(eventDetailRef, eventHeadingRef);
   };
+  const clearDay = () => backToRunway("day");
   const openUndated = () => {
     rememberOpener();
     const p = new URLSearchParams(search);
@@ -488,8 +490,8 @@ export function ContentCalendarPage() {
   const right = route.undated
     ? <UndatedPanel ref={eventHeadingRef} items={undated} open={open} onClose={() => backToRunway("undated")} />
     : !route.event && route.day
-      ? <DayPanel ref={eventHeadingRef} day={route.day} entries={dayItems} open={open} selectEvent={selectEvent} onClose={() => backToRunway("day")} />
-      : <EventPanel ref={eventHeadingRef} selection={route.event} onSelect={selectEvent} onBack={() => backToRunway("event")} online={online} />;
+      ? <DayPanel ref={eventHeadingRef} day={route.day} entries={dayItems} open={open} selectEvent={selectEvent} onClose={clearDay} />
+      : <EventPanel ref={eventHeadingRef} selection={route.event} onSelect={selectEvent} onBack={clearEvent} online={online} />;
 
   const box = (
     <div className="@container min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
@@ -502,7 +504,7 @@ export function ContentCalendarPage() {
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {route.view !== "board" && <Segmented label="Show" options={SHOW_OPTIONS} value={route.show} onChange={(v) => setParam("show", v, true)} />}
-          <Segmented label="View" options={VIEW_OPTIONS} value={route.view} onChange={(v) => setParam("view", v)} />
+          <Segmented label="View" options={VIEW_OPTIONS} value={route.view} onChange={(v) => setParam("view", v)} fullWidth className="sm:!w-fit" />
         </div>
       </div>
       {route.view === "calendar" ? (
@@ -524,7 +526,7 @@ export function ContentCalendarPage() {
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader title="Calendar" description="Every host’s events, and whether each is live early enough to promote." actions={<Button type="button" variant="brandContrast" icon={Plus} className="min-h-11" disabled={!online} onClick={() => setAddOpen(true)}>Add content</Button>} />
       {!online && <AlertCard variant="warning" title="You’re offline">You can read what is already here. Adding, saving, moving, commenting, deleting and Undo need a connection.</AlertCard>}
       {calendar.stale && <AlertCard variant="warning" title="Content may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>} />}

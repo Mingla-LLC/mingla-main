@@ -29,9 +29,10 @@
 --     person to pick. Off by default (ops_settings.brand_auto_cards). This is
 --     the one new writer of crm_records and crm_activity (ops_brand_autolink).
 --   * Engineering follow-through cards fire only for pull requests merged,
---     commits pushed and issues moved to Done at or after the time the owner
---     switched automatic steps on (ops_settings.follow_through_since). Issues
---     linked from before only show their status.
+--     commits pushed and issues gone Done (ops_github_items.done_since) at or
+--     after the time the owner switched automatic steps on
+--     (ops_settings.follow_through_since). Issues linked from before only
+--     show their status.
 --   * The Needs you page lists the "Recently shipped" wording cards on their
 --     own tab for the owner and admins.
 --
@@ -47,10 +48,9 @@
 --
 -- ROLLBACK (no down-migration file): roll the admin web client back first,
 -- then in one transaction restore each replaced function from the migration
--- named above it, drop the new functions, restore ops_settings_key_check
--- (delete the follow_through_since row first) and drop
--- ops_github_items.done_seen_at. Cards and host cards made while the
--- switches were on stay as history.
+-- named above it, drop the new functions and restore ops_settings_key_check
+-- (delete the follow_through_since row first). Cards and host cards made
+-- while the switches were on stay as history.
 
 BEGIN;
 
@@ -79,9 +79,6 @@ INSERT INTO public.ops_settings (key, value, updated_by)
 VALUES ('follow_through_since', 'null'::jsonb, 'system@usemingla.com')
 ON CONFLICT (key) DO NOTHING;
 
--- X3: when the bridge first saw an issue move to Done. NULL when it was
--- already Done the first time Mingla read it (history, never followed up).
-ALTER TABLE public.ops_github_items ADD COLUMN done_seen_at timestamptz NULL;
 
 -- ---------------------------------------------------------------------------
 -- 2. New internal helpers (service_role only; clients cannot run them).
@@ -1429,73 +1426,6 @@ BEGIN
 END;
 $$;
 
--- From 20271125003980. X3: remembers when Mingla first saw an issue move to
--- Done (never for an issue already Done the first time it was read).
--- Everything else is unchanged.
-CREATE OR REPLACE FUNCTION public.ops_github_items_apply(p_items jsonb) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
-AS $$
-DECLARE
-  i jsonb; g public.ops_github_items; v_n integer; v_kind text; v_state text; v_url text; v_old text; v_new text;
-  v_applied integer := 0; v_skipped integer := 0; v_changed integer[] := ARRAY[]::integer[]; v_bridges jsonb; v_board text;
-BEGIN
-  PERFORM public.ops_service_only();
-  IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array' OR jsonb_array_length(p_items) > 200 THEN
-    RAISE EXCEPTION 'invalid_items: Send a list of at most 200 GitHub items.' USING ERRCODE = '22023';
-  END IF;
-  FOR i IN SELECT e FROM jsonb_array_elements(p_items) e LOOP
-    IF jsonb_typeof(i) <> 'object' OR jsonb_typeof(i->'number') <> 'number' OR (i->>'number') !~ '^[0-9]{1,7}$'
-       OR jsonb_typeof(i->'found') <> 'boolean' THEN
-      v_skipped := v_skipped + 1; CONTINUE;
-    END IF;
-    v_n := (i->>'number')::integer;
-    SELECT * INTO g FROM public.ops_github_items x WHERE x.number = v_n FOR UPDATE;
-    IF NOT FOUND THEN v_skipped := v_skipped + 1; CONTINUE; END IF;
-    v_old := public.ops_github_status(v_n)->>'label';
-    IF NOT (i->>'found')::boolean THEN
-      UPDATE public.ops_github_items x SET not_found = true, synced_at = now() WHERE x.number = v_n;
-    ELSE
-      v_kind := CASE i->>'kind' WHEN 'pull' THEN 'pull' WHEN 'issue' THEN 'issue' END;
-      IF v_kind IS NULL THEN v_skipped := v_skipped + 1; CONTINUE; END IF;
-      v_state := CASE WHEN v_kind = 'pull' AND jsonb_typeof(i->'merged') = 'boolean' AND (i->>'merged')::boolean THEN 'MERGED'
-                      WHEN upper(i->>'state') IN ('OPEN', 'CLOSED', 'MERGED') THEN upper(i->>'state') END;
-      v_url := 'https://github.com/Mingla-LLC/mingla-main/' || CASE v_kind WHEN 'pull' THEN 'pull/' ELSE 'issues/' END || v_n;
-      v_board := CASE WHEN i->>'board_status' IN ('Todo','In Progress','In Review','Done') THEN i->>'board_status' END;
-      UPDATE public.ops_github_items x SET kind = v_kind,
-             title = NULLIF(left(btrim(regexp_replace(COALESCE(i->>'title', ''), '[[:cntrl:]]', ' ', 'g')), 300), ''),
-             url = v_url, state = v_state,
-             board_status = v_board,
-             board_horizon = CASE WHEN i->>'board_horizon' IN ('Now','Next','Later') THEN i->>'board_horizon' END,
-             merged_at = public.ops_try_timestamptz(i->>'merged_at'),
-             merge_sha = CASE WHEN i->>'merge_sha' ~ '^[0-9a-f]{40}$' THEN i->>'merge_sha' END,
-             closing_issues = ARRAY(SELECT (c #>> '{}')::integer FROM jsonb_array_elements(CASE WHEN jsonb_typeof(i->'closing_issues') = 'array'
-                                      THEN i->'closing_issues' ELSE '[]'::jsonb END) WITH ORDINALITY t(c, o)
-                                     WHERE t.o <= 10 AND jsonb_typeof(c) = 'number' AND (c #>> '{}') ~ '^[0-9]{1,7}$' ORDER BY t.o),
-             github_updated_at = public.ops_try_timestamptz(i->>'updated_at'),
-             -- X3: a move to Done Mingla saw happen; history stays unmarked.
-             done_seen_at = CASE WHEN v_board IS DISTINCT FROM 'Done' THEN NULL
-                                 WHEN g.synced_at IS NOT NULL AND g.board_status IS DISTINCT FROM 'Done' THEN now()
-                                 ELSE g.done_seen_at END,
-             not_found = false, synced_at = now()
-       WHERE x.number = v_n;
-      UPDATE public.ops_work_github w SET kind = v_kind WHERE w.number = v_n AND w.kind <> v_kind;
-    END IF;
-    v_new := public.ops_github_status(v_n)->>'label';
-    IF g.synced_at IS NOT NULL AND v_new IS DISTINCT FROM v_old THEN
-      PERFORM public.ops_log_write('system@usemingla.com', 'system', 'release_record', 'info', NULL, 'github', NULL,
-        format('GitHub #%s is now %s (was %s).', v_n, v_new, v_old), jsonb_build_object('number', v_n, 'from', v_old, 'to', v_new));
-      v_changed := v_changed || v_n;
-    END IF;
-    v_applied := v_applied + 1;
-  END LOOP;
-  BEGIN
-    v_bridges := public.ops_github_bridges();
-  EXCEPTION WHEN others THEN RAISE WARNING 'ops_github_items_apply: bridges stopped (% %)', SQLSTATE, SQLERRM;
-  END;
-  RETURN jsonb_build_object('applied', v_applied, 'skipped', v_skipped, 'changed', to_jsonb(v_changed), 'bridges', v_bridges);
-END;
-$$;
-
 -- From 20271124003980. X3: follow-through cards fire only for pull
 -- requests merged, issues moved to Done and commits pushed at or after the
 -- time the owner switched automatic steps on.
@@ -1506,13 +1436,30 @@ DECLARE
   r public.ops_release_records; m public.ops_main_commits; g public.ops_github_items; w public.ops_work_cards;
   v_added integer := 0; v_closed integer := 0; v_owner text; v_watch text; v_due date := public.ops_today(NULL) + 1;
   v_key text; v_res jsonb; v_list text; v_refused_at timestamptz; v_want jsonb := '{}'::jsonb; v_common jsonb;
-  v_proj text; v_live boolean; v_boss text := public.ops_owner_email(); v_since timestamptz;
+  v_proj text; v_live boolean; v_boss text := public.ops_owner_email(); v_since timestamptz; v_aged boolean; v_keep_only jsonb := '{}'::jsonb;
+  v_before jsonb; v_target text; v_pending text[];
 BEGIN
   -- X3: follow-through counts only from the time the owner switched automatic
   -- steps on; before that (or with no time recorded) nothing is followed up.
   v_since := public.ops_try_timestamptz(public.ops_setting('follow_through_since') #>> '{}');
-  -- Which keys should be open now, and the card each would make.
-  FOR r IN SELECT x.* FROM public.ops_release_records x WHERE x.merged_at > now() - interval '60 days' AND v_since IS NOT NULL AND x.merged_at >= v_since ORDER BY x.merged_at LOOP
+  -- Which keys should be open now, and the card each would make. Records
+  -- older than 60 days make no new cards, but one that still has an open
+  -- card keeps being checked: its card closes only when the problem is
+  -- really gone, never because the record aged out.
+  FOR r IN SELECT x.* FROM public.ops_release_records x
+            WHERE (x.merged_at > now() - interval '60 days' AND v_since IS NOT NULL AND x.merged_at >= v_since)
+               OR EXISTS (SELECT 1 FROM public.ops_work_cards oc
+                           WHERE oc.status <> 'done' AND oc.archived_at IS NULL
+                             AND oc.auto_key ~ ('^eng_[a-z_]+:pr-' || x.pr || '(:|$)'))
+            ORDER BY x.merged_at LOOP
+    v_aged := r.merged_at <= now() - interval '60 days' OR v_since IS NULL OR r.merged_at < v_since;
+    v_before := v_want;
+    -- The production ledger is read afresh for a record with pending
+    -- migrations, so its card follows the ledger and not a stale copy.
+    IF 'migrations_pending' = ANY (r.problems) THEN
+      PERFORM public.ops_release_recompute(r.pr);
+      SELECT * INTO r FROM public.ops_release_records x WHERE x.pr = r.pr;
+    END IF;
     v_owner := public.ops_release_owner(r.merged_by_login, r.author_login);
     v_common := jsonb_build_object(
       'owners', CASE WHEN v_owner IS NOT NULL THEN jsonb_build_array(v_owner) ELSE '[]'::jsonb END,
@@ -1539,14 +1486,29 @@ BEGIN
         'instructions', format('PR #%s changed %s but its title had no [deploy], so Vercel built nothing. Merge a follow-up commit whose subject contains [deploy], then confirm the production deployment is READY.', r.pr, v_proj),
         'done_means', format('%s production deployment is READY for this change.', v_proj)));
     END LOOP;
+    -- One card per pull request and deploy target, each with its own title
+    -- (two cards with one title would be refused as duplicates).
     FOR v_proj IN SELECT e.k FROM jsonb_each_text(COALESCE(r.deploy->'web', '{}'::jsonb)) e(k, val) WHERE e.val = 'failed'
                   UNION ALL SELECT 'edge' WHERE r.deploy->>'edge' = 'failed' LOOP
+      v_target := CASE WHEN v_proj = 'edge' THEN 'edge function' ELSE v_proj || ' web' END;
       v_want := v_want || jsonb_build_object(format('eng_deploy_failed:pr-%s:%s', r.pr, v_proj), v_common || jsonb_build_object(
-        'title', format('Fix the failed deploy of PR #%s', r.pr),
-        'instructions', format('The %s deploy for PR #%s failed. Read the run, fix it and redeploy through the reviewed path.',
-          CASE WHEN v_proj = 'edge' THEN 'edge function' ELSE v_proj || ' web' END, r.pr),
-        'done_means', 'The deploy succeeded.'));
+        'title', format('Fix the failed %s deploy of PR #%s', v_target, r.pr),
+        'instructions', format('The %s deploy for PR #%s failed. Read the run, fix it and redeploy through the reviewed path.', v_target, r.pr),
+        'done_means', format('The %s deploy of PR #%s succeeded.', v_target, r.pr)));
     END LOOP;
+    -- A deploy whose result has not arrived two hours after the merge is
+    -- stuck, not quietly pending: one card per target.
+    IF r.merged_at < now() - interval '2 hours' THEN
+      FOR v_proj IN SELECT e.k FROM jsonb_each_text(COALESCE(r.deploy->'web', '{}'::jsonb)) e(k, val) WHERE e.val = 'pending'
+                    UNION ALL SELECT 'edge' WHERE r.deploy->>'edge' = 'pending' LOOP
+        v_target := CASE WHEN v_proj = 'edge' THEN 'edge function' ELSE v_proj || ' web' END;
+        v_want := v_want || jsonb_build_object(format('eng_deploy_pending:pr-%s:%s', r.pr, v_proj), v_common || jsonb_build_object(
+          'title', format('Deploy still pending: %s for PR #%s', v_target, r.pr),
+          'instructions', format('PR #%s merged more than two hours ago and its %s deploy has no result yet. Open %s, find the deploy for merge commit %s, and see whether it is still running, failed or never started. Then re-run "Release records" from the Actions tab with this PR number so the record shows the result.',
+            r.pr, v_target, CASE WHEN v_proj = 'edge' THEN 'the "Deploy Supabase Edge Functions" runs in the Actions tab' ELSE 'the ' || v_proj || ' project on Vercel' END, left(r.merge_sha, 7)),
+          'done_means', format('The release record of PR #%s shows the %s deploy result.', r.pr, v_target)));
+      END LOOP;
+    END IF;
     IF 'migrations_pending' = ANY (r.problems) AND r.merged_at < now() - interval '24 hours' THEN
       v_want := v_want || jsonb_build_object('eng_migrations:pr-' || r.pr, v_common || jsonb_build_object(
         'title', format('Apply the migrations of PR #%s to production', r.pr),
@@ -1567,11 +1529,18 @@ BEGIN
         'instructions', format('Check PR #%s''s change in production, then comment on the issue: "Live check: <what you checked and saw>".', r.pr),
         'done_means', 'The release record shows the live check.'));
     END IF;
+    -- An aged record only keeps the cards it already has open.
+    IF v_aged THEN
+      SELECT v_keep_only || COALESCE(jsonb_object_agg(e.key, true), '{}'::jsonb) INTO v_keep_only
+        FROM jsonb_each(v_want) e WHERE NOT v_before ? e.key;
+    END IF;
   END LOOP;
-  -- Issues Done on the board for a day without a complete record (once the bridge follows them).
+  -- Issues Done on the board for a day without a complete record (once the
+  -- bridge follows them). The day counts from the move to Done, never from
+  -- the issue's last update: a comment does not restart it.
   FOR g IN SELECT x.* FROM public.ops_github_items x
-            WHERE x.kind = 'issue' AND x.board_status = 'Done' AND NOT x.not_found
-              AND v_since IS NOT NULL AND x.done_seen_at >= v_since AND x.done_seen_at < now() - interval '24 hours' LOOP
+            WHERE x.kind = 'issue' AND x.board_status = 'Done' AND NOT x.not_found AND x.done_since < now() - interval '24 hours'
+              AND v_since IS NOT NULL AND x.done_since >= v_since LOOP
     v_live := COALESCE((SELECT y.complete FROM public.ops_release_records y
                          WHERE y.issues @> jsonb_build_array(jsonb_build_object('number', g.number)) ORDER BY y.merged_at DESC LIMIT 1), false);
     CONTINUE WHEN v_live;
@@ -1615,6 +1584,7 @@ BEGIN
 
   -- Make the missing ones.
   FOR v_key, v_res IN SELECT e.key, e.value FROM jsonb_each(v_want) e ORDER BY e.key LOOP
+    CONTINUE WHEN v_keep_only ? v_key;
     BEGIN
       v_res := public.ops_auto_card_upsert(v_key, v_res, 'task', NULL);
       IF v_res->>'status' = 'added' THEN v_added := v_added + 1; END IF;
@@ -1626,12 +1596,20 @@ BEGIN
   FOR w IN SELECT x.* FROM public.ops_work_cards x
             WHERE x.auto_key LIKE 'eng\_%' AND x.status <> 'done' AND x.archived_at IS NULL
               AND x.auto_key NOT LIKE 'eng\_no\_pr\_push:%' AND NOT v_want ? x.auto_key LOOP
+    -- A migrations card closes only when the production ledger really has
+    -- every version of its pull request.
+    IF split_part(w.auto_key, ':', 1) = 'eng_migrations' THEN
+      SELECT ARRAY(SELECT mv FROM unnest(y.migrations_added) mv WHERE NOT mv = ANY (public.ops_ledger_applied(y.migrations_added)))
+        INTO v_pending FROM public.ops_release_records y WHERE y.pr = substring(w.auto_key FROM ':pr-([0-9]+)$')::integer;
+      CONTINUE WHEN v_pending IS NULL OR cardinality(v_pending) > 0;
+    END IF;
     BEGIN
       PERFORM public.ops_auto_card_close(w.id, CASE split_part(w.auto_key, ':', 1)
           WHEN 'eng_no_issue' THEN 'The pull request has an issue and a release record.'
           WHEN 'eng_guide_missing' THEN 'The release record shows a Feature Guide line.'
           WHEN 'eng_not_deployed' THEN 'A later production deployment of this project is READY.'
           WHEN 'eng_deploy_failed' THEN 'The deploy no longer shows as failed.'
+          WHEN 'eng_deploy_pending' THEN 'The release record shows the deploy result.'
           WHEN 'eng_migrations' THEN 'Every migration is in the production ledger.'
           WHEN 'eng_record_pending' THEN 'The release record is complete apart from the live check.'
           WHEN 'eng_live_check' THEN 'The release record shows the live check.'

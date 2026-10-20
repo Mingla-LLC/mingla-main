@@ -137,7 +137,7 @@ export function DraftsPage() {
   const draftNeededListed = review.tab !== "spend" && query.state === "waiting" && !filtered;
   const draftNeeded = useDraftNeededReview({ enabled: draftNeededListed });
   const draftNeededShown = draftNeededListed && draftNeededCards(draftNeeded).length > 0;
-  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "You’re all caught up." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
+  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
   const emptyCopy = filtered ? "Clear the filter to see the full queue." : draftNeededShown ? "Ask your agent to write a draft for the cards above." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
 
   return (

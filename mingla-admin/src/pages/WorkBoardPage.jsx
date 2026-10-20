@@ -75,7 +75,7 @@ export function WorkBoardPage() {
   ];
 
   return (
-    <div className="flex min-w-0 flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="Work"
         description="What needs doing, who’s on it, and what’s slipping. Steps appear here by themselves from every host’s events."
