@@ -118,7 +118,13 @@ export function buildSafeReloadDependencies(
       },
     ],
     lockdown: [xhrLockdownStep()],
-    settle: () => waitForNetworkIdle(),
+    // After the last request (and its body read) finishes, yield one macrotask
+    // so the native callbacks that delivered it unwind before the restart.
+    // Still inside the settle cap, so it can never hold the reload.
+    settle: async () => {
+      await waitForNetworkIdle();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    },
     reload,
   };
 }
