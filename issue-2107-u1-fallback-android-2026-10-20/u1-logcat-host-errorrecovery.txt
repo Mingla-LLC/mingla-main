@@ -1,0 +1,55 @@
+10-20 01:15:05.518 23584 23606 I dev.expo.updates: {"timestamp":1792473305518,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:15:23.229 23787 23819 I dev.expo.updates: {"timestamp":1792473323229,"message":"ErrorRecovery: remote load status changed: NEW_UPDATE_LOADED","code":"None","level":"info"}
+10-20 01:15:45.029 23972 24001 I dev.expo.updates: {"timestamp":1792473345029,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:15:45.540 23972 24014 W ReactNativeJS: [update-launch-guard] update_launch_confirmed_good {"update_id":"0be4acf3-9843-4fa5-a4c1-d9c7dc6f2fcc","reason":"first_commit"}
+10-20 01:16:02.383 24183 24207 I dev.expo.updates: {"timestamp":1792473362383,"message":"ErrorRecovery: remote load status changed: NEW_UPDATE_LOADED","code":"None","level":"info"}
+10-20 01:16:24.517 24372 24395 I dev.expo.updates: {"timestamp":1792473384517,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:16:25.166 24372 24411 W ReactNativeJS: [update-launch-guard] critical_update_launch_failed_escalated {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary"}
+10-20 01:16:25.172 24372 24412 E dev.expo.updates: {"timestamp":1792473385172,"message":"ErrorRecovery: exception encountered: Error: harness: update that throws on its first render, stack:\nHarnessBomb@635940:21\nrenderWithHooks@16452:31\nupdateFunctionComponent@18005:31\nbeginWork@18419:38\nperfor
+10-20 01:16:25.173 24372 24403 I dev.expo.updates: {"timestamp":1792473385173,"message":"UpdatesErrorRecovery: attempting to fetch a new update, waiting","code":"None","level":"info"}
+10-20 01:16:25.177 24372 24411 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:16:25.188 24372 24401 I dev.expo.updates: {"timestamp":1792473385188,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:16:25.190 24372 24403 E dev.expo.updates: {"timestamp":1792473385190,"message":"UpdatesErrorRecovery: could not recover from error, crashing","code":"Unknown","level":"error","stacktrace":["com.facebook.react.modules.core.ExceptionsManagerModule.reportException(ExceptionsManagerModule.kt:52
+10-20 01:16:25.191 24372 24403 E AndroidRuntime: FATAL EXCEPTION: expo-updates-error-recovery
+10-20 01:16:25.191 24372 24403 E AndroidRuntime: Process: com.sethogieva.minglabusiness.harness2107, PID: 24372
+10-20 01:16:25.193 24372 24412 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 
+10-20 01:16:38.308 24492 24527 I dev.expo.updates: {"timestamp":1792473398308,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:16:38.979 24492 24532 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:16:38.997 24492 24532 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:16:39.002 24492 24532 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:16:39.023 24492 24533 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 
+10-20 01:16:54.069 24660 24690 I dev.expo.updates: {"timestamp":1792473414068,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:16:54.755 24660 24721 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:16:54.773 24660 24721 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:16:54.778 24660 24721 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:16:54.785 24660 24722 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 
+10-20 01:17:20.365 24660 24822 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:17:20.390 24660 24822 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:17:20.395 24660 24822 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:17:20.404 24660 24824 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 
+10-20 01:17:32.335 24946 25028 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:17:32.357 24946 25028 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d77282c4-49b9-4e02-a2a6-7cf0107e25d3","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:17:32.362 24946 25028 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:17:32.381 24946 25034 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 
+10-20 01:17:32.847 24946 24978 I dev.expo.updates: {"timestamp":1792473452847,"message":"ErrorRecovery: remote load status changed: NEW_UPDATE_LOADED","code":"None","level":"info"}
+10-20 01:17:53.551 25159 25182 I dev.expo.updates: {"timestamp":1792473473550,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:17:54.064 25159 25208 W ReactNativeJS: [update-launch-guard] update_launch_confirmed_good {"update_id":"8d5f3bf8-cc88-49bc-8bb5-19abe1b787f7","reason":"first_commit"}
+10-20 01:18:20.405 25159 25627 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d900a87f-8ad8-4d3a-bb25-436ef3c18a57","error_class":"Error","source":"root_boundary","reason":"in_app_reload"}
+10-20 01:18:20.422 25159 25627 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d900a87f-8ad8-4d3a-bb25-436ef3c18a57","error_class":"Error","source":"root_boundary","reason":"in_app_reload"}
+10-20 01:18:20.428 25159 25627 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:18:20.437 25159 25628 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 
+10-20 01:18:28.932 25687 25718 I dev.expo.updates: {"timestamp":1792473508932,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:18:29.589 25687 25730 W ReactNativeJS: [update-launch-guard] critical_update_launch_failed_escalated {"update_id":"d900a87f-8ad8-4d3a-bb25-436ef3c18a57","error_class":"Error","source":"root_boundary"}
+10-20 01:18:29.596 25687 25731 E dev.expo.updates: {"timestamp":1792473509595,"message":"ErrorRecovery: exception encountered: Error: harness: update that throws on its first render, stack:\nHarnessBomb@635940:21\nrenderWithHooks@16452:31\nupdateFunctionComponent@18005:31\nbeginWork@18419:38\nperfor
+10-20 01:18:29.600 25687 25730 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:18:29.601 25687 25720 I dev.expo.updates: {"timestamp":1792473509601,"message":"UpdatesErrorRecovery: attempting to fetch a new update, waiting","code":"None","level":"info"}
+10-20 01:18:29.616 25687 25731 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 
+10-20 01:18:29.618 25687 25710 I dev.expo.updates: {"timestamp":1792473509618,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:18:29.620 25687 25720 E dev.expo.updates: {"timestamp":1792473509620,"message":"UpdatesErrorRecovery: could not recover from error, crashing","code":"Unknown","level":"error","stacktrace":["com.facebook.react.modules.core.ExceptionsManagerModule.reportException(ExceptionsManagerModule.kt:52
+10-20 01:18:29.621 25687 25720 E AndroidRuntime: FATAL EXCEPTION: expo-updates-error-recovery
+10-20 01:18:29.621 25687 25720 E AndroidRuntime: Process: com.sethogieva.minglabusiness.harness2107, PID: 25687
+10-20 01:18:44.659 25802 25832 I dev.expo.updates: {"timestamp":1792473524659,"message":"ErrorRecovery: remote load status changed: IDLE","code":"None","level":"info"}
+10-20 01:18:45.326 25802 25847 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d900a87f-8ad8-4d3a-bb25-436ef3c18a57","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:18:45.345 25802 25847 W ReactNativeJS: [update-launch-guard] update_launch_error {"update_id":"d900a87f-8ad8-4d3a-bb25-436ef3c18a57","error_class":"Error","source":"root_boundary","reason":"already_escalated"}
+10-20 01:18:45.351 25802 25847 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+10-20 01:18:45.371 25802 25848 E unknown:ReactNative: console.error: [update-launch-guard] root render error Error: harness: update that throws on its first render 

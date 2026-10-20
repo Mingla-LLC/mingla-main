@@ -1,0 +1,20 @@
+Explorer item 1 (cold start into a downloaded update that throws on first render), logcat as captured on the A72, 2026-10-20 local time:
+01:07:13.532 W ReactNativeJS: [update-launch-guard] critical_update_launch_failed_escalated {"update_id":"a7ee2631-…","error_class":"Error","source":"root_boundary"}
+01:07:13.548 E ReactNativeJS: '[update-launch-guard] root render error', { [Error: harness: update that throws on its first render]
+01:07:13.570 E dev.expo.updates: ErrorRecovery: exception encountered: Error: harness: update that throws on its first render
+01:07:13.571 I dev.expo.updates: UpdatesErrorRecovery: attempting to fetch a new update, waiting
+01:07:13.603 I dev.expo.updates: ErrorRecovery: remote load status changed: IDLE
+01:07:13.605 E dev.expo.updates: UpdatesErrorRecovery: could not recover from error, crashing
+01:07:13.605 E AndroidRuntime: FATAL EXCEPTION: expo-updates-error-recovery / Process: com.mingla.app.v2.harness2107 / com.facebook.react.common.JavascriptException
+(no "falling back to older update" step: LAUNCH_CACHED_UPDATE was removed from the pipeline, i.e. expo-updates already counted this launch as successful)
+
+Explorer module-load crash variant (control):
+01:09:27.305 E dev.expo.updates: ErrorRecovery: exception encountered: Error: harness: update whose module throws at load
+01:09:27.307 I dev.expo.updates: UpdatesErrorRecovery: attempting to fetch a new update, waiting
+01:09:27.327 I dev.expo.updates: UpdatesErrorRecovery: falling back to older update
+(then no second JS run; the app stayed on the splash; the next cold starts launched the previous successful update)
+
+Explorer item 2 (cold start after the in-app restart into a fresh broken update):
+01:12:56.634 W ReactNativeJS: [update-launch-guard] critical_update_launch_failed_escalated {"update_id":"f1e33cc8-…"}
+01:12:56.641 I dev.expo.updates: UpdatesErrorRecovery: attempting to fetch a new update, waiting
+01:12:56.654 E dev.expo.updates: UpdatesErrorRecovery: could not recover from error, crashing
