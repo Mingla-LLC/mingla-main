@@ -993,6 +993,32 @@ AS $$
      ORDER BY 1)
 $$;
 
+-- #3980 W4 rework 2: true when a host card that shares one of the brand's
+-- contact points (its email, a handle on any platform, or a phone that ends
+-- the same) gained it, or was edited, after p_since. The cron's cheap reason
+-- to look at a decided brand again; the look itself is ops_brand_new_exact.
+-- Each kind is looked up through its own index.
+CREATE FUNCTION public.ops_brand_changed_since(p_brand_id uuid, p_since timestamptz) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+  WITH w AS MATERIALIZED (SELECT e FROM jsonb_array_elements(public.ops_brand_idents(p_brand_id)) e),
+  -- Materialized: the few matching contact points first, then their cards
+  -- by key, whatever the planner believes about the cards table.
+  x AS MATERIALIZED (
+    SELECT i.record_id, i.created_at FROM w JOIN public.crm_record_identifiers i ON i.kind = 'email' AND i.value_key = w.e->>'value_key'
+     WHERE w.e->>'kind' = 'email'
+    UNION ALL
+    SELECT i.record_id, i.created_at FROM w JOIN public.crm_record_identifiers i ON i.kind = 'handle' AND i.value_key = w.e->>'value_key'
+     WHERE w.e->>'kind' = 'handle'
+    UNION ALL
+    SELECT i.record_id, i.created_at FROM w JOIN public.crm_record_identifiers i
+        ON i.national IS NOT NULL AND right(i.national, 6) = right(public.crm_phone_national(w.e->>'value_key'), 6)
+     WHERE w.e->>'kind' = 'phone' AND i.kind = 'phone')
+  SELECT p_since IS NOT NULL AND EXISTS (
+    SELECT 1 FROM x JOIN public.crm_records r ON r.id = x.record_id AND r.pipeline = 'hosts' AND r.deleted_at IS NULL
+     WHERE x.created_at >= p_since OR r.updated_at > p_since)
+$$;
+
 -- #3980 Wave 4: the decision, and only the decision, of brand auto-link for
 -- one brand, read without writing anything. ops_brand_autolink_one acts on
 -- it and the owner's preview (ops_brand_cards_preview) shows it, so both
@@ -1286,7 +1312,7 @@ BEGIN
              SELECT br.id, br.created_at, d.id AS decided_id, d.closed_at,
                     (SELECT t.updated_at FROM public.ops_brand_autolink_waits t
                       WHERE t.brand_id = br.id AND t.last_status = 'decided') AS looked_at,
-                    br.updated_at, br.contact_email, br.contact_phone, br.account_id, br.social_links
+                    br.updated_at
                FROM public.brands br
                LEFT JOIN LATERAL public.ops_brand_decided(br.id) d ON true
               WHERE br.deleted_at IS NULL AND br.created_at >= v_since
@@ -1297,16 +1323,7 @@ BEGIN
             WHERE c.decided_id IS NULL
                OR c.looked_at IS NULL OR c.looked_at < c.closed_at OR c.looked_at < now() - interval '1 day'
                OR c.updated_at > c.looked_at
-               OR EXISTS (
-                    SELECT 1 FROM public.crm_record_identifiers i
-                      JOIN public.crm_records r ON r.id = i.record_id AND r.pipeline = 'hosts' AND r.deleted_at IS NULL
-                     WHERE (i.created_at >= c.looked_at OR r.updated_at > c.looked_at)
-                       AND ((i.kind = 'email' AND (i.value_key = public.crm_ident_key('email', c.contact_email)
-                                                   OR i.value_key = (SELECT public.crm_ident_key('email', u.email::text) FROM auth.users u WHERE u.id = c.account_id)))
-                            OR (i.kind = 'phone' AND i.national IS NOT NULL
-                                AND right(i.national, 6) = right(public.crm_phone_national(public.crm_ident_key('phone', c.contact_phone)), 6))
-                            OR (i.kind = 'handle' AND EXISTS (SELECT 1 FROM jsonb_each_text(CASE WHEN jsonb_typeof(c.social_links) = 'object' THEN c.social_links ELSE '{}'::jsonb END) e
-                                                               WHERE public.crm_ident_key('handle', e.value) = i.value_key))))
+               OR public.ops_brand_changed_since(c.id, c.looked_at)
             -- Brands nobody decided about come first, so looks at decided
             -- brands never hold back a new brand.
             ORDER BY (c.decided_id IS NOT NULL), c.created_at, c.id LIMIT 25 LOOP
@@ -2673,7 +2690,7 @@ BEGIN
     'public.ops_expected_anchor(public.ops_expected_events,date)',
     'public.ops_expected_occurrences(public.ops_expected_events,date,integer)', 'public.ops_event_in_series(uuid,uuid,date)',
     'public.ops_host_next_rows(uuid[],date)', 'public.ops_live_totals(date)', 'public.ops_host_missing(public.crm_records)',
-    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_card_ask(text,jsonb,uuid)', 'public.ops_country_words(text)', 'public.ops_brand_decided(uuid)', 'public.ops_brand_idents(uuid)', 'public.ops_brand_exact_rows(jsonb,text)', 'public.ops_brand_new_exact(uuid,uuid)', 'public.ops_brand_match(uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
+    'public.ops_auto_steps(date,uuid)', 'public.ops_card_of_host(public.ops_work_cards,uuid)', 'public.ops_brand_card_ask(text,jsonb,uuid)', 'public.ops_country_words(text)', 'public.ops_brand_decided(uuid)', 'public.ops_brand_idents(uuid)', 'public.ops_brand_exact_rows(jsonb,text)', 'public.ops_brand_new_exact(uuid,uuid)', 'public.ops_brand_changed_since(uuid,timestamptz)', 'public.ops_brand_match(uuid)', 'public.ops_brand_autolink_one(uuid)', 'public.ops_brand_autolink()',
     'public.ops_host_next(uuid[],date)', 'public.ops_attention(date)', 'public.ops_recent_changes(text,uuid,integer)',
     'public.ops_country_calling_code(text)', 'public.ops_phone_full(text,text)', 'public.ops_phone_same(text,text,text,text)',
     'public.ops_record_country(uuid)', 'public.ops_brand_country(uuid)'] LOOP
