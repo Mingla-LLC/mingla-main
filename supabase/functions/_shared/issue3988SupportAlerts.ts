@@ -121,7 +121,7 @@ export function issue3988EmailCta(
     : deepLink;
   if (!isIssue3988AdminLink(url)) return undefined;
   return {
-    label: "Open in Mingla Admin",
+    label: "View in Mingla Admin",
     url,
     note: "You get this email because of your role on the Mingla team. " +
       "You can turn this alert off on the Notifications page in Mingla Admin.",

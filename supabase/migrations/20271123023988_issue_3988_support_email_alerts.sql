@@ -29,9 +29,12 @@
 -- link only. Never a Host message body, staff ticket details or a signal's
 -- problem statement.
 --
--- MINGLA-INVARIANT: I-3988-ALERT-RECIPIENTS-ARE-ON-TEAM | issue #3988 | Every support and product alert is enqueued only for a current Mingla teammate; a support_staff row on someone off the team never receives one.
--- MINGLA-INVARIANT: I-3988-ALERT-ONCE-PER-EVENT | issue #3988 | Each alert has one idempotency key per event and recipient, so a repeated call or sweep never sends a second copy.
--- MINGLA-INVARIANT: I-3988-ALERT-PAYLOAD-NO-BODY | issue #3988 | Support and product alert payloads carry IDs, subject or title, priority and a link only, never a message body or problem statement.
+-- Invariants (declared in the implementor pg17 suite
+-- __tests__/issue_3988_support_email_alerts.implementor.pg17.test.sql):
+--   I-3988-ALERT-RECIPIENTS-ARE-ON-TEAM (issue_3988_enqueue_alert and the
+--     roster, leads and owners helpers)
+--   I-3988-ALERT-ONCE-PER-EVENT (idempotency keys on every producer)
+--   I-3988-ALERT-PAYLOAD-NO-BODY (every payload builder)
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -594,9 +597,9 @@ BEGIN
     RAISE NOTICE 'issue3988_overdue_cron_not_registered';
     RETURN;
   END IF;
-  PERFORM cron.unschedule(j.jobid)
-  FROM cron.job j
-  WHERE j.jobname = 'issue_3988_support_overdue_sweep';
+  PERFORM cron.unschedule('issue_3988_support_overdue_sweep')
+  FROM cron.job
+  WHERE jobname = 'issue_3988_support_overdue_sweep';
   PERFORM cron.schedule(
     'issue_3988_support_overdue_sweep',
     '*/15 * * * *',

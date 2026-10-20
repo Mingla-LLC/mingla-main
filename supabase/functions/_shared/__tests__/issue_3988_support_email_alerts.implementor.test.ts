@@ -218,7 +218,7 @@ Deno.test("#3988 a Host reply emails a teammate who is away, with an Admin butto
     assertStringIncludes(email.text, "Subject: Payout question");
     assertStringIncludes(email.text, "Priority: High");
     assertStringIncludes(email.text, `Ticket: ${TICKET}`);
-    assertStringIncludes(email.html, ">Open in Mingla Admin</a>");
+    assertStringIncludes(email.html, ">View in Mingla Admin</a>");
     assertStringIncludes(email.html.replaceAll("&amp;", "&"), `${ADMIN}?tab=support&ticket=${TICKET}`);
     assertEquals(world.inbox[0].type, "business.support_ticket_reply");
     assertEquals(world.inbox[0].deep_link, `mingla-business://support/${TICKET}`);

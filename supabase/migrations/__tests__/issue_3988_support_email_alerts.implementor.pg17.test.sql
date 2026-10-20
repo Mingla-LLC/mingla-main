@@ -171,6 +171,14 @@ BEGIN
     RAISE EXCEPTION 'reply_payload_links_wrong';
   END IF;
 
+  -- #1529: no SMS channel, so every row carries an explicit NULL country and no address.
+  IF EXISTS (SELECT 1 FROM public.notification_outbox o
+     WHERE o.category_key LIKE ANY (ARRAY['business.support_ticket_reply', 'admin.%'])
+       AND o.idempotency_key LIKE '%:' || v_msg::text || ':%'
+       AND (o.country_code IS NOT NULL OR o.contact IS NOT NULL)) THEN
+    RAISE EXCEPTION 'alert_row_carries_country_or_contact';
+  END IF;
+
   -- Double call: nothing new.
   v_n := public.issue_3988_enqueue_support_reply_alerts(v_ticket, v_msg, pg_temp.t3988a_id('requester'));
   IF v_n <> 0 OR pg_temp.t3988a_count('business.support_ticket_reply', '%:' || v_msg::text || ':%') <> 5 THEN

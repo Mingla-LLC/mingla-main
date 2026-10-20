@@ -2,8 +2,8 @@
 -- Angles the happy path does not take: off-team and revoked people in every
 -- role, forged messages, self-alerts, closed work, direct calls by clients,
 -- and payloads stuffed with private text.
--- MINGLA-INVARIANT: I-3988-ALERT-RECIPIENTS-ARE-ON-TEAM | issue #3988 | Every support and product alert is enqueued only for a current Mingla teammate; a support_staff row on someone off the team never receives one.
--- MINGLA-INVARIANT: I-3988-ALERT-PAYLOAD-NO-BODY | issue #3988 | Support and product alert payloads carry IDs, subject or title, priority and a link only, never a message body or problem statement.
+-- Exercises I-3988-ALERT-RECIPIENTS-ARE-ON-TEAM and I-3988-ALERT-PAYLOAD-NO-BODY,
+-- both declared in issue_3988_support_email_alerts.implementor.pg17.test.sql.
 \set ON_ERROR_STOP on
 BEGIN;
 
