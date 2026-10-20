@@ -104,11 +104,15 @@ import {
 } from "../../utils/bankSetupReturn";
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
+  emptyPriceOption,
   emptyStop,
   initialWholePriceInput,
+  priceOptionEntryIsValid,
+  priceOptionToPayload,
   stopHasValidatedLocation,
   stopHasValidDescription,
   type ExperienceLocationMode,
+  type ExperiencePriceOptionDraft,
   type ExperiencePricingMode,
   type ExperienceStopDraft,
   stopPriceEntryIsValid,
@@ -254,6 +258,8 @@ export interface ExperienceWizardInitialDraft {
   pricingMode: ExperiencePricingMode;
   stops: ExperienceStopDraft[];
   wholePriceMajor: string;
+  /** issue #3281 R2 — optional seed of sellable price options. */
+  priceOptions?: ExperiencePriceOptionDraft[];
   isFree: boolean;
   capacity: string;
   unlimited: boolean;
@@ -302,7 +308,7 @@ const RPC_ERROR_COPY: Record<string, string> = {
   event_currency_unsupported: "That currency isn't supported yet.",
   invalid_mode:
     "Something went wrong with the pricing/location setup. Try again.",
-  experience_stop_count_invalid: "An experience needs 2–5 stops.",
+  experience_stop_count_invalid: "An experience needs 1–5 stops.",
   stop_name_required: "Every stop needs a name.",
   stop_description_required: "Every stop needs a short description.",
   experience_intent_required: "Pick the best vibe for this experience.",
@@ -439,7 +445,7 @@ export const ExperienceCreatorWizard: React.FC<
   const [stops, setStops] = useState<ExperienceStopDraft[]>(
     initialDraft?.stops && initialDraft.stops.length > 0
       ? initialDraft.stops
-      : [emptyStop(), emptyStop()],
+      : [emptyStop()],
   );
 
   // Pricing
@@ -452,6 +458,24 @@ export const ExperienceCreatorWizard: React.FC<
   const [isFree, setIsFree] = useState(initialDraft?.isFree ?? false);
   const [capacity, setCapacity] = useState(initialDraft?.capacity ?? "20");
   const [unlimited, setUnlimited] = useState(initialDraft?.unlimited ?? false);
+  // issue #3281 R2 — price options (ticket_types). Seed from the draft when
+  // present; otherwise one Standard person option mirroring wholePriceMajor.
+  const [priceOptions, setPriceOptions] = useState<ExperiencePriceOptionDraft[]>(
+    () => {
+      if (initialDraft?.priceOptions && initialDraft.priceOptions.length > 0) {
+        return initialDraft.priceOptions;
+      }
+      return [
+        emptyPriceOption({
+          name: "Standard",
+          priceMajor: initialWholePriceInput(
+            initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor,
+          ),
+          priceBasis: "person",
+        }),
+      ];
+    },
+  );
   const [pricingSwitches, setPricingSwitches] =
     useState<PricingSwitchOverrides>(
     initialDraft?.pricingSwitches ?? {
@@ -460,6 +484,18 @@ export const ExperienceCreatorWizard: React.FC<
       passServiceFee: null,
     },
   );
+
+  // Keep the lead option's amount in sync with the whole-price / free toggle.
+  // Do NOT reset priceBasis — the Pricing step owns the unit selector.
+  useEffect(() => {
+    setPriceOptions((prev) => {
+      if (prev.length === 0) return prev;
+      const lead = prev[0];
+      const nextMajor = isFree ? "0" : wholePriceMajor;
+      if (lead.priceMajor === nextMajor) return prev;
+      return [{ ...lead, priceMajor: nextMajor }, ...prev.slice(1)];
+    });
+  }, [wholePriceMajor, isFree]);
 
   // issue #3284 — the refund terms (Pricing step). Seeded from the live row in
   // live-edit and from the draft seed in draft-edit; null in create.
@@ -781,7 +817,7 @@ export const ExperienceCreatorWizard: React.FC<
 
   // Per-step Continue gate.
   const stopsValid = useMemo(() => {
-    if (stops.length < 2 || stops.length > 5) return false;
+    if (stops.length < 1 || stops.length > 5) return false;
     return stops.every((s, i) => {
       if (s.placeName.trim().length === 0) return false;
       // CHANGE 3 — every stop needs a description.
@@ -794,12 +830,24 @@ export const ExperienceCreatorWizard: React.FC<
 
   const pricingValid = useMemo(() => {
     if (!unlimited && (parseInt(capacity, 10) || 0) <= 0) return false;
+    // issue #3281 R2 — every visible option must be coherent.
+    if (!priceOptions.every((o) => priceOptionEntryIsValid(o, isFree))) {
+      return false;
+    }
     if (isFree) return true;
     if (pricingMode === "whole") return resolvedTotalMajor > 0;
     // #3645 — per-stop: an EMPTY price means that stop is free (same as 0), so
     // only something typed that is not a valid amount stops Continue.
     return stops.every((s) => stopPriceEntryIsValid(s.priceMajor));
-  }, [unlimited, capacity, isFree, pricingMode, resolvedTotalMajor, stops]);
+  }, [
+    unlimited,
+    capacity,
+    isFree,
+    pricingMode,
+    resolvedTotalMajor,
+    stops,
+    priceOptions,
+  ]);
 
   const canContinue = useMemo(() => {
     if (step === 1)
@@ -842,6 +890,21 @@ export const ExperienceCreatorWizard: React.FC<
   const buildPayload = useCallback(
     (publish: boolean) => {
       const whenPayload = whenAdapter.toPayloadWhen();
+      // issue #3281 R2 — per-stop keeps the single summed ticket (omit options).
+      // Free zeroes every emitted option without discarding local drafts. Shared
+      // Total spots / Unlimited own capacity on every option.
+      const priceOptionsPayload =
+        pricingMode === "per_stop"
+          ? null
+          : priceOptions.map((opt) => {
+              const payload = priceOptionToPayload(opt);
+              return {
+                ...payload,
+                ...(opt.ticketTypeId ? { id: opt.ticketTypeId } : {}),
+                price_cents: isFree ? 0 : payload.price_cents,
+                capacity: unlimited ? null : parseInt(capacity, 10) || null,
+              };
+            });
       return {
         title: title.trim(),
         description: description.trim(),
@@ -883,6 +946,9 @@ export const ExperienceCreatorWizard: React.FC<
         multiDates: whenPayload.multiDates,
         recurrence_rules: whenPayload.recurrence_rules,
         timezone: whenPayload.timezone,
+        ...(priceOptionsPayload !== null
+          ? { price_options: priceOptionsPayload }
+          : {}),
         // META-ORCH-1059 BUG 3 — thread the cover so the RPC persists the 7
         // cover_media_* columns. Pexels/Giphy/Library picks only emit a patch
         // to wizard state; without this the RPC drops the cover entirely.
@@ -915,6 +981,7 @@ export const ExperienceCreatorWizard: React.FC<
       capacity,
       pricingSwitches,
       stops,
+      priceOptions,
       cover,
     ],
   );
@@ -1804,6 +1871,8 @@ export const ExperienceCreatorWizard: React.FC<
             setStops={setStops}
             wholePriceMajor={wholePriceMajor}
             setWholePriceMajor={setWholePriceMajor}
+            priceOptions={priceOptions}
+            setPriceOptions={setPriceOptions}
             isFree={isFree}
             setIsFree={setIsFree}
             capacity={capacity}

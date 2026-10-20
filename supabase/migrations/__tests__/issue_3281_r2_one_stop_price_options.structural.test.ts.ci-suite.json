@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_r2_one_stop_price_options.structural.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3281-08-r2-one-stop-structural",
+  "profile": "deno-1.46-stripe"
+}

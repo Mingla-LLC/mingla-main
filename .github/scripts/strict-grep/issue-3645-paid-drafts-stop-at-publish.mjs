@@ -413,10 +413,13 @@ const RULES = [
     "the field's starting text goes through the helper"),
   lacks("Eb-price-no-literal-zero", F.experienceWizard, 'prefill?.wholePriceMajor ?? "0.00"',
     "a literal 0.00 in the field turns a typed 30 into 0.0030"),
+  // #3281 R2 — whole-price field is the lead option row (option.priceMajor),
+  // still empty-seeded with placeholder 0.00 and the same accessibility label.
   ordered("Eb-zero-is-the-placeholder", F.experiencePricing, [
-    "value={wholePriceMajor}",
+    "value={option.priceMajor}",
     'placeholder="0.00"',
-    'accessibilityLabel="Whole experience price"',
+    'accessibilityLabel={',
+    '"Whole experience price"',
   ], "0.00 is the placeholder of the whole-price field"),
   has("Eb-validation-unchanged", F.experienceWizard,
     'if (pricingMode === "whole") return resolvedTotalMajor > 0;',

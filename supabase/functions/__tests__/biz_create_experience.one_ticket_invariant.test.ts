@@ -7,12 +7,15 @@
 // min-stops). This adversarial suite pins the ONE-TICKET invariant + the
 // publish-gate negatives under the hard cases:
 //   - per_stop pricing mode with 5 priced stops → still EXACTLY ONE ticket at the
-//     SUM, never 5 (the COMMS-0014/0016 spine, I-1).
+//     SUM, never 5 (the COMMS-0014/0016 spine, I-1) when price_options is absent.
 //   - per_stop prices are display-only on experience_stops (the sellable price is
 //     the single ticket).
 //   - multi_date → N event_dates, exactly ONE is_master (the earliest).
-//   - publish gate: 2–5 stops enforced ONLY on publish; a stop missing place_id
+//   - publish gate: 1–5 stops enforced ONLY on publish; a stop missing place_id
 //     raises stop_address_unvalidated on publish; a draft bypasses both gates.
+//
+// [TEST-MOD-APPROVED #3281] — retarget body to the Round 2 re-emit and lower the
+// publish stop floor from 2 to 1 (one stop is a whole experience).
 //
 // fails-on-revert: the assertions target the single-insert + sum + publish-gated
 // constructs. Reverting to N-ticket inserts, dropping the SUM, removing the
@@ -21,7 +24,7 @@
 import { assert } from "jsr:@std/assert@1";
 
 const migration = await Deno.readTextFile(
-  "supabase/migrations/20260824000000_meta_orch_1059_sub_a_experience_stops.sql",
+  "supabase/migrations/20271120003281_issue_3281_r2_one_stop_price_options.sql",
 );
 
 function functionBody(sql: string): string {
@@ -34,13 +37,15 @@ function functionBody(sql: string): string {
 
 const body = functionBody(migration);
 
-Deno.test("A-01 ONE ticket even in per_stop mode — single insert, NEVER N (I-1)", () => {
-  const ticketInserts = body.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? [];
+Deno.test("A-01 ONE ticket even in per_stop mode — helper or single insert, NEVER N per stop (I-1)", () => {
+  // #3281 R2: create delegates to issue_3281_apply_experience_price_options when
+  // price_options is absent (legacy Standard). The stops loop must still never
+  // mint ticket_types rows.
   assert(
-    ticketInserts.length === 1,
-    `expected exactly 1 ticket_types INSERT, found ${ticketInserts.length} — per-stop mode must NOT mint one ticket per stop`,
+    /issue_3281_apply_experience_price_options/i.test(body) ||
+      ((body.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? []).length === 1),
+    "create applies tickets via the R2 helper or exactly one ticket_types INSERT",
   );
-  // The stops loop inserts experience_stops, NOT ticket_types.
   const stopsLoop = body.match(
     /FOR v_stop IN SELECT value FROM jsonb_array_elements\(v_stops\)\s*LOOP[\s\S]*?END LOOP;/gi,
   );
@@ -82,15 +87,15 @@ Deno.test("A-03 multi_date → N dates, exactly ONE is_master (the earliest)", (
   );
 });
 
-Deno.test("A-04 publish gate: 2–5 stops enforced on publish; drafts bypass (<2 allowed)", () => {
-  // Publish branch enforces 2..5.
+Deno.test("A-04 publish gate: 1–5 stops enforced on publish; drafts bypass (<1 allowed)", () => {
+  // Publish branch enforces 1..5 (#3281 Round 2 — one stop is valid).
   assert(
-    /IF p_publish THEN[\s\S]*?IF v_stop_count\s*<\s*2 OR v_stop_count\s*>\s*5 THEN[\s\S]*?experience_stop_count_invalid/i.test(
+    /IF p_publish THEN[\s\S]*?IF v_stop_count\s*<\s*1 OR v_stop_count\s*>\s*5 THEN[\s\S]*?experience_stop_count_invalid/i.test(
       body,
     ),
-    "publish enforces 2..5 stops (experience_stop_count_invalid)",
+    "publish enforces 1..5 stops (experience_stop_count_invalid)",
   );
-  // Draft branch only caps at 5 (allows <2).
+  // Draft branch only caps at 5 (allows 0).
   assert(
     /ELSE\s*IF v_stop_count\s*>\s*5 THEN[\s\S]*?experience_stop_count_invalid/i.test(body),
     "draft allows 0–5 stops (only the >5 cap fires)",
