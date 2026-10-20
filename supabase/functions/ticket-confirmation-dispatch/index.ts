@@ -47,6 +47,7 @@ import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
 // ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
 // event_type='trip' — event_type='event' path unchanged.
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
+import { isGuestListPrivate } from "../_shared/email/appLink.ts";
 import {
   brandFollowActionPublicUrl,
   signBrandFollowToken,
@@ -790,6 +791,8 @@ function buildRenderContext(args: {
       // real DTEND (closes the 3-hour fabrication Constitution #9 violation).
       endAt: masterDate?.end_at ?? null,
       timezone: eventTimezone,
+      // #3827 Q-A3 — a private guest list drops "who's going" from the CTA.
+      privateGuestList: isGuestListPrivate(order.events.theme),
     },
     brand: {
       name: order.events.brands.name ?? "your host",
@@ -1333,6 +1336,7 @@ export const handler = async (req: Request): Promise<Response> => {
       // (inside the 600px shell), not a post-</body> splice.
       renderEmailBody = (appCtaClaimUrl) => renderTripConfirmationEmail({
           appCtaClaimUrl,
+          privateGuestList: context.bodyInput.event.privateGuestList,
           follow: context.bodyInput.follow,
           recipient: {
             name: order.buyer_name,
@@ -1416,6 +1420,7 @@ export const handler = async (req: Request): Promise<Response> => {
       // #3524 A8 — keep the exact direct-call shape on one line.
       renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({
           appCtaClaimUrl,
+          privateGuestList: context.bodyInput.event.privateGuestList,
           follow: context.bodyInput.follow,
           recipient: {
             name: order.buyer_name,

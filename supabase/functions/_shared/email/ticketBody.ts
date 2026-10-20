@@ -2,7 +2,11 @@
 // Renders the buyer-facing email body (hero, event meta, line items, ticket
 // block). All caller-supplied strings flow through escapeHtml first.
 
-import { appCtaTextLine, renderAppCtaHtml } from "./appLink.ts";
+import {
+  appCtaHeadlineFor,
+  appCtaTextLine,
+  renderAppCtaHtml,
+} from "./appLink.ts";
 import { escapeHtml } from "./escape.ts";
 import { formatEventDateLine } from "./dateLine.ts";
 import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
@@ -172,9 +176,14 @@ function renderCalendarSection(input: TicketBodyInput): string {
 // URL, and this email's ONLY call to action. `appLink.ts` still owns both the
 // markup and the fallback destination: what is threaded through here is the
 // already-minted URL, never a path this file builds.
-function renderDownloadAppCta(appCtaClaimUrl?: string | null): string {
+//
+// #3827 Q-A3 — "who's going" drops out when the host made the guest list private.
+function renderDownloadAppCta(
+  privateGuestList: boolean | undefined,
+  appCtaClaimUrl?: string | null,
+): string {
   return renderAppCtaHtml(
-    "Your ticket, the event chat, and who's going — all in the app",
+    appCtaHeadlineFor("event", privateGuestList),
     appCtaClaimUrl,
   );
 }
@@ -245,7 +254,7 @@ export function renderTicketBody(
         })
         : ""
     }
-    ${renderDownloadAppCta(appCtaClaimUrl)}`;
+    ${renderDownloadAppCta(input.event.privateGuestList, appCtaClaimUrl)}`;
 
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
@@ -291,7 +300,7 @@ export function renderTicketBody(
     // #2240 — the SAME working link the HTML body carries, from the same
     // resolver and the same `appCtaClaimUrl`, so the two bodies cannot diverge.
     appCtaTextLine(
-      "Your ticket, the event chat, and who's going — all in the app",
+      appCtaHeadlineFor("event", input.event.privateGuestList),
       appCtaClaimUrl,
     ),
     "",
