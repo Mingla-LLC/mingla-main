@@ -25,6 +25,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { CountAwareGallery, type CountAwareGalleryItem } from "./CountAwareGallery";
 import { offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import type { ExperienceOfferingStop } from "./experienceOfferingTypes";
+import { experienceStopOffsetLabel } from "./experienceR3";
 
 /** START HERE / THEN / END WITH from index + count (single owner). */
 export function stopLabelForIndex(index: number, total: number): string {
@@ -70,7 +71,11 @@ export const StopSpine: React.FC<StopSpineProps> = ({
     <View style={styles.itin} testID={testID}>
       <View style={[styles.itinSpine, { backgroundColor: palette.accentWash }]} />
       {stops.map((stop, idx) => {
-        const timePill = formatStopTime(stop.startTime);
+        // issue #3281 R3 — an authored wall-clock start wins; otherwise an
+        // open-hours stop reads "about N min in" from its offset.
+        const timePill =
+          formatStopTime(stop.startTime) ??
+          experienceStopOffsetLabel(stop.startOffsetMinutes);
         const media: CountAwareGalleryItem[] = stop.media.map((m) => ({
           url: m.url,
           type: m.type,

@@ -115,6 +115,7 @@ function detailToInitialDraft(
     lng: s.lng,
     imageUrls: s.imageUrls,
     startTime: s.startTime,
+    startOffsetMinutes: s.startOffsetMinutes ?? null,
     priceMajor: centsToMajor(s.priceCents),
     description: s.description,
   }));
@@ -275,6 +276,9 @@ function detailToInitialDraft(
         ? "20"
         : String(exp.ticket.quantityTotal),
     unlimited: exp.ticket?.isUnlimited ?? false,
+    capacityScope: exp.capacityScope ?? "total",
+    bookingSpacingMinutes: exp.bookingSpacingMinutes ?? 30,
+    minNoticeMinutes: exp.minNoticeMinutes ?? 120,
     pricingSwitches: { passTax: null, passMinglaFee: null, passServiceFee: null },
     when,
   };
