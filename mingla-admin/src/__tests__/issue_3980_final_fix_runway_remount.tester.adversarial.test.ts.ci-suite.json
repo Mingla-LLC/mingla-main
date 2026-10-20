@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3980_final_fix_runway_remount.tester.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-final-fix-runway-remount-tester",
+  "profile": "deno-1.46-stripe"
+}

@@ -123,7 +123,8 @@ describe("#3802 C-1: a page nobody listed is owner/admin-only", () => {
   });
 
   it("only approved pages are listed as exceptions, and none loosens the default", () => {
-    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm", drafts: "crm", "beta-leads": "beta_leads", "content-calendar": "crm", agent: "crm", guide: "crm" });
+    // [TEST-MOD-APPROVED #3980] Work board and Agent log are crm-area pages.
+    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm", drafts: "crm", "beta-leads": "beta_leads", "content-calendar": "crm", "work-board": "crm", "agent-log": "crm", agent: "crm", guide: "crm" });
     for (const id of PAGE_IDS) {
       if (Object.hasOwn(PAGE_AREA_OVERRIDES, id)) continue;
       assert.equal(areaForPage(id), "admin_console", `'${id}' must need admin_console`);

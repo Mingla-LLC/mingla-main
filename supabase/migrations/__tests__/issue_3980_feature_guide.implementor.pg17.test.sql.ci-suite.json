@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3980_feature_guide.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3980-feature-guide-pg",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

@@ -37,6 +37,7 @@ import {
   findProductTruthTool,
   productTruthToolsForMe,
 } from "./teamAgentProductTruth.ts";
+import { findWorkTool, workToolsForMe } from "./teamAgentWorkTools.ts";
 
 /** Handshake revisions this server speaks, newest first. */
 export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
@@ -669,7 +670,8 @@ export function createTeamAgentHandler(
     if (isNotification) {
       gatewayTool = "mcp:notification";
     } else if (body.method === "tools/call") {
-      known = findTool(params.name) ?? findProductTruthTool(params.name);
+      known = findTool(params.name) ?? findProductTruthTool(params.name) ??
+        findWorkTool(params.name);
       if (known) {
         tool = known.name;
         const checked = checkArguments(known, params.arguments);
@@ -773,6 +775,7 @@ export function createTeamAgentHandler(
             tools: [
               ...toolsForRole(me.role),
               ...productTruthToolsForMe(me),
+              ...workToolsForMe(me),
             ].map(toolListing),
           }),
         );

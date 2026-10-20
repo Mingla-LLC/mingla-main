@@ -361,7 +361,8 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
   it("Sales and marketing and Founding partner open the approved personal workflow pages", () => {
     for (const a of [growth, partner]) {
       const open = PAGE_IDS.filter((id) => canOpenPage(a, id));
-      assert.deepEqual(open.sort(), ["agent", "beta-leads", "content-calendar", "creators", "drafts", "guide", "home", "hosts"], a.role);
+      // [TEST-MOD-APPROVED #3980] the Work board and Agent log open to both roles.
+      assert.deepEqual(open.sort(), ["agent", "agent-log", "beta-leads", "content-calendar", "creators", "drafts", "guide", "home", "hosts", "work-board"], a.role);
     }
   });
   it("a page nobody listed is still closed to them", () => {
@@ -400,15 +401,17 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
     assert.equal(Object.hasOwn(PAGE_AREA_OVERRIDES, "beta-leads"), true);
     assert.equal(PAGE_AREA_OVERRIDES["beta-leads"], "beta_leads");
     assert.equal(canOpenPage(growth, "beta-leads"), true);
-    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "beta-leads", "content-calendar", "creators", "drafts", "guide", "home", "hosts"]);
+    // [TEST-MOD-APPROVED #3980] two new crm-area pages.
+    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "agent-log", "beta-leads", "content-calendar", "creators", "drafts", "guide", "home", "hosts", "work-board"]);
   });
 });
 
 describe("#3802 P-7: the menu each role sees", () => {
   const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
   it("Sales and marketing and Founding partner see the approved workflow pages", () => {
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"]);
+    // [TEST-MOD-APPROVED #3980] growth and partner see the Work board and Agent log.
+    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
+    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
   });
   it("owner and admin see the Pipeline group straight after the top of the menu", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: a "Team" group, second to last.
@@ -417,7 +420,7 @@ describe("#3802 P-7: the menu each role sees", () => {
       assert.equal(groups[0].label, null);
       const pipeline = groups[1];
       assert.equal(pipeline.label, "Pipeline");
-      assert.deepEqual(pipeline.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["hosts:Hosts:Handshake", "creators:Creators:Sparkles", "drafts:Drafts to send:FileText", "beta-leads:Beta Leads:Inbox", "tool-leads:Tool Leads:Wrench", "content-calendar:Content calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
+      assert.deepEqual(pipeline.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["hosts:Hosts:Handshake", "creators:Creators:Sparkles", "drafts:To review:FileText", "work-board:Work board:SquareKanban", "agent-log:Agent log:ScrollText", "beta-leads:Beta Leads:Inbox", "tool-leads:Tool Leads:Wrench", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]); // [TEST-MOD-APPROVED #3980] labels and the two new pages
     }
     assert.ok(ids(owner).includes("admin"));
     assert.ok(!ids(admin).includes("admin"));

@@ -42,6 +42,8 @@ import {
   BookOpen,
   Bell,
   FolderLock,
+  SquareKanban,
+  ScrollText,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -58,7 +60,7 @@ import {
 // The canonical wordmark from the brand package (ISSUE-1001): never a copy,
 // and never a typed "Mingla" beside it.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
-import { useDraftCountValue } from "../../hooks/useDraftCounts";
+import { useReviewCount } from "../../hooks/useReviewCount";
 
 // The one registry of menu icons. Every `icon` named in NAV_GROUPS
 // (lib/constants.js) and in the role Home group (lib/access.js) must be a key
@@ -106,6 +108,8 @@ const ICON_MAP = {
   BookOpen,
   Bell,
   FolderLock,
+  SquareKanban,
+  ScrollText,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"
@@ -138,7 +142,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const homeId = homePageFor(access);
   const [foldedGroups, setFoldedGroups] = useState(() => readFoldedGroups(browserStorage()));
   const [signingOut, setSigningOut] = useState(false);
-  const draftCounts = useDraftCountValue();
+  const reviewCount = useReviewCount();
 
   // Remember the folded groups in this browser. A browser that refuses is fine:
   // the fold still works until the page is reloaded (lib/shellNav.js).
@@ -183,7 +187,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const renderNavItem = (item, rail) => {
     const Icon = ICON_MAP[item.icon];
     const isActive = activeTab === item.id;
-    const waiting = item.id === "drafts" ? Number(draftCounts.data?.waiting || 0) : 0;
+    const waiting = item.id === "drafts" ? reviewCount.total : 0;
     const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} waiting` : item.label;
 
     return (

@@ -4,7 +4,8 @@
 // one answer. A teammate creates a personal key on the My agent page of
 // Mingla Admin and gives it to their agent; from then on the agent can read
 // the Hosts and Creators pipelines and Beta leads, and add, update, move and
-// log on them, as that teammate, with their role and nothing more. Nothing
+// log on them, and plan, claim, do and close work cards on the Work board
+// (issue #3980), as that teammate, with their role and nothing more. Nothing
 // here sends a message or deletes. The same address with `/setup` at its end
 // exchanges a one-time setup code for that teammate's key.
 //
@@ -41,6 +42,24 @@ const PRODUCT_TRUTH_TOOLS = new Set([
   "mcp:tools/list",
 ]);
 
+// Issue #3980 — the Work board, agent log and calendar tools.
+const WORK_TOOLS = new Set([
+  "read_log",
+  "claim",
+  "release",
+  "plan_work",
+  "add_work",
+  "start_work",
+  "update_work",
+  "close_work",
+  "push_back",
+  "list_work",
+  "my_work",
+  "list_calendar",
+  "runway_report",
+  "set_expected_event",
+]);
+
 const handler = createTeamAgentHandler({
   // The only call this function makes.
   gateway: async (keyHash, tool, args, client) => {
@@ -48,6 +67,8 @@ const handler = createTeamAgentHandler({
       ? "team_agent_product_truth_call"
       : CONTENT_TOOLS.has(tool)
       ? "team_agent_content_call"
+      : WORK_TOOLS.has(tool)
+      ? "ops_agent_call"
       : "team_agent_call";
     const { data, error } = await server.rpc(gateway, {
       p_key_hash: keyHash,

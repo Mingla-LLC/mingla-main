@@ -58,7 +58,8 @@ const APP = read("App.jsx");
 // slot and adds the all-role Notifications destination.
 const MENU = [
   [null, ["overview", "community-support", "notifications"]],
-  ["Pipeline", ["hosts", "creators", "drafts", "beta-leads", "tool-leads", "content-calendar", "team-dashboard"]],
+  // [TEST-MOD-APPROVED #3980] the Work board and Agent log join the Pipeline group after To review.
+  ["Pipeline", ["hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "tool-leads", "content-calendar", "team-dashboard"]],
   ["Business", ["business-people", "business-brands", "brand-sites", "business-venues", "business-offerings", "claims"]],
   ["Money", ["business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
@@ -70,8 +71,10 @@ const MENU = [
 
 // The words on each menu item (updated for #3720 Community & Support).
 const LABELS = {
-  overview: "Dashboard", "community-support": "Community & Support", notifications: "Notifications", hosts: "Hosts", creators: "Creators", drafts: "Drafts to send",
-  "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "content-calendar": "Content calendar", "team-dashboard": "Team dashboard",
+  overview: "Dashboard", "community-support": "Community & Support", notifications: "Notifications", hosts: "Hosts", creators: "Creators", drafts: "To review",
+  // [TEST-MOD-APPROVED #3980] Drafts to send reads To review, Content calendar reads Calendar; two new pages.
+  "work-board": "Work board", "agent-log": "Agent log",
+  "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
   "business-people": "People", "business-brands": "Brands", "brand-sites": "Brand Sites",
   "business-venues": "Venues", "business-offerings": "Offerings", claims: "Venue claims",
   "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
@@ -132,7 +135,8 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.equal(new Set(ids).size, ids.length);
     // [TEST-MOD-APPROVED #2879] Queue health added beside API health (+1).
-    assert.equal(ids.length, 38);
+    // [TEST-MOD-APPROVED #3980] Work board and Agent log (+2).
+    assert.equal(ids.length, 40);
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -159,6 +163,9 @@ describe("#3802 S-3: who may open what did not move", () => {
       drafts: "crm",
       "beta-leads": "beta_leads",
       "content-calendar": "crm",
+      // [TEST-MOD-APPROVED #3980] both new pages open to everyone who works the pipelines.
+      "work-board": "crm",
+      "agent-log": "crm",
       agent: "crm",
       guide: "crm",
     });
@@ -172,8 +179,9 @@ describe("#3802 S-3: who may open what did not move", () => {
   });
   it("each role sees the pages it saw before, in the new order", () => {
     const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"]);
+    // [TEST-MOD-APPROVED #3980] growth and partner open the Work board and Agent log.
+    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
+    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
     assert.deepEqual(ids(owner), NAV_ITEMS.map((i) => i.id));
     assert.deepEqual(ids(admin), NAV_ITEMS.map((i) => i.id).filter((id) => id !== "admin"));
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, owner).map((g) => g.label), MENU.map(([label]) => label));
@@ -383,6 +391,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "ApiHealthPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
     "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
+    // [TEST-MOD-APPROVED #3980] the Work board and Agent log draw the one header.
+    "WorkBoardPage.jsx", "AgentLogPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "QueueHealthPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
@@ -418,7 +428,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
-    assert.equal(MIGRATED.length, 42);
+    // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
+    assert.equal(MIGRATED.length, 44);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -555,7 +566,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
 
   it("every state of every migrated page draws the page header", () => {
     // [TEST-MOD-APPROVED #2879] Queue health page (+1 over #3720 Wave 6's 41).
-    assert.equal(MIGRATED.length, 42);
+    // [TEST-MOD-APPROVED #3980] Work board and Agent log pages (+2).
+    assert.equal(MIGRATED.length, 44);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

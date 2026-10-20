@@ -124,7 +124,9 @@ export const SEED_SCRIPTS = [
 // added the Business console; ISSUE-862 / #3697 the ads pages; ISSUE-3534
 // Refund operations (a separate page from the read-only Money ledger: it
 // retries, escalates and resolves); #3802 Waves 1 and 4 the pipelines, the
-// Team dashboard (owner and admin only) and My agent.
+// Team dashboard (owner and admin only) and My agent; #3980 the Work board
+// and Agent log, with Drafts to send relabelled To review and Content
+// calendar relabelled Calendar (page ids unchanged).
 
 export const NAV_GROUPS = [
   {
@@ -141,10 +143,12 @@ export const NAV_GROUPS = [
     items: [
       { id: "hosts",                     label: "Hosts",              icon: "Handshake" },
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
-      { id: "drafts",                    label: "Drafts to send",      icon: "FileText" },
+      { id: "drafts",                    label: "To review",          icon: "FileText" },
+      { id: "work-board",                label: "Work board",         icon: "SquareKanban" },
+      { id: "agent-log",                 label: "Agent log",          icon: "ScrollText" },
       { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
       { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
-      { id: "content-calendar",          label: "Content calendar",   icon: "CalendarClock" },
+      { id: "content-calendar",          label: "Calendar",           icon: "CalendarClock" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
     ],
   },

@@ -36,7 +36,8 @@
 -- agent surface while accounting for both separately guarded sibling gateways.
 -- [TEST-MOD-APPROVED #3802] Wave 6 carries the newest complete CRM self-check.
 \set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql`
-\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/"`
+-- [TEST-MOD-APPROVED #3980] The work gateway (ops_agent_call) writes request rows and the key's last-used marker on the same rail.
+\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call' AND p.proname <> 'team_agent_product_truth_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'ops_agent_call,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_product_truth_call'/" -e "s/'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_resolve,team_agent_setup_redeem'/'admin_team_set_member,ops_agent_call,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_product_truth_call,team_agent_resolve,team_agent_setup_redeem'/"`
 \set t3802b_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 
 -- ===========================================================================
@@ -1433,12 +1434,14 @@ begin
     (pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #>> '{result,status}' like 'This connection reads and writes.%')::text
       || '/' || ((pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,me}') ? 'can_add_region')::text
       || '/' || jsonb_array_length(pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,rules}')
-      || '/' || jsonb_array_length(pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,routines}'), 'true/false/14/6');
+      || '/' || jsonb_array_length(pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,routines}'), 'true/false/23/8');  -- [TEST-MOD-APPROVED #3980] the guide gains 9 work rules and 2 routines
   -- [TEST-MOD-APPROVED #3802] PR-C adds save_drafts to the shipped manifest.
   perform pg_temp.t3802b_check('B-8', 'every routine names only tools that exist',
     (select count(*)::text from jsonb_array_elements(public.team_agent_guide_def() -> 'routines') r,
        lateral regexp_matches(r ->> 'text', '\m([a-z]+_[a-z_]+)\M', 'g') m
-      where m[1] not in ('my_day', 'find_records', 'needs_reply', 'count_by', 'list_beta_leads', 'check_contactable', 'add_records', 'record_reply', 'save_drafts')), '0');
+      -- [TEST-MOD-APPROVED #3980] the two work routines name the work tools and the request_key they take
+      where m[1] not in ('my_day', 'find_records', 'needs_reply', 'count_by', 'list_beta_leads', 'check_contactable', 'add_records', 'record_reply', 'save_drafts',
+                         'plan_work', 'add_work', 'my_work', 'read_log', 'claim', 'close_work', 'push_back', 'request_key')), '0');
   perform pg_temp.t3802b_check('B-8', 'config tells an owner or admin, and nobody else, that they can add a city',
     (pg_temp.t3802b_person('admin', 'select public.crm_config()::text')::jsonb #>> '{me,can_add_region}')
       || '/' || (pg_temp.t3802b_person('growth', 'select public.crm_config()::text')::jsonb #>> '{me,can_add_region}'), 'true/false');

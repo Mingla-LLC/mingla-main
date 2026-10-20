@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { normalizeAccess } from "../lib/access";
+import { runSignOutCleanup } from "../lib/signOutCleanup";
 
 const AuthContext = createContext(null);
 
@@ -137,6 +138,8 @@ export function AuthProvider({ children }) {
     setAccess(null);
     setInviteSetup(null);
     setAccessError(false);
+    // Remembered lists outside React state go with the person (rule 6).
+    runSignOutCleanup();
   }, []);
 
   /**
