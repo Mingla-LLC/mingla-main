@@ -14,7 +14,7 @@
     {
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
-      "expected": "273ccbe5460e0b0a68896efa9c57a6d010668caa50998b6b8fb16c36963deb69",
+      "expected": "d254d77692242a491396e9301490e295095ad188b125d6b5057e93d8edbef8eb",
       "value": "6e616ca67217c617424075d1c05c8e473d169836949b5925bbc207c6ab914714"
     }
   ],
