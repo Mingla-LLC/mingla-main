@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3827_going_box_privacy.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3827-going-box-02-privacy-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
