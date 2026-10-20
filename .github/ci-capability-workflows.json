@@ -18,6 +18,12 @@
       "issue": 2893,
       "category": "production-operation",
       "rationale": "the nightly backup and restore drill is the sole production operation that reads the isolated Sites database and four private object buckets, uploads one encrypted independent recovery bundle, and provisions a PostgreSQL 17 service container for restore verification"
+    },
+    {
+      "path": ".github/workflows/release-records.yml",
+      "issue": 3980,
+      "category": "environment-authority",
+      "rationale": "posts and refreshes release-record and PR-link comments with issues and pull-requests write on the repository token, an authority no other lane holds, and runs on pull_request_target, status, workflow_run and issue_comment events that no existing lane listens to"
     }
   ]
 }
