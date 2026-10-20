@@ -290,7 +290,6 @@ export const ExperienceReservePicker: React.FC<
     if (
       !visible ||
       mode !== "open-daily" ||
-      step !== "time" ||
       selectedDate === null ||
       typeof eventId !== "string" ||
       eventId.length === 0 ||
@@ -299,6 +298,13 @@ export const ExperienceReservePicker: React.FC<
       setSlotRemainingByMinute(new Map());
       return;
     }
+    // Keep the selected start's remaining through the party step; only the
+    // time step refetches (partyMax still reads this map).
+    if (step !== "time" && step !== "party") {
+      setSlotRemainingByMinute(new Map());
+      return;
+    }
+    if (step === "party") return;
     let cancelled = false;
     void (async () => {
       const { data, error } = await supabase.rpc(
@@ -413,6 +419,14 @@ export const ExperienceReservePicker: React.FC<
     selectedOption?.ticketsRemaining !== undefined
       ? selectedOption.ticketsRemaining
       : eventRemaining;
+  const slotRemainingForSelection =
+    selectedMinute !== null && slotRemainingByMinute.has(selectedMinute)
+      ? slotRemainingByMinute.get(selectedMinute) ?? null
+      : null;
+  const remainingForParty =
+    typeof slotRemainingForSelection === "number"
+      ? slotRemainingForSelection
+      : optionRemaining;
   const groupCap =
     isGroupOption &&
     typeof selectedOption?.groupMax === "number" &&
@@ -421,7 +435,7 @@ export const ExperienceReservePicker: React.FC<
       : MAX_PARTY;
   const partyMax = Math.min(
     groupCap,
-    optionRemaining === null ? groupCap : Math.max(1, optionRemaining),
+    remainingForParty === null ? groupCap : Math.max(1, remainingForParty),
   );
 
   useEffect(() => {

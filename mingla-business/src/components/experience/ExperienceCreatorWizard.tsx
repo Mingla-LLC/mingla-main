@@ -1580,6 +1580,7 @@ export const ExperienceCreatorWizard: React.FC<
     const resolvedCents = Math.round(resolvedTotalMajor * 100);
     const patch: LiveExperiencePatch = {
       capacity: unlimited ? null : parseInt(capacity, 10) || null,
+      capacity_scope: capacityScope,
       is_free: isFree,
       pricing_mode: pricingMode,
       whole_price_cents: resolvedCents,

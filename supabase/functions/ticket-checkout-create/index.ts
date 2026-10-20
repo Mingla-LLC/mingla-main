@@ -1264,18 +1264,63 @@ export const createTicketCheckoutCreateHandler = (
     // issue #3281 R3 — fixed-slot scoped counters need the day when the client
     // sent only eventDateId. Read capacity_scope in a separate select so the
     // #3313 tripGate select pin stays byte-identical; do not name event_type.
-    if (orderedEventDateIds.length === 0 && eventDateId !== null) {
+    // For per_start fixed slots, also bind the occurrence opening as bookedStart
+    // so create-session's slot counter has a key (pickers omit bookedStartAt).
+    if (
+      (orderedEventDateIds.length === 0 || bookedStartAt === null) &&
+      eventDateId !== null
+    ) {
       const { data: scopeRow } = await supabase
         .from("events")
-        .select("capacity_scope")
+        .select("capacity_scope, is_recurring, recurrence_rules")
         .eq("id", eventId)
         .maybeSingle();
+      const scope =
+        scopeRow && typeof scopeRow === "object"
+          ? (scopeRow as { capacity_scope?: unknown }).capacity_scope
+          : null;
       if (
-        scopeRow?.capacity_scope === "per_day" ||
-        scopeRow?.capacity_scope === "per_start"
+        orderedEventDateIds.length === 0 &&
+        (scope === "per_day" || scope === "per_start")
       ) {
         orderedEventDateIds.push(eventDateId);
         anchorEventDateId = eventDateId;
+      }
+      const rules =
+        scopeRow && typeof scopeRow === "object"
+          ? (scopeRow as { recurrence_rules?: unknown }).recurrence_rules
+          : null;
+      const isRecurring =
+        scopeRow && typeof scopeRow === "object"
+          ? (scopeRow as { is_recurring?: unknown }).is_recurring === true
+          : false;
+      const openDaily =
+        isRecurring &&
+        rules !== null &&
+        typeof rules === "object" &&
+        !Array.isArray(rules) &&
+        (rules as { preset?: unknown }).preset === "daily" &&
+        (rules as { termination?: { kind?: unknown } }).termination?.kind ===
+          "never";
+      if (
+        bookedStartAt === null &&
+        scope === "per_start" &&
+        !openDaily
+      ) {
+        const { data: occBind } = await supabase
+          .from("event_dates")
+          .select("start_at")
+          .eq("id", eventDateId)
+          .eq("event_id", eventId)
+          .maybeSingle();
+        if (
+          occBind !== null &&
+          typeof (occBind as { start_at?: unknown }).start_at === "string"
+        ) {
+          bookedStartAt = new Date(
+            (occBind as { start_at: string }).start_at,
+          ).toISOString();
+        }
       }
     }
 

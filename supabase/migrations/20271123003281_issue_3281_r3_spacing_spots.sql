@@ -43,6 +43,56 @@ COMMENT ON COLUMN public.events.min_notice_minutes IS
 COMMENT ON COLUMN public.experience_stops.start_offset_minutes IS
   'issue #3281 R3: minutes after booked start for open-hours stop display.';
 
+-- issue #3281 R3 — slot occupancy: sold quantities (not line rows) + the same
+-- unexpired hold statuses create-session uses for lifetime / per-day caps.
+CREATE OR REPLACE FUNCTION public.issue_3281_ticket_type_slot_taken(
+  p_ticket_type_id uuid,
+  p_event_date_id uuid,
+  p_start_at timestamptz,
+  p_end_at timestamptz,
+  p_exclude_session_id uuid DEFAULT NULL
+) RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT COALESCE((
+    SELECT COALESCE(SUM(oli.quantity), 0)::integer
+      FROM public.orders o
+      JOIN public.order_line_items oli ON oli.order_id = o.id
+     WHERE oli.ticket_type_id = p_ticket_type_id
+       AND o.payment_status IN ('paid', 'partially_paid', 'partial_refund')
+       AND o.booked_start_at IS NOT NULL
+       AND (p_event_date_id IS NULL OR o.event_date_id IS NULL OR o.event_date_id = p_event_date_id)
+       AND o.booked_start_at < p_end_at
+       AND COALESCE(o.booked_end_at, o.booked_start_at + interval '30 minutes') > p_start_at
+  ), 0)
+  + COALESCE((
+    SELECT COALESCE(SUM(i.quantity), 0)::integer
+      FROM public.ticket_checkout_sessions s
+      JOIN public.ticket_checkout_session_items i ON i.checkout_session_id = s.id
+     WHERE i.ticket_type_id = p_ticket_type_id
+       AND s.expires_at > now()
+       AND s.status IN (
+         'pending_free',
+         'requires_payment',
+         'processing_payment',
+         'awaiting_web_redirect'
+       )
+       AND s.order_id IS NULL
+       AND s.revoked_at IS NULL
+       AND (p_exclude_session_id IS NULL OR s.id <> p_exclude_session_id)
+       AND s.booked_start_at IS NOT NULL
+       AND s.booked_start_at < p_end_at
+       AND COALESCE(s.booked_end_at, s.booked_start_at + interval '30 minutes') > p_start_at
+  ), 0);
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_3281_ticket_type_slot_taken(uuid, uuid, timestamptz, timestamptz, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3281_ticket_type_slot_taken(uuid, uuid, timestamptz, timestamptz, uuid)
+  TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_3281_apply_experience_r3_settings(
   p_event_id uuid,
@@ -1926,7 +1976,8 @@ BEGIN
 
   -- ---------- 5. REFUND-GATE (only when sold > 0, except capacity) ----------
 
-  -- 5a. Capacity floor: lifetime for total; busiest day for per_day/per_start.
+  -- 5a. Capacity floor: lifetime for total; busiest day for per_day;
+  -- busiest slot (incl. holds) for per_start.
   IF (p_payload ? 'capacity') AND v_capacity IS NOT NULL THEN
     IF COALESCE(
          NULLIF(p_payload->>'capacity_scope', ''),
@@ -1935,6 +1986,37 @@ BEGIN
          'total'
        ) = 'total' THEN
       IF v_capacity < v_total_sold THEN
+        RETURN jsonb_build_object(
+          'ok', false,
+          'reason', 'capacity_below_sold',
+          'affected_order_count', v_total_sold
+        );
+      END IF;
+    ELSIF COALESCE(
+         NULLIF(p_payload->>'capacity_scope', ''),
+         NULLIF(p_payload->>'capacityScope', ''),
+         (SELECT capacity_scope FROM public.events WHERE id = p_event_id),
+         'total'
+       ) = 'per_start' THEN
+      IF v_capacity < COALESCE((
+        SELECT MAX(public.issue_3281_ticket_type_slot_taken(
+                 tt.id, d.id, gs,
+                 gs + make_interval(mins => COALESCE(e.booking_spacing_minutes, 30)),
+                 NULL
+               ))
+          FROM public.events e
+          CROSS JOIN public.ticket_types tt
+          CROSS JOIN public.event_dates d
+          CROSS JOIN LATERAL generate_series(
+            d.start_at,
+            d.end_at - interval '1 microsecond',
+            make_interval(mins => COALESCE(e.booking_spacing_minutes, 30))
+          ) AS gs
+         WHERE e.id = p_event_id
+           AND tt.event_id = p_event_id
+           AND tt.deleted_at IS NULL
+           AND d.event_id = p_event_id
+      ), 0) THEN
         RETURN jsonb_build_object(
           'ok', false,
           'reason', 'capacity_below_sold',
@@ -2924,6 +3006,10 @@ DECLARE
   v_day_choice jsonb;
   v_per_occurrence boolean := false;
   v_night_taken integer;
+  -- issue #3281 R3 — effective booked window (may bind fixed-slot opening).
+  v_booked_start timestamptz := p_booked_start_at;
+  v_booked_end timestamptz := p_booked_end_at;
+  v_open_daily boolean := false;
 BEGIN
   IF COALESCE(p_payment_plan_choice, '') NOT IN ('auto', 'full', 'installments') THEN
     RAISE EXCEPTION 'payment_plan_choice_invalid';
@@ -2989,7 +3075,7 @@ BEGIN
   END IF;
 
   SELECT e.id, e.brand_id, e.visibility, e.status, e.deleted_at, e.event_type,
-         e.capacity_scope,
+         e.capacity_scope, e.booking_spacing_minutes, e.is_recurring, e.recurrence_rules,
          s.stripe_account_id, s.charges_enabled,
          b.payment_provider
     INTO v_event
@@ -3121,14 +3207,35 @@ BEGIN
   -- keep an empty day set). Window validation still needs exactly one day when
   -- a start is supplied. Multi-date + start is refused so finalize/scan cannot
   -- apply the first day's instant to every pass.
-  IF p_booked_start_at IS NOT NULL AND v_day_count <> 1 THEN
+  IF v_booked_start IS NOT NULL AND v_day_count <> 1 THEN
     RAISE EXCEPTION 'booked_start_invalid';
+  END IF;
+  v_open_daily := (
+    COALESCE(v_event.is_recurring, false)
+    AND jsonb_typeof(v_event.recurrence_rules) = 'object'
+    AND v_event.recurrence_rules->>'preset' = 'daily'
+    AND v_event.recurrence_rules->'termination'->>'kind' = 'never'
+  );
+  -- Fixed-slot per_start: bind the occurrence opening when the client omitted
+  -- bookedStartAt (both pickers send only eventDateId in that mode).
+  IF v_booked_start IS NULL
+     AND v_event.event_type = 'experience'
+     AND COALESCE(v_event.capacity_scope, 'total') = 'per_start'
+     AND v_day_count = 1
+     AND NOT v_open_daily THEN
+    SELECT ed.start_at,
+           ed.start_at + make_interval(
+             mins => GREATEST(1, COALESCE(v_event.booking_spacing_minutes, 30))
+           )
+      INTO v_booked_start, v_booked_end
+      FROM public.event_dates ed
+     WHERE ed.id = v_day_ids[1];
   END IF;
   PERFORM public.issue_3281_validate_booked_start(
     p_event_id,
     CASE WHEN v_day_count = 1 THEN v_day_ids[1] ELSE NULL END,
-    p_booked_start_at,
-    p_booked_end_at
+    v_booked_start,
+    v_booked_end
   );
 
   -- ══ issue #2462 — CANONICAL LOCK ORDER, TAKEN BEFORE PASS 1 ═══════════
@@ -3341,14 +3448,14 @@ BEGIN
       v_admits := v_ticket_type.group_max;
       -- unit stays option price; quantity is number of groups
     ELSIF v_event.event_type = 'experience' AND v_basis = 'block' THEN
-      IF p_booked_start_at IS NULL OR p_booked_end_at IS NULL
+      IF v_booked_start IS NULL OR v_booked_end IS NULL
          OR v_ticket_type.block_minutes IS NULL THEN
         RAISE EXCEPTION 'booked_length_invalid';
       END IF;
-      IF p_booked_end_at <= p_booked_start_at THEN
+      IF v_booked_end <= v_booked_start THEN
         RAISE EXCEPTION 'booked_length_invalid';
       END IF;
-      v_blocks := (EXTRACT(EPOCH FROM (p_booked_end_at - p_booked_start_at))
+      v_blocks := (EXTRACT(EPOCH FROM (v_booked_end - v_booked_start))
                    / (v_ticket_type.block_minutes::numeric * 60.0))::integer;
       IF v_blocks < COALESCE(v_ticket_type.min_blocks, 1)
          OR v_blocks > COALESCE(v_ticket_type.max_blocks, v_blocks) THEN
@@ -3358,37 +3465,49 @@ BEGIN
       v_admits := 1;
     END IF;
 
-    -- issue #3281 R3 — capacity_scope counters
+    -- issue #3281 R3 — capacity_scope counters (cart-aggregated like lifetime).
     IF v_event.event_type = 'experience'
        AND v_ticket_type.quantity_total IS NOT NULL THEN
+      SELECT COALESCE(SUM((l ->> 'quantity')::integer), 0)::integer
+        INTO v_cart_qty_for_type
+        FROM jsonb_array_elements(p_lines) AS l
+       WHERE (l ->> 'ticketTypeId')::uuid = v_ticket_type.id;
       IF COALESCE(v_event.capacity_scope, 'total') = 'per_start'
-         AND p_booked_start_at IS NOT NULL THEN
+         AND v_booked_start IS NOT NULL THEN
         IF public.issue_3281_ticket_type_slot_taken(
              v_ticket_type.id,
-             CASE WHEN p_event_date_ids IS NOT NULL AND array_length(p_event_date_ids,1) = 1
-                  THEN p_event_date_ids[1] ELSE NULL END,
-             p_booked_start_at,
-             COALESCE(p_booked_end_at, p_booked_start_at + interval '30 minutes'),
+             CASE WHEN v_day_count = 1 THEN v_day_ids[1] ELSE NULL END,
+             v_booked_start,
+             COALESCE(
+               v_booked_end,
+               v_booked_start + make_interval(
+                 mins => GREATEST(1, COALESCE(v_event.booking_spacing_minutes, 30))
+               )
+             ),
              NULL
-           ) + v_qty > v_ticket_type.quantity_total THEN
+           ) + v_cart_qty_for_type > v_ticket_type.quantity_total THEN
           RAISE EXCEPTION 'slot_full';
         END IF;
       ELSIF COALESCE(v_event.capacity_scope, 'total') = 'per_day'
-         AND p_event_date_ids IS NOT NULL AND array_length(p_event_date_ids,1) = 1 THEN
+         AND v_day_count = 1 THEN
         IF public.issue_3313_ticket_type_occurrence_taken(
-             v_ticket_type.id, p_event_date_ids[1]
-           ) + v_qty > v_ticket_type.quantity_total THEN
+             v_ticket_type.id, v_day_ids[1]
+           ) + v_cart_qty_for_type > v_ticket_type.quantity_total THEN
           RAISE EXCEPTION 'ticket_capacity_exceeded';
         END IF;
-      ELSIF p_booked_start_at IS NOT NULL THEN
+      ELSIF v_booked_start IS NOT NULL THEN
         IF public.issue_3281_ticket_type_slot_taken(
              v_ticket_type.id,
-             CASE WHEN p_event_date_ids IS NOT NULL AND array_length(p_event_date_ids,1) = 1
-                  THEN p_event_date_ids[1] ELSE NULL END,
-             p_booked_start_at,
-             COALESCE(p_booked_end_at, p_booked_start_at + interval '30 minutes'),
+             CASE WHEN v_day_count = 1 THEN v_day_ids[1] ELSE NULL END,
+             v_booked_start,
+             COALESCE(
+               v_booked_end,
+               v_booked_start + make_interval(
+                 mins => GREATEST(1, COALESCE(v_event.booking_spacing_minutes, 30))
+               )
+             ),
              NULL
-           ) + v_qty > v_ticket_type.quantity_total THEN
+           ) + v_cart_qty_for_type > v_ticket_type.quantity_total THEN
           RAISE EXCEPTION 'slot_full';
         END IF;
       END IF;
@@ -3615,8 +3734,8 @@ BEGIN
       ELSE NULL
     END,
     v_pricing_mode,
-    p_booked_start_at,
-    p_booked_end_at,
+    v_booked_start,
+    v_booked_end,
     p_booked_party_size
   );
 
@@ -4199,7 +4318,7 @@ AS $function$
                     ))
                     FROM generate_series(
                       d.start_at,
-                      d.end_at - make_interval(mins => COALESCE(ex.booking_spacing_minutes, 30)),
+                      d.end_at - interval '1 microsecond',
                       make_interval(mins => COALESCE(ex.booking_spacing_minutes, 30))
                     ) AS gs
                     WHERE gs >= now() + make_interval(mins => COALESCE(ex.min_notice_minutes, 120))
