@@ -224,28 +224,40 @@ function metaAccountNumber(externalAccountId) {
 }
 
 /**
- * The provider's own manager page for one campaign. Only providers whose
- * deep link is built from IDs Mingla records are listed; any other provider
- * (or a missing ID) returns null and the row hides the link.
+ * The provider's own manager page for one object. Only providers whose deep
+ * link is built from IDs Mingla records are listed; any other provider (or a
+ * missing ID) returns null and the page hides the link.
  */
-const PROVIDER_MANAGER_LINKS = {
-  meta: ({ accountId, campaignId }) => {
+const META_LEVEL_PAGES = {
+  campaign: ["campaigns", "selected_campaign_ids"],
+  ad_set: ["adsets", "selected_adset_ids"],
+  ad: ["ads", "selected_ad_ids"],
+};
+
+const PROVIDER_OBJECT_LINKS = {
+  meta: ({ accountId, level, externalId }) => {
     const act = metaAccountNumber(accountId);
-    if (!act || !/^[0-9]+$/.test(campaignId)) return null;
-    const query = new URLSearchParams({
-      act,
-      selected_campaign_ids: campaignId,
-    });
-    return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?${query.toString()}`;
+    const page = META_LEVEL_PAGES[level];
+    if (!act || !page || !/^[0-9]+$/.test(externalId)) return null;
+    const query = new URLSearchParams({ act, [page[1]]: externalId });
+    return `https://adsmanager.facebook.com/adsmanager/manage/${page[0]}?${query.toString()}`;
   },
 };
 
+export function providerObjectUrl({ platform, level, accountId, externalId }) {
+  const build = PROVIDER_OBJECT_LINKS[platform];
+  const id = String(externalId ?? "").trim();
+  if (!build || !id) return null;
+  return build({ accountId, level, externalId: id });
+}
+
 export function providerManagerUrl(campaign, connection = campaign?.connection) {
-  const build = PROVIDER_MANAGER_LINKS[campaign?.platform];
-  if (!build) return null;
-  const campaignId = String(campaign?.external_campaign_id ?? "").trim();
-  if (!campaignId) return null;
-  return build({ accountId: connection?.external_account_id, campaignId });
+  return providerObjectUrl({
+    platform: campaign?.platform,
+    level: "campaign",
+    accountId: connection?.external_account_id,
+    externalId: campaign?.external_campaign_id,
+  });
 }
 
 /** "Meta" → "Open in Meta". */

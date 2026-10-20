@@ -457,6 +457,31 @@ async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
   return aggregate;
 }
 
+/**
+ * #3697 — "Check with <provider>" on a dead plan. The server reads every
+ * recorded provider object; with none left it releases the hold and closes
+ * the plan. `deleteOnProvider` (typed DELETE ON PROVIDER) deletes surviving
+ * objects first, then re-checks.
+ */
+export async function reconcileAdminAdPlan(
+  item,
+  { deleteOnProvider = false, phrase = "" } = {},
+) {
+  const version = item?.version;
+  if (!version?.id || !version?.plan_hash) {
+    throw new Error("The frozen plan binding is missing.");
+  }
+  return planActionOrThrow(
+    {
+      action: "reconcile_provider_objects",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      ...(deleteOnProvider ? { delete_on_provider: true, phrase } : {}),
+    },
+    "The provider check failed. Nothing was changed.",
+  );
+}
+
 /** Cancel a frozen Mingla plan only while provider-object evidence is absent. */
 export async function cancelAdminAdPlan(item, reason) {
   const version = item?.version;
