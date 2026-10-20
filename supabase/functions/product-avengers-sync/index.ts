@@ -254,7 +254,8 @@ async function reconcile(
     }
   }
   // #3980 synced program: release records, main commits, the production
-  // migrations status and engineering cards, after the #3720 steps.
+  // migrations status, engineering cards and (Wave 2) following every linked
+  // issue and pull request, after the #3720 steps.
   let bridges: Json = {};
   try {
     const result = await runReleaseBridges(admin, github, {
@@ -266,6 +267,7 @@ async function reconcile(
       main_commits: result.main_commits,
       statuses_posted: result.statuses_posted,
       engineering_cards: result.engineering_cards,
+      github_follow: result.github_follow,
       deferred: result.deferred,
       github_budget: result.github_budget,
     };

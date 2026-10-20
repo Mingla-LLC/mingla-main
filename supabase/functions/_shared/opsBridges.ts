@@ -9,6 +9,13 @@
 // production ledger, and lets the database make or close engineering
 // follow-through cards.
 //
+// Wave 2: Bridge A. Every issue and pull request linked from a Work card, a
+// roadmap card, a support ticket (through the Product Inbox) or a recent
+// release record is read from GitHub in batches of 50 (one read-only GraphQL
+// query each, at most 4 a run) and handed to the database, which then runs
+// Bridges D and E and the roadmap suggestions. A rate-limited or empty answer
+// stops the step, applies nothing and says so.
+//
 // No environment is read here and no client library is imported: the caller
 // hands in the database client and the GitHub client, so tests run it with
 // stand-ins. GitHub calls run one at a time and stop when the rate budget or
@@ -21,6 +28,8 @@ export const BOT_LOGIN = "github-actions[bot]";
 export const REPO = "Mingla-LLC/mingla-main";
 export const MIN_BUDGET = 500;
 export const MAX_MS = 40_000;
+export const FOLLOW_BATCH = 50;
+export const FOLLOW_MAX_BATCHES = 4;
 
 type Json = Record<string, unknown>;
 
@@ -50,6 +59,8 @@ export interface BridgeGitHub {
     sha: string,
     status: { state: string; description: string; context: string },
   ): Promise<void>;
+  /** Wave 2 (Bridge A): read-only status of up to 50 numbers. */
+  followBatch?(numbers: number[]): Promise<Json[]>;
 }
 
 /** The database calls the bridges make (a Supabase client fits). */
@@ -123,6 +134,7 @@ export type BridgeResult = {
   main_commits: Json;
   statuses_posted: number;
   engineering_cards: Json | null;
+  github_follow: { followed: number; applied: number; changed: number[]; batches: number; refused: string | null };
   deferred: string[];
   github_budget: number;
   failed: number;
@@ -143,6 +155,7 @@ export async function runReleaseBridges(
     main_commits: { inserted: 0 },
     statuses_posted: 0,
     engineering_cards: null,
+    github_follow: { followed: 0, applied: 0, changed: [], batches: 0, refused: null },
     deferred: [],
     github_budget: github.budget,
     failed: 0,
@@ -267,6 +280,50 @@ export async function runReleaseBridges(
   } catch (error) {
     result.failed += 1;
     log({ fn: "ops-bridges", event: "engineering_cards_failed", code: String((error as Error)?.message ?? "") });
+  }
+
+  // 5. Bridge A (Wave 2): follow linked issues and pull requests.
+  try {
+    if (typeof github.followBatch === "function" && mayCall("follow")) {
+      const list = await admin.rpc("ops_github_follow_list", { p_limit: FOLLOW_BATCH * FOLLOW_MAX_BATCHES });
+      if (list.error || !Array.isArray(list.data)) throw new Error("FOLLOW_LIST_FAILED");
+      const numbers: number[] = [];
+      for (const row of list.data as Json[]) {
+        const n = Number(row?.number);
+        if (Number.isInteger(n) && n > 0 && !numbers.includes(n)) numbers.push(n);
+      }
+      const follow = result.github_follow;
+      follow.followed = numbers.length;
+      for (let i = 0; i < numbers.length && follow.batches < FOLLOW_MAX_BATCHES; i += FOLLOW_BATCH) {
+        if (!mayCall("follow")) break;
+        const batch = numbers.slice(i, i + FOLLOW_BATCH);
+        let items: Json[];
+        try {
+          items = await github.followBatch(batch);
+        } catch (error) {
+          // Fails closed: nothing from this answer is applied, and the run says why.
+          follow.refused = String((error as Error)?.message ?? "GITHUB_FOLLOW_FAILED");
+          if (!result.deferred.includes("follow")) result.deferred.push("follow");
+          log({ fn: "ops-bridges", event: "follow_refused", code: follow.refused, budget: github.budget });
+          break;
+        }
+        follow.batches += 1;
+        if (!Array.isArray(items) || items.length === 0) {
+          follow.refused = "GITHUB_FOLLOW_EMPTY";
+          if (!result.deferred.includes("follow")) result.deferred.push("follow");
+          log({ fn: "ops-bridges", event: "follow_refused", code: follow.refused, budget: github.budget });
+          break;
+        }
+        const applied = await admin.rpc("ops_github_items_apply", { p_items: items });
+        if (applied.error) throw new Error("FOLLOW_APPLY_FAILED");
+        const d = (applied.data ?? {}) as Json;
+        follow.applied += Number(d.applied ?? 0);
+        follow.changed.push(...((d.changed as number[] | undefined) ?? []));
+      }
+    }
+  } catch (error) {
+    result.failed += 1;
+    log({ fn: "ops-bridges", event: "follow_failed", code: String((error as Error)?.message ?? "") });
   }
 
   result.github_budget = github.budget;

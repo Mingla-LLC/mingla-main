@@ -58,6 +58,105 @@ export type AvengersSnapshot = {
 };
 
 type Fetcher = typeof fetch;
+
+/** #3980 Bridge A: one followed number as GitHub reported it. */
+export type FollowItem = {
+  number: number;
+  found: boolean;
+  kind?: "issue" | "pull";
+  title?: string;
+  url?: string;
+  state?: string;
+  merged?: boolean;
+  merged_at?: string | null;
+  merge_sha?: string | null;
+  closing_issues?: number[];
+  board_status?: string | null;
+  board_horizon?: string | null;
+  updated_at?: string | null;
+};
+
+export const FOLLOW_BATCH_MAX = 50;
+
+/** Whole numbers 1 to 9,999,999, each once, at most 50. */
+export function followNumbers(numbers: number[]): number[] {
+  const out: number[] = [];
+  for (const n of numbers ?? []) {
+    if (Number.isInteger(n) && n >= 1 && n <= 9_999_999 && !out.includes(n)) out.push(n);
+  }
+  if (out.length > FOLLOW_BATCH_MAX) throw stableError("GITHUB_FOLLOW_TOO_MANY");
+  return out;
+}
+
+const SINGLE = "... on ProjectV2ItemFieldSingleSelectValue { name }";
+
+/** The one read-only query for a batch: an alias per number. */
+export function buildFollowQuery(numbers: number[]): string {
+  const fields = followNumbers(numbers).map((n) =>
+    `n${n}: issueOrPullRequest(number: ${n}) { __typename ` +
+    `... on Issue { number title url state updatedAt projectItems(first: 10) { nodes { project { id } ` +
+    `status: fieldValueByName(name: "Status") { ${SINGLE} } horizon: fieldValueByName(name: "Horizon") { ${SINGLE} } } } } ` +
+    `... on PullRequest { number title url state merged mergedAt mergeCommit { oid } updatedAt ` +
+    `closingIssuesReferences(first: 10) { nodes { number } } } }`
+  ).join(" ");
+  return `query { rateLimit { remaining } repository(owner: "${AVENGERS_OWNER}", name: "${AVENGERS_REPO}") { ${fields} } }`;
+}
+
+/**
+ * Reads a follow answer. Throws GITHUB_FOLLOW_RATE_LIMITED or
+ * GITHUB_FOLLOW_FAILED on any error that is not "this number does not
+ * exist", and GITHUB_FOLLOW_EMPTY when the answer has no repository. A
+ * number counts as not found only when GitHub said NOT_FOUND for it; a
+ * number missing from the answer for any other reason is left out.
+ */
+export function parseFollowResponse(numbers: number[], json: unknown): FollowItem[] {
+  const body = (json && typeof json === "object" ? json : {}) as Json;
+  const missing = new Set<string>();
+  for (const err of Array.isArray(body.errors) ? body.errors as Json[] : []) {
+    const type = String(err?.type ?? "");
+    const path = Array.isArray(err?.path) ? err.path as unknown[] : [];
+    if (type === "RATE_LIMITED") throw stableError("GITHUB_FOLLOW_RATE_LIMITED");
+    if (type === "NOT_FOUND" && path.length === 2 && path[0] === "repository" && /^n\d+$/.test(String(path[1]))) {
+      missing.add(String(path[1]));
+      continue;
+    }
+    throw stableError("GITHUB_FOLLOW_FAILED");
+  }
+  const data = body.data as Json | undefined | null;
+  const repository = data?.repository as Json | undefined | null;
+  if (!data || !repository || typeof repository !== "object") throw stableError("GITHUB_FOLLOW_EMPTY");
+  const out: FollowItem[] = [];
+  for (const n of followNumbers(numbers)) {
+    const alias = `n${n}`;
+    const node = repository[alias] as Json | null | undefined;
+    if (node === null && missing.has(alias)) {
+      out.push({ number: n, found: false });
+      continue;
+    }
+    if (!node || typeof node !== "object" || Number(node.number) !== n) continue;
+    if (node.__typename === "Issue") {
+      const items = ((node.projectItems as Json | undefined)?.nodes ?? []) as Json[];
+      const board = (Array.isArray(items) ? items : []).find((i) => (i?.project as Json | undefined)?.id === AVENGERS_PROJECT_ID);
+      out.push({
+        number: n, found: true, kind: "issue", title: String(node.title ?? ""), url: String(node.url ?? ""),
+        state: String(node.state ?? ""), updated_at: typeof node.updatedAt === "string" ? node.updatedAt : null,
+        board_status: typeof (board?.status as Json | undefined)?.name === "string" ? String((board!.status as Json).name) : null,
+        board_horizon: typeof (board?.horizon as Json | undefined)?.name === "string" ? String((board!.horizon as Json).name) : null,
+      });
+    } else if (node.__typename === "PullRequest") {
+      const closing = ((node.closingIssuesReferences as Json | undefined)?.nodes ?? []) as Json[];
+      out.push({
+        number: n, found: true, kind: "pull", title: String(node.title ?? ""), url: String(node.url ?? ""),
+        state: String(node.state ?? ""), merged: node.merged === true,
+        merged_at: typeof node.mergedAt === "string" ? node.mergedAt : null,
+        merge_sha: typeof (node.mergeCommit as Json | undefined)?.oid === "string" ? String((node.mergeCommit as Json).oid) : null,
+        closing_issues: (Array.isArray(closing) ? closing : []).map((c) => Number(c?.number)).filter((x) => Number.isInteger(x) && x > 0).slice(0, 10),
+        updated_at: typeof node.updatedAt === "string" ? node.updatedAt : null,
+      });
+    }
+  }
+  return out;
+}
 type Json = Record<string, unknown>;
 
 export type RepositoryPinnedSource = {
@@ -250,6 +349,43 @@ export class ProductAvengersClient {
       description: status.description.slice(0, 140),
       context: status.context,
     });
+  }
+
+  /**
+   * #3980 synced program, Bridge A: what GitHub says about up to 50 followed
+   * issue or pull request numbers, in ONE read-only GraphQL query. Never a
+   * mutation, never ensureProjectItem. Fails closed: a rate-limited, empty or
+   * otherwise unreadable answer throws a stable code and nothing is returned,
+   * so nothing is marked "Not on GitHub" by mistake.
+   */
+  async followBatch(numbers: number[]): Promise<FollowItem[]> {
+    const wanted = followNumbers(numbers);
+    if (wanted.length === 0) return [];
+    const response = await this.fetcher(GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        "User-Agent": USER_AGENT,
+      },
+      body: JSON.stringify({ query: buildFollowQuery(wanted) }),
+    });
+    const header = Number(response.headers.get("x-ratelimit-remaining"));
+    if (response.headers.has("x-ratelimit-remaining") && Number.isFinite(header)) {
+      this.budget = header;
+    }
+    const json = await response.json().catch(() => null) as Json | null;
+    const remaining = Number(
+      ((json?.data as Json | undefined)?.rateLimit as Json | undefined)?.remaining,
+    );
+    if (Number.isFinite(remaining) && (json?.data as Json | undefined)?.rateLimit) {
+      this.budget = remaining;
+    }
+    if (response.status === 403 || response.status === 429) {
+      throw stableError("GITHUB_FOLLOW_RATE_LIMITED");
+    }
+    if (!response.ok) throw stableError("GITHUB_FOLLOW_FAILED");
+    return parseFollowResponse(wanted, json);
   }
 
   private async rest(method: string, path: string, body?: Json): Promise<Json> {
