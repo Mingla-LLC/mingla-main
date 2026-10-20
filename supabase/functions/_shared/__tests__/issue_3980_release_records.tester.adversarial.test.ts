@@ -354,27 +354,27 @@ Deno.test("#3980 tester G3: migrations added but not applied stay pending; a mod
   const gh = new FakeGitHub();
   merged(gh, {
     files: [
-      { filename: "supabase/migrations/20271124003980_issue_3980_synced_w1_foundations.sql", status: "added" },
+      { filename: "supabase/migrations/20271129003980_issue_3980_synced_w1_foundations.sql", status: "added" },
       { filename: "supabase/migrations/20271116003980_old.sql", status: "modified" },
       { filename: "supabase/migrations/__tests__/x.pg17.test.sql", status: "added" },
       { filename: "supabase/migrations/2027112400398_short.sql", status: "added" },
     ],
-    statuses: [{ context: "mingla/production-migrations", state: "pending", description: "Waiting: 20271124003980" }],
+    statuses: [{ context: "mingla/production-migrations", state: "pending", description: "Waiting: 20271129003980" }],
   });
   const r = await runScript("record.mjs", "push_main.json", gh);
   assertEquals(r.code, 0);
   const body = records(gh, 3980)[0].body;
   const data = readRecordData(body);
-  assertEquals(data.migrations_added, ["20271124003980"]);
+  assertEquals(data.migrations_added, ["20271129003980"]);
   assertEquals(data.migrations_applied_state, "pending");
   assert(body.includes("- Migrations applied: pending: Mingla checks the production ledger every 5 minutes"));
   assertMatch(body, /Status: Not complete: .*migrations applied to production/);
   // Mingla posts success: the refresh fills it in place.
-  gh.statuses.set(SHA, [{ context: "mingla/production-migrations", state: "success", description: "All applied: 20271124003980" }]);
+  gh.statuses.set(SHA, [{ context: "mingla/production-migrations", state: "success", description: "All applied: 20271129003980" }]);
   await runScript("record.mjs", "status_merge_commit.json", gh);
   const after = records(gh, 3980);
   assertEquals(after.length, 1);
-  assert(after[0].body.includes("- Migrations applied: all applied (All applied: 20271124003980)"));
+  assert(after[0].body.includes("- Migrations applied: all applied (All applied: 20271129003980)"));
 });
 
 Deno.test("#3980 tester G6: a failed edge deploy is a problem; a governed Sites function is checked by hand", async () => {
@@ -646,7 +646,7 @@ Deno.test("#3980 tester G3: a record never says Complete while anything is pendi
   };
   assertMatch(renderRecord(base), /\nStatus: Complete\n/);
   const variants: Any[] = [
-    { migrations_added: ["20271124003980"], migrations_applied_state: "pending" },
+    { migrations_added: ["20271129003980"], migrations_applied_state: "pending" },
     { web_projects: ["mingla-admin"], deploy: { web: { "mingla-admin": "pending" }, edge: "none" } },
     { edge_functions: ["team-agent"], deploy: { web: {}, edge: "pending" } },
     { feature_guide: null },
