@@ -30,7 +30,7 @@ export function MentionBox({ value, onChange, options = [], team = [], tokenFor,
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="relative min-w-0">
         {open && (
-          <div id={`${id}-list`} role="listbox" aria-label="Teammates to mention" className="absolute bottom-full left-0 right-0 z-30 mb-1.5 max-h-[260px] overflow-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]">
+          <div id={`${id}-list`} role="listbox" aria-label="Teammates to mention" className="absolute bottom-full left-0 z-30 mb-1.5 max-h-[260px] w-[max(100%,17rem)] max-w-[min(24rem,calc(100vw-2.5rem))] overflow-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]">
             <div role="presentation" className="px-2 pb-1 pt-1 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Mention</div>
             {options.map((p, i) => (
               <div
@@ -47,6 +47,7 @@ export function MentionBox({ value, onChange, options = [], team = [], tokenFor,
                 <PersonAvatar person={p} />
                 <span className="min-w-0">
                   <span className={`block font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{tokenFor ? tokenFor(p) : `@${p.name}`}</span>
+                  {shownName(p, team) !== p.name && <span title={p.email} className="block truncate text-[11.5px] text-[var(--color-text-secondary)]">{p.email}</span>}
                   <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{p.role}</span>
                 </span>
               </div>

@@ -186,7 +186,7 @@ Deno.test("#3980 W3 R9: the one people field is used for every owner, watcher an
   assertMatch(field, /role="listbox"/);
   assertMatch(field, /aria-activedescendant=/);
   assertMatch(field, /aria-label=\{`Remove \$\{shownName\(person, team\)\}`\}/);
-  assertMatch(field, /max-h-\[300px\] overflow-auto/);
+  assertMatch(field, /max-h-\[300px\][^"]*overflow-auto/);
   assertMatch(field, /Nobody on the team matches "\$\{query\}"\./);
   assertMatch(field, />Assign to me</);
   assertMatch(field, /Invite pending · Resend/);

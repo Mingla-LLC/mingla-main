@@ -66,7 +66,9 @@ export function RecordCard({
         </p>
       )}
       <p className="mt-0.5 break-words text-xs text-[var(--color-text-secondary)]">{where}</p>
-      <p className="mt-0.5 break-words text-xs text-[var(--color-text-tertiary)]">
+      {/* #3980 (R1): an owner shown by address (two teammates share a name)
+          is one long word; the line ends in an ellipsis, never splits it. */}
+      <p className="mt-0.5 truncate text-xs text-[var(--color-text-tertiary)]" title={`${owners}${record.next_action ? ` \u00b7 ${record.next_action}` : ""}`}>
         {owners}
         {record.next_action ? ` \u00b7 ${record.next_action}` : ""}
       </p>

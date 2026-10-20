@@ -156,7 +156,8 @@ export function PeopleField({
       >
         <PersonAvatar person={person} />
         <span className="min-w-0">
-          <span className={`block font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{shownName(person, team)}{isMe ? " (you)" : ""}</span>
+          <span className={`block font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{person.name}{isMe ? " (you)" : ""}</span>
+          {shownName(person, team) !== person.name && <span title={person.email} className="block truncate text-[11.5px] text-[var(--color-text-secondary)]">{person.email}</span>}
           <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{person.invited ? "Invite pending · Resend" : person.role}</span>
         </span>
         <span className="whitespace-nowrap text-[11.5px] text-[var(--color-text-tertiary)]">
@@ -169,6 +170,7 @@ export function PeopleField({
   return (
     <div ref={rootRef} className="relative flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{label}</label>
+      <div className="relative min-w-0">
       <div
         onMouseDown={(event) => { if (event.target === event.currentTarget && !locked) { event.preventDefault(); inputRef.current?.focus(); setOpen(true); } }}
         className={`flex min-h-11 min-w-0 flex-wrap items-center gap-1.5 rounded-xl border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-1.5 focus-within:border-[var(--color-brand-500)] focus-within:ring-2 focus-within:ring-[var(--color-brand-100)] ${locked ? "opacity-70" : ""}`}
@@ -196,7 +198,7 @@ export function PeopleField({
         />
       </div>
       {open && !locked && (
-        <div id={listId} role="listbox" aria-label={`${label}: pick from the team`} className="absolute left-0 right-0 top-full z-30 mt-1.5 max-h-[300px] overflow-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]">
+        <div id={listId} role="listbox" aria-label={`${label}: pick from the team`} className="absolute left-0 top-full z-30 mt-1.5 max-h-[300px] w-[max(100%,17rem)] max-w-[min(24rem,calc(100vw-2.5rem))] overflow-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]">
           {groups.suggested.length > 0 && <div role="presentation" className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Suggested</div>}
           {groups.suggested.map((p, i) => row(p, i))}
           {groups.everyone.length > 0 && <div role="presentation" className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Everyone</div>}
@@ -204,6 +206,7 @@ export function PeopleField({
           {options.length === 0 && <p className={`px-2 py-2 text-[13px] text-[var(--color-text-tertiary)] ${WORDS}`}>{team.length === 0 ? "Nobody on the team yet." : `Nobody on the team matches "${query}".`}</p>}
         </div>
       )}
+      </div>
       {meOnTeam && canPick(meOnTeam) && !emails.includes(meOnTeam.email) && (
         <div className="flex flex-wrap gap-1.5">
           <button type="button" disabled={locked} onClick={() => add(meOnTeam.email)} className={`min-h-11 rounded-full border border-[var(--gray-300)] px-3 text-[12.5px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] disabled:opacity-50 ${FOCUS}`}>Assign to me</button>

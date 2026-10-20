@@ -3,7 +3,7 @@
 // "Nothing here." when empty. Columns keep at least 220px; when the board is
 // narrower they scroll sideways inside the board box only, never the page.
 import { Avatars } from "./OpsChip";
-import { WORK_COLUMNS, agentName, cardReasons, columnCards, dayLabel } from "../../lib/opsModel";
+import { WORK_COLUMNS, cardReasons, columnCards, dayLabel } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
@@ -25,8 +25,9 @@ export function WorkColumnCard({ card, selected, onSelect }) {
         {card.auto && <span>from the timeline</span>}
         {card.status === "done" && card.close_kind === "system" && <span>closed by itself</span>}
       </span>
+      {/* working.name is already the agent's label: "Seth's Claude (Hosts sweep)". */}
       {card.working && card.status !== "done" && (
-        <span className={`text-[11.5px] font-semibold text-[var(--color-brand-700)] ${WORDS}`}><span aria-hidden="true">● </span>{agentName(card.working.name, card.working.via, card.working.chat_label)} is on it</span>
+        <span className={`text-[11.5px] font-semibold text-[var(--color-brand-700)] ${WORDS}`}><span aria-hidden="true">● </span>{card.working.name || "An agent"} is on it</span>
       )}
       {reasons.length > 0 && (
         <span className="flex min-w-0 flex-wrap gap-1">

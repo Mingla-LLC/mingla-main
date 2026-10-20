@@ -1,10 +1,11 @@
 // Issue #3980 (R6) — the Calendar. Month first: every host's events with one
 // of four plain states, today clearly marked and past days faded, posts
 // behind Events | Posts | Both, a List grouped by state, and the content
-// workflow board as its own view. The right column holds the runway, the
-// selected event (its sentence and its eight steps), a whole day, or the
-// posts with no date. Two columns from 1180px; the grid never scrolls
-// sideways and words never break letter by letter.
+// workflow board as its own view. With nothing open the month is full width
+// and the runway list sits under it; the selected event (its sentence and its
+// eight steps), a whole day or the posts with no date open in a right column
+// (two columns from 1180px). The grid never scrolls sideways and words never
+// break letter by letter.
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -541,7 +542,9 @@ export function ContentCalendarPage() {
       {calendar.error && <AlertCard variant="error" title="Couldn’t load the posts" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>}>{contentErrorWords(calendar.error)} Events still show.</AlertCard>}
       {route.view === "board"
         ? (calendar.loading ? <SectionCard><p role="status" className="text-sm text-[var(--color-text-secondary)]">Loading posts…</p></SectionCard> : <>{box}<BoardView items={calendar.items} open={open} move={beginMove} coarse={coarse} /></>)
-        : <TwoColumn ref={eventDetailRef} detailLabel="Event details" list={box} detail={right} />}
+        : route.event || route.day || route.undated
+          ? <TwoColumn ref={eventDetailRef} detailLabel="Event details" list={box} detail={right} />
+          : <div className="flex min-w-0 flex-col gap-4">{box}<section ref={eventDetailRef} aria-label="Event details" className="min-w-0">{right}</section></div>}
 
       <ContentDrawer activeId={route.card} detail={detail} config={calendar.config} online={online} loading={detailLoading} focusTarget={focusTarget} suspended={!!move} onFocusHandled={() => setFocusTarget(null)} onClose={close} onChanged={changed} onMove={beginMove} onDeleted={calendar.removeItem} />
       <Modal open={addOpen} onClose={closeAdd} title="Add content" size="sm"><ModalBody><label htmlFor="new-content-title" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Title</label><input id="new-content-title" autoFocus className={`${CONTROL_CLASS} min-h-11`} value={title} maxLength={160} disabled={busy} onChange={(event) => updateTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); create(); } }} /><p className="mt-2 text-sm text-[var(--color-text-secondary)]">It starts in Idea and is assigned to you. Add other owners here.</p><div className="mt-3"><PeopleField id="new-content-owners" label="Owners" value={addOwners} onChange={(next) => setAddOwners(next)} team={people.people} suggested={[people.me].filter(Boolean)} me={people.me} disabled={busy} /></div>{duplicate.checking && <p role="status" className="mt-2 text-sm text-[var(--color-text-secondary)]">Checking for similar titles…</p>}{duplicate.exact && <AlertCard variant="error" title="That title already exists" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { closeAdd(); open(duplicate.exact.id); }}>Open existing</Button>}>Use the existing card instead of creating a duplicate.</AlertCard>}{duplicate.similar.length > 0 && !duplicate.exact && <AlertCard variant="warning" title="This may be a duplicate" action={!similarAccepted ? <Button type="button" variant="secondary" className="min-h-11" onClick={() => setSimilarAccepted(true)}>Add anyway</Button> : null}>Similar: {duplicate.similar.map((row) => row.title).join(", ")}{similarAccepted ? ". You can continue." : ". Review before continuing."}</AlertCard>}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={closeAdd}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} disabled={!title.trim() || !online || duplicate.checking || duplicateBlocked} onClick={create}>Add content</Button></ModalFooter></Modal>
