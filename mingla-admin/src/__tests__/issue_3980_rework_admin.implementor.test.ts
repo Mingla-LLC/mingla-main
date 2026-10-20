@@ -102,9 +102,11 @@ Deno.test("#3980 rework: the month grid beside the event panel never scrolls sid
   assertMatch(page, /p\.set\("day", key\)/);
   assertNotMatch(page, /overflow-wrap:anywhere|break-all|hyphens-auto/);
   assertMatch(page, /"@container min-w-0 overflow-hidden rounded-xl/);
-  assertMatch(grid, /hidden min-w-0 flex-col gap-0\.5 @min-\[760px\]:flex/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework (P3): titles show from a 640px box, so at 1440 with an event
+  // open (a 688px box) the month still shows titles; under 640px each event is a 10px dot.
+  assertMatch(grid, /hidden min-w-0 flex-col gap-0\.5 @min-\[640px\]:flex/);
   assertMatch(grid, /data-calendar-day-dense=\{key\}/);
-  assertMatch(grid, /@min-\[760px\]:hidden/);
+  assertMatch(grid, /@min-\[640px\]:hidden/);
   assertNotMatch(page, /\$\{[A-Z_]+\}:(?:block|hidden|min-h)/);
 });
 
