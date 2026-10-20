@@ -151,8 +151,105 @@ function fieldText(node: Json): string {
 }
 
 export class ProductAvengersClient {
+  /** #3980: GitHub's x-ratelimit-remaining from the newest bridge read. */
+  budget = 5000;
+
   constructor(private token: string, private fetcher: Fetcher = fetch) {
     if (!token) throw stableError("GITHUB_TOKEN_MISSING");
+  }
+
+  // #3980 synced program: the release-record bridge's reads and its one
+  // status write. Each records the rate budget GitHub reports.
+  private async bridgeRest(
+    method: string,
+    path: string,
+    body?: Json,
+  ): Promise<{ json: unknown; link: string }> {
+    const response = await this.fetcher(`${REST_URL}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": USER_AGENT,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const remaining = Number(response.headers.get("x-ratelimit-remaining"));
+    if (Number.isFinite(remaining) && response.headers.has("x-ratelimit-remaining")) {
+      this.budget = remaining;
+    }
+    const json = await response.json().catch(() => null);
+    if (!response.ok) throw stableError(`GITHUB_REST_${response.status}`);
+    return { json, link: response.headers.get("link") ?? "" };
+  }
+
+  private async bridgePages(path: string, maxPages: number): Promise<Json[]> {
+    const out: Json[] = [];
+    for (let page = 1; page <= maxPages; page += 1) {
+      const { json, link } = await this.bridgeRest(
+        "GET",
+        `${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`,
+      );
+      if (!Array.isArray(json)) break;
+      out.push(...(json as Json[]));
+      if (json.length < 100 || !/rel="next"/.test(link)) break;
+    }
+    return out;
+  }
+
+  /** Repository issue and pull request comments updated since a time, oldest first. */
+  async issueCommentsSince(iso: string, maxPages = 3): Promise<Json[]> {
+    return await this.bridgePages(
+      `/repos/${AVENGERS_REPOSITORY}/issues/comments?since=${
+        encodeURIComponent(iso)
+      }&sort=updated&direction=asc`,
+      maxPages,
+    );
+  }
+
+  /** Commits on main since a time, newest first. */
+  async mainCommitsSince(iso: string, maxPages = 2): Promise<Json[]> {
+    return await this.bridgePages(
+      `/repos/${AVENGERS_REPOSITORY}/commits?sha=main&since=${
+        encodeURIComponent(iso)
+      }`,
+      maxPages,
+    );
+  }
+
+  /** The pull request a main commit was merged from, or null for a direct push. */
+  async pullsForCommit(sha: string): Promise<number | null> {
+    if (!/^[0-9a-f]{40}$/.test(sha)) return null;
+    const { json } = await this.bridgeRest(
+      "GET",
+      `/repos/${AVENGERS_REPOSITORY}/commits/${sha}/pulls`,
+    );
+    const merged = (Array.isArray(json) ? json : []).find((p: Json) =>
+      Boolean(p?.merged_at) &&
+      (p?.base as Json | undefined)?.ref === "main"
+    ) as Json | undefined;
+    return merged && Number.isInteger(merged.number) ? Number(merged.number) : null;
+  }
+
+  /** The production migrations status on a merge commit. */
+  async createCommitStatus(
+    sha: string,
+    status: { state: string; description: string; context: string },
+  ): Promise<void> {
+    if (!/^[0-9a-f]{40}$/.test(sha)) throw stableError("COMMIT_SHA_INVALID");
+    if (status.context !== "mingla/production-migrations") {
+      throw stableError("STATUS_CONTEXT_INVALID");
+    }
+    if (status.state !== "pending" && status.state !== "success") {
+      throw stableError("STATUS_STATE_INVALID");
+    }
+    await this.bridgeRest("POST", `/repos/${AVENGERS_REPOSITORY}/statuses/${sha}`, {
+      state: status.state,
+      description: status.description.slice(0, 140),
+      context: status.context,
+    });
   }
 
   private async rest(method: string, path: string, body?: Json): Promise<Json> {
