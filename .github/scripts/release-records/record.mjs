@@ -14,9 +14,11 @@ import {
   edgeFunctions,
   hasDeployMarker,
   isTestFile,
+  mergeRecordData,
   migrationsAdded,
   parseFeatureGuide,
   parseIssueRefs,
+  readRecordData,
   recordCommentsFor,
   RECORD_MARKER_PREFIX,
   recordProblems,
@@ -92,14 +94,17 @@ async function issueComments(number) {
 /**
  * After a write, the issue keeps exactly one record comment for the pull
  * request even when two runs raced: the oldest record comment stays and
- * carries this run's body, and every later one is deleted (or, if GitHub
+ * carries this run's record (keeping the newest live check any of them
+ * held), and every later one is deleted (or, if GitHub
  * refuses the delete, emptied of its marker so it is no longer a record).
  * Every racing run converges on the same survivor.
  */
-async function settle(issue, number, body) {
+async function settle(issue, number, data) {
   const mine = recordCommentsFor(await issueComments(issue), number);
   if (mine.length <= 1) return mine.length === 1 ? "" : "missing";
   const [keep, ...extra] = mine;
+  // The survivor carries the newest live check the racing records held.
+  const body = renderRecord(await keepLiveChecks(data, mine));
   if (keep.body !== body) await gh("PATCH", `/repos/${REPO}/issues/comments/${keep.id}`, { body });
   for (const c of extra) {
     const del = await gh("DELETE", `/repos/${REPO}/issues/comments/${c.id}`);
@@ -111,6 +116,42 @@ async function settle(issue, number, body) {
     });
   }
   return ` (${extra.length} duplicate${extra.length === 1 ? "" : "s"} removed)`;
+}
+
+/** A trusted person's "Live check:" comment made after the merge, as the record keeps it, or null. */
+function liveCheckFrom(c, mergedAt) {
+  if (!c || !String(c.body ?? "").startsWith("Live check:") || !TRUSTED.has(c.author_association)) return null;
+  if (!(Date.parse(c.created_at) >= Date.parse(mergedAt))) return null;
+  return {
+    text: visible(String(c.body).slice("Live check:".length), 500),
+    by_login: c.user?.login ?? "",
+    url: c.html_url,
+    at: c.created_at,
+  };
+}
+
+/**
+ * #3980 W2 rework: this run's record, keeping a newer live check that a
+ * record already on the issue holds. Runs in different queues (a "Live
+ * check:" comment and a deploy status for the same merge) can each read the
+ * comments before the other wrote, so the later writer must not drop the
+ * live check it never saw. The live check is kept only when its comment is
+ * still there and still counts (read again from GitHub): a deleted or edited
+ * comment stops counting.
+ */
+async function keepLiveChecks(data, records) {
+  let out = data;
+  for (const c of records) {
+    const prev = readRecordData(c.body)?.live_check;
+    if (!prev || typeof prev.url !== "string" || prev.url === out.live_check?.url) continue;
+    if (out.live_check && !(Date.parse(prev.at) > Date.parse(out.live_check.at))) continue;
+    const m = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(?:issues|pull)\/\d+#issuecomment-(\d+)$/.exec(prev.url);
+    if (!m) continue;
+    const r = await gh("GET", `/repos/${REPO}/issues/comments/${m[1]}`);
+    const check = r.status === 200 ? liveCheckFrom(r.json, data.merged_at) : null;
+    if (check && check.url === prev.url) out = mergeRecordData(out, { pr: out.pr, live_check: check });
+  }
+  return out;
 }
 
 /** Which of the five events this payload is, read from its shape. */
@@ -238,16 +279,8 @@ async function refresh(number) {
       if (Array.isArray(r.json)) since.push(...r.json);
     }
     for (const c of since) {
-      if (!String(c.body ?? "").startsWith("Live check:") || !TRUSTED.has(c.author_association)) continue;
-      if (Date.parse(c.created_at) < Date.parse(pr.merged_at)) continue;
-      if (!live || Date.parse(c.created_at) > Date.parse(live.at)) {
-        live = {
-          text: visible(String(c.body).slice("Live check:".length), 500),
-          by_login: c.user?.login ?? "",
-          url: c.html_url,
-          at: c.created_at,
-        };
-      }
+      const check = liveCheckFrom(c, pr.merged_at);
+      if (check && (!live || Date.parse(check.at) > Date.parse(live.at))) live = check;
     }
   }
 
@@ -283,7 +316,6 @@ async function refresh(number) {
     problems: [],
   };
   data.problems = recordProblems(data);
-  const body = renderRecord(data);
 
   // One record per pull request per issue. The comments are read in full
   // right before writing: an existing record is updated, never duplicated;
@@ -294,12 +326,16 @@ async function refresh(number) {
   for (const t of targets) {
     const mine = recordCommentsFor(await issueComments(t), number);
     const existing = mine[0];
+    // Merged with what is on the issue now, so a live check another run
+    // wrote since this run read the comments is kept.
+    const merged = await keepLiveChecks(data, mine);
+    const body = renderRecord(merged);
     if (existing) {
       if (existing.body !== body) {
         const r = await gh("PATCH", `/repos/${REPO}/issues/comments/${existing.id}`, { body });
         written.push(`#${t} updated (HTTP ${r.status})`);
       }
-      if (mine.length > 1) written.push(`#${t}${await settle(t, number, body)}`);
+      if (mine.length > 1) written.push(`#${t}${await settle(t, number, merged)}`);
     } else {
       const r = await gh("POST", `/repos/${REPO}/issues/${t}/comments`, { body });
       if (r.status !== 201) {
@@ -307,7 +343,7 @@ async function refresh(number) {
         failed.push(t);
         continue;
       }
-      written.push(`#${t} created (HTTP ${r.status})${await settle(t, number, body)}`);
+      written.push(`#${t} created (HTTP ${r.status})${await settle(t, number, merged)}`);
     }
   }
   console.log(`release-record: PR #${number}: ${written.length > 0 ? written.join(", ") : "unchanged"}`);

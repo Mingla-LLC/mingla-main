@@ -93,7 +93,7 @@ const SINGLE = "... on ProjectV2ItemFieldSingleSelectValue { name }";
 /** The one read-only query for a batch: an alias per number. */
 export function buildFollowQuery(numbers: number[]): string {
   const fields = followNumbers(numbers).map((n) =>
-    `n${n}: issueOrPullRequest(number: ${n}) { __typename ` +
+    `n${n}: issueOrPullRequest(number: ${n}) { __typename repository { nameWithOwner } ` +
     `... on Issue { number title url state updatedAt projectItems(first: 10) { nodes { project { id } ` +
     `status: fieldValueByName(name: "Status") { ${SINGLE} } horizon: fieldValueByName(name: "Horizon") { ${SINGLE} } } } } ` +
     `... on PullRequest { number title url state merged mergedAt mergeCommit { oid } updatedAt ` +
@@ -107,7 +107,9 @@ export function buildFollowQuery(numbers: number[]): string {
  * GITHUB_FOLLOW_FAILED on any error that is not "this number does not
  * exist", and GITHUB_FOLLOW_EMPTY when the answer has no repository. A
  * number counts as not found only when GitHub said NOT_FOUND for it; a
- * number missing from the answer for any other reason is left out.
+ * number missing from the answer for any other reason is left out. An
+ * answer that names another repository (a transferred issue keeps its old
+ * number here) is left out too, so its title is never stored.
  */
 export function parseFollowResponse(numbers: number[], json: unknown): FollowItem[] {
   const body = (json && typeof json === "object" ? json : {}) as Json;
@@ -134,6 +136,7 @@ export function parseFollowResponse(numbers: number[], json: unknown): FollowIte
       continue;
     }
     if (!node || typeof node !== "object" || Number(node.number) !== n) continue;
+    if (!followNodeInRepo(node, n)) continue;
     if (node.__typename === "Issue") {
       const items = ((node.projectItems as Json | undefined)?.nodes ?? []) as Json[];
       const board = (Array.isArray(items) ? items : []).find((i) => (i?.project as Json | undefined)?.id === AVENGERS_PROJECT_ID);
@@ -158,6 +161,24 @@ export function parseFollowResponse(numbers: number[], json: unknown): FollowIte
   return out;
 }
 type Json = Record<string, unknown>;
+
+/**
+ * #3980 W2 rework: is this answer about Mingla-LLC/mingla-main? The query
+ * asks every node for its repository; when GitHub names one it must be this
+ * repository, and a GitHub address must be this repository's issue or pull
+ * request with this number.
+ */
+export function followNodeInRepo(node: Json, n: number): boolean {
+  if (Object.hasOwn(node, "repository")) {
+    const repo = node.repository as Json | null | undefined;
+    if (!repo || typeof repo !== "object" || repo.nameWithOwner !== AVENGERS_REPOSITORY) return false;
+  }
+  if (typeof node.url === "string" && /^[a-z]+:\/\//i.test(node.url)) {
+    const m = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/(issues|pull)\/(\d+)$/.exec(node.url);
+    if (!m || `${m[1]}/${m[2]}` !== AVENGERS_REPOSITORY || Number(m[4]) !== n) return false;
+  }
+  return true;
+}
 
 export type RepositoryPinnedSource = {
   commit: string;

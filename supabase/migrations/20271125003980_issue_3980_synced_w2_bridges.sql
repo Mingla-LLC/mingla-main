@@ -36,8 +36,9 @@
 -- product-avengers-sync back first, then in one transaction restore each
 -- replaced function from the migration named above it, restore the two
 -- altered check constraints (no card or link may still use 'github' or
--- 'roadmap_card'), drop ops_release_records.test_files and drop the new
--- ops_ functions. Feature Guide evidence and roadmap drafts written by the
+-- 'roadmap_card'), drop ops_release_records.test_files, put back the plain
+-- ops_roadmap_links_issue index in place of ops_roadmap_links_issue_unique
+-- and drop the new ops_ functions. Feature Guide evidence and roadmap drafts written by the
 -- bridges stay as audited history.
 
 BEGIN;
@@ -72,6 +73,12 @@ ALTER TABLE public.ops_work_links ADD CONSTRAINT ops_work_links_kind_check
 -- them (Bridge B cites the first one as test evidence).
 ALTER TABLE public.ops_release_records ADD COLUMN test_files text[] NOT NULL DEFAULT '{}'::text[];
 ALTER TABLE public.ops_release_records ADD CONSTRAINT ops_release_records_test_files_check CHECK (cardinality(test_files) <= 50);
+
+-- One GitHub issue belongs to one roadmap card: two people linking the same
+-- issue at the same moment cannot both win (ops_roadmap_link_set says which
+-- card has it). Replaces the plain index Wave 1 made.
+DROP INDEX public.ops_roadmap_links_issue;
+CREATE UNIQUE INDEX ops_roadmap_links_issue_unique ON public.ops_roadmap_links (issue_number);
 
 -- ---------------------------------------------------------------------------
 -- 2. Replaced helpers.
@@ -202,6 +209,43 @@ END;
 $$;
 
 
+-- From 20271124003980. #3980 W2 rework: of two release records naming an
+-- issue that merged at the same moment, the higher pull request number is
+-- the newest, every time. Everything else is unchanged.
+CREATE OR REPLACE FUNCTION public.ops_github_status(p_number integer) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE g public.ops_github_items; v_kind text; v_label text; v_live boolean := false; v_complete boolean; v_fixed boolean;
+BEGIN
+  SELECT * INTO g FROM public.ops_github_items i WHERE i.number = p_number;
+  v_kind := COALESCE(g.kind, (SELECT w.kind FROM public.ops_work_github w WHERE w.number = p_number ORDER BY (w.kind = 'pull') DESC LIMIT 1), 'issue');
+  IF g.number IS NULL OR g.synced_at IS NULL THEN
+    v_label := 'Checking GitHub';
+  ELSIF g.not_found THEN
+    v_label := 'Not on GitHub';
+  ELSIF v_kind = 'pull' THEN
+    v_live := COALESCE((SELECT r.complete FROM public.ops_release_records r WHERE r.pr = p_number), false);
+    v_label := CASE WHEN v_live THEN 'Live' WHEN g.state = 'MERGED' THEN 'Merged' WHEN g.state = 'CLOSED' THEN 'Closed' ELSE 'Open' END;
+  ELSE
+    SELECT r.complete INTO v_complete FROM public.ops_release_records r
+     WHERE r.issues @> jsonb_build_array(jsonb_build_object('number', p_number))
+     ORDER BY r.merged_at DESC, r.pr DESC LIMIT 1;
+    v_fixed := EXISTS (SELECT 1 FROM public.ops_release_records r
+                        WHERE r.issues @> jsonb_build_array(jsonb_build_object('number', p_number, 'relation', 'fixes')));
+    v_live := g.board_status = 'Done' AND COALESCE(v_complete, false);
+    v_label := CASE WHEN v_live THEN 'Live'
+                    WHEN g.board_status = 'Done' OR v_fixed THEN 'Shipped'
+                    WHEN g.board_status = 'In Review' THEN 'In Review'
+                    WHEN g.board_status = 'In Progress' THEN 'In Progress'
+                    ELSE 'Planned' END;
+  END IF;
+  RETURN jsonb_build_object('number', p_number, 'kind', v_kind,
+    'url', COALESCE(g.url, 'https://github.com/Mingla-LLC/mingla-main/' || CASE v_kind WHEN 'pull' THEN 'pull/' ELSE 'issues/' END || p_number),
+    'title', g.title, 'label', v_label, 'board_status', g.board_status, 'state', g.state, 'merged_at', g.merged_at,
+    'live', v_live, 'checked', g.synced_at IS NOT NULL, 'not_found', COALESCE(g.not_found, false));
+END;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 3. New internal helpers (service_role only; clients cannot run them).
 -- ---------------------------------------------------------------------------
@@ -277,7 +321,7 @@ BEGIN
     ELSIF public.ops_github_live(r.issue_number) THEN
       SELECT (x.completed_at AT TIME ZONE 'UTC')::date INTO v_done FROM public.ops_release_records x
        WHERE x.issues @> jsonb_build_array(jsonb_build_object('number', r.issue_number)) AND x.complete
-       ORDER BY x.merged_at DESC LIMIT 1;
+       ORDER BY x.merged_at DESC, x.pr DESC LIMIT 1;
       v_lane := 'shipped'; v_reason := 'Live on ' || public.ops_day_words(COALESCE(v_done, (now() AT TIME ZONE 'UTC')::date));
     ELSIF r.board_status IN ('In Progress', 'In Review') THEN
       v_lane := 'now'; v_reason := 'GitHub: ' || r.board_status;
@@ -349,7 +393,9 @@ BEGIN
   -- B4 (Bridge D): an issue linked to a roadmap card, or named by a complete
   -- record that ships Feature Guide entries, that is Live gets one drafted
   -- "Recently shipped" card and one person card to approve it. Once per
-  -- issue, ever: the audit row of an earlier draft stops another.
+  -- issue, ever: the audit row of an earlier draft stops another. Two runs
+  -- at once (the 5-minute sync and housekeeping) queue on a lock per issue,
+  -- and the second one looks for the first one's draft again after it.
   FOR v_issue IN SELECT DISTINCT x.n FROM (
                    SELECT l2.issue_number AS n FROM public.ops_roadmap_links l2
                    UNION
@@ -361,6 +407,10 @@ BEGIN
                   ORDER BY x.n LOOP
     BEGIN
       CONTINUE WHEN NOT public.ops_github_live(v_issue);
+      PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('ops_roadmap_shipped'), v_issue);
+      CONTINUE WHEN EXISTS (SELECT 1 FROM public.community_audit_log a
+                             WHERE a.action = 'draft_roadmap_card' AND a.metadata->>'source' = 'issue_3980_bridge_d'
+                               AND a.metadata->>'issue' = v_issue::text);
       v_rc_title := NULL; v_rc_body := NULL; v_cap_title := NULL; v_cap_outcome := NULL;
       SELECT rc.public_title, rc.public_body INTO v_rc_title, v_rc_body FROM public.ops_roadmap_links l3
         JOIN public.community_roadmap_cards rc ON rc.id = l3.card_id
@@ -369,7 +419,7 @@ BEGIN
           SELECT r.feature_guide[1] AS k FROM public.ops_release_records r
            WHERE r.complete AND r.issues @> jsonb_build_array(jsonb_build_object('number', v_issue))
              AND cardinality(COALESCE(r.feature_guide, ARRAY[]::text[])) > 0
-           ORDER BY r.merged_at DESC LIMIT 1) f
+           ORDER BY r.merged_at DESC, r.pr DESC LIMIT 1) f
         JOIN public.product_capabilities pc ON pc.capability_key = f.k;
       v_title := COALESCE(v_rc_title, v_cap_title);
       CONTINUE WHEN v_title IS NULL;
@@ -611,8 +661,11 @@ BEGIN
     RAISE EXCEPTION 'invalid_items: Send a list of at most 200 GitHub items.' USING ERRCODE = '22023';
   END IF;
   FOR i IN SELECT e FROM jsonb_array_elements(p_items) e LOOP
-    IF jsonb_typeof(i) <> 'object' OR jsonb_typeof(i->'number') <> 'number' OR (i->>'number') !~ '^[0-9]{1,7}$'
-       OR jsonb_typeof(i->'found') <> 'boolean' THEN
+    -- An item without a number or without "found" is malformed: skipped,
+    -- and nothing Mingla knew about that number is cleared.
+    IF jsonb_typeof(i) IS DISTINCT FROM 'object' OR jsonb_typeof(i->'number') IS DISTINCT FROM 'number'
+       OR (i->>'number') !~ '^[0-9]{1,7}$' OR (i->>'number') IS NULL
+       OR jsonb_typeof(i->'found') IS DISTINCT FROM 'boolean' THEN
       v_skipped := v_skipped + 1; CONTINUE;
     END IF;
     v_n := (i->>'number')::integer;
@@ -782,6 +835,7 @@ DECLARE
   v_removed_words text; -- #3980 rework 2: who was taken off, for the agent log
   v_gh_changed boolean := false; v_chat text;
   v_gh_list text; v_gh_wait boolean := false; -- #3980 synced, Wave 2: waiting for GitHub
+  v_gh_cur text; -- #3980 W2 rework: the links a waiting card has now
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   v_chat := CASE WHEN v.via IS NOT NULL THEN public.ops_ctx_chat() END;
@@ -871,6 +925,14 @@ BEGIN
   -- Wave 2: the GitHub issues and pull requests the card waits for.
   SELECT string_agg('#' || (x->>'number'), ', ' ORDER BY (x->>'number')::integer) INTO v_gh_list
     FROM jsonb_array_elements(COALESCE(cl->'github', '[]'::jsonb)) x;
+  SELECT string_agg('#' || g.number, ', ' ORDER BY g.number) INTO v_gh_cur FROM public.ops_work_github g WHERE g.card_id = c.id;
+  -- #3980 W2 rework: an agent cannot change what a waiting card waits for
+  -- (adding, removing or swapping a link would let it lift the wait); a
+  -- person can, and the agent log says who did.
+  IF c.blocked_kind = 'github' AND v.via IS NOT NULL AND p_changes ? 'github' AND v_gh_list IS DISTINCT FROM v_gh_cur THEN
+    RAISE EXCEPTION '%', format('gate_blocked: This card waits for %s to be Live on Mingla.', COALESCE(v_gh_cur, 'its GitHub issue'))
+      USING ERRCODE = '42501';
+  END IF;
   IF c.blocked_kind = 'github' AND v.via IS NOT NULL
      AND ((p_changes ? 'blocked_on_github' AND jsonb_typeof(p_changes->'blocked_on_github') = 'boolean' AND NOT (p_changes->>'blocked_on_github')::boolean)
           OR (NOT (p_changes ? 'blocked_on_github') AND p_changes ? 'blocked')) THEN
@@ -983,6 +1045,12 @@ BEGIN
   IF p_changes ? 'github' THEN
     v_gh_changed := public.ops_github_set(c.id, cl->'github', v.actor_email, v.via);
     IF v_gh_changed THEN v_cats := v_cats || 'github'::text; END IF;
+    -- #3980 W2 rework: a person changing what a waiting card waits for is logged by name.
+    IF v_gh_changed AND c.blocked_kind = 'github' AND v.via IS NULL THEN
+      PERFORM public.ops_log_write(v.actor_email, NULL, 'updated', 'info', c.id, 'work_card', c.id,
+        format('%s changed what Card %s waits for: %s (was %s).', v_who, c.number, COALESCE(v_gh_list, 'nothing'), COALESCE(v_gh_cur, 'nothing')),
+        jsonb_build_object('changed', '["github"]'::jsonb, 'from', v_gh_cur, 'to', v_gh_list, 'waiting', true));
+    END IF;
   END IF;
 
   IF cardinality(v_cats) = 0 THEN
@@ -1271,17 +1339,19 @@ BEGIN
    WHERE s.source_kind = p_source_kind AND s.source_id = p_source_id
    LIMIT 1;
   IF v_issue IS NULL THEN RETURN jsonb_build_object('linked', false); END IF;
-  IF EXISTS (SELECT 1 FROM public.ops_github_items g WHERE g.number = v_issue AND g.synced_at IS NOT NULL AND NOT g.not_found) THEN
+  -- Once the bridge has read the issue, its word wins, "Not on GitHub"
+  -- included: the Product Inbox's board word is only a stand-in before that.
+  IF EXISTS (SELECT 1 FROM public.ops_github_items g WHERE g.number = v_issue AND g.synced_at IS NOT NULL) THEN
     v_status := public.ops_github_status(v_issue);
     v_label := v_status->>'label';
-    v_board := COALESCE(v_status->>'board_status', v_board);
+    v_board := CASE WHEN (v_status->>'not_found')::boolean THEN NULL ELSE COALESCE(v_status->>'board_status', v_board) END;
     v_title := COALESCE(v_status->>'title', v_title);
     SELECT COALESCE(g.github_updated_at, g.synced_at) INTO v_updated FROM public.ops_github_items g WHERE g.number = v_issue;
   ELSE
     v_label := CASE v_board WHEN 'Done' THEN 'Shipped' WHEN 'In Review' THEN 'In Review' WHEN 'In Progress' THEN 'In Progress' ELSE 'Planned' END;
   END IF;
   SELECT jsonb_build_object('pr', r.pr, 'complete', r.complete, 'url', r.pr_url) INTO v_rec FROM public.ops_release_records r
-   WHERE r.issues @> jsonb_build_array(jsonb_build_object('number', v_issue)) ORDER BY r.merged_at DESC LIMIT 1;
+   WHERE r.issues @> jsonb_build_array(jsonb_build_object('number', v_issue)) ORDER BY r.merged_at DESC, r.pr DESC LIMIT 1;
   RETURN jsonb_build_object('linked', true,
     'issue', jsonb_build_object('number', v_issue, 'url', COALESCE(v_url, 'https://github.com/Mingla-LLC/mingla-main/issues/' || v_issue), 'title', v_title),
     'label', v_label, 'live', v_label = 'Live', 'board_status', v_board, 'updated_at', v_updated, 'record', v_rec);
@@ -1342,11 +1412,18 @@ BEGIN
   IF v_other IS NOT NULL THEN
     RAISE EXCEPTION '%', format('issue_taken: #%s is already linked to "%s".', v_n, left(v_other, 120)) USING ERRCODE = '22023';
   END IF;
-  INSERT INTO public.ops_roadmap_links (card_id, issue_number, linked_by)
-  VALUES (p_card_id, v_n, v.actor_email)
-  ON CONFLICT (card_id) DO UPDATE SET issue_number = EXCLUDED.issue_number, linked_by = EXCLUDED.linked_by, linked_at = now(),
-    suggested_lane = NULL, suggested_reason = NULL, suggested_at = NULL, dismissed_lane = NULL, dismissed_at = NULL
-    WHERE public.ops_roadmap_links.issue_number IS DISTINCT FROM EXCLUDED.issue_number;
+  BEGIN
+    INSERT INTO public.ops_roadmap_links (card_id, issue_number, linked_by)
+    VALUES (p_card_id, v_n, v.actor_email)
+    ON CONFLICT (card_id) DO UPDATE SET issue_number = EXCLUDED.issue_number, linked_by = EXCLUDED.linked_by, linked_at = now(),
+      suggested_lane = NULL, suggested_reason = NULL, suggested_at = NULL, dismissed_lane = NULL, dismissed_at = NULL
+      WHERE public.ops_roadmap_links.issue_number IS DISTINCT FROM EXCLUDED.issue_number;
+  EXCEPTION WHEN unique_violation THEN
+    -- Another card took this issue at the same moment.
+    SELECT rc.public_title INTO v_other FROM public.ops_roadmap_links l JOIN public.community_roadmap_cards rc ON rc.id = l.card_id
+     WHERE l.issue_number = v_n AND l.card_id <> p_card_id LIMIT 1;
+    RAISE EXCEPTION '%', format('issue_taken: #%s is already linked to "%s".', v_n, left(COALESCE(v_other, 'another roadmap card'), 120)) USING ERRCODE = '22023';
+  END;
   INSERT INTO public.ops_github_items (number, kind) VALUES (v_n, 'issue') ON CONFLICT (number) DO NOTHING;
   PERFORM public.ops_roadmap_suggest(p_card_id);
   RETURN jsonb_build_object('card_id', p_card_id, 'issue_number', v_n, 'issue', public.ops_github_status(v_n));
