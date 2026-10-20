@@ -1,9 +1,12 @@
 /**
  * issue #3281 many-dates — shared date picker (View/Pressable/Text only).
  * Surfaces wrap this (PR 4/5); no calendar library, no native modules.
+ *
+ * React comes from the package bridge (`offeringRenderingReact`), never from
+ * `"react"` directly — see that module. A bare import raises TS2307 under the
+ * #1403 typecheck ratchet and cascades every prop into implicit any.
  */
 
-import React, { useMemo, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -19,6 +22,7 @@ import {
   type EventDateScheduleOccurrence,
   type EventDateScheduleStatus,
 } from "./eventDateSchedule";
+import { OfferingRenderingReact as React } from "./offeringRenderingReact";
 
 export type EventDatePickerProps = {
   occurrences: readonly EventDateScheduleOccurrence[];
@@ -37,7 +41,7 @@ export type EventDatePickerProps = {
 
 const MIN_HIT = 44;
 
-export const EventDatePicker: React.FC<EventDatePickerProps> = ({
+export function EventDatePicker({
   occurrences,
   selectedIds,
   onToggle,
@@ -48,13 +52,13 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
   mutedColor = "#667085",
   style,
   testID = "event-date-picker",
-}) => {
-  const layout = useMemo(
+}: EventDatePickerProps) {
+  const layout = React.useMemo(
     () => chooseEventDateLayout(occurrences, { allDaysPass }),
     [occurrences, allDaysPass],
   );
-  const [monthIndex, setMonthIndex] = useState(0);
-  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const [monthIndex, setMonthIndex] = React.useState(0);
+  const selected = React.useMemo(() => new Set(selectedIds), [selectedIds]);
 
   if (status === "loading") {
     return (
@@ -210,7 +214,7 @@ export const EventDatePicker: React.FC<EventDatePickerProps> = ({
       </View>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   box: { gap: 8 },
