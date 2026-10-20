@@ -117,7 +117,7 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
   return (
     <div data-calendar-grid="month" className="min-w-0 overflow-hidden">
       <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] border-b border-[var(--gray-200)]">
-        {WEEKDAYS.map((name) => <div key={name} className="min-w-0 p-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]"><span className="@min-[760px]:hidden">{name.slice(0, 1)}</span><span className="hidden @min-[760px]:inline">{name}</span></div>)}
+        {WEEKDAYS.map((name) => <div key={name} className="min-w-0 p-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]"><span className="@min-[640px]:hidden">{name.slice(0, 1)}</span><span className="hidden @min-[640px]:inline">{name}</span></div>)}
       </div>
       <div className="grid grid-cols-[repeat(7,minmax(0,1fr))]">
         {days.map((date) => {
@@ -138,13 +138,13 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
               onDragOver={coarse ? undefined : (event) => event.preventDefault()}
               onDrop={(event) => drop(event, date)}
               className={[
-                "flex min-h-16 min-w-0 flex-col gap-1 border-b border-r border-[var(--gray-200)] p-1 @min-[760px]:min-h-24",
+                "flex min-h-16 min-w-0 flex-col gap-1 border-b border-r border-[var(--gray-200)] p-1 @min-[640px]:min-h-24",
                 isToday ? "bg-[var(--color-brand-50)] shadow-[inset_0_0_0_2px_var(--color-brand-500)]" : inMonth ? "" : "bg-[var(--gray-50)]",
                 openDay === key ? "ring-2 ring-inset ring-[var(--color-brand-700)]" : "",
               ].join(" ")}
             >
               <p className={`text-[11.5px] tabular-nums ${isToday ? "font-bold text-[var(--color-brand-700)]" : inMonth ? "font-semibold text-[var(--color-text-secondary)]" : "text-[var(--color-text-tertiary)]"}`}>
-                {date.getDate()}{isToday && <span className="hidden @min-[760px]:inline"> · Today</span>}
+                {date.getDate()}{isToday && <span className="hidden @min-[640px]:inline"> · Today</span>}
               </p>
               {/* Narrow: one 10px dot per event, the whole day opens on tap. */}
               {events.length > 0 && (
@@ -154,13 +154,13 @@ function MonthGrid({ month, data, items, show, today, open, selectEvent, current
                   onClick={() => onDay(key)}
                   aria-label={`${dayWords}: ${events.map((e) => `${e.title}, ${stateName(e.state)}`).join("; ")}`}
                   title={events.map((e) => e.title).join(", ")}
-                  className={`flex min-h-8 w-full flex-wrap content-start items-start gap-1 rounded-md p-0.5 hover:bg-[var(--gray-50)] @min-[760px]:hidden ${past ? "opacity-60" : ""} ${FOCUS}`}
+                  className={`flex min-h-8 w-full flex-wrap content-start items-start gap-1 rounded-md p-0.5 hover:bg-[var(--gray-50)] @min-[640px]:hidden ${past ? "opacity-60" : ""} ${FOCUS}`}
                 >
                   {events.slice(0, 6).map((e) => <StateDot key={e.id} k={e.state?.k} size={10} />)}
                 </button>
               )}
               {/* Wide: dot and title, two lines, whole words; at most two, then "+N more". */}
-              <div className="hidden min-w-0 flex-col gap-0.5 @min-[760px]:flex">
+              <div className="hidden min-w-0 flex-col gap-0.5 @min-[640px]:flex">
                 {visible.map((e) => e.type === "post" ? (
                   <button
                     key={e.id}

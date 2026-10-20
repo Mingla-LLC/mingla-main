@@ -181,6 +181,9 @@ Deno.test("#3980 W3 rework P3: contrast, 44px targets, real switches, same names
   const page = code("pages/ContentCalendarPage.jsx");
   assertMatch(page, /bg-\[var\(--color-brand-800\)\][^`]*text-white[^`]*\$\{FOCUS\}`\}>Today is/);
   assertMatch(page, /const DAY_ALL_UP_TO = 3;/);
+  // Titles show from a 640px month box (688px at 1440 with an event open).
+  assertMatch(page, /hidden min-w-0 flex-col gap-0\.5 @min-\[640px\]:flex/);
+  assertNotMatch(page, /@min-\[760px\]/);
   assertMatch(page, /entries\.length <= DAY_ALL_UP_TO \? entries : entries\.slice\(0, DAY_LIMIT\)/);
   assertMatch(code("components/people/PeopleField.jsx"), /-my-1\.5 -mr-1 inline-grid h-11 w-11/);
   assertMatch(code("components/ops/EventSteps.jsx"), /inline-flex min-h-11 min-w-11 items-center[^`]*`\}>Card \{s\.card\.number\}/);
