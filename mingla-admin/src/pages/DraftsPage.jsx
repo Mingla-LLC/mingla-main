@@ -133,6 +133,7 @@ export function DraftsPage() {
   }, [reviewCount, canTell, tabNamed, setSearch]);
   const caughtUp = needsYouCaughtUp(reviewCount);
   const meta = `${totalWaiting} waiting`;
+  const headerMeta = <span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>;
   const reviewTabs = [
     { value: "messages", label: "Messages" },
     { value: "spend", label: "Spend or publish" },
@@ -154,12 +155,16 @@ export function DraftsPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div ref={headingRef} tabIndex={-1}><PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
-      <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
+      {/* #3980 W3 rework 2: the roadmap words only for the owner and admins, who have that tab; everyone else reads the design's shorter line. */}
+      <div ref={headingRef} tabIndex={-1}>{canTell
+        ? <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it." meta={headerMeta} />
+        : <PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish." meta={headerMeta} />}</div>
+      {/* The tabs wrap inside their bar on a phone, never clipped. */}
+      <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth wrap className="sm:!w-fit" />
       {review.tab === "told" && canTell ? (
         <WordingQueue onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
       ) : review.tab === "spend" ? (
-        <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
+        <ReviewQueue online={online} hideHostsTold={canTell} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
       ) : (<DraftNeededContext.Provider value={draftNeeded}>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:!w-fit" /></div>

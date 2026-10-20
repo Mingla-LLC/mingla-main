@@ -493,7 +493,7 @@ function PipelinePage({ pipeline, onTabChange }) {
     patch({ fill: false }, { replace: true });
   }, [state.fill, openRecordInList, patch]);
   const addButton = (variant = "primary", size = "md", ref = null) => (
-    <Button ref={ref} variant={variant} size={size} icon={Plus} disabled={addDisabled} onClick={() => openCard(NEW_CARD)}>
+    <Button ref={ref} variant={variant} size={size} icon={Plus} className="min-h-11" disabled={addDisabled} onClick={() => openCard(NEW_CARD)}>
       Add {singular}
     </Button>
   );
@@ -586,7 +586,7 @@ function PipelinePage({ pipeline, onTabChange }) {
               <p className="text-sm text-[var(--color-text-secondary)]">No {singular}s match.</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {filtersOn && (
-                  <Button variant="secondary" onClick={clearFilters}>
+                  <Button variant="secondary" className="min-h-11" onClick={clearFilters}>
                     Clear filters
                   </Button>
                 )}

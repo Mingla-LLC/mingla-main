@@ -161,7 +161,8 @@ Deno.test("#3980 W3 rework D10: the four plain states, never the old runway word
   assertEquals(runwayLabel({ band: "full", lead_days: 30 }), "Ready to promote · live 30 days ahead");
   assertEquals(runwayLabel({ band: "missed" }), "Too late for promo · not live by the 3-week line");
   const banned = /full launch|organic only|\btight\b|missed go-live|>\s*\{?[^<]*\bmissed\b/i;
-  for (const file of ["components/ops/TeamOpsPanels.jsx", "components/ops/CalendarLayers.jsx", "components/ops/WorkDetail.jsx", "components/ops/ReviewQueue.jsx"]) {
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework 2: CalendarLayers.jsx was unused and is deleted, so it leaves this list.
+  for (const file of ["components/ops/TeamOpsPanels.jsx", "components/ops/WorkDetail.jsx", "components/ops/ReviewQueue.jsx"]) {
     const visible = code(file).replace(/className=\{?[`"][^`"]*[`"]\}?/g, "").replace(/\bcounts\.(tight|missed)\b|band === "(tight|missed)"|row\.band === "missed"/g, "");
     assertNotMatch(visible, banned, file);
   }

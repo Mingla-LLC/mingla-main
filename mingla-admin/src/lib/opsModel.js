@@ -42,6 +42,16 @@ export function isRoadmapApproval(card) {
 }
 
 /**
+ * #3980 W3 rework 2: the cards Needs you › Spend or publish lists. For the
+ * owner and admins (who have What hosts are told) a "Recently shipped"
+ * wording card is listed only on that tab; anyone else on such a card still
+ * reaches it here.
+ */
+export function spendQueueCards(cards, hideHostsTold = false) {
+  return (Array.isArray(cards) ? cards : []).filter((c) => c && !(hideHostsTold && isRoadmapApproval(c)));
+}
+
+/**
  * The one-tap action a card waiting for a person offers, or null when it
  * offers Close with proof instead. A roadmap approval card closes itself
  * once its draft is published or archived in Community, Roadmap, and a
@@ -921,6 +931,11 @@ export const WORK_COLUMNS = [
   { key: "done", label: "Done this week" },
 ];
 
+/** #3980 W3 rework 2: a card's status in words, for Group by Person or Event. */
+export function workStatusLabel(status) {
+  return { person: "Needs you", todo: "To do", doing: "In progress", done: "Done" }[status] || "";
+}
+
 export function columnCards(cards, key, today = todayIso()) {
   const monday = mondayOf(today);
   return (Array.isArray(cards) ? cards : []).filter((c) => {
@@ -1040,6 +1055,10 @@ export function expectedSavedWords(result, madeWords = "Saved. It’s on the Cal
   if (steps && steps.stopped) return "Saved. It’s on the Calendar. Its steps couldn’t be made just now; the next run adds them.";
   if (steps && typeof steps === "object") {
     const n = Number(steps.added || 0) + Number(steps.redated || 0);
+    // #3980 W3 rework 2: the server says how many of its steps are open; with
+    // none (a series whose first date is still far off) the words never
+    // claim steps exist.
+    if (n === 0 && steps.open !== undefined && Number(steps.open) === 0) return "Saved. It’s on the Calendar. No steps are needed yet; Mingla adds them nearer the date.";
     return n > 0 ? madeWords : "Saved. It’s on the Calendar; its steps were already in Work.";
   }
   return "Saved. It’s on the Calendar.";

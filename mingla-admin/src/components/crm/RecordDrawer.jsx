@@ -750,7 +750,7 @@ export function RecordDrawer({
           <div>
             <Button
               size="sm"
-              className="max-sm:h-11"
+              className="min-h-11 max-sm:h-11"
               iconRight={ArrowRight}
               disabled={locked || pending}
               onClick={() => onRequestMove(record, next.id)}

@@ -3,12 +3,12 @@
 // "Nothing here." when empty. Columns keep at least 220px; when the board is
 // narrower they scroll sideways inside the board box only, never the page.
 import { Avatars } from "./OpsChip";
-import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards } from "../../lib/opsModel";
+import { WORK_COLUMNS, cardReasons, columnCards, dayLabel, groupCards, workStatusLabel } from "../../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 
-export function WorkColumnCard({ card, selected, onSelect }) {
+export function WorkColumnCard({ card, selected, onSelect, showStatus = false }) {
   const reasons = cardReasons(card);
   return (
     <button
@@ -20,6 +20,8 @@ export function WorkColumnCard({ card, selected, onSelect }) {
     >
       <span className={`text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
       <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] text-[var(--color-text-tertiary)]">
+        {/* Grouped by Person or Event there are no status columns, so each card says its status. */}
+        {showStatus && workStatusLabel(card.status) && <span data-card-status={card.status} className="rounded-full border border-[var(--gray-300)] bg-[var(--gray-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-text-secondary)]">{workStatusLabel(card.status)}</span>}
         {(card.owners || []).length ? <Avatars people={card.owners} /> : <span aria-label="No owner" className="inline-grid h-6 w-6 place-items-center rounded-full border border-dashed border-[var(--gray-400)] text-[10px]">?</span>}
         {card.due_on && <span className="tabular-nums">{dayLabel(card.due_on)}</span>}
         {card.auto && <span>from the timeline</span>}
@@ -78,7 +80,7 @@ export function WorkGroups({ cards = [], group, selectedId, onSelect }) {
             <span className="rounded-full bg-[var(--color-background-primary)] px-2 py-0.5 text-[11px] tabular-nums text-[var(--color-text-secondary)]">{g.cards.length}</span>
           </h2>
           <ul className="grid min-w-0 gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))" }}>
-            {g.cards.map((card) => <li key={card.id} className="min-w-0"><WorkColumnCard card={card} selected={card.id === selectedId} onSelect={onSelect} /></li>)}
+            {g.cards.map((card) => <li key={card.id} className="min-w-0"><WorkColumnCard card={card} selected={card.id === selectedId} onSelect={onSelect} showStatus /></li>)}
           </ul>
         </section>
       ))}

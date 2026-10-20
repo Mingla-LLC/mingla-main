@@ -115,7 +115,8 @@ Deno.test("#3980 W2 the Calendar: new title, layer chips, two columns, the panel
 });
 
 Deno.test("#3980 W2 new ops components use tokens only and no overlay", () => {
-  for (const file of ["components/ops/CalendarLayers.jsx", "components/ops/EventPanel.jsx", "components/ops/RunwayBar.jsx", "components/crm/OnMinglaSection.jsx"]) {
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 rework 2: CalendarLayers.jsx was unused and is deleted, so it leaves this list.
+  for (const file of ["components/ops/EventPanel.jsx", "components/ops/RunwayBar.jsx", "components/crm/OnMinglaSection.jsx"]) {
     const src = read(file);
     assertNotMatch(src, /bg-white|text-black|["'\s(]#[0-9a-fA-F]{6}\b/, file);
     assertNotMatch(src, /from "[^"]*(Modal|Drawer)"/, file);
