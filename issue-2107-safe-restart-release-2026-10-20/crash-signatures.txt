@@ -1,0 +1,60 @@
+== PRE-FIX main, reload tap 4 (loop 1)
+   captured 2026-10-19 20:33:13.6248 -0400  EXC_BAD_ACCESS SIGSEGV KERN_INVALID_ADDRESS at 0x0000000000000054
+   faulting queue: com.meta.react.turbomodulemanager.queue
+      libdispatch.dylib | dispatch_async
+      React | -[RCTFileReaderModule readAsText:encoding:resolve:reject:]
+      CoreFoundation | __invoking___
+      CoreFoundation | -[NSInvocation invoke]
+      CoreFoundation | -[NSInvocation invokeWithTarget:]
+      React | invocation function for block in facebook::react::ObjCTurboModule::performMethodInvocation(facebook::jsi::Runtime&, bool, char const*, NSInvocation*, NSMutableArray*)
+      React | std::__1::__function::__func<facebook::react::ObjCTurboModule::performMethodInvocation(facebook::jsi::Runtime&, bool, char const*, NSInvocation*, NSMutableArray*)::$_1, std::__1::allocator<facebook::react::ObjCTurboModule::performMethodInvocation(facebook::jsi::Runtime&, bool, char const*, NSInvocation*, NSMutableArray*)::$_1>, void ()>::operator()()
+      libdispatch.dylib | _dispatch_call_block_and_release
+
+== PRE-FIX main, reload tap 2 (loop 2)
+   captured 2026-10-19 20:49:24.6074 -0400  EXC_BAD_ACCESS SIGSEGV KERN_INVALID_ADDRESS at 0x15ea8622db653f4c
+   faulting queue: None
+      React | std::__1::__function::__func<facebook::react::Scheduler::uiManagerDidFinishTransaction(std::__1::shared_ptr<facebook::react::MountingCoordinator const>, bool)::$_0, std::__1::allocator<facebook::react::Scheduler::uiManagerDidFinishTransaction(std::__1::shared_ptr<facebook::react::MountingCoordinator const>, bool)::$_0>, void ()>::operator()()
+      React | facebook::react::RuntimeScheduler_Modern::updateRendering()
+      React | facebook::react::RuntimeScheduler_Modern::runEventLoopTick(facebook::jsi::Runtime&, facebook::react::Task&)
+      React | facebook::react::RuntimeScheduler_Modern::runEventLoop(facebook::jsi::Runtime&)
+      React | _ZNSt3__110__function6__funcIZZN8facebook5react13ReactInstanceC1ENS_10unique_ptrINS3_9JSRuntimeENS_14default_deleteIS6_EEEENS_10shared_ptrINS3_18MessageQueueThreadEEENSA_INS3_12TimerManagerEEENS_8functionIFvRNS2_3jsi7RuntimeERKNS3_14JsErrorHandler14ProcessedErrorEEEEPNS3_18jsinspector_modern10HostTargetEENK3$_0clINSF_IFvSI_EEEEEDaT_EUlvE_NS_9allocatorISY_EEFvvEEclEv
+      React | facebook::react::tryAndReturnError(std::__1::function<void ()> const&)
+      React | facebook::react::RCTMessageThread::tryFunc(std::__1::function<void ()> const&)
+      React | invocation function for block in facebook::react::RCTMessageThread::runAsync(std::__1::function<void ()>)
+
+== PRE-FIX main, reload tap 5 (loop 2)
+   captured 2026-10-19 20:50:18.3604 -0400  EXC_BAD_ACCESS SIGSEGV KERN_INVALID_ADDRESS at 0x28a1149e48728342
+   faulting queue: None
+      React | std::__1::__function::__func<facebook::react::Scheduler::uiManagerDidFinishTransaction(std::__1::shared_ptr<facebook::react::MountingCoordinator const>, bool)::$_0, std::__1::allocator<facebook::react::Scheduler::uiManagerDidFinishTransaction(std::__1::shared_ptr<facebook::react::MountingCoordinator const>, bool)::$_0>, void ()>::operator()()
+      React | facebook::react::RuntimeScheduler_Modern::updateRendering()
+      React | facebook::react::RuntimeScheduler_Modern::runEventLoopTick(facebook::jsi::Runtime&, facebook::react::Task&)
+      React | facebook::react::RuntimeScheduler_Modern::runEventLoop(facebook::jsi::Runtime&)
+      React | _ZNSt3__110__function6__funcIZZN8facebook5react13ReactInstanceC1ENS_10unique_ptrINS3_9JSRuntimeENS_14default_deleteIS6_EEEENS_10shared_ptrINS3_18MessageQueueThreadEEENSA_INS3_12TimerManagerEEENS_8functionIFvRNS2_3jsi7RuntimeERKNS3_14JsErrorHandler14ProcessedErrorEEEEPNS3_18jsinspector_modern10HostTargetEENK3$_0clINSF_IFvSI_EEEEEDaT_EUlvE_NS_9allocatorISY_EEFvvEEclEv
+      React | facebook::react::tryAndReturnError(std::__1::function<void ()> const&)
+      React | facebook::react::RCTMessageThread::tryFunc(std::__1::function<void ()> const&)
+      React | invocation function for block in facebook::react::RCTMessageThread::runAsync(std::__1::function<void ()>)
+
+== PR HEAD cac611e76, reload tap 6
+   captured 2026-10-19 20:36:42.8999 -0400  EXC_BAD_ACCESS SIGSEGV KERN_INVALID_ADDRESS at 0x006b0069006c0020
+   faulting queue: expo.modules.core.SharedObjectRegistry
+      Mingla | std::__1::__shared_ptr_emplace<facebook::jsi::WeakObject, std::__1::allocator<facebook::jsi::WeakObject>>::__on_zero_shared()
+      Mingla | <deduplicated_symbol>
+      Mingla | -[EXJavaScriptWeakObject .cxx_destruct]
+      libobjc.A.dylib | object_cxxDestructFromClass(objc_object*, objc_class*)
+      libobjc.A.dylib | objc_destructInstance_nonnull_realized(objc_object*)
+      libobjc.A.dylib | _objc_rootDealloc
+      libswiftCore.dylib | void tuple_destroy<false, true>(swift::OpaqueValue*, swift::TargetMetadata<swift::InProcess> const*)
+      libswiftCore.dylib | _DictionaryStorage.deinit
+
+== PR HEAD cac611e76, reload tap 18 (loop 2)
+   captured 2026-10-19 20:40:43.8460 -0400  EXC_BAD_ACCESS SIGSEGV KERN_INVALID_ADDRESS at 0x0000000000000000
+   faulting queue: expo.modules.core.SharedObjectRegistry
+      Mingla | std::__1::__shared_ptr_emplace<facebook::jsi::WeakObject, std::__1::allocator<facebook::jsi::WeakObject>>::__on_zero_shared()
+      Mingla | <deduplicated_symbol>
+      Mingla | -[EXJavaScriptWeakObject .cxx_destruct]
+      libobjc.A.dylib | object_cxxDestructFromClass(objc_object*, objc_class*)
+      libobjc.A.dylib | objc_destructInstance_nonnull_realized(objc_object*)
+      libobjc.A.dylib | _objc_rootDealloc
+      libswiftCore.dylib | void tuple_destroy<false, true>(swift::OpaqueValue*, swift::TargetMetadata<swift::InProcess> const*)
+      libswiftCore.dylib | _DictionaryStorage.deinit
+
