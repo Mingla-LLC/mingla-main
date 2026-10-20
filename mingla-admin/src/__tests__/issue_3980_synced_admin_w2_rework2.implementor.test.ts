@@ -38,12 +38,13 @@ Deno.test("#3980 W2 rework 2: a roadmap approval card offers no Mark published; 
 });
 
 Deno.test("#3980 W2 rework 2: To review has a 'What hosts are told' group and the approval card is in it", () => {
-  assertEquals(REVIEW_GROUPS.map((g) => g.title), ["Spend money", "Publish an event", "What hosts are told", "Other"]);
+  // W2 rework 3: Send cards have their own group again (it was "Other" with no Mark sent).
+  assertEquals(REVIEW_GROUPS.map((g) => g.title), ["Send a message", "Spend money", "Publish an event", "What hosts are told", "Other"]);
   assertEquals(reviewGroupOf(approval), "hosts");
   assertEquals(reviewGroupOf(eventCard), "publish");
   assertEquals(reviewGroupOf({ person_reason: "spend" }), "spend");
   assertEquals(reviewGroupOf({ person_reason: "other" }), "other");
-  assertEquals(reviewGroupOf({ person_reason: "send" }), "other", "never dropped from the list");
+  assertEquals(reviewGroupOf({ person_reason: "send" }), "send", "never dropped from the list, and in its own group (W2 rework 3)");
   assertEquals(REVIEW_GROUPS.find((g) => g.id === reviewGroupOf(approval))?.title, "What hosts are told");
 });
 

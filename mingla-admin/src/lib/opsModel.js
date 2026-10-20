@@ -58,14 +58,31 @@ export function roadmapDraftHref(card) {
   return link ? `#/community-support?tab=roadmap&card=${encodeURIComponent(link.id)}` : null;
 }
 
-/** The roadmap card a Community, Roadmap address asks to open, or null. */
+/** True only for a Community & Support address on its Roadmap tab. */
+export function isRoadmapHash(hash) {
+  const [path, query = ""] = String(hash || "").split("?");
+  return path === "#/community-support" && new URLSearchParams(query).get("tab") === "roadmap";
+}
+
+/**
+ * The roadmap card a Community, Roadmap address asks to open, or null. Only
+ * #/community-support with tab=roadmap counts: the Work board and To review
+ * also carry ?card= (a work card), and leaving Roadmap for them must not
+ * look like a missing roadmap card.
+ */
 export function roadmapCardFromHash(hash) {
-  const id = new URLSearchParams(String(hash || "").split("?")[1] || "").get("card");
+  if (!isRoadmapHash(hash)) return null;
+  const id = new URLSearchParams(String(hash).split("?")[1] || "").get("card");
   return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
-/** To review's groups, in order. Roadmap approvals have their own. */
+/**
+ * To review's groups, in order. Roadmap approvals have their own, and so do
+ * cards that wait for a person to send a message (#3980 W2 rework 3: rework 2
+ * had dropped them into "Other" with no Mark sent).
+ */
 export const REVIEW_GROUPS = [
+  { id: "send", title: "Send a message" },
   { id: "spend", title: "Spend money" },
   { id: "publish", title: "Publish an event" },
   { id: "hosts", title: "What hosts are told" },
@@ -75,7 +92,7 @@ export const REVIEW_GROUPS = [
 /** Which To review group a card waiting for a person belongs to. */
 export function reviewGroupOf(card) {
   if (isRoadmapApproval(card)) return "hosts";
-  return ["spend", "publish"].includes(card?.person_reason) ? card.person_reason : "other";
+  return ["send", "spend", "publish"].includes(card?.person_reason) ? card.person_reason : "other";
 }
 
 export const KIT_STEPS = [

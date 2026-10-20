@@ -136,7 +136,7 @@ export function DraftsPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div ref={headingRef} tabIndex={-1}><PageHeader title="To review" description="Only what needs a person: messages to send, money to spend, events to publish." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
+      <div ref={headingRef} tabIndex={-1}><PageHeader title="To review" description="Only what needs a person: messages to send, money to spend, events to publish, and roadmap news to approve before hosts see it." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
       <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
       {review.tab === "spend" ? (
         <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />

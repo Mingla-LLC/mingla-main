@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Bell, ExternalLink, Plus, RefreshCw, Save } from "lucide-react";
 import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -16,7 +16,7 @@ import {
   upsertRoadmapCard,
 } from "../../services/communityService";
 import { decideRoadmapSuggestion, listRoadmapLinks, setRoadmapLink } from "../../services/opsService";
-import { githubChipClass, githubChipWords, opsErrorWords, parseGithubInput, roadmapCardFromHash, roadmapSuggestionWords } from "../../lib/opsModel";
+import { githubChipClass, githubChipWords, isRoadmapHash, opsErrorWords, parseGithubInput, roadmapCardFromHash, roadmapSuggestionWords } from "../../lib/opsModel";
 
 const LANES = [
   { id: "now", label: "Now" },
@@ -52,6 +52,9 @@ export function RoadmapPanel() {
   // #3980 W2 rework 2: To review's "Open the draft in Roadmap" lands here
   // with ?card=<id>; that card opens in the editor once the list is read.
   const [openCardId, setOpenCardId] = useState(() => roadmapCardFromHash(window.location.hash));
+  // #3980 W2 rework 3: true once the address has left Roadmap (Back, the
+  // Work board, To review) or the panel is closing; no warning then.
+  const leavingRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,9 +90,17 @@ export function RoadmapPanel() {
   }, [load]);
 
   useEffect(() => {
-    const onHash = () => setOpenCardId(roadmapCardFromHash(window.location.hash));
+    leavingRef.current = false;
+    const onHash = () => {
+      const hash = window.location.hash;
+      leavingRef.current = !isRoadmapHash(hash);
+      setOpenCardId(leavingRef.current ? null : roadmapCardFromHash(hash));
+    };
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    return () => {
+      leavingRef.current = true;
+      window.removeEventListener("hashchange", onHash);
+    };
   }, []);
 
   useEffect(() => {
@@ -97,6 +108,7 @@ export function RoadmapPanel() {
     const row = rows.find((item) => item.id === openCardId);
     setOpenCardId(null);
     if (!row) {
+      if (leavingRef.current) return;
       addToast({ variant: "warning", title: "That roadmap card isn’t here any more", description: "It may have been removed. Refresh to see the latest." });
       return;
     }
