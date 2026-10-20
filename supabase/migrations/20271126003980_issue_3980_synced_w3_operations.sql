@@ -1308,7 +1308,21 @@ BEGIN
   -- brand change since its last look (a contact point added, a card or the
   -- brand edited), or a day since its last look. At most 25 brands a run,
   -- and a run never waits for a brand an owner's confirm is working on.
+  -- #3980 Wave 4 prep: the order puts real changes before routine looks.
+  -- Tier 0: brands nobody decided about. Tier 1: a decided brand with a real
+  -- change since its last look (or since the close, if never looked at): the
+  -- brand edited, or a host card with one of its contact points added or
+  -- edited. Tier 2: a decided brand never looked at since the person's latest
+  -- close. Tier 3: decided brands due only for their daily look. So a real
+  -- change is never held behind many routine looks.
   FOR b IN SELECT c.id, c.decided_id FROM (
+           SELECT c0.*,
+                  CASE WHEN c0.decided_id IS NULL THEN 0
+                       WHEN c0.updated_at > COALESCE(c0.looked_at, c0.closed_at)
+                         OR public.ops_brand_changed_since(c0.id, COALESCE(c0.looked_at, c0.closed_at)) THEN 1
+                       WHEN c0.looked_at IS NULL OR c0.looked_at < c0.closed_at THEN 2
+                       ELSE 3 END AS tier
+             FROM (
              SELECT br.id, br.created_at, d.id AS decided_id, d.closed_at,
                     (SELECT t.updated_at FROM public.ops_brand_autolink_waits t
                       WHERE t.brand_id = br.id AND t.last_status = 'decided') AS looked_at,
@@ -1319,14 +1333,12 @@ BEGIN
                 AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.auto_key IN ('brand_pick:' || br.id, 'brand_lost:' || br.id)
                                   AND k.archived_at IS NULL AND k.status <> 'done')
-                AND NOT EXISTS (SELECT 1 FROM public.ops_brand_autolink_waits t WHERE t.brand_id = br.id AND t.next_at > now())) c
-            WHERE c.decided_id IS NULL
-               OR c.looked_at IS NULL OR c.looked_at < c.closed_at OR c.looked_at < now() - interval '1 day'
-               OR c.updated_at > c.looked_at
-               OR public.ops_brand_changed_since(c.id, c.looked_at)
+                AND NOT EXISTS (SELECT 1 FROM public.ops_brand_autolink_waits t WHERE t.brand_id = br.id AND t.next_at > now())) c0
+             OFFSET 0) c
+            WHERE c.tier < 3 OR c.looked_at < now() - interval '1 day'
             -- Brands nobody decided about come first, so looks at decided
-            -- brands never hold back a new brand.
-            ORDER BY (c.decided_id IS NOT NULL), c.created_at, c.id LIMIT 25 LOOP
+            -- brands never hold back a new brand; daily-only looks come last.
+            ORDER BY c.tier, c.created_at, c.id LIMIT 25 LOOP
     v_settled := false; v_status := NULL;
     BEGIN
       IF b.decided_id IS NOT NULL AND cardinality(public.ops_brand_new_exact(b.id, b.decided_id)) = 0 THEN
