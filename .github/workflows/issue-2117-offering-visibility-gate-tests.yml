@@ -187,6 +187,15 @@ jobs:
               # #3281 repair grants on the functions 20271121003281 creates; the lane
               # skips that migration, so it skips the grants too.
               *20271122003281_issue_3281_checkout_anon_revoke.sql) continue ;;
+              # #3827 going box — SKIPPED FOR THE SAME REASON the unlisted RSVP link is.
+              # 20271128003827 re-emits `pg_public_rsvp_by_slug`, `pg_public_social_proof`
+              # and `business_public_events_view`, whose bodies reach
+              # `issue_1931_event_ordinary_read_blocked` and the #2489 helpers, validated
+              # at CREATE time. Nothing is removed from the migration to green this lane;
+              # the unfiltered full-chain lanes cover it end to end.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271128003827_issue_3827_going_box_privacy_extra_guests.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
