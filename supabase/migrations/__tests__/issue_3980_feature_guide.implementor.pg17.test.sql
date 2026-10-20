@@ -49,13 +49,15 @@ BEGIN
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_guide_revision_or_status: %', v_bad; END IF;
 
   -- the two new entries: planned, with the proof a release must add, not Live
+  -- [TEST-MOD-APPROVED #3980] the synced program's F1 then turns both Live (revision 2) with their
+  -- 20 Oct release evidence: source, test, live check and release record, each current and verified.
   SELECT string_agg(c.capability_key, ', ') INTO v_bad
     FROM public.product_capabilities c
    WHERE c.capability_key IN ('staff-work-board','staff-agent-log')
-     AND (c.claimed_status <> 'planned' OR c.revision <> 1
+     AND (c.claimed_status <> 'live' OR c.revision <> 2
           OR c.required_evidence_kinds <> ARRAY['source','test','live_check','release_record']
-          OR public.issue_3720_feature_guide_effective_status(c.id) = 'Live'
-          OR EXISTS (SELECT 1 FROM public.product_capability_evidence e WHERE e.capability_id = c.id));
+          OR (SELECT count(DISTINCT e.evidence_kind) FROM public.product_capability_evidence e
+               WHERE e.capability_id = c.id AND e.is_current AND e.verdict = 'verified') <> 4);
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_guide_new_entries: %', v_bad; END IF;
   IF (SELECT count(*) FROM public.product_capabilities WHERE capability_key IN ('staff-work-board','staff-agent-log')) <> 2 THEN
     RAISE EXCEPTION 'issue3980_guide_new_entries_missing';
