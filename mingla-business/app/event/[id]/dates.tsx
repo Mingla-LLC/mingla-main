@@ -6,12 +6,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+// ORCH-0892: ScrollView via SmartScrollView (keyboard-aware), not bare RN.
+import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
