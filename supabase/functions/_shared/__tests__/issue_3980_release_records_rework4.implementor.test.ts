@@ -274,7 +274,7 @@ Deno.test("#3980 W2 rework 4 E6: a 500 re-reading a racer's live check comment k
 
 Deno.test("#3980 W2 rework 4 E7: a 502 resolving the pull request from a status event is an error, not 'nothing to do'", async () => {
   const gh = new FakeGitHub();
-  gh.fail = (method, path) => (path === `${B}/commits/${SHA}/pulls` ? 502 : null);
+  gh.fail = (_method, path) => (path === `${B}/commits/${SHA}/pulls` ? 502 : null);
   const logs: string[] = [];
   assertEquals(await run(gh, "status_merge_commit.json", logs), 1, logs.join("\n"));
   assertEquals(logs.some((l) => /nothing to do/.test(l)), false, logs.join("\n"));
