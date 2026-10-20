@@ -944,6 +944,8 @@ BEGIN
   n.due_on := (cl->>'due_on')::date; n.due_source := cl->>'due_source'; n.plan := cl->'plan';
   n.status := v_status; n.person_reason := v_reason;
   IF v_status = 'doing' AND c.status <> 'doing' THEN n.started_at := COALESCE(c.started_at, clock_timestamp()); n.working_by := v.actor_email; n.working_via := v.via; END IF;
+  -- Back to To do: nobody is working on it any more, so the mark ends.
+  IF v_status = 'todo' AND c.status = 'doing' THEN n.working_by := NULL; n.working_via := NULL; END IF;
   n.sprint_id := CASE WHEN v_week IS NOT NULL THEN public.ops_sprint_ensure(v_week) ELSE c.sprint_id END;
   IF c.kind = 'promo' AND v_anchor_changed AND c.override_at IS NULL THEN
     v_gate := public.ops_promo_gate(cl->'anchor', v_today);
@@ -966,9 +968,11 @@ BEGIN
     status = n.status, person_reason = n.person_reason, blocked = n.blocked, blocked_kind = n.blocked_kind, blocked_reason = n.blocked_reason,
     anchor_kind = n.anchor_kind, anchor_id = n.anchor_id, due_on = n.due_on, due_source = n.due_source, sprint_id = n.sprint_id,
     plan = n.plan, result = n.result, started_at = n.started_at, working_by = n.working_by, working_via = n.working_via,
-    working_chat = CASE WHEN v_status = 'doing' AND c.status <> 'doing' THEN v_chat ELSE working_chat END,
+    working_chat = CASE WHEN v_status = 'doing' AND c.status <> 'doing' THEN v_chat
+                        WHEN v_status = 'todo' AND c.status = 'doing' THEN NULL ELSE working_chat END,
     working_seen_at = CASE WHEN v_status = 'doing' AND c.status <> 'doing' AND v.via IS NOT NULL THEN clock_timestamp()
-                           WHEN v_status = 'doing' AND c.status <> 'doing' THEN NULL ELSE working_seen_at END
+                           WHEN v_status = 'doing' AND c.status <> 'doing' THEN NULL
+                           WHEN v_status = 'todo' AND c.status = 'doing' THEN NULL ELSE working_seen_at END
    WHERE id = c.id;
   v_owners := ARRAY(SELECT jsonb_array_elements_text(cl->'owners'));
   v_watchers := ARRAY(SELECT jsonb_array_elements_text(cl->'watchers'));
