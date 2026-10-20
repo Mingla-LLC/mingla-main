@@ -1524,7 +1524,8 @@ const createExperience: AgentToolDefinition = {
         type: "integer",
         minimum: 0,
         maximum: 10080,
-        description: "Earliest bookable start = now + this many minutes (default 120).",
+        description:
+          "Earliest bookable start = now + this many minutes (default 120).",
       },
       // issue #3281 R2 — sellable options (person | group | block). Absent keeps
       // today's single Standard person path.

@@ -27,4 +27,10 @@ Deno.test("#3281 R3 migration carries spacing, notice, capacity_scope, slot RPC"
   assert(text.includes("GRANT EXECUTE ON FUNCTION public.biz_ticket_checkout_create_session"));
   assert(text.includes("TO service_role"));
   assert(text.includes("PERFORM public.issue_3281_apply_experience_r3_settings"));
+  assert(text.includes("Absent keys keep the persisted value"));
+  assert(text.includes("Scoped counters are enforced in the R3 block"));
+  const allow = await Deno.readTextFile(
+    "supabase/security/anon_executable_definer_allowlist.txt",
+  );
+  assert(allow.includes("pg_experience_slot_availability("));
 });

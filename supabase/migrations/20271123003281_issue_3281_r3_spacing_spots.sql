@@ -56,54 +56,86 @@ DECLARE
   v_scope text;
   v_spacing integer;
   v_notice integer;
+  v_prev_scope text;
+  v_prev_spacing integer;
+  v_prev_notice integer;
   v_stop jsonb;
   v_order integer;
   v_offset integer;
-  v_open_window interval;
   v_spacing_iv interval;
+  v_has_wide boolean;
 BEGIN
   IF p_payload IS NULL THEN
     RETURN;
   END IF;
 
-  v_scope := COALESCE(
-    NULLIF(p_payload->>'capacity_scope', ''),
-    NULLIF(p_payload->>'capacityScope', ''),
-    'total'
-  );
+  SELECT COALESCE(capacity_scope, 'total'),
+         COALESCE(booking_spacing_minutes, 30),
+         COALESCE(min_notice_minutes, 120)
+    INTO v_prev_scope, v_prev_spacing, v_prev_notice
+    FROM public.events
+   WHERE id = p_event_id;
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  -- Absent keys keep the persisted value so older Host clients cannot reset R3.
+  IF (p_payload ? 'capacity_scope') OR (p_payload ? 'capacityScope') THEN
+    v_scope := COALESCE(
+      NULLIF(p_payload->>'capacity_scope', ''),
+      NULLIF(p_payload->>'capacityScope', ''),
+      v_prev_scope,
+      'total'
+    );
+  ELSE
+    v_scope := COALESCE(v_prev_scope, 'total');
+  END IF;
   IF v_scope NOT IN ('total', 'per_day', 'per_start') THEN
     RAISE EXCEPTION 'capacity_scope_invalid';
   END IF;
 
-  v_spacing := COALESCE(
-    NULLIF(p_payload->>'booking_spacing_minutes', '')::integer,
-    NULLIF(p_payload->>'bookingSpacingMinutes', '')::integer,
-    NULLIF(p_payload->>'spacingMinutes', '')::integer,
-    30
-  );
+  IF (p_payload ? 'booking_spacing_minutes')
+     OR (p_payload ? 'bookingSpacingMinutes')
+     OR (p_payload ? 'spacingMinutes') THEN
+    v_spacing := COALESCE(
+      NULLIF(p_payload->>'booking_spacing_minutes', '')::integer,
+      NULLIF(p_payload->>'bookingSpacingMinutes', '')::integer,
+      NULLIF(p_payload->>'spacingMinutes', '')::integer,
+      v_prev_spacing,
+      30
+    );
+  ELSE
+    v_spacing := COALESCE(v_prev_spacing, 30);
+  END IF;
   IF v_spacing NOT IN (15, 30, 60, 120) THEN
     RAISE EXCEPTION 'booking_spacing_invalid';
   END IF;
 
-  v_notice := COALESCE(
-    NULLIF(p_payload->>'min_notice_minutes', '')::integer,
-    NULLIF(p_payload->>'minNoticeMinutes', '')::integer,
-    120
-  );
+  IF (p_payload ? 'min_notice_minutes') OR (p_payload ? 'minNoticeMinutes') THEN
+    v_notice := COALESCE(
+      NULLIF(p_payload->>'min_notice_minutes', '')::integer,
+      NULLIF(p_payload->>'minNoticeMinutes', '')::integer,
+      v_prev_notice,
+      120
+    );
+  ELSE
+    v_notice := COALESCE(v_prev_notice, 120);
+  END IF;
   IF v_notice < 0 OR v_notice > 10080 THEN
     RAISE EXCEPTION 'min_notice_invalid';
   END IF;
 
+  -- Rule A: refuse per_day when ANY single local day fits more than one start.
   IF v_scope = 'per_day' THEN
-    SELECT (MAX(d.end_at) - MIN(d.start_at))
-      INTO v_open_window
-      FROM public.event_dates d
-     WHERE d.event_id = p_event_id;
-    IF v_open_window IS NOT NULL THEN
-      v_spacing_iv := make_interval(mins => v_spacing);
-      IF v_open_window > v_spacing_iv THEN
-        RAISE EXCEPTION 'spots_scope_requires_start_time';
-      END IF;
+    v_spacing_iv := make_interval(mins => v_spacing);
+    SELECT EXISTS (
+      SELECT 1
+        FROM public.event_dates d
+       WHERE d.event_id = p_event_id
+         AND (d.end_at - d.start_at) > v_spacing_iv
+    ) INTO v_has_wide;
+    IF COALESCE(v_has_wide, false) THEN
+      RAISE EXCEPTION 'spots_scope_requires_start_time';
     END IF;
   END IF;
 
@@ -118,11 +150,16 @@ BEGIN
     FOR v_stop IN SELECT * FROM jsonb_array_elements(p_payload->'stops')
     LOOP
       v_order := COALESCE((v_stop->>'stop_order')::integer, (v_stop->>'stopOrder')::integer);
-      v_offset := COALESCE(
-        NULLIF(v_stop->>'start_offset_minutes', '')::integer,
-        NULLIF(v_stop->>'startOffsetMinutes', '')::integer
-      );
-      IF v_order IS NOT NULL THEN
+      IF v_order IS NULL THEN
+        CONTINUE;
+      END IF;
+      -- Only rewrite offsets when the stop object carries the key (title-only
+      -- updates that include a stop snapshot without offsets must not NULL them).
+      IF (v_stop ? 'start_offset_minutes') OR (v_stop ? 'startOffsetMinutes') THEN
+        v_offset := COALESCE(
+          NULLIF(v_stop->>'start_offset_minutes', '')::integer,
+          NULLIF(v_stop->>'startOffsetMinutes', '')::integer
+        );
         UPDATE public.experience_stops
            SET start_offset_minutes = v_offset
          WHERE event_id = p_event_id AND stop_order = v_order;
@@ -199,9 +236,24 @@ BEGIN
   -- still need a named date when a start IS supplied.
   v_required := v_flag_on AND v_open_daily;
 
+  v_min_notice := COALESCE(v_event.min_notice_minutes, 120);
+
   IF p_booked_start_at IS NULL THEN
     IF v_required THEN
       RAISE EXCEPTION 'booked_start_required';
+    END IF;
+    -- Fixed-slot bookings omit bookedStartAt; still enforce min notice against
+    -- the selected occurrence's start (rule H).
+    IF p_event_date_id IS NOT NULL THEN
+      SELECT ed.id, ed.event_id, ed.start_at, ed.end_at
+        INTO v_date
+        FROM public.event_dates ed
+       WHERE ed.id = p_event_date_id;
+      IF FOUND AND v_date.event_id IS NOT DISTINCT FROM p_event_id THEN
+        IF v_date.start_at < now() + make_interval(mins => v_min_notice) THEN
+          RAISE EXCEPTION 'booked_start_in_past';
+        END IF;
+      END IF;
     END IF;
     RETURN;
   END IF;
@@ -219,7 +271,6 @@ BEGIN
     RAISE EXCEPTION 'booked_start_invalid';
   END IF;
 
-  v_min_notice := COALESCE(v_event.min_notice_minutes, 120);
   IF p_booked_start_at < now() + make_interval(mins => v_min_notice) THEN
     -- Past starts and starts inside the notice window both refuse as in_past
     -- (guest copy already maps this; rule H).
@@ -290,7 +341,7 @@ BEGIN
         THEN v_sole END,
     'perOccurrenceCapacity',
       (v_type = 'event' AND v_recurring AND NOT v_multi)
-      OR (v_type = 'experience' AND v_scope IN ('per_day', 'per_start')),
+      OR (v_type = 'experience' AND v_scope = 'per_day'),
     'perStartCapacity',
       (v_type = 'experience' AND v_scope = 'per_start'),
     'capacityScope',
@@ -300,9 +351,10 @@ BEGIN
 END;
 $fn$;
 
-REVOKE ALL ON FUNCTION public.issue_3313_event_day_choice(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.issue_3313_event_day_choice(uuid)
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3313_event_day_choice(uuid)
-  TO anon, authenticated, service_role;
+  TO authenticated, service_role;
 
 
 CREATE OR REPLACE FUNCTION public.pg_experience_slot_availability(
@@ -329,15 +381,22 @@ DECLARE
   v_taken integer;
   v_remaining integer;
 BEGIN
-  SELECT * INTO v_event FROM public.events
-   WHERE id = p_event_id AND deleted_at IS NULL AND event_type = 'experience';
+  SELECT e.* INTO v_event
+    FROM public.events e
+    JOIN public.brands b ON b.id = e.brand_id AND b.deleted_at IS NULL
+   WHERE e.id = p_event_id
+     AND e.deleted_at IS NULL
+     AND e.event_type = 'experience'
+     AND e.visibility = 'public'
+     AND e.status IN ('live', 'scheduled');
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'experience_not_found';
+    -- Same closed answer for missing / private / draft (no inventory leak).
+    RETURN jsonb_build_object('slots', '[]'::jsonb, 'capacityScope', 'total');
   END IF;
   SELECT * INTO v_date FROM public.event_dates
    WHERE id = p_event_date_id AND event_id = p_event_id;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'event_date_not_found';
+    RETURN jsonb_build_object('slots', '[]'::jsonb, 'capacityScope', COALESCE(v_event.capacity_scope, 'total'));
   END IF;
   v_scope := COALESCE(v_event.capacity_scope, 'total');
   v_spacing := COALESCE(v_event.booking_spacing_minutes, 30);
@@ -369,14 +428,22 @@ BEGIN
         v_taken := public.issue_3313_ticket_type_occurrence_taken(v_tt.id, p_event_date_id);
         v_remaining := GREATEST(0, v_cap - v_taken);
       ELSE
+        -- total scope: sold_count + unexpired checkout holds (same family as create-session).
         v_remaining := CASE
-          WHEN v_cap IS NULL THEN NULL
-          ELSE GREATEST(0, v_cap - COALESCE((
-            SELECT COUNT(*)::integer FROM public.orders o
-            JOIN public.order_line_items oli ON oli.order_id = o.id
-            WHERE oli.ticket_type_id = v_tt.id
-              AND o.payment_status IN ('paid','partially_paid','partial_refund')
-          ), 0))
+          WHEN v_cap IS NULL OR COALESCE(v_tt.is_unlimited, false) THEN NULL
+          ELSE GREATEST(
+            0,
+            v_cap
+              - COALESCE(v_tt.sold_count, 0)
+              - COALESCE((
+                  SELECT SUM(i.quantity)::integer
+                    FROM public.ticket_checkout_session_items i
+                    JOIN public.ticket_checkout_sessions s ON s.id = i.checkout_session_id
+                   WHERE i.ticket_type_id = v_tt.id
+                     AND s.status = 'pending'
+                     AND s.expires_at > now()
+                ), 0)
+          )
         END;
       END IF;
       v_slots := v_slots || jsonb_build_array(jsonb_build_object(
@@ -1857,13 +1924,37 @@ BEGIN
 
   -- ---------- 5. REFUND-GATE (only when sold > 0, except capacity) ----------
 
-  -- 5a. Capacity can't drop below sold (applies whenever capacity present).
-  IF (p_payload ? 'capacity') AND v_capacity IS NOT NULL AND v_capacity < v_total_sold THEN
-    RETURN jsonb_build_object(
-      'ok', false,
-      'reason', 'capacity_below_sold',
-      'affected_order_count', v_total_sold
-    );
+  -- 5a. Capacity floor: lifetime for total; busiest day for per_day/per_start.
+  IF (p_payload ? 'capacity') AND v_capacity IS NOT NULL THEN
+    IF COALESCE(
+         NULLIF(p_payload->>'capacity_scope', ''),
+         NULLIF(p_payload->>'capacityScope', ''),
+         (SELECT capacity_scope FROM public.events WHERE id = p_event_id),
+         'total'
+       ) = 'total' THEN
+      IF v_capacity < v_total_sold THEN
+        RETURN jsonb_build_object(
+          'ok', false,
+          'reason', 'capacity_below_sold',
+          'affected_order_count', v_total_sold
+        );
+      END IF;
+    ELSE
+      IF v_capacity < COALESCE((
+        SELECT MAX(public.issue_3313_ticket_type_occurrence_taken(tt.id, d.id))
+          FROM public.ticket_types tt
+          CROSS JOIN public.event_dates d
+         WHERE tt.event_id = p_event_id
+           AND tt.deleted_at IS NULL
+           AND d.event_id = p_event_id
+      ), 0) THEN
+        RETURN jsonb_build_object(
+          'ok', false,
+          'reason', 'capacity_below_sold',
+          'affected_order_count', v_total_sold
+        );
+      END IF;
+    END IF;
   END IF;
 
   IF v_total_sold > 0 THEN
@@ -2531,10 +2622,12 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object(
-    'capacity_scope', (SELECT COALESCE(capacity_scope,'total') FROM public.events WHERE id = p_event_id),
-      'booking_spacing_minutes', (SELECT COALESCE(booking_spacing_minutes,30) FROM public.events WHERE id = p_event_id),
-      'min_notice_minutes', (SELECT COALESCE(min_notice_minutes,120) FROM public.events WHERE id = p_event_id),
-      'title',btrim(p_args->>'title'),
+    'capacity_scope', COALESCE(NULLIF(p_args->>'capacity_scope',''), 'total'),
+    'booking_spacing_minutes', COALESCE(
+      NULLIF(p_args->>'booking_spacing_minutes','')::integer, 30),
+    'min_notice_minutes', COALESCE(
+      NULLIF(p_args->>'min_notice_minutes','')::integer, 120),
+    'title',btrim(p_args->>'title'),
     'description',btrim(p_args->>'narrative'),
     'experience_intents',v_intents,
     'stops',v_stops,
@@ -2598,7 +2691,9 @@ BEGIN
       'stop_order',s.stop_order,'place_id',s.place_id,'place_name',s.place_name,
       'address',s.address,'city',s.city,'region',s.region,'country_code',s.country_code,
       'lat',s.lat,'lng',s.lng,'coordinate_precision',s.coordinate_precision,
-      'image_urls',s.image_urls,'start_time',s.start_time,'price_cents',s.price_cents,
+      'image_urls',s.image_urls,'start_time',s.start_time,
+      'start_offset_minutes',s.start_offset_minutes,
+      'price_cents',s.price_cents,
       'ai_description',s.ai_description
     ) ORDER BY s.stop_order),'[]'::jsonb)
     INTO v_stops FROM public.experience_stops s WHERE s.event_id=p_event_id;
@@ -2621,10 +2716,10 @@ BEGIN
    WHERE tt.event_id = p_event_id AND tt.deleted_at IS NULL;
   v_when := COALESCE(v_event.theme->'experience_meta'->'when_draft','{}'::jsonb);
   RETURN jsonb_build_object(
-    'capacity_scope', (SELECT COALESCE(capacity_scope,'total') FROM public.events WHERE id = p_event_id),
-      'booking_spacing_minutes', (SELECT COALESCE(booking_spacing_minutes,30) FROM public.events WHERE id = p_event_id),
-      'min_notice_minutes', (SELECT COALESCE(min_notice_minutes,120) FROM public.events WHERE id = p_event_id),
-      'title',v_event.title,'description',v_event.description,
+    'capacity_scope', COALESCE(v_event.capacity_scope, 'total'),
+    'booking_spacing_minutes', COALESCE(v_event.booking_spacing_minutes, 30),
+    'min_notice_minutes', COALESCE(v_event.min_notice_minutes, 120),
+    'title',v_event.title,'description',v_event.description,
     'experience_intents',COALESCE(to_jsonb(v_event.experience_intents),'[]'::jsonb),
     'currency',v_event.currency,'location_mode',v_event.location_mode,
     'pricing_mode',v_event.pricing_mode,'whole_price_cents',v_event.whole_price_cents,
@@ -2885,6 +2980,7 @@ BEGIN
   END IF;
 
   SELECT e.id, e.brand_id, e.visibility, e.status, e.deleted_at, e.event_type,
+         e.capacity_scope,
          s.stripe_account_id, s.charges_enabled,
          b.payment_provider
     INTO v_event
@@ -2985,6 +3081,12 @@ BEGIN
     v_day_count := 1;
   END IF;
   IF v_day_count = 0 AND COALESCE((v_day_choice ->> 'requiresChoice')::boolean, false) THEN
+    RAISE EXCEPTION 'event_date_choice_required';
+  END IF;
+  -- issue #3281 R3 — scoped experiences always need a named occurrence.
+  IF v_event.event_type = 'experience'
+     AND COALESCE(v_event.capacity_scope, 'total') IN ('per_day', 'per_start')
+     AND v_day_count = 0 THEN
     RAISE EXCEPTION 'event_date_choice_required';
   END IF;
 
@@ -3150,6 +3252,10 @@ BEGIN
             END IF;
           END LOOP;
         END IF;
+      ELSIF v_event.event_type = 'experience'
+            AND COALESCE(v_event.capacity_scope, 'total') IN ('per_day', 'per_start') THEN
+        -- Scoped counters are enforced in the R3 block below; skip lifetime.
+        NULL;
       ELSE
       -- (the shared check, verbatim from 20270609002879)
       SELECT tt2.sold_count
@@ -3905,6 +4011,8 @@ AS $function$
       CASE
         WHEN COALESCE(tt.is_unlimited, false) THEN NULL
         WHEN tt.quantity_total IS NULL THEN NULL
+        -- Scoped inventory lives on day/slot chips; never lifetime-disable Reserve.
+        WHEN ex.capacity_scope IN ('per_day', 'per_start') THEN NULL
         ELSE GREATEST(
           0,
           tt.quantity_total - COALESCE((
@@ -4023,14 +4131,19 @@ AS $function$
           'quantityTotal', o.quantity_total,
           'isUnlimited', COALESCE(o.is_unlimited, false),
           'isFree', COALESCE(o.is_free, false) OR COALESCE(o.price_cents, 0) = 0,
-          'ticketsRemaining', GREATEST(
-            COALESCE(o.quantity_total, 0) - (
-              SELECT COUNT(*)::integer FROM public.tickets t
-               WHERE t.ticket_type_id = o.id
-                 AND t.status IN ('valid','used','transferred')
-            ),
-            0
-          ),
+          'ticketsRemaining', CASE
+            WHEN COALESCE(o.is_unlimited, false) THEN NULL
+            WHEN o.quantity_total IS NULL THEN NULL
+            WHEN ex.capacity_scope IN ('per_day', 'per_start') THEN NULL
+            ELSE GREATEST(
+              0,
+              o.quantity_total - (
+                SELECT COUNT(*)::integer FROM public.tickets t
+                 WHERE t.ticket_type_id = o.id
+                   AND t.status IN ('valid','used','transferred')
+              )
+            )
+          END,
           'availableOnline', COALESCE(o.available_online, false),
           'priceBasis', COALESCE(o.price_basis, 'person'),
           'blockMinutes', o.block_minutes,
@@ -4057,13 +4170,31 @@ AS $function$
           -- total keeps the event-level remaining (legacy).
           'ticketsRemaining', CASE
             WHEN (SELECT tk.is_unlimited FROM tk) THEN NULL
-            WHEN ex.capacity_scope IN ('per_day', 'per_start')
-                 AND (SELECT tk.quantity_total FROM tk) IS NOT NULL
-            THEN GREATEST(
+            WHEN (SELECT tk.quantity_total FROM tk) IS NULL THEN NULL
+            WHEN ex.capacity_scope = 'per_day' THEN GREATEST(
               0,
               (SELECT tk.quantity_total FROM tk)
                 - public.issue_3313_ticket_type_occurrence_taken(
                     (SELECT tk.id FROM tk), d.id)
+            )
+            WHEN ex.capacity_scope = 'per_start' THEN GREATEST(
+              0,
+              (SELECT tk.quantity_total FROM tk)
+                - COALESCE((
+                    SELECT MIN(public.issue_3281_ticket_type_slot_taken(
+                      (SELECT tk.id FROM tk),
+                      d.id,
+                      gs,
+                      gs + make_interval(mins => COALESCE(ex.booking_spacing_minutes, 30)),
+                      NULL
+                    ))
+                    FROM generate_series(
+                      d.start_at,
+                      d.end_at - make_interval(mins => COALESCE(ex.booking_spacing_minutes, 30)),
+                      make_interval(mins => COALESCE(ex.booking_spacing_minutes, 30))
+                    ) AS gs
+                    WHERE gs >= now() + make_interval(mins => COALESCE(ex.min_notice_minutes, 120))
+                  ), 0)
             )
             ELSE (SELECT tk.remaining FROM tk)
           END

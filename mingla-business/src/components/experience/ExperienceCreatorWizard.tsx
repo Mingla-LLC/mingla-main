@@ -137,10 +137,10 @@ import {
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
-import {
-  isOpenDailyExperience,
-  type ThemeInput,
-} from "@mingla/offering-rendering";
+import type { ThemeInput } from "@mingla/offering-rendering";
+// Deep import — avoid the package barrel (pulls expo-video via EventCoverMedia
+// and breaks Host web render suites that load this wizard).
+import { isOpenDailyExperience } from "@mingla/offering-rendering/experienceOpenDaily";
 // #3372 — the price-field symbol reads "₦", not "NGN " (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {

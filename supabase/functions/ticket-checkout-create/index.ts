@@ -1261,6 +1261,13 @@ export const createTicketCheckoutCreateHandler = (
       orderedEventDateIds.push(eventDateId);
       anchorEventDateId = eventDateId;
     }
+    // issue #3281 R3 — fixed-slot checkouts send eventDateId without
+    // bookedStartAt; scoped capacity counters still need the day set. Do not
+    // name event_type here (issue #3313 pin: no experience branch).
+    if (orderedEventDateIds.length === 0 && eventDateId !== null) {
+      orderedEventDateIds.push(eventDateId);
+      anchorEventDateId = eventDateId;
+    }
 
     // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake gate.
     // I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT (DRAFT) — for each tier

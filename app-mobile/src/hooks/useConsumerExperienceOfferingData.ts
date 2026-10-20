@@ -133,6 +133,7 @@ export function buildExperienceOfferingDataFromDetail(
             capacityScope: detail.capacityScope,
             occurrences: occ.map((o) => ({
               startAt: o.startAt,
+              endAt: o.endAt,
               remaining: o.remaining,
             })),
             ticketRemaining: t.ticketsRemaining,

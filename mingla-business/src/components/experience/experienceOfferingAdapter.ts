@@ -15,11 +15,12 @@
  */
 
 import {
-  isOpenDailyExperience,
   normalizeCityCountry,
   type ExperienceOfferingBrand,
   type ExperienceOfferingData,
 } from "@mingla/offering-rendering";
+// Deep import — avoid the package barrel (pulls expo-video via EventCoverMedia).
+import { isOpenDailyExperience } from "@mingla/offering-rendering/experienceOpenDaily";
 // issue #3281 R3 — DEEP specifier: pure, so a partial barrel mock cannot blank it.
 import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
 
@@ -73,6 +74,7 @@ function buildSeatsLabel(exp: PublicExperience): string | null {
     capacityScope: exp.capacityScope ?? "total",
     occurrences: exp.dates.map((d) => ({
       startAt: d.startAt,
+      endAt: d.endAt,
       remaining: d.ticketsRemaining,
     })),
     ticketRemaining: t.ticketsRemaining,

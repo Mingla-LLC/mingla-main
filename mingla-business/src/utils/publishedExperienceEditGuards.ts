@@ -156,9 +156,14 @@ export const validateLiveExperienceFieldUpdate = (
   }
 
   // ---------- Capacity check ----------
-  // The single ticket's capacity can't drop below the confirmed sold count.
+  // Lifetime floor only for total scope. per_day / per_start use the busiest
+  // day/slot on the server (issue #3281 R3); client cannot see those counters.
   if (patch.capacity !== undefined && patch.capacity !== null) {
-    if (patch.capacity < totalConfirmedOrders) {
+    const scope =
+      (patch as { capacity_scope?: string }).capacity_scope ??
+      exp.capacityScope ??
+      "total";
+    if (scope === "total" && patch.capacity < totalConfirmedOrders) {
       return {
         ok: false,
         reason: "capacity_below_sold",

@@ -72,6 +72,27 @@ BEGIN
     v_raised := position('booking_spacing_invalid' in SQLERRM) > 0;
   END;
   PERFORM pg_temp.i3281r3_assert(v_raised, 'spacing 45 refused');
+
+  -- Multi-day, each day one-hour wide: per_day MUST succeed (rule A is per day).
+  DELETE FROM public.event_dates WHERE event_id = v_event;
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+    VALUES
+      (v_event, v_start, v_start + interval '1 hour', 'Africa/Lagos', true),
+      (v_event, v_start + interval '1 day', v_start + interval '1 day 1 hour', 'Africa/Lagos', false);
+  v_raised := false;
+  BEGIN
+    PERFORM public.issue_3281_apply_experience_r3_settings(
+      v_event,
+      jsonb_build_object(
+        'capacity_scope', 'per_day',
+        'booking_spacing_minutes', 120,
+        'min_notice_minutes', 120
+      )
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_raised := true;
+  END;
+  PERFORM pg_temp.i3281r3_assert(NOT v_raised, 'multi-day one-start-per-day per_day allowed');
 END
 $body$;
 

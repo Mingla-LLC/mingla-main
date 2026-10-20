@@ -70,6 +70,27 @@ Deno.test("#3281 R3: seats label prefers next open day for per_day / per_start",
     experienceSeatsLabel({ ...base, capacityScope: "per_day", isUnlimited: true }),
     null,
   );
+  // Open-hours: a day that opened at 10:00 still counts at noon when endAt is set.
+  assertEquals(
+    experienceSeatsLabel({
+      ...base,
+      capacityScope: "per_day",
+      nowMs: Date.parse("2027-01-02T12:00:00.000Z"),
+      occurrences: [
+        {
+          startAt: "2027-01-02T10:00:00.000Z",
+          endAt: "2027-01-02T18:00:00.000Z",
+          remaining: 4,
+        },
+        {
+          startAt: "2027-01-03T10:00:00.000Z",
+          endAt: "2027-01-03T18:00:00.000Z",
+          remaining: 0,
+        },
+      ],
+    }),
+    "4 spots left · 10 max",
+  );
 });
 
 Deno.test("#3281 R3: spacing grid + notice floor", () => {

@@ -49,13 +49,14 @@ import {
 import {
   boldFontFamily,
   createThemePalette,
-  isOpenDailyExperience,
   resolveOfferingSurface,
   resolveTheme,
   type CtaState,
   type SocialProofSummary,
 } from "@mingla/offering-rendering";
 import { useResponsiveLayout } from "@mingla/offering-rendering";
+// Deep import — avoid the package barrel (pulls expo-video via EventCoverMedia).
+import { isOpenDailyExperience } from "@mingla/offering-rendering/experienceOpenDaily";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { shareCanonicalPublicPageOnWeb } from "../../../src/utils/shareCanonicalPublicPageOnWeb";
@@ -812,6 +813,8 @@ const ResolvedExperiencePage: React.FC<{
         currency={ticket?.currency ?? null}
         spacingMinutes={experience.spacingMinutes ?? 30}
         minNoticeMinutes={experience.minNoticeMinutes ?? 120}
+        eventId={experience.id}
+        capacityScope={experience.capacityScope ?? "total"}
         options={
           Array.isArray(experience.options) && experience.options.length > 0
             ? experience.options.map((opt) => ({

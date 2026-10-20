@@ -44,6 +44,8 @@ export const experienceStopOffsetLabel = (
 
 export interface ExperienceSeatsOccurrence {
   startAt: string;
+  /** When set, a day stays eligible until the window ends (open-hours). */
+  endAt?: string | null;
   remaining: number | null;
 }
 
@@ -83,10 +85,17 @@ export const experienceSeatsLabel = (
     return seatsText(input.ticketRemaining, input.quantityTotal);
   }
   const nowMs = input.nowMs ?? Date.now();
+  // Prefer endAt so a day that opened this morning but still has afternoon
+  // starts remains eligible (open-hours). Fall back to startAt for fixed slots.
   const upcoming = input.occurrences
-    .map((o) => ({ o, ms: Date.parse(o.startAt) }))
+    .map((o) => {
+      const endMs = o.endAt != null ? Date.parse(o.endAt) : Number.NaN;
+      const startMs = Date.parse(o.startAt);
+      const ms = Number.isFinite(endMs) ? endMs : startMs;
+      return { o, ms, startMs };
+    })
     .filter((x) => Number.isFinite(x.ms) && x.ms >= nowMs)
-    .sort((a, b) => a.ms - b.ms)
+    .sort((a, b) => a.startMs - b.startMs)
     .map((x) => x.o);
   if (upcoming.length === 0) {
     return seatsText(input.ticketRemaining, input.quantityTotal);

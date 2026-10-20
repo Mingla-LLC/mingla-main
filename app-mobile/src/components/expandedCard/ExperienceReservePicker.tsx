@@ -49,11 +49,32 @@ import {
   priceDecimals,
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
+import { experienceRemainingChipText } from "@mingla/offering-rendering/experienceR3";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
+import { supabase } from "../../services/supabase";
 import type { ExperienceOccurrence } from "./ExperienceOccurrencePicker";
 import { ExperienceDayStep } from "./ExperienceDayStep";
+
+function wallMinuteInZone(iso: string, timeZone: string): number | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "numeric",
+      hourCycle: "h23",
+      timeZone: timeZone || "UTC",
+    }).formatToParts(d);
+    const h = Number(parts.find((p) => p.type === "hour")?.value);
+    const m = Number(parts.find((p) => p.type === "minute")?.value);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  } catch {
+    return null;
+  }
+}
 
 export type ExperienceReserveMode = "slots" | "open-daily";
 
@@ -92,6 +113,10 @@ export interface ExperienceReservePickerProps {
   spacingMinutes?: number | null;
   /** issue #3281 R3 — earliest start = now + notice. Default 120. */
   minNoticeMinutes?: number | null;
+  /** issue #3281 R3 — experience id for slot-availability fetch. */
+  eventId?: string | null;
+  /** issue #3281 R3 — capacity scope (drives slot remaining fetch). */
+  capacityScope?: "total" | "per_day" | "per_start" | null;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
 }
@@ -189,6 +214,8 @@ export const ExperienceReservePicker: React.FC<
   options,
   spacingMinutes: propsSpacingMinutes = null,
   minNoticeMinutes: propsMinNoticeMinutes = null,
+  eventId = null,
+  capacityScope = null,
   onCancel,
   onConfirm,
 }) => {
@@ -254,6 +281,71 @@ export const ExperienceReservePicker: React.FC<
       Date.now() + noticeMinutes * 60_000,
     );
   }, [mode, selectedDate, timezone, spacingMinutes, noticeMinutes]);
+
+  // issue #3281 R3 — per-start (and per-day) remaining from slot RPC.
+  const [slotRemainingByMinute, setSlotRemainingByMinute] = useState<
+    Map<number, number | null>
+  >(() => new Map());
+  useEffect(() => {
+    if (
+      !visible ||
+      mode !== "open-daily" ||
+      step !== "time" ||
+      selectedDate === null ||
+      typeof eventId !== "string" ||
+      eventId.length === 0 ||
+      (capacityScope !== "per_start" && capacityScope !== "per_day")
+    ) {
+      setSlotRemainingByMinute(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.rpc(
+        "pg_experience_slot_availability",
+        {
+          p_event_id: eventId,
+          p_event_date_id: selectedDate.eventDateId,
+          p_ticket_type_id: selectedOption?.ticketTypeId ?? null,
+        },
+      );
+      if (cancelled || error || data == null || typeof data !== "object") {
+        if (!cancelled) setSlotRemainingByMinute(new Map());
+        return;
+      }
+      const slots = (data as { slots?: unknown }).slots;
+      const next = new Map<number, number | null>();
+      if (Array.isArray(slots)) {
+        for (const raw of slots) {
+          if (raw == null || typeof raw !== "object") continue;
+          const startAt = (raw as { startAt?: unknown }).startAt;
+          const remaining = (raw as { remaining?: unknown }).remaining;
+          if (typeof startAt !== "string") continue;
+          const minute = wallMinuteInZone(startAt, timezone);
+          if (minute === null) continue;
+          next.set(
+            minute,
+            typeof remaining === "number" && Number.isFinite(remaining)
+              ? remaining
+              : null,
+          );
+        }
+      }
+      if (!cancelled) setSlotRemainingByMinute(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    visible,
+    mode,
+    step,
+    selectedDate,
+    eventId,
+    capacityScope,
+    selectedOption?.ticketTypeId,
+    timezone,
+  ]);
 
   const isBlockOption = selectedOption?.priceBasis === "block";
   const isGroupOption = selectedOption?.priceBasis === "group";
@@ -659,17 +751,34 @@ export const ExperienceReservePicker: React.FC<
           <View style={styles.timeWrap}>
             {timeChoices.map((min) => {
               const selected = selectedMinute === min;
+              const slotRem = slotRemainingByMinute.get(min);
+              const full =
+                typeof slotRem === "number" && Number.isFinite(slotRem)
+                  ? slotRem <= 0
+                  : false;
+              const chip = experienceRemainingChipText(
+                typeof slotRem === "number" ? slotRem : null,
+              );
               return (
                 <Pressable
                   key={min}
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedMinute(min);
-                    if (!isBlockOption) setStep("party");
-                  }}
+                  onPress={
+                    full
+                      ? undefined
+                      : () => {
+                          void Haptics.impactAsync(
+                            Haptics.ImpactFeedbackStyle.Light,
+                          );
+                          setSelectedMinute(min);
+                          if (!isBlockOption) setStep("party");
+                        }
+                  }
+                  disabled={full}
                   accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  accessibilityLabel={formatMinute(min)}
+                  accessibilityState={{ checked: selected, disabled: full }}
+                  accessibilityLabel={`${formatMinute(min)}${
+                    chip !== null ? `, ${chip}` : ""
+                  }`}
                   style={[
                     styles.timeChip,
                     {
@@ -682,6 +791,7 @@ export const ExperienceReservePicker: React.FC<
                           backgroundColor: palette.accentWash,
                         }
                       : null,
+                    full ? { opacity: 0.45 } : null,
                   ]}
                 >
                   <Text
@@ -694,6 +804,7 @@ export const ExperienceReservePicker: React.FC<
                     ]}
                   >
                     {formatMinute(min)}
+                    {chip !== null ? ` · ${chip}` : ""}
                   </Text>
                 </Pressable>
               );

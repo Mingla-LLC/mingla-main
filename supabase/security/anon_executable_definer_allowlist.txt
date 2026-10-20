@@ -37,6 +37,10 @@ pg_public_event_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_event_tier_allin(p_event_id uuid)
 pg_public_experience_by_slug(p_brand_slug text, p_experience_slug text)
 pg_public_experiences_by_brand(p_brand_slug text)
+# #3281 R3: buyer time-step remaining for public live experiences only. Returns
+# empty slots (not an error) for private/draft/non-experience ids; exposes only
+# startAt/remaining/full — no buyer identity, holds, or authoring fields.
+pg_experience_slot_availability(p_event_id uuid, p_event_date_id uuid, p_ticket_type_id uuid)
 pg_public_rsvp_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_social_proof(p_event_id uuid)
 # #2101: the ONE bounded public eligibility advisory. Returns exactly
