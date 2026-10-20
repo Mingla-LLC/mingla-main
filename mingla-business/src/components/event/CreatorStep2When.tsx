@@ -89,6 +89,13 @@ import {
   whenStepTimezoneReference,
 } from "../../utils/timezones";
 
+import {
+  EXPERIENCE_MIN_NOTICE_OPTIONS,
+  EXPERIENCE_SPACING_OPTIONS,
+  experienceMinNoticeLabel,
+  experienceSpacingLabel,
+} from "../../utils/experienceBookingSettings";
+
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
@@ -202,6 +209,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   // ORCH-1150 — RSVP wizard locks single-date: hide the mode tabs + render only
   // the single-date body. Default false; event wizard is byte-identical.
   lockSingleDate = false,
+  // issue #3281 Round 3 — experience-only booking spacing + minimum notice.
+  experienceBooking,
 }) => {
   const noun = offeringNoun === "experience" ? "experience" : "event";
   const opensLabel = offeringNoun === "experience" ? "Opens" : "Doors open";
@@ -1287,6 +1296,80 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         </View>
       ) : null}
 
+      {/* issue #3281 Round 3 — experience booking spacing + minimum notice. */}
+      {experienceBooking !== undefined ? (
+        <>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Start times every</Text>
+            <View
+              style={styles.segmentRowWrap}
+              accessibilityRole="radiogroup"
+              testID="creator-when-spacing"
+            >
+              {EXPERIENCE_SPACING_OPTIONS.map((m) => {
+                const active = experienceBooking.spacingMinutes === m;
+                return (
+                  <Pressable
+                    key={m}
+                    onPress={() => experienceBooking.onChangeSpacing(m)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    accessibilityLabel={`Start times every ${experienceSpacingLabel(m)}`}
+                    style={[styles.segment, active && styles.segmentActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentLabel,
+                        active && styles.segmentLabelActive,
+                      ]}
+                    >
+                      {experienceSpacingLabel(m)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.helperHint}>
+              Guests pick a start time on this grid inside your opening hours.
+            </Text>
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>Minimum notice</Text>
+            <View
+              style={styles.segmentRowWrap}
+              accessibilityRole="radiogroup"
+              testID="creator-when-min-notice"
+            >
+              {EXPERIENCE_MIN_NOTICE_OPTIONS.map((m) => {
+                const active = experienceBooking.minNoticeMinutes === m;
+                return (
+                  <Pressable
+                    key={m}
+                    onPress={() => experienceBooking.onChangeMinNotice(m)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: active }}
+                    accessibilityLabel={`Minimum notice ${experienceMinNoticeLabel(m)}`}
+                    style={[styles.segment, active && styles.segmentActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentLabel,
+                        active && styles.segmentLabelActive,
+                      ]}
+                    >
+                      {experienceMinNoticeLabel(m)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.helperHint}>
+              How far ahead of a start time guests must book.
+            </Text>
+          </View>
+        </>
+      ) : null}
+
       {/* Timezone (shared across all modes) */}
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Timezone</Text>
@@ -1933,6 +2016,11 @@ const styles = StyleSheet.create({
   // Segmented control --------------------------------------------------
   segmentRow: {
     flexDirection: "row",
+    gap: spacing.xs,
+  },
+  segmentRowWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.xs,
   },
   segment: {

@@ -91,6 +91,8 @@
 // (20271121003281 Round 2 checkout units, which this guard named, and its
 // 20271122003281 repair). Only lane counts move, by +2; no mutant or check changes.
 // The #1931 lane then gains five more exact skips found by a local replay; +5 more.
+// Round 3 spacing/spots adds one exact skip on each lane; count pins move with it.
+// [TEST-MOD-APPROVED #3281] count pins only; assertion logic unchanged.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -361,8 +363,8 @@ test("T-13 — a lane rewritten to the basename nested-quote form is still disco
   const lane = lanes.find((l) => l.workflow === LANE);
   assert.ok(lane, "the nested quote in `case \"$(basename \"$migration\")\" in` must not hide the lane");
   assert.equal(lane.subjectKind, "basename");
-  assert.equal(lane.globs.length, 24);
-  assert.equal(lane.skipped.length, 24, "subject-correct matching (R-4) must still resolve all ten files");
+  assert.equal(lane.globs.length, 25);
+  assert.equal(lane.skipped.length, 25, "subject-correct matching (R-4) must still resolve all ten files");
   assert.equal(lanes.length, 4, "the inventory must not collapse when a lane changes spelling");
   assert.deepEqual(checksIn(violations), [], "a semantics-preserving rewrite must stay green");
 });
@@ -488,7 +490,7 @@ test("T-16 — a `;;&` fall-through terminator does not hide a branch", (t) => {
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 24, "a `;;&` terminator must not drop the branch it terminates");
+  assert.equal(lane.globs.length, 25, "a `;;&` terminator must not drop the branch it terminates");
   assert.deepEqual(checksIn(violations), [], "a semantics-preserving terminator change must not flag");
 });
 
@@ -497,7 +499,7 @@ test("T-17 — the leading-paren branch form `(glob)` is still read", (t) => {
     editWorkflow: [LANE, (src) => src.replace("              *_issue_2160_*) continue ;;", "              (*_issue_2160_*) continue ;;")],
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
-  assert.equal(lanes.find((l) => l.workflow === LANE).globs.length, 24);
+  assert.equal(lanes.find((l) => l.workflow === LANE).globs.length, 25);
   assert.deepEqual(checksIn(violations), [], "`(pattern)` is the same branch, written the other legal way");
 });
 
@@ -508,7 +510,7 @@ test("T-18 — a braced `${f}` case subject still resolves to a full path (R-4)"
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
   assert.equal(lane.subjectKind, "path", "`${f}` is the same loop variable and must resolve, not fail closed to null");
-  assert.equal(lane.globs.length, 24);
+  assert.equal(lane.globs.length, 25);
   assert.deepEqual(checksIn(violations), [], "brace syntax must not fire C-2 on a clean repo");
 });
 
@@ -599,8 +601,8 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 25, "R-5 must read the two-line branch form");
-    assert.equal(lane.globs.length, 25, "and extract its glob");
+    assert.equal(lane.branchCount, 26, "R-5 must read the two-line branch form");
+    assert.equal(lane.globs.length, 26, "and extract its glob");
     assert.ok(
       lane.skipped.includes(REAL_UNSKIPPED),
       "reading the branch is not enough — the skip must actually take effect on the file it names",
@@ -622,7 +624,7 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 24, "R-5 is scoped to the two-line form; a three-line branch stays unread");
+    assert.equal(lane.branchCount, 25, "R-5 is scoped to the two-line form; a three-line branch stays unread");
     assert.equal(
       lane.skipped.includes(REAL_UNSKIPPED),
       false,
@@ -634,8 +636,8 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
       "and C-4(c) alone must catch it — C-4(b) cannot, because the other branches still yield globs",
     );
     const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
-    assert.equal(census.terminators, 25);
-    assert.equal(census.continues, 25);
+    assert.equal(census.terminators, 26);
+    assert.equal(census.continues, 26);
     assert.ok(
       census.terminators > lane.branchCount && census.continues > lane.branchCount,
       "the census must STRICTLY EXCEED the parser here, or C-4(c) would be a check that cannot fail",

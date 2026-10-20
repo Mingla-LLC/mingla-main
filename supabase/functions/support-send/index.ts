@@ -181,6 +181,8 @@ serve(async (req) => {
           senderUserId: user.id,
           senderIsStaff,
           senderDisplayName,
+          // #3988 — one reply alert per message and recipient.
+          messageId: inserted?.id ?? null,
         }),
       });
     } catch (pushErr) {

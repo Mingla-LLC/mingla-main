@@ -514,6 +514,22 @@ const updateExperience = writeTool(
     whole_price_cents: { type: "integer", minimum: 0 },
     is_free: { type: "boolean" },
     capacity: { type: "integer", minimum: 1, nullable: true },
+    // issue #3281 R3 — spots scope + start grid + notice.
+    capacity_scope: {
+      type: "string",
+      enum: ["total", "per_day", "per_start"],
+      description:
+        "How spots are counted. per_day is refused when the open window fits more than one start (spots_scope_requires_start_time).",
+    },
+    booking_spacing_minutes: {
+      type: "integer",
+      enum: [15, 30, 60, 120],
+    },
+    min_notice_minutes: {
+      type: "integer",
+      minimum: 0,
+      maximum: 10080,
+    },
     // issue #3281 R2 — sellable options (person | group | block).
     price_options: {
       type: "array",
@@ -566,7 +582,7 @@ const updateExperience = writeTool(
 
 const manageExperienceStops = writeTool(
   "manage_experience_stops",
-  "Atomically replace the ordered experience stops and canonical intents using persisted media references only. One stop is a whole experience (1–5); an empty list clears stops on a draft only.",
+  "Atomically replace the ordered experience stops and canonical intents using persisted media references only. One stop is a whole experience (1–5); an empty list clears stops on a draft only. For open-hours experiences, each stop may carry start_offset_minutes (minutes after the guest's booked start); clock start_time is for set-date experiences.",
   {
     event_id: UUID,
     expected_revision: { type: "string", format: "date-time" },
@@ -574,7 +590,11 @@ const manageExperienceStops = writeTool(
       type: "array",
       minItems: 0,
       maxItems: 5,
-      items: { type: "object" },
+      items: {
+        type: "object",
+        description:
+          "Stop fields include start_offset_minutes (open-hours) or start_time (set-date).",
+      },
     },
     experience_intents: {
       type: "array",
