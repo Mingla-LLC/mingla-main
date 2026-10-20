@@ -20,13 +20,18 @@
 --     dated thing that is not public yet, a giveaway and ads card for every
 --     event public early enough, a recap card after an event, an "ask for
 --     their first or next event" card, and one rolling card per repeating
---     host. They re-date when the event moves and close when it is
---     cancelled. They are made only while the owner has switched them on
+--     host, which follows its next unpublished date, closes when all 4
+--     kept dates are live or the dates stop repeating, and opens again
+--     when a date needs publishing. They re-date when the event moves and
+--     close when it is cancelled. They are made only while the owner has switched them on
 --     (ops_settings.auto_steps, off by default).
 --   * Brand auto-link: a brand made on Mingla after the owner switched brand
---     cards on is linked to the one host card that has its email or phone,
---     or gets a new host card; two or more matching cards make a card for a
---     person to pick. Off by default (ops_settings.brand_auto_cards). This is
+--     cards on is linked to the one host card that has exactly its email,
+--     full international phone number or handle, or gets a new host card
+--     that keeps its email or phone as the contact. A near match (a phone
+--     number that only ends the same) or two or more matches make a card
+--     for a person to pick; a match on a Lost card makes a card asking
+--     whether to reopen it, never a silent link. Off by default (ops_settings.brand_auto_cards). This is
 --     the one new writer of crm_records and crm_activity (ops_brand_autolink).
 --   * Engineering follow-through cards fire only for pull requests merged,
 --     commits pushed and issues gone Done (ops_github_items.done_since) at or
@@ -297,6 +302,8 @@ DECLARE
   v_res jsonb; v_want jsonb := '[]'::jsonb; w jsonb; v_owners text[]; v_mkt text; v_mkt_owners text[];
   v_start date; v_title text; v_due date; v_before jsonb; v_event uuid; v_next jsonb; v_first date; v_occ jsonb;
   v_hostnext jsonb := '{}'::jsonb; v_words text; v_past boolean; v_new_title text; v_rid uuid; v_rtitle text; v_ron date;
+  v_ins text; v_parked uuid;
+  c_series_parked constant text := 'All 4 coming dates are live. This card opens again when the next date needs publishing.';
 BEGIN
   -- The marketing owner, when one is set and still on the team.
   v_mkt := public.ops_setting('marketing_owner') #>> '{}';
@@ -375,19 +382,44 @@ BEGIN
     END;
   END LOOP;
 
-  -- 4. A repeating host's rolling card moves on as dates go live.
+  -- 4. A repeating host's rolling card follows its series on every run: the
+  -- next date to publish, its words and its due date (that date less 28
+  -- days) are worked out again. A due date is never moved into the past
+  -- unless it was already there, so a recompute never makes a card overdue
+  -- by itself. When all 4 kept dates are live the card closes and says why;
+  -- it opens again when a new unpublished date comes into the window. A
+  -- series that stops repeating, ends or is cancelled closes its card.
   FOR c IN SELECT w0.* FROM public.ops_work_cards w0
             WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND w0.auto_key LIKE 'series:%' ORDER BY w0.number LOOP
     BEGIN
-      SELECT z.* INTO x FROM public.ops_expected_events z WHERE z.id::text = split_part(c.auto_key, ':', 2) AND z.status = 'open';
-      CONTINUE WHEN NOT FOUND;
+      x := NULL;
+      SELECT z.* INTO x FROM public.ops_expected_events z WHERE z.id::text = split_part(c.auto_key, ':', 2);
+      IF x.id IS NULL OR x.status <> 'open' OR x.repeats = 'none' THEN
+        v_words := CASE WHEN x.id IS NULL OR x.status = 'cancelled' THEN 'Event cancelled.'
+                        WHEN x.status <> 'open' THEN 'The repeating dates have ended.'
+                        ELSE 'The dates no longer repeat, so this card is not needed.' END;
+        v_res := public.ops_auto_card_close(c.id, v_words,
+          jsonb_build_array(jsonb_build_object('text', CASE WHEN x.id IS NOT NULL AND x.status = 'open'
+            THEN format('%s now happens once, on %s.', left(x.title, 160), public.ops_day_long(x.expected_on))
+            ELSE 'The repeating dates this card kept live were stopped.' END)));
+        IF v_res->>'status' = 'closed' THEN v_closed := v_closed + 1; END IF;
+        CONTINUE;
+      END IF;
+      v_first := NULL;
       SELECT (o->>'on')::date INTO v_first FROM jsonb_array_elements(public.ops_expected_occurrences(x, v_today, 4)) o
        WHERE NOT (o->>'live')::boolean ORDER BY (o->>'on')::date LIMIT 1;
-      CONTINUE WHEN v_first IS NULL OR c.due_on IS NULL OR v_first - 28 <= c.due_on;
-      v_due := v_first - 28;
+      IF v_first IS NULL THEN
+        v_res := public.ops_auto_card_close(c.id, c_series_parked,
+          jsonb_build_array(jsonb_build_object('text', format('The next 4 dates of %s are public on Mingla.', left(x.title, 160)))));
+        IF v_res->>'status' = 'closed' THEN v_closed := v_closed + 1; END IF;
+        CONTINUE;
+      END IF;
+      v_due := GREATEST(v_first - 28, LEAST(COALESCE(c.due_on, v_today), v_today));
+      v_ins := format('Repeats every %s. Next date to publish: %s.', CASE WHEN x.repeats = 'week' THEN 'week' ELSE 'month' END,
+                      public.ops_day_long(v_first));
+      CONTINUE WHEN v_due IS NOT DISTINCT FROM c.due_on AND v_ins IS NOT DISTINCT FROM c.instructions;
       v_before := public.ops_card_snapshot(c.id);
-      UPDATE public.ops_work_cards w0 SET due_on = v_due,
-             instructions = format('Repeats every %s. Next date to publish: %s.', x.repeats, public.ops_day_long(v_first)),
+      UPDATE public.ops_work_cards w0 SET due_on = v_due, instructions = v_ins,
              revision = w0.revision + 1, updated_by = c_actor, updated_via = 'system', updated_at = now()
        WHERE w0.id = c.id RETURNING w0.* INTO n;
       v_words := format('Moved on: the next date to publish is %s.', public.ops_day_long(v_first));
@@ -397,6 +429,20 @@ BEGIN
         jsonb_build_object('from', c.due_on, 'to', v_due));
       v_redated := v_redated + 1;
     EXCEPTION WHEN others THEN RAISE WARNING 'ops_auto_steps: rolling card % stopped (% %)', c.number, SQLSTATE, SQLERRM;
+    END;
+  END LOOP;
+
+  -- A one-off promised date that now repeats: its go-live card closes, the
+  -- one rolling card covers the series (never two cards for one host's dates).
+  FOR c IN SELECT w0.* FROM public.ops_work_cards w0
+             JOIN public.ops_expected_events z ON w0.auto_key = 'golive:expected:' || z.id
+            WHERE w0.status <> 'done' AND w0.archived_at IS NULL AND z.status = 'open' AND z.repeats <> 'none'
+            ORDER BY w0.number LOOP
+    BEGIN
+      v_res := public.ops_auto_card_close(c.id, 'The dates now repeat. One rolling card keeps them live.',
+        jsonb_build_array(jsonb_build_object('text', 'The host''s dates repeat now, so the rolling card for the series covers them.')));
+      IF v_res->>'status' = 'closed' THEN v_closed := v_closed + 1; END IF;
+    EXCEPTION WHEN others THEN RAISE WARNING 'ops_auto_steps: closing card % stopped (% %)', c.number, SQLSTATE, SQLERRM;
     END;
   END LOOP;
 
@@ -475,11 +521,43 @@ BEGIN
       SELECT (o->>'on')::date INTO v_first FROM jsonb_array_elements(public.ops_expected_occurrences(x, v_today, 4)) o
        WHERE NOT (o->>'live')::boolean ORDER BY (o->>'on')::date LIMIT 1;
       CONTINUE WHEN v_first IS NULL OR v_first - 28 > v_today + 7;
+      v_ins := format('Repeats every %s. Next date to publish: %s.', CASE WHEN x.repeats = 'week' THEN 'week' ELSE 'month' END,
+                      public.ops_day_long(v_first));
+      -- A card closed because every kept date was live opens again (same
+      -- card, same history) once a date needs publishing.
+      v_parked := NULL;
+      IF NOT EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.auto_key = 'series:' || x.id AND k.status <> 'done' AND k.archived_at IS NULL) THEN
+        SELECT k.id INTO v_parked FROM public.ops_work_cards k
+         WHERE k.auto_key = 'series:' || x.id AND k.status = 'done' AND k.archived_at IS NULL
+           AND k.close_kind = 'system' AND k.close_reason = c_series_parked
+         ORDER BY k.closed_at DESC, k.number DESC LIMIT 1;
+      END IF;
+      IF v_parked IS NOT NULL THEN
+        BEGIN
+          v_before := public.ops_card_snapshot(v_parked);
+          SELECT * INTO c FROM public.ops_work_cards k WHERE k.id = v_parked FOR UPDATE;
+          UPDATE public.ops_work_cards w0 SET status = 'todo', close_kind = NULL, close_reason = NULL, closed_at = NULL,
+                 closed_by = NULL, closed_via = NULL, proof = '[]'::jsonb, instructions = v_ins,
+                 due_on = GREATEST(v_first - 28, v_today), sprint_id = public.ops_sprint_ensure(v_today),
+                 revision = w0.revision + 1, updated_by = c_actor, updated_via = 'system', updated_at = now()
+           WHERE w0.id = v_parked RETURNING w0.* INTO n;
+          v_words := format('Opened again: %s needs publishing.', public.ops_day_long(v_first));
+          v_event := public.ops_card_event(n.id, c_actor, 'system', 'reopened', v_words, v_before, public.ops_card_snapshot(n.id), c.revision, n.revision);
+          PERFORM public.ops_log_write(c_actor, 'system', 'auto_added', 'info', n.id, 'expected', x.id,
+            format('Card %s opened again: the next %s date to publish is %s.', n.number, x.title, public.ops_day_words(v_first)),
+            jsonb_build_object('auto_key', n.auto_key, 'reopened', true));
+          PERFORM public.ops_notify_people(n.id, v_event, public.ops_card_people(n.id, NULL), c_actor,
+            format('Mingla opened "%s" again: %s needs publishing.', n.title, public.ops_day_long(v_first)));
+          v_added := v_added + 1;
+        EXCEPTION WHEN others THEN RAISE WARNING 'ops_auto_steps: reopening card % stopped (% %)', c.number, SQLSTATE, SQLERRM;
+        END;
+        CONTINUE;
+      END IF;
       v_want := v_want || jsonb_build_array(jsonb_build_object('key', 'series:' || x.id, 'kind', 'task', 'due', GREATEST(v_first - 28, v_today),
         'anchor', NULL,
         'item', jsonb_build_object(
           'title', left(format('Keep 4 weeks of %s dates live', left(h.name, 120)), 160),
-          'instructions', format('Repeats every %s. Next date to publish: %s.', x.repeats, public.ops_day_long(v_first)),
+          'instructions', v_ins,
           'done_means', left(format('The next 4 dates of %s are public on Mingla.', left(h.name, 120)), 300),
           'owners', to_jsonb(v_owners), 'watchers', '[]'::jsonb, 'due_on', GREATEST(v_first - 28, v_today),
           'links', jsonb_build_array(jsonb_build_object('kind', 'host', 'id', h.id), jsonb_build_object('kind', 'expected', 'id', x.id)))));
@@ -564,19 +642,23 @@ AS $$
 DECLARE
   c_actor constant text := 'system@usemingla.com';
   b record; v_idents jsonb := '[]'::jsonb; v_key text; v_hits jsonb; v_rec public.crm_records; v_kind text; v_res jsonb;
-  v_boss text := public.ops_owner_email(); v_names text;
+  v_boss text := public.ops_owner_email(); v_names text; v_exact uuid[]; v_cands jsonb; v_contact text; v_how text;
+  v_sl record;
 BEGIN
-  SELECT br.id, br.name, br.contact_email, br.contact_phone, br.account_id INTO b
+  SELECT br.id, br.name, br.contact_email, br.contact_phone, br.account_id, br.social_links INTO b
     FROM public.brands br WHERE br.id = p_brand_id AND br.deleted_at IS NULL;
   IF NOT FOUND THEN RETURN jsonb_build_object('status', 'gone'); END IF;
   IF EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = b.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL) THEN
     RETURN jsonb_build_object('status', 'has_card');
   END IF;
-  -- The brand's contact email, contact phone and its account's sign-in email.
+  -- The brand's contact email, contact phone, its account's sign-in email
+  -- and the handles on its social links.
   FOR v_kind, v_key IN
       SELECT 'email'::text, b.contact_email WHERE btrim(COALESCE(b.contact_email, '')) <> ''
       UNION ALL SELECT 'phone'::text, b.contact_phone WHERE btrim(COALESCE(b.contact_phone, '')) <> ''
-      UNION ALL SELECT 'email'::text, u.email::text FROM auth.users u WHERE u.id = b.account_id AND btrim(COALESCE(u.email, '')) <> '' LOOP
+      UNION ALL SELECT 'email'::text, u.email::text FROM auth.users u WHERE u.id = b.account_id AND btrim(COALESCE(u.email, '')) <> ''
+      UNION ALL SELECT 'handle'::text, e.value FROM jsonb_each_text(CASE WHEN jsonb_typeof(b.social_links) = 'object' THEN b.social_links ELSE '{}'::jsonb END) e
+                 WHERE lower(e.key) IN ('instagram','tiktok','x','twitter','facebook','youtube','linkedin') AND btrim(COALESCE(e.value, '')) <> '' LOOP
     BEGIN
       v_key := public.crm_ident_key(v_kind, v_key);
     EXCEPTION WHEN others THEN v_key := NULL;
@@ -586,27 +668,64 @@ BEGIN
     END IF;
   END LOOP;
   v_hits := CASE WHEN jsonb_array_length(v_idents) > 0 THEN public.crm_identifier_matches('hosts', v_idents, NULL) ELSE '[]'::jsonb END;
+  -- Only an exact match links by itself: the same email in its normal form,
+  -- the same handle, or the same whole phone number: the same international
+  -- number, or one written without its country code whose whole national
+  -- number (9 digits or more) is the other's. Anything looser (a number that
+  -- only ends with the same last digits) is a candidate for a person to pick.
+  v_exact := ARRAY(
+    SELECT DISTINCT i.record_id FROM public.crm_record_identifiers i
+      JOIN public.crm_records c ON c.id = i.record_id AND c.pipeline = 'hosts' AND c.deleted_at IS NULL
+      JOIN jsonb_array_elements(v_idents) w ON w->>'kind' = i.kind
+     WHERE (i.kind <> 'phone' AND i.value_key = w->>'value_key')
+        OR (i.kind = 'phone' AND i.value_key = w->>'value_key' AND i.value_key ~ '^[+][1-9][0-9]{7,14}$')
+        OR (i.kind = 'phone' AND NOT (i.value_key ~ '^[+]' AND (w->>'value_key') ~ '^[+]')
+            AND char_length(public.crm_phone_national(i.value_key)) >= 9
+            AND public.crm_phone_national(i.value_key) = public.crm_phone_national(w->>'value_key'))
+     ORDER BY i.record_id);
 
-  IF jsonb_array_length(v_hits) = 1 THEN
+  -- It links only when that one card is the only candidate at all.
+  IF cardinality(v_exact) = 1 AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_hits) h
+                                               WHERE (h->'record'->>'id')::uuid <> v_exact[1]) THEN
     SELECT * INTO v_rec FROM public.crm_records c
-     WHERE c.id = (v_hits->0->'record'->>'id')::uuid AND c.deleted_at IS NULL AND c.pipeline = 'hosts' FOR UPDATE;
-    IF FOUND AND v_rec.brand_id IS NULL THEN
-      v_kind := COALESCE(v_hits->0->'matched_on'->0->>'kind', 'email');
+     WHERE c.id = v_exact[1] AND c.deleted_at IS NULL AND c.pipeline = 'hosts' FOR UPDATE;
+    SELECT CASE WHEN bool_or(i.kind = 'email' AND i.value_key = w->>'value_key') THEN 'email'
+                WHEN bool_or(i.kind = 'phone') THEN 'phone' ELSE 'handle' END INTO v_kind
+      FROM public.crm_record_identifiers i JOIN jsonb_array_elements(v_idents) w ON w->>'kind' = i.kind
+     WHERE i.record_id = v_rec.id;
+    -- A Lost card is never reopened silently: a person decides.
+    IF v_rec.id IS NOT NULL AND v_rec.stage = 'lost' THEN
+      v_res := public.ops_auto_card_upsert('brand_lost:' || b.id, jsonb_build_object(
+        'title', left(format('Reopen %s? %s signed up on Mingla', v_rec.name, b.name), 160),
+        'instructions', left(format('%s signed up on Mingla with the same %s as %s, which is Lost. Reopen that card and link the brand if it is the same host, or leave it Lost and add a new card.',
+                                    b.name, v_kind, v_rec.name), 4000),
+        'done_means', left(format('%s is linked to a host card, or it is decided that %s stays Lost.', b.name, v_rec.name), 300),
+        'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END, 'watchers', '[]'::jsonb,
+        'due_on', public.ops_today(NULL) + 1,
+        'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', b.id), jsonb_build_object('kind', 'host', 'id', v_rec.id))),
+        'task', NULL);
+      RETURN jsonb_build_object('status', 'ask_reopen', 'card', v_res);
+    END IF;
+    IF v_rec.id IS NOT NULL AND v_rec.brand_id IS NULL THEN
       UPDATE public.crm_records SET brand_id = b.id, updated_by = c_actor, updated_at = clock_timestamp() WHERE id = v_rec.id;
       INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body)
       VALUES (v_rec.id, 'note', NULL, 'system',
-              left(format('Brand %s linked by itself: same %s as this card.', b.name, CASE WHEN v_kind = 'phone' THEN 'phone' ELSE 'email' END), 4000));
+              left(format('Brand %s linked by itself: same %s as this card.', b.name, v_kind), 4000));
       PERFORM public.crm_apply_brand_link(v_rec.id);
       PERFORM public.ops_log_write(c_actor, 'system', 'brand_linked', 'info', NULL, 'crm_record', v_rec.id,
-        format('Brand %s linked by itself to %s: same %s.', b.name, v_rec.name, CASE WHEN v_kind = 'phone' THEN 'phone' ELSE 'email' END),
+        format('Brand %s linked by itself to %s: same %s.', b.name, v_rec.name, v_kind),
         jsonb_build_object('brand_id', b.id, 'matched', v_kind));
       RETURN jsonb_build_object('status', 'linked', 'record_id', v_rec.id);
     END IF;
   END IF;
 
-  IF jsonb_array_length(v_hits) = 0 THEN
+  IF jsonb_array_length(v_hits) = 0 AND cardinality(v_exact) = 0 THEN
+    -- The new card keeps the brand's email or phone as its contact.
+    v_contact := COALESCE(NULLIF(btrim(COALESCE(b.contact_email, '')), ''), NULLIF(btrim(COALESCE(b.contact_phone, '')), ''),
+                          (SELECT NULLIF(btrim(u.email::text), '') FROM auth.users u WHERE u.id = b.account_id));
     v_res := public.crm_record_create_core('hosts',
-      jsonb_build_object('name', left(b.name, 200), 'brand_id', b.id, 'source', 'inbound', 'owners', '[]'::jsonb), c_actor, NULL);
+      jsonb_strip_nulls(jsonb_build_object('name', left(b.name, 200), 'brand_id', b.id, 'source', 'inbound', 'owners', '[]'::jsonb,
+                                           'contact', left(v_contact, 200))), c_actor, NULL);
     IF v_res->>'status' = 'created' THEN
       PERFORM public.ops_log_write(c_actor, 'system', 'brand_card_added', 'info', NULL, 'crm_record', (v_res->'record'->>'id')::uuid,
         format('New brand on Mingla: %s. Host card made in %s.', b.name, COALESCE(initcap(v_res->>'moved_to'), 'the pipeline')),
@@ -615,19 +734,26 @@ BEGIN
     END IF;
   END IF;
 
-  -- Two or more cards share its details (or the one that does is linked to
-  -- another brand, or a card of that name exists): a person picks.
-  SELECT string_agg(h->'record'->>'name', ', ' ORDER BY h->'record'->>'name') INTO v_names FROM jsonb_array_elements(v_hits) h;
+  -- Two or more matches, only near matches, the one match already linked to
+  -- another brand, or a card of that name: a person picks from every
+  -- candidate.
+  v_cands := v_hits;
+  SELECT string_agg(h->'record'->>'name', ', ' ORDER BY h->'record'->>'name') INTO v_names
+    FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h;
+  v_how := CASE WHEN cardinality(v_exact) = 0 AND v_names IS NOT NULL THEN 'near' ELSE 'exact' END;
   v_res := public.ops_auto_card_upsert('brand_pick:' || b.id, jsonb_build_object(
-    'title', left(format('Pick the host card for %s', b.name), 160),
-    'instructions', left(CASE WHEN v_names IS NOT NULL
+    'title', left(CASE WHEN v_how = 'near' THEN format('Pick the right card for %s', b.name)
+                       ELSE format('Pick the host card for %s', b.name) END, 160),
+    'instructions', left(CASE WHEN v_how = 'near'
+      THEN format('%s signed up on Mingla. These host cards have a phone number that ends the same but is not the same number, so nothing was linked: %s. Link the brand on the right card, or add a new card.', b.name, v_names)
+      WHEN v_names IS NOT NULL
       THEN format('%s signed up on Mingla. These host cards share its email or phone: %s. Link the brand on the right card, or add a new card.', b.name, v_names)
       ELSE format('%s signed up on Mingla, and a host card with that name already exists. Link the brand on the right card, or add a new card.', b.name) END, 4000),
     'done_means', left(format('%s is linked to one host card.', b.name), 300),
     'owners', CASE WHEN v_boss IS NOT NULL THEN jsonb_build_array(v_boss) ELSE '[]'::jsonb END, 'watchers', '[]'::jsonb,
     'due_on', public.ops_today(NULL) + 1,
     'links', jsonb_build_array(jsonb_build_object('kind', 'brand', 'id', b.id))
-             || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'host', 'id', h->'record'->>'id')) FROM jsonb_array_elements(v_hits) h), '[]'::jsonb)),
+             || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'host', 'id', h->'record'->>'id')) FROM jsonb_array_elements(COALESCE(v_cands, '[]'::jsonb)) h), '[]'::jsonb)),
     'task', NULL);
   RETURN jsonb_build_object('status', 'pick', 'card', v_res);
 END;
@@ -643,12 +769,13 @@ BEGIN
   FOR b IN SELECT br.id FROM public.brands br
             WHERE br.deleted_at IS NULL AND br.created_at >= v_since
               AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
-              AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.auto_key = 'brand_pick:' || br.id AND k.status <> 'done' AND k.archived_at IS NULL)
+              AND NOT EXISTS (SELECT 1 FROM public.ops_work_cards k WHERE k.auto_key IN ('brand_pick:' || br.id, 'brand_lost:' || br.id)
+                                AND k.status <> 'done' AND k.archived_at IS NULL)
             ORDER BY br.created_at, br.id LIMIT 25 LOOP
     BEGIN
       v_res := public.ops_brand_autolink_one(b.id);
       CASE v_res->>'status' WHEN 'linked' THEN v_linked := v_linked + 1; WHEN 'created' THEN v_created := v_created + 1;
-                            WHEN 'pick' THEN v_pick := v_pick + 1; ELSE NULL; END CASE;
+                            WHEN 'pick' THEN v_pick := v_pick + 1; WHEN 'ask_reopen' THEN v_pick := v_pick + 1; ELSE NULL; END CASE;
     EXCEPTION WHEN others THEN RAISE WARNING 'ops_brand_autolink: brand % stopped (% %)', b.id, SQLSTATE, SQLERRM;
     END;
   END LOOP;
@@ -1542,7 +1669,7 @@ BEGIN
             WHERE x.kind = 'issue' AND x.board_status = 'Done' AND NOT x.not_found AND x.done_since < now() - interval '24 hours'
               AND v_since IS NOT NULL AND x.done_since >= v_since LOOP
     v_live := COALESCE((SELECT y.complete FROM public.ops_release_records y
-                         WHERE y.issues @> jsonb_build_array(jsonb_build_object('number', g.number)) ORDER BY y.merged_at DESC LIMIT 1), false);
+                         WHERE y.issues @> jsonb_build_array(jsonb_build_object('number', g.number)) ORDER BY y.merged_at DESC, y.pr DESC LIMIT 1), false);
     CONTINUE WHEN v_live;
     v_want := v_want || jsonb_build_object('eng_done_not_live:issue-' || g.number, jsonb_build_object(
       'title', format('Issue #%s is Done but not Live', g.number),
@@ -1848,9 +1975,9 @@ GRANT EXECUTE ON FUNCTION public.ops_recent_changes(text, uuid, integer) TO auth
 COMMENT ON FUNCTION public.ops_plain_state(jsonb, date) IS
   'Issue #3980. The plain state of a dated thing: Happened, Draft, not live / Not live yet (go live 28 days before), Ready to promote (live 28+ days ahead), Promote now (21 to 27) or Too late for promo, with one sentence using the real dates.';
 COMMENT ON FUNCTION public.ops_auto_steps(date, uuid) IS
-  'Issue #3980. Automatic steps from the timeline: at most one open card per key (go-live, giveaway and ads, recap, ask for the next event, one rolling card per repeating host), re-dated when the event moves and closed when it is cancelled. Run only while ops_settings.auto_steps is on; at most 50 new cards a run.';
+  'Issue #3980. Automatic steps from the timeline: at most one open card per key (go-live, giveaway and ads, recap, ask for the next event, one rolling card per repeating host), re-dated when the event moves and closed when it is cancelled; a rolling card follows its next unpublished date, closes when all 4 kept dates are live or the dates stop repeating, and opens again when a date needs publishing. Run only while ops_settings.auto_steps is on; at most 50 new cards a run.';
 COMMENT ON FUNCTION public.ops_brand_autolink() IS
-  'Issue #3980. Brand auto-link for brands made after brand cards were switched on: one matching host card is linked, none makes a host card, two or more make a card for a person to pick. The only ops function that writes crm_records or crm_activity.';
+  'Issue #3980. Brand auto-link for brands made after brand cards were switched on: one exactly matching host card (same email, full international phone or handle) is linked, none makes a host card with the brand''s contact, near matches or two or more make a card for a person to pick, and a Lost match makes a card asking whether to reopen it. The only ops function that writes crm_records or crm_activity.';
 COMMENT ON FUNCTION public.ops_attention(date) IS
   'Issue #3980. Needs attention: no owner, overdue, missing info, stuck, no next event and engineering follow-through. Each count is the length of its own list.';
 COMMENT ON FUNCTION public.ops_recent_changes(text, uuid, integer) IS
