@@ -15,6 +15,7 @@ import {
   addDays,
   agentName,
   agentPromptFor,
+  cardReasons,
   closeKindLabel,
   dayLabel,
   githubChipClass,
@@ -31,7 +32,8 @@ import {
   workingWords,
 } from "../../lib/opsModel";
 import { OpsChip } from "./OpsChip";
-import { PeoplePicker } from "./PeoplePicker";
+import { PeopleField } from "../people/PeopleField";
+import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { RecordPicker } from "./RecordPicker";
 import { PlanSteps } from "./PlanSteps";
 import { ProofForm } from "./ProofForm";
@@ -65,11 +67,12 @@ function statusTone(card) {
   return "default";
 }
 
-export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack }) {
+export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, inDrawer = false }) {
   const { addToast } = useToast();
   const read = useOpsCard(cardId);
   const card = read.data?.card || null;
-  const team = config?.team || [];
+  const directory = usePeopleDirectory();
+  const team = directory.people.length ? directory.people : (config?.team || []);
   const me = config?.me || {};
   const [busy, setBusy] = useState("");
   const [form, setForm] = useState("");
@@ -178,13 +181,24 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   return (
     <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 shadow-[var(--shadow-sm)]">
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <button type="button" onClick={onBack} className={`min-h-11 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] min-[1180px]:hidden ${FOCUS}`}>Back to list</button>
+        {!inDrawer && <button type="button" onClick={onBack} className={`min-h-11 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] min-[1180px]:hidden ${FOCUS}`}>Back to list</button>}
         <OpsChip tone={statusTone(card)}>{card.status === "done" ? closeKindLabel(card.close_kind) : statusLabel}{card.status === "person" ? ` · ${PERSON_REASONS[card.person_reason] || ""}` : ""}</OpsChip>
         {card.blocked && <OpsChip tone="error">Blocked</OpsChip>}
-        <span className="text-[12px] text-[var(--color-text-tertiary)]">Card {card.number} · Added by {agentName(card.created_by_name, card.created_via)}</span>
+        <span className="text-[12px] text-[var(--color-text-tertiary)]">Card {card.number} · {card.auto ? "Made from the timeline" : `Added by ${agentName(card.created_by_name, card.created_via)}`}</span>
         {saveState && <span role="status" className="ml-auto text-[12px] text-[var(--color-text-tertiary)]">{saveState}</span>}
       </div>
       {card.archived && <AlertCard variant="warning" title="This card was removed.">It is kept for the record and can’t be changed.</AlertCard>}
+      {cardReasons(card).length > 0 && !card.archived && (
+        <div className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-[var(--color-error-50)] px-3 py-2.5 text-[13px]">
+          <b className="text-[var(--color-error-700)]">Needs attention</b>
+          {cardReasons(card).map((r) => (
+            <div key={r} className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <span className="text-[var(--color-text-primary)]">{r}</span>
+              {r === "No owner" && directory.me && <Button variant="secondary" size="sm" className="min-h-11" disabled={locked || !!busy} onClick={() => update({ owners: [directory.me] }, "Assigned to you.")}>Assign to me</Button>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <label className="flex min-w-0 flex-col gap-1">
         <span className="sr-only">Title</span>
@@ -213,26 +227,30 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
       )}
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-        <PeoplePicker
+        <PeopleField
+          id={`card-${card.id}-owners`}
           label="Owners"
-          people={owners}
+          value={ownerEmails}
           team={team}
+          me={directory.me}
+          suggested={[directory.me, ...ownerEmails].filter(Boolean)}
           exclude={watcherEmails}
-          disabled={locked || card.status === "done" || !!busy}
-          onAdd={(email) => update({ owners: [...ownerEmails, email] }, `${nameOf(email)} added and told.`)}
-          onRemove={(email) => {
-            if (ownerEmails.length <= 1) { addToast({ variant: "warning", title: "A card needs at least one owner." }); return; }
-            update({ owners: ownerEmails.filter((e) => e !== email) }, `${nameOf(email)} removed.`);
-          }}
+          min={card.auto ? 0 : 1}
+          disabled={locked || card.status === "done"}
+          busy={!!busy}
+          onChange={(next, change) => update({ owners: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)}
         />
-        <PeoplePicker
+        <PeopleField
+          id={`card-${card.id}-watchers`}
           label="Watching"
-          people={watchers}
+          value={watcherEmails}
           team={team}
+          me={directory.me}
+          suggested={[directory.me].filter(Boolean)}
           exclude={ownerEmails}
-          disabled={locked || card.status === "done" || !!busy}
-          onAdd={(email) => update({ watchers: [...watcherEmails, email] }, `${nameOf(email)} added and told.`)}
-          onRemove={(email) => update({ watchers: watcherEmails.filter((e) => e !== email) }, `${nameOf(email)} removed.`)}
+          disabled={locked || card.status === "done"}
+          busy={!!busy}
+          onChange={(next, change) => update({ watchers: next }, change.added ? `${nameOf(change.added)} added and told.` : `${nameOf(change.removed)} removed.`)}
         />
         <label className="flex min-w-0 flex-col gap-1">
           <span className={LABEL}>Due{card.kit_step !== null && card.kit_step !== undefined ? ` · T${card.kit_step > 0 ? "+" : ""}${card.kit_step}` : ""}</span>

@@ -29,8 +29,54 @@ import { GONE_REGION, TargetsCard } from "../components/crm/home/TargetsCard";
 import { TargetAddForm, TargetRowControls } from "../components/crm/home/TargetEditor";
 import { WeekByPerson } from "../components/crm/home/WeekByPerson";
 import { TeamOpsPanels } from "../components/ops/TeamOpsPanels";
+import { PeopleField } from "../components/people/PeopleField";
+import { usePeopleDirectory } from "../hooks/usePeopleDirectory";
+import { useOpsPoll } from "../hooks/useOpsWork";
+import * as ops from "../services/opsService";
+import { opsErrorWords } from "../lib/opsModel";
 
 const PAGE_ID = "team-dashboard";
+
+// #3980 (R2, R4) — the owner's switches for the steps Mingla makes by itself
+// and the host cards it makes for new brands, and who owns marketing steps.
+// Off until the owner switches them on; turning one off stops new cards.
+function AutomaticSteps({ online }) {
+  const { access } = useAuth();
+  const { addToast } = useToast();
+  const people = usePeopleDirectory();
+  const read = useOpsPoll(() => ops.fetchOpsSettings(), { key: `${access?.email || ""}|ops-settings`, intervalMs: 0 });
+  const [busy, setBusy] = useState("");
+  const settings = read.data;
+  if (!settings?.can_edit) return null;
+  const set = async (key, value, words) => {
+    setBusy(key);
+    try { await ops.setOpsSetting(key, value); await read.refetch({ quiet: true }); addToast({ variant: "success", title: words }); }
+    catch (error) { addToast({ variant: "error", title: "Not changed", description: opsErrorWords(error) }); }
+    finally { setBusy(""); }
+  };
+  const switchRow = (id, label, on) => (
+    <label htmlFor={id} className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-3 rounded-lg px-1 py-1.5">
+      <span className="min-w-0 break-normal text-[13.5px] text-[var(--color-text-primary)]">{label}</span>
+      <input id={id} type="checkbox" role="switch" className="h-5 w-9 shrink-0 cursor-pointer accent-[var(--color-brand-600)]" checked={!!on} disabled={!online || !!busy}
+        onChange={(e) => set(id === "switch-auto-steps" ? "auto_steps" : "brand_auto_cards", e.target.checked, e.target.checked ? "Switched on." : "Switched off. Cards already made stay.")} />
+    </label>
+  );
+  return (
+    <section aria-labelledby="automatic-steps-heading" className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
+      <h3 id="automatic-steps-heading" className="border-b border-[var(--gray-200)] px-4 py-3.5 text-[15px] font-semibold text-[var(--color-text-primary)] sm:px-5">Automatic steps</h3>
+      <div className="flex min-w-0 flex-col gap-2 px-4 py-3 sm:px-5">
+        {switchRow("switch-auto-steps", "Make steps from every host’s events", settings.auto_steps)}
+        {switchRow("switch-brand-cards", "Make a host card for every new brand", settings.brand_auto_cards)}
+        <div className="max-w-md">
+          <PeopleField id="marketing-owner" label="Marketing owner" max={1} value={settings.marketing_owner?.email ? [settings.marketing_owner.email] : []}
+            team={people.people} me={people.me} suggested={[people.me].filter(Boolean)} disabled={!online || !!busy}
+            onChange={(next) => set("marketing_owner", next[0] || null, next[0] ? "Marketing owner saved." : "No marketing owner: marketing steps go to the host's owners.")} />
+        </div>
+        <p className="break-normal text-[12.5px] text-[var(--color-text-tertiary)]">Off until you switch it on. Turning it off stops new cards; cards already made stay.</p>
+      </div>
+    </section>
+  );
+}
 const UNDO_MS = 8000;
 const OFFLINE_WORDS = "You're offline. You can look around, but the numbers won't update and targets can't be changed until you're back.";
 const NOT_READY_WORDS = "The team dashboard isn't switched on yet. Try again in a few minutes, or tell an admin.";
@@ -180,6 +226,7 @@ export function TeamDashboardPage() {
 
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
 
+      <AutomaticSteps online={online} />
       <TeamOpsPanels online={online} />
 
       {error ? (

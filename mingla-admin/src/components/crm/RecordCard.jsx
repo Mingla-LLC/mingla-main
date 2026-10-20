@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "../ui/Button";
 import { DueBadge } from "./DueBadge";
 import { Badge } from "../ui/Badge";
+import { NextEventLine } from "./NextEventLine";
 import { contactRuleView, displayOwners, icpLabel, nextStage, recordOpenLabel, regionName } from "../../lib/crmModel";
 
 /**
@@ -69,6 +70,7 @@ export function RecordCard({
         {owners}
         {record.next_action ? ` \u00b7 ${record.next_action}` : ""}
       </p>
+      <NextEventLine record={record} />
       {(record.due_on || next) && (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <span>

@@ -15,6 +15,8 @@ import * as service from "../services/draftService";
 import { DRAFT_STATES, draftErrorWords, remainingUndoMs } from "../lib/draftModel";
 import { useToast } from "../context/ToastContext";
 import { ReviewQueue } from "../components/ops/ReviewQueue";
+import { WordingQueue } from "../components/ops/WordingQueue";
+import { useAuth } from "../context/AuthContext";
 import { DraftNeededContext, DraftNeededList, draftNeededCards, useDraftNeededReview } from "../components/ops/DraftNeededList";
 import { parseReviewSearch } from "../lib/opsModel";
 import { announceReviewChange, useReviewCount } from "../hooks/useReviewCount";
@@ -38,7 +40,10 @@ export function DraftsPage() {
   const [search, setSearch] = useHashQuery("drafts");
   const query = useMemo(() => paramsFrom(search), [search]);
   const review = useMemo(() => parseReviewSearch(search), [search]);
-  const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : "");
+  const selectTab = (tab) => setSearch(tab === "spend" ? "tab=spend" : tab === "told" ? "tab=told" : "");
+  const { access } = useAuth();
+  // What hosts are told is decided by the owner and admins only.
+  const canTell = access?.role === "owner" || access?.role === "admin";
   const online = useOnline();
   const reduced = useReducedMotion();
   const counts = useDraftCountValue();
@@ -119,6 +124,7 @@ export function DraftsPage() {
   const reviewTabs = [
     { value: "messages", label: "Messages" },
     { value: "spend", label: "Spend or publish" },
+    ...(canTell ? [{ value: "told", label: "What hosts are told" }] : []),
   ];
   const notFound = query.hasDraft && queue.loaded && !queue.error && (query.draftInvalid || queue.drafts.length === 0);
   const filtered = !!query.record;
@@ -131,14 +137,16 @@ export function DraftsPage() {
   const draftNeededListed = review.tab !== "spend" && query.state === "waiting" && !filtered;
   const draftNeeded = useDraftNeededReview({ enabled: draftNeededListed });
   const draftNeededShown = draftNeededListed && draftNeededCards(draftNeeded).length > 0;
-  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "Nothing waiting." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
+  const emptyTitle = filtered ? `No ${query.state} drafts for this card.` : draftNeededShown ? "No drafts written yet." : query.state === "waiting" ? "You’re all caught up." : query.state === "sent" ? "No sent drafts yet." : "No discarded drafts.";
   const emptyCopy = filtered ? "Clear the filter to see the full queue." : draftNeededShown ? "Ask your agent to write a draft for the cards above." : query.state === "waiting" ? "Ask your agent to write a draft." : query.state === "sent" ? "Drafts you mark sent will appear here." : "Drafts you discard appear here for review.";
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div ref={headingRef} tabIndex={-1}><PageHeader title="To review" description="Only what needs a person: messages to send, money to spend, events to publish." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
+      <div ref={headingRef} tabIndex={-1}><PageHeader title="Needs you" description="Only what needs a person: messages to send, money to spend, events to publish." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
       <Segmented label="What to review" options={reviewTabs} value={review.tab} onChange={selectTab} variant="highContrast" fullWidth className="sm:!w-fit" />
-      {review.tab === "spend" ? (
+      {review.tab === "told" && canTell ? (
+        <WordingQueue onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
+      ) : review.tab === "spend" ? (
         <ReviewQueue online={online} selectedId={review.card} onSelect={(id) => setSearch(id ? `tab=spend&card=${id}` : "tab=spend")} onChanged={() => { counts.refetch({ quiet: true }); announceReviewChange(); }} />
       ) : (<DraftNeededContext.Provider value={draftNeeded}>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>

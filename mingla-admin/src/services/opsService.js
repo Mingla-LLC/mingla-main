@@ -119,3 +119,15 @@ export const decideRoadmapSuggestion = (cardId, decision) =>
   call(() => supabase.rpc("ops_roadmap_suggestion_decide", { p_card_id: cardId, p_decision: decision }));
 export const listReleaseRecords = (query = {}) => call(() => supabase.rpc("ops_release_records_list", { p_query: query }));
 export const fetchFeatureGuideRelease = (key) => call(() => supabase.rpc("ops_feature_guide_release", { p_key: key }));
+
+// #3980 synced program, Wave 3 — the operations redesign. The people field's
+// directory, the switches, each host's next dated thing, Needs attention and
+// what just happened. Every function checks the caller on the server.
+export const fetchPeopleDirectory = () => call(() => supabase.rpc("ops_people_directory"));
+export const fetchOpsSettings = () => call(() => supabase.rpc("ops_settings_get"));
+export const setOpsSetting = (key, value) => call(() => supabase.rpc("ops_setting_set", { p_key: key, p_value: value }));
+export const fetchHostNext = (recordIds, today) =>
+  call(() => supabase.rpc("ops_host_next", { p_record_ids: recordIds, p_today: today || null }));
+export const fetchAttention = (today) => call(() => supabase.rpc("ops_attention", { p_today: today || null }));
+export const fetchRecentChanges = (kind, id, hours) =>
+  call(() => supabase.rpc("ops_recent_changes", { p_kind: kind, p_id: id, p_hours: hours || 72 }));

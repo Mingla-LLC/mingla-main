@@ -28,6 +28,7 @@ export function PipelineToolbar({
   canAddRegion = false,
   onRefreshRegions,
   onChange,
+  extra = null,
 }) {
   const [cityMissing, setCityMissing] = useState(false);
   const regionRef = useRef(null);
@@ -85,6 +86,7 @@ export function PipelineToolbar({
         disabled={disabled}
         onChange={(mine) => onChange({ mine }, { replace: true })}
       />
+      {extra}
       <Segmented
         label="View"
         options={VIEWS}

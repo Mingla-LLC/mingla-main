@@ -3,7 +3,7 @@
 // while the page is visible, on focus and when the connection returns. A
 // quiet refresh that fails keeps what is on screen; only the first load
 // shows an error. Answers that arrive after a newer request are dropped.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import * as ops from "../services/opsService";
 import { todayIso } from "../lib/opsModel";
@@ -89,3 +89,26 @@ export function useMyCards() {
     return { mine: Array.isArray(mine?.cards) ? mine.cards : [], watching: Array.isArray(watching?.cards) ? watching.cards : [] };
   }, { key: `${access?.email || ""}|my-cards`, intervalMs: 60_000 });
 }
+
+/** #3980 synced Wave 3 — Needs attention (Work tab, Calendar summary), refreshed every minute. */
+const ATTENTION_CACHE = new Map();
+export function useOpsAttention({ enabled = true } = {}) {
+  const { access } = useAuth();
+  return useOpsPoll(() => ops.fetchAttention(todayIso()), { key: `${access?.email || ""}|attention`, intervalMs: 60_000, enabled, cache: ATTENTION_CACHE });
+}
+
+/** #3980 synced Wave 3 — the next dated thing of the host cards on screen, every 60 seconds. */
+export function useHostNext(recordIds, { enabled = true } = {}) {
+  const { access } = useAuth();
+  const ids = Array.isArray(recordIds) ? recordIds.slice(0, 1000) : [];
+  let hash = 0;
+  for (const ch of ids.join(",")) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const key = `${access?.email || ""}|host-next|${ids.length}|${hash}`;
+  const read = useOpsPoll(() => (ids.length ? ops.fetchHostNext(ids, todayIso()) : Promise.resolve({ hosts: [] })), { key, intervalMs: 60_000, enabled });
+  const byId = {};
+  for (const row of Array.isArray(read.data?.hosts) ? read.data.hosts : []) byId[row.record_id] = row;
+  return { ...read, byId };
+}
+
+/** #3980 (R1): the host-next rows of the board on screen, for NextEventLine. */
+export const HostNextContext = createContext(null);

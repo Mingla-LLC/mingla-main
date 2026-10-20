@@ -261,7 +261,8 @@ export function parseLogSearch(search) {
 export function parseReviewSearch(search) {
   const p = new URLSearchParams(typeof search === "string" ? search : "");
   const card = p.get("card");
-  return { tab: p.get("tab") === "spend" ? "spend" : "messages", card: card && UUID_RE.test(card) ? card : null };
+  const tab = p.get("tab");
+  return { tab: tab === "spend" ? "spend" : tab === "told" ? "told" : "messages", card: card && UUID_RE.test(card) ? card : null };
 }
 
 /** Runway words: how many days an event was public before it starts. */
@@ -591,7 +592,7 @@ export function parseEventParam(value) {
   return m && UUID_RE.test(m[2]) ? { kind: m[1].toLowerCase(), id: m[2].toLowerCase() } : null;
 }
 
-export const EVENT_TYPE_LABELS = { event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP" };
+export const EVENT_TYPE_LABELS = { event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP", promo_moment: "Promo moment" };
 export const KIT_WHO = { host_owner: "Host owner", marketing: "Sales and marketing" };
 
 /** The state chip of one launch kit row: its words and colour. */
@@ -740,4 +741,149 @@ export function dueOrder(cards, limit) {
   const list = (Array.isArray(cards) ? cards : []).filter((c) => c && c.status !== "done");
   list.sort((a, b) => String(a.due_on || "").localeCompare(String(b.due_on || "")) || Number(a.number || 0) - Number(b.number || 0));
   return typeof limit === "number" ? list.slice(0, limit) : list;
+}
+
+// ---------------------------------------------------------------------------
+// #3980 synced program, Wave 3 — the operations redesign.
+// ---------------------------------------------------------------------------
+
+/** The four plain states (and Happened, and No next event), as the server names them. */
+export const PLAIN_STATES = {
+  ready: "Ready to promote",
+  short: "Promote now",
+  late: "Too late for promo",
+  notlive: "Not live yet",
+  done: "Happened",
+  none: "No next event",
+  nodate: "No date yet",
+};
+export const STATE_LEGEND = ["ready", "short", "late", "notlive"];
+
+/** The words of a state the server sent ({k, name}), falling back to the plain map. */
+export function stateName(state) {
+  if (!state || typeof state !== "object") return "";
+  return String(state.name || PLAIN_STATES[state.k] || "");
+}
+
+/** "Get it live by 1 Nov" style tail for a not-live state. */
+export function stateLine(state) {
+  const name = stateName(state);
+  if (state?.k === "notlive" && state.by) return `${name}, live by ${dayLabel(state.by)}`;
+  return name;
+}
+
+/** "Tue 20 Oct". */
+export function dayLong(value) {
+  if (!value) return "";
+  const d = new Date(`${String(value).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+/** Work tab and Needs attention group in the Work page address. */
+export const WORK_TABS = ["board", "attention", "activity"];
+export const ATTENTION_GROUPS = [
+  { key: "noowner", label: "No owner" },
+  { key: "overdue", label: "Overdue" },
+  { key: "missing", label: "Missing info" },
+  { key: "stuck", label: "Stuck" },
+  { key: "nonext", label: "No next event" },
+  { key: "engineering", label: "Engineering" },
+];
+
+export function parseWorkTab(search) {
+  const p = new URLSearchParams(typeof search === "string" ? search : "");
+  const tab = p.get("tab");
+  const att = p.get("att");
+  return {
+    tab: WORK_TABS.includes(tab) ? tab : "board",
+    att: ATTENTION_GROUPS.some((g) => g.key === att) ? att : null,
+  };
+}
+
+/** The Work board's four columns. "Done this week" holds cards closed since Monday. */
+export const WORK_COLUMNS = [
+  { key: "person", label: "Needs you" },
+  { key: "todo", label: "To do" },
+  { key: "doing", label: "In progress" },
+  { key: "done", label: "Done this week" },
+];
+
+export function columnCards(cards, key, today = todayIso()) {
+  const monday = mondayOf(today);
+  return (Array.isArray(cards) ? cards : []).filter((c) => {
+    if (key === "done") return c.status === "done" && (!c.closed_at || String(c.closed_at).slice(0, 10) >= monday);
+    return c.status === key;
+  });
+}
+
+/** Red reason badges on a work card: No owner, Overdue <n>d, No update for <n>d. */
+export function cardReasons(card, now = Date.now()) {
+  const out = [];
+  if (!card || card.status === "done") return out;
+  if (card.status !== "person" && !(card.owners || []).length) out.push("No owner");
+  if (card.due_on) {
+    const days = Math.round((new Date(`${todayIso(new Date(now))}T00:00:00Z`) - new Date(`${String(card.due_on).slice(0, 10)}T00:00:00Z`)) / 86_400_000);
+    if (days > 0) out.push(`Overdue ${days}d`);
+  }
+  if (card.status === "doing" && card.working?.last_update_at) {
+    const quiet = Math.floor((now - new Date(card.working.last_update_at).getTime()) / 86_400_000);
+    if (quiet >= 7) out.push(`No update for ${quiet}d`);
+  }
+  return out;
+}
+
+/** Red reason badges on a host card: No owner; Missing type, region, contact. */
+export function hostReasons(record, missing = []) {
+  const out = [];
+  if (record && !(record.owners || []).length && record.stage !== "lost") out.push("No owner");
+  if (missing.length) out.push(`Missing ${missing.join(", ")}`);
+  return out;
+}
+
+/** What a host card is missing, in the words of the screens. */
+export function hostMissing(record) {
+  if (!record) return [];
+  const out = [];
+  if (!String(record.icp || "").trim()) out.push("type");
+  if (!record.region_id) out.push("region");
+  const hasContact = String(record.contact || "").trim() || (Array.isArray(record.identifiers) && record.identifiers.length);
+  if (!hasContact) out.push("contact");
+  return out;
+}
+
+/** The Hosts board's two toggle filters. */
+export const HOST_FILTERS = [
+  { value: "nonext", label: "No next event" },
+  { value: "soon", label: "Go live soon" },
+];
+
+/** Does a host pass the filter (from its ops_host_next row)? */
+export function hostPassesFilter(row, filter, today = todayIso()) {
+  if (!filter) return true;
+  if (!row) return false;
+  if (filter === "nonext") return !!row.needs_next;
+  if (filter === "soon") {
+    const st = row.next?.state;
+    if (!st || st.k !== "notlive" || !st.by) return false;
+    return st.by <= addDays(today, 14);
+  }
+  return true;
+}
+
+export const REPEAT_OPTIONS = [
+  { value: "none", label: "Does not repeat" },
+  { value: "week", label: "Every week" },
+  { value: "month", label: "Every month" },
+];
+
+/** The prompt "Ask my agent to fix these" copies for one Needs attention group. */
+export function attentionPrompt(groupLabel) {
+  return `Fix every item under Needs attention in Mingla Work: ${groupLabel}. Ask me before assigning owners.`;
+}
+
+/** Each Needs attention group's count: the length of the list the server sent. */
+export function attentionCounts(data) {
+  const groups = data?.groups || {};
+  return Object.fromEntries(ATTENTION_GROUPS.map((g) => [g.key, Array.isArray(groups[g.key]) ? groups[g.key].length : 0]));
 }

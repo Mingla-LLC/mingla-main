@@ -6,7 +6,8 @@ import { useToast } from "../../context/ToastContext";
 import * as ops from "../../services/opsService";
 import { KIT_STEPS, dayLabel, opsErrorWords, parseGithubInput, requestKey } from "../../lib/opsModel";
 import { FixesList } from "./FixesList";
-import { PeoplePicker } from "./PeoplePicker";
+import { PeopleField } from "../people/PeopleField";
+import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { RecordPicker } from "./RecordPicker";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 
@@ -16,7 +17,8 @@ const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--col
 
 export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onOpenCard }) {
   const { addToast } = useToast();
-  const team = config?.team || [];
+  const directory = usePeopleDirectory();
+  const team = directory.people.length ? directory.people : (config?.team || []);
   const me = config?.me?.email;
   const [title, setTitle] = useState("");
   // Title grows with its text like the card's own Title, never clipped.
@@ -38,7 +40,6 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
   const [refused, setRefused] = useState(null);
   const keyRef = useRef({ key: null, value: null });
 
-  const people = (emails) => emails.map((email) => ({ email, name: team.find((p) => p.email === email)?.name || email }));
   const eventLink = links.find((l) => l.kind === "event" || l.kind === "expected");
   const item = useMemo(() => {
     const out = { title, instructions, done_means: doneMeans, owners, watchers, links: links.map((l) => ({ kind: l.kind, id: l.id })) };
@@ -120,8 +121,8 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
         <textarea value={doneMeans} ref={doneMeansGrow} maxLength={300} rows={2} onChange={(e) => setDoneMeans(e.target.value)} placeholder="What shows the work is done" className={`min-h-[56px] w-full ${AUTO_GROW_CLASS} whitespace-pre-wrap break-words rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-2 text-[13px] ${FOCUS}`} />
       </label>
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-        <PeoplePicker label="Owners" people={people(owners)} team={team} exclude={watchers} onAdd={(email) => setOwners([...owners, email])} onRemove={(email) => setOwners(owners.filter((x) => x !== email))} />
-        <PeoplePicker label="Watching" people={people(watchers)} team={team} exclude={owners} onAdd={(email) => setWatchers([...watchers, email])} onRemove={(email) => setWatchers(watchers.filter((x) => x !== email))} />
+        <PeopleField id="new-card-owners" label="Owners" value={owners} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={watchers} min={1} onChange={(next) => setOwners(next)} />
+        <PeopleField id="new-card-watchers" label="Watching" value={watchers} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={owners} onChange={(next) => setWatchers(next)} />
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         <span className={LABEL}>Linked records</span>

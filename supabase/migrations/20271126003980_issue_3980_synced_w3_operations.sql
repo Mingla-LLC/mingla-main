@@ -496,8 +496,7 @@ BEGIN
       SELECT ev.id, ev.title, (s.st AT TIME ZONE 'UTC')::date INTO v_rid, v_rtitle, v_ron
         FROM public.events ev
         JOIN LATERAL (SELECT public.ops_event_first_start(ev.id) AS st) s ON true
-       WHERE ev.brand_id = h.brand_id AND ev.deleted_at IS NULL AND ev.status IN ('scheduled', 'live', 'ended')
-         AND ev.visibility = 'discover' AND s.st IS NOT NULL
+       WHERE ev.brand_id = h.brand_id AND ev.deleted_at IS NULL AND public.ops_event_public(ev.id) AND s.st IS NOT NULL
          AND (s.st AT TIME ZONE 'UTC')::date BETWEEN v_today - 7 AND v_today - 1
        ORDER BY s.st DESC, ev.id LIMIT 1;
     END IF;
@@ -1064,7 +1063,7 @@ BEGIN
       SELECT jsonb_agg(jsonb_build_object('id', p.id, 'title', p.title, 'start_on', p.on_day) ORDER BY p.on_day DESC)
         FROM (SELECT e.id, e.title, (s.st AT TIME ZONE 'UTC')::date AS on_day FROM public.events e
                 JOIN LATERAL (SELECT public.ops_event_first_start(e.id) AS st) s ON true
-               WHERE e.brand_id = r.brand_id AND e.deleted_at IS NULL AND e.status <> 'cancelled' AND e.visibility = 'discover'
+               WHERE e.brand_id = r.brand_id AND e.deleted_at IS NULL AND public.ops_event_in_scope(e.id)
                  AND s.st IS NOT NULL AND (s.st AT TIME ZONE 'UTC')::date < v_today
                ORDER BY s.st DESC LIMIT 5) p), '[]'::jsonb) END,
     'expected', COALESCE((SELECT jsonb_agg(public.ops_expected_json(x, v_today) ORDER BY (x.status <> 'open'), x.expected_on)
@@ -1298,7 +1297,7 @@ BEGIN
   -- What hosts are told: only the owner and admins see and decide it.
   SELECT COALESCE(jsonb_agg(public.ops_card_json(w, v_today) || jsonb_build_object('roadmap', (
            SELECT jsonb_build_object('id', rc.id, 'public_title', rc.public_title, 'public_body', rc.public_body,
-                                     'lane', rc.lane, 'status', rc.status)
+                                     'internal_note', rc.internal_note, 'lane', rc.lane, 'status', rc.status)
              FROM public.ops_work_links l JOIN public.community_roadmap_cards rc ON rc.id = l.target_id
             WHERE l.card_id = w.id AND l.kind = 'roadmap_card' LIMIT 1))
            ORDER BY w.due_on, w.number), '[]'::jsonb) INTO v_wording
