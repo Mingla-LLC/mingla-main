@@ -144,11 +144,13 @@ export function StepPreflight({
                       aria-label={`Build for ${PLATFORM_LABELS[row.platform] ?? row.platform}`}
                       onChange={() => selectable && onTogglePlatform?.(row.platform)}
                     />
-                    <Badge variant={OVERALL_BADGE[row.overall] ?? "default"} dot>
+                    {/* #3697: a channel that can't run for this market or
+                        budget is never shown as green/ready. */}
+                    <Badge variant={selectable ? (OVERALL_BADGE[row.overall] ?? "default") : "default"} dot>
                       {PLATFORM_LABELS[row.platform] ?? row.platform}
                     </Badge>
                   </label>
-                  <span className="text-xs text-[var(--color-text-secondary)]">{row.overall}</span>
+                  <span className="text-xs text-[var(--color-text-secondary)]">{selectable ? row.overall : "can't run here"}</span>
                   {!createWired && (
                     <span className="text-xs text-[var(--color-text-tertiary)]">
                       — {CREATE_GAP_REASONS[row.platform]}

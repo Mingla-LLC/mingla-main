@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useId } from "react";
 
-export function Dropdown({ trigger, children, align = "right", className = "" }) {
+export function Dropdown({ trigger, children, align = "right", className = "", ariaLabel }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const triggerId = useId();
@@ -39,6 +39,7 @@ export function Dropdown({ trigger, children, align = "right", className = "" })
         tabIndex={0}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={ariaLabel}
       >
         {trigger}
       </div>

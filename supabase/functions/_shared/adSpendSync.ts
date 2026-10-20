@@ -27,6 +27,11 @@ export interface CampaignSpendTarget {
   currency?: string | null;
   /** Immutable provider-account cap for v1.4 plans. */
   provider_budget_cents?: number | null;
+  /**
+   * #3697: the cap after a governed budget change (latest
+   * ad_plan_budget_amendments row, DB-guarded). Supersedes the frozen cap.
+   */
+  amended_provider_budget_cents?: number | null;
   ends_at: string | null;
   /** Currency declared by the connected provider account. Never customer currency. */
   provider_currency: string | null;
@@ -41,6 +46,12 @@ export interface CampaignSpendTarget {
 export function providerCapCents(
   campaign: CampaignSpendTarget,
 ): number | null {
+  if (
+    Number.isSafeInteger(campaign.amended_provider_budget_cents) &&
+    Number(campaign.amended_provider_budget_cents) > 0
+  ) {
+    return Number(campaign.amended_provider_budget_cents);
+  }
   if (
     Number.isSafeInteger(campaign.provider_budget_cents) &&
     Number(campaign.provider_budget_cents) > 0

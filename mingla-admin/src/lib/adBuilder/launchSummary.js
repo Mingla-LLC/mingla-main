@@ -179,6 +179,8 @@ export function buildLaunchSummary(input) {
     copyLine,
     budgetLine,
     hardCapLine,
+    // #3697: the cap alone, for the Review "Where the money goes" header.
+    capLabel: cap != null ? moneyLabel(cap) : null,
     scheduleLine,
     warnings,
   };
