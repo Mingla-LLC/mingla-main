@@ -1843,24 +1843,11 @@ BEGIN
      AND NOT is_master;
 
 
-  -- issue #3281 many-dates — persist per-date title/place only when the payload
-  -- carries an overrides object (never wipe Dates-screen edits with absent keys).
-  IF jsonb_typeof(p_when_payload->'multiDates') = 'array' THEN
-    UPDATE public.event_dates d
-       SET override_title = NULLIF(left(btrim(COALESCE(
-             e #>> '{overrides,title}', e->>'overrideTitle', ''
-           )), 120), ''),
-           override_location = NULLIF(left(btrim(COALESCE(
-             e #>> '{overrides,venueName}', e->>'overrideLocation', ''
-           )), 120), '')
-      FROM jsonb_array_elements(p_when_payload->'multiDates') e
-     WHERE d.event_id = p_event_id
-       AND e ? 'overrides'
-       AND d.start_at = (
-         (NULLIF(e->>'date','') || ' ' || COALESCE(NULLIF(e->>'startTime',''), '00:00') || ':00')::timestamp
-         AT TIME ZONE v_timezone
-       );
-  END IF;
+  -- issue #3281 many-dates — per-date title/place are owned by
+  -- business_set_event_date_override (Host Dates). When-save must NOT write
+  -- them: CreatorStep2When always initializes a blank `overrides` object, and
+  -- theme.business_event.multiDates can be stale relative to event_dates after
+  -- a Dates-screen edit. Schedule-only When patches therefore leave overrides alone.
 
   -- ORCH-1075 paid-publish integrity guard (event-edit family — Guard B only).
   -- business_patch_event_when patches WHEN (dates) only; it never writes

@@ -196,7 +196,9 @@ export default function EventDatesScreen(): React.ReactElement {
                   <Button
                     label={savingId === r.id ? "Saving…" : "Save"}
                     onPress={() => void saveRow(r.id)}
-                    disabled={savingId === r.id}
+                    // One in-flight save at a time: a second row's save must not
+                    // re-enable this row while its request is still pending.
+                    disabled={savingId !== null}
                   />
                 </View>
               );
