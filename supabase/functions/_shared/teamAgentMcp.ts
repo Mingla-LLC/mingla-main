@@ -10,7 +10,9 @@
 //   * A key is read from `Authorization: Bearer ...` and nowhere else. It is
 //     hashed here; only the digest is handed on. The key is never logged,
 //     never echoed and never part of an answer.
-//   * Every request is checked, the first one included. There is no session.
+//   * Every request is checked, the first one included. Each connection is
+//     handed a random Mcp-Session-Id. It is never stored and grants nothing;
+//     it only tells two chats on one key apart.
 //   * Every key that cannot be used gets the same answer, byte for byte.
 //     Keys and setup codes are random values looked up by a whole digest;
 //     nothing here counts wrong attempts or reads a network address.
@@ -112,13 +114,64 @@ const UNAUTHORIZED_BODY = JSON.stringify({
 const SERVER_ERROR_WORDS =
   "Something went wrong on our side. Nothing was saved. Send the same request again.";
 
-/** The one function that reaches the server. Resolves to the gateway's answer. */
+/**
+ * The one function that reaches the server. Resolves to the gateway's answer.
+ * `chat` is the chat key of this request (16 lower-case hex) or "" when the
+ * request carries none; it is passed on as a header and grants nothing.
+ */
 export type Gateway = (
   keyHash: string,
   tool: string,
   args: Record<string, unknown>,
   client: string,
+  chat: string,
 ) => Promise<unknown>;
+
+/** A session id a client may send back: 8 to 128 visible ASCII characters. */
+export const SESSION_ID_PATTERN = /^[\x21-\x7E]{8,128}$/;
+
+/** A chat's own name: 1 to 40 characters after trimming, no control characters. */
+export const CHAT_NAME_PATTERN = /^[^\x00-\x1F\x7F]{1,40}$/;
+
+/** The words a chat name of the wrong shape is refused with. */
+export const CHAT_NAME_WORDS =
+  '"chat" is a short name for this chat, 1 to 40 characters.';
+
+/** A fresh session id: 32 lower-case hex characters from a random source. */
+export function newSessionId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The request's own session id when it is well formed, else null. */
+export function readSessionId(req: Request): string | null {
+  const v = req.headers.get("mcp-session-id");
+  return v !== null && SESSION_ID_PATTERN.test(v) ? v : null;
+}
+
+/** A work tool's chat name, trimmed, or null when none was sent. */
+export function chatName(args: Record<string, unknown>): string | null {
+  const v = args.chat;
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return CHAT_NAME_PATTERN.test(t) ? t : null;
+}
+
+/**
+ * The chat key of a request: from its session id when it carries one, else
+ * from a work tool's chat name, else "". Never stored; grants nothing.
+ */
+export async function chatKey(
+  req: Request,
+  workTool: boolean,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const session = readSessionId(req);
+  if (session) return (await sha256Hex("chat:" + session)).slice(0, 16);
+  const name = workTool ? chatName(args) : null;
+  if (name) return (await sha256Hex("name:" + name.toLowerCase())).slice(0, 16);
+  return "";
+}
 
 export interface TeamAgentDeps {
   gateway: Gateway;
@@ -229,10 +282,14 @@ function clientLabel(req: Request): string {
   return (req.headers.get("user-agent") ?? "").slice(0, 200);
 }
 
-function rpcResult(id: unknown, result: unknown): Response {
+function rpcResult(
+  id: unknown,
+  result: unknown,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), {
     status: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
   });
 }
 
@@ -569,6 +626,7 @@ export function createTeamAgentHandler(
           SETUP_GATEWAY_NAME,
           {},
           clientLabel(req),
+          "",
         );
       } catch (_err) {
         return await refuseSetup();
@@ -667,6 +725,7 @@ export function createTeamAgentHandler(
     let gatewayArgs: Record<string, unknown> = {};
     let refusal: { token: string; message: string } | null = null;
     let known: TeamAgentTool | undefined;
+    let workTool = false;
     if (isNotification) {
       gatewayTool = "mcp:notification";
     } else if (body.method === "tools/call") {
@@ -674,10 +733,21 @@ export function createTeamAgentHandler(
         findWorkTool(params.name);
       if (known) {
         tool = known.name;
+        workTool = findWorkTool(known.name) === known;
         const checked = checkArguments(known, params.arguments);
         if (checked.ok) {
           gatewayTool = known.name;
           gatewayArgs = checked.args;
+          // A work tool's chat name is checked here too: a bad shape is the
+          // tool's own refusal and never reaches the gateway.
+          if (
+            workTool && gatewayArgs.chat !== undefined &&
+            chatName(gatewayArgs) === null
+          ) {
+            gatewayTool = "mcp:other";
+            gatewayArgs = {};
+            refusal = { token: "invalid_arguments", message: CHAT_NAME_WORDS };
+          }
         } else {
           refusal = checked.refusal;
         }
@@ -693,6 +763,7 @@ export function createTeamAgentHandler(
         gatewayTool,
         gatewayArgs,
         clientLabel(req),
+        await chatKey(req, workTool && refusal === null, gatewayArgs),
       );
     } catch (_err) {
       return done(
@@ -752,6 +823,8 @@ export function createTeamAgentHandler(
       case "initialize": {
         if (failed) break;
         const asked = text(params.protocolVersion);
+        // One connection is one chat: the client sends this id back on every
+        // later request. Its own well-formed id is kept.
         return done(
           "ok",
           rpcResult(id, {
@@ -761,7 +834,7 @@ export function createTeamAgentHandler(
             capabilities: { tools: {}, resources: {}, prompts: {} },
             serverInfo: { ...SERVER_INFO },
             instructions: INSTRUCTIONS,
-          }),
+          }, { "Mcp-Session-Id": readSessionId(req) ?? newSessionId() }),
         );
       }
       case "ping":

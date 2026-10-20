@@ -34,11 +34,18 @@ const WRITE = {
   idempotentHint: true,
 } as const;
 
+// Every work tool also takes "chat": the chat's own name (issue #3980 synced
+// program). It is defined below; the function reads it when a tool is built.
 function schema(
   properties: Record<string, ArgSchema>,
   required: readonly string[] = [],
 ): ToolInputSchema {
-  return { type: "object", properties, required, additionalProperties: false };
+  return {
+    type: "object",
+    properties: { ...properties, chat: CHAT },
+    required,
+    additionalProperties: false,
+  };
 }
 
 const ID: ArgSchema = {
@@ -134,6 +141,24 @@ const PERSON_REASON: ArgSchema = {
   maxLength: 10,
   enum: ["send", "spend", "publish", "other"],
   hint: "Use send, spend, publish or other",
+};
+const CHAT: ArgSchema = {
+  type: "string",
+  minLength: 1,
+  maxLength: 40,
+  hint: "A short name for this chat, used in claims and the log.",
+};
+const GITHUB: ArgSchema = {
+  type: "array",
+  items: {
+    type: "string",
+    minLength: 1,
+    maxLength: 120,
+    hint: "Send #123 or a link to an issue or pull request of Mingla-LLC/mingla-main",
+  },
+  minItems: 0,
+  maxItems: 10,
+  hint: "Send up to 10 GitHub issue or pull request links, like #3980",
 };
 const STEP_STATUS: ArgSchema = {
   type: "string",
@@ -244,6 +269,7 @@ const CARD: ArgSchema = {
     },
     plan: PLAN,
     person_reason: PERSON_REASON,
+    github: GITHUB,
   },
   required: [],
   hint:
@@ -289,7 +315,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "claim",
     title: "Claim a card and records",
     description:
-      "Claim a card and every host, creator, content card or event you will change or message, before you start. While you hold a claim, another agent's change to it is refused. A claim ends after 30 minutes without an update, so post each step with update_work. All or nothing: if anything is held by another agent, nothing is claimed and you are told who holds it and until when; wait or tell your person. " +
+      "Claim a card and every host, creator, content card or event you will change or message, before you start. While you hold a claim, another agent's change to it is refused. A claim ends after 30 minutes without an update, so post each step with update_work. Cards are not claimed; start_work marks you as working on a card for as long as it takes. All or nothing: if anything is held by another agent, nothing is claimed and you are told who holds it and until when; wait or tell your person. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       card_id: ID,
@@ -360,7 +386,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "add_work",
     title: "Add work cards",
     description:
-      "Add 1 to 50 cards straight to the Work board. Each card is checked by the server: title, instructions, done-means line, at least one current teammate as owner, a due date (or a linked event), real links. A refused card comes back with the fixes. The same request_key repeats safely. A card that repeats an open card is refused with that card; update it instead. Owners and watchers are told. " +
+      "Add 1 to 50 cards straight to the Work board. Each card is checked by the server: title, instructions, done-means line, at least one current teammate as owner, a due date (or a linked event), real links. A refused card comes back with the fixes. The same request_key repeats safely. A card that repeats an open card is refused with that card; update it instead. Owners and watchers are told. github: issue or pull request links like #3980. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       cards: {
@@ -383,7 +409,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "start_work",
     title: "Start a card",
     description:
-      "Move a card your person owns from To do to Doing. This also claims the card for 30 minutes. A blocked card cannot be started. " +
+      "Move a card your person owns from To do to Doing. Marks you as working on the card until you close it, push it back or release it. Another chat cannot take it while you post updates. A blocked card cannot be started. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({ id: ID, expected_revision: REVISION }, [
       "id",
@@ -400,7 +426,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "update_work",
     title: "Update a card",
     description:
-      "Change a card your person owns, mark one plan step with step, or add a note (notes need a request_key and work on cards your person owns or watches). Every change is checked like an add. After each step, read the record back and mark the step done only if the change is really there. To hand a step to a person, set status person with the reason send, spend, publish or other, and stop. To move a card that needs a person back to todo or doing, say why in reason; your person and the watchers are told. " +
+      "Change a card your person owns, mark one plan step with step, or add a note (notes need a request_key and work on cards your person owns or watches). Every change is checked like an add. After each step, read the record back and mark the step done only if the change is really there. To hand a step to a person, set status person with the reason send, spend, publish or other, and stop. To move a card that needs a person back to todo or doing, say why in reason; your person and the watchers are told. github: issue or pull request links like #3980. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: ID,
@@ -453,6 +479,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
             hint: "Use todo, doing or person",
           },
           person_reason: PERSON_REASON,
+          github: GITHUB,
           reason: {
             type: "string",
             minLength: 1,
@@ -754,6 +781,10 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_log_list: { tools: ["read_log"] },
   ops_claim: { tools: ["claim"] },
   ops_release: { tools: ["release"] },
+  ops_working_clear: {
+    excluded:
+      "only the owner or an admin, in person, clears an agent's working mark",
+  },
   ops_sprint_set_goal: {
     excluded: "the owner or an admin sets the sprint goal",
   },

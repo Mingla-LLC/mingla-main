@@ -62,7 +62,7 @@ const WORK_TOOLS = new Set([
 
 const handler = createTeamAgentHandler({
   // The only call this function makes.
-  gateway: async (keyHash, tool, args, client) => {
+  gateway: async (keyHash, tool, args, client, chat) => {
     const gateway = PRODUCT_TRUTH_TOOLS.has(tool)
       ? "team_agent_product_truth_call"
       : CONTENT_TOOLS.has(tool)
@@ -70,12 +70,17 @@ const handler = createTeamAgentHandler({
       : WORK_TOOLS.has(tool)
       ? "ops_agent_call"
       : "team_agent_call";
-    const { data, error } = await server.rpc(gateway, {
+    let call = server.rpc(gateway, {
       p_key_hash: keyHash,
       p_tool: tool,
       p_args: args,
       p_client: client,
     });
+    // Issue #3980: which chat on this key the request comes from (a key the
+    // connector derived; it grants nothing). The database reads it as the
+    // x-mingla-chat request header.
+    if (chat) call = call.setHeader("x-mingla-chat", chat);
+    const { data, error } = await call;
     if (error) throw new Error("gateway");
     return data;
   },
