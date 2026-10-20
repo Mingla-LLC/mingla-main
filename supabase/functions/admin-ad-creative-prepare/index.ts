@@ -492,7 +492,9 @@ serve(async (req: Request): Promise<Response> => {
   if (isImage) {
     const outcome: ImagePrepareOutcome = await prepareCreativeImageRef(
       createSupabaseCreativeRefDb(
-        supabase as unknown as Parameters<typeof createSupabaseCreativeRefDb>[0],
+        supabase as unknown as Parameters<
+          typeof createSupabaseCreativeRefDb
+        >[0],
       ),
       {
         action: action as "start" | "status" | "retry",
