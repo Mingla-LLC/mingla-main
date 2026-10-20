@@ -220,6 +220,13 @@ export function renderTicketBody(
       escapeHtml(input.order.buyerName)
     },</p>`
     : "";
+  // issue #3827 — the guest-list party line. Empty string when unset, so the
+  // email is byte-identical for every other order.
+  const partyLineHtml = input.order.partyLine
+    ? `<p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(input.order.partyLine)
+    }</p>`
+    : "";
   const body = `${heroHtml}
     <div style="margin-top:24px;">
       ${greeting}
@@ -228,7 +235,7 @@ export function renderTicketBody(
   }</h1>
       <p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_MUTED};">${
     escapeHtml(copy.intro)
-  }</p>
+  }</p>${partyLineHtml}
     </div>
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid ${BRAND_BORDER};">
       <h2 style="margin:0;font-size:18px;color:${BRAND_INK};font-weight:700;">${
@@ -271,6 +278,7 @@ export function renderTicketBody(
     : null;
   const textLines = [
     copy.heading,
+    ...(input.order.partyLine ? [input.order.partyLine] : []),
     "",
     input.event.title,
     `Hosted by ${input.brand.name}`,

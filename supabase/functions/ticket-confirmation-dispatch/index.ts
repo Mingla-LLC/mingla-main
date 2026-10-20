@@ -97,6 +97,7 @@ import {
   shouldIssueOrderAttendanceClaimForNotification,
 } from "../_shared/attendanceClaim.ts";
 import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts";
+import { guestListPartyLine } from "../_shared/email/partyLine.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
 
@@ -227,6 +228,9 @@ interface OrderJoin {
   payment_status: string | null;
   confirmed_at: string | null;
   notification_status: string | null;
+  // issue #3827 — the guest-list party line reads these two.
+  source?: string | null;
+  metadata?: Record<string, unknown> | null;
   events: {
     id: string;
     title: string | null;
@@ -809,6 +813,7 @@ function buildRenderContext(args: {
         : null,
       currency: order.currency ?? "GBP",
       buyerName: order.buyer_name,
+      partyLine: guestListPartyLine(order.source, order.metadata),
       lineItems: (lineItems ?? []).map((li) => ({
         ticketName: li.ticket_types?.name ?? "Ticket",
         quantity: Number(li.quantity ?? 0),
@@ -1139,6 +1144,8 @@ export const handler = async (req: Request): Promise<Response> => {
       payment_status,
       confirmed_at,
       notification_status,
+      source,
+      metadata,
       event_date_id,
       booked_start_at,
       events!inner (

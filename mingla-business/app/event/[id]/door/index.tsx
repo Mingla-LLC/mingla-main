@@ -48,7 +48,6 @@ import {
   currencyCodeOrNull,
 } from "../../../../src/utils/currency";
 import { summarizeEventMoney } from "../../../../src/utils/moneySummary";
-import { exportDoorSalesCsv } from "../../../../src/utils/guestCsvExport";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
 import { DoorSaleNewSheet } from "../../../../src/components/door/DoorSaleNewSheet";
@@ -282,6 +281,8 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
     try {
       // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
       // Native dismissed = silent (no false-positive success).
+      // Loaded on press: the CSV writer stays out of the boot chunk (#3827, orch-1083).
+      const { exportDoorSalesCsv } = await import("../../../../src/utils/guestCsvExport");
       const result = await exportDoorSalesCsv({ event, sales: eventSales });
       if (result.method === "downloaded") {
         showToast(`Downloaded ${eventSales.length} door sale(s).`);

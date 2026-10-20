@@ -78,6 +78,12 @@ const statusVariant = (status: GuestRosterPrimaryStatus): PillVariant => {
   return "accent";
 };
 
+// issue #3827 — a guest-list row reads "Guest list", not "Bought ticket".
+export const rosterPrimaryLabel = (row: GuestRosterRow): string =>
+  row.guestList === true && row.primaryStatus === "bought_ticket"
+    ? "Guest list"
+    : GUEST_ROSTER_PRIMARY_LABELS[row.primaryStatus];
+
 const initials = (name: string): string => {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -139,7 +145,7 @@ const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionM
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: selectionMode ? selected : undefined, disabled: selectionMode && !row.canRemind && !row.canRetry }}
-      accessibilityLabel={`${row.displayName}, ${GUEST_ROSTER_PRIMARY_LABELS[row.primaryStatus]}${invitationLabel !== null ? `, ${invitationLabel}` : ""}`}
+      accessibilityLabel={`${row.displayName}, ${rosterPrimaryLabel(row)}${invitationLabel !== null ? `, ${invitationLabel}` : ""}`}
       onPress={onPress}
       style={({ pressed }) => [styles.rowPressable, pressed && styles.pressed]}
     >
@@ -153,7 +159,7 @@ const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionM
           </View>
           {row.contactLabel !== null ? <Text style={styles.rowContact} numberOfLines={1}>{row.contactLabel}</Text> : null}
           <View style={styles.pillLine}>
-            <Pill variant={statusVariant(row.primaryStatus)}>{GUEST_ROSTER_PRIMARY_LABELS[row.primaryStatus]}</Pill>
+            <Pill variant={statusVariant(row.primaryStatus)}>{rosterPrimaryLabel(row)}</Pill>
             {invitationLabel !== null && row.primaryStatus !== "not_sent" && row.primaryStatus !== "sending" && row.primaryStatus !== "invite_failed" ? (
               <Pill variant={row.invitationStatus === "invited" ? "info" : "draft"}>{invitationLabel}</Pill>
             ) : null}
@@ -170,11 +176,12 @@ const GuestDetailSheet: React.FC<{
   row: GuestRosterRow | null;
   onClose: () => void;
   onOpenOrder: (orderId: string) => void;
+  onOpenGuestListOrder: (orderId: string) => void;
   actionsDisabled: boolean;
   actionPending: boolean;
   onPreviewAction: (action: "reminder" | "retry_delivery") => void;
   onApproval: (decision: "approve" | "deny") => void;
-}> = ({ row, onClose, onOpenOrder, actionsDisabled, actionPending, onPreviewAction, onApproval }) => (
+}> = ({ row, onClose, onOpenOrder, onOpenGuestListOrder, actionsDisabled, actionPending, onPreviewAction, onApproval }) => (
   <Sheet visible={row !== null} onClose={onClose} snapPoint="full">
     {row !== null ? (
       <ScrollView contentContainerStyle={styles.detailContent}>
@@ -186,7 +193,7 @@ const GuestDetailSheet: React.FC<{
           </View>
         </View>
         <View style={styles.detailPills}>
-          <Pill variant={statusVariant(row.primaryStatus)}>{GUEST_ROSTER_PRIMARY_LABELS[row.primaryStatus]}</Pill>
+          <Pill variant={statusVariant(row.primaryStatus)}>{rosterPrimaryLabel(row)}</Pill>
           {GUEST_ROSTER_INVITATION_LABELS[row.invitationStatus] !== null ? (
             <Pill variant={row.invitationStatus === "invited" ? "info" : "draft"}>
               {GUEST_ROSTER_INVITATION_LABELS[row.invitationStatus]}
@@ -231,7 +238,16 @@ const GuestDetailSheet: React.FC<{
           <View style={styles.orderLinks}>
             <Text style={styles.sectionTitle}>Orders</Text>
             {row.orderIds.map((orderId, index) => (
-              <Button key={orderId} variant="secondary" label={`Open order ${index + 1}`} onPress={() => onOpenOrder(orderId)} />
+              row.guestList === true ? (
+                <Button
+                  key={orderId}
+                  variant="secondary"
+                  label={row.orderIds.length > 1 ? `Open guest-list ticket ${index + 1}` : "Open guest-list ticket"}
+                  onPress={() => onOpenGuestListOrder(orderId)}
+                />
+              ) : (
+                <Button key={orderId} variant="secondary" label={`Open order ${index + 1}`} onPress={() => onOpenOrder(orderId)} />
+              )
             ))}
           </View>
         ) : null}
@@ -244,14 +260,20 @@ export interface GuestRosterExperienceProps {
   eventId: string;
   onBack: () => void;
   onOpenOrder: (orderId: string) => void;
+  /** issue #3827 — guest-list tickets open on the guest page, not the sales order. */
+  onOpenGuestListOrder?: (orderId: string) => void;
   onExport: (input: { filter: GuestRosterFilter; search: string; sort: GuestRosterSort }) => void;
+  /** issue #3827 — set only when the viewer may add guests (ADD_COMP_GUEST). */
+  onAddGuests?: () => void;
 }
 
 export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   eventId,
   onBack,
   onOpenOrder,
+  onOpenGuestListOrder,
   onExport,
+  onAddGuests,
 }) => {
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
@@ -400,6 +422,9 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           {data?.canExport === true && !query.isStaleTruth ? (
             <IconChrome icon="download" size={36} onPress={() => onExport({ filter, search: debouncedSearch, sort })} accessibilityLabel="Export current guest roster" />
           ) : null}
+          {onAddGuests !== undefined ? (
+            <IconChrome icon="plus" size={36} onPress={onAddGuests} accessibilityLabel="Add to guest list" />
+          ) : null}
         </View>
       </View>
 
@@ -490,6 +515,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       </Sheet>
 
       <GuestDetailSheet row={selected} onClose={() => { setSelected(null); setActionPreview(null); setActionMessage(null); }} onOpenOrder={onOpenOrder}
+        onOpenGuestListOrder={onOpenGuestListOrder ?? onOpenOrder}
         actionsDisabled={query.isStaleTruth || query.isOffline} actionPending={actionPending}
         onPreviewAction={(action) => { void previewAction(action); }} onApproval={(decision) => { void setApproval(decision); }} />
       {selectionMode && selectedKeys.size > 0 && bulkAction !== null ? (

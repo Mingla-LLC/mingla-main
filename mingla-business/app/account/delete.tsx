@@ -65,7 +65,6 @@ import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
 import { useBrandTeamStore } from "../../src/store/brandTeamStore";
 import { useBrandList } from "../../src/store/currentBrandStore";
 import { useDoorSalesStore } from "../../src/store/doorSalesStore";
-import { useGuestStore } from "../../src/store/guestStore";
 import { useLiveEventStore } from "../../src/store/liveEventStore";
 import { useOrderStore } from "../../src/store/orderStore";
 import { useScanStore } from "../../src/store/scanStore";
@@ -117,7 +116,6 @@ export default function DeleteAccountRoute(): React.ReactElement {
   const allLiveEvents = useLiveEventStore((s) => s.events);
   const allOrders = useOrderStore((s) => s.entries);
   const allDoorSales = useDoorSalesStore((s) => s.entries);
-  const allComps = useGuestStore((s) => s.entries);
   const allScans = useScanStore((s) => s.entries);
 
   const { mutateAsync: requestDeletion, isPending: deleting } =
@@ -167,7 +165,6 @@ export default function DeleteAccountRoute(): React.ReactElement {
       liveEvents: allLiveEvents,
       orderEntries: allOrders,
       doorSalesEntries: allDoorSales,
-      compEntries: allComps,
       scanEntries: allScans,
     });
   }, [
@@ -177,7 +174,6 @@ export default function DeleteAccountRoute(): React.ReactElement {
     allLiveEvents,
     allOrders,
     allDoorSales,
-    allComps,
     allScans,
   ]);
 
@@ -482,12 +478,6 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
           label={`${preview.doorSalesCount} door sale${preview.doorSalesCount === 1 ? "" : "s"}`}
         />
       ) : null}
-      {preview.compsCount > 0 ? (
-        <CascadeRow
-          icon="user"
-          label={`${preview.compsCount} comp guest${preview.compsCount === 1 ? "" : "s"}`}
-        />
-      ) : null}
       {preview.teamInvitationsCount > 0 ? (
         <CascadeRow
           icon="send"
@@ -504,7 +494,6 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
       preview.pastEventsCount === 0 &&
       preview.soldOrdersCount === 0 &&
       preview.doorSalesCount === 0 &&
-      preview.compsCount === 0 &&
       preview.teamInvitationsCount === 0 ? (
         <Text style={styles.cascadeEmpty}>
           No account-linked data. Your account row will be the only thing

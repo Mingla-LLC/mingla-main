@@ -4,7 +4,8 @@
  * Cycle 13 + DEC-095 — 11 architectural decisions locked. Reads-only over:
  *   - useOrderStore.entries (Cycle 9c)
  *   - useDoorSalesStore.entries (Cycle 12)
- *   - useGuestStore.entries (Cycle 10)
+ *   (issue #3827: guest-list tickets are server orders with source = comp,
+ *    read from orderEntries; the device-only useGuestStore is no longer an input)
  *   - useScanStore.entries (Cycle 11)
  *
  * Selector contract: caller passes RAW arrays (raw entries + useMemo at the route layer).
@@ -28,7 +29,7 @@
  * Per Cycle 13 SPEC §4.2.1.
  */
 
-import type { CompGuestEntry } from "../store/guestStore";
+import { guestListTicketCount, isCompOrder } from "./compOrders";
 import type { DoorSaleRecord } from "../store/doorSalesStore";
 import type { OrderRecord } from "../store/orderStore";
 import type { ScanRecord } from "../store/scanStore";
@@ -127,7 +128,6 @@ export interface ReconciliationInputs {
   currency?: string | null;
   orderEntries: OrderRecord[];
   doorEntries: DoorSaleRecord[];
-  compEntries: CompGuestEntry[];
   scanEntries: ScanRecord[];
 }
 
@@ -222,13 +222,14 @@ export const computeReconciliation = (
     currency,
     orderEntries,
     doorEntries,
-    compEntries,
     scanEntries,
   } = inputs;
 
   // ---- Tickets (online live, excludes cancelled — refunded-partial keeps live qty - refundedQty) ----
   const eventOrders = orderEntries.filter((o) => o.eventId === eventId);
-  const liveOrders = eventOrders.filter(
+  // issue #3827 — online "sold", revenue and fees are sales only.
+  const eventSales = eventOrders.filter((o) => !isCompOrder(o));
+  const liveOrders = eventSales.filter(
     (o) => o.status === "paid" || o.status === "refunded_partial",
   );
   let onlineLiveTickets = 0;
@@ -247,15 +248,14 @@ export const computeReconciliation = (
     }
   }
 
-  // ---- Tickets (comps) ----
-  const eventComps = compEntries.filter((c) => c.eventId === eventId);
-  const compTickets = eventComps.length;
+  // ---- Tickets (guest list: live server comp tickets, issue #3827) ----
+  const compTickets = guestListTicketCount(eventOrders);
 
   const totalLiveTickets = onlineLiveTickets + doorLiveTickets + compTickets;
 
   const moneySummary = summarizeEventMoney({
     expectedCurrency: currency,
-    orders: eventOrders,
+    orders: eventSales,
     doorSales: eventDoorSales,
   });
   const revenueByMethod: Record<PaymentMethodKey, number> = {
