@@ -4,7 +4,7 @@
 // after that, so a restart could tear the bridge down mid-read — the one
 // network-class crash on old code was exactly -[RCTFileReaderModule readAsText:].
 //
-// MINGLA-INVARIANT: I-2107-SAFE-RELOAD-BODY-READ | issue #2107 | A restart waits for a Supabase response body that is being read (capped), never for one nobody reads past a short grace, and yields one macrotask after settle before reloading.
+// Enforces I-2107-SAFE-RELOAD-BODY-READ (declared once, in the Explorer copy of this suite).
 //
 // Runs against the real reloadNetworkFence and the real safeReloadRuntime
 // settle step (byte-identical in app-mobile and mingla-business).
