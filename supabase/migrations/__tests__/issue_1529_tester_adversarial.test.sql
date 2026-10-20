@@ -305,6 +305,7 @@ DECLARE
     -- (push-only, no SMS channel). Added mid-list so the entry is a pure addition.
     'issue_3720_admin_question_action',
     'issue_3720_admin_update_idea',
+    'issue_3988_enqueue_alert',
     'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
