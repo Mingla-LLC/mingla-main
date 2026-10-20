@@ -1241,16 +1241,10 @@ export const createTicketCheckoutCreateHandler = (
     // (ORCH-1072: belongs to this event, not yet ended), and treating it as a
     // one-day set gives the pass its day row and the order its payout anchor.
     // Events: lone eventDateId becomes the day set (issue #3313).
-    // issue #3281 R3 — scoped experience counters also need the day when the
-    // client sent only eventDateId (fixed-slot). Gate on capacity_scope so
-    // total-scope / no-start identity stays byte-identical (no experience
-    // event_type branch — issue #3313 pin).
     if (
+      tripGateRow?.event_type === "event" &&
       orderedEventDateIds.length === 0 &&
-      eventDateId !== null &&
-      (tripGateRow?.event_type === "event" ||
-        tripGateRow?.capacity_scope === "per_day" ||
-        tripGateRow?.capacity_scope === "per_start")
+      eventDateId !== null
     ) {
       orderedEventDateIds.push(eventDateId);
       anchorEventDateId = eventDateId;
@@ -1263,6 +1257,18 @@ export const createTicketCheckoutCreateHandler = (
       bookedStartAt !== null &&
       orderedEventDateIds.length === 0 &&
       eventDateId !== null
+    ) {
+      orderedEventDateIds.push(eventDateId);
+      anchorEventDateId = eventDateId;
+    }
+    // issue #3281 R3 — fixed-slot scoped counters need the day when the client
+    // sent only eventDateId. Gate on capacity_scope (not event_type) so the
+    // #3313 "no experience branch" pin holds and total-scope identity stays.
+    if (
+      orderedEventDateIds.length === 0 &&
+      eventDateId !== null &&
+      (tripGateRow?.capacity_scope === "per_day" ||
+        tripGateRow?.capacity_scope === "per_start")
     ) {
       orderedEventDateIds.push(eventDateId);
       anchorEventDateId = eventDateId;
