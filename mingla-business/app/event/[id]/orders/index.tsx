@@ -25,6 +25,7 @@ import {
 } from "../../../../src/store/orderStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { useEventOrders } from "../../../../src/hooks/useEventOrders";
+import { withoutCompOrders } from "../../../../src/utils/compOrders";
 import {
   capitalizeNoun,
   offeringKindConfig,
@@ -94,8 +95,9 @@ export default function EventOrdersListRoute(): React.ReactElement {
     offeringKindFromEventType(event?.event_type),
   );
   const ordersQuery = useEventOrders(typeof eventId === "string" ? eventId : null);
+  // issue #3827 — Orders is the sales ledger. Guest-list tickets live in Guests.
   const orders = useMemo<OrderRecord[]>(
-    () => ordersQuery.data ?? [],
+    () => withoutCompOrders(ordersQuery.data ?? []),
     [ordersQuery.data],
   );
 

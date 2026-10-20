@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
-import type { OrderRecord, RefundRecord } from "../store/orderStore";
+import type { OrderRecord, OrderSource, RefundRecord } from "../store/orderStore";
+import { isCompOrder } from "../utils/compOrders";
 import { busiestNightSoldByTicketType } from "../utils/perNightCapacity";
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import {
@@ -64,6 +65,11 @@ export interface OrderRow {
   stripe_application_fee_amount_cents: number | null;
   // ORCH-1006 — canonical per-order money split (jsonb). NULL on legacy orders.
   pricing_breakdown: unknown | null;
+  // issue #3827 — guest-list (comp) fields. Optional: older fixtures omit them.
+  source?: string | null;
+  comp_reason?: string | null;
+  comp_party_lead_order_id?: string | null;
+  party_lead_name?: string | null;
   events: { brand_id: null | string } | null;
   order_line_items: OrderLineItemRow[];
   /** issue #2160 — each pass of this order and the days it admits. */
@@ -191,6 +197,10 @@ export const fetchEventOrders = async (
       refunded_amount_cents,
       stripe_application_fee_amount_cents,
       pricing_breakdown,
+      source,
+      comp_reason,
+      comp_party_lead_order_id,
+      party_lead_name:metadata->>party_lead_name,
       events!inner ( brand_id ),
       tickets (
         id,
@@ -264,6 +274,30 @@ const validateOrderRowCurrency = (order: OrderRow): void => {
       refund.amount_cents > 0,
     );
   }
+};
+
+const KNOWN_SOURCES: readonly OrderSource[] = [
+  "online_checkout",
+  "door_sale",
+  "manual_import",
+  "legacy",
+  "comp",
+];
+let reportedUnknownSource = false;
+
+// issue #3827 — an absent source is a pre-#3827 fixture or persisted record
+// and reads as a sale; an unknown value maps to "legacy" and is reported once.
+const sourceFromRow = (source: string | null | undefined): OrderSource => {
+  if (source === null || source === undefined) return "online_checkout";
+  if ((KNOWN_SOURCES as readonly string[]).includes(source)) return source as OrderSource;
+  if (!reportedUnknownSource) {
+    reportedUnknownSource = true;
+    reportNonFatal("event-orders.unknown-source", new Error("unknown order source"), {
+      feature: "event-orders",
+      source,
+    });
+  }
+  return "legacy";
 };
 
 export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
@@ -359,6 +393,10 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
       })),
       // ORCH-0787: cancelled_at is the canonical column. Failed payments are NOT mapped to cancelled.
       cancelledAt: order.cancelled_at,
+      source: sourceFromRow(order.source),
+      compReason: order.comp_reason ?? null,
+      partyLeadOrderId: order.comp_party_lead_order_id ?? null,
+      partyLeadName: order.party_lead_name ?? null,
       lastSeenEventUpdatedAt: order.created_at,
     };
   });
@@ -378,6 +416,8 @@ export const getEventOrderRevenue = (
   let refunded = 0;
   for (const order of orders) {
     if (order.status !== "paid" && order.status !== "refunded_partial") continue;
+    // issue #3827 — guest-list tickets are never sold and never revenue.
+    if (isCompOrder(order)) continue;
     for (const line of order.lines) {
       soldCount += Math.max(0, line.quantity - line.refundedQuantity);
     }
@@ -393,12 +433,14 @@ export const getEventOrderRevenue = (
   };
 };
 
-export const getEventSoldCounts = (
+const liveCountsByTier = (
   orders: OrderRecord[],
+  includeComps: boolean,
 ): Record<string, number> => {
   const counts: Record<string, number> = {};
   for (const order of orders) {
     if (order.status !== "paid" && order.status !== "refunded_partial") continue;
+    if (!includeComps && isCompOrder(order)) continue;
     for (const line of order.lines) {
       const live = Math.max(0, line.quantity - line.refundedQuantity);
       if (live === 0) continue;
@@ -407,6 +449,18 @@ export const getEventSoldCounts = (
   }
   return counts;
 };
+
+/** Live tickets SOLD per ticket type. issue #3827: guest-list tickets excluded. */
+export const getEventSoldCounts = (orders: OrderRecord[]): Record<string, number> =>
+  liveCountsByTier(orders, false);
+
+/**
+ * issue #3827 — live tickets ISSUED per ticket type: sales plus guest-list
+ * tickets. This is what a capacity guard must count, because a guest-list
+ * ticket takes a place.
+ */
+export const getEventIssuedCounts = (orders: OrderRecord[]): Record<string, number> =>
+  liveCountsByTier(orders, true);
 
 /**
  * Build a server-backed {@link SoldCountContext} from the live event orders.
@@ -418,10 +472,12 @@ export const getEventSoldCounts = (
  * change) collides with sold tickets — so it MUST reflect real server truth,
  * not the empty client order store.
  *
- * - `soldCountByTier`: live ticket quantity per ticket-type (net of refunds).
- * - `soldCountForEvent`: count of live orders (buyers) — matches the server
- *   RPC's `count(*) … payment_status IN ('paid','partial_refund')` and the
- *   "Refund N orders" copy in the reject dialog.
+ * - `soldCountByTier`: live ticket quantity per ticket-type (net of refunds),
+ *   guest-list tickets INCLUDED (issue #3827): a host must not cut capacity
+ *   below the places already issued.
+ * - `soldCountForEvent`: count of live PAID orders (buyers), guest-list orders
+ *   excluded — the "Refund N orders" copy in the reject dialog counts buyers.
+ * - `capacityFloorByTier`: per-night floor over ALL orders, comps included.
  */
 export const buildSoldCountContextFromOrders = (
   orders: OrderRecord[],
@@ -433,9 +489,9 @@ export const buildSoldCountContextFromOrders = (
   soldCountForEvent: number;
   capacityFloorByTier?: Record<string, number>;
 } => ({
-  soldCountByTier: getEventSoldCounts(orders),
+  soldCountByTier: getEventIssuedCounts(orders),
   soldCountForEvent: orders.filter(
-    (o) => o.status === "paid" || o.status === "refunded_partial",
+    (o) => (o.status === "paid" || o.status === "refunded_partial") && !isCompOrder(o),
   ).length,
   ...(perNight !== undefined && perNight !== null
     ? {
@@ -456,8 +512,10 @@ export const getEventOrderActivity = (
   for (const order of orders) {
     const buyerName = order.buyer.name.trim().length > 0 ? order.buyer.name : "Anonymous";
     const totalQty = order.lines.reduce((sum, line) => sum + line.quantity, 0);
-    const purchaseSummary =
-      order.lines.length === 1
+    // issue #3827 — a guest-list guest did not buy anything.
+    const purchaseSummary = isCompOrder(order)
+      ? "was added to the guest list"
+      : order.lines.length === 1
         ? `bought ${order.lines[0].quantity}x ${order.lines[0].ticketNameAtPurchase}`
         : `bought ${totalQty}x tickets`;
     if (new Date(order.paidAt).getTime() >= cutoff) {
@@ -490,7 +548,7 @@ export const getEventOrderActivity = (
           kind: "cancel",
           orderId: order.id,
           buyerName,
-          summary: "cancelled their order",
+          summary: isCompOrder(order) ? "guest-list ticket was cancelled" : "cancelled their order",
           at: order.cancelledAt,
         });
       }

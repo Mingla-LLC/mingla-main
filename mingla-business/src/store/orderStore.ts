@@ -141,6 +141,18 @@ export interface OrderTicketDayRecord {
   usedAt: string | null;
 }
 
+/**
+ * issue #3827 — where an order came from. `comp` is a guest-list ticket a host
+ * added (no checkout, no money). Optional: persisted records and fixtures from
+ * before #3827 carry none and read as a sale.
+ */
+export type OrderSource =
+  | "online_checkout"
+  | "door_sale"
+  | "manual_import"
+  | "legacy"
+  | "comp";
+
 export interface OrderRecord {
   // Identity
   id: string;
@@ -207,6 +219,14 @@ export interface OrderRecord {
   /** Append-only audit log. */
   refunds: RefundRecord[];
   cancelledAt: string | null;
+  /** issue #3827 — order origin; `comp` = guest list. Absent reads as a sale. */
+  source?: OrderSource;
+  /** issue #3827 — the host's optional note on a guest-list ticket (team only). */
+  compReason?: string | null;
+  /** issue #3827 — on a named plus-one's guest-list order: the guest they came with. */
+  partyLeadOrderId?: string | null;
+  /** issue #3827 — that guest's name, as it was when the plus-one was added. */
+  partyLeadName?: string | null;
   /**
    * Advances when buyer views their order detail page (buyer-side
    * material-change banner acknowledge). Initialized to event.updatedAt

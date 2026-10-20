@@ -1,11 +1,13 @@
 /**
  * /event/[id]/guests — J-G1 Guest list view (Cycle 10).
  *
- * Operator-side merged list of paid orders + comp guests for the event.
- * Buyer-as-attendee model (1 OrderRecord = 1 row, qty = summed lines).
- * Comps from useGuestStore distinguish via "COMP" status pill.
+ * Operator-side merged list of orders (sales AND guest-list tickets) + door
+ * sales for the event. Buyer-as-attendee model (1 OrderRecord = 1 row, qty =
+ * summed lines). issue #3827: guest-list guests are real server orders
+ * (source = comp) with a GUEST LIST pill, and every check-in pill comes from
+ * the server's tickets, so every door phone agrees.
  *
- * Chrome: search toggle + CSV export + add-comp "+".
+ * Chrome: search toggle + CSV export + "Add to guest list" "+".
  *
  * I-21: This is operator-side route. Uses useAuth via parent flow.
  *
@@ -33,9 +35,10 @@ import {
   text as textTokens,
 } from "../../../../src/constants/designSystem";
 import { useGuestStore } from "../../../../src/store/guestStore";
-import type { CompGuestEntry } from "../../../../src/store/guestStore";
 import type { OrderRecord } from "../../../../src/store/orderStore";
-import { useScanStore } from "../../../../src/store/scanStore";
+import { isCompOrder } from "../../../../src/utils/compOrders";
+import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../../src/utils/permissionGates";
 import {
   useDoorSalesStore,
   type DoorPaymentMethod,
@@ -70,7 +73,12 @@ import type {
   GuestRosterSort,
 } from "../../../../src/types/guestRoster";
 
-import { AddCompGuestSheet } from "../../../../src/components/guests/AddCompGuestSheet";
+import {
+  AddCompGuestSheet,
+  type AddCompGuestSuccess,
+  type LegacyCompPrefill,
+} from "../../../../src/components/guests/AddCompGuestSheet";
+import { Button } from "../../../../src/components/ui/Button";
 import { GuestRosterExperience } from "../../../../src/components/guests/GuestRosterExperience";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
@@ -82,7 +90,6 @@ import { Toast } from "../../../../src/components/ui/Toast";
 
 type GuestRow =
   | { kind: "order"; id: string; order: OrderRecord; sortKey: string }
-  | { kind: "comp"; id: string; comp: CompGuestEntry; sortKey: string }
   // Cycle 12 — door sale rows (auto-checked-in by Decision #5).
   | { kind: "door"; id: string; sale: DoorSaleRecord; sortKey: string };
 
@@ -146,14 +153,6 @@ const matchesSearch = (row: GuestRow, q: string): boolean => {
       o.buyer.phone.toLowerCase().includes(lower)
     );
   }
-  if (row.kind === "comp") {
-    const c = row.comp;
-    return (
-      c.name.toLowerCase().includes(lower) ||
-      c.email.toLowerCase().includes(lower) ||
-      c.phone.toLowerCase().includes(lower)
-    );
-  }
   // Cycle 12 — door sale predicate. Walk-up sales with empty buyerName
   // still match search "walk" so operators can find them.
   const s = row.sale;
@@ -171,7 +170,14 @@ interface OrderStatusPillSpec {
   label: string;
 }
 
-const orderStatusPill = (status: OrderRecord["status"]): OrderStatusPillSpec => {
+const orderStatusPill = (order: OrderRecord): OrderStatusPillSpec => {
+  const status = order.status;
+  // issue #3827 — a guest-list ticket is never "PAID".
+  if (isCompOrder(order)) {
+    return status === "cancelled"
+      ? { variant: "draft", label: "CANCELLED" }
+      : { variant: "accent", label: "GUEST LIST" };
+  }
   switch (status) {
     case "paid":
       return { variant: "info", label: "PAID" };
@@ -233,7 +239,6 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { isAuthReady, user } = useAuth();
-  const operatorAccountId = user?.id ?? "anonymous";
 
   const routeEvent = useManagedEventRoute(
     typeof eventId === "string" ? eventId : null,
@@ -265,7 +270,10 @@ export default function EventGuestsListRoute(): React.ReactElement {
   // Raw subscriptions — merge in useMemo to maintain stable refs.
   const allOrderEntriesRead = useEventGuestList(typeof eventId === "string" ? eventId : null);
   const allOrderEntries = allOrderEntriesRead.data ?? [];
-  const allCompEntries = useGuestStore((s) => s.entries);
+  // issue #3827 — legacy device-only comps, READ ONLY, to offer Re-add.
+  const legacyCompEntries = useGuestStore((s) => s.entries);
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canAddGuests = canPerformAction(currentRank, "ADD_COMP_GUEST");
   // Cycle 12 — door sale entries merged into the J-G1 list.
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
 
@@ -285,14 +293,6 @@ export default function EventGuestsListRoute(): React.ReactElement {
         order: o,
         sortKey: o.paidAt,
       }));
-    const comps = allCompEntries
-      .filter((c) => c.eventId === eventId)
-      .map<GuestRow>((c) => ({
-        kind: "comp",
-        id: c.id,
-        comp: c,
-        sortKey: c.addedAt,
-      }));
     const doorRows = allDoorEntries
       .filter((s) => s.eventId === eventId)
       .map<GuestRow>((s) => ({
@@ -301,14 +301,36 @@ export default function EventGuestsListRoute(): React.ReactElement {
         sale: s,
         sortKey: s.recordedAt,
       }));
-    return [...orders, ...comps, ...doorRows].sort(
+    return [...orders, ...doorRows].sort(
       (a, b) => new Date(b.sortKey).getTime() - new Date(a.sortKey).getTime(),
     );
-  }, [allOrderEntries, allCompEntries, allDoorEntries, eventId]);
+  }, [allOrderEntries, allDoorEntries, eventId]);
+
+  // issue #3827 — "Ada +2": a named plus-one's own order points at the guest
+  // they came with; the guest's row counts them.
+  const plusOneCountByLead = useMemo<Map<string, number>>(() => {
+    const map = new Map<string, number>();
+    for (const order of allOrderEntries) {
+      if (order.partyLeadOrderId === null || order.partyLeadOrderId === undefined) continue;
+      if (order.status === "cancelled") continue;
+      map.set(order.partyLeadOrderId, (map.get(order.partyLeadOrderId) ?? 0) + 1);
+    }
+    return map;
+  }, [allOrderEntries]);
+
+  const legacyComps = useMemo(
+    () => (typeof eventId === "string" ? legacyCompEntries.filter((c) => c.eventId === eventId) : []),
+    [legacyCompEntries, eventId],
+  );
+  const [addPrefill, setAddPrefill] = useState<LegacyCompPrefill[] | undefined>(undefined);
 
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
   const [search, setSearch] = useState<string>("");
   const [addSheetOpen, setAddSheetOpen] = useState<boolean>(false);
+  const openAddSheet = useCallback((prefill?: LegacyCompPrefill[]): void => {
+    setAddPrefill(prefill);
+    setAddSheetOpen(true);
+  }, []);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
     message: "",
@@ -343,8 +365,8 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   // The rule itself lives in `src/utils/guestDayFilter.ts` so it can be called
   // by a test with real rows instead of asserted by regex over this screen.
-  // Comps and door sales carry no chosen day and are equally admissible on any
-  // day, so they show under every chip.
+  // Door sales carry no chosen day and are equally admissible on any day, so
+  // they show under every chip. Guest-list orders carry their day like sales.
   const rowMatchesDay = useCallback(
     (row: GuestRow, dayId: string): boolean =>
       row.kind !== "order" || orderMatchesDay(row.order.ticketDays, dayId),
@@ -372,29 +394,6 @@ export default function EventGuestsListRoute(): React.ReactElement {
     [merged, search, dayFilter, rowMatchesDay],
   );
 
-  // Cycle 11 J-S6 — derived check-in counts per order + comp.
-  // Raw subscription + useMemo per selector pattern rule.
-  const allScanEntries = useScanStore((s) => s.entries);
-  const orderCheckInCounts = useMemo<Map<string, number>>(() => {
-    const map = new Map<string, number>();
-    for (const scan of allScanEntries) {
-      if (scan.scanResult !== "success") continue;
-      // Skip comp manual scans (orderId === "" for comps).
-      if (scan.orderId === "") continue;
-      map.set(scan.orderId, (map.get(scan.orderId) ?? 0) + 1);
-    }
-    return map;
-  }, [allScanEntries]);
-  const compCheckInIds = useMemo<Set<string>>(() => {
-    const set = new Set<string>();
-    for (const scan of allScanEntries) {
-      if (scan.scanResult !== "success") continue;
-      if (scan.via !== "manual") continue;
-      if (!scan.ticketId.startsWith("cg_")) continue;
-      set.add(scan.ticketId);
-    }
-    return set;
-  }, [allScanEntries]);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -448,12 +447,32 @@ export default function EventGuestsListRoute(): React.ReactElement {
   }, [event, merged, showToast, headcountLabelForCount]);
 
   const handleAddSuccess = useCallback(
-    (entry: CompGuestEntry): void => {
+    (result: AddCompGuestSuccess): void => {
       setAddSheetOpen(false);
-      showToast(`${entry.name} added as comp guest.`);
+      setAddPrefill(undefined);
+      // Re-added legacy entries are real tickets now: drop the phone copies.
+      for (const localId of result.addedLegacyIds) {
+        useGuestStore.getState().removeCompEntry(localId);
+      }
+      showToast(result.message);
     },
     [showToast],
   );
+
+  const addSheetNode =
+    brand !== null && event !== null ? (
+      <AddCompGuestSheet
+        visible={addSheetOpen}
+        event={event}
+        brandId={brand.id}
+        prefill={addPrefill}
+        onClose={() => {
+          setAddSheetOpen(false);
+          setAddPrefill(undefined);
+        }}
+        onSuccess={handleAddSuccess}
+      />
+    ) : null;
 
   const handleGuestRosterExport = useCallback(async (input: {
     filter: GuestRosterFilter;
@@ -596,8 +615,11 @@ export default function EventGuestsListRoute(): React.ReactElement {
           eventId={eventId}
           onBack={handleBack}
           onOpenOrder={(orderId) => router.push(`/event/${eventId}/orders/${orderId}` as never)}
+          onOpenGuestListOrder={(orderId) => router.push(`/event/${eventId}/guests/order-${orderId}` as never)}
           onExport={(input) => { void handleGuestRosterExport(input); }}
+          onAddGuests={canAddGuests ? () => openAddSheet() : undefined}
         />
+        {addSheetNode}
         <View style={styles.toastWrap} pointerEvents="box-none">
           <Toast
             visible={toast.visible}
@@ -677,12 +699,14 @@ export default function EventGuestsListRoute(): React.ReactElement {
             onPress={handleExport}
             accessibilityLabel={`Export ${headcountPlural} list`}
           />
-          <IconChrome
-            icon="plus"
-            size={36}
-            onPress={() => setAddSheetOpen(true)}
-            accessibilityLabel="Add comp guest"
-          />
+          {canAddGuests ? (
+            <IconChrome
+              icon="plus"
+              size={36}
+              onPress={() => openAddSheet()}
+              accessibilityLabel="Add to guest list"
+            />
+          ) : null}
         </View>
       </View>
 
@@ -767,12 +791,30 @@ export default function EventGuestsListRoute(): React.ReactElement {
           </ScrollView>
         ) : null}
 
+        {legacyComps.length > 0 && canAddGuests ? (
+          <View style={styles.legacyBanner} testID="issue-3827-legacy-comps-banner">
+            <Text style={styles.legacyBannerText}>
+              {`${legacyComps.length} ${legacyComps.length === 1 ? "guest" : "guests"} you added before this update ${legacyComps.length === 1 ? "is" : "are"} saved only on this phone and ${legacyComps.length === 1 ? "has" : "have"} no ticket. Re-add them to send real tickets.`}
+            </Text>
+            <Button
+              label="Re-add"
+              onPress={() =>
+                openAddSheet(
+                  legacyComps.map((c) => ({ localId: c.id, name: c.name, email: c.email, phone: c.phone })),
+                )}
+              variant="secondary"
+              size="sm"
+              accessibilityLabel="Re-add the guests saved on this phone"
+            />
+          </View>
+        ) : null}
+
         {totalCount === 0 ? (
           <View style={styles.emptyHost}>
             <EmptyState
               illustration="ticket"
               title={`No ${headcountPlural} yet`}
-              description="Once buyers buy tickets — or you add comp guests manually — they'll appear here."
+              description="Once people buy tickets or you add them to the guest list, they'll appear here."
               cta={{
                 label: `Share ${kindCfg.noun} link`,
                 onPress: handleShareEvent,
@@ -794,8 +836,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
               <GuestRowCard
                 key={`${row.kind}-${row.id}`}
                 row={row}
-                orderCheckInCounts={orderCheckInCounts}
-                compCheckInIds={compCheckInIds}
+                plusOneCount={row.kind === "order" ? plusOneCountByLead.get(row.id) ?? 0 : 0}
                 onPress={() => handleOpenRow(row)}
               />
             ))}
@@ -803,17 +844,8 @@ export default function EventGuestsListRoute(): React.ReactElement {
         )}
       </ScrollView>
 
-      {/* Add comp guest sheet */}
-      {brand !== null ? (
-        <AddCompGuestSheet
-          visible={addSheetOpen}
-          event={event}
-          brandId={brand.id}
-          operatorAccountId={operatorAccountId}
-          onClose={() => setAddSheetOpen(false)}
-          onSuccess={handleAddSuccess}
-        />
-      ) : null}
+      {/* Add to guest list sheet (issue #3827) */}
+      {addSheetNode}
 
       {/* Toast */}
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -832,19 +864,36 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
 interface GuestRowCardProps {
   row: GuestRow;
-  orderCheckInCounts: Map<string, number>;
-  compCheckInIds: Set<string>;
+  /** issue #3827 — named plus-ones who came with this guest-list guest. */
+  plusOneCount: number;
   onPress: () => void;
 }
 
+/**
+ * issue #3827 — check-ins come from the server's tickets (status used, or a
+ * first admission on a multi-day pass), never from this phone's scan log.
+ */
+export const serverCheckInCounts = (order: OrderRecord): { live: number; checkedIn: number } => {
+  const passes = order.ticketDays ?? [];
+  if (passes.length === 0) {
+    return {
+      live: order.lines.reduce((sum, l) => sum + Math.max(0, l.quantity - l.refundedQuantity), 0),
+      checkedIn: 0,
+    };
+  }
+  const live = passes.filter((t) => t.status === "valid" || t.status === "used");
+  return {
+    live: live.length,
+    checkedIn: live.filter((t) => t.status === "used" || t.usedAt !== null).length,
+  };
+};
+
 const GuestRowCard: React.FC<GuestRowCardProps> = ({
   row,
-  orderCheckInCounts,
-  compCheckInIds,
+  plusOneCount,
   onPress,
 }) => {
   const isOrder = row.kind === "order";
-  const isComp = row.kind === "comp";
   // (kind === "door" is the implicit else branch — narrowing handles it.)
 
   let name: string;
@@ -860,11 +909,6 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     email = row.order.buyer.email;
     ticketSummary = summarizeOrderTickets(row.order.lines);
     relativeTime = formatRelativeTime(row.order.paidAt);
-  } else if (isComp) {
-    name = row.comp.name;
-    email = row.comp.email;
-    ticketSummary = `1× ${row.comp.ticketNameAtCreation ?? "Comp"}`;
-    relativeTime = formatRelativeTime(row.comp.addedAt);
   } else {
     // Door
     name = row.sale.buyerName.trim().length > 0 ? row.sale.buyerName : "Walk-up";
@@ -875,19 +919,28 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
 
   const hue = hashStringToHue(row.id);
   const initials = getInitials(name);
-  const sublineLeft = email.length > 0 ? `${email} · ` : "";
-  const subline = `${sublineLeft}${ticketSummary} · ${relativeTime}`;
+  const sublineLeft = email.length > 0
+    ? `${email} · `
+    : isOrder && isCompOrder(row.order) ? "No email · " : "";
+  // issue #3827 — guest-list party fragments: "with Ada", "+2 plus-ones".
+  const partyFragments: string[] = [];
+  if (isOrder && isCompOrder(row.order)) {
+    const lead = row.order.partyLeadName ?? null;
+    if (row.order.partyLeadOrderId !== null && row.order.partyLeadOrderId !== undefined && lead !== null) {
+      partyFragments.push(`with ${lead}`);
+    }
+    if (plusOneCount > 0) partyFragments.push(`+${plusOneCount} plus-one${plusOneCount === 1 ? "" : "s"}`);
+  }
+  const subline = [`${sublineLeft}${ticketSummary}`, ...partyFragments, relativeTime].join(" · ");
 
   // Cycle 11 J-S6 + Cycle 12 — derived check-in pill state.
   // Door sales are auto-checked-in at sale time per Decision #5 + OBS-1
   // (refund does NOT void check-in). Always CHECKED IN.
   let checkInPillNode: React.ReactElement | null = null;
   if (isOrder) {
-    const totalLiveQty = row.order.lines.reduce(
-      (sum, l) => sum + Math.max(0, l.quantity - l.refundedQuantity),
-      0,
-    );
-    const checkedCount = orderCheckInCounts.get(row.order.id) ?? 0;
+    const counts = serverCheckInCounts(row.order);
+    const totalLiveQty = counts.live;
+    const checkedCount = counts.checkedIn;
     if (totalLiveQty === 0) {
       checkInPillNode = null;
     } else if (checkedCount === 0) {
@@ -903,15 +956,6 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     } else {
       checkInPillNode = <Pill variant="info">ALL CHECKED IN</Pill>;
     }
-  } else if (isComp) {
-    const compChecked = compCheckInIds.has(row.comp.id);
-    checkInPillNode = compChecked ? (
-      <Pill variant="info">CHECKED IN</Pill>
-    ) : (
-      <View style={styles.checkInPill}>
-        <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
-      </View>
-    );
   } else {
     // Door — always CHECKED IN (auto-check-in at sale; refund doesn't void).
     checkInPillNode = <Pill variant="info">CHECKED IN</Pill>;
@@ -920,12 +964,11 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
   let kindPillNode: React.ReactElement;
   let a11yLabel: string;
   if (isOrder) {
-    const spec = orderStatusPill(row.order.status);
+    const spec = orderStatusPill(row.order);
     kindPillNode = <Pill variant={spec.variant}>{spec.label}</Pill>;
-    a11yLabel = `Guest ${name}, ${ticketSummary}, ${spec.label}`;
-  } else if (isComp) {
-    kindPillNode = <Pill variant="accent">COMP</Pill>;
-    a11yLabel = `Comp guest ${name}, ${ticketSummary}`;
+    a11yLabel = isCompOrder(row.order) && row.order.status !== "cancelled"
+      ? `Guest-list guest ${name}, ${ticketSummary}`
+      : `Guest ${name}, ${ticketSummary}, ${spec.label}`;
   } else {
     const spec = doorPaymentPill(row.sale.paymentMethod, row.sale.status);
     kindPillNode = <Pill variant={spec.variant}>{spec.label}</Pill>;
@@ -1095,6 +1138,20 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.0,
     color: textTokens.tertiary,
+  },
+  legacyBanner: {
+    gap: spacing.sm,
+    padding: spacing.md - 2,
+    marginBottom: spacing.sm,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: accent.border,
+    backgroundColor: accent.tint,
+  },
+  legacyBannerText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: textTokens.primary,
   },
   toastWrap: {
     position: "absolute",

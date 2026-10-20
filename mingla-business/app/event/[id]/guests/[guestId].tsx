@@ -1,16 +1,19 @@
 /**
  * /event/[id]/guests/[guestId] — J-G2 Guest detail (Cycle 10).
  *
- * `guestId` is composite: `{kind}-{innerId}` where kind ∈ {"order","comp"}.
+ * `guestId` is composite: `{kind}-{innerId}` where kind ∈ {"order","door"}.
  *
- * Order kind: shows hero + status + tickets + order activity + purchase history (same brand).
- * Comp kind: shows hero + status + ticket + ADDED BY + Remove guest CTA + ConfirmDialog.
+ * Order kind: hero + status + one row per REAL ticket with its server check-in
+ * state + Admit + order activity + purchase history (same brand).
+ * issue #3827: a guest-list (comp) order shows GUEST LIST, the team note,
+ * "Came with" / "BROUGHT", Resend ticket and Cancel guest-list ticket. The old
+ * phone-only `comp-` kind is gone; such links render the not-found shell.
  *
  * Per Cycle 10 SPEC §5/J-G2.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,20 +27,32 @@ import {
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
-import { useGuestStore } from "../../../../src/store/guestStore";
-import { useEventEditLogStore } from "../../../../src/store/eventEditLogStore";
+import { useQueryClient } from "@tanstack/react-query";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import type { OrderRecord } from "../../../../src/store/orderStore";
-import { useEventGuestById, useEventGuestList } from "../../../../src/hooks/useEventOrders";
-import { useScanStore } from "../../../../src/store/scanStore";
+import {
+  eventOrdersKeys,
+  useEventGuestById,
+  useEventGuestList,
+} from "../../../../src/hooks/useEventOrders";
+import { guestRosterKeys } from "../../../../src/hooks/useGuestRoster";
+import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../../src/utils/permissionGates";
+import { BRAND_ROLE_RANK } from "../../../../src/utils/brandRole";
+import { isCompOrder } from "../../../../src/utils/compOrders";
+import {
+  GuestListError,
+  admitTicket,
+  cancelGuestListTicket,
+  guestListErrorCopy,
+  resendGuestListTicket,
+} from "../../../../src/services/guestListService";
 import {
   useDoorSalesStore,
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
-import { useAuth } from "../../../../src/context/AuthContext";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../src/utils/deferAfterDismiss";
-import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
 
@@ -90,12 +105,13 @@ const getInitials = (name: string): string => {
 
 const parseGuestId = (
   raw: string,
-): { kind: "order" | "comp" | "door"; innerId: string } | null => {
+): { kind: "order" | "legacyComp" | "door"; innerId: string } | null => {
   if (raw.startsWith("order-")) {
     return { kind: "order", innerId: raw.slice("order-".length) };
   }
+  // issue #3827 — the phone-only comp list is gone. Old links say so.
   if (raw.startsWith("comp-")) {
-    return { kind: "comp", innerId: raw.slice("comp-".length) };
+    return { kind: "legacyComp", innerId: raw.slice("comp-".length) };
   }
   // Cycle 12 — door sale rows from J-G1 use the "door-" prefix.
   if (raw.startsWith("door-")) {
@@ -124,7 +140,13 @@ interface OrderStatusPillSpec {
   label: string;
 }
 
-const orderStatusPill = (status: OrderRecord["status"]): OrderStatusPillSpec => {
+const orderStatusPill = (order: OrderRecord): OrderStatusPillSpec => {
+  const status = order.status;
+  if (isCompOrder(order)) {
+    return status === "cancelled"
+      ? { variant: "draft", label: "CANCELLED" }
+      : { variant: "accent", label: "GUEST LIST" };
+  }
   switch (status) {
     case "paid":
       return { variant: "info", label: "PAID" };
@@ -140,6 +162,59 @@ const orderStatusPill = (status: OrderRecord["status"]): OrderStatusPillSpec => 
     }
   }
 };
+
+const newRequestId = (): string => {
+  const cryptoLike = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (cryptoLike?.randomUUID) return cryptoLike.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+  });
+};
+
+const formatClock = (iso: string): string => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
+/** issue #3827 — one row per REAL ticket of the order, with its server state. */
+export interface GuestTicketRow {
+  ticketId: string;
+  ticketName: string;
+  isFree: boolean;
+  unitPrice: number;
+  state: "checked_in" | "not_checked_in" | "cancelled" | "refunded" | "transferred";
+  usedAt: string | null;
+}
+
+export const buildGuestTicketRows = (order: OrderRecord): GuestTicketRow[] =>
+  (order.ticketDays ?? []).map((ticket) => {
+    const line = order.lines.find((l) => l.ticketTypeId === ticket.ticketTypeId) ?? order.lines[0];
+    const state: GuestTicketRow["state"] =
+      ticket.status === "used" || ticket.usedAt !== null
+        ? "checked_in"
+        : ticket.status === "void"
+          ? "cancelled"
+          : ticket.status === "refunded"
+            ? "refunded"
+            : ticket.status === "transferred"
+              ? "transferred"
+              : "not_checked_in";
+    return {
+      ticketId: ticket.ticketId,
+      ticketName: line?.ticketNameAtPurchase ?? "Ticket",
+      isFree: line?.isFreeAtPurchase ?? true,
+      unitPrice: line?.unitPriceGbpAtPurchase ?? 0,
+      state,
+      usedAt: ticket.usedAt,
+    };
+  });
+
+// Scanner role, or event manager and above (auto-provisioned as door staff).
+// The server's scan gate stays authoritative.
+const canDoorScanFromRank = (rank: number): boolean =>
+  rank === BRAND_ROLE_RANK.scanner || rank >= BRAND_ROLE_RANK.event_manager;
 
 // ---- Screen ---------------------------------------------------------
 
@@ -162,22 +237,16 @@ export default function GuestDetailRoute(): React.ReactElement {
   );
   const event = routeEvent.event;
   const brand = routeEvent.brand;
-  const { user } = useAuth();
-  const operatorAccountId = user?.id ?? "anonymous";
+  const queryClient = useQueryClient();
+  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
+  const canManageGuestList = canPerformAction(currentRank, "ADD_COMP_GUEST");
+  const canDoorScan = canDoorScanFromRank(currentRank);
 
-  // Cycle 11 J-S5/S6 — derived check-in state from useScanStore.
-  // Raw subscription + useMemo per selector pattern rule.
-  const allScanEntries = useScanStore((s) => s.entries);
   const orderRead = useEventGuestById(
     typeof eventId === "string" ? eventId : null,
     parsed !== null && parsed.kind === "order" ? parsed.innerId : null,
   );
   const order = orderRead.data;
-  const comp = useGuestStore((s) =>
-    parsed !== null && parsed.kind === "comp"
-      ? s.getCompEntryById(parsed.innerId)
-      : null,
-  );
   // Cycle 12 — single-existing-reference selector; safe to subscribe.
   const sale = useDoorSalesStore((s) =>
     parsed !== null && parsed.kind === "door"
@@ -205,49 +274,31 @@ export default function GuestDetailRoute(): React.ReactElement {
       );
   }, [allOrderEntries, order]);
 
-  // Cycle 11 J-S5 — per-ticket check-in derivation. Hooks must run BEFORE
-  // the early-return shell below (React Rules of Hooks). Each branch
-  // internally short-circuits with empty result when guard data isn't ready
-  // yet (e.g., cold-start render before persist hydration completes).
+  // Hooks run BEFORE the early-return shell below (React Rules of Hooks).
   // ORCH-0710 fix — see prompts/IMPLEMENTOR_BIZ_CYCLE_11_RETRY_ORCH-0710_ORCH-0711.md.
   const isOrderCandidate =
     parsed !== null && parsed.kind === "order" && order !== null;
-  const isCompCandidate =
-    parsed !== null && parsed.kind === "comp" && comp !== null;
 
-  const expandedTickets = useMemo(() => {
+  // issue #3827 — one row per REAL ticket, with the SERVER's check-in state.
+  const ticketRows = useMemo<GuestTicketRow[]>(() => {
     if (!isOrderCandidate || order === null) return [];
-    return expandTicketIds(order.id, order.lines);
+    return buildGuestTicketRows(order);
   }, [isOrderCandidate, order]);
+  const liveTicketRows = ticketRows.filter(
+    (t) => t.state === "checked_in" || t.state === "not_checked_in",
+  );
+  const totalLiveQty = liveTicketRows.length;
+  const orderCheckedCount = liveTicketRows.filter((t) => t.state === "checked_in").length;
 
-  const orderCheckedTicketIds = useMemo(() => {
-    if (!isOrderCandidate || order === null) return new Set<string>();
-    const set = new Set<string>();
-    for (const scan of allScanEntries) {
-      if (scan.scanResult !== "success") continue;
-      if (scan.orderId !== order.id) continue;
-      set.add(scan.ticketId);
-    }
-    return set;
-  }, [allScanEntries, isOrderCandidate, order]);
-
-  const compCheckedIn = useMemo<boolean>(() => {
-    if (!isCompCandidate || comp === null) return false;
-    return allScanEntries.some(
-      (s) =>
-        s.scanResult === "success" &&
-        s.via === "manual" &&
-        s.ticketId === comp.id,
-    );
-  }, [allScanEntries, isCompCandidate, comp]);
-
-  const totalLiveQty = useMemo<number>(() => {
-    if (!isOrderCandidate || order === null) return 0;
-    return order.lines.reduce(
-      (sum, l) => sum + Math.max(0, l.quantity - l.refundedQuantity),
-      0,
-    );
-  }, [isOrderCandidate, order]);
+  // issue #3827 — "Came with" (a plus-one) and "BROUGHT" (their guest).
+  const partyLead = useMemo<OrderRecord | null>(() => {
+    if (order === null || order.partyLeadOrderId === null || order.partyLeadOrderId === undefined) return null;
+    return allOrderEntries.find((o) => o.id === order.partyLeadOrderId) ?? null;
+  }, [allOrderEntries, order]);
+  const brought = useMemo<OrderRecord[]>(() => {
+    if (order === null) return [];
+    return allOrderEntries.filter((o) => o.partyLeadOrderId === order.id);
+  }, [allOrderEntries, order]);
 
   // Cycle 12 — door candidate hooks. Per ORCH-0710 lesson: all useMemos
   // sit BEFORE the early-return shell. Each one short-circuits with empty
@@ -269,9 +320,13 @@ export default function GuestDetailRoute(): React.ReactElement {
     return map;
   }, [isDoorCandidate, sale]);
 
-  const [removeOpen, setRemoveOpen] = useState<boolean>(false);
-  const [removeReason, setRemoveReason] = useState<string>("");
-  const [removing, setRemoving] = useState<boolean>(false);
+  const [cancelOpen, setCancelOpen] = useState<boolean>(false);
+  const [cancelReason, setCancelReason] = useState<string>("");
+  const [cancelling, setCancelling] = useState<boolean>(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const cancelRequestId = useRef<string>(newRequestId());
+  const [resending, setResending] = useState<boolean>(false);
+  const [admittingId, setAdmittingId] = useState<string | null>(null);
   // Cycle 12 — door refund sheet state.
   const [refundOpen, setRefundOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
@@ -279,13 +334,15 @@ export default function GuestDetailRoute(): React.ReactElement {
     message: "",
   });
 
-  // Reset remove sheet state on visible flip → true
+  // Fresh cancel sheet (and one request id per opening) on every open.
   useEffect(() => {
-    if (removeOpen) {
-      setRemoveReason("");
-      setRemoving(false);
+    if (cancelOpen) {
+      setCancelReason("");
+      setCancelling(false);
+      setCancelError(null);
+      cancelRequestId.current = newRequestId();
     }
-  }, [removeOpen]);
+  }, [cancelOpen]);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -308,64 +365,72 @@ export default function GuestDetailRoute(): React.ReactElement {
     [router],
   );
 
-  const trimmedRemoveReasonLen = removeReason.trim().length;
-  const removeReasonValid =
-    trimmedRemoveReasonLen >= 10 && trimmedRemoveReasonLen <= 200;
+  const cancelReasonTooLong = cancelReason.trim().length > 200;
 
-  // Cycle 11 J-S5 — manual check-in handler. Records via=manual scan;
-  // activity feed picks up via event_scan kind. orderId === "" indicates
-  // comp manual check-in (synthetic ticketId = comp.id).
-  const handleManualCheckIn = useCallback(
-    (args: {
-      ticketId: string;
-      orderId: string;
-      buyerName: string;
-      ticketName: string;
-    }): void => {
-      if (event === null) return;
-      useScanStore.getState().recordScan({
-        ticketId: args.ticketId,
-        orderId: args.orderId,
-        eventId: event.id,
-        brandId: event.brandId,
-        scannerUserId: operatorAccountId,
-        scanResult: "success",
-        via: "manual",
-        offlineQueued: true,
-        buyerNameAtScan: args.buyerName,
-        ticketNameAtScan: args.ticketName,
-      });
-      showToast(`${args.buyerName} checked in`);
+  const refreshGuestTruth = useCallback((): void => {
+    void queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all });
+    if (typeof eventId === "string") {
+      void queryClient.invalidateQueries({ queryKey: [...guestRosterKeys.all, eventId] });
+    }
+  }, [queryClient, eventId]);
+
+  // issue #3827 — Admit goes through the SAME server check as a QR scan
+  // (guest-list `admit` → biz_ticket_admit_by_id → biz_ticket_scan). It
+  // replaces "Mark checked in", which only wrote this phone's scan log.
+  const handleAdmit = useCallback(
+    async (ticketId: string, guestName: string): Promise<void> => {
+      if (typeof eventId !== "string" || admittingId !== null) return;
+      setAdmittingId(ticketId);
+      try {
+        const res = await admitTicket({ eventId, ticketId });
+        if (res.result === "success") showToast(`${guestName} checked in`);
+        else if (res.result === "duplicate") showToast("Already checked in");
+        else if (res.result === "void") showToast("Ticket not valid");
+        else if (res.result === "not_yet_open") showToast("Doors aren't open yet");
+        else if (res.result === "event_ended") showToast("This event has ended.");
+        else showToast("Ticket not found");
+        refreshGuestTruth();
+      } catch (error) {
+        showToast(error instanceof GuestListError ? error.message : guestListErrorCopy("network", "admit"));
+      } finally {
+        setAdmittingId(null);
+      }
     },
-    [event, operatorAccountId, showToast],
+    [eventId, admittingId, showToast, refreshGuestTruth],
   );
 
-  const handleRemoveConfirm = useCallback((): void => {
-    if (comp === null || event === null) return;
-    if (!removeReasonValid) return;
-    setRemoving(true);
-    const removed = useGuestStore.getState().removeCompEntry(comp.id);
-    if (removed === null) {
-      setRemoving(false);
-      showToast("Couldn't remove guest. Tap to try again.");
-      return;
+  const handleResend = useCallback(async (): Promise<void> => {
+    if (order === null || resending) return;
+    setResending(true);
+    try {
+      await resendGuestListTicket({ orderId: order.id, clientRequestId: newRequestId() });
+      showToast(`Ticket resent to ${order.buyer.email}.`);
+    } catch (error) {
+      showToast(error instanceof GuestListError ? error.message : guestListErrorCopy("internal", "resend"));
+    } finally {
+      setResending(false);
     }
-    // Audit log entry — caller-side per Cycle 9c v2 lesson.
-    // orderId NOT set — surfaces in Cycle 9c-2 activity feed filter.
-    useEventEditLogStore.getState().recordEdit({
-      eventId: event.id,
-      brandId: event.brandId,
-      reason: removeReason.trim(),
-      severity: "material",
-      changedFieldKeys: ["compEntries"],
-      diffSummary: [`removed comp guest: ${removed.name}`],
-      affectedOrderIds: [],
-    });
-    setRemoving(false);
-    setRemoveOpen(false);
-    showToast("Comp guest removed.");
-    handleBack();
-  }, [comp, event, removeReason, removeReasonValid, showToast, handleBack]);
+  }, [order, resending, showToast]);
+
+  const handleCancelConfirm = useCallback(async (): Promise<void> => {
+    if (order === null || cancelling || cancelReasonTooLong) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await cancelGuestListTicket({
+        orderId: order.id,
+        reason: cancelReason.trim() === "" ? null : cancelReason.trim(),
+        clientRequestId: cancelRequestId.current,
+      });
+      setCancelling(false);
+      setCancelOpen(false);
+      refreshGuestTruth();
+      deferAfterDismiss(() => showToast("Guest-list ticket cancelled."));
+    } catch (error) {
+      setCancelling(false);
+      setCancelError(error instanceof GuestListError ? error.message : guestListErrorCopy("internal", "cancel"));
+    }
+  }, [order, cancelling, cancelReasonTooLong, cancelReason, refreshGuestTruth, showToast]);
 
   useEffect(() => {
     if (routeEvent.replacementEventId !== null && typeof rawGuestId === "string") {
@@ -443,8 +508,8 @@ export default function GuestDetailRoute(): React.ReactElement {
     typeof eventId !== "string" ||
     parsed === null ||
     event === null ||
+    parsed.kind === "legacyComp" ||
     (parsed.kind === "order" && order === null) ||
-    (parsed.kind === "comp" && comp === null) ||
     (parsed.kind === "door" && sale === null)
   ) {
     return (
@@ -468,7 +533,11 @@ export default function GuestDetailRoute(): React.ReactElement {
           <EmptyState
             illustration="ticket"
             title="Guest not found"
-            description="They may have been removed."
+            description={
+              parsed?.kind === "legacyComp"
+                ? "This guest isn't on the server. Re-add them from Guests."
+                : "They may have been removed."
+            }
           />
         </View>
       </View>
@@ -476,40 +545,32 @@ export default function GuestDetailRoute(): React.ReactElement {
   }
 
   const isOrder = parsed.kind === "order" && order !== null;
-  const isComp = parsed.kind === "comp" && comp !== null;
+  const isGuestList = isOrder && isCompOrder(order);
+  const isCancelled = isOrder && order.status === "cancelled";
+  const anyCheckedIn = orderCheckedCount > 0;
   // Cycle 12 — door narrowing. After the not-found shell guards above,
   // when parsed.kind === "door" then sale is non-null.
   const isDoor = parsed.kind === "door" && sale !== null;
-
-  // ORCH-0710 fix — derived check-in counts, sourced from useMemos above
-  // the early-return shell so hook count is stable across renders.
-  const orderCheckedCount = orderCheckedTicketIds.size;
 
   const name = isOrder
     ? order.buyer.name.trim().length > 0
       ? order.buyer.name
       : "Anonymous"
-    : isComp
-      ? comp.name
-      : isDoor
-        ? sale.buyerName.trim().length > 0
-          ? sale.buyerName
-          : "Walk-up"
-        : "Guest";
+    : isDoor
+      ? sale.buyerName.trim().length > 0
+        ? sale.buyerName
+        : "Walk-up"
+      : "Guest";
   const email = isOrder
     ? order.buyer.email
-    : isComp
-      ? comp.email
-      : isDoor
-        ? sale.buyerEmail
-        : "";
+    : isDoor
+      ? sale.buyerEmail
+      : "";
   const phone = isOrder
     ? order.buyer.phone
-    : isComp
-      ? comp.phone
-      : isDoor
-        ? sale.buyerPhone
-        : "";
+    : isDoor
+      ? sale.buyerPhone
+      : "";
   const hue = hashStringToHue(parsed.innerId);
   const initials = getInitials(name);
 
@@ -578,11 +639,9 @@ export default function GuestDetailRoute(): React.ReactElement {
           ) : null}
           <View style={styles.heroPills}>
             {isOrder ? (
-              <Pill variant={orderStatusPill(order.status).variant}>
-                {orderStatusPill(order.status).label}
+              <Pill variant={orderStatusPill(order).variant}>
+                {orderStatusPill(order).label}
               </Pill>
-            ) : isComp ? (
-              <Pill variant="accent">COMP</Pill>
             ) : isDoor ? (
               <Pill variant={doorStatusPill(sale.status).variant}>
                 {doorStatusPill(sale.status).label}
@@ -601,19 +660,28 @@ export default function GuestDetailRoute(): React.ReactElement {
               ) : (
                 <Pill variant="info">ALL CHECKED IN</Pill>
               )
-            ) : isComp ? (
-              compCheckedIn ? (
-                <Pill variant="info">CHECKED IN</Pill>
-              ) : (
-                <View style={styles.checkInPill}>
-                  <Text style={styles.checkInPillText}>NOT CHECKED IN</Text>
-                </View>
-              )
             ) : isDoor ? (
               <Pill variant="info">CHECKED IN</Pill>
             ) : null}
           </View>
+          {isGuestList ? (
+            <Text style={styles.heroAdded}>{`Added ${formatRelativeTime(order.paidAt)}`}</Text>
+          ) : null}
         </View>
+
+        {/* issue #3827 — a named plus-one's guest */}
+        {isGuestList && order.partyLeadOrderId !== null && order.partyLeadOrderId !== undefined ? (
+          <Pressable
+            onPress={() => router.push(`/event/${eventId}/guests/order-${order.partyLeadOrderId}` as never)}
+            disabled={partyLead === null}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${partyLead?.buyer.name ?? order.partyLeadName ?? "their guest"}'s guest page`}
+            style={styles.cameWithRow}
+          >
+            <Text style={styles.cameWithText}>{`Came with ${partyLead?.buyer.name ?? order.partyLeadName ?? "their guest"}`}</Text>
+            <Text style={styles.cameWithChevron} accessibilityElementsHidden>›</Text>
+          </Pressable>
+        ) : null}
 
         {/* Tickets section — Cycle 11 J-S5: per-ticket rows with check-in
             state pill + "Mark checked in" CTA per row. */}
@@ -621,86 +689,58 @@ export default function GuestDetailRoute(): React.ReactElement {
         <GlassCard variant="base" radius="md" padding={spacing.md}>
           {isOrder ? (
             <View style={styles.ticketRowsList}>
-              {expandedTickets.map((t, idx) => {
-                const checked = orderCheckedTicketIds.has(t.ticketId);
-                const buyerName =
-                  order.buyer.name.trim().length > 0
-                    ? order.buyer.name
-                    : "Anonymous";
-                return (
-                  <View key={t.ticketId} style={styles.perTicketRow}>
-                    <View style={styles.perTicketHeader}>
-                      <View style={styles.perTicketCol}>
-                        <Text style={styles.perTicketName} numberOfLines={1}>
-                          {t.ticketName}
-                        </Text>
-                        <Text style={styles.perTicketSubline}>
-                          {t.isFreeAtPurchase
-                            ? "Free"
-                            : order.currency === null
-                              ? "—"
-                              : formatCurrency(t.unitPriceGbpAtPurchase, order.currency)}{" "}
-                          · #{idx + 1}
-                        </Text>
-                      </View>
-                      {checked ? (
-                        <Pill variant="info">CHECKED IN</Pill>
-                      ) : (
-                        <View style={styles.perTicketPillNone}>
-                          <Text style={styles.perTicketPillNoneText}>
-                            NOT CHECKED IN
-                          </Text>
-                        </View>
-                      )}
+              {ticketRows.length === 0 ? (
+                <Text style={styles.lineSubline}>No tickets on this order.</Text>
+              ) : null}
+              {ticketRows.map((t, idx) => (
+                <View key={t.ticketId} style={styles.perTicketRow}>
+                  <View style={styles.perTicketHeader}>
+                    <View style={styles.perTicketCol}>
+                      <Text style={styles.perTicketName} numberOfLines={1}>
+                        {t.ticketName}
+                      </Text>
+                      <Text style={styles.perTicketSubline}>
+                        {t.isFree
+                          ? "Free"
+                          : order.currency === null
+                            ? "—"
+                            : formatCurrency(t.unitPrice, order.currency)}{" "}
+                        · #{idx + 1}
+                      </Text>
                     </View>
-                    {!checked ? (
-                      <View style={styles.perTicketCtaWrap}>
-                        <Button
-                          label="Mark checked in"
-                          variant="primary"
-                          size="sm"
-                          onPress={() =>
-                            handleManualCheckIn({
-                              ticketId: t.ticketId,
-                              orderId: order.id,
-                              buyerName,
-                              ticketName: t.ticketName,
-                            })
-                          }
-                          accessibilityLabel={`Mark ticket ${idx + 1} checked in`}
-                        />
+                    {t.state === "checked_in" ? (
+                      <Pill variant="info">
+                        {t.usedAt !== null ? `CHECKED IN ${formatClock(t.usedAt)}` : "CHECKED IN"}
+                      </Pill>
+                    ) : t.state === "cancelled" ? (
+                      <Pill variant="draft">CANCELLED</Pill>
+                    ) : t.state === "refunded" ? (
+                      <Pill variant="warn">REFUNDED</Pill>
+                    ) : t.state === "transferred" ? (
+                      <Pill variant="draft">TRANSFERRED</Pill>
+                    ) : (
+                      <View style={styles.perTicketPillNone}>
+                        <Text style={styles.perTicketPillNoneText}>
+                          NOT CHECKED IN
+                        </Text>
                       </View>
-                    ) : null}
+                    )}
                   </View>
-                );
-              })}
-            </View>
-          ) : isComp ? (
-            <View style={styles.lineRow}>
-              <View style={styles.lineCol}>
-                <Text style={styles.lineName}>
-                  {comp.ticketNameAtCreation ?? "General comp"}
-                </Text>
-                <Text style={styles.lineSubline}>1× Comp</Text>
-              </View>
-              {compCheckedIn ? (
-                <Pill variant="info">CHECKED IN</Pill>
-              ) : (
-                <Button
-                  label="Mark checked in"
-                  variant="primary"
-                  size="sm"
-                  onPress={() =>
-                    handleManualCheckIn({
-                      ticketId: comp.id,
-                      orderId: "",
-                      buyerName: comp.name,
-                      ticketName: comp.ticketNameAtCreation ?? "Comp",
-                    })
-                  }
-                  accessibilityLabel="Mark comp guest checked in"
-                />
-              )}
+                  {t.state === "not_checked_in" && canDoorScan ? (
+                    <View style={styles.perTicketCtaWrap}>
+                      <Button
+                        label={admittingId === t.ticketId ? "Admitting…" : "Admit"}
+                        variant="primary"
+                        size="sm"
+                        loading={admittingId === t.ticketId}
+                        disabled={admittingId !== null}
+                        onPress={() => { void handleAdmit(t.ticketId, name); }}
+                        accessibilityLabel={`Admit ${name}, ${t.ticketName}`}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              ))}
             </View>
           ) : isDoor ? (
             <View style={styles.ticketRowsList}>
@@ -739,8 +779,49 @@ export default function GuestDetailRoute(): React.ReactElement {
           ) : null}
         </GlassCard>
 
-        {/* Order activity (orders only) */}
-        {isOrder ? (
+        {/* issue #3827 — the team note on a guest-list ticket */}
+        {isGuestList && order.compReason !== null && order.compReason !== undefined && order.compReason.trim() !== "" ? (
+          <>
+            <Text style={styles.sectionLabel}>NOTE</Text>
+            <GlassCard variant="base" radius="md" padding={spacing.md}>
+              <Text style={styles.notesText}>{order.compReason}</Text>
+            </GlassCard>
+          </>
+        ) : null}
+
+        {/* issue #3827 — the named plus-ones who came with this guest */}
+        {isGuestList && brought.length > 0 ? (
+          <>
+            <Text style={styles.sectionLabel}>{`BROUGHT (${brought.length})`}</Text>
+            <GlassCard variant="base" radius="md" padding={spacing.md}>
+              <View style={styles.linesList}>
+                {brought.map((guest) => {
+                  const rows = buildGuestTicketRows(guest);
+                  const state = guest.status === "cancelled"
+                    ? "Cancelled"
+                    : rows.some((r) => r.state === "checked_in")
+                      ? "Checked in"
+                      : "Not checked in";
+                  return (
+                    <Pressable
+                      key={guest.id}
+                      onPress={() => router.push(`/event/${eventId}/guests/order-${guest.id}` as never)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${guest.buyer.name}'s guest page, ${state}`}
+                      style={styles.otherRow}
+                    >
+                      <Text style={styles.lineName} numberOfLines={1}>{`${guest.buyer.name} · ${state}`}</Text>
+                      <Text style={styles.cameWithChevron} accessibilityElementsHidden>›</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </GlassCard>
+          </>
+        ) : null}
+
+        {/* Order activity (sales only — a guest-list ticket has no payment) */}
+        {isOrder && !isGuestList ? (
           <>
             <Text style={styles.sectionLabel}>ORDER ACTIVITY</Text>
             <GlassCard variant="base" radius="md" padding={spacing.md}>
@@ -853,36 +934,8 @@ export default function GuestDetailRoute(): React.ReactElement {
           </>
         ) : null}
 
-        {/* Comp metadata (comps only) */}
-        {isComp ? (
-          <>
-            <Text style={styles.sectionLabel}>ADDED BY</Text>
-            <GlassCard variant="base" radius="md" padding={spacing.md}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Operator</Text>
-                <Text style={styles.summaryValue} numberOfLines={1}>
-                  {comp.addedBy.length > 0 ? comp.addedBy : "Unknown"}
-                </Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Added</Text>
-                <Text style={styles.summaryValue}>
-                  {formatRelativeTime(comp.addedAt)}
-                </Text>
-              </View>
-              {comp.notes.trim().length > 0 ? (
-                <>
-                  <View style={styles.divider} />
-                  <Text style={styles.notesLabel}>Notes</Text>
-                  <Text style={styles.notesText}>{comp.notes}</Text>
-                </>
-              ) : null}
-            </GlassCard>
-          </>
-        ) : null}
-
         {/* Other orders (orders only) */}
-        {isOrder && otherOrders.length > 0 && brand !== null ? (
+        {isOrder && !isGuestList && otherOrders.length > 0 && brand !== null ? (
           <>
             <Text style={styles.sectionLabel}>
               OTHER ORDERS BY THIS BUYER
@@ -898,7 +951,7 @@ export default function GuestDetailRoute(): React.ReactElement {
                       </Text>
                       <Text style={styles.lineSubline}>
                         {formatRelativeTime(other.paidAt)} ·{" "}
-                        {orderStatusPill(other.status).label}
+                        {orderStatusPill(other).label}
                       </Text>
                     </View>
                     <Button
@@ -915,18 +968,40 @@ export default function GuestDetailRoute(): React.ReactElement {
           </>
         ) : null}
 
-        {/* Remove CTA (comps only) */}
-        {isComp ? (
+        {/* issue #3827 — guest-list actions (event manager and above) */}
+        {isGuestList && canManageGuestList && !isCancelled ? (
           <View style={styles.removeCtaWrap}>
+            {order.buyer.email.trim().length > 0 ? (
+              <Button
+                label={resending ? "Resending…" : "Resend ticket"}
+                variant="secondary"
+                size="md"
+                fullWidth
+                loading={resending}
+                disabled={resending}
+                onPress={() => { void handleResend(); }}
+                accessibilityLabel="Resend ticket"
+              />
+            ) : null}
+            <View style={styles.removeActionSpacer} />
             <Button
-              label="Remove guest"
-              variant="ghost"
+              label="Cancel guest-list ticket"
+              variant="destructive"
               size="md"
               fullWidth
-              onPress={() => setRemoveOpen(true)}
-              accessibilityLabel="Remove comp guest"
+              disabled={anyCheckedIn}
+              onPress={() => setCancelOpen(true)}
+              accessibilityLabel="Cancel guest-list ticket"
             />
+            {anyCheckedIn ? (
+              <Text style={styles.cancelCaption}>Already checked in</Text>
+            ) : null}
           </View>
+        ) : null}
+        {isGuestList && isCancelled ? (
+          <Text style={styles.cancelCaption}>
+            Cancelled. The QR no longer works and the place was freed. No money was involved.
+          </Text>
         ) : null}
 
         {/* Cycle 12 — Refund CTA (door sales only; hidden when fully refunded) */}
@@ -944,77 +1019,59 @@ export default function GuestDetailRoute(): React.ReactElement {
         ) : null}
       </ScrollView>
 
-      {/* Remove confirm sheet (inline — ConfirmDialog has no reasoned variant) */}
-      {isComp ? (
+      {/* issue #3827 — cancel confirm (inline Sheet: ConfirmDialog has no reason field) */}
+      {isGuestList ? (
         <Sheet
-          visible={removeOpen}
-          onClose={() => (removing ? undefined : setRemoveOpen(false))}
+          visible={cancelOpen}
+          onClose={() => (cancelling ? undefined : setCancelOpen(false))}
           snapPoint="half"
         >
           <View style={styles.removeSheet}>
-            <Text style={styles.removeTitle}>Remove this comp guest?</Text>
+            <Text style={styles.removeTitle}>{`Cancel ${name}'s guest-list ticket?`}</Text>
             <Text style={styles.removeSubhead}>
-              They will be deleted from your guest list. This action records to the audit log.
+              {brought.length > 0
+                ? "Their QR code stops working and the place is freed. No money is involved. Their guests keep their own tickets."
+                : "Their QR code stops working and the place is freed. No money is involved."}
             </Text>
-            <Text style={styles.removeReasonLabel}>
-              Why are you removing them? <Text style={styles.removeReasonRequired}>*</Text>
-            </Text>
-            <View
-              style={[
-                styles.removeReasonInputWrap,
-                trimmedRemoveReasonLen > 0 &&
-                  !removeReasonValid &&
-                  styles.removeReasonInputError,
-              ]}
-            >
+            <Text style={styles.removeReasonLabel}>Reason (optional)</Text>
+            <View style={[styles.removeReasonInputWrap, cancelReasonTooLong && styles.removeReasonInputError]}>
               <TextInput
-                value={removeReason}
-                onChangeText={setRemoveReason}
-                placeholder="e.g. Mistake — added the wrong person"
+                value={cancelReason}
+                onChangeText={setCancelReason}
+                placeholder="Reason (optional)"
                 placeholderTextColor={textTokens.quaternary}
                 multiline
                 numberOfLines={3}
                 maxLength={200}
                 style={styles.removeReasonInput}
-                editable={!removing}
-                accessibilityLabel="Remove reason"
+                editable={!cancelling}
+                accessibilityLabel="Reason (optional)"
               />
             </View>
-            <View style={styles.removeReasonMetaRow}>
-              <Text
-                style={[
-                  styles.removeReasonHelper,
-                  trimmedRemoveReasonLen >= 10 && styles.removeReasonHelperOk,
-                ]}
-              >
-                {trimmedRemoveReasonLen < 10
-                  ? "Tell us why (10–200 chars)."
-                  : "Looks good"}
-              </Text>
-              <Text style={styles.removeReasonCount}>
-                {trimmedRemoveReasonLen} / 200
-              </Text>
-            </View>
+            {cancelReasonTooLong ? (
+              <Text style={styles.cancelError}>Keep the reason under 200 characters.</Text>
+            ) : null}
+            {cancelError !== null ? <Text style={styles.cancelError}>{cancelError}</Text> : null}
             <View style={styles.removeActions}>
               <Button
-                label="Remove guest"
+                label="Cancel ticket"
                 variant="destructive"
                 size="lg"
                 fullWidth
-                loading={removing}
-                disabled={!removeReasonValid || removing}
-                onPress={handleRemoveConfirm}
-                accessibilityLabel="Confirm remove comp guest"
+                loading={cancelling}
+                disabled={cancelling || cancelReasonTooLong}
+                onPress={() => { void handleCancelConfirm(); }}
+                accessibilityLabel="Cancel ticket"
               />
               <View style={styles.removeActionSpacer} />
               <Button
-                label="Keep guest"
+                label="Keep ticket"
                 variant="ghost"
                 size="md"
                 fullWidth
-                disabled={removing}
-                onPress={() => setRemoveOpen(false)}
-                accessibilityLabel="Cancel remove"
+                disabled={cancelling}
+                onPress={() => setCancelOpen(false)}
+                accessibilityLabel="Keep ticket"
               />
             </View>
           </View>
@@ -1121,6 +1178,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: textTokens.tertiary,
     marginBottom: 4,
+  },
+  heroAdded: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
+  },
+  cameWithRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  cameWithText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  cameWithChevron: {
+    fontSize: 18,
+    color: textTokens.tertiary,
+  },
+  cancelCaption: {
+    fontSize: 12,
+    color: textTokens.tertiary,
+    textAlign: "center",
+    marginTop: spacing.xs,
+  },
+  cancelError: {
+    fontSize: 12,
+    color: accent.warm,
+    marginTop: spacing.xs,
   },
   heroPills: {
     flexDirection: "row",
