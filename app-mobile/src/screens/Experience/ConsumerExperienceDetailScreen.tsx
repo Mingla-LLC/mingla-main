@@ -80,6 +80,7 @@ import {
   useConsumerExperienceDetail,
   type ConsumerExperienceOccurrence,
 } from "../../hooks/useConsumerExperienceDetail";
+import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
 
 import { Icon } from "../../components/ui/Icon";
 import {
@@ -1179,6 +1180,61 @@ export default function ConsumerExperienceDetailScreen({
       };
     }
   }
+  // issue #3281 R3 — merge spacing / notice / scope / stop offsets / seats from
+  // the fresh by-slug detail (seed adapter does not carry these fields).
+  if (freshDetail !== null) {
+    if (
+      freshDetail.capacityScope === "total" ||
+      freshDetail.capacityScope === "per_day" ||
+      freshDetail.capacityScope === "per_start"
+    ) {
+      offeringData.capacityScope = freshDetail.capacityScope;
+    }
+    if (typeof freshDetail.spacingMinutes === "number") {
+      offeringData.spacingMinutes = freshDetail.spacingMinutes;
+    }
+    if (typeof freshDetail.minNoticeMinutes === "number") {
+      offeringData.minNoticeMinutes = freshDetail.minNoticeMinutes;
+    }
+    if (Array.isArray(freshDetail.stops) && freshDetail.stops.length > 0) {
+      offeringData.stops = freshDetail.stops.map((s) => ({
+        id: s.id,
+        stopOrder: s.stopOrder,
+        placeName: s.placeName,
+        address: s.address,
+        description: s.description,
+        startTime: s.startTime,
+        ...(typeof s.startOffsetMinutes === "number"
+          ? { startOffsetMinutes: s.startOffsetMinutes }
+          : {}),
+        lat: s.lat,
+        lng: s.lng,
+        media: (s.imageUrls ?? []).map((url) => ({
+          url,
+          type: "image" as const,
+        })),
+      }));
+    }
+    if (
+      freshDetail.capacityScope === "per_day" ||
+      freshDetail.capacityScope === "per_start"
+    ) {
+      const t = offeringData.ticket;
+      if (t !== null) {
+        offeringData.seatsLabel = experienceSeatsLabel({
+          capacityScope: freshDetail.capacityScope,
+          occurrences: occurrences.map((o) => ({
+            startAt: o.startAt,
+            endAt: o.endAt,
+            remaining: o.remaining,
+          })),
+          ticketRemaining: t.ticketsRemaining,
+          quantityTotal: t.quantityTotal,
+          isUnlimited: t.isUnlimited,
+        });
+      }
+    }
+  }
   const offeringBrand = buildExperienceOfferingBrandFromSeed(seed);
 
   // State banner driven by the resolved CTA (one owner — resolveOfferingCta).
@@ -1409,6 +1465,10 @@ export default function ConsumerExperienceDetailScreen({
             : null
         }
         currency={sellableTicket?.currency ?? seed.currency ?? null}
+        spacingMinutes={offeringData.spacingMinutes ?? 30}
+        minNoticeMinutes={offeringData.minNoticeMinutes ?? 120}
+        eventId={seed.eventId}
+        capacityScope={offeringData.capacityScope ?? "total"}
         options={
           Array.isArray(offeringData.options) && offeringData.options.length > 0
             ? offeringData.options

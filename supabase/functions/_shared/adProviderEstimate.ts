@@ -14,7 +14,7 @@ import type {
 import { metaGraph, resolveMetaClient } from "./meta.ts";
 import { resolveTikTokClient, tiktokApi } from "./tiktok.ts";
 import {
-  buildSnapchatCircleGeos,
+  buildSnapchatGeoTargeting,
   resolveSnapchatClient,
   snapchatApi,
   type SnapchatCircleGeo,
@@ -249,10 +249,10 @@ export function buildSnapAudienceSizeBody(input: EstimateInput) {
   const circles = Array.isArray(compiled.geo_circles)
     ? compiled.geo_circles as SnapchatCircleGeo[]
     : [];
-  const geos = buildSnapchatCircleGeos(circles) ??
-    countries.map((countryCode) => ({
-      country_code: countryCode.trim().toLowerCase(),
-    }));
+  // #3697: same documented shape as the ad-squad create body — country-only
+  // geos plus targeting.locations circles
+  // (https://developers.snap.com/api/marketing-api/Ads-API/targeting).
+  const { geos, locations } = buildSnapchatGeoTargeting(countries, circles);
   const demographic: Record<string, unknown> = {};
   if (typeof compiled.age_min === "number") {
     demographic.min_age = String(compiled.age_min);
@@ -272,6 +272,7 @@ export function buildSnapAudienceSizeBody(input: EstimateInput) {
       type: "SNAP_ADS",
       targeting: {
         geos,
+        ...(locations ? { locations } : {}),
         demographics: snapchatDemographicsWithDefault(
           Object.keys(demographic).length ? [demographic] : null,
         ),

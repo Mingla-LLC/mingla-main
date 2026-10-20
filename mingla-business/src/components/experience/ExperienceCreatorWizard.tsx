@@ -143,6 +143,9 @@ import {
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
 import type { ThemeInput } from "@mingla/offering-rendering";
+// Deep import — avoid the package barrel (pulls expo-video via EventCoverMedia
+// and breaks Host web render suites that load this wizard).
+import { isOpenDailyExperience } from "@mingla/offering-rendering/experienceOpenDaily";
 // #3372 — the price-field symbol reads "₦", not "NGN " (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
@@ -268,6 +271,12 @@ export interface ExperienceWizardInitialDraft {
   isFree: boolean;
   capacity: string;
   unlimited: boolean;
+  /** issue #3281 R3 — total | per_day | per_start. */
+  capacityScope?: "total" | "per_day" | "per_start";
+  /** issue #3281 R3 — start grid minutes. */
+  bookingSpacingMinutes?: number;
+  /** issue #3281 R3 — min notice minutes. */
+  minNoticeMinutes?: number;
   pricingSwitches: PricingSwitchOverrides;
   /** #1022 — seed the theme control from the persisted override columns. */
   themeOverrides?: ThemeInput | null;
@@ -331,6 +340,10 @@ const RPC_ERROR_COPY: Record<string, string> = {
   // META-ORCH-1059 Sub-E — live-edit refund-gate + lifecycle copy.
   experience_not_editable_status:
     "This experience can't be edited in its current state.",
+  spots_scope_requires_start_time:
+    "Per-day spots need one start time per day. Choose \"Per start time\" or widen the start spacing.",
+  booking_spacing_invalid: "Choose how often guests can start (15 min to 2 hours).",
+  capacity_scope_invalid: "Choose how spots are counted.",
 };
 
 /** #3645 — the draft is saved before the host leaves for bank setup. */
@@ -463,6 +476,30 @@ export const ExperienceCreatorWizard: React.FC<
   const [isFree, setIsFree] = useState(initialDraft?.isFree ?? false);
   const [capacity, setCapacity] = useState(initialDraft?.capacity ?? "20");
   const [unlimited, setUnlimited] = useState(initialDraft?.unlimited ?? false);
+  // issue #3281 R3 — spots scope (default total = legacy).
+  const [capacityScope, setCapacityScope] = useState<
+    "total" | "per_day" | "per_start"
+  >(
+    initialDraft?.capacityScope === "per_day" ||
+      initialDraft?.capacityScope === "per_start"
+      ? initialDraft.capacityScope
+      : "total",
+  );
+  // issue #3281 R3 — start grid + notice (When step chips).
+  const [bookingSpacingMinutes, setBookingSpacingMinutes] = useState(
+    initialDraft?.bookingSpacingMinutes === 15 ||
+      initialDraft?.bookingSpacingMinutes === 30 ||
+      initialDraft?.bookingSpacingMinutes === 60 ||
+      initialDraft?.bookingSpacingMinutes === 120
+      ? initialDraft.bookingSpacingMinutes
+      : 30,
+  );
+  const [minNoticeMinutes, setMinNoticeMinutes] = useState(
+    typeof initialDraft?.minNoticeMinutes === "number" &&
+      initialDraft.minNoticeMinutes >= 0
+      ? initialDraft.minNoticeMinutes
+      : 120,
+  );
   // issue #3281 R2 — price options (ticket_types). Seed from the draft when
   // present; otherwise one Standard person option mirroring wholePriceMajor.
   const [priceOptions, setPriceOptions] = useState<ExperiencePriceOptionDraft[]>(
@@ -938,6 +975,9 @@ export const ExperienceCreatorWizard: React.FC<
         whole_price_cents: Math.round(resolvedTotalMajor * 100),
         is_free: isFree,
         capacity: unlimited ? null : parseInt(capacity, 10) || null,
+        capacity_scope: capacityScope,
+        booking_spacing_minutes: bookingSpacingMinutes,
+        min_notice_minutes: minNoticeMinutes,
         pass_tax: pricingSwitches.passTax,
         pass_mingla_fee: pricingSwitches.passMinglaFee,
         pass_service_fee: pricingSwitches.passServiceFee,
@@ -958,6 +998,10 @@ export const ExperienceCreatorWizard: React.FC<
           coordinate_precision: s.coordinatePrecision ?? null,
           image_urls: s.imageUrls,
           start_time: s.startTime,
+          start_offset_minutes:
+            typeof s.startOffsetMinutes === "number"
+              ? s.startOffsetMinutes
+              : null,
           price_cents:
             pricingMode === "per_stop"
               ? Math.round((parseFloat(s.priceMajor) || 0) * 100)
@@ -1002,6 +1046,9 @@ export const ExperienceCreatorWizard: React.FC<
       isFree,
       unlimited,
       capacity,
+      capacityScope,
+      bookingSpacingMinutes,
+      minNoticeMinutes,
       pricingSwitches,
       stops,
       priceOptions,
@@ -1556,6 +1603,7 @@ export const ExperienceCreatorWizard: React.FC<
     const resolvedCents = Math.round(resolvedTotalMajor * 100);
     const patch: LiveExperiencePatch = {
       capacity: unlimited ? null : parseInt(capacity, 10) || null,
+      capacity_scope: capacityScope,
       is_free: isFree,
       pricing_mode: pricingMode,
       whole_price_cents: resolvedCents,
@@ -1861,6 +1909,10 @@ export const ExperienceCreatorWizard: React.FC<
             onToast={setToast}
             brandLocation={brand}
             timeZone={whenAdapter.whenState.timezone}
+            useStartOffsets={isOpenDailyExperience({
+              isRecurring: whenAdapter.whenState.whenMode === "recurring",
+              recurrenceRule: whenAdapter.whenState.recurrenceRule,
+            })}
           />
         ) : null}
 
@@ -1880,6 +1932,16 @@ export const ExperienceCreatorWizard: React.FC<
               allowNeverEnds
               // issue #3281 Round 1 — experience-flavoured When copy.
               offeringNoun="experience"
+              // issue #3281 Round 3 — spacing + minimum notice (experience only).
+              experienceBooking={{
+                spacingMinutes: bookingSpacingMinutes,
+                minNoticeMinutes: minNoticeMinutes,
+                onChangeSpacing: (m) =>
+                  setBookingSpacingMinutes(
+                    m === 15 || m === 30 || m === 60 || m === 120 ? m : 30,
+                  ),
+                onChangeMinNotice: setMinNoticeMinutes,
+              }}
             />
           </View>
         ) : null}
@@ -1902,6 +1964,8 @@ export const ExperienceCreatorWizard: React.FC<
             setCapacity={setCapacity}
             unlimited={unlimited}
             setUnlimited={setUnlimited}
+            capacityScope={capacityScope}
+            setCapacityScope={setCapacityScope}
             pricingSwitches={pricingSwitches}
             setPricingSwitches={setPricingSwitches}
             // ORCH-1339 (D5) — guest-privacy accordion (single home, create+edit).

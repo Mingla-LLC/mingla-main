@@ -40,6 +40,8 @@ export interface ConsumerExperienceStop {
   address: string | null;
   description: string | null;
   startTime: string | null;
+  /** issue #3281 R3 — minutes after the booked start (open-hours stops). */
+  startOffsetMinutes?: number | null;
   lat: number | null;
   lng: number | null;
   imageUrls: string[];
@@ -110,6 +112,12 @@ export interface ConsumerExperienceDetail {
   /** issue #3281 R2 — when the public RPC emits options[]; else omit. */
   options?: ConsumerExperienceTicket[];
   occurrences: ConsumerExperienceOccurrence[];
+  /** issue #3281 R3 — how spots are counted (absent → total). */
+  capacityScope?: "total" | "per_day" | "per_start";
+  /** issue #3281 R3 — start grid minutes (absent → 30). */
+  spacingMinutes?: number;
+  /** issue #3281 R3 — earliest bookable start = now + notice (absent → 120). */
+  minNoticeMinutes?: number;
   /** false → PAID experience whose brand can't charge → CTA disabled. */
   bookable: boolean;
   /**
@@ -142,6 +150,9 @@ interface RpcStop {
   address: string | null;
   description: string | null;
   startTime: string | null;
+  /** issue #3281 R3 — additive; camelCase (or snake) when the RPC emits it. */
+  startOffsetMinutes?: number | null;
+  start_offset_minutes?: number | null;
   lat: number | null;
   lng: number | null;
   imageUrls: unknown;
@@ -209,6 +220,10 @@ interface RpcPayload {
   options?: RpcTicket[] | null;
   dates: RpcDate[];
   bookable: boolean;
+  /** issue #3281 R3 — additive public settings (absent on older servers). */
+  capacityScope?: unknown;
+  spacingMinutes?: unknown;
+  minNoticeMinutes?: unknown;
   /** issue #3284 — the reader's lifecycle status (scheduled/live/ended/cancelled). */
   status?: string | null;
   /** issue #3284 — null = no published terms; ABSENT = unknown. */
@@ -305,6 +320,14 @@ function mapPayload(p: RpcPayload): ConsumerExperienceDetail {
       address: s.address ?? null,
       description: strOrNull(s.description),
       startTime: s.startTime ?? null,
+      ...(typeof (s.startOffsetMinutes ?? s.start_offset_minutes) === "number" &&
+      (s.startOffsetMinutes ?? s.start_offset_minutes)! >= 0
+        ? {
+            startOffsetMinutes: Math.round(
+              (s.startOffsetMinutes ?? s.start_offset_minutes) as number,
+            ),
+          }
+        : {}),
       lat: typeof s.lat === "number" ? s.lat : null,
       lng: typeof s.lng === "number" ? s.lng : null,
       imageUrls: Array.isArray(s.imageUrls)
@@ -321,6 +344,17 @@ function mapPayload(p: RpcPayload): ConsumerExperienceDetail {
       remaining: d.ticketsRemaining ?? null,
     })),
     bookable: p.bookable !== false,
+    ...(p.capacityScope === "total" ||
+    p.capacityScope === "per_day" ||
+    p.capacityScope === "per_start"
+      ? { capacityScope: p.capacityScope }
+      : {}),
+    ...(typeof p.spacingMinutes === "number"
+      ? { spacingMinutes: p.spacingMinutes }
+      : {}),
+    ...(typeof p.minNoticeMinutes === "number"
+      ? { minNoticeMinutes: p.minNoticeMinutes }
+      : {}),
     // issue #3284 — absent key → unknown; null → none; a valid policy → set.
     refundPolicyState: readRefundPolicyState(p),
     offeringClosed: p.status === "ended" || p.status === "cancelled",

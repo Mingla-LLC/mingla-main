@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "d254d77692242a491396e9301490e295095ad188b125d6b5057e93d8edbef8eb",
-      "value": "665c7006befe9d658457e679840a8a7408a2e94d83e301b0aa32c2a979a7d1f7"
+      "value": "18215af688961bd53de69735fe24211223ade613efa3bf9004064f3679e2f85d"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3281 extends the existing private-event replay skip list (Round 2 checkout units, its grants-only repair, and the #2947/#3281 checkout-base re-emissions this lane cannot build) without changing its execution topology. #3827 adds its going-box migration (a re-emit of the RSVP/social-proof readers and the public view) the same way."
+  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, and Round 3 spacing/spots) without changing its execution topology. #3827 adds its going-box migration (a re-emit of the RSVP/social-proof readers and the public view) the same way."
 }

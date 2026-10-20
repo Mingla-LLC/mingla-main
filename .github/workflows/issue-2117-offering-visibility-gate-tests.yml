@@ -196,6 +196,9 @@ jobs:
               #
               # Matched by EXACT filename, never an issue-number infix.
               *20271128003827_issue_3827_going_box_privacy_extra_guests.sql) continue ;;
+              # #3281 R3 — rewrites public experience reader that calls helpers
+              # defined only in migrations this lane skips (#2117/#2489/#3313 prior).
+              *20271123003281_issue_3281_r3_spacing_spots.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

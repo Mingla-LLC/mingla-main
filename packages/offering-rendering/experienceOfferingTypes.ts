@@ -37,6 +37,11 @@ export interface ExperienceOfferingStop {
   description: string | null;
   /** Authored wall-clock start ("HH:mm[:ss]" or an ISO instant). null → no pill. */
   startTime: string | null;
+  /**
+   * issue #3281 R3 — minutes after the booked start this stop begins (open-hours
+   * experiences). null/absent → no "about N min in" line.
+   */
+  startOffsetMinutes?: number | null;
   /** Per-stop coords; both finite → optional per-stop map. NULL when hidden. */
   lat: number | null;
   lng: number | null;
@@ -153,6 +158,12 @@ export interface ExperienceOfferingData {
   occurrences: ExperienceOfferingOccurrence[];
   /** Open-daily (restaurant-style) → ExperienceReservePicker; else flat slots. */
   openDaily: boolean;
+  /** issue #3281 R3 — how spots are counted (absent → total). */
+  capacityScope?: "total" | "per_day" | "per_start";
+  /** issue #3281 R3 — start grid minutes for open-hours picking (absent → 30). */
+  spacingMinutes?: number;
+  /** issue #3281 R3 — earliest bookable start = now + notice (absent → 120). */
+  minNoticeMinutes?: number;
 
   // gating
   /** false → PAID experience whose brand can't charge → CTA disabled. */
