@@ -154,7 +154,7 @@ Deno.test("#3980 W4 P3-0: no migration runs a backfill; the W4 migration only de
     // Outside a function body (the text between AS $$ and $$;), nothing may call a confirm or brand auto-link.
     const outside = sql.replace(/AS \$\$[\s\S]*?\$\$;/g, "").replace(/\$kit\$[\s\S]*?\$kit\$/g, "");
     assertNotMatch(outside, /\b(?:SELECT|PERFORM|FROM)\s+(?:\*\s+FROM\s+)?(?:public\.)?(?:ops_roadmap_links_confirm|ops_brand_cards_confirm|ops_brand_autolink(?:_one)?)\s*\(/i, entry.name);
-    if (entry.name === "20271127003980_issue_3980_synced_w4_backfills_guide.sql") {
+    if (entry.name === "20271202003980_issue_3980_synced_w4_backfills_guide.sql") {
       found++;
       assertMatch(sql, /CREATE FUNCTION public\.ops_roadmap_links_confirm\(p_links jsonb, p_request_key text\)/);
       assertMatch(sql, /CREATE FUNCTION public\.ops_brand_cards_confirm\(p_brand_ids uuid\[\], p_request_key text\)/);

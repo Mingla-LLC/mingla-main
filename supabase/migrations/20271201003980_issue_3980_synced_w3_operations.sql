@@ -2162,7 +2162,7 @@ BEGIN
 END;
 $$;
 
--- From 20271124003980. Adds follow_through_since (X3).
+-- From 20271129003980. Adds follow_through_since (X3).
 CREATE OR REPLACE FUNCTION public.ops_settings_get() RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
@@ -2180,7 +2180,7 @@ BEGIN
 END;
 $$;
 
--- From 20271124003980. X3: switching automatic steps on records, once, the
+-- From 20271129003980. X3: switching automatic steps on records, once, the
 -- time engineering follow-through starts counting from. Everything else is
 -- unchanged.
 CREATE OR REPLACE FUNCTION public.ops_setting_set(p_key text, p_value jsonb) RETURNS jsonb
@@ -2221,7 +2221,7 @@ BEGIN
 END;
 $$;
 
--- From 20271124003980. X3: follow-through cards fire only for pull
+-- From 20271129003980. X3: follow-through cards fire only for pull
 -- requests merged, issues moved to Done and commits pushed at or after the
 -- time the owner switched automatic steps on.
 CREATE OR REPLACE FUNCTION public.ops_engineering_cards_sync() RETURNS jsonb
@@ -2421,7 +2421,7 @@ BEGIN
 END;
 $$;
 
--- From 20271125003980. Adds brand auto-link and automatic steps,
+-- From 20271130003980. Adds brand auto-link and automatic steps,
 -- each only while the owner has it switched on, and leaves repeating
 -- expected events open (each date is matched by itself).
 CREATE OR REPLACE FUNCTION public.ops_reconcile() RETURNS jsonb

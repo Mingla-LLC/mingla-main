@@ -123,8 +123,8 @@ Deno.test("#3980 bridges: statuses are posted and stamped; a refused post is log
   const calls: { name: string; args?: Json }[] = [];
   const posted: string[] = [];
   const due = [
-    { pr: 1, sha: "1".repeat(40), state: "success", description: "All applied: 20271124003980" },
-    { pr: 2, sha: "2".repeat(40), state: "pending", description: "Waiting: 20271125003980" },
+    { pr: 1, sha: "1".repeat(40), state: "success", description: "All applied: 20271129003980" },
+    { pr: 2, sha: "2".repeat(40), state: "pending", description: "Waiting: 20271130003980" },
   ];
   const out = await runReleaseBridges(fakeAdmin(calls, { ops_release_status_due: due }), fakeGitHub({
     createCommitStatus: async (sha, s) => { posted.push(`${sha.slice(0, 1)}:${s.state}:${s.context}`); },

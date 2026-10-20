@@ -40,7 +40,7 @@
 --
 -- ROLLBACK (no down-migration file): roll the admin web client back first,
 -- then in one transaction drop the four new functions and the internal
--- helpers, restore ops_agent_log_action_check from 20271124003980, and restore the eight
+-- helpers, restore ops_agent_log_action_check from 20271129003980, and restore the eight
 -- Feature Guide rows from their audit history (the new entry can be deleted
 -- while it is planned). Links and host cards made by a confirmed backfill
 -- stay as history.
@@ -78,7 +78,7 @@ ALTER TABLE public.ops_agent_log ADD CONSTRAINT ops_agent_log_action_check CHECK
   'guide_incomplete','brand_linked','brand_card_added','sprint_moved','setting_changed',
   'backfill_confirmed'));
 
--- From 20271125003980. #3980 W4 rework: a name cut at 160 characters is
+-- From 20271130003980. #3980 W4 rework: a name cut at 160 characters is
 -- trimmed again, so a long brand or card name never ends in a space the
 -- label check refuses (a brand named with more than 160 characters could not
 -- get its pick card). Everything else is unchanged.

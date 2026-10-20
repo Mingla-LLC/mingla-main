@@ -48,7 +48,7 @@ function data(extra: Record<string, unknown> = {}): Any {
     merged_by: "sethogieva",
     author: "sethogieva",
     issues: [{ number: 3980, relation: "toward" }],
-    migrations_added: ["20271124003980"],
+    migrations_added: ["20271129003980"],
     migrations_applied_state: "pending",
     migrations_status: null,
     edge_functions: ["team-agent"],
@@ -103,7 +103,7 @@ Deno.test("#3980 what a pull request touched: web projects, edge functions, migr
     "supabase/functions/team-agent/index.ts",
     "supabase/functions/_shared/opsBridges.ts",
     "supabase/functions/__tests__/x.test.ts",
-    "supabase/migrations/20271124003980_issue_3980_synced_w1_foundations.sql",
+    "supabase/migrations/20271129003980_issue_3980_synced_w1_foundations.sql",
   ];
   // [TEST-MOD-APPROVED #3980] D10 (Wave 1 rework): a change under packages/
   // is a change to every web project that builds that package, so
@@ -113,10 +113,10 @@ Deno.test("#3980 what a pull request touched: web projects, edge functions, migr
   assertEquals(webProjects(["packages/location-input/index.ts"]), ["mingla-business"], "a change in packages/ reaches the projects that build it");
   assertEquals(edgeFunctions(paths), ["team-agent", "(shared code)"]);
   assertEquals(migrationsAdded([
-    { filename: "supabase/migrations/20271124003980_issue_3980_synced_w1_foundations.sql", status: "added" },
+    { filename: "supabase/migrations/20271129003980_issue_3980_synced_w1_foundations.sql", status: "added" },
     { filename: "supabase/migrations/20271116003980_issue_3980_wave1_work_board.sql", status: "modified" },
     { filename: "supabase/migrations/__tests__/x.sql", status: "added" },
-  ]), ["20271124003980"]);
+  ]), ["20271129003980"]);
   assertEquals(hasDeployMarker("[deploy] toward #3980: x (#4001)"), true);
   assertEquals(hasDeployMarker("toward #3980: x (#4001)"), false);
 });
@@ -162,7 +162,7 @@ Deno.test("#3980 the record renders exactly and reads back the same in both pars
   assert(body.startsWith("<!-- mingla-release-record:pr-4001 -->\n**Release record** for PR #4001."));
   assertMatch(body, /- PR: #4001 toward #3980: the synced system, merged 2026-10-21 09:30 UTC by @sethogieva/);
   assertMatch(body, /- Issues: #3980 \(toward\)/);
-  assertMatch(body, /- Migrations added: 20271124003980/);
+  assertMatch(body, /- Migrations added: 20271129003980/);
   assertMatch(body, /- Migrations applied: pending: Mingla checks the production ledger every 5 minutes/);
   assertMatch(body, /- Deploy: mingla-admin READY; edge functions team-agent deployed/);
   assertMatch(body, /- Live check: pending: add a comment starting with "Live check:"/);
@@ -173,7 +173,7 @@ Deno.test("#3980 the record renders exactly and reads back the same in both pars
   assertEquals(readRecordDataTs(body), d);
   const done = data({
     migrations_applied_state: "applied",
-    migrations_status: "All applied: 20271124003980",
+    migrations_status: "All applied: 20271129003980",
     live_check: { text: "Opened the Work board", by_login: "sethogieva", url: "https://github.com/Mingla-LLC/mingla-main/issues/3980#issuecomment-9", at: "2026-10-21T10:00:00Z" },
   });
   assertEquals(recordMissing(done), []);

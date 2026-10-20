@@ -160,7 +160,7 @@ $$;
 
 
 
--- From 20271124003980. A system card that needs a person (Bridge D) starts
+-- From 20271129003980. A system card that needs a person (Bridge D) starts
 -- in Needs a person; everything else is unchanged.
 CREATE OR REPLACE FUNCTION public.ops_auto_card_upsert(p_auto_key text, p_item jsonb, p_kind text, p_anchor jsonb) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -212,7 +212,7 @@ END;
 $$;
 
 
--- From 20271124003980. #3980 W2 rework: of two release records naming an
+-- From 20271129003980. #3980 W2 rework: of two release records naming an
 -- issue that merged at the same moment, the higher pull request number is
 -- the newest, every time. Everything else is unchanged.
 CREATE OR REPLACE FUNCTION public.ops_github_status(p_number integer) RETURNS jsonb
@@ -855,7 +855,7 @@ $$;
 -- ---------------------------------------------------------------------------
 
 
--- From 20271124003980. Keeps the test files the PR changed, and runs Bridge
+-- From 20271129003980. Keeps the test files the PR changed, and runs Bridge
 -- B when a record becomes complete; everything else is unchanged.
 CREATE OR REPLACE FUNCTION public.ops_release_records_ingest(p_records jsonb) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -981,7 +981,7 @@ END;
 $$;
 
 
--- From 20271124003980. Takes blocked_on_github: the card waits until every
+-- From 20271129003980. Takes blocked_on_github: the card waits until every
 -- linked issue or pull request is Live (Bridge E lifts it). A person can
 -- lift the wait; an agent cannot. Everything else is unchanged.
 CREATE OR REPLACE FUNCTION public.ops_work_update(p_id uuid, p_changes jsonb, p_expected_revision bigint, p_request_key text DEFAULT NULL) RETURNS jsonb
@@ -1312,7 +1312,7 @@ END;
 $$;
 
 
--- From 20271124003980. #3980 W2 rework 4: an agent starting a roadmap
+-- From 20271129003980. #3980 W2 rework 4: an agent starting a roadmap
 -- approval card (auto_key roadmap_shipped:...) is refused with people_only
 -- before anything is written. Everything else is unchanged.
 CREATE OR REPLACE FUNCTION public.ops_work_start(p_id uuid, p_expected_revision bigint) RETURNS jsonb
@@ -1388,7 +1388,7 @@ END;
 $$;
 
 
--- From 20271124003980. Adds Bridge B and the GitHub bridges, each in its
+-- From 20271129003980. Adds Bridge B and the GitHub bridges, each in its
 -- own step that never stops the others.
 CREATE OR REPLACE FUNCTION public.ops_reconcile() RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp

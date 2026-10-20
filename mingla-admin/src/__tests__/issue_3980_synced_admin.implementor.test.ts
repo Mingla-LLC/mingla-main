@@ -41,7 +41,7 @@ Deno.test("#3980 synced: a GitHub link is parsed exactly as the server parses it
   for (const [input, want] of CASES) {
     assert(sql.includes(`('${input}', '${want}')`), `the SQL suite checks ${JSON.stringify(input)} the same way`);
   }
-  const migration = Deno.readTextFileSync(new URL("supabase/migrations/20271124003980_issue_3980_synced_w1_foundations.sql", ROOT));
+  const migration = Deno.readTextFileSync(new URL("supabase/migrations/20271129003980_issue_3980_synced_w1_foundations.sql", ROOT));
   assert(migration.includes(GITHUB_LINK_WORDS), "the words are the server's own");
 });
 

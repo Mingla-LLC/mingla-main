@@ -111,7 +111,7 @@ Deno.test("#3980 W4 rework P3-2: a roadmap line splits at its last arrow, whatev
 });
 
 Deno.test("#3980 W4 rework P3-4: the guide's base check hashes who can use an entry and where it appears", () => {
-  const sql = Deno.readTextFileSync(new URL("supabase/migrations/20271127003980_issue_3980_synced_w4_backfills_guide.sql", ROOT));
+  const sql = Deno.readTextFileSync(new URL("supabase/migrations/20271202003980_issue_3980_synced_w4_backfills_guide.sql", ROOT));
   const pre = sql.slice(sql.indexOf("DO $preflight3980sync$"), sql.indexOf("$preflight3980sync$;"));
   assertMatch(pre, /md5\(concat_ws\('\|', c\.title, c\.outcome_summary, c\.how_to, c\.limitations, c\.support_wording,\s*array_to_json\(c\.who_can_use\)::text, array_to_json\(c\.surfaces\)::text\)\) <> b\.content_md5/);
   assertMatch(pre, /RAISE EXCEPTION 'issue3980_sync_guide_entry_changed_since_read: %'/);
