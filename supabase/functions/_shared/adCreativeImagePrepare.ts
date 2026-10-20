@@ -75,7 +75,9 @@ export function imagePreparationSource(
       facts: {
         width: variant.width,
         height: variant.height,
-        aspect_ratio: variant.height > 0 ? variant.width / variant.height : null,
+        aspect_ratio: variant.height > 0
+          ? variant.width / variant.height
+          : null,
         byte_size: variant.byte_size ?? creative.byte_size,
       },
     };
@@ -183,12 +185,18 @@ export async function prepareCreativeImageRef(
   const activeLock = existing !== null &&
     (existing.status === "uploading" || existing.status === "processing");
   if (action === "status") {
-    if (!existing || existing.status === "pending" || existing.status === "ready") {
+    if (
+      !existing || existing.status === "pending" || existing.status === "ready"
+    ) {
       // A READY ref with other bytes is stale (A1-1): a start re-uploads it.
       return { kind: "not_started", ref: existing };
     }
     if (existing && activeLock) {
-      return { kind: "in_progress", ref: existing, stale: lockIsStale(existing, now()) };
+      return {
+        kind: "in_progress",
+        ref: existing,
+        stale: lockIsStale(existing, now()),
+      };
     }
     return failed(
       existing,
@@ -221,7 +229,9 @@ export async function prepareCreativeImageRef(
   } catch (error) {
     deps.log?.(
       `[admin-ad-creative-prepare] image source fetch failed: ${
-        scrubCreativeSecrets(error instanceof Error ? error.message : String(error))
+        scrubCreativeSecrets(
+          error instanceof Error ? error.message : String(error),
+        )
       }`,
     );
     return failed(
@@ -242,10 +252,13 @@ export async function prepareCreativeImageRef(
     );
   }
   const baseFetch = deps.fetchImpl ?? fetch;
-  const fetchImpl = ((request: URL | Request | string, init?: RequestInit) =>
-    String(request) === source.url
-      ? Promise.resolve(new Response(bytes as unknown as BodyInit, { status: 200 }))
-      : baseFetch(request, init)) as typeof fetch;
+  const fetchImpl =
+    ((request: URL | Request | string, init?: RequestInit) =>
+      String(request) === source.url
+        ? Promise.resolve(
+          new Response(bytes as unknown as BodyInit, { status: 200 }),
+        )
+        : baseFetch(request, init)) as typeof fetch;
 
   // The resolver gets the plan's exact connection and the already-gated
   // creative. Prepare has already applied its own status rule (#3697 C-13: a
@@ -275,11 +288,19 @@ export async function prepareCreativeImageRef(
     }
     deps.log?.(
       `[admin-ad-creative-prepare] image upload failed: ${
-        scrubCreativeSecrets(error instanceof Error ? error.message : String(error))
+        scrubCreativeSecrets(
+          error instanceof Error ? error.message : String(error),
+        )
       }`,
     );
     if (error instanceof CreativeValidationError) {
-      return failed(after, "creative_does_not_fit", 422, false, scrubCreativeSecrets(error.message));
+      return failed(
+        after,
+        "creative_does_not_fit",
+        422,
+        false,
+        scrubCreativeSecrets(error.message),
+      );
     }
     if (error instanceof CreativeConnectionError) {
       return failed(
