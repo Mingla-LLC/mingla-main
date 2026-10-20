@@ -516,7 +516,7 @@ begin
     '1. In Mingla Admin, open Pipeline > Work > Agent activity.%chat''s name%last 24 hours%');
   perform pg_temp.w4_like('W4-GUIDE', 'Calendar: the four plain states, today, Events/Posts/Both and the list by state',
     (select outcome_summary || ' || ' || how_to from public.product_capabilities where capability_key = 'staff-content-calendar'),
-    '%Ready to promote%Promote now%Too late for promo%Not live yet%today marked%Events, Posts or Both%List groups upcoming events by state%eight launch steps by itself%');
+    '%Ready to promote%Promote now%Too late for promo%Not live yet%today marked%Events, Posts or Both%List groups upcoming events by state%eight launch steps automatically%');
   perform pg_temp.w4_like('W4-GUIDE', 'Hosts: the next event, the two filters, brands linked and added, repeats and promo moments',
     (select outcome_summary || ' || ' || how_to from public.product_capabilities where capability_key = 'staff-crm'),
     '%next event%"No next event"%"Go live soon"%links the brand by itself%Promo moment%every week or every month%host card for every new brand%');
