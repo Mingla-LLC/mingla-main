@@ -23,6 +23,13 @@
 --     Release records and the synced system. Each saved entry goes up one
 --     revision with one audit row; no status changes and no evidence.
 --
+--   * Rework after the first test: roadmap confirms lock the cards they list;
+--     a cheap count and a paged preview of brands without a host card
+--     (ops_brand_cards_count, ops_brand_cards_preview_page) and an index for
+--     the phone lookup; brands a person decided about show as decided
+--     (ops_brand_decided, the rule brand auto-link follows); ops_link_label
+--     trims a name it cuts at 160 characters.
+--
 -- Replaced functions keep their signatures, attributes and grants; each names
 -- the migration it was copied from.
 --
@@ -70,6 +77,40 @@ ALTER TABLE public.ops_agent_log ADD CONSTRAINT ops_agent_log_action_check CHECK
   'took_over','working_cleared','chat_named','auto_added','auto_closed','auto_redated','release_record','guide_live',
   'guide_incomplete','brand_linked','brand_card_added','sprint_moved','setting_changed',
   'backfill_confirmed'));
+
+-- From 20271125003980. #3980 W4 rework: a name cut at 160 characters is
+-- trimmed again, so a long brand or card name never ends in a space the
+-- label check refuses (a brand named with more than 160 characters could not
+-- get its pick card). Everything else is unchanged.
+CREATE OR REPLACE FUNCTION public.ops_link_label(p_kind text, p_id uuid) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v text;
+BEGIN
+  IF p_id IS NULL THEN RETURN NULL; END IF;
+  IF p_kind IN ('host', 'creator') THEN
+    SELECT c.name INTO v FROM public.crm_records c WHERE c.id = p_id AND c.deleted_at IS NULL AND c.pipeline = p_kind || 's';
+  ELSIF p_kind = 'brand' THEN
+    SELECT b.name INTO v FROM public.brands b WHERE b.id = p_id AND b.deleted_at IS NULL;
+  ELSIF p_kind = 'event' THEN
+    IF public.ops_event_in_scope(p_id) THEN SELECT e.title INTO v FROM public.events e WHERE e.id = p_id; END IF;
+  ELSIF p_kind = 'content' THEN
+    SELECT i.title INTO v FROM public.content_calendar_items i WHERE i.id = p_id AND i.deleted_at IS NULL;
+  ELSIF p_kind = 'expected' THEN
+    SELECT x.title INTO v FROM public.ops_expected_events x WHERE x.id = p_id AND x.status <> 'cancelled';
+  ELSIF p_kind = 'card' THEN
+    SELECT w.title INTO v FROM public.ops_work_cards w WHERE w.id = p_id AND w.archived_at IS NULL;
+  ELSIF p_kind = 'roadmap_card' THEN
+    -- #3980 synced, Wave 2: a Community roadmap card (Bridge D drafts).
+    SELECT r.public_title INTO v FROM public.community_roadmap_cards r WHERE r.id = p_id;
+  END IF;
+  RETURN btrim(left(COALESCE(NULLIF(btrim(v), ''), CASE WHEN v IS NOT NULL THEN 'Untitled' END), 160));
+END;
+$$;
+
+-- The brand preview looks a phone up by the last six digits of its national
+-- number (ops_brand_match); this index keeps that a lookup, not a scan.
+CREATE INDEX crm_record_identifiers_by_national6 ON public.crm_record_identifiers (right(national, 6)) WHERE national IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- 2. P3 backfills. Internal helpers first (service_role only), then the four
@@ -171,7 +212,9 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM public.crm_records h WHERE h.brand_id = br.id AND h.pipeline = 'hosts' AND h.deleted_at IS NULL)
      ORDER BY br.created_at DESC, br.id
      OFFSET v_offset LIMIT v_limit
-  ), m AS (
+  ), m AS MATERIALIZED (
+    -- Materialized: each brand's decision is worked out once, not once for
+    -- every field read from it below.
     SELECT page.id, page.created_at, public.ops_brand_match(page.id) AS d FROM page
   )
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
@@ -189,8 +232,14 @@ BEGIN
           WHEN 'near' THEN format('Only near matches (%s). A person picks.', m.d->>'names')
           WHEN 'name' THEN 'A host card with this name already exists. A person picks.'
           ELSE format('Several host cards match (%s). A person picks.', m.d->>'names') END
-        ELSE 'Nothing to do.' END)
-      ORDER BY CASE m.d->>'status' WHEN 'link' THEN 1 WHEN 'create' THEN 2 WHEN 'pick' THEN 3 WHEN 'reopen' THEN 4 ELSE 5 END,
+        WHEN 'decided' THEN format('Decided by %s on %s. Mingla leaves this brand as it is.',
+          COALESCE(public.ops_name(m.d->>'closed_by'), 'a person'), to_char((m.d->>'closed_at')::timestamptz AT TIME ZONE 'UTC', 'FMDD Mon YYYY'))
+        ELSE 'Nothing to do.' END,
+      -- A brand a person already decided about (ops_brand_decided, the
+      -- same rule brand auto-link follows): who decided and when.
+      'decided', CASE WHEN m.d->>'status' = 'decided' THEN jsonb_build_object(
+        'card_id', m.d->>'card_id', 'by', m.d->>'closed_by', 'by_name', public.ops_name(m.d->>'closed_by'), 'at', m.d->>'closed_at') END)
+      ORDER BY CASE m.d->>'status' WHEN 'link' THEN 1 WHEN 'create' THEN 2 WHEN 'pick' THEN 3 WHEN 'reopen' THEN 4 WHEN 'decided' THEN 5 ELSE 6 END,
                lower(m.d->'brand'->>'name'), m.id), '[]'::jsonb)
     INTO v_rows FROM m;
   RETURN jsonb_build_object('rows', v_rows, 'totals', jsonb_build_object(
@@ -198,7 +247,8 @@ BEGIN
     'link', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'link'),
     'create', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'create'),
     'pick', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'pick'),
-    'reopen', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'reopen')),
+    'reopen', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'reopen'),
+    'decided', (SELECT count(*) FROM jsonb_array_elements(v_rows) r WHERE r->>'action' = 'decided')),
     'page', jsonb_build_object('offset', v_offset, 'limit', v_limit,
                                'more', v_offset + jsonb_array_length(v_rows) < v_total));
 END;
@@ -351,6 +401,8 @@ BEGIN
       WHEN v_status IN ('pick', 'ask_reopen') AND v_card->>'status' = 'kept' THEN
         'Its card for a person was closed in the last 14 days; nothing new was asked.'
       WHEN v_status IN ('pick', 'ask_reopen') THEN 'Not changed: the card for a person could not be made. Try again or add it by hand.'
+      WHEN v_status = 'decided' THEN format('Decided by %s on %s; left as it is.', COALESCE(public.ops_name(v_res->>'closed_by'), 'a person'),
+                                            to_char((v_res->>'closed_at')::timestamptz AT TIME ZONE 'UTC', 'FMDD Mon YYYY'))
       WHEN v_status = 'has_card' THEN 'It already has a host card.'
       WHEN v_status = 'gone' THEN 'This brand no longer exists.'
       ELSE 'Not changed: ' || COALESCE(v_res->>'error', 'try again.') END;

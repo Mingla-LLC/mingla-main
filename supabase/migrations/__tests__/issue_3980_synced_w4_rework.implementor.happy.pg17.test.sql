@@ -18,6 +18,17 @@
 --               program writes; Agent activity is named; the Calendar says
 --               the launch steps are made automatically once the owner
 --               switches automatic steps on
+--   W4R-DECIDED P1-1: a brand whose pick or reopen card a person closed is
+--               "decided" in the preview (who and when), its confirm leaves it
+--               as it is, and the cron makes nothing for it; an agent's close
+--               is not a decision; a new exact match since then is asked
+--               again on the same card. Preview, confirm and cron all read
+--               ops_brand_decided, the one copy of the rule
+--   W4R-BLOCK   P2-2: brand auto-link for one brand holds a lock on that
+--               brand until its transaction ends, so a second caller waits
+--   W4R-LONG    P3-1: a brand name over 160 characters previews "Add card"
+--               and its confirm adds the card with the first 160 characters;
+--               when a card already has that name both say a person picks
 --
 -- Run from the repository root as supabase_admin. Everything is rolled back.
 
@@ -262,12 +273,181 @@ begin
 end;
 $guide$;
 
+-- ---------------------------------------------------------------------------
+-- W4R-DECIDED: a person's decision is kept by the preview, the confirm and
+-- the cron alike
+-- ---------------------------------------------------------------------------
+insert into public.crm_records (id, pipeline, name, stage, stage_reason, created_by, updated_by) values
+  ('39850000-0000-4000-c300-000000000001', 'hosts', 'W4R Lost Again', 'lost', 'Not now', 'w4r', 'w4r'),
+  ('39850000-0000-4000-c300-000000000002', 'hosts', 'W4R Pair One', 'contacted', null, 'w4r', 'w4r'),
+  ('39850000-0000-4000-c300-000000000003', 'hosts', 'W4R Pair Two', 'contacted', null, 'w4r', 'w4r'),
+  ('39850000-0000-4000-c300-000000000004', 'hosts', 'W4R Agent One', 'contacted', null, 'w4r', 'w4r'),
+  ('39850000-0000-4000-c300-000000000005', 'hosts', 'W4R Agent Two', 'contacted', null, 'w4r', 'w4r');
+insert into public.crm_record_identifiers (record_id, kind, value, value_key, created_by) values
+  ('39850000-0000-4000-c300-000000000001', 'email', 'again@w4r3980.test', public.crm_ident_key('email', 'again@w4r3980.test'), 'w4r'),
+  ('39850000-0000-4000-c300-000000000002', 'email', 'pair@w4r3980.test', public.crm_ident_key('email', 'pair@w4r3980.test'), 'w4r'),
+  ('39850000-0000-4000-c300-000000000003', 'email', 'pair@w4r3980.test', public.crm_ident_key('email', 'pair@w4r3980.test'), 'w4r'),
+  ('39850000-0000-4000-c300-000000000004', 'email', 'agent@w4r3980.test', public.crm_ident_key('email', 'agent@w4r3980.test'), 'w4r'),
+  ('39850000-0000-4000-c300-000000000005', 'email', 'agent@w4r3980.test', public.crm_ident_key('email', 'agent@w4r3980.test'), 'w4r');
+set local session_replication_role = replica;
+insert into public.brands (id, account_id, name, slug, contact_email, created_at) values
+  ('39850000-0000-4000-b300-000000000001', gen_random_uuid(), 'W4R Lost Decided', 'w4r-lost-decided', 'again@w4r3980.test', now() - interval '1 hour'),
+  ('39850000-0000-4000-b300-000000000002', gen_random_uuid(), 'W4R Pick Decided', 'w4r-pick-decided', 'pair@w4r3980.test', now() - interval '1 hour'),
+  ('39850000-0000-4000-b300-000000000003', gen_random_uuid(), 'W4R Agent Closed', 'w4r-agent-closed', 'agent@w4r3980.test', now() - interval '1 hour');
+set local session_replication_role = origin;
+
+do $decided$
+declare p jsonb; v_cron jsonb; v_rows jsonb := '[]'::jsonb; v_off integer := 0; v_page jsonb;
+begin
+  -- Brand auto-link asked a person about each brand.
+  perform public.ops_brand_autolink_one('39850000-0000-4000-b300-000000000001');
+  perform public.ops_brand_autolink_one('39850000-0000-4000-b300-000000000002');
+  perform public.ops_brand_autolink_one('39850000-0000-4000-b300-000000000003');
+  perform pg_temp.w4r_check('W4R-DECIDED', 'auto-link made one reopen and two pick cards',
+    (select string_agg(split_part(auto_key, ':', 1), ',' order by auto_key) from public.ops_work_cards
+      where auto_key like 'brand_%:39850000-0000-4000-b300-%' and status <> 'done'), 'brand_lost,brand_pick,brand_pick');
+  -- The owner, in person, decided about the first two 20 days ago; an agent
+  -- closed the third.
+  update public.ops_work_cards set status = 'done', close_kind = 'declined', close_reason = 'Decided by a person.',
+         closed_at = now() - interval '20 days', closed_by = 'ed.w4r3980@test.local', closed_via = null
+   where auto_key in ('brand_lost:39850000-0000-4000-b300-000000000001', 'brand_pick:39850000-0000-4000-b300-000000000002');
+  update public.ops_work_cards set status = 'done', close_kind = 'done', close_reason = 'Closed by an agent.',
+         closed_at = now() - interval '20 days', closed_by = 'ed.w4r3980@test.local', closed_via = 'claude'
+   where auto_key = 'brand_pick:39850000-0000-4000-b300-000000000003';
+
+  -- The preview: every page, until the brands are found.
+  loop
+    v_page := pg_temp.w4r_j(pg_temp.w4r_person('owner', format('select public.ops_brand_cards_preview_page(%s, 100)::text', v_off)));
+    v_rows := v_rows || coalesce(v_page->'rows', '[]'::jsonb);
+    exit when not coalesce((v_page->'page'->>'more')::boolean, false) or v_off > 2000;
+    v_off := v_off + 100;
+  end loop;
+  perform pg_temp.w4r_check('W4R-DECIDED', 'the preview shows the two decided brands as decided, the agent-closed one as a pick',
+    (select string_agg(r->>'name' || '=' || (r->>'action'), ',' order by r->>'name') from jsonb_array_elements(v_rows) r
+      where r->>'name' in ('W4R Lost Decided', 'W4R Pick Decided', 'W4R Agent Closed')),
+    'W4R Agent Closed=pick,W4R Lost Decided=decided,W4R Pick Decided=decided');
+  perform pg_temp.w4r_like('W4R-DECIDED', 'a decided row says who decided and when, and names that person''s card',
+    (select concat_ws('|', r->'decided'->>'by', ((r->'decided'->>'card_id') is not null)::text, r->>'words') from jsonb_array_elements(v_rows) r
+      where r->>'name' = 'W4R Pick Decided'),
+    'ed.w4r3980@test.local|true|Decided by % on %. Mingla leaves this brand as it is.');
+
+  -- The confirm leaves both as they are and asks nobody.
+  p := pg_temp.w4r_j(pg_temp.w4r_person('owner', $q$select public.ops_brand_cards_confirm(array['39850000-0000-4000-b300-000000000001','39850000-0000-4000-b300-000000000002']::uuid[], 'w4r-decided-1')::text$q$));
+  perform pg_temp.w4r_like('W4R-DECIDED', 'the confirm says each is decided and left as it is',
+    (select string_agg(r->>'status' || ':' || (r->>'words'), ' ; ' order by r->>'name') from jsonb_array_elements(p->'results') r),
+    'decided:Decided by % on %; left as it is. ; decided:Decided by % on %; left as it is.');
+  -- The cron, switched on, makes nothing for them either.
+  insert into public.ops_settings (key, value, updated_by) values ('brand_auto_since', to_jsonb(now() - interval '1 day'), 'w4r')
+    on conflict (key) do update set value = excluded.value;
+  v_cron := public.ops_brand_autolink();
+  perform pg_temp.w4r_check('W4R-DECIDED', 'neither the confirm nor the cron opened a card again for the decided brands',
+    (select count(*)::text from public.ops_work_cards
+      where auto_key in ('brand_lost:39850000-0000-4000-b300-000000000001', 'brand_pick:39850000-0000-4000-b300-000000000002') and status <> 'done'), '0');
+  perform pg_temp.w4r_check('W4R-DECIDED', 'the agent-closed pick is asked again (an agent''s close is not a decision)',
+    (select count(*)::text from public.ops_work_cards where auto_key = 'brand_pick:39850000-0000-4000-b300-000000000003' and status <> 'done'), '1');
+
+  -- A new host card with the same email appears after the decision: the
+  -- preview asks again, and the confirm opens that same card again.
+  insert into public.crm_records (id, pipeline, name, stage, created_by, updated_by) values
+    ('39850000-0000-4000-c300-000000000006', 'hosts', 'W4R Pair Three', 'contacted', 'w4r', 'w4r');
+  insert into public.crm_record_identifiers (record_id, kind, value, value_key, created_by) values
+    ('39850000-0000-4000-c300-000000000006', 'email', 'pair@w4r3980.test', public.crm_ident_key('email', 'pair@w4r3980.test'), 'w4r');
+  perform pg_temp.w4r_check('W4R-DECIDED', 'with a new exact match the brand''s decision reads pick (ask again)',
+    concat_ws('|', public.ops_brand_match('39850000-0000-4000-b300-000000000002')->>'status',
+              public.ops_brand_match('39850000-0000-4000-b300-000000000002')->>'reask'), 'pick|true');
+  p := pg_temp.w4r_j(pg_temp.w4r_person('owner', $q$select public.ops_brand_cards_confirm(array['39850000-0000-4000-b300-000000000002']::uuid[], 'w4r-decided-2')::text$q$));
+  perform pg_temp.w4r_check('W4R-DECIDED', 'the confirm opens the person''s card again, not a second card',
+    concat_ws('|', p->'results'->0->>'status',
+              (select count(*) from public.ops_work_cards where auto_key = 'brand_pick:39850000-0000-4000-b300-000000000002'),
+              (select count(*) from public.ops_work_cards where auto_key = 'brand_pick:39850000-0000-4000-b300-000000000002' and status <> 'done')),
+    'pick|1|1');
+
+  -- One copy of the rule: the cron and the decision both call
+  -- ops_brand_decided; no backfill function restates it.
+  perform pg_temp.w4r_check('W4R-DECIDED', 'ops_brand_autolink and ops_brand_match call ops_brand_decided',
+    (select string_agg(p.proname, ',' order by p.proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.prosrc ~ 'ops_brand_decided\(' and p.proname in ('ops_brand_autolink', 'ops_brand_match')),
+    'ops_brand_autolink,ops_brand_match');
+  perform pg_temp.w4r_check('W4R-DECIDED', 'no other function restates who decided (closed_via IS NULL on a brand card)',
+    (select coalesce(string_agg(p.proname, ',' order by p.proname), 'none') from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.prosrc ~* 'brand_pick:' and p.prosrc ~* 'closed_via\s+IS\s+NULL' and p.proname <> 'ops_brand_decided'),
+    'none');
+end;
+$decided$;
+
+-- ---------------------------------------------------------------------------
+-- W4R-BLOCK: one brand at a time
+-- ---------------------------------------------------------------------------
+set local session_replication_role = replica;
+insert into public.brands (id, account_id, name, slug, contact_email) values
+  ('39850000-0000-4000-b400-000000000001', gen_random_uuid(), 'W4R Lock Brand', 'w4r-lock-brand', 'lock@w4r3980.test'),
+  ('39850000-0000-4000-b400-000000000002', gen_random_uuid(), 'W4R Lock Other', 'w4r-lock-other', 'lockother@w4r3980.test');
+set local session_replication_role = origin;
+
+create function pg_temp.w4r_brand_lock_held(p_brand uuid) returns boolean
+language sql as $fn$
+  select exists (
+    select 1 from pg_locks l
+     where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.granted and l.mode = 'ExclusiveLock' and l.objsubid = 1
+       and l.classid::text::bigint = ((hashtextextended('ops_brand_autolink:' || p_brand, 0) >> 32) & 4294967295)
+       and l.objid::text::bigint = (hashtextextended('ops_brand_autolink:' || p_brand, 0) & 4294967295))
+$fn$;
+
+do $block$
+declare p jsonb;
+begin
+  perform pg_temp.w4r_check('W4R-BLOCK', 'before: no lock on either brand',
+    concat_ws('/', pg_temp.w4r_brand_lock_held('39850000-0000-4000-b400-000000000001')::text, pg_temp.w4r_brand_lock_held('39850000-0000-4000-b400-000000000002')::text),
+    'false/false');
+  p := pg_temp.w4r_j(pg_temp.w4r_person('owner', $q$select public.ops_brand_cards_confirm(array['39850000-0000-4000-b400-000000000001']::uuid[], 'w4r-block-1')::text$q$));
+  perform pg_temp.w4r_check('W4R-BLOCK', 'the confirm added the card and holds that brand''s lock to the end of the transaction, not the other''s',
+    concat_ws('/', p->'results'->0->>'status', pg_temp.w4r_brand_lock_held('39850000-0000-4000-b400-000000000001')::text,
+              pg_temp.w4r_brand_lock_held('39850000-0000-4000-b400-000000000002')::text),
+    'created/true/false');
+  -- The second caller then reads the brand again: it has its card.
+  perform pg_temp.w4r_check('W4R-BLOCK', 'a second auto-link of the same brand sees the card and makes no pick card',
+    concat_ws('/', public.ops_brand_autolink_one('39850000-0000-4000-b400-000000000001')->>'status',
+              (select count(*) from public.ops_work_cards where auto_key like 'brand_%:39850000-0000-4000-b400-000000000001')),
+    'has_card/0');
+end;
+$block$;
+
+-- ---------------------------------------------------------------------------
+-- W4R-LONG: a brand name over 160 characters
+-- ---------------------------------------------------------------------------
+set local session_replication_role = replica;
+insert into public.brands (id, account_id, name, slug, contact_email) values
+  ('39850000-0000-4000-b500-000000000001', gen_random_uuid(), 'W4R Long ' || repeat('Rooftop Garden ', 12) || 'Bar', 'w4r-long-1', 'long1@w4r3980.test'),
+  ('39850000-0000-4000-b500-000000000002', gen_random_uuid(), 'W4R Taken ' || repeat('Rooftop Garden ', 12), 'w4r-long-2', 'long2@w4r3980.test');
+set local session_replication_role = origin;
+insert into public.crm_records (id, pipeline, name, stage, created_by, updated_by) values
+  ('39850000-0000-4000-c500-000000000002', 'hosts', btrim(left(btrim('W4R Taken ' || repeat('Rooftop Garden ', 12)), 160)), 'prospect', 'w4r', 'w4r');
+
+do $long$
+declare p jsonb;
+begin
+  perform pg_temp.w4r_check('W4R-LONG', 'the fixture names are over 160 characters',
+    (select string_agg((char_length(name) > 160)::text, ',' order by id) from public.brands where id::text like '39850000-0000-4000-b500-%'), 'true,true');
+  perform pg_temp.w4r_check('W4R-LONG', 'the long name previews Add card with the name a card would get (160 characters)',
+    concat_ws('|', public.ops_brand_match('39850000-0000-4000-b500-000000000001')->>'status',
+              char_length(public.ops_brand_match('39850000-0000-4000-b500-000000000001')->>'card_name')), 'create|160');
+  perform pg_temp.w4r_check('W4R-LONG', 'a card already holds the first 160 characters: a person picks',
+    concat_ws('|', public.ops_brand_match('39850000-0000-4000-b500-000000000002')->>'status',
+              public.ops_brand_match('39850000-0000-4000-b500-000000000002')->>'how'), 'pick|name');
+  p := pg_temp.w4r_j(pg_temp.w4r_person('owner', $q$select public.ops_brand_cards_confirm(array['39850000-0000-4000-b500-000000000001','39850000-0000-4000-b500-000000000002']::uuid[], 'w4r-long-1')::text$q$));
+  perform pg_temp.w4r_check('W4R-LONG', 'the confirm does what the preview said: the card is added with 160 characters, the taken name goes to a person',
+    (select string_agg(r->>'status', ',' order by r->>'brand_id') from jsonb_array_elements(p->'results') r) || '|' ||
+    (select char_length(name)::text from public.crm_records where brand_id = '39850000-0000-4000-b500-000000000001'),
+    'created,pick|160');
+end;
+$long$;
+
 select count(*) as w4r_total, count(*) filter (where not ok) as w4r_failed,
        coalesce(string_agg(test || ' ' || label || ' [' || detail || ']', E'\n' order by seq) filter (where not ok), 'none') as w4r_failures
   from t3980w4r_results \gset
 rollback;
 
-select (:w4r_total < 18 or :w4r_failed > 0) as w4r_bad \gset
+select (:w4r_total < 35 or :w4r_failed > 0) as w4r_bad \gset
 \if :w4r_bad
   \echo 'ISSUE-3980 SYNCED WAVE 4 REWORK FAILED:' :w4r_failed 'of' :w4r_total
   \echo :w4r_failures
