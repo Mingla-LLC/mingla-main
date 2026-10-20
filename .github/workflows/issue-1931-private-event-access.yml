@@ -365,6 +365,19 @@ jobs:
               # #3281 repair grants on the functions 20271121003281 creates; the lane
               # skips that migration, so it skips the grants too.
               *20271122003281_issue_3281_checkout_anon_revoke.sql) continue ;;
+              # #2947 queue admission and #3281 booked start — SKIPPED FOR THE SAME REASON.
+              # Each re-emits or grants on issue_1930_ticket_checkout_create_session_base at a
+              # signature this lane never creates (the checkout re-emissions it needs are
+              # skipped above), and the queue monitor and health readers depend on the queue
+              # foundation. Found by replaying this lane locally after #2947 merged; the lane
+              # had not run since. The unfiltered full-chain lanes cover all five.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271027002947_issue_2947_queue_admission_foundation.sql) continue ;;
+              *20271105002947_issue_2947_presale_queue.sql) continue ;;
+              *20271105012947_issue_2947_queue_monitor.sql) continue ;;
+              *20271106002947_issue_2947_admin_queue_health.sql) continue ;;
+              *20271109003281_issue_3281_booked_start.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

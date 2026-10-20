@@ -865,10 +865,11 @@ function selfTest() {
   // [TEST-MOD-APPROVED #3281] The #1931 and #2117 lanes each gain two exact skips
   // (20271121003281 Round 2 checkout units, which this guard named, and its
   // 20271122003281 repair). Only lane counts move, by +2; no mutant or check changes.
+  // The #1931 lane then gains five more exact skips found by a local replay; +5 more.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    "issue-1931-private-event-access.yml": 19,
+    "issue-1931-private-event-access.yml": 24,
     "issue-2117-offering-visibility-gate-tests.yml": 20,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
@@ -922,7 +923,7 @@ function selfTest() {
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
       if (!lane) record("M-5", "the #1931 lane VANISHED when rewritten to the basename nested-quote form (R-2)");
       else if (lane.subjectKind !== "basename") record("M-5", `subject read as "${lane.subjectKind}", expected "basename"`);
-      else if (lane.globs.length !== 19) record("M-5", `${lane.globs.length} globs extracted, expected 19`);
+      else if (lane.globs.length !== 24) record("M-5", `${lane.globs.length} globs extracted, expected 24`);
       else if (out.lanes.length !== 4) record("M-5", `inventory collapsed to ${out.lanes.length} lanes, expected 4`);
       else if (out.violations.length) record("M-5", `clean tree flagged after a semantics-preserving rewrite: ${out.violations.map((v) => v.check).join(",")}`);
     }
@@ -941,7 +942,7 @@ function selfTest() {
     if (ok) {
       const lane = analyseTrees(tree).lanes.find((l) => l.workflow === PINNED_LANE);
       if (!lane) record("M-6", "lane vanished");
-      else if (lane.globs.length !== 21) record("M-6", `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 21`);
+      else if (lane.globs.length !== 26) record("M-6", `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 26`);
     }
   }
 
@@ -982,7 +983,7 @@ function selfTest() {
     if (mutate("M-9", tree, PINNED_LANE, "            esac", "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac")) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 19) record("M-9", `expected the 3-line branch to stay unread (branchCount 19), got ${lane.branchCount}`);
+      if (lane.branchCount !== 24) record("M-9", `expected the 3-line branch to stay unread (branchCount 24), got ${lane.branchCount}`);
       else if (!fired(out, "C-4c")) {
         record("M-9", "C-4c did NOT fire on a lane whose case region holds a branch the parser cannot read — under-counting is invisible");
       } else if (fired(out, "C-4b")) {
@@ -998,8 +999,8 @@ function selfTest() {
     if (mutate("M-10", tree, PINNED_LANE, "            esac", "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac")) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 20) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 20 (R-5)`);
-      else if (lane.globs.length !== 20) record("M-10", `${lane.globs.length} globs, expected 20`);
+      if (lane.branchCount !== 25) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 25 (R-5)`);
+      else if (lane.globs.length !== 25) record("M-10", `${lane.globs.length} globs, expected 25`);
       else if (out.violations.length) record("M-10", `a readable two-line branch flagged: ${out.violations.map((v) => v.check).join(",")}`);
     }
   }
@@ -1008,7 +1009,7 @@ function selfTest() {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 19/1/3/20 lane inventory, 10 mutants M-1…M-10 all behaving).");
+  console.log("#2492 self-test PASS (1 good tree with the 24/1/3/20 lane inventory, 10 mutants M-1…M-10 all behaving).");
 }
 
 // ---------------------------------------------------------------------------
