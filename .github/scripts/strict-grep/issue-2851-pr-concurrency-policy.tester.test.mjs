@@ -104,11 +104,13 @@ test("real YAML remains the complete canonical 124-workflow policy", () => {
   const result = auditWorkflowSources(readWorkflowSources(TEST_ROOT));
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
-    totalWorkflows: 131,
-    prFamily: 124,
+    // [TEST-MOD-APPROVED #3980] release-records joins the PR family on the
+    // canonical policy (the second pull_request_target workflow).
+    totalWorkflows: 132,
+    prFamily: 125,
     standardPullRequest: 123,
-    pullRequestTarget: 1,
-    normalPolicies: 123,
+    pullRequestTarget: 2,
+    normalPolicies: 124,
     exceptions: 1,
   });
 });

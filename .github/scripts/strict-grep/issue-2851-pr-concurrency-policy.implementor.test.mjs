@@ -35,9 +35,18 @@ const DENIED = [
   liveWorkflow("sprint", "rollover"),
   liveWorkflow("stripe", "connect", "smoke"),
 ];
-const PR_FAMILY_COUNT = 124;
+// [TEST-MOD-APPROVED #3980] PR-family membership changed: #3980 adds the
+// release-records capability workflow (pull_request_target for the PR links
+// check, plus push, status, workflow_run, issue_comment and workflow_dispatch
+// for the merge bot), registered in .github/ci-capability-workflows.json. The
+// #2851 policy holds for it: its top-level concurrency is exactly the
+// canonical filename/PR-or-run group with PR-only cancellation, and
+// auditWorkflowSources reports zero errors. Count 124 -> 125, identity and
+// projection re-derived locally with this file's own canonicalDigests on the
+// branch (the base tree reproduces the previous literals exactly).
+const PR_FAMILY_COUNT = 125;
 const PR_FAMILY_IDENTITY_SHA256 =
-  "9356c4252e3a521e57c039ed765ff1f05f434516010df09c8937cd73bdab3f04";
+  "54680b0c66c7443c8d706c7d824868463309d83cb44c7df1569994c1fdb100d6";
 // [TEST-MOD-APPROVED #2241] Mechanically re-derived after the exact approved
 // #1930 shared-resolver trigger addition, #2241 secret-readiness lanes,
 // #2893/#2899 Sites workflow authority, and #2885's reviewed baseline-only path
@@ -1229,7 +1238,10 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // workflows gained the input-free workflow_dispatch event required by the
   // exact-current-main recovery contract. The PR-family inventory, workflow
   // identities, concurrency blocks and reusable-workflow calls are unchanged.
-  "0b0993ff999bce0b07e13778a7f0b4784f8c1b5e5d4aa35c9fdac68645de0085";
+  // [TEST-MOD-APPROVED #3980] Re-derived because the PR-family set changed:
+  // release-records joins it (see PR_FAMILY_COUNT above). No existing
+  // workflow's trigger keys, job-level concurrency or uses: values moved.
+  "028f2fc97ecb6cd4df058744b4fc28a5bb474a3beb4a719eded7111b46c6204d";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -1404,11 +1416,13 @@ test("the real tree has 124 canonical PR-family policies and the sole load excep
   const result = auditWorkflowSources(readWorkflowSources());
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.counts, {
-    totalWorkflows: 131,
-    prFamily: 124,
+    // [TEST-MOD-APPROVED #3980] release-records is the 132nd workflow and the
+    // second pull_request_target member of the PR family, on the canonical policy.
+    totalWorkflows: 132,
+    prFamily: 125,
     standardPullRequest: 123,
-    pullRequestTarget: 1,
-    normalPolicies: 123,
+    pullRequestTarget: 2,
+    normalPolicies: 124,
     exceptions: 1,
   });
 });
@@ -1433,11 +1447,13 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   assert.ok(authority.names.includes(sitesRecoveryName), "Sites recovery must remain in the PR-family authority");
   assert.deepEqual(audit.errors, []);
   assert.deepEqual(audit.counts, {
-    totalWorkflows: 131,
-    prFamily: 124,
+    // [TEST-MOD-APPROVED #3980] release-records is the 132nd workflow and the
+    // second pull_request_target member of the PR family, on the canonical policy.
+    totalWorkflows: 132,
+    prFamily: 125,
     standardPullRequest: 123,
-    pullRequestTarget: 1,
-    normalPolicies: 123,
+    pullRequestTarget: 2,
+    normalPolicies: 124,
     exceptions: 1,
   });
 
