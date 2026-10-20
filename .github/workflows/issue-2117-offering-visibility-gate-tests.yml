@@ -176,6 +176,17 @@ jobs:
               # Nothing is removed from the migration to green this lane. Covered by
               # the unfiltered full-chain lanes. EXACT FILENAME.
               *20270709000000_unlisted_rsvp_invite_link.sql) continue ;;
+              # #3281 Round 2 checkout units — SKIPPED FOR THE SAME REASON. 20271121003281
+              # re-emits the checkout session functions and pg_experience_booking_quote,
+              # whose bodies reach helpers this lane skips (validated at CREATE time).
+              # Nothing is removed from the migration to green this lane; the unfiltered
+              # full-chain lanes cover it end to end.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271121003281_issue_3281_r2_checkout_units.sql) continue ;;
+              # #3281 repair grants on the functions 20271121003281 creates; the lane
+              # skips that migration, so it skips the grants too.
+              *20271122003281_issue_3281_checkout_anon_revoke.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
