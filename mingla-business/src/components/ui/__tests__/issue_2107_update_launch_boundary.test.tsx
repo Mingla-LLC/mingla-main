@@ -1,7 +1,7 @@
 // @ts-nocheck -- the test intentionally supplies a minimal host-component RN runtime.
 // #2107 (U1) — Host's launch boundary, mounted for real: a child that throws on
-// render is either handed to expo-updates' rollback (nothing rendered, then the
-// restart screen) or shown the restart screen — never a blank screen — and the
+// render is either handed to expo-updates' rollback (rethrown, so nothing is
+// committed) or shown the restart screen — never a blank screen — and the
 // restart button goes through safeReload. Invariant
 // I-2107-UPDATE-LAUNCH-ESCALATION is declared in
 // app-mobile/src/services/__tests__/issue_2107_update_launch_guard.test.ts.
@@ -57,7 +57,6 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 
 const runtime = require("../../../services/updateLaunchRuntime");
 const { UpdateLaunchBoundary } = require("../UpdateLaunchBoundary");
-const { UPDATE_LAUNCH_ESCALATION_HOLD_MS } = require("../../../services/updateLaunchGuard");
 
 function Broken(): React.ReactElement {
   throw new TypeError("broken update");
@@ -93,23 +92,25 @@ afterEach(() => {
   consoleError.mockRestore();
   jest.useRealTimers();
 });
+afterAll(() => {
+  // The guard's launch-window timer and telemetry retry must not outlive this file.
+  runtime.resetUpdateLaunchGuardForTests();
+});
 
 describe("#2107 U1 Host launch boundary (mounted)", () => {
-  test("happy path: an eligible launch escalates once, renders nothing, then falls back to the restart screen", () => {
-    jest.useFakeTimers();
+  test("happy path: an eligible launch escalates once and rethrows, so the root commits nothing", () => {
     const { original } = installGuard(false);
-    let renderer: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<UpdateLaunchBoundary><Broken /></UpdateLaunchBoundary>);
-    });
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    expect(() => {
+      act(() => {
+        renderer = TestRenderer.create(<UpdateLaunchBoundary><Broken /></UpdateLaunchBoundary>);
+      });
+    }).toThrow("broken update");
     expect(original).toHaveBeenCalledTimes(1);
     expect(original.mock.calls[0][1]).toBe(true);
-    expect(renderer.toJSON()).toBeNull();
-    act(() => {
-      jest.advanceTimersByTime(UPDATE_LAUNCH_ESCALATION_HOLD_MS);
-    });
-    expect(texts(renderer)).toContain("Something went wrong");
-    expect(original).toHaveBeenCalledTimes(1);
+    // Uncaught: React unmounted the root, so no native view was ever added.
+    expect(renderer === undefined || renderer.toJSON() === null).toBe(true);
+    expect(mockHideSplash).not.toHaveBeenCalled();
   });
 
   test("adversarial: an embedded launch shows the restart screen at once, never blank, and never escalates", () => {

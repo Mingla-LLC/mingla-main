@@ -62,6 +62,8 @@ export interface SafeReloadDependencies {
   settle: () => Promise<void>;
   /** The real restart. The only call that may end this process. */
   reload: () => Promise<void>;
+  /** Runs last when the restart did not happen (the reload rejected or lived on). */
+  onRestore?: () => void | Promise<void>;
   /** Where a failed step is reported. Defaults to console.warn. */
   warn?: (message: string) => void;
   settleCapMs?: number;
@@ -153,6 +155,8 @@ export function createSafeReload(
         if (resume === undefined) continue;
         await bounded(`resume ${step.name}`, resume, stepCap, warn);
       }
+      const onRestore = dependencies.onRestore;
+      if (onRestore !== undefined) await bounded("on restore", onRestore, stepCap, warn);
     };
 
     for (const step of dependencies.pause) {

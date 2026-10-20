@@ -7,9 +7,9 @@
 // - Static imports are sibling pure modules only. expo-updates (through
 //   otaUpdateRuntime), expo-file-system and the restart path are required
 //   LAZILY, inside the function that needs them, and every one of them is
-//   wrapped so a failure only switches the guard off. Booting does no native
-//   work at all: the store is first touched on an error, a confirmation or a
-//   restart.
+//   wrapped so a failure only switches the guard off. Booting does one small
+//   native read: the guard consumes the in-app reload marker at install, so a
+//   marker can never outlive the launch it describes.
 // - In __DEV__ nothing is installed, so development keeps React Native's red
 //   box exactly as before.
 // - Escalation calls the global error handler captured at install time, which
@@ -25,7 +25,7 @@ import {
   type UpdateLaunchFacts,
   type UpdateLaunchStore,
 } from "./updateLaunchGuard";
-import { reportUpdateGateEvent } from "./updateGateTelemetry";
+import { reportUpdateGateEvent, resetUpdateGateTelemetryForTests } from "./updateGateTelemetry";
 
 type GlobalErrorHandler = (error: unknown, isFatal?: boolean) => void;
 type ErrorUtilsLike = {
@@ -89,6 +89,7 @@ function defaultEnvironment(): UpdateLaunchRuntimeEnvironment {
 let guard: UpdateLaunchGuard | null = null;
 let installed = false;
 let activeStore: UpdateLaunchStore = fileStore;
+let windowTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Installs the guard once per JS runtime. Never throws: if anything is missing,
@@ -113,8 +114,12 @@ export function installUpdateLaunchGuard(
       report: (event, properties) =>
         reportUpdateGateEvent("update-launch-guard", event, properties),
       setTimer: (callback, ms) => {
-        const timer = setTimeout(callback, ms);
-        (timer as { unref?: () => void }).unref?.();
+        if (windowTimer !== null) clearTimeout(windowTimer);
+        windowTimer = setTimeout(() => {
+          windowTimer = null;
+          callback();
+        }, ms);
+        (windowTimer as { unref?: () => void }).unref?.();
       },
     });
     created.start();
@@ -161,6 +166,23 @@ export function markInAppReloadForLaunchGuard(now: number = Date.now()): void {
   }
 }
 
+/**
+ * Called by safeReloadRuntime when a restart did not happen (the native reload
+ * rejected, or resolved and this process lived on). The marker describes a
+ * restart that never started a new runtime, so it must not make the next cold
+ * start look like one.
+ */
+export function clearInAppReloadForLaunchGuard(): void {
+  try {
+    const store = installed && guard !== null ? activeStore : fileStore;
+    const record = parseUpdateLaunchRecord(store.read());
+    if (record === null || record.inAppReloadAt === null) return;
+    store.write(serializeUpdateLaunchRecord({ ...record, inAppReloadAt: null }));
+  } catch (error) {
+    console.warn("[update-launch-guard] could not clear the in-app reload marker", error);
+  }
+}
+
 /** The restart screen's button: the app's one restart path, through safeReload. */
 export async function requestLaunchErrorRestart(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -184,6 +206,11 @@ export function hideSplashForLaunchError(): void {
 }
 
 export function resetUpdateLaunchGuardForTests(): void {
+  // A window timer or telemetry retry left running would confirm, report and
+  // require the analytics wrapper after the test environment is gone.
+  resetUpdateGateTelemetryForTests();
+  if (windowTimer !== null) clearTimeout(windowTimer);
+  windowTimer = null;
   guard = null;
   installed = false;
   activeStore = fileStore;

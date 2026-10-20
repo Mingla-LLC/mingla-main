@@ -368,3 +368,12 @@ describe("#2107 U1 launch guard — runtime wiring", () => {
     );
   });
 });
+
+// #2107 CI fix: the launch-window timer and the telemetry retry timer must not
+// outlive this file. Left running, they fired after teardown and required the
+// analytics wrapper ("import a file after the Jest environment has been torn
+// down"), failing the host-ota-gate job.
+afterAll(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require("../updateLaunchRuntime") as typeof import("../updateLaunchRuntime")).resetUpdateLaunchGuardForTests();
+});

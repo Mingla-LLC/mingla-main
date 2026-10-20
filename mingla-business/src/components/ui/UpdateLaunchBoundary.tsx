@@ -6,11 +6,13 @@
 // .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs).
 //
 // - Inside the launch window of an eligible update, a caught render error is
-//   escalated to a fatal from getDerivedStateFromError: that is the render
-//   phase, BEFORE the fallback commits, so the fatal reaches expo-updates
-//   before any new native content can appear. The boundary then renders
-//   nothing while native recovery relaunches the previous update, and shows
-//   the restart screen if nothing has happened after the hold.
+//   escalated to a fatal from getDerivedStateFromError, and then RETHROWN from
+//   render, so nothing is committed: expo-updates rolls back only if no native
+//   view appears before (or while) it handles the fatal, and even the restart
+//   screen or an empty provider wrapper would count as content. No boundary
+//   above may catch it (Host's ORCH-0964 fallback passes it on through
+//   rethrowEscalatedLaunchError); React then unmounts the root and reports the
+//   error as fatal. updateLaunchGuard.ts cites the native source.
 // - Every other caught error shows the restart screen, never a blank one.
 // - The first healthy commit confirms the launch good (updateLaunchGuard.ts
 //   explains why that, and not a later screen, is the line).
@@ -18,7 +20,6 @@
 
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { UPDATE_LAUNCH_ESCALATION_HOLD_MS } from "../../services/updateLaunchGuard";
 import {
   getUpdateLaunchGuard,
   hideSplashForLaunchError,
@@ -30,7 +31,7 @@ import {
 // the global handler. Never throws.
 installUpdateLaunchGuard();
 
-type BoundaryView = "children" | "hold" | "restart";
+type BoundaryView = "children" | "escalated" | "restart";
 
 type BoundaryState = { error: unknown; view: BoundaryView };
 
@@ -78,19 +79,32 @@ export function LaunchErrorRestartScreen(): React.ReactElement {
   );
 }
 
+/**
+ * For a boundary ABOVE UpdateLaunchBoundary (Host's ORCH-0964 fallback): once
+ * this process has escalated a launch error, rethrow instead of drawing a
+ * fallback, so nothing commits before expo-updates' rollback.
+ */
+export function rethrowEscalatedLaunchError(error: unknown): void {
+  let escalated = false;
+  try {
+    escalated = getUpdateLaunchGuard()?.isEscalated() === true;
+  } catch (guardError) {
+    console.warn("[update-launch-guard] escalation check failed", guardError);
+  }
+  if (escalated) throw error;
+}
+
 export class UpdateLaunchBoundary extends React.Component<
   { children: React.ReactNode },
   BoundaryState
 > {
   state: BoundaryState = { error: null, view: "children" };
 
-  private holdTimer: ReturnType<typeof setTimeout> | null = null;
-
   static getDerivedStateFromError(error: unknown): BoundaryState {
     let view: BoundaryView = "restart";
     try {
       const outcome = getUpdateLaunchGuard()?.handleError(error, "root_boundary");
-      if (outcome?.kind === "escalated") view = "hold";
+      if (outcome?.kind === "escalated") view = "escalated";
     } catch (guardError) {
       console.warn("[update-launch-guard] boundary check failed", guardError);
     }
@@ -99,11 +113,6 @@ export class UpdateLaunchBoundary extends React.Component<
 
   componentDidMount(): void {
     if (this.state.view === "children") getUpdateLaunchGuard()?.noteHealthyCommit();
-    this.scheduleHoldEnd();
-  }
-
-  componentDidUpdate(): void {
-    this.scheduleHoldEnd();
   }
 
   componentDidCatch(error: unknown, info: React.ErrorInfo): void {
@@ -114,24 +123,12 @@ export class UpdateLaunchBoundary extends React.Component<
     );
   }
 
-  componentWillUnmount(): void {
-    if (this.holdTimer !== null) clearTimeout(this.holdTimer);
-    this.holdTimer = null;
-  }
-
-  private scheduleHoldEnd(): void {
-    if (this.state.view !== "hold" || this.holdTimer !== null) return;
-    // Native recovery should have relaunched by now; never leave a blank screen.
-    this.holdTimer = setTimeout(() => {
-      this.holdTimer = null;
-      this.setState({ view: "restart" });
-    }, UPDATE_LAUNCH_ESCALATION_HOLD_MS);
-  }
-
   render(): React.ReactNode {
     if (this.state.view === "children") return this.props.children;
+    // Escalated: commit nothing. The error leaves the root uncaught, so React
+    // unmounts it and raises it as fatal while no native content has appeared.
+    if (this.state.view === "escalated") throw this.state.error;
     if (__DEV__) throw this.state.error;
-    if (this.state.view === "hold") return null;
     return <LaunchErrorRestartScreen />;
   }
 }

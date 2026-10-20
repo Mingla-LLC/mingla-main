@@ -110,3 +110,15 @@ export function reportUpdateGateEvent(
     // Telemetry must never break the gate it observes.
   }
 }
+
+/**
+ * Tests only: drops the buffer and stops the retry timer. In jest a pending
+ * retry outlives its test file and then requires the analytics wrapper after
+ * the environment is torn down; unref() cannot stop that inside one process.
+ */
+export function resetUpdateGateTelemetryForTests(): void {
+  if (retryTimer !== null) clearTimeout(retryTimer);
+  retryTimer = null;
+  retries = 0;
+  buffer.length = 0;
+}

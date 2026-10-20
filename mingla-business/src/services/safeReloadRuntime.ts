@@ -165,6 +165,22 @@ function markInAppReload(): void {
   }
 }
 
+/**
+ * #2107 (U1): the restart did not happen, so the marker written for it must not
+ * outlive this process and make the next cold start look like an in-app restart.
+ */
+function clearInAppReload(): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { clearInAppReloadForLaunchGuard } = require("./updateLaunchRuntime") as {
+      clearInAppReloadForLaunchGuard: () => void;
+    };
+    clearInAppReloadForLaunchGuard();
+  } catch (error) {
+    console.warn("[safe-reload] launch guard marker not cleared", error);
+  }
+}
+
 let safeReloadImpl: (() => Promise<void>) | null = null;
 let nativeReload: (() => Promise<void>) | null = null;
 
@@ -175,13 +191,14 @@ let nativeReload: (() => Promise<void>) | null = null;
 export function runSafeReload(reload: () => Promise<void>): Promise<void> {
   nativeReload = reload;
   if (safeReloadImpl === null) {
-    safeReloadImpl = createSafeReload(
-      buildSafeReloadDependencies(async () => {
+    safeReloadImpl = createSafeReload({
+      ...buildSafeReloadDependencies(async () => {
         if (nativeReload === null) return;
         markInAppReload();
         await nativeReload();
       }),
-    );
+      onRestore: clearInAppReload,
+    });
   }
   return safeReloadImpl();
 }

@@ -85,6 +85,8 @@ jobs:
           src/services/__tests__/issue_2107_update_gate_device_rework.test.ts
           src/services/__tests__/issue_2107_update_launch_guard.test.ts
           src/components/__tests__/issue_2107_update_launch_boundary.test.tsx
+          src/services/__tests__/issue_2107_update_launch_journey.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_launch_fallback.test.ts
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   host-ota-gate:
@@ -117,6 +119,9 @@ jobs:
           src/components/auth/__tests__/issue_2107_welcome_video_released_on_restart.test.tsx
           src/services/__tests__/issue_2107_update_launch_guard.test.ts
           src/components/ui/__tests__/issue_2107_update_launch_boundary.test.tsx
+          src/services/__tests__/issue_2107_update_launch_journey.tester_adversarial.test.ts
+          src/services/__tests__/issue_2107_update_launch_fallback.test.ts
+          src/components/ui/__tests__/issue_2107_update_launch_root_bypass.test.tsx
           src/services/__tests__/issue_2075_app_version_policy.test.ts
 
   edge-ota-policy:

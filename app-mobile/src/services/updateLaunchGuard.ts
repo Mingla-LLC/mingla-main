@@ -25,6 +25,16 @@
 //   an in-app reload does not re-arm it, so a fatal after one tears the React
 //   host down with nothing to relaunch it.
 //
+// - Native content "appears" when the first native view is added to the root
+//   view (Android: ReactRootView.java:464-467 logs CONTENT_APPEARED from
+//   onViewAdded). ANY view counts, including a fallback or a provider's
+//   wrapper, and it may arrive while recovery is still waiting up to 5 s for a
+//   remote update (ErrorRecoveryHandler.kt:130-149): either way the cached
+//   relaunch is dropped. So an escalated render error must commit NOTHING: the
+//   root boundary rethrows it, no boundary above catches it, and React unmounts
+//   the root (an empty root adds no view) before reporting it as fatal
+//   (RN src/private/renderer/errorhandling/ErrorHandlers.js:59-63).
+//
 // So this guard escalates ONLY when escalation can roll back: a non-embedded,
 // never-confirmed update, in a fresh process (not straight after an in-app
 // reload), inside the launch window, before the app's first healthy commit (the
@@ -32,8 +42,6 @@
 // id. Everything else gets the branded restart screen instead of a blank one.
 
 export const UPDATE_LAUNCH_WINDOW_MS = 9_000;
-/** How long the boundary waits for native recovery before showing the restart screen. */
-export const UPDATE_LAUNCH_ESCALATION_HOLD_MS = 8_000;
 /** A marker older than this is not the reload that started this process. */
 export const IN_APP_RELOAD_MARKER_MAX_AGE_MS = 60_000;
 export const MAX_REMEMBERED_UPDATE_IDS = 5;
@@ -156,8 +164,13 @@ export class UpdateLaunchGuard {
     this.startedAt = dependencies.now();
   }
 
-  /** Arms the window: a launch that stays healthy for it is confirmed good. */
+  /**
+   * Consumes the in-app reload marker now, on every launch (embedded included),
+   * so a marker can only ever describe the reload that started this process.
+   * Then arms the window: a launch that stays healthy for it is confirmed good.
+   */
   start(): void {
+    this.readLaunchState();
     try {
       this.dependencies.setTimer(() => this.confirm("window_elapsed"), UPDATE_LAUNCH_WINDOW_MS);
     } catch {
@@ -276,8 +289,8 @@ export class UpdateLaunchGuard {
   }
 
   /**
-   * Read once per process. The in-app reload marker is consumed here, so it can
-   * only ever describe the reload that started this process.
+   * Read once per process, at start(). The in-app reload marker is consumed
+   * here, so it can only ever describe the reload that started this process.
    */
   private readLaunchState(): LaunchState | null {
     if (this.launchState !== undefined) return this.launchState;
