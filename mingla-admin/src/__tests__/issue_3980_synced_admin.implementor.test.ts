@@ -61,7 +61,10 @@ Deno.test("#3980 synced: chips, agent names with the chat, and the working mark 
 Deno.test("#3980 synced F6: people picker names never break letter by letter", () => {
   const picker = read("components/ops/PeoplePicker.jsx");
   assert(!/min-w-0 break-words/.test(picker), "the squeezed name classes are gone");
-  assertEquals((picker.match(/min-w-\[6ch\] break-normal \[overflow-wrap:normal\]/g) ?? []).length, 2, "chip and option names keep their words");
+  // [TEST-MOD-APPROVED #3980] D8 (Wave 1 rework): a six-character floor let
+  // a long one-word name shrink under the chip's remove button. Names now
+  // never shrink below their longest word (min-content).
+  assertEquals((picker.match(/min-w-min break-normal \[overflow-wrap:normal\]/g) ?? []).length, 2, "chip and option names keep their words");
   assertMatch(picker, /flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between/);
   assert(!/shrink-0 text-\[12px\][^"]*">\{p\.role_label\}/.test(picker), "the role label can drop under the name");
 });

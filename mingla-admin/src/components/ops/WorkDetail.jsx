@@ -247,7 +247,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
         </label>
       </div>
 
-      <Section title="Linked records" action={!linking && <button type="button" disabled={locked || card.status === "done"} onClick={() => setLinking(true)} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link</button>}>
+      <Section title="Linked records" action={!linking && <button type="button" aria-label="Link a record" disabled={locked || card.status === "done"} onClick={() => setLinking(true)} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link</button>}>
         {(card.links || []).length === 0 ? <p className="text-[13px] text-[var(--color-text-tertiary)]">Nothing linked.</p> : (
           <ul className="flex min-w-0 flex-wrap gap-1.5">
             {card.links.map((l) => (
@@ -509,7 +509,7 @@ function GithubLinks({ card, disabled, onSave }) {
     if (answer) { setValue(""); setError(""); setAdding(false); }
   };
   return (
-    <Section title="GitHub" action={!adding && <button type="button" disabled={disabled} onClick={() => setAdding(true)} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link</button>}>
+    <Section title="GitHub" action={!adding && <button type="button" aria-label="Link GitHub" disabled={disabled} onClick={() => setAdding(true)} className={`inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] disabled:opacity-50 ${FOCUS}`}><Link2 aria-hidden="true" className="h-3.5 w-3.5" /> Link</button>}>
       {links.length === 0 ? <p className="text-[13px] text-[var(--color-text-tertiary)]">No issue or pull request linked.</p> : (
         <ul className="flex min-w-0 flex-wrap gap-1.5">
           {links.map((g, i) => (
