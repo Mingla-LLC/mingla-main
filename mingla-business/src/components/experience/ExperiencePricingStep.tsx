@@ -78,6 +78,9 @@ export interface ExperiencePricingStepProps {
   setCapacity: (v: string) => void;
   unlimited: boolean;
   setUnlimited: (v: boolean) => void;
+  /** issue #3281 R3 — total | per_day | per_start (default total). */
+  capacityScope?: "total" | "per_day" | "per_start";
+  setCapacityScope?: (v: "total" | "per_day" | "per_start") => void;
   pricingSwitches: PricingSwitchOverrides;
   setPricingSwitches: (s: PricingSwitchOverrides) => void;
   brandDefaults: {
@@ -128,6 +131,8 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   setCapacity,
   unlimited,
   setUnlimited,
+  capacityScope = "total",
+  setCapacityScope,
   pricingSwitches,
   setPricingSwitches,
   brandDefaults,
@@ -385,14 +390,55 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
       />
       {!unlimited ? (
         <>
-          <Text style={styles.fieldLabel}>Total spots</Text>
+          <Text style={styles.fieldLabel}>Spots</Text>
+          {setCapacityScope !== undefined ? (
+            <View style={styles.scopeRow}>
+              {(
+                [
+                  ["total", "In total"],
+                  ["per_day", "Per day"],
+                  ["per_start", "Per start time"],
+                ] as const
+              ).map(([value, label]) => {
+                const selected = capacityScope === value;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setCapacityScope(value)}
+                    style={[
+                      styles.scopeChip,
+                      selected ? styles.scopeChipSelected : null,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                  >
+                    <Text
+                      style={[
+                        styles.scopeChipText,
+                        selected ? styles.scopeChipTextSelected : null,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
           <Input
             variant="number"
             value={capacity}
             onChangeText={setCapacity}
             placeholder="20"
-            accessibilityLabel="Total spots available"
+            accessibilityLabel="Spots available"
           />
+          <Text style={styles.helper}>
+            {capacityScope === "per_start"
+              ? "How many can run at the same start time."
+              : capacityScope === "per_day"
+                ? "How many can book each day (needs one start per day)."
+                : "How many spots for the whole experience."}
+          </Text>
           {showErrors && (parseInt(capacity, 10) || 0) <= 0 ? (
             <Text style={styles.inlineError}>
               Enter how many spots are available, or choose Unlimited.
@@ -790,6 +836,32 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
   },
+  scopeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  scopeChip: {
+    minHeight: 36,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: glass.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: glass.tint.profileBase,
+  },
+  scopeChipSelected: {
+    backgroundColor: accent.tint,
+    borderColor: accent.border,
+  },
+  scopeChipText: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  scopeChipTextSelected: { color: textTokens.primary },
   optionHeader: {
     flexDirection: "row",
     alignItems: "center",

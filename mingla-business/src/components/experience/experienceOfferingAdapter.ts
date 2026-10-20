@@ -20,6 +20,8 @@ import {
   type ExperienceOfferingBrand,
   type ExperienceOfferingData,
 } from "@mingla/offering-rendering";
+// issue #3281 R3 — DEEP specifier: pure, so a partial barrel mock cannot blank it.
+import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
 
 import type {
   PublicExperience,
@@ -63,18 +65,20 @@ function buildDatesLabel(
 }
 
 // "3 spots left · 12 max" / "12 max" / null — from the one ticket (rule 9).
+// issue #3281 R3 — per_day / per_start scopes read the NEXT OPEN day's remaining.
 function buildSeatsLabel(exp: PublicExperience): string | null {
   const t = exp.ticket;
-  if (t === null || t.isUnlimited) return null;
-  const remaining = t.ticketsRemaining;
-  const total = t.quantityTotal;
-  if (remaining == null && total == null) return null;
-  if (remaining != null && total != null) {
-    return `${Math.max(remaining, 0)} spots left · ${total} max`;
-  }
-  if (remaining != null) return `${Math.max(remaining, 0)} spots left`;
-  if (total != null) return `${total} max`;
-  return null;
+  if (t === null) return null;
+  return experienceSeatsLabel({
+    capacityScope: exp.capacityScope ?? "total",
+    occurrences: exp.dates.map((d) => ({
+      startAt: d.startAt,
+      remaining: d.ticketsRemaining,
+    })),
+    ticketRemaining: t.ticketsRemaining,
+    quantityTotal: t.quantityTotal,
+    isUnlimited: t.isUnlimited,
+  });
 }
 
 // "7:00 PM start" / null — from the master/first occurrence start instant (rule 9).
@@ -132,6 +136,9 @@ export function buildExperienceOfferingData(
       address: s.address,
       description: s.description,
       startTime: s.startTime,
+      ...(typeof s.startOffsetMinutes === "number"
+        ? { startOffsetMinutes: s.startOffsetMinutes }
+        : {}),
       lat: s.lat,
       lng: s.lng,
       // experience_stops.image_urls are images (videos ride the cover). The shared
@@ -202,6 +209,15 @@ export function buildExperienceOfferingData(
       recurrenceRule: exp.recurrenceRule,
     }),
     bookable: exp.bookable !== false,
+    ...(exp.capacityScope !== undefined
+      ? { capacityScope: exp.capacityScope }
+      : {}),
+    ...(typeof exp.spacingMinutes === "number"
+      ? { spacingMinutes: exp.spacingMinutes }
+      : {}),
+    ...(typeof exp.minNoticeMinutes === "number"
+      ? { minNoticeMinutes: exp.minNoticeMinutes }
+      : {}),
     // issue #3284 — section 10 refund terms, straight from the read. The body
     // hides them when unknown, on a free experience, and when closed.
     refundPolicyState: exp.refundPolicyState,

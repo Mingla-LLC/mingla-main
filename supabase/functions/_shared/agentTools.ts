@@ -1508,6 +1508,24 @@ const createExperience: AgentToolDefinition = {
       pricing_mode: { type: "string", enum: ["whole", "per_stop"] },
       whole_price_cents: { type: "integer", minimum: 0 },
       capacity: { type: "integer", minimum: 1 },
+      // issue #3281 R3 — spots scope + start grid + notice (defaults: total/30/120).
+      capacity_scope: {
+        type: "string",
+        enum: ["total", "per_day", "per_start"],
+        description:
+          "How spots are counted: total (legacy), per_day, or per_start. per_day is refused when the open window fits more than one start (use per_start).",
+      },
+      booking_spacing_minutes: {
+        type: "integer",
+        enum: [15, 30, 60, 120],
+        description: "Guest start-time grid for open-hours experiences.",
+      },
+      min_notice_minutes: {
+        type: "integer",
+        minimum: 0,
+        maximum: 10080,
+        description: "Earliest bookable start = now + this many minutes (default 120).",
+      },
       // issue #3281 R2 — sellable options (person | group | block). Absent keeps
       // today's single Standard person path.
       price_options: {

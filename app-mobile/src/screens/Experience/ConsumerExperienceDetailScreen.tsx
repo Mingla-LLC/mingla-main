@@ -1404,6 +1404,8 @@ export default function ConsumerExperienceDetailScreen({
             : null
         }
         currency={sellableTicket?.currency ?? seed.currency ?? null}
+        spacingMinutes={offeringData.spacingMinutes ?? 30}
+        minNoticeMinutes={offeringData.minNoticeMinutes ?? 120}
         options={
           Array.isArray(offeringData.options) && offeringData.options.length > 0
             ? offeringData.options

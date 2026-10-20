@@ -94,6 +94,10 @@ export interface ExperienceReservePickerProps {
    * the top of the day step. Absent / length ≤ 1 → legacy single-ticket UI.
    */
   options?: ReadonlyArray<ExperienceOfferingTicket>;
+  /** issue #3281 R3 — start grid minutes (15/30/60/120). Default 30. */
+  spacingMinutes?: number | null;
+  /** issue #3281 R3 — earliest start = now + notice. Default 120. */
+  minNoticeMinutes?: number | null;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
 }
@@ -166,10 +170,10 @@ function formatWindow(startAt: string, endAt: string, timezone: string): string 
 }
 
 function remainingChip(remaining: number | null): string | null {
+  // issue #3281 R3 — "N left" / "Full" (experienceRemainingChipText parity).
   if (remaining === null) return null;
-  if (remaining <= 0) return "Sold out";
-  if (remaining <= 10) return `${remaining} left`;
-  return "Available";
+  if (remaining <= 0) return "Full";
+  return `${remaining} left`;
 }
 
 export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = ({
@@ -183,6 +187,8 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   unitAllInCents = null,
   currency = null,
   options,
+  spacingMinutes: propsSpacingMinutes = null,
+  minNoticeMinutes: propsMinNoticeMinutes = null,
   onCancel,
   onConfirm,
 }) => {
@@ -232,17 +238,27 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
     [dates, selectedDateId],
   );
 
-  // Open-daily: free 30-min-step time choices BOUNDED by the occurrence window
+  // Open-daily: spacing grid (R3; default 30) BOUNDED by the occurrence window
   // in the EXPERIENCE zone (issue #3281 — never Date#getHours()).
+  const spacingMinutes =
+    typeof propsSpacingMinutes === "number" && propsSpacingMinutes > 0
+      ? propsSpacingMinutes
+      : 30;
+  const noticeMinutes =
+    typeof propsMinNoticeMinutes === "number" && propsMinNoticeMinutes >= 0
+      ? propsMinNoticeMinutes
+      : 120;
   const timeChoices = useMemo<number[]>(() => {
     if (mode !== "open-daily" || selectedDate === null) return [];
+    const nowMs = Date.now() + noticeMinutes * 60_000;
     return experienceTimeChoices(
       selectedDate.startAt,
       selectedDate.endAt,
       timezone,
-      30,
+      spacingMinutes,
+      nowMs,
     );
-  }, [mode, selectedDate, timezone]);
+  }, [mode, selectedDate, timezone, spacingMinutes, noticeMinutes]);
 
   const isBlockOption = selectedOption?.priceBasis === "block";
   const isGroupOption = selectedOption?.priceBasis === "group";
@@ -278,7 +294,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
       blockMinutes,
       minBlocks,
       maxBlocks,
-      30,
+      spacingMinutes,
     );
   }, [
     isBlockOption,
@@ -289,6 +305,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
     blockMinutes,
     minBlocks,
     maxBlocks,
+    spacingMinutes,
   ]);
 
   useEffect(() => {
@@ -374,7 +391,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
       selectedDate.endAt,
       timezone,
       selectedMinute,
-      30,
+      spacingMinutes,
     );
     // issue #3281 — never confirm open-daily without a resolvable start
     // (past / spring-forward gaps convert to null).

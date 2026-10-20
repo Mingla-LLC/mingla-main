@@ -810,6 +810,8 @@ const ResolvedExperiencePage: React.FC<{
         eventRemaining={ticket?.ticketsRemaining ?? null}
         unitAllInCents={expDisplayCents}
         currency={ticket?.currency ?? null}
+        spacingMinutes={experience.spacingMinutes ?? 30}
+        minNoticeMinutes={experience.minNoticeMinutes ?? 120}
         options={
           Array.isArray(experience.options) && experience.options.length > 0
             ? experience.options.map((opt) => ({

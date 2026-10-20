@@ -24,6 +24,9 @@ import {
   type ExperienceOfferingData,
 } from "@mingla/offering-rendering";
 
+// issue #3281 R3 — DEEP specifier: pure, so a partial barrel mock cannot blank it.
+import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
+
 // issue #3284 — DEEP specifier: a partial barrel mock cannot blank the constant.
 import {
   UNKNOWN_REFUND_POLICY_STATE,
@@ -121,7 +124,22 @@ export function buildExperienceOfferingDataFromDetail(
     coverMediaType: detail.coverMediaType,
     cityCountry: normalizeCityCountry(detail.venueText),
     datesLabel: buildDatesLabel(occ, detail.timezone),
-    seatsLabel: buildSeatsLabel(occ),
+    // issue #3281 R3 — per_day / per_start read the NEXT OPEN day's remaining;
+    // total keeps the legacy soonest-occurrence label.
+    seatsLabel:
+      t !== null &&
+      (detail.capacityScope === "per_day" || detail.capacityScope === "per_start")
+        ? experienceSeatsLabel({
+            capacityScope: detail.capacityScope,
+            occurrences: occ.map((o) => ({
+              startAt: o.startAt,
+              remaining: o.remaining,
+            })),
+            ticketRemaining: t.ticketsRemaining,
+            quantityTotal: t.quantityTotal,
+            isUnlimited: t.isUnlimited,
+          })
+        : buildSeatsLabel(occ),
     startTimeLabel: buildStartTimeLabel(occ, detail.timezone),
     intents: detail.intents,
     stops: detail.stops.map((s) => ({
@@ -131,6 +149,9 @@ export function buildExperienceOfferingDataFromDetail(
       address: s.address,
       description: s.description,
       startTime: s.startTime,
+      ...(typeof s.startOffsetMinutes === "number"
+        ? { startOffsetMinutes: s.startOffsetMinutes }
+        : {}),
       lat: s.lat,
       lng: s.lng,
       media: s.imageUrls.map((url) => ({
@@ -195,6 +216,15 @@ export function buildExperienceOfferingDataFromDetail(
       recurrenceRule: detail.recurrenceRule,
     }),
     bookable: detail.bookable !== false,
+    ...(detail.capacityScope !== undefined
+      ? { capacityScope: detail.capacityScope }
+      : {}),
+    ...(typeof detail.spacingMinutes === "number"
+      ? { spacingMinutes: detail.spacingMinutes }
+      : {}),
+    ...(typeof detail.minNoticeMinutes === "number"
+      ? { minNoticeMinutes: detail.minNoticeMinutes }
+      : {}),
     // issue #3284 — section 10 refund terms from the by-slug read. `??` covers a
     // detail object built before this field existed: unknown, never "none".
     refundPolicyState: detail.refundPolicyState ?? UNKNOWN_REFUND_POLICY_STATE,

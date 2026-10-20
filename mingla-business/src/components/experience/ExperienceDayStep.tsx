@@ -10,6 +10,8 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { ThemePalette } from "@mingla/offering-rendering";
+// issue #3281 R3 — DEEP specifier: pure, so a partial barrel mock cannot blank it.
+import { experienceRemainingChipText } from "@mingla/offering-rendering/experienceR3";
 
 import type { PublicExperienceDate } from "../../services/publicExperienceService";
 
@@ -53,7 +55,10 @@ export const ExperienceDayStep: React.FC<ExperienceDayStepProps> = ({
             const soldOut =
               d.ticketsRemaining !== null && d.ticketsRemaining <= 0;
             const selected = selectedDateId === d.id;
-            const chip = remainingChip(d.ticketsRemaining);
+            // issue #3281 R3 — a numeric remaining reads "N left" / "Full"; unlimited or
+            // unknown (null) keeps the surface's own wording.
+            const chip =
+              experienceRemainingChipText(d.ticketsRemaining) ?? remainingChip(d.ticketsRemaining);
             return (
               <Pressable
                 key={d.id}
