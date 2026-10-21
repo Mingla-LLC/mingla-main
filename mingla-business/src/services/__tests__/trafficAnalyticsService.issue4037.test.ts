@@ -118,6 +118,39 @@ describe("#4037 traffic analytics contract", () => {
     ).toThrow("entity_traffic_rollup returned an invalid contract");
   });
 
+  it("fails closed when source bookings, value or CTA totals do not reconcile", () => {
+    const entity = {
+      ...base,
+      brand_id: BRAND_ID,
+      entity_type: "event",
+      entity_id: EVENT_ID,
+    };
+    for (const inconsistent of [
+      {
+        ...entity,
+        sources: sources.map((row, index) =>
+          index === 0 ? { ...row, bookings: 4 } : row,
+        ),
+      },
+      {
+        ...entity,
+        sources: sources.map((row, index) =>
+          index === 0 ? { ...row, value_by_currency: { GBP: 4_499 } } : row,
+        ),
+      },
+      {
+        ...entity,
+        ctas: ctas.map((row, index) =>
+          index === 0 ? { ...row, count: 7 } : row,
+        ),
+      },
+    ]) {
+      expect(() =>
+        normalizeEntityTrafficRollup(inconsistent, "event", EVENT_ID, "30d"),
+      ).toThrow("entity_traffic_rollup returned an invalid contract");
+    }
+  });
+
   it("requires honest-empty unauthorized results", () => {
     expect(() =>
       normalizeBrandTrafficRollup(

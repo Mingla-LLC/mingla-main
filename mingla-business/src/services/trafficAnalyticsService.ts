@@ -211,6 +211,43 @@ const totalsOrThrow = (value: unknown, rpcName: RpcName): TrafficTotals => {
   };
 };
 
+const totalsAreEmpty = (totals: TrafficTotals): boolean =>
+  totals.pageViews === 0 &&
+  totals.visitors === 0 &&
+  totals.buttonTaps === 0 &&
+  totals.checkoutStarts === 0 &&
+  totals.bookings === 0 &&
+  totals.customers === 0 &&
+  totals.minglaCustomers === 0 &&
+  totals.minglaVisitors === 0 &&
+  Object.keys(totals.bookingValue).length === 0 &&
+  Object.keys(totals.valueMinglaBrought).length === 0 &&
+  totals.primaryCurrency === null;
+
+const sumCurrencyMaps = (
+  rows: readonly TrafficSourceRow[],
+  include: (row: TrafficSourceRow) => boolean = () => true,
+): Record<string, number> => {
+  const result: Record<string, number> = {};
+  for (const row of rows) {
+    if (!include(row)) continue;
+    for (const [currency, cents] of Object.entries(row.valueByCurrency)) {
+      result[currency] = (result[currency] ?? 0) + cents;
+    }
+  }
+  return result;
+};
+
+const currencyMapsEqual = (
+  left: Record<string, number>,
+  right: Record<string, number>,
+): boolean => {
+  const currencies = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...currencies].every(
+    (currency) => (left[currency] ?? 0) === (right[currency] ?? 0),
+  );
+};
+
 const normalizeBase = (
   row: JsonObject,
   expectedRange: TrafficRange,
@@ -285,10 +322,8 @@ const normalizeBase = (
   const windowComplete = booleanOrThrow(row.window_complete, rpcName);
   if (!authorized) {
     if (
-      totals.pageViews !== 0 ||
-      totals.bookings !== 0 ||
-      prior.pageViews !== 0 ||
-      prior.bookings !== 0 ||
+      !totalsAreEmpty(totals) ||
+      !totalsAreEmpty(prior) ||
       daily.length !== 0 ||
       sourceMap.size !== 0 ||
       ctaMap.size !== 0 ||
@@ -303,16 +338,37 @@ const normalizeBase = (
   ) {
     return contractError(rpcName);
   }
+  const sources = authorized
+    ? TRAFFIC_SOURCES.map((source) => sourceMap.get(source)!)
+    : [];
+  const ctas = authorized
+    ? TRAFFIC_CTA_TYPES.map((type) => ctaMap.get(type)!)
+    : [];
+  if (
+    authorized &&
+    (sources.reduce((sum, source) => sum + source.bookings, 0) !==
+      totals.bookings ||
+      ctas.reduce((sum, cta) => sum + cta.count, 0) !== totals.buttonTaps ||
+      !currencyMapsEqual(sumCurrencyMaps(sources), totals.bookingValue) ||
+      !currencyMapsEqual(
+        sumCurrencyMaps(sources, (row) =>
+          (["mingla_app", "mingla_ads", "search"] as TrafficSource[]).includes(
+            row.source,
+          ),
+        ),
+        totals.valueMinglaBrought,
+      ))
+  ) {
+    return contractError(rpcName);
+  }
   return {
     authorized,
     range: expectedRange,
     totals,
     prior,
     daily,
-    sources: authorized
-      ? TRAFFIC_SOURCES.map((source) => sourceMap.get(source)!)
-      : [],
-    ctas: authorized ? TRAFFIC_CTA_TYPES.map((type) => ctaMap.get(type)!) : [],
+    sources,
+    ctas,
     captureStartedAt,
     windowComplete,
   };
