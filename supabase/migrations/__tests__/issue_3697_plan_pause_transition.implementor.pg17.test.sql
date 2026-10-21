@@ -1,5 +1,6 @@
 -- Issue #3697 — guarded plan pause transition and least-privilege RPC proof.
 -- Fails on revert of 20271204003697_issue_3697_plan_pause_transition.sql.
+-- MINGLA-INVARIANT: I-3697-PLAN-PAUSE-FOLLOWS-CAMPAIGNS | issue #3697 | A plan with provider campaigns paused through Admin or spend sync reaches paused only through pause_requested; a plan with any provider campaign still active is partially_live.
 \set ON_ERROR_STOP on
 BEGIN;
 

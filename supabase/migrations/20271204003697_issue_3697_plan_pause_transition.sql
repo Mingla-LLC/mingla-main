@@ -36,7 +36,6 @@ BEGIN
 END;
 $migration$;
 
--- MINGLA-INVARIANT: I-3697-PLAN-PAUSE-FOLLOWS-CAMPAIGNS | issue #3697 | A plan with provider campaigns paused through Admin or spend sync reaches paused only through pause_requested; a plan with any ACTIVE provider campaign is partially_live.
 CREATE OR REPLACE FUNCTION public.ad_plan_mark_paused(
   p_plan_id uuid,
   p_reason text
