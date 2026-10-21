@@ -1,41 +1,23 @@
 import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 
-export const TRAFFIC_RANGES = ["7d", "30d", "90d", "all"] as const;
-export const TRAFFIC_SOURCES = [
-  "mingla_app",
-  "mingla_ads",
-  "search",
-  "social",
-  "own_links",
-  "direct_unknown",
-] as const;
-export const TRAFFIC_CTA_TYPES = [
-  "buy",
-  "book",
-  "rsvp",
-  "share",
-  "save",
-  "directions",
-  "website",
-  "call",
-  // Decision 5 (#4037): taps that open the brand, a venue or an offering are
-  // engagement too, so they are listed and counted in Button taps.
-  "view_brand",
-  "view_venue",
-  "view_offering",
-] as const;
-export const TRAFFIC_ENTITY_TYPES = [
-  "event",
-  "brand",
-  "trip",
-  "experience",
-  "venue",
-] as const;
+import {
+  TRAFFIC_CTA_TYPES,
+  TRAFFIC_ENTITY_TYPES,
+  TRAFFIC_RANGES,
+  TRAFFIC_SOURCES,
+  type TrafficCtaType,
+  type TrafficEntityType,
+  type TrafficRange,
+  type TrafficSource,
+} from "../constants/trafficAnalyticsContract";
 
-export type TrafficRange = (typeof TRAFFIC_RANGES)[number];
-export type TrafficSource = (typeof TRAFFIC_SOURCES)[number];
-export type TrafficCtaType = (typeof TRAFFIC_CTA_TYPES)[number];
-export type TrafficEntityType = (typeof TRAFFIC_ENTITY_TYPES)[number];
+export {
+  TRAFFIC_CTA_TYPES,
+  TRAFFIC_ENTITY_TYPES,
+  TRAFFIC_RANGES,
+  TRAFFIC_SOURCES,
+};
+export type { TrafficCtaType, TrafficEntityType, TrafficRange, TrafficSource };
 
 export interface TrafficTotals {
   pageViews: number;

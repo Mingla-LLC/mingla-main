@@ -17,6 +17,7 @@ import {
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useEntityTrafficRollup } from "../../hooks/useTrafficAnalytics";
+import { TrafficAnalyticsDashboard } from "./LazyTrafficAnalyticsDashboard";
 import type { TrafficRange } from "../../services/trafficAnalyticsService";
 import {
   ListingInsightsUnavailableError,
@@ -63,8 +64,6 @@ const TrafficListingInsightsScreen: React.FC<
   accessError = false,
   onRetryAccess,
 }) => {
-  const { TrafficAnalyticsDashboard } =
-    require("./TrafficAnalyticsDashboard") as typeof import("./TrafficAnalyticsDashboard");
   const { isWideDesktop } = useResponsiveLayout();
   const [range, setRange] = useState<TrafficRange>("30d");
   const trafficEntityType =

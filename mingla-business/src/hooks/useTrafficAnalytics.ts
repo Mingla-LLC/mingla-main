@@ -1,12 +1,14 @@
 import { useQueries, type UseQueryResult } from "@tanstack/react-query";
-import {
-  fetchBrandTrafficRollup,
-  fetchEntityTrafficRollup,
-  type BrandTrafficRollup,
-  type EntityTrafficRollup,
-  type TrafficEntityType,
-  type TrafficRange,
+// Types only: the service (contracts and normalizers) is loaded when a query
+// first runs, so it stays out of the eager web `__common` chunk (#4037, #943).
+import type {
+  BrandTrafficRollup,
+  EntityTrafficRollup,
+  TrafficEntityType,
+  TrafficRange,
 } from "../services/trafficAnalyticsService";
+
+const loadTrafficService = () => import("../services/trafficAnalyticsService");
 
 const STALE_TIME_MS = 60_000;
 
@@ -78,6 +80,7 @@ export const useBrandTrafficRollup = (
         queryFn: async (): Promise<BrandTrafficRollup> => {
           if (brandId === null)
             throw new Error("brand traffic brand is unavailable");
+          const { fetchBrandTrafficRollup } = await loadTrafficService();
           return fetchBrandTrafficRollup(brandId, range);
         },
       },
@@ -111,6 +114,7 @@ export const useEntityTrafficRollup = (
         queryFn: async (): Promise<EntityTrafficRollup> => {
           if (brandId === null || entityType === null)
             throw new Error("entity traffic identity is unavailable");
+          const { fetchEntityTrafficRollup } = await loadTrafficService();
           return fetchEntityTrafficRollup(brandId, entityType, entityId, range);
         },
       },

@@ -22,13 +22,16 @@ import {
 import {
   TRAFFIC_RANGES,
   TRAFFIC_SOURCES,
-  type BrandTrafficRollup,
-  type EntityTrafficRollup,
-  type TrafficCtaType,
-  type TrafficPageRow,
-  type TrafficRange,
-  type TrafficRollupBase,
-  type TrafficSource,
+} from "../../constants/trafficAnalyticsContract";
+// Types only: a value import would hoist the service into the boot chunk.
+import type {
+  BrandTrafficRollup,
+  EntityTrafficRollup,
+  TrafficCtaType,
+  TrafficPageRow,
+  TrafficRange,
+  TrafficRollupBase,
+  TrafficSource,
 } from "../../services/trafficAnalyticsService";
 import { formatCurrencyRound } from "../../utils/currency";
 import {

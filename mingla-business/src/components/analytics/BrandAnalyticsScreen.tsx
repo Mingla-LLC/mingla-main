@@ -40,7 +40,7 @@ import {
   AnalyticsModuleSkeleton,
   RefreshFailureBanner,
 } from "./AnalyticsModuleState";
-import { TrafficAnalyticsDashboard } from "./TrafficAnalyticsDashboard";
+import { TrafficAnalyticsDashboard } from "./LazyTrafficAnalyticsDashboard";
 import { RegularsSection } from "./RegularsSection";
 import { CustomerPatternsSection } from "./CustomerPatternsSection";
 import { LegacyBrandAnalyticsScreen } from "./LegacyBrandAnalyticsScreen";
