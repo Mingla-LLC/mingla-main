@@ -39,9 +39,9 @@ import {
   trafficDeltaAccessibilityLabel,
   trafficDeltaTone,
   visibleDelta,
-  visibleFunnelSteps,
   visitToPaidRate,
 } from "../../utils/trafficAnalyticsMath";
+import { visibleFunnelSteps } from "./trafficFunnel";
 import {
   AnalyticsModuleError,
   AnalyticsModuleSkeleton,

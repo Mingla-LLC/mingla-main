@@ -91,9 +91,9 @@ const TrafficBrandAnalyticsScreen: React.FC<
   );
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
-  const [refreshAnnouncement, setRefreshAnnouncement] = useState<
-    string | null
-  >(null);
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState<string | null>(
+    null,
+  );
   const openedTracked = useRef(false);
 
   useEffect(() => {
@@ -278,6 +278,15 @@ const TrafficBrandAnalyticsScreen: React.FC<
         <RefreshFailureBanner onRetry={() => void refreshAll()} />
       ) : null}
       <TrafficAnalyticsDashboard
+        loadingFallback={
+          <AnalyticsModuleSkeleton testID="traffic-dashboard-loading" />
+        }
+        renderLoadError={(retry) => (
+          <AnalyticsModuleError
+            title="Couldn't load analytics"
+            onRetry={retry}
+          />
+        )}
         data={traffic.data}
         isLoading={traffic.isLoading}
         isError={traffic.isError && traffic.data === undefined}
@@ -377,7 +386,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl * 4,
   },
-  content: { width: "100%", maxWidth: 1320, alignSelf: "center", gap: spacing.xl },
+  content: {
+    width: "100%",
+    maxWidth: 1320,
+    alignSelf: "center",
+    gap: spacing.xl,
+  },
   introRow: {
     flexDirection: "row",
     alignItems: "flex-start",

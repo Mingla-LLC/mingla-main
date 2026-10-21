@@ -80,8 +80,11 @@ const read = (path: string): string =>
 
 describe("#4037 traffic dashboard stays off the web boot chunk", () => {
   it("the lazy wrapper shows a loading state, then the loaded dashboard with every prop", async () => {
+    const Native = require("react-native") as typeof import("react-native");
     const screen = render(
       <TrafficAnalyticsDashboard
+        loadingFallback={<Native.View testID="traffic-dashboard-loading" />}
+        renderLoadError={() => <Native.Text>load failed</Native.Text>}
         data={data}
         isLoading={false}
         isError={false}

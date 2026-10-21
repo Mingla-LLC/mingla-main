@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -269,6 +270,29 @@ const TrafficListingInsightsScreen: React.FC<
             </View>
           ) : null}
           <TrafficAnalyticsDashboard
+            loadingFallback={
+              <View
+                style={styles.dashboardLoading}
+                testID="traffic-dashboard-loading"
+                accessibilityLabel="Loading insights"
+              >
+                <ActivityIndicator color={accent.warm} />
+              </View>
+            }
+            renderLoadError={(retry) => (
+              <View style={styles.refreshFailure}>
+                <Text style={styles.stateTitle} accessibilityRole="header">
+                  Couldn&apos;t load insights
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={retry}
+                  style={styles.action}
+                >
+                  <Text style={styles.actionText}>Try again</Text>
+                </Pressable>
+              </View>
+            )}
             data={rollup.data}
             isLoading={rollup.isLoading || identity.data === undefined}
             isError={rollup.isError && rollup.data === undefined}
@@ -371,6 +395,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: spacing.xl,
+  },
+  dashboardLoading: {
+    minHeight: 260,
+    alignItems: "center",
+    justifyContent: "center",
   },
   stateTitle: {
     color: textTokens.primary,

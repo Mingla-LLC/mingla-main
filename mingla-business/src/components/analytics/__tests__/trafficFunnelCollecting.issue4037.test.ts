@@ -1,4 +1,4 @@
-import { visibleFunnelSteps } from "../../../utils/trafficAnalyticsMath";
+import { visibleFunnelSteps } from "../trafficFunnel";
 
 const totals = {
   pageViews: 12,
