@@ -1362,9 +1362,9 @@ DO $roster_reemit$
 DECLARE v_def text; v_next text; v_old text; v_new text;
 BEGIN
   v_def := pg_get_functiondef('public.biz_door_guest_search(uuid,uuid,text,integer)'::regprocedure);
-  v_old := '           ''tickets'', COALESCE(('; 
+  v_old := '           ''tickets'', COALESCE((';
   v_new := E'           ''viaLinkLabel'', (SELECT l.label FROM public.ticket_type_links l WHERE l.id = p.ticket_link_id),\n'
-    || '           ''tickets'', COALESCE(('; 
+    || '           ''tickets'', COALESCE((';
   -- The picked CTE must carry the two ids used by the correlated projections.
   v_next := replace(v_def,
     E'SELECT o.id, o.buyer_name, o.buyer_email, o.source, o.metadata, o.created_at,\n',
@@ -1490,4 +1490,3 @@ $postcheck$;
 
 COMMIT;
 NOTIFY pgrst, 'reload schema';
-
