@@ -164,6 +164,7 @@ import { rsvpEditNoticeCopy } from "../../utils/rsvpHubMetrics";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
 import { useEventReconciliation } from "../../hooks/useEventOrders";
+import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 // ORCH-1172 — the section model lives in a pure sibling module so the
 // ticketed-vs-RSVP section-list logic is unit-testable without importing this
 // react-native component. Re-exported below for back-compat.
@@ -391,6 +392,17 @@ export interface EditPublishedScreenProps {
   lastBuyerNotice?: React.ComponentProps<
     typeof EditAfterPublishBanner
   >["lastNotice"];
+  /**
+   * issue #3827 — the section open on arrival (route `?section=`). Defaults to
+   * Basics. A key this event does not have (e.g. Tickets on an RSVP) is ignored.
+   */
+  initialSection?: SectionKey | null;
+  /**
+   * issue #3827 — route `?newTicket=`: arrived from the private-link sheet to
+   * add a hidden paid or free ticket; the Tickets step opens its new-ticket
+   * sheet in that preset.
+   */
+  newTicketPreset?: NewTicketPreset | null;
 }
 
 // issue #3827 — shown when a blank reason is refused because a buyer arrived
@@ -458,6 +470,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   buyerNoticeStatus,
   savedToastFor,
   lastBuyerNotice,
+  initialSection = null,
+  newTicketPreset = null,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -487,7 +501,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   );
 
   // Currently expanded section (accordion — only one at a time)
-  const [openSection, setOpenSection] = useState<SectionKey | null>("basics");
+  const [openSection, setOpenSection] = useState<SectionKey | null>(() =>
+    initialSection !== null &&
+    sectionsForMode(rsvpMode).some((sec) => sec.key === initialSection)
+      ? initialSection
+      : "basics",
+  );
   const [showErrors, setShowErrors] = useState<boolean>(false);
 
   // Modal state — driven by save flow
@@ -1763,7 +1782,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             />
           );
         case "tickets":
-          return <CreatorStep5Tickets {...stepBodyProps} />;
+          return (
+            <CreatorStep5Tickets
+              {...stepBodyProps}
+              openNewTicketPreset={rsvpMode ? null : newTicketPreset}
+            />
+          );
         case "settings":
           return <CreatorStep6SettingsLazy {...stepBodyProps} />;
         case "rsvp-setup":
@@ -1792,6 +1816,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       chipInPayoutReady,
       brandQuery.data,
       coverVideoProcessing,
+      rsvpMode,
+      newTicketPreset,
     ],
   );
 

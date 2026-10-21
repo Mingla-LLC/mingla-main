@@ -11,6 +11,7 @@
 import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../types/brand";
 import type { ValidationError } from "../../utils/draftEventValidation";
+import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 
 export interface StepBodyProps {
   /**
@@ -91,6 +92,12 @@ export interface StepBodyProps {
    * EventCreatorWizard passes this.
    */
   showMultiDatePricingMode?: boolean;
+  /**
+   * issue #3827 — the published-event editor was opened from the private-link
+   * sheet's empty state: the Tickets step opens its new-ticket sheet once, in
+   * this preset (hidden paid, or free). Every other caller omits it.
+   */
+  openNewTicketPreset?: NewTicketPreset | null;
   /**
    * issue #2160 — TRUE when this event already holds a live ticket, so the
    * pricing mode can no longer change. The database trigger

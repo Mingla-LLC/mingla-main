@@ -23,7 +23,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -37,6 +37,11 @@ import {
 import { useGuestStore } from "../../../../src/store/guestStore";
 import type { OrderRecord } from "../../../../src/store/orderStore";
 import { isCompOrder } from "../../../../src/utils/compOrders";
+import {
+  addTicketTypeForLinkRoute,
+  isTicketLinkable,
+  type NewTicketPreset,
+} from "../../../../src/utils/ticketLinkEligibility";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../src/utils/permissionGates";
 import {
@@ -336,6 +341,11 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const [search, setSearch] = useState<string>("");
   const [addSheetOpen, setAddSheetOpen] = useState<boolean>(false);
   const [linksSheetOpen, setLinksSheetOpen] = useState<boolean>(false);
+  // issue #3827 — the link sheet's empty state sends the host to add a ticket
+  // type. The sheet closes first (a native Modal would otherwise sit over the
+  // editor); on return it reopens on New link with the new type selected.
+  const [linksReturn, setLinksReturn] = useState<{ ticketTypeId: string | null } | null>(null);
+  const pendingLinkTicketRef = useRef<{ knownIds: ReadonlySet<string> } | null>(null);
   const openAddSheet = useCallback((prefill?: LegacyCompPrefill[]): void => {
     setAddPrefill(prefill);
     setAddSheetOpen(true);
@@ -485,6 +495,29 @@ export default function EventGuestsListRoute(): React.ReactElement {
       />
     ) : null;
 
+  // Ticketed events only: trips, experiences and RSVPs edit elsewhere.
+  const canAddTicketTypeForLink =
+    event !== null && offeringKind === "event" && event.event_type !== "rsvp";
+  const handleAddTicketTypeForLink = useCallback((preset: NewTicketPreset): void => {
+    if (event === null || typeof eventId !== "string") return;
+    pendingLinkTicketRef.current = { knownIds: new Set(event.tickets.map((ticket) => ticket.id)) };
+    setLinksSheetOpen(false);
+    setLinksReturn(null);
+    router.push(addTicketTypeForLinkRoute(eventId, preset) as never);
+  }, [event, eventId, router]);
+  useFocusEffect(
+    useCallback(() => {
+      const pending = pendingLinkTicketRef.current;
+      if (pending === null || event === null) return;
+      pendingLinkTicketRef.current = null;
+      const added = event.tickets.find(
+        (ticket) => !pending.knownIds.has(ticket.id) && isTicketLinkable(ticket),
+      );
+      setLinksReturn({ ticketTypeId: added?.id ?? null });
+      setLinksSheetOpen(true);
+    }, [event]),
+  );
+
   const linksSheetNode = event !== null && typeof eventId === "string" && linksSheetOpen ? (
     <React.Suspense fallback={null}>
       <LazyTicketLinksSheet
@@ -492,7 +525,13 @@ export default function EventGuestsListRoute(): React.ReactElement {
         eventId={eventId}
         eventTitle={event.name}
         tickets={event.tickets}
-        onClose={() => setLinksSheetOpen(false)}
+        initialTicketTypeId={linksReturn?.ticketTypeId ?? null}
+        startCreating={linksReturn !== null}
+        onAddTicketType={canAddTicketTypeForLink ? handleAddTicketTypeForLink : undefined}
+        onClose={() => {
+          setLinksSheetOpen(false);
+          setLinksReturn(null);
+        }}
       />
     </React.Suspense>
   ) : null;

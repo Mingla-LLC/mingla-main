@@ -18,7 +18,7 @@
  * Free events bypass the publish-gate Stripe requirement (Cycle 3).
  */
 
-import React, { Suspense, useCallback, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
@@ -33,6 +33,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
+import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 import { generateTicketId } from "../../utils/draftEventId";
 import { formatCurrencyRound } from "../../utils/currency";
 import { effectiveDraftCurrency } from "../../utils/moneySummary";
@@ -82,6 +83,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   canEditTicketPrice = true,
   coverMediaEventId,
   brandDefaultCurrency,
+  openNewTicketPreset = null,
 }) => {
   const intelPriceHighlight = useTurnoutFocusTarget("price");
   const intelCapacityHighlight = useTurnoutFocusTarget("capacity");
@@ -90,6 +92,17 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // issue #3827 — preset for a NEW ticket opened from the private-link sheet.
+  const [newTicketPreset, setNewTicketPreset] = useState<NewTicketPreset | null>(null);
+  const openedPresetRef = useRef<NewTicketPreset | null>(null);
+  useEffect(() => {
+    // Open once per arrival; closing the sheet must not reopen it.
+    if (openNewTicketPreset === null || openedPresetRef.current === openNewTicketPreset) return;
+    openedPresetRef.current = openNewTicketPreset;
+    setEditingTicketId(null);
+    setNewTicketPreset(openNewTicketPreset);
+    setSheetVisible(true);
+  }, [openNewTicketPreset]);
 
   const emptyError = showErrors
     ? errorForKey(errors, "tickets.empty")
@@ -110,6 +123,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
 
   const handleAddTicket = useCallback((): void => {
     setEditingTicketId(null);
+    setNewTicketPreset(null);
     setSheetVisible(true);
   }, []);
 
@@ -172,6 +186,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
       }
       setSheetVisible(false);
       setEditingTicketId(null);
+      setNewTicketPreset(null);
     },
     [draft.tickets, editingTicketId, updateDraft],
   );
@@ -179,6 +194,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   const handleCloseSheet = useCallback((): void => {
     setSheetVisible(false);
     setEditingTicketId(null);
+    setNewTicketPreset(null);
   }, []);
 
   // displayOrder is OWNED by ticketDisplay.ts helpers — never set inline.
@@ -428,6 +444,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           onClose={handleCloseSheet}
           onSave={handleSaveTicket}
           initial={editingTicket}
+          newTicketPreset={editingTicket === null ? newTicketPreset : null}
           nextOrder={nextOrder}
           soldCount={
             editingTicket !== null

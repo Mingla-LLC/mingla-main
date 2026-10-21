@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "kind": "strict-grep-gate",
+  "gate": {
+    "kind": "file",
+    "enforcement": "batch:E",
+    "invocation": "node",
+    "modes": [
+      "self-test",
+      "plain"
+    ],
+    "selfTest": "wired",
+    "jobKeys": []
+  }
+}

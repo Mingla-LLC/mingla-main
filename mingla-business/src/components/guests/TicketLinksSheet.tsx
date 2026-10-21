@@ -7,6 +7,12 @@ import { accent, glass, radius, semantic, spacing, text as textTokens } from "..
 import type { TicketStub } from "../../store/draftEventStore";
 import type { TicketLinkRecord } from "../../services/ticketLinksService";
 import { copyPublicUrl, sharePublicUrl } from "../../utils/sharePublicUrl";
+import {
+  isFreeTicketType,
+  isTicketLinkable,
+  TICKET_LINK_NO_TYPE_REASON,
+  type NewTicketPreset,
+} from "../../utils/ticketLinkEligibility";
 import { Button } from "../ui/Button";
 import { IconChrome } from "../ui/IconChrome";
 import { Input } from "../ui/Input";
@@ -41,6 +47,13 @@ export interface TicketLinksSheetProps {
   startCreating?: boolean;
   onClose(): void;
   onChanged?(): void;
+  /**
+   * issue #3827 — when no ticket type can use a private link, the New link form
+   * offers to add one. The caller closes this sheet and opens the ticket-type
+   * editor in the given preset. Omitted (the sheet opened from inside that
+   * editor) → the empty state explains the rule without the two actions.
+   */
+  onAddTicketType?(preset: NewTicketPreset): void;
 }
 
 const statePill = (state: TicketLinkRecord["state"]): { label: string; variant: "info" | "warn" | "draft" | "accent" } => {
@@ -62,6 +75,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
   startCreating = false,
   onClose,
   onChanged,
+  onAddTicketType,
 }) => {
   const [links, setLinks] = useState<TicketLinkRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -81,14 +95,12 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
   const [toast, setToast] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
 
-  const linkableTickets = useMemo(
-    () => tickets.filter((ticket) =>
-      ticket.isFree || (ticket.priceGbp ?? 0) === 0 || ticket.visibility === "hidden"
-    ),
-    [tickets],
-  );
+  const linkableTickets = useMemo(() => tickets.filter(isTicketLinkable), [tickets]);
   const selectedTier = linkableTickets.find((ticket) => ticket.id === selectedTierId) ?? null;
-  const isFree = selectedTier?.isFree === true || (selectedTier?.priceGbp ?? 0) === 0;
+  const isFree = selectedTier === null || isFreeTicketType(selectedTier);
+  // issue #3827 — a new link needs a type it may use. Editing keeps the link's
+  // own type, which is fixed once the link exists.
+  const noTypeSelected = editing === null && selectedTier === null;
   const pendingGroups = links.reduce((sum, link) => sum + link.pendingCount, 0);
   const pendingPeople = links.reduce((sum, link) => sum + link.pendingPeople, 0);
 
@@ -358,23 +370,54 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
             ) : (
               <>
                 <Text style={styles.fieldLabel}>Ticket type</Text>
-                <View style={styles.choices}>
-                  {linkableTickets.map((ticket) => (
-                    <Pressable
-                      key={ticket.id}
-                      disabled={editing !== null}
-                      onPress={() => setSelectedTierId(ticket.id)}
-                      accessibilityRole="radio"
-                      accessibilityLabel={`${ticket.name}, ${ticket.isFree || (ticket.priceGbp ?? 0) === 0 ? "guest list" : "private ticket"}`}
-                      accessibilityState={{ selected: selectedTierId === ticket.id, disabled: editing !== null }}
-                      style={[styles.choice, selectedTierId === ticket.id && styles.choiceActive]}
-                    >
-                      <Text style={styles.choiceText}>{ticket.name}</Text>
-                      <Text style={styles.muted}>{ticket.isFree || (ticket.priceGbp ?? 0) === 0 ? "Guest list" : "Private ticket"}{ticket.visibility === "hidden" ? " · Hidden" : " · Public"}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {selectedTier?.visibility !== "hidden" ? <Text style={styles.helper}>Free guest-list links may use a public ticket type. Paid private links require a hidden type.</Text> : null}
+                {linkableTickets.length === 0 && editing === null ? (
+                  <View style={styles.noTypes} testID="ticket-link-no-types">
+                    <Text style={styles.noTypesTitle} accessibilityRole="header">No ticket types can use a private link yet.</Text>
+                    <Text style={styles.muted}>Paid links need a hidden ticket type; free guest-list links can use any free type.</Text>
+                    {onAddTicketType ? (
+                      <View style={styles.noTypesActions}>
+                        <Button
+                          label="Add a hidden paid ticket"
+                          leadingIcon="ticket"
+                          fullWidth
+                          onPress={() => onAddTicketType("hidden-paid")}
+                          accessibilityHint="Opens the ticket editor with a hidden paid ticket ready to fill in."
+                          testID="ticket-link-add-hidden-paid"
+                        />
+                        <Button
+                          label="Add a free guest-list ticket"
+                          leadingIcon="plus"
+                          variant="secondary"
+                          fullWidth
+                          onPress={() => onAddTicketType("free-guest-list")}
+                          accessibilityHint="Opens the ticket editor with a free ticket ready to fill in."
+                          testID="ticket-link-add-free"
+                        />
+                      </View>
+                    ) : (
+                      <Text style={styles.helper}>Add one in this event&apos;s Tickets section, then make the link.</Text>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.choices} accessibilityRole="radiogroup">
+                    {linkableTickets.map((ticket) => (
+                      <Pressable
+                        key={ticket.id}
+                        disabled={editing !== null}
+                        onPress={() => setSelectedTierId(ticket.id)}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`${ticket.name}, ${isFreeTicketType(ticket) ? "guest list" : "private ticket"}`}
+                        accessibilityState={{ selected: selectedTierId === ticket.id, disabled: editing !== null }}
+                        style={[styles.choice, selectedTierId === ticket.id && styles.choiceActive]}
+                        testID={`ticket-link-type-${ticket.id}`}
+                      >
+                        <Text style={styles.choiceText}>{ticket.name}</Text>
+                        <Text style={styles.muted}>{isFreeTicketType(ticket) ? "Guest list" : "Private ticket"}{ticket.visibility === "hidden" ? " · Hidden" : " · Public"}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+                {selectedTier !== null && selectedTier.visibility !== "hidden" ? <Text style={styles.helper}>Free guest-list links may use a public ticket type. Paid private links require a hidden type.</Text> : null}
                 <Text style={styles.fieldLabel}>Link name</Text>
                 <Input value={label} onChangeText={setLabel} placeholder="DJ Kaycee's invites" accessibilityLabel="Link name" />
 
@@ -461,7 +504,18 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                 ) : null}
 
                 {error ? <Text style={styles.error}>{error}</Text> : null}
-                <Button label={editing ? "Save changes" : "Create link"} loading={submitting} disabled={submitting || selectedTierId.length === 0} fullWidth onPress={() => { void submit(); }} />
+                {noTypeSelected ? (
+                  <Text style={styles.helper} testID="ticket-link-create-disabled-reason">{TICKET_LINK_NO_TYPE_REASON}</Text>
+                ) : null}
+                <Button
+                  label={editing ? "Save changes" : "Create link"}
+                  loading={submitting}
+                  disabled={submitting || noTypeSelected}
+                  fullWidth
+                  onPress={() => { void submit(); }}
+                  accessibilityHint={noTypeSelected ? TICKET_LINK_NO_TYPE_REASON : undefined}
+                  testID="ticket-link-submit"
+                />
               </>
             )}
           </ScrollView>
@@ -515,6 +569,9 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   error: { color: semantic.error, fontSize: 13, lineHeight: 18 },
   createdCard: { gap: spacing.md },
+  noTypes: { backgroundColor: glass.tint.profileBase, borderColor: glass.border.profileBase, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm },
+  noTypesTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "700", lineHeight: 21 },
+  noTypesActions: { gap: spacing.sm, marginTop: spacing.xs },
   url: { color: textTokens.primary, fontFamily: "monospace", backgroundColor: glass.tint.profileBase, padding: spacing.md, borderRadius: radius.md },
   toast: { color: textTokens.primary, backgroundColor: "rgba(20,20,20,0.94)", padding: spacing.md, margin: spacing.md, borderRadius: radius.md, textAlign: "center" },
 });

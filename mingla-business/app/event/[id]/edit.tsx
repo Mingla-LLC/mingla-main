@@ -96,6 +96,11 @@ import {
   withBankSetupReturn,
 } from "../../../src/utils/bankSetupReturn";
 import { formatEventLiveToast } from "../../../src/utils/eventPublishCopy";
+import { parseNewTicketPreset } from "../../../src/utils/ticketLinkEligibility";
+import {
+  SECTIONS,
+  type SectionKey,
+} from "../../../src/components/event/editPublishedSections";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
@@ -176,6 +181,8 @@ export default function EventEditRoute(): React.ReactElement {
     id: string | string[];
     step?: string | string[];
     mode?: string | string[];
+    section?: string | string[];
+    newTicket?: string | string[];
   }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const stepParam = Array.isArray(params.step) ? params.step[0] : params.step;
@@ -184,6 +191,13 @@ export default function EventEditRoute(): React.ReactElement {
   // EditPublishedScreen instead of the create wizard. The id refers to
   // a LIVE event, not a draft.
   const isEditPublished = modeParam === "edit-published";
+  // issue #3827 — the private-link sheet's "Add a hidden paid ticket" / "Add a
+  // free guest-list ticket" open this editor on Tickets with the new-ticket
+  // sheet in that preset. Unknown values are ignored.
+  const sectionParam = Array.isArray(params.section) ? params.section[0] : params.section;
+  const editPublishedInitialSection: SectionKey | null =
+    SECTIONS.find((sec) => sec.key === sectionParam)?.key ?? null;
+  const newTicketPresetParam = parseNewTicketPreset(params.newTicket);
   const isLegacyLocalDraftId =
     typeof idParam === "string" && idParam.startsWith("d_");
   const { isAuthReady, user } = useAuth();
@@ -880,6 +894,8 @@ export default function EventEditRoute(): React.ReactElement {
     return (
       <EditPublishedEventWithBuyerNotice
         liveEvent={resolvedLiveEvent}
+        initialSection={editPublishedInitialSection}
+        newTicketPreset={newTicketPresetParam}
         disableLocalSaveReason={
           liveEvent === null
             ? "Server-loaded events are readable here. Full published-event editing needs the server edit mutation before saves are enabled."
