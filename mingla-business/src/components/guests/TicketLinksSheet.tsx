@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { accent, glass, radius, semantic, spacing, text as textTokens } from "../../constants/designSystem";
@@ -11,9 +12,25 @@ import { IconChrome } from "../ui/IconChrome";
 import { Input } from "../ui/Input";
 import { Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 import { TicketLinkRequestsSheet } from "./TicketLinkRequestsSheet";
 
 const loadLinks = () => import("../../services/ticketLinksService");
+type ExpiryPicker = "date" | "time" | null;
+
+const defaultExpiry = (): Date => {
+  const value = new Date(Date.now() + 24 * 60 * 60 * 1_000);
+  value.setMinutes(Math.ceil(value.getMinutes() / 15) * 15, 0, 0);
+  return value;
+};
+
+const localDateTimeValue = (value: Date): string => {
+  const pad = (part: number): string => String(part).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+};
+
+const expiryLabel = (iso: string): string =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 
 export interface TicketLinksSheetProps {
   visible: boolean;
@@ -57,6 +74,8 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
   const [maxUses, setMaxUses] = useState("50");
   const [partyMax, setPartyMax] = useState(1);
   const [approvalMode, setApprovalMode] = useState<"auto" | "host">("auto");
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [expiryPicker, setExpiryPicker] = useState<ExpiryPicker>(null);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<TicketLinkRecord | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -102,6 +121,8 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
     setMaxUses("50");
     setPartyMax(1);
     setApprovalMode("auto");
+    setExpiresAt(null);
+    setExpiryPicker(null);
   }, []);
 
   const beginEdit = useCallback((link: TicketLinkRecord) => {
@@ -113,6 +134,8 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
     setMaxUses(String(link.maxUses ?? 50));
     setPartyMax(link.partyMax);
     setApprovalMode(link.approvalMode);
+    setExpiresAt(link.expiresAt);
+    setExpiryPicker(null);
     setCreating(true);
   }, []);
 
@@ -126,6 +149,10 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
       setError("Enter a limit from 1 to 5,000.");
       return;
     }
+    if (expiresAt !== null && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) {
+      setError("Pick a time in the future.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -136,6 +163,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
           maxUses: parsedLimit,
           partyMax: isFree ? partyMax : 1,
           approvalMode: isFree ? approvalMode : "auto",
+          expiresAt,
         });
         setToast("Link updated.");
         setCreating(false);
@@ -149,7 +177,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
           maxUses: parsedLimit,
           partyMax: isFree ? partyMax : 1,
           approvalMode: isFree ? approvalMode : "auto",
-          expiresAt: null,
+          expiresAt,
         });
         setCreated(link);
       }
@@ -160,7 +188,20 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
     } finally {
       setSubmitting(false);
     }
-  }, [approvalMode, editing, eventId, isFree, label, limited, maxUses, onChanged, partyMax, refresh, resetForm, selectedTierId]);
+  }, [approvalMode, editing, eventId, expiresAt, isFree, label, limited, maxUses, onChanged, partyMax, refresh, resetForm, selectedTierId]);
+
+  const changeExpiry = useCallback((kind: Exclude<ExpiryPicker, null>) =>
+    (event: DateTimePickerEvent, selected?: Date): void => {
+      if (Platform.OS === "android") setExpiryPicker(null);
+      if (event.type === "dismissed" || selected === undefined) return;
+      const next = expiresAt === null ? defaultExpiry() : new Date(expiresAt);
+      if (kind === "date") {
+        next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+      } else {
+        next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      }
+      setExpiresAt(next.toISOString());
+    }, [expiresAt]);
 
   const copy = useCallback(async (url: string) => {
     try {
@@ -263,6 +304,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
             {link.kind === "guest_list"
               ? `${link.issuedPeople} on the list${link.usesLeft === null ? "" : ` · ${link.usesLeft} places left on this link`}${link.pendingCount > 0 ? ` · ${link.pendingCount} requests waiting (${link.pendingPeople} people)` : ""}`
               : `${link.paidTickets} tickets · ${link.paidOrders} orders${link.usesLeft === null ? "" : ` · ${link.usesLeft} left`}`}
+            {link.expiresAt ? ` · Ends ${expiryLabel(link.expiresAt)}` : ""}
           </Text>
           {link.revokedAt ? <Text style={styles.muted}>This link no longer works.</Text> : (
             <View style={styles.actions}>
@@ -340,7 +382,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                   <Text style={styles.actionText}>{limited ? "ON" : "OFF"}</Text>
                 </Pressable>
                 {limited ? <Input value={maxUses} onChangeText={setMaxUses} placeholder="50" variant="number" accessibilityLabel="How many people" /> : null}
-                <Text style={styles.helper}>Counts each person, including guests. The ticket type's own capacity still applies.</Text>
+                <Text style={styles.helper}>Counts each person, including guests. The ticket type’s own capacity still applies.</Text>
 
                 {isFree ? (
                   <>
@@ -361,6 +403,60 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                       <Text style={styles.actionText}>{approvalMode === "host" ? "ON" : "OFF"}</Text>
                     </Pressable>
                   </>
+                ) : null}
+
+                <Text style={styles.fieldLabel}>Link stops working</Text>
+                <View style={styles.choicesRow} accessibilityRole="radiogroup">
+                  <Pressable
+                    style={[styles.choice, styles.expiryChoice, expiresAt === null && styles.choiceActive]}
+                    onPress={() => { setExpiresAt(null); setExpiryPicker(null); }}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: expiresAt === null }}
+                  >
+                    <Text style={styles.choiceText}>When the event ends</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.choice, styles.expiryChoice, expiresAt !== null && styles.choiceActive]}
+                    onPress={() => setExpiresAt((current) => current ?? defaultExpiry().toISOString())}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: expiresAt !== null }}
+                  >
+                    <Text style={styles.choiceText}>At a set time</Text>
+                  </Pressable>
+                </View>
+                {expiresAt !== null ? Platform.OS === "web" ? (
+                  <WebDateTimeInput
+                    type="datetime-local"
+                    value={localDateTimeValue(new Date(expiresAt))}
+                    min={localDateTimeValue(new Date())}
+                    ariaLabel="Link expiry date and time"
+                    testID="ticket-link-expiry-web"
+                    onChangeValue={(value) => {
+                      if (value.length === 0) return;
+                      const next = new Date(value);
+                      if (Number.isFinite(next.getTime())) setExpiresAt(next.toISOString());
+                    }}
+                  />
+                ) : (
+                  <View style={styles.expiryNative}>
+                    <View style={styles.choicesRow}>
+                      <Button label={new Date(expiresAt).toLocaleDateString()} variant="secondary" onPress={() => setExpiryPicker("date")} />
+                      <Button label={new Date(expiresAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} variant="secondary" onPress={() => setExpiryPicker("time")} />
+                    </View>
+                    {expiryPicker !== null ? (
+                      <>
+                        <DateTimePicker
+                          value={new Date(expiresAt)}
+                          mode={expiryPicker}
+                          display={Platform.OS === "ios" ? "spinner" : "default"}
+                          minimumDate={expiryPicker === "date" ? new Date() : undefined}
+                          onChange={changeExpiry(expiryPicker)}
+                          themeVariant="dark"
+                        />
+                        {Platform.OS === "ios" ? <Button label="Done" variant="ghost" onPress={() => setExpiryPicker(null)} /> : null}
+                      </>
+                    ) : null}
+                  </View>
                 ) : null}
 
                 {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -409,6 +505,8 @@ const styles = StyleSheet.create({
   choices: { gap: spacing.sm },
   choicesRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   choice: { padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase, backgroundColor: glass.tint.profileBase },
+  expiryChoice: { flex: 1 },
+  expiryNative: { gap: spacing.sm },
   choiceActive: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.14)" },
   choiceText: { color: textTokens.primary, fontSize: 14, fontWeight: "600" },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: 999, borderWidth: 1, borderColor: glass.border.profileBase },

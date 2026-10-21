@@ -59,6 +59,16 @@ describe("issue #3827 private ticket links — adversarial contracts", () => {
     expect(tierEditor).not.toMatch(/^import .*TicketLinksSheet/m);
   });
 
+  test("the host form exposes expiry and hidden tiers promise private-link access", () => {
+    const sheet = readBusiness("src/components/guests/TicketLinksSheet.tsx");
+    const display = readBusiness("src/utils/ticketDisplay.ts");
+    expect(sheet).toContain("Link stops working");
+    expect(sheet).toContain("ticket-link-expiry-web");
+    expect(sheet).toContain("expiresAt,");
+    expect(display).toContain("Hidden — private link only");
+    expect(display).not.toContain("Hidden — direct link only");
+  });
+
   test("group signup requires unique emails, does not reserve pending capacity, and opts issued comps into marketing", () => {
     const partyLine = readFileSync(
       join(repo, "supabase/functions/_shared/email/partyLine.ts"),

@@ -70,7 +70,7 @@ export function ticketLinkErrorCopy(code: string, detail: Record<string, unknown
     case "not_a_guest_list_link": return "This invitation opens checkout instead of the guest list.";
     case "invalid_request": return "Check the details for every person and try again.";
     case "rate_limited": return "Too many attempts. Wait a moment and try again.";
-    case "expiry_in_past": return "Choose an expiry in the future.";
+    case "expiry_in_past": return "Pick a time in the future.";
     case "too_many_links": return "This event already has 100 links. Revoke some before adding more.";
     case "max_below_used": return `${Number(detail.used ?? 0)} people already used this link. Set the limit to that number or more.`;
     case "link_revoked": return "This link was revoked.";
