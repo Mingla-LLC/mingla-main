@@ -255,11 +255,12 @@ begin
   perform pg_temp.t3980_check('W1-ADD', 'a valid card is added',
     pg_temp.t3980_get(v, 'results', '0', 'status') || '/' || pg_temp.t3980_get(v, 'added'), 'added/1');
   perform pg_temp.t3980_keep('c1', pg_temp.t3980_get(v, 'results', '0', 'card', 'id'));
-  perform pg_temp.t3980_check('W1-ADD', 'with two owners, one watcher, the host link, the sprint of its due week and To do',
+  -- #3980 D-3: a card is filed under this week's sprint, never its due week.
+  perform pg_temp.t3980_check('W1-ADD', 'with two owners, one watcher, the host link, this week''s sprint and To do',
     jsonb_array_length(pg_temp.t3980_j(v) #> '{results,0,card,owners}') || '/' || jsonb_array_length(pg_temp.t3980_j(v) #> '{results,0,card,watchers}')
       || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,links,0,label}') || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,sprint,starts_on}')
       || '/' || (pg_temp.t3980_j(v) #>> '{results,0,card,status}'),
-    '2/1/W3980 Claimed Host/' || (v_due - (extract(isodow FROM v_due)::integer - 1))::text || '/todo');
+    '2/1/W3980 Claimed Host/' || public.ops_monday((now() AT TIME ZONE 'UTC')::date)::text || '/todo');
 
   select count(*) into v_cards from public.ops_work_cards;
   v := pg_temp.t3980_person('growth', $q$select public.ops_work_add('[{"links":[]}]'::jsonb, 'w3980-add-0002')::text$q$);
