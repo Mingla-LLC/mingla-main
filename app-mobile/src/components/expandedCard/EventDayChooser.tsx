@@ -1,3 +1,7 @@
+/**
+ * EventDayChooser — Explorer multi-date day picker (issue #2230).
+ * issue #3281 many-dates PR 5 — thin wrapper over shared EventDatePicker.
+ */
 import React, { useMemo } from "react";
 import {
   ActivityIndicator,
@@ -7,9 +11,10 @@ import {
   View,
 } from "react-native";
 
+import { EventDatePicker } from "@mingla/offering-rendering/EventDatePicker";
+import type { EventDateScheduleOccurrence } from "@mingla/offering-rendering/eventDateSchedule";
+
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
-import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
-import { Icon } from "../ui/Icon";
 
 export type EventDayChooserStatus =
   "loading" | "ready" | "error" | "offline" | "stale";
@@ -18,6 +23,8 @@ export interface EventDayChooserProps {
   occurrences: readonly PublicEventOccurrenceLike[];
   selectedEventDateIds: readonly string[];
   pricingMode: "per_day" | "all_days";
+  /** issue #3281 — prefer bundle allDaysPass; falls back to pricingMode. */
+  allDaysPass?: boolean;
   isPaid: boolean;
   timezone: string;
   status: EventDayChooserStatus;
@@ -49,10 +56,26 @@ const statusCopy = (
   return null;
 };
 
+const toSchedule = (
+  occurrences: readonly PublicEventOccurrenceLike[],
+  fallbackTimezone: string,
+): EventDateScheduleOccurrence[] =>
+  occurrences.map((o) => ({
+    id: o.id,
+    startAt: o.startAt,
+    endAt: o.endAt,
+    timezone: o.timezone || fallbackTimezone,
+    overrideTitle: o.overrideTitle ?? null,
+    overrideLocation: o.overrideLocation ?? null,
+    soldOut: o.soldOut ?? null,
+    placesLeft: o.placesLeft ?? null,
+  }));
+
 export const EventDayChooser: React.FC<EventDayChooserProps> = ({
   occurrences,
   selectedEventDateIds,
   pricingMode,
+  allDaysPass: allDaysPassProp,
   isPaid,
   timezone,
   status,
@@ -62,23 +85,35 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
   onToggle,
   onRetry,
 }) => {
-  const selected = useMemo(
-    () => new Set(selectedEventDateIds),
-    [selectedEventDateIds],
+  const allDaysPass = allDaysPassProp === true || pricingMode === "all_days";
+  const schedule = useMemo(
+    () => toSchedule(occurrences, timezone),
+    [occurrences, timezone],
   );
-  const chosen = selected.size;
-  const countLine =
-    chosen === 0
+  const chosen = selectedEventDateIds.length;
+  const countLine = allDaysPass
+    ? isPaid
+      ? "One price covers every date"
+      : "Every date of this event"
+    : chosen === 0
       ? `${occurrences.length} days`
       : !isPaid
         ? `${chosen} of ${occurrences.length} selected`
         : pricingMode === "per_day"
           ? `Priced per day · ${chosen} of ${occurrences.length} selected`
           : `One price for all days · ${chosen} of ${occurrences.length} selected`;
-  // Offline keeps the last event-id-validated day set locally editable. The
-  // parent still blocks checkout until a refresh returns authoritative truth.
   const unavailable = status === "loading" || status === "error";
   const recovery = statusCopy(status);
+  const pickerStatus =
+    status === "loading"
+      ? "loading"
+      : status === "error"
+        ? "error"
+        : status === "offline"
+          ? "offline"
+          : status === "stale"
+            ? "stale"
+            : "ready";
 
   return (
     <View
@@ -87,7 +122,9 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
       accessibilityState={{ busy: status === "loading" }}
       testID="issue-2230-event-day-chooser"
     >
-      <Text style={styles.heading}>Pick your days</Text>
+      <Text style={styles.heading}>
+        {allDaysPass ? "Your dates" : "Pick your days"}
+      </Text>
       {status === "loading" ? (
         <View
           style={styles.loadingRow}
@@ -103,7 +140,10 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
         <Text style={styles.count}>{countLine}</Text>
       )}
 
-      {highlightUnchosen && chosen === 0 && status === "ready" ? (
+      {highlightUnchosen &&
+      !allDaysPass &&
+      chosen === 0 &&
+      status === "ready" ? (
         <Text style={styles.alert} accessibilityRole="alert">
           {"Choose at least one day you're attending to continue."}
         </Text>
@@ -129,38 +169,22 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
       ) : null}
 
       {!unavailable ? (
-        <View style={styles.rows}>
-          {occurrences.map((occurrence) => {
-            const checked = selected.has(occurrence.id);
-            const label =
-              formatOccurrenceLine(occurrence, timezone) ??
-              "Date to be confirmed";
-            return (
-              <Pressable
-                key={occurrence.id}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked, disabled: rowsDisabled }}
-                accessibilityLabel={label}
-                disabled={rowsDisabled}
-                onPress={() => onToggle(occurrence.id)}
-                style={({ pressed }) => [
-                  styles.row,
-                  checked && styles.rowSelected,
-                  pressed && styles.pressed,
-                  rowsDisabled && styles.disabled,
-                ]}
-              >
-                <View
-                  style={[styles.checkbox, checked && styles.checkboxSelected]}
-                >
-                  {checked ? (
-                    <Icon name="check" size={14} color="#15181f" />
-                  ) : null}
-                </View>
-                <Text style={styles.rowLabel}>{label}</Text>
-              </Pressable>
-            );
-          })}
+        <View
+          style={[styles.pickerWrap, rowsDisabled ? styles.disabled : null]}
+          pointerEvents={rowsDisabled ? "none" : "auto"}
+        >
+          <EventDatePicker
+            occurrences={schedule}
+            selectedIds={selectedEventDateIds}
+            onToggle={onToggle}
+            allDaysPass={allDaysPass}
+            status={pickerStatus}
+            onRetry={onRetry}
+            accentColor="#eb7825"
+            mutedColor="rgba(255, 255, 255, 0.52)"
+            testID="issue-2230-day-picker"
+            occurrenceTestIDPrefix="issue-2230-day-row"
+          />
         </View>
       ) : null}
     </View>
@@ -213,45 +237,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: "700",
   },
-  rows: {
-    gap: 8,
-    marginTop: 10,
-  },
-  row: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    backgroundColor: "#23262c",
-  },
-  rowSelected: {
-    borderColor: "#eb7825",
-    backgroundColor: "#2f2420",
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: "rgba(255, 255, 255, 0.52)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxSelected: {
-    borderColor: "#eb7825",
-    backgroundColor: "#eb7825",
-  },
-  rowLabel: {
-    flex: 1,
-    color: "rgba(255, 255, 255, 0.96)",
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  pickerWrap: { marginTop: 10 },
   pressed: { opacity: 0.92 },
   disabled: { opacity: 0.55 },
 });

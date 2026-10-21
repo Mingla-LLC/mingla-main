@@ -47,13 +47,18 @@ export interface PublicEventOccurrence {
   timezone: string;
   isMaster: boolean;
   /**
-   * ALWAYS null. `event_dates` carries NO per-occurrence capacity column and
-   * ticket capacity is authored EVENT-level on `ticket_types.quantity_total`,
-   * so there is no honest per-day remaining to publish: stamping the
-   * event-level number onto each day would claim per-day availability that does
-   * not exist (Constitution #9). True per-day sell-out needs a per-occurrence
-   * cap AND a per-occurrence sold count, and is explicitly out of scope for
-   * #2160 in BOTH pricing modes.
+   * ALWAYS null when the bundle does not carry `placesLeft`. Event-level
+   * capacity alone must not be stamped onto each day (Constitution #9).
+   * issue #3281 — when the schedule helper publishes an honest per-day
+   * remaining count, it rides here as `placesLeft` instead.
    */
   ticketsRemaining: number | null;
+  /** issue #3281 — host override title for this occurrence, when set. */
+  overrideTitle?: string | null;
+  /** issue #3281 — host override place for this occurrence, when set. */
+  overrideLocation?: string | null;
+  /** issue #3281 — true when every limited tier on this day is sold out. */
+  soldOut?: boolean | null;
+  /** issue #3281 — remaining seats across limited tiers; null when hidden. */
+  placesLeft?: number | null;
 }

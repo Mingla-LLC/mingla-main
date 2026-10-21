@@ -167,6 +167,7 @@ export const DraftEventFoundationPreview: React.FC<
       occurrences={occurrences}
       selectedOccurrenceIds={selectedOccurrenceIds}
       pricingMode={multiDatePricingMode}
+      allDaysPass={multiDatePricingMode === "all_days"}
       isPaid={event.tickets.some((ticket) => !ticket.isFree)}
       highlightUnchosen={dayChoiceMissing}
       state={dayChooserState}

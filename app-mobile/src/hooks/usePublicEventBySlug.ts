@@ -50,6 +50,8 @@ export interface CanonicalPublicEvent {
   occurrences: readonly PublicEventOccurrenceLike[];
   isMultiDate: boolean;
   multiDatePricingMode: "per_day" | "all_days";
+  /** issue #3281 — server all-days pass flag from the bundle. */
+  allDaysPass: boolean;
   terminalSource: EventTerminalSource;
   /**
    * issue #3284 — the organiser's published refund terms from the bundle's
@@ -72,6 +74,11 @@ export interface PublicEventOccurrenceLike {
   endAt: string;
   timezone: string;
   isMaster: boolean;
+  /** issue #3281 — host per-date title / place / sell-out chips. */
+  overrideTitle?: string | null;
+  overrideLocation?: string | null;
+  soldOut?: boolean | null;
+  placesLeft?: number | null;
 }
 
 export const publicEventBySlugKeys = {
@@ -177,12 +184,29 @@ const mapOccurrences = (
       !isValidInstant(endAt) ||
       byId.has(id)
     ) continue;
+    const overrideTitle =
+      typeof row.overrideTitle === "string" && row.overrideTitle.trim().length > 0
+        ? row.overrideTitle.trim()
+        : null;
+    const overrideLocation =
+      typeof row.overrideLocation === "string" &&
+      row.overrideLocation.trim().length > 0
+        ? row.overrideLocation.trim()
+        : null;
+    const placesLeft =
+      typeof row.placesLeft === "number" && Number.isFinite(row.placesLeft)
+        ? row.placesLeft
+        : null;
     byId.set(id, {
       id,
       startAt,
       endAt,
       timezone: validTimezoneOr(row.timezone, fallbackTimezone),
       isMaster: row.isMaster === true,
+      overrideTitle,
+      overrideLocation,
+      soldOut: row.soldOut === true ? true : row.soldOut === false ? false : null,
+      placesLeft,
     });
   }
   return [...byId.values()].sort((a, b) => {
@@ -369,6 +393,7 @@ export const mapRpcPayloadToPublicEvent = (
     isMultiDate: payload.isMultiDate === true,
     multiDatePricingMode:
       payload.multiDatePricingMode === "all_days" ? "all_days" : "per_day",
+    allDaysPass: payload.allDaysPass === true,
     terminalSource,
     // issue #3284 — absent key → unknown; null → none; a valid policy → set.
     refundPolicyState: readRefundPolicyState(payload),
