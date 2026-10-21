@@ -460,6 +460,7 @@ BEGIN
 
   -- Issue #3645 (append-only): moving a released occurrence never synthesizes
   -- a postponement debt; cancellation/refund recovery remains separately tested.
+  -- The replaced assertions encoded the superseded event-reanchoring contract.
   INSERT INTO public.brand_payout_releases(
     brand_id,event_id,event_date_id,occurrence_key,surface,provider,currency,
     anchor_end_at,releasable_at,gross_cents,net_release_cents,status,

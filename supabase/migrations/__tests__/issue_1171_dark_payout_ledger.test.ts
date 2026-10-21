@@ -233,7 +233,8 @@ BEGIN
   UPDATE public.event_dates SET end_at='2026-07-12T00:00:00Z'
   WHERE id=v_occurrence_b;
   -- Issue #3645 (append-only): a release paid before its event belongs to the
-  -- host. Moving the event later must not synthesize a claw-back debt.
+  -- host. Moving the event later must not synthesize a claw-back debt. The
+  -- replaced assertions encoded the superseded event-reanchoring contract.
   IF public.sync_post_release_postponement_debts('2026-07-10T00:00:00Z')<>0 OR
      EXISTS(SELECT 1 FROM public.organiser_payout_debts
        WHERE origin_release_id=v_release_b AND kind='post_release_postponement') THEN
