@@ -1295,6 +1295,30 @@ $$;
 REVOKE ALL ON FUNCTION public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer) TO service_role;
 
+-- Drift guard: the six functions below are re-emitted in full, so refuse to run
+-- if any live body differs from the latest definition in the repository (a
+-- production hotfix would otherwise be silently overwritten).
+DO $drift_guard$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT * FROM (VALUES
+      ('public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer)', '26a715bcb11bc71e3093d6fcaaee85f3'),
+      ('public.pg_direct_event_checkout_bundle(uuid,text,text)', 'f07629dbe9579d9c91fe1a9927ce9099'),
+      ('public.pg_public_event_by_slug(text,text)', '84d0b883088e01eacfd159c064e8c6b1'),
+      ('public.pg_public_event_tier_allin(uuid)', '1603a0930514afeab12f93b69c45ee71'),
+      ('public.pg_public_ticket_types_remaining(uuid)', '81d299b68eac857ae6fe306b34b2a721'),
+      ('public.biz_guest_roster_project(uuid)', 'f386302a555b5a559b0de301df0e24bc')
+    ) AS v(sig, expected_md5)
+  LOOP
+    IF (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid = r.sig::regprocedure) IS DISTINCT FROM r.expected_md5 THEN
+      RAISE EXCEPTION 'issue #3827 re-emit drift: % no longer matches its repository definition', r.sig;
+    END IF;
+  END LOOP;
+END;
+$drift_guard$;
+
 -- Current governed functions have moved since the private design was written.
 -- Each is re-emitted in full from its latest defining migration with exactly one
 -- #3827 change; CREATE OR REPLACE keeps the existing owner and grants.
