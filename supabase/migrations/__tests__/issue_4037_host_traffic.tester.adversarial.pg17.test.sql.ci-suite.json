@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4037_host_traffic.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4037-host-traffic-tester-adversarial-pg17",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
