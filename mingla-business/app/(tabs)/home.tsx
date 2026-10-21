@@ -94,9 +94,10 @@ import {
   useUpcomingForBrand,
 } from "../../src/hooks/useUpcomingForBrand";
 import {
-  brandAnalyticsKeys,
-  useBrandMinglaDroveRollup,
-} from "../../src/hooks/useBrandAnalytics";
+  trafficAnalyticsKeys,
+  useBrandTrafficRollup,
+} from "../../src/hooks/useTrafficAnalytics";
+import { brandAnalyticsKeys } from "../../src/hooks/useBrandAnalytics";
 import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapseStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
@@ -211,7 +212,7 @@ export default function HomeTab(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{ recent?: string }>();
   const { isWideDesktop } = useResponsiveLayout();
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const queryClient = useQueryClient();
   const currentBrand = useCurrentBrand();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
@@ -221,9 +222,10 @@ export default function HomeTab(): React.ReactElement {
   // value below, after all sibling hooks have run.
   const role = useCurrentBrandRole(currentBrand?.id ?? null);
   const callerRank = role.rank;
-  const analyticsPreview = useBrandMinglaDroveRollup(
+  const analyticsPreview = useBrandTrafficRollup(
     currentBrand?.id ?? null,
-    !role.isLoading && !isScannerOnlyRank(callerRank),
+    "30d",
+    isAuthReady && !role.isLoading && !isScannerOnlyRank(callerRank),
   );
   const brandRecovery = useCurrentBrandRecovery();
   // issue #3345 — after a brand switch (or on a cold start) the selected brand's
@@ -285,7 +287,12 @@ export default function HomeTab(): React.ReactElement {
         ...(currentBrand !== null
           ? [
               queryClient.invalidateQueries({
-        queryKey: brandAnalyticsKeys.minglaDrove(currentBrand.id),
+                queryKey: trafficAnalyticsKeys.brand(currentBrand.id, "30d"),
+              }),
+              // Keep the legacy cache fresh while older consumers are still
+              // mounted behind the compatibility boundary.
+              queryClient.invalidateQueries({
+                queryKey: brandAnalyticsKeys.minglaDrove(currentBrand.id),
               }),
               queryClient.invalidateQueries({
                 queryKey: hostAdCampaignKeys.byBrand(currentBrand.id),
@@ -946,6 +953,7 @@ export default function HomeTab(): React.ReactElement {
                 ) : null}
                 <View style={styles.desktopKpiCell}>
                   <AnalyticsHomeTile
+                    contract="traffic"
                     data={analyticsPreview.data}
                     isLoading={analyticsPreview.isLoading}
                     isError={
@@ -1078,6 +1086,7 @@ export default function HomeTab(): React.ReactElement {
                 />
               ) : null}
               <AnalyticsHomeTile
+                contract="traffic"
                 data={analyticsPreview.data}
                 isLoading={analyticsPreview.isLoading}
                 isError={

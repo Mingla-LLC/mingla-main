@@ -107,6 +107,11 @@ import {
 } from "../../../src/components/trip/tripOfferingAdapter";
 import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPlanChoice";
 import { recordShareDestination } from "../../../src/analytics/shareDestination";
+import {
+  captureOfferingCta,
+  captureOfferingPageView,
+  type OfferingEngagementScope,
+} from "../../../src/services/offeringEngagementCapture";
 // #3372 — naira shows "₦", not "NGN", on the public trip page (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // #3645 — the headline price never rounds a .50 price up past the charge.
@@ -402,6 +407,17 @@ const ResolvedTripPage: React.FC<{
 }) => {
   const trip = payload.trip;
   const { isDesktop } = useResponsiveLayout();
+  const engagementScope = useMemo<OfferingEngagementScope>(
+    () => ({
+      brandId: payload.brand.id,
+      entityType: "trip",
+      entityId: trip.id,
+    }),
+    [payload.brand.id, trip.id],
+  );
+  useEffect(() => {
+    void captureOfferingPageView(engagementScope);
+  }, [engagementScope]);
 
   // ORCH-1138 — resolve brand theme + per-trip overrides → palette → surface.
   const theme = useMemo(
@@ -509,11 +525,13 @@ const ResolvedTripPage: React.FC<{
       if (tripAccess.requiresSignIn) {
         // #3187 P2-1 — a share recipient's Reserve intent (no-op off a shared link).
         recordShareDestination("book_trip");
+        void captureOfferingCta(engagementScope, "book");
         router.push(tripSignInResumeHref as never);
         return;
       }
       if (tripAccess.blocked) return;
       recordShareDestination("book_trip");
+      void captureOfferingCta(engagementScope, "book");
       // #3859 — a package-row Reserve supplies authoritative per-line choices
       // but no scalar choice. Project those lines into the legacy scalar too so
       // the URL never says plan=full while its line payload says installments.
@@ -540,6 +558,7 @@ const ResolvedTripPage: React.FC<{
       tripAccess.requiresSignIn,
       tripAccess.blocked,
       tripSignInResumeHref,
+      engagementScope,
     ],
   );
 

@@ -32,6 +32,9 @@ import {
   Dimensions,
   Animated as RNAnimated,
   Easing as RNEasing,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -64,6 +67,7 @@ import { useAppStore } from "../store/appStore";
 import { mixpanelService } from "../services/mixpanelService";
 import { TripsContent } from "./discover/TripsContent";
 import { StaysContent } from "./discover/StaysContent";
+import { captureConsumerOfferingEngagement } from "../services/offeringEngagementService";
 import type { DiscoverTripRow } from "../services/tripsDiscoveryService";
 import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
 import { useUserLocation } from "../hooks/useUserLocation";
@@ -1264,6 +1268,102 @@ function DiscoverScreen({
   // ORCH-0679 Wave 2.8.1: scroll position registry.
   const { scrollRef: discoverScrollRef, handleScroll: handleDiscoverScroll } =
     useTabScrollRegistry('discover_main');
+  const businessCardLayoutsRef = useRef(
+    new Map<
+      string,
+      {
+        y: number;
+        height: number;
+        brandId: string;
+      }
+    >(),
+  );
+  const businessImpressionTimersRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>(),
+  );
+  const seenBusinessImpressionsRef = useRef(new Set<string>());
+  const discoverGridTopRef = useRef(0);
+  const discoverScrollYRef = useRef(0);
+  const discoverViewportHeightRef = useRef(0);
+
+  const evaluateBusinessImpressions = useCallback((): void => {
+    const viewportTop = discoverScrollYRef.current;
+    const viewportBottom = viewportTop + discoverViewportHeightRef.current;
+    for (const [eventId, layout] of businessCardLayoutsRef.current) {
+      if (seenBusinessImpressionsRef.current.has(eventId)) continue;
+      const top = discoverGridTopRef.current + layout.y;
+      const bottom = top + layout.height;
+      const visible = Math.max(
+        0,
+        Math.min(bottom, viewportBottom) - Math.max(top, viewportTop),
+      );
+      const qualifies = layout.height > 0 && visible >= layout.height * 0.5;
+      const activeTimer = businessImpressionTimersRef.current.get(eventId);
+      if (!qualifies) {
+        if (activeTimer !== undefined) {
+          clearTimeout(activeTimer);
+          businessImpressionTimersRef.current.delete(eventId);
+        }
+        continue;
+      }
+      if (activeTimer !== undefined) continue;
+      const timer = setTimeout(() => {
+        businessImpressionTimersRef.current.delete(eventId);
+        const latest = businessCardLayoutsRef.current.get(eventId);
+        if (
+          latest === undefined ||
+          seenBusinessImpressionsRef.current.has(eventId)
+        )
+          return;
+        const latestTop = discoverGridTopRef.current + latest.y;
+        const latestBottom = latestTop + latest.height;
+        const latestViewportTop = discoverScrollYRef.current;
+        const latestViewportBottom =
+          latestViewportTop + discoverViewportHeightRef.current;
+        const latestVisible = Math.max(
+          0,
+          Math.min(latestBottom, latestViewportBottom) -
+            Math.max(latestTop, latestViewportTop),
+        );
+        if (latest.height <= 0 || latestVisible < latest.height * 0.5) return;
+        seenBusinessImpressionsRef.current.add(eventId);
+        void captureConsumerOfferingEngagement(
+          { brandId: latest.brandId, entityType: "event", entityId: eventId },
+          "app_impression",
+        );
+      }, 1_000);
+      businessImpressionTimersRef.current.set(eventId, timer);
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      for (const timer of businessImpressionTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      businessImpressionTimersRef.current.clear();
+    },
+    [],
+  );
+
+  const handleEventsScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      handleDiscoverScroll(event);
+      discoverScrollYRef.current = event.nativeEvent.contentOffset.y;
+      discoverViewportHeightRef.current =
+        event.nativeEvent.layoutMeasurement.height;
+      evaluateBusinessImpressions();
+    },
+    [evaluateBusinessImpressions, handleDiscoverScroll],
+  );
+
+  const handleEventsViewportLayout = useCallback(
+    (event: LayoutChangeEvent): void => {
+      discoverViewportHeightRef.current = event.nativeEvent.layout.height;
+      evaluateBusinessImpressions();
+    },
+    [evaluateBusinessImpressions],
+  );
 
   // Events fetch state. ORCH-0996 REWORK 1: seed from the mount-time events
   // cache read so a remount paints prior cards immediately (no skeleton flash)
@@ -1836,6 +1936,10 @@ function DiscoverScreen({
   // clear. Replaces the ORCH-0824 dual-setter pattern that caused Bug B.
   const handleBusinessEventCardPress = useCallback(
     (data: BusinessEventCardData): void => {
+      void captureConsumerOfferingEngagement(
+        { brandId: data.brandId, entityType: "event", entityId: data.eventId },
+        "app_open",
+      );
       setExpansionTarget({ kind: "businessEvent", data });
       setIsExpandedModalVisible(true);
     },
@@ -1985,6 +2089,25 @@ function DiscoverScreen({
     () => buildDiscoverDeckOrder(businessEvents, filteredNightOutCards),
     [businessEvents, filteredNightOutCards],
   );
+
+  useEffect(() => {
+    const mountedBusinessIds = new Set(
+      discoverDeck.flatMap((entry) =>
+        entry.kind === "business" ? [entry.data.eventId] : [],
+      ),
+    );
+    for (const [eventId, timer] of businessImpressionTimersRef.current) {
+      if (activeTab === "events" && mountedBusinessIds.has(eventId)) continue;
+      clearTimeout(timer);
+      businessImpressionTimersRef.current.delete(eventId);
+    }
+    for (const eventId of businessCardLayoutsRef.current.keys()) {
+      if (!mountedBusinessIds.has(eventId)) {
+        businessCardLayoutsRef.current.delete(eventId);
+      }
+    }
+    if (activeTab === "events") evaluateBusinessImpressions();
+  }, [activeTab, discoverDeck, evaluateBusinessImpressions]);
 
   // ORCH-0996: prefetch the first row of event-cover images as soon as
   // results land so the 2-col grid doesn't fade in cold. We prefetch the
@@ -2373,7 +2496,8 @@ function DiscoverScreen({
       /* Scrollable content — grid only; header stays fixed above */
       <ScrollView
         ref={discoverScrollRef as React.RefObject<ScrollView>}
-        onScroll={handleDiscoverScroll}
+        onScroll={handleEventsScroll}
+        onLayout={handleEventsViewportLayout}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
@@ -2447,7 +2571,13 @@ function DiscoverScreen({
                 </Text>
               </View>
             ) : null}
-            <View style={styles.gridWrap}>
+            <View
+              style={styles.gridWrap}
+              onLayout={(event) => {
+                discoverGridTopRef.current = event.nativeEvent.layout.y;
+                evaluateBusinessImpressions();
+              }}
+            >
               {/* ORCH-0824: business events rank above the Ticketmaster block.
                   Their tap handler opens the same ExpandedCardModal (Step 20)
                   with a business_event discriminator (Step 19).
@@ -2465,13 +2595,25 @@ function DiscoverScreen({
                   ordered id list across renders. */}
               {discoverDeck.map((entry) =>
                 entry.kind === "business" ? (
-                  <BusinessEventCard
+                  <View
                     key={entry.key}
-                    data={entry.data}
-                    width={GRID_CARD_WIDTH}
-                    height={GRID_CARD_HEIGHT}
-                    onPress={handleBusinessEventCardPress}
-                  />
+                    style={styles.businessEventMeasurement}
+                    onLayout={(event) => {
+                      businessCardLayoutsRef.current.set(entry.data.eventId, {
+                        y: event.nativeEvent.layout.y,
+                        height: event.nativeEvent.layout.height,
+                        brandId: entry.data.brandId,
+                      });
+                      evaluateBusinessImpressions();
+                    }}
+                  >
+                    <BusinessEventCard
+                      data={entry.data}
+                      width={GRID_CARD_WIDTH}
+                      height={GRID_CARD_HEIGHT}
+                      onPress={handleBusinessEventCardPress}
+                    />
+                  </View>
                 ) : (
                   <EventGridCard
                     key={entry.key}
@@ -2988,6 +3130,10 @@ const styles = StyleSheet.create({
     rowGap: d.grid.rowGap,
     paddingHorizontal: d.grid.horizontalPadding,
     paddingTop: d.grid.rowGap,
+  },
+  businessEventMeasurement: {
+    width: GRID_CARD_WIDTH,
+    height: GRID_CARD_HEIGHT,
   },
 
   // Event card

@@ -96,6 +96,11 @@ import { ExperiencePreview } from "../../../src/components/experience/Experience
 // re-enters the eager __common chunk and fails the budget gate.
 import type { GuestFunnelEntity } from "../../../src/services/guestFunnelLink";
 import { recordShareDestination } from "../../../src/analytics/shareDestination";
+import {
+  captureOfferingCta,
+  captureOfferingPageView,
+  type OfferingEngagementScope,
+} from "../../../src/services/offeringEngagementCapture";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 
@@ -367,6 +372,17 @@ const ResolvedExperiencePage: React.FC<{
   const experience = payload.experience;
   const brand = payload.brand;
   const { isDesktop } = useResponsiveLayout();
+  const engagementScope = useMemo<OfferingEngagementScope>(
+    () => ({
+      brandId: brand.id,
+      entityType: "experience",
+      entityId: experience.id,
+    }),
+    [brand.id, experience.id],
+  );
+  useEffect(() => {
+    void captureOfferingPageView(engagementScope);
+  }, [engagementScope]);
 
   // ORCH-1138 Leg 3 — resolve brand theme + per-experience overrides → palette.
   const theme = useMemo(
@@ -534,11 +550,13 @@ const ResolvedExperiencePage: React.FC<{
       if (experienceAccess.requiresSignIn) {
         // #3187 P2-1 — a share recipient's Reserve intent (no-op off a shared link).
         recordShareDestination("book_experience");
+        void captureOfferingCta(engagementScope, "book");
         router.push(experienceSignInResumeHref as never);
         return;
       }
       if (experienceAccess.blocked) return;
       recordShareDestination("book_experience");
+      void captureOfferingCta(engagementScope, "book");
       const routeParams: Record<string, string> = {};
       if (selection !== undefined) {
         routeParams.eventDateId = selection.eventDateId;
@@ -584,6 +602,7 @@ const ResolvedExperiencePage: React.FC<{
       experienceAccess.requiresSignIn,
       experienceAccess.blocked,
       experienceSignInResumeHref,
+      engagementScope,
     ],
   );
 
@@ -595,6 +614,7 @@ const ResolvedExperiencePage: React.FC<{
     // error no-op so the picker cannot open at all.
     if (experienceAccess.requiresSignIn) {
       recordShareDestination("book_experience");
+      void captureOfferingCta(engagementScope, "book");
       router.push(experienceSignInResumeHref as never);
       return;
     }
@@ -616,6 +636,7 @@ const ResolvedExperiencePage: React.FC<{
     experienceAccess.requiresSignIn,
     experienceAccess.blocked,
     experienceSignInResumeHref,
+    engagementScope,
   ]);
 
   const handlePickerConfirm = useCallback(

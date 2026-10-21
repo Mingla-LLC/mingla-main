@@ -654,6 +654,13 @@ verify_jwt = false
 [functions.venue-organic-capture]
 verify_jwt = false
 
+# #4037 — cookieless first-party aggregate traffic capture. Public buyer pages
+# and consumer apps call it without a user JWT; the handler strictly validates,
+# hashes IP+UA with a short-lived server salt, drops bots/rate excess, and only
+# writes through service-role-only RPCs. It always returns an empty response.
+[functions.offering-engagement-capture]
+verify_jwt = false
+
 # ISSUE-1003 [Venue Website Grader growth tool — test cut] — the anonymous
 # grader page's run endpoint (place_pool typeahead search + report generation).
 # verify_jwt=false because the marketing tool surface is UNAUTHENTICATED. The

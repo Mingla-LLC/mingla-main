@@ -8,7 +8,7 @@
  * Memoized (I-TAB-SCREENS-MEMOIZED). No mobile cache — React Query only.
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,6 +16,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type ViewToken,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -23,6 +24,7 @@ import { Icon } from "../ui/Icon";
 import { glass } from "../../constants/designSystem";
 import { useAppLayout } from "../../hooks/useAppLayout";
 import { useDiscoverTrips } from "../../hooks/useDiscoverTrips";
+import { captureConsumerOfferingEngagement } from "../../services/offeringEngagementService";
 import {
   EMPTY_DISCOVER_TRIP_FILTERS,
   type DiscoverTripFilters,
@@ -71,6 +73,11 @@ const TripsContentImpl: React.FC<TripsContentProps> = ({
   const [filters, setFilters] = useState<DiscoverTripFilters>(
     EMPTY_DISCOVER_TRIP_FILTERS,
   );
+  const seenIds = useRef(new Set<string>());
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 1_000,
+  }).current;
 
   const {
     trips,
@@ -82,14 +89,38 @@ const TripsContentImpl: React.FC<TripsContentProps> = ({
     refetch,
   } = useDiscoverTrips(filters);
 
-  const renderItem = useCallback(
-    ({ item }: { item: DiscoverTripRow }) => (
-      <TripCard trip={item} onPress={onOpenTrip} />
-    ),
+  const handleOpenTrip = useCallback(
+    (trip: DiscoverTripRow): void => {
+      void captureConsumerOfferingEngagement(
+        { brandId: trip.brandId, entityType: "trip", entityId: trip.tripId },
+        "app_open",
+      );
+      onOpenTrip(trip);
+    },
     [onOpenTrip],
   );
 
+  const renderItem = useCallback(
+    ({ item }: { item: DiscoverTripRow }) => (
+      <TripCard trip={item} onPress={handleOpenTrip} />
+    ),
+    [handleOpenTrip],
+  );
+
   const keyExtractor = useCallback((item: DiscoverTripRow) => item.tripId, []);
+  const onViewableItemsChanged = useRef(
+    (info: { viewableItems: ViewToken<DiscoverTripRow>[] }): void => {
+      for (const token of info.viewableItems) {
+        const trip = token.item;
+        if (!token.isViewable || seenIds.current.has(trip.tripId)) continue;
+        seenIds.current.add(trip.tripId);
+        void captureConsumerOfferingEngagement(
+          { brandId: trip.brandId, entityType: "trip", entityId: trip.tripId },
+          "app_impression",
+        );
+      }
+    },
+  ).current;
 
   const handleEndReached = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
@@ -207,6 +238,8 @@ const TripsContentImpl: React.FC<TripsContentProps> = ({
       showsVerticalScrollIndicator={false}
       onEndReached={handleEndReached}
       onEndReachedThreshold={0.5}
+      onViewableItemsChanged={onViewableItemsChanged}
+      viewabilityConfig={viewabilityConfig}
       ListFooterComponent={
         isFetchingNextPage ? (
           <View style={styles.footerLoader}>

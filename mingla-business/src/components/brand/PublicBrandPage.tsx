@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Linking, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
@@ -16,6 +16,11 @@ import {
 import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
 import { captureWeb } from "../../analytics/webAnalytics";
 import { recordShareDestination } from "../../analytics/shareDestination";
+import {
+  captureOfferingCta,
+  captureOfferingPageView,
+  type OfferingEngagementScope,
+} from "../../services/offeringEngagementCapture";
 
 import {
   brandOgImageUrl,
@@ -250,6 +255,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [experiences],
   );
   const sharedUpcoming = useMemo(() => upcoming.map(mapUpcoming), [upcoming]);
+  const engagementScope = useMemo<OfferingEngagementScope>(
+    () => ({ brandId: brand.id, entityType: "brand", entityId: null }),
+    [brand.id],
+  );
+  useEffect(() => {
+    void captureOfferingPageView(engagementScope);
+  }, [engagementScope]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -279,13 +291,18 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const websiteUrl = brand.links?.website;
   const handleOpenExternal = useCallback(
     (url: string): void => {
-      if (url.startsWith("tel:")) recordShareDestination("call");
-      else if (websiteUrl !== undefined && url === websiteUrl) recordShareDestination("website");
+      if (url.startsWith("tel:")) {
+        recordShareDestination("call");
+        void captureOfferingCta(engagementScope, "call");
+      } else if (websiteUrl !== undefined && url === websiteUrl) {
+        recordShareDestination("website");
+        void captureOfferingCta(engagementScope, "website");
+      }
       void Linking.openURL(url).catch((error: unknown) => {
         console.warn("[public-brand] could not open link", error instanceof Error ? error.message : String(error));
       });
     },
-    [websiteUrl],
+    [engagementScope, websiteUrl],
   );
 
   const handleOpenEvent = useCallback(

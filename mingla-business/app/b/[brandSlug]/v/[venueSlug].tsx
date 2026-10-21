@@ -66,6 +66,11 @@ import type {
 } from "@mingla/offering-rendering/mapsDeepLink";
 import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
 import { recordShareDestination } from "../../../../src/analytics/shareDestination";
+import {
+  captureOfferingCta,
+  captureOfferingPageView,
+  type OfferingEngagementScope,
+} from "../../../../src/services/offeringEngagementCapture";
 import { copyAddressText } from "../../../../src/utils/copyAddressText";
 
 import {
@@ -403,6 +408,18 @@ export default function PublicVenueRoute(): React.ReactElement {
     () => (venue === null ? null : toVenueViewModel(venue)),
     [venue],
   );
+  const engagementScope = useMemo<OfferingEngagementScope | null>(
+    () =>
+      venue === null
+        ? null
+        : { brandId: venue.brandId, entityType: "venue", entityId: venue.id },
+    [venue],
+  );
+  useEffect(() => {
+    if (engagementScope !== null) {
+      void captureOfferingPageView(engagementScope);
+    }
+  }, [engagementScope]);
 
   const handleAnalytics = useCallback(
     (
@@ -419,6 +436,9 @@ export default function PublicVenueRoute(): React.ReactElement {
           );
         });
       } else if (event === "public_venue_reservation_started") {
+        if (engagementScope !== null) {
+          void captureOfferingCta(engagementScope, "book");
+        }
         runBuyerVenueOrganicCapture(analyticsSurface, () => {
           void captureVenueOrganicEvent(
             { brandId: settleBrandId, venueId: settleVenueId },
@@ -427,7 +447,7 @@ export default function PublicVenueRoute(): React.ReactElement {
         });
       }
     },
-    [settleBrandId, settleVenueId],
+    [engagementScope, settleBrandId, settleVenueId],
   );
 
   // issue #2468 — was a google TEXT search on the venue's address string, which
@@ -440,9 +460,12 @@ export default function PublicVenueRoute(): React.ReactElement {
       // undefined means nothing was asked (the exact #2468 path).
       // #3187 P2-1 — a share recipient's directions tap (no-op off a shared link).
       recordShareDestination("directions");
+      if (engagementScope !== null) {
+        void captureOfferingCta(engagementScope, "directions");
+      }
       openMapsTarget(target, { app });
     },
-    [],
+    [engagementScope],
   );
 
   // issue #2508 — the copy-address host effect. The text has already cleared

@@ -2,7 +2,7 @@ import { supabase } from "./supabase";
 import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 
 const SOURCE_KEYS = ["ad", "search", "organic", "social", "direct"] as const;
-const LISTING_TYPES = ["event", "trip", "experience", "rsvp"] as const;
+const LISTING_TYPES = ["event", "trip", "experience", "rsvp", "venue"] as const;
 
 export type ListingInsightsSource = (typeof SOURCE_KEYS)[number];
 export type ListingInsightsType = (typeof LISTING_TYPES)[number];
@@ -12,6 +12,7 @@ export interface ListingInsightsIdentity {
   brandId: string;
   title: string;
   listingType: ListingInsightsType;
+  trafficEntityType: "event" | "trip" | "experience" | "venue";
   status: string;
   detailRoute: string;
 }
@@ -92,7 +93,7 @@ const currencyMapOrUnavailable = (value: unknown): Record<string, number> => {
 };
 
 const detailRoute = (type: ListingInsightsType, id: string): string =>
-  `/${type}/${id}`;
+  type === "venue" ? `/venue/${id}` : `/${type}/${id}`;
 
 export const normalizeListingInsightsIdentity = (
   raw: unknown,
@@ -116,6 +117,7 @@ export const normalizeListingInsightsIdentity = (
     brandId,
     title,
     listingType,
+    trafficEntityType: listingType === "rsvp" ? "event" : listingType,
     status,
     detailRoute: detailRoute(listingType, id),
   };
@@ -206,9 +208,39 @@ export const fetchListingInsightsIdentity = async (
   } catch {
     throw new ListingInsightsRequestError("identity");
   }
-  if (response.error !== null) throw new ListingInsightsRequestError("identity");
-  if (response.data === null) throw new ListingInsightsUnavailableError("identity");
-  return normalizeListingInsightsIdentity(response.data, id);
+  if (response.error !== null)
+    throw new ListingInsightsRequestError("identity");
+  if (response.data !== null)
+    return normalizeListingInsightsIdentity(response.data, id);
+  let venueResponse: { data: unknown; error: unknown };
+  try {
+    venueResponse = await withTimeout(
+      supabase
+        .from("venue_listings")
+        .select("id, brand_id, name, claim_status")
+        .eq("id", id)
+        .maybeSingle(),
+      DATA_FETCH_TIMEOUT_MS,
+      "listing_insights_venue_identity",
+    );
+  } catch {
+    throw new ListingInsightsRequestError("identity");
+  }
+  if (venueResponse.error !== null)
+    throw new ListingInsightsRequestError("identity");
+  if (venueResponse.data === null)
+    throw new ListingInsightsUnavailableError("identity");
+  const venue = objectOrUnavailable(venueResponse.data, "identity");
+  return normalizeListingInsightsIdentity(
+    {
+      id: venue.id,
+      brand_id: venue.brand_id,
+      title: venue.name,
+      event_type: "venue",
+      status: venue.claim_status,
+    },
+    id,
+  );
 };
 
 export const fetchListingInsights = async (

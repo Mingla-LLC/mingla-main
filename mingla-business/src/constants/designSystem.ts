@@ -370,6 +370,29 @@ export const accent = {
   border: "rgba(235, 120, 37, 0.55)",
 } as const;
 
+// #4037 — one fixed visual language for host traffic/value analytics. These
+// colours are contractual data encodings, not decorative choices: source order
+// and colour must remain stable across the brand dashboard, listing insights,
+// accessibility labels and screenshots.
+export const trafficAnalytics = {
+  heroGradient: [
+    "rgba(235, 120, 37, 0.30)",
+    "rgba(235, 120, 37, 0.06)",
+  ] as const,
+  positiveDelta: "#46c98b",
+  positiveDeltaTint: "rgba(70, 201, 139, 0.16)",
+  selectedPageTint: "rgba(235, 120, 37, 0.08)",
+  tapMeter: "#5fd4d0",
+  sources: {
+    mingla_app: "#eb7825",
+    mingla_ads: "#f6a15f",
+    search: "#ffd2a8",
+    social: "#b49cff",
+    own_links: "#7aa7ff",
+    direct_unknown: "#8b93a3",
+  },
+} as const;
+
 export const canvas = {
   discover: "#0c0e12",
   profile: "#141113",

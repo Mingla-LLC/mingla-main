@@ -81,6 +81,8 @@ export interface CurrentBrandRoleState {
    * accepted would get the full payments surface and the identical 403 storm.
    */
   readonly accepted: boolean;
+  /** Auth session readiness used by downstream RLS-scoped query gates. */
+  readonly isAuthReady?: boolean;
   isLoading: boolean;
   isError: boolean;
   refetch: () => Promise<unknown>;
@@ -268,6 +270,7 @@ export const useCurrentBrandRole = (
     rank,
     permissionsOverride,
     accepted,
+    isAuthReady,
     isLoading,
     isError,
     refetch,

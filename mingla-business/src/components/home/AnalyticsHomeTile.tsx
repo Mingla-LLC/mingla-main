@@ -1,30 +1,4 @@
-/**
- * AnalyticsHomeTile — issue #1616 [Business Home analytics card starts collapsed].
- *
- * Collapsed by default: chart icon + ANALYTICS eyebrow + the headline, with a
- * chevron pinned to the card's top-right content origin. Expanding reveals the
- * 30-day window, the figures (or skeletons / error) and the "Open ›" row.
- *
- * Tap semantics are STATE-DEPENDENT (issue #1616 intake amendment 1):
- *   collapsed → the whole row EXPANDS (it must never navigate, or a collapsed
- *               card could not be opened at all — Constitution #1),
- *   expanded  → the whole card NAVIGATES to Analytics,
- *   expanded  → the chevron, and only the chevron, COLLAPSES.
- *
- * The chevron is a SIBLING of the card `Pressable`, not a child of it: RN
- * `Pressable` defaults `accessible={true}`, and on iOS an `accessible` parent
- * collapses its whole subtree into one accessibility element — a nested chevron
- * would be unreachable by VoiceOver and the card would become a one-way door for
- * screen-reader users. Sibling placement exposes two peer actions AND removes the
- * touch-responder contest structurally (the regions are disjoint).
- *
- * Position does NOT persist (issue #1616 decision 2): plain `useState(false)`, no
- * store, no AsyncStorage, no hydration gate. This deliberately diverges from the
- * To-do row it mirrors visually (`todoToggleCollapseStore`) and from the Live-now
- * accordion (`liveSectionCollapseStore`) — recorded here as intentional so it is
- * not later "repaired". Cold launch is always collapsed.
- */
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   LayoutAnimation,
   Platform,
@@ -34,22 +8,35 @@ import {
   UIManager,
   View,
 } from "react-native";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  Path,
+  Stop,
+} from "react-native-svg";
 import {
   accent,
   durations,
+  radius,
   spacing,
   text as textTokens,
+  trafficAnalytics,
   typography,
 } from "../../constants/designSystem";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrencyRound } from "../../utils/currency";
+import type { BrandTrafficRollup } from "../../services/trafficAnalyticsService";
+import {
+  visibleDelta,
+  visitToPaidRate,
+} from "../../utils/trafficAnalyticsMath";
 import type { BrandMinglaDroveRollup } from "../../services/brandAnalyticsService";
 import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
+import { LegacyAnalyticsHomeTile } from "./LegacyAnalyticsHomeTile";
 
-// #1616 — without this Android snaps with no animation at all. Mirrors
-// `BusinessTodoToggle.tsx`.
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental !== undefined
@@ -58,45 +45,139 @@ if (
 }
 
 interface AnalyticsHomeTileProps {
-  data: BrandMinglaDroveRollup | undefined;
+  data: BrandTrafficRollup | BrandMinglaDroveRollup | undefined;
   isLoading: boolean;
   isError: boolean;
   onPress: () => void;
+  /** Marks the new #4037 contract while the RPC is still loading. */
+  contract?: "traffic";
 }
 
-// #1616 — CONSTANT across loading / loaded / error / unauthorized: the collapsed
-// row shows no data, so it has nothing to be loading or wrong about. It must NOT
-// contain "Open Analytics" — the collapsed row does not open Analytics.
-const COLLAPSED_ACCESSIBILITY_LABEL =
-  "Expand analytics, Customers Mingla drove you";
+interface TrafficAnalyticsHomeTileProps extends Omit<
+  AnalyticsHomeTileProps,
+  "data"
+> {
+  data: BrandTrafficRollup | undefined;
+}
 
-const customerLabel = (count: number): string =>
-  `${count.toLocaleString("en-GB")} ${count === 1 ? "customer" : "customers"}`;
+const isTrafficRollup = (
+  data: AnalyticsHomeTileProps["data"],
+): data is BrandTrafficRollup =>
+  data !== undefined && "totals" in data && "captureStartedAt" in data;
 
-const valueLabels = (values: Record<string, number>): string[] =>
-  Object.entries(values).map(
-    ([currency, cents]) => `${formatCurrency(cents, currency, true)} booking value`,
+const captureDate = (value: string | null): string | null => {
+  if (value === null) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(date);
+};
+
+const customers = (value: number): string =>
+  `${value.toLocaleString("en-GB")} ${value === 1 ? "customer" : "customers"}`;
+
+const amountFor = (
+  values: Record<string, number>,
+  primaryCurrency: string | null,
+): { currency: string | null; cents: number } => {
+  if (primaryCurrency !== null) {
+    return { currency: primaryCurrency, cents: values[primaryCurrency] ?? 0 };
+  }
+  const first = Object.entries(values)[0];
+  return first === undefined
+    ? { currency: null, cents: 0 }
+    : { currency: first[0], cents: first[1] };
+};
+
+const money = (currency: string | null, cents: number): string =>
+  currency === null
+    ? "No paid booking value yet"
+    : formatCurrencyRound(cents, currency, true);
+
+const CompactSparkline: React.FC<{
+  points: BrandTrafficRollup["daily"];
+  total: number;
+}> = ({ points, total }) => {
+  const geometry = useMemo(() => {
+    const values = points.map((point) => point.pageViews);
+    const max = Math.max(...values, 1);
+    const divisor = Math.max(values.length - 1, 1);
+    const chart = values.map((value, index) => ({
+      x: (index / divisor) * 300,
+      y: 58 - (value / max) * 50,
+    }));
+    const line = chart
+      .map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`)
+      .join(" ");
+    const last = chart[chart.length - 1] ?? { x: 0, y: 58 };
+    const highestIndex = values.indexOf(max);
+    const highestDay = points[highestIndex]?.day;
+    return {
+      line,
+      area: chart.length === 0 ? "" : `${line} L${last.x},62 L0,62 Z`,
+      last,
+      max,
+      highestDay,
+    };
+  }, [points]);
+  const highestDate =
+    geometry.highestDay === undefined
+      ? null
+      : new Intl.DateTimeFormat("en-GB", {
+          day: "numeric",
+          month: "short",
+          timeZone: "UTC",
+        }).format(new Date(`${geometry.highestDay}T00:00:00Z`));
+  return (
+    <View
+      accessibilityRole="image"
+      accessibilityLabel={`Visits per day, 30 days, ${total.toLocaleString("en-GB")} total, highest ${geometry.max.toLocaleString("en-GB")}${highestDate === null ? "" : ` on ${highestDate}`}`}
+      style={styles.sparkline}
+    >
+      <Svg width="100%" height={64} viewBox="0 0 300 64">
+        <Defs>
+          <SvgLinearGradient id="homeTraffic" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={accent.warm} stopOpacity="0.32" />
+            <Stop offset="1" stopColor={accent.warm} stopOpacity="0.02" />
+          </SvgLinearGradient>
+        </Defs>
+        <Path d={geometry.area} fill="url(#homeTraffic)" />
+        <Path
+          d={geometry.line}
+          fill="none"
+          stroke={accent.warm}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <Circle
+          cx={geometry.last.x}
+          cy={geometry.last.y}
+          r="4"
+          fill={accent.warm}
+          stroke={textTokens.primary}
+          strokeWidth="2"
+        />
+      </Svg>
+    </View>
   );
+};
 
-export const AnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
+const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
   data,
   isLoading,
   isError,
   onPress,
 }) => {
-  const [expanded, setExpanded] = useState<boolean>(false);
+  const [expanded, setExpanded] = useState(false);
   const reduceMotion = useReducedMotionNative();
-
-  // #1616 — serves as both handleExpand (collapsed card) and handleCollapse
-  // (expanded chevron); the toggle is symmetric. Fires ONLY on an explicit user
-  // toggle — never on a data change, so a background refetch never animates.
   const toggleExpanded = useCallback((): void => {
     if (!reduceMotion) {
       LayoutAnimation.configureNext(
         LayoutAnimation.create(
-          // `easings.inOut` is the token this corresponds to, but
-          // `LayoutAnimation.Types` is a fixed enum and cannot take a
-          // cubic-bezier — so it is cited, not wired.
           durations.normal,
           LayoutAnimation.Types.easeInEaseOut,
           LayoutAnimation.Properties.opacity,
@@ -107,30 +188,42 @@ export const AnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
   }, [reduceMotion]);
 
   const valid = data?.authorized === true && !isError;
-  const values = valid ? valueLabels(data.valueCents30d) : [];
-  const count = valid ? data.minglaDrove30d : 0;
-  const loadedLines = [
-    customerLabel(count),
-    ...(values.length > 0 ? values : ["No paid booking value yet"]),
-  ];
-  const expandedAccessibilityLabel = valid
-    ? `Open Analytics, ${loadedLines.join(", ")}`
-    : isLoading
-      ? "Open Analytics, loading 30-day snapshot"
-      : "Open Analytics, couldn't load your 30-day snapshot";
+  const hasTraffic =
+    valid && data.captureStartedAt !== null && data.totals.pageViews >= 30;
+  const value = valid
+    ? amountFor(data.totals.valueMinglaBrought, data.totals.primaryCurrency)
+    : { currency: null, cents: 0 };
+  const priorValue = valid
+    ? amountFor(data.prior.valueMinglaBrought, value.currency)
+    : { currency: null, cents: 0 };
+  const delta = valid
+    ? visibleDelta(
+        value.cents,
+        priorValue.cents,
+        data.totals.bookings,
+        data.prior.bookings,
+        5,
+      )
+    : null;
+  const visitRate = valid
+    ? visitToPaidRate(data.totals.bookings, data.totals.pageViews)
+    : null;
+  const date = valid ? captureDate(data.captureStartedAt) : null;
+  const summary = valid
+    ? hasTraffic
+      ? `${money(value.currency, value.cents)} · ${customers(data.totals.minglaCustomers)} · ${data.totals.pageViews.toLocaleString("en-GB")} visits · 30 days`
+      : `${customers(data.totals.minglaCustomers)} · collecting visits${date === null ? "" : ` since ${date}`}`
+    : "Analytics unavailable";
+  const accessibilityLabel = expanded
+    ? `Open Analytics, ${summary}`
+    : `Expand analytics, What Mingla brought you, ${summary}`;
 
   return (
     <View style={styles.root} testID="analytics-home-tile-root">
       <Pressable
-        // #1616 — state-dependent: collapsed EXPANDS, expanded NAVIGATES.
         onPress={expanded ? onPress : toggleExpanded}
         accessibilityRole="button"
-        accessibilityLabel={
-          expanded ? expandedAccessibilityLabel : COLLAPSED_ACCESSIBILITY_LABEL
-        }
-        // #1616 — `expanded` lives on whichever node OWNS the toggle, and only
-        // there. Expanded, this node navigates, so it must not report a
-        // collapsed/expanded state to a screen reader.
+        accessibilityLabel={accessibilityLabel}
         accessibilityState={expanded ? undefined : { expanded: false }}
         style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
         testID="analytics-home-tile"
@@ -143,59 +236,118 @@ export const AnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
             <View style={styles.iconWrap} accessible={false}>
               <Icon name="chart" size={20} color={accent.warm} />
             </View>
-            <Text style={styles.eyebrow}>ANALYTICS</Text>
+            <Text style={styles.headerEyebrow}>ANALYTICS</Text>
           </View>
           <Text style={styles.title} accessibilityRole="header">
-            Customers Mingla drove you
+            What Mingla brought you
           </Text>
+          {isLoading ? (
+            <View
+              style={styles.collapsedSkeleton}
+              testID="analytics-home-loading"
+            >
+              <Skeleton width="78%" height={18} />
+            </View>
+          ) : (
+            <Text style={styles.summary} numberOfLines={2}>
+              {summary}
+            </Text>
+          )}
+
           {expanded ? (
-            <>
-              <Text style={styles.window}>Last 30 days</Text>
-              {isLoading ? (
-                <View style={styles.skeletons} testID="analytics-home-loading">
-                  <Skeleton width="46%" height={20} />
-                  <Skeleton width="72%" height={16} />
-                </View>
-              ) : valid ? (
-                <View style={styles.values}>
-                  <Text style={styles.customer}>{customerLabel(count)}</Text>
-                  {(values.length > 0 ? values : ["No paid booking value yet"]).map(
-                    (line) => (
-                      <Text key={line} style={styles.value}>
-                        {line}
-                      </Text>
-                    ),
+            isLoading ? (
+              <View style={styles.skeletons}>
+                <Skeleton width="46%" height={36} />
+                <Skeleton width="100%" height={64} />
+              </View>
+            ) : valid ? (
+              <View style={styles.expandedBody}>
+                <Text style={styles.eyebrow}>
+                  WHAT MINGLA BROUGHT YOU · 30 DAYS
+                </Text>
+                <View style={styles.valueRow}>
+                  <Text style={styles.bigValue}>
+                    {money(value.currency, value.cents)}
+                  </Text>
+                  {delta === null ? null : (
+                    <View style={styles.deltaPill}>
+                      <Text
+                        style={styles.deltaText}
+                      >{`${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`}</Text>
+                    </View>
                   )}
                 </View>
-              ) : (
-                <Text style={styles.error}>
-                  Couldn&apos;t load your 30-day snapshot
+                <Text style={styles.sentence}>
+                  <Text style={styles.sentenceStrong}>
+                    {customers(data.totals.minglaCustomers)}
+                  </Text>
+                  {` found you through Mingla, out of ${data.totals.customers.toLocaleString("en-GB")} who booked.`}
                 </Text>
-              )}
-              <View style={styles.action}>
-                <Text style={styles.actionText}>Open</Text>
-                <View accessible={false}>
-                  <Icon name="chevR" size={16} color={accent.warm} />
+                {hasTraffic ? (
+                  <CompactSparkline
+                    points={data.daily}
+                    total={data.totals.pageViews}
+                  />
+                ) : (
+                  <Text style={styles.collecting}>
+                    {`Collecting${date === null ? "" : ` since ${date}`}. Visits show here as people open your pages.`}
+                  </Text>
+                )}
+                <View style={styles.miniRow}>
+                  <View style={styles.miniStat}>
+                    <Text style={styles.miniValue}>
+                      {hasTraffic
+                        ? data.totals.pageViews.toLocaleString("en-GB")
+                        : "Collecting"}
+                    </Text>
+                    <Text style={styles.miniLabel}>Page visits</Text>
+                  </View>
+                  <View style={styles.miniStat}>
+                    <Text style={styles.miniValue}>
+                      {hasTraffic
+                        ? data.totals.buttonTaps.toLocaleString("en-GB")
+                        : "—"}
+                    </Text>
+                    <Text style={styles.miniLabel}>Button taps</Text>
+                  </View>
+                  <View style={styles.miniStat}>
+                    <Text style={styles.miniValue}>
+                      {hasTraffic && visitRate !== null
+                        ? `${visitRate.toFixed(1)}%`
+                        : "—"}
+                    </Text>
+                    <Text style={styles.miniLabel}>Visit → paid</Text>
+                  </View>
+                </View>
+                <View style={styles.footer}>
+                  <Text style={styles.topPage} numberOfLines={1}>
+                    {data.pages[0] === undefined
+                      ? "Top page: Collecting"
+                      : `Top page: ${data.pages[0].title}`}
+                  </Text>
+                  <Text style={styles.open}>Open analytics ›</Text>
                 </View>
               </View>
-            </>
+            ) : (
+              <Text style={styles.error}>
+                Couldn&apos;t load your 30-day snapshot
+              </Text>
+            )
           ) : null}
         </GlassCard>
 
         {expanded ? null : (
-          // #1616 — decorative while collapsed: the card Pressable already owns
-          // the whole row, so this must never intercept the touch and must add
-          // no node inside the flattened accessible button.
-          <View style={styles.chevronSlot} accessible={false} pointerEvents="none">
+          <View
+            style={styles.chevronSlot}
+            accessible={false}
+            pointerEvents="none"
+          >
             <Icon name="chevD" size={18} color={textTokens.secondary} />
           </View>
         )}
       </Pressable>
 
       {expanded ? (
-        // #1616 — SIBLING of the card Pressable (see the file header). 24pt slot
-        // + 13pt hitSlop on all four sides = a 50 × 50 effective target, and the
-        // extension stays inside `styles.root`'s box so Android honours it.
         <Pressable
           onPress={toggleExpanded}
           hitSlop={{ top: 13, right: 13, bottom: 13, left: 13 }}
@@ -213,24 +365,11 @@ export const AnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = ({
 };
 
 const styles = StyleSheet.create({
-  // #1616 — NO padding, margin or border: the root's top-left must coincide with
-  // the card Pressable's, so `top: 16 / right: 16` resolves to the identical
-  // screen position in both states and the chevron never moves on toggle.
   root: { position: "relative" },
   pressable: { minHeight: 44 },
   pressed: { opacity: 0.72 },
-  // #1616 — `minHeight: 188` moved to `cardExpanded`; a 92pt collapsed row is
-  // the whole point of the issue. Kept as the marker the style array composes on.
   card: {},
-  // #1616 — jitter guard for the EXPANDED body only: the error state renders 8pt
-  // shorter than the loaded state, so without this an expanded card that is
-  // loading (204) and then errors (180) visibly shrinks and drags the Upcoming
-  // header up with it. Stays on the chrome node — moving it to `contentStyle`
-  // would stack the card's 32pt padding on top of the 188.
-  cardExpanded: { minHeight: 188 },
-  // #1616 — pinned to the eyebrow row, NOT vertically centred on the block, so it
-  // holds the identical position whether the card is 92pt or 188pt tall (and when
-  // the headline wraps to two lines).
+  cardExpanded: { minHeight: 420 },
   chevronSlot: {
     position: "absolute",
     top: spacing.md,
@@ -242,8 +381,13 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   header: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  iconWrap: { width: 24, height: 24, alignItems: "center", justifyContent: "center" },
-  eyebrow: {
+  iconWrap: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerEyebrow: {
     color: textTokens.tertiary,
     fontSize: typography.labelCap.fontSize,
     lineHeight: typography.labelCap.lineHeight,
@@ -257,23 +401,101 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: spacing.sm,
   },
-  window: {
+  summary: {
+    color: textTokens.secondary,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    marginTop: spacing.xs,
+    paddingRight: spacing.lg,
+    fontVariant: ["tabular-nums"],
+  },
+  collapsedSkeleton: { marginTop: spacing.sm },
+  skeletons: { gap: spacing.md, marginTop: spacing.lg },
+  expandedBody: { marginTop: spacing.lg },
+  eyebrow: {
+    color: textTokens.tertiary,
+    fontSize: typography.labelCap.fontSize,
+    lineHeight: typography.labelCap.lineHeight,
+    fontWeight: typography.labelCap.fontWeight,
+    letterSpacing: typography.labelCap.letterSpacing,
+  },
+  valueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  bigValue: {
+    color: textTokens.primary,
+    fontSize: typography.display.fontSize,
+    lineHeight: typography.display.lineHeight,
+    fontWeight: typography.display.fontWeight,
+    fontVariant: ["tabular-nums"],
+  },
+  deltaPill: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: trafficAnalytics.positiveDeltaTint,
+  },
+  deltaText: {
+    color: trafficAnalytics.positiveDelta,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "700",
+  },
+  sentence: {
+    color: textTokens.secondary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    marginTop: spacing.sm,
+  },
+  sentenceStrong: { color: textTokens.primary, fontWeight: "700" },
+  sparkline: { height: 64, marginTop: spacing.md },
+  collecting: {
+    color: textTokens.secondary,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    marginTop: spacing.md,
+  },
+  miniRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  miniStat: { flex: 1, minWidth: 90 },
+  miniValue: {
+    color: textTokens.primary,
+    fontSize: typography.bodyLg.fontSize,
+    lineHeight: typography.bodyLg.lineHeight,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+  },
+  miniLabel: {
     color: textTokens.tertiary,
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
   },
-  skeletons: { gap: spacing.sm, marginTop: spacing.md },
-  values: { gap: spacing.xs, marginTop: spacing.md },
-  customer: {
-    color: textTokens.primary,
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginTop: spacing.lg,
   },
-  value: {
+  topPage: {
+    flex: 1,
     color: textTokens.secondary,
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
+  },
+  open: {
+    color: accent.warm,
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: typography.buttonMd.fontWeight,
   },
   error: {
     color: textTokens.secondary,
@@ -281,18 +503,25 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     marginTop: spacing.md,
   },
-  action: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    marginTop: spacing.md,
-  },
-  actionText: {
-    color: accent.warm,
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-  },
 });
+
+export const AnalyticsHomeTile: React.FC<AnalyticsHomeTileProps> = (props) => {
+  if (props.contract !== "traffic" && !isTrafficRollup(props.data)) {
+    return (
+      <LegacyAnalyticsHomeTile
+        data={props.data as BrandMinglaDroveRollup | undefined}
+        isLoading={props.isLoading}
+        isError={props.isError}
+        onPress={props.onPress}
+      />
+    );
+  }
+  return (
+    <TrafficAnalyticsHomeTile
+      {...props}
+      data={isTrafficRollup(props.data) ? props.data : undefined}
+    />
+  );
+};
 
 export default AnalyticsHomeTile;
