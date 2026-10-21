@@ -90,6 +90,24 @@ export async function updateInternalSupportThread(input) {
   return unwrap(result, "Couldn't update the staff ticket");
 }
 
+export async function reassignInternalSupportThread(input) {
+  const result = await supabase.rpc("issue_3988_reassign_internal_thread", {
+    p_thread_id: input.threadId,
+    p_expected_revision: input.expectedRevision,
+    p_assigned_staff_id: input.assignedStaffId,
+  });
+  return unwrap(result, "Couldn't reassign the staff ticket");
+}
+
+export async function reassignProductSignal(input) {
+  const result = await supabase.rpc("issue_3988_reassign_product_signal", {
+    p_signal_id: input.signalId,
+    p_expected_revision: input.expectedRevision,
+    p_owner_user_id: input.ownerUserId,
+  });
+  return unwrap(result, "Couldn't reassign the Product signal");
+}
+
 export async function createProductSignal(input) {
   const rpcName = input.sourceKind === "brand_group_message"
     ? "issue_3720_create_brand_message_product_signal"
