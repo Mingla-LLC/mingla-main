@@ -98,6 +98,10 @@ export interface GuestRosterRow {
    * Absent on rows from before the #3827 roster re-emit; read as false.
    */
   guestList?: boolean;
+  /** Issue #3827 — host-visible attribution for a private ticket link. */
+  viaLinkLabel?: string | null;
+  /** Issue #3827 — named guest's group lead, when this person came with one. */
+  cameWithName?: string | null;
 }
 
 export interface GuestRosterSummary {

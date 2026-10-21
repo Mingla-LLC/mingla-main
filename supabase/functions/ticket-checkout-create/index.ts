@@ -117,6 +117,11 @@ import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
 import {
+  hashTicketLinkToken,
+  resolveOfferingInviteTokenPepper,
+  TICKET_LINK_TOKEN,
+} from "../_shared/ticketLinkToken.ts";
+import {
   checkoutSelectionUsesTripInstallments,
   TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
@@ -782,6 +787,19 @@ export const createTicketCheckoutCreateHandler = (
       body = await req.json();
     } catch {
       return jsonResponse({ error: "invalid_json" }, 400);
+    }
+
+    // Issue #3827 — the bearer token is optional for every existing checkout,
+    // but when supplied it must be the exact short opaque shape. It is hashed
+    // before the database call and is never logged or persisted.
+    const ticketLinkToken = body.ticketLinkToken === undefined
+      ? null
+      : typeof body.ticketLinkToken === "string" &&
+          TICKET_LINK_TOKEN.test(body.ticketLinkToken)
+      ? body.ticketLinkToken
+      : "invalid";
+    if (ticketLinkToken === "invalid") {
+      return jsonResponse({ error: "ticket_link_invalid" }, 400);
     }
 
     // issue #2579 — hoisted from below the validation block. Every refusal from
@@ -1645,12 +1663,54 @@ export const createTicketCheckoutCreateHandler = (
         },
       )
       : { data: null, error: null };
+    let ticketLinkHash: string | null = null;
+    if (ticketLinkToken !== null) {
+      try {
+        const pepper = await resolveOfferingInviteTokenPepper();
+        ticketLinkHash = await hashTicketLinkToken(
+          ticketLinkToken,
+          pepper.bytes,
+        );
+      } catch {
+        return jsonResponse({ error: "ticket_link_not_active" }, 409);
+      }
+    }
+    const ticketLinkSessionCall = resolvedAttempt.error === null &&
+        resolvedAttempt.data === null && ticketLinkHash !== null
+      ? await supabase.rpc(
+        "biz_ticket_link_checkout_create_session",
+        {
+          p_token_hash: ticketLinkHash,
+          p_event_id: eventId,
+          p_buyer_user_id: userId,
+          p_buyer_name: buyerName,
+          p_buyer_email: buyerEmail,
+          p_buyer_phone_e164: buyerPhoneE164,
+          p_marketing_opt_in: marketingOptIn,
+          p_lines: lines,
+          p_idempotency_key: idempotencyKey,
+          p_expires_at: queueEngaged
+            ? "infinity"
+            : new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          p_application_fee_amount_cents: 0,
+          p_payment_plan_choice: paymentPlanChoice,
+          p_event_date_ids: orderedEventDateIds.length > 0
+            ? orderedEventDateIds
+            : null,
+          p_booked_start_at: bookedStartAt,
+          p_booked_end_at: bookedEndAt,
+          p_booked_party_size: partySize,
+        },
+      )
+      : null;
     // The literal call indentation is pinned by the append-only slice-1 source
     // regression that proves capability refusal still precedes session I/O.
     // deno-fmt-ignore
     const sessionCall = resolvedAttempt.error !== null ||
         resolvedAttempt.data !== null
       ? resolvedAttempt
+      : ticketLinkSessionCall !== null
+      ? ticketLinkSessionCall
       : await supabase.rpc(
       "biz_ticket_checkout_create_session",
       {
@@ -1736,6 +1796,21 @@ export const createTicketCheckoutCreateHandler = (
       // same 422 family as the other day refusals) instead of a generic 409.
       if (sessionError?.message?.includes("event_date_choice_required")) {
         return jsonResponse({ error: "event_date_choice_required" }, 422);
+      }
+      if (
+        ["link_not_found", "link_revoked", "link_expired", "event_unavailable", "event_ended", "tier_unavailable"]
+          .some((token) => sessionError?.message?.includes(token))
+      ) {
+        return jsonResponse({ error: "ticket_link_not_active" }, 409);
+      }
+      if (sessionError?.message?.includes("link_full")) {
+        return jsonResponse({ error: "ticket_link_full" }, 409);
+      }
+      if (
+        ["link_tier_mismatch", "not_a_private_ticket_link"]
+          .some((token) => sessionError?.message?.includes(token))
+      ) {
+        return jsonResponse({ error: "ticket_link_invalid" }, 400);
       }
       // issue #3281 — booked-start refusals (stable names for client copy).
       for (

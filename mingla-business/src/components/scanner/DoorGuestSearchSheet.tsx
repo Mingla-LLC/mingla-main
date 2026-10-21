@@ -241,6 +241,7 @@ export const DoorGuestSearchPanel: React.FC<DoorGuestSearchPanelProps> = ({
                 </View>
                 <Text style={styles.guestMeta}>{guest.maskedEmail ?? "No email"}</Text>
                 {guest.cameWithName !== null ? <Text style={styles.guestMeta}>{`with ${guest.cameWithName}`}</Text> : null}
+                {guest.viaLinkLabel !== null ? <Text style={styles.guestMeta}>{`via ${guest.viaLinkLabel}`}</Text> : null}
                 {guest.tickets.map((ticket) => {
                   const state = ticketStateLabel(ticket);
                   return (

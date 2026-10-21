@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "d254d77692242a491396e9301490e295095ad188b125d6b5057e93d8edbef8eb",
-      "value": "cff74d74b55788a854dc0466052b118bfc01a3f30ec6458c9aa2dc513622676a"
+      "value": "441295f834f1d20238250bd556e0bc8e05cf91f984259f5d4a9a66f676d25e5c"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box migration (a re-emit of the RSVP/social-proof readers and the public view) the same way."
+  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment."
 }

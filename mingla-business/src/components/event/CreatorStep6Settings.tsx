@@ -2,8 +2,7 @@
  * Wizard Step 6 — Settings.
  *
  * Designer source: screens-creator.jsx lines 237-277 (CreatorStep6).
- * Visibility 3-pill (Public / Unlisted / Private) + ToggleRows
- * (Require approval / Hide remaining / Password).
+ * Visibility 3-pill (Public / Unlisted / Private) + access ToggleRows.
  * #2879 Ilashe P0 — transfer toggle removed: product cannot transfer yet.
  *
  * Watch-point WK-CYCLE-3-1 — ToggleRow kit lift still tracked for reuse.
@@ -254,15 +253,6 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
         }
         disabled={hideRemainingLocked}
         testID="event-hide-remaining"
-      />
-
-      <ToggleRow
-        label="Password-protected"
-        sub="Guests need a code to see it."
-        on={draft.passwordProtected}
-        onToggle={() =>
-          updateDraft({ passwordProtected: !draft.passwordProtected })
-        }
       />
 
       <ToggleRow

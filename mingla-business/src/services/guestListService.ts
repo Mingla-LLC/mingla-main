@@ -266,6 +266,7 @@ export interface DoorGuest {
   maskedEmail: string | null;
   isGuestList: boolean;
   cameWithName: string | null;
+  viaLinkLabel: string | null;
   tickets: DoorGuestTicket[];
 }
 

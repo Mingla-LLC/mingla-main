@@ -233,6 +233,7 @@ export function projectDoorOrders(orders: unknown): Record<string, unknown>[] {
     maskedEmail: o.maskedEmail ?? null,
     isGuestList: o.isGuestList === true,
     cameWithName: typeof o.cameWithName === "string" ? o.cameWithName : null,
+    viaLinkLabel: typeof o.viaLinkLabel === "string" ? o.viaLinkLabel : null,
     tickets: Array.isArray(o.tickets)
       ? o.tickets.filter(isObject).map((t) => ({
         ticketId: t.ticketId,
@@ -398,7 +399,28 @@ export function createHandler(deps: GuestListDeps): (req: Request) => Promise<Re
         });
         if (error) return mapRpcError(error);
         const out = data as { orders: unknown[]; truncated: boolean };
-        return json({ ok: true, orders: projectDoorOrders(out.orders), truncated: out.truncated === true });
+        const orderIds = Array.isArray(out.orders)
+          ? out.orders.filter(isObject).map((order) => order.orderId).filter(isUuid)
+          : [];
+        const labelResult = await deps.rpc("biz_ticket_link_order_labels", {
+          p_actor_id: actorId,
+          p_event_id: body.eventId,
+          p_order_ids: orderIds,
+        });
+        if (labelResult.error) {
+          // Searching/admitting at the door remains available if optional
+          // attribution cannot be loaded. Never log the database message.
+          console.error("[guest-list] ticket-link attribution unavailable");
+        }
+        const labels = isObject(labelResult.data) ? labelResult.data : {};
+        const attributedOrders = Array.isArray(out.orders)
+          ? out.orders.map((order) => {
+            if (!isObject(order) || !isUuid(order.orderId)) return order;
+            const label = labels[order.orderId];
+            return { ...order, viaLinkLabel: typeof label === "string" ? label : null };
+          })
+          : [];
+        return json({ ok: true, orders: projectDoorOrders(attributedOrders), truncated: out.truncated === true });
       }
 
       case "admit": {

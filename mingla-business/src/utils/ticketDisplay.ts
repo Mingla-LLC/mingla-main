@@ -110,7 +110,7 @@ export const formatTicketBadges = (t: TicketStub): TicketBadge[] => {
     return badges;
   }
   if (t.visibility === "hidden") {
-    badges.push({ label: "Hidden — direct link only", variant: "muted" });
+    badges.push({ label: "Hidden — private link only", variant: "muted" });
   }
   // Cycle 12 — surface door-only / online-only tiers so the operator (and
   // the buyer-side renderer) can immediately see which surface this tier

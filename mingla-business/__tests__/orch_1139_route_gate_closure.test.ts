@@ -3,8 +3,8 @@
  *
  * Carries DRAFT invariant I-PROPOSED-1139-ROUTE-GATE-CLOSURE (flips ACTIVE at
  * CLOSE). Every top-level route under `mingla-business/app/` MUST be classified
- * into EXACTLY ONE bucket: gated-by-default, or one of the three exemption sets
- * (buyer / connect-seller / invite). A new route added to `app/` that is not
+ * into EXACTLY ONE bucket: gated-by-default, or one of the four exemption sets
+ * (buyer / connect-seller / invite / bearer). A new route added to `app/` that is not
  * classified FAILS the build — converting "a new route silently inherits
  * redirect-to-sign-in" (the exact mechanism behind BOTH ORCH-1115 and ORCH-1139)
  * from a latent P0 into a CI failure.
@@ -16,8 +16,9 @@
  *    internals / dev-only files (`_layout`, `+html`, `+not-found`, `__styleguide`).
  * 2. Classify each route via membership in the actual exported constants:
  *    connect-exempt iff `/route` in SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES,
- *    invite-exempt iff in INVITE_ACCEPT_ROUTE_PREFIXES, buyer-exempt iff
- *    `/route/` in PUBLIC_BUYER_ROUTE_PREFIXES, else gated-default.
+ *    invite-exempt iff in INVITE_ACCEPT_ROUTE_PREFIXES, bearer-exempt iff it
+ *    equals BEARER_TICKET_LINK_ROUTE_PREFIX, buyer-exempt iff `/route/` is in
+ *    PUBLIC_BUYER_ROUTE_PREFIXES, else gated-default.
  * 3. Assert the live classification equals the SEEDED expected map (§5 inventory)
  *    AND every route lands in exactly one bucket.
  *
@@ -32,6 +33,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  BEARER_TICKET_LINK_ROUTE_PREFIX,
   INVITE_ACCEPT_ROUTE_PREFIXES,
   PUBLIC_BUYER_ROUTE_PREFIXES,
   SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES,
@@ -54,7 +56,11 @@ const NON_ROUTE_FILES = new Set([
 ]);
 
 type Bucket =
-  "gated-default" | "buyer-exempt" | "connect-seller-exempt" | "invite-exempt";
+  | "gated-default"
+  | "buyer-exempt"
+  | "connect-seller-exempt"
+  | "invite-exempt"
+  | "bearer-exempt";
 
 // Strip the no-trailing-slash form of each prefix into a Set of bare segments.
 const bareSet = (prefixes: readonly string[]): Set<string> =>
@@ -65,12 +71,14 @@ const bareSet = (prefixes: readonly string[]): Set<string> =>
 const CONNECT = bareSet(SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES);
 const INVITE = bareSet(INVITE_ACCEPT_ROUTE_PREFIXES);
 const BUYER = bareSet(PUBLIC_BUYER_ROUTE_PREFIXES);
+const BEARER: Set<string> = new Set([BEARER_TICKET_LINK_ROUTE_PREFIX]);
 
 const classify = (route: string): Bucket[] => {
   const p = `/${route}`;
   const buckets: Bucket[] = [];
   if (CONNECT.has(p)) buckets.push("connect-seller-exempt");
   if (INVITE.has(p)) buckets.push("invite-exempt");
+  if (BEARER.has(p)) buckets.push("bearer-exempt");
   if (BUYER.has(p)) buckets.push("buyer-exempt");
   if (buckets.length === 0) buckets.push("gated-default");
   return buckets;
@@ -123,6 +131,9 @@ const EXPECTED: Record<string, Bucket> = {
   refund: "buyer-exempt",
   o: "buyer-exempt",
   booking: "buyer-exempt",
+  // [TEST-MOD-APPROVED #3827] `/g/{token}` proves possession through its
+  // bearer credential and must bypass both ambient-auth and buyer allowlists.
+  g: "bearer-exempt",
   // --- gated-default (everything else) ---
   "(tabs)": "gated-default",
   account: "gated-default",
@@ -187,12 +198,15 @@ describe("ORCH-1139 T-C1 (closure) — every app/ route is classified into exact
     }
   });
 
-  test("all 6 connect + 2 invite exempt routes resolve to real classifications", () => {
+  test("all 6 connect + 2 invite + 1 bearer exempt routes resolve to real classifications", () => {
     const connectRoutes = liveRoutes.filter(
       (r) => classify(r)[0] === "connect-seller-exempt",
     );
     const inviteRoutes = liveRoutes.filter(
       (r) => classify(r)[0] === "invite-exempt",
+    );
+    const bearerRoutes = liveRoutes.filter(
+      (r) => classify(r)[0] === "bearer-exempt",
     );
     expect(connectRoutes.sort()).toEqual(
       [
@@ -207,5 +221,6 @@ describe("ORCH-1139 T-C1 (closure) — every app/ route is classified into exact
     expect(inviteRoutes.sort()).toEqual(
       ["accept-brand-invitation", "accept-scanner-invitation"].sort(),
     );
+    expect(bearerRoutes).toEqual(["g"]);
   });
 });

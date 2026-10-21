@@ -23,6 +23,7 @@ import { useGuestRoster } from "../../hooks/useGuestRoster";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import type {
   GuestRosterFilter,
+  GuestRosterActionPreview,
   GuestRosterPrimaryStatus,
   GuestRosterRow,
   GuestRosterSort,
@@ -31,7 +32,6 @@ import {
   GUEST_ROSTER_INVITATION_LABELS,
   GUEST_ROSTER_PRIMARY_LABELS,
 } from "../../types/guestRoster";
-import type { GuestRosterActionPreview } from "../../types/guestRoster";
 import {
   createGuestRosterRequestId,
   executeGuestRosterAction,
@@ -164,7 +164,9 @@ const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionM
               <Pill variant={row.invitationStatus === "invited" ? "info" : "draft"}>{invitationLabel}</Pill>
             ) : null}
           </View>
-          <Text style={styles.rowMeta}>{partyText}{checkedText}</Text>
+          <Text style={styles.rowMeta}>
+            {partyText}{checkedText}{row.cameWithName ? ` · came with ${row.cameWithName}` : ""}{row.viaLinkLabel ? ` · via ${row.viaLinkLabel}` : ""}
+          </Text>
         </View>
         <Text style={styles.chevron} accessibilityElementsHidden>›</Text>
       </GlassCard>
@@ -200,6 +202,11 @@ const GuestDetailSheet: React.FC<{
             </Pill>
           ) : null}
         </View>
+        {row.viaLinkLabel ? (
+          <Text style={styles.truthNote}>
+            {row.cameWithName ? `Added by ${row.cameWithName} · ` : ""}Via {row.viaLinkLabel}
+          </Text>
+        ) : null}
         {row.invitationStatus === "invited" ? (
           <Text style={styles.truthNote}>Sent to provider. This does not claim delivery, display, opening, or reading.</Text>
         ) : null}
@@ -265,6 +272,7 @@ export interface GuestRosterExperienceProps {
   onExport: (input: { filter: GuestRosterFilter; search: string; sort: GuestRosterSort }) => void;
   /** issue #3827 — set only when the viewer may add guests (ADD_COMP_GUEST). */
   onAddGuests?: () => void;
+  onOpenPrivateLinks?: () => void;
 }
 
 export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
@@ -274,6 +282,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   onOpenGuestListOrder,
   onExport,
   onAddGuests,
+  onOpenPrivateLinks,
 }) => {
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
@@ -425,6 +434,9 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           {onAddGuests !== undefined ? (
             <IconChrome icon="plus" size={36} onPress={onAddGuests} accessibilityLabel="Add to guest list" />
           ) : null}
+          {onOpenPrivateLinks !== undefined ? (
+            <IconChrome icon="link" size={36} onPress={onOpenPrivateLinks} accessibilityLabel="Private links" />
+          ) : null}
         </View>
       </View>
 
@@ -480,7 +492,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
               onPress={() => { if (selectionMode) toggleSelected(row); else setSelected(row); }} />)}
             {query.isFetchNextPageError ? (
               <View style={styles.loadMoreState} accessibilityRole="alert">
-                <Text style={styles.detailMuted}>Couldn't load more guests.</Text>
+                <Text style={styles.detailMuted}>Couldn’t load more guests.</Text>
                 <Button variant="secondary" label="Refresh list" onPress={refresh} />
               </View>
             ) : query.hasNextPage ? (

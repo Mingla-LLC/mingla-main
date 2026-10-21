@@ -203,6 +203,7 @@ export const serializeGuestsToCsv = (
     "Net currency",
     // issue #3827 — the guest a named plus-one came with. Inserted BEFORE
     // "Day" so the first 17 columns keep their index and "Day" stays last.
+    "Via link",
     "Came with",
     // issue #2160 — APPENDED LAST so every existing column keeps its index.
     // Blank for door sales and any pass that is not day-scoped.
@@ -255,6 +256,7 @@ export const serializeGuestsToCsv = (
         "",
         "0.00",
         "",
+        o.viaLinkLabel ?? "",
         o.partyLeadOrderId !== null && o.partyLeadOrderId !== undefined ? o.partyLeadName ?? "" : "",
         orderDayCell(o, dayLabels),
       ];
@@ -282,6 +284,7 @@ export const serializeGuestsToCsv = (
         o.currency,
         formatMoneyForCsv(net),
         o.currency,
+        o.viaLinkLabel ?? "",
         "",
         orderDayCell(o, dayLabels),
       ];
@@ -313,6 +316,7 @@ export const serializeGuestsToCsv = (
         s.currency,
         // A door sale is rung up on the night, so its day is the night it was
         // rung up on — not a chosen occurrence. Left blank rather than guessed.
+        "",
         "",
         "",
       ];

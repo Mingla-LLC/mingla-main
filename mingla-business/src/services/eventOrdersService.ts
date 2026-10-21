@@ -70,6 +70,9 @@ export interface OrderRow {
   comp_reason?: string | null;
   comp_party_lead_order_id?: string | null;
   party_lead_name?: string | null;
+  ticket_link_id?: string | null;
+  ticket_link_signup_id?: string | null;
+  ticket_type_links?: { label: string } | { label: string }[] | null;
   events: { brand_id: null | string } | null;
   order_line_items: OrderLineItemRow[];
   /** issue #2160 — each pass of this order and the days it admits. */
@@ -200,6 +203,9 @@ export const fetchEventOrders = async (
       source,
       comp_reason,
       comp_party_lead_order_id,
+      ticket_link_id,
+      ticket_link_signup_id,
+      ticket_type_links ( label ),
       party_lead_name:metadata->>party_lead_name,
       events!inner ( brand_id ),
       tickets (
@@ -308,6 +314,9 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
     // Pending/failed refunds do not appear in the UI (they exist for reconciliation only).
     const succeededRefunds = (order.refunds ?? []).filter((r) => r.status === "succeeded");
     const orderCurrency = orderCurrencyOrNull(order.currency);
+    const ticketLinkJoin = Array.isArray(order.ticket_type_links)
+      ? order.ticket_type_links[0] ?? null
+      : order.ticket_type_links ?? null;
 
     // Build per-line refund accounting from refund_line_items across succeeded refunds.
     const refundedQtyByLine: Record<string, number> = {};
@@ -397,6 +406,9 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
       compReason: order.comp_reason ?? null,
       partyLeadOrderId: order.comp_party_lead_order_id ?? null,
       partyLeadName: order.party_lead_name ?? null,
+      ticketLinkId: order.ticket_link_id ?? null,
+      ticketLinkSignupId: order.ticket_link_signup_id ?? null,
+      viaLinkLabel: ticketLinkJoin?.label ?? null,
       lastSeenEventUpdatedAt: order.created_at,
     };
   });

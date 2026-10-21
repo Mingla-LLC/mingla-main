@@ -120,6 +120,9 @@ const COMPILED_SRC: Record<string, string> = {
   "/og/trip/:tripId.png": "^/og/trip(?:/([^/]+?))\\.png$",
   "/og/venue/:brandSlug/:venueSlug.png":
     "^/og/venue(?:/([^/]+?))(?:/([^/]+?))\\.png$",
+  // [TEST-MOD-APPROVED #3827] The bearer route is server-rendered before the
+  // SPA catch-all; keep the exhaustive compiled-route oracle aware of it.
+  "/g/:token": "^/g(?:/([^/]+?))$",
   "/e/:brandSlug/:eventSlug": "^/e(?:/([^/]+?))(?:/([^/]+?))$",
   // [TEST-MOD-APPROVED #1968] Canonical experience pages now have their own
   // crawler-only metadata handler so their ordinary browser route stays SPA-owned.
@@ -231,11 +234,14 @@ const STATIC_HANDLER_PATHS: Record<string, string> = {
   "/accept-brand-invitation": "/accept-brand-invitation-entry",
 };
 
-// [TEST-MOD-APPROVED #2986] These five route families are now authoritative
+// [TEST-MOD-APPROVED #2986] These route families are now authoritative
 // server documents for browsers and crawlers alike. This is deliberately
 // separate from static callbacks so A.3 continues deriving route examples from
 // the real Expo tree rather than hard-coding its coverage set.
 const PUBLIC_DOCUMENT_HANDLERS: Array<{ pattern: RegExp; destination: string }> = [
+  // [TEST-MOD-APPROVED #3827] A bearer page is a noindex server document; it
+  // must resolve before the SPA shell without joining public discovery.
+  { pattern: /^\/g\/[^/]+$/, destination: "/api/ticket-link?token=:token" },
   { pattern: /^\/e\/[^/]+\/[^/]+$/, destination: "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug" },
   { pattern: /^\/t\/[^/]+\/[^/]+$/, destination: "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug" },
   { pattern: /^\/exp\/[^/]+\/[^/]+$/, destination: "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug" },

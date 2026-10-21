@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3827",
+  "target": {
+    "kind": "function",
+    "name": "ticket-checkout-create"
+  },
+  "basePolicySha256": "fa2a245012a4ad31ff460e65742eed3ca07d68170e26f8693cf243b971a2f1c3",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "required_top_level",
+      "name": "OFFERING_INVITE_TOKEN_PEPPER",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "9938d33e849b60c5327d03db0987711b31347f8abe7f8beffad115da988e4266",
+  "reason": "Paid private-link checkout resolves the supplied link credential through the shared token helper before the canonical checkout session is created."
+}

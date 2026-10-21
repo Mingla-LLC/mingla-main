@@ -175,8 +175,8 @@ BEGIN
   IF NOT ('public_search_source_facts' = ANY (v_declared)) THEN
     RAISE EXCEPTION 'A-3: replaying #2489''s nine-row seed rewound #2986''s entry — the original defect';
   END IF;
-  IF v_n <> 11 THEN
-    RAISE EXCEPTION 'A-3: expected 11 declared carriers after the staged eleventh, found %', v_n;
+  IF v_n <> 12 THEN
+    RAISE EXCEPTION 'A-3: expected 12 declared carriers after the staged eleventh, found %', v_n;
   END IF;
 
   DELETE FROM public.issue_2489_gate_carriers WHERE object_name = 'orch3081_eleventh_carrier';

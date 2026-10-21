@@ -847,6 +847,23 @@ const backfillRefundPolicy = (state: PersistedState): PersistedState => ({
   ),
 });
 
+/** issue #3827 — passwords are replaced by revocable private ticket links. */
+const retirePasswordProtection = (state: PersistedState): PersistedState => ({
+  ...state,
+  drafts: (state.drafts ?? []).map(
+    (draft): DraftEvent => ({
+      ...draft,
+      passwordProtected: false,
+      tickets: draft.tickets.map((ticket) => ({
+        ...ticket,
+        passwordProtected: false,
+        password: null,
+        passwordConfigured: false,
+      })),
+    }),
+  ),
+});
+
 /** The v1…v13 migration chain, unchanged — issue #3284 appends v14 on top of it. */
 function migrateDraftsToV13(persistedState: unknown, version: number): PersistedState {
   if (version < 1) {
@@ -1001,9 +1018,12 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   // RSVP defaults) on legacy drafts; all existing drafts are ticketed events.
   // issue #868 — v12 → v13 backfills the additive cover gallery (coverGallery:[]).
   // issue #3284 — v13 → v14 backfills the additive refund terms (refundPolicy:null).
-  version: 14,
+  // issue #3827 — v14 → v15 retires event and ticket password protection.
+  version: 15,
   migrate: (persistedState, version): PersistedState =>
-    backfillRefundPolicy(migrateDraftsToV13(persistedState, version)),
+    retirePasswordProtection(
+      backfillRefundPolicy(migrateDraftsToV13(persistedState, version)),
+    ),
 };
 
 

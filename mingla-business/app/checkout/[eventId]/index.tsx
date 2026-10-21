@@ -33,6 +33,7 @@ import {
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
+import { useTicketLinkUnlock } from "../../../src/hooks/useTicketLinkUnlock";
 // issue #3314 — the organiser's "Hide remaining count" rule, and the query cache
 // the public event page filled with the social-proof payload that carries it.
 import { QueryClientContext } from "@tanstack/react-query";
@@ -97,8 +98,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     // still read and treated as a one-element set: links minted between the
     // #2135 and #2160 deploys are live in the wild.
     eventDateIds?: string;
+    ticketLink?: string;
   }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
+  const ticketLinkToken =
+    typeof params.ticketLink === "string" && params.ticketLink.length > 0
+      ? params.ticketLink
+      : null;
   // issue #2135 — mirrors the checkout-experience index's seed-from-route-param
   // contract exactly. null → cart.eventDateId stays null → the downstream
   // ticket-checkout-create request is byte-identical to today.
@@ -139,6 +145,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         : undefined;
 
   const publicEventQuery = usePublicEventById(eventId);
+  const ticketLink = useTicketLinkUnlock(ticketLinkToken, eventId);
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
   // issue #3314 — the bundle behind this step does not carry the organiser's
@@ -278,10 +285,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     const seedMap = decodeCartSeed(seedParam);
     seededRef.current = true; // mark even on empty seed so re-renders don't re-seed.
     if (Object.keys(seedMap).length === 0) return;
-    for (const ticket of ev.tickets) {
+    const seedTickets = ticketLinkToken === null
+      ? ev.tickets
+      : (ticketLink.ticket === null ? [] : [ticketLink.ticket]);
+    if (ticketLinkToken !== null && ticketLink.loading) return;
+    for (const ticket of seedTickets) {
       const qty = seedMap[ticket.id];
       if (qty === undefined || qty <= 0) continue;
-      if (ticket.visibility === "hidden" || ticket.availableAt === "door") continue;
+      if (ticket.availableAt === "door") continue;
       setLineQuantity({
         ticketTypeId: ticket.id,
         ticketName: ticket.name,
@@ -292,7 +303,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         quantity: qty,
       });
     }
-  }, [publicEventQuery.data, seedParam, setLineQuantity]);
+  }, [publicEventQuery.data, seedParam, setLineQuantity, ticketLink.loading, ticketLink.ticket, ticketLinkToken]);
 
   // ORCH-1147R2 — the selection bottom bar leads with the server fee-grossed
   // all-in (totals.allInTotal), NOT the bare base subtotal (totals.total), so
@@ -331,11 +342,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 
   const handleContinue = useCallback((): void => {
     if (eventId === null || totals.isEmpty) return;
-    router.push(`/checkout/${eventId}/buyer` as never);
-  }, [router, eventId, totals.isEmpty]);
+    const tokenParam = ticketLinkToken === null
+      ? ""
+      : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`;
+    router.push(`/checkout/${eventId}/buyer${tokenParam}` as never);
+  }, [router, eventId, ticketLinkToken, totals.isEmpty]);
 
   // ----- Event-not-found / past / cancelled empty state -----
-  if (publicEventQuery.isLoading || publicEventQuery.isFetching) {
+  if (publicEventQuery.isLoading || publicEventQuery.isFetching || ticketLink.loading) {
     return (
       <View style={styles.host}>
         <CheckoutHeader
@@ -393,10 +407,9 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     );
   }
 
-  const visibleTickets = event.tickets
-    .filter(isVisibleForBuyer)
-    .slice()
-    .sort(sortByDisplayOrder);
+  const visibleTickets = ticketLinkToken === null
+    ? event.tickets.filter(isVisibleForBuyer).slice().sort(sortByDisplayOrder)
+    : (ticketLink.ticket === null ? [] : [ticketLink.ticket]);
 
   const checkoutLifecycle = resolveEventCheckoutLifecycleGate(
     event,

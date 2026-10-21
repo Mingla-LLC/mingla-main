@@ -445,6 +445,9 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           canEditPrice={canEditTicketPrice}
           eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
           eventId={coverMediaEventId}
+          privateLinksEnabled={editMode !== undefined}
+          eventTitle={draft.name}
+          allTickets={draft.tickets}
           eventStartsAtIso={eventStartsAtIso}
           eventEndsAtIso={eventEndsAtIso}
           renderUnderPrice={renderTicketSheetPayoutCountryPrompt}
