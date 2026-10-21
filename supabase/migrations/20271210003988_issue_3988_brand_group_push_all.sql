@@ -119,7 +119,7 @@ REVOKE ALL ON FUNCTION public.issue_3720_list_brand_groups() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.issue_3720_list_brand_groups()
   TO authenticated, service_role;
 
--- MINGLA-INVARIANT: I-3988-BRAND-GROUP-PUSH-ALL-PARTICIPANTS | issue #3988 | Every access-holding Brand-group participant except the sender and muted users gets exactly one durable outbox row per message; notification_channel_prefs remains the single global channel gate.
+-- I-3988-BRAND-GROUP-PUSH-ALL-PARTICIPANTS enforcement point: text-message fan-out.
 CREATE OR REPLACE FUNCTION public.issue_3720_send_brand_group_message(
   p_conversation_id uuid,
   p_content text,
@@ -265,7 +265,7 @@ REVOKE ALL ON FUNCTION public.issue_3720_send_brand_group_message(uuid,text,uuid
 GRANT EXECUTE ON FUNCTION public.issue_3720_send_brand_group_message(uuid,text,uuid,uuid[],text)
   TO authenticated, service_role;
 
--- MINGLA-INVARIANT: I-3988-BRAND-GROUP-PUSH-ALL-PARTICIPANTS | issue #3988 | File messages use the same distinct, access-checked, sender-excluded and mute-aware Brand-group fan-out as text messages.
+-- I-3988-BRAND-GROUP-PUSH-ALL-PARTICIPANTS enforcement point: file-message fan-out uses the same distinct, access-checked, sender-excluded and mute-aware recipient rule.
 CREATE OR REPLACE FUNCTION public.issue_3720_complete_brand_group_file(
   p_file_id uuid,p_provider_file_id text,p_verified_mime text,p_verified_size bigint
 ) RETURNS uuid

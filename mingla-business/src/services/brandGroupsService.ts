@@ -124,7 +124,7 @@ export async function setBrandGroupPushPrefEnabled(
       channel: "push",
       enabled,
       updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id,category_key,channel" });
+    });
   if (error) throw new Error(error.message || "Couldn't save Brand group notifications");
 }
 

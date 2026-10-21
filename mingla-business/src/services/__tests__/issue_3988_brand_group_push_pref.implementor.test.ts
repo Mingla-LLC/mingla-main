@@ -12,7 +12,7 @@ const maybeSingleMock = jest.fn<() => Promise<PreferenceResponse>>();
 const upsertMock = jest.fn<
   (
     values: Record<string, unknown>,
-    options: { onConflict: string },
+    options?: { onConflict: string },
   ) => Promise<{ error: { message: string } | null }>
 >();
 const eqMock = jest.fn();
@@ -24,7 +24,7 @@ const builder = {
   maybeSingle: () => maybeSingleMock(),
   upsert: (
     values: Record<string, unknown>,
-    options: { onConflict: string },
+    options?: { onConflict: string },
   ) => upsertMock(values, options),
 };
 selectMock.mockReturnValue(builder);
@@ -69,7 +69,7 @@ test("Brand group push defaults on when absent and persists an explicit v2 row",
       channel: "push",
       enabled: false,
     }),
-    { onConflict: "user_id,category_key,channel" },
+    undefined,
   );
 });
 
