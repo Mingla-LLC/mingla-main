@@ -126,7 +126,9 @@ export const SEED_SCRIPTS = [
 // retries, escalates and resolves); #3802 Waves 1 and 4 the pipelines, the
 // Team dashboard (owner and admin only) and My agent; #3980 the Work board
 // and Agent log, with Drafts to send relabelled To review and Content
-// calendar relabelled Calendar (page ids unchanged).
+// calendar relabelled Calendar (page ids unchanged); the #3980 synced program
+// relabelled To review Needs you and Work board Work, and folded the Agent log
+// into Work as a tab.
 
 export const NAV_GROUPS = [
   {
@@ -143,12 +145,13 @@ export const NAV_GROUPS = [
     items: [
       { id: "hosts",                     label: "Hosts",              icon: "Handshake" },
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
-      { id: "drafts",                    label: "To review",          icon: "FileText" },
-      { id: "work-board",                label: "Work board",         icon: "SquareKanban" },
-      { id: "agent-log",                 label: "Agent log",          icon: "ScrollText" },
+      // #3980 (D-11): Needs you, Work and Calendar sit together; the Agent
+      // log is a tab on Work (#/agent-log still opens it there).
+      { id: "drafts",                    label: "Needs you",          icon: "FileText" },
+      { id: "work-board",                label: "Work",               icon: "SquareKanban" },
+      { id: "content-calendar",          label: "Calendar",           icon: "CalendarClock" },
       { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
       { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
-      { id: "content-calendar",          label: "Calendar",           icon: "CalendarClock" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
     ],
   },

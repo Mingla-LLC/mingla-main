@@ -11,6 +11,7 @@ import {
   featureGuideWeekStart,
   pinnedFeatureSources,
 } from "../_shared/featureGuideDrift.ts";
+import { runReleaseBridges } from "../_shared/opsBridges.ts";
 
 type Json = Record<string, unknown>;
 type AdminClient = ReturnType<typeof createClient>;
@@ -252,11 +253,33 @@ async function reconcile(
       failed += 1;
     }
   }
+  // #3980 synced program: release records, main commits, the production
+  // migrations status, engineering cards and (Wave 2) following every linked
+  // issue and pull request, after the #3720 steps.
+  let bridges: Json = {};
+  try {
+    const result = await runReleaseBridges(admin, github, {
+      log: (line) => console.log(JSON.stringify(line)),
+    });
+    failed += result.failed;
+    bridges = {
+      release_records: result.release_records,
+      main_commits: result.main_commits,
+      statuses_posted: result.statuses_posted,
+      engineering_cards: result.engineering_cards,
+      github_follow: result.github_follow,
+      deferred: result.deferred,
+      github_budget: result.github_budget,
+    };
+  } catch {
+    failed += 1;
+  }
   return {
     ok: true,
     commands_processed: commandCount,
     items_refreshed: refreshed,
     feature_guide_drift: featureGuideDrift,
+    ...bridges,
     failed,
   };
 }

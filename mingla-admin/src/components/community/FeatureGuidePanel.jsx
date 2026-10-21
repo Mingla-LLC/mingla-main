@@ -12,6 +12,8 @@ import {
   recordFeatureEvidence,
   saveFeatureCapability,
 } from "../../services/featureGuideService";
+import { fetchFeatureGuideRelease } from "../../services/opsService";
+import { dayLabel } from "../../lib/opsModel";
 
 const EVIDENCE_KINDS = [
   "source",
@@ -119,6 +121,42 @@ function SelectField({ label, value, onChange, options }) {
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
     </label>
+  );
+}
+
+// #3980 Wave 2 (Bridge B): "Shipped by PR #n on <D Mon>" from the release
+// record that names this entry, and "Not Live yet: <missing>" while its
+// record or its evidence is incomplete.
+function ReleaseLine({ capabilityKey }) {
+  // The answer is kept with the entry it belongs to, so switching entries
+  // shows the loading line until that entry's own answer arrives.
+  const [answer, setAnswer] = useState({ key: null, data: null, failed: false });
+  useEffect(() => {
+    let live = true;
+    fetchFeatureGuideRelease(capabilityKey)
+      .then((data) => { if (live) setAnswer({ key: capabilityKey, data, failed: false }); })
+      .catch(() => { if (live) setAnswer({ key: capabilityKey, data: null, failed: true }); });
+    return () => { live = false; };
+  }, [capabilityKey]);
+  const state = answer.key === capabilityKey ? answer : { loading: true, data: null, failed: false };
+  if (state.loading) return <div aria-label="Reading the release record" className="h-4 w-56 animate-pulse rounded bg-[var(--gray-100)]" />;
+  if (state.failed) return <p className="text-xs text-[var(--color-text-tertiary)]">Couldn't read the release record for this entry.</p>;
+  const shipped = state.data?.record || state.data?.pending || null;
+  if (!shipped) return null;
+  const missing = state.data?.result?.result === "incomplete"
+    ? (state.data.result.missing || [])
+    : (!state.data?.record && state.data?.pending ? (state.data.pending.missing || []) : []);
+  return (
+    <div className="space-y-1 text-sm">
+      <p>
+        <a href={shipped.pr_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-[var(--color-brand-700)] hover:underline">
+          Shipped by PR #{shipped.pr} on {dayLabel(String(shipped.merged_at || "").slice(0, 10))}
+          <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+          <span className="sr-only">(opens GitHub in a new tab)</span>
+        </a>
+      </p>
+      {missing.length > 0 && <p className="text-[var(--color-warning-700)]">Not Live yet: {missing.join(", ")}</p>}
+    </div>
   );
 }
 
@@ -298,6 +336,7 @@ export function FeatureGuidePanel({ canManage = false }) {
               </div> : null}
             >
               <div className="space-y-4 text-sm">
+                <ReleaseLine capabilityKey={selected.capability_key} />
                 <p className="text-[var(--color-text-secondary)]">{selected.outcome_summary}</p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div><p className="text-xs font-semibold uppercase text-[var(--color-text-tertiary)]">Who can use it</p><p className="mt-1">{selected.who_can_use.join(", ")}</p></div>

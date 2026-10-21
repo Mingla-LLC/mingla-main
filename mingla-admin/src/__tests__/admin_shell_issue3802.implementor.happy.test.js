@@ -59,7 +59,8 @@ const APP = read("App.jsx");
 const MENU = [
   [null, ["overview", "community-support", "notifications"]],
   // [TEST-MOD-APPROVED #3980] the Work board and Agent log join the Pipeline group after To review.
-  ["Pipeline", ["hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "tool-leads", "content-calendar", "team-dashboard"]],
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
+  ["Pipeline", ["hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "tool-leads", "team-dashboard"]],
   ["Business", ["business-people", "business-brands", "brand-sites", "business-venues", "business-offerings", "claims"]],
   ["Money", ["business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
@@ -71,9 +72,10 @@ const MENU = [
 
 // The words on each menu item (updated for #3720 Community & Support).
 const LABELS = {
-  overview: "Dashboard", "community-support": "Community & Support", notifications: "Notifications", hosts: "Hosts", creators: "Creators", drafts: "To review",
+  overview: "Dashboard", "community-support": "Community & Support", notifications: "Notifications", hosts: "Hosts", creators: "Creators", drafts: "Needs you",
   // [TEST-MOD-APPROVED #3980] Drafts to send reads To review, Content calendar reads Calendar; two new pages.
-  "work-board": "Work board", "agent-log": "Agent log",
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
+  "work-board": "Work",
   "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "content-calendar": "Calendar", "team-dashboard": "Team dashboard",
   "business-people": "People", "business-brands": "Brands", "brand-sites": "Brand Sites",
   "business-venues": "Venues", "business-offerings": "Offerings", claims: "Venue claims",
@@ -136,7 +138,8 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     assert.equal(new Set(ids).size, ids.length);
     // [TEST-MOD-APPROVED #2879] Queue health added beside API health (+1).
     // [TEST-MOD-APPROVED #3980] Work board and Agent log (+2).
-    assert.equal(ids.length, 40);
+    // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work. (-1)
+    assert.equal(ids.length, 39);
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -144,7 +147,8 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     const pageIds = [...stripComments(pagesBlock[1]).matchAll(/^\s*(?:"([^"]+)"|([A-Za-z][\w]*))\s*:/gm)].map((m) => m[1] || m[2]);
     // [TEST-MOD-APPROVED #3697] Campaign builder and campaign operations remain
     // valid deep links beneath the one Ads workspace, not competing sidebar destinations.
-    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", ...NAV_ITEMS.map((i) => i.id)].sort());
+    // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work. #/agent-log stays a page that opens it.
+    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", ...NAV_ITEMS.map((i) => i.id)].sort());
   });
   it("the role Home group is still put first by lib/access.js, not by the menu list", () => {
     assert.equal(NAV_ITEMS.some((i) => i.id === "home"), false);
@@ -180,8 +184,9 @@ describe("#3802 S-3: who may open what did not move", () => {
   it("each role sees the pages it saw before, in the new order", () => {
     const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
     // [TEST-MOD-APPROVED #3980] growth and partner open the Work board and Agent log.
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
+    // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
+    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"]);
+    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"]);
     assert.deepEqual(ids(owner), NAV_ITEMS.map((i) => i.id));
     assert.deepEqual(ids(admin), NAV_ITEMS.map((i) => i.id).filter((id) => id !== "admin"));
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, owner).map((g) => g.label), MENU.map(([label]) => label));

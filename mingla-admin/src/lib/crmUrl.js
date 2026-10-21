@@ -24,7 +24,12 @@ export const EMPTY_CRM_STATE = Object.freeze({
   region: "",
   mine: false,
   card: "",
+  // #3980 (R1): the Hosts board's two toggle filters, and "fill in" (open
+  // the card on its first missing field).
+  filter: "",
+  fill: false,
 });
+export const HOST_FILTER_VALUES = ["nonext", "soon"];
 
 /** The part of a hash after "?", or "" when there is none. */
 export function hashSearch(hash) {
@@ -62,6 +67,9 @@ export function parseCrmSearch(search) {
   if (params.get("mine") === "1") state.mine = true;
   const card = params.get("card");
   if (card && (card === NEW_CARD || UUID.test(card))) state.card = card.toLowerCase();
+  const filter = params.get("filter");
+  if (filter && HOST_FILTER_VALUES.includes(filter)) state.filter = filter;
+  if (params.get("fill") === "1" && state.card && state.card !== NEW_CARD) state.fill = true;
   return state;
 }
 
@@ -80,6 +88,8 @@ export function buildCrmSearch(state) {
   if (s.region && SLUG.test(s.region)) params.set("region", s.region);
   if (s.mine) params.set("mine", "1");
   if (s.card && (s.card === NEW_CARD || UUID.test(s.card))) params.set("card", s.card);
+  if (s.filter && HOST_FILTER_VALUES.includes(s.filter)) params.set("filter", s.filter);
+  if (s.fill && s.card && s.card !== NEW_CARD) params.set("fill", "1");
   return params.toString();
 }
 

@@ -42,6 +42,8 @@ import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
 import { PipelineOverlays } from "../components/crm/CrmLayer";
 import { AgentPromptStrip } from "../components/agent/AgentPromptStrip";
+import { HostNextContext, useHostNext } from "../hooks/useOpsWork";
+import { HOST_FILTERS, hostMissing, hostPassesFilter } from "../lib/opsModel";
 
 const UNDO_MS = 8000;
 const BLOCK_TITLES = {
@@ -120,7 +122,16 @@ function PipelinePage({ pipeline, onTabChange }) {
     () => filterRecords(pipe.records, { q: state.q, icp: state.icp, regionId, mine: state.mine, me }),
     [pipe.records, state.q, state.icp, regionId, state.mine, me]
   );
-  const filtersOn = hasActiveFilters(state);
+  // #3980 (R1): each host's next dated thing, for the next-event line, the
+  // "No next event" and "Go live soon" filters and their count.
+  const isHostBoard = pipeline === "hosts";
+  const hostNext = useHostNext(isHostBoard ? pipe.records.map((r) => r.id) : [], { enabled: isHostBoard && !!def });
+  const shown = useMemo(
+    () => (isHostBoard && state.filter ? filtered.filter((r) => hostPassesFilter(hostNext.byId[r.id], state.filter)) : filtered),
+    [isHostBoard, state.filter, filtered, hostNext.byId]
+  );
+  const noNextCount = isHostBoard ? filtered.filter((r) => hostNext.byId[r.id]?.needs_next).length : 0;
+  const filtersOn = hasActiveFilters(state) || !!state.filter;
 
   // ── Open card ───────────────────────────────────────────────────────────
   const [focus, setFocus] = useState(null); // { id, field }
@@ -472,9 +483,17 @@ function PipelinePage({ pipeline, onTabChange }) {
     if (cfg.error) cfg.retry();
     else pipe.refetch();
   };
-  const clearFilters = () => patch({ q: "", icp: "", region: "", mine: false }, { replace: true });
+  const clearFilters = () => patch({ q: "", icp: "", region: "", mine: false, filter: "" }, { replace: true });
+  // "Fill in" from Needs attention opens the card on its first missing field.
+  useEffect(() => {
+    if (!state.fill || !openRecordInList) return;
+    const first = hostMissing(openRecordInList)[0];
+    const field = first === "type" ? "icp" : first === "region" ? "region_id" : first === "contact" ? "contact" : null;
+    setFocus(field ? { id: openRecordInList.id, field } : null);
+    patch({ fill: false }, { replace: true });
+  }, [state.fill, openRecordInList, patch]);
   const addButton = (variant = "primary", size = "md", ref = null) => (
-    <Button ref={ref} variant={variant} size={size} icon={Plus} disabled={addDisabled} onClick={() => openCard(NEW_CARD)}>
+    <Button ref={ref} variant={variant} size={size} icon={Plus} className="min-h-11" disabled={addDisabled} onClick={() => openCard(NEW_CARD)}>
       Add {singular}
     </Button>
   );
@@ -516,12 +535,26 @@ function PipelinePage({ pipeline, onTabChange }) {
             canAddRegion={!!config?.me?.can_add_region}
             onRefreshRegions={cfg.retry}
             onChange={patch}
+            extra={isHostBoard ? HOST_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                aria-pressed={state.filter === f.value}
+                disabled={!ready}
+                onClick={() => patch({ filter: state.filter === f.value ? "" : f.value }, { replace: true })}
+                className={`inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] disabled:opacity-60 ${state.filter === f.value ? "border-[var(--color-text-primary)] bg-[var(--color-text-primary)] text-[var(--color-background-primary)]" : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"}`}
+              >
+                {f.label}
+                {f.value === "nonext" && <span className="tabular-nums">{hostNext.loading && !hostNext.data ? "…" : noNextCount}</span>}
+              </button>
+            )) : null}
           />
 
           {ready && pipe.truncated && (
             <AlertCard variant="info">Showing the 5,000 most recently changed. Use search to find older ones.</AlertCard>
           )}
 
+          <HostNextContext.Provider value={isHostBoard ? hostNext.byId : null}>
           {loading ? (
             state.view === "board" ? (
               <PipelineBoardSkeleton />
@@ -548,12 +581,12 @@ function PipelinePage({ pipeline, onTabChange }) {
                 )}
               </div>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : shown.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--gray-300)] bg-[var(--color-background-primary)] px-4 py-12 text-center">
               <p className="text-sm text-[var(--color-text-secondary)]">No {singular}s match.</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {filtersOn && (
-                  <Button variant="secondary" onClick={clearFilters}>
+                  <Button variant="secondary" className="min-h-11" onClick={clearFilters}>
                     Clear filters
                   </Button>
                 )}
@@ -563,7 +596,7 @@ function PipelinePage({ pipeline, onTabChange }) {
           ) : state.view === "list" ? (
             <PipelineList
               def={def}
-              records={filtered}
+              records={shown}
               regions={config.regions}
               team={config.team}
               today={today}
@@ -572,14 +605,14 @@ function PipelinePage({ pipeline, onTabChange }) {
           ) : state.view === "region" ? (
             <PipelineByRegion
               def={def}
-              records={filtered}
+              records={shown}
               regions={config.regions}
               onPickRegion={(slug) => patch({ region: slug, view: "board" })}
             />
           ) : (
             <PipelineBoard
               def={def}
-              records={filtered}
+              records={shown}
               regions={config.regions}
               team={config.team}
               today={today}
@@ -590,6 +623,7 @@ function PipelinePage({ pipeline, onTabChange }) {
               onMove={requestMove}
             />
           )}
+          </HostNextContext.Provider>
         </>
       )}
 

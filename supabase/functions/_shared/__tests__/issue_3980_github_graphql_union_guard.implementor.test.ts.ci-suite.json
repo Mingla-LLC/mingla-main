@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3980_github_graphql_union_guard.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-github-graphql-union-guard-implementor",
+  "profile": "deno-1.46-stripe"
+}

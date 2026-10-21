@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3980_synced_admin_w2.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-synced-admin-w2",
+  "profile": "deno-1.46-stripe"
+}

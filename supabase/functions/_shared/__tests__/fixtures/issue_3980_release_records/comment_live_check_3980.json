@@ -1,0 +1,10 @@
+{
+  "action": "created",
+  "comment": {
+    "body": "Live check: looked at production",
+    "author_association": "OWNER"
+  },
+  "issue": {
+    "number": 3980
+  }
+}

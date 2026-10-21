@@ -1,0 +1,108 @@
+{
+    "data": {
+        "rateLimit": {
+            "remaining": 4603
+        },
+        "repository": {
+            "n3980": {
+                "__typename": "Issue",
+                "repository": {
+                    "nameWithOwner": "Mingla-LLC/mingla-main"
+                },
+                "number": 3980,
+                "title": "The team plans, assigns and approves Mingla operations work in Admin, and every event goes live with 4 weeks of runway for promotion",
+                "url": "https://github.com/Mingla-LLC/mingla-main/issues/3980",
+                "state": "OPEN",
+                "updatedAt": "2026-10-20T10:05:08Z",
+                "projectItems": {
+                    "nodes": [
+                        {
+                            "project": {
+                                "id": "PVT_kwDOD8Prls4BdV8K"
+                            },
+                            "status": {
+                                "name": "In Review"
+                            },
+                            "horizon": {
+                                "name": "Now"
+                            }
+                        }
+                    ]
+                }
+            },
+            "n3762": {
+                "__typename": "Issue",
+                "repository": {
+                    "nameWithOwner": "Mingla-LLC/mingla-main"
+                },
+                "number": 3762,
+                "title": "Clear the open Dependabot queue with intentional floors and accept the pending bundle-baseline ratchet",
+                "url": "https://github.com/Mingla-LLC/mingla-main/issues/3762",
+                "state": "CLOSED",
+                "updatedAt": "2026-10-07T21:16:01Z",
+                "projectItems": {
+                    "nodes": []
+                }
+            },
+            "n3763": {
+                "__typename": "PullRequest",
+                "repository": {
+                    "nameWithOwner": "Mingla-LLC/mingla-main"
+                },
+                "number": 3763,
+                "title": "Intentional dep floors + accept business-web bundle baseline (Fixes #3762)",
+                "url": "https://github.com/Mingla-LLC/mingla-main/pull/3763",
+                "state": "MERGED",
+                "merged": true,
+                "mergedAt": "2026-10-07T20:33:54Z",
+                "mergeCommit": {
+                    "oid": "67d4dde7a3e3a6d618a78a28f52d6ff014ca81a3"
+                },
+                "updatedAt": "2026-10-07T20:49:05Z",
+                "closingIssuesReferences": {
+                    "nodes": [
+                        {
+                            "number": 3762
+                        }
+                    ]
+                }
+            },
+            "n3991": {
+                "__typename": "PullRequest",
+                "repository": {
+                    "nameWithOwner": "Mingla-LLC/mingla-main"
+                },
+                "number": 3991,
+                "title": "[deploy] toward #3980: Work board, Agent log, To review, Calendar runway and launch kit",
+                "url": "https://github.com/Mingla-LLC/mingla-main/pull/3991",
+                "state": "MERGED",
+                "merged": true,
+                "mergedAt": "2026-10-20T02:28:33Z",
+                "mergeCommit": {
+                    "oid": "2f1ef910d01119ba5248901ad6dbfa3e2ba63ee1"
+                },
+                "updatedAt": "2026-10-20T04:34:16Z",
+                "closingIssuesReferences": {
+                    "nodes": []
+                }
+            },
+            "n9999999": null
+        }
+    },
+    "errors": [
+        {
+            "type": "NOT_FOUND",
+            "path": [
+                "repository",
+                "n9999999"
+            ],
+            "locations": [
+                {
+                    "line": 1,
+                    "column": 2328
+                }
+            ],
+            "message": "Could not resolve to an issue or pull request with the number of 9999999."
+        }
+    ]
+}

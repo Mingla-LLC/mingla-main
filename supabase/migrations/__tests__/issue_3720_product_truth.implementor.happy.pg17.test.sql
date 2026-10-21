@@ -56,6 +56,8 @@ BEGIN
   SET LOCAL ROLE service_role;
   IF (SELECT count(*) FROM public.product_capabilities
        WHERE claimed_status='live'
+         -- [TEST-MOD-APPROVED #3980] #3980 F1 adds the Work board and Agent log as Live entries with their own evidence
+         AND capability_key NOT IN ('staff-work-board', 'staff-agent-log')
          AND public.issue_3720_feature_guide_effective_status(id)='Live') <> 3 THEN
     RAISE EXCEPTION 'seeded_verified_capabilities_missing';
   END IF;

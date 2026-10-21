@@ -13,13 +13,14 @@ DO $proof3980$
 DECLARE v_bad text;
 BEGIN
   SELECT string_agg(k || '=' || coalesce(c.title, '<missing>'), '; ') INTO v_bad
-    FROM (VALUES ('staff-drafts', 'To review: messages to send, spend and publish approvals'),
+    -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2): To review is now Needs you, the Work board is Work and the Agent log is Agent activity.
+    FROM (VALUES ('staff-drafts', 'Needs you: messages to send, spend and publish approvals'),
                  ('staff-content-calendar', 'Calendar: events, go-live deadlines, promotions and content'),
                  ('staff-crm', 'Host and creator pipelines'),
                  ('staff-my-agent', 'My agent: connect your own Claude or Codex'),
                  ('staff-team-roles', 'Invite teammates and set roles'),
-                 ('staff-work-board', 'Work board: plan, assign and close team work with agents'),
-                 ('staff-agent-log', 'Agent log: what every connected agent is doing')) AS w(k, t)
+                 ('staff-work-board', 'Work: plan, assign and close team work with agents'),
+                 ('staff-agent-log', 'Agent activity: what every connected agent is doing')) AS w(k, t)
     LEFT JOIN public.product_capabilities c ON c.capability_key = w.k
    WHERE c.title IS DISTINCT FROM w.t;
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_guide_titles: %', v_bad; END IF;
@@ -30,7 +31,10 @@ BEGIN
    WHERE c.capability_key IN ('staff-drafts','staff-content-calendar','staff-crm','staff-my-agent','staff-team-roles','staff-work-board','staff-agent-log')
      AND (SELECT count(*) FROM public.product_truth_audit a
            WHERE a.capability_id = c.id AND a.metadata->>'source' = 'issue_3980_ops_board_feature_guide'
-             AND (a.metadata->>'revision')::integer = c.revision AND a.metadata->>'issue' = '3980') <> 1;
+             -- [TEST-MOD-APPROVED #3980] the synced program's F1 turned the Work board and Agent log Live (one more revision)
+             -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2) saved every one of the seven once more (one more revision each)
+             AND (a.metadata->>'revision')::integer = c.revision - CASE WHEN c.capability_key IN ('staff-work-board','staff-agent-log') THEN 2 ELSE 1 END
+             AND a.metadata->>'issue' = '3980') <> 1;
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_guide_audit: %', v_bad; END IF;
 
   -- the five existing entries kept their status, and this change is their
@@ -41,19 +45,23 @@ BEGIN
      AND (c.claimed_status <> 'live'
           OR (SELECT max((a.metadata->>'revision')::integer) FROM public.product_truth_audit a
                WHERE a.capability_id = c.id AND a.action = 'capability_saved') <> c.revision
+          -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2): the newest saved revision is now the synced program's guide text
           OR (SELECT a.metadata->>'source' FROM public.product_truth_audit a
                WHERE a.capability_id = c.id ORDER BY a.id DESC LIMIT 1)
-             <> 'issue_3980_ops_board_feature_guide');
+             <> 'issue_3980_synced_guide');
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_guide_revision_or_status: %', v_bad; END IF;
 
   -- the two new entries: planned, with the proof a release must add, not Live
+  -- [TEST-MOD-APPROVED #3980] the synced program's F1 then turns both Live (revision 2) with their
+  -- 20 Oct release evidence: source, test, live check and release record, each current and verified.
   SELECT string_agg(c.capability_key, ', ') INTO v_bad
     FROM public.product_capabilities c
    WHERE c.capability_key IN ('staff-work-board','staff-agent-log')
-     AND (c.claimed_status <> 'planned' OR c.revision <> 1
+     -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2) saved both once more after F1: revision 3
+     AND (c.claimed_status <> 'live' OR c.revision <> 3
           OR c.required_evidence_kinds <> ARRAY['source','test','live_check','release_record']
-          OR public.issue_3720_feature_guide_effective_status(c.id) = 'Live'
-          OR EXISTS (SELECT 1 FROM public.product_capability_evidence e WHERE e.capability_id = c.id));
+          OR (SELECT count(DISTINCT e.evidence_kind) FROM public.product_capability_evidence e
+               WHERE e.capability_id = c.id AND e.is_current AND e.verdict = 'verified') <> 4);
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'issue3980_guide_new_entries: %', v_bad; END IF;
   IF (SELECT count(*) FROM public.product_capabilities WHERE capability_key IN ('staff-work-board','staff-agent-log')) <> 2 THEN
     RAISE EXCEPTION 'issue3980_guide_new_entries_missing';
@@ -74,15 +82,18 @@ BEGIN
     RAISE EXCEPTION 'issue3980_guide_agent_log_limit_missing';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.product_capabilities WHERE capability_key = 'staff-team-roles'
-                   AND limitations LIKE 'Team and roles is Owner only;%Removing access also turns off that person''s agent keys. Every active teammate role can use the Work board, Agent log, To review and Calendar.%') THEN
+                   -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2): the pages are now Work, Needs you and Calendar
+                   AND limitations LIKE 'Team and roles is Owner only;%Removing access also turns off that person''s agent keys. Every active teammate role can use Work, Needs you and Calendar.%') THEN
     RAISE EXCEPTION 'issue3980_guide_team_roles_limit';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.product_capabilities WHERE capability_key = 'staff-drafts'
-                   AND how_to LIKE '1. In Mingla Admin, open Pipeline > To review.%' AND how_to LIKE '%"Approve spend"%') THEN
+                   -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2): the page is Needs you
+                   AND how_to LIKE '1. In Mingla Admin, open Pipeline > Needs you.%' AND how_to LIKE '%"Approve spend"%') THEN
     RAISE EXCEPTION 'issue3980_guide_to_review_steps';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM public.product_capabilities WHERE capability_key = 'staff-content-calendar'
-                   AND how_to LIKE '1. In Mingla Admin, open Pipeline > Calendar.%' AND how_to LIKE '%"Plan this launch"%') THEN
+                   -- [TEST-MOD-APPROVED #3980] synced program Wave 4 (W4.2): Plan this launch left the Calendar; the steps are made by themselves
+                   AND how_to LIKE '1. In Mingla Admin, open Pipeline > Calendar.%' AND how_to NOT LIKE '%Plan this launch%' AND how_to LIKE '%"Show all 8 steps"%') THEN
     RAISE EXCEPTION 'issue3980_guide_calendar_steps';
   END IF;
 
@@ -90,7 +101,8 @@ BEGIN
   -- the three human-verified ones
   IF (SELECT count(*) FROM public.product_capabilities c
        WHERE c.claimed_status = 'live' AND public.issue_3720_feature_guide_effective_status(c.id) = 'Live'
-         AND c.capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers')) <> 0 THEN
+         -- [TEST-MOD-APPROVED #3980] the synced program's F1 makes the Work board and Agent log Live with their 20 Oct evidence
+         AND c.capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers', 'staff-work-board', 'staff-agent-log')) <> 0 THEN
     RAISE EXCEPTION 'issue3980_guide_promoted_an_entry';
   END IF;
 END;

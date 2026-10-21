@@ -116,7 +116,10 @@ Deno.test("#3980 W3 the service is the one caller of the new functions", () => {
 
 Deno.test("#3980 W3 Plan this launch: shown in the event panel only while the event has no kit card, and adds through the checked add", () => {
   const panel = read("components/ops/EventPanel.jsx");
-  assertMatch(panel, /\{!data\.has_kit_card && <LaunchPlanner anchor=\{\{ kind: a\.kind, id: a\.id \}\}/);
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (R2, D-8): steps are made by themselves, so the Plan button left the
+  // event panel; LaunchPlanner stays for old links and agents (plan_work).
+  assertNotMatch(panel, /<LaunchPlanner/);
+  assertMatch(panel, /<EventSteps /);
   const planner = read("components/ops/LaunchPlanner.jsx");
   assertMatch(planner, /Plan this launch/);
   assertMatch(planner, /ops\.previewLaunchKit\(anchor\.kind, anchor\.id, \{\}, todayIso\(\)\)/);

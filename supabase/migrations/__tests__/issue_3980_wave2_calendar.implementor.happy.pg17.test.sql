@@ -383,7 +383,8 @@ begin
   v := pg_temp.t3980_person('growth', format('select public.ops_expected_event_set(%L::jsonb, %L)::text',
     format('{"record_id":"%s","title":"x","event_type":"gala","expected_on":"%s"}', pg_temp.t3980_id('host'), v_today - 1), 'w3980-exp-0004'));
   perform pg_temp.t3980_like('W2-EXPECTED', 'every problem comes back at once, in plain words', v,
-    'ERR:22023:invalid_expected: Title is missing. Say what the event is in 3 to 160 characters. Type must be event, experience, trip or rsvp. Date must be a real date from today up to 18 months ahead.%');
+    -- [TEST-MOD-APPROVED #3980] Wave 3 adds the promo_moment type (R5); the type words list it.
+    'ERR:22023:invalid_expected: Title is missing. Say what the event is in 3 to 160 characters. Type must be event, experience, trip, rsvp or promo_moment. Date must be a real date from today up to 18 months ahead.%');
 
   v := pg_temp.t3980_person('growth', format('select public.ops_calendar(%L, %L, %L)::text', v_today, v_today + 60, v_today));
   perform pg_temp.t3980_check('W2-EXPECTED', 'it shows on the Calendar as expected, with its host',

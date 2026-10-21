@@ -123,7 +123,8 @@ Deno.test("#3802 Wave 2: Admin defaults to Calendar, with the six-stage Board an
   ]);
   assertEquals(monthWindow("2026-10").days.length, 42);
   assertMatch(PAGE, /\? p\.get\("view"\) : "calendar"/);
-  assertMatch(PAGE, /<CalendarView[\s\S]*<BoardView[\s\S]*<ListView/);
+// [TEST-MOD-APPROVED #3980] synced Wave 3 (R6): Month (MonthGrid), List by state with the posts list, and the Posts board.
+  assertMatch(PAGE, /<MonthGrid [\s\S]*<StateList [\s\S]*<PostsList [\s\S]*<BoardView /);
 });
 
 Deno.test("#3802 Wave 2: one simple add, approval prompts, autosave and explicit comments", () => {
@@ -163,7 +164,8 @@ Deno.test("#3802 Wave 2: one simple add, approval prompts, autosave and explicit
     ]
   ) assert(DRAWER.includes(label), label);
   assertMatch(DRAWER, /onBlur=\{\(\) => save/);
-  assertMatch(DRAWER, />Comment<\/Button>/);
+// [TEST-MOD-APPROVED #3980] synced Wave 3 (R9): the comment box is the one note box, with @ mentions; its button says Comment.
+  assertMatch(DRAWER, /<NoteBox [^\n]*postLabel="Comment"/);
   assertMatch(PAGE, /duration: 8000/);
 });
 
@@ -182,11 +184,12 @@ Deno.test("#3802 Wave 2: route, CRM access, RPC boundary and responsive controls
     NAV_GROUPS.find((group: { label: string | null }) =>
       group.label === "Pipeline"
     )!.items;
+  // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): the Calendar sits right after Work.
   assertEquals(
     pipeline.findIndex((item: { id: string }) =>
       item.id === "content-calendar"
     ),
-    pipeline.findIndex((item: { id: string }) => item.id === "tool-leads") + 1,
+    pipeline.findIndex((item: { id: string }) => item.id === "work-board") + 1,
   );
   assertEquals(
     [...SERVICE.matchAll(/call\("(content_calendar_[a-z_]+)"/g)].map((match) =>

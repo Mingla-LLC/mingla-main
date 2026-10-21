@@ -457,7 +457,8 @@ begin
   c := pg_temp.t3980_kit('e_late', -21);
   perform pg_temp.t3980_check('W3-GATE', 'published with 15 days left, the giveaway and ads card is organic only',
     c.blocked || '/' || c.blocked_kind || '/' || c.blocked_reason,
-    'true/organic_only/Organic only: W3980 Late Night went public 15 days before it starts. No giveaway or ads.');
+    -- [TEST-MOD-APPROVED #3980] synced Wave 3 rework 2 (deviation 6): the reason uses the four plain states; the kind stays organic_only.
+    'true/organic_only/Too late for promo: W3980 Late Night went live 15 days before it starts, under 3 weeks, so it gets posts only. No giveaway or ads.');
   perform pg_temp.t3980_check('W3-GATE', 'its gate card still closes itself, saying 15 days',
     (pg_temp.t3980_kit('e_late', -28)).status || '/' || ((pg_temp.t3980_kit('e_late', -28)).proof->0->>'text'),
     'done/Public on Mingla since ' || to_char(v_today + 15, 'FMDD Mon') || ', 15 days before it starts.');

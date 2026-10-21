@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/product-avengers-sync/issue_3980_follow_bridge.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-follow-bridge",
+  "profile": "deno-1.46-stripe"
+}
