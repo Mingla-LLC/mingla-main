@@ -85,6 +85,14 @@ import { Input } from "../../../../src/components/ui/Input";
 import { Pill } from "../../../../src/components/ui/Pill";
 import { Toast } from "../../../../src/components/ui/Toast";
 
+// Issue #3827 — the link manager and its service load only after the host taps
+// Private links, preserving the business-web common chunk ceiling.
+const LazyTicketLinksSheet = React.lazy(() =>
+  import("../../../../src/components/guests/TicketLinksSheet").then((module) => ({
+    default: module.TicketLinksSheet,
+  }))
+);
+
 // ---- Merged-row types ----------------------------------------------
 
 type GuestRow =
@@ -273,6 +281,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const legacyCompEntries = useGuestStore((s) => s.entries);
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canAddGuests = canPerformAction(currentRank, "ADD_COMP_GUEST");
+  const canManageTicketLinks = canPerformAction(currentRank, "MANAGE_TICKET_LINKS");
   // Cycle 12 — door sale entries merged into the J-G1 list.
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
 
@@ -326,6 +335,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
   const [search, setSearch] = useState<string>("");
   const [addSheetOpen, setAddSheetOpen] = useState<boolean>(false);
+  const [linksSheetOpen, setLinksSheetOpen] = useState<boolean>(false);
   const openAddSheet = useCallback((prefill?: LegacyCompPrefill[]): void => {
     setAddPrefill(prefill);
     setAddSheetOpen(true);
@@ -475,6 +485,18 @@ export default function EventGuestsListRoute(): React.ReactElement {
       />
     ) : null;
 
+  const linksSheetNode = event !== null && typeof eventId === "string" && linksSheetOpen ? (
+    <React.Suspense fallback={null}>
+      <LazyTicketLinksSheet
+        visible
+        eventId={eventId}
+        eventTitle={event.name}
+        tickets={event.tickets}
+        onClose={() => setLinksSheetOpen(false)}
+      />
+    </React.Suspense>
+  ) : null;
+
   const handleGuestRosterExport = useCallback(async (input: {
     filter: GuestRosterFilter;
     search: string;
@@ -619,8 +641,10 @@ export default function EventGuestsListRoute(): React.ReactElement {
           onOpenGuestListOrder={(orderId) => router.push(`/event/${eventId}/guests/order-${orderId}` as never)}
           onExport={(input) => { void handleGuestRosterExport(input); }}
           onAddGuests={canAddGuests ? () => openAddSheet() : undefined}
+          onOpenPrivateLinks={canManageTicketLinks ? () => setLinksSheetOpen(true) : undefined}
         />
         {addSheetNode}
+        {linksSheetNode}
         <View style={styles.toastWrap} pointerEvents="box-none">
           <Toast
             visible={toast.visible}
@@ -706,6 +730,14 @@ export default function EventGuestsListRoute(): React.ReactElement {
               size={36}
               onPress={() => openAddSheet()}
               accessibilityLabel="Add to guest list"
+            />
+          ) : null}
+          {canManageTicketLinks ? (
+            <IconChrome
+              icon="link"
+              size={36}
+              onPress={() => setLinksSheetOpen(true)}
+              accessibilityLabel="Private links"
             />
           ) : null}
         </View>
@@ -847,6 +879,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
       {/* Add to guest list sheet (issue #3827) */}
       {addSheetNode}
+      {linksSheetNode}
 
       {/* Toast */}
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -932,6 +965,7 @@ const GuestRowCard: React.FC<GuestRowCardProps> = ({
     }
     if (plusOneCount > 0) partyFragments.push(`+${plusOneCount} plus-one${plusOneCount === 1 ? "" : "s"}`);
   }
+  if (isOrder && row.order.viaLinkLabel) partyFragments.push(`via ${row.order.viaLinkLabel}`);
   const subline = [`${sublineLeft}${ticketSummary}`, ...partyFragments, relativeTime].join(" · ");
 
   // Cycle 11 J-S6 + Cycle 12 — derived check-in pill state.

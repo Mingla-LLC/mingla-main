@@ -255,8 +255,12 @@ const validate = (
 export default function CheckoutBuyerScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ eventId: string }>();
+  const params = useLocalSearchParams<{ eventId: string; ticketLink?: string }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
+  const ticketLinkToken =
+    typeof params.ticketLink === "string" && params.ticketLink.length > 0
+      ? params.ticketLink
+      : null;
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
@@ -622,11 +626,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // #2879 / #2947 slice 3 — web only, single-tier carts only. Multi-tier
         // stays on the quiet path; native 1.1.6 must never opt in (SPEC Q3).
         const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
-        const queueOptIn = Platform.OS === "web" && distinctTiers.size === 1
+        const queueOptIn = Platform.OS === "web" &&
+            distinctTiers.size === 1 && ticketLinkToken === null
           ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
           : {};
         const result = await createTicketCheckout({
           eventId,
+          ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
           buyer,
           lines,
           // issue #2689 — SAY WHICH SURFACE THIS IS. Omitting it made the edge
@@ -641,7 +647,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           ...(Platform.OS === "web"
             ? {
               checkoutContractVersion: 2 as const,
-              checkoutAttemptId: checkoutAttemptIdFor({ eventId, surface: "web" }),
+              checkoutAttemptId: checkoutAttemptIdFor({
+                eventId,
+                surface: "web",
+                ticketLinkToken,
+              }),
             }
             : {}),
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
@@ -787,7 +797,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     // who navigates back on a permanently dead button, which is a worse bug than
     // the one being fixed: a stack push leaves this screen MOUNTED, so the ref
     // would survive the return.
-    router.push(`/checkout/${eventId}/payment` as never);
+    const tokenParam = ticketLinkToken === null
+      ? ""
+      : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`;
+    router.push(`/checkout/${eventId}/payment${tokenParam}` as never);
     submitInFlight.current = false;
     setSubmitting(false);
   }, [
@@ -804,6 +817,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     eventDateIds,
     // issue #2337 — the handler reads the cart's held buyer status token.
     cartResult,
+    ticketLinkToken,
     checkoutAttemptIdFor,
     recordResult,
     router,

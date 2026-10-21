@@ -140,8 +140,12 @@ function CheckoutPaymentScreenContent({
 }: CheckoutPaymentScreenContentProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ eventId: string }>();
+  const params = useLocalSearchParams<{ eventId: string; ticketLink?: string }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
+  const ticketLinkToken =
+    typeof params.ticketLink === "string" && params.ticketLink.length > 0
+      ? params.ticketLink
+      : null;
 
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
@@ -223,6 +227,7 @@ function CheckoutPaymentScreenContent({
   >(null);
   const cartFingerprint = JSON.stringify({
     eventId,
+    ticketLinkToken,
     eventDateId,
     // issue #2160 — THE MULTI-DAY SET BELONGS HERE TOO.
     //
@@ -354,6 +359,7 @@ function CheckoutPaymentScreenContent({
       }>("ticket-checkout-create", {
         body: {
           eventId,
+          ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
           surface: "native",
           mode: "preview",
           buyer: {
@@ -394,6 +400,7 @@ function CheckoutPaymentScreenContent({
     buyer.phone,
     buyer.marketingOptIn,
     eventDateIds,
+    ticketLinkToken,
   ]);
 
   // ----- Handlers -------------------------------------------------
@@ -473,16 +480,21 @@ function CheckoutPaymentScreenContent({
         const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
         const queueOptIn =
           (surface === "web" || surface === "mobile-web") &&
-            distinctTiers.size === 1
+            distinctTiers.size === 1 && ticketLinkToken === null
             ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
             : {};
         const checkout = await createTicketCheckout({
           eventId,
+          ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
           buyer,
           lines,
           surface,
           checkoutContractVersion: 2,
-          checkoutAttemptId: checkoutAttemptIdFor({ eventId, surface }),
+          checkoutAttemptId: checkoutAttemptIdFor({
+            eventId,
+            surface,
+            ticketLinkToken,
+          }),
           // issue #2135 — forward the chosen occurrence ONLY when present. The
           // service already omits the field for an empty value, so a single-date
           // request is byte-identical; `orders.event_date_id` (#1188) persists it.
@@ -736,6 +748,7 @@ function CheckoutPaymentScreenContent({
     previewCalculationId,
     processing,
     router,
+    ticketLinkToken,
     totals.currency,
   ]);
 
@@ -860,7 +873,7 @@ function CheckoutPaymentScreenContent({
               guest was being told they were going to Stripe. Naming the
               provider here would be wrong for whichever half it isn't. */}
           <Text style={styles.paymentCopy}>
-            You'll be taken to our secure payment page to complete your purchase.
+            You’ll be taken to our secure payment page to complete your purchase.
           </Text>
           {checkoutSessionId !== null
             ? (

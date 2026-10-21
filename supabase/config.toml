@@ -871,3 +871,13 @@ verify_jwt = true
 # handler compares that bearer in-code before touching the opaque cleanup queue.
 [functions.agent-attachment-cleanup]
 verify_jwt = false
+
+# Issue #3827 — event-manager-only private-link control plane. The gateway and
+# handler verify the JWT; the service RPCs independently recheck brand rank.
+[functions.ticket-links]
+verify_jwt = true
+
+# Issue #3827 — anonymous bearer-link resolve/sign-up surface. The opaque token
+# is HMAC-hashed in-code before any database lookup; sign-up limits fail closed.
+[functions.ticket-link-public]
+verify_jwt = false

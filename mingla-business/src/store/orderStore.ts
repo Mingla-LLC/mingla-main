@@ -227,6 +227,12 @@ export interface OrderRecord {
   partyLeadOrderId?: string | null;
   /** issue #3827 — that guest's name, as it was when the plus-one was added. */
   partyLeadName?: string | null;
+  /** Issue #3827 — the private link that originated this sale or comp. */
+  ticketLinkId?: string | null;
+  /** Issue #3827 — group submission for link-issued comps. */
+  ticketLinkSignupId?: string | null;
+  /** Issue #3827 — host-visible link label projected by the server join. */
+  viaLinkLabel?: string | null;
   /**
    * Advances when buyer views their order detail page (buyer-side
    * material-change banner acknowledge). Initialized to event.updatedAt

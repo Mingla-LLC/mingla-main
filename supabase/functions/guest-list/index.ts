@@ -233,6 +233,7 @@ export function projectDoorOrders(orders: unknown): Record<string, unknown>[] {
     maskedEmail: o.maskedEmail ?? null,
     isGuestList: o.isGuestList === true,
     cameWithName: typeof o.cameWithName === "string" ? o.cameWithName : null,
+    viaLinkLabel: typeof o.viaLinkLabel === "string" ? o.viaLinkLabel : null,
     tickets: Array.isArray(o.tickets)
       ? o.tickets.filter(isObject).map((t) => ({
         ticketId: t.ticketId,
