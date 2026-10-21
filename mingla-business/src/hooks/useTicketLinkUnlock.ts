@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { TicketStub } from "../store/draftEventStore";
-import { supabase } from "../services/supabase";
 import type { TicketLinkResolve } from "../services/ticketLinkPublicTypes";
 
 const resolveTicketLink = async (token: string): Promise<TicketLinkResolve> => {
+  // Keep ordinary checkout imports side-effect free. The Supabase client is
+  // only needed when a bearer link is actually present, and constructing it at
+  // module load makes unrelated checkout tests and cold routes require runtime
+  // environment variables they never use.
+  const { supabase } = await import("../services/supabase");
   const { data, error } = await supabase.functions.invoke("ticket-link-public", {
     body: { op: "resolve", token },
   });

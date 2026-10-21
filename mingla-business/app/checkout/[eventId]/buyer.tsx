@@ -797,10 +797,18 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     // who navigates back on a permanently dead button, which is a worse bug than
     // the one being fixed: a stack push leaves this screen MOUNTED, so the ref
     // would survive the return.
-    const tokenParam = ticketLinkToken === null
-      ? ""
-      : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`;
-    router.push(`/checkout/${eventId}/payment${tokenParam}` as never);
+    if (ticketLinkToken === null) {
+      // Preserve the canonical paid-checkout navigation seam. Besides keeping
+      // ordinary buyers byte-for-behaviour compatible, #2689's source-order
+      // guard proves this push remains after the synchronous submit claim.
+      router.push(`/checkout/${eventId}/payment` as never);
+      submitInFlight.current = false;
+      setSubmitting(false);
+      return;
+    }
+    router.push(
+      `/checkout/${eventId}/payment?ticketLink=${encodeURIComponent(ticketLinkToken)}` as never,
+    );
     submitInFlight.current = false;
     setSubmitting(false);
   }, [
