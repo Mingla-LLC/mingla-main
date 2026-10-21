@@ -541,7 +541,8 @@ serve(async (req: Request): Promise<Response> => {
       taxBasis: "voluntary_contribution",
       stripeTaxCalculationId: null,
     });
-    const applicationFeeCents = subtotal.miglaFeeCents;
+    // #3645 flat 4.5%: application fee = take-rate + service fee (engine).
+    const applicationFeeCents = breakdown.application_fee_amount_cents;
     const buyerTotalCents = breakdown.buyer_total_cents;
 
     // Unique reference — persisted in stripe_payment_intent_id (UNIQUE) BEFORE
@@ -773,7 +774,8 @@ serve(async (req: Request): Promise<Response> => {
     taxBasis: "voluntary_contribution",
     stripeTaxCalculationId: null,
   });
-  const applicationFeeCents = subtotal.miglaFeeCents;
+  // #3645 flat 4.5%: application fee = take-rate + service fee (engine).
+  const applicationFeeCents = breakdown.application_fee_amount_cents;
   const buyerTotalCents = breakdown.buyer_total_cents;
 
   // Persist the pending row BEFORE charging (the PI id fills stripe_payment_intent_id).

@@ -85,8 +85,8 @@ Deno.test("ORCH-0843 — application_fee_amount uses effective take-rate plumbin
   );
   assertStringIncludes(
     sourceNoComments,
-    "applicationFeeAmountCents = buyerSubtotal.miglaFeeCents",
-    "application_fee_amount must derive from the engine's effective take-rate result",
+    "buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents",
+    "application_fee_amount must be take-rate + service fee (#3645 flat 4.5%)",
   );
   // Conditional-omit form: the key only goes on the body when > 0.
   assertStringIncludes(

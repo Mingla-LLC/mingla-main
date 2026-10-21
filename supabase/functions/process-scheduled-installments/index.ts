@@ -15,7 +15,7 @@
  *   on next retry attempt).
  * - Customer + PaymentMethod live on the CONNECTED account — Stripe-Account
  *   header on every API call (no exceptions).
- * - Application fee = Math.round(amount * 0.015) per ORCH-0843 rate.
+ * - Application fee = Math.round(amount * 0.045) per #3645 flat 4.5% rate.
  * - At-risk flag flips on retry_count >= 3 + cron halts further retries.
  * - Dunning email fires on each failure attempt until success or at_risk.
  *

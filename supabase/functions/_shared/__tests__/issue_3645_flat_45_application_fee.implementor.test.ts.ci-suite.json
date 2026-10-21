@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3645_flat_45_application_fee.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-flat-45-application-fee",
+  "profile": "deno-1.46-stripe"
+}

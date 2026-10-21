@@ -700,7 +700,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         ...venueOrderSplitFields(
           isCutover,
           paystackSubaccount,
-          money.minglaFeeCents,
+          money.minglaFeeCents + money.platformServiceFeeCents,
         ),
       });
       const { data: persistedOrder, error: metadataReadError } = await supabase
@@ -790,8 +790,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
             mingla_brand_id: ctx.brandId,
             mingla_buyer_email: buyerEmail,
           },
-          ...(money.minglaFeeCents > 0
-            ? { application_fee_amount: money.minglaFeeCents }
+          ...(money.minglaFeeCents + money.platformServiceFeeCents > 0
+            ? {
+              application_fee_amount:
+                money.minglaFeeCents + money.platformServiceFeeCents,
+            }
             : {}),
           statement_descriptor_suffix: "MINGLA",
         },
@@ -851,12 +854,14 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         mingla_buyer_email: buyerEmail,
       },
     };
-    // application_fee_amount is ALWAYS the Mingla fee — a function of the fee
-    // basis, which cannot contain a tip. Under direct charges the connected
-    // account receives everything else, so the TIP LANDS IN THE VENUE'S BALANCE
-    // UNTOUCHED, by arithmetic rather than by policy.
-    if (money.minglaFeeCents > 0) {
-      piBody.application_fee_amount = money.minglaFeeCents;
+    // #3645 flat 4.5%: application_fee_amount = take-rate + service fee — a
+    // function of the fee basis, which cannot contain a tip. Under direct
+    // charges the connected account receives everything else, so the TIP LANDS
+    // IN THE VENUE'S BALANCE UNTOUCHED, by arithmetic rather than by policy.
+    const applicationFeeAmountCents =
+      money.minglaFeeCents + money.platformServiceFeeCents;
+    if (applicationFeeAmountCents > 0) {
+      piBody.application_fee_amount = applicationFeeAmountCents;
     }
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     const paymentIntent = await stripe.paymentIntents.create(piBody, {
