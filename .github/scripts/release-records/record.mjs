@@ -149,9 +149,29 @@ async function settle(issue, number, data) {
   return ` (${extra.length} duplicate${extra.length === 1 ? "" : "s"} removed)`;
 }
 
+// Whether a comment's author may record a live check. author_association is
+// the first answer, but through the Actions token a member whose organisation
+// membership is private reads as CONTRIBUTOR or NONE, so anyone else is asked
+// about once: write access or above to the repository counts. A GitHub error
+// is an error, never a quiet "not trusted".
+const PERMITTED = new Set(["admin", "maintain", "write"]);
+const permissionCache = new Map();
+async function trustedAuthor(c) {
+  if (TRUSTED.has(c?.author_association)) return true;
+  const login = String(c?.user?.login ?? "");
+  if (!login || c?.user?.type === "Bot" || login.endsWith("[bot]")) return false;
+  if (!permissionCache.has(login)) {
+    const r = await gh("GET", `/repos/${REPO}/collaborators/${encodeURIComponent(login)}/permission`);
+    const known = ok(r, `the repository permission of ${login}`, { gone: [404], shape: (j) => j && typeof j.permission === "string" });
+    permissionCache.set(login, known ? PERMITTED.has(r.json.permission) : false);
+  }
+  return permissionCache.get(login);
+}
+
 /** A trusted person's "Live check:" comment made after the merge, as the record keeps it, or null. */
-function liveCheckFrom(c, mergedAt) {
-  if (!c || !String(c.body ?? "").startsWith("Live check:") || !TRUSTED.has(c.author_association)) return null;
+async function liveCheckFrom(c, mergedAt) {
+  if (!c || !String(c.body ?? "").startsWith("Live check:")) return null;
+  if (!(await trustedAuthor(c))) return null;
   if (!(Date.parse(c.created_at) >= Date.parse(mergedAt))) return null;
   return {
     text: visible(String(c.body).slice("Live check:".length), 500),
@@ -186,7 +206,7 @@ async function mergeRecords(data, records) {
     if (!m) continue;
     const r = await gh("GET", `/repos/${REPO}/issues/comments/${m[1]}`);
     // A deleted comment (404) stops counting; a GitHub error is not news.
-    const check = ok(r, `comment ${m[1]}`, { gone: [404], shape: (j) => j && typeof j === "object" }) ? liveCheckFrom(r.json, data.merged_at) : null;
+    const check = ok(r, `comment ${m[1]}`, { gone: [404], shape: (j) => j && typeof j === "object" }) ? await liveCheckFrom(r.json, data.merged_at) : null;
     if (check && check.url === lc.url) out = mergeRecordData(out, { pr: out.pr, live_check: check });
   }
   return out;
@@ -195,10 +215,10 @@ async function mergeRecords(data, records) {
 const STABLE_ROUNDS = 3;
 
 /** The newest trusted "Live check:" comment made after the merge, or null. */
-function newestLiveCheck(comments, mergedAt) {
+async function newestLiveCheck(comments, mergedAt) {
   let live = null;
   for (const c of comments) {
-    const check = liveCheckFrom(c, mergedAt);
+    const check = await liveCheckFrom(c, mergedAt);
     if (check && (!live || Date.parse(check.at) > Date.parse(live.at))) live = check;
   }
   return live;
@@ -235,7 +255,7 @@ async function stabilize(issue, number, data) {
       console.log(`release-record: ERROR: PR #${number}: re-reading GitHub for the record on #${issue} failed (${error.message}); this run's record is kept as it is.`);
     }
     let next = now ? mergeRecordData(now.data, out) : out;
-    const fresh = newestLiveCheck(comments, next.merged_at);
+    const fresh = await newestLiveCheck(comments, next.merged_at);
     if (fresh) next = mergeRecordData(next, { pr: next.pr, live_check: fresh });
     next = await mergeRecords(next, mine);
     const body = renderRecord(next);
@@ -384,9 +404,15 @@ async function collect(number) {
     checks.push(...list);
     if (list.length < 100) break;
   }
-  const runRes = await gh("GET", `/repos/${REPO}/actions/runs?head_sha=${sha}&per_page=20`);
-  ok(runRes, `the workflow runs of ${sha.slice(0, 7)}`, { shape: (j) => Array.isArray(j?.workflow_runs) });
-  const edgeRuns = runRes.json.workflow_runs;
+  // A merge commit starts dozens of workflow runs (46 for #4022), so one page
+  // of 20 missed the edge deploy run; read every page (up to five of 100).
+  const edgeRuns = [];
+  for (let page = 1; page <= 5; page += 1) {
+    const r = await gh("GET", `/repos/${REPO}/actions/runs?head_sha=${sha}&per_page=100&page=${page}`);
+    ok(r, `page ${page} of the workflow runs of ${sha.slice(0, 7)}`, { shape: (j) => Array.isArray(j?.workflow_runs) });
+    edgeRuns.push(...r.json.workflow_runs);
+    if (r.json.workflow_runs.length < 100) break;
+  }
 
   // Linked issues: drop pull requests and numbers that do not exist (404,
   // or 410 for a deleted issue). Any other answer is an error, never a
@@ -414,7 +440,7 @@ async function collect(number) {
       since.push(...r.json);
     }
     for (const c of since) {
-      const check = liveCheckFrom(c, pr.merged_at);
+      const check = await liveCheckFrom(c, pr.merged_at);
       if (check && (!live || Date.parse(check.at) > Date.parse(live.at))) live = check;
     }
   }
