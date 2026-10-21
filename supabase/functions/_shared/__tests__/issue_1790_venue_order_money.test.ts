@@ -102,7 +102,7 @@ Deno.test("T-T1: the fee basis is subtotal + service charge, and a tip cannot en
   // direct charges the tip lands in the venue's balance by arithmetic.
   assertStrictEquals(
     tipped.pricingBreakdown.application_fee_amount_cents,
-    tipped.minglaFeeCents,
+    tipped.minglaFeeCents + tipped.platformServiceFeeCents,
   );
 });
 

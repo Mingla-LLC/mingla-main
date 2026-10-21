@@ -1,9 +1,6 @@
 -- Issue #3872 PR 1 (money truth) + #3645 flat 4.5% host net (PG17).
 --
--- MINGLA-INVARIANT: I-3645-HOST-NET-IGNORES-PROVIDER-FEE | issue #3645 | Host
--- net = greatest(0, gross − refunded − disputed − mingla_fee). provider_fee is
--- still snapshotted for reporting but is not subtracted (#3645: Mingla pays
--- processing out of the flat 4.5%). Partner share stays off the host net (#3872).
+-- MINGLA-INVARIANT: I-3645-HOST-NET-IGNORES-PROVIDER-FEE | issue #3645 | Host net is greatest(0, gross − refunded − disputed − mingla_fee); the provider fee is snapshotted for reporting but never subtracted (Mingla pays processing out of the flat 4.5%), and the partner share stays off the host net.
 -- "The fee Mingla kept" is the application fee minus any application fee the
 -- provider returned to the host on a refund.
 --
