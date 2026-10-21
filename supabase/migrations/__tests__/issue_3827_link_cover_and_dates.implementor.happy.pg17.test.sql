@@ -1,6 +1,6 @@
 -- issue #3827 — private link page: video cover and several dates per sign-up,
 -- implementor happy path (pg17 post-replay).
--- MINGLA-INVARIANT: I-3827-LINK-COVER-ACTIVE-ONLY | issue #3827 | the link resolver names the cover media type and poster only while the link is active.
+-- MINGLA-INVARIANT: I-3827-LINK-COVER-USABLE-ONLY | issue #3827 | the link resolver names the cover media type and poster only for a usable link; a revoked, expired, full or unavailable link gets neither.
 -- MINGLA-INVARIANT: I-3827-LINK-LIMIT-COUNTS-PEOPLE | issue #3827 | a guest-list link's limit counts people; one guest holding passes for several dates uses one place.
 -- MINGLA-INVARIANT: I-3827-LINK-DUPLICATE-PER-DATE | issue #3827 | on an event that asks for a date, a person is skipped only for a date they already hold; a new date is issued.
 -- MINGLA-INVARIANT: I-3827-LINK-ONE-PASS-PER-DATE | issue #3827 | a per-day guest-list sign-up issues one pass per chosen date for every named person.
