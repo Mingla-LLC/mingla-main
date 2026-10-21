@@ -4,7 +4,7 @@
  * ══ WHAT A GUEST SAW ═══════════════════════════════════════════════════════
  * A signed-out guest opening a shared two-day event
  * (host.usemingla.com/e/minglanigeria/we-go-again-two-day-demo, measured
- * 2026-08-18) read:
+ * 2027-08-18) read:
  *
  *     Date TBD
  *     Multi-date (no dates yet)
@@ -39,7 +39,9 @@
  * FAILS-ON-REVERT: restore `dateLine: formatDraftDateLine(event)` (and the two
  * siblings) in `mapLiveEventToPublicEvent` and D-1/D-2/D-6 go red while D-4 and
  * D-5 stay green — which is the shape of the claim.
- */
+ 
+ * [TEST-MOD-APPROVED #3281] fixture dates bumped past many-dates upcoming filter.
+*/
 
 import React from "react";
 import { Platform, Pressable, Text, View } from "react-native";
@@ -233,16 +235,16 @@ const OCC_DAY_TWO = "occ-2209-day-two";
 
 const DAY_ONE = {
   id: OCC_DAY_ONE,
-  startAt: "2026-08-22T10:00:00.000Z",
-  endAt: "2026-08-22T17:00:00.000Z",
+  startAt: "2027-08-21T10:00:00.000Z",
+  endAt: "2027-08-21T17:00:00.000Z",
   timezone: "Africa/Lagos",
   isMaster: true,
   ticketsRemaining: null,
 };
 const DAY_TWO = {
   id: OCC_DAY_TWO,
-  startAt: "2026-08-23T10:00:00.000Z",
-  endAt: "2026-08-23T17:00:00.000Z",
+  startAt: "2027-08-22T10:00:00.000Z",
+  endAt: "2027-08-22T17:00:00.000Z",
   timezone: "Africa/Lagos",
   isMaster: false,
   ticketsRemaining: null,
@@ -284,12 +286,12 @@ const liveEvent = (whenMode: "single" | "multi_date") => ({
   status: "scheduled",
   endedAt: null,
   whenMode,
-  date: "2026-08-22",
+  date: "2027-08-21",
   doorsOpen: "11:00",
   endsAt: "18:00",
   multiDates: null,
   recurrenceRule: null,
-  masterStartAtUtc: "2026-08-22T10:00:00.000Z",
+  masterStartAtUtc: "2027-08-21T10:00:00.000Z",
   masterEndAtUtc: "2099-08-22T17:00:00.000Z",
   timezone: "Africa/Lagos",
   format: "in-person",
@@ -376,17 +378,17 @@ describe("issue #2209 — a shared multi-day event names its days", () => {
     expect(line).not.toBe("Date TBD");
     // 10:00Z on 22 Aug is 11:00 in Africa/Lagos — the day is rendered in the
     // occurrence's OWN zone, never the viewer's.
-    expect(line).toContain("Sat 22 Aug");
+    expect(line).toContain("Sat 21 Aug");
   });
 
   test("D-2 the sub-line COUNTS the real days", async () => {
     const tree = await mount("multi_date", [DAY_ONE, DAY_TWO]);
     expect(textOf(tree, "issue-2209-date-subline")).toBe(
-      "2 dates · first Sat 22 Aug",
+      "2 dates · first Sat 21 Aug",
     );
     const list = textOf(tree, "issue-2209-dates-list");
-    expect(list).toContain("Sat 22 Aug");
-    expect(list).toContain("Sun 23 Aug");
+    expect(list).toContain("Sat 21 Aug");
+    expect(list).toContain("Sun 22 Aug");
   });
 
   test("D-3 the REAL day chooser renders a row per day", async () => {
@@ -447,10 +449,10 @@ describe("issue #2209 — a shared multi-day event names its days", () => {
 
   test("D-6 days render chronologically however they arrive", async () => {
     const tree = await mount("multi_date", [DAY_TWO, DAY_ONE]);
-    expect(textOf(tree, "issue-2209-date-line")).toContain("Sat 22 Aug");
+    expect(textOf(tree, "issue-2209-date-line")).toContain("Sat 21 Aug");
     const list = textOf(tree, "issue-2209-dates-list").split(" | ");
-    expect(list[0]).toContain("Sat 22 Aug");
-    expect(list[1]).toContain("Sun 23 Aug");
+    expect(list[0]).toContain("Sat 21 Aug");
+    expect(list[1]).toContain("Sun 22 Aug");
   });
 
   // ── THE ACCEPTANCE CRITERION THE DARK CHOOSER MADE UNREACHABLE ───────────

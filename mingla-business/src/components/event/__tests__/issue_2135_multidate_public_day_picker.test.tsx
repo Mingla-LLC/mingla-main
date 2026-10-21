@@ -31,7 +31,9 @@
  * implementation report for the hash.
  *
  * Owner: mingla-implementor.
- */
+ 
+ * [TEST-MOD-APPROVED #3281] fixture dates bumped past many-dates upcoming filter.
+*/
 
 import React from "react";
 import { Platform, Pressable, Text, View } from "react-native";
@@ -252,16 +254,16 @@ const OCC_DAY_TWO = "occ-day-two-2135";
 const TWO_DAY_OCCURRENCES = [
   {
     id: OCC_DAY_ONE,
-    startAt: "2026-08-22T10:00:00.000Z",
-    endAt: "2026-08-22T17:00:00.000Z",
+    startAt: "2027-08-21T10:00:00.000Z",
+    endAt: "2027-08-21T17:00:00.000Z",
     timezone: "Africa/Lagos",
     isMaster: true,
     ticketsRemaining: null,
   },
   {
     id: OCC_DAY_TWO,
-    startAt: "2026-08-23T10:00:00.000Z",
-    endAt: "2026-08-23T17:00:00.000Z",
+    startAt: "2027-08-22T10:00:00.000Z",
+    endAt: "2027-08-22T17:00:00.000Z",
     timezone: "Africa/Lagos",
     isMaster: false,
     ticketsRemaining: null,
@@ -300,12 +302,12 @@ const liveEvent = (whenMode: "single" | "multi_date") => ({
   status: "scheduled",
   endedAt: null,
   whenMode,
-  date: "2026-08-22",
+  date: "2027-08-21",
   doorsOpen: "11:00",
   endsAt: "18:00",
   multiDates: null,
   recurrenceRule: null,
-  masterStartAtUtc: "2026-08-22T10:00:00.000Z",
+  masterStartAtUtc: "2027-08-21T10:00:00.000Z",
   masterEndAtUtc: "2099-08-22T17:00:00.000Z",
   timezone: "Africa/Lagos",
   format: "in-person",
@@ -408,8 +410,8 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
     // The live repro's whole accessibility tree contained one date node and no
     // occurrence of the 23rd anywhere. Both days are now rendered rows, present
     // on first paint — not behind a sheet the guest has to know to open.
-    expect(rowLabel(tree, OCC_DAY_ONE)).toContain("Sat 22 Aug");
-    expect(rowLabel(tree, OCC_DAY_TWO)).toContain("Sun 23 Aug");
+    expect(rowLabel(tree, OCC_DAY_ONE)).toContain("Sat 21 Aug");
+    expect(rowLabel(tree, OCC_DAY_TWO)).toContain("Sun 22 Aug");
     expect(
       tree.root.findAllByProps({ testID: "issue-2135-day-chooser" }).length,
     ).toBeGreaterThan(0);

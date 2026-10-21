@@ -75,6 +75,29 @@ export const occurrenceLocalDay = (
   }
 };
 
+
+/** Guest chip label: "Sat 21 Aug" in the occurrence zone (UTC fallback). */
+export const formatOccurrenceChipLabel = (
+  startAt: string,
+  timezone?: string | null,
+): string | null => {
+  const ms = Date.parse(startAt);
+  if (!Number.isFinite(ms)) return null;
+  try {
+    // en-GB + strip commas → "Sat 21 Aug" (same shape as Host I-14).
+    return new Intl.DateTimeFormat("en-GB", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone: timezone && timezone.length > 0 ? timezone : "UTC",
+    })
+      .format(new Date(ms))
+      .replace(/,/g, "");
+  } catch {
+    return null;
+  }
+};
+
 /** Drop ended / unparsable dates; keep start order. */
 export const filterUpcomingOccurrences = (
   occurrences: readonly EventDateScheduleOccurrence[],

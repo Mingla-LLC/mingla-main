@@ -17,6 +17,7 @@ import {
 
 import {
   chooseEventDateLayout,
+  formatOccurrenceChipLabel,
   occurrenceLocalDay,
   placesLeftChip,
   type EventDateScheduleOccurrence,
@@ -37,6 +38,10 @@ export type EventDatePickerProps = {
   mutedColor?: string;
   style?: ViewStyle;
   testID?: string;
+  /** Prefix for each occurrence Pressable testID (`{prefix}-{id}`). */
+  occurrenceTestIDPrefix?: string;
+  /** Prefix for each occurrence nativeID (`{prefix}-{id}`). */
+  occurrenceNativeIDPrefix?: string;
 };
 
 const MIN_HIT = 44;
@@ -52,6 +57,8 @@ export function EventDatePicker({
   mutedColor = "#667085",
   style,
   testID = "event-date-picker",
+  occurrenceTestIDPrefix,
+  occurrenceNativeIDPrefix,
 }: EventDatePickerProps) {
   const layout = React.useMemo(
     () => chooseEventDateLayout(occurrences, { allDaysPass }),
@@ -159,7 +166,10 @@ export function EventDatePicker({
           const isOn = selected.has(o.id);
           const full = o.soldOut === true;
           const chip = placesLeftChip(o.placesLeft);
-          const day = occurrenceLocalDay(o.startAt, o.timezone) ?? "Date TBD";
+          const day =
+            formatOccurrenceChipLabel(o.startAt, o.timezone) ??
+            occurrenceLocalDay(o.startAt, o.timezone) ??
+            "Date TBD";
           const title =
             typeof o.overrideTitle === "string" && o.overrideTitle.trim().length > 0
               ? o.overrideTitle.trim()
@@ -182,7 +192,10 @@ export function EventDatePicker({
                   opacity: full ? 0.45 : 1,
                 },
               ]}
-              testID={`${testID}-day-${o.id}`}
+              testID={`${occurrenceTestIDPrefix ?? `${testID}-day`}-${o.id}`}
+              {...(occurrenceNativeIDPrefix
+                ? { nativeID: `${occurrenceNativeIDPrefix}-${o.id}` }
+                : {})}
             >
               <Text style={{ color: isOn ? "#fff" : mutedColor }}>{label}</Text>
               {chip !== null ? (

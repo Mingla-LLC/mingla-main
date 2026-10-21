@@ -953,12 +953,14 @@ export default function EventDetailScreen(): React.ReactElement {
             sub="Read + reply + moderate"
             onPress={() => router.push(`/event/${event.id}/group-chat` as never)}
           />
-          <ActionTile
-            icon="ticket"
-            label="Dates"
-            sub="Titles and places per date"
-            onPress={() => router.push(`/event/${event.id}/dates` as never)}
-          />
+          {event.whenMode === "multi_date" ? (
+            <ActionTile
+              icon="calendar"
+              label="Dates"
+              sub="Titles and places per date"
+              onPress={() => router.push(`/event/${event.id}/dates` as never)}
+            />
+          ) : null}
           <ActionTile
             icon="eye"
             label="Public page"

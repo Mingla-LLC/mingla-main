@@ -483,6 +483,12 @@ export interface PublicEventDetail {
    */
   multiDatePricingMode: MultiDatePricingMode;
   /**
+   * issue #3281 — true when the server treats this event as an all-days pass
+   * (multi-date, non-recurring, pricing mode all_days). Guest pickers show a
+   * pass view instead of day selection; checkout expands the day set server-side.
+   */
+  allDaysPass?: boolean;
+  /**
    * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — false when this is a
    * PAID event (an online-available ticket priced > 0) whose brand cannot
    * charge (Stripe charges_enabled=false). The deep-link page swaps the
@@ -1678,6 +1684,7 @@ const detailFromRow = async (
     // which have no occurrence concept and no multi-day pricing.
     occurrences: [],
     multiDatePricingMode: "per_day",
+    allDaysPass: false,
     bookable,
     // issue #3284 — the view carries no refund terms: unknown, never "none".
     refundPolicyState: UNKNOWN_REFUND_POLICY_STATE,
@@ -1917,6 +1924,7 @@ const detailFromDirectBundle = async (
       asStringOrNull(payload.timezone),
     ),
     multiDatePricingMode: asPricingMode(payload.multiDatePricingMode),
+    allDaysPass: payload.allDaysPass === true,
     // issue #3284 — the SAME bundle that served the event carries its refund
     // terms. An absent key (a pre-#3284 server, or a payload the 5-second web
     // cache stored before the migration) reads as unknown and renders nothing.
