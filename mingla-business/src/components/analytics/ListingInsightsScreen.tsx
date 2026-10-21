@@ -67,8 +67,12 @@ const TrafficListingInsightsScreen: React.FC<
     require("./TrafficAnalyticsDashboard") as typeof import("./TrafficAnalyticsDashboard");
   const { isWideDesktop } = useResponsiveLayout();
   const [range, setRange] = useState<TrafficRange>("30d");
+  const trafficEntityType =
+    identity.data?.listingType === "rsvp"
+      ? "event"
+      : (identity.data?.listingType ?? null);
   const rollup = useEntityTrafficRollup(
-    identity.data?.trafficEntityType ?? null,
+    trafficEntityType,
     identity.data?.id ?? null,
     range,
     allowed,
@@ -116,7 +120,9 @@ const TrafficListingInsightsScreen: React.FC<
       succeeded ? "success" : "error",
     );
     setRefreshFailure(!succeeded);
-    setAnnouncement(succeeded ? "Insights updated" : "Couldn't refresh insights");
+    setAnnouncement(
+      succeeded ? "Insights updated" : "Couldn't refresh insights",
+    );
     setIsRefreshing(false);
   }, [identity.data, isRefreshing, rollup]);
 
@@ -127,7 +133,12 @@ const TrafficListingInsightsScreen: React.FC<
   const title = identity.data?.title ?? "Listing insights";
   const topBar = (
     <View style={styles.topBar}>
-      <TopBar leftKind="back" title="Insights" onBack={onBack} rightSlot={null} />
+      <TopBar
+        leftKind="back"
+        title="Insights"
+        onBack={onBack}
+        rightSlot={null}
+      />
     </View>
   );
 
@@ -157,7 +168,9 @@ const TrafficListingInsightsScreen: React.FC<
   const initialRequestError =
     accessError ||
     identity.isError ||
-    (rollup.isError && rollup.data === undefined && identity.data !== undefined);
+    (rollup.isError &&
+      rollup.data === undefined &&
+      identity.data !== undefined);
   if (initialRequestError) {
     return (
       <View style={styles.host}>
@@ -170,7 +183,9 @@ const TrafficListingInsightsScreen: React.FC<
           <Text style={styles.stateTitle} accessibilityRole="header">
             Couldn&apos;t load listing insights
           </Text>
-          <Text style={styles.stateBody}>Check your connection and try again.</Text>
+          <Text style={styles.stateBody}>
+            Check your connection and try again.
+          </Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => {
@@ -294,7 +309,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl * 4,
   },
-  content: { width: "100%", maxWidth: 1320, alignSelf: "center", gap: spacing.lg },
+  content: {
+    width: "100%",
+    maxWidth: 1320,
+    alignSelf: "center",
+    gap: spacing.lg,
+  },
   headingRow: {
     flexDirection: "row",
     justifyContent: "space-between",

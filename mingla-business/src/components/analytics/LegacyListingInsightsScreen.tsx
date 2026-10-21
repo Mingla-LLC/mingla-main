@@ -36,10 +36,14 @@ const SOURCE_ORDER: {
   key: ListingInsightsSource;
   label: string;
 }[] = [
+  { key: "mingla_app", label: "Mingla app" },
+  { key: "mingla_ads", label: "Mingla ads" },
   { key: "ad", label: "Ads" },
   { key: "search", label: "Search / SEO" },
   { key: "organic", label: "Mingla discovery" },
   { key: "social", label: "Social" },
+  { key: "own_links", label: "Your own links" },
+  { key: "direct_unknown", label: "Direct or unknown" },
   { key: "direct", label: "Direct link" },
 ];
 

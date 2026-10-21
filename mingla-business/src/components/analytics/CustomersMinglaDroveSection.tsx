@@ -14,10 +14,14 @@ import { formatCurrency } from "../../utils/currency";
 import { GlassCard } from "../ui/GlassCard";
 
 const SOURCE_LABELS: Record<BrandAnalyticsSource, string> = {
+  mingla_app: "Mingla app",
+  mingla_ads: "Mingla ads",
   ad: "Ads",
   search: "Search / SEO",
   organic: "Mingla discovery",
   social: "Social",
+  own_links: "Your own links",
+  direct_unknown: "Direct or unknown",
   direct: "Direct link",
 };
 
@@ -64,7 +68,9 @@ export const CustomersMinglaDroveSection: React.FC<{
         </GlassCard>
         <GlassCard style={styles.summaryCard}>
           <Text style={styles.eyebrow}>ALL TIME</Text>
-          <Text style={styles.value}>{customers(data.minglaDroveLifetime)}</Text>
+          <Text style={styles.value}>
+            {customers(data.minglaDroveLifetime)}
+          </Text>
           <CurrencyValues values={data.valueCentsLifetime} />
         </GlassCard>
       </View>
