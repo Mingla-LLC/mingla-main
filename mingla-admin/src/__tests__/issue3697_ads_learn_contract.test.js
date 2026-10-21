@@ -23,13 +23,18 @@ test("#3697 1.2 Snap uses pixel-backed page views or SWIPES with honest copy", (
   assert.equal(resolveGoalForPayload(["traffic"]).platforms.snapchat.optimization_goal, "SWIPES");
   assert.equal(
     resolveGoalForPayload(["traffic"], { snapPixelInstalled: true }).platforms.snapchat.optimization_goal,
-    "TRAFFIC_LANDING_PAGE_VIEW",
+    "PIXEL_PAGE_VIEW",
   );
+  assert.match(read("supabase/functions/_shared/snapchat.ts"), /"PIXEL_PAGE_VIEW"/);
   assert.match(read("mingla-admin/src/components/campaign-builder/StepGoal.jsx"), /Snap pixel not detected/);
 });
 
-test("#3697 1.3 Meta constrains publisher platforms to Facebook and Instagram", () => {
-  assert.match(read("supabase/functions/admin-ad-create-campaign/index.ts"), /publisher_platforms:\s*\["facebook", "instagram"\]/);
+test("#3697 1.3 Meta excludes only Audience Network from publisher platforms", () => {
+  const source = read("supabase/functions/admin-ad-create-campaign/index.ts");
+  assert.match(source, /publisher_platforms:\s*\["facebook", "instagram", "threads", "whatsapp"\]/);
+  assert.doesNotMatch(source, /publisher_platforms:[^\n]*audience_network/);
+  assert.match(source, /metaPlacementAssets/);
+  assert.match(source, /missing_ratios: missingMetaRatios/);
 });
 
 test("#3697 1.4 Meta refuses create without a linked Instagram account", () => {
@@ -65,6 +70,12 @@ test("#3697 3.1 checkout sessions persist browser match data and request context
   for (const column of ["fbp", "fbc", "scid", "client_ip", "client_user_agent"]) {
     assert.match(migration, new RegExp(`ADD COLUMN IF NOT EXISTS ${column}\\s`));
   }
+  const checkout = read("supabase/functions/ticket-checkout-create/index.ts");
+  const conversion = read("supabase/functions/_shared/adConversionFire.ts");
+  const meta = read("supabase/functions/_shared/metaCapi.ts");
+  assert.match(checkout, /clientIpAddress: checkoutClientIp\(req\)/);
+  assert.match(conversion, /clientIpAddress: typeof sessRow\.client_ip === "string"/);
+  assert.match(meta, /client_ip_address: input\.clientIpAddress/);
 });
 
 test("#3697 3.2 server events send external_id, sc_cookie1 and click id", () => {

@@ -922,16 +922,7 @@ export interface CaptureAdClickDest {
  */
 export function captureAdClickIds(dest?: CaptureAdClickDest): void {
   if (!hasWindow() || readStoredConsent() === "denied") return;
-  // toward #3697: if we already have a first-party click, only stamp consent —
-  // never insert a duplicate touch for the same landing.
   const existing = getStoredClickAttribution().clickId;
-  if (existing !== null) {
-    const consent = readStoredConsent();
-    if (consent === "granted") {
-      void postAttributionConsent("granted", existing);
-    }
-    return;
-  }
   try {
     const params = new URLSearchParams(window.location.search);
     const fbclid = params.get("fbclid");
@@ -947,7 +938,12 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     const adSetId = params.get("adset_id") ?? params.get("ad_squad_id");
     const adId = params.get("ad_id");
     const utm: Record<string, string> = {};
-    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
+    for (const k of [
+      "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
+      // Meta expands this macro from META_URL_TAGS. Keep it first-party so a
+      // live delivery audit can reconcile touches by placement.
+      "placement",
+    ]) {
       const v = params.get(k);
       if (v !== null && v.length > 0) utm[k] = v;
     }
@@ -981,6 +977,16 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     const hasAdSignal =
       external !== null || afCId !== null || mcId !== null ||
       Object.keys(utm).length > 0;
+    // First-touch storage and raw landing measurement are separate concerns.
+    // Keep the original click_id for checkout attribution, but record every
+    // later URL carrying an explicit ad/campaign signal so Meta LPVs are not
+    // silently reduced to one touch per seven-day browser window.
+    if (existing !== null && !hasAdSignal) {
+      if (consent === "granted") {
+        void postAttributionConsent("granted", existing);
+      }
+      return;
+    }
     if (!hasAdSignal && refHost === null) {
       return;
     }
@@ -1006,9 +1012,8 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       consentState,
     })
       .then((clickId) => {
-        // FIRST-TOUCH-WINS: keep the click_id of the FIRST attributable touch this
-        // session so a later internal navigation (referrer = a Mingla host →
-        // organic) can never clobber the ad click that actually drove the visit.
+        // FIRST-TOUCH-WINS: keep the click_id of the first attributable touch
+        // for checkout threading. Later ad landings are still measured above.
         if (clickId !== null && getStoredClickAttribution().clickId === null) {
           storeClickId(clickId);
         }
@@ -1095,8 +1100,13 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
       aborter.signal,
     );
     if (!res.ok) return null;
-    const data = (await res.json()) as { click_id?: string };
-    return typeof data.click_id === "string" ? data.click_id : null;
+    const data = (await res.json()) as { ok?: boolean; click_id?: string };
+    // attribution-capture deliberately returns HTTP 200 for soft failures.
+    // Never persist the echoed click_id unless the touch row really landed;
+    // otherwise a soft error suppresses later first-touch retries for 7 days.
+    return data.ok === true && typeof data.click_id === "string"
+      ? data.click_id
+      : null;
   } catch {
     return null;
   } finally {

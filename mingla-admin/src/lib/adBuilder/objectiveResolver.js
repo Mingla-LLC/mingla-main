@@ -86,7 +86,7 @@ export function resolveGoalForPayload(goalIds, { snapPixelInstalled = false } = 
       platforms[platform] = platform === "snapchat" && entry.objective === "TRAFFIC"
         ? {
           ...entry,
-          optimization_goal: snapPixelInstalled ? "TRAFFIC_LANDING_PAGE_VIEW" : "SWIPES",
+          optimization_goal: snapPixelInstalled ? "PIXEL_PAGE_VIEW" : "SWIPES",
         }
         : entry;
     }

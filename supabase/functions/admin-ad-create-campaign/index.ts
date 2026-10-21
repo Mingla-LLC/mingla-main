@@ -57,6 +57,7 @@ import {
   creativeSelectionError,
   frozenPlanCarriesCreative,
 } from "../_shared/adCreativeLifecycle.ts";
+import { classifyRatio } from "../_shared/adCreativeMatrix.ts";
 import {
   AdApiError,
   type AdConnectionRow,
@@ -84,6 +85,9 @@ import {
   buildMetaGeoLocations,
   buildMetaInterestFlexibleSpec,
   metaFetchPixelLastFired,
+  type MetaPlacementAsset,
+  type MetaPlacementAssets,
+  type MetaPlacementRatio,
   normalizeMetaCities,
   resolveMetaClient,
   validateSpecialAdCategories,
@@ -1050,9 +1054,10 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     const canonicalPlan = version.canonical_plan as Record<string, unknown>;
-    frozenCreativeLibraryId = typeof canonicalPlan.creative_library_id === "string"
-      ? canonicalPlan.creative_library_id
-      : null;
+    frozenCreativeLibraryId =
+      typeof canonicalPlan.creative_library_id === "string"
+        ? canonicalPlan.creative_library_id
+        : null;
     const requestMismatch = immutableRequestMismatch(
       canonicalPlan,
       body,
@@ -1099,7 +1104,10 @@ serve(async (req: Request): Promise<Response> => {
       owner_kind: plan.owner_kind === "host" ? "host" : "mingla",
       brand_id: typeof plan.brand_id === "string" ? plan.brand_id : null,
     };
-    customerCurrency = boundPlanCampaignCurrency(boundPlanOwnership, allocation);
+    customerCurrency = boundPlanCampaignCurrency(
+      boundPlanOwnership,
+      allocation,
+    );
     planMoney = boundPlanMoney({
       plan: boundPlanOwnership,
       allocation,
@@ -4708,6 +4716,7 @@ serve(async (req: Request): Promise<Response> => {
       ? creative.video_thumbnail_image_hash
       : undefined;
   let metaCreativeLibraryRowId: string | null = null;
+  let metaPlacementAssets: MetaPlacementAssets | null = null;
   if (!imageUrl && !imageHash && !videoId && !creativeLibraryId) {
     return json({
       error: "validation_error",
@@ -4733,25 +4742,40 @@ serve(async (req: Request): Promise<Response> => {
   }
   const connection = conn as unknown as AdConnectionRow;
 
+  // #3697 live Meta correction: placement customization is resolved entirely
+  // from the immutable creative-library row. Callers cannot swap variant URLs
+  // after the plan has been frozen.
+  if (!creativeLibraryId) {
+    return json({
+      error: "meta_placement_variants_required",
+      detail:
+        "Meta create needs a creative-library asset with 1:1, 4:5 and 9:16 coverage.",
+      missing_ratios: ["1:1", "4:5", "9:16"],
+    }, 422);
+  }
+  const { data: libCreative } = await supabase
+    .from("ad_creatives")
+    .select(
+      "id, kind, status, content_hash, purged_at, source_url, aspect_ratio, variants",
+    )
+    .eq("id", creativeLibraryId)
+    .maybeSingle();
+  if (
+    !libCreative || libCreative.kind !== creativeKind ||
+    // #3697 (C-13): archived stays usable only for the frozen plan's creative.
+    creativeSelectionError(libCreative, {
+      frozen: frozenCreativeLibraryId !== null &&
+        libCreative.id === frozenCreativeLibraryId,
+    })
+  ) {
+    return json({ error: "creative_not_found" }, 422);
+  }
+  metaCreativeLibraryRowId = String(libCreative.id);
+
   // Phase A video cannot accept a client-supplied provider id. Resolve the
   // exact current-hash READY ref for this creative/account/lane.
   if (creativeKind === "video") {
-    if (!creativeLibraryId) {
-      return json({ error: "video_preparation_required" }, 422);
-    }
-    const { data: libCreative } = await supabase
-      .from("ad_creatives")
-      .select("id, kind, status, content_hash, purged_at")
-      .eq("id", creativeLibraryId)
-      .maybeSingle();
-    if (
-      !libCreative || libCreative.kind !== "video" ||
-      // #3697 (C-13): archived stays usable only for the frozen plan's creative.
-      creativeSelectionError(libCreative, {
-        frozen: frozenCreativeLibraryId !== null &&
-          libCreative.id === frozenCreativeLibraryId,
-      }) || !libCreative.content_hash
-    ) {
+    if (!libCreative.content_hash) {
       return json({ error: "creative_not_found" }, 422);
     }
     const { data: ref } = await supabase
@@ -4778,8 +4802,71 @@ serve(async (req: Request): Promise<Response> => {
     videoThumbnailImageHash = refExtra.thumbnail_image_hash;
     imageUrl = undefined;
     imageHash = undefined;
-    metaCreativeLibraryRowId = String(libCreative.id);
+  } else {
+    imageUrl = typeof libCreative.source_url === "string" &&
+        libCreative.source_url.trim()
+      ? libCreative.source_url.trim()
+      : undefined;
+    imageHash = undefined;
   }
+
+  const requiredMetaRatios: readonly MetaPlacementRatio[] = [
+    "1:1",
+    "4:5",
+    "9:16",
+  ];
+  const resolvedPlacementAssets: Partial<MetaPlacementAssets> = {};
+  const variants = libCreative.variants &&
+      typeof libCreative.variants === "object" &&
+      !Array.isArray(libCreative.variants)
+    ? libCreative.variants as Record<string, unknown>
+    : {};
+  const numericAspectRatio = Number(libCreative.aspect_ratio);
+  const masterRatio = classifyRatio(
+    Number.isFinite(numericAspectRatio) ? numericAspectRatio : null,
+    requiredMetaRatios,
+  ) as MetaPlacementRatio | null;
+  for (const ratio of requiredMetaRatios) {
+    const variant = variants[ratio] && typeof variants[ratio] === "object" &&
+        !Array.isArray(variants[ratio])
+      ? variants[ratio] as Record<string, unknown>
+      : null;
+    const variantUrl = typeof variant?.source_url === "string"
+      ? variant.source_url.trim()
+      : "";
+    if (variantUrl) {
+      resolvedPlacementAssets[ratio] = {
+        kind: "image",
+        imageUrl: variantUrl,
+      } satisfies MetaPlacementAsset;
+      continue;
+    }
+    if (masterRatio !== ratio) continue;
+    if (creativeKind === "video" && videoId) {
+      resolvedPlacementAssets[ratio] = {
+        kind: "video",
+        videoId,
+        thumbnailImageHash: videoThumbnailImageHash,
+      } satisfies MetaPlacementAsset;
+    } else if (imageUrl) {
+      resolvedPlacementAssets[ratio] = {
+        kind: "image",
+        imageUrl,
+      } satisfies MetaPlacementAsset;
+    }
+  }
+  const missingMetaRatios = requiredMetaRatios.filter((ratio) =>
+    !resolvedPlacementAssets[ratio]
+  );
+  if (missingMetaRatios.length > 0) {
+    return json({
+      error: "meta_placement_variants_required",
+      detail:
+        "Meta create needs 1:1, 4:5 and 9:16 creative coverage before any provider write.",
+      missing_ratios: missingMetaRatios,
+    }, 422);
+  }
+  metaPlacementAssets = resolvedPlacementAssets as MetaPlacementAssets;
 
   // Idempotency (A3 §A request_id): replay returns the existing row.
   if (requestId && !validateOnly) {
@@ -4845,9 +4932,9 @@ serve(async (req: Request): Promise<Response> => {
   );
   let targeting: Record<string, unknown> = {
     geo_locations: buildMetaGeoLocations(countries, metaCities),
-    // Keep Advantage+ expansion inside Facebook + Instagram. Audience Network
-    // is intentionally excluded: review evidence showed accidental-tap waste.
-    publisher_platforms: ["facebook", "instagram"],
+    // Live placement audit: keep every first-party Meta surface, excluding only
+    // Audience Network because it delivered low-quality accidental-tap traffic.
+    publisher_platforms: ["facebook", "instagram", "threads", "whatsapp"],
     ...(typeof targetingInput.age_min === "number"
       ? { age_min: targetingInput.age_min }
       : {}),
@@ -4885,7 +4972,8 @@ serve(async (req: Request): Promise<Response> => {
   ) {
     return json({
       error: "pixel_no_signal",
-      detail: "The Meta connection has no pixel dataset. Reconnect Meta before choosing Sales.",
+      detail:
+        "The Meta connection has no pixel dataset. Reconnect Meta before choosing Sales.",
     }, 422);
   }
   const floors = extra.minimum_budgets as
@@ -4982,7 +5070,8 @@ serve(async (req: Request): Promise<Response> => {
     optimizationGoal,
     billingEvent,
     targeting,
-    ...(objective === "OUTCOME_SALES" && optimizationGoal === "OFFSITE_CONVERSIONS"
+    ...(objective === "OUTCOME_SALES" &&
+        optimizationGoal === "OFFSITE_CONVERSIONS"
       ? {
         promotedObject: {
           pixel_id: metaDatasetId,
@@ -5007,6 +5096,7 @@ serve(async (req: Request): Promise<Response> => {
     imageHash,
     videoId,
     videoThumbnailImageHash,
+    metaPlacementAssets,
     callToActionType: typeof creative.call_to_action_type === "string"
       ? creative.call_to_action_type
       : "LEARN_MORE",

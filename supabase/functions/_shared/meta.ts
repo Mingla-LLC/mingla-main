@@ -147,7 +147,28 @@ export interface MetaClient extends AuthedClient {
 export interface MetaCreateCreativeExtensions {
   metaPageId?: string;
   metaInstagramUserId?: string | null;
+  /**
+   * toward #3697: one canonical asset for each Meta delivery shape. The create
+   * function resolves these from the server-owned creative-library row; the
+   * adapter only translates them into Meta's placement asset wire shape.
+   */
+  metaPlacementAssets?: MetaPlacementAssets;
 }
+
+export type MetaPlacementRatio = "1:1" | "4:5" | "9:16";
+
+export type MetaPlacementAsset =
+  | { kind: "image"; imageHash?: string; imageUrl?: string }
+  | {
+    kind: "video";
+    videoId: string;
+    thumbnailImageHash?: string;
+  };
+
+export type MetaPlacementAssets = Record<
+  MetaPlacementRatio,
+  MetaPlacementAsset
+>;
 
 export function resolveMetaClient(
   conn?: AdConnectionRow | null,
@@ -614,7 +635,7 @@ export function buildMetaAdSetBody(
 
 export function buildMetaCreativeBody(
   pageId: string,
-  input: CreateCreativeInput,
+  input: CreateCreativeInput & MetaCreateCreativeExtensions,
   igUserId?: string | null,
 ): Record<string, unknown> {
   const callToAction = {
@@ -637,7 +658,92 @@ export function buildMetaCreativeBody(
 
   const objectStorySpec: Record<string, unknown> = { page_id: pageId };
   if (igIdentity) objectStorySpec.instagram_user_id = igIdentity;
-  if (input.videoId) {
+  const placementAssets = input.metaPlacementAssets;
+  let assetFeedSpec: Record<string, unknown> | null = null;
+  if (placementAssets) {
+    const labels: Record<MetaPlacementRatio, string> = {
+      "1:1": "mingla_square_1_1",
+      "4:5": "mingla_feed_4_5",
+      "9:16": "mingla_vertical_9_16",
+    };
+    const images: Record<string, unknown>[] = [];
+    const videos: Record<string, unknown>[] = [];
+    const mediaRule = (ratio: MetaPlacementRatio): Record<string, unknown> => {
+      const asset = placementAssets[ratio];
+      const label = { name: labels[ratio] };
+      if (asset.kind === "video") {
+        videos.push({
+          video_id: asset.videoId,
+          ...(asset.thumbnailImageHash
+            ? { thumbnail_hash: asset.thumbnailImageHash }
+            : {}),
+          adlabels: [label],
+        });
+        return { video_label: label };
+      }
+      images.push({
+        ...(asset.imageHash ? { hash: asset.imageHash } : {}),
+        ...(!asset.imageHash && asset.imageUrl ? { url: asset.imageUrl } : {}),
+        adlabels: [label],
+      });
+      return { image_label: label };
+    };
+
+    const squareRule = mediaRule("1:1");
+    const feedRule = mediaRule("4:5");
+    const verticalRule = mediaRule("9:16");
+    assetFeedSpec = {
+      optimization_type: "PLACEMENT",
+      ad_formats: [
+        ...(images.length > 0 ? ["SINGLE_IMAGE"] : []),
+        ...(videos.length > 0 ? ["SINGLE_VIDEO"] : []),
+      ],
+      ...(images.length > 0 ? { images } : {}),
+      ...(videos.length > 0 ? { videos } : {}),
+      bodies: [{ text: input.message }],
+      ...(input.headline ? { titles: [{ text: input.headline }] } : {}),
+      ...(input.description
+        ? { descriptions: [{ text: input.description }] }
+        : {}),
+      link_urls: [{ website_url: input.destUrl }],
+      call_to_action_types: [input.callToActionType ?? "LEARN_MORE"],
+      asset_customization_rules: [
+        {
+          customization_spec: {
+            publisher_platforms: ["facebook", "instagram", "threads"],
+            facebook_positions: ["feed"],
+            instagram_positions: ["stream"],
+            threads_positions: ["threads_stream"],
+          },
+          priority: 1,
+          ...feedRule,
+        },
+        {
+          customization_spec: {
+            publisher_platforms: ["facebook", "instagram"],
+            facebook_positions: ["story", "facebook_reels"],
+            instagram_positions: ["story", "reels"],
+          },
+          priority: 2,
+          ...verticalRule,
+        },
+        {
+          customization_spec: {
+            publisher_platforms: ["whatsapp"],
+            whatsapp_positions: ["status"],
+          },
+          priority: 3,
+          ...verticalRule,
+        },
+        {
+          // All remaining selected positions fall back to the square asset.
+          is_default: true,
+          priority: 4,
+          ...squareRule,
+        },
+      ],
+    };
+  } else if (input.videoId) {
     // A4.g video_data branch (GR-57/M-10) — #866 produces video_id via
     // POST /act_{id}/advideos + poll video_status === 'ready'.
     objectStorySpec.video_data = {
@@ -668,6 +774,7 @@ export function buildMetaCreativeBody(
       ? `${input.adName} — creative`
       : `${input.campaignName ?? "ad"} — creative`,
     object_story_spec: objectStorySpec,
+    ...(assetFeedSpec ? { asset_feed_spec: assetFeedSpec } : {}),
     // A4.g url_tags UTM template.
     url_tags: META_URL_TAGS,
   };
@@ -1040,7 +1147,7 @@ export const metaAdapter: ChannelAdapter = {
       & MetaCreateCreativeExtensions;
     const body = buildMetaCreativeBody(
       extensions.metaPageId ?? client.config.pageId,
-      input,
+      extensions,
       extensions.metaInstagramUserId === undefined
         ? client.config.igUserId
         : extensions.metaInstagramUserId,

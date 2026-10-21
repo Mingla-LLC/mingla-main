@@ -649,8 +649,9 @@ async function recordTouch(
   const { error } = await client.from("ad_attribution_touches").insert(row);
   if (error) {
     console.error("[attribution-capture] touch insert error:", error.message);
-    // Still hand back the click_id — the client threads it into checkout even if
-    // the touch row failed to persist (never block landing/checkout).
+    // Echo the attempted id for diagnostics. Browser clients must require
+    // ok:true before persisting it; otherwise this failed row would suppress
+    // first-touch retries for the full attribution window.
     return json({
       ok: false,
       soft_error: "touch_not_recorded",
