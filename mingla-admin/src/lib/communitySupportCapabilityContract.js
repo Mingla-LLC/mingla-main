@@ -73,7 +73,10 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
   support: Object.freeze({
     area: SUPPORT,
     panel: "pages/SupportDeskPage.jsx",
-    rpcs: Object.freeze(["issue_3720_update_internal_thread"]),
+    rpcs: Object.freeze([
+      "issue_3720_update_internal_thread",
+      "issue_3988_reassign_internal_thread",
+    ]),
     functions: Object.freeze(["support-claim", "support-send", "support-set-status"]),
   }),
   product: Object.freeze({
@@ -87,6 +90,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "issue_3720_save_product_roadmap_wording",
       "issue_3720_set_product_avengers_no_fit",
       "issue_3720_verify_product_release",
+      "issue_3988_reassign_product_signal",
     ]),
     functions: Object.freeze(["product-avengers-sync"]),
   }),

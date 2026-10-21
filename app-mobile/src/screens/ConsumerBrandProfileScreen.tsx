@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -86,6 +87,18 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     else router.replace("/");
   }, [router]);
 
+  const stateCloseButton = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Close"
+      onPress={handleClose}
+      hitSlop={12}
+      style={[styles.stateClose, { top: insets.top + 12 }]}
+    >
+      <Text style={styles.stateCloseGlyph}>✕</Text>
+    </Pressable>
+  );
+
   // Background refresh keeps the last usable page mounted; only a cold read
   // owns the blocking state. This preserves tab/sheet/focus state on refresh.
   if (
@@ -94,6 +107,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   ) {
     return (
       <View style={styles.stateWrap}>
+        {stateCloseButton}
         <ActivityIndicator />
         <Text style={styles.stateText}>Loading brand...</Text>
       </View>
@@ -106,6 +120,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   ) {
     return (
       <View style={styles.stateWrap}>
+        {stateCloseButton}
         <Text style={styles.stateTitle}>Brand could not load</Text>
         <Text style={styles.stateText}>Try the link again in a moment.</Text>
       </View>
@@ -115,6 +130,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   if (query.data === null || query.data === undefined) {
     return (
       <View style={styles.stateWrap}>
+        {stateCloseButton}
         <Text style={styles.stateTitle}>Brand not found</Text>
         <Text style={styles.stateText}>This Mingla brand is not public.</Text>
       </View>
@@ -387,6 +403,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
     backgroundColor: "#0c0e12",
+  },
+  stateClose: {
+    position: "absolute",
+    left: 16,
+    zIndex: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  stateCloseGlyph: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "600",
+    lineHeight: 20,
   },
   stateTitle: {
     color: "#ffffff",
