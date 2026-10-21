@@ -49,6 +49,7 @@ interface AnalyticsHomeTileProps {
   isLoading: boolean;
   isError: boolean;
   onPress: () => void;
+  onRetry?: () => void;
   /** Marks the new #4037 contract while the RPC is still loading. */
   contract?: "traffic";
 }
@@ -171,6 +172,7 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
   isLoading,
   isError,
   onPress,
+  onRetry,
 }) => {
   const [expanded, setExpanded] = useState(false);
   const reduceMotion = useReducedMotionNative();
@@ -329,9 +331,26 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
                 </View>
               </View>
             ) : (
-              <Text style={styles.error}>
-                Couldn&apos;t load your 30-day snapshot
-              </Text>
+              <View style={styles.errorWrap}>
+                <Text style={styles.error}>
+                  Couldn&apos;t load your 30-day snapshot
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry analytics"
+                  onPress={(event) => {
+                    event?.stopPropagation?.();
+                    onRetry?.();
+                  }}
+                  style={({ pressed }) => [
+                    styles.retry,
+                    pressed && styles.pressed,
+                  ]}
+                  testID="analytics-home-retry"
+                >
+                  <Text style={styles.retryText}>Retry</Text>
+                </Pressable>
+              </View>
             )
           ) : null}
         </GlassCard>
@@ -501,7 +520,22 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
-    marginTop: spacing.md,
+  },
+  errorWrap: { alignItems: "flex-start", gap: spacing.sm, marginTop: spacing.md },
+  retry: {
+    minHeight: 44,
+    minWidth: 72,
+    justifyContent: "center",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: accent.border,
+    paddingHorizontal: spacing.md,
+  },
+  retryText: {
+    color: accent.warm,
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: typography.buttonMd.fontWeight,
   },
 });
 

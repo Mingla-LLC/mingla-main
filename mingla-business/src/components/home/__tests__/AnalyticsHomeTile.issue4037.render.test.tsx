@@ -154,4 +154,23 @@ describe("#4037 What Mingla brought you Home tile", () => {
     ).toBeTruthy();
     expect(screen.queryByLabelText(/Visits per day/)).toBeNull();
   });
+
+  it("offers a retry from the expanded error state", () => {
+    const onRetry = jest.fn();
+    const screen = render(
+      <AnalyticsHomeTile
+        contract="traffic"
+        data={undefined}
+        isLoading={false}
+        isError
+        onPress={jest.fn()}
+        onRetry={onRetry}
+      />,
+    );
+
+    fireEvent.press(screen.getByTestId("analytics-home-tile"));
+    expect(screen.getByText("Couldn't load your 30-day snapshot")).toBeTruthy();
+    fireEvent.press(screen.getByTestId("analytics-home-retry"));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
 });

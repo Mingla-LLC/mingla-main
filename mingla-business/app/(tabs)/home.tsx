@@ -961,6 +961,7 @@ export default function HomeTab(): React.ReactElement {
                       analyticsPreview.data?.authorized === false
                     }
                     onPress={handleOpenAnalytics}
+                    onRetry={() => void analyticsPreview.refetch()}
                   />
                 </View>
               </View>
@@ -1094,6 +1095,7 @@ export default function HomeTab(): React.ReactElement {
                   analyticsPreview.data?.authorized === false
                 }
                 onPress={handleOpenAnalytics}
+                onRetry={() => void analyticsPreview.refetch()}
               />
             </View>
           </View>
