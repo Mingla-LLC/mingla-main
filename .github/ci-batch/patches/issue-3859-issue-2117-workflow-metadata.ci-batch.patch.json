@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "94a8a540ab89cc662424629526b9be45e23ea38999e94bd0cc4d25c21a8d6338",
-      "value": "1854b7c7ed77438c7b6410fee8e098c8cdf777be35dbd36cf57a5ac95b687c88"
+      "value": "25eeb7b612fee8b0a324f22d107d3e8c5e0523953ea80242d2f7718557cf0d55"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3859 and #3281 extend the visibility-gate replay skip list (installment capability, Round 2 checkout units/repair, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment."
+  "reason": "Issue #3859 and #3281 extend the visibility-gate replay skip list (installment capability, Round 2 checkout units/repair, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment, and its link cover and dates migration, which alters those private-link tables."
 }
