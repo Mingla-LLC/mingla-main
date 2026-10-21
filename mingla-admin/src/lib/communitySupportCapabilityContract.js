@@ -114,7 +114,7 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "issue_3720_mark_brand_group_read",
       "issue_3720_prepare_brand_group_files",
       "issue_3720_send_brand_group_message",
-      "issue_3720_set_brand_group_watch",
+      "issue_3988_set_brand_group_muted",
     ]),
     functions: Object.freeze(["brand-group-files"]),
   }),
