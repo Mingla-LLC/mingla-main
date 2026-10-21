@@ -173,7 +173,12 @@
     {
       "source": "/g/:path*",
       "headers": [
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow, noarchive" },
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/g/:path*",
+      "headers": [
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "Cache-Control", "value": "private, no-store, max-age=0, must-revalidate" }
       ]
