@@ -120,11 +120,11 @@ Deno.test("ORCH-0869 cron: card-only payment_method_types for installments (SPEC
   );
 });
 
-Deno.test("ORCH-0869 cron: application_fee_amount per ORCH-0843 rate", () => {
+Deno.test("ORCH-0869 cron: application_fee_amount per #3645 flat 4.5% rate", () => {
   assertMatch(
     HELPER_SOURCE,
-    /MINGLA_APPLICATION_FEE_RATE\s*=\s*0\.015/,
-    "Mingla platform cut = 1.5% per ORCH-0843 hardcoded rate; installments inherit.",
+    /MINGLA_APPLICATION_FEE_RATE\s*=\s*0\.045/,
+    "Mingla platform cut = 4.5% per #3645; installments inherit.",
   );
   assertMatch(
     HELPER_SOURCE,

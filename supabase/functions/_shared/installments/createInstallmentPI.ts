@@ -15,7 +15,8 @@ import { writeAudit } from "../audit.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-export const MINGLA_APPLICATION_FEE_RATE = 0.015 as const;
+// #3645 flat 4.5% platform cut (take-rate + service fee); installments inherit.
+export const MINGLA_APPLICATION_FEE_RATE = 0.045 as const;
 export const MAX_RETRY_ATTEMPTS = 3 as const;
 
 // Retry cadence (per SPEC §3.2.1 + Open Polish §9): Day-3 then Day-7 then at-risk.

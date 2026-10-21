@@ -78,13 +78,13 @@ Deno.test("[ORCH-1006] tax-calc failure DEGRADES to flat-absorb, not a failed se
   assertStringIncludes(src, "amount: pricingBreakdown.buyer_total_cents");
 });
 
-Deno.test("[ORCH-1006] application fee is the resolved take-rate (Slice 1), not 1.5% hardcoded", () => {
+Deno.test("[ORCH-1006] application fee is take-rate + service fee (#3645 flat 4.5%)", () => {
   const src = read(EDGE);
   assertEquals(src.includes("applicationFeeAmountCents = Math.round"), false);
   assertEquals(src.includes("MINGLA_APPLICATION_FEE_RATE"), false);
   assertStringIncludes(
     src,
-    "applicationFeeAmountCents = buyerSubtotal.miglaFeeCents",
+    "buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents",
   );
 });
 

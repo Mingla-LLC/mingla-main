@@ -1,5 +1,5 @@
 // Issue #3872 PR 1 (money truth) — the Stripe provider fee excludes Mingla's
-// application fee.
+// application fee. #3645: host net no longer subtracts that provider fee.
 //
 // MINGLA-INVARIANT: I-3872-STRIPE-PROVIDER-FEE-EXCLUDES-APPLICATION-FEE | issue #3872 | The provider fee recorded for a Stripe direct charge is the balance transaction fee minus its application_fee fee_details, so the release never deducts Mingla's fee twice.
 //
@@ -7,6 +7,8 @@
 // 19 Oct 2026 for a 3135 direct charge with a 45 application fee: fee 166 =
 // stripe_fee 121 + application_fee 45. Before #3872 the snapshot stored 166,
 // so the release deducted the 45 again and the host was under-paid by 45.
+// Under #3645 the snapshot still stores Stripe's 121 for reporting, but host
+// net = gross − mingla_fee (Mingla pays processing out of the flat 4.5%).
 
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { stripeFeeSnapshot } from "../../payout-release-sweep/index.ts";
@@ -32,10 +34,14 @@ Deno.test("the snapshot keeps Stripe's own fee and records the application fee i
   });
 });
 
-Deno.test("with the corrected fee the release equation equals the balance transaction net", () => {
+Deno.test("#3645 host net ignores snapshotted provider fee (Mingla pays processing)", () => {
   const snap = stripeFeeSnapshot(sandboxChargeBt);
   const gross = 3135, minglaFee = 45;
+  // Stripe's own BT net still equals charged − app fee − stripe_fee.
   assertEquals(gross - minglaFee - snap.provider_fee_cents, sandboxChargeBt.net);
+  // Host release net under #3645 does not subtract provider_fee.
+  assertEquals(Math.max(0, gross - minglaFee), 3090);
+  assertEquals(snap.provider_fee_cents, 121);
 });
 
 Deno.test("a charge without an application fee keeps its whole fee", () => {

@@ -20,7 +20,7 @@ Deno.test("ORCH-0954 — managed-risk controller constant is pinned", () => {
   );
   assertEquals(
     STRIPE_MANAGED_RISK_CONTROLLER.defaults.responsibilities.fees_collector,
-    "stripe",
+    "application",
   );
   assertEquals(STRIPE_MANAGED_RISK_CONTROLLER.dashboard, "none");
 });
