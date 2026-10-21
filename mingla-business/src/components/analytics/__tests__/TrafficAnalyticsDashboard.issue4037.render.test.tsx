@@ -1,5 +1,6 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import { TrafficAnalyticsDashboard } from "../TrafficAnalyticsDashboard";
 import type {
   BrandTrafficRollup,
@@ -202,6 +203,19 @@ describe("#4037 host traffic dashboard render contract", () => {
         "Visits per day, 30 days, 48 total, highest 30 on 21 Oct",
       ),
     ).toBeTruthy();
+    expect(
+      screen.getAllByLabelText(
+        "From visit to sale, Page visits 48, Button taps 18, Checkouts started 8, Bookings 6",
+      ),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByLabelText("50 percent of visitors came from Mingla"),
+    ).toHaveLength(2);
+    expect(
+      screen.getAllByLabelText(
+        "Button taps, Buy or book 6, Share 4, Save 5, Directions 6, Website or call 15",
+      ).length,
+    ).toBeGreaterThan(0);
 
     fireEvent.press(screen.getByText("7 days"));
     expect(onRangeChange).toHaveBeenCalledWith("7d");
@@ -211,6 +225,26 @@ describe("#4037 host traffic dashboard render contract", () => {
     expect(onSelectPage).toHaveBeenCalledWith(page);
     fireEvent.press(screen.getByText("Open listing insights ›"));
     expect(onOpenSelectedListing).toHaveBeenCalledTimes(1);
+  });
+
+  it("sizes the Mingla source bracket to the three Mingla segments", () => {
+    const sourceMix = brandData.sources.map((row, index) => ({
+      ...row,
+      visitors: index < 3 ? 9 : 3,
+    }));
+    const screen = render(
+      <TrafficAnalyticsDashboard
+        {...baseProps}
+        data={{ ...brandData, sources: sourceMix }}
+        isLoading={false}
+        isError={false}
+      />,
+    );
+    expect(
+      StyleSheet.flatten(
+        screen.getByTestId("traffic-mingla-source-bracket").props.style,
+      ).width,
+    ).toBe("75%");
   });
 
   it("shows the tracking start for all-time and preserves the desktop three-row content", () => {

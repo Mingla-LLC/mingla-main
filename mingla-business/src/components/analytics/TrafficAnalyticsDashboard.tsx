@@ -392,7 +392,13 @@ const FunnelCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
           {collectingCopy(data.captureStartedAt)}
         </Text>
       ) : null}
-      <View style={styles.funnel}>
+      <View
+        style={styles.funnel}
+        accessibilityRole="image"
+        accessibilityLabel={`From visit to sale, ${visible
+          .map((step) => `${step.label} ${count(step.value)}`)
+          .join(", ")}`}
+      >
         {visible.map((step, index) => {
           const previous = index === 0 ? null : visible[index - 1]!;
           return (
@@ -448,6 +454,7 @@ const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
         <>
           <View
             style={styles.sourceBar}
+            accessibilityRole="image"
             accessibilityLabel={`${percentage(mingla, total)} percent of visitors came from Mingla`}
           >
             {data.sources.map((row) => (
@@ -461,7 +468,13 @@ const SourceCard: React.FC<{ data: TrafficRollupBase; scoped?: boolean }> = ({
               />
             ))}
           </View>
-          <View style={styles.bracketLine} />
+          <View
+            testID="traffic-mingla-source-bracket"
+            style={[
+              styles.bracketLine,
+              { width: `${percentage(mingla, total)}%` },
+            ]}
+          />
           <Text style={styles.broughtLine}>
             {scoped
               ? `${percentage(mingla, total)}% of this page's visitors came from Mingla`
@@ -671,7 +684,13 @@ const ButtonTapsCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
           {collectingCopy(data.captureStartedAt)}
         </Text>
       ) : (
-        <View style={styles.tapGrid}>
+        <View
+          style={styles.tapGrid}
+          accessibilityRole="image"
+          accessibilityLabel={`Button taps, ${values
+            .map((row) => `${row.label} ${count(row.count)}`)
+            .join(", ")}`}
+        >
           {values.map((row) => (
             <View key={row.label} style={styles.tapTile}>
               <Text style={styles.tapCount}>{count(row.count)}</Text>
@@ -1005,7 +1024,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   bracketLine: {
-    width: "50%",
     height: 8,
     borderLeftWidth: 1,
     borderBottomWidth: 1,
