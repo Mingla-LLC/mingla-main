@@ -395,7 +395,7 @@ const ResolvedTripPage: React.FC<{
   muted,
   onToggleMute,
   onClose,
-  onShare,
+  onShare: onShareRequested,
   paymentPlanChoice,
   onPaymentPlanChoiceChange,
   shareModalVisible,
@@ -418,6 +418,15 @@ const ResolvedTripPage: React.FC<{
   useEffect(() => {
     void captureOfferingPageView(engagementScope);
   }, [engagementScope]);
+  // The scope only changes with the trip; a ref keeps the brand link's
+  // handler identity unchanged.
+  const engagementScopeRef = useRef(engagementScope);
+  engagementScopeRef.current = engagementScope;
+  // #4037 decision 5 — a share tap is engagement on this page.
+  const onShare = useCallback((): void => {
+    void captureOfferingCta(engagementScope, "share");
+    onShareRequested();
+  }, [engagementScope, onShareRequested]);
 
   // ORCH-1138 — resolve brand theme + per-trip overrides → palette → surface.
   const theme = useMemo(
@@ -622,6 +631,8 @@ const ResolvedTripPage: React.FC<{
   const handleViewBrand = useCallback((): void => {
     if (brandSlug.length > 0) {
       recordShareDestination("view_brand");
+      // #4037 decision 5 — opening the brand is engagement on this page.
+      void captureOfferingCta(engagementScopeRef.current, "view_brand");
       router.push(`/b/${brandSlug}` as never);
     }
   }, [router, brandSlug]);

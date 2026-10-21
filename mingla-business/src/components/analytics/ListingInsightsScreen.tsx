@@ -72,6 +72,7 @@ const TrafficListingInsightsScreen: React.FC<
       ? "event"
       : (identity.data?.listingType ?? null);
   const rollup = useEntityTrafficRollup(
+    identity.data?.brandId ?? null,
     trafficEntityType,
     identity.data?.id ?? null,
     range,

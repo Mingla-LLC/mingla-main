@@ -21,6 +21,11 @@ const CTA_TYPES = [
   "directions",
   "website",
   "call",
+  // Decision 5 (#4037): every public-page tap is engagement, including the
+  // taps that open the brand, a venue or an offering.
+  "view_brand",
+  "view_venue",
+  "view_offering",
 ] as const;
 const SURFACES = ["buyer_web", "consumer_ios", "consumer_android"] as const;
 const BODY_KEYS = new Set([
@@ -73,6 +78,10 @@ interface SourceSignals {
 
 export interface OfferingEngagementCaptureDeps {
   client: SupabaseClient;
+  /**
+   * Request clock for callers and tests. The visitor-key salt day is NOT taken
+   * from it: the database resolves the brand's own local day (decision 2).
+   */
   now: () => Date;
   randomSalt: () => string;
 }
@@ -250,6 +259,7 @@ async function sha256Hex(input: string): Promise<string> {
 
 async function dailyVisitorKey(
   req: Request,
+  brandId: string,
   deps: OfferingEngagementCaptureDeps,
 ): Promise<string | null> {
   const ip = firstClientIp(req);
@@ -266,11 +276,12 @@ async function dailyVisitorKey(
   ) {
     return null;
   }
-  const day = deps.now().toISOString().slice(0, 10);
+  // The salt rotates at the brand's local midnight, so the database picks the
+  // day from the brand's timezone; the edge never supplies a UTC day.
   const { data, error } = await deps.client.rpc(
     "claim_offering_engagement_salt",
     {
-      p_day: day,
+      p_brand_id: brandId,
       p_candidate: deps.randomSalt(),
     },
   );
@@ -298,7 +309,7 @@ export async function handleOfferingEngagementCapture(
   }
   const body = validateCaptureBody(raw);
   if (body === null) return empty(req);
-  const visitorKey = await dailyVisitorKey(req, deps);
+  const visitorKey = await dailyVisitorKey(req, body.brandId, deps);
   if (visitorKey === null) return empty(req);
   const signals = sourceSignals(body);
   try {

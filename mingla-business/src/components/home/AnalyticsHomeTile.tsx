@@ -27,6 +27,9 @@ import {
 import { formatCurrencyRound } from "../../utils/currency";
 import type { BrandTrafficRollup } from "../../services/trafficAnalyticsService";
 import {
+  formatTrafficDelta,
+  trafficDeltaAccessibilityLabel,
+  trafficDeltaTone,
   visibleDelta,
   visitToPaidRate,
 } from "../../utils/trafficAnalyticsMath";
@@ -272,10 +275,28 @@ const TrafficAnalyticsHomeTile: React.FC<TrafficAnalyticsHomeTileProps> = ({
                     {money(value.currency, value.cents)}
                   </Text>
                   {delta === null ? null : (
-                    <View style={styles.deltaPill}>
+                    <View
+                      style={[
+                        styles.deltaPill,
+                        trafficDeltaTone(delta) === "neutral" &&
+                          styles.deltaPillNeutral,
+                      ]}
+                      accessibilityLabel={trafficDeltaAccessibilityLabel(delta)}
+                      testID={
+                        trafficDeltaTone(delta) === "neutral"
+                          ? "home-traffic-delta-neutral"
+                          : "home-traffic-delta-positive"
+                      }
+                    >
                       <Text
-                        style={styles.deltaText}
-                      >{`${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`}</Text>
+                        style={[
+                          styles.deltaText,
+                          trafficDeltaTone(delta) === "neutral" &&
+                            styles.deltaTextNeutral,
+                        ]}
+                      >
+                        {formatTrafficDelta(delta)}
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -463,6 +484,12 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     fontWeight: "700",
+  },
+  deltaPillNeutral: {
+    backgroundColor: trafficAnalytics.neutralDeltaTint,
+  },
+  deltaTextNeutral: {
+    color: trafficAnalytics.neutralDelta,
   },
   sentence: {
     color: textTokens.secondary,

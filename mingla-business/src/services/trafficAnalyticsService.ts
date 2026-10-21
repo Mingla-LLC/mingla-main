@@ -18,6 +18,11 @@ export const TRAFFIC_CTA_TYPES = [
   "directions",
   "website",
   "call",
+  // Decision 5 (#4037): taps that open the brand, a venue or an offering are
+  // engagement too, so they are listed and counted in Button taps.
+  "view_brand",
+  "view_venue",
+  "view_offering",
 ] as const;
 export const TRAFFIC_ENTITY_TYPES = [
   "event",
@@ -422,6 +427,7 @@ export function normalizeBrandTrafficRollup(
 
 export function normalizeEntityTrafficRollup(
   raw: unknown,
+  expectedBrandId: string,
   expectedEntityType: TrafficEntityType,
   expectedEntityId: string | null,
   expectedRange: TrafficRange,
@@ -437,9 +443,14 @@ export function normalizeEntityTrafficRollup(
   if ((entityType === "brand") !== (entityId === null)) {
     return contractError(rpcName);
   }
+  // Decision 4: every page request names its brand, and the answer must be
+  // about that brand.
+  if (stringOrThrow(row.brand_id, rpcName) !== expectedBrandId) {
+    return contractError(rpcName);
+  }
   return {
     ...normalizeBase(row, expectedRange, rpcName),
-    brandId: stringOrThrow(row.brand_id, rpcName),
+    brandId: expectedBrandId,
     entityType,
     entityId,
   };
@@ -466,6 +477,7 @@ export const fetchBrandTrafficRollup = async (
 };
 
 export const fetchEntityTrafficRollup = async (
+  brandId: string,
   entityType: TrafficEntityType,
   entityId: string | null,
   range: TrafficRange,
@@ -476,6 +488,7 @@ export const fetchEntityTrafficRollup = async (
     const { supabase } = await import("./supabase");
     response = await withTimeout(
       supabase.rpc(rpcName, {
+        p_brand_id: brandId,
         p_entity_type: entityType,
         p_entity_id: entityId,
         p_range: range,
@@ -489,6 +502,7 @@ export const fetchEntityTrafficRollup = async (
   if (response.error !== null) throw new TrafficAnalyticsRequestError(rpcName);
   return normalizeEntityTrafficRollup(
     response.data,
+    brandId,
     entityType,
     entityId,
     range,

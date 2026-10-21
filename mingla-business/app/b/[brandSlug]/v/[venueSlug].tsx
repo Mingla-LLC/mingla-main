@@ -479,8 +479,12 @@ export default function PublicVenueRoute(): React.ReactElement {
   const handleOpenBrand = useCallback((): void => {
     if (typeof brandSlug !== "string") return;
     recordShareDestination("view_brand");
+    // #4037 decision 5 — opening the brand is engagement on this page.
+    if (engagementScope !== null) {
+      void captureOfferingCta(engagementScope, "view_brand");
+    }
     router.push(brandPublicPath(brandSlug) as never);
-  }, [brandSlug, router]);
+  }, [brandSlug, engagementScope, router]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -495,6 +499,10 @@ export default function PublicVenueRoute(): React.ReactElement {
   // through to the native sheet while the venue query is unresolved. Title and
   // description degrade; the URL does not.
   const handleShare = useCallback((): void => {
+    // #4037 decision 5 — a share tap is engagement on this page.
+    if (engagementScope !== null) {
+      void captureOfferingCta(engagementScope, "share");
+    }
     if (
       Platform.OS === "web" &&
       typeof brandSlug === "string" &&
@@ -509,7 +517,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       return;
     }
     setShareModalVisible(true);
-  }, [brandSlug, venue, venueSlug]);
+  }, [brandSlug, engagementScope, venue, venueSlug]);
 
   // issue #1562 mitigation 2 — the guest's live quoted total, reported up from
   // the Reservations tab's booking body. It replaces the "from" rate in the

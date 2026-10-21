@@ -83,6 +83,7 @@ const TrafficBrandAnalyticsScreen: React.FC<
   const patterns = useBrandCustomerPatternsRollup(brand.id, callerEnabled);
   const [selectedPage, setSelectedPage] = useState<TrafficPageRow | null>(null);
   const selectedTraffic = useEntityTrafficRollup(
+    brand.id,
     selectedPage?.entityType ?? null,
     selectedPage?.entityId ?? null,
     range,

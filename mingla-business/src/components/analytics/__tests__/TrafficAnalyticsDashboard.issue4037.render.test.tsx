@@ -213,7 +213,7 @@ describe("#4037 host traffic dashboard render contract", () => {
     ).toHaveLength(2);
     expect(
       screen.getAllByLabelText(
-        "Button taps, Buy or book 6, Share 4, Save 5, Directions 6, Website or call 15",
+        "Button taps, Buy or book 6, Share 4, Save 5, Directions 6, Website or call 15, Opened another page 0",
       ).length,
     ).toBeGreaterThan(0);
 

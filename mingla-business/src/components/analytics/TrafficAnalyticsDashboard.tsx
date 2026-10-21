@@ -32,6 +32,9 @@ import {
 } from "../../services/trafficAnalyticsService";
 import { formatCurrencyRound } from "../../utils/currency";
 import {
+  formatTrafficDelta,
+  trafficDeltaAccessibilityLabel,
+  trafficDeltaTone,
   visibleDelta,
   visibleFunnelSteps,
   visitToPaidRate,
@@ -75,6 +78,11 @@ const CTA_GROUPS: readonly {
   { label: "Save", keys: ["save"] },
   { label: "Directions", keys: ["directions"] },
   { label: "Website or call", keys: ["website", "call"] },
+  // Decision 5 (#4037): opening the brand, a venue or an offering is a tap too.
+  {
+    label: "Opened another page",
+    keys: ["view_brand", "view_venue", "view_offering"],
+  },
 ];
 
 const MINGLA_SOURCES = new Set<TrafficSource>([
@@ -124,14 +132,16 @@ const money = (cents: number, currency: string | null): string =>
 
 const DeltaPill: React.FC<{ value: number | null }> = ({ value }) => {
   if (value === null) return null;
+  const neutral = trafficDeltaTone(value) === "neutral";
   return (
     <View
-      style={styles.deltaPill}
-      accessibilityLabel={`${value >= 0 ? "Up" : "Down"} ${Math.abs(value)} percent versus prior period`}
+      style={[styles.deltaPill, neutral && styles.deltaPillNeutral]}
+      accessibilityLabel={trafficDeltaAccessibilityLabel(value)}
+      testID={neutral ? "traffic-delta-neutral" : "traffic-delta-positive"}
     >
-      <Text
-        style={styles.deltaText}
-      >{`${value >= 0 ? "+" : ""}${value.toFixed(1)}%`}</Text>
+      <Text style={[styles.deltaText, neutral && styles.deltaTextNeutral]}>
+        {formatTrafficDelta(value)}
+      </Text>
     </View>
   );
 };
@@ -908,6 +918,12 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     fontWeight: "700",
+  },
+  deltaPillNeutral: {
+    backgroundColor: trafficAnalytics.neutralDeltaTint,
+  },
+  deltaTextNeutral: {
+    color: trafficAnalytics.neutralDelta,
   },
   otherCurrency: {
     color: textTokens.secondary,

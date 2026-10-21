@@ -381,6 +381,11 @@ export const trafficAnalytics = {
   ] as const,
   positiveDelta: "#46c98b",
   positiveDeltaTint: "rgba(70, 201, 139, 0.16)",
+  // Decision 7 (#4037 comment 6325156309): a decline (or no change) is shown,
+  // never hidden, in the neutral secondary treatment — the same colour as
+  // `text.secondary` — rather than an alarm colour.
+  neutralDelta: "rgba(255, 255, 255, 0.72)",
+  neutralDeltaTint: "rgba(255, 255, 255, 0.08)",
   selectedPageTint: "rgba(235, 120, 37, 0.08)",
   tapMeter: "#5fd4d0",
   sources: {

@@ -43,10 +43,19 @@ export const trafficAnalyticsKeys = {
   brand: (brandId: string, range: TrafficRange) =>
     ["traffic-analytics", "brand", brandId, range] as const,
   entity: (
+    brandId: string,
     entityType: TrafficEntityType,
     entityId: string | null,
     range: TrafficRange,
-  ) => ["traffic-analytics", "entity", entityType, entityId, range] as const,
+  ) =>
+    [
+      "traffic-analytics",
+      "entity",
+      brandId,
+      entityType,
+      entityId,
+      range,
+    ] as const,
   disabledBrand: ["traffic-analytics", "disabled", "brand"] as const,
   disabledEntity: ["traffic-analytics", "disabled", "entity"] as const,
 };
@@ -78,27 +87,31 @@ export const useBrandTrafficRollup = (
 };
 
 export const useEntityTrafficRollup = (
+  brandId: string | null,
   entityType: TrafficEntityType | null,
   entityId: string | null,
   range: TrafficRange,
   callerEnabled: boolean,
 ): UseQueryResult<EntityTrafficRollup, Error> => {
+  // Decision 4 (#4037): every page request names its brand.
   const hasIdentity =
-    entityType !== null && (entityType === "brand" || entityId !== null);
+    brandId !== null &&
+    entityType !== null &&
+    (entityType === "brand" || entityId !== null);
   const enabled = callerEnabled && hasIdentity;
   const queries = useQueries({
     queries: [
       {
         queryKey:
-          enabled && entityType !== null
-            ? trafficAnalyticsKeys.entity(entityType, entityId, range)
+          enabled && brandId !== null && entityType !== null
+            ? trafficAnalyticsKeys.entity(brandId, entityType, entityId, range)
             : trafficAnalyticsKeys.disabledEntity,
         enabled,
         staleTime: STALE_TIME_MS,
         queryFn: async (): Promise<EntityTrafficRollup> => {
-          if (entityType === null)
+          if (brandId === null || entityType === null)
             throw new Error("entity traffic identity is unavailable");
-          return fetchEntityTrafficRollup(entityType, entityId, range);
+          return fetchEntityTrafficRollup(brandId, entityType, entityId, range);
         },
       },
     ],

@@ -44,6 +44,9 @@ const ctas = [
   "directions",
   "website",
   "call",
+  "view_brand",
+  "view_venue",
+  "view_offering",
 ].map((type, index) => ({ type, count: index === 0 ? 8 : 0 }));
 
 const base = {
@@ -111,6 +114,7 @@ describe("#4037 traffic analytics contract", () => {
           entity_id: EVENT_ID,
           daily: [{ day: "2026-10-21", page_views: 29 }],
         },
+        BRAND_ID,
         "event",
         EVENT_ID,
         "30d",
@@ -146,7 +150,13 @@ describe("#4037 traffic analytics contract", () => {
       },
     ]) {
       expect(() =>
-        normalizeEntityTrafficRollup(inconsistent, "event", EVENT_ID, "30d"),
+        normalizeEntityTrafficRollup(
+          inconsistent,
+          BRAND_ID,
+          "event",
+          EVENT_ID,
+          "30d",
+        ),
       ).toThrow("entity_traffic_rollup returned an invalid contract");
     }
   });

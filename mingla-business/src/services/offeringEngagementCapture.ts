@@ -9,7 +9,11 @@ export type OfferingEngagementCtaType =
   | "save"
   | "directions"
   | "website"
-  | "call";
+  | "call"
+  // #4037 decision 5 — opening the brand, a venue or an offering is engagement.
+  | "view_brand"
+  | "view_venue"
+  | "view_offering";
 
 export interface OfferingEngagementScope {
   brandId: string;

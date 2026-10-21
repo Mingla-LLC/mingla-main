@@ -650,8 +650,16 @@ const ResolvedExperiencePage: React.FC<{
   const handleViewBrand = (): void => {
     if (brandSlug.length > 0) {
       recordShareDestination("view_brand");
+      // #4037 decision 5 — opening the brand is engagement on this page.
+      void captureOfferingCta(engagementScope, "view_brand");
       router.push(`/b/${brandSlug}` as never);
     }
+  };
+
+  // #4037 decision 5 — a share tap is engagement on this page.
+  const handleShareTap = (): void => {
+    void captureOfferingCta(engagementScope, "share");
+    onShare();
   };
 
   // state banner (sold out / ended / unavailable) rendered above the body.
@@ -762,7 +770,7 @@ const ResolvedExperiencePage: React.FC<{
         muted={muted}
         onToggleMute={onToggleMute}
         onClose={onClose}
-        onShare={onShare}
+        onShare={handleShareTap}
         onViewBrand={handleViewBrand}
         stateBanner={stateBanner}
         reserveControl={reserveControl}

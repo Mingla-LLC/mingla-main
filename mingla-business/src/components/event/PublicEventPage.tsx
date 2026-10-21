@@ -1127,6 +1127,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   }, [router, brand?.slug, event.brandSlug]);
 
   const handleShare = useCallback((): void => {
+    // #4037 decision 5 — a share tap is engagement on this page.
+    void captureOfferingCta(engagementScope, "share");
     if (Platform.OS === "web") {
       void shareCanonicalPublicPageOnWeb({
         url: canonicalUrl(event),
@@ -1141,7 +1143,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       return;
     }
     setShareModalVisible(true);
-  }, [event, showToast]);
+  }, [engagementScope, event, showToast]);
 
   const handleToggleMute = useCallback((): void => {
     setMuted((m) => !m);
@@ -1211,6 +1213,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       },
       onOpenBrand: (brandSlug: string) => {
         recordShareDestination("view_brand");
+        void captureOfferingCta(engagementScope, "view_brand");
         router.push(`/b/${brandSlug}` as never);
       },
       onOpenMaps: handleOpenMaps,
@@ -1731,6 +1734,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => {
             recordShareDestination("view_brand");
+            void captureOfferingCta(engagementScope, "view_brand");
+        void captureOfferingCta(engagementScope, "view_brand");
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}
@@ -1981,6 +1986,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => {
             recordShareDestination("view_brand");
+            void captureOfferingCta(engagementScope, "view_brand");
+        void captureOfferingCta(engagementScope, "view_brand");
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}

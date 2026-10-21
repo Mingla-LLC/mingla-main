@@ -15,6 +15,7 @@ module.exports = {
   testMatch: [
     "**/__tests__/TrafficAnalyticsDashboard.issue4037.render.test.tsx",
     "**/__tests__/AnalyticsHomeTile.issue4037.render.test.tsx",
+    "**/__tests__/TrafficDeclineDelta.issue4037.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-reanimated|react-native-svg)",
