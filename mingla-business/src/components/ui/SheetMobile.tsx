@@ -108,7 +108,7 @@ const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)";
 // same family as `chrome.composerSurface` (#191c21) / `chrome.ariBubbleAndroid`
 // (#16181b), tuned to read like the sheet's existing dark-glass tone. The brand
 // `panelBackground` override path is unaffected (it was already a solid fill).
-const WEB_OPAQUE_BACKGROUND = "#16181b";
+export const WEB_OPAQUE_BACKGROUND = "#16181b";
 
 /**
  * `SheetSnapPoint` / `SheetSnapValue` are owned by `./sheetSnapHeight`
@@ -176,6 +176,14 @@ const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
  * derived from this so the two can never drift apart.
  */
 const HANDLE_REGION_HEIGHT = 2 * (spacing.sm + 2) + 4;
+/**
+ * #3827 — the band above consumer content that every sheet reserves at its
+ * top edge. The bottom sheet reserves it with the drag handle; the wide-desktop
+ * centred card (`Sheet.web.tsx`) has no handle and reserves the SAME band as
+ * top padding, so a sheet's first line sits the same distance from the edge on
+ * every platform and no consumer has to know which one it is rendered in.
+ */
+export const SHEET_TOP_INSET = HANDLE_REGION_HEIGHT;
 const CLOSE_THRESHOLD_PX = 80;
 const CLOSE_VELOCITY = 600;
 /**

@@ -57,6 +57,7 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 
 const TicketLinksSheet = React.lazy(() =>
   import("../guests/TicketLinksSheet").then((module) => ({
@@ -449,6 +450,12 @@ export interface TicketTierEditSheetProps {
    * every other caller renders exactly as before.
    */
   renderUnderPrice?: (priced: boolean) => React.ReactNode;
+  /**
+   * issue #3827 — a NEW ticket opened from the private-link sheet's empty
+   * state starts as a hidden paid ticket or a free ticket. Ignored when
+   * `initial` is set (editing keeps the ticket's own values).
+   */
+  newTicketPreset?: NewTicketPreset | null;
   /** Published-event context for opening private links from a hidden tier. */
   privateLinksEnabled?: boolean;
   eventTitle?: string;
@@ -480,6 +487,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   eventCurrency,
   eventId = null,
   renderUnderPrice,
+  newTicketPreset = null,
   privateLinksEnabled = false,
   eventTitle = "Event",
   allTickets = [],
@@ -600,11 +608,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setAvailableAt(initial.availableAt);
     } else {
       setName("");
-      setIsFree(false);
+      setIsFree(newTicketPreset === "free-guest-list");
       setIsUnlimited(false);
       setPriceText("");
       setCapacityText("");
-      setVisibility("public");
+      setVisibility(newTicketPreset === "hidden-paid" ? "hidden" : "public");
       setApprovalRequired(false);
       setWaitlistEnabled(false);
       setMinQtyText("1");
@@ -615,7 +623,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setSaleEndAt(null);
       setAvailableAt("both");
     }
-  }, [visible, initial]);
+  }, [visible, initial, newTicketPreset]);
 
   const isEditMode = initial !== null;
 

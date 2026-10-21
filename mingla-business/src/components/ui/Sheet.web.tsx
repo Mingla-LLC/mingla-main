@@ -68,6 +68,8 @@ import { useEscapeLayer } from "./escapeLayerStack";
 // it always resolves to the real bottom-sheet implementation.
 import {
   Sheet as MobileSheet,
+  SHEET_TOP_INSET,
+  WEB_OPAQUE_BACKGROUND,
   type SheetProps,
   type SheetSnapPoint,
   type SheetSnapValue,
@@ -333,7 +335,31 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
             }
             accessibilityViewIsModal={competition || undefined}
           >
-            <View style={styles.cardBody}>{children}</View>
+            {/* #3827 — an opaque base under every default card, the SAME
+                underlay the narrow-web bottom sheet uses (ORCH-1207): the
+                card's own glass fill is see-through, so a picker opened over
+                a form (Tickets → Visibility) showed the form's text through
+                its options. A brand / Competition `panelBackground` is
+                already solid and is left alone. */}
+            {panelBackground === undefined ? (
+              <View
+                style={[StyleSheet.absoluteFill, styles.opaqueBase]}
+                pointerEvents="none"
+                testID={testID !== undefined ? `${testID}-desktop-opaque-base` : undefined}
+              />
+            ) : null}
+            {/* #3827 — the card has no drag handle, so it reserves the
+                handle's band as top padding (SHEET_TOP_INSET, the SAME
+                constant the bottom sheet's handle is sized from). Without it
+                every consumer's first line sat flush on the card's top
+                border on desktop while it had room on a phone. The
+                Competition panel lays out its own insets edge-to-edge. */}
+            <View
+              style={[styles.cardBody, competition ? null : styles.cardBodyInset]}
+              testID={testID !== undefined ? `${testID}-desktop-body` : undefined}
+            >
+              {children}
+            </View>
           </View>
         </View>
       </View>
@@ -347,7 +373,9 @@ const styles = StyleSheet.create({
     // Web-only: ensure default cursor doesn't suggest the backdrop is a
     // primary action. RN-web maps cursor styles.
     ...Platform.select({
-      web: { cursor: "default" as const },
+      // RN's CursorValue type lists only "auto" | "pointer"; react-native-web
+      // accepts any CSS cursor (same cast pattern as the transition styles).
+      web: { cursor: "default" } as unknown as ViewStyle,
       default: {},
     }),
   },
@@ -364,6 +392,12 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     flexShrink: 1,
+  },
+  opaqueBase: {
+    backgroundColor: WEB_OPAQUE_BACKGROUND,
+  },
+  cardBodyInset: {
+    paddingTop: SHEET_TOP_INSET,
   },
 });
 

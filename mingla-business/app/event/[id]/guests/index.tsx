@@ -37,6 +37,11 @@ import {
 import { useGuestStore } from "../../../../src/store/guestStore";
 import type { OrderRecord } from "../../../../src/store/orderStore";
 import { isCompOrder } from "../../../../src/utils/compOrders";
+import {
+  addTicketTypeForLinkRoute,
+  isTicketLinkable,
+  type NewTicketPreset,
+} from "../../../../src/utils/ticketLinkEligibility";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../src/utils/permissionGates";
 import {
@@ -87,6 +92,12 @@ import { Toast } from "../../../../src/components/ui/Toast";
 
 // Issue #3827 — the link manager and its service load only after the host taps
 // Private links, preserving the business-web common chunk ceiling.
+// issue #3827 — the add-a-ticket-type round trip from New link's empty state.
+const LazyAddTicketTypeForLinkTrip = React.lazy(() =>
+  import("../../../../src/components/guests/AddTicketTypeForLinkTrip").then((module) => ({
+    default: module.AddTicketTypeForLinkTrip,
+  }))
+);
 const LazyTicketLinksSheet = React.lazy(() =>
   import("../../../../src/components/guests/TicketLinksSheet").then((module) => ({
     default: module.TicketLinksSheet,
@@ -336,6 +347,14 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const [search, setSearch] = useState<string>("");
   const [addSheetOpen, setAddSheetOpen] = useState<boolean>(false);
   const [linksSheetOpen, setLinksSheetOpen] = useState<boolean>(false);
+  // issue #3827 — the link sheet's empty state sends the host to add a ticket
+  // type. The sheet closes first (a native Modal would otherwise sit over the
+  // editor); on return it reopens on New link with the new type selected.
+  const [linksReturn, setLinksReturn] = useState<{ ticketTypeId: string | null } | null>(null);
+  const [linkTicketTrip, setLinkTicketTrip] = useState<{
+    route: string;
+    knownIds: ReadonlySet<string>;
+  } | null>(null);
   const openAddSheet = useCallback((prefill?: LegacyCompPrefill[]): void => {
     setAddPrefill(prefill);
     setAddSheetOpen(true);
@@ -485,6 +504,35 @@ export default function EventGuestsListRoute(): React.ReactElement {
       />
     ) : null;
 
+  // Ticketed events only: trips, experiences and RSVPs edit elsewhere.
+  const canAddTicketTypeForLink =
+    event !== null && offeringKind === "event" && event.event_type !== "rsvp";
+  const handleAddTicketTypeForLink = useCallback((preset: NewTicketPreset): void => {
+    if (event === null || typeof eventId !== "string") return;
+    // Close the sheet first (a native Modal would otherwise sit over the
+    // editor); the trip component opens the editor on its first focus.
+    setLinksSheetOpen(false);
+    setLinksReturn(null);
+    setLinkTicketTrip({
+      route: addTicketTypeForLinkRoute(eventId, preset),
+      knownIds: new Set(event.tickets.map((ticket) => ticket.id)),
+    });
+  }, [event, eventId]);
+  const handleLinkTicketTripReturn = useCallback((): void => {
+    if (linkTicketTrip === null || event === null) return;
+    const added = event.tickets.find(
+      (ticket) => !linkTicketTrip.knownIds.has(ticket.id) && isTicketLinkable(ticket),
+    );
+    setLinkTicketTrip(null);
+    setLinksReturn({ ticketTypeId: added?.id ?? null });
+    setLinksSheetOpen(true);
+  }, [event, linkTicketTrip]);
+  const linkTicketTripNode = linkTicketTrip !== null ? (
+    <React.Suspense fallback={null}>
+      <LazyAddTicketTypeForLinkTrip route={linkTicketTrip.route} onReturn={handleLinkTicketTripReturn} />
+    </React.Suspense>
+  ) : null;
+
   const linksSheetNode = event !== null && typeof eventId === "string" && linksSheetOpen ? (
     <React.Suspense fallback={null}>
       <LazyTicketLinksSheet
@@ -492,7 +540,13 @@ export default function EventGuestsListRoute(): React.ReactElement {
         eventId={eventId}
         eventTitle={event.name}
         tickets={event.tickets}
-        onClose={() => setLinksSheetOpen(false)}
+        initialTicketTypeId={linksReturn?.ticketTypeId ?? null}
+        startCreating={linksReturn !== null}
+        onAddTicketType={canAddTicketTypeForLink ? handleAddTicketTypeForLink : undefined}
+        onClose={() => {
+          setLinksSheetOpen(false);
+          setLinksReturn(null);
+        }}
       />
     </React.Suspense>
   ) : null;
@@ -645,6 +699,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
         />
         {addSheetNode}
         {linksSheetNode}
+        {linkTicketTripNode}
         <View style={styles.toastWrap} pointerEvents="box-none">
           <Toast
             visible={toast.visible}
@@ -880,6 +935,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
       {/* Add to guest list sheet (issue #3827) */}
       {addSheetNode}
       {linksSheetNode}
+      {linkTicketTripNode}
 
       {/* Toast */}
       <View style={styles.toastWrap} pointerEvents="box-none">
