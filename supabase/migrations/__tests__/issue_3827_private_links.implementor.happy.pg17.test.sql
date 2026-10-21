@@ -1,8 +1,9 @@
 -- issue #3827 — private ticket links, implementor happy path (pg17 post-replay).
 -- MINGLA-INVARIANT: I-3827-LINK-TOKEN-OPAQUE | issue #3827 | only a domain-separated token hash is persisted; reset replaces it and the old hash no longer resolves.
 -- MINGLA-INVARIANT: I-3827-LINK-GROUP-ONE-PERSON-ONE-ORDER | issue #3827 | each accepted person gets one comp order and one ticket; one group's emails are unique and duplicate event attendees are skipped.
+-- MINGLA-INVARIANT: I-3827-LINK-GROUP-ATOMIC | issue #3827 | each guest-list submission commits every newly issuable person or commits none of them.
 -- MINGLA-INVARIANT: I-3827-LINK-PENDING-HOLDS-NOTHING | issue #3827 | a host-approval request changes neither sold_count nor link uses before approval.
--- MINGLA-INVARIANT: I-3827-HIDDEN-TIER-REQUIRES-LINK | issue #3827 | direct checkout cannot buy a hidden tier; the matching active private link wrapper can and binds attribution.
+-- MINGLA-INVARIANT: I-3827-HIDDEN-TIER-REQUIRES-LINK | issue #3827 | direct checkout cannot buy a hidden tier; the matching usable private link wrapper can and binds attribution.
 -- MINGLA-INVARIANT: I-3827-PASSWORDS-RETIRED | issue #3827 | published event and ticket password protection cannot be enabled.
 -- MINGLA-INVARIANT: I-3827-GUIDE-MATCHES-PRIVATE-LINKS | issue #3827 | the Feature Guide describes revocable links, pending capacity and Via link attribution.
 
