@@ -374,6 +374,15 @@ jobs:
               #
               # Matched by EXACT filename, never an issue-number infix.
               *20271128003827_issue_3827_going_box_privacy_extra_guests.sql) continue ;;
+              # #3827 private ticket links — SKIPPED because this deliberately
+              # pre-#1931 replay also omits #2160 and the #3281 checkout lineage.
+              # The migration extends the 15-argument checkout-session base that
+              # those skipped files create, then re-emits public event readers
+              # whose current bodies reach the omitted visibility/privacy helpers.
+              # The unfiltered full-chain lanes replay it in true filename order.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271203003827_issue_3827_private_ticket_links.sql) continue ;;
               # #3281 R3 — rewrites public experience reader / create-session that
               # call helpers defined only in migrations this lane skips (#2489/#3313/#3281 prior).
               *20271123003281_issue_3281_r3_spacing_spots.sql) continue ;;

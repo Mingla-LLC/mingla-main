@@ -333,6 +333,9 @@ export default function TicketLinkLanding(): React.ReactElement {
             <Pressable
               key={date.id}
               onPress={() => setEventDateId(date.id)}
+              accessibilityRole="radio"
+              accessibilityLabel={`Choose ${dateLabel(date.startAt, date.timezone)}`}
+              accessibilityState={{ selected: eventDateId === date.id }}
               style={[styles.dateRow, eventDateId === date.id && styles.dateRowActive]}
             >
               <Text style={styles.dateText}>{dateLabel(date.startAt, date.timezone)}</Text>
@@ -398,7 +401,7 @@ function EventCard({ resolved }: { resolved: TicketLinkResolve }): React.ReactEl
 function Legal(): React.ReactElement {
   return (
     <Text style={styles.legal}>
-      By continuing, you agree to Mingla's{" "}
+      {"By continuing, you agree to Mingla's "}
       <Text style={styles.link} onPress={() => void Linking.openURL(PURCHASE_TERMS_URL)}>Terms</Text>
       {" and "}
       <Text style={styles.link} onPress={() => void Linking.openURL(PURCHASE_PRIVACY_URL)}>Privacy Policy</Text>.

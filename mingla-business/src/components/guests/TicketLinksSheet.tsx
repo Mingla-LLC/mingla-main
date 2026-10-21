@@ -365,6 +365,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                       disabled={editing !== null}
                       onPress={() => setSelectedTierId(ticket.id)}
                       accessibilityRole="radio"
+                      accessibilityLabel={`${ticket.name}, ${ticket.isFree || (ticket.priceGbp ?? 0) === 0 ? "guest list" : "private ticket"}`}
                       accessibilityState={{ selected: selectedTierId === ticket.id, disabled: editing !== null }}
                       style={[styles.choice, selectedTierId === ticket.id && styles.choiceActive]}
                     >
@@ -377,7 +378,7 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                 <Text style={styles.fieldLabel}>Link name</Text>
                 <Input value={label} onChangeText={setLabel} placeholder="DJ Kaycee's invites" accessibilityLabel="Link name" />
 
-                <Pressable style={styles.toggleRow} onPress={() => setLimited((value) => !value)} accessibilityRole="switch" accessibilityState={{ checked: limited }}>
+                <Pressable style={styles.toggleRow} onPress={() => setLimited((value) => !value)} accessibilityRole="switch" accessibilityLabel={isFree ? "Limit sign-ups on this link" : "Limit tickets on this link"} accessibilityState={{ checked: limited }}>
                   <Text style={styles.choiceText}>{isFree ? "Limit sign-ups on this link" : "Limit tickets on this link"}</Text>
                   <Text style={styles.actionText}>{limited ? "ON" : "OFF"}</Text>
                 </Pressable>
@@ -389,13 +390,13 @@ export const TicketLinksSheet: React.FC<TicketLinksSheetProps> = ({
                     <Text style={styles.fieldLabel}>Guests can bring</Text>
                     <View style={styles.choicesRow}>
                       {[1, 2, 4, 10].map((value) => (
-                        <Pressable key={value} style={[styles.chip, partyMax === value && styles.choiceActive]} onPress={() => setPartyMax(value)}>
+                        <Pressable key={value} style={[styles.chip, partyMax === value && styles.choiceActive]} onPress={() => setPartyMax(value)} accessibilityRole="radio" accessibilityLabel={value === 1 ? "No guests" : `Guests can bring up to ${value - 1}`} accessibilityState={{ selected: partyMax === value }}>
                           <Text style={styles.choiceText}>{value === 1 ? "No guests" : `Up to ${value - 1}`}</Text>
                         </Pressable>
                       ))}
                     </View>
                     <Text style={styles.helper}>Each guest gives their own name, email and phone, and gets their own ticket. Every person counts toward the limit.</Text>
-                    <Pressable style={styles.toggleRow} onPress={() => setApprovalMode((mode) => mode === "auto" ? "host" : "auto")} accessibilityRole="switch" accessibilityState={{ checked: approvalMode === "host" }}>
+                    <Pressable style={styles.toggleRow} onPress={() => setApprovalMode((mode) => mode === "auto" ? "host" : "auto")} accessibilityRole="switch" accessibilityLabel="Approve each request" accessibilityState={{ checked: approvalMode === "host" }}>
                       <View style={styles.headerText}>
                         <Text style={styles.choiceText}>Approve each request</Text>
                         <Text style={styles.helper}>Requests hold no places until you approve them.</Text>

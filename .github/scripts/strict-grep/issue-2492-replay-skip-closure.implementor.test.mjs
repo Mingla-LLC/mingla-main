@@ -267,7 +267,10 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // [TEST-MOD-APPROVED #3281] count pins only; assertion logic unchanged.
 // [TEST-MOD-APPROVED #3827] Going-box (20271128003827) adds one exact skip to each
 // filtered lane: #1931 26 -> 27 (and fixtures built on it, +1), #2117 22 -> 23. Counts only.
-test("T-10 — lane inventory is exactly 4 lanes at 27/1/3/23 (a blind parser reds here)", () => {
+// [TEST-MOD-APPROVED #3827] Private ticket links (20271203003827) adds one exact
+// skip to each filtered lane for its current-reader and checkout-lineage re-emits.
+// Only the derived lane-count pins move by one; every mutation stays binding.
+test("T-10 — lane inventory is exactly 4 lanes at 28/1/3/24 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -275,8 +278,8 @@ test("T-10 — lane inventory is exactly 4 lanes at 27/1/3/23 (a blind parser re
   assert.deepEqual(inventory, {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    [LANE]: 27,
-    "issue-2117-offering-visibility-gate-tests.yml": 23,
+    [LANE]: 28,
+    "issue-2117-offering-visibility-gate-tests.yml": 24,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
 
@@ -292,9 +295,9 @@ test("T-10 — lane inventory is exactly 4 lanes at 27/1/3/23 (a blind parser re
   assert.equal(alternation.branchCount, 1);
   assert.equal(alternation.globs.length, 3);
 
-  // SC-2: the #1931 lane skips exactly twelve files, and ...002463 is NOT one.
+  // SC-2: the #1931 lane's exact inventory excludes ...002463.
   const pinned = lanes.find((l) => l.workflow === LANE);
-  assert.equal(pinned.skipped.length, 27);
+  assert.equal(pinned.skipped.length, 28);
   assert.ok(pinned.skipped.includes(SKIPPED_MIGRATION));
   assert.equal(
     pinned.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
@@ -403,8 +406,8 @@ test("T-23 — the two-line branch form is read, and its skip actually takes eff
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 28, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
-  assert.equal(lane.globs.length, 28);
+  assert.equal(lane.branchCount, 29, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
+  assert.equal(lane.globs.length, 29);
   assert.ok(
     lane.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
     "reading the branch is not enough — the glob must actually resolve and skip the file",
@@ -433,7 +436,7 @@ test("T-24 — C-4(c) reds on a branch the parser cannot read, where C-4(b) cann
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 27, "precondition: the 3-line branch really is unread");
+  assert.equal(lane.branchCount, 28, "precondition: the 3-line branch really is unread");
   assert.ok(lane.globs.length > 0, "precondition: sibling branches still yield globs, so C-4(b) cannot fire");
   assert.equal(
     violations.some((v) => v.check === "C-4b"),
@@ -500,8 +503,8 @@ test("T-2723-I1/I2/I3 — exact #2696 skip is present and C-3 fails on its rever
 
   const lane = real.lanes.find((candidate) => candidate.workflow === LANE);
   assert.ok(lane, "the #1931 filtered replay lane must exist");
-  assert.equal(lane.globs.length, 27, "the #1931 lane must expose exactly twenty-seven skip globs");
-  assert.equal(lane.skipped.length, 27, "those twenty-seven globs must resolve exactly twenty-seven skipped migrations");
+  assert.equal(lane.globs.length, 28, "the #1931 lane must expose exactly twenty-eight skip globs");
+  assert.equal(lane.skipped.length, 28, "those twenty-eight globs must resolve exactly twenty-eight skipped migrations");
   assert.ok(lane.globs.includes(ISSUE_2723_EXACT_GLOB), "the exact #2696 filename glob must be present");
   assert.ok(lane.skipped.includes(ISSUE_2723_MIGRATION), "the exact #2696 migration must resolve as skipped");
   assert.equal(
