@@ -216,7 +216,11 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     // negative assertions below — no inline `maps://?q=` / `geo:0,0?q=` in the
     // adapter — are untouched and still prove it builds no URL.
     expect(businessAdapterSource).toContain("openMapsTarget(target, { app })");
-    expect(businessAdapterSource).toContain("onOpenMaps: openMapsForTarget");
+    // [TEST-MOD-APPROVED #4037] — SAME intent, one indirection later (approved
+    // by Seth in chat 2026-10-21). handleOpenMaps counts the host's directions
+    // CTA, then calls the unchanged openMapsForTarget forwarder pinned above.
+    expect(businessAdapterSource).toContain("onOpenMaps: handleOpenMaps");
+    expect(businessAdapterSource).toContain("openMapsForTarget(target, app);");
     // issue #2508 — and the copy affordance is wired on the same card, so the
     // buyer web ships both halves of the feature, not one.
     expect(businessAdapterSource).toContain(

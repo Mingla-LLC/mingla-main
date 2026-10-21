@@ -434,6 +434,15 @@ const renderPublicEventPage = (
       // below is untouched.
       case "../../analytics/shareDestination":
         return { recordShareDestination: () => false };
+      // [TEST-MOD-APPROVED #4037] Harness registration only — ADDITION, no
+      // assertion changed (approved by Seth in chat 2026-10-21). The page now
+      // records aggregate host traffic (page view + CTAs) through this module;
+      // the close-callback contract is unrelated.
+      case "../../services/offeringEngagementCapture":
+        return {
+          captureOfferingPageView: async () => undefined,
+          captureOfferingCta: async () => undefined,
+        };
       // [TEST-MOD-APPROVED #3284] Harness registration only — ADDITION, no
       // assertion changed. The adapter now reads its refund-terms default (the
       // pure three-state reader's UNKNOWN state, which renders nothing) from the
