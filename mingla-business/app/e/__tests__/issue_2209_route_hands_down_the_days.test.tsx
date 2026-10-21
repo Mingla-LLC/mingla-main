@@ -11,7 +11,7 @@
  *
  * Nothing ever passed that prop. The result on the live page
  * (host.usemingla.com/e/minglanigeria/we-go-again-two-day-demo, a signed-out
- * guest, measured on 2026-08-18) was:
+ * guest, measured on 2027-08-18) was:
  *
  *     Date TBD
  *     Multi-date (no dates yet)
@@ -26,7 +26,9 @@
  *
  * FAILS-ON-REVERT: delete the `occurrences={...}` / `multiDatePricingMode={...}`
  * lines from app/e/[brandSlug]/[eventSlug].tsx and R-1/R-2/R-3 go red.
- */
+ 
+ * [TEST-MOD-APPROVED #3281] fixture dates bumped past many-dates upcoming filter.
+*/
 
 import React from "react";
 
@@ -78,16 +80,16 @@ const OCC_DAY_TWO = "occ-2209-day-two";
 const TWO_DAYS = [
   {
     id: OCC_DAY_ONE,
-    startAt: "2026-08-22T10:00:00.000Z",
-    endAt: "2026-08-22T17:00:00.000Z",
+    startAt: "2027-08-21T10:00:00.000Z",
+    endAt: "2027-08-21T17:00:00.000Z",
     timezone: "Africa/Lagos",
     isMaster: true,
     ticketsRemaining: null,
   },
   {
     id: OCC_DAY_TWO,
-    startAt: "2026-08-23T10:00:00.000Z",
-    endAt: "2026-08-23T17:00:00.000Z",
+    startAt: "2027-08-22T10:00:00.000Z",
+    endAt: "2027-08-22T17:00:00.000Z",
     timezone: "Africa/Lagos",
     isMaster: false,
     ticketsRemaining: null,

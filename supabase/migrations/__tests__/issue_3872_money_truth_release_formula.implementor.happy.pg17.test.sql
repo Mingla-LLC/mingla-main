@@ -1,21 +1,20 @@
--- Issue #3872 PR 1 (money truth) — the payout release equation (PG17).
+-- Issue #3872 PR 1 (money truth) + #3645 flat 4.5% host net (PG17).
 --
--- MINGLA-INVARIANT: I-3872-RELEASE-EQUALS-PROVIDER-NET | issue #3872 | The net released to the host for every payout source equals what landed in the host's provider balance: charged minus the fee Mingla kept minus the provider fee minus net refunds and open disputes.
+-- MINGLA-INVARIANT: I-3645-HOST-NET-IGNORES-PROVIDER-FEE | issue #3645 | Host net is greatest(0, gross − refunded − disputed − mingla_fee); the provider fee is snapshotted for reporting but never subtracted (Mingla pays processing out of the flat 4.5%), and the partner share stays off the host net.
 -- "The fee Mingla kept" is the application fee minus any application fee the
 -- provider returned to the host on a refund.
 --
--- Every case below FAILS on the formula that shipped before #3872 and passes after
--- 20271107003872_issue_3872_money_truth.sql:
+-- Cases:
 --   A. F10 — a hosted Stripe order that passes fees: gross must be what the card was
 --      charged (buyer_total_cents), not the ticket base kept in orders.total_cents.
 --   B. F1  — a partner share (10% OF Mingla's fee, paid from Mingla's platform
---      balance) must not reduce the host's net.
+--      balance) must not reduce the host's net; provider_fee also does not.
 --   C. A refunded application fee returns to the host's balance, so only the fee
---      Mingla kept is deducted.
+--      Mingla kept is deducted (provider_fee still ignored).
 --   D. A reservation deposit pays Mingla an application fee; the fee must be deducted
 --      (the arm used to pass 0 and over-release by the fee).
 --   E. plan_pending_payout_partner_legs rebuilds a pending release's net without the
---      partner share, partner principal corrections or partner transfer costs.
+--      partner share, provider fee, partner principal corrections or partner transfer costs.
 
 BEGIN;
 
@@ -82,8 +81,13 @@ BEGIN
   IF v_item.gross_cents <> 3135 THEN
     RAISE EXCEPTION 'case_a F10: gross must be the charged total 3135, got %', v_item.gross_cents;
   END IF;
-  IF v_item.net_cents <> 3135 - 45 - 166 THEN
-    RAISE EXCEPTION 'case_a F10: net must be 2924 (charged - fee - Stripe fee), got %', v_item.net_cents;
+  IF v_item.provider_fee_cents <> 166 THEN
+    RAISE EXCEPTION 'case_a: provider fee must still be snapshotted (166), got %',
+      v_item.provider_fee_cents;
+  END IF;
+  -- #3645: host net ignores provider_fee (3135 - 45 = 3090).
+  IF v_item.net_cents <> 3135 - 45 THEN
+    RAISE EXCEPTION 'case_a F10: net must be 3090 (charged - Mingla fee), got %', v_item.net_cents;
   END IF;
   RAISE NOTICE 'issue_3872 case_a pass';
 END $case_a$;
@@ -129,12 +133,13 @@ BEGIN
   IF v_item.partner_share_cents <> 15 THEN
     RAISE EXCEPTION 'case_b: partner share must stay stored for reporting, got %', v_item.partner_share_cents;
   END IF;
-  IF v_item.net_cents <> 10000 - 150 - 320 THEN
-    RAISE EXCEPTION 'case_b F1: net must ignore the partner share (9530), got %', v_item.net_cents;
+  -- #3645: ignore partner share and provider_fee (10000 - 150 = 9850).
+  IF v_item.net_cents <> 10000 - 150 THEN
+    RAISE EXCEPTION 'case_b F1: net must ignore partner + provider fee (9850), got %', v_item.net_cents;
   END IF;
   SELECT * INTO v_release FROM public.brand_payout_releases WHERE id = v_item.release_id;
-  IF v_release.net_release_cents <> 9530 THEN
-    RAISE EXCEPTION 'case_b F1: release net must be 9530, got %', v_release.net_release_cents;
+  IF v_release.net_release_cents <> 9850 THEN
+    RAISE EXCEPTION 'case_b F1: release net must be 9850, got %', v_release.net_release_cents;
   END IF;
   RAISE NOTICE 'issue_3872 case_b pass';
 END $case_b$;
@@ -176,9 +181,9 @@ BEGIN
   SELECT * INTO v_item FROM public.payout_release_items
    WHERE source_type='order' AND source_id=v_order;
   IF NOT FOUND THEN RAISE EXCEPTION 'case_c: order did not attach'; END IF;
-  -- Host balance: +2000 charged, -30 fee, -88 Stripe fee, -1000 refund, +15 fee back.
-  IF v_item.net_cents <> 2000 - 1000 - (30 - 15) - 88 THEN
-    RAISE EXCEPTION 'case_c: net must deduct only the fee Mingla kept (897), got %', v_item.net_cents;
+  -- Host net: +2000 charged, -1000 refund, -(30-15) fee Mingla kept; provider_fee ignored.
+  IF v_item.net_cents <> 2000 - 1000 - (30 - 15) THEN
+    RAISE EXCEPTION 'case_c: net must deduct only the fee Mingla kept (985), got %', v_item.net_cents;
   END IF;
   RAISE NOTICE 'issue_3872 case_c pass';
 END $case_c$;
@@ -229,8 +234,8 @@ BEGIN
   SELECT * INTO v_item FROM public.payout_release_items
    WHERE source_type='venue_reservation' AND source_id=v_session;
   IF NOT FOUND THEN RAISE EXCEPTION 'case_d: reservation deposit did not attach'; END IF;
-  IF v_item.mingla_fee_cents <> 30 OR v_item.net_cents <> 2000 - 30 - 88 THEN
-    RAISE EXCEPTION 'case_d: deposit net must deduct the 30 application fee (1882), got fee % net %',
+  IF v_item.mingla_fee_cents <> 30 OR v_item.net_cents <> 2000 - 30 THEN
+    RAISE EXCEPTION 'case_d: deposit net must deduct the 30 application fee (1970), got fee % net %',
       v_item.mingla_fee_cents, v_item.net_cents;
   END IF;
   RAISE NOTICE 'issue_3872 case_d pass';
@@ -283,8 +288,8 @@ BEGIN
 
   PERFORM public.plan_pending_payout_partner_legs(50);
   SELECT net_release_cents INTO v_net FROM public.brand_payout_releases WHERE id = v_item.release_id;
-  IF v_net <> 10000 - 150 - 320 THEN
-    RAISE EXCEPTION 'case_e F1: planner must leave the host net at 9530, got %', v_net;
+  IF v_net <> 10000 - 150 THEN
+    RAISE EXCEPTION 'case_e F1: planner must leave the host net at 9850, got %', v_net;
   END IF;
   RAISE NOTICE 'issue_3872 case_e pass';
 END $case_e$;

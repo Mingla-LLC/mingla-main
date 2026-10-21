@@ -484,8 +484,9 @@ export function violations(files) {
   // exact capacity baseline while remaining a standalone cryptographic secret.
   // [TEST-MOD-APPROVED #2830] The established Phase B names remain bundled;
   // founder-approved Sites slot 88 is independently guarded by issue #2830.
-  if (manifest.rollout?.expected_user_managed_count !== 88) {
-    failures.push("manifest: Phase B plus approved Sites slot must enforce expected count at 88");
+  // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat (SPRINT_ROLLOVER_TOKEN).
+  if (manifest.rollout?.expected_user_managed_count !== 89) {
+    failures.push("manifest: Phase B plus approved Sites slot and #3980 slot must enforce expected count at 89");
   }
   const records = new Map(
     (manifest.secrets ?? []).map((record) => [record.name, record]),

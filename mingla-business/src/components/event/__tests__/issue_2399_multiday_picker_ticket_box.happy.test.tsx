@@ -3,7 +3,9 @@
  *
  * Fails-on-revert seams: remove the leading purchase slot, restore the unscaled
  * running total, allow a zero-day total/CTA, or remove occurrence normalization.
- */
+ 
+ * [TEST-MOD-APPROVED #3281] fixture dates bumped past many-dates upcoming filter.
+*/
 import React from "react";
 import { Text } from "react-native";
 import { readFileSync } from "node:fs";
@@ -146,19 +148,19 @@ describe("issue #2399 — multi-day decision lives inside the ticket box", () =>
       [
         {
           id: "day-2",
-          startAt: "2026-08-30T10:00:00Z",
-          endAt: "2026-08-30T17:00:00Z",
+          startAt: "2027-08-30T10:00:00Z",
+          endAt: "2027-08-30T17:00:00Z",
         },
-        { id: "bad", startAt: "not-a-date", endAt: "2026-08-31T17:00:00Z" },
+        { id: "bad", startAt: "not-a-date", endAt: "2027-08-31T17:00:00Z" },
         {
           id: "day-1",
-          startAt: "2026-08-29T10:00:00Z",
-          endAt: "2026-08-29T17:00:00Z",
+          startAt: "2027-08-29T10:00:00Z",
+          endAt: "2027-08-29T17:00:00Z",
         },
         {
           id: "day-2",
-          startAt: "2026-08-30T10:00:00Z",
-          endAt: "2026-08-30T17:00:00Z",
+          startAt: "2027-08-30T10:00:00Z",
+          endAt: "2027-08-30T17:00:00Z",
         },
       ],
       "Europe/London",

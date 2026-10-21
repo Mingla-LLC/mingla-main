@@ -1,11 +1,11 @@
 /**
- * issue #3281 many-dates — Host Dates list (PR 3).
+ * issue #3281 many-dates — Host Dates list (PR 3 + dark-theme follow-up).
  * Edit per-date title / venue via business_set_event_date_override.
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -22,7 +22,9 @@ import { Toast } from "../../../src/components/ui/Toast";
 import { supabase } from "../../../src/services/supabase";
 import {
   accent,
+  canvas,
   spacing,
+  text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
 
@@ -50,34 +52,43 @@ const formatInZone = (iso: string, zone: string | null): string => {
   }
 };
 
+const isPastEnd = (endAt: string, nowMs: number): boolean => {
+  const end = Date.parse(endAt);
+  return Number.isFinite(end) && end <= nowMs;
+};
+
 export default function EventDatesScreen(): React.ReactElement {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<DateRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<
     Record<string, { title: string; location: string }>
   >({});
-  /** Row ids with unsaved local edits — Refresh keeps these, reloads the rest. */
+  /** Row ids with unsaved local edits — refresh keeps these, reloads the rest. */
   const dirtyIdsRef = useRef<Set<string>>(new Set());
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
+  const nowMs = useMemo(() => Date.now(), [rows]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (typeof id !== "string" || id.length === 0) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (opts?.soft === true) setRefreshing(true);
+    else setLoading(true);
     const { data, error } = await supabase
       .from("event_dates")
       .select("id, start_at, end_at, timezone, override_title, override_location")
       .eq("event_id", id)
       .order("start_at", { ascending: true });
-    setLoading(false);
+    if (opts?.soft === true) setRefreshing(false);
+    else setLoading(false);
     if (error) {
       setToast(error.message);
       return;
@@ -107,6 +118,11 @@ export default function EventDatesScreen(): React.ReactElement {
 
   const saveRow = async (rowId: string) => {
     if (typeof id !== "string") return;
+    const row = rows.find((r) => r.id === rowId);
+    if (row !== undefined && isPastEnd(row.end_at, Date.now())) {
+      setToast("Past dates can’t be edited.");
+      return;
+    }
     const d = drafts[rowId] ?? { title: "", location: "" };
     const saved = { title: d.title, location: d.location };
     setSavingId(rowId);
@@ -152,22 +168,38 @@ export default function EventDatesScreen(): React.ReactElement {
         rightSlot={null}
       />
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 24 }} />
+        <ActivityIndicator color={accent.warm} style={{ marginTop: 24 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void load({ soft: true })}
+              tintColor={accent.warm}
+            />
+          }
+        >
+          <Text style={styles.note}>
+            Titles and places you save here show on the guest date picker when
+            guests choose days.
+          </Text>
           {rows.length === 0 ? (
             <Text style={styles.muted}>No dates on this event yet.</Text>
           ) : (
             rows.map((r) => {
               const d = drafts[r.id] ?? { title: "", location: "" };
+              const past = isPastEnd(r.end_at, nowMs);
               return (
                 <View key={r.id} style={styles.card}>
                   <Text style={styles.when}>
                     {formatInZone(r.start_at, r.timezone)}
+                    {past ? " · ended" : ""}
                   </Text>
                   <Text style={styles.label}>Title for this date</Text>
                   <TextInput
                     value={d.title}
+                    editable={!past && savingId === null}
                     onChangeText={(title) => {
                       dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
@@ -176,12 +208,14 @@ export default function EventDatesScreen(): React.ReactElement {
                       }));
                     }}
                     placeholder="Inherits event title"
+                    placeholderTextColor={textTokens.quaternary}
                     maxLength={120}
-                    style={styles.input}
+                    style={[styles.input, past ? styles.inputDisabled : null]}
                   />
                   <Text style={styles.label}>Place for this date</Text>
                   <TextInput
                     value={d.location}
+                    editable={!past && savingId === null}
                     onChangeText={(location) => {
                       dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
@@ -190,28 +224,27 @@ export default function EventDatesScreen(): React.ReactElement {
                       }));
                     }}
                     placeholder="Inherits venue"
+                    placeholderTextColor={textTokens.quaternary}
                     maxLength={120}
-                    style={styles.input}
+                    style={[styles.input, past ? styles.inputDisabled : null]}
                   />
-                  <Button
-                    label={savingId === r.id ? "Saving…" : "Save"}
-                    onPress={() => void saveRow(r.id)}
-                    // One in-flight save at a time: a second row's save must not
-                    // re-enable this row while its request is still pending.
-                    disabled={savingId !== null}
-                  />
+                  {past ? (
+                    <Text style={styles.mutedInline}>
+                      Past dates are read-only.
+                    </Text>
+                  ) : (
+                    <Button
+                      label={savingId === r.id ? "Saving…" : "Save"}
+                      onPress={() => void saveRow(r.id)}
+                      // One in-flight save at a time: a second row's save must not
+                      // re-enable this row while its request is still pending.
+                      disabled={savingId !== null}
+                    />
+                  )}
                 </View>
               );
             })
           )}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Refresh dates"
-            onPress={() => void load()}
-            style={styles.refresh}
-          >
-            <Text style={{ color: accent.warm }}>Refresh</Text>
-          </Pressable>
         </ScrollView>
       )}
       <Toast
@@ -225,25 +258,38 @@ export default function EventDatesScreen(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: canvas.discover },
   list: { padding: spacing.md, gap: spacing.md, paddingBottom: 48 },
+  note: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    marginBottom: 4,
+  },
   card: {
     gap: 8,
     padding: spacing.md,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#D0D5DD",
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
-  when: { ...typography.body, fontWeight: "600" },
-  label: { ...typography.caption, color: "#667085" },
+  when: {
+    ...typography.body,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  label: { ...typography.caption, color: textTokens.tertiary },
   input: {
     borderWidth: 1,
-    borderColor: "#D0D5DD",
+    borderColor: "rgba(255,255,255,0.18)",
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     minHeight: 44,
+    color: textTokens.primary,
+    backgroundColor: "rgba(0,0,0,0.25)",
   },
-  muted: { color: "#667085", marginTop: 16 },
-  refresh: { alignSelf: "center", minHeight: 44, justifyContent: "center" },
+  inputDisabled: { opacity: 0.55 },
+  muted: { color: textTokens.tertiary, marginTop: 16 },
+  mutedInline: { color: textTokens.tertiary, marginTop: 4 },
 });

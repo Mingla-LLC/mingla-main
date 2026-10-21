@@ -585,6 +585,9 @@ export default function ConsumerEventDetailScreen({
         occurrences: validOccurrences,
         selectedEventDateIds,
         pricingMode: validatedDayCanonical?.multiDatePricingMode ?? "per_day" as const,
+        allDaysPass:
+          validatedDayCanonical?.allDaysPass === true ||
+          validatedDayCanonical?.multiDatePricingMode === "all_days",
         timezone: validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
         onToggle: toggleEventDay,
         onRetry: retryEventDays,
@@ -620,6 +623,9 @@ export default function ConsumerEventDetailScreen({
         occurrences: validOccurrences,
         selectedEventDateIds,
         pricingMode: validatedDayCanonical.multiDatePricingMode,
+        allDaysPass:
+          validatedDayCanonical.allDaysPass === true ||
+          validatedDayCanonical.multiDatePricingMode === "all_days",
         timezone: validatedDayCanonical.timezone,
         onToggle: toggleEventDay,
         onRetry: retryEventDays,
@@ -631,6 +637,9 @@ export default function ConsumerEventDetailScreen({
       occurrences: validOccurrences,
       selectedEventDateIds,
       pricingMode: validatedDayCanonical.multiDatePricingMode,
+        allDaysPass:
+          validatedDayCanonical.allDaysPass === true ||
+          validatedDayCanonical.multiDatePricingMode === "all_days",
       timezone: validatedDayCanonical.timezone,
       onToggle: toggleEventDay,
       onRetry: retryEventDays,

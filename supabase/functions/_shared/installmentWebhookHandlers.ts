@@ -139,7 +139,7 @@ export async function handleInstallmentPaymentSucceeded(
     const appFeeRaw = piObj["application_fee_amount"];
     return typeof appFeeRaw === "number"
       ? Math.max(0, Math.trunc(appFeeRaw))
-      : Math.round(amountCents * 0.015);
+      : Math.round(amountCents * 0.045);
   };
 
   const recordProviderSaleOrThrow = async (

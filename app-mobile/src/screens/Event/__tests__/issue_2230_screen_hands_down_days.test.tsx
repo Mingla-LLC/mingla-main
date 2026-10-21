@@ -1,4 +1,6 @@
-/** #2230 implementor happy-path: real mapper + load-bearing screen wiring. */
+/** #2230 implementor happy-path: real mapper + load-bearing screen wiring. 
+ * [TEST-MOD-APPROVED #3281] fixture dates bumped past many-dates upcoming filter.
+*/
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -43,30 +45,30 @@ const payload = (mode: unknown = "per_day"): Record<string, unknown> => ({
   occurrences: [
     {
       id: "day-2",
-      startAt: "2026-08-23T10:00:00.000Z",
-      endAt: "2026-08-23T17:00:00.000Z",
+      startAt: "2027-08-23T10:00:00.000Z",
+      endAt: "2027-08-23T17:00:00.000Z",
       timezone: "Not/AZone",
       isMaster: false,
     },
     {
       id: "day-1",
-      startAt: "2026-08-22T10:00:00.000Z",
-      endAt: "2026-08-22T17:00:00.000Z",
+      startAt: "2027-08-22T10:00:00.000Z",
+      endAt: "2027-08-22T17:00:00.000Z",
       timezone: "Africa/Lagos",
       isMaster: true,
     },
     {
       id: "day-1",
-      startAt: "2026-08-21T10:00:00.000Z",
-      endAt: "2026-08-21T17:00:00.000Z",
+      startAt: "2027-08-21T10:00:00.000Z",
+      endAt: "2027-08-21T17:00:00.000Z",
       timezone: "UTC",
       isMaster: false,
     },
-    { id: "bad-end", startAt: "2026-08-24T10:00:00.000Z", endAt: "nope" },
+    { id: "bad-end", startAt: "2027-08-24T10:00:00.000Z", endAt: "nope" },
     {
       id: "",
-      startAt: "2026-08-25T10:00:00.000Z",
-      endAt: "2026-08-25T11:00:00.000Z",
+      startAt: "2027-08-25T10:00:00.000Z",
+      endAt: "2027-08-25T11:00:00.000Z",
     },
   ],
 });
