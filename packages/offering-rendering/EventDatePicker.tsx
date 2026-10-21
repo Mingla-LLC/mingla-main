@@ -42,6 +42,44 @@ export type EventDatePickerProps = {
   occurrenceTestIDPrefix?: string;
   /** Prefix for each occurrence nativeID (`{prefix}-{id}`). */
   occurrenceNativeIDPrefix?: string;
+  /**
+   * Surface-owned occurrence row. When set, the picker still owns layout
+   * (chips / month tiles / pass / empty / recovery) and which dates are
+   * visible, but each date is rendered by the surface so it can keep its own
+   * accessibility and label contracts (#2135 / #2209 / #2230 / #2399: checkbox
+   * semantics, the web Space-key + aria-checked contract, and the row label
+   * owned by `formatOccurrenceLine`). Rows stack vertically in this mode.
+   */
+  renderOccurrence?: (
+    args: EventDatePickerOccurrenceRenderArgs,
+  ) => EventDatePickerRowElement | null;
+};
+
+/**
+ * The element type a JSX expression produces in the consuming app. This
+ * package cannot name React's element type directly (a bare `"react"` import —
+ * type-only included — raises TS2307 here, see `offeringRenderingReact`), so the
+ * type is taken from a JSX expression instead of being spelled out.
+ */
+const rowElementTypeWitness = () => <View />;
+export type EventDatePickerRowElement = ReturnType<typeof rowElementTypeWitness>;
+
+export type EventDatePickerOccurrenceRenderArgs = {
+  /** React key for the row's root element. */
+  key: string;
+  occurrence: EventDateScheduleOccurrence;
+  selected: boolean;
+  /** True when the date is sold out; the row must not be toggleable. */
+  soldOut: boolean;
+  /** Override title for this date, trimmed, or null. */
+  title: string | null;
+  /** Override location for this date, trimmed, or null. */
+  location: string | null;
+  /** "N places left" style chip, or null. */
+  placesLeftLabel: string | null;
+  testID: string;
+  nativeID: string | undefined;
+  toggle: () => void;
 };
 
 const MIN_HIT = 44;
@@ -59,6 +97,7 @@ export function EventDatePicker({
   testID = "event-date-picker",
   occurrenceTestIDPrefix,
   occurrenceNativeIDPrefix,
+  renderOccurrence,
 }: EventDatePickerProps) {
   const layout = React.useMemo(
     () => chooseEventDateLayout(occurrences, { allDaysPass }),
@@ -161,11 +200,38 @@ export function EventDatePicker({
           </Pressable>
         </View>
       ) : null}
-      <View style={styles.chipWrap}>
+      <View style={renderOccurrence ? styles.rowList : styles.chipWrap}>
         {visible.map((o) => {
           const isOn = selected.has(o.id);
           const full = o.soldOut === true;
           const chip = placesLeftChip(o.placesLeft);
+          const rowTestID = `${occurrenceTestIDPrefix ?? `${testID}-day`}-${o.id}`;
+          const rowNativeID = occurrenceNativeIDPrefix
+            ? `${occurrenceNativeIDPrefix}-${o.id}`
+            : undefined;
+          if (renderOccurrence) {
+            const overrideTitle =
+              typeof o.overrideTitle === "string" && o.overrideTitle.trim().length > 0
+                ? o.overrideTitle.trim()
+                : null;
+            const overrideLocation =
+              typeof o.overrideLocation === "string" &&
+              o.overrideLocation.trim().length > 0
+                ? o.overrideLocation.trim()
+                : null;
+            return renderOccurrence({
+              key: o.id,
+              occurrence: o,
+              selected: isOn,
+              soldOut: full,
+              title: overrideTitle,
+              location: overrideLocation,
+              placesLeftLabel: chip,
+              testID: rowTestID,
+              nativeID: rowNativeID,
+              toggle: () => onToggle(o.id),
+            });
+          }
           const day =
             formatOccurrenceChipLabel(o.startAt, o.timezone) ??
             occurrenceLocalDay(o.startAt, o.timezone) ??
@@ -192,10 +258,8 @@ export function EventDatePicker({
                   opacity: full ? 0.45 : 1,
                 },
               ]}
-              testID={`${occurrenceTestIDPrefix ?? `${testID}-day`}-${o.id}`}
-              {...(occurrenceNativeIDPrefix
-                ? { nativeID: `${occurrenceNativeIDPrefix}-${o.id}` }
-                : {})}
+              testID={rowTestID}
+              {...(rowNativeID !== undefined ? { nativeID: rowNativeID } : {})}
             >
               <Text style={{ color: isOn ? "#fff" : mutedColor }}>{label}</Text>
               {chip !== null ? (
@@ -232,6 +296,7 @@ export function EventDatePicker({
 const styles = StyleSheet.create({
   box: { gap: 8 },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  rowList: { gap: 8 },
   chip: {
     borderWidth: 1,
     borderRadius: 10,

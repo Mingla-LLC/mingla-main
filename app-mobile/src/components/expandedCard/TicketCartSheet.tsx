@@ -881,14 +881,18 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         (id) => validIds.has(id),
       );
       if (multiDaySelection.status !== "ready") return;
+      // issue #3281 — an all-days pass has nothing to choose: the server
+      // expands the pass to every upcoming date (ticket-checkout-create).
       const pass =
         multiDaySelection.allDaysPass === true ||
         multiDaySelection.pricingMode === "all_days";
-      if (!pass && selectedIds.length === 0) {
-        // ⚠️ DELETE THIS AND a guest buys a day they never chose.
-        setHighlightUnchosen(true);
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        return;
+      if (!pass) {
+        if (selectedIds.length === 0) {
+          // ⚠️ DELETE THIS AND a guest buys a day they never chose.
+          setHighlightUnchosen(true);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
       }
     }
     if (totals.isEmpty) return;

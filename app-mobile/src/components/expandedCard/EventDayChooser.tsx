@@ -11,10 +11,15 @@ import {
   View,
 } from "react-native";
 
-import { EventDatePicker } from "@mingla/offering-rendering/EventDatePicker";
+import {
+  EventDatePicker,
+  type EventDatePickerOccurrenceRenderArgs,
+} from "@mingla/offering-rendering/EventDatePicker";
 import type { EventDateScheduleOccurrence } from "@mingla/offering-rendering/eventDateSchedule";
 
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
+import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
+import { Icon } from "../ui/Icon";
 
 export type EventDayChooserStatus =
   "loading" | "ready" | "error" | "offline" | "stale";
@@ -91,9 +96,11 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
     [occurrences, timezone],
   );
   const chosen = selectedEventDateIds.length;
+  // #2160 §7(b) parity with Host web — the price basis is named before any
+  // total: an all-days pass shows the approved mode copy.
   const countLine = allDaysPass
     ? isPaid
-      ? "One price covers every date"
+      ? "One price for all days"
       : "Every date of this event"
     : chosen === 0
       ? `${occurrences.length} days`
@@ -104,16 +111,6 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
           : `One price for all days · ${chosen} of ${occurrences.length} selected`;
   const unavailable = status === "loading" || status === "error";
   const recovery = statusCopy(status);
-  const pickerStatus =
-    status === "loading"
-      ? "loading"
-      : status === "error"
-        ? "error"
-        : status === "offline"
-          ? "offline"
-          : status === "stale"
-            ? "stale"
-            : "ready";
 
   return (
     <View
@@ -173,17 +170,64 @@ export const EventDayChooser: React.FC<EventDayChooserProps> = ({
           style={[styles.pickerWrap, rowsDisabled ? styles.disabled : null]}
           pointerEvents={rowsDisabled ? "none" : "auto"}
         >
+          {/* The chooser owns loading / error / offline / stale recovery above,
+              so the shared picker always renders the known days ("ready"):
+              offline keeps the last validated day set visible and editable
+              while the sheet still blocks checkout until truth returns. */}
           <EventDatePicker
             occurrences={schedule}
             selectedIds={selectedEventDateIds}
             onToggle={onToggle}
             allDaysPass={allDaysPass}
-            status={pickerStatus}
+            status="ready"
             onRetry={onRetry}
             accentColor="#eb7825"
             mutedColor="rgba(255, 255, 255, 0.52)"
             testID="issue-2230-day-picker"
             occurrenceTestIDPrefix="issue-2230-day-row"
+            renderOccurrence={(row: EventDatePickerOccurrenceRenderArgs) => {
+              const checked = row.selected;
+              const disabled = rowsDisabled === true || row.soldOut;
+              // #2209 / I-14 — the label is owned by formatOccurrenceLine.
+              const label =
+                formatOccurrenceLine(row.occurrence, timezone) ??
+                "Date to be confirmed";
+              const detail = [row.title, row.location, row.placesLeftLabel]
+                .filter((part): part is string => part !== null)
+                .join(" · ");
+              return (
+                <Pressable
+                  key={row.key}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked, disabled }}
+                  accessibilityLabel={label}
+                  accessibilityHint={detail.length > 0 ? detail : undefined}
+                  disabled={disabled}
+                  onPress={row.toggle}
+                  testID={row.testID}
+                  style={({ pressed }) => [
+                    styles.row,
+                    checked && styles.rowSelected,
+                    pressed && styles.pressed,
+                    disabled && styles.disabled,
+                  ]}
+                >
+                  <View
+                    style={[styles.checkbox, checked && styles.checkboxSelected]}
+                  >
+                    {checked ? (
+                      <Icon name="check" size={14} color="#15181f" />
+                    ) : null}
+                  </View>
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowLabel}>{label}</Text>
+                    {detail.length > 0 ? (
+                      <Text style={styles.rowDetail}>{detail}</Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            }}
           />
         </View>
       ) : null}
@@ -238,6 +282,47 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   pickerWrap: { marginTop: 10 },
+  row: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "#23262c",
+  },
+  rowSelected: {
+    borderColor: "#eb7825",
+    backgroundColor: "#2f2420",
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.52)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxSelected: {
+    borderColor: "#eb7825",
+    backgroundColor: "#eb7825",
+  },
+  rowText: { flex: 1, gap: 2 },
+  rowLabel: {
+    flex: 1,
+    color: "rgba(255, 255, 255, 0.96)",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  rowDetail: {
+    color: "rgba(255, 255, 255, 0.72)",
+    fontSize: 12,
+    lineHeight: 16,
+  },
   pressed: { opacity: 0.92 },
   disabled: { opacity: 0.55 },
 });
