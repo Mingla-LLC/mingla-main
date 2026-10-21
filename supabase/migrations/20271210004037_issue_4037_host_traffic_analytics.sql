@@ -31,6 +31,11 @@
 --                                              belong to that brand.
 --   * cleanup_offering_engagement(limit)       hourly pg_cron purge.
 --
+-- Visitors (Seth, 2026-10-21): anyone with a web page view, an app open or an
+-- app impression of a page that brand-day; once per page per day and once per
+-- brand per day, each under the source of their first such event that day.
+-- "Mingla visitors" follow the same rule (first source in the Mingla buckets).
+--
 -- Engagement vs conversion (decision 5): every tap is a cta_click (engagement),
 -- including view_brand / view_venue / view_offering. Bookings, customers and
 -- value come ONLY from completed orders, reservations and RSVPs (the same spine
@@ -206,9 +211,9 @@ COMMENT ON TABLE public.offering_engagement_salts IS
 COMMENT ON TABLE public.offering_engagement_visitor_marks IS
   'Issue #4037: same-day dedupe marks (brand_visit = first visit of the brand-day with its source; page_visit = first visit of a page that day; app_impression = once per visitor, offering and day). Purged after 3 days.';
 COMMENT ON TABLE public.offering_engagement_daily IS
-  'Issue #4037: per (brand, page, brand-day, source) aggregate counts, kept forever. visitors credits each visitor once per page-day under their first source. Every cta_* column is engagement, never a conversion (decision 5).';
+  'Issue #4037: per (brand, page, brand-day, source) aggregate counts, kept forever. visitors credits each visitor (web page view, app open or app impression) once per page-day under their first source. Every cta_* column is engagement, never a conversion (decision 5).';
 COMMENT ON TABLE public.offering_engagement_brand_daily IS
-  'Issue #4037: brand-wide visitors, each visitor counted once per brand-day under the source of their first visit that day (decision 6). Kept forever.';
+  'Issue #4037: brand-wide visitors (web page view, app open or app impression), each counted once per brand-day under the source of their first such event that day (decision 6). Kept forever.';
 
 -- ── 2. Brand timezone (decision 1) ──────────────────────────────────────────
 -- The payout country is the country of the brand's live payout account: the
@@ -646,8 +651,10 @@ BEGIN
     v_source, p_surface, p_visitor_key, p_checkout_session_id, v_day, v_tz, v_now
   );
 
-  -- A visit is a page view (buyer web) or an open (consumer app).
-  v_is_visit := p_event_type IN ('page_view','app_open');
+  -- A visitor is anyone with a web page view, an app open or an app
+  -- impression of the page that brand-day (Seth, 2026-10-21). Taps and
+  -- checkout starts alone do not make a visitor.
+  v_is_visit := p_event_type IN ('page_view','app_open','app_impression');
   v_page_views := CASE WHEN p_event_type = 'page_view' THEN 1 ELSE 0 END;
   v_opens := CASE WHEN p_event_type = 'app_open' THEN 1 ELSE 0 END;
   v_checkouts := CASE WHEN p_event_type = 'checkout_start' THEN 1 ELSE 0 END;
@@ -1223,7 +1230,7 @@ REVOKE ALL ON FUNCTION public.entity_traffic_rollup(uuid, text, uuid, text) FROM
 GRANT EXECUTE ON FUNCTION public.entity_traffic_rollup(uuid, text, uuid, text) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.brand_traffic_rollup(uuid, text) IS
-  'Issue #4037: brand-wide host traffic for 7d/30d/90d/all in the brand timezone. Visitors are deduped once per brand-day with first-touch source credit (decision 6). Bookings, customers and value come only from completed orders, reservations and RSVPs (decision 5). Admin or brand member; otherwise an honest authorized:false empty result.';
+  'Issue #4037: brand-wide host traffic for 7d/30d/90d/all in the brand timezone. Visitors (web page view, app open or app impression) are deduped once per brand-day with first-touch source credit (decision 6); mingla_visitors follows the same rule. Bookings, customers and value come only from completed orders, reservations and RSVPs (decision 5). Admin or brand member; otherwise an honest authorized:false empty result.';
 COMMENT ON FUNCTION public.entity_traffic_rollup(uuid, text, uuid, text) IS
   'Issue #4037: one page''s traffic (brand page included, entity_id NULL). p_brand_id is required; a non-brand page must belong to that brand and the caller must be an admin or brand member (decision 4), otherwise an honest authorized:false empty result.';
 

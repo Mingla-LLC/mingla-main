@@ -39,12 +39,18 @@ export type TrafficEntityType = (typeof TRAFFIC_ENTITY_TYPES)[number];
 
 export interface TrafficTotals {
   pageViews: number;
+  /**
+   * #4037: people with a web page view, an app open or an app impression,
+   * counted once per day (per brand-day brand-wide, per page-day for a page)
+   * under the source they first arrived through that day.
+   */
   visitors: number;
   buttonTaps: number;
   checkoutStarts: number;
   bookings: number;
   customers: number;
   minglaCustomers: number;
+  /** Visitors (same rule) whose first source that day was Mingla app, ads or search. */
   minglaVisitors: number;
   bookingValue: Record<string, number>;
   valueMinglaBrought: Record<string, number>;

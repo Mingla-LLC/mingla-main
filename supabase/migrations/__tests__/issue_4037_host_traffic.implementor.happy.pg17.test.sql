@@ -194,17 +194,33 @@ BEGIN
     'buyer_web', pg_temp.t4037_key('w'), NULL, NULL, 'london-4037.example', '/', false, false,
     v_t0 + interval '42 minutes') = 'counted', 'H4 second visitor counted');
 
-  -- Brand-wide: V once (social, first touch), W once (own_links).
+  -- A third person only sees the Garden RSVP card in the Mingla app (an
+  -- impression, twice): a visitor of that page and of the brand, under
+  -- mingla_app, counted once (Seth, 2026-10-21).
+  PERFORM pg_temp.t4037_assert(public.offering_engagement_capture_at(
+    '40370000-0000-4000-8000-000000000207', v_brand, 'event',
+    '40370000-0000-4000-8000-0000000000e2', 'app_impression', NULL, 'consumer_android',
+    pg_temp.t4037_key('x'), NULL, NULL, NULL, NULL, false, false,
+    v_t0 + interval '43 minutes') = 'counted', 'H4 app impression counted');
+  PERFORM pg_temp.t4037_assert(public.offering_engagement_capture_at(
+    '40370000-0000-4000-8000-000000000208', v_brand, 'event',
+    '40370000-0000-4000-8000-0000000000e2', 'app_impression', NULL, 'consumer_android',
+    pg_temp.t4037_key('x'), NULL, NULL, NULL, NULL, false, false,
+    v_t0 + interval '44 minutes') = 'duplicate_impression', 'H4 second impression deduped');
+
+  -- Brand-wide: V once (social, first touch), W once (own_links), X once (app).
   PERFORM pg_temp.t4037_assert((
     SELECT array_agg(source || ':' || visitors ORDER BY source)
     FROM public.offering_engagement_brand_daily WHERE brand_id = v_brand
-  ) = ARRAY['own_links:1', 'social:1'], 'H4 brand-day visitors are first-touch deduped');
+  ) = ARRAY['mingla_app:1', 'own_links:1', 'social:1'],
+    'H4 brand-day visitors are first-touch deduped, the impression visitor included');
   -- Page-level: the event page counts V once under social, W under own_links;
   -- page views 3 (social, search, own_links); the brand page counts V once.
   PERFORM pg_temp.t4037_assert((
     SELECT array_agg(entity_type || ':' || source || ':' || page_views || ':' || visitors
                      || ':' || cta_buy ORDER BY entity_type, source)
     FROM public.offering_engagement_daily WHERE brand_id = v_brand
+      AND entity_id IS DISTINCT FROM '40370000-0000-4000-8000-0000000000e2'
   ) = ARRAY['brand:search:1:1:0', 'event:own_links:1:1:0', 'event:search:1:0:1',
             'event:social:1:1:0'],
     'H4 page rows: views per source, visitors first-touch per page-day, taps as engagement');
@@ -236,8 +252,8 @@ BEGIN
   PERFORM pg_temp.t4037_assert((v #>> '{totals,page_views}')::int = 4
     AND (SELECT sum((d ->> 'page_views')::int) FROM jsonb_array_elements(v -> 'daily') d) = 4,
     'H5 page views total and the daily series agree');
-  PERFORM pg_temp.t4037_assert((v #>> '{totals,visitors}')::int = 2,
-    'H5 brand visitors are deduped once per brand-day (2, not the 3 page-level visitors)');
+  PERFORM pg_temp.t4037_assert((v #>> '{totals,visitors}')::int = 3,
+    'H5 brand visitors are deduped once per brand-day (3, not the 4 page-level visitors)');
   PERFORM pg_temp.t4037_assert((v #>> '{totals,button_taps}')::int = 1
     AND (v #>> '{totals,checkout_starts}')::int = 0, 'H5 one engagement tap, no checkout');
   PERFORM pg_temp.t4037_assert((v #>> '{totals,bookings}')::int = 3
@@ -246,21 +262,21 @@ BEGIN
     AND v #> '{totals,value_mingla_brought}' = '{"GBP": 4000}'::jsonb
     AND v #>> '{totals,primary_currency}' = 'GBP', 'H5 value from completed orders only');
   PERFORM pg_temp.t4037_assert((v #>> '{totals,mingla_customers}')::int = 1
-    AND (v #>> '{totals,mingla_visitors}')::int = 0,
-    'H5 only the search-sourced buyer is a Mingla customer; social/own-links visitors are not Mingla');
+    AND (v #>> '{totals,mingla_visitors}')::int = 1,
+    'H5 only the search-sourced buyer is a Mingla customer; only the app-impression visitor is a Mingla visitor');
   PERFORM pg_temp.t4037_assert((
     SELECT array_agg(s ->> 'source' || ':' || (s ->> 'visitors') || ':' || (s ->> 'bookings'))
     FROM jsonb_array_elements(v -> 'sources') s
-  ) = ARRAY['mingla_app:0:0', 'mingla_ads:0:0', 'search:0:1', 'social:1:0', 'own_links:1:0',
+  ) = ARRAY['mingla_app:1:0', 'mingla_ads:0:0', 'search:0:1', 'social:1:0', 'own_links:1:0',
             'direct_unknown:0:2'], 'H5 sources in contract order; no touch is direct_unknown');
   PERFORM pg_temp.t4037_assert(jsonb_array_length(v -> 'ctas') = 11
     AND (SELECT sum((c ->> 'count')::int) FROM jsonb_array_elements(v -> 'ctas') c) = 1,
     'H5 every tap type listed and summing to button taps');
   PERFORM pg_temp.t4037_assert((
     SELECT array_agg((p ->> 'entity_type') || ':' || (p ->> 'title') || ':' || (p ->> 'page_views')
-                     || ':' || (p ->> 'bookings'))
+                     || ':' || (p ->> 'visitors') || ':' || (p ->> 'bookings'))
     FROM jsonb_array_elements(v -> 'pages') p
-  ) = ARRAY['event:Rooftop Supper:3:2', 'brand:Issue 4037 London:1:0', 'event:Garden RSVP:0:1'],
+  ) = ARRAY['event:Rooftop Supper:3:2:2', 'brand:Issue 4037 London:1:1:0', 'event:Garden RSVP:0:1:1'],
     'H5 pages sorted by visits, brand page listed (decision 3)');
   PERFORM pg_temp.t4037_assert(v ->> 'capture_started_at' IS NOT NULL
     AND (v ->> 'window_complete')::boolean = false, 'H5 capture start honesty');
@@ -296,7 +312,7 @@ SELECT pg_temp.t4037_assert(
   AND (SELECT count(*) FROM public.offering_engagement_daily
     WHERE brand_id = '40370000-0000-4000-8000-0000000000b2') = 2
   AND (SELECT count(*) FROM public.offering_engagement_events
-    WHERE brand_id = '40370000-0000-4000-8000-0000000000b1') = 5,
+    WHERE brand_id = '40370000-0000-4000-8000-0000000000b1') = 6,
   'H6 aggregates kept forever; recent raw events untouched');
 SELECT pg_temp.t4037_assert(EXISTS (
   SELECT 1 FROM cron.job WHERE jobname = 'issue_4037_offering_engagement_retention' AND active

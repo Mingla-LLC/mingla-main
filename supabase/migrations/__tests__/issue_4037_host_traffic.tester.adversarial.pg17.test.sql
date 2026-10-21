@@ -274,11 +274,20 @@ SELECT pg_temp.t4037_assert(
     pg_temp.t4037_key('co-other-device'), '40371000-0000-4000-8000-0000000000cc', NULL, NULL, NULL, false, false,
     '2027-02-01 12:00:00+00') = 'duplicate_checkout',
   'A5 a checkout session starts once, whoever reports it');
+-- Seth 2026-10-21: an app impression makes a visitor (once per page-day and
+-- once per brand-day, first-touch source); a checkout start alone does not.
 SELECT pg_temp.t4037_assert((
-  SELECT sum(app_impressions) = 2 AND sum(checkout_starts) = 1 AND sum(visitors) FILTER (
-    WHERE entity_type = 'trip') = 0
+  SELECT sum(app_impressions) = 2 AND sum(checkout_starts) = 1
+    AND sum(visitors) FILTER (WHERE entity_type = 'trip') = 2
+    AND sum(visitors) FILTER (WHERE entity_type = 'event') = 0
   FROM public.offering_engagement_daily WHERE day IN ('2027-02-01', '2027-02-02')
-), 'A5 impressions are not visits');
+), 'A5 an impression is a visit (one per Lagos day); a checkout start is not');
+SELECT pg_temp.t4037_assert((
+  SELECT array_agg(day::text || ':' || source || ':' || visitors ORDER BY day)
+  FROM public.offering_engagement_brand_daily
+  WHERE brand_id = '40371000-0000-4000-8000-0000000000b1' AND day IN ('2027-02-01', '2027-02-02')
+) = ARRAY['2027-02-01:mingla_app:1', '2027-02-02:mingla_app:1'],
+  'A5 the impression visitor counts once per brand-day under mingla_app');
 
 -- ── A6: 120 events per visitor per hour, the rest dropped ───────────────────
 DO $$
