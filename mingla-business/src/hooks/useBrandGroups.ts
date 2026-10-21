@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import {
   listBrandGroups,
+  setBrandGroupMuted,
   type BrandGroupSummary,
 } from "../services/brandGroupsService";
 
@@ -13,6 +14,7 @@ export function useBrandGroups(): {
   error: string | null;
   unreadCount: number;
   refresh: () => Promise<void>;
+  setMuted: (conversationId: string, muted: boolean) => Promise<void>;
 } {
   const { user } = useAuth();
   const [groups, setGroups] = useState<BrandGroupSummary[]>([]);
@@ -68,5 +70,35 @@ export function useBrandGroups(): {
     [groups],
   );
 
-  return { groups, loading, error, unreadCount, refresh };
+  const setMuted = useCallback(async (
+    conversationId: string,
+    muted: boolean,
+  ): Promise<void> => {
+    const previous = groups.find((group) =>
+      group.conversation_id === conversationId
+    )?.muted;
+    if (previous === undefined) {
+      throw new Error("This Brand group is no longer available.");
+    }
+    setGroups((current) => current.map((group) =>
+      group.conversation_id === conversationId ? { ...group, muted } : group
+    ));
+    try {
+      const saved = await setBrandGroupMuted(conversationId, muted);
+      setGroups((current) => current.map((group) =>
+        group.conversation_id === conversationId
+          ? { ...group, muted: saved }
+          : group
+      ));
+    } catch (cause) {
+      setGroups((current) => current.map((group) =>
+        group.conversation_id === conversationId
+          ? { ...group, muted: previous }
+          : group
+      ));
+      throw cause;
+    }
+  }, [groups]);
+
+  return { groups, loading, error, unreadCount, refresh, setMuted };
 }

@@ -16,7 +16,7 @@ import {
   prepareOfficialBrandGroupFiles,
   finalizeOfficialBrandGroupFile,
   sendOfficialBrandGroupMessage,
-  setOfficialBrandGroupWatch,
+  setOfficialBrandGroupMuted,
   uploadOfficialBrandGroupFile,
 } from "../../services/communityService";
 import { listProductSignals } from "../../services/supportProductWorkflowService";
@@ -141,14 +141,14 @@ export function BrandGroupsPanel() {
     }
   }
 
-  async function toggleWatch() {
+  async function toggleMute() {
     if (!selectedGroup) return;
     try {
-      const enabled = await setOfficialBrandGroupWatch(selectedGroup.conversation_id, !selectedGroup.push_enabled);
+      const muted = await setOfficialBrandGroupMuted(selectedGroup.conversation_id, !selectedGroup.muted);
       setGroups((current) => current.map((group) => group.conversation_id === selectedGroup.conversation_id
-        ? { ...group, push_enabled: enabled }
+        ? { ...group, muted }
         : group));
-      addToast({ variant: "success", title: enabled ? "Watching Brand group" : "Ordinary push is off", description: enabled ? "Replies and watched activity can now reach you by push." : "Unread badges stay active." });
+      addToast({ variant: "success", title: muted ? "Brand group muted" : "Brand group unmuted", description: muted ? "Unread badges stay active, but push alerts are off for this group." : "Push alerts are on for every message in this group." });
     } catch (cause) {
       addToast({ variant: "error", title: "Couldn't update notifications", description: cause?.message });
     }
@@ -248,7 +248,7 @@ export function BrandGroupsPanel() {
       <SectionCard
         title={selectedGroup?.brand_name || "Choose a Brand group"}
         subtitle={selectedGroup ? `${teammateLabel(selectedGroup.member_count)} · Support has access` : ""}
-        action={selectedGroup ? <Button variant="secondary" size="sm" onClick={() => void toggleWatch()}>{selectedGroup.push_enabled ? "Watching" : "Watch"}</Button> : null}
+        action={selectedGroup ? <div className="flex max-w-72 flex-col items-end gap-1"><Button variant="secondary" size="sm" onClick={() => void toggleMute()}>{selectedGroup.muted ? "Muted" : "Mute"}</Button><span className="text-right text-[11px] leading-4 text-[var(--color-text-tertiary)]">Mingla staff get a push for every brand group message unless muted.</span></div> : null}
         noPadding
       >
         {!selectedGroup ? <div className="flex min-h-64 items-center justify-center p-6 text-sm text-[var(--color-text-secondary)]">Select a Brand group to read and reply.</div> : (

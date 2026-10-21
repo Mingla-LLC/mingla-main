@@ -12,6 +12,7 @@ export interface BrandGroupSummary {
   member_count: number;
   access_kind: "brand" | "support";
   push_enabled: boolean;
+  muted: boolean;
 }
 
 export interface BrandGroupMessage {
@@ -83,6 +84,48 @@ export async function setBrandGroupWatch(
   });
   if (error) throw new Error(error.message || "Couldn't update Brand group notifications");
   return data === true;
+}
+
+export async function setBrandGroupMuted(
+  conversationId: string,
+  muted: boolean,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("issue_3988_set_brand_group_muted", {
+    p_conversation_id: conversationId,
+    p_muted: muted,
+  });
+  if (error) throw new Error(error.message || "Couldn't update Brand group notifications");
+  return data === true;
+}
+
+export async function getBrandGroupPushPrefEnabled(
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("notification_channel_prefs")
+    .select("enabled")
+    .eq("user_id", userId)
+    .eq("category_key", "business.brand_group_message")
+    .eq("channel", "push")
+    .maybeSingle();
+  if (error) throw new Error(error.message || "Couldn't load Brand group notifications");
+  return data == null ? true : Boolean((data as { enabled: boolean }).enabled);
+}
+
+export async function setBrandGroupPushPrefEnabled(
+  userId: string,
+  enabled: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from("notification_channel_prefs")
+    .upsert({
+      user_id: userId,
+      category_key: "business.brand_group_message",
+      channel: "push",
+      enabled,
+      updated_at: new Date().toISOString(),
+    });
+  if (error) throw new Error(error.message || "Couldn't save Brand group notifications");
 }
 
 export async function sendBrandGroupMessage(input: {
