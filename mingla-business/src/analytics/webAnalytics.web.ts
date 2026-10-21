@@ -149,6 +149,11 @@ let adPixelsBootstrapped = false;
 // First-party storage key for the captured ad click_id (threaded into checkout).
 const AD_CLICK_KEY = "mingla_ad_click_v1";
 export const AD_CLICK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// De-dupe lifecycle re-entry for the current document only. A real reload gets
+// a fresh module and therefore remains a new landing-page view, while a failed
+// capture is removed from the in-flight set so the same page can retry.
+const capturedLandingTouchKeys = new Set<string>();
+const inFlightLandingTouchKeys = new Set<string>();
 
 declare global {
   // gtag/dataLayer injected by the GA4 loader below; the four ad-pixel globals
@@ -999,6 +1004,21 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       : consent === "denied"
       ? "rejected"
       : "pending";
+    const landingTouchKey = JSON.stringify({
+      search: window.location.search,
+      pageType: dest?.pageType ?? null,
+      brandSlug: dest?.brandSlug ?? null,
+      entitySlug: dest?.entitySlug ?? null,
+      eventId: dest?.eventId ?? null,
+      source: hasAdSignal ? "ad" : refHost,
+    });
+    if (
+      capturedLandingTouchKeys.has(landingTouchKey) ||
+      inFlightLandingTouchKeys.has(landingTouchKey)
+    ) {
+      return;
+    }
+    inFlightLandingTouchKeys.add(landingTouchKey);
     void postAttributionTouch({
       network,
       externalClickId: external,
@@ -1012,11 +1032,17 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       consentState,
     })
       .then((clickId) => {
+        if (clickId !== null) {
+          capturedLandingTouchKeys.add(landingTouchKey);
+        }
         // FIRST-TOUCH-WINS: keep the click_id of the first attributable touch
         // for checkout threading. Later ad landings are still measured above.
         if (clickId !== null && getStoredClickAttribution().clickId === null) {
           storeClickId(clickId);
         }
+      })
+      .finally(() => {
+        inFlightLandingTouchKeys.delete(landingTouchKey);
       });
   } catch (err) {
     console.warn("[webAnalytics] captureAdClickIds failed (non-fatal):", err);

@@ -221,3 +221,33 @@ test("#3697: malformed ad cookies fail open instead of blocking checkout", () =>
     clientUserAgent: null,
   });
 });
+
+test("#3697: a soft-failed landing can retry in the same document", async () => {
+  const h = harness("?fbclid=RETRY&mc_id=camp1");
+  let attempt = 0;
+  (globalThis as unknown as { fetch: unknown }).fetch = (
+    url: string,
+    init?: { body?: string },
+  ) => {
+    attempt += 1;
+    h.fetches.push({
+      url: String(url),
+      body: init?.body ? JSON.parse(init.body) as Record<string, unknown> : {},
+    });
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve(attempt === 1
+        ? { ok: false, soft_error: "touch_not_recorded", click_id: "discard-me" }
+        : { ok: true, click_id: "retry-landed" }),
+    });
+  };
+
+  h.analytics.captureAdClickIds();
+  await new Promise((r) => setTimeout(r, 0));
+  h.analytics.captureAdClickIds();
+  await new Promise((r) => setTimeout(r, 0));
+
+  expect(h.fetches).toHaveLength(2);
+  expect(h.local.get("mingla_ad_click_v1")).toContain("retry-landed");
+  expect(h.local.get("mingla_ad_click_v1")).not.toContain("discard-me");
+});

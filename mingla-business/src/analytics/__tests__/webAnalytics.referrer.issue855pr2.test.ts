@@ -79,7 +79,7 @@ function loadHarness(locationSearch = "", referrer = ""): Harness {
     const clickId = `srv-click-${clickSeq}`;
     return Promise.resolve({
       ok: true,
-      json: () => Promise.resolve({ click_id: clickId }),
+      json: () => Promise.resolve({ ok: true, click_id: clickId }),
     });
   };
 
