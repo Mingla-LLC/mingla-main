@@ -693,6 +693,11 @@ BEGIN
   SELECT total_cents INTO v_bill FROM public.venue_orders WHERE id = v_settle;
   PERFORM public.pg_venue_order_finalize_payment(
     v_settle, 'stripe', v_bill, 'GBP', 'pi_ctl', 'ch_ctl', 150, 'txn_ctl');
+  -- Issue #3645 (append-only): payout maturity now reads the actual payment
+  -- timestamp. This historical control is meant to be a 10-day-old settlement,
+  -- so pin confirmed_at as well as created_at instead of relying on event-time
+  -- maturity to hide the fixture's current-time finalize call.
+  UPDATE public.venue_orders SET confirmed_at = v_created WHERE id = v_settle;
 
   PERFORM public.run_payout_release_dark_sweep(now());
 

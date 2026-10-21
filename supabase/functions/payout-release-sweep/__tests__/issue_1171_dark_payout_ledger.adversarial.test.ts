@@ -316,7 +316,6 @@ DECLARE
   v_convert_target uuid;
   v_permanent uuid;
   v_repeat_origin uuid;
-  v_repeat_debt uuid;
 BEGIN
   -- Exactly-before and equal are excluded; exactly-after is admitted.
   FOR v_boundary IN
@@ -459,7 +458,8 @@ BEGIN
     RAISE EXCEPTION 'cancellation conversion double-withheld or double-recredited';
   END IF;
 
-  -- A rolling future occurrence never changes the released occurrence identity.
+  -- Issue #3645 (append-only): moving a released occurrence never synthesizes
+  -- a postponement debt; cancellation/refund recovery remains separately tested.
   INSERT INTO public.brand_payout_releases(
     brand_id,event_id,event_date_id,occurrence_key,surface,provider,currency,
     anchor_end_at,releasable_at,gross_cents,net_release_cents,status,
@@ -477,21 +477,21 @@ BEGIN
   END IF;
   UPDATE public.event_dates SET end_at='2026-07-12T20:00:00Z'
     WHERE id='1171ad00-0000-0000-0000-000000000202';
-  PERFORM public.sync_post_release_postponement_debts('2026-07-08T00:00:01Z');
-  SELECT id INTO v_repeat_debt FROM public.organiser_payout_debts
-    WHERE origin_release_id=v_repeat_origin AND kind='post_release_postponement';
+  IF public.sync_post_release_postponement_debts('2026-07-08T00:00:01Z')<>0 THEN
+    RAISE EXCEPTION 'first forward move did not keep postponement sync inert';
+  END IF;
   UPDATE public.event_dates SET end_at='2026-07-14T20:00:00Z'
     WHERE id='1171ad00-0000-0000-0000-000000000202';
-  PERFORM public.sync_post_release_postponement_debts('2026-07-08T00:00:02Z');
+  IF public.sync_post_release_postponement_debts('2026-07-08T00:00:02Z')<>0 THEN
+    RAISE EXCEPTION 'second forward move did not keep postponement sync inert';
+  END IF;
   UPDATE public.event_dates SET end_at='2026-07-04T20:00:00Z'
     WHERE id='1171ad00-0000-0000-0000-000000000202';
-  PERFORM public.sync_post_release_postponement_debts('2026-07-08T00:00:03Z');
-  PERFORM public.mature_postponement_debts('2026-07-08T00:00:03Z');
-  IF (SELECT count(*) FROM public.organiser_payout_debts
-      WHERE origin_release_id=v_repeat_origin
-        AND kind='post_release_postponement')<>1 OR
-     (SELECT status FROM public.organiser_payout_debts WHERE id=v_repeat_debt)<>'closed' THEN
-    RAISE EXCEPTION 'repeated forward/backward anchor moves left stale debt';
+  IF public.sync_post_release_postponement_debts('2026-07-08T00:00:03Z')<>0 OR
+     EXISTS(SELECT 1 FROM public.organiser_payout_debts
+       WHERE origin_release_id=v_repeat_origin
+         AND kind='post_release_postponement') THEN
+    RAISE EXCEPTION 'repeated forward/backward anchor moves opened a forbidden debt';
   END IF;
 END
 $test$;
@@ -605,7 +605,7 @@ INSERT INTO public.brand_payout_releases(
 SET session_replication_role=origin;
 `;
 
-  Deno.test("postponement and sweep concurrency serializes before future value can escape", async () => {
+  Deno.test("Issue #3645 (append-only): no-op postponement sync cannot withhold future value", async () => {
     const setup = await runDockerSql(container, concurrencySetup);
     assertEquals(setup.code, 0, new TextDecoder().decode(setup.stderr));
     try {
@@ -657,7 +657,7 @@ SELECT
 `,
       );
       assertEquals(proof.code, 0, new TextDecoder().decode(proof.stderr));
-      assertEquals(new TextDecoder().decode(proof.stdout).trim(), "1|1|0");
+      assertEquals(new TextDecoder().decode(proof.stdout).trim(), "0|0|500");
     } finally {
       await runDockerSql(container, concurrencyCleanup);
     }
