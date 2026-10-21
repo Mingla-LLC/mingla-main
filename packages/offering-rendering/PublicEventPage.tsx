@@ -32,7 +32,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   UIManager,
   View,
 } from "react-native";
@@ -223,7 +222,6 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   // ORCH-1117 — host-mounted floating-bar clearance (0 = no bar).
   contentBottomInset = 0,
 }) => {
-  const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
   const resolvedTheme = useMemo<ResolvedTheme>(
     () =>
       theme ?? resolveTheme(brand?.theme ?? null, event.themeOverrides ?? null),
@@ -231,8 +229,8 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   );
 
   const variant: Variant = useMemo(
-    () => computeVariant(event, passwordUnlocked),
-    [event, passwordUnlocked],
+    () => computeVariant(event, false),
+    [event],
   );
   const resolvedPalette = useMemo(
     () => createThemePalette(resolvedTheme),
@@ -241,25 +239,15 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
 
   const ownsThisEvent = viewerRole === "organizer";
 
-  const handleUnlockPassword = useCallback(
-    (password: string): void => {
-      const ok = callbacks.onUnlockPassword?.(password) ?? false;
-      if (ok) setPasswordUnlocked(true);
-    },
-    [callbacks],
-  );
-
   return (
     <View style={[styles.host, { backgroundColor: resolvedPalette.page }]}>
       {variant === "cancelled" ? (
         <CancelledVariant event={event} brand={brand} />
-      ) : variant === "password-gate" ? (
-        <PasswordGateVariant event={event} onUnlock={handleUnlockPassword} />
       ) : (
         <PublishedBody
           event={event}
           brand={brand}
-          variant={variant}
+          variant={variant === "password-gate" ? "published" : variant}
           callbacks={callbacks}
           theme={resolvedTheme}
           useDirectionCIdentity={useDirectionCIdentity}
@@ -1231,77 +1219,6 @@ const CancelledVariant: React.FC<CancelledVariantProps> = ({
   </View>
 );
 
-// ---- PasswordGateVariant --------------------------------------------
-
-interface PasswordGateVariantProps {
-  event: PublicEventProps;
-  onUnlock: (password: string) => void;
-}
-
-const PasswordGateVariant: React.FC<PasswordGateVariantProps> = ({
-  event,
-  onUnlock,
-}) => {
-  const [password, setPassword] = useState<string>("");
-  const [errored, setErrored] = useState<boolean>(false);
-
-  const handleSubmit = useCallback((): void => {
-    if (password.length === 0) return;
-    onUnlock(password);
-    setErrored(true);
-    setPassword("");
-  }, [password, onUnlock]);
-
-  return (
-    <View style={styles.gateHost}>
-      <View style={styles.gateCard}>
-        <Text style={styles.gateIcon}>🔒</Text>
-        <Text style={styles.gateTitle}>This event requires a password</Text>
-        <Text style={styles.gateBody}>
-          Enter the password to view ticket options for {event.name}.
-        </Text>
-        <View
-          style={[styles.gateInputWrap, errored && styles.gateInputWrapError]}
-        >
-          <TextInput
-            value={password}
-            onChangeText={(v) => {
-              setPassword(v);
-              if (errored) setErrored(false);
-            }}
-            placeholder="Password"
-            placeholderTextColor={text.quaternary}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.gateInput}
-            accessibilityLabel="Event password"
-            onSubmitEditing={handleSubmit}
-          />
-        </View>
-        {errored ? (
-          <Text style={styles.gateError}>
-            Wrong password. Try again or contact the organiser.
-          </Text>
-        ) : null}
-        <Pressable
-          onPress={handleSubmit}
-          disabled={password.length === 0}
-          accessibilityRole="button"
-          accessibilityLabel="Unlock event"
-          accessibilityState={{ disabled: password.length === 0 }}
-          style={[
-            styles.gateUnlockBtn,
-            password.length === 0 && styles.gateUnlockBtnDisabled,
-          ]}
-        >
-          <Text style={styles.gateUnlockLabel}>Unlock</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-};
-
 // ---- Styles ---------------------------------------------------------
 
 const styles = StyleSheet.create({
@@ -1874,81 +1791,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
 
-  // Password gate
-  gateHost: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gateCard: {
-    width: "100%",
-    maxWidth: 480,
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radius.xl,
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  gateIcon: {
-    fontSize: 28,
-  },
-  gateTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: text.primary,
-    textAlign: "center",
-    marginTop: spacing.sm,
-  },
-  gateBody: {
-    fontSize: 14,
-    color: text.secondary,
-    textAlign: "center",
-    marginBottom: spacing.md,
-  },
-  gateInputWrap: {
-    width: "100%",
-    paddingHorizontal: spacing.md,
-    height: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-  },
-  gateInputWrapError: {
-    borderColor: semantic.error,
-  },
-  gateInput: {
-    flex: 1,
-    fontSize: typography.body.fontSize,
-    color: text.primary,
-  },
-  gateError: {
-    fontSize: typography.caption.fontSize,
-    color: semantic.error,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  gateUnlockBtn: {
-    width: "100%",
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: accent.warm,
-    alignItems: "center",
-    marginTop: spacing.md,
-  },
-  gateUnlockBtnDisabled: {
-    backgroundColor: glass.tint.profileBase,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-  },
-  gateUnlockLabel: {
-    fontSize: typography.body.fontSize,
-    fontWeight: "700",
-    color: "#fff",
-  },
 });

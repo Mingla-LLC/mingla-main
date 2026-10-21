@@ -24,6 +24,7 @@ export const MIN_RANK = {
   // RLS policy MUST mirror finance_manager+ rank gate to preserve I-32.
   VIEW_RECONCILIATION: BRAND_ROLE_RANK.finance_manager, // 30
   ADD_COMP_GUEST: BRAND_ROLE_RANK.event_manager, // 40
+  MANAGE_TICKET_LINKS: BRAND_ROLE_RANK.event_manager, // 40
   MANAGE_SCANNERS: BRAND_ROLE_RANK.event_manager, // 40
   CREATE_EVENT: BRAND_ROLE_RANK.event_manager, // 40
   // Team management gates (J-T1..J-T4)

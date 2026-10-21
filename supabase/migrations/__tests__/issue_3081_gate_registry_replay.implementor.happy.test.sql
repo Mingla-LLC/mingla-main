@@ -87,6 +87,7 @@ DECLARE
     'pg_public_event_by_slug',
     'pg_public_experience_by_slug',
     'pg_public_rsvp_by_slug',
+    'pg_ticket_link_resolve',
     'public_search_source_facts'
   ];
   v_declared text[];

@@ -26,6 +26,7 @@
     { "source": "/og/brand/:brandSlug.png", "destination": "/api/og-brand?brandSlug=:brandSlug" },
     { "source": "/og/trip/:tripId.png", "destination": "/api/og-trip?tripId=:tripId" },
     { "source": "/og/venue/:brandSlug/:venueSlug.png", "destination": "/api/og-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
+    { "source": "/g/:token", "destination": "/api/ticket-link?token=:token" },
     { "source": "/e/:brandSlug/:eventSlug", "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug" },
     { "source": "/t/:brandSlug/:tripSlug", "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug" },
     { "source": "/exp/:brandSlug/:experienceSlug", "destination": "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug" },
@@ -167,6 +168,19 @@
       "source": "/experience/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/g/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/g/:path*",
+      "headers": [
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Cache-Control", "value": "private, no-store, max-age=0, must-revalidate" }
       ]
     },
     {

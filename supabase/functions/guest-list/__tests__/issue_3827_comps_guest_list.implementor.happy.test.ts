@@ -218,3 +218,40 @@ Deno.test("#3827 search is projected: fields the door must never see are dropped
   }
   assertEquals(JSON.parse(text).orders[0].maskedEmail, "an***@example.test");
 });
+
+Deno.test("#3827 door attribution uses a separate label RPC without widening search", async () => {
+  const h = harness({
+    rpc: (fn) =>
+      fn === "pg_venue_order_rate_limit_hit"
+        ? { data: { allowed: true }, error: null }
+        : fn === "biz_door_guest_search"
+        ? {
+          data: {
+            truncated: false,
+            orders: [{
+              orderId: ORDER,
+              displayName: "Ana",
+              maskedEmail: "an***@example.test",
+              isGuestList: true,
+              cameWithName: null,
+              tickets: [],
+            }],
+          },
+          error: null,
+        }
+        : fn === "biz_ticket_link_order_labels"
+        ? { data: { [ORDER]: "Press invites" }, error: null }
+        : { data: null, error: { message: "unexpected_rpc" } },
+  });
+
+  const res = await h.handler(post({ operation: "search", eventId: EVENT, query: "an" }));
+  const body = await res.json();
+  assertEquals(body.orders[0].viaLinkLabel, "Press invites");
+  assertEquals(h.calls.map((call) => call.fn), [
+    "pg_venue_order_rate_limit_hit",
+    "biz_door_guest_search",
+    "biz_ticket_link_order_labels",
+  ]);
+  assertEquals(h.calls[2].args.p_order_ids, [ORDER]);
+  assertEquals(h.calls[2].args.p_actor_id, ACTOR);
+});

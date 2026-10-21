@@ -29,6 +29,8 @@ export interface CheckoutClientAttemptInput {
   providerInput: {
     surface: "native" | "web" | "mobile-web";
   };
+  /** issue #3827 — rotates the attempt when a private ticket link changes. */
+  ticketLinkToken?: string | null;
   lines: CheckoutV2Line[];
   eventDateId: string | null;
   eventDateIds: readonly string[];
@@ -187,6 +189,9 @@ export function checkoutClientAttemptFingerprint(
       marketingOptIn: input.buyer.marketingOptIn,
     },
     providerInput: input.providerInput,
+    ...(typeof input.ticketLinkToken === "string" && input.ticketLinkToken.length > 0
+      ? { ticketLinkToken: input.ticketLinkToken }
+      : {}),
     lines: parsedLines.lines,
     eventDateId: input.eventDateId,
     eventDateIds: Array.from(new Set(input.eventDateIds)).sort(),

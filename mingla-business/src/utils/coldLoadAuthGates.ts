@@ -319,6 +319,11 @@ export const INVITE_ACCEPT_ROUTE_PREFIXES = [
   "/accept-scanner-invitation", // app/accept-scanner-invitation.tsx
 ] as const;
 
+/** Issue #3827 — `/g/[token]` authorizes itself with the bearer credential in
+ * the path. It is kept out of the anonymous public-buyer allowlist: without a
+ * valid token the route resolves no event, tier, or guest-list data. */
+export const BEARER_TICKET_LINK_ROUTE_PREFIX = "/g" as const;
+
 /**
  * Is the current pathname a SELF-AUTHENTICATING exempt route — ORCH-1139?
  *
@@ -351,6 +356,7 @@ export const isSelfAuthenticatedExemptRoute = (
   return [
     ...SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES,
     ...INVITE_ACCEPT_ROUTE_PREFIXES,
+    BEARER_TICKET_LINK_ROUTE_PREFIX,
   ].some((prefix) => {
     const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
     return normalized === base || normalized.startsWith(`${base}/`);

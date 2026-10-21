@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "ticket-link-public",
+  "verify_jwt": false,
+  "gateway_reason": "Anonymous guests resolve bearer links and submit guest-list groups; the handler validates and HMAC-hashes the token, hashes the client address, rate-limits sign-up fail-closed, and calls only service-role RPCs.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {},
+    "required_top_level": ["OFFERING_INVITE_TOKEN_PEPPER", "app.qr_token_pepper"]
+  }
+}
