@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-PROPOSED-3827-SHEET-TOP-INSET-AND-OPAQUE-CARD | issue #3827 | Every Sheet reserves the same top band on every platform (the handle on phones, SHEET_TOP_INSET on the wide-desktop card) and the desktop card paints an opaque base so nothing beneath shows through.
 /**
  * issue #3827 — every Host sheet has room above its first line and hides what
  * is beneath it, on every platform, because the shared primitive says so.
