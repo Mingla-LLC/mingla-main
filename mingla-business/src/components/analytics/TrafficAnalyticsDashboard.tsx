@@ -381,7 +381,7 @@ const FunnelCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
     { label: "Bookings", value: data.totals.bookings },
   ];
   const visible = hasTraffic ? steps : steps.slice(-1);
-  const basis = Math.max(data.totals.pageViews, 1);
+  const basis = Math.max(visible[0]?.value ?? 0, 1);
   return (
     <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
       <Text style={styles.cardTitle} accessibilityRole="header">
@@ -396,7 +396,10 @@ const FunnelCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
         {visible.map((step, index) => {
           const previous = index === 0 ? null : visible[index - 1]!;
           return (
-            <View key={step.label}>
+            <View
+              key={step.label}
+              testID={`traffic-funnel-${step.label.toLowerCase().replaceAll(" ", "-")}`}
+            >
               {previous === null || previous.value === 0 ? null : (
                 <Text
                   style={styles.continueText}
