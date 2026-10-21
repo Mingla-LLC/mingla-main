@@ -23,6 +23,7 @@ export type DiscoverTripSort = "relevance" | "oldest" | "price_asc" | "price_des
 /** One row from pg_published_trips_public, camelCased 1:1 from the RPC columns. */
 export interface DiscoverTripRow {
   tripId: string;
+  brandId: string;
   tripSlug: string;
   brandSlug: string;
   brandName: string;
@@ -86,6 +87,7 @@ export class TripsDiscoveryError extends Error {
 /** Raw RPC row (snake_case) as returned by Supabase. */
 interface RpcTripRow {
   trip_id: string;
+  brand_id: string;
   trip_slug: string;
   brand_slug: string;
   brand_name: string;
@@ -123,6 +125,7 @@ function coerceCoverType(raw: string | null): EventCoverMediaType | null {
 function mapRow(r: RpcTripRow): DiscoverTripRow {
   return {
     tripId: r.trip_id,
+    brandId: r.brand_id,
     tripSlug: r.trip_slug,
     brandSlug: r.brand_slug,
     brandName: r.brand_name,

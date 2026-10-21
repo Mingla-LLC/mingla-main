@@ -114,6 +114,7 @@ import { logAppsFlyerEvent } from "../services/appsFlyerService";
 // Mixpanel sites (parallel run; identical event-name strings for a 1:1 future
 // retirement mapping).
 import { postHogService } from "../services/postHogService";
+import { captureConsumerOfferingEngagement } from "../services/offeringEngagementService";
 import { BoardCardService } from "../services/boardCardService";
 // ORCH-0532 / ORCH-0558: shared helper for collab right-swipe — calls
 // BoardCardService.recordSwipeAndCheckMatch (atomic RPC: upsert swipe_state +
@@ -1481,6 +1482,41 @@ export default function SwipeableCards({
     (e) => (e.status === 'pending' || e.status === 'confirmed') && e.card_id === currentRec.id
   ) : false;
 
+  // #4037 — the top deck card occupies more than half the viewport. Count a
+  // host experience only after it remains the current card for a full second;
+  // changing cards/unmounting clears the timer before it can emit.
+  useEffect(() => {
+    if (
+      (currentRec as { cardType?: unknown } | undefined)?.cardType !== 'experience'
+    ) {
+      return;
+    }
+    const experience = currentRec as Recommendation & {
+      brandId?: unknown;
+      eventId?: unknown;
+    };
+    if (
+      typeof experience.brandId !== 'string' ||
+      experience.brandId.length === 0
+    )
+      return;
+    const entityId =
+      typeof experience.eventId === 'string' && experience.eventId.length > 0
+        ? experience.eventId
+        : experience.id;
+    const timer = setTimeout(() => {
+      void captureConsumerOfferingEngagement(
+        {
+          brandId: experience.brandId as string,
+          entityType: 'experience',
+          entityId,
+        },
+        "app_impression",
+      );
+    }, 1_000);
+    return () => clearTimeout(timer);
+  }, [currentRec]);
+
   const reportDeckAnomaly = useCallback((
     reason: string,
     phase: string,
@@ -2268,6 +2304,24 @@ export default function SwipeableCards({
     // ticket-checkout-create (NO parallel money fn — COMMS-0014/0016), NOT the
     // curated AI itinerary view. Routed BEFORE the curated branch.
     if ((currentRec as any).cardType === 'experience') {
+      const experience = currentRec as Recommendation & {
+        brandId?: unknown;
+        eventId?: unknown;
+      };
+      if (
+        typeof experience.brandId === 'string' &&
+        experience.brandId.length > 0
+      ) {
+        const entityId =
+          typeof experience.eventId === 'string' &&
+          experience.eventId.length > 0
+            ? experience.eventId
+            : experience.id;
+        void captureConsumerOfferingEngagement(
+          { brandId: experience.brandId, entityType: 'experience', entityId },
+          'app_open',
+        );
+      }
       setExpandedBrandExperience(experienceRecToBusinessEventCard(currentRec));
       return;
     }

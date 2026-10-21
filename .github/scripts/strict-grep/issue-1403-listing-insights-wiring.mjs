@@ -18,6 +18,11 @@ const PATHS = {
   route: "mingla-business/app/insights/[id].tsx",
   screen:
     "mingla-business/src/components/analytics/ListingInsightsScreen.tsx",
+  // #4037 — the live listing Insights screen renders the traffic dashboard;
+  // the #1403 promises (what Mingla drove, where customers came from, honest
+  // empty states) are enforced where they now render.
+  dashboard:
+    "mingla-business/src/components/analytics/TrafficAnalyticsDashboard.tsx",
   listingService:
     "mingla-business/src/services/listingInsightsService.ts",
   listingHook: "mingla-business/src/hooks/useListingInsights.ts",
@@ -249,12 +254,22 @@ const check = (files) => {
     failures,
   );
 
+  // #4037 re-scope (approved by Seth in chat 2026-10-21): the live route mounts
+  // the traffic screen, never the pre-traffic compatibility screen.
+  requirePattern(
+    route,
+    /<ListingInsightsScreen[\s\S]*?allowed=\{allowed\}/,
+    `${PATHS.route}: live route must pass the member gate to the traffic screen`,
+    failures,
+  );
+  if (/<ListingInsightsScreen[^>]*\brollup=/.test(route)) {
+    failures.push(
+      `${PATHS.route}: live route passes a pre-traffic rollup, which mounts the legacy screen`,
+    );
+  }
+
   const screen = stripComments(files.get(PATHS.screen));
   for (const exactCopy of [
-    "Customers Mingla drove",
-    "Where customers came from",
-    "No paid booking value yet",
-    "No source mix yet",
     "Couldn&apos;t load listing insights",
     "Insights unavailable",
   ]) {
@@ -264,10 +279,86 @@ const check = (files) => {
   }
   requirePattern(
     screen,
-    /minglaDroveCount/,
+    /const rollup = useEntityTrafficRollup\(/,
+    `${PATHS.screen}: server traffic rollup query missing`,
+    failures,
+  );
+  requirePattern(
+    screen,
+    /<TrafficAnalyticsDashboard[\s\S]*?data=\{rollup\.data\}/,
+    `${PATHS.screen}: traffic dashboard is not rendered from the server rollup`,
+    failures,
+  );
+  requirePattern(
+    screen,
+    /rollup\.data\.totals\.minglaCustomers/,
     `${PATHS.screen}: server-authoritative total missing`,
     failures,
   );
+
+  const dashboard = stripComments(files.get(PATHS.dashboard));
+  // The source-mix component alone, so a later card cannot satisfy its promises.
+  const sourceCardStart = dashboard.indexOf("const SourceCard: React.FC");
+  const sourceCardEnd =
+    sourceCardStart < 0
+      ? -1
+      : dashboard.slice(sourceCardStart + 1).search(/\nconst [A-Z]\w*: React\.FC/);
+  const sourceCard =
+    sourceCardStart < 0 || sourceCardEnd < 0
+      ? ""
+      : dashboard.slice(sourceCardStart, sourceCardStart + 1 + sourceCardEnd);
+  if (sourceCard === "") {
+    failures.push(`${PATHS.dashboard}: SourceCard component not found`);
+  }
+  // Promise 1 — what Mingla drove: the server's Mingla-attributed value and
+  // customer count, never a client-side estimate.
+  requirePattern(
+    dashboard,
+    /VALUE MINGLA BROUGHT[\s\S]*?money\(current\.cents, current\.currency\)/,
+    `${PATHS.dashboard}: what Mingla drove (value Mingla brought) missing`,
+    failures,
+  );
+  requirePattern(
+    dashboard,
+    /label="Customers from Mingla"\s*value=\{count\(data\.totals\.minglaCustomers\)\}/,
+    `${PATHS.dashboard}: what Mingla drove (customers from Mingla) missing`,
+    failures,
+  );
+  // Promise 2 — where customers came from: a per-source mix from the server rows.
+  requirePattern(
+    sourceCard,
+    /Where visitors came from[\s\S]*?\{data\.sources\.map\(\(row\)/,
+    `${PATHS.dashboard}: where customers came from (source mix) missing`,
+    failures,
+  );
+  requirePattern(
+    dashboard,
+    /const sources = <SourceCard data=\{data\}/,
+    `${PATHS.dashboard}: source mix card is not rendered`,
+    failures,
+  );
+  // Promise 3 — honest empty states instead of fabricated zeros.
+  requirePattern(
+    sourceCard,
+    /Where visitors came from\s*<\/Text>\s*\{!hasTraffic \? \(\s*<Text[^>]*>\s*\{collectingCopy\(data\.captureStartedAt\)\}/,
+    `${PATHS.dashboard}: honest no-source-mix-yet state missing`,
+    failures,
+  );
+  requirePattern(
+    dashboard,
+    /data\.totals\.pageViews < 30\s*\?\s*"Collecting"/,
+    `${PATHS.dashboard}: honest collecting state for Mingla visitors missing`,
+    failures,
+  );
+  requirePattern(
+    dashboard,
+    /currency === null \? "—"/,
+    `${PATHS.dashboard}: honest no-booking-value state missing`,
+    failures,
+  );
+  if (!dashboard.includes("Visits show here as people open your pages.")) {
+    failures.push(`${PATHS.dashboard}: exact copy missing: collecting-state explanation`);
+  }
   requirePattern(
     screen,
     /rollup\.data\?\.authorized !== true[\s\S]*trackedId\.current = identity\.data\.id[\s\S]*captureBusinessListingInsightsOpened/,
@@ -592,12 +683,104 @@ if (process.argv.includes("--self-test")) {
     selfFailures.push("unauthorized venue analytics leak was not detected");
   }
 
+  // #4037 re-scope — each traffic-dashboard promise must still catch a regression.
+  const dashboardCases = [
+    [
+      "dropped Mingla value",
+      PATHS.dashboard,
+      (source) => source.replace("VALUE MINGLA BROUGHT", "VALUE"),
+      "value Mingla brought",
+    ],
+    [
+      "dropped Mingla customer count",
+      PATHS.dashboard,
+      (source) =>
+        source.replace(
+          "value={count(data.totals.minglaCustomers)}",
+          "value={count(data.totals.bookings)}",
+        ),
+      "customers from Mingla",
+    ],
+    [
+      "dropped source mix",
+      PATHS.dashboard,
+      (source) => source.replace("{data.sources.map((row)", "{[].map((row)"),
+      "source mix) missing",
+    ],
+    [
+      "unrendered source card",
+      PATHS.dashboard,
+      (source) =>
+        source.replace("const sources = <SourceCard data={data}", "const sources = <View data={data}"),
+      "source mix card is not rendered",
+    ],
+    [
+      "fabricated source mix before traffic",
+      PATHS.dashboard,
+      (source) =>
+        source.replace(
+          /(Where visitors came from[\s\S]*?)\{!hasTraffic \? \(/,
+          "$1{false ? (",
+        ),
+      "honest no-source-mix-yet state",
+    ],
+    [
+      "fabricated Mingla visitors before traffic",
+      PATHS.dashboard,
+      (source) =>
+        source.replace(
+          /data\.totals\.pageViews < 30\s*\?\s*"Collecting"/,
+          'data.totals.pageViews < 0 ? "0"',
+        ),
+      "honest collecting state for Mingla visitors",
+    ],
+    [
+      "fabricated zero booking value",
+      PATHS.dashboard,
+      (source) => source.replace('currency === null ? "—"', 'currency === null ? "0"'),
+      "honest no-booking-value state",
+    ],
+    [
+      "screen not rendering the dashboard",
+      PATHS.screen,
+      (source) =>
+        source.replace(/<TrafficAnalyticsDashboard(\s)/, "<View$1"),
+      "traffic dashboard is not rendered",
+    ],
+    [
+      "client-side Mingla total",
+      PATHS.screen,
+      (source) =>
+        source.replaceAll("rollup.data.totals.minglaCustomers", "rollup.data.totals.bookings"),
+      "server-authoritative total missing",
+    ],
+    [
+      "route mounting the legacy screen",
+      PATHS.route,
+      (source) =>
+        source.replace("<ListingInsightsScreen", "<ListingInsightsScreen\n        rollup={legacyRollup}"),
+      "mounts the legacy screen",
+    ],
+  ];
+  for (const [label, file, mutate, expected] of dashboardCases) {
+    const mutated = new Map(good);
+    const next = mutate(mutated.get(file));
+    if (next === mutated.get(file)) {
+      selfFailures.push(`${label}: fixture mutation did not apply`);
+      continue;
+    }
+    mutated.set(file, next);
+    if (!check(mutated).some((failure) => failure.includes(expected))) {
+      selfFailures.push(`${label} was not detected`);
+    }
+  }
+
   if (selfFailures.length > 0) {
     console.error("issue #1403 wiring self-test failed");
     selfFailures.forEach((failure) => console.error(`- ${failure}`));
     process.exit(1);
   }
-  console.log("issue #1403 wiring self-test PASS (15/15 cases)");
+  console.log("issue #1403 wiring self-test PASS (25/25 cases)");
   process.exit(0);
 }
 

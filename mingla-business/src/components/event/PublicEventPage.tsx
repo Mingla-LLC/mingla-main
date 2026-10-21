@@ -69,6 +69,11 @@ import {
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
 import { recordShareDestination } from "../../analytics/shareDestination";
+import {
+  captureOfferingCta,
+  captureOfferingPageView,
+  type OfferingEngagementScope,
+} from "../../services/offeringEngagementCapture";
 import { copyAddressText } from "../../utils/copyAddressText";
 import {
   useResponsiveLayout,
@@ -626,6 +631,22 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [resolvedAcquisitionState, serverAcquisitionOverride],
   );
   const isRsvp = event.event_type === "rsvp";
+  const engagementScope = useMemo<OfferingEngagementScope>(
+    () => ({ brandId: event.brandId, entityType: "event", entityId: event.id }),
+    [event.brandId, event.id],
+  );
+  useEffect(() => {
+    void captureOfferingPageView(engagementScope);
+  }, [engagementScope]);
+  const handleOpenMaps = useCallback(
+    (target: MapsOpenTarget, app?: MapsAppId): void => {
+      // issue #4037 — count the host's directions CTA, then the unchanged
+      // #2468 / #2508 / #3187 forwarder opens the maps app.
+      void captureOfferingCta(engagementScope, "directions");
+      openMapsForTarget(target, app);
+    },
+    [engagementScope],
+  );
   // ── issue #2135 [multi-date public day picker] ────────────────────────────
   //
   // `whenMode === "multi_date"` IS the `events.is_multi_date` signal on this
@@ -1055,6 +1076,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     if (blockForDayTruth()) return;
     if (purchaseNeedsSignIn) {
       recordShareDestination("buy_tickets");
+      void captureOfferingCta(engagementScope, "buy");
       router.push(signInResumeHref as never);
       return;
     }
@@ -1072,6 +1094,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     // purchasable states never reach here (their CTA resolves tappable:false).
     // #3187 P2-1 — the Get-tickets intent of a share recipient (no-op off a shared link).
     recordShareDestination("buy_tickets");
+    void captureOfferingCta(engagementScope, "buy");
     router.push(
       checkoutPublicPathWithSeed(event.id, ticketQuantities, chosenOccurrenceParams) as never,
     );
@@ -1088,6 +1111,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     signInResumeHref,
     chosenOccurrenceParams,
     blockForDayTruth,
+    engagementScope,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -1103,6 +1127,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   }, [router, brand?.slug, event.brandSlug]);
 
   const handleShare = useCallback((): void => {
+    // #4037 decision 5 — a share tap is engagement on this page.
+    void captureOfferingCta(engagementScope, "share");
     if (Platform.OS === "web") {
       void shareCanonicalPublicPageOnWeb({
         url: canonicalUrl(event),
@@ -1117,7 +1143,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       return;
     }
     setShareModalVisible(true);
-  }, [event, showToast]);
+  }, [engagementScope, event, showToast]);
 
   const handleToggleMute = useCallback((): void => {
     setMuted((m) => !m);
@@ -1141,6 +1167,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         if (blockForDayTruth()) return;
         if (purchaseNeedsSignIn) {
           recordShareDestination("buy_tickets");
+          void captureOfferingCta(engagementScope, "buy");
           router.push(signInResumeHref as never);
           return;
         }
@@ -1148,6 +1175,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         // issue #2135 — same day-first gate as handleProceedToCart, so no
         // entry point into checkout can skip the multi-date choice.
         recordShareDestination("buy_tickets");
+        void captureOfferingCta(engagementScope, "buy");
         router.push(
           checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParams) as never,
         );
@@ -1164,6 +1192,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         if (blockForDayTruth()) return;
         if (purchaseNeedsSignIn) {
           recordShareDestination("buy_tickets");
+          void captureOfferingCta(engagementScope, "buy");
           router.push(signInResumeHref as never);
           return;
         }
@@ -1171,6 +1200,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         // issue #2135 — same day-first gate (the free path moves entitlement,
         // and a free multi-date guest must still choose their day).
         recordShareDestination("buy_tickets");
+        void captureOfferingCta(engagementScope, "buy");
         router.push(
           checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParams) as never,
         );
@@ -1183,9 +1213,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       },
       onOpenBrand: (brandSlug: string) => {
         recordShareDestination("view_brand");
+        void captureOfferingCta(engagementScope, "view_brand");
         router.push(`/b/${brandSlug}` as never);
       },
-      onOpenMaps: openMapsForTarget,
+      onOpenMaps: handleOpenMaps,
       onCopyAddress: copyAddressForTarget,
       onUnlockPassword: (password: string): boolean => {
         // [TRANSITIONAL] Frontend stub validation against ticket.password —
@@ -1198,6 +1229,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     }),
     [
       router,
+      engagementScope,
+      handleOpenMaps,
       event.id,
       event.tickets,
       showToast,
@@ -1370,6 +1403,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       // #3187 P2-1 — a share recipient's RSVP (no-op off a shared link). Only a
       // positive answer counts: the server CTA this replaces measured the intent to go.
       if (input.rsvpStatus !== "not_going") recordShareDestination("rsvp");
+      if (input.rsvpStatus !== "not_going") {
+        void captureOfferingCta(engagementScope, "rsvp");
+      }
       const result = await submitPublicRsvp({
         eventId: event.id,
         rsvpStatus: input.rsvpStatus,
@@ -1390,7 +1426,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       }
       return result;
     },
-    [event.id],
+    [engagementScope, event.id],
   );
 
   // ── An anonymous guest's own reply, kept for this browser tab ──
@@ -1698,10 +1734,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => {
             recordShareDestination("view_brand");
+            void captureOfferingCta(engagementScope, "view_brand");
+        void captureOfferingCta(engagementScope, "view_brand");
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}
-          onOpenMaps={openMapsForTarget}
+          onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
@@ -1948,10 +1986,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => {
             recordShareDestination("view_brand");
+            void captureOfferingCta(engagementScope, "view_brand");
+        void captureOfferingCta(engagementScope, "view_brand");
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}
-          onOpenMaps={openMapsForTarget}
+          onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
           stateBanner={stateBanner}

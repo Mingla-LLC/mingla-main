@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "offering-engagement-capture",
+  "verify_jwt": false,
+  "gateway_reason": "Public buyer pages and consumer apps send aggregate-only engagement; the handler strictly validates input, drops bots before hashing, and writes only through service-role RPCs.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

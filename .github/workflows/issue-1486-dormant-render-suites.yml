@@ -221,3 +221,9 @@ jobs:
       - name: "#3827 — Host web typing keeps every letter"
         if: always()
         run: npx jest --config jest.issue3827.web.render.cjs --ci --maxWorkers=2
+      # #4037 guards the host traffic analytics redesign: the Home analytics
+      # tile and the brand / listing traffic dashboard mount at phone and wide
+      # desktop widths, through every collecting, error and populated state.
+      - name: "#4037 — host traffic analytics responsive renders"
+        if: always()
+        run: npx jest --config jest.issue4037.render.cjs --ci --maxWorkers=2

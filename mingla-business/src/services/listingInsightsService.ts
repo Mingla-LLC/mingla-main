@@ -1,8 +1,23 @@
 import { supabase } from "./supabase";
 import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 
-const SOURCE_KEYS = ["ad", "search", "organic", "social", "direct"] as const;
-const LISTING_TYPES = ["event", "trip", "experience", "rsvp"] as const;
+const LEGACY_SOURCE_KEYS = [
+  "ad",
+  "search",
+  "organic",
+  "social",
+  "direct",
+] as const;
+const TRAFFIC_SOURCE_KEYS = [
+  "mingla_app",
+  "mingla_ads",
+  "search",
+  "social",
+  "own_links",
+  "direct_unknown",
+] as const;
+const SOURCE_KEYS = [...TRAFFIC_SOURCE_KEYS, ...LEGACY_SOURCE_KEYS] as const;
+const LISTING_TYPES = ["event", "trip", "experience", "rsvp", "venue"] as const;
 
 export type ListingInsightsSource = (typeof SOURCE_KEYS)[number];
 export type ListingInsightsType = (typeof LISTING_TYPES)[number];
@@ -65,11 +80,7 @@ const stringOrUnavailable = (
 };
 
 const countOrUnavailable = (value: unknown): number => {
-  if (
-    typeof value !== "number" ||
-    !Number.isSafeInteger(value) ||
-    value < 0
-  ) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new ListingInsightsUnavailableError("rollup");
   }
   return value;
@@ -92,7 +103,7 @@ const currencyMapOrUnavailable = (value: unknown): Record<string, number> => {
 };
 
 const detailRoute = (type: ListingInsightsType, id: string): string =>
-  `/${type}/${id}`;
+  type === "venue" ? `/venue/${id}` : `/${type}/${id}`;
 
 export const normalizeListingInsightsIdentity = (
   raw: unknown,
@@ -106,7 +117,7 @@ export const normalizeListingInsightsIdentity = (
   const status = stringOrUnavailable(row.status, "identity");
   if (
     id !== expectedId ||
-    !LISTING_TYPES.includes(type as ListingInsightsType)
+    !["event", "trip", "experience", "rsvp"].includes(type)
   ) {
     throw new ListingInsightsUnavailableError("identity");
   }
@@ -170,7 +181,15 @@ export const normalizeListingInsightsRollup = (
       bySource: [],
     };
   }
-  if (SOURCE_KEYS.some((source) => !sourceMap.has(source))) {
+  const responseSourceKeys =
+    TRAFFIC_SOURCE_KEYS.every((source) => sourceMap.has(source)) &&
+    sourceMap.size === TRAFFIC_SOURCE_KEYS.length
+      ? TRAFFIC_SOURCE_KEYS
+      : LEGACY_SOURCE_KEYS.every((source) => sourceMap.has(source)) &&
+          sourceMap.size === LEGACY_SOURCE_KEYS.length
+        ? LEGACY_SOURCE_KEYS
+        : null;
+  if (responseSourceKeys === null) {
     throw new ListingInsightsUnavailableError("rollup");
   }
   return {
@@ -178,7 +197,7 @@ export const normalizeListingInsightsRollup = (
     authorized: true,
     minglaDroveCount: countOrUnavailable(row.mingla_drove_count),
     valueCents: currencyMapOrUnavailable(row.value_cents),
-    bySource: SOURCE_KEYS.map((source) => {
+    bySource: responseSourceKeys.map((source) => {
       const sourceRow = sourceMap.get(source);
       if (sourceRow === undefined) {
         throw new ListingInsightsUnavailableError("rollup");
@@ -206,9 +225,38 @@ export const fetchListingInsightsIdentity = async (
   } catch {
     throw new ListingInsightsRequestError("identity");
   }
-  if (response.error !== null) throw new ListingInsightsRequestError("identity");
-  if (response.data === null) throw new ListingInsightsUnavailableError("identity");
-  return normalizeListingInsightsIdentity(response.data, id);
+  if (response.error !== null)
+    throw new ListingInsightsRequestError("identity");
+  if (response.data !== null)
+    return normalizeListingInsightsIdentity(response.data, id);
+  let venueResponse: { data: unknown; error: unknown };
+  try {
+    venueResponse = await withTimeout(
+      supabase
+        .from("venue_listings")
+        .select("id, brand_id, name, claim_status")
+        .eq("id", id)
+        .maybeSingle(),
+      DATA_FETCH_TIMEOUT_MS,
+      "listing_insights_venue_identity",
+    );
+  } catch {
+    throw new ListingInsightsRequestError("identity");
+  }
+  if (venueResponse.error !== null)
+    throw new ListingInsightsRequestError("identity");
+  if (venueResponse.data === null)
+    throw new ListingInsightsUnavailableError("identity");
+  const venue = objectOrUnavailable(venueResponse.data, "identity");
+  if (venue.id !== id) throw new ListingInsightsUnavailableError("identity");
+  return {
+    id,
+    brandId: stringOrUnavailable(venue.brand_id, "identity"),
+    title: stringOrUnavailable(venue.name, "identity"),
+    listingType: "venue",
+    status: stringOrUnavailable(venue.claim_status, "identity"),
+    detailRoute: detailRoute("venue", id),
+  };
 };
 
 export const fetchListingInsights = async (

@@ -19,6 +19,7 @@ import { glass } from "../../constants/designSystem";
 import { useAppLayout } from "../../hooks/useAppLayout";
 import { useDiscoverStays } from "../../hooks/useDiscoverStays";
 import { postHogService } from "../../services/postHogService";
+import { captureConsumerOfferingEngagement } from "../../services/offeringEngagementService";
 import {
   EMPTY_DISCOVER_STAY_FILTERS,
   type DiscoverStayFilters,
@@ -88,13 +89,10 @@ const StaysContentImpl: React.FC<Props> = ({
     useAppStore.getState().tabScroll.discover_stays,
   ).current;
   const initialContentOffset = useRef({ x: 0, y: initialScrollOffset }).current;
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 60,
-    minimumViewTime: 500,
-  }).current;
   const setStoredFilters = useAppStore((state) => state.setDiscoverStayFilters);
   const setTabScroll = useAppStore((state) => state.setTabScroll);
-  const seenIds = useRef(new Set<string>());
+  const seenPostHogIds = useRef(new Set<string>());
+  const seenHostImpressionIds = useRef(new Set<string>());
 
   const {
     stays,
@@ -134,6 +132,10 @@ const StaysContentImpl: React.FC<Props> = ({
   }, [updateFilters]);
 
   const openStay = useCallback((stay: DiscoverStayRow) => {
+    void captureConsumerOfferingEngagement(
+      { brandId: stay.brandId, entityType: "venue", entityId: stay.venueId },
+      "app_open",
+    );
     postHogService.capture("stay_discover_card_opened", {
       venue_id: stay.venueId,
       property_kind: stay.propertyKind,
@@ -149,8 +151,8 @@ const StaysContentImpl: React.FC<Props> = ({
   const onViewableItemsChanged = useRef((info: { viewableItems: ViewToken<DiscoverStayRow>[] }) => {
     for (const token of info.viewableItems) {
       const stay = token.item;
-      if (!token.isViewable || seenIds.current.has(stay.venueId)) continue;
-      seenIds.current.add(stay.venueId);
+      if (!token.isViewable || seenPostHogIds.current.has(stay.venueId)) continue;
+      seenPostHogIds.current.add(stay.venueId);
       postHogService.capture("stay_discover_card_viewed", {
         venue_id: stay.venueId,
         property_kind: stay.propertyKind,
@@ -158,6 +160,39 @@ const StaysContentImpl: React.FC<Props> = ({
       });
     }
   }).current;
+  const onHostImpressionViewableItemsChanged = useRef(
+    (info: { viewableItems: ViewToken<DiscoverStayRow>[] }) => {
+      for (const token of info.viewableItems) {
+        const stay = token.item;
+        if (
+          !token.isViewable ||
+          seenHostImpressionIds.current.has(stay.venueId)
+        )
+          continue;
+        seenHostImpressionIds.current.add(stay.venueId);
+        void captureConsumerOfferingEngagement(
+          { brandId: stay.brandId, entityType: "venue", entityId: stay.venueId },
+          "app_impression",
+        );
+      }
+    },
+  ).current;
+  const viewabilityConfigCallbackPairs = useRef([
+    {
+      viewabilityConfig: {
+        itemVisiblePercentThreshold: 60,
+        minimumViewTime: 500,
+      },
+      onViewableItemsChanged,
+    },
+    {
+      viewabilityConfig: {
+        itemVisiblePercentThreshold: 50,
+        minimumViewTime: 1_000,
+      },
+      onViewableItemsChanged: onHostImpressionViewableItemsChanged,
+    },
+  ]).current;
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setTabScroll("discover_stays", event.nativeEvent.contentOffset.y);
@@ -261,8 +296,7 @@ const StaysContentImpl: React.FC<Props> = ({
       showsVerticalScrollIndicator={false}
       onScroll={onScroll}
       scrollEventThrottle={100}
-      onViewableItemsChanged={onViewableItemsChanged}
-      viewabilityConfig={viewabilityConfig}
+      viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
       onEndReached={() => {
         if (hasNextPage && !isFetchingNextPage) fetchNextPage();
       }}

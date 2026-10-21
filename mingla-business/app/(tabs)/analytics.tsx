@@ -48,9 +48,11 @@ export default function AnalyticsRoute(): React.ReactElement | null {
         brand={brand}
         rank={role.rank}
         roleLoading={role.isLoading}
+        authReady={role.isAuthReady && !role.isLoading}
         entryPoint={sanitizeBusinessAnalyticsEntryPoint(params.entry)}
         onBack={back}
         onBackToHome={() => router.replace("/(tabs)/home" as never)}
+        onOpenListingInsights={(id) => router.push(`/insights/${id}` as never)}
       />
     </SafeScreen>
   );

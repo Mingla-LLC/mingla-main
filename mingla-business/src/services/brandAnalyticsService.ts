@@ -1,10 +1,22 @@
 import { supabase } from "./supabase";
-import {
-  DATA_FETCH_TIMEOUT_MS,
-  withTimeout,
-} from "../utils/withTimeout";
+import { DATA_FETCH_TIMEOUT_MS, withTimeout } from "../utils/withTimeout";
 
-const SOURCE_KEYS = ["ad", "search", "organic", "social", "direct"] as const;
+const LEGACY_SOURCE_KEYS = [
+  "ad",
+  "search",
+  "organic",
+  "social",
+  "direct",
+] as const;
+const TRAFFIC_SOURCE_KEYS = [
+  "mingla_app",
+  "mingla_ads",
+  "search",
+  "social",
+  "own_links",
+  "direct_unknown",
+] as const;
+const SOURCE_KEYS = [...TRAFFIC_SOURCE_KEYS, ...LEGACY_SOURCE_KEYS] as const;
 const DAY_LABELS = {
   monday: "Monday",
   tuesday: "Tuesday",
@@ -115,7 +127,8 @@ const objectOrThrow = (value: unknown, rpcName: string): JsonObject => {
 };
 
 const booleanOrThrow = (value: unknown, rpcName: string): boolean => {
-  if (typeof value !== "boolean") throw new BrandAnalyticsContractError(rpcName);
+  if (typeof value !== "boolean")
+    throw new BrandAnalyticsContractError(rpcName);
   return value;
 };
 
@@ -138,8 +151,7 @@ const stringOrThrow = (value: unknown, rpcName: string): string => {
   return value;
 };
 
-const MASKED_EMAIL_RE =
-  /^[^\s@*]\*{3}@[^\s@.*]\*{3}(?:\.[^\s@.*]+)?$/;
+const MASKED_EMAIL_RE = /^[^\s@*]\*{3}@[^\s@.*]\*{3}(?:\.[^\s@.*]+)?$/;
 const MASKED_EMAIL_FALLBACK_RE = /^[^\s@*]\*{3}$/;
 const MASKED_PHONE_RE = /^\*{3}\d{4}$/;
 
@@ -162,7 +174,8 @@ const brandIdOrThrow = (
   rpcName: string,
 ): string => {
   const brandId = stringOrThrow(value, rpcName);
-  if (brandId !== expectedBrandId) throw new BrandAnalyticsContractError(rpcName);
+  if (brandId !== expectedBrandId)
+    throw new BrandAnalyticsContractError(rpcName);
   return brandId;
 };
 
@@ -173,7 +186,9 @@ const currencyMapOrThrow = (
   const object = objectOrThrow(value, rpcName);
   const entries = Object.entries(object);
   const normalized: Record<string, number> = {};
-  for (const [currency, cents] of entries.sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [currency, cents] of entries.sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new BrandAnalyticsContractError(rpcName);
     }
@@ -216,14 +231,23 @@ export function normalizeBrandMinglaDroveRollup(
       throw new BrandAnalyticsContractError(rpcName);
     }
     const typedSource = source as BrandAnalyticsSource;
-    if (sourceMap.has(typedSource)) throw new BrandAnalyticsContractError(rpcName);
+    if (sourceMap.has(typedSource))
+      throw new BrandAnalyticsContractError(rpcName);
     sourceMap.set(typedSource, {
       source: typedSource,
       customers: countOrThrow(sourceRow.customers, rpcName),
       valueCents: currencyMapOrThrow(sourceRow.value_cents, rpcName),
     });
   }
-  if (authorized && SOURCE_KEYS.some((source) => !sourceMap.has(source))) {
+  const responseSourceKeys =
+    TRAFFIC_SOURCE_KEYS.every((source) => sourceMap.has(source)) &&
+    sourceMap.size === TRAFFIC_SOURCE_KEYS.length
+      ? TRAFFIC_SOURCE_KEYS
+      : LEGACY_SOURCE_KEYS.every((source) => sourceMap.has(source)) &&
+          sourceMap.size === LEGACY_SOURCE_KEYS.length
+        ? LEGACY_SOURCE_KEYS
+        : null;
+  if (authorized && responseSourceKeys === null) {
     throw new BrandAnalyticsContractError(rpcName);
   }
   return {
@@ -234,9 +258,10 @@ export function normalizeBrandMinglaDroveRollup(
     valueCents30d,
     valueCentsLifetime,
     bySource: authorized
-      ? SOURCE_KEYS.map((source) => {
+      ? responseSourceKeys!.map((source) => {
           const sourceRow = sourceMap.get(source);
-          if (sourceRow === undefined) throw new BrandAnalyticsContractError(rpcName);
+          if (sourceRow === undefined)
+            throw new BrandAnalyticsContractError(rpcName);
           return sourceRow;
         })
       : [],
@@ -360,7 +385,10 @@ export function normalizeBrandCustomerPatternsRollup(
   const row = objectOrThrow(raw, rpcName);
   const brandId = brandIdOrThrow(row.brand_id, expectedBrandId, rpcName);
   const authorized = booleanOrThrow(row.authorized, rpcName);
-  if (row.window_days !== 180 || row.metric !== "qualified_customer_commitments") {
+  if (
+    row.window_days !== 180 ||
+    row.metric !== "qualified_customer_commitments"
+  ) {
     throw new BrandAnalyticsContractError(rpcName);
   }
   const generatedAt =
@@ -410,7 +438,11 @@ const fetchRpc = async <T>(
 export const fetchBrandMinglaDroveRollup = (
   brandId: string,
 ): Promise<BrandMinglaDroveRollup> =>
-  fetchRpc("brand_mingla_drove_rollup", brandId, normalizeBrandMinglaDroveRollup);
+  fetchRpc(
+    "brand_mingla_drove_rollup",
+    brandId,
+    normalizeBrandMinglaDroveRollup,
+  );
 
 export const fetchBrandRegularsRollup = (
   brandId: string,

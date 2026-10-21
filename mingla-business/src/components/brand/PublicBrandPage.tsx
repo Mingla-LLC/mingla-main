@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
@@ -16,6 +16,11 @@ import {
 import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
 import { captureWeb } from "../../analytics/webAnalytics";
 import { recordShareDestination } from "../../analytics/shareDestination";
+import {
+  captureOfferingCta,
+  captureOfferingPageView,
+  type OfferingEngagementScope,
+} from "../../services/offeringEngagementCapture";
 
 import {
   brandOgImageUrl,
@@ -250,6 +255,17 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [experiences],
   );
   const sharedUpcoming = useMemo(() => upcoming.map(mapUpcoming), [upcoming]);
+  const engagementScope = useMemo<OfferingEngagementScope>(
+    () => ({ brandId: brand.id, entityType: "brand", entityId: null }),
+    [brand.id],
+  );
+  // The scope only changes with brand.id; a ref keeps handleOpenExternal's
+  // identity tied to the website link it compares against.
+  const engagementScopeRef = useRef(engagementScope);
+  engagementScopeRef.current = engagementScope;
+  useEffect(() => {
+    void captureOfferingPageView(engagementScope);
+  }, [engagementScope]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -260,6 +276,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   }, [router]);
 
   const handleShare = useCallback((): void => {
+    // #4037 decision 5 — a share tap is engagement on the brand page.
+    void captureOfferingCta(engagementScopeRef.current, "share");
     if (Platform.OS === "web") {
       void shareCanonicalPublicPageOnWeb({
         url: canonicalUrl(brand),
@@ -281,6 +299,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     (url: string): void => {
       if (url.startsWith("tel:")) recordShareDestination("call");
       else if (websiteUrl !== undefined && url === websiteUrl) recordShareDestination("website");
+      // issue #4037 — the same two CTAs count toward the host's page traffic.
+      if (url.startsWith("tel:")) void captureOfferingCta(engagementScopeRef.current, "call");
+      else if (websiteUrl !== undefined && url === websiteUrl) {
+        void captureOfferingCta(engagementScopeRef.current, "website");
+      }
       void Linking.openURL(url).catch((error: unknown) => {
         console.warn("[public-brand] could not open link", error instanceof Error ? error.message : String(error));
       });
@@ -291,6 +314,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const handleOpenEvent = useCallback(
     (event: PublicBrandEvent): void => {
       recordShareDestination("view_offering");
+      void captureOfferingCta(engagementScopeRef.current, "view_offering");
       router.push(
         eventPublicPath({
           brandSlug: event.brandSlug,
@@ -304,6 +328,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const handleOpenTrip = useCallback(
     (trip: PublicBrandTrip): void => {
       recordShareDestination("view_offering");
+      void captureOfferingCta(engagementScopeRef.current, "view_offering");
       router.push(
         tripPublicPath({
           brandSlug: trip.brandSlug,
@@ -317,6 +342,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const handleOpenExperience = useCallback(
     (experience: PublicBrandExperience): void => {
       recordShareDestination("view_offering");
+      void captureOfferingCta(engagementScopeRef.current, "view_offering");
       router.push(
         `/exp/${experience.brandSlug}/${experience.experienceSlug}` as never,
       );
@@ -328,6 +354,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const handleOpenVenue = useCallback(
     (item: PublicBrandVenueSummary): void => {
       recordShareDestination("view_venue");
+      void captureOfferingCta(engagementScopeRef.current, "view_venue");
       captureWeb("brand_venue_selected", {
         surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
         brand_id: brand.id,
@@ -349,6 +376,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const handleOpenUpcoming = useCallback(
     (item: PublicBrandUpcoming): void => {
       recordShareDestination("view_offering");
+      void captureOfferingCta(engagementScopeRef.current, "view_offering");
       if (item.offeringType === "trip") {
         router.push(
           tripPublicPath({

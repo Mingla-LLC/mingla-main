@@ -9,10 +9,7 @@ import {
   useCurrentBrandHasHydrated,
   useCurrentBrandId,
 } from "../../src/store/currentBrandStore";
-import {
-  listingInsightsKeys,
-  useListingInsights,
-} from "../../src/hooks/useListingInsights";
+import { listingInsightsKeys } from "../../src/hooks/useListingInsights";
 import {
   fetchListingInsightsIdentity,
   type ListingInsightsIdentity,
@@ -78,8 +75,6 @@ export default function ListingInsightsRoute(): React.ReactElement {
     !scannerDenied &&
     identityProbe.data !== undefined &&
     currentBrand?.id === identityProbe.data.brandId;
-  const insights = useListingInsights(id, isAuthReady, allowed);
-
   const backToListings = (): void => {
     router.replace("/(tabs)/hub/events" as never);
   };
@@ -99,7 +94,7 @@ export default function ListingInsightsRoute(): React.ReactElement {
     <SafeScreen style={styles.host}>
       <ListingInsightsScreen
         identity={identityProbe}
-        rollup={insights.rollup}
+        allowed={allowed}
         entryPoint={sanitizeBusinessListingInsightsEntryPoint(params.entry)}
         onBack={back}
         onBackToListings={backToListings}

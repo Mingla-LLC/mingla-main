@@ -17,9 +17,16 @@ import type { Brand } from "../../types/brand";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
   useBrandCustomerPatternsRollup,
-  useBrandMinglaDroveRollup,
   useBrandRegularsRollup,
 } from "../../hooks/useBrandAnalytics";
+import {
+  useBrandTrafficRollup,
+  useEntityTrafficRollup,
+} from "../../hooks/useTrafficAnalytics";
+import type {
+  TrafficPageRow,
+  TrafficRange,
+} from "../../services/trafficAnalyticsService";
 import { isScannerOnlyRank } from "../../utils/navTabGate";
 import {
   captureBusinessAnalyticsOpened,
@@ -33,64 +40,102 @@ import {
   AnalyticsModuleSkeleton,
   RefreshFailureBanner,
 } from "./AnalyticsModuleState";
-import { CustomersMinglaDroveSection } from "./CustomersMinglaDroveSection";
+import { TrafficAnalyticsDashboard } from "./LazyTrafficAnalyticsDashboard";
 import { RegularsSection } from "./RegularsSection";
 import { CustomerPatternsSection } from "./CustomerPatternsSection";
+import { LegacyBrandAnalyticsScreen } from "./LegacyBrandAnalyticsScreen";
 
 interface BrandAnalyticsScreenProps {
   brand: Brand;
   rank: number;
   roleLoading: boolean;
+  authReady?: boolean;
   entryPoint: BusinessAnalyticsEntryPoint;
   onBack: () => void;
   onBackToHome: () => void;
+  onOpenListingInsights?: (id: string) => void;
 }
 
-export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
+interface TrafficBrandAnalyticsScreenProps extends BrandAnalyticsScreenProps {
+  authReady: boolean;
+}
+
+const samePage = (left: TrafficPageRow, right: TrafficPageRow): boolean =>
+  left.entityType === right.entityType && left.entityId === right.entityId;
+
+const TrafficBrandAnalyticsScreen: React.FC<
+  TrafficBrandAnalyticsScreenProps
+> = ({
   brand,
   rank,
   roleLoading,
+  authReady,
   entryPoint,
   onBack,
   onBackToHome,
+  onOpenListingInsights,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
-  const callerEnabled = !roleLoading && !isScannerOnlyRank(rank);
-  const totals = useBrandMinglaDroveRollup(brand.id, callerEnabled);
+  const callerEnabled = authReady && !roleLoading && !isScannerOnlyRank(rank);
+  const [range, setRange] = useState<TrafficRange>("30d");
+  const traffic = useBrandTrafficRollup(brand.id, range, callerEnabled);
   const regulars = useBrandRegularsRollup(brand.id, callerEnabled);
   const patterns = useBrandCustomerPatternsRollup(brand.id, callerEnabled);
+  const [selectedPage, setSelectedPage] = useState<TrafficPageRow | null>(null);
+  const selectedTraffic = useEntityTrafficRollup(
+    brand.id,
+    selectedPage?.entityType ?? null,
+    selectedPage?.entityId ?? null,
+    range,
+    callerEnabled && selectedPage !== null,
+  );
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
-  const [refreshAnnouncement, setRefreshAnnouncement] = useState<
-    string | null
-  >(null);
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState<string | null>(
+    null,
+  );
   const openedTracked = useRef(false);
 
   useEffect(() => {
     openedTracked.current = false;
+    setSelectedPage(null);
     setRefreshFailed(false);
     setRefreshAnnouncement(null);
   }, [brand.id]);
 
   useEffect(() => {
+    const pages = traffic.data?.pages ?? [];
+    if (pages.length === 0) {
+      setSelectedPage(null);
+      return;
+    }
+    setSelectedPage((current) =>
+      current !== null && pages.some((page) => samePage(page, current))
+        ? current
+        : pages[0]!,
+    );
+  }, [traffic.data?.pages]);
+
+  useEffect(() => {
     if (
       openedTracked.current ||
       roleLoading ||
-      (totals.isLoading && !totals.isError && totals.data === undefined)
+      (traffic.isLoading && !traffic.isError && traffic.data === undefined)
     ) {
       return;
     }
     openedTracked.current = true;
     captureBusinessAnalyticsOpened(
       entryPoint,
-      totals.data?.authorized === true && totals.data.minglaDrove30d > 0,
+      traffic.data?.authorized === true &&
+        traffic.data.totals.minglaCustomers > 0,
     );
   }, [
     entryPoint,
     roleLoading,
-    totals.data,
-    totals.isError,
-    totals.isLoading,
+    traffic.data,
+    traffic.isError,
+    traffic.isLoading,
   ]);
 
   const refreshAll = useCallback(async (): Promise<void> => {
@@ -98,20 +143,33 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
     setIsManualRefreshing(true);
     setRefreshFailed(false);
     setRefreshAnnouncement("Updating analytics");
-    const settled = await Promise.allSettled([
-      totals.refetch(),
+    const jobs: Promise<unknown>[] = [
+      traffic.refetch(),
       regulars.refetch(),
       patterns.refetch(),
-    ]);
+    ];
+    if (selectedPage !== null) jobs.push(selectedTraffic.refetch());
+    const settled = await Promise.allSettled(jobs);
     const successes = settled.filter(
       (result) =>
         result.status === "fulfilled" &&
-        !result.value.isError &&
-        result.value.data?.authorized === true,
+        typeof result.value === "object" &&
+        result.value !== null &&
+        "isError" in result.value &&
+        result.value.isError === false &&
+        "data" in result.value &&
+        typeof result.value.data === "object" &&
+        result.value.data !== null &&
+        "authorized" in result.value.data &&
+        result.value.data.authorized === true,
     ).length;
     const result: BusinessAnalyticsRefreshResult =
-      successes === 3 ? "success" : successes === 0 ? "error" : "partial";
-    setRefreshFailed(successes < 3);
+      successes === jobs.length
+        ? "success"
+        : successes === 0
+          ? "error"
+          : "partial";
+    setRefreshFailed(successes < jobs.length);
     captureBusinessAnalyticsRefreshed(result);
     setRefreshAnnouncement(
       result === "success"
@@ -121,17 +179,25 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
           : "Analytics couldn't be updated",
     );
     setIsManualRefreshing(false);
-  }, [isManualRefreshing, patterns, regulars, totals]);
+  }, [
+    isManualRefreshing,
+    patterns,
+    regulars,
+    selectedPage,
+    selectedTraffic,
+    traffic,
+  ]);
 
   const unauthorized =
     isScannerOnlyRank(rank) ||
-    totals.data?.authorized === false ||
+    traffic.data?.authorized === false ||
     regulars.data?.authorized === false ||
     patterns.data?.authorized === false;
   const hasCachedRefetchFailure =
-    (totals.isError && totals.data !== undefined) ||
+    (traffic.isError && traffic.data !== undefined) ||
     (regulars.isError && regulars.data !== undefined) ||
-    (patterns.isError && patterns.data !== undefined);
+    (patterns.isError && patterns.data !== undefined) ||
+    (selectedTraffic.isError && selectedTraffic.data !== undefined);
 
   const topBar = (
     <View style={styles.topBarWrap}>
@@ -174,9 +240,12 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
     <View style={styles.content} testID="brand-analytics-content">
       <View style={styles.introRow}>
         <View style={styles.introCopy}>
-          <Text style={styles.intro} accessibilityRole="header">
-            {`See how customers find and choose ${brand.displayName}.`}
+          <Text style={styles.screenTitle} accessibilityRole="header">
+            Analytics
           </Text>
+          <Text
+            style={styles.intro}
+          >{`How people find and choose ${brand.displayName}.`}</Text>
           <View
             accessibilityLiveRegion="polite"
             testID="analytics-refresh-announcement"
@@ -188,7 +257,7 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
         </View>
         {isWideDesktop ? (
           <Pressable
-            onPress={refreshAll}
+            onPress={() => void refreshAll()}
             disabled={isManualRefreshing}
             accessibilityRole="button"
             accessibilityLabel={
@@ -206,22 +275,46 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
         ) : null}
       </View>
       {refreshFailed || hasCachedRefetchFailure ? (
-        <RefreshFailureBanner onRetry={refreshAll} />
+        <RefreshFailureBanner onRetry={() => void refreshAll()} />
       ) : null}
-      <View style={[styles.proofRow, isWideDesktop && styles.proofRowWide]}>
-        <View style={styles.proofColumn}>
-          {totals.data?.authorized === true ? (
-            <CustomersMinglaDroveSection data={totals.data} />
-          ) : totals.isError ? (
-            <AnalyticsModuleError
-              title="Couldn't load customer analytics"
-              onRetry={() => void totals.refetch()}
-            />
-          ) : (
-            <AnalyticsModuleSkeleton testID="analytics-totals-loading" />
-          )}
-        </View>
-        <View style={styles.regularsColumn}>
+      <TrafficAnalyticsDashboard
+        loadingFallback={
+          <AnalyticsModuleSkeleton testID="traffic-dashboard-loading" />
+        }
+        renderLoadError={(retry) => (
+          <AnalyticsModuleError
+            title="Couldn't load analytics"
+            onRetry={retry}
+          />
+        )}
+        data={traffic.data}
+        isLoading={traffic.isLoading}
+        isError={traffic.isError && traffic.data === undefined}
+        onRetry={() => void traffic.refetch()}
+        range={range}
+        onRangeChange={setRange}
+        isWideDesktop={isWideDesktop}
+        pages={traffic.data?.pages}
+        selectedPage={selectedPage}
+        onSelectPage={setSelectedPage}
+        selectedPageData={selectedTraffic.data}
+        selectedPageLoading={selectedTraffic.isLoading}
+        selectedPageError={
+          selectedTraffic.isError && selectedTraffic.data === undefined
+        }
+        onRetrySelectedPage={() => void selectedTraffic.refetch()}
+        onOpenSelectedListing={
+          selectedPage?.entityId === null ||
+          selectedPage === null ||
+          onOpenListingInsights === undefined
+            ? undefined
+            : () => onOpenListingInsights(selectedPage.entityId!)
+        }
+      />
+      <View
+        style={[styles.existingRow, isWideDesktop && styles.existingRowWide]}
+      >
+        <View style={styles.existingColumn}>
           {regulars.data?.authorized === true ? (
             <RegularsSection data={regulars.data} />
           ) : regulars.isError ? (
@@ -233,20 +326,22 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
             <AnalyticsModuleSkeleton testID="analytics-regulars-loading" />
           )}
         </View>
+        <View style={styles.patternsColumn}>
+          {patterns.data?.authorized === true ? (
+            <CustomerPatternsSection
+              data={patterns.data}
+              isWideDesktop={isWideDesktop}
+            />
+          ) : patterns.isError ? (
+            <AnalyticsModuleError
+              title="Couldn't load customer patterns"
+              onRetry={() => void patterns.refetch()}
+            />
+          ) : (
+            <AnalyticsModuleSkeleton testID="analytics-patterns-loading" />
+          )}
+        </View>
       </View>
-      {patterns.data?.authorized === true ? (
-        <CustomerPatternsSection
-          data={patterns.data}
-          isWideDesktop={isWideDesktop}
-        />
-      ) : patterns.isError ? (
-        <AnalyticsModuleError
-          title="Couldn't load customer patterns"
-          onRetry={() => void patterns.refetch()}
-        />
-      ) : (
-        <AnalyticsModuleSkeleton testID="analytics-patterns-loading" />
-      )}
     </View>
   );
 
@@ -262,7 +357,7 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
           isWideDesktop ? undefined : (
             <RefreshControl
               refreshing={isManualRefreshing}
-              onRefresh={refreshAll}
+              onRefresh={() => void refreshAll()}
             />
           )
         }
@@ -271,6 +366,15 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
       </ScrollView>
     </View>
   );
+};
+
+export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = (
+  props,
+) => {
+  if (props.authReady === undefined) {
+    return <LegacyBrandAnalyticsScreen {...props} />;
+  }
+  return <TrafficBrandAnalyticsScreen {...props} authReady={props.authReady} />;
 };
 
 const styles = StyleSheet.create({
@@ -282,7 +386,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl * 4,
   },
-  content: { width: "100%", maxWidth: 1320, alignSelf: "center", gap: spacing.xl },
+  content: {
+    width: "100%",
+    maxWidth: 1320,
+    alignSelf: "center",
+    gap: spacing.xl,
+  },
   introRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -290,11 +399,17 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   introCopy: { flex: 1, minWidth: 0 },
-  intro: {
+  screenTitle: {
     color: textTokens.primary,
-    fontSize: typography.h2.fontSize,
-    lineHeight: typography.h2.lineHeight,
-    fontWeight: typography.h2.fontWeight,
+    fontSize: typography.h1.fontSize,
+    lineHeight: typography.h1.lineHeight,
+    fontWeight: typography.h1.fontWeight,
+  },
+  intro: {
+    color: textTokens.secondary,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    marginTop: spacing.xs,
   },
   updating: {
     color: textTokens.secondary,
@@ -302,10 +417,10 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     marginTop: spacing.xs,
   },
-  proofRow: { gap: spacing.xl },
-  proofRowWide: { flexDirection: "row", alignItems: "flex-start" },
-  proofColumn: { flex: 2, minWidth: 0 },
-  regularsColumn: { flex: 1, minWidth: 0 },
+  existingRow: { gap: spacing.xl },
+  existingRowWide: { flexDirection: "row", alignItems: "flex-start" },
+  existingColumn: { flex: 1, minWidth: 0 },
+  patternsColumn: { flex: 2, minWidth: 0 },
   refreshButton: {
     minHeight: 44,
     minWidth: 72,

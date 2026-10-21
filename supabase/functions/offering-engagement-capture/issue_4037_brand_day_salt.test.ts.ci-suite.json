@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/offering-engagement-capture/issue_4037_brand_day_salt.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4037-offering-engagement-brand-day-salt",
+  "profile": "deno-2-unit"
+}
