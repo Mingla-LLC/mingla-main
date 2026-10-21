@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3980_w2_rework3_roadmap_agent_mcp.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3980-w2-rework3-roadmap-agent-mcp-tester-pg",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

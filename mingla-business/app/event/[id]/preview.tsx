@@ -44,6 +44,10 @@ import { useAuth } from "../../../src/context/AuthContext";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 import { draftEventBuyerPreview } from "../../../src/utils/draftEventBuyerPreview";
 import { DraftEventFoundationPreview } from "../../../src/components/event/DraftEventFoundationPreview";
+import {
+  buildDraftPreviewSocialProof,
+  draftTicketCapacity,
+} from "../../../src/utils/draftPreviewSocialProof";
 
 export default function EventPreviewRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -228,6 +232,16 @@ export default function EventPreviewRoute(): React.ReactElement {
         multiDatePricingMode={draft.multiDatePricingMode ?? "per_day"}
         // issue #3284 — preview the organiser's refund terms as guests will see them.
         refundPolicy={draft.refundPolicy ?? null}
+        // issue #3827 going-box — the host previews the going box buyers will
+        // see: none unless guests are on the host's own list (and not private).
+        socialProof={buildDraftPreviewSocialProof({
+          eventId: draft.id,
+          entityType: "event",
+          extraGuestCount: draft.extraGuestCount,
+          privateGuestList: draft.privateGuestList,
+          hideRemainingCount: draft.hideRemainingCount,
+          capacity: draftTicketCapacity(draft.tickets),
+        })}
         onClose={handleClose}
         onShare={() => setToast({
           visible: true,

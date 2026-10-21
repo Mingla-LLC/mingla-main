@@ -799,7 +799,9 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
     resources: {},
     prompts: {},
   });
-  assert.equal("mcp-session-id" in hello.headers, false);
+  // [TEST-MOD-APPROVED #3980] D-1: initialize carries a random session id
+  // that only tells two chats on one key apart; nothing else about it.
+  assert.match(hello.headers["mcp-session-id"] ?? "", /^[0-9a-f]{32}$/);
 });
 
 test("#3802 H-7: forty malformed requests are each refused in plain words, with nothing internal in them", async () => {

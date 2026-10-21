@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#3827",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "meta-orch-1337-social-proof-tests",
+      "extension": "yml"
+    },
+    "baseRowSha256": "6addc095c494db6fe3883b5aa1283b04517bacc62a65813ca513bb37d0317050"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "0b9e20ab2c9c93a7bb5a2779a0091d78c15067ffda9cbda5cc544a1607a6f3eb",
+      "value": "6de10da3db7d1d76ad03cf6122a39e9b49ce464b8e985fb8af0aaefc673e4b86"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #3827 registers two going-box Deno suites in the existing explicit social-proof suite list without changing its execution topology."
+}

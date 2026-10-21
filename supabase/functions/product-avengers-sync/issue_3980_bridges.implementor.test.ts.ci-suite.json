@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/product-avengers-sync/issue_3980_bridges.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-bridges",
+  "profile": "deno-1.46-stripe"
+}

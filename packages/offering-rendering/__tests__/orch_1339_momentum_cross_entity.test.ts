@@ -237,9 +237,12 @@ Deno.test("T-4: each mount is null-gated (honest absence — no unit without a p
 // ───────────────────────── T-5 — RSVP gate wiring (D2) ─────────────────────
 
 Deno.test("T-5: RsvpMomentumDecision derives with a null DISPLAY capacity under hideRemainingCount", () => {
+  // [TEST-MOD-APPROVED #3827] the call gains the nullable count and the host's
+  // own-list guests; the null DISPLAY capacity under hideRemainingCount is
+  // unchanged, which is what this test pins.
   assertStringIncludes(
     RSVP_UNIT,
-    "deriveMomentum(goingCount, hideRemainingCount ? null : capacity)",
+    "deriveMomentum(goingCount ?? 0, hideRemainingCount ? null : capacity, extraGuestCount)",
   );
 });
 

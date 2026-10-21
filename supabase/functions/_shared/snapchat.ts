@@ -438,13 +438,19 @@ export async function snapchatApi(
   if (!response.ok) {
     const requestId = typeof payload.request_id === "string" ? payload.request_id : null;
     const detail = payload.debug_message ?? payload.display_message ?? payload.error ?? "";
+    // #3697: carry Snap's own error_code (e.g. E1008) so a failure is
+    // diagnosable from ad_status_events / sync result rows.
+    const errorCode = typeof payload.error_code === "string" || typeof payload.error_code === "number"
+      ? String(payload.error_code)
+      : null;
     throw new AdApiError({
       platform: "snapchat",
       code: `http_${response.status}`,
+      subcode: errorCode,
       message: scrubSnapchatSecrets(
-        `Snap API ${method} ${path.replace(/^https?:\/\/[^/]+/i, "")}: HTTP ${response.status} ${
-          JSON.stringify(detail)
-        }`,
+        `Snap API ${method} ${path.replace(/^https?:\/\/[^/]+/i, "")}: HTTP ${response.status}${
+          errorCode ? ` error_code=${errorCode}` : ""
+        } ${JSON.stringify(detail)}`,
         client.accessToken,
       ),
       traceId: requestId,

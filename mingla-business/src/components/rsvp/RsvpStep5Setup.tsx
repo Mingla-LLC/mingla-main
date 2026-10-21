@@ -36,6 +36,8 @@ import type { DraftEventVisibility } from "../../store/draftEventStore";
 import { type StepBodyProps } from "../event/types";
 import { Icon } from "../ui/Icon";
 import { NumberStepper } from "../ui/NumberStepper";
+import { ExtraGuestsField } from "../ui/ExtraGuestsField";
+import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 // #3372 — the chip-in money prefix reads "₦", not "NGN" (#3341 rule).
@@ -225,6 +227,10 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
   const capacityOn = draft.rsvpCapacity !== null;
   const chipCurrency = brandDefaultCurrency ?? draft.currency ?? "USD";
   const contributionOn = draft.rsvpContributionEnabled;
+  // Q1 (#3827) — the spots-left switch is locked on while the list is private.
+  // An older private event saved before this rule keeps an unlocked switch
+  // showing its real state; turning it on then locks it.
+  const hideRemainingLocked = draft.privateGuestList && draft.hideRemainingCount;
   const minGtSuggested =
     draft.rsvpContributionMinCents !== null &&
     draft.rsvpContributionSuggestedCents !== null &&
@@ -467,13 +473,28 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
       {/* 5. Guest-list privacy */}
       <ToggleRow
         label="Keep the guest list private"
-        // ORCH-1339 — D2-honest sub-copy (SPEC §4.8, byte-exact).
-        sub="Hide who's going. Only you see the list."
+        // issue #3827 going-box — private now hides the whole going box
+        // (count included), so the copy says so.
+        sub="Hide who's going and how many. Only you see the list."
         on={draft.privateGuestList}
         onToggle={() =>
-          updateDraft({ privateGuestList: !draft.privateGuestList })
+          // Q1 (#3827): turning private ON also switches the spots-left count
+          // off for guests, and locks it while the list stays private.
+          updateDraft(
+            draft.privateGuestList
+              ? { privateGuestList: false }
+              : { privateGuestList: true, hideRemainingCount: true },
+          )
         }
         testID="rsvp-private-guestlist"
+      />
+
+      {/* issue #3827 going-box — guests on the host's own list. */}
+      <ExtraGuestsField
+        value={draft.extraGuestCount ?? 0}
+        privateGuestList={draft.privateGuestList}
+        onChange={(n) => updateDraft({ extraGuestCount: n })}
+        testID="rsvp-extra-guests"
       />
 
       {/* 6. Spots-left visibility. ORCH-1339 — label + sub corrected (SPEC
@@ -482,11 +503,17 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           scarcity, so the copy now says exactly that. */}
       <ToggleRow
         label="Hide the spots-left count"
-        sub={rsvpHideCountSub(draft.privateGuestList)}
+        sub={
+          hideRemainingLocked
+            ? `${rsvpHideCountSub(true)} ${HIDE_REMAINING_LOCKED_SUB}`
+            : rsvpHideCountSub(draft.privateGuestList)
+        }
         on={draft.hideRemainingCount}
         onToggle={() =>
           updateDraft({ hideRemainingCount: !draft.hideRemainingCount })
         }
+        // Q1 (#3827) — locked ON while the guest list is private.
+        disabled={hideRemainingLocked}
         testID="rsvp-hide-count"
       />
 

@@ -20,6 +20,7 @@ import {
   TEXT_FIELDS,
   clockTime,
   contactRuleView,
+  displayName,
   editsToSend,
   errorWords,
   fieldLabel,
@@ -730,11 +731,26 @@ export function RecordDrawer({
             <ArrowRight aria-hidden="true" className="ml-auto h-4 w-4 shrink-0" />
           </a>
         )}
+        {isHosts && (
+          <OnMinglaSection
+            key={`on-mingla-${record.id}`}
+            record={record}
+            online={online && !locked}
+            me={config.me?.email || ""}
+            ownerNames={(record.owners || []).map((email) => (config.team || []).find((p) => p.email === email)?.display_name || displayName(email))}
+            onAssignMe={() => { const mine = String(config.me?.email || "").toLowerCase(); if (mine) save("owners", [...new Set([...(record.owners || []), mine])].sort()); }}
+            onFillIn={(what) => {
+              const target = document.getElementById(fid(what === "type" ? "icp" : what === "region" ? "region_id" : "contact"));
+              target?.scrollIntoView?.({ block: "center" });
+              target?.focus?.();
+            }}
+          />
+        )}
         {next && (
           <div>
             <Button
               size="sm"
-              className="max-sm:h-11"
+              className="min-h-11 max-sm:h-11"
               iconRight={ArrowRight}
               disabled={locked || pending}
               onClick={() => onRequestMove(record, next.id)}
@@ -798,6 +814,7 @@ export function RecordDrawer({
             team={config.team}
             value={Object.hasOwn(drafts, "owners") ? drafts.owners : record.owners}
             disabled={locked}
+            min={(record.owners || []).length ? 1 : 0}
             onChange={(owners) => save("owners", owners)}
           />
           {fieldError("owners") && (
@@ -938,7 +955,6 @@ export function RecordDrawer({
           </section>
         )}
 
-        {isHosts && <OnMinglaSection key={`on-mingla-${record.id}`} record={record} online={online} />}
 
         <RecentTouchNotice key={`signals-${record.id}`} record={record} online={online} />
 

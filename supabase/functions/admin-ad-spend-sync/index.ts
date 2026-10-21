@@ -38,16 +38,20 @@ import {
 } from "../_shared/adSpendSync.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import { resolveTikTokClient, tiktokApi } from "../_shared/tiktok.ts";
-import { resolveSnapchatClient, snapchatApi } from "../_shared/snapchat.ts";
+import { resolveSnapchatClient } from "../_shared/snapchat.ts";
+import { fetchSnapchatCampaignStats } from "../_shared/snapchatSpendStats.ts";
 import { googleAdsRequest, resolveGoogleClient } from "../_shared/google.ts";
 import { redditRequest, resolveRedditClient } from "../_shared/reddit.ts";
 import {
   AdDestinationError,
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
+import { markPlanPaused } from "../_shared/adPlanPauseTransition.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -154,24 +158,14 @@ async function fetchTikTokSpendDays(
 async function fetchSnapchatSpendDays(
   conn: AdConnectionRow,
   externalCampaignId: string,
+  timeZoneCache: Map<string, string | null>,
 ): Promise<SpendDayRow[]> {
   const client = await resolveSnapchatClient(conn);
-  const { since, until } = spendWindow();
-  const exclusiveEnd = new Date(`${until}T00:00:00.000Z`);
-  exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
-  const query = new URLSearchParams({
-    granularity: "DAY",
-    fields: "impressions,swipes,spend",
-    start_time: `${since}T00:00:00.000Z`,
-    end_time: exclusiveEnd.toISOString(),
+  // #3697: relative path (apiBase already ends in /v1) + account-timezone
+  // local-midnight window ≤ 28 days — Snap's DAY-granularity contract.
+  const payload = await fetchSnapchatCampaignStats(client, externalCampaignId, {
+    timeZoneCache,
   });
-  const payload = await snapchatApi(
-    client,
-    "GET",
-    `${client.apiBase}/v1/campaigns/${
-      encodeURIComponent(externalCampaignId)
-    }/stats?${query.toString()}`,
-  );
   return parseSnapchatStatsSpend(payload);
 }
 
@@ -262,6 +256,7 @@ async function pauseCampaignForReason(
   supabase: any,
   target: CampaignSpendTarget,
   connectionId: unknown,
+  planId: unknown,
   reason: string,
   totalSpendCents: number,
 ): Promise<{ ok: true } | { ok: false; detail: string }> {
@@ -291,6 +286,7 @@ async function pauseCampaignForReason(
       .from("ad_campaigns")
       .update({
         status: "PAUSED",
+        auto_pause_reason: reason,
         status_synced_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -322,6 +318,12 @@ async function pauseCampaignForReason(
         ok: false,
         detail: `pause_audit_write_failed: ${auditErr.message}`,
       };
+    }
+    if (typeof planId === "string" && UUID_REGEX.test(planId)) {
+      const planPause = await markPlanPaused(supabase, planId, reason);
+      if (!planPause.ok) {
+        return { ok: false, detail: planPause.detail };
+      }
     }
     return { ok: true };
   } catch (err) {
@@ -455,7 +457,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, plan_version:ad_plan_versions(plan_id)",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -470,6 +472,8 @@ serve(async (req: Request): Promise<Response> => {
   const results: Array<Record<string, unknown>> = [];
   let paused = 0;
   let upserted = 0;
+  // #3697: one Snap ad-account timezone read per account per sync run.
+  const snapchatTimeZoneCache = new Map<string, string | null>();
 
   for (const raw of campaigns ?? []) {
     const row = raw as Record<string, unknown>;
@@ -515,6 +519,7 @@ serve(async (req: Request): Promise<Response> => {
           supabase,
           target,
           row.connection_id,
+          (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
           "provider_currency_unresolved",
           cumulative.cents,
         );
@@ -571,6 +576,7 @@ serve(async (req: Request): Promise<Response> => {
           supabase,
           target,
           row.connection_id,
+          (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
           destinationPause,
           cumulative.cents,
         );
@@ -621,6 +627,7 @@ serve(async (req: Request): Promise<Response> => {
         days = await fetchSnapchatSpendDays(
           connection,
           target.external_campaign_id,
+          snapchatTimeZoneCache,
         );
       } else if (platform === "google") {
         days = await fetchGoogleSpendDays(
@@ -655,6 +662,7 @@ serve(async (req: Request): Promise<Response> => {
           supabase,
           target,
           row.connection_id,
+          (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
           reason,
           cumulative.cents,
         );
@@ -722,6 +730,7 @@ serve(async (req: Request): Promise<Response> => {
         supabase,
         target,
         row.connection_id,
+        (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
         "spend_fetch_failed",
         cumulative.cents,
       );
@@ -759,6 +768,7 @@ serve(async (req: Request): Promise<Response> => {
         supabase,
         target,
         row.connection_id,
+        (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
         decision.pause,
         decision.total_spend_cents,
       );

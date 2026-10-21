@@ -400,6 +400,12 @@ export interface DraftEvent {
   themeOverrides?: ThemeInput | null;
   /** Cycle 10: hide guest count from buyer-side surfaces. I-26 — operator-only flag; no buyer surface honors this in Cycle 10. */
   privateGuestList: boolean;
+  /**
+   * issue #3827 going-box — "Guests on your own list" (0..5000). Added to the
+   * going NUMBER buyers see; never to capacity or checkout. Optional so every
+   * persisted draft and fixture stays valid; every read defaults `?? 0`.
+   */
+  extraGuestCount?: number;
   // ORCH-1150 — RSVP event fields (additive; inert when isRsvp=false). The
   // ticketed-event path never reads these. See SPEC §4.6.
   /** ORCH-1150 — true when this draft is an RSVP event (routes to the RSVP
@@ -531,6 +537,8 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   passwordProtected: false,
   themeOverrides: null,
   privateGuestList: false,
+  // issue #3827 going-box — nobody on the host's own list until they add some.
+  extraGuestCount: 0,
   inPersonPaymentsEnabled: false,
   // ORCH-1150 — RSVP defaults (inert for ticketed events).
   isRsvp: false,

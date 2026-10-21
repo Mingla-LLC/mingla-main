@@ -59,9 +59,13 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
       init.json.result.instructions,
       /You act as the person whose key this is/,
     );
+    // [TEST-MOD-APPROVED #3980] D-1: initialize hands each connection a
+    // random session id (it grants nothing and is never stored); it is the
+    // only session header.
+    assert.match(init.headers["mcp-session-id"] ?? "", /^[0-9a-f]{32}$/);
     assert.equal(
-      Object.keys(init.headers).some((h) => h.includes("session")),
-      false,
+      Object.keys(init.headers).filter((h) => h.includes("session")).length,
+      1,
     );
   }
   const other = await s.rpc(s.keys["growth.claude"], "initialize", {

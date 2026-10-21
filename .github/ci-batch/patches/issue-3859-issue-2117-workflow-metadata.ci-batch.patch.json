@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "94a8a540ab89cc662424629526b9be45e23ea38999e94bd0cc4d25c21a8d6338",
-      "value": "bd6304ab660714d1a33c17619b6bc19d90e9809c4abc73614477e9a9b0c6ef1c"
+      "value": "b59cd4f36b81a3eda5231cae17e8b3ec11799ad7b0fb71bc2cc113e68c85fcc1"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3859 and #3281 extend the visibility-gate replay skip list (installment capability, Round 2 checkout units/repair, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology."
+  "reason": "Issue #3859 and #3281 extend the visibility-gate replay skip list (installment capability, Round 2 checkout units/repair, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box migration (a re-emit of the RSVP/social-proof readers and the public view) the same way."
 }

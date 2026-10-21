@@ -13,6 +13,15 @@
  *   - `SocialProofSummary`  ← `pg_public_social_proof(p_event_id)`
  *   - `PeerGuestListPage`   ← `peer_list_event_guests(p_event_id, …)`
  * Do not rename, fork, or extend without a spec amendment across the legs.
+ *
+ * #3827 amendment (going box privacy + guests on the host's own list):
+ *   - `goingCount` is `null` when the host keeps the guest list private. The
+ *     server withholds the number; no surface may render it as 0.
+ *   - `extraGuestCount` (optional for older servers, read `?? 0`) is the number
+ *     of guests on the host's own list. It is added to the going NUMBER only,
+ *     never to capacity, spots left, the meter or checkout.
+ *   - `capacityFull` (optional for older servers) is the server's real-count
+ *     full flag, so full/waitlist decisions never need the withheld count.
  */
 
 /**
@@ -47,11 +56,16 @@ export type SocialProofSampleEntry = {
 export type SocialProofSummary = {
   eventId: string;
   entityType: SocialProofEntityType;
-  goingCount: number;
+  /** Real attendees (Mingla tickets / RSVPs). `null` = withheld (private list, #3827). */
+  goingCount: number | null;
   capacity: number | null;
   privateGuestList: boolean;
   hideRemainingCount: boolean;
   sample: SocialProofSampleEntry[];
+  /** #3827 — guests on the host's own list. Going NUMBER only, never supply. 0 when private. */
+  extraGuestCount?: number;
+  /** #3827 — the server's full flag, computed from the real count only. */
+  capacityFull?: boolean;
 };
 
 /**

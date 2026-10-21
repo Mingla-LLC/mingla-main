@@ -93,3 +93,57 @@ export const fetchTeamOverview = (today) => call(() => supabase.rpc("ops_team_ov
 export const previewNextActions = (limit) => call(() => supabase.rpc("ops_next_action_preview", { p_limit: limit || 600 }));
 export const convertNextActions = (recordIds, fallbackOwner, requestKey) =>
   call(() => supabase.rpc("ops_next_action_convert", { p_record_ids: recordIds, p_fallback_owner: fallbackOwner || null, p_request_key: requestKey }));
+
+// #3980 synced program, Wave 1 — the owner or an admin clears an agent's
+// working mark on a card, with a reason.
+export const clearWorkingMark = (cardId, reason) =>
+  call(() => supabase.rpc("ops_working_clear", { p_card_id: cardId, p_reason: reason }));
+// Display names and GitHub usernames (owner only). Screens use them through
+// services/teamProfileService.js; the call stays here, the one ops_ caller.
+export const listTeamProfiles = () => call(() => supabase.rpc("ops_profiles_list"));
+export const setTeamProfile = (email, displayName, githubLogin) =>
+  call(() => supabase.rpc("ops_profile_set", { p_teammate: email, p_display_name: displayName || null, p_github_login: githubLogin || null }));
+
+// #3980 synced program, Wave 2 — the bridges. Status chips for linked GitHub
+// issues and pull requests, a ticket's engineering status, roadmap links and
+// GitHub's lane suggestions, release records and what shipped a Feature
+// Guide entry. Every function checks the caller on the server.
+export const fetchGithubStatuses = (numbers) =>
+  call(() => supabase.rpc("ops_github_status_list", { p_numbers: numbers }));
+export const fetchTicketEngineering = (sourceKind, sourceId) =>
+  call(() => supabase.rpc("ops_ticket_engineering", { p_source_kind: sourceKind, p_source_id: sourceId }));
+export const listRoadmapLinks = () => call(() => supabase.rpc("ops_roadmap_links_list"));
+export const setRoadmapLink = (cardId, issue) =>
+  call(() => supabase.rpc("ops_roadmap_link_set", { p_card_id: cardId, p_issue: issue || null }));
+export const decideRoadmapSuggestion = (cardId, decision) =>
+  call(() => supabase.rpc("ops_roadmap_suggestion_decide", { p_card_id: cardId, p_decision: decision }));
+export const listReleaseRecords = (query = {}) => call(() => supabase.rpc("ops_release_records_list", { p_query: query }));
+export const fetchFeatureGuideRelease = (key) => call(() => supabase.rpc("ops_feature_guide_release", { p_key: key }));
+
+// #3980 synced program, Wave 3 — the operations redesign. The people field's
+// directory, the switches, each host's next dated thing, Needs attention and
+// what just happened. Every function checks the caller on the server.
+export const fetchPeopleDirectory = () => call(() => supabase.rpc("ops_people_directory"));
+export const fetchOpsSettings = () => call(() => supabase.rpc("ops_settings_get"));
+export const setOpsSetting = (key, value) => call(() => supabase.rpc("ops_setting_set", { p_key: key, p_value: value }));
+export const fetchHostNext = (recordIds, today) =>
+  call(() => supabase.rpc("ops_host_next", { p_record_ids: recordIds, p_today: today || null }));
+export const fetchAttention = (today) => call(() => supabase.rpc("ops_attention", { p_today: today || null }));
+export const fetchRecentChanges = (kind, id, hours) =>
+  call(() => supabase.rpc("ops_recent_changes", { p_kind: kind, p_id: id, p_hours: hours || 72 }));
+
+// Issue #3980 Wave 4 (P3): the owner's opt-in backfills. Previews write
+// nothing; a confirm runs once per request key.
+export const previewRoadmapLinks = (links) => call(() => supabase.rpc("ops_roadmap_links_preview", { p_links: links }));
+export const confirmRoadmapLinks = (links, requestKey) =>
+  call(() => supabase.rpc("ops_roadmap_links_confirm", { p_links: links, p_request_key: requestKey }));
+export const previewBrandCards = () => call(() => supabase.rpc("ops_brand_cards_preview"));
+// The next pages of the same preview, and the cheap count for the heading.
+// #3980 W4 rework 2: "Show more" reads right after the last brand already
+// shown (the page before's page.next), so no brand is skipped or repeated
+// when brands gain a host card between pages.
+export const previewBrandCardsPage = (after, limit) =>
+  call(() => supabase.rpc("ops_brand_cards_preview_page", { p_after_created_at: after?.created_at ?? null, p_after_id: after?.id ?? null, p_limit: limit }));
+export const countBrandCards = () => call(() => supabase.rpc("ops_brand_cards_count"));
+export const confirmBrandCards = (brandIds, requestKey) =>
+  call(() => supabase.rpc("ops_brand_cards_confirm", { p_brand_ids: brandIds, p_request_key: requestKey }));

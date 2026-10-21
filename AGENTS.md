@@ -12,6 +12,26 @@ All work — bugs, features, ideas, discoveries — lives as GitHub issues on th
 - Set board fields when creating issues (Work Type, Product, Theme, Priority, Estimate; Horizon/Quarter for roadmap items) — board views filter on them.
 - Setting Status = Done auto-closes the issue (a project workflow); don't mark Done anything that should stay open.
 
+## The synced system
+
+Every fact has one home:
+
+- Engineering: the Mingla Avengers board (GitHub issues and PRs). Coding chats log on the issue, as above.
+- Operations: the Work board in Mingla Admin. Chats that change operations data (hosts, creators, content, events) open a card at the start, post steps and close it with proof; the `get_started` routine "Log this chat's work" does this. Give each chat a name with the `chat` argument.
+- What is live: the Feature Guide. An entry turns Live only when a complete release record names it.
+- What hosts are told: the Community roadmap and announcements. Seth approves every word.
+
+Every PR description has an `Issue:` link and a `Feature Guide:` line (entry keys or `none`); the "PR links" check reminds, and from a week after it landed it blocks. Do not merge a PR whose PR links check is red. On merge, the merge bot posts the release record on each linked issue:
+
+    Release record for PR #<n>
+    - PR, Merge commit, Issues, Migrations added
+    - Migrations applied (filled from the production ledger)
+    - Deploy (from Vercel and the edge deploy run)
+    - Live check (a person comments "Live check: <what you checked>")
+    - Feature Guide: <keys> | none
+
+Do not edit the bot's record; add the live check as its own comment. A record still pending after 24 hours, a live check pending after 48 hours, a web change merged without `[deploy]` or a push to `main` without a PR becomes a Work card for whoever merged.
+
 ## Canonical docs (the active durable .md surface)
 
 | Doc | Owns |

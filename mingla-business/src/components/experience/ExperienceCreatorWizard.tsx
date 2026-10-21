@@ -44,6 +44,11 @@ import {
 import { supabase } from "../../services/supabase";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big experience RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
+import {
+  EXTRA_GUESTS_ERROR,
+  asExtraGuestCount,
+  isExtraGuestCountError,
+} from "../../constants/guestListPrivacy";
 // issue #3284 — the one gated write owner for experience refund terms.
 import type { RefundPolicy } from "../../services/refundPolicyModel";
 import { setOfferingRefundPolicy } from "../../services/refundPolicyWrites";
@@ -714,7 +719,22 @@ export const ExperienceCreatorWizard: React.FC<
     {
     privateGuestList: false,
     hideRemainingCount: false,
+    extraGuestCount: 0,
     },
+  );
+  // issue #3827 going-box — the stored own-list count. The leaf is sent the
+  // count ONLY when it changed, so a privacy-only save still resolves on a
+  // server that predates the parameter.
+  const storedExtraGuestCountRef = useRef(0);
+  const guestPrivacyPatch = useCallback(
+    (): Parameters<typeof setEventGuestPrivacy>[1] => ({
+      privateGuestList: guestPrivacy.privateGuestList,
+      hideRemainingCount: guestPrivacy.hideRemainingCount,
+      ...(guestPrivacy.extraGuestCount !== storedExtraGuestCountRef.current
+        ? { extraGuestCount: guestPrivacy.extraGuestCount }
+        : {}),
+    }),
+    [guestPrivacy],
   );
   // ORCH-1339 — edit-mode hydration. SPEC §4.5-D routes hydration through the
   // experience mappers, but the edit route's initialDraft is built from
@@ -748,9 +768,12 @@ export const ExperienceCreatorWizard: React.FC<
         settings !== null && typeof settings === "object"
           ? (settings as Record<string, unknown>)
           : {};
+      const storedExtra = asExtraGuestCount(s.extraGuestCount);
+      storedExtraGuestCountRef.current = storedExtra;
       setGuestPrivacy({
         privateGuestList: s.privateGuestList === true,
         hideRemainingCount: s.hideRemainingCount === true,
+        extraGuestCount: storedExtra,
       });
     })();
     return () => {
@@ -1345,13 +1368,13 @@ export const ExperienceCreatorWizard: React.FC<
         // (NEVER inside biz_publish_experience's payload — COMMS-0029 class).
         // NON-BLOCKING: display prefs never block publish/save (SPEC §4.7).
         try {
-          await setEventGuestPrivacy(savedId, {
-            privateGuestList: guestPrivacy.privateGuestList,
-            hideRemainingCount: guestPrivacy.hideRemainingCount,
-          });
-        } catch {
+          const echo = await setEventGuestPrivacy(savedId, guestPrivacyPatch());
+          storedExtraGuestCountRef.current = echo.extraGuestCount;
+        } catch (e) {
           setToast(
-            "Couldn't save guest privacy — check Settings after publishing.",
+            isExtraGuestCountError(e)
+              ? EXTRA_GUESTS_ERROR
+              : "Couldn't save guest privacy — check Settings after publishing.",
           );
         }
         // META-ORCH-1187 — offering-published conversion (SC-6). Only on a real
@@ -1689,13 +1712,13 @@ export const ExperienceCreatorWizard: React.FC<
       // ORCH-1339 — persist the guest-privacy toggles via the leaf-write RPC
       // AFTER the gated live save succeeds. NON-BLOCKING (display prefs).
       try {
-        await setEventGuestPrivacy(savedId, {
-          privateGuestList: guestPrivacy.privateGuestList,
-          hideRemainingCount: guestPrivacy.hideRemainingCount,
-        });
-      } catch {
+        const echo = await setEventGuestPrivacy(savedId, guestPrivacyPatch());
+        storedExtraGuestCountRef.current = echo.extraGuestCount;
+      } catch (e) {
         setToast(
-          "Couldn't save guest privacy — check Settings after publishing.",
+          isExtraGuestCountError(e)
+            ? EXTRA_GUESTS_ERROR
+            : "Couldn't save guest privacy — check Settings after publishing.",
         );
       }
       // issue #3827 — an email was scheduled: say so, with the count, and
@@ -1948,7 +1971,16 @@ export const ExperienceCreatorWizard: React.FC<
             // ORCH-1339 (D5) — guest-privacy accordion (single home, create+edit).
             privateGuestList={guestPrivacy.privateGuestList}
             setPrivateGuestList={(v: boolean) =>
-              setGuestPrivacy((prev) => ({ ...prev, privateGuestList: v }))
+              // Q1 (#3827): private ON also hides the remaining count (locked).
+              setGuestPrivacy((prev) =>
+                v
+                  ? { ...prev, privateGuestList: true, hideRemainingCount: true }
+                  : { ...prev, privateGuestList: false },
+              )
+            }
+            extraGuestCount={guestPrivacy.extraGuestCount}
+            setExtraGuestCount={(n: number) =>
+              setGuestPrivacy((prev) => ({ ...prev, extraGuestCount: n }))
             }
             hideRemainingCount={guestPrivacy.hideRemainingCount}
             setHideRemainingCount={(v: boolean) =>

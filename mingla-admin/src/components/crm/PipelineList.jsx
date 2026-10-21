@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { NextEventLine } from "./NextEventLine";
 import { DataTable } from "../ui/Table";
 import { StageBadge } from "./StageBadge";
 import { DueBadge } from "./DueBadge";
@@ -40,6 +41,7 @@ export function PipelineList({ def, records, regions, team, today, loading = fal
                   <Badge variant={rule.variant}>{rule.label}</Badge>
                 </span>
               )}
+              <NextEventLine record={row} />
             </span>
           );
         },

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3980_w2_rework2_follow_real_answer.tester.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3980-w2-rework2-follow-real-answer-tester",
+  "profile": "deno-1.46-stripe"
+}

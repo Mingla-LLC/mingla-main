@@ -25,6 +25,7 @@ import { Button } from "../ui/Button";
 import { Dropdown, DropdownItem } from "../ui/Dropdown";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
 import {
+  campaignAutoPauseLabel,
   campaignMoneyFacts,
   campaignScheduleInZone,
   campaignStatusChip,
@@ -56,6 +57,7 @@ export function CampaignRow({
 }) {
   const platformLabel = PLATFORM_LABELS[campaign.platform] ?? campaign.platform;
   const chip = campaignStatusChip(campaign, now);
+  const autoPauseLabel = campaignAutoPauseLabel(campaign);
   const schedule = campaignScheduleInZone({
     startsAt: campaign.starts_at,
     endsAt: campaign.ends_at,
@@ -114,6 +116,11 @@ export function CampaignRow({
             </span>
             {schedule.daysLeftLabel && <> · {schedule.daysLeftLabel}</>}
           </div>
+          {autoPauseLabel && (
+            <div className="text-xs font-medium text-[var(--color-warning-700)]">
+              {autoPauseLabel}
+            </div>
+          )}
           {warning && (
             <div className="text-xs text-[var(--color-warning-700)]">
               {warning}

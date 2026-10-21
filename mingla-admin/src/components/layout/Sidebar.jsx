@@ -43,7 +43,6 @@ import {
   Bell,
   FolderLock,
   SquareKanban,
-  ScrollText,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -109,7 +108,6 @@ const ICON_MAP = {
   Bell,
   FolderLock,
   SquareKanban,
-  ScrollText,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"

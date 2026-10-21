@@ -407,6 +407,13 @@ export default function RsvpPreviewRoute(): React.ReactElement {
         config={{
           capacity: draft.rsvpCapacity,
           goingCount: 0,
+          // issue #3827 going-box — preview what buyers will see at launch:
+          // no box unless guests are on the host's own list (never when
+          // private), and the capacity chip in place of the box.
+          extraGuestCount: draft.privateGuestList
+            ? 0
+            : (draft.extraGuestCount ?? 0),
+          capacityFull: false,
           allowPlusOnes: draft.rsvpAllowPlusOnes,
           plusOnesMax: draft.rsvpPlusOnesMax,
           waitlistEnabled: draft.rsvpWaitlistEnabled,

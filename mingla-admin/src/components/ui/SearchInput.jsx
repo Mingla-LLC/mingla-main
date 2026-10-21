@@ -2,7 +2,7 @@ import { forwardRef } from "react";
 import { Search, X } from "lucide-react";
 
 export const SearchInput = forwardRef(function SearchInput(
-  { value, onChange, onClear, placeholder = "Search...", className = "", ...props },
+  { value, onChange, onClear, placeholder = "Search...", className = "", inputClassName = "", ...props },
   ref
 ) {
   return (
@@ -23,7 +23,8 @@ export const SearchInput = forwardRef(function SearchInput(
           "border border-[var(--gray-300)] rounded-lg outline-none",
           "transition-all duration-150",
           "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
-        ].join(" ")}
+          inputClassName,
+        ].filter(Boolean).join(" ")}
         {...props}
       />
       {value && (

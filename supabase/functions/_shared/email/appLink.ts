@@ -230,14 +230,74 @@ export function resolveAppCtaUrl(claimUrl?: string | null): string {
  * needs a MIGRATION first — a new `linked_entity_type`, plus widening the
  * trigger and the helper — not a copy edit.
  *
- * "WHO'S GOING" IS HONEST ON ALL THREE, and is deliberately not conditional:
- * connecting the ticket unlocks the guest list whatever the offering type, which
- * is a different rail from the chat.
+ * "WHO'S GOING" IS CONDITIONAL ON THE HOST'S PRIVATE GUEST LIST (#3827 Q-A3,
+ * Seth 2026-10-20). Connecting the ticket unlocks the guest list whatever the
+ * offering type, which is a different rail from the chat, so on a public guest
+ * list the line is honest on all three. But when the host turns on
+ * `theme.business_event.settings.privateGuestList` the app hides the whole
+ * going box, so the email must not promise it: each offering then gets a member
+ * without "who's going". Callers never pick a member by hand for this — they go
+ * through `appCtaHeadlineFor`, so the private arm cannot be forgotten on one
+ * offering while the other two drop it.
  */
 export type AppCtaHeadline =
   | "Your ticket, the event chat, and who's going — all in the app"
   | "Your ticket, the trip chat, and who's going — all in the app"
-  | "Your ticket, the details, and who's going — all in the app";
+  | "Your ticket, the details, and who's going — all in the app"
+  | "Your ticket and the event chat — all in the app"
+  | "Your ticket and the trip chat — all in the app"
+  | "Your ticket and the details — all in the app";
+
+export type AppCtaOffering = "event" | "trip" | "experience";
+
+const APP_CTA_HEADLINES: Record<
+  AppCtaOffering,
+  { publicGuestList: AppCtaHeadline; privateGuestList: AppCtaHeadline }
+> = {
+  event: {
+    publicGuestList:
+      "Your ticket, the event chat, and who's going — all in the app",
+    privateGuestList: "Your ticket and the event chat — all in the app",
+  },
+  trip: {
+    publicGuestList:
+      "Your ticket, the trip chat, and who's going — all in the app",
+    privateGuestList: "Your ticket and the trip chat — all in the app",
+  },
+  experience: {
+    publicGuestList:
+      "Your ticket, the details, and who's going — all in the app",
+    privateGuestList: "Your ticket and the details — all in the app",
+  },
+};
+
+/**
+ * #3827 Q-A3 — the one place an offering's CTA headline is chosen. A private
+ * guest list drops "who's going"; anything else (including a missing flag) keeps
+ * it, matching the app, which treats an absent flag as a public guest list.
+ */
+export function appCtaHeadlineFor(
+  offering: AppCtaOffering,
+  privateGuestList?: boolean | null,
+): AppCtaHeadline {
+  const pair = APP_CTA_HEADLINES[offering];
+  return privateGuestList === true ? pair.privateGuestList : pair.publicGuestList;
+}
+
+/**
+ * #3827 Q-A3 — reads `theme.business_event.settings.privateGuestList` off an
+ * event's theme jsonb, the same path the guest-list RPCs read
+ * (`#>> '{business_event,settings,privateGuestList}'`). Only a literal `true`
+ * counts as private, as it does in the app's `asBoolean(…, false)`.
+ */
+export function isGuestListPrivate(theme: unknown): boolean {
+  if (theme === null || typeof theme !== "object") return false;
+  const businessEvent = (theme as { business_event?: unknown }).business_event;
+  if (businessEvent === null || typeof businessEvent !== "object") return false;
+  const settings = (businessEvent as { settings?: unknown }).settings;
+  if (settings === null || typeof settings !== "object") return false;
+  return (settings as { privateGuestList?: unknown }).privateGuestList === true;
+}
 
 /**
  * The whole CTA block — the ONLY way an email may render "Open in Mingla", and

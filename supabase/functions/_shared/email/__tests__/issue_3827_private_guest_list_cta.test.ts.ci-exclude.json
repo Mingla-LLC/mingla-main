@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "kind": "exclude",
+  "path": "supabase/functions/_shared/email/__tests__/issue_3827_private_guest_list_cta.test.ts",
+  "reason": "Runs in the #2240 email app-link lane, beside the #3524 confirmation CTA suite it extends; not part of the shared Deno lanes."
+}

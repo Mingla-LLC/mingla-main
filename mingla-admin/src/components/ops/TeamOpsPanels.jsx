@@ -3,7 +3,7 @@
 // person, and the host cards nobody owns. The owner also gets the one-time
 // "Turn next steps into cards": a preview first, then a convert of only the
 // rows the owner ticks and confirms. Nothing is converted without that.
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Copy } from "lucide-react";
 import { AlertCard, SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
@@ -25,6 +25,12 @@ import {
   sprintLabel,
 } from "../../lib/opsModel";
 import { OpsChip } from "./OpsChip";
+
+// Two teammates with the same name are told apart by their address.
+function sameName(person, list) {
+  const name = String(person?.name || "").trim().toLowerCase();
+  return !!name && (Array.isArray(list) ? list : []).some((x) => x.email !== person.email && String(x.name || "").trim().toLowerCase() === name);
+}
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const LINK = `inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`;
@@ -48,11 +54,10 @@ function RunwayPanel({ runway }) {
     <SectionCard title="Runway" subtitle="Next 90 days" action={<a href="#/content-calendar" className={LINK}>Open calendar</a>}>
       <div className="flex min-w-0 flex-col gap-3">
         <div className="flex min-w-0 flex-wrap gap-1.5">
-          <OpsChip tone="success">{counts.full || 0} full launch</OpsChip>
-          <OpsChip tone="warning">{counts.tight || 0} tight</OpsChip>
-          <OpsChip tone="error">{counts.organic || 0} organic only</OpsChip>
+          <OpsChip tone="success">{counts.full || 0} ready to promote</OpsChip>
+          <OpsChip tone="warning">{counts.tight || 0} promote now</OpsChip>
+          <OpsChip tone="error">{(counts.organic || 0) + (counts.missed || 0)} too late for promo</OpsChip>
           <OpsChip tone="info">{counts.not_live || 0} not live yet</OpsChip>
-          <OpsChip tone="error" dashed>{counts.missed || 0} missed</OpsChip>
         </div>
         {atRisk.length === 0 ? (
           <p className="text-[13px] text-[var(--color-text-secondary)]">Nothing at risk: every event in the next 90 days is public in time or has more than two weeks to go live.</p>
@@ -101,13 +106,17 @@ function SprintPanel({ sprint, hostsWithoutOwner }) {
             </thead>
             <tbody className="divide-y divide-[var(--gray-100)]">
               {people.map((p) => (
-                <tr key={p.email}>
-                  <th scope="row" className="break-words py-1.5 font-medium text-[var(--color-text-primary)]">{p.name}</th>
+                <Fragment key={p.email}>
+                <tr>
+                  <th scope="row" className="break-words py-1.5 font-medium text-[var(--color-text-primary)]">{p.name}{sameName(p, people) && <span className="sr-only"> ({p.email})</span>}</th>
                   <td className="py-1.5 tabular-nums">{p.open}</td>
                   <td className="py-1.5 tabular-nums">{p.needs_person}</td>
                   <td className="py-1.5 tabular-nums">{p.closed_by_agent}</td>
                   <td className="py-1.5 tabular-nums">{p.carried}</td>
                 </tr>
+                {/* Two teammates with one name: the address on its own line, the whole table wide, so it never breaks mid-word. */}
+                {sameName(p, people) && <tr aria-hidden="true" className="!border-t-0"><td colSpan={5} className="pb-1.5 pt-0 text-[11.5px] text-[var(--color-text-tertiary)]">{p.email}</td></tr>}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -192,7 +201,7 @@ function NextStepConversion({ online, team }) {
               <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Owner for records nobody owns</span>
               <select value={fallback} disabled={state === "converting"} onChange={(e) => setFallback(e.target.value)} className={`min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] ${FOCUS}`}>
                 <option value="">Leave them out</option>
-                {team.map((p) => <option key={p.email} value={p.email}>{p.name}</option>)}
+                {team.map((p) => <option key={p.email} value={p.email}>{sameName(p, team) ? `${p.name} (${p.email})` : p.name}</option>)}
               </select>
             </label>
             {rows.length === 0 ? (

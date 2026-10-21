@@ -44,15 +44,19 @@ describe("ORCH-1339 — trip wizard Step 5 (create)", () => {
     expect(step5).toContain(">Guest privacy</Text>");
   });
 
+  // [TEST-MOD-APPROVED #3827] private now hides the whole going box, so the
+  // toggle copy changed (going-box spec §4.5), and "Hide remaining count" gains
+  // the locked sub-line while the list is private (Q1).
   test("SPEC §4.8 byte-exact copy — trip Step 5 rows", () => {
     expect(step5).toContain('label="Private guest list"');
     expect(step5).toContain(
-      'sub="Hide who\'s going. Travelers still see the going count."',
+      'sub="Hide who\'s going and how many. Only you see the list."',
     );
     expect(step5).toContain('label="Hide remaining count"');
     expect(step5).toContain(
-      "sub={'Don\\'t show \"X spots left\" or how full it is.'}",
+      ": 'Don\\'t show \"X spots left\" or how full it is.'",
     );
+    expect(step5).toContain("? HIDE_REMAINING_LOCKED_SUB");
   });
 
   test("wizard seeds Step 5 from Trip.guestPrivacy and treats toggle edits as dirty (pristine check)", () => {
@@ -74,7 +78,10 @@ describe("ORCH-1339 — trip wizard Step 5 (create)", () => {
     expect(wizard).toContain(
       'import { setEventGuestPrivacy } from "../../services/businessEvents"',
     );
-    const calls = wizard.match(/setEventGuestPrivacy\(trip\.id, \{/g) ?? [];
+    // [TEST-MOD-APPROVED #3827] both calls now build the patch through
+    // tripGuestPrivacyPatch (extras travel only when changed).
+    const calls =
+      wizard.match(/setEventGuestPrivacy\(trip\.id, tripGuestPrivacyPatch\(trip, step5Draft\)\)/g) ?? [];
     expect(calls.length).toBeGreaterThanOrEqual(2); // autosaveStep5 + handleConfirmPublish
     // NON-BLOCKING contract: failure → toast, wizard continues.
     expect(wizard).toContain(
@@ -94,7 +101,8 @@ describe("ORCH-1339 — published-trip Settings accordion (edit)", () => {
   });
 
   test("SPEC §4.8 byte-exact copy — trip edit accordion rows", () => {
-    expect(accordion).toContain("Hide who's going. Travelers still see the going count.");
+    // [TEST-MOD-APPROVED #3827] going-box spec §4.5 copy.
+    expect(accordion).toContain("Hide who's going and how many. Only you see the list.");
     expect(accordion).toContain('Don\'t show "X spots left" or how full it is.');
   });
 
@@ -179,11 +187,12 @@ describe("ORCH-1339 — hydration + service", () => {
 
 describe("ORCH-1339 — §4.8 copy on the standard-event + RSVP wizard homes (T-12)", () => {
   test("CreatorStep6Settings sub-copy is D2-honest (byte-exact)", () => {
+    // [TEST-MOD-APPROVED #3827] going-box spec §4.5 copy + the Q1 lock line.
     expect(step6Settings).toContain(
-      'sub="Hide who\'s going. Guests still see the going count."',
+      'sub="Hide who\'s going and how many. Guests won\'t see a going count."',
     );
     expect(step6Settings).toContain(
-      "sub={'Don\\'t show \"X left\" or how full it is.'}",
+      ": 'Don\\'t show \"X left\" or how full it is.'",
     );
     // The over-promising legacy strings are GONE.
     expect(step6Settings).not.toContain("Hide attendee count from buyers.");
@@ -192,13 +201,17 @@ describe("ORCH-1339 — §4.8 copy on the standard-event + RSVP wizard homes (T-
 
   test("RsvpStep5Setup label + sub-copy corrected (byte-exact)", () => {
     expect(rsvpStep5).toContain('label="Keep the guest list private"');
-    expect(rsvpStep5).toContain('sub="Hide who\'s going. Only you see the list."');
+    // [TEST-MOD-APPROVED #3827] going-box spec §4.5 copy.
+    expect(rsvpStep5).toContain('sub="Hide who\'s going and how many. Only you see the list."');
     expect(rsvpStep5).toContain('label="Hide the spots-left count"');
     // The spots-left sub-copy now follows the private-guest-list switch: "Guests
     // see who's going" was shown even with the list private. Both honest strings
     // live in rsvpHideCountSub; the render proof is
     // rsvp/__tests__/RsvpStep5Setup.visibilityDiscovery.test.tsx (H-1).
-    expect(rsvpStep5).toContain("sub={rsvpHideCountSub(draft.privateGuestList)}");
+    // [TEST-MOD-APPROVED #3827] the sub-line still follows the private switch;
+    // while locked (Q1) it keeps the private sentence and adds the lock note.
+    expect(rsvpStep5).toContain(": rsvpHideCountSub(draft.privateGuestList)");
+    expect(rsvpStep5).toContain("`${rsvpHideCountSub(true)} ${HIDE_REMAINING_LOCKED_SUB}`");
     expect(rsvpStep5).toContain(
       '"Guests see who\'s going — not how many spots remain."',
     );

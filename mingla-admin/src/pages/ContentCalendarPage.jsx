@@ -1,3 +1,11 @@
+// Issue #3980 (R6) — the Calendar. Month first: every host's events with one
+// of four plain states, today clearly marked and past days faded, posts
+// behind Events | Posts | Both, a List grouped by state, and the content
+// workflow board as its own view. With nothing open the month is full width
+// and nothing sits under it (the grouped list is List view); the selected event (its sentence and its
+// eight steps), a whole day or the posts with no date open in a right column
+// (two columns from 1180px). The grid never scrolls sideways and words never
+// break letter by letter.
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -7,13 +15,15 @@ import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Segmented, CONTROL_CLASS } from "../components/crm/fields";
 import { ContentCard } from "../components/contentCalendar/ContentCard";
 import { ContentDrawer } from "../components/contentCalendar/ContentDrawer";
+import { PeopleField } from "../components/people/PeopleField";
 import { useHashQuery } from "../hooks/useHashQuery";
 import { useOnline } from "../hooks/useCrmPipeline";
 import { useContentCalendar } from "../hooks/useContentCalendar";
+import { usePeopleDirectory } from "../hooks/usePeopleDirectory";
+import { useOpsAttention } from "../hooks/useOpsWork";
 import { useToast } from "../context/ToastContext";
 import {
   CONTENT_STAGES,
-  CONTENT_VIEWS,
   canMoveTo,
   contentErrorWords,
   createLatestOnlyGate,
@@ -28,39 +38,38 @@ import {
 import * as service from "../services/contentCalendarService";
 import { TwoColumn } from "../components/ops/TwoColumn";
 import { revealDetail } from "../components/ops/revealDetail";
-import { CalendarLayers, RunwayLegend } from "../components/ops/CalendarLayers";
 import { EventPanel } from "../components/ops/EventPanel";
-import { useOpsCalendar } from "../hooks/useOpsCalendar";
-import { bandShort, bandTone, buildLayers, opsErrorWords, parseEventParam, parseLayers } from "../lib/opsModel";
+import { StateDot, StatePill } from "../components/ops/StateDot";
+import { useOpsCalendar, useOpsRunway } from "../hooks/useOpsCalendar";
+import { PLAIN_STATES, STATE_LEGEND, dayLong, opsErrorWords, parseEventParam, stateName, todayIso } from "../lib/opsModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
+const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-// #3980: event layer chips, coloured by runway band. Titles in the chips wrap
-// by whole words only, at most two lines, then an ellipsis (ChipWords).
-const EVENT_CHIP = "block w-full min-w-0 overflow-hidden break-normal hyphens-none rounded-md px-1.5 text-left font-semibold leading-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-1";
-const EVENT_TONE = {
-  success: "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
-  warning: "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
-  error: "bg-[var(--color-error-50)] text-[var(--color-error-700)]",
-  info: "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
-  brand: "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]",
-  expected: "bg-[var(--color-background-primary)] text-[var(--color-text-secondary)]",
-  default: "bg-[var(--gray-100)] text-[var(--gray-700)]",
-};
-// The same layers as one bar each, where the month grid is too narrow for words.
-const EVENT_BAR = {
-  success: "bg-[var(--color-success-600)]",
-  warning: "bg-[var(--color-warning-600)]",
-  error: "bg-[var(--color-error-600)]",
-  info: "bg-[var(--color-info-600)]",
-  brand: "bg-[var(--color-brand-600)]",
-  default: "bg-[var(--gray-500)]",
-};
+const SHOW_OPTIONS = [
+  { value: "events", label: "Events" },
+  { value: "posts", label: "Posts" },
+  { value: "both", label: "Both" },
+];
+const VIEW_OPTIONS = [
+  { value: "calendar", label: "Month" },
+  { value: "list", label: "List" },
+  { value: "board", label: "Posts board" },
+];
+const LIST_GROUPS = [
+  { k: "notlive", label: "Needs to go live" },
+  { k: "short", label: "Promote now" },
+  { k: "ready", label: "Ready to promote" },
+  { k: "late", label: "Too late for promo" },
+];
+// A day shows up to three things; with more than three it shows two, then
+// "+N more" opens the whole day (never "+1 more" in place of one entry).
+const DAY_LIMIT = 2;
+const DAY_ALL_UP_TO = 3;
 
-// #3980: a chip title that wraps only between words and stops at two lines
-// with an ellipsis. Each word is its own unbreakable piece, so a word is never
-// split across lines; a single word wider than the chip ends in an ellipsis
-// instead of breaking. The full title is on the chip's aria-label and title.
+// A title that wraps only between words and stops at two lines with an
+// ellipsis. Each word is its own unbreakable piece, so a word is never split
+// across lines; a word wider than the space ends in an ellipsis.
 function ChipWords({ text }) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
   return <span data-chip-words="" className="line-clamp-2 min-w-0 break-normal">{words.map((word, index) => <span key={index}>{index > 0 ? " " : ""}<span className="inline-block max-w-full truncate align-top">{word}</span></span>)}</span>;
@@ -78,33 +87,26 @@ function useCoarsePointer() {
   return coarse;
 }
 
-// #3980: how many entries a day shows in the month grid beside the event
-// panel before "+N more" opens the whole day in the panel.
-const DAY_CHIP_LIMIT = 3;
-// Below a 630px grid a day's words would break letter by letter, so each day
-// shows one coloured bar per entry instead and opens in the panel (the
-// @min-[630px] container classes below; written out whole so Tailwind sees them).
-const CONTENT_BAR = "block h-1.5 w-full rounded-full bg-[var(--gray-400)]";
-const CONTENT_CHIP = "block w-full min-w-0 overflow-hidden break-normal hyphens-none rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 py-0.5 text-left text-[11px] font-semibold leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-1";
+/** The month's 5 or 6 weeks, Monday first. */
+function monthDays(month) {
+  const days = monthWindow(month).days;
+  const last = days.slice(35);
+  return last.every((d) => monthKey(d) !== month) ? days.slice(0, 35) : days;
+}
 
-function CalendarView({ items, month, open, reschedule, coarse, extras = null, showContent = true, withPanel = false, onDay = null, openDay = null }) {
-  const window = monthWindow(month);
-  // #3980: the Calendar's event layers ride beside the content cards; the
-  // content layer can be turned off (Unscheduled stays). With the event panel
-  // beside it, the whole Mon–Sun grid shrinks to fit (equal columns that may
-  // shrink to nothing, compact chips that wrap by word, at most
-  // DAY_CHIP_LIMIT entries a day and "+N more" for the rest), so it never
-  // scrolls sideways.
-  const gridItems = showContent ? items : [];
-  const more = (key, mode) => (extras ? extras(key, mode) : []);
-  const today = localDateKey();
-  const firstInMonth = `${month}-01`;
-  const [selected, setSelected] = useState(() => today.startsWith(month) ? today : firstInMonth);
-  useEffect(() => setSelected((current) => current.startsWith(month) ? current : firstInMonth), [firstInMonth, month]);
-  const inMonth = (date) => monthKey(date) === month;
-  const byDate = (date) => gridItems.filter((item) => item.publish_at && localDateKey(item.publish_at) === localDateKey(date));
-  const selectedItems = gridItems.filter((item) => item.publish_at && localDateKey(item.publish_at) === selected);
-  const selectedMore = more(selected, "agenda");
+/** Everything dated on the Calendar for one day: events and promised dates, then posts. */
+function dayEntries(key, data, items, show) {
+  const out = [];
+  if (show !== "posts" && data) {
+    for (const e of data.events || []) if (e.start_on === key) out.push({ type: "event", id: `ev-${e.id}`, title: e.title, state: e.state, selection: { kind: "event", id: e.id }, on: e.start_on, host: e.host?.name });
+    for (const x of data.expected || []) if (x.expected_on === key) out.push({ type: "expected", id: `x-${x.id}-${x.expected_on}`, title: x.title, state: x.state, selection: { kind: "expected", id: x.id }, on: x.expected_on, host: x.host_name, repeats: x.repeats && x.repeats !== "none", moment: x.promo_moment });
+  }
+  if (show !== "events") for (const item of items) if (item.publish_at && localDateKey(item.publish_at) === key) out.push({ type: "post", id: `c-${item.id}`, title: item.title, item });
+  return out;
+}
+
+function MonthGrid({ month, data, items, show, today, open, selectEvent, currentEvent, onDay, openDay, reschedule, coarse }) {
+  const days = monthDays(month);
   const drop = (event, date) => {
     if (coarse) return;
     event.preventDefault();
@@ -112,80 +114,196 @@ function CalendarView({ items, month, open, reschedule, coarse, extras = null, s
     const item = items.find((row) => row.id === id);
     if (item) reschedule(item, date);
   };
-  const moveDateFocus = (event, index) => {
-    const steps = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7, Home: -(index % 7), End: 6 - (index % 7) };
-    if (!(event.key in steps)) return;
-    event.preventDefault();
-    const next = Math.max(0, Math.min(window.days.length - 1, index + steps[event.key]));
-    const key = localDateKey(window.days[next]);
-    setSelected(key);
-    requestAnimationFrame(() => document.querySelector(`[data-calendar-date="${key}"]`)?.focus());
-  };
-  const undated = items.filter((item) => !item.publish_at);
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time";
-  return <div className={withPanel ? "grid min-w-0 grid-cols-1 gap-4" : "grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)]"}>
-    <SectionCard title="Unscheduled" subtitle={`${undated.length}`}><div className="space-y-2">{undated.length ? undated.map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} draggable={!coarse} />) : <p className="text-sm text-[var(--color-text-secondary)]">Every card has a date.</p>}</div></SectionCard>
-    <section aria-label="Content month" className="min-w-0">
-      <p className="mb-2 text-xs text-[var(--color-text-tertiary)]">Times shown in {timezone}</p>
-      <div className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] md:hidden">
-        <div className="grid grid-cols-7 border-b border-[var(--gray-200)]">{WEEKDAYS.map((name) => <div key={name} className="p-1 text-center text-[11px] font-semibold uppercase text-[var(--color-text-tertiary)]">{name.slice(0, 1)}</div>)}</div>
-        <div className="grid grid-cols-7">{window.days.map((date, index) => {
-          const key = localDateKey(date); const count = byDate(date).length + more(key, "count").length; const isSelected = selected === key;
-          return <button key={key} type="button" data-calendar-date={key} aria-pressed={isSelected} aria-label={`${date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" })}, ${count} cards`} onKeyDown={(event) => moveDateFocus(event, index)} onClick={() => setSelected(key)} className={`min-h-11 border-b border-r border-[var(--gray-200)] p-1 text-center ${FOCUS} ${isSelected ? "bg-[var(--color-brand-800)] text-white" : inMonth(date) ? "text-[var(--color-text-primary)]" : "bg-[var(--gray-50)] text-[var(--color-text-tertiary)]"}`}><span className="block text-xs font-semibold">{date.getDate()}</span><span className="block text-[10px]" aria-hidden="true">{count || "·"}</span></button>;
-        })}</div>
-        <div className="p-3"><h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{new Date(`${selected}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</h2><div className="mt-2 space-y-2">{selectedItems.length || selectedMore.length ? <>{selectedItems.map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} />)}{selectedMore}</> : <p className="text-sm text-[var(--color-text-secondary)]">Nothing scheduled.</p>}</div></div>
+  return (
+    <div data-calendar-grid="month" className="min-w-0 overflow-hidden">
+      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] border-b border-[var(--gray-200)]">
+        {WEEKDAYS.map((name) => <div key={name} className="min-w-0 p-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]"><span className="@min-[640px]:hidden">{name.slice(0, 1)}</span><span className="hidden @min-[640px]:inline">{name}</span></div>)}
       </div>
-      {withPanel ? <div data-calendar-grid="panel" className="@container hidden min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] md:block"><div className="grid grid-cols-[repeat(7,minmax(0,1fr))] border-b border-[var(--gray-200)]">{WEEKDAYS.map((name) => <div key={name} className="min-w-0 p-2 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{name}</div>)}</div><div className="grid grid-cols-[repeat(7,minmax(0,1fr))]">{window.days.map((date) => {
-        const key = localDateKey(date);
-        const entries = [...byDate(date).map((item) => <button key={`c-${item.id}`} type="button" draggable={!coarse} onDragStart={(event) => { event.dataTransfer.setData("text/x-mingla-content-id", item.id); event.dataTransfer.effectAllowed = "move"; }} onClick={() => open(item.id)} aria-label={`${item.title}, content, ${item.stage}`} title={item.title} className={`${CONTENT_CHIP} min-h-6`}><ChipWords text={item.title} /></button>), ...more(key, "grid")];
-        const hidden = entries.length - DAY_CHIP_LIMIT;
-        const dayWords = date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
-        const bars = [...byDate(date).map((item) => <span key={`cb-${item.id}`} aria-hidden="true" className={CONTENT_BAR} />), ...more(key, "dense")];
-        const barWords = [...byDate(date).map((item) => item.title), ...bars.slice(byDate(date).length).map((bar) => bar.props["data-words"])].filter(Boolean).join("; ");
-        return <section key={date.toISOString()} onDragOver={coarse ? undefined : (event) => event.preventDefault()} onDrop={(event) => drop(event, date)} aria-label={dayWords} className={`min-h-20 min-w-0 border-b border-r border-[var(--gray-200)] p-1 @min-[630px]:min-h-28 ${inMonth(date) ? "" : "bg-[var(--gray-50)] opacity-70"} ${openDay === key ? "ring-2 ring-inset ring-[var(--color-brand-700)]" : ""}`}><p className="mb-1 text-xs font-semibold text-[var(--color-text-secondary)]">{date.getDate()}</p>
-          <div className={`hidden min-w-0 space-y-1 @min-[630px]:block`}>{hidden > 0 ? entries.slice(0, DAY_CHIP_LIMIT - 1) : entries}{hidden > 0 && <button type="button" data-calendar-more={key} onClick={() => onDay?.(key)} aria-label={`Show all ${entries.length} on ${dayWords}`} className={`block min-h-6 w-full rounded-md px-1.5 py-0.5 text-left text-[11px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-50)] ${FOCUS}`}>+{hidden + 1} more</button>}</div>
-          {bars.length > 0 && <button type="button" data-calendar-day-dense={key} onClick={() => onDay?.(key)} aria-label={`${dayWords}: ${bars.length} on this day. ${barWords}`} className={`flex min-h-11 w-full min-w-0 flex-col items-stretch justify-start gap-1 rounded-md p-1 hover:bg-[var(--gray-50)] @min-[630px]:hidden ${FOCUS}`}>{bars.slice(0, DAY_CHIP_LIMIT)}{bars.length > DAY_CHIP_LIMIT && <span aria-hidden="true" className="text-left text-[11px] font-semibold leading-none text-[var(--color-brand-700)]">+{bars.length - DAY_CHIP_LIMIT}</span>}</button>}
-        </section>;
-      })}</div></div>
-      : <div className="hidden overflow-x-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)] md:block"><div className="grid min-w-[700px] grid-cols-7 border-b border-[var(--gray-200)]">{WEEKDAYS.map((name) => <div key={name} className="p-2 text-center text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{name}</div>)}</div><div className="grid min-w-[700px] grid-cols-7">{window.days.map((date) => <section key={date.toISOString()} onDragOver={coarse ? undefined : (event) => event.preventDefault()} onDrop={(event) => drop(event, date)} aria-label={date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" })} className={`min-h-32 border-b border-r border-[var(--gray-200)] p-1.5 ${inMonth(date) ? "" : "bg-[var(--gray-50)] opacity-70"}`}><p className="mb-1 text-xs font-semibold text-[var(--color-text-secondary)]">{date.getDate()}</p><div className="space-y-1">{byDate(date).map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} draggable={!coarse} />)}{more(localDateKey(date), "grid")}</div></section>)}</div></div>}
-    </section>
-  </div>;
+      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))]">
+        {days.map((date) => {
+          const key = localDateKey(date);
+          const inMonth = monthKey(date) === month;
+          const isToday = key === today;
+          const past = key < today;
+          const entries = dayEntries(key, data, items, show);
+          const dayWords = date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+          const visible = entries.length <= DAY_ALL_UP_TO ? entries : entries.slice(0, DAY_LIMIT);
+          const hidden = entries.length - visible.length;
+          const events = entries.filter((e) => e.type !== "post");
+          return (
+            <section
+              key={key}
+              aria-label={dayWords}
+              data-calendar-day={key}
+              onDragOver={coarse ? undefined : (event) => event.preventDefault()}
+              onDrop={(event) => drop(event, date)}
+              className={[
+                "flex min-h-16 min-w-0 flex-col gap-1 border-b border-r border-[var(--gray-200)] p-1 @min-[640px]:min-h-24",
+                isToday ? "bg-[var(--color-brand-50)] shadow-[inset_0_0_0_2px_var(--color-brand-500)]" : inMonth ? "" : "bg-[var(--gray-50)]",
+                openDay === key ? "ring-2 ring-inset ring-[var(--color-brand-700)]" : "",
+              ].join(" ")}
+            >
+              <p className={`text-[11.5px] tabular-nums ${isToday ? "font-bold text-[var(--color-brand-700)]" : inMonth ? "font-semibold text-[var(--color-text-secondary)]" : "text-[var(--color-text-tertiary)]"}`}>
+                {date.getDate()}{isToday && <span className="hidden @min-[640px]:inline"> · Today</span>}
+              </p>
+              {/* Narrow: one 10px dot per event, the whole day opens on tap. The
+                  button runs to the cell's edges so it is a 44 px target (#3980 P3-3). */}
+              {events.length > 0 && (
+                <button
+                  type="button"
+                  data-calendar-day-dense={key}
+                  onClick={() => onDay(key)}
+                  aria-label={`${dayWords}: ${events.map((e) => `${e.title}, ${stateName(e.state)}`).join("; ")}`}
+                  title={events.map((e) => e.title).join(", ")}
+                  className={`-mx-1 flex min-h-11 w-[calc(100%+0.5rem)] flex-wrap content-start items-start gap-1 rounded-md px-1.5 py-1 hover:bg-[var(--gray-50)] @min-[640px]:hidden ${past ? "opacity-60" : ""} ${FOCUS}`}
+                >
+                  {events.slice(0, 6).map((e) => <StateDot key={e.id} k={e.state?.k} size={10} />)}
+                </button>
+              )}
+              {/* Wide: dot and title, two lines, whole words; at most two, then "+N more". */}
+              <div className="hidden min-w-0 flex-col gap-0.5 @min-[640px]:flex">
+                {visible.map((e) => e.type === "post" ? (
+                  <button
+                    key={e.id}
+                    type="button"
+                    draggable={!coarse}
+                    onDragStart={(event) => { event.dataTransfer.setData("text/x-mingla-content-id", e.item.id); event.dataTransfer.effectAllowed = "move"; }}
+                    onClick={() => open(e.item.id)}
+                    aria-label={`${e.title}, post, ${e.item.stage}`}
+                    title={e.title}
+                    className={`block min-h-6 w-full min-w-0 rounded-md border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-1.5 py-0.5 text-left text-[11.5px] font-semibold leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${past ? "opacity-60" : ""} ${FOCUS}`}
+                  >
+                    <ChipWords text={e.title} />
+                  </button>
+                ) : (
+                  <button
+                    key={e.id}
+                    type="button"
+                    data-calendar-chip={e.id}
+                    aria-current={currentEvent && currentEvent.kind === e.selection.kind && currentEvent.id === e.selection.id ? "true" : undefined}
+                    onClick={() => selectEvent(e.selection, e.on)}
+                    aria-label={`${e.title}, ${stateName(e.state)}${e.host ? `, ${e.host}` : ""}`}
+                    title={`${e.title} · ${stateName(e.state)}`}
+                    className={`grid min-h-6 w-full min-w-0 grid-cols-[10px_minmax(0,1fr)] items-start gap-1.5 rounded-md px-1 py-0.5 text-left text-[11.5px] font-semibold leading-tight text-[var(--color-text-primary)] hover:bg-[var(--gray-100)] aria-[current=true]:bg-[var(--color-brand-50)] aria-[current=true]:ring-2 aria-[current=true]:ring-[var(--color-brand-700)] ${past ? "opacity-60" : ""} ${FOCUS}`}
+                  >
+                    <span className="pt-[3px]"><StateDot k={e.state?.k} /></span>
+                    <ChipWords text={e.title} />
+                  </button>
+                ))}
+                {hidden > 0 && (
+                  <button type="button" data-calendar-more={key} onClick={() => onDay(key)} aria-label={`Show all ${entries.length} on ${dayWords}`} className={`block min-h-6 w-full rounded-md px-1.5 py-0.5 text-left text-[11.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--gray-50)] ${FOCUS}`}>+{hidden} more</button>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Legend({ undated, onUndated, show }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--gray-200)] px-3 py-2.5 text-[12.5px] text-[var(--color-text-secondary)]">
+      {STATE_LEGEND.map((k) => <span key={k} className="inline-flex items-center gap-1.5 whitespace-nowrap"><StateDot k={k} />{PLAIN_STATES[k]}</span>)}
+      {show !== "events" && <Button type="button" variant="secondary" size="sm" className="ml-auto min-h-11" onClick={onUndated}>{undated} {undated === 1 ? "post" : "posts"} with no date</Button>}
+      <p className="w-full text-[11.5px] text-[var(--color-text-tertiary)]">Times shown in {Intl.DateTimeFormat().resolvedOptions().timeZone || "local time"}</p>
+    </div>
+  );
+}
+
+function StateList({ rows, onSelect, today }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3 p-3">
+      <p className="rounded-lg bg-[var(--color-brand-50)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--color-brand-700)]">Today, {dayLong(today)}</p>
+      {rows.length === 0 && <p className="text-[13px] text-[var(--color-text-secondary)]">Nothing dated in the next 90 days.</p>}
+      {LIST_GROUPS.map((g) => {
+        const list = rows.filter((r) => r.state?.k === g.k);
+        if (!list.length) return null;
+        return (
+          <section key={g.k} aria-label={g.label} className="min-w-0">
+            <h3 className="mb-1 flex items-center justify-between px-1 text-[12px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]"><span>{g.label}</span><span className="tabular-nums">{list.length}</span></h3>
+            <ul className="flex min-w-0 flex-col divide-y divide-[var(--gray-100)]">
+              {list.map((r) => (
+                <li key={`${r.anchor_kind}:${r.anchor_id}:${r.start_on}`}>
+                  <button type="button" data-runway-row={`${r.anchor_kind}:${r.anchor_id}`} onClick={() => onSelect({ kind: r.anchor_kind, id: r.anchor_id }, r.start_on)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg px-2 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{r.title}</span>
+                      <span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{dayLong(r.start_on)}{r.host_name ? ` · ${r.host_name}` : ""}</span>
+                    </span>
+                    <StatePill state={r.state} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
 }
 
 function BoardView({ items, open, move, coarse }) {
   return <div className="overflow-x-auto pb-2"><div className="grid min-w-[1280px] grid-cols-6 gap-3">{CONTENT_STAGES.map((stage) => <section key={stage.value} aria-labelledby={`content-stage-${stage.value}`} onDragOver={(event) => { if (!coarse) { const item = items.find((row) => row.id === event.dataTransfer.getData("text/x-mingla-content-id")); if (item && canMoveTo(item, stage.value)) event.preventDefault(); } }} onDrop={(event) => { if (coarse) return; const item = items.find((row) => row.id === event.dataTransfer.getData("text/x-mingla-content-id")); if (item && canMoveTo(item, stage.value)) { event.preventDefault(); move(item, stage.value); } }} className="min-h-[320px] rounded-xl bg-[var(--gray-50)] p-2"><h2 id={`content-stage-${stage.value}`} className="mb-2 px-1 text-sm font-semibold text-[var(--color-text-primary)]">{stage.label} <span className="text-[var(--color-text-tertiary)]">{items.filter((item) => item.stage === stage.value).length}</span></h2><div className="space-y-2">{items.filter((item) => item.stage === stage.value).map((item) => <ContentCard key={item.id} item={item} onOpen={open} onMove={() => { const index = CONTENT_STAGES.findIndex((row) => row.value === item.stage); const next = CONTENT_STAGES[index + 1]?.value; if (canMoveTo(item, next)) move(item, next); }} onStage={move} stages={CONTENT_STAGES} draggable={!coarse} />)}</div></section>)}</div></div>;
 }
 
-// #3980: one day in full, in the Calendar's right column, opened from
-// "+N more" in the month grid.
-const DayPanel = forwardRef(function DayPanel({ day, items, open, chips, onClose }, headingRef) {
-  const list = items.filter((item) => item.publish_at && localDateKey(item.publish_at) === day);
+function PostsList({ items, open }) {
+  return <div className="min-w-0 border-t border-[var(--gray-200)]">
+    <h3 className="px-4 pt-3 text-[12px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Posts</h3>
+    <div className="hidden grid-cols-[minmax(0,2fr)_1fr_1.25fr_1.25fr_1.25fr] gap-3 border-b border-[var(--gray-200)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)] md:grid"><span>Title</span><span>Stage</span><span>Owners</span><span>Publish time</span><span>Channels</span></div>
+    <div className="divide-y divide-[var(--gray-200)]">{items.length ? items.map((item) => <button key={item.id} type="button" onClick={() => open(item.id)} className={`grid min-h-11 w-full grid-cols-1 gap-1 px-4 py-3 text-left hover:bg-[var(--gray-50)] md:grid-cols-[minmax(0,2fr)_1fr_1.25fr_1.25fr_1.25fr] md:items-center md:gap-3 ${FOCUS}`}><span className={`font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{item.title}</span><span className="text-sm capitalize text-[var(--color-text-secondary)]"><span className="font-semibold md:hidden">Stage: </span>{item.stage}</span><span className={`text-sm text-[var(--color-text-secondary)] ${WORDS}`}><span className="font-semibold md:hidden">Owners: </span>{item.owners?.join(", ") || "Unassigned"}</span><span className="text-sm text-[var(--color-text-secondary)]"><span className="font-semibold md:hidden">Publish time: </span>{item.publish_at ? new Date(item.publish_at).toLocaleString() : "No date yet"}</span><span className={`text-sm text-[var(--color-text-secondary)] ${WORDS}`}><span className="font-semibold md:hidden">Channels: </span>{item.channels?.join(", ") || "None"}</span></button>) : <p className="px-4 py-3 text-[13px] text-[var(--color-text-secondary)]">No posts match.</p>}</div>
+  </div>;
+}
+
+// One day in full, in the right column, opened from a day or "+N more".
+const DayPanel = forwardRef(function DayPanel({ day, entries, open, selectEvent, onClose }, headingRef) {
   return <SectionCard><div className="flex min-w-0 flex-col gap-3">
     <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-      <h2 ref={headingRef} tabIndex={-1} className="min-w-0 break-words text-[16px] font-semibold text-[var(--color-text-primary)] focus-visible:outline-none">{new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</h2>
-      <Button type="button" variant="ghost" size="sm" icon={ArrowLeft} className="min-h-11" onClick={onClose}>Back to runway</Button>
+      <h2 ref={headingRef} tabIndex={-1} className={`min-w-0 text-[16px] font-semibold text-[var(--color-text-primary)] focus-visible:outline-none ${WORDS}`}>{new Date(`${day}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", month: "long", day: "numeric" })}</h2>
+      <Button type="button" variant="ghost" size="sm" icon={ArrowLeft} className="min-h-11" onClick={onClose}>Back to the calendar</Button>
     </div>
-    {list.length || chips.length ? <div className="flex min-w-0 flex-col gap-2">{chips}{list.map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} />)}</div> : <p className="text-sm text-[var(--color-text-secondary)]">Nothing on this day.</p>}
+    {entries.length ? <ul className="flex min-w-0 flex-col gap-1.5">{entries.map((e) => <li key={e.id}>{e.type === "post"
+      ? <ContentCard item={e.item} compact onOpen={open} />
+      : <button type="button" onClick={() => selectEvent(e.selection, e.on)} className={`flex min-h-11 w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><span className="min-w-0 flex-1"><span className={`block text-[13.5px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{e.title}</span><span className={`block text-[12px] text-[var(--color-text-tertiary)] ${WORDS}`}>{e.host || ""}{e.repeats ? " · repeats" : ""}{e.moment ? " · promo moment" : ""}</span></span><StatePill state={e.state} /></button>}</li>)}</ul>
+      : <p className="text-sm text-[var(--color-text-secondary)]">Nothing on this day.</p>}
   </div></SectionCard>;
 });
 
-function ListView({ items, open }) {
-  return <SectionCard noPadding>
-    <div className="hidden grid-cols-[minmax(0,2fr)_1fr_1.25fr_1.25fr_1.25fr] gap-3 border-b border-[var(--gray-200)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)] md:grid"><span>Title</span><span>Stage</span><span>Owners</span><span>Publish time</span><span>Channels</span></div>
-    <div className="divide-y divide-[var(--gray-200)]">{items.map((item) => <button key={item.id} type="button" onClick={() => open(item.id)} className={`grid min-h-11 w-full grid-cols-1 gap-1 px-4 py-3 text-left hover:bg-[var(--gray-50)] md:grid-cols-[minmax(0,2fr)_1fr_1.25fr_1.25fr_1.25fr] md:items-center md:gap-3 ${FOCUS}`}><span className="font-semibold text-[var(--color-text-primary)]">{item.title}</span><span className="text-sm capitalize text-[var(--color-text-secondary)]"><span className="font-semibold md:hidden">Stage: </span>{item.stage}</span><span className="truncate text-sm text-[var(--color-text-secondary)]"><span className="font-semibold md:hidden">Owners: </span>{item.owners?.join(", ") || "Unassigned"}</span><span className="text-sm text-[var(--color-text-secondary)]"><span className="font-semibold md:hidden">Publish time: </span>{item.publish_at ? new Date(item.publish_at).toLocaleString() : "Unscheduled"}</span><span className="text-sm text-[var(--color-text-secondary)]"><span className="font-semibold md:hidden">Channels: </span>{item.channels?.join(", ") || "None"}</span></button>)}</div>
-  </SectionCard>;
-}
+// The posts with no date yet (they used to fill a column on the page).
+const UndatedPanel = forwardRef(function UndatedPanel({ items, open, onClose }, headingRef) {
+  return <SectionCard><div className="flex min-w-0 flex-col gap-3">
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+      <h2 ref={headingRef} tabIndex={-1} className="text-[16px] font-semibold text-[var(--color-text-primary)] focus-visible:outline-none">Posts with no date</h2>
+      <Button type="button" variant="ghost" size="sm" icon={ArrowLeft} className="min-h-11" onClick={onClose}>Back to the calendar</Button>
+    </div>
+    {items.length ? <div className="flex min-w-0 flex-col gap-2">{items.map((item) => <ContentCard key={item.id} item={item} compact onOpen={open} />)}</div> : <p className="text-sm text-[var(--color-text-secondary)]">Every post has a date.</p>}
+  </div></SectionCard>;
+});
 
 export function ContentCalendarPage() {
   const [search, setSearch] = useHashQuery("content-calendar");
-  const route = useMemo(() => { const p = new URLSearchParams(search); return { view: ["calendar", "board", "list"].includes(p.get("view")) ? p.get("view") : "calendar", month: /^\d{4}-(0[1-9]|1[0-2])$/.test(p.get("month") || "") ? p.get("month") : monthKey(), card: /^[0-9a-f-]{36}$/i.test(p.get("card") || "") ? p.get("card") : null, q: (p.get("q") || "").slice(0, 160), layers: parseLayers(p.get("layers")), event: parseEventParam(p.get("event")), day: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(p.get("day") || "") ? p.get("day") : null }; }, [search]);
+  const route = useMemo(() => {
+    const p = new URLSearchParams(search);
+    return {
+      view: ["calendar", "board", "list"].includes(p.get("view")) ? p.get("view") : "calendar",
+      show: ["events", "posts", "both"].includes(p.get("show")) ? p.get("show") : "events",
+      month: /^\d{4}-(0[1-9]|1[0-2])$/.test(p.get("month") || "") ? p.get("month") : monthKey(),
+      card: /^[0-9a-f-]{36}$/i.test(p.get("card") || "") ? p.get("card") : null,
+      q: (p.get("q") || "").slice(0, 160),
+      event: parseEventParam(p.get("event")),
+      day: /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(p.get("day") || "") ? p.get("day") : null,
+      undated: p.get("undated") === "1",
+    };
+  }, [search]);
   const query = useMemo(() => ({ ...(route.q ? { q: route.q } : {}), limit: 500 }), [route.q]);
   const calendar = useContentCalendar(query);
+  const people = usePeopleDirectory();
   const online = useOnline();
   const coarse = useCoarsePointer();
   const { addToast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [addOwners, setAddOwners] = useState([]);
   const [duplicate, setDuplicate] = useState({ checking: false, exact: null, similar: [] });
   const [similarAccepted, setSimilarAccepted] = useState(false);
   const [detail, setDetail] = useState(null);
@@ -197,51 +315,59 @@ export function ContentCalendarPage() {
   const detailGate = useRef(createLatestOnlyGate());
   const eventDetailRef = useRef(null);
   const eventHeadingRef = useRef(null);
-  // #3980: the control that opened the right column (a day, "+N more" or an
-  // event chip), so Back to runway can return focus to it.
+  // The control that opened the right column (a day, "+N more" or an event),
+  // so going back to the calendar returns focus to it.
   const openerRef = useRef(null);
   const focusBack = useRef(false);
-  const days = monthWindow(route.month).days;
+  const days = monthDays(route.month);
   const opsCal = useOpsCalendar(localDateKey(days[0]), localDateKey(days[days.length - 1]));
+  const runway = useOpsRunway();
+  const attention = useOpsAttention();
+  const today = todayIso();
 
-  const setParam = (name, value, replace = false) => { const p = new URLSearchParams(search); if (!value || (name === "view" && value === "calendar")) p.delete(name); else p.set(name, value); setSearch(p.toString(), { replace }); };
+  const setParam = (name, value, replace = false) => { const p = new URLSearchParams(search); if (!value || (name === "view" && value === "calendar") || (name === "show" && value === "events")) p.delete(name); else p.set(name, value); setSearch(p.toString(), { replace }); };
   const open = (id) => setParam("card", id);
-  const toggleLayer = (id) => setParam("layers", buildLayers({ ...route.layers, [id]: !route.layers[id] }), true);
   const rememberOpener = () => {
     if (typeof document === "undefined") return;
     const el = document.activeElement;
-    // Moving between events inside an open event or day keeps the first opener.
-    if (!el || el === document.body || ((route.event || route.day) && eventDetailRef.current?.contains(el))) return;
+    if (!el || el === document.body || ((route.event || route.day || route.undated) && eventDetailRef.current?.contains(el))) return;
     const attr = ["data-calendar-chip", "data-calendar-more", "data-calendar-day-dense", "data-calendar-date", "data-runway-row"].find((name) => el.hasAttribute?.(name));
     openerRef.current = { el, selector: attr ? `[${attr}="${el.getAttribute(attr)}"]` : null };
   };
-  const backToRunway = (name) => { focusBack.current = true; setParam(name, null); };
+  const backToCalendar = (name) => { focusBack.current = true; setParam(name, null); };
   const selectEvent = (selection, onDate) => {
     rememberOpener();
     const p = new URLSearchParams(search);
     p.set("event", `${selection.kind}:${selection.id}`);
+    p.delete("undated");
     if (typeof onDate === "string" && /^\d{4}-\d{2}/.test(onDate)) p.set("month", onDate.slice(0, 7));
     setSearch(p.toString());
     revealDetail(eventDetailRef, eventHeadingRef);
   };
-  const clearEvent = () => backToRunway("event");
-  // #3980: "+N more" on a day opens the whole day in the right column.
+  const clearEvent = () => backToCalendar("event");
   const openDay = (key) => {
     rememberOpener();
     const p = new URLSearchParams(search);
     p.set("day", key);
     p.delete("event");
+    p.delete("undated");
     setSearch(p.toString());
     revealDetail(eventDetailRef, eventHeadingRef);
   };
-  const clearDay = () => backToRunway("day");
-  // After Back to runway: focus the control that opened the panel, or the
-  // runway heading when that control is gone or hidden.
+  const clearDay = () => backToCalendar("day");
+  const openUndated = () => {
+    rememberOpener();
+    const p = new URLSearchParams(search);
+    p.set("undated", "1");
+    p.delete("event");
+    p.delete("day");
+    setSearch(p.toString());
+    revealDetail(eventDetailRef, eventHeadingRef);
+  };
   useEffect(() => {
     if (!focusBack.current || route.event) return undefined;
     focusBack.current = false;
     if (route.day) {
-      // Back from an event opened inside a day: the day is showing again.
       const frame = requestAnimationFrame(() => eventHeadingRef.current?.focus?.());
       return () => cancelAnimationFrame(frame);
     }
@@ -254,23 +380,8 @@ export function ContentCalendarPage() {
       if (!target || document.activeElement !== target) eventHeadingRef.current?.focus?.();
     });
     return () => cancelAnimationFrame(frame);
-  }, [route.day, route.event]);
-  const eventLayers = (key, mode) => {
-    const data = opsCal.data;
-    if (!data) return [];
-    const on = route.layers;
-    const chips = [];
-    const chip = (id, label, tone, dashed, selection, onDate, words = label) => {
-      if (mode === "dense") { chips.push(<span key={`${id}-dense`} aria-hidden="true" data-words={words} className={`block h-1.5 w-full rounded-full ${dashed ? "border border-dashed border-[var(--gray-500)] bg-transparent" : EVENT_BAR[tone] || EVENT_BAR.default}`} />); return; }
-      const current = route.event && selection && route.event.kind === selection.kind && route.event.id === selection.id;
-      chips.push(<button key={`${id}-${mode}`} type="button" data-calendar-chip={`${id}-${mode}`} aria-current={current ? "true" : undefined} aria-label={words} title={label} onClick={() => selectEvent(selection, onDate)} className={`${EVENT_CHIP} ${mode === "grid" ? "min-h-6 py-0.5 text-[11px]" : "min-h-11 py-2 text-[13px]"} ${EVENT_TONE[tone] || EVENT_TONE.default} ${dashed ? "border-[1.5px] border-dashed border-[var(--gray-400)]" : "border border-transparent"} ${current ? "ring-2 ring-[var(--color-brand-700)]" : ""}`}><ChipWords text={label} /></button>);
-    };
-    if (on.live) for (const e of data.events || []) if (e.start_on === key) chip(`ev-${e.id}`, e.is_public ? e.title : `${e.title} · not public yet`, bandTone(e.runway?.band), e.runway?.band === "missed", { kind: "event", id: e.id }, e.start_on, `${e.title}, ${bandShort(e.runway)}`);
-    if (on.exp) for (const x of data.expected || []) if (x.expected_on === key) chip(`x-${x.id}`, `${x.title} · expected`, "expected", true, { kind: "expected", id: x.id }, x.expected_on, `${x.title}, expected from ${x.host_name || "a host"}, ${bandShort(x.runway)}`);
-    if (on.dead) for (const d of data.deadlines || []) if (d.date === key) chip(`d-${d.anchor_kind}-${d.anchor_id}`, d.label, "info", false, { kind: d.anchor_kind, id: d.anchor_id }, null);
-    if (on.promo) for (const p of data.promotions || []) if (p.source === "promo_start" && p.date === key) chip(`p-${p.anchor_kind}-${p.anchor_id}`, p.label, "brand", false, { kind: p.anchor_kind, id: p.anchor_id }, null);
-    return chips;
-  };
+  }, [route.day, route.event, route.undated]);
+
   const close = () => { detailGate.current.close(); setDetail(null); setDetailLoading(false); setFocusTarget(null); setParam("card", null); };
 
   useEffect(() => {
@@ -300,6 +411,7 @@ export function ContentCalendarPage() {
     }, 250);
     return () => { active = false; clearTimeout(timer); };
   }, [addOpen, title]);
+  useEffect(() => { if (addOpen) setAddOwners(people.me ? [people.me] : []); }, [addOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = () => {
     const clean = title.trim();
@@ -316,7 +428,15 @@ export function ContentCalendarPage() {
           setDuplicate({ checking: false, exact: null, similar: checked.similar });
           return;
         }
-        const answer = await service.createContent(clean, key);
+        let answer = await service.createContent(clean, key);
+        // The post starts assigned to whoever adds it; other owners picked
+        // here are set through the same assign path the drawer uses.
+        const wanted = [...addOwners].sort();
+        const have = [...(answer.item?.owners || [])].map((e) => String(e).toLowerCase()).sort();
+        if (wanted.length && JSON.stringify(wanted) !== JSON.stringify(have)) {
+          try { answer = await service.assignContent(answer.item.id, wanted, answer.item.revision, requestKey("web_assign")); }
+          catch (error) { addToast({ variant: "warning", title: "Added, but the owners didn’t save", description: contentErrorWords(error) }); }
+        }
         calendar.replaceItem(answer.item); setTitle(""); setAddOpen(false); open(answer.item.id);
       } catch (error) {
         addToast({ variant: "error", title: "Couldn’t add content", description: contentErrorWords(error) });
@@ -365,24 +485,74 @@ export function ContentCalendarPage() {
   const updateTitle = (value) => { setTitle(value); setSimilarAccepted(false); createFlight.current.reset(); };
   const closeAdd = () => { if (!busy) { setAddOpen(false); setTitle(""); setSimilarAccepted(false); createFlight.current.reset(); } };
 
-  const empty = calendar.loaded && !calendar.error && calendar.items.length === 0;
   const duplicateBlocked = !!duplicate.exact || (duplicate.similar.length > 0 && !similarAccepted);
+  const undated = calendar.items.filter((item) => !item.publish_at);
+  const states = runway.data?.states || {};
+  const runwayRows = Array.isArray(runway.data?.rows) ? runway.data.rows : [];
+  const nonext = attention.data?.counts?.nonext;
+  const monthName = monthWindow(route.month).first.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  // Every list follows Show: a day opened under Events lists only events.
+  const dayItems = route.day ? dayEntries(route.day, opsCal.data, calendar.items, route.show) : [];
+
+  const right = route.undated
+    ? <UndatedPanel ref={eventHeadingRef} items={undated} open={open} onClose={() => backToCalendar("undated")} />
+    : !route.event && route.day
+      ? <DayPanel ref={eventHeadingRef} day={route.day} entries={dayItems} open={open} selectEvent={selectEvent} onClose={clearDay} />
+      : <EventPanel ref={eventHeadingRef} selection={route.event} onSelect={selectEvent} onBack={clearEvent} online={online} />;
+
+  const box = (
+    <div className="@container min-w-0 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-[var(--shadow-sm)]">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-[var(--gray-200)] p-2.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Button type="button" variant="secondary" icon={ChevronLeft} aria-label="Previous month" className="min-h-11 min-w-11" onClick={() => shiftMonth(-1)} />
+          <span className="min-w-[8.5rem] text-center text-[14px] font-semibold tabular-nums text-[var(--color-text-primary)]">{monthName}</span>
+          <Button type="button" variant="secondary" icon={ChevronRight} aria-label="Next month" className="min-h-11 min-w-11" onClick={() => shiftMonth(1)} />
+          <button type="button" onClick={() => { setParam("month", null); }} className={`min-h-11 whitespace-nowrap rounded-full bg-[var(--color-brand-800)] px-3.5 text-[12.5px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Today is {dayLong(today)}</button>
+        </div>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {route.view !== "board" && <Segmented label="Show" options={SHOW_OPTIONS} value={route.show} onChange={(v) => setParam("show", v, true)} />}
+          <Segmented label="View" options={VIEW_OPTIONS} value={route.view} onChange={(v) => setParam("view", v)} fullWidth className="sm:!w-fit" />
+        </div>
+      </div>
+      {route.view === "calendar" ? (
+        <>
+          {opsCal.error && !opsCal.data && <div className="p-3"><AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => opsCal.refetch()}>Try again</Button>}>{opsErrorWords(opsCal.error)} Posts still work.</AlertCard></div>}
+          <MonthGrid month={route.month} data={opsCal.data} items={calendar.items} show={route.show} today={localDateKey()} open={open} selectEvent={selectEvent} currentEvent={route.event} onDay={openDay} openDay={route.event ? null : route.day} reschedule={reschedule} coarse={coarse} />
+          <Legend undated={undated.length} onUndated={openUndated} show={route.show} />
+        </>
+      ) : route.view === "list" ? (
+        <>
+          {route.show !== "posts" && (runway.error && !runway.data
+            ? <div className="p-3"><AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => runway.refetch()}>Try again</Button>}>{opsErrorWords(runway.error)}</AlertCard></div>
+            : <StateList rows={runwayRows} onSelect={selectEvent} today={today} />)}
+          {route.show !== "events" && <PostsList items={calendar.items} open={open} />}
+          <Legend undated={undated.length} onUndated={openUndated} show={route.show} />
+        </>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="flex min-w-0 flex-col gap-6">
-    <PageHeader title="Calendar" description="What is on Mingla, what hosts have promised, and what we post and promote." actions={<Button type="button" variant="brandContrast" icon={Plus} className="min-h-11" disabled={!online} onClick={() => setAddOpen(true)}>Add content</Button>} tabs={<Segmented label="Content view" options={CONTENT_VIEWS} value={route.view} onChange={(view) => setParam("view", view)} variant="highContrast" fullWidth className="sm:!w-fit" />} />
-    {!online && <AlertCard variant="warning" title="You’re offline">You can read what is already here. Adding, saving, moving, commenting, deleting and Undo need a connection.</AlertCard>}
-    {calendar.stale && <AlertCard variant="warning" title="Content may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>} />}
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <label className="relative block min-w-0 flex-1 sm:max-w-sm"><span className="sr-only">Search content</span><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[var(--color-text-tertiary)]" aria-hidden="true" /><input className={`${CONTROL_CLASS} min-h-11 pl-9`} value={route.q} onChange={(event) => setParam("q", event.target.value, true)} placeholder="Search title, copy or notes" /></label>
-      {route.view === "calendar" && <div className="flex flex-wrap items-center gap-1"><Button type="button" variant="secondary" icon={ChevronLeft} aria-label="Previous month" className="min-h-11 min-w-11" onClick={() => shiftMonth(-1)} /><Button type="button" variant="secondary" className="min-h-11" onClick={() => setParam("month", monthKey())}>Today</Button><span className="min-w-32 text-center text-sm font-semibold text-[var(--color-text-primary)]">{monthWindow(route.month).first.toLocaleDateString([], { month: "long", year: "numeric" })}</span><Button type="button" variant="secondary" icon={ChevronRight} aria-label="Next month" className="min-h-11 min-w-11" onClick={() => shiftMonth(1)} /></div>}
-    </div>
-    {route.view === "calendar" && <CalendarLayers layers={route.layers} onToggle={toggleLayer} />}
-    {route.view === "calendar" && opsCal.error && !opsCal.data && <AlertCard variant="warning" title="Couldn’t load events on Mingla" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => opsCal.refetch()}>Try again</Button>}>{opsErrorWords(opsCal.error)} Content still works.</AlertCard>}
-    {calendar.loading ? <SectionCard><p role="status" className="text-sm text-[var(--color-text-secondary)]">Loading content…</p></SectionCard> : calendar.error ? <AlertCard variant="error" title="Couldn’t load the content calendar" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>}>{contentErrorWords(calendar.error)}</AlertCard> : empty && route.view !== "calendar" ? <SectionCard><h2 className="text-base font-semibold text-[var(--color-text-primary)]">No content cards yet.</h2><p className="mt-1 text-sm text-[var(--color-text-secondary)]">Add a title to start in Idea.</p><Button type="button" variant="brandContrast" className="mt-4 min-h-11" disabled={!online} onClick={() => setAddOpen(true)}>Add content</Button></SectionCard> : route.view === "calendar" ? <TwoColumn ref={eventDetailRef} detailLabel="Event details" list={<div className="flex min-w-0 flex-col gap-2"><CalendarView items={calendar.items} month={route.month} open={open} reschedule={reschedule} coarse={coarse} extras={eventLayers} showContent={route.layers.content} withPanel onDay={openDay} openDay={route.event ? null : route.day} /><RunwayLegend /></div>} detail={!route.event && route.day ? <DayPanel ref={eventHeadingRef} day={route.day} items={route.layers.content ? calendar.items : []} open={open} chips={eventLayers(route.day, "agenda")} onClose={clearDay} /> : <EventPanel ref={eventHeadingRef} selection={route.event} onSelect={selectEvent} onBack={clearEvent} online={online} />} /> : route.view === "board" ? <BoardView items={calendar.items} open={open} move={beginMove} coarse={coarse} /> : <ListView items={calendar.items} open={open} />}
+      <PageHeader title="Calendar" description="Every host’s events, and whether each is live early enough to promote." actions={<Button type="button" variant="brandContrast" icon={Plus} className="min-h-11" disabled={!online} onClick={() => setAddOpen(true)}>Add content</Button>} />
+      {!online && <AlertCard variant="warning" title="You’re offline">You can read what is already here. Adding, saving, moving, commenting, deleting and Undo need a connection.</AlertCard>}
+      {calendar.stale && <AlertCard variant="warning" title="Content may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>} />}
+      <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <button type="button" onClick={() => setParam("view", "list")} className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{states.notlive ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">need to go live</span></button>
+        <button type="button" onClick={() => setParam("view", "list")} className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-success-700)]">{states.ready === undefined ? "–" : Number(states.ready || 0) + Number(states.short || 0)}</b><span className="text-[13px] text-[var(--color-text-secondary)]">can be promoted</span></button>
+        <a href="#/hosts?filter=nonext" className={`flex min-h-11 min-w-0 items-center gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3.5 py-2.5 text-left hover:bg-[var(--gray-50)] ${FOCUS}`}><b className="min-w-[1.6rem] text-[21px] tabular-nums text-[var(--color-info-700)]">{nonext ?? "–"}</b><span className="text-[13px] text-[var(--color-text-secondary)]">hosts with no next event</span></a>
+      </div>
+      <label className="relative block min-w-0 sm:max-w-sm"><span className="sr-only">Search content</span><Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-[var(--color-text-tertiary)]" aria-hidden="true" /><input className={`${CONTROL_CLASS} min-h-11 pl-9`} value={route.q} onChange={(event) => setParam("q", event.target.value, true)} placeholder="Search posts by title, copy or notes" /></label>
+      {calendar.error && <AlertCard variant="error" title="Couldn’t load the posts" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => calendar.refetch()}>Try again</Button>}>{contentErrorWords(calendar.error)} Events still show.</AlertCard>}
+      {route.view === "board"
+        ? (calendar.loading ? <SectionCard><p role="status" className="text-sm text-[var(--color-text-secondary)]">Loading posts…</p></SectionCard> : <>{box}<BoardView items={calendar.items} open={open} move={beginMove} coarse={coarse} /></>)
+        : route.event || route.day || route.undated
+          ? <TwoColumn ref={eventDetailRef} detailLabel="Event details" list={box} detail={right} />
+          : <div className="flex min-w-0 flex-col gap-4">{box}</div>}
 
-    <ContentDrawer activeId={route.card} detail={detail} config={calendar.config} online={online} loading={detailLoading} focusTarget={focusTarget} suspended={!!move} onFocusHandled={() => setFocusTarget(null)} onClose={close} onChanged={changed} onMove={beginMove} onDeleted={calendar.removeItem} />
-    <Modal open={addOpen} onClose={closeAdd} title="Add content" size="sm"><ModalBody><label htmlFor="new-content-title" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Title</label><input id="new-content-title" autoFocus className={`${CONTROL_CLASS} min-h-11`} value={title} maxLength={160} disabled={busy} onChange={(event) => updateTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); create(); } }} /><p className="mt-2 text-sm text-[var(--color-text-secondary)]">It starts in Idea and is assigned to you.</p>{duplicate.checking && <p role="status" className="mt-2 text-sm text-[var(--color-text-secondary)]">Checking for similar titles…</p>}{duplicate.exact && <AlertCard variant="error" title="That title already exists" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { closeAdd(); open(duplicate.exact.id); }}>Open existing</Button>}>Use the existing card instead of creating a duplicate.</AlertCard>}{duplicate.similar.length > 0 && !duplicate.exact && <AlertCard variant="warning" title="This may be a duplicate" action={!similarAccepted ? <Button type="button" variant="secondary" className="min-h-11" onClick={() => setSimilarAccepted(true)}>Add anyway</Button> : null}>Similar: {duplicate.similar.map((row) => row.title).join(", ")}{similarAccepted ? ". You can continue." : ". Review before continuing."}</AlertCard>}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={closeAdd}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} disabled={!title.trim() || !online || duplicate.checking || duplicateBlocked} onClick={create}>Add content</Button></ModalFooter></Modal>
-    <Modal open={!!move} onClose={() => setMove(null)} title={move?.prompt?.title || "Move content"} size="sm"><ModalBody><p className="text-sm text-[var(--color-text-secondary)]">{move?.prompt?.flag === "approve_copy" ? "Confirm that the copy is ready for design." : move?.prompt?.flag === "approve_design" ? "Confirm that the design is ready and the publish time and channels are set." : "A stable live link is not on this card yet. You can add it first, or explicitly continue without one."}</p></ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" onClick={() => { if (move?.prompt?.flag === "publish_without_link") openForField(move.item, "content-live", "Add and save the live link, then publish again."); else setMove(null); }}>{move?.prompt?.flag === "publish_without_link" ? "Add link first" : "Cancel"}</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} onClick={() => performMove(move.item, move.to, { [move.prompt.flag]: true })}>{move?.prompt?.action}</Button></ModalFooter></Modal>
+      <ContentDrawer activeId={route.card} detail={detail} config={calendar.config} online={online} loading={detailLoading} focusTarget={focusTarget} suspended={!!move} onFocusHandled={() => setFocusTarget(null)} onClose={close} onChanged={changed} onMove={beginMove} onDeleted={calendar.removeItem} />
+      <Modal open={addOpen} onClose={closeAdd} title="Add content" size="sm"><ModalBody><label htmlFor="new-content-title" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Title</label><input id="new-content-title" autoFocus className={`${CONTROL_CLASS} min-h-11`} value={title} maxLength={160} disabled={busy} onChange={(event) => updateTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); create(); } }} /><p className="mt-2 text-sm text-[var(--color-text-secondary)]">It starts in Idea and is assigned to you. Add other owners here.</p><div className="mt-3"><PeopleField id="new-content-owners" label="Owners" value={addOwners} onChange={(next) => setAddOwners(next)} team={people.people} suggested={[people.me].filter(Boolean)} me={people.me} disabled={busy} /></div>{duplicate.checking && <p role="status" className="mt-2 text-sm text-[var(--color-text-secondary)]">Checking for similar titles…</p>}{duplicate.exact && <AlertCard variant="error" title="That title already exists" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { closeAdd(); open(duplicate.exact.id); }}>Open existing</Button>}>Use the existing card instead of creating a duplicate.</AlertCard>}{duplicate.similar.length > 0 && !duplicate.exact && <AlertCard variant="warning" title="This may be a duplicate" action={!similarAccepted ? <Button type="button" variant="secondary" className="min-h-11" onClick={() => setSimilarAccepted(true)}>Add anyway</Button> : null}>Similar: {duplicate.similar.map((row) => row.title).join(", ")}{similarAccepted ? ". You can continue." : ". Review before continuing."}</AlertCard>}</ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={closeAdd}>Cancel</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} disabled={!title.trim() || !online || duplicate.checking || duplicateBlocked} onClick={create}>Add content</Button></ModalFooter></Modal>
+      <Modal open={!!move} onClose={() => setMove(null)} title={move?.prompt?.title || "Move content"} size="sm"><ModalBody><p className="text-sm text-[var(--color-text-secondary)]">{move?.prompt?.flag === "approve_copy" ? "Confirm that the copy is ready for design." : move?.prompt?.flag === "approve_design" ? "Confirm that the design is ready and the publish time and channels are set." : "A stable live link is not on this card yet. You can add it first, or explicitly continue without one."}</p></ModalBody><ModalFooter><Button type="button" variant="secondary" className="min-h-11" onClick={() => { if (move?.prompt?.flag === "publish_without_link") openForField(move.item, "content-live", "Add and save the live link, then publish again."); else setMove(null); }}>{move?.prompt?.flag === "publish_without_link" ? "Add link first" : "Cancel"}</Button><Button type="button" variant="brandContrast" className="min-h-11" loading={busy} onClick={() => performMove(move.item, move.to, { [move.prompt.flag]: true })}>{move?.prompt?.action}</Button></ModalFooter></Modal>
     </div>
   );
 }

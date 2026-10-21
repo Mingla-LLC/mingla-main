@@ -410,8 +410,9 @@ describe("#3802 P-7: the menu each role sees", () => {
   const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
   it("Sales and marketing and Founding partner see the approved workflow pages", () => {
     // [TEST-MOD-APPROVED #3980] growth and partner see the Work board and Agent log.
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"]);
+    // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
+    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"]);
+    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"]);
   });
   it("owner and admin see the Pipeline group straight after the top of the menu", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: a "Team" group, second to last.
@@ -420,7 +421,7 @@ describe("#3802 P-7: the menu each role sees", () => {
       assert.equal(groups[0].label, null);
       const pipeline = groups[1];
       assert.equal(pipeline.label, "Pipeline");
-      assert.deepEqual(pipeline.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["hosts:Hosts:Handshake", "creators:Creators:Sparkles", "drafts:To review:FileText", "work-board:Work board:SquareKanban", "agent-log:Agent log:ScrollText", "beta-leads:Beta Leads:Inbox", "tool-leads:Tool Leads:Wrench", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]); // [TEST-MOD-APPROVED #3980] labels and the two new pages
+      assert.deepEqual(pipeline.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["hosts:Hosts:Handshake", "creators:Creators:Sparkles", "drafts:Needs you:FileText", "work-board:Work:SquareKanban", "content-calendar:Calendar:CalendarClock", "beta-leads:Beta Leads:Inbox", "tool-leads:Tool Leads:Wrench", "team-dashboard:Team dashboard:BarChart3"]); // [TEST-MOD-APPROVED #3980] labels and the two new pages; synced Wave 3 (D-11) order and labels, Agent log a tab on Work
     }
     assert.ok(ids(owner).includes("admin"));
     assert.ok(!ids(admin).includes("admin"));

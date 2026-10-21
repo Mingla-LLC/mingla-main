@@ -154,7 +154,8 @@ import { CreatorStep2When } from "./CreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
-import { CreatorStep6Settings } from "./CreatorStep6Settings";
+// issue #3827 — Step 6 loads lazily (see lazySettingsSteps.tsx).
+import { CreatorStep6SettingsLazy } from "./lazySettingsSteps";
 import { CreatorStep7Preview } from "./CreatorStep7Preview";
 
 import { PublishErrorsSheet } from "./PublishErrorsSheet";
@@ -1203,7 +1204,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       case 4:
         return <CreatorStep5Tickets {...baseProps} />;
       case 5:
-        return <CreatorStep6Settings {...baseProps} />;
+        return <CreatorStep6SettingsLazy {...baseProps} />;
       case 6:
         return <InvitePeopleStep eventId={/^[0-9a-f-]{36}$/.test(liveDraft.id) ? liveDraft.id : null}
           brandId={liveDraft.brandId} eventType="event"

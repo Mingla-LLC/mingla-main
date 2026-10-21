@@ -49,6 +49,8 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { RefundPolicy } from "../../services/refundPolicyService";
 import { BookingDeadlinePicker } from "./BookingDeadlinePicker";
+import { ExtraGuestsField } from "../ui/ExtraGuestsField";
+import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 // issue #3284 [bundle budget] — the editor loads in its own chunk (ORCH-1083);
 // never import ./RefundPolicyEditor statically here.
 import { LazyRefundPolicyEditor as RefundPolicyEditor } from "./LazyRefundPolicyEditor";
@@ -71,6 +73,9 @@ export interface EditPublishedTripSettingsAccordionProps {
   onPrivateGuestListChange: (next: boolean) => void;
   hideRemainingCount: boolean;
   onHideRemainingCountChange: (next: boolean) => void;
+  /** issue #3827 going-box — guests on the host's own list (same side-channel). */
+  extraGuestCount: number;
+  onExtraGuestCountChange: (next: number) => void;
   tripStartIso: string | null;
   brandTimezone: string | null;
   /** Paid non-cancelled order count. >0 ⇒ proactive read-only sales banner +
@@ -95,6 +100,8 @@ export const EditPublishedTripSettingsAccordion: React.FC<
   onPrivateGuestListChange,
   hideRemainingCount,
   onHideRemainingCountChange,
+  extraGuestCount,
+  onExtraGuestCountChange,
   tripStartIso,
   brandTimezone,
   affectedOrderCount = 0,
@@ -102,6 +109,8 @@ export const EditPublishedTripSettingsAccordion: React.FC<
   testID,
 }) => {
   const hasSales = affectedOrderCount > 0;
+  // Q1 (#3827) — locked on while the guest list is private.
+  const hideRemainingLocked = privateGuestList && hideRemainingCount;
   const salesLabel = affectedOrderCount === 1 ? "" : "s";
 
   return (
@@ -175,7 +184,7 @@ export const EditPublishedTripSettingsAccordion: React.FC<
           <View style={styles.switchRowText}>
             <Text style={styles.switchLabel}>Private guest list</Text>
             <Text style={styles.switchHelp}>
-              Hide who's going. Travelers still see the going count.
+              Hide who's going and how many. Only you see the list.
             </Text>
           </View>
           <Switch
@@ -191,21 +200,30 @@ export const EditPublishedTripSettingsAccordion: React.FC<
             accessibilityRole="switch"
             accessibilityLabel="Private guest list"
             accessibilityState={{ checked: privateGuestList, disabled: submitting }}
-            accessibilityHint="Hides who's going from travelers."
+            accessibilityHint="Hides who's going and how many from travelers."
             testID="settings-private-guestlist-switch"
           />
         </View>
+        {/* issue #3827 going-box — guests on the host's own list. */}
+        <ExtraGuestsField
+          value={extraGuestCount}
+          privateGuestList={privateGuestList}
+          onChange={onExtraGuestCountChange}
+          testID="settings-extra-guests"
+        />
         <View style={styles.switchRow}>
           <View style={styles.switchRowText}>
             <Text style={styles.switchLabel}>Hide remaining count</Text>
             <Text style={styles.switchHelp}>
-              Don't show "X spots left" or how full it is.
+              {hideRemainingLocked
+                ? HIDE_REMAINING_LOCKED_SUB
+                : `Don't show "X spots left" or how full it is.`}
             </Text>
           </View>
           <Switch
             value={hideRemainingCount}
             onValueChange={onHideRemainingCountChange}
-            disabled={submitting}
+            disabled={submitting || hideRemainingLocked}
             trackColor={{
               false: "rgba(255,255,255,0.16)",
               true: accent.warm,
@@ -214,7 +232,10 @@ export const EditPublishedTripSettingsAccordion: React.FC<
             ios_backgroundColor="rgba(255,255,255,0.16)"
             accessibilityRole="switch"
             accessibilityLabel="Hide remaining count"
-            accessibilityState={{ checked: hideRemainingCount, disabled: submitting }}
+            accessibilityState={{
+              checked: hideRemainingCount,
+              disabled: submitting || hideRemainingLocked,
+            }}
             accessibilityHint="Hides the spots-left count and fill level."
             testID="settings-hide-count-switch"
           />

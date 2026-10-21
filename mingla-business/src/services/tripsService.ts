@@ -27,6 +27,7 @@ import type { BrandRole } from "../store/currentBrandStore";
 // META-ORCH-1235 — settle-guarantee for the Hub trips full-screen gate.
 import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../utils/withTimeout";
 import { orderTripPricingTierRows, sumTripPackageSpots } from "./tripPackages";
+import { asExtraGuestCount } from "../constants/guestListPrivacy";
 
 // ============================================================================
 // issue #1971 — the canonical trip command boundary.
@@ -364,6 +365,8 @@ export interface Trip {
   guestPrivacy?: {
     privateGuestList: boolean;
     hideRemainingCount: boolean;
+    /** issue #3827 going-box — guests on the host's own list (0..5000). */
+    extraGuestCount?: number;
   };
   /**
    * #1022 — the trip's raw theme override, read from the events
@@ -710,6 +713,7 @@ function readBusinessTrip(
 function readGuestPrivacy(theme: Record<string, unknown> | null): {
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  extraGuestCount: number;
 } {
   const be = theme?.business_event;
   const beObj =
@@ -722,6 +726,8 @@ function readGuestPrivacy(theme: Record<string, unknown> | null): {
   return {
     privateGuestList: s.privateGuestList === true,
     hideRemainingCount: s.hideRemainingCount === true,
+    // issue #3827 going-box — guests on the host's own list.
+    extraGuestCount: asExtraGuestCount(s.extraGuestCount),
   };
 }
 

@@ -1,0 +1,54 @@
+{
+  "data": {
+    "rateLimit": {
+      "remaining": 4406
+    },
+    "repository": {
+      "n3980": {
+        "__typename": "Issue",
+        "repository": {
+          "nameWithOwner": "Mingla-LLC/mingla-main"
+        },
+        "number": 3980,
+        "title": "The team plans, assigns and approves Mingla operations work in Admin, and every event goes live with 4 weeks of runway for promotion",
+        "url": "https://github.com/Mingla-LLC/mingla-main/issues/3980",
+        "state": "OPEN",
+        "updatedAt": "2026-10-20T09:13:38Z",
+        "projectItems": {
+          "nodes": [
+            {
+              "project": {
+                "id": "PVT_kwDOD8Prls4BdV8K"
+              },
+              "status": {
+                "name": "In Review"
+              },
+              "horizon": {
+                "name": "Now"
+              }
+            }
+          ]
+        }
+      },
+      "n3991": {
+        "__typename": "PullRequest",
+        "repository": {
+          "nameWithOwner": "Mingla-LLC/mingla-main"
+        },
+        "number": 3991,
+        "title": "[deploy] toward #3980: Work board, Agent log, To review, Calendar runway and launch kit",
+        "url": "https://github.com/Mingla-LLC/mingla-main/pull/3991",
+        "state": "MERGED",
+        "merged": true,
+        "mergedAt": "2026-10-20T02:28:33Z",
+        "mergeCommit": {
+          "oid": "2f1ef910d01119ba5248901ad6dbfa3e2ba63ee1"
+        },
+        "updatedAt": "2026-10-20T04:34:16Z",
+        "closingIssuesReferences": {
+          "nodes": []
+        }
+      }
+    }
+  }
+}

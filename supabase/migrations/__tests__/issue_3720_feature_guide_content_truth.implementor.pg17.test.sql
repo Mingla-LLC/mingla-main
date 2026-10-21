@@ -54,7 +54,8 @@ BEGIN
   IF (SELECT count(*) FROM public.product_capabilities
        WHERE claimed_status = 'live'
          AND public.issue_3720_feature_guide_effective_status(id) = 'Live'
-         AND capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers')) <> 0 THEN
+         -- [TEST-MOD-APPROVED #3980] #3980 F1 turns the Work board and Agent log Live with their 20 Oct release evidence
+         AND capability_key NOT IN ('official-brand-groups', 'brand-files-and-guides', 'product-inbox-avengers', 'staff-work-board', 'staff-agent-log')) <> 0 THEN
     RAISE EXCEPTION 'content_correction_promoted_an_entry';
   END IF;
 

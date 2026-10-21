@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3827_going_box_empty_and_private.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3827-going-box-01-derivations",
+  "profile": "deno-2-unit"
+}

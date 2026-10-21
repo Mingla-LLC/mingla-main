@@ -15,11 +15,95 @@ export const PERSON_REASONS = {
   other: "Needs a person",
 };
 
+/**
+ * #3980 W2 rework: why a card needs a person, in words. Bridge D's approval
+ * card (a drafted "Recently shipped" roadmap card) is about what hosts are
+ * told, not about publishing an event.
+ */
+export function personReasonLabel(card) {
+  if (card?.auto_kind === "roadmap_shipped") return "Approve what hosts are told";
+  return PERSON_REASONS[card?.person_reason] || "Needs a person";
+}
+
 export const PERSON_ACTIONS = {
   send: { action: "mark_sent", label: "Mark sent" },
   spend: { action: "approve_spend", label: "Approve spend" },
   publish: { action: "mark_published", label: "Mark published" },
 };
+
+/**
+ * #3980 W2 rework 2: Bridge D's approval card asks a person to publish (or
+ * archive) a drafted "Recently shipped" roadmap card. It is not an event, so
+ * "Mark published" (which checks that an event is public) can never work
+ * on it.
+ */
+export function isRoadmapApproval(card) {
+  return card?.auto_kind === "roadmap_shipped";
+}
+
+/**
+ * #3980 W3 rework 2: the cards Needs you › Spend or publish lists. For the
+ * owner and admins (who have What hosts are told) a "Recently shipped"
+ * wording card is listed only on that tab; anyone else on such a card still
+ * reaches it here.
+ */
+export function spendQueueCards(cards, hideHostsTold = false) {
+  return (Array.isArray(cards) ? cards : []).filter((c) => c && !(hideHostsTold && isRoadmapApproval(c)));
+}
+
+/**
+ * The one-tap action a card waiting for a person offers, or null when it
+ * offers Close with proof instead. A roadmap approval card closes itself
+ * once its draft is published or archived in Community, Roadmap, and a
+ * person can close it with proof.
+ */
+export function personActionFor(card) {
+  if (isRoadmapApproval(card)) return null;
+  return PERSON_ACTIONS[card?.person_reason] || null;
+}
+
+/** Community, Roadmap with the drafted card open, or null when the card links none. */
+export function roadmapDraftHref(card) {
+  const link = (card?.links || []).find((l) => l?.kind === "roadmap_card" && typeof l.id === "string" && l.id);
+  return link ? `#/community-support?tab=roadmap&card=${encodeURIComponent(link.id)}` : null;
+}
+
+/** True only for a Community & Support address on its Roadmap tab. */
+export function isRoadmapHash(hash) {
+  const [path, query = ""] = String(hash || "").split("?");
+  return path === "#/community-support" && new URLSearchParams(query).get("tab") === "roadmap";
+}
+
+/**
+ * The roadmap card a Community, Roadmap address asks to open, or null. Only
+ * #/community-support with tab=roadmap counts: the Work board and To review
+ * also carry ?card= (a work card), and leaving Roadmap for them must not
+ * look like a missing roadmap card.
+ */
+export function roadmapCardFromHash(hash) {
+  if (!isRoadmapHash(hash)) return null;
+  const id = new URLSearchParams(String(hash).split("?")[1] || "").get("card");
+  return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
+/**
+ * To review's groups, in order. Roadmap approvals have their own, and so do
+ * cards that wait for a person to send a message (#3980 W2 rework 3: rework 2
+ * had dropped them into "Other" with no Mark sent).
+ */
+export const REVIEW_GROUPS = [
+  { id: "send", title: "Send a message" },
+  { id: "spend", title: "Spend money" },
+  { id: "publish", title: "Publish an event" },
+  { id: "hosts", title: "What hosts are told" },
+  { id: "other", title: "Other" },
+];
+
+/** Which To review group a card waiting for a person belongs to. */
+export function reviewGroupOf(card) {
+  if (isRoadmapApproval(card)) return "hosts";
+  return ["send", "spend", "publish"].includes(card?.person_reason) ? card.person_reason : "other";
+}
 
 export const KIT_STEPS = [
   { value: -35, label: "T-35 · host materials in" },
@@ -41,10 +125,10 @@ export const LINK_KINDS = [
   { value: "expected", label: "Expected" },
 ];
 
-/** The nine rules every agent follows, as people read them. */
+/** The eleven rules every agent follows, as people read them. */
 export const AGENT_RULES = [
   "Reads the agent log for the records it will touch, and checks the open claims, before any work.",
-  "Claims the card and every record it will change or message. A claim ends after 30 minutes without an update.",
+  "Claims every record it will change or message. A claim ends after 30 minutes without an update. Cards are not claimed: starting a card marks the agent as working on it for as long as it takes.",
   "Writes the plan on the card: each step names the connector tool that does it, or a person.",
   "After each step, reads the record back and marks the step done only if the change is really there.",
   "Never reports a step done that it could not do; it leaves it to a person with exact instructions.",
@@ -52,6 +136,8 @@ export const AGENT_RULES = [
   "Never sends, spends money or publishes: it sets the card to Needs a person and stops.",
   "Cannot write to someone Mingla messaged in the last 3 days, unless a person allows one more.",
   "Closing or pushing back releases its claims; it releases any other claim when it stops.",
+  "Names its chat, so claims and the log show which chat did what. Two chats on one key never write over each other.",
+  "Logs its operations work on the Work board: a card at the start, each step as it goes, and proof (with PR and merge links for code) when it closes.",
 ];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -108,13 +194,151 @@ export function sprintLabel(startsOn) {
   return sameMonth ? `Sprint ${Number(sd)} to ${dayLabel(end)}` : `Sprint ${dayLabel(startsOn)} to ${dayLabel(end)}`;
 }
 
-/** "Seth's Claude" for an agent, "Seth" for a person. */
-export function agentName(name, via) {
+/**
+ * "Seth's Claude" for an agent, "Seth's Claude (Hosts sweep)" when the chat
+ * has a name, "Seth" for a person.
+ */
+export function agentName(name, via, chatLabel) {
   const who = typeof name === "string" && name.trim() ? name.trim() : "A teammate";
-  if (via === "claude") return `${who}'s Claude`;
-  if (via === "codex") return `${who}'s Codex`;
+  const chat = typeof chatLabel === "string" && chatLabel.trim() ? ` (${chatLabel.trim()})` : "";
+  if (via === "claude") return `${who}'s Claude${chat}`;
+  if (via === "codex") return `${who}'s Codex${chat}`;
   if (via === "system") return "Mingla";
   return who;
+}
+
+/** The words a GitHub link may not break: the same rule as ops_github_parse. */
+export const GITHUB_LINK_WORDS =
+  "GitHub link must be an issue or pull request of Mingla-LLC/mingla-main, like #3980 or https://github.com/Mingla-LLC/mingla-main/pull/3991.";
+
+/**
+ * #3980, 3980, or an issue or pull request address of Mingla-LLC/mingla-main.
+ * { kind, number } or { error }. Mirrors ops_github_parse on the server.
+ */
+export function parseGithubInput(value) {
+  const v = String(value ?? "").trim();
+  let m = /^#?([0-9]{1,7})$/.exec(v);
+  if (m) {
+    const n = Number(m[1]);
+    return n >= 1 ? { kind: "issue", number: n } : { error: GITHUB_LINK_WORDS };
+  }
+  m = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/(issues|pull)\/([0-9]{1,7})\/?([?#].*)?$/.exec(v);
+  if (m) {
+    const n = Number(m[2]);
+    if (n >= 1) return { kind: m[1] === "pull" ? "pull" : "issue", number: n };
+  }
+  return { error: GITHUB_LINK_WORDS };
+}
+
+/** "#3980 · In Progress": the chip of a linked GitHub issue or pull request. */
+export function githubChipWords(status) {
+  const n = Number(status?.number);
+  const label = typeof status?.label === "string" && status.label ? status.label : "Checking GitHub";
+  return Number.isInteger(n) && n > 0 ? `#${n} · ${label}` : label;
+}
+
+/**
+ * #3980 Wave 2: the tone of a GitHub status chip (D-15 words). Planned and
+ * Closed neutral, In Progress and Open info, In Review warning, Shipped and
+ * Merged brand, Live success, Not on GitHub error, Checking GitHub a dashed
+ * outline.
+ */
+const GITHUB_CHIP_TONES = {
+  Planned: "neutral", "In Progress": "info", "In Review": "warning", Shipped: "brand", Live: "success",
+  "Not on GitHub": "error", "Checking GitHub": "checking", Open: "info", Merged: "brand", Closed: "neutral",
+};
+export function githubChipTone(label) {
+  return GITHUB_CHIP_TONES[label] || "checking";
+}
+const GITHUB_CHIP_CLASSES = {
+  neutral: "bg-[var(--gray-100)] text-[var(--gray-700)]",
+  info: "bg-[var(--color-info-50)] text-[var(--color-info-700)]",
+  warning: "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
+  brand: "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]",
+  success: "bg-[var(--color-success-50)] text-[var(--color-success-700)]",
+  error: "bg-[var(--color-error-50)] text-[var(--color-error-700)]",
+  checking: "border border-dashed border-[var(--gray-400)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)]",
+};
+/** The chip's colour classes (tokens only, light and dark). */
+export function githubChipClass(label) {
+  return GITHUB_CHIP_CLASSES[githubChipTone(label)];
+}
+
+/** "Next (Horizon Next)": GitHub's lane suggestion for a roadmap card, in words. */
+export function roadmapSuggestionWords(suggestion) {
+  const lanes = { now: "Now", next: "Next", later: "Later", shipped: "Recently shipped" };
+  const lane = lanes[suggestion?.lane];
+  if (!lane) return "";
+  const reason = typeof suggestion?.reason === "string" ? suggestion.reason.replace(/^GitHub: /, "").trim() : "";
+  return reason ? `${lane} (${reason})` : lane;
+}
+
+/** "Waiting for #3980 to be Live": the card waits for its GitHub links. */
+export function githubWaitWords(links) {
+  const numbers = (Array.isArray(links) ? links : []).map((g) => Number(g?.number)).filter((n) => Number.isInteger(n) && n > 0);
+  if (numbers.length === 0) return "";
+  return `Blocked until ${numbers.map((n) => `#${n}`).join(", ")} ${numbers.length > 1 ? "are" : "is"} Live`;
+}
+
+/**
+ * #3980 W2 rework: is the "Blocked until #n is Live" switch offered? Always
+ * while the card waits (so a person can switch it off); otherwise only when
+ * at least one linked issue or pull request is not Live yet: waiting for
+ * what is already Live would unblock at once.
+ */
+export function githubWaitOffered(card) {
+  if (card?.blocked && card?.blocked_kind === "github") return true;
+  const links = (Array.isArray(card?.github) ? card.github : []).filter((g) => Number.isInteger(Number(g?.number)) && Number(g?.number) > 0);
+  return links.some((g) => g?.live !== true && g?.label !== "Live");
+}
+
+/** "2 h ago", "3 days ago": how long since an agent last updated a card. */
+export function sinceWords(iso, now = Date.now()) {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const minutes = Math.max(0, Math.round((now - t) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
+/** "● Seth's Claude (Hosts sweep) is on it · last update 2 h ago", or quiet. */
+export function workingWords(working, now = Date.now()) {
+  if (!working || typeof working !== "object") return "";
+  const who = typeof working.name === "string" && working.name ? working.name : "An agent";
+  if (working.quiet) {
+    const quietFor = sinceWords(working.last_update_at, now).replace(/ ago$/, "");
+    return `${who} is on it · quiet for ${quietFor}`;
+  }
+  return `${who} is on it · last update ${sinceWords(working.last_update_at, now)}`;
+}
+
+/**
+ * The lower-case names more than one teammate has, across every list given
+ * (two "Debrah"s, or an email-derived name that matches a chosen one). A
+ * picker shows the email next to each of those names so they can be told
+ * apart.
+ */
+export function sharedNames(...lists) {
+  const byName = new Map();
+  for (const list of lists) {
+    for (const p of Array.isArray(list) ? list : []) {
+      const name = String(p?.name ?? "").trim().toLowerCase();
+      const email = String(p?.email ?? "").trim().toLowerCase();
+      if (!name || !email) continue;
+      if (!byName.has(name)) byName.set(name, new Set());
+      byName.get(name).add(email);
+    }
+  }
+  return new Set([...byName].filter(([, emails]) => emails.size > 1).map(([name]) => name));
+}
+
+/** "Debrah", or "Debrah (debrah@x.com)" when another teammate is also Debrah. */
+export function personLabel(person, shared) {
+  const name = String(person?.name ?? "").trim() || String(person?.email ?? "");
+  return shared?.has(name.toLowerCase()) && person?.email ? `${name} (${person.email})` : name;
 }
 
 export function initials(name) {
@@ -159,18 +383,19 @@ export function parseLogSearch(search) {
 export function parseReviewSearch(search) {
   const p = new URLSearchParams(typeof search === "string" ? search : "");
   const card = p.get("card");
-  return { tab: p.get("tab") === "spend" ? "spend" : "messages", card: card && UUID_RE.test(card) ? card : null };
+  const tab = p.get("tab");
+  return { tab: tab === "spend" ? "spend" : tab === "told" ? "told" : "messages", card: card && UUID_RE.test(card) ? card : null };
 }
 
-/** Runway words: how many days an event was public before it starts. */
+/** Runway words in the four plain states, with how many days an event was public before it starts. */
 export function runwayLabel(runway) {
   const band = runway?.band;
   const lead = Number(runway?.lead_days);
-  if (band === "full") return `Full launch · live ${lead} days ahead`;
-  if (band === "tight") return `Tight · live ${lead} days ahead`;
-  if (band === "organic") return `Organic only · live ${lead} days ahead`;
+  if (band === "full") return `Ready to promote · live ${lead} days ahead`;
+  if (band === "tight") return `Promote now · live ${lead} days ahead`;
+  if (band === "organic") return `Too late for promo · live ${lead} days ahead`;
   if (band === "not_live") return `Not live yet · go live by ${dayLabel(runway?.go_live_by)}`;
-  if (band === "missed") return "Missed go-live: organic only";
+  if (band === "missed") return "Too late for promo · not live by the 3-week line";
   return "No date yet";
 }
 
@@ -242,6 +467,20 @@ const LOG_ACTIONS = {
   contact_override: "allowed one more message",
   converted: "turned next steps into cards",
   archived: "removed a card",
+  took_over: "took over a quiet card",
+  working_cleared: "ended a working mark",
+  chat_named: "named its chat",
+  auto_added: "added a card by itself",
+  auto_closed: "closed a card by itself",
+  auto_redated: "moved a card's date",
+  release_record: "read a release record",
+  guide_live: "turned a Feature Guide entry Live",
+  guide_incomplete: "left a Feature Guide entry as it was",
+  brand_linked: "linked a brand",
+  brand_card_added: "added a host card for a brand",
+  sprint_moved: "moved a card to this week",
+  setting_changed: "changed a setting",
+  backfill_confirmed: "confirmed a backfill",
 };
 
 export function logActionWords(action) {
@@ -415,6 +654,12 @@ const EVENT_WORDS = {
   re_anchored: "moved it to the real event",
   undone: "undid a change",
   archived: "removed it",
+  took_over: "took it over",
+  working_cleared: "ended the working mark",
+  auto_closed: "closed it by itself",
+  redated: "moved its date",
+  sprint_moved: "moved it to this week",
+  github: "changed GitHub links",
 };
 
 export function eventWords(action) {
@@ -453,14 +698,14 @@ export function buildLayers(on) {
   return picked.length ? picked.join(",") : "none";
 }
 
-/** The short band label on chips and buttons. */
+/** The short band label on chips and buttons: one of the four plain states. */
 export function bandShort(runway) {
   const band = runway?.band;
-  if (band === "full") return "Full launch";
-  if (band === "tight") return "Tight";
-  if (band === "organic") return "Organic only";
-  if (band === "not_live") return `Go live by ${dayLabel(runway?.go_live_by)}`;
-  if (band === "missed") return "Missed";
+  if (band === "full") return "Ready to promote";
+  if (band === "tight") return "Promote now";
+  if (band === "organic") return "Too late for promo";
+  if (band === "not_live") return `Not live yet, live by ${dayLabel(runway?.go_live_by)}`;
+  if (band === "missed") return "Too late for promo";
   return "No date yet";
 }
 
@@ -470,7 +715,7 @@ export function parseEventParam(value) {
   return m && UUID_RE.test(m[2]) ? { kind: m[1].toLowerCase(), id: m[2].toLowerCase() } : null;
 }
 
-export const EVENT_TYPE_LABELS = { event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP" };
+export const EVENT_TYPE_LABELS = { event: "Event", experience: "Experience", trip: "Trip", rsvp: "RSVP", promo_moment: "Promo moment" };
 export const KIT_WHO = { host_owner: "Host owner", marketing: "Sales and marketing" };
 
 /** The state chip of one launch kit row: its words and colour. */
@@ -619,4 +864,441 @@ export function dueOrder(cards, limit) {
   const list = (Array.isArray(cards) ? cards : []).filter((c) => c && c.status !== "done");
   list.sort((a, b) => String(a.due_on || "").localeCompare(String(b.due_on || "")) || Number(a.number || 0) - Number(b.number || 0));
   return typeof limit === "number" ? list.slice(0, limit) : list;
+}
+
+// ---------------------------------------------------------------------------
+// #3980 synced program, Wave 3 — the operations redesign.
+// ---------------------------------------------------------------------------
+
+/** The four plain states (and Happened, and No next event), as the server names them. */
+export const PLAIN_STATES = {
+  ready: "Ready to promote",
+  short: "Promote now",
+  late: "Too late for promo",
+  notlive: "Not live yet",
+  done: "Happened",
+  none: "No next event",
+  nodate: "No date yet",
+};
+export const STATE_LEGEND = ["ready", "short", "late", "notlive"];
+
+/** The words of a state the server sent ({k, name}), falling back to the plain map. */
+export function stateName(state) {
+  if (!state || typeof state !== "object") return "";
+  return String(state.name || PLAIN_STATES[state.k] || "");
+}
+
+/** "Get it live by 1 Nov" style tail for a not-live state. */
+export function stateLine(state) {
+  const name = stateName(state);
+  if (state?.k === "notlive" && state.by) return `${name}, live by ${dayLabel(state.by)}`;
+  return name;
+}
+
+/** "Tue 20 Oct". */
+export function dayLong(value) {
+  if (!value) return "";
+  const d = new Date(`${String(value).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+/** Work tab and Needs attention group in the Work page address. */
+export const WORK_TABS = ["board", "attention", "activity"];
+export const ATTENTION_GROUPS = [
+  { key: "noowner", label: "No owner" },
+  { key: "overdue", label: "Overdue" },
+  { key: "missing", label: "Missing info" },
+  { key: "stuck", label: "Stuck" },
+  { key: "nonext", label: "No next event" },
+  { key: "engineering", label: "Engineering" },
+];
+
+export function parseWorkTab(search) {
+  const p = new URLSearchParams(typeof search === "string" ? search : "");
+  const tab = p.get("tab");
+  const att = p.get("att");
+  return {
+    tab: WORK_TABS.includes(tab) ? tab : "board",
+    att: ATTENTION_GROUPS.some((g) => g.key === att) ? att : null,
+  };
+}
+
+/** The Work board's four columns. "Done this week" holds cards closed since Monday. */
+export const WORK_COLUMNS = [
+  { key: "person", label: "Needs you" },
+  { key: "todo", label: "To do" },
+  { key: "doing", label: "In progress" },
+  { key: "done", label: "Done this week" },
+];
+
+/** #3980 W3 rework 2: a card's status in words, for Group by Person or Event. */
+export function workStatusLabel(status) {
+  return { person: "Needs you", todo: "To do", doing: "In progress", done: "Done" }[status] || "";
+}
+
+export function columnCards(cards, key, today = todayIso()) {
+  const monday = mondayOf(today);
+  return (Array.isArray(cards) ? cards : []).filter((c) => {
+    if (key === "done") return c.status === "done" && (!c.closed_at || String(c.closed_at).slice(0, 10) >= monday);
+    return c.status === key;
+  });
+}
+
+/** Red reason badges on a work card: No owner, Overdue <n>d, No update for <n>d. */
+export function cardReasons(card, now = Date.now()) {
+  const out = [];
+  if (!card || card.status === "done") return out;
+  if (card.status !== "person" && !(card.owners || []).length) out.push("No owner");
+  if (card.due_on) {
+    const days = Math.round((new Date(`${todayIso(new Date(now))}T00:00:00Z`) - new Date(`${String(card.due_on).slice(0, 10)}T00:00:00Z`)) / 86_400_000);
+    if (days > 0) out.push(`Overdue ${days}d`);
+  }
+  if (card.status === "doing" && card.working?.last_update_at) {
+    const quiet = Math.floor((now - new Date(card.working.last_update_at).getTime()) / 86_400_000);
+    if (quiet >= 7) out.push(`No update for ${quiet}d`);
+  }
+  return out;
+}
+
+/** Red reason badges on a host card: No owner; Missing type, region, contact. */
+export function hostReasons(record, missing = []) {
+  const out = [];
+  if (record && !(record.owners || []).length && record.stage !== "lost") out.push("No owner");
+  if (missing.length) out.push(`Missing ${missing.join(", ")}`);
+  return out;
+}
+
+/** What a host card is missing, in the words of the screens. */
+export function hostMissing(record) {
+  if (!record) return [];
+  const out = [];
+  if (!String(record.icp || "").trim()) out.push("type");
+  if (!record.region_id) out.push("region");
+  const hasContact = String(record.contact || "").trim() || (Array.isArray(record.identifiers) && record.identifiers.length);
+  if (!hasContact) out.push("contact");
+  return out;
+}
+
+/** The Hosts board's two toggle filters. */
+export const HOST_FILTERS = [
+  { value: "nonext", label: "No next event" },
+  { value: "soon", label: "Go live soon" },
+];
+
+/** Does a host pass the filter (from its ops_host_next row)? */
+export function hostPassesFilter(row, filter, today = todayIso()) {
+  if (!filter) return true;
+  if (!row) return false;
+  if (filter === "nonext") return !!row.needs_next;
+  if (filter === "soon") {
+    const st = row.next?.state;
+    if (!st || st.k !== "notlive" || !st.by) return false;
+    return st.by <= addDays(today, 14);
+  }
+  return true;
+}
+
+export const REPEAT_OPTIONS = [
+  { value: "none", label: "Does not repeat" },
+  { value: "week", label: "Every week" },
+  { value: "month", label: "Every month" },
+];
+
+/** The prompt "Ask my agent to fix these" copies for one Needs attention group. */
+export function attentionPrompt(groupLabel) {
+  return `Fix every item under Needs attention in Mingla Work: ${groupLabel}. Ask me before assigning owners.`;
+}
+
+/** Each Needs attention group's count: the length of the list the server sent. */
+export function attentionCounts(data) {
+  const groups = data?.groups || {};
+  return Object.fromEntries(ATTENTION_GROUPS.map((g) => [g.key, Array.isArray(groups[g.key]) ? groups[g.key].length : 0]));
+}
+
+/**
+ * Issue #3980 W3 rework (D4): the upcoming rows of a host card, soonest
+ * first. A repeating series lists every one of its kept dates that is not
+ * yet stood for by a public event (those show as the event itself), each as
+ * "<title>, 31 Oct" with its own state; a one-off promise is one row.
+ */
+export function hostUpcomingRows(events, openExpected, today) {
+  const rows = [];
+  for (const e of Array.isArray(events) ? events : []) {
+    if (!e?.start_on || (today && e.start_on < today)) continue;
+    rows.push({ key: `e-${e.id}`, kind: "event", id: e.id, title: e.title, on: e.start_on, state: e.state, repeats: false, moment: false });
+  }
+  for (const x of Array.isArray(openExpected) ? openExpected : []) {
+    if (!x) continue;
+    const repeats = !!x.repeats && x.repeats !== "none";
+    const occ = repeats && Array.isArray(x.occurrences) ? x.occurrences.filter((o) => o && o.on && !o.live) : null;
+    if (occ) {
+      occ.forEach((o, i) => rows.push({
+        key: `x-${x.id}-${o.on}`, kind: "expected", id: x.id, title: `${x.title}, ${dayLabel(o.on)}`, on: o.on,
+        state: o.state || x.state, repeats: true, moment: !!x.promo_moment, row: i === 0 ? x : null,
+      }));
+      continue;
+    }
+    rows.push({ key: `x-${x.id}`, kind: "expected", id: x.id, title: x.title, on: x.next_on || x.expected_on, state: x.state,
+      repeats, moment: !!x.promo_moment, row: x });
+  }
+  return rows.sort((a, b) => String(a.on).localeCompare(String(b.on)) || String(a.title).localeCompare(String(b.title)));
+}
+
+/**
+ * Issue #3980 W3 rework (D7): the words after saving or cancelling a
+ * promised event, from what the server says it did. Steps are said to be in
+ * Work only when automatic steps were on and ran.
+ */
+export function expectedSavedWords(result, madeWords = "Saved. It’s on the Calendar and its steps are in Work.") {
+  if (result && result.auto_steps === false) return "Saved. Automatic steps are off, so no steps were added.";
+  const steps = result?.steps;
+  if (steps && steps.stopped) return "Saved. It’s on the Calendar. Its steps couldn’t be made just now; the next run adds them.";
+  if (steps && typeof steps === "object") {
+    const n = Number(steps.added || 0) + Number(steps.redated || 0);
+    // #3980 W3 rework 2: the server says how many of its steps are open; with
+    // none (a series whose first date is still far off) the words never
+    // claim steps exist.
+    if (n === 0 && steps.open !== undefined && Number(steps.open) === 0) {
+      // #3980 W3 rework 3: steps a person already finished or declined are
+      // not added again, so the words never promise them "nearer the date".
+      if (Number(steps.settled || 0) > 0) return "Saved. It’s on the Calendar. Its steps were already finished or declined in Work, so none were added.";
+      // #3980 W4 rework (W3 retest P3): past the go-live line (3 weeks before
+      // it starts) no launch steps will come, so never "nearer the date".
+      if (steps.past_go_live === true) return "Saved. It’s on the Calendar. It’s past its go-live line (3 weeks before it starts), so no launch steps were added.";
+      return "Saved. It’s on the Calendar. No steps are needed yet; Mingla adds them nearer the date.";
+    }
+    return n > 0 ? madeWords : "Saved. It’s on the Calendar; its steps were already in Work.";
+  }
+  return "Saved. It’s on the Calendar.";
+}
+
+export function expectedCancelledWords(result) {
+  if (result && result.auto_steps === false) return "Cancelled. Automatic steps are off, so no steps were changed.";
+  const closed = Number(result?.steps?.closed || 0);
+  if (result?.steps?.stopped) return "Cancelled. Its steps close on the next run.";
+  if (closed === 1) return "Cancelled. Its 1 open step closed.";
+  if (closed > 1) return `Cancelled. Its ${closed} open steps closed.`;
+  return "Cancelled. It had no open steps.";
+}
+
+/**
+ * Issue #3980 W3 rework (D8): the Needs you tab to open when the address
+ * names none: the first tab that has something waiting (Messages, then Spend
+ * or publish, then What hosts are told for the owner and admins), else
+ * Messages.
+ */
+export function needsYouStartTab({ waiting = 0, draftNeeded = 0, needsPerson = 0, wording = 0 } = {}, canTell = false) {
+  if (Number(waiting) + Number(draftNeeded) > 0) return "messages";
+  if (Number(needsPerson) > 0) return "spend";
+  if (canTell && Number(wording) > 0) return "told";
+  return "messages";
+}
+
+/** Nothing anywhere needs a person (from loaded counts): the page says so. */
+export function needsYouCaughtUp(counts) {
+  return !!counts?.loaded && Number(counts?.total || 0) === 0;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #3980 Wave 4 (P3): the owner's opt-in backfills.
+// ---------------------------------------------------------------------------
+
+export const ROADMAP_BACKFILL_MAX = 50;
+
+/**
+ * Lines like "Host payouts next day → #3801" (or "->", "=>") become
+ * { links: [{ card_id, issue, line }], problems: [{ line, text, words }] }.
+ * The card is its id or its exact title (any case); the issue is whatever
+ * follows the last arrow, checked on the server. Blank lines are skipped.
+ */
+export function parseRoadmapLinkLines(text, cards) {
+  const list = Array.isArray(cards) ? cards : [];
+  const links = [];
+  const problems = [];
+  const lines = String(text ?? "").split(/\r?\n/);
+  lines.forEach((raw, i) => {
+    const line = i + 1;
+    const value = raw.trim();
+    if (!value) return;
+    // Split at the LAST arrow of any kind (→, -> or =>): a card title may
+    // itself hold an arrow, the issue never does.
+    let m = null;
+    for (const hit of value.matchAll(/\s*(?:→|->|=>)\s*/g)) m = hit;
+    const name = (m ? value.slice(0, m.index) : value).trim();
+    const issue = m ? value.slice(m.index + m[0].length).trim() : "";
+    if (!m || !issue) {
+      problems.push({ line, text: value, words: "Add the issue after an arrow, like → #123." });
+      return;
+    }
+    let found = [];
+    if (UUID_RE.test(name)) found = list.filter((c) => String(c.id).toLowerCase() === name.toLowerCase());
+    else found = list.filter((c) => String(c.public_title || "").trim().toLowerCase() === name.toLowerCase());
+    if (found.length === 0) {
+      problems.push({ line, text: value, words: `No roadmap card is called “${name}”.` });
+      return;
+    }
+    if (found.length > 1) {
+      problems.push({ line, text: value, words: `${found.length} roadmap cards are called “${name}”. Use the card’s id instead.` });
+      return;
+    }
+    links.push({ card_id: found[0].id, issue, line });
+  });
+  if (links.length > ROADMAP_BACKFILL_MAX) {
+    problems.push({ line: 0, text: "", words: `Preview at most ${ROADMAP_BACKFILL_MAX} links at a time; this has ${links.length}.` });
+  }
+  return { links, problems };
+}
+
+/** The chip of a roadmap backfill row: { label, tone }. */
+export function roadmapBackfillChip(status) {
+  switch (status) {
+    case "ready": return { label: "Ready", tone: "success" };
+    case "linked": return { label: "Linked", tone: "success" };
+    case "already_linked": return { label: "Already linked", tone: "default" };
+    case "skipped": return { label: "Skipped", tone: "warning" };
+    default: return { label: "Can’t link", tone: "error" };
+  }
+}
+
+export function roadmapBackfillResultWords(result) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const linked = n(result?.linked);
+  return `${linked} ${linked === 1 ? "card" : "cards"} linked, ${n(result?.skipped)} skipped.${result?.replayed ? " This was already done; nothing changed again." : ""}`;
+}
+
+/** What the owner sees for one brand's proposed action. */
+export const BRAND_ACTIONS = {
+  link: { label: "Link", tone: "success" },
+  create: { label: "Add card", tone: "info" },
+  pick: { label: "Person picks", tone: "warning" },
+  reopen: { label: "Reopen?", tone: "warning" },
+};
+
+export function brandActionChip(action) {
+  return BRAND_ACTIONS[action] || { label: "Nothing to do", tone: "default" };
+}
+
+/** The most brands one confirm accepts (the server refuses more). */
+export const BRAND_CONFIRM_MAX = 100;
+
+/** Brands the preview shows a page at a time. */
+export const BRAND_PAGE_SIZE = 50;
+
+/**
+ * Ticked to start with: the rows that link or add a card by themselves, never
+ * more than `max` (100, what one confirm accepts) and never a decided brand.
+ */
+export function brandDefaultPicked(rows, max = BRAND_CONFIRM_MAX) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => (r.action === "link" || r.action === "create") && brandSelectable(r))
+    .map((r) => r.brand_id)
+    .slice(0, Math.max(0, max));
+}
+
+/**
+ * A pick or reopen row whose card already waits for a person adds nothing, and
+ * a brand a person already decided about is left as it is (brand auto-link
+ * skips it too).
+ */
+export function brandSelectable(row) {
+  if (!row || !BRAND_ACTIONS[row.action]) return false;
+  if (row.decided) return false;
+  return !((row.action === "pick" || row.action === "reopen") && row.open_card);
+}
+
+/** Ticks or unticks one brand; never more than `max` ticked at once. */
+export function brandTogglePick(picked, id, on, max = BRAND_CONFIRM_MAX) {
+  const list = Array.isArray(picked) ? picked.filter((x) => x !== id) : [];
+  if (!on) return list;
+  return list.length >= max ? list : [...list, id];
+}
+
+/** "First 100": the first `max` brands that can be ticked, in list order. */
+export function brandFirstPicked(rows, max = BRAND_CONFIRM_MAX) {
+  return (Array.isArray(rows) ? rows : []).filter(brandSelectable).map((r) => r.brand_id).slice(0, Math.max(0, max));
+}
+
+/** "Decided by Ola on 3 Oct 2026" for a brand a person already decided about. */
+export function brandDecidedWords(decided) {
+  if (!decided) return "";
+  const who = String(decided.by_name || decided.by || "a person").trim() || "a person";
+  const at = decided.at ? new Date(decided.at) : null;
+  // The same "3 Oct 2026" the server writes in the preview and confirm words.
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const when = at && !Number.isNaN(at.getTime())
+    ? `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`
+    : null;
+  return when ? `Decided by ${who} on ${when}` : `Decided by ${who}`;
+}
+
+export function brandResultWords(result) {
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  // #3980 W4 rework 2: a brand Mingla was working on at that moment is
+  // "busy, try again", never counted as left for a person.
+  // Of the skipped, those that already had a host card, are gone, or were
+  // decided and left as they are need no person: they are said apart.
+  const unchanged = Math.min(n(result?.unchanged), n(result?.skipped));
+  const forPerson = n(result?.skipped) - unchanged;
+  const same = unchanged > 0 ? ` ${unchanged} already had a host card or ${unchanged === 1 ? "was" : "were"} left as ${unchanged === 1 ? "it was" : "they were"}.` : "";
+  const busy = n(result?.busy) > 0 ? ` ${n(result?.busy)} busy: Mingla was working on ${n(result?.busy) === 1 ? "it" : "them"} at the same moment, so try again.` : "";
+  return `${n(result?.linked)} linked, ${n(result?.created)} added, ${forPerson} left for a person.${same}${busy}${result?.replayed ? " This was already done; nothing changed again." : ""}`;
+}
+
+/**
+ * #3980 W4 rework 2: where "Show more" reads from, the page before's
+ * page.next (the last brand it showed, by created_at and id). Null when the
+ * server gave none: there is nothing more to read.
+ */
+export function brandNextCursor(answer) {
+  const next = answer?.page?.next;
+  return next && typeof next.created_at === "string" && typeof next.id === "string" ? { created_at: next.created_at, id: next.id } : null;
+}
+
+/**
+ * #3980 W4 rework 2: the preview after "Show more": the rows already shown,
+ * then the new page's rows not shown yet, and the new page's paging (its
+ * next, more and left). Returns the merged preview and the rows added.
+ */
+export function brandMergePage(preview, answer) {
+  const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+  const seen = new Set(rows.map((r) => r.brand_id));
+  const added = (Array.isArray(answer?.rows) ? answer.rows : []).filter((r) => !seen.has(r.brand_id));
+  return { preview: { ...answer, rows: [...rows, ...added] }, added };
+}
+
+/**
+ * The status line under the brand list: how many shown are chosen and, while
+ * the server says more come after the last one shown, how many.
+ */
+export function brandShownWords({ chosen, shown, more, left }) {
+  const n = Number.isFinite(Number(left)) ? Number(left) : 0;
+  return `${chosen} of ${shown} shown chosen.${more ? (n > 0 ? ` ${n} more to show.` : " More to show.") : ""}`;
+}
+
+/** How many brands "Show more" brings: a page, or fewer when fewer are left. */
+export function brandMoreCount(answer, pageSize) {
+  const left = Number(answer?.page?.left);
+  return Number.isFinite(left) && left > 0 ? Math.min(pageSize, left) : pageSize;
+}
+
+/**
+ * Issue #3980 proof fix P2-3: the "counted from" line of a work card. A card
+ * counted from a repeating series names the series' next date that is not
+ * live yet with that date's plain state (or, when every kept date is live,
+ * the event matched to it), never the series' first date.
+ */
+export function cardAnchorWords(anchor) {
+  if (!anchor || typeof anchor !== "object") return null;
+  const day = anchor.start_on ? dayLabel(anchor.start_on) : "";
+  if (anchor.series) {
+    const st = anchor.state && anchor.state.name ? anchor.state.name : runwayLabel(anchor.runway);
+    const by = anchor.state && anchor.state.k === "notlive" && anchor.state.by ? `, live by ${dayLabel(anchor.state.by)}` : "";
+    return {
+      lead: anchor.is_public ? "Next date, live:" : "Next date to publish:",
+      title: anchor.title || anchor.series_title || "",
+      rest: `${day ? ` · ${day}` : ""} · ${st}${by}`,
+    };
+  }
+  return { lead: "Counted from", title: anchor.title || "", rest: `${day ? ` · ${day}` : ""} · ${runwayLabel(anchor.runway)}` };
 }

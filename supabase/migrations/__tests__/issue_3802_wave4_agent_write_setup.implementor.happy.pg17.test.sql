@@ -1434,14 +1434,16 @@ begin
     (pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #>> '{result,status}' like 'This connection reads and writes.%')::text
       || '/' || ((pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,me}') ? 'can_add_region')::text
       || '/' || jsonb_array_length(pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,rules}')
-      || '/' || jsonb_array_length(pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,routines}'), 'true/false/23/8');  -- [TEST-MOD-APPROVED #3980] the guide gains 9 work rules and 2 routines
+      || '/' || jsonb_array_length(pg_temp.t3802b_gw('growth.claude', 'get_started')::jsonb #> '{result,routines}'), 'true/false/25/9');  -- [TEST-MOD-APPROVED #3980] the guide gains 9 work rules and 2 routines; the synced program adds 2 rules and the log_this_chat routine
   -- [TEST-MOD-APPROVED #3802] PR-C adds save_drafts to the shipped manifest.
   perform pg_temp.t3802b_check('B-8', 'every routine names only tools that exist',
     (select count(*)::text from jsonb_array_elements(public.team_agent_guide_def() -> 'routines') r,
        lateral regexp_matches(r ->> 'text', '\m([a-z]+_[a-z_]+)\M', 'g') m
       -- [TEST-MOD-APPROVED #3980] the two work routines name the work tools and the request_key they take
       where m[1] not in ('my_day', 'find_records', 'needs_reply', 'count_by', 'list_beta_leads', 'check_contactable', 'add_records', 'record_reply', 'save_drafts',
-                         'plan_work', 'add_work', 'my_work', 'read_log', 'claim', 'close_work', 'push_back', 'request_key')), '0');
+                         'plan_work', 'add_work', 'my_work', 'read_log', 'claim', 'close_work', 'push_back', 'request_key',
+                         -- [TEST-MOD-APPROVED #3980] the synced program's log_this_chat routine also names start_work and update_work
+                         'start_work', 'update_work')), '0');
   perform pg_temp.t3802b_check('B-8', 'config tells an owner or admin, and nobody else, that they can add a city',
     (pg_temp.t3802b_person('admin', 'select public.crm_config()::text')::jsonb #>> '{me,can_add_region}')
       || '/' || (pg_temp.t3802b_person('growth', 'select public.crm_config()::text')::jsonb #>> '{me,can_add_region}'), 'true/false');

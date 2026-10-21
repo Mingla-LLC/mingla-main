@@ -119,7 +119,8 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     for (const a of [growth, partner]) {
       // [TEST-MOD-APPROVED #3802] Drafts to send is now the third pipeline page.
       // [TEST-MOD-APPROVED #3980] the Work board and Agent log sit in the Pipeline group.
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"], a.role);
+      // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
       const shown = groups(a);

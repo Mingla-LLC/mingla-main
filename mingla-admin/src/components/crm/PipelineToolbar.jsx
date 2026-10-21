@@ -28,6 +28,7 @@ export function PipelineToolbar({
   canAddRegion = false,
   onRefreshRegions,
   onChange,
+  extra = null,
 }) {
   const [cityMissing, setCityMissing] = useState(false);
   const regionRef = useRef(null);
@@ -47,6 +48,7 @@ export function PipelineToolbar({
     <div className="flex flex-wrap items-center gap-2">
       <SearchInput
         className="w-full sm:w-64"
+        inputClassName="min-h-11"
         value={state.q}
         disabled={disabled}
         placeholder="Search by name, email, phone or handle"
@@ -85,6 +87,7 @@ export function PipelineToolbar({
         disabled={disabled}
         onChange={(mine) => onChange({ mine }, { replace: true })}
       />
+      {extra}
       <Segmented
         label="View"
         options={VIEWS}

@@ -1,0 +1,115 @@
+name: Release records
+
+# Issue #3980 — the synced system's GitHub side.
+#
+# PR links: every pull request description carries an issue link and a
+# "Feature Guide:" line. For its first week this job only reminds (one comment
+# on the pull request); after that it fails when a line is missing. It never
+# fails a pull request opened before it landed, or a bot's pull request.
+#
+# Release record: when a pull request merges into main (admin squash merges
+# included: every merge is a push to main), the merge bot writes one
+# release-record comment on each linked issue, or on the pull request when
+# none is linked, and refreshes it when the Vercel deploys, the edge function
+# deploy, the production migrations status or a person's "Live check:"
+# comment change, or when someone re-runs it for a pull request. It is the
+# only writer of those comments; Mingla reads them back every 5 minutes.
+#
+# The pull-request trigger follows the repository's draft-gate (#2881) and
+# concurrency (#2851) policies: the four canonical activity types, a draft
+# condition leading every job, and the canonical run identity.
+#
+# Safety: both jobs check out the BASE branch only (never the pull request's
+# code), read the event from the event file inside the scripts, and never
+# interpolate event text into a shell command.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # The machine-written bundle baseline needs no issue link or release
+    # record; a baseline-only change starts nothing here (#2524).
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
+  status: {}
+  # One activity-types line per workflow (the #3095 projection probe reads
+  # exactly one); the two below are flow mappings for that reason.
+  workflow_run: { workflows: ["Deploy Supabase Edge Functions"], types: [completed] }
+  issue_comment: { types: [created, edited] }
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to refresh
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-release-records-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
+jobs:
+  pr-links:
+    name: PR links (issue and Feature Guide)
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'pull_request_target') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/release-records
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Check the issue link and the Feature Guide line
+        run: node .github/scripts/release-records/pr-links.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-record:
+    name: Release record
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'push' || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations')) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
+    runs-on: ubuntu-latest
+    # One queue per merge commit: the push to main, the Vercel statuses, the
+    # migrations status and the edge deploy run of one merge never write its
+    # record at the same time (a waiting run is replaced by a newer one,
+    # which reads everything afresh). A live check queues per issue and a
+    # manual re-run per pull request; record.mjs also removes a duplicate if
+    # two queues ever post at once.
+    concurrency:
+      group: release-record-${{ github.event_name == 'status' && github.event.sha || github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.event_name == 'push' && github.sha || github.event_name == 'issue_comment' && format('issue-{0}', github.event.issue.number) || format('pr-{0}', github.event.inputs.pr) }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: read
+      checks: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/release-records
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Write or refresh the release record
+        run: node .github/scripts/release-records/record.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

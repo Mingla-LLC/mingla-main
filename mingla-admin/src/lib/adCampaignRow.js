@@ -15,6 +15,23 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Delivery states that mean the provider is actually serving the ad. */
 const DELIVERING_STATES = new Set(["ACTIVE"]);
 
+const AUTO_PAUSE_LABELS = Object.freeze({
+  spend_fetch_failed: "Paused automatically — spend couldn't be read",
+  cap_98_percent: "Paused automatically — cap reached",
+  end_date_passed: "Paused automatically — ended",
+  destination_unavailable: "Paused automatically — destination unavailable",
+  destination_check_failed: "Paused automatically — destination couldn't be checked",
+  provider_currency_unresolved: "Paused automatically — account currency needs attention",
+  provider_currency_mismatch: "Paused automatically — account currency needs attention",
+  provider_cap_unresolved: "Paused automatically — cap needs attention",
+});
+
+/** The staff-facing reason for a current automatic pause, if it is recognized. */
+export function campaignAutoPauseLabel(campaign) {
+  if (String(campaign?.status ?? "").toUpperCase() !== "PAUSED") return null;
+  return AUTO_PAUSE_LABELS[campaign?.auto_pause_reason] ?? null;
+}
+
 /**
  * The one status chip for a campaign row.
  * @returns {{ label: string, variant: string, key: string }}

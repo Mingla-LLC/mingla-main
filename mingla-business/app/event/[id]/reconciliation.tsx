@@ -51,7 +51,6 @@ import { useAuth } from "../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
-import { useGuestStore } from "../../../src/store/guestStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventReconciliation } from "../../../src/hooks/useEventOrders";
 import {
@@ -62,7 +61,6 @@ import { formatCurrency, currencyCodeOrNull } from "../../../src/utils/currency"
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
-import { exportReconciliationCsv } from "../../../src/utils/guestCsvExport";
 import {
   EMPTY_SUMMARY,
   computeReconciliation,
@@ -101,7 +99,6 @@ export default function ReconciliationRoute(): React.ReactElement {
   const allOrderEntriesRead = useEventReconciliation(typeof eventId === "string" ? eventId : null);
   const allOrderEntries = allOrderEntriesRead.data ?? [];
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
-  const allCompEntries = useGuestStore((s) => s.entries);
   const allScanEntries = useScanStore((s) => s.entries);
 
   const summary = useMemo<ReconciliationSummary>(() => {
@@ -117,7 +114,6 @@ export default function ReconciliationRoute(): React.ReactElement {
       currency: currencyCodeOrNull(event.currency),
       orderEntries: allOrderEntries,
       doorEntries: allDoorEntries,
-      compEntries: allCompEntries,
       scanEntries: allScanEntries,
     });
   }, [
@@ -125,7 +121,6 @@ export default function ReconciliationRoute(): React.ReactElement {
     eventId,
     allOrderEntries,
     allDoorEntries,
-    allCompEntries,
     allScanEntries,
   ]);
 
@@ -143,13 +138,6 @@ export default function ReconciliationRoute(): React.ReactElement {
         ? []
         : allDoorEntries.filter((s) => s.eventId === event.id),
     [allDoorEntries, event],
-  );
-  const eventComps = useMemo(
-    () =>
-      event === null
-        ? []
-        : allCompEntries.filter((c) => c.eventId === event.id),
-    [allCompEntries, event],
   );
 
   // ---- UI state ----
@@ -194,11 +182,12 @@ export default function ReconciliationRoute(): React.ReactElement {
       // Web → file actually downloaded. Native shared → user picked a
       // destination. Native dismissed → silent (no toast — user knew they
       // dismissed; pre-rework wrongly toasted success on this path).
+      // Loaded on press: the CSV writer stays out of the boot chunk (#3827, orch-1083).
+      const { exportReconciliationCsv } = await import("../../../src/utils/guestCsvExport");
       const result = await exportReconciliationCsv({
         event,
         orders: eventOrders,
         doorSales: eventDoorSales,
-        comps: eventComps,
         summary,
       });
       if (result.method === "downloaded") {
@@ -216,7 +205,6 @@ export default function ReconciliationRoute(): React.ReactElement {
     event,
     eventOrders,
     eventDoorSales,
-    eventComps,
     summary,
     hasAnyData,
     exportReady,

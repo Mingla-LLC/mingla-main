@@ -13,6 +13,7 @@ import { formatCurrency } from "../utils/currency";
 import { aggregatePaidOrdersByEvent } from "./tripsService";
 // META-ORCH-1235 — settle-guarantee for the Hub experiences full-screen gate.
 import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../utils/withTimeout";
+import { asExtraGuestCount } from "../constants/guestListPrivacy";
 import {
   experienceListSubline,
   type ExperienceListWhenDraft,
@@ -69,6 +70,8 @@ export interface VenueExperience {
   guestPrivacy?: {
     privateGuestList: boolean;
     hideRemainingCount: boolean;
+    /** issue #3827 going-box — guests on the host's own list (0..5000). */
+    extraGuestCount?: number;
   };
 }
 
@@ -111,6 +114,7 @@ function deriveWhenMode(
 function readExperienceGuestPrivacy(theme: Record<string, unknown> | null): {
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  extraGuestCount: number;
 } {
   const be = theme?.business_event;
   const beObj =
@@ -123,6 +127,7 @@ function readExperienceGuestPrivacy(theme: Record<string, unknown> | null): {
   return {
     privateGuestList: s.privateGuestList === true,
     hideRemainingCount: s.hideRemainingCount === true,
+    extraGuestCount: asExtraGuestCount(s.extraGuestCount),
   };
 }
 

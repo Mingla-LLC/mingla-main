@@ -184,10 +184,22 @@ const S3B_PERSIST_RE =
   /jsonb_build_object\('format',lower\(btrim\(p_patch->>'format',\s*E'[^']*'\|\|chr\(160\)\)\)\)/i;
 const ISSUE_3827 =
   "supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql";
+// issue #3827 going-box — copies 20270828003827's body forward with one hunk
+// (extraGuestCount handed to the guest-privacy leaf); every #2353 hunk rides along.
+const ISSUE_3827_GOING_BOX =
+  "supabase/migrations/20271128003827_issue_3827_going_box_privacy_extra_guests.sql";
 const SUCCESSORS = {
   business_update_live_event: [
     {
       file: ISSUE_3827,
+      carries: [
+        { id: "S3(a) three-valued is_online projection", re: S3A_PROJECTION_RE },
+        { id: "S3(b) namespace-creating merge", re: S3B_NAMESPACE_RE },
+        { id: "S3(b) format persist", re: S3B_PERSIST_RE },
+      ],
+    },
+    {
+      file: ISSUE_3827_GOING_BOX,
       carries: [
         { id: "S3(a) three-valued is_online projection", re: S3A_PROJECTION_RE },
         { id: "S3(b) namespace-creating merge", re: S3B_NAMESPACE_RE },

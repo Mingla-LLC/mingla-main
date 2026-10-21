@@ -16,6 +16,7 @@ import {
   saveRoadmapWording,
   verifyProductRelease,
 } from "../../services/productAvengersService";
+import { fetchGithubStatuses } from "../../services/opsService";
 
 const THEMES = ["Discovery & Deck", "Social Graph", "Payments", "Business Tooling", "Growth & Activation", "Trust & Safety", "Platform Health", "Place Intelligence"];
 const PRODUCTS = ["Business", "Explorer", "Both", "Platform"];
@@ -92,6 +93,23 @@ export function ProductInboxPanel() {
 
   useEffect(() => { void load(); }, [load]);
   const selected = useMemo(() => signals.find((row) => row.id === selectedId) || null, [signals, selectedId]);
+  // #3980 Wave 2: the D-15 word for the linked issue once Mingla's bridge has
+  // read it (Planned, In Progress, In Review, Shipped or Live); until then the
+  // board status shows as before.
+  const [engineering, setEngineering] = useState(null);
+  const linkedIssue = selected?.item?.issue_number || null;
+  useEffect(() => {
+    let live = true;
+    setEngineering(null);
+    if (!linkedIssue) return undefined;
+    fetchGithubStatuses([linkedIssue])
+      .then((data) => {
+        const item = data?.items?.[0];
+        if (live && item?.checked && !item.not_found) setEngineering(item.label);
+      })
+      .catch(() => { if (live) setEngineering(null); });
+    return () => { live = false; };
+  }, [linkedIssue]);
   useEffect(() => {
     if (!selected) return;
     const next = initialReview(selected);
@@ -216,7 +234,7 @@ export function ProductInboxPanel() {
             action={<a href={selected.item.issue_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--color-brand-600)] hover:underline">Open issue <ExternalLink className="h-4 w-4" /></a>}
           >
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[["Engineering", selected.item.board_status || "Todo"], ["Customer", selected.item.customer_status], ["Horizon", selected.item.board_horizon || "Unassigned"], ["Priority", selected.item.board_priority || "Unassigned"]].map(([label, value]) => (
+              {[["Engineering", engineering || selected.item.board_status || "Todo"], ["Customer", selected.item.customer_status], ["Horizon", selected.item.board_horizon || "Unassigned"], ["Priority", selected.item.board_priority || "Unassigned"]].map(([label, value]) => (
                 <div key={label} className="rounded-lg bg-[var(--gray-50)] p-3"><p className="text-xs text-[var(--color-text-tertiary)]">{label}</p><p className="mt-1 text-sm font-semibold text-[var(--color-text-primary)]">{value}</p></div>
               ))}
             </div>
