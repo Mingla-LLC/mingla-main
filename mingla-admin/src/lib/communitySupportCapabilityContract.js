@@ -90,7 +90,6 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
       "issue_3720_save_product_roadmap_wording",
       "issue_3720_set_product_avengers_no_fit",
       "issue_3720_verify_product_release",
-      "issue_3988_reassign_product_signal",
     ]),
     functions: Object.freeze(["product-avengers-sync"]),
   }),
