@@ -14,11 +14,15 @@
 import React, { Suspense, useCallback, useState } from "react";
 import type { TrafficAnalyticsDashboardProps } from "./TrafficAnalyticsDashboard";
 
-const loadDashboard = () =>
-  React.lazy(async () => {
-    const mod = await import("./TrafficAnalyticsDashboard");
-    return { default: mod.TrafficAnalyticsDashboard };
-  });
+/** The on-demand load of the real dashboard (exported for its proof). */
+export const importTrafficAnalyticsDashboard = async (): Promise<{
+  default: React.ComponentType<TrafficAnalyticsDashboardProps>;
+}> => {
+  const mod = await import("./TrafficAnalyticsDashboard");
+  return { default: mod.TrafficAnalyticsDashboard };
+};
+
+const loadDashboard = () => React.lazy(importTrafficAnalyticsDashboard);
 
 class LoadBoundary extends React.Component<
   { renderError: () => React.ReactNode; children: React.ReactNode },
