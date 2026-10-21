@@ -12,7 +12,7 @@
 -- The earlier issue-3827-21-guide-live-entries suite re-applies 20271128053827
 -- and commits its older events-guest-list wording. The replay's real end state
 -- is this PR's guide migration, so restore it before asserting the guide.
-\ir ../20271203013827_issue_3827_private_ticket_links_guide.sql
+\ir ../20271209013827_issue_3827_private_ticket_links_guide.sql
 
 BEGIN;
 

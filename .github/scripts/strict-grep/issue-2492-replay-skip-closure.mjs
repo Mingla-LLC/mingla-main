@@ -869,7 +869,7 @@ function selfTest() {
   // Round 3 spacing/spots migration adds one exact skip on each lane; 24/20 -> 25/21.
   // [TEST-MOD-APPROVED #3281] Many-dates foundation adds one exact skip on each lane; 25/21 -> 26/22.
   // #3827 going-box adds one exact skip on each lane; 26/22 -> 27/23.
-  // #3827 private ticket links (20271203003827) adds one exact skip on each lane; 27/23 -> 28/24.
+  // #3827 private ticket links (20271209003827) adds one exact skip on each lane; 27/23 -> 28/24.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
