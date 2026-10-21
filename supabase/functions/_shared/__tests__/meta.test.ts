@@ -199,6 +199,84 @@ Deno.test("A4.g: video_data branch — video_id present ⇒ video creative, no l
   assertEquals(spec.link_data, undefined);
 });
 
+Deno.test("#3697: asset feed maps 4:5 feeds, 9:16 vertical placements and 1:1 fallback", () => {
+  const body = buildMetaCreativeBody("page_1", {
+    destUrl: "https://host.usemingla.com/e/b/e",
+    message: "m",
+    headline: "h",
+    description: "d",
+    callToActionType: "BUY_TICKETS",
+    metaPlacementAssets: {
+      "1:1": { kind: "image", imageUrl: "https://cdn.example/square.jpg" },
+      "4:5": { kind: "image", imageUrl: "https://cdn.example/feed.jpg" },
+      "9:16": {
+        kind: "video",
+        videoId: "video_vertical",
+        thumbnailImageHash: "vertical_thumb",
+      },
+    },
+  });
+  const story = body.object_story_spec as Record<string, unknown>;
+  assertEquals(story.link_data, undefined);
+  assertEquals(story.video_data, undefined);
+  const feed = body.asset_feed_spec as Record<string, unknown>;
+  assertEquals(feed.optimization_type, "PLACEMENT");
+  assertEquals(feed.ad_formats, ["SINGLE_IMAGE", "SINGLE_VIDEO"]);
+  assertEquals(feed.link_urls, [{ website_url: "https://host.usemingla.com/e/b/e" }]);
+  assertEquals(feed.call_to_action_types, ["BUY_TICKETS"]);
+  assertEquals(feed.images, [
+    {
+      url: "https://cdn.example/square.jpg",
+      adlabels: [{ name: "mingla_square_1_1" }],
+    },
+    {
+      url: "https://cdn.example/feed.jpg",
+      adlabels: [{ name: "mingla_feed_4_5" }],
+    },
+  ]);
+  assertEquals(feed.videos, [
+    {
+      video_id: "video_vertical",
+      thumbnail_hash: "vertical_thumb",
+      adlabels: [{ name: "mingla_vertical_9_16" }],
+    },
+  ]);
+  assertEquals(feed.asset_customization_rules, [
+    {
+      customization_spec: {
+        publisher_platforms: ["facebook", "instagram", "threads"],
+        facebook_positions: ["feed"],
+        instagram_positions: ["stream"],
+        threads_positions: ["threads_stream"],
+      },
+      priority: 1,
+      image_label: { name: "mingla_feed_4_5" },
+    },
+    {
+      customization_spec: {
+        publisher_platforms: ["facebook", "instagram"],
+        facebook_positions: ["story", "facebook_reels"],
+        instagram_positions: ["story", "reels"],
+      },
+      priority: 2,
+      video_label: { name: "mingla_vertical_9_16" },
+    },
+    {
+      customization_spec: {
+        publisher_platforms: ["whatsapp"],
+        whatsapp_positions: ["status"],
+      },
+      priority: 3,
+      video_label: { name: "mingla_vertical_9_16" },
+    },
+    {
+      is_default: true,
+      priority: 4,
+      image_label: { name: "mingla_square_1_1" },
+    },
+  ]);
+});
+
 Deno.test("GR-61: ai_generated creative discloses self_ai_disclosure OPT_IN", () => {
   const withAi = buildMetaCreativeBody("page_1", {
     destUrl: "https://x.com",

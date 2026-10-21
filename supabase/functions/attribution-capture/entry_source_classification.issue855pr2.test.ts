@@ -25,7 +25,10 @@ import {
 } from "./index.ts";
 
 // ── Capturing fake Supabase — records the inserted touch row ──────────────────
-function fakeClient() {
+function fakeClient(options: {
+  campaignExternalId?: string;
+  campaignId?: string;
+} = {}) {
   const inserted: Record<string, unknown>[] = [];
   // deno-lint-ignore no-explicit-any
   const from = (table: string): any => {
@@ -36,6 +39,31 @@ function fakeClient() {
           return Promise.resolve({ error: null });
         },
       };
+    }
+    if (table === "ad_campaigns") {
+      let externalCampaignId: unknown = null;
+      const query = {
+        select: () => query,
+        eq: (column: string, value: unknown) => {
+          if (column === "external_campaign_id") externalCampaignId = value;
+          return query;
+        },
+        maybeSingle: () => Promise.resolve({
+          data: externalCampaignId === options.campaignExternalId
+            ? {
+              id: options.campaignId,
+              connection_id: null,
+              platform: "meta",
+              dest_page_type: "event",
+              dest_brand_slug: "ctrl",
+              dest_entity_slug: "launch",
+              dest_event_id: null,
+            }
+            : null,
+          error: null,
+        }),
+      };
+      return query;
     }
     const b = {
       select: () => b,
@@ -287,19 +315,41 @@ Deno.test("recordTouch: a SEARCH visit records entry_source:'search'", async () 
   assertEquals(inserted[0].referrer_host, "google.com");
 });
 
-Deno.test("recordTouch: an AD visit (fbclid) stays entry_source:'ad' regardless of referrer", async () => {
-  const { client, inserted } = fakeClient();
+Deno.test("recordTouch: a resolved Meta campaign plus fbclid stays ad regardless of referrer", async () => {
+  const { client, inserted } = fakeClient({
+    campaignExternalId: "meta-campaign",
+    campaignId: "campaign-3697",
+  });
   await handleCapture(
     post({
       kind: "touch",
       network: "meta",
       surface: "web",
       external_click_id: "fbclidX",
+      mc_id: "meta-campaign",
       referrer: "https://instagram.com/",
     }),
     { getClient: () => client },
   );
   assertEquals(inserted[0].entry_source, "ad");
+  assertEquals(inserted[0].network, "meta");
+  assertEquals(inserted[0].campaign_id, "campaign-3697");
+});
+
+Deno.test("#3697 Ctrl link-in-bio: unresolved Meta-shaped referrer stays social", async () => {
+  const { client, inserted } = fakeClient();
+  await handleCapture(
+    post({
+      kind: "touch",
+      network: "meta",
+      surface: "web",
+      referrer: "https://l.instagram.com/?u=ctrl",
+    }),
+    { getClient: () => client },
+  );
+  assertEquals(inserted[0].entry_source, "social");
+  assertEquals(inserted[0].network, "other");
+  assertEquals(inserted[0].campaign_id, null);
 });
 
 Deno.test("recordTouch: a bare direct touch records entry_source:'direct' + null host", async () => {

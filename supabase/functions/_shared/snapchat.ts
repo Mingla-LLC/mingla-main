@@ -1952,6 +1952,49 @@ export async function snapchatFetchPixels(
   return pixels;
 }
 
+export interface SnapchatPixelSignalSnapshot {
+  hasSignal: boolean;
+  totalEvents: number;
+}
+
+export function parseSnapchatPixelSignal(
+  payload: Record<string, unknown>,
+): SnapchatPixelSignalSnapshot {
+  const wrappers = Array.isArray(payload.timeseries_stats)
+    ? payload.timeseries_stats
+    : [];
+  let totalEvents = 0;
+  for (const wrapper of wrappers) {
+    if (!wrapper || typeof wrapper !== "object") continue;
+    const timeseries = ((wrapper as Record<string, unknown>).timeseries_stat ??
+      wrapper) as Record<string, unknown>;
+    const domains = Array.isArray(timeseries.domains) ? timeseries.domains : [];
+    for (const domain of domains) {
+      if (!domain || typeof domain !== "object") continue;
+      const value = Number((domain as Record<string, unknown>).total_events ?? 0);
+      if (Number.isFinite(value) && value > 0) totalEvents += value;
+    }
+  }
+  return { hasSignal: totalEvents > 0, totalEvents };
+}
+
+/**
+ * Read the pixel's real seven-day domain stats. Never infer installation from
+ * the existence of a pixel row: an ACTIVE-but-never-fired pixel still has no
+ * optimisation signal.
+ */
+export async function snapchatFetchPixelSignal(
+  client: SnapchatClient,
+  pixelId: string,
+): Promise<SnapchatPixelSignalSnapshot> {
+  const payload = await snapchatApi(
+    client,
+    "GET",
+    `pixels/${encodeURIComponent(pixelId)}/domains/stats`,
+  );
+  return parseSnapchatPixelSignal(payload);
+}
+
 // ── ISSUE-992 (3a): SCLS interest-segment search (targeting dimensions) ───────
 
 export interface SnapchatInterestSegment {

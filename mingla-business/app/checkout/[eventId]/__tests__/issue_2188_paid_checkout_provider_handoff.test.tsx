@@ -135,7 +135,16 @@ jest.mock("../../../../src/services/postHogService", () => ({
 }));
 jest.mock("../../../../src/analytics/webAnalytics", () => ({
   captureWeb: jest.fn(),
+  fireAdInitiateCheckout: jest.fn(),
   gaEvent: jest.fn(),
+  // [TEST-MOD-APPROVED #3697] This provider-handoff fixture has no browser
+  // match cookies; preserve that fail-open boundary explicitly.
+  getStoredAdMatchData: () => ({
+    fbp: null,
+    fbc: null,
+    scid: null,
+    clientUserAgent: null,
+  }),
   getStoredClickAttribution: () => ({ clickId: null }),
   // [TEST-MOD-APPROVED #2830] Optional Sites enrichment stays absent here.
   getStoredSiteAttribution: () => null,

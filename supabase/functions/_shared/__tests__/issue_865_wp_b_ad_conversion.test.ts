@@ -424,15 +424,25 @@ Deno.test("P2-1 source guard: attribution_click_id is DECOUPLED from the fatal c
   const src = Deno.readTextFileSync(
     new URL("../../ticket-checkout-create/index.ts", import.meta.url),
   );
-  // The decoupled, fail-open helper is called (not an inline write on the fatal path).
+  // The expanded decoupled, fail-open helper is called (not an inline write on
+  // the fatal path). It preserves the original click id plus #3697 match data.
   assert(
-    src.includes("persistAttributionClickId(supabase"),
-    "ticket-checkout-create must call the decoupled persistAttributionClickId helper",
+    src.includes("persistCheckoutAdContext(supabase"),
+    "ticket-checkout-create must call the decoupled persistCheckoutAdContext helper",
   );
-  // Re-coupling into the fatal status-token UPDATE (`sessionUpdate.attribution_click_id = …`)
-  // is FORBIDDEN — that is exactly the P2-1 buyer-blocking regression.
-  assert(
-    !src.includes("sessionUpdate.attribution_click_id"),
-    "attribution_click_id must NOT be merged into the fatal sessionUpdate (P2-1 re-couple regression)",
-  );
+  // Re-coupling any optional ad data into the fatal status-token UPDATE is
+  // FORBIDDEN — a missing migration or malformed signal may never block a buyer.
+  for (const column of [
+    "attribution_click_id",
+    "fbp",
+    "fbc",
+    "scid",
+    "client_ip",
+    "client_user_agent",
+  ]) {
+    assert(
+      !src.includes(`sessionUpdate.${column}`),
+      `${column} must NOT be merged into the fatal sessionUpdate (P2-1 re-couple regression)`,
+    );
+  }
 });

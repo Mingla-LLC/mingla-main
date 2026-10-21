@@ -113,7 +113,16 @@ jest.mock("../../../../src/services/consentService", () => ({
 }));
 jest.mock("../../../../src/analytics/webAnalytics", () => ({
   captureWeb: jest.fn(),
+  fireAdInitiateCheckout: jest.fn(),
   gaEvent: jest.fn(),
+  // [TEST-MOD-APPROVED #3697] Checkout now enriches the request with optional
+  // browser match data; this pre-existing occurrence fixture keeps it absent.
+  getStoredAdMatchData: () => ({
+    fbp: null,
+    fbc: null,
+    scid: null,
+    clientUserAgent: null,
+  }),
   getStoredClickAttribution: () => ({ clickId: null }),
   // [TEST-MOD-APPROVED #2830] Optional Sites enrichment stays absent here.
   getStoredSiteAttribution: () => null,

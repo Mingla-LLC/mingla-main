@@ -2564,10 +2564,11 @@
       },
       "allowed_identifier_references": {
         "getToken": [
-          "supabase/functions/_shared/adConversionFire.ts@24959:deps.getToken:grouped_reference:deps.getToken",
+          "supabase/functions/_shared/adConversionFire.ts@29043:deps.getToken:grouped_reference:deps.getToken",
+          "supabase/functions/_shared/adConversionFire.ts@32082:deps.getToken:grouped_reference:deps.getToken",
           "supabase/functions/_shared/metaCapi.ts@2054:getToken:call_argument:resolveRuntimeString:getToken",
           "supabase/functions/_shared/metaCapi.ts@2802:deps.getToken:grouped_reference:deps.getToken",
-          "supabase/functions/_shared/metaCapi.ts@4680:getToken:call_argument:metaApiVersion:getToken",
+          "supabase/functions/_shared/metaCapi.ts@4748:getToken:call_argument:metaApiVersion:getToken",
           "supabase/functions/_shared/redditCapi.ts@2453:deps.getToken:grouped_reference:deps.getToken",
           "supabase/functions/_shared/snapCapi.ts@1429:deps.getToken:grouped_reference:deps.getToken",
           "supabase/functions/_shared/tiktokEvents.ts@1793:deps.getToken:grouped_reference:deps.getToken"

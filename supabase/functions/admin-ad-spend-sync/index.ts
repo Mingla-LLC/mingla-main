@@ -31,6 +31,7 @@ import {
   parseRedditReportSpend,
   parseSnapchatStatsSpend,
   parseTikTokReportSpend,
+  preserveObservedSpend,
   providerCapCents,
   type SpendDayRow,
   type SpendSyncDecision,
@@ -684,16 +685,32 @@ serve(async (req: Request): Promise<Response> => {
       }
       continue;
     }
-    if (draft.upserts.length > 0) {
+    let safeUpserts = draft.upserts;
+    if (safeUpserts.length > 0) {
+      const { data: observedRows, error: observedError } = await supabase
+        .from("ad_spend_daily")
+        .select("spend_date,spend_cents")
+        .eq("campaign_id", target.id);
+      if (observedError) {
+        upsertError = observedError.message;
+        safeUpserts = [];
+      } else {
+        safeUpserts = preserveObservedSpend(
+          safeUpserts,
+          (observedRows ?? []) as SpendDayRow[],
+        );
+      }
+    }
+    if (safeUpserts.length > 0) {
       const { error: upErr } = await supabase.from("ad_spend_daily").upsert(
-        draft.upserts,
+        safeUpserts,
         { onConflict: "campaign_id,platform,spend_date" },
       );
       if (upErr) {
         // Preserve the write error but still evaluate end-date / cap pause.
         upsertError = upErr.message;
       } else {
-        upserted += draft.upserts.length;
+        upserted += safeUpserts.length;
       }
     }
 

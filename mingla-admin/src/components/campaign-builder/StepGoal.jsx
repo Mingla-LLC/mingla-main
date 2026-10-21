@@ -11,12 +11,18 @@ import { AlertCard } from "../ui/Card";
 import { visibleGoals, platformsForGoals, DISJOINT_GOALS_WARNING } from "../../lib/adBuilder/goals";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
 
-export function StepGoal({ goalIds, onGoalsChange }) {
+export function StepGoal({
+  goalIds,
+  onGoalsChange,
+  metaPixelHasSignal = false,
+  snapPixelInstalled = false,
+}) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const goals = visibleGoals();
   const { disjoint } = platformsForGoals(goalIds);
 
   const toggle = (id) => {
+    if (id === "conversions" && !metaPixelHasSignal) return;
     onGoalsChange(goalIds.includes(id) ? goalIds.filter((g) => g !== id) : [...goalIds, id]);
   };
 
@@ -32,16 +38,20 @@ export function StepGoal({ goalIds, onGoalsChange }) {
       <div role="group" aria-label="Campaign goals" className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {goals.map((goal) => {
           const selected = goalIds.includes(goal.id);
+          const disabled = goal.requiresMetaPixelSignal === true && !metaPixelHasSignal;
           return (
             <button
               key={goal.id}
               type="button"
               role="checkbox"
               aria-checked={selected}
+              aria-disabled={disabled}
+              disabled={disabled}
               onClick={() => toggle(goal.id)}
               className={[
-                "text-left p-4 rounded-xl border transition-all duration-150 cursor-pointer",
+                "text-left p-4 rounded-xl border transition-all duration-150",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
+                disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
                 selected
                   ? "border-[var(--color-brand-500)] ring-1 ring-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
                   : "border-[var(--gray-200)] hover:border-[var(--gray-300)]",
@@ -54,6 +64,13 @@ export function StepGoal({ goalIds, onGoalsChange }) {
               <p className="text-xs text-[var(--color-text-secondary)]">{goal.description}</p>
               {goal.honestyNote && (
                 <p className="text-xs text-[var(--color-text-tertiary)] mt-1.5">{goal.honestyNote}</p>
+              )}
+              {goal.id === "traffic" && (
+                <p className="text-xs text-[var(--color-text-tertiary)] mt-1.5">
+                  {snapPixelInstalled
+                    ? "Snap pixel detected. Snapchat will optimise for landing-page views."
+                    : "Snap pixel not detected. Snapchat will optimise for swipes until it records a page view."}
+                </p>
               )}
               <p className="text-[10px] text-[var(--color-text-tertiary)] mt-1.5">
                 Channels: {Object.keys(goal.platforms).map((p) => PLATFORM_LABELS[p]).join(", ")}
@@ -86,8 +103,7 @@ export function StepGoal({ goalIds, onGoalsChange }) {
           <div className="mt-2 p-3 rounded-lg border border-[var(--gray-200)] text-xs text-[var(--color-text-secondary)] space-y-1">
             <p>
               Exact platform objectives are derived per goal and shown on Review — Meta
-              traffic optimizes <span className="font-mono">LINK_CLICKS</span> (landing-page
-              views need the pixel, which has never fired — that unlocks with #865);
+              traffic optimizes <span className="font-mono">LANDING_PAGE_VIEWS</span>;
               awareness optimizes <span className="font-mono">REACH</span>.
             </p>
             <p>

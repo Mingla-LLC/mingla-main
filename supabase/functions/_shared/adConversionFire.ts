@@ -61,6 +61,8 @@ export interface ConversionSendInput {
   hashedPhone: string | null; // SHA-256 hex
   fbc: string | null; // UNHASHED (Meta only)
   fbp: string | null; // UNHASHED (Meta only)
+  externalId?: string | null; // SHA-256 buyer user id (Meta external_id)
+  scCookie1?: string | null; // UNHASHED Snap _scid cookie
   externalClickId: string | null; // raw fbclid / ttclid / sccid / rdt_cid
   clientIpAddress: string | null;
   clientUserAgent: string | null;
@@ -241,6 +243,48 @@ export async function persistAttributionClickId(
   }
 }
 
+export interface CheckoutAdContextInput {
+  clickId: string | null;
+  fbp: string | null;
+  fbc: string | null;
+  scid: string | null;
+  clientIpAddress: string | null;
+  clientUserAgent: string | null;
+}
+
+/** Fail-open persistence of every browser/server match key at session create. */
+export async function persistCheckoutAdContext(
+  supabase: SupabaseClient,
+  checkoutSessionId: string,
+  input: CheckoutAdContextInput,
+): Promise<void> {
+  const bounded = (value: string | null, max: number): string | null =>
+    typeof value === "string" && value.trim()
+      ? value.trim().slice(0, max)
+      : null;
+  try {
+    const { error } = await supabase
+      .from("ticket_checkout_sessions")
+      .update({
+        attribution_click_id: bounded(input.clickId, 512),
+        fbp: bounded(input.fbp, 512),
+        fbc: bounded(input.fbc, 512),
+        scid: bounded(input.scid, 512),
+        client_ip: bounded(input.clientIpAddress, 128),
+        client_user_agent: bounded(input.clientUserAgent, 1024),
+      })
+      .eq("id", checkoutSessionId);
+    if (error) {
+      console.warn("[adConversionFire] checkout ad context persist skipped (non-fatal):", error.message);
+    }
+  } catch (err) {
+    console.warn(
+      "[adConversionFire] checkout ad context persist threw (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 /**
  * ISSUE-865 PR1 WP-2 — the reservation twin of persistAttributionClickId. Writes
  * the ad click_id onto a reservation_checkout_sessions row, DECOUPLED from the
@@ -289,6 +333,12 @@ interface ConversionContext {
   stayGroupId: string | null;
   clickId: string | null;
   eventSourceUrl: string | null;
+  externalId: string | null;
+  fbp: string | null;
+  fbc: string | null;
+  scid: string | null;
+  clientIpAddress: string | null;
+  clientUserAgent: string | null;
 }
 
 interface TouchContext {
@@ -351,13 +401,17 @@ async function resolveOrderContext(
   let clickId: string | null = null;
   const { data: sess } = await supabase
     .from("ticket_checkout_sessions")
-    .select("attribution_click_id")
+    .select("attribution_click_id,buyer_user_id,fbp,fbc,scid,client_ip,client_user_agent")
     .eq("order_id", orderId)
     .not("attribution_click_id", "is", null)
     .maybeSingle();
-  clickId =
-    (sess as { attribution_click_id?: string } | null)?.attribution_click_id ??
-      null;
+  const sessRow = (sess ?? {}) as Record<string, unknown>;
+  clickId = typeof sessRow.attribution_click_id === "string"
+    ? sessRow.attribution_click_id
+    : null;
+  const buyerUserId = typeof sessRow.buyer_user_id === "string"
+    ? sessRow.buyer_user_id
+    : null;
 
   const email = (row.buyer_email as string | null) ?? null;
   const phone = (row.buyer_phone as string | null) ?? null;
@@ -386,6 +440,14 @@ async function resolveOrderContext(
     stayGroupId: null,
     clickId,
     eventSourceUrl: input.eventSourceUrl ?? null,
+    externalId: buyerUserId ? await sha256Hex(buyerUserId) : null,
+    fbp: typeof sessRow.fbp === "string" ? sessRow.fbp : null,
+    fbc: typeof sessRow.fbc === "string" ? sessRow.fbc : null,
+    scid: typeof sessRow.scid === "string" ? sessRow.scid : null,
+    clientIpAddress: typeof sessRow.client_ip === "string" ? sessRow.client_ip : null,
+    clientUserAgent: typeof sessRow.client_user_agent === "string"
+      ? sessRow.client_user_agent
+      : null,
   };
 }
 
@@ -456,6 +518,12 @@ async function resolveReservationContext(
     stayGroupId: null,
     clickId,
     eventSourceUrl: input.eventSourceUrl ?? null,
+    externalId: null,
+    fbp: null,
+    fbc: null,
+    scid: null,
+    clientIpAddress: null,
+    clientUserAgent: null,
   };
 }
 
@@ -512,6 +580,12 @@ async function resolveStayContext(
       ? row.attribution_click_id
       : null,
     eventSourceUrl: input.eventSourceUrl ?? null,
+    externalId: null,
+    fbp: null,
+    fbc: null,
+    scid: null,
+    clientIpAddress: null,
+    clientUserAgent: null,
   };
 }
 
@@ -656,6 +730,126 @@ async function resolveSenderConnection(
           : null,
       };
     }
+  }
+}
+
+/**
+ * Server checkout-start pair for Meta + Snap. The checkout session id is the
+ * shared browser/server dedup id. The helper is fail-open and claims once.
+ */
+export async function fireAdCheckoutStart(
+  supabase: SupabaseClient,
+  checkoutSessionId: string,
+  deps: FireAdConversionDeps = {},
+): Promise<FireAdConversionResult> {
+  try {
+    const { data: session, error } = await supabase
+      .from("ticket_checkout_sessions")
+      .select(
+        "id,total_cents,buyer_total_cents,currency,buyer_user_id,attribution_click_id,fbp,fbc,scid,client_ip,client_user_agent,ad_checkout_start_sent_at",
+      )
+      .eq("id", checkoutSessionId)
+      .maybeSingle();
+    if (error || !session) {
+      return { ok: false, eventId: checkoutSessionId, reason: "context_unresolved" };
+    }
+    const row = session as Record<string, unknown>;
+    if (row.ad_checkout_start_sent_at) {
+      return { ok: true, eventId: checkoutSessionId, deduped: true, results: [] };
+    }
+    const touch = await resolveTouch(
+      supabase,
+      typeof row.attribution_click_id === "string" ? row.attribution_click_id : null,
+    );
+    if (!touch.consentAllowsShare) {
+      return {
+        ok: true,
+        eventId: checkoutSessionId,
+        deduped: false,
+        results: (["meta", "snap"] as Channel[]).map((channel) => ({
+          channel,
+          status: "skipped",
+          reason: touch.consentState === "rejected"
+            ? "consent_rejected"
+            : "consent_pending_retryable",
+        })),
+      };
+    }
+    const { data: claimed } = await supabase
+      .from("ticket_checkout_sessions")
+      .update({ ad_checkout_start_sent_at: new Date().toISOString() })
+      .eq("id", checkoutSessionId)
+      .is("ad_checkout_start_sent_at", null)
+      .select("id")
+      .maybeSingle();
+    if (!claimed) {
+      return { ok: true, eventId: checkoutSessionId, deduped: true, results: [] };
+    }
+
+    const now = deps.now ?? (() => Date.now());
+    const senderDeps: SenderDeps = {
+      getToken: deps.getToken,
+      fetchImpl: deps.fetchImpl,
+      timeoutMs: deps.timeoutMs,
+    };
+    const buyerExternalId = typeof row.buyer_user_id === "string"
+      ? await sha256Hex(row.buyer_user_id)
+      : null;
+    const valueCents = typeof row.buyer_total_cents === "number"
+      ? row.buyer_total_cents
+      : typeof row.total_cents === "number"
+      ? row.total_cents
+      : null;
+    const channels: Channel[] = ["meta", "snap"];
+    const results = await Promise.all(channels.map(async (channel) => {
+      const connection = await resolveSenderConnection(supabase, channel, "consumer");
+      const sendInput: ConversionSendInput = {
+        eventId: checkoutSessionId,
+        eventName: channel === "meta" ? "InitiateCheckout" : "START_CHECKOUT",
+        valueCents,
+        currency: typeof row.currency === "string" ? row.currency : null,
+        eventSourceUrl: null,
+        hashedEmail: null,
+        hashedPhone: null,
+        fbc: channel === "meta"
+          ? (typeof row.fbc === "string" ? row.fbc : touch.fbc)
+          : null,
+        fbp: channel === "meta" && typeof row.fbp === "string" ? row.fbp : null,
+        externalId: channel === "meta" ? buyerExternalId : null,
+        scCookie1: channel === "snap" && typeof row.scid === "string" ? row.scid : null,
+        externalClickId: (channel === "snap"
+            ? touch.network === "snapchat"
+            : touch.network === channel)
+          ? touch.externalClickId
+          : null,
+        clientIpAddress: typeof row.client_ip === "string" ? row.client_ip : null,
+        clientUserAgent: typeof row.client_user_agent === "string"
+          ? row.client_user_agent
+          : null,
+        eventTimeMs: now(),
+      };
+      return (deps.senders?.[channel] ?? DEFAULT_SENDERS[channel])(
+        sendInput,
+        connection,
+        senderDeps,
+      );
+    }));
+    await supabase.from("ticket_checkout_sessions").update({
+      ad_checkout_start_provider_response: Object.fromEntries(
+        results.map((result) => [result.channel, {
+          status: result.status,
+          reason: result.reason ?? null,
+          http: result.httpStatus ?? null,
+        }]),
+      ),
+    }).eq("id", checkoutSessionId);
+    return { ok: true, eventId: checkoutSessionId, deduped: false, results };
+  } catch (err) {
+    console.warn(
+      "[adConversionFire] checkout start absorbed (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return { ok: false, eventId: checkoutSessionId, reason: "absorbed" };
   }
 }
 
@@ -869,13 +1063,17 @@ export async function fireAdConversion(
         eventSourceUrl: ctx.eventSourceUrl,
         hashedEmail: ctx.hashedEmail,
         hashedPhone: ctx.hashedPhone,
-        fbc: channel === "meta" ? touch.fbc : null,
-        fbp: null, // fbp is a browser-only cookie; not reconstructable server-side
-        externalClickId: touch.network === channel
+        fbc: channel === "meta" ? (ctx.fbc ?? touch.fbc) : null,
+        fbp: channel === "meta" ? ctx.fbp : null,
+        externalId: channel === "meta" ? ctx.externalId : null,
+        scCookie1: channel === "snap" ? ctx.scid : null,
+        externalClickId: (channel === "snap"
+            ? touch.network === "snapchat"
+            : touch.network === channel)
           ? touch.externalClickId
           : null,
-        clientIpAddress: null, // the webhook has no buyer browser IP/UA
-        clientUserAgent: null,
+        clientIpAddress: ctx.clientIpAddress,
+        clientUserAgent: ctx.clientUserAgent,
         eventTimeMs,
         testEventCode: input.testEventCode ?? null,
       };

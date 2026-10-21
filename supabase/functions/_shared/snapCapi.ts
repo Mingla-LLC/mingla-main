@@ -59,6 +59,7 @@ export async function sendSnapConversion(
     em: input.hashedEmail ? [input.hashedEmail] : undefined, // SHA-256 hex
     ph: input.hashedPhone ? [input.hashedPhone] : undefined,
     sc_click_id: input.externalClickId ?? undefined, // raw Snap click id (sccid)
+    sc_cookie1: input.scCookie1 ?? undefined,
     client_ip_address: input.clientIpAddress ?? undefined,
     client_user_agent: input.clientUserAgent ?? undefined,
   } as Record<string, unknown>);

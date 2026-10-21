@@ -72,7 +72,7 @@ Deno.test("#1930 preserves #865 attribution as a decoupled fail-open write", () 
     fatalWriteAt,
   );
   const attributionCallAt = checkoutCreate.indexOf(
-    "persistAttributionClickId(supabase",
+    "persistCheckoutAdContext(supabase",
   );
 
   assert(fatalWriteAt >= 0 && fatalReturnAt > fatalWriteAt);
@@ -84,4 +84,18 @@ Deno.test("#1930 preserves #865 attribution as a decoupled fail-open write", () 
     !checkoutCreate.includes("sessionUpdate.attribution_click_id"),
     "attribution must never be coupled back into sessionUpdate",
   );
+  for (
+    const optionalColumn of [
+      "fbp",
+      "fbc",
+      "scid",
+      "client_ip",
+      "client_user_agent",
+    ]
+  ) {
+    assert(
+      !checkoutCreate.includes(`sessionUpdate.${optionalColumn}`),
+      `${optionalColumn} must remain outside the fatal sessionUpdate`,
+    );
+  }
 });

@@ -19,7 +19,7 @@
  * strongest-signal goal the platform supports wins (conversions > retargeting >
  * traffic > awareness). For the two live goals this means traffic wins over
  * awareness — which is exactly the valid Meta pairing (OUTCOME_TRAFFIC /
- * LINK_CLICKS), independent of the click order.
+ * LANDING_PAGE_VIEWS), independent of the click order.
  */
 
 import { goalById } from "./goals.js";
@@ -61,14 +61,14 @@ export function resolvePlatformObjective(goalIds, platform) {
  * Meta's coherent { objective, optimization_goal } — BOTH from the same entry.
  * This is the pair the create payload and the per-category budget floor both
  * read, so there is exactly one Meta optimization goal in play. Falls back to
- * the valid OUTCOME_TRAFFIC / LINK_CLICKS pair when nothing is expressible.
+ * the valid OUTCOME_TRAFFIC / LANDING_PAGE_VIEWS pair when nothing is expressible.
  */
 export function resolveMetaObjective(goalIds) {
   const entry = resolvePlatformObjective(goalIds, "meta");
   if (entry && entry.objective && entry.optimization_goal) {
     return { objective: entry.objective, optimization_goal: entry.optimization_goal };
   }
-  return { objective: "OUTCOME_TRAFFIC", optimization_goal: "LINK_CLICKS" };
+  return { objective: "OUTCOME_TRAFFIC", optimization_goal: "LANDING_PAGE_VIEWS" };
 }
 
 /**
@@ -77,12 +77,19 @@ export function resolveMetaObjective(goalIds) {
  * optimization_goal come from the same entry; every other platform's native
  * objective (and Snap's optimization_goal) comes from ITS own resolved entry.
  */
-export function resolveGoalForPayload(goalIds) {
+export function resolveGoalForPayload(goalIds, { snapPixelInstalled = false } = {}) {
   const meta = resolveMetaObjective(goalIds);
   const platforms = {};
   for (const platform of ALL_PLATFORMS) {
     const entry = resolvePlatformObjective(goalIds, platform);
-    if (entry) platforms[platform] = entry;
+    if (entry) {
+      platforms[platform] = platform === "snapchat" && entry.objective === "TRAFFIC"
+        ? {
+          ...entry,
+          optimization_goal: snapPixelInstalled ? "PIXEL_PAGE_VIEW" : "SWIPES",
+        }
+        : entry;
+    }
   }
   return {
     metaObjective: meta.objective,

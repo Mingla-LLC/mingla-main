@@ -52,10 +52,20 @@ export const fireAdReservation = (
   _eventId: string,
   _props?: { value?: number; currency?: string },
 ): void => {};
+export const fireAdInitiateCheckout = (
+  _eventId: string,
+  _props?: { value?: number; currency?: string },
+): void => {};
 export const adPixelsReady = (): boolean => false;
 export const getStoredClickAttribution = (): { clickId: string | null } => ({
   clickId: null,
 });
+export const getStoredAdMatchData = (): {
+  fbp: string | null;
+  fbc: string | null;
+  scid: string | null;
+  clientUserAgent: string | null;
+} => ({ fbp: null, fbc: null, scid: null, clientUserAgent: null });
 export const postAttributionTouch = async (
   _input: unknown,
 ): Promise<string | null> => null;

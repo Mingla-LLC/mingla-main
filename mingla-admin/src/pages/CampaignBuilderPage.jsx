@@ -904,8 +904,10 @@ export function CampaignBuilderPage() {
   // to show each channel's REAL resolved objective instead of one repeated
   // goal-label string. Never touches runCreate's own resolution.
   const resolvedGoalForDisplay = useMemo(
-    () => resolveGoalForPayload(goalIds),
-    [goalIds],
+    () => resolveGoalForPayload(goalIds, {
+      snapPixelInstalled: connections.snapchat?.extra?.pixel_installed === true,
+    }),
+    [goalIds, connections.snapchat?.extra?.pixel_installed],
   );
 
   // ── ISSUE-995 [Campaign Builder creative] Wave 3 — PROCEED-WITH-PASSING ──
@@ -1486,7 +1488,9 @@ export function CampaignBuilderPage() {
     // truth) — never goalIds[0] for one field and the full array for another.
     // Each platform's pair now comes from a single goals.js entry, so the Meta
     // objective/optimization_goal pairing is always valid, in any click order.
-    const resolvedGoal = resolveGoalForPayload(goalIds);
+    const resolvedGoal = resolveGoalForPayload(goalIds, {
+      snapPixelInstalled: connections.snapchat?.extra?.pixel_installed === true,
+    });
     // ISSUE-995 PROCEED-WITH-PASSING: skip funded channels this creative can't
     // build (reject or unresolved needs_transcode). The backend loop is already
     // per-channel independent — we simply don't issue their create call.
@@ -2132,7 +2136,12 @@ export function CampaignBuilderPage() {
                 <h2 id="promote-goal" className="text-base font-semibold">
                   Result
                 </h2>
-                <StepGoal goalIds={goalIds} onGoalsChange={setGoalIds} />
+                <StepGoal
+                  goalIds={goalIds}
+                  onGoalsChange={setGoalIds}
+                  metaPixelHasSignal={connections.meta?.extra?.pixel_has_signal === true}
+                  snapPixelInstalled={connections.snapchat?.extra?.pixel_installed === true}
+                />
               </section>
               <section
                 className="space-y-3 border-t border-[var(--gray-100)] pt-6"

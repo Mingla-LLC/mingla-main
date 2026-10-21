@@ -6,8 +6,9 @@ import { fireBuyerPurchaseConfirmationPush } from "../_shared/businessNotifyTrig
 // persistAttributionClickId (WP-C, P2-1): the DECOUPLED, fail-open threading
 // write — attribution capture is never on the fatal checkout-creation path.
 import {
+  fireAdCheckoutStart,
   fireAdConversion,
-  persistAttributionClickId,
+  persistCheckoutAdContext,
 } from "../_shared/adConversionFire.ts";
 // #3682 — auto-follow brand after signed-in free reservation (fail-open).
 import { autoFollowBrandBestEffort } from "../_shared/autoFollowBrand.ts";
@@ -141,6 +142,20 @@ async function siteAttributionDigest(value: string): Promise<string> {
   return Array.from(signed)
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function checkoutClientIp(req: Request): string | null {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0].trim() || null;
+  return req.headers.get("cf-connecting-ip") ?? req.headers.get("x-real-ip");
+}
+
+function scheduleCheckoutAdStart(promise: Promise<unknown>): void {
+  const runtime = (globalThis as unknown as {
+    EdgeRuntime?: { waitUntil: (work: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(promise);
+  else void promise;
 }
 
 async function persistSiteAttributionToken(
@@ -2417,7 +2432,18 @@ export const createTicketCheckoutCreateHandler = (
         body.attribution_click_id.length > 0
       ? body.attribution_click_id
       : null;
-    await persistAttributionClickId(supabase as never, checkoutSessionId, attributionClickId);
+    await persistCheckoutAdContext(supabase as never, checkoutSessionId, {
+      clickId: attributionClickId,
+      fbp: typeof body.fbp === "string" ? body.fbp : null,
+      fbc: typeof body.fbc === "string" ? body.fbc : null,
+      scid: typeof body.scid === "string" ? body.scid : null,
+      clientIpAddress: checkoutClientIp(req),
+      clientUserAgent: req.headers.get("user-agent") ??
+        (typeof body.client_user_agent === "string" ? body.client_user_agent : null),
+    });
+    scheduleCheckoutAdStart(
+      fireAdCheckoutStart(supabase as never, checkoutSessionId),
+    );
     await persistSiteAttributionToken(
       supabase,
       checkoutSessionId,

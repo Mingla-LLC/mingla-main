@@ -80,6 +80,7 @@ export async function sendMetaConversion(
   const userData = definedOnly({
     em: input.hashedEmail ? [input.hashedEmail] : undefined,
     ph: input.hashedPhone ? [input.hashedPhone] : undefined,
+    external_id: input.externalId ? [input.externalId] : undefined,
     // fbc/fbp UNHASHED (A2-5) — exact formats minted browser-side / reconstructed.
     fbc: input.fbc ?? undefined,
     fbp: input.fbp ?? undefined,

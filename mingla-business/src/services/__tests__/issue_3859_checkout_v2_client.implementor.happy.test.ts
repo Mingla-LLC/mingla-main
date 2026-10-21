@@ -7,6 +7,15 @@ jest.mock("../supabase", () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
 }));
 jest.mock("../../analytics/webAnalytics", () => ({
+  fireAdInitiateCheckout: jest.fn(),
+  // [TEST-MOD-APPROVED #3697] Keep this checkout-v2 contract fixture focused
+  // on line choices while the new optional browser match fields are absent.
+  getStoredAdMatchData: () => ({
+    fbp: null,
+    fbc: null,
+    scid: null,
+    clientUserAgent: null,
+  }),
   getStoredClickAttribution: () => ({ clickId: null }),
 }));
 

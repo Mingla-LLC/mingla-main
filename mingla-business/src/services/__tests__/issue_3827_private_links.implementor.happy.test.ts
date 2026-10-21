@@ -8,6 +8,12 @@ jest.mock("../supabase", () => ({
 }));
 jest.mock("../../analytics/webAnalytics", () => ({
   getStoredClickAttribution: () => ({ clickId: null }),
+  getStoredAdMatchData: () => ({
+    fbp: null,
+    fbc: null,
+    scid: null,
+    clientUserAgent: null,
+  }),
 }));
 
 import {

@@ -52,7 +52,7 @@ describe("ISSUE-980 finding #3 — Review shows the REAL, per-platform resolved 
     });
 
     const byPlatform = Object.fromEntries(summary.channels.map((c) => [c.platform, c.objectiveLabel]));
-    assert.equal(byPlatform.meta, "OUTCOME_TRAFFIC · LINK_CLICKS");
+    assert.equal(byPlatform.meta, "OUTCOME_TRAFFIC · LANDING_PAGE_VIEWS");
     assert.equal(byPlatform.tiktok, "TRAFFIC");
     assert.equal(byPlatform.google, "SEARCH · maximize_clicks");
     assert.equal(byPlatform.reddit, "CLICKS");
@@ -124,7 +124,7 @@ describe("ISSUE-980 finding #3 — wiring is real, not just a lib function nobod
     // call — this is the NEW display-only memo this fix adds.
     assert.match(
       page,
-      /const\s+resolvedGoalForDisplay\s*=\s*useMemo\(\s*\(\)\s*=>\s*resolveGoalForPayload\(goalIds\),\s*\[goalIds\],?\s*\)/,
+      /const\s+resolvedGoalForDisplay\s*=\s*useMemo\([\s\S]*?resolveGoalForPayload\(goalIds,\s*\{[\s\S]*?snapPixelInstalled:[\s\S]*?\}\),[\s\S]*?\[goalIds,/,
       "must compute a dedicated display resolution, separate from runCreate's",
     );
     assert.ok(page.includes("resolvedGoal: resolvedGoalForDisplay"), "must pass the resolution into buildLaunchSummary");

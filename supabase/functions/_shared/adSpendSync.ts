@@ -104,6 +104,25 @@ export function sumSpendCents(rows: readonly SpendDayRow[]): number {
   return total;
 }
 
+/**
+ * Never let an empty/zero provider response erase spend already observed for a
+ * day. Daily provider spend is cumulative; once non-zero, zero means the read
+ * is incomplete or stale, not that prior spend disappeared.
+ */
+export function preserveObservedSpend(
+  incoming: readonly SpendSyncDecision["upserts"][number][],
+  existing: readonly Pick<SpendDayRow, "spend_date" | "spend_cents">[],
+): SpendSyncDecision["upserts"] {
+  const nonZeroByDay = new Map(
+    existing
+      .filter((row) => Number(row.spend_cents) > 0)
+      .map((row) => [row.spend_date, Number(row.spend_cents)]),
+  );
+  return incoming.filter((row) =>
+    !(row.spend_cents === 0 && (nonZeroByDay.get(row.spend_date) ?? 0) > 0)
+  );
+}
+
 export function endDatePassed(
   endsAt: string | null | undefined,
   nowIso: string = new Date().toISOString(),

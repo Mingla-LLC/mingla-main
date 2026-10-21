@@ -82,7 +82,10 @@ function loadHarness(
   const fetchCalls: { url: string; body: string }[] = [];
   (globalThis as unknown as { fetch: unknown }).fetch = (url: string, init?: RequestInit) => {
     fetchCalls.push({ url: String(url), body: String((init ?? {}).body ?? "") });
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({ click_id: "srv-click-1" }) });
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, click_id: "srv-click-1" }),
+    });
   };
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
