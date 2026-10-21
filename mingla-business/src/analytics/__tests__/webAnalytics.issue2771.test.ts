@@ -63,7 +63,10 @@ function harness(search = ""): {
   (globalThis as unknown as { window: unknown }).window = win;
   (globalThis as unknown as { fetch: unknown }).fetch = (url: string) => {
     fetches.push(String(url));
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({ click_id: "server-click" }) });
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, click_id: "server-click" }),
+    });
   };
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const analytics = require("../webAnalytics.web") as typeof import("../webAnalytics.web");
