@@ -627,6 +627,17 @@ DECLARE
 BEGIN
   SELECT * INTO f FROM pg_temp.t3827_event('helper', 10);
   SELECT * INTO g FROM pg_temp.t3827_event('helper-other', 10);
+  -- orders.ticket_link_id references ticket_type_links(id) (20271210003827),
+  -- so the link-origin cases below need a real link row for f's free tier.
+  INSERT INTO public.ticket_type_links(
+    id, event_id, brand_id, ticket_type_id, kind, label, party_max,
+    token_nonce, token_hash, created_by
+  ) VALUES (
+    v_link, f.o_event, f.o_brand, f.o_tt, 'guest_list', 'Helper link', 10,
+    decode(md5(v_link::text), 'hex'),
+    encode(sha256(convert_to('t3827-helper-link:' || v_link::text, 'UTF8')), 'hex'),
+    f.o_owner
+  );
 
   -- Each case: one bad argument; the call must RAISE with this message.
   FOR v_case IN
