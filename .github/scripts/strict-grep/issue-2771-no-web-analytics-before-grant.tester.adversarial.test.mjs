@@ -15,7 +15,7 @@ test('independent mutations cannot restore advanced-consent or unguarded attribu
   // gate is Reject (denied), not grant — attack that path instead.
   const attacks = [
     { business: sources.business.replace('readStoredConsent() !== "granted" || !adPixelsBootstrapped', '!adPixelsBootstrapped') },
-    { business: sources.business.replace('if (!hasWindow() || readStoredConsent() === "denied") return;\n  // toward #3697: if we already have a first-party click, only stamp consent —', 'if (!hasWindow()) return;\n  // toward #3697: if we already have a first-party click, only stamp consent —') },
+    { business: sources.business.replace('if (!hasWindow() || readStoredConsent() === "denied") return;', 'if (!hasWindow()) return;') },
     { marketingProvider: sources.marketingProvider.replace("): void {\n  if (readMarketingConsent() !== 'granted') return\n  try {", "): void {\n  try {") },
     { marketingLayout: sources.marketingLayout.replace('<PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        ').replace('</PostHogProvider>', '') },
     { business: sources.business.replace('        cross_subdomain_cookie: false,\n', '') },
