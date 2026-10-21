@@ -147,6 +147,7 @@ export const TrafficRangeControl: React.FC<{
           key={range}
           onPress={() => onChange(range)}
           accessibilityRole="tab"
+          accessibilityLabel={`Show ${RANGE_LABELS[range]}`}
           accessibilityState={{ selected }}
           style={({ pressed }) => [
             styles.rangeButton,

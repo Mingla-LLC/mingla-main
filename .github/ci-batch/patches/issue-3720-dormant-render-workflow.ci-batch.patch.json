@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "ce3ee7fbf44f0dcbf63d89b42cb3464b1f05d35ffd5f09c72463331ffcc04dfa",
-      "value": "78728e0683e36407f65587a7dcc37847126d159dbbc11aef8541402b861542fa"
+      "value": "e94b08ccc0bfabdec56f376c10bcc3b7c2f30967edd23aab9aa0f68a9fca24b3"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3720 adds its Help & Support render proof to the retained dormant-render workflow without changing the execution topology."
+  "reason": "Issue #3720 adds its Help & Support render proof, and #4037 its host traffic analytics render proof, to the retained dormant-render workflow without changing the execution topology."
 }
