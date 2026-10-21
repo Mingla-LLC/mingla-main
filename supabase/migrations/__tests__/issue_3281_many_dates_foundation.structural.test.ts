@@ -35,7 +35,14 @@ Deno.test("many-dates foundation migration ships schedule helper + bundle keys",
     true,
   );
   assert(text.includes("is_supported_offering_currency"));
-  assert(text.includes("e ? 'overrides'"));
+  // 0e9c26165 — Host Dates (business_set_event_date_override) owns per-date
+  // title/place; When-save must never write them.
+  const patchWhenStart = text.indexOf("FUNCTION public.business_patch_event_when");
+  assert(patchWhenStart >= 0);
+  const patchWhen = text
+    .slice(patchWhenStart, text.indexOf("$function$;", patchWhenStart))
+    .replace(/--.*$/gm, "");
+  assert(!/override_title|override_location/.test(patchWhen));
   // Schedule helper evaluated once per bundle row.
   assert(text.includes("LEFT JOIN LATERAL"));
   assertEquals(
