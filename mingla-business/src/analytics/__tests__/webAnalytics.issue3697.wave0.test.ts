@@ -14,6 +14,7 @@ function harness(search = ""): {
   fetches: Array<{ url: string; body: Record<string, unknown> }>;
   session: Map<string, string>;
   local: Map<string, string>;
+  win: Record<string, unknown>;
   scripts: FakeScript[];
   posthog: { init: jest.Mock };
 } {
@@ -32,6 +33,7 @@ function harness(search = ""): {
   const win: Record<string, unknown> = {
     document: {
       referrer: "",
+      cookie: "",
       createElement: (): FakeScript => ({
         src: "",
         async: false,
@@ -47,11 +49,15 @@ function harness(search = ""): {
         },
       },
     },
+    navigator: {},
     location: { search, href: `https://business.usemingla.com/e/b/e${search}` },
     localStorage: {
       getItem: (key: string): string | null => local.get(key) ?? null,
       setItem: (key: string, value: string): void => {
         local.set(key, value);
+      },
+      removeItem: (key: string): void => {
+        local.delete(key);
       },
     },
     sessionStorage: {
@@ -90,7 +96,7 @@ function harness(search = ""): {
   };
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const analytics = require("../webAnalytics.web") as typeof import("../webAnalytics.web");
-  return { analytics, fetches, session, local, scripts, posthog };
+  return { analytics, fetches, session, local, win, scripts, posthog };
 }
 
 afterEach(() => {
@@ -108,7 +114,7 @@ test("F-1: pre-consent ad signal posts touch with consent_state=pending", async 
   expect(h.fetches).toHaveLength(1);
   expect(h.fetches[0].body.kind).toBe("touch");
   expect(h.fetches[0].body.consent_state).toBe("pending");
-  expect(h.session.get("mingla_ad_click_v1")).toContain("click-pre");
+  expect(h.local.get("mingla_ad_click_v1")).toContain("click-pre");
 });
 
 test("F-3: Reject stamps consent rejected and does not boot vendors", async () => {
@@ -130,4 +136,56 @@ test("Wave 0d: postAttributionConversion is a no-op", () => {
   const before = h.fetches.length;
   h.analytics.postAttributionConversion({ eventId: "ord-1", valueCents: 100 });
   expect(h.fetches.length).toBe(before);
+});
+
+test("#3697: click attribution survives sessions for seven days and expires", () => {
+  const h = harness();
+  h.local.set("mingla_ad_click_v1", JSON.stringify({
+    clickId: "fresh-click",
+    expiresAt: Date.now() + h.analytics.AD_CLICK_TTL_MS,
+  }));
+  expect(h.analytics.getStoredClickAttribution()).toEqual({ clickId: "fresh-click" });
+  h.local.set("mingla_ad_click_v1", JSON.stringify({
+    clickId: "expired-click",
+    expiresAt: Date.now() - 1,
+  }));
+  expect(h.analytics.getStoredClickAttribution()).toEqual({ clickId: null });
+  expect(h.local.has("mingla_ad_click_v1")).toBe(false);
+});
+
+test("#3697: Ctrl Instagram bio first-touch stays social before a later Meta-shaped URL", async () => {
+  const h = harness();
+  const win = h.win as {
+    document: { referrer: string };
+    location: { search: string };
+  };
+  h.local.set("mingla_consent_v1", JSON.stringify({ choice: "granted", ts: 1 }));
+  win.document.referrer = "https://l.instagram.com/?u=ctrl";
+
+  h.analytics.captureAdClickIds({ pageType: "event", brandSlug: "ctrl" });
+  await new Promise((r) => setTimeout(r, 0));
+
+  win.location.search = "?fbclid=LATER&mc_id=meta-campaign";
+  win.document.referrer = "https://usemingla.com/";
+  h.analytics.captureAdClickIds({ pageType: "event", brandSlug: "ctrl" });
+  await new Promise((r) => setTimeout(r, 0));
+
+  const touches = h.fetches.filter((entry) => entry.body.kind === "touch");
+  expect(touches).toHaveLength(1);
+  expect(touches[0].body.network).toBe("other");
+  expect(touches[0].body.referrer).toBe("l.instagram.com");
+  expect(touches[0].body.mc_id).toBeNull();
+});
+
+test("#3697: malformed ad cookies fail open instead of blocking checkout", () => {
+  const h = harness();
+  const win = h.win as { document: { cookie: string } };
+  h.local.set("mingla_consent_v1", JSON.stringify({ choice: "granted", ts: 1 }));
+  win.document.cookie = "_fbp=%E0%A4%A";
+  expect(h.analytics.getStoredAdMatchData()).toEqual({
+    fbp: null,
+    fbc: null,
+    scid: null,
+    clientUserAgent: null,
+  });
 });

@@ -148,6 +148,7 @@ let adPixelsBootstrapped = false;
 
 // First-party storage key for the captured ad click_id (threaded into checkout).
 const AD_CLICK_KEY = "mingla_ad_click_v1";
+export const AD_CLICK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 declare global {
   // gtag/dataLayer injected by the GA4 loader below; the four ad-pixel globals
@@ -786,6 +787,30 @@ export function fireAdReservation(
   fireAdConversion(eventId, props, false);
 }
 
+/** Checkout-start dedup pair: browser pixels share the checkout session id. */
+export function fireAdInitiateCheckout(
+  eventId: string,
+  props: { value?: number; currency?: string } = {},
+): void {
+  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped || !eventId) return;
+  safePixel(() =>
+    window.fbq?.(
+      "track",
+      "InitiateCheckout",
+      definedProps({ value: props.value, currency: props.currency }),
+      { eventID: eventId },
+    )
+  );
+  safePixel(() =>
+    window.snaptr?.("track", "START_CHECKOUT", definedProps({
+      price: props.value,
+      currency: props.currency,
+      transaction_id: eventId,
+      client_dedup_id: eventId,
+    }))
+  );
+}
+
 // ── Click-id capture + first-party threading storage ──────────────────────────
 
 interface StoredAdClick {
@@ -798,9 +823,14 @@ export function getStoredClickAttribution(): StoredAdClick {
   try {
     // toward #3697: keep click_id readable after Reject so checkout can thread it
     // (server then sets shared_with_platforms=false). Vendor pixels stay grant-gated.
-    clickId = (JSON.parse(
-      window.sessionStorage.getItem(AD_CLICK_KEY) ?? "{}",
-    ) as { clickId?: unknown }).clickId;
+    const stored = JSON.parse(
+      window.localStorage.getItem(AD_CLICK_KEY) ?? "{}",
+    ) as { clickId?: unknown; expiresAt?: unknown };
+    if (typeof stored.expiresAt !== "number" || stored.expiresAt <= Date.now()) {
+      window.localStorage.removeItem(AD_CLICK_KEY);
+      return { clickId: null };
+    }
+    clickId = stored.clickId;
   } catch {
     // Storage and malformed data remain optional attribution failures.
   }
@@ -812,10 +842,50 @@ function storeClickId(clickId: string): void {
   // clear an already-stored id (checkout still needs it).
   if (readStoredConsent() === "denied") return;
   try {
-    window.sessionStorage.setItem(AD_CLICK_KEY, JSON.stringify({ clickId }));
+    window.localStorage.setItem(
+      AD_CLICK_KEY,
+      JSON.stringify({ clickId, expiresAt: Date.now() + AD_CLICK_TTL_MS }),
+    );
   } catch {
-    // sessionStorage unavailable (private mode) — non-fatal; threading is skipped.
+    // localStorage unavailable (private mode) — non-fatal; threading is skipped.
   }
+}
+
+export interface StoredAdMatchData {
+  fbp: string | null;
+  fbc: string | null;
+  scid: string | null;
+  clientUserAgent: string | null;
+}
+
+function cookieValue(name: string): string | null {
+  try {
+    const prefix = `${encodeURIComponent(name)}=`;
+    for (const part of (window.document.cookie ?? "").split(";")) {
+      const trimmed = part.trim();
+      if (!trimmed.startsWith(prefix)) continue;
+      const value = decodeURIComponent(trimmed.slice(prefix.length)).trim();
+      return value ? value.slice(0, 512) : null;
+    }
+  } catch {
+    // A malformed third-party cookie must never stop checkout creation.
+  }
+  return null;
+}
+
+/** Consent-gated browser match data persisted on checkout for server events. */
+export function getStoredAdMatchData(): StoredAdMatchData {
+  if (!hasWindow() || readStoredConsent() !== "granted") {
+    return { fbp: null, fbc: null, scid: null, clientUserAgent: null };
+  }
+  return {
+    fbp: cookieValue("_fbp"),
+    fbc: cookieValue("_fbc"),
+    scid: cookieValue("_scid"),
+    clientUserAgent: typeof window.navigator.userAgent === "string"
+      ? window.navigator.userAgent.slice(0, 1024)
+      : null,
+  };
 }
 
 function postAttr(
@@ -874,6 +944,8 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     // attribution-capture, which resolves mc_id/af_c_id → ad_campaigns → the
     // touch's campaign_id + brand_id (per-campaign ROI).
     const mcId = params.get("mc_id");
+    const adSetId = params.get("adset_id") ?? params.get("ad_squad_id");
+    const adId = params.get("ad_id");
     const utm: Record<string, string> = {};
     for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
       const v = params.get(k);
@@ -926,6 +998,8 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       externalClickId: external,
       afCId,
       mcId,
+      adSetId,
+      adId,
       utm,
       dest,
       referrer: refHost,
@@ -967,6 +1041,8 @@ interface PostTouchInput {
   externalClickId: string | null;
   afCId: string | null;
   mcId?: string | null;
+  adSetId?: string | null;
+  adId?: string | null;
   utm: Record<string, string>;
   dest?: CaptureAdClickDest;
   // ISSUE-855 PR-2 — referrer host only (no PII); forwarded for entry_source.
@@ -1002,6 +1078,8 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
         external_click_id: input.externalClickId,
         af_c_id: input.afCId,
         mc_id: input.mcId ?? null,
+        ad_set_id: input.adSetId ?? null,
+        ad_id: input.adId ?? null,
         referrer: input.referrer ?? null,
         consent_state: consentState,
         utm: input.utm,

@@ -149,28 +149,28 @@ describe("ISSUE-979 Bug 1 ADV — degenerate & hidden inputs the implementor nev
   });
 
   it("HIGHEST-PRIORITY-BUT-UNSUPPORTED goal falls THROUGH to a goal the platform can express", () => {
-    // conversions is ranked #1 (GOAL_PRIORITY) but ships with #865 → zero platform
-    // maps today. A selection led by it must not strand a platform on null when a
+    // retargeting ranks ahead of traffic but still has zero platform maps. A
+    // selection led by it must not strand a platform on null when a
     // lower-priority selected goal IS expressible.
-    assert.equal(orderGoalIdsByPriority(["awareness", "conversions", "traffic"])[0], "conversions",
-      "conversions must sort first even though it is unsupported today");
+    assert.equal(orderGoalIdsByPriority(["awareness", "retargeting", "traffic"])[0], "retargeting",
+      "retargeting must sort first even though it is unsupported today");
 
-    const metaEntry = resolvePlatformObjective(["conversions", "traffic"], "meta");
-    assert.deepEqual(metaEntry, { objective: "OUTCOME_TRAFFIC", optimization_goal: "LINK_CLICKS" },
-      "meta must fall through unsupported conversions to the valid traffic pair");
+    const metaEntry = resolvePlatformObjective(["retargeting", "traffic"], "meta");
+    assert.deepEqual(metaEntry, { objective: "OUTCOME_TRAFFIC", optimization_goal: "LANDING_PAGE_VIEWS" },
+      "meta must fall through unsupported retargeting to the valid traffic pair");
 
-    const metaAware = resolvePlatformObjective(["conversions", "awareness"], "meta");
+    const metaAware = resolvePlatformObjective(["retargeting", "awareness"], "meta");
     assert.deepEqual(metaAware, { objective: "OUTCOME_AWARENESS", optimization_goal: "REACH" },
-      "meta must fall through conversions to the valid awareness pair");
+      "meta must fall through retargeting to the valid awareness pair");
 
     // A platform that can express NEITHER selected goal is dropped (null), never a mix.
-    assert.equal(resolvePlatformObjective(["conversions", "awareness"], "google"), null,
-      "google can do neither conversions nor awareness → dropped, not fabricated");
+    assert.equal(resolvePlatformObjective(["retargeting", "awareness"], "google"), null,
+      "google can do neither retargeting nor awareness → dropped, not fabricated");
 
     // resolveMetaObjective never emits an entry authored for a DIFFERENT platform.
-    const { objective, optimization_goal } = resolveMetaObjective(["conversions", "traffic"]);
+    const { objective, optimization_goal } = resolveMetaObjective(["retargeting", "traffic"]);
     assert.equal(objective, "OUTCOME_TRAFFIC");
-    assert.equal(optimization_goal, "LINK_CLICKS");
+    assert.equal(optimization_goal, "LANDING_PAGE_VIEWS");
   });
 
   it("every resolved platform entry is byte-identical to a SELECTED goal's authored map (no field-mixing)", () => {

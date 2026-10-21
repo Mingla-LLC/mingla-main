@@ -321,7 +321,7 @@ describe("ISSUE-980 adversarial — ALL FIVE platforms (Snapchat included — ne
     // never asserts this platform anywhere in issue980_review_real_objectives.
     assert.equal(byPlatform.snapchat, "TRAFFIC · SWIPES", "Snapchat must render its own combined objective/optimization_goal pair, not Meta's or TikTok's");
 
-    assert.equal(byPlatform.meta, "OUTCOME_TRAFFIC · LINK_CLICKS");
+    assert.equal(byPlatform.meta, "OUTCOME_TRAFFIC · LANDING_PAGE_VIEWS");
     assert.equal(byPlatform.tiktok, "TRAFFIC");
     assert.equal(byPlatform.google, "SEARCH · maximize_clicks");
     assert.equal(byPlatform.reddit, "CLICKS");
@@ -357,7 +357,7 @@ describe("ISSUE-980 adversarial — empty goalIds fed through the REAL resolver:
     // Meta's resolveMetaObjective always falls back to a valid pair even with
     // zero goals selected — this is pre-existing #979 behavior, but #980's
     // display path must render it honestly, not crash or blank it.
-    assert.equal(byPlatform.meta, "OUTCOME_TRAFFIC · LINK_CLICKS", "Meta must still show its guaranteed-valid default, never blank");
+    assert.equal(byPlatform.meta, "OUTCOME_TRAFFIC · LANDING_PAGE_VIEWS", "Meta must still show its guaranteed-valid default, never blank");
     // Every other platform has NO fallback in resolveGoalForPayload — with no
     // goal selected, none of them can resolve anything.
     for (const platform of ["tiktok", "snapchat", "google", "reddit"]) {
@@ -401,6 +401,6 @@ describe("ISSUE-980 adversarial — wiring sanity (fails-on-revert)", () => {
     const page = read(path.join(ADMIN_SRC, "pages/CampaignBuilderPage.jsx"));
     assert.ok(stepper.includes("isCompactStepper("));
     assert.ok(preflight.includes("translatePreflightDetail({"));
-    assert.ok(page.includes("resolveGoalForPayload(goalIds)"));
+    assert.ok(page.includes("resolveGoalForPayload(goalIds,"));
   });
 });

@@ -13,7 +13,11 @@ import type { BuyerDetails, CartLine, OrderResult } from "../components/checkout
 // ISSUE-865 WP-C — thread the first-party ad click_id (captured on the public
 // page) into checkout-create so the post-finalize conversion send can link the
 // order to its campaign. Web-only source (native returns null → field omitted).
-import { getStoredClickAttribution } from "../analytics/webAnalytics";
+import {
+  fireAdInitiateCheckout,
+  getStoredAdMatchData,
+  getStoredClickAttribution,
+} from "../analytics/webAnalytics";
 import {
   isCheckoutAttemptId,
   normalizeCheckoutV2Lines,
@@ -792,10 +796,11 @@ export const createTicketCheckout = async (
     return choice;
   };
   const clickId = getStoredClickAttribution().clickId;
+  const matchData = getStoredAdMatchData();
   const site = await import("../analytics/siteAttribution")
     .then((module) => module.default?.())
     .catch(() => undefined);
-  return invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
+  const result = await invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
     eventId: input.eventId,
     returnContract: "host_v1",
     ...(isCheckoutV2
@@ -860,6 +865,12 @@ export const createTicketCheckout = async (
     ...(clickId !== null
       ? { attribution_click_id: clickId }
       : {}),
+    ...(matchData.fbp !== null ? { fbp: matchData.fbp } : {}),
+    ...(matchData.fbc !== null ? { fbc: matchData.fbc } : {}),
+    ...(matchData.scid !== null ? { scid: matchData.scid } : {}),
+    ...(matchData.clientUserAgent !== null
+      ? { client_user_agent: matchData.clientUserAgent }
+      : {}),
     // #2830 — the public-site token is opaque, short-lived and web-only. It is
     // never treated as buyer authority; checkout binds its digest to the
     // resulting order after the existing money/idempotency decisions succeed.
@@ -891,6 +902,20 @@ export const createTicketCheckout = async (
     // 502 must propagate, and retrying it would change the paid finalize path.
     retryOnTransportFailure: true,
   });
+  const checkoutResult = result as TicketCheckoutCreateResult & {
+    checkoutSessionId?: string;
+    totalCents?: number;
+    currency?: string;
+  };
+  if (checkoutResult.checkoutSessionId) {
+    fireAdInitiateCheckout(checkoutResult.checkoutSessionId, {
+      value: typeof checkoutResult.totalCents === "number"
+        ? checkoutResult.totalCents / 100
+        : undefined,
+      currency: checkoutResult.currency,
+    });
+  }
+  return result;
 };
 
 export const getTicketCheckoutStatus = async (

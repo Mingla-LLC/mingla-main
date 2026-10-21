@@ -388,8 +388,8 @@ describe("channel plan — exclusion precedence + market gate", () => {
     );
   });
 
-  it("hidden goals are unreachable through the plan: 'conversions'/'retargeting' admit ZERO channels", () => {
-    for (const goalId of ["conversions", "retargeting"]) {
+  it("retargeting stays hidden while Sales admits only Meta", () => {
+    for (const goalId of ["retargeting"]) {
       assert.equal(
         visibleGoals().some((g) => g.id === goalId),
         false,
@@ -413,12 +413,14 @@ describe("channel plan — exclusion precedence + market gate", () => {
         `${goalId} must produce an empty channel set`,
       );
     }
+    assert.equal(visibleGoals().some((g) => g.id === "conversions"), true);
+    assert.deepEqual(platformsForGoal("conversions"), ["meta"]);
   });
 
   it("disjoint goal selections fall back to the union AND flag disjoint=true", () => {
     const { platforms, disjoint } = platformsForGoals([
       "traffic",
-      "conversions",
+      "retargeting",
     ]);
     assert.equal(disjoint, true, "no shared channel → disjoint");
     assert.ok(

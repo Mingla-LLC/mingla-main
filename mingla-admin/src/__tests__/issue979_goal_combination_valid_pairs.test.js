@@ -44,6 +44,10 @@ const VALID_META_PAIRS = {
     "POST_ENGAGEMENT", "REACH", "CONVERSATIONS", "THRUPLAY",
     "VISIT_INSTAGRAM_PROFILE", "PROFILE_VISIT", "QUALITY_CALL", "REMINDERS_SET",
   ],
+  OUTCOME_SALES: [
+    "OFFSITE_CONVERSIONS", "VALUE", "LANDING_PAGE_VIEWS", "IMPRESSIONS",
+    "POST_ENGAGEMENT", "REACH", "LINK_CLICKS", "CONVERSATIONS",
+  ],
 };
 
 const PLATFORMS = ["meta", "tiktok", "snapchat", "google", "reddit"];
@@ -90,7 +94,7 @@ describe("ISSUE-979 Bug 1 — every allowed goal combo yields a VALID Meta pair"
     // The old code: [awareness, traffic] → OUTCOME_AWARENESS / LINK_CLICKS (422).
     const a = resolveMetaObjective(["awareness", "traffic"]);
     const b = resolveMetaObjective(["traffic", "awareness"]);
-    assert.deepEqual(a, { objective: "OUTCOME_TRAFFIC", optimization_goal: "LINK_CLICKS" });
+    assert.deepEqual(a, { objective: "OUTCOME_TRAFFIC", optimization_goal: "LANDING_PAGE_VIEWS" });
     assert.deepEqual(b, a, "click order must not change the resolved Meta pair");
     // The invalid pair the bug produced must NEVER be emitted.
     for (const combo of ALL_COMBOS) {
@@ -103,7 +107,7 @@ describe("ISSUE-979 Bug 1 — every allowed goal combo yields a VALID Meta pair"
   });
 
   it("single goals resolve to their own authored pair", () => {
-    assert.deepEqual(resolveMetaObjective(["traffic"]), { objective: "OUTCOME_TRAFFIC", optimization_goal: "LINK_CLICKS" });
+    assert.deepEqual(resolveMetaObjective(["traffic"]), { objective: "OUTCOME_TRAFFIC", optimization_goal: "LANDING_PAGE_VIEWS" });
     assert.deepEqual(resolveMetaObjective(["awareness"]), { objective: "OUTCOME_AWARENESS", optimization_goal: "REACH" });
   });
 });

@@ -118,6 +118,7 @@ import {
   snapchatDefaultTokenEnvVar,
   snapchatFetchAdAccount,
   snapchatFetchFundingSources,
+  snapchatFetchPixelSignal,
   snapchatFetchPixels,
   type SnapchatFundingSnapshot,
   type SnapchatPixelSnapshot,
@@ -321,6 +322,15 @@ serve(async (req: Request): Promise<Response> => {
         pixels = [];
       }
       const pixel = pixels.find((p) => p.status === "ACTIVE") ?? pixels[0] ?? null;
+      let pixelSignal = { hasSignal: false, totalEvents: 0 };
+      if (pixel?.id) {
+        try {
+          pixelSignal = await snapchatFetchPixelSignal(client, pixel.id);
+        } catch {
+          // Fail closed: an unreadable stats response is not a detected pixel.
+          pixelSignal = { hasSignal: false, totalEvents: 0 };
+        }
+      }
 
       if (action === "status" && !existing) {
         return json({
@@ -356,9 +366,10 @@ serve(async (req: Request): Promise<Response> => {
           profile_id: client.profileId,
           pixel_id: pixel?.id ?? null,
           pixel_status: pixel?.status ?? null,
-          // A1.1(6): the #865 signal gating LANDING_PAGE_VIEW / PIXEL_* goals.
-          // Preserved if #865 already flipped it; defaults false (SWIPES-only).
-          pixel_installed: priorExtra.pixel_installed === true,
+          // #3697: derived from the live stats read on every reconnect. Never
+          // copy a stale flag from the prior row.
+          pixel_installed: pixelSignal.hasSignal,
+          pixel_total_events_7d: pixelSignal.totalEvents,
           funding_source_id: activeFunding.id,
           funding_daily_spend_limit_micro: activeFunding.dailySpendLimitMicro,
           last_error: null,

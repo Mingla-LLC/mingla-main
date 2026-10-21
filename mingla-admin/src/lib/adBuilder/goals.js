@@ -5,11 +5,10 @@
  * Rules encoded here:
  *  - Goals are an ARRAY, not hardcoded branches (A1 extensibility contract):
  *    #865 adds Reservations/Retargeting by appending entries, no rewrite.
- *  - "Get reservations / purchases" and "Bring back past visitors" are
- *    HIDDEN ENTIRELY (visible:false) until #865 — no dead/greyed buttons
- *    (A1's own "no half-built placeholders" rule, re-asserted by A4.0(5)).
- *  - Until pixels fire, Meta optimizes LINK_CLICKS (never LANDING_PAGE_VIEWS
- *    — the pixel is epoch-0, PROOF M-P7; the server 422s pixel_no_signal).
+ *  - Sales is shown only as a Meta goal and is disabled by the UI until the
+ *    connection's real pixel-signal check passes.
+ *  - Meta traffic optimizes for landing-page views; Snap does the same only
+ *    after its real pixel-stats read reports a signal (otherwise SWIPES).
  *  - The goal step is MULTI-SELECT (A4.0(1)); disjoint-channel selections get
  *    a warning, not a block (blueprint §1.1 validation).
  */
@@ -24,15 +23,13 @@ export const GOALS = [
     // Platforms whose CREATE path can express this goal TODAY (see
     // channelPlan.CREATE_WIRED for the endpoint-support gate).
     platforms: {
-      meta: { objective: "OUTCOME_TRAFFIC", optimization_goal: "LINK_CLICKS" },
+      meta: { objective: "OUTCOME_TRAFFIC", optimization_goal: "LANDING_PAGE_VIEWS" },
       google: { channel_type: "SEARCH", strategy: "maximize_clicks" },
       tiktok: { objective: "TRAFFIC" },
       reddit: { objective: "CLICKS" },
       snapchat: { objective: "TRAFFIC", optimization_goal: "SWIPES" },
     },
-    // A4.0(5): the honest-goal note — LINK_CLICKS, not LPV, until #865.
-    honestyNote:
-      "Optimizes for link clicks. Landing-page views need our pixel, which has never fired — that unlocks with #865.",
+    honestyNote: "Meta optimizes for landing-page views. Snapchat does when its pixel is detected; otherwise it optimizes for swipes.",
   },
   {
     id: "awareness",
@@ -50,15 +47,16 @@ export const GOALS = [
     honestyNote:
       "Awareness has no strong success signal — the Brain won't move money on it much.",
   },
-  // ── #865 ships these fully working — HIDDEN until then (A4.0(5)) ────────────
   {
     id: "conversions",
-    label: "Get reservations / purchases",
-    visible: false,
-    shipsWith: "#865",
-    hiddenReason:
-      "Needs #865's pixel + CAPI. Meta's pixel has never fired; TikTok's pixel has zero events. Ships with #865, fully working — never a dead button now.",
-    platforms: {},
+    label: "Sales (ticket purchases)",
+    description: "Optimise Meta delivery for completed ticket purchases.",
+    visible: true,
+    requiresMetaPixelSignal: true,
+    platforms: {
+      meta: { objective: "OUTCOME_SALES", optimization_goal: "OFFSITE_CONVERSIONS" },
+    },
+    honestyNote: "Available once the connected Meta pixel has recorded a real signal.",
   },
   {
     id: "retargeting",

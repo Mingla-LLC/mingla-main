@@ -408,11 +408,11 @@ describe("channel plan", () => {
 // ── A4.0(5) — hidden goals ────────────────────────────────────────────────────
 
 describe("goal config", () => {
-  it("Reservations + Retargeting are HIDDEN entirely (ship with #865)", () => {
+  it("Sales is visible while only Retargeting remains hidden", () => {
     const hidden = GOALS.filter((g) => !g.visible).map((g) => g.id).sort();
-    assert.deepEqual(hidden, ["conversions", "retargeting"]);
+    assert.deepEqual(hidden, ["retargeting"]);
     const visible = visibleGoals().map((g) => g.id).sort();
-    assert.deepEqual(visible, ["awareness", "traffic"], "no dead/greyed buttons — only working goals render");
+    assert.deepEqual(visible, ["awareness", "conversions", "traffic"]);
   });
   it("goals array is config-driven (multi-select intersection works)", () => {
     const { platforms } = platformsForGoals(["traffic"]);

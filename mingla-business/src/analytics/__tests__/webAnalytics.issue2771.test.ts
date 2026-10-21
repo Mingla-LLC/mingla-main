@@ -94,7 +94,7 @@ test("#2771 fresh and denied Business roots stay byte-dark until explicit grant"
   ).toHaveLength(1);
   expect(pending.win.dataLayer).toBeUndefined();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(pending.session.get("mingla_ad_click_v1")).toContain("server-click");
+  expect(pending.local.get("mingla_ad_click_v1")).toContain("server-click");
 
   pending.analytics.denyConsent();
   await pending.analytics.initWebAnalytics();

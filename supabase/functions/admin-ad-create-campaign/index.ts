@@ -759,10 +759,10 @@ serve(async (req: Request): Promise<Response> => {
   const objective = typeof body.objective === "string"
     ? body.objective
     : "OUTCOME_TRAFFIC";
-  // A4.e.5 (supersedes OD-4): LINK_CLICKS is the default until the pixel fires.
+  // #3697: pay for real page arrivals, never accidental link taps by default.
   const optimizationGoal = typeof body.optimization_goal === "string"
     ? body.optimization_goal
-    : "LINK_CLICKS";
+    : "LANDING_PAGE_VIEWS";
   const billingEvent = typeof body.billing_event === "string"
     ? body.billing_event
     : "IMPRESSIONS";
@@ -2711,7 +2711,7 @@ serve(async (req: Request): Promise<Response> => {
     const destVenueIdS = resolvedDestinationS.venue_id;
     const snapTrackedDestUrlS = `${destUrlS}${
       destUrlS.includes("?") ? "&" : "?"
-    }mc_id={{campaign.id}}`;
+    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSquad.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
     const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
@@ -4845,6 +4845,9 @@ serve(async (req: Request): Promise<Response> => {
   );
   let targeting: Record<string, unknown> = {
     geo_locations: buildMetaGeoLocations(countries, metaCities),
+    // Keep Advantage+ expansion inside Facebook + Instagram. Audience Network
+    // is intentionally excluded: review evidence showed accidental-tap waste.
+    publisher_platforms: ["facebook", "instagram"],
     ...(typeof targetingInput.age_min === "number"
       ? { age_min: targetingInput.age_min }
       : {}),
@@ -4862,6 +4865,29 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── 4. Per-category budget floor (A4.g / PROOF M-P8 — never hardcoded). ──────
   const extra = (connection.extra ?? {}) as Record<string, unknown>;
+  const instagramUserId = typeof extra.instagram_user_id === "string"
+    ? extra.instagram_user_id.trim()
+    : "";
+  if (!instagramUserId) {
+    return json({
+      error: "instagram_account_required",
+      detail:
+        "Connect an Instagram account to this Meta connection before creating a campaign.",
+    }, 422);
+  }
+  const metaDatasetId = typeof extra.dataset_id === "string"
+    ? extra.dataset_id.trim()
+    : "";
+  if (
+    objective === "OUTCOME_SALES" &&
+    optimizationGoal === "OFFSITE_CONVERSIONS" &&
+    !metaDatasetId
+  ) {
+    return json({
+      error: "pixel_no_signal",
+      detail: "The Meta connection has no pixel dataset. Reconnect Meta before choosing Sales.",
+    }, 422);
+  }
   const floors = extra.minimum_budgets as
     | Record<string, number>
     | null
@@ -4956,6 +4982,14 @@ serve(async (req: Request): Promise<Response> => {
     optimizationGoal,
     billingEvent,
     targeting,
+    ...(objective === "OUTCOME_SALES" && optimizationGoal === "OFFSITE_CONVERSIONS"
+      ? {
+        promotedObject: {
+          pixel_id: metaDatasetId,
+          custom_event_type: "PURCHASE",
+        },
+      }
+      : {}),
     ...(schedule.starts_at ? { startTime: schedule.starts_at } : {}),
     ...(schedule.ends_at ? { endTime: schedule.ends_at } : {}),
     validateOnly,

@@ -72,6 +72,8 @@ interface CaptureBody {
   // AppsFlyer `af_c_id`) carries ad_campaigns.external_campaign_id; recordTouch
   // resolves it → campaign_id + brand_id so per-campaign ROI is unblocked.
   mc_id?: string;
+  ad_set_id?: string;
+  ad_id?: string;
   af_uid?: string;
   // ISSUE-855 PR-2 — the HOST of document.referrer (host only; the browser strips
   // path/query/fragment before sending — SC-8/SC-9). Drives entry_source. A full
@@ -524,11 +526,9 @@ async function recordTouch(
       : utmSource === "reddit"
       ? "reddit"
       : null;
-  const network = oneOf<Network>(body.network, NETWORKS) ?? utmNetwork ??
+  const requestedNetwork = oneOf<Network>(body.network, NETWORKS) ?? utmNetwork ??
     "other";
   const lane = oneOf<Lane>(body.lane, LANES);
-  const platform = oneOf<Platform>(body.platform, PLATFORMS) ??
-    (network !== "other" ? (network as Platform) : null);
 
   // Soft per-isolate rate limit on the anon path (keyed by hashed IP).
   const ip = firstClientIp(req);
@@ -540,7 +540,6 @@ async function recordTouch(
   const uaRaw = req.headers.get("user-agent");
   const uaHash = uaRaw ? await sha256Hex(uaRaw) : null;
 
-  const connectionId = await resolveConnectionId(client, platform, lane);
   const clickId = typeof body.click_id === "string" && body.click_id
     ? body.click_id
     : crypto.randomUUID();
@@ -559,7 +558,8 @@ async function recordTouch(
     ? body.utm.utm_medium.trim().toLowerCase()
     : "";
   const guardedUtmCampaign =
-    network !== "other" && utmMedium === "paid" && utmCampaign
+    requestedNetwork !== "other" &&
+      (utmMedium === "paid" || utmMedium === "paid_social") && utmCampaign
       ? utmCampaign
       : null;
   const campaign = await resolveCampaignFromParam(
@@ -573,9 +573,25 @@ async function recordTouch(
       body.external_click_id
     ? body.external_click_id
     : null;
+  const metaAdResolved = requestedNetwork !== "meta" || (
+    campaign.campaignId !== null &&
+    (mcId !== null || externalClickId !== null)
+  );
+  // A bare Instagram/Facebook referrer or unresolvable Meta macro is social,
+  // not paid. Keep both entry_source and the stored network honest.
+  const network: Network = requestedNetwork === "meta" && !metaAdResolved
+    ? "other"
+    : requestedNetwork;
+  const explicitPlatform = oneOf<Platform>(body.platform, PLATFORMS);
+  const platform = network === "other"
+    ? null
+    : explicitPlatform ?? (network as Platform);
+  const connectionId = await resolveConnectionId(client, platform, lane);
   const referrerHost = deriveReferrerHost(body.referrer);
-  const hasAdSignal = externalClickId !== null || afCId !== null ||
-    mcId !== null || campaign.campaignId !== null || network !== "other";
+  const hasAdSignal = requestedNetwork === "meta"
+    ? metaAdResolved && campaign.campaignId !== null
+    : externalClickId !== null || afCId !== null || mcId !== null ||
+      campaign.campaignId !== null || network !== "other";
   const entrySource = classifyEntrySource({ hasAdSignal, referrerHost });
 
   // Default granted when omitted so legacy callers keep sharing; Wave 0 clients
@@ -597,6 +613,12 @@ async function recordTouch(
     // above didn't resolve one (the campaign owns the authoritative connection).
     connection_id: connectionId ?? campaign.connectionId,
     campaign_id: campaign.campaignId, // ISSUE-865 PR1 WP-1 (was hard-coded null)
+    ad_set_id: typeof body.ad_set_id === "string" && body.ad_set_id.trim()
+      ? body.ad_set_id.trim().slice(0, 255)
+      : null,
+    ad_id: typeof body.ad_id === "string" && body.ad_id.trim()
+      ? body.ad_id.trim().slice(0, 255)
+      : null,
     brand_id: campaign.brandId, // resolved from the campaign's brand (WP-1)
     lane,
     af_c_id: afCId,
