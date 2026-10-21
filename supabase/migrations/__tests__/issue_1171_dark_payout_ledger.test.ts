@@ -232,42 +232,35 @@ BEGIN
   END IF;
   UPDATE public.event_dates SET end_at='2026-07-12T00:00:00Z'
   WHERE id=v_occurrence_b;
-  IF public.sync_post_release_postponement_debts('2026-07-10T00:00:00Z')<>1 THEN
-    RAISE EXCEPTION 'first forward edit did not open postponement debt';
+  -- Issue #3645 (append-only): a release paid before its event belongs to the
+  -- host. Moving the event later must not synthesize a claw-back debt. The
+  -- replaced assertions encoded the superseded event-reanchoring contract.
+  IF public.sync_post_release_postponement_debts('2026-07-10T00:00:00Z')<>0 OR
+     EXISTS(SELECT 1 FROM public.organiser_payout_debts
+       WHERE origin_release_id=v_release_b AND kind='post_release_postponement') THEN
+    RAISE EXCEPTION 'first forward edit opened a forbidden postponement debt';
   END IF;
-  SELECT id INTO v_debt FROM public.organiser_payout_debts
-  WHERE origin_release_id=v_release_b AND kind='post_release_postponement';
   UPDATE public.event_dates SET end_at='2026-07-14T00:00:00Z'
   WHERE id=v_occurrence_b;
-  PERFORM public.sync_post_release_postponement_debts('2026-07-10T00:00:01Z');
-  IF (SELECT count(*) FROM public.organiser_payout_debts
-      WHERE origin_release_id=v_release_b
-        AND kind='post_release_postponement')<>1 OR
-     (SELECT maturity_at FROM public.organiser_payout_debts WHERE id=v_debt)
-       <>'2026-07-15T00:00:00Z' THEN
-    RAISE EXCEPTION 'second forward edit duplicated debt or kept stale anchor';
+  IF public.sync_post_release_postponement_debts('2026-07-10T00:00:01Z')<>0 OR
+     EXISTS(SELECT 1 FROM public.organiser_payout_debts
+       WHERE origin_release_id=v_release_b AND kind='post_release_postponement') THEN
+    RAISE EXCEPTION 'second forward edit opened a forbidden postponement debt';
   END IF;
   UPDATE public.event_dates SET end_at='2026-07-06T20:00:00Z'
   WHERE id=v_occurrence_b;
-  PERFORM public.sync_post_release_postponement_debts('2026-07-10T00:00:02Z');
-  PERFORM public.mature_postponement_debts('2026-07-10T00:00:02Z');
-  IF (SELECT (principal_cents,recovered_cents,status)
-      FROM public.organiser_payout_debts WHERE id=v_debt)
-       IS DISTINCT FROM ROW(1000,0,'closed'::text) THEN
-    RAISE EXCEPTION 'backward edit left stale temporary withholding';
+  IF public.sync_post_release_postponement_debts('2026-07-10T00:00:02Z')<>0 OR
+     EXISTS(SELECT 1 FROM public.organiser_payout_debts
+       WHERE origin_release_id=v_release_b AND kind='post_release_postponement') THEN
+    RAISE EXCEPTION 'backward edit changed no-op postponement-debt truth';
   END IF;
   UPDATE public.event_dates SET end_at='2026-07-20T00:00:00Z'
   WHERE id=v_occurrence_b;
-  PERFORM public.sync_post_release_postponement_debts('2026-07-10T00:00:03Z');
-  IF (SELECT (id,principal_cents,recovered_cents,status)
-      FROM public.organiser_payout_debts WHERE id=v_debt)
-       IS DISTINCT FROM ROW(v_debt,1000,0,'open'::text) OR
-     (SELECT count(*) FROM public.organiser_payout_debts
-      WHERE origin_release_id=v_release_b
-        AND kind='post_release_postponement')<>1 THEN
-    RAISE EXCEPTION 'legitimate re-postponement did not reopen same clean debt';
+  IF public.sync_post_release_postponement_debts('2026-07-10T00:00:03Z')<>0 OR
+     EXISTS(SELECT 1 FROM public.organiser_payout_debts
+       WHERE origin_release_id=v_release_b AND kind='post_release_postponement') THEN
+    RAISE EXCEPTION 're-postponement opened a forbidden postponement debt';
   END IF;
-  PERFORM public.mature_postponement_debts('2026-07-23T00:00:00Z');
 
   INSERT INTO public.payout_source_fee_snapshots(
     source_type,source_id,provider_fee_cents

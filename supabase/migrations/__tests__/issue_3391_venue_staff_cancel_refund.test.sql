@@ -568,6 +568,12 @@ DECLARE
   v_res uuid := pg_temp.paid_booking('j', 'stripe', 'confirmed', now() - interval '5 days');
   v_refund public.source_refunds%ROWTYPE;
 BEGIN
+  -- Issue #3645: these payout/refund controls represent payments finalized
+  -- five days ago; reserved_for alone no longer makes a source mature.
+  UPDATE public.reservations
+     SET created_at = now() - interval '5 days'
+   WHERE id IN (v_control, v_res);
+
   INSERT INTO public.payout_source_fee_snapshots (source_type, source_id, provider_fee_cents)
   VALUES ('venue_reservation', pg_temp.fx('ses_j_control'), 175),
          ('venue_reservation', pg_temp.fx('ses_j'), 175);
@@ -617,6 +623,12 @@ DECLARE
   v_adjustment public.payout_ledger_adjustments%ROWTYPE;
   v_debt public.organiser_payout_debts%ROWTYPE;
 BEGIN
+  -- Issue #3645: this already-released control represents a payment finalized
+  -- five days ago; reserved_for alone no longer makes a source mature.
+  UPDATE public.reservations
+     SET created_at = now() - interval '5 days'
+   WHERE id = v_res;
+
   INSERT INTO public.payout_source_fee_snapshots (source_type, source_id, provider_fee_cents)
   VALUES ('venue_reservation', pg_temp.fx('ses_k'), 175);
   PERFORM public.run_payout_release_dark_sweep(now());
@@ -671,6 +683,12 @@ DECLARE
   v_res uuid := pg_temp.paid_booking('l', 'stripe', 'confirmed', now() - interval '5 days');
   v_landing text;
 BEGIN
+  -- Issue #3645: this pending-release control represents a payment finalized
+  -- five days ago; reserved_for alone no longer makes a source mature.
+  UPDATE public.reservations
+     SET created_at = now() - interval '5 days'
+   WHERE id = v_res;
+
   INSERT INTO public.payout_source_fee_snapshots (source_type, source_id, provider_fee_cents)
   VALUES ('venue_reservation', pg_temp.fx('ses_l'), 175);
   PERFORM public.run_payout_release_dark_sweep(now());
