@@ -158,6 +158,30 @@ BEGIN
     'matching private link unlocks the hidden tier and binds one unit');
 END $paid$;
 
+DO $door_labels$
+DECLARE
+  f record; v_link uuid := gen_random_uuid(); v_signup uuid := gen_random_uuid();
+  v_hash text := repeat('9',64); v_order uuid; v_labels jsonb; v_error text;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i3827l_fixture('door-labels');
+  PERFORM public.biz_ticket_link_create(f.o_owner,f.o_event,f.o_free,NULL,'Door invites',2,1,'auto',NULL,
+    v_link,decode('30112233445566778899aabbccddeeff','hex'),v_hash);
+  PERFORM public.pg_ticket_link_signup(v_hash,jsonb_build_array(
+      jsonb_build_object('name','Door Guest','email','door@example.test','phoneE164','+15550000006')),
+    NULL,v_signup,repeat('8',64),'i3827-private-links-test-qr-pepper-secret');
+  SELECT id INTO v_order FROM public.orders WHERE ticket_link_id=v_link;
+
+  v_labels := public.biz_ticket_link_order_labels(f.o_owner,f.o_event,ARRAY[v_order]);
+  PERFORM pg_temp.i3827l_assert(v_labels->>v_order::text='Door invites'
+    AND (SELECT count(*) FROM jsonb_object_keys(v_labels))=1,
+    'door attribution resolves in a separate permission-checked label map');
+
+  v_error := pg_temp.i3827l_err(format(
+    'SELECT public.biz_ticket_link_order_labels(%L,%L,ARRAY[%L]::uuid[])',
+    gen_random_uuid(),f.o_event,v_order));
+  PERFORM pg_temp.i3827l_assert(v_error='forbidden','door attribution refuses an unauthorised actor');
+END $door_labels$;
+
 DO $password_and_guide$
 DECLARE f record; v_error text; v_text text;
 BEGIN

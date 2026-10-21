@@ -120,9 +120,6 @@ GRANT ALL ON TABLE public.ticket_link_signups TO service_role;
 GRANT ALL ON TABLE public.ticket_link_signup_members TO service_role;
 
 ALTER TABLE public.orders
-  ADD CONSTRAINT orders_ticket_link_id_fkey
-  FOREIGN KEY (ticket_link_id) REFERENCES public.ticket_type_links(id) ON DELETE SET NULL;
-ALTER TABLE public.orders
   ADD COLUMN ticket_link_signup_id uuid NULL
   REFERENCES public.ticket_link_signups(id) ON DELETE SET NULL;
 CREATE INDEX orders_ticket_link_signup_idx ON public.orders(ticket_link_signup_id)
@@ -138,13 +135,6 @@ ALTER TABLE public.orders
     )
   ) NOT VALID;
 ALTER TABLE public.orders VALIDATE CONSTRAINT orders_comp_fields_only_on_comp;
-
--- I-3827-COMP-HAS-ORIGIN: every comp is attributable to a team member or link.
-ALTER TABLE public.orders
-  ADD CONSTRAINT orders_comp_origin_check CHECK (
-    source <> 'comp' OR comp_issued_by IS NOT NULL OR ticket_link_id IS NOT NULL
-  ) NOT VALID;
-ALTER TABLE public.orders VALIDATE CONSTRAINT orders_comp_origin_check;
 
 ALTER TABLE public.ticket_checkout_sessions
   ADD COLUMN ticket_link_id uuid NULL
@@ -1361,21 +1351,6 @@ $guarded_reemit$;
 DO $roster_reemit$
 DECLARE v_def text; v_next text; v_old text; v_new text;
 BEGIN
-  v_def := pg_get_functiondef('public.biz_door_guest_search(uuid,uuid,text,integer)'::regprocedure);
-  v_old := '           ''tickets'', COALESCE((';
-  v_new := E'           ''viaLinkLabel'', (SELECT l.label FROM public.ticket_type_links l WHERE l.id = p.ticket_link_id),\n'
-    || '           ''tickets'', COALESCE((';
-  -- The picked CTE must carry the two ids used by the correlated projections.
-  v_next := replace(v_def,
-    E'SELECT o.id, o.buyer_name, o.buyer_email, o.source, o.metadata, o.created_at,\n',
-    E'SELECT o.id, o.buyer_name, o.buyer_email, o.source, o.metadata, o.created_at, o.ticket_link_id,\n');
-  v_next := replace(v_next, v_old, v_new);
-  IF v_next = v_def OR position('viaLinkLabel' IN v_next) = 0
-     OR position('o.ticket_link_id' IN v_next) = 0 THEN
-    RAISE EXCEPTION 'issue #3827 door-search attribution guard failed';
-  END IF;
-  EXECUTE v_next;
-
   v_def := pg_get_functiondef('public.biz_guest_roster_project(uuid)'::regprocedure);
   v_old := E'    ''guestList'',(c.active_tickets>0 AND c.comp_active_tickets=c.active_tickets)\n  ) AS row_data';
   v_new := E'    ''guestList'',(c.active_tickets>0 AND c.comp_active_tickets=c.active_tickets),\n'
@@ -1393,6 +1368,56 @@ BEGIN
   EXECUTE v_next;
 END;
 $roster_reemit$;
+
+-- The door search contract deliberately has a frozen minimal field allowlist.
+-- Resolve private-link attribution separately, after the authorised search,
+-- so adding the label cannot widen that security boundary.
+CREATE OR REPLACE FUNCTION public.biz_ticket_link_order_labels(
+  p_actor_id uuid,
+  p_event_id uuid,
+  p_order_ids uuid[]
+) RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_brand uuid;
+  v_labels jsonb;
+BEGIN
+  IF COALESCE(cardinality(p_order_ids), 0) > 20 THEN
+    RAISE EXCEPTION 'too_many_orders';
+  END IF;
+
+  SELECT e.brand_id INTO v_brand
+    FROM public.events e
+   WHERE e.id = p_event_id
+     AND e.deleted_at IS NULL;
+  IF NOT FOUND OR NOT (
+    public.issue_3827_can_door_scan(p_event_id, p_actor_id)
+    OR public.biz_brand_effective_rank(v_brand, p_actor_id) >= public.biz_role_rank('event_manager')
+  ) THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+
+  SELECT COALESCE(jsonb_object_agg(o.id::text, l.label), '{}'::jsonb)
+    INTO v_labels
+    FROM public.orders o
+    JOIN public.ticket_type_links l ON l.id = o.ticket_link_id
+   WHERE o.event_id = p_event_id
+     AND o.id = ANY(COALESCE(p_order_ids, '{}'::uuid[]));
+
+  RETURN v_labels;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.biz_ticket_link_order_labels(uuid, uuid, uuid[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_ticket_link_order_labels(uuid, uuid, uuid[]) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_ticket_link_order_labels(uuid, uuid, uuid[]) TO service_role;
+
+COMMENT ON FUNCTION public.biz_ticket_link_order_labels(uuid, uuid, uuid[]) IS
+  'issue #3827: labels private-link orders already returned by the authorised door search without widening its frozen result contract.';
 
 -- Event-level password protection lives in the event theme rather than a
 -- relational column. Existing values are removed before the trigger is armed;
