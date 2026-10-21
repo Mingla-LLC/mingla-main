@@ -21,6 +21,8 @@ Every fact has one home:
 - What is live: the Feature Guide. An entry turns Live only when a complete release record names it.
 - What hosts are told: the Community roadmap and announcements. Seth approves every word.
 
+**Post every step on its Work card.** A chat that merges, deploys, applies a migration or switches something on, for work that has a Work board card, posts that step on the card straight away with the mingla connector's `update_work` (step number, status, result), then reads the card back to confirm it saved. A GitHub issue comment alone does not count: the card's "quiet for N h" timer reads only the card's last update. Work with no card gets one first with `add_work`. If the connector key fails (401), tell Seth to issue a new key from My agent in Mingla Admin.
+
 Every PR description has an `Issue:` link and a `Feature Guide:` line (entry keys or `none`); the "PR links" check reminds, and from a week after it landed it blocks. Do not merge a PR whose PR links check is red. On merge, the merge bot posts the release record on each linked issue:
 
     Release record for PR #<n>
