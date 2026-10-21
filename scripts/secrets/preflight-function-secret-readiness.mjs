@@ -172,6 +172,12 @@ export function assertLiveNameParity({
   // demanded. The comparison stays exact in both directions: a DECLARED name
   // that is absent still fails `missing:`, and any name outside
   // manifest+band still fails `unexpected:`.
+  //
+  // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat. The 89th
+  // declared name is SPRINT_ROLLOVER_TOKEN. The band in the contract narrowed
+  // to CHECKOUT_REVOCATION_EXECUTE alone, so remediation is still exactly 90
+  // (89 declared + 1 band) under the unchanged absolute ceiling, and normal
+  // mode passes at 89 and at 90. The literal 90 below is deliberately kept.
   const requiredLive = mode === "issue-2241-remediation"
     ? sortedUnique([...manifestNames, ...bandNames])
     : manifestNames;

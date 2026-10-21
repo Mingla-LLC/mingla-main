@@ -323,8 +323,8 @@ export function violations(files) {
   const conversion = manifest.secrets?.find((entry) => entry.name === "AD_CONVERSION_TOKENS");
   if (
     manifest.policy?.normal_ceiling !== 87 ||
-    manifest.rollout?.expected_user_managed_count !== 88 ||
-    manifest.secrets?.length !== 88 ||
+    manifest.rollout?.expected_user_managed_count !== 89 ||
+    manifest.secrets?.length !== 89 ||
     pepper?.class !== "cryptographic_secret" ||
     pepper?.issue !== 1770 ||
     JSON.stringify(pepper?.readers) !== JSON.stringify([
@@ -333,7 +333,8 @@ export function violations(files) {
       "supabase/functions/offering-invite-dispatch/index.ts",
     ]) || !conversion?.bundle_fields?.some((field) => field.name === "ONESIGNAL_EVENT_STREAM_TOKEN_CURRENT" && field.owner === "Messaging Engineering" && field.source_type === "secure_vault") ||
     !conversion?.bundle_fields?.some((field) => field.name === "ONESIGNAL_EVENT_STREAM_TOKEN_PREVIOUS" && field.owner === "Messaging Engineering" && field.source_type === "secure_vault")
-  ) failures.push("secret manifest: #1770 pepper contract missing from approved 88-name manifest");
+  ) failures.push("secret manifest: #1770 pepper contract missing from approved 89-name manifest");
+  // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat (SPRINT_ROLLOVER_TOKEN).
   return failures;
 }
 

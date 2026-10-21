@@ -14,9 +14,11 @@ const exceptionWindowNow = Date.parse("2026-08-30T04:00:00Z");
 // invite pepper, moving the exact governed live set from 86 to 87 names.
 // [TEST-MOD-APPROVED #2830] Founder-approved slot 88 is now the bounded Sites
 // credential envelope, with one current exception through 2026-11-28.
+// [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]: SPRINT_ROLLOVER_TOKEN is the
+// 89th declared name, so the 90/91 boundary fixtures need one fewer extra.
 
-test("issue #1203 HP-4: target manifest is names-only, complete, and green at 88", () => {
-  assert.equal(targetNames.length, 88);
+test("issue #1203 HP-4: target manifest is names-only, complete, and green at 89", () => {
+  assert.equal(targetNames.length, 89);
   assert.deepEqual(validateManifest(manifest, exceptionWindowNow), []);
   const result = auditSecretBudget({
     manifest,
@@ -24,8 +26,8 @@ test("issue #1203 HP-4: target manifest is names-only, complete, and green at 88
     nowMs: exceptionWindowNow,
   });
   assert.equal(result.ok, true);
-  assert.equal(result.count, 88);
-  assert.equal(result.freeSlots, 12);
+  assert.equal(result.count, 89);
+  assert.equal(result.freeSlots, 11);
   assert.deepEqual(result.failures, []);
   assert.equal(result.warnings.length, 1);
   assert.match(result.warnings[0], /issue=2830/);
@@ -33,7 +35,7 @@ test("issue #1203 HP-4: target manifest is names-only, complete, and green at 88
 
 test("issue #1203: 90 requires a current approved exception and 91 always fails", () => {
   const extraNames = Array.from(
-    { length: 3 },
+    { length: 2 },
     (_, index) => `SYNTHETIC_TEMPORARY_NAME_${index + 1}`,
   );
   const extraRecord = {
@@ -53,12 +55,12 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
     ...manifest,
     secrets: [
       ...manifest.secrets,
-      ...extraNames.slice(0, 2).map((name) => ({ ...extraRecord, name })),
+      ...extraNames.slice(0, 1).map((name) => ({ ...extraRecord, name })),
     ],
   };
   const withoutException = auditSecretBudget({
     manifest: { ...manifest90, exceptions: [] },
-    liveNames: [...targetNames, ...extraNames.slice(0, 2)],
+    liveNames: [...targetNames, ...extraNames.slice(0, 1)],
     nowMs: exceptionWindowNow,
   });
   assert.equal(withoutException.ok, false);
@@ -74,7 +76,7 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
         expires_at: "2026-08-31T00:00:00Z",
       }],
     },
-    liveNames: [...targetNames, ...extraNames.slice(0, 2)],
+    liveNames: [...targetNames, ...extraNames.slice(0, 1)],
     nowMs: exceptionWindowNow,
   });
   assert.equal(withException.ok, true);
