@@ -1,6 +1,6 @@
 -- Issue #4037 — host traffic capture and rollups: implementor happy-path proof.
 -- Fails on revert of 20271210004037_issue_4037_host_traffic_analytics.sql.
--- MINGLA-INVARIANT: I-4037-TRAFFIC-BRAND-DAY | issue #4037 | A visit's day bucket is fixed at write time in the brand timezone (payout country, then brand address or main venue, then the brand's own events, then UTC); the visitor salt rotates at the brand's local midnight; brand-wide visitors count once per brand-day under their first source; bookings and value come only from completed orders, reservations and RSVPs.
+-- MINGLA-INVARIANT: I-4037-TRAFFIC-BRAND-DAY | issue #4037 | A visit's day bucket is fixed at write time in the brand timezone (payout account country, then brand address or main venue, then the brand's own events, then UTC); the visitor salt rotates at the brand's local midnight; brand-wide visitors count once per brand-day under their first source; bookings and value come only from completed orders, reservations and RSVPs.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -30,17 +30,23 @@ INSERT INTO public.creator_accounts(id, email) VALUES
 
 -- London (GB payout), New York (US payout + NYC address), Lagos (NG payout),
 -- and a brand with nothing to go on (UTC).
-INSERT INTO public.brands(id, account_id, name, slug, default_currency, payout_country, lat, lng, country_code, social_links)
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, payment_provider, payment_country, lat, lng, country_code, social_links)
 VALUES
   ('40370000-0000-4000-8000-0000000000b1', '40370000-0000-4000-8000-0000000000a1',
-   'Issue 4037 London', 'issue-4037-london', 'GBP', 'GB', NULL, NULL, NULL,
+   'Issue 4037 London', 'issue-4037-london', 'GBP', 'stripe', NULL, NULL, NULL, NULL,
    '{"website":"https://www.london-4037.example"}'::jsonb),
   ('40370000-0000-4000-8000-0000000000b2', '40370000-0000-4000-8000-0000000000a1',
-   'Issue 4037 New York', 'issue-4037-new-york', 'USD', 'US', 40.7128, -74.0060, 'US', '{}'::jsonb),
+   'Issue 4037 New York', 'issue-4037-new-york', 'USD', 'stripe', NULL, 40.7128, -74.0060, 'US', '{}'::jsonb),
   ('40370000-0000-4000-8000-0000000000b3', '40370000-0000-4000-8000-0000000000a1',
-   'Issue 4037 Lagos', 'issue-4037-lagos', 'NGN', 'NG', NULL, NULL, NULL, '{}'::jsonb),
+   'Issue 4037 Lagos', 'issue-4037-lagos', 'NGN', 'paystack', 'NG', NULL, NULL, NULL, '{}'::jsonb),
   ('40370000-0000-4000-8000-0000000000b4', '40370000-0000-4000-8000-0000000000a1',
-   'Issue 4037 Nowhere', 'issue-4037-nowhere', 'GBP', NULL, NULL, NULL, NULL, '{}'::jsonb);
+   'Issue 4037 Nowhere', 'issue-4037-nowhere', 'GBP', 'stripe', NULL, NULL, NULL, NULL, '{}'::jsonb);
+
+-- Payout accounts: London pays out to a GB Stripe account, New York to a US one.
+INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id, country, default_currency)
+VALUES
+  ('40370000-0000-4000-8000-0000000000b1', 'acct_issue4037london', 'GB', 'GBP'),
+  ('40370000-0000-4000-8000-0000000000b2', 'acct_issue4037newyork', 'US', 'USD');
 
 INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at) VALUES
   ('40370000-0000-4000-8000-0000000000b1', '40370000-0000-4000-8000-0000000000a2',
@@ -84,13 +90,13 @@ SET LOCAL session_replication_role = origin;
 -- ── H1: brand timezone (decision 1) ─────────────────────────────────────────
 SELECT pg_temp.t4037_assert(
   public.offering_traffic_brand_timezone('40370000-0000-4000-8000-0000000000b1') = 'Europe/London',
-  'H1 GB payout country resolves to Europe/London');
+  'H1 a GB payout account resolves to Europe/London');
 SELECT pg_temp.t4037_assert(
   public.offering_traffic_brand_timezone('40370000-0000-4000-8000-0000000000b2') = 'America/New_York',
-  'H1 multi-zone US payout country resolves through the brand address to America/New_York');
+  'H1 a multi-zone US payout account resolves through the brand address to America/New_York');
 SELECT pg_temp.t4037_assert(
   public.offering_traffic_brand_timezone('40370000-0000-4000-8000-0000000000b3') = 'Africa/Lagos',
-  'H1 NG payout country resolves to Africa/Lagos');
+  'H1 a Paystack NG payment country resolves to Africa/Lagos');
 SELECT pg_temp.t4037_assert(
   public.offering_traffic_brand_timezone('40370000-0000-4000-8000-0000000000b4') = 'UTC',
   'H1 a brand with no country, address, venue or event zone falls back to UTC');

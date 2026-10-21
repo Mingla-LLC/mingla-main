@@ -64,12 +64,12 @@ INSERT INTO auth.users(id, email) VALUES
 INSERT INTO public.creator_accounts(id, email) VALUES
   ('40371000-0000-4000-8000-0000000000a1', 'owner-adv-4037@example.test');
 
-INSERT INTO public.brands(id, account_id, name, slug, default_currency, payout_country)
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, payment_provider, payment_country)
 VALUES
   ('40371000-0000-4000-8000-0000000000b1', '40371000-0000-4000-8000-0000000000a1',
-   'Adv 4037 Lagos', 'adv-4037-lagos', 'NGN', 'NG'),
+   'Adv 4037 Lagos', 'adv-4037-lagos', 'NGN', 'paystack', 'NG'),
   ('40371000-0000-4000-8000-0000000000b2', '40371000-0000-4000-8000-0000000000a1',
-   'Adv 4037 Other', 'adv-4037-other', 'GBP', 'GB');
+   'Adv 4037 Other', 'adv-4037-other', 'GBP', 'stripe', NULL);
 
 -- The member belongs to Lagos only.
 INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at) VALUES

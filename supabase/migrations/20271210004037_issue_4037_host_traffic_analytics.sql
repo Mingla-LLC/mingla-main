@@ -211,6 +211,10 @@ COMMENT ON TABLE public.offering_engagement_brand_daily IS
   'Issue #4037: brand-wide visitors, each visitor counted once per brand-day under the source of their first visit that day (decision 6). Kept forever.';
 
 -- ── 2. Brand timezone (decision 1) ──────────────────────────────────────────
+-- The payout country is the country of the brand's live payout account: the
+-- connected Stripe account's country, else the Paystack payment country. The
+-- host's picker choice on brands is display-only (#3645 A-02 forbids any
+-- routine reading it), so it is deliberately not an input here.
 -- Payout country -> its zone when the country has one zone. Countries with
 -- several zones (any rectangle row in venue_timezone_regions, plus the large
 -- multi-zone countries the table carries as one row) and unknown countries go
@@ -229,7 +233,7 @@ DECLARE
   v_zone text;
   v_multi boolean;
 BEGIN
-  SELECT b.payout_country, b.payment_country, b.country_code, b.lat, b.lng
+  SELECT b.payment_country, b.country_code, b.lat, b.lng
     INTO v_brand
   FROM public.brands b
   WHERE b.id = p_brand_id;
@@ -238,7 +242,6 @@ BEGIN
   END IF;
 
   v_country := upper(btrim(COALESCE(
-    v_brand.payout_country,
     (SELECT account.country::text FROM public.stripe_connect_accounts account
       WHERE account.brand_id = p_brand_id AND account.detached_at IS NULL
       LIMIT 1),
