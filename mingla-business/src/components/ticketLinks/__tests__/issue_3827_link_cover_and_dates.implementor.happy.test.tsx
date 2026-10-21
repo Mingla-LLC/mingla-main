@@ -51,7 +51,7 @@ jest.mock("../../ui/Button", () => {
   const { Pressable, Text } = jest.requireActual("react-native");
   return {
     Button: ({ label, onPress }: { label: string; onPress: () => void }) => (
-      <Pressable label={label} onPress={onPress}><Text>{label}</Text></Pressable>
+      <Pressable label={label} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}><Text>{label}</Text></Pressable>
     ),
   };
 });
