@@ -12,7 +12,7 @@ describe("#4037 consumer aggregate capture", () => {
     assert.match(source, /"app_impression" \| "app_open"/);
     assert.ok(
       source.includes(
-      'surface: Platform.OS === "ios" ? "consumer_ios" : "consumer_android"',
+        'surface: Platform.OS === "ios" ? "consumer_ios" : "consumer_android"',
       ),
     );
     for (const forbidden of [
