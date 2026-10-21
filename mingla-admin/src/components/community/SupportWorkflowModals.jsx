@@ -9,9 +9,11 @@ import {
   createInternalSupportThread,
   createProductSignal,
   linkSourceToProductSignal,
+  reassignProductSignal,
   setSupportNextUpdate,
   updateProductSignal,
 } from "../../services/supportProductWorkflowService";
+import { listSupportStaffRoster } from "../../services/communityService";
 import { findRelatedSignals } from "./supportWorkflowUtils";
 
 const labelClass = "block space-y-1.5 text-sm font-medium text-[var(--color-text-primary)]";
@@ -379,6 +381,8 @@ export function ProductInboxModal({ open, signals, onClose, onSaved, onError }) 
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [staffRoster, setStaffRoster] = useState([]);
+  const [reassigning, setReassigning] = useState(false);
   const selected = signals.find((signal) => signal.id === selectedId) || null;
 
   useEffect(() => {
@@ -386,6 +390,9 @@ export function ProductInboxModal({ open, signals, onClose, onSaved, onError }) 
     setSelectedId((current) => current && signals.some((signal) => signal.id === current)
       ? current
       : signals[0]?.id || null);
+    void listSupportStaffRoster()
+      .then((rows) => setStaffRoster((rows || []).filter((row) => row.enabled)))
+      .catch(() => setStaffRoster([]));
   }, [open, signals]);
 
   useEffect(() => {
@@ -426,6 +433,23 @@ export function ProductInboxModal({ open, signals, onClose, onSaved, onError }) 
     }
   }
 
+  async function reassignOwner(ownerUserId) {
+    if (!selected || !ownerUserId || ownerUserId === selected.owner_user_id || reassigning) return;
+    setReassigning(true);
+    try {
+      await reassignProductSignal({
+        signalId: selected.id,
+        expectedRevision: selected.revision,
+        ownerUserId,
+      });
+      await onSaved();
+    } catch (error) {
+      onError(error);
+    } finally {
+      setReassigning(false);
+    }
+  }
+
   return (
     <Modal open={open} onClose={onClose} title="Product inbox" size="xl">
       <ModalBody className="!p-0">
@@ -460,6 +484,20 @@ export function ProductInboxModal({ open, signals, onClose, onSaved, onError }) 
                   <div className="md:col-span-2"><span className="text-[var(--color-text-tertiary)]">Impact</span><div>{selected.impact_summary}</div></div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
+                  <label className={labelClass}>Owner
+                    <Select
+                      value={selected.owner_user_id || ""}
+                      onChange={(event) => void reassignOwner(event.target.value)}
+                      disabled={reassigning || staffRoster.length === 0}
+                      options={[
+                        { value: "", label: "Choose a teammate" },
+                        ...staffRoster.map((row) => ({
+                          value: row.user_id,
+                          label: row.display_name || row.user_id.slice(0, 8),
+                        })),
+                      ]}
+                    />
+                  </label>
                   <label className={labelClass}>State<Select value={form.state} onChange={(event) => set('state', event.target.value)} options={['needs_review', 'waiting_details', 'ready_product', 'linked', 'update_due', 'released', 'closed'].map((value) => ({ value, label: value.replaceAll('_', ' ') }))} /></label>
                   <label className={labelClass}>Priority<Select value={form.priority} onChange={(event) => set('priority', event.target.value)} options={['low', 'normal', 'high', 'urgent'].map((value) => ({ value, label: value }))} /></label>
                   <label className={labelClass}>Next Product update<Input type="datetime-local" min={futureLocal(0.25)} value={form.nextUpdateAt} onChange={(event) => set('nextUpdateAt', event.target.value)} /></label>

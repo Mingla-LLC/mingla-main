@@ -58,6 +58,12 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 
+const TicketLinksSheet = React.lazy(() =>
+  import("../guests/TicketLinksSheet").then((module) => ({
+    default: module.TicketLinksSheet,
+  })),
+);
+
 // ---- Web datetime helpers -------------------------------------------
 
 // Web-only helpers for the datetime-local sale period picker.
@@ -138,8 +144,8 @@ const VISIBILITY_OPTIONS: readonly {
   },
   {
     id: "hidden",
-    label: "Hidden — direct link only",
-    sub: "Not listed on the public page; only buyers with the direct link see it.",
+    label: "Hidden — private links only",
+    sub: "Not listed publicly. Create revocable links for this ticket after saving.",
   },
   {
     id: "disabled",
@@ -443,6 +449,10 @@ export interface TicketTierEditSheetProps {
    * every other caller renders exactly as before.
    */
   renderUnderPrice?: (priced: boolean) => React.ReactNode;
+  /** Published-event context for opening private links from a hidden tier. */
+  privateLinksEnabled?: boolean;
+  eventTitle?: string;
+  allTickets?: TicketStub[];
 }
 
 /** issue #3645 — is the text in the Price field a price above zero? */
@@ -470,6 +480,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   eventCurrency,
   eventId = null,
   renderUnderPrice,
+  privateLinksEnabled = false,
+  eventTitle = "Event",
+  allTickets = [],
 }) => {
   // ORCH-0704 v2: when this tier has sales, lock price + isFree + isUnlimited
   // fields and surface the refund-first messaging.
@@ -494,9 +507,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   // Cycle 5 (v4) modifier state
   const [visibility, setVisibility] = useState<TicketVisibility>("public");
   const [approvalRequired, setApprovalRequired] = useState<boolean>(false);
-  const [passwordProtected, setPasswordProtected] = useState<boolean>(false);
-  const [password, setPassword] = useState<string>("");
-  const [passwordConfigured, setPasswordConfigured] = useState<boolean>(false);
   const [waitlistEnabled, setWaitlistEnabled] = useState<boolean>(false);
   const [minQtyText, setMinQtyText] = useState<string>("1");
   const [maxQtyText, setMaxQtyText] = useState<string>("");
@@ -527,10 +537,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const saleStartInputRef = useRef<HTMLInputElement | null>(null);
   const saleEndInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Password reveal toggle. Resets to hidden every time the sheet opens
-  // (security: never reveal on resume).
-  const [passwordRevealed, setPasswordRevealed] = useState<boolean>(false);
-
   // Visibility sub-sheet
   const [visSheetVisible, setVisSheetVisible] = useState<boolean>(false);
 
@@ -547,6 +553,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const [availSheetVisible, setAvailSheetVisible] = useState<boolean>(false);
   const [waitlistEntriesSheetVisible, setWaitlistEntriesSheetVisible] =
     useState<boolean>(false);
+  const [privateLinksVisible, setPrivateLinksVisible] = useState(false);
   const eventWaitlistQuery = useEventWaitlist(eventId);
 
   // Keyboard awareness — handled natively via the ScrollView's
@@ -564,8 +571,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   // Sync state from initial when sheet opens
   useEffect(() => {
     if (!visible) return;
-    // Always reset reveal-state on sheet open — never auto-show a saved password.
-    setPasswordRevealed(false);
     setTouched(UNTOUCHED);
     if (initial !== null) {
       setName(initial.name);
@@ -583,9 +588,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       );
       setVisibility(initial.visibility);
       setApprovalRequired(initial.approvalRequired);
-      setPasswordProtected(initial.passwordProtected);
-      setPassword(initial.password ?? "");
-      setPasswordConfigured(initial.passwordConfigured === true);
       setWaitlistEnabled(initial.waitlistEnabled);
       setMinQtyText(String(initial.minPurchaseQty));
       setMaxQtyText(
@@ -604,9 +606,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       setCapacityText("");
       setVisibility("public");
       setApprovalRequired(false);
-      setPasswordProtected(false);
-      setPassword("");
-      setPasswordConfigured(false);
       setWaitlistEnabled(false);
       setMinQtyText("1");
       setMaxQtyText("");
@@ -621,10 +620,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const isEditMode = initial !== null;
 
   // Inline validation hints (live — not from validateTickets, just for UX feedback)
-  const passwordTooShort =
-    passwordProtected &&
-    !passwordConfigured &&
-    (password.length === 0 || password.length < 4);
   const waitlistConflict = waitlistEnabled && isUnlimited;
   const parsedMinQty = parseInt(minQtyText, 10);
   const parsedMaxQty =
@@ -689,7 +684,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   // into the draft in the first place.
   const canSave =
     name.trim().length > 0 &&
-    !passwordTooShort &&
     !waitlistConflict &&
     !minTooLow &&
     !maxLessThanMin &&
@@ -725,9 +719,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   if (minTooLow) block("Minimum per buyer must be at least 1.");
   if (maxLessThanMin) {
     block("Maximum per buyer is lower than the minimum.");
-  }
-  if (passwordTooShort) {
-    block("Password must be at least 4 characters.");
   }
   if (waitlistConflict) {
     block("A waitlist needs a limited capacity.");
@@ -893,10 +884,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       // Preserve displayOrder when editing; assign nextOrder when creating
       displayOrder: initial?.displayOrder ?? nextOrder,
       approvalRequired,
-      passwordProtected,
-      password: passwordProtected && password.length > 0 ? password : null,
-      passwordConfigured:
-        passwordProtected && (passwordConfigured || password.length >= 4),
+      // issue #3827 — passwords are retired in favour of revocable private
+      // links. Saving an old draft also scrubs any persisted password state.
+      passwordProtected: false,
+      password: null,
+      passwordConfigured: false,
       waitlistEnabled,
       minPurchaseQty: safeMinQty,
       maxPurchaseQty: safeMaxQty,
@@ -918,9 +910,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     capacityText,
     visibility,
     approvalRequired,
-    passwordProtected,
-    password,
-    passwordConfigured,
     waitlistEnabled,
     parsedMinQty,
     parsedMaxQty,
@@ -1189,6 +1178,21 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             </Pressable>
           </View>
 
+          {privateLinksEnabled && initial !== null && visibility === "hidden" && eventId !== null ? (
+            <Pressable
+              onPress={() => setPrivateLinksVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Manage private links for ${initial.name}`}
+              style={styles.pickerRow}
+            >
+              <View style={styles.pickerTextWrap}>
+                <Text style={styles.fieldLabel}>Private links</Text>
+                <Text style={styles.helperHint}>Create, copy, reset or revoke access to this hidden ticket.</Text>
+              </View>
+              <Icon name="chevR" size={16} color={textTokens.tertiary} />
+            </Pressable>
+          ) : null}
+
           {/* ───── Section: Available at (Cycle 12) ───── */}
           <Text style={styles.sectionHeader}>Available at</Text>
           <View style={styles.field}>
@@ -1213,69 +1217,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             onChange={setApprovalRequired}
             accessibilityLabel="Approval required"
           />
-
-          <ToggleRow
-            label="Password protected"
-            sub="Only buyers with the password can purchase."
-            value={passwordProtected}
-            onChange={setPasswordProtected}
-            accessibilityLabel="Password protected"
-          />
-
-          {passwordProtected ? (
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Password</Text>
-              <View
-                style={[
-                  styles.inputWrap,
-                  passwordTooShort && styles.inputWrapError,
-                ]}
-              >
-                <TextInput
-                  value={password}
-                  onChangeText={(value) => {
-                    setPassword(value);
-                    if (value.length > 0) setPasswordConfigured(false);
-                  }}
-                  placeholder={
-                    passwordConfigured
-                      ? "Password already set"
-                      : "Min 4 characters"
-                  }
-                  placeholderTextColor={textTokens.quaternary}
-                  secureTextEntry={!passwordRevealed}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  style={styles.textInput}
-                  accessibilityLabel="Ticket password"
-                />
-                <Pressable
-                  onPress={() => setPasswordRevealed((prev) => !prev)}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    passwordRevealed ? "Hide password" : "Show password"
-                  }
-                  hitSlop={8}
-                  style={styles.passwordRevealBtn}
-                >
-                  <Text style={styles.passwordRevealLabel}>
-                    {passwordRevealed ? "Hide" : "Show"}
-                  </Text>
-                </Pressable>
-              </View>
-              {passwordTooShort ? (
-                <Text style={styles.helperError}>
-                  Password must be at least 4 characters.
-                </Text>
-              ) : (
-                <Text style={styles.helperHint}>
-                  {passwordConfigured
-                    ? "Password is set. Enter a new password to replace it."
-                    : "Password is saved securely for this draft."}
-                </Text>
-              )}
-            </View>
-          ) : null}
 
           <ToggleRow
             label="Enable waitlist"
@@ -1680,6 +1621,20 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
         entries={waitlistRow?.recent ?? []}
         onClose={() => setWaitlistEntriesSheetVisible(false)}
       />
+
+      {eventId !== null && initial !== null ? (
+        <React.Suspense fallback={null}>
+          <TicketLinksSheet
+            visible={privateLinksVisible}
+            eventId={eventId}
+            eventTitle={eventTitle}
+            tickets={allTickets.length > 0 ? allTickets : [initial]}
+            initialTicketTypeId={initial.id}
+            startCreating
+            onClose={() => setPrivateLinksVisible(false)}
+          />
+        </React.Suspense>
+      ) : null}
     </Sheet>
   );
 };
@@ -1917,6 +1872,11 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.primary,
+  },
+  pickerTextWrap: {
+    flex: 1,
+    gap: 2,
+    paddingRight: spacing.sm,
   },
   pickerPlaceholder: {
     fontSize: typography.body.fontSize,

@@ -27,8 +27,8 @@ function Harness(): React.ReactElement {
         timezone="America/New_York"
         palette={palette}
         occurrences={[
-          { id: "later", startAt: "2026-08-30T17:00:00.000Z", endAt: "2026-08-30T20:00:00.000Z", timezone: "America/New_York", isMaster: false, ticketsRemaining: null },
-          { id: "earlier", startAt: "2026-08-29T17:00:00.000Z", endAt: "2026-08-29T20:00:00.000Z", timezone: "America/New_York", isMaster: true, ticketsRemaining: null },
+          { id: "later", startAt: "2027-08-30T17:00:00.000Z", endAt: "2027-08-30T20:00:00.000Z", timezone: "America/New_York", isMaster: false, ticketsRemaining: null },
+          { id: "earlier", startAt: "2027-08-29T17:00:00.000Z", endAt: "2027-08-29T20:00:00.000Z", timezone: "America/New_York", isMaster: true, ticketsRemaining: null },
         ].sort((a, b) => a.startAt.localeCompare(b.startAt))}
         selectedOccurrenceIds={selected}
         pricingMode="per_day"

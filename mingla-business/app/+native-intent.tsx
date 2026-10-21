@@ -115,6 +115,7 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "event",
   "exp",
   "experience",
+  "g",
   "home",
   "hub",
   "insights",

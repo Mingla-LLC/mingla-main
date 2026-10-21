@@ -495,10 +495,18 @@ describe("CR — event create wizard: Settings, validation, draft, publish", () 
     expect(errors[0].step).toBe(5);
   });
 
-  test("CR-5 the persisted draft store is v14 and backfills a missing refund policy as null", async () => {
+  test("CR-5 the persisted draft store is v15, backfills refund terms, and retires passwords", async () => {
     const options = useDraftEventStore.persist.getOptions();
-    expect(options.version).toBe(14);
-    const legacy = draft({ refundPolicy: undefined });
+    // [TEST-MOD-APPROVED #3827] v15 adds a one-way retirement migration on top
+    // of the unchanged v14 refund-policy backfill; prove both transformations.
+    expect(options.version).toBe(15);
+    const legacy = draft({ refundPolicy: undefined, passwordProtected: true });
+    legacy.tickets = legacy.tickets.map((ticket) => ({
+      ...ticket,
+      passwordProtected: true,
+      password: "retired-password",
+      passwordConfigured: true,
+    }));
     delete (legacy as { refundPolicy?: unknown }).refundPolicy;
     const kept = draft({ id: "d_kept", refundPolicy: EVENT_STRICT_POLICY });
     const migrated = (await options.migrate?.({ drafts: [legacy, kept] }, 13)) as {
@@ -506,6 +514,12 @@ describe("CR — event create wizard: Settings, validation, draft, publish", () 
     };
     expect(Object.prototype.hasOwnProperty.call(migrated.drafts[0], "refundPolicy")).toBe(true);
     expect(migrated.drafts[0].refundPolicy).toBeNull();
+    expect(migrated.drafts[0].passwordProtected).toBe(false);
+    expect(migrated.drafts[0].tickets[0]).toMatchObject({
+      passwordProtected: false,
+      password: null,
+      passwordConfigured: false,
+    });
     expect(migrated.drafts[1].refundPolicy).toEqual(EVENT_STRICT_POLICY);
     expect(buildDraftEvent("brand-1").refundPolicy).toBeNull();
   });

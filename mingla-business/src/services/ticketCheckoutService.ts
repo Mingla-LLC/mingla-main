@@ -32,6 +32,8 @@ export interface TicketCheckoutCreateInput {
   eventId: string;
   buyer: BuyerDetails;
   lines: TicketCheckoutCreateLine[];
+  /** issue #3827 — bearer proof for hidden private-ticket tiers. */
+  ticketLinkToken?: string;
   /**
    * issue #2150 — the buyer status token from THIS guest's earlier submit for
    * this event, when the browser still holds one.
@@ -680,6 +682,12 @@ export const PAID_CHECKOUT_NO_HANDOFF_MESSAGE =
 export const PAID_CHECKOUT_FAILED_MESSAGE =
   "We couldn't start your payment. You have not been charged — please try again.";
 
+export const PRIVATE_TICKET_LINK_INACTIVE_MESSAGE =
+  "This private ticket link is no longer active. You have not been charged — ask the host for a new link.";
+
+export const PRIVATE_TICKET_LINK_FULL_MESSAGE =
+  "All tickets available through this private link have been taken. You have not been charged.";
+
 /**
  * issue #2198 [paystack-return-verify] — the RETURN leg's outcomes.
  *
@@ -723,6 +731,10 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   }
   if (code === "checkout_in_progress") return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
   if (code === "checkout_unavailable") return PAID_CHECKOUT_UNAVAILABLE_MESSAGE;
+  if (code === "ticket_link_not_active" || code === "ticket_link_invalid") {
+    return PRIVATE_TICKET_LINK_INACTIVE_MESSAGE;
+  }
+  if (code === "ticket_link_full") return PRIVATE_TICKET_LINK_FULL_MESSAGE;
   // issue #3281 — booked-start refusals arrive as bare error codes on paid too.
   {
     const bookedStartCopy = checkoutRefusalRaiseMessage(code);
@@ -802,6 +814,9 @@ export const createTicketCheckout = async (
     .catch(() => undefined);
   const result = await invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
     eventId: input.eventId,
+    ...(input.ticketLinkToken !== undefined
+      ? { ticketLinkToken: input.ticketLinkToken }
+      : {}),
     returnContract: "host_v1",
     ...(isCheckoutV2
       ? {
