@@ -126,6 +126,7 @@ import {
 import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 // ORCH-1246 (Apple 2.1) — gate the ATT request on foreground-active state.
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
+import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -628,8 +629,10 @@ function RootLayoutInner(): React.ReactElement {
     // Foreground: show the system banner for every business push (consumer
     // chose "app feels alive"; SDK v5 needs an explicit display()).
     const removeForeground = onForegroundNotification(
-      (_data, _prevent, display) => {
-        display();
+      (data, _prevent, display) => {
+        if (shouldDisplayForegroundBusinessNotification(data, pathname)) {
+          display();
+        }
       },
     );
 
@@ -656,7 +659,7 @@ function RootLayoutInner(): React.ReactElement {
       removeForeground();
       removeClicked();
     };
-  }, [router, userId, navigationStartupSettled]);
+  }, [router, userId, navigationStartupSettled, pathname]);
 
   // #3720 — flush a held authenticated push target once startup navigation
   // has settled (auth ready and no longer on boot `/`), so index → Home cannot

@@ -4,6 +4,7 @@ import {
   Alert,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -17,6 +18,7 @@ import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGr
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
+import { Toast } from "../../src/components/ui/Toast";
 import {
   accent,
   canvas,
@@ -33,7 +35,6 @@ import {
   listBrandGroupMessages,
   markBrandGroupRead,
   sendBrandGroupMessage,
-  setBrandGroupWatch,
   type BrandGroupMessage,
 } from "../../src/services/brandGroupsService";
 import { supabase } from "../../src/services/supabase";
@@ -51,7 +52,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const staff = useSupportStaff();
-  const { groups, refresh: refreshGroups } = useBrandGroups();
+  const { groups, refresh: refreshGroups, setMuted } = useBrandGroups();
   const group = groups.find((item) => item.conversation_id === conversationId) ?? null;
   const canBrand = group?.access_kind === "brand";
   const canSupport = staff.isStaff;
@@ -65,8 +66,11 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<BrandGroupMessage | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [watching, setWatching] = useState(false);
-  const [watchBusy, setWatchBusy] = useState(false);
+  const [muteBusy, setMuteBusy] = useState(false);
+  const [toast, setToast] = useState<{ visible: boolean; message: string }>({
+    visible: false,
+    message: "",
+  });
   const [signalSourceId, setSignalSourceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [filePickerVisible, setFilePickerVisible] = useState(false);
@@ -74,7 +78,6 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
 
   useEffect(() => {
     if (!group) return;
-    setWatching(group.push_enabled);
     if (group.access_kind === "support") setActorMode("support");
     else if (!canSupport) setActorMode("brand");
   }, [canSupport, group]);
@@ -144,17 +147,21 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
     }
   }
 
-  async function toggleWatch(): Promise<void> {
-    if (!conversationId || watchBusy) return;
-    setWatchBusy(true);
+  async function toggleMute(): Promise<void> {
+    if (!conversationId || !group || muteBusy) return;
+    const muted = !group.muted;
+    setMuteBusy(true);
     try {
-      const enabled = await setBrandGroupWatch(conversationId, !watching);
-      setWatching(enabled);
-      setNotice(enabled ? "Push notifications are on for this Brand group." : "You will still see unread badges, without ordinary push alerts.");
+      await setMuted(conversationId, muted);
     } catch (cause) {
-      Alert.alert("Couldn't update notifications", cause instanceof Error ? cause.message : "Try again.");
+      setToast({
+        visible: true,
+        message: cause instanceof Error
+          ? cause.message
+          : "Couldn't update notifications. Try again.",
+      });
     } finally {
-      setWatchBusy(false);
+      setMuteBusy(false);
     }
   }
 
@@ -172,16 +179,25 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           <Text style={styles.title} numberOfLines={1}>{group?.brand_name || "Brand group"}</Text>
           <Text style={styles.subtitle} numberOfLines={1}>{group ? `${group.member_count} brand teammates · Mingla Support can help here` : "Official Brand group"}</Text>
         </View>
-        <Pressable
-          accessibilityRole="switch"
-          accessibilityState={{ checked: watching, busy: watchBusy }}
-          accessibilityLabel={watching ? "Turn off ordinary Brand group push notifications" : "Turn on Brand group push notifications"}
-          onPress={() => void toggleWatch()}
-          style={[styles.watchButton, watching && styles.watchButtonActive]}
-        >
-          <Text style={[styles.watchText, watching && styles.watchTextActive]}>{watching ? "Watching" : "Watch"}</Text>
-        </Pressable>
+        <View style={styles.muteControl}>
+          <Text style={styles.muteLabel}>Mute notifications</Text>
+          <Switch
+            value={group?.muted ?? false}
+            onValueChange={() => void toggleMute()}
+            disabled={!group || muteBusy}
+            trackColor={{ false: "rgba(255,255,255,0.12)", true: accent.warm }}
+            thumbColor="#ffffff"
+            accessibilityLabel="Mute notifications"
+            accessibilityState={{ checked: group?.muted ?? false, disabled: !group || muteBusy }}
+          />
+        </View>
       </View>
+
+      {group?.muted ? (
+        <View style={styles.mutedNote}>
+          <Text style={styles.mutedNoteText}>Muted: you'll still see unread badges, but no push alerts for this group.</Text>
+        </View>
+      ) : null}
 
       {canBrand && canSupport ? (
         <View style={styles.actorBar}>
@@ -303,6 +319,12 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
         />
       ) : null}
       <BrandGroupFilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+      <Toast
+        visible={toast.visible}
+        kind="error"
+        message={toast.message}
+        onDismiss={() => setToast({ visible: false, message: "" })}
+      />
     </SafeScreen>
   );
 }
@@ -314,10 +336,10 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, minWidth: 0 },
   title: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
   subtitle: { color: textTokens.tertiary, fontSize: 12, marginTop: 2 },
-  watchButton: { minHeight: 44, minWidth: 66, paddingHorizontal: spacing.sm, alignItems: "center", justifyContent: "center", borderRadius: 22, borderWidth: 1, borderColor: glass.border.profileElevated },
-  watchButtonActive: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.1)" },
-  watchText: { color: textTokens.secondary, fontSize: 12, fontWeight: "700" },
-  watchTextActive: { color: accent.warm },
+  muteControl: { minHeight: 44, alignItems: "flex-end", justifyContent: "center", gap: 2 },
+  muteLabel: { color: textTokens.secondary, fontSize: 11, fontWeight: "700" },
+  mutedNote: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: "rgba(235,120,37,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(235,120,37,0.25)" },
+  mutedNoteText: { color: textTokens.secondary, fontSize: 12, textAlign: "center" },
   actorBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
   actorLabel: { color: textTokens.tertiary, fontSize: 12 },
   actorChoice: { minHeight: 36, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: 18, borderWidth: 1, borderColor: glass.border.profileElevated },

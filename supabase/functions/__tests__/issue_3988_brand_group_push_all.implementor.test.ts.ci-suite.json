@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/__tests__/issue_3988_brand_group_push_all.implementor.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-3988-brand-group-push-all",
+  "profile": "deno-1.46-notification"
+}

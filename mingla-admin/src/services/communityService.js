@@ -390,10 +390,20 @@ export async function markOfficialBrandGroupRead(conversationId) {
   if (error) throw error;
 }
 
+// Retained for older admin clients while #3988 replaces the panel control.
 export async function setOfficialBrandGroupWatch(conversationId, enabled) {
   const { data, error } = await supabase.rpc("issue_3720_set_brand_group_watch", {
     p_conversation_id: conversationId,
     p_enabled: Boolean(enabled),
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+export async function setOfficialBrandGroupMuted(conversationId, muted) {
+  const { data, error } = await supabase.rpc("issue_3988_set_brand_group_muted", {
+    p_conversation_id: conversationId,
+    p_muted: Boolean(muted),
   });
   if (error) throw error;
   return data === true;

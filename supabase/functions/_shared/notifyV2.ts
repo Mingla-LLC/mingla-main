@@ -607,6 +607,10 @@ export async function dispatchV2(
           body: rendered.push.body,
           data: pushData,
           routingType: input.category_key,
+          ...(input.category_key === "business.brand_group_message" &&
+              typeof input.payload.conversation_id === "string"
+            ? { threadId: `brand_group:${input.payload.conversation_id}` }
+            : {}),
           idempotencyKey: nid,
         });
         await completeChannel(

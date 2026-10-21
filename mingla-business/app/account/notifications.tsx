@@ -61,6 +61,10 @@ import type { BusinessNotificationType } from "../../src/constants/businessNotif
 // premise: a real account-settings screen DOES exist beyond AriSettingsScreen.)
 import { useAnalyticsPrefsStore } from "../../src/store/analyticsPrefsStore";
 import { postHogService } from "../../src/services/postHogService";
+import {
+  getBrandGroupPushPrefEnabled,
+  setBrandGroupPushPrefEnabled,
+} from "../../src/services/brandGroupsService";
 
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
@@ -137,6 +141,8 @@ export default function NotificationsRoute(): React.ReactElement {
     message: "",
   });
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [brandGroupPushEnabled, setBrandGroupPushEnabled] = useState(true);
+  const [brandGroupPushLoading, setBrandGroupPushLoading] = useState(true);
 
   useEffect(() => {
     if (account !== null) {
@@ -147,6 +153,40 @@ export default function NotificationsRoute(): React.ReactElement {
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (userId === null) {
+      setBrandGroupPushLoading(false);
+      return () => { cancelled = true; };
+    }
+    setBrandGroupPushLoading(true);
+    void getBrandGroupPushPrefEnabled(userId)
+      .then((enabled) => {
+        if (!cancelled) setBrandGroupPushEnabled(enabled);
+      })
+      .catch(() => {
+        if (!cancelled) showToast("Couldn't load Brand group notifications. Reopen this screen to try again.");
+      })
+      .finally(() => {
+        if (!cancelled) setBrandGroupPushLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [showToast, userId]);
+
+  const handleBrandGroupPushToggle = useCallback(async (
+    enabled: boolean,
+  ): Promise<void> => {
+    if (userId === null) return;
+    const previous = brandGroupPushEnabled;
+    setBrandGroupPushEnabled(enabled);
+    try {
+      await setBrandGroupPushPrefEnabled(userId, enabled);
+    } catch {
+      setBrandGroupPushEnabled(previous);
+      showToast("Couldn't save. Tap to try again.");
+    }
+  }, [brandGroupPushEnabled, showToast, userId]);
 
   useEffect(() => {
     if (typePrefs.query.isError) {
@@ -306,6 +346,16 @@ export default function NotificationsRoute(): React.ReactElement {
           onChild={handleChildToggle}
           preferencesDisabled={typePrefsUnavailable}
         />
+
+        <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+          <SimpleToggleRow
+            label="Brand group messages"
+            description="When anyone posts in your brand's group"
+            value={brandGroupPushEnabled}
+            disabled={brandGroupPushLoading || userId === null}
+            onToggle={(value) => void handleBrandGroupPushToggle(value)}
+          />
+        </GlassCard>
 
         {/* Brand team (master ON gates 2 children) */}
         <MasterCard
@@ -513,6 +563,7 @@ interface SimpleToggleRowProps {
   label: string;
   description: string;
   value: boolean;
+  disabled?: boolean;
   onToggle: (value: boolean) => void;
 }
 
@@ -520,12 +571,14 @@ const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
   label,
   description,
   value,
+  disabled = false,
   onToggle,
 }) => (
   <Pressable
     onPress={() => onToggle(!value)}
+    disabled={disabled}
     accessibilityRole="switch"
-    accessibilityState={{ checked: value }}
+    accessibilityState={{ checked: value, disabled }}
     accessibilityLabel={label}
     style={styles.toggleRow}
   >
@@ -538,6 +591,7 @@ const SimpleToggleRow: React.FC<SimpleToggleRowProps> = ({
     <Switch
       value={value}
       onValueChange={onToggle}
+      disabled={disabled}
       trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
       thumbColor="#ffffff"
     />

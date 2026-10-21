@@ -19,6 +19,7 @@ export interface PushSendInput {
   data?: Record<string, unknown>;
   // Routing key — `business.*`/`stripe.*` → business app, else consumer.
   routingType?: string;
+  threadId?: string;
   idempotencyKey?: string;
   beforeProviderIo?: () => Promise<void>;
 }
@@ -128,6 +129,7 @@ async function send(
       body: input.body,
       data: input.data ?? {},
       app,
+      threadId: input.threadId,
       iosBadgeType: "Increase",
       iosBadgeCount: 1,
       offeringAttemptId: input.offeringAttemptId,
@@ -145,6 +147,7 @@ async function send(
     body: input.body,
     data: input.data ?? {},
     app,
+    threadId: input.threadId,
     iosBadgeType: "Increase",
     iosBadgeCount: 1,
     oneSignalIdempotencyKey: input.idempotencyKey,
