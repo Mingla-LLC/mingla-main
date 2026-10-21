@@ -1,0 +1,107 @@
+name: Issue #4037 Host Traffic Analytics
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: &issue_4037_paths
+      - ".github/workflows/issue-4037-host-traffic-analytics.yml"
+      - "app-mobile/src/components/DiscoverScreen.tsx"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/discover/**"
+      - "app-mobile/src/services/offeringEngagementService.ts"
+      - "app-mobile/src/services/tripsDiscoveryService.ts"
+      - "app-mobile/src/services/__tests__/offeringEngagement.issue4037.test.ts"
+      - "mingla-business/app/(tabs)/analytics.tsx"
+      - "mingla-business/app/(tabs)/home.tsx"
+      - "mingla-business/app/b/**"
+      - "mingla-business/app/exp/**"
+      - "mingla-business/app/insights/**"
+      - "mingla-business/app/t/**"
+      - "mingla-business/jest.issue4037.render.cjs"
+      - "mingla-business/src/components/analytics/**"
+      - "mingla-business/src/components/brand/PublicBrandPage.tsx"
+      - "mingla-business/src/components/event/PublicEventPage.tsx"
+      - "mingla-business/src/components/home/**"
+      - "mingla-business/src/constants/designSystem.ts"
+      - "mingla-business/src/hooks/useCurrentBrandRole.ts"
+      - "mingla-business/src/hooks/useTrafficAnalytics.ts"
+      - "mingla-business/src/services/brandAnalyticsService.ts"
+      - "mingla-business/src/services/listingInsightsService.ts"
+      - "mingla-business/src/services/offeringEngagementCapture.ts"
+      - "mingla-business/src/services/offeringEngagementCapture.web.ts"
+      - "mingla-business/src/services/trafficAnalyticsService.ts"
+      - "mingla-business/src/services/__tests__/*4037*"
+      - "mingla-business/src/utils/trafficAnalyticsMath.ts"
+      - "mingla-business/src/utils/__tests__/*4037*"
+      - "supabase/config.toml"
+      - "supabase/functions/offering-engagement-capture/**"
+      - "supabase/migrations/*4037*"
+      - "supabase/migrations/__tests__/*4037*"
+  push:
+    branches: [main]
+    paths: *issue_4037_paths
+  workflow_dispatch:
+
+concurrency:
+  group: ci-issue-4037-host-traffic-analytics-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
+jobs:
+  business-contracts:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "#4037 Business — traffic contract and responsive renders"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Install render-only test dependencies
+        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native@13.3.3
+      - name: Run traffic service, capture, source and funnel contracts
+        run: >-
+          npm test -- --runInBand
+          trafficAnalyticsService.issue4037
+          trafficAnalyticsMath.issue4037
+          legacyRollupTrafficSources.issue4037
+          offeringEngagementCapture.issue4037.web
+          trafficFunnelCollecting.issue4037
+      - name: Run phone, desktop and Home state render contracts
+        run: npx jest --config jest.issue4037.render.cjs --runInBand
+
+  consumer-capture:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "#4037 Consumer — cookieless capture and 50-percent visibility"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run consumer capture contract
+        working-directory: app-mobile
+        run: >-
+          node --experimental-strip-types --test
+          src/services/__tests__/offeringEngagement.issue4037.test.ts
+
+  edge-capture:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "#4037 Edge — strict body, bot drop, hashing and empty response"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check the capture function
+        run: deno check supabase/functions/offering-engagement-capture/index.ts
+      - name: Run capture contracts
+        run: >-
+          deno test --allow-env --allow-net --allow-read
+          supabase/functions/offering-engagement-capture/issue_4037_capture.test.ts

@@ -1,16 +1,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { supabase } from "../supabase";
 import {
   captureOfferingCheckoutStart,
   captureOfferingCta,
   captureOfferingPageView,
 } from "../offeringEngagementCapture.web";
 
-const invoke = jest.fn();
-
 jest.mock("../supabase", () => ({
-  supabase: { functions: { invoke } },
+  supabase: { functions: { invoke: jest.fn() } },
 }));
+
+const invoke = supabase.functions.invoke as jest.Mock;
 
 const BRAND_ID = "11111111-1111-4111-8111-111111111111";
 const EVENT_ID = "22222222-2222-4222-8222-222222222222";
