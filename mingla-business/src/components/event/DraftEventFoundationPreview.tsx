@@ -21,6 +21,7 @@ import { useThemeFont } from "../../theme/useThemeFont";
 import { scheduleDayChooserFocusAfterNotice } from "../../utils/publicEventDayRecovery";
 import { readRefundPolicyState } from "@mingla/offering-rendering/offeringRefundPolicy";
 import type { RefundPolicy } from "../../services/refundPolicyService";
+import type { SocialProofSummary } from "@mingla/offering-rendering";
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { MultiDateDayChooser } from "./MultiDateDayChooser";
 
@@ -37,6 +38,11 @@ interface DraftEventFoundationPreviewProps {
    * its ladder.
    */
   refundPolicy: RefundPolicy | null;
+  /**
+   * issue #3827 going-box — the draft's going box as buyers will see it (from
+   * buildDraftPreviewSocialProof): null = no box (nobody going, or private).
+   */
+  socialProof?: SocialProofSummary | null;
   onClose: () => void;
   onShare: () => void;
   onCheckout: () => void;
@@ -52,6 +58,7 @@ export const DraftEventFoundationPreview: React.FC<
   isMultiDate,
   multiDatePricingMode,
   refundPolicy,
+  socialProof = null,
   onClose,
   onShare,
   onCheckout,
@@ -198,6 +205,7 @@ export const DraftEventFoundationPreview: React.FC<
     <FoundationEventPreview
       event={event}
       brand={brand}
+      socialProof={socialProof}
       variant={variant}
       bookable
       palette={palette}

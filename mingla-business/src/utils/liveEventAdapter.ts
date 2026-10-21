@@ -29,6 +29,7 @@ import type {
   LiveEvent,
 } from "../store/liveEventStore";
 import type { RefundPolicy } from "../services/refundPolicyService";
+import { asExtraGuestCount } from "../constants/guestListPrivacy";
 import {
   refundPoliciesEqual,
   refundPolicyDisplayName,
@@ -111,6 +112,7 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   // '{"color":null,...}' !== 'null' and forges a phantom diff.
   themeOverrides: normalizeThemeOverrides(e.themeOverrides),
   privateGuestList: e.privateGuestList,
+  extraGuestCount: e.extraGuestCount ?? 0,
   inPersonPaymentsEnabled: e.inPersonPaymentsEnabled,
   // ORCH-1150 — project the RSVP host-control snapshot into the editable
   // DraftEvent view. Non-RSVP LiveEvents lack these → defaults (inert when
@@ -242,6 +244,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   passwordProtected: "Password protected",
   themeOverrides: "Public theme",
   privateGuestList: "Private guest list",
+  extraGuestCount: "Guests on your own list",
   inPersonPaymentsEnabled: "In-person payments",
   // ORCH-0824 hotfix
   partyTypes: "Party types",
@@ -319,6 +322,8 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "themeOverrides",
   "visibility",
   "privateGuestList",
+  // issue #3827 going-box — display-only, never notifies buyers.
+  "extraGuestCount",
   // ORCH-0824 hotfix: taxonomy + city are additive/cosmetic for buyer
   // protection purposes (they affect Discover filtering, not ticket
   // legitimacy). Banner-only notification when changed alone.
@@ -473,6 +478,10 @@ export const editableDraftToPatch = (
   }
   if (original.privateGuestList !== edited.privateGuestList) {
     patch.privateGuestList = edited.privateGuestList;
+  }
+  // issue #3827 going-box — guests on the host's own list (absent = 0).
+  if ((original.extraGuestCount ?? 0) !== (edited.extraGuestCount ?? 0)) {
+    patch.extraGuestCount = asExtraGuestCount(edited.extraGuestCount ?? 0);
   }
   // Cycle 12 rework — patch builder must include the door-sales toggle.
   // Phase 1 wired this field into FIELD_LABELS + the snapshot extract +
@@ -718,6 +727,10 @@ export const computeRichFieldDiffs = (
     // override never shows up as a change against `null`.
     if (key === "coverMediaPosterUrl") {
       if ((a ?? null) === (b ?? null)) continue;
+    } else if (key === "extraGuestCount") {
+      // issue #3827 going-box — mirror editableDraftToPatch: absent = 0, so an
+      // event saved before the field existed never shows a phantom change row.
+      if ((a ?? 0) === (b ?? 0)) continue;
     } else if (key === "coverGallery") {
       // #3288 — mirror editableDraftToPatch: no diff row against an UNKNOWN
       // original, so the summary never promises a change the save won't send.

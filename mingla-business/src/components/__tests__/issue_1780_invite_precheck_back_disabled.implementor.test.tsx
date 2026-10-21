@@ -442,6 +442,10 @@ const BOUNDARY: Record<string, () => unknown> = {
   }),
   tripsService: () => ({ setTripPricingSwitches: asyncNoop }),
   businessEvents: () => ({ setEventGuestPrivacy: asyncNoop }),
+  // issue #3827 — the two settings steps load lazily; same inert step leaves.
+  lazySettingsSteps: () => ({ CreatorStep6SettingsLazy: leaf("CreatorStep6Settings"), RsvpStep5SetupLazy: leaf("RsvpStep5Setup") }),
+  // issue #3827 going-box — the wizard's extras copy + error matcher (pure; real module).
+  guestListPrivacy: () => jest.requireActual("../../constants/guestListPrivacy"),
   offeringTheme: () => ({
     normalizeThemeOverrides: (value: unknown) => value ?? null,
     patchOfferingTheme: asyncNoop,

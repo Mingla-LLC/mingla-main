@@ -1773,8 +1773,10 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // #2851 retains the fixed Node command, migration re-apply, and two skips.
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs\n"],
-    [liveWorkflow("issue", "2333", "online", "event", "publish"),
-      "            -f supabase/migrations/20270702003313_issue_3313_recurring_event_occurrences.sql\n"],
+    // [TEST-MOD-APPROVED #3827] The #2333 re-apply of 20270702003313 was removed
+    // (PR #4011): its closing `::regproc` probe is ambiguous once #3281 adds
+    // overloads, and later files own the snapshotted definition, so the row that
+    // proved that line is revert-sensitive goes with it. 67 -> 66.
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
@@ -1836,7 +1838,7 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
       "          -f supabase/migrations/__tests__/issue_3682_wizard_invite_followers.happy.pg17.test.sql\n"],
   ];
-  assert.equal(revertRows.length, 67, "revert table must contain exactly 67 specialized semantic rows");
+  assert.equal(revertRows.length, 66, "revert table must contain exactly 66 specialized semantic rows");
   assert.equal(
     revertRows.filter(([name]) => name === liveWorkflow("supabase", "migrations", "and", "stripe", "deno")).length,
     3,

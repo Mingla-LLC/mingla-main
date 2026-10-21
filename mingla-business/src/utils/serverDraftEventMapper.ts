@@ -20,6 +20,7 @@ import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
 import type { RefundPolicy } from "../services/refundPolicyService";
 import type { LiveEvent } from "../store/liveEventStore";
+import { asExtraGuestCount } from "../constants/guestListPrivacy";
 import { currencyCodeOrNull } from "./currency";
 import {
   draftMultiDatePricingMode,
@@ -235,6 +236,8 @@ export interface BusinessDraftPayload {
     hideRemainingCount: boolean;
     passwordProtected: boolean;
     privateGuestList: boolean;
+    /** issue #3827 going-box — guests on the host's own list (0..5000). */
+    extraGuestCount: number;
     inPersonPaymentsEnabled: boolean;
   };
   // ORCH-1150 — RSVP host-control passthrough (additive; the event publish RPC
@@ -447,6 +450,7 @@ const buildBusinessDraftPayload = (
     hideRemainingCount: draft.hideRemainingCount,
     passwordProtected: draft.passwordProtected,
     privateGuestList: draft.privateGuestList,
+    extraGuestCount: asExtraGuestCount(draft.extraGuestCount ?? 0),
     inPersonPaymentsEnabled: draft.inPersonPaymentsEnabled,
   },
   // ORCH-1150 — RSVP host-control passthrough.
@@ -545,6 +549,8 @@ export interface RsvpUpdatePayload {
   // columns; without them in the payload the edit silently drops the toggles.
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  /** issue #3827 going-box — guests on the host's own list (display only). */
+  extraGuestCount?: number;
   // ORCH-1172 R2 — hide-address-until-RSVP'd-going. Like the two toggles above
   // this is NOT a DB column: the publish path stores it at
   // theme.business_event.hideAddressUntilTicket (a DIRECT child of
@@ -610,6 +616,7 @@ export const buildRsvpUpdatePayload = (
   rsvpDiscoverable: draft.rsvpDiscoverable,
   privateGuestList: draft.privateGuestList,
   hideRemainingCount: draft.hideRemainingCount,
+  extraGuestCount: asExtraGuestCount(draft.extraGuestCount ?? 0),
   hideAddressUntilTicket: draft.hideAddressUntilTicket,
   // ORCH-1296 — voluntary chip-in config (full-state builder parity).
   rsvpContributionEnabled: draft.rsvpContributionEnabled,
@@ -692,6 +699,10 @@ export const buildRsvpUpdatePayloadDiff = (
   }
   if (original.hideRemainingCount !== edited.hideRemainingCount) {
     payload.hideRemainingCount = edited.hideRemainingCount;
+  }
+  // issue #3827 going-box — guests on the host's own list (absent = 0).
+  if ((original.extraGuestCount ?? 0) !== (edited.extraGuestCount ?? 0)) {
+    payload.extraGuestCount = asExtraGuestCount(edited.extraGuestCount ?? 0);
   }
   if (original.hideAddressUntilTicket !== edited.hideAddressUntilTicket) {
     payload.hideAddressUntilTicket = edited.hideAddressUntilTicket;
@@ -1059,6 +1070,7 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     hideRemainingCount: asBoolean(settings.hideRemainingCount, false),
     passwordProtected: asBoolean(settings.passwordProtected, false),
     privateGuestList: asBoolean(settings.privateGuestList, false),
+    extraGuestCount: asExtraGuestCount(settings.extraGuestCount),
     inPersonPaymentsEnabled: asBoolean(settings.inPersonPaymentsEnabled, false),
     // ORCH-1150 — RSVP host-control round-trip from business_draft. Defaults
     // keep ticketed drafts byte-identical (isRsvp:false). See SPEC §4.6.

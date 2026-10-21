@@ -71,11 +71,14 @@ export interface ExperienceBrandTimezoneHints {
 export interface ExperienceGuestPrivacyState {
   privateGuestList: boolean;
   hideRemainingCount: boolean;
+  /** issue #3827 going-box — guests on the host's own list (0..5000). */
+  extraGuestCount: number;
 }
 
 const GUEST_PRIVACY_DEFAULTS: ExperienceGuestPrivacyState = {
   privateGuestList: false,
   hideRemainingCount: false,
+  extraGuestCount: 0,
 };
 
 function synthDraft(

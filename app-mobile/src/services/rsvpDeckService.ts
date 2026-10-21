@@ -15,6 +15,7 @@ import { getSupabaseFunctionHeaders, supabase, supabaseUrl } from "./supabase";
 // Unlisted RSVP invite link — the exact-link RSVP row, after the view misses.
 import {
   fetchDirectRsvpEventRow,
+  rsvpExtraGuestCountFromTheme,
   rsvpHostDisplayGatesFromTheme,
 } from "./publicEventSeedService";
 import type {
@@ -36,7 +37,18 @@ import type {
  * the decision + chips WITHOUT a fabricated count (still honest, rule 9).
  */
 export interface RsvpMomentumSnapshot {
-  goingCount: number;
+  /**
+   * Real confirmed-going headcount. issue #3827 going-box — `null` when the
+   * host keeps the guest list private (the server withholds it). Never 0 for
+   * a withheld count.
+   */
+  goingCount: number | null;
+  /**
+   * issue #3827 going-box — guests on the host's own list, set ONLY on the
+   * exact-link path (read from that row's public theme). Undefined on the
+   * public view path, where the social-proof payload carries it.
+   */
+  extraGuestCount?: number;
   capacity: number | null;
   allowPlusOnes: boolean;
   plusOnesMax: number;
@@ -91,17 +103,23 @@ export const fetchRsvpMomentum = async (
     privateGuestList: null,
     hideRemainingCount: null,
   };
+  let hostExtraGuestCount: number | undefined;
   if (row === null && exactLink !== undefined) {
     const direct = await fetchDirectRsvpEventRow(exactLink.brandSlug, exactLink.eventSlug);
     // Only the SAME event: slugs that now name a different row are not this page.
     if (direct !== null && direct.id === eventId) {
       row = direct as unknown as RsvpMomentumRow;
       hostGates = rsvpHostDisplayGatesFromTheme(direct.public_theme);
+      // issue #3827 going-box — the social-proof read answers NULL for an
+      // unlisted event, so the host's own-list guests come from this row.
+      hostExtraGuestCount = rsvpExtraGuestCountFromTheme(direct.public_theme);
     }
   }
   if (row === null) return null;
   return {
-    goingCount: row.rsvp_going_count ?? 0,
+    // issue #3827 going-box — a withheld (private) count stays null.
+    goingCount: typeof row.rsvp_going_count === "number" ? row.rsvp_going_count : null,
+    extraGuestCount: hostExtraGuestCount,
     capacity: row.rsvp_capacity ?? null,
     allowPlusOnes: row.rsvp_allow_plus_ones ?? false,
     plusOnesMax: row.rsvp_plus_ones_max ?? 0,

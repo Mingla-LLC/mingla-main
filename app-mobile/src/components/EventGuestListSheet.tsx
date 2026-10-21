@@ -89,6 +89,7 @@ import {
   setShowMeAsGoing,
 } from "../services/socialProofService";
 import { messagingService } from "../services/messagingService";
+import { guestSheetHeaderSubtitle } from "./guestSheetHeaderCopy";
 
 // Fixed single detent — EventAudienceSheet precedent (MessageInterface.tsx:96).
 // NO enableDynamicSizing (ORCH-1138 mismeasure class inside an RN-Modal wrap).
@@ -110,6 +111,11 @@ export interface EventGuestListSheetProps {
    * the row cap live honestly inside this arithmetic — D3).
    */
   goingCount: number;
+  /**
+   * issue #3827 going-box — guests on the host's own list. Added to the header
+   * number and disclosed ("· X on the host's list"); never to the tail math.
+   */
+  extraGuestCount?: number;
   /**
    * Optional override seam for tests/future hosts. Absent ⇒ the default
    * in-app rail: openDirectMessageInApp(profileId) — the shell's open-DM
@@ -169,6 +175,7 @@ export function EventGuestListSheet({
   onClose,
   eventId,
   goingCount,
+  extraGuestCount = 0,
   onOpenConversation,
   onOpenProfile,
   gateKind,
@@ -1071,10 +1078,13 @@ export function EventGuestListSheet({
 
   // privateOthersCount is a subset of goingCount (same party/ticket unit), not
   // an addend — do not prefix with "+" (that reads as going + private).
-  const headerSubtitle =
-    privateOthersCount > 0
-      ? `${goingCount} going · ${privateOthersCount} keep it private`
-      : `${goingCount} going`;
+  // issue #3827 going-box — the headline adds the host's own-list guests and
+  // says so; `goingCount` (real) still owns the "and N more" tail.
+  const headerSubtitle = guestSheetHeaderSubtitle(
+    goingCount,
+    extraGuestCount,
+    privateOthersCount,
+  );
 
   const onToggleShowMeAsGoing = useCallback(
     async (next: boolean) => {

@@ -83,6 +83,10 @@ import type { Trip, TripPublishValidationError } from "../../services/tripsServi
 import { setTripPricingSwitches } from "../../services/tripsService";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big trip edit RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
+import {
+  EXTRA_GUESTS_ERROR,
+  isExtraGuestCountError,
+} from "../../constants/guestListPrivacy";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { tripInstallmentsSupported } from "@mingla/offering-rendering/tripInstallmentCapability";
 import {
@@ -491,6 +495,26 @@ export function tripToStep5Draft(trip: Trip): Step5Draft {
     bookingDeadline: trip.bookingDeadline,
     privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
     hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
+    extraGuestCount: trip.guestPrivacy?.extraGuestCount ?? 0,
+  };
+}
+
+/**
+ * issue #3827 going-box — the leaf patch for the Step 5 privacy card. Guests on
+ * the host's own list travel ONLY when they differ from the stored value, so a
+ * privacy-only save still resolves on a server that predates the parameter.
+ */
+export function tripGuestPrivacyPatch(
+  trip: Trip,
+  draft: Step5Draft,
+): Parameters<typeof setEventGuestPrivacy>[1] {
+  const storedExtra = trip.guestPrivacy?.extraGuestCount ?? 0;
+  return {
+    privateGuestList: draft.privateGuestList,
+    hideRemainingCount: draft.hideRemainingCount,
+    ...(draft.extraGuestCount !== storedExtra
+      ? { extraGuestCount: draft.extraGuestCount }
+      : {}),
   };
 }
 
@@ -586,7 +610,9 @@ export function isTripWizardPristine(
     step5Draft.bookingDeadline !== initStep5.bookingDeadline ||
     // ORCH-1339 — the two guest-privacy toggles count as edits too.
     step5Draft.privateGuestList !== initStep5.privateGuestList ||
-    step5Draft.hideRemainingCount !== initStep5.hideRemainingCount
+    step5Draft.hideRemainingCount !== initStep5.hideRemainingCount ||
+    // issue #3827 going-box — guests on the host's own list.
+    step5Draft.extraGuestCount !== initStep5.extraGuestCount
   ) {
     return false;
   }
@@ -1013,6 +1039,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         // Issue #3801 — derived from the packages on screen, never authored.
         capacity: draftPackagesTotalSpots(step4Draft.packages),
       },
+      // issue #3827 going-box — the review preview shows the Step 5 privacy
+      // card as it stands (the going box buyers will see).
+      guestPrivacy: {
+        privateGuestList: step5Draft.privateGuestList,
+        hideRemainingCount: step5Draft.hideRemainingCount,
+        extraGuestCount: step5Draft.extraGuestCount,
+      },
       days: daysDraft.map((d, i) => ({
         id: `preview-day-${i}`,
         eventId: trip.id,
@@ -1064,6 +1097,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       daysDraft,
       inclusionsDraft,
       step4Draft,
+      step5Draft,
       paymentPlansAvailable,
     ],
   );
@@ -1278,14 +1312,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     // display-pref failure never blocks step navigation or publish — toast and
     // continue (SPEC §4.7).
     try {
-      await setEventGuestPrivacy(trip.id, {
-        privateGuestList: step5Draft.privateGuestList,
-        hideRemainingCount: step5Draft.hideRemainingCount,
-      });
-    } catch {
-      showToast("Couldn't save guest privacy — check Settings after publishing.");
+      await setEventGuestPrivacy(trip.id, tripGuestPrivacyPatch(trip, step5Draft));
+    } catch (e) {
+      showToast(
+        isExtraGuestCountError(e)
+          ? EXTRA_GUESTS_ERROR
+          : "Couldn't save guest privacy — check Settings after publishing.",
+      );
     }
   }, [
+    trip,
     step5Draft,
     trip.id,
     updateRefundPolicyMutation,
@@ -1713,12 +1749,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // (leaf write; belt-and-suspenders with the Step-5 autosave). NON-BLOCKING:
       // display prefs never block publish (SPEC §4.7).
       try {
-        await setEventGuestPrivacy(trip.id, {
-          privateGuestList: step5Draft.privateGuestList,
-          hideRemainingCount: step5Draft.hideRemainingCount,
-        });
-      } catch {
-        showToast("Couldn't save guest privacy — check Settings after publishing.");
+        await setEventGuestPrivacy(trip.id, tripGuestPrivacyPatch(trip, step5Draft));
+      } catch (e) {
+        showToast(
+          isExtraGuestCountError(e)
+            ? EXTRA_GUESTS_ERROR
+            : "Couldn't save guest privacy — check Settings after publishing.",
+        );
       }
       setPublishConfirmVisible(false);
       setInvitePublishConfirmVisible(false);

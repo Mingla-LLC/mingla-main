@@ -137,6 +137,7 @@ export function tripToLiveEvent(trip: Trip | null): LiveEvent | null {
     hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
     passwordProtected: false,
     privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
+    extraGuestCount: trip.guestPrivacy?.extraGuestCount ?? 0,
     inPersonPaymentsEnabled: false,
     orders: [],
     createdAt: trip.createdAt,

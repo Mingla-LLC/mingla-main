@@ -88,8 +88,10 @@ export {
   deriveMomentum,
   partyTypeLabel,
   RSVP_CLUSTER_SHOWN,
+  // issue #3827 going-box — the RSVP capacity chip shown when the box is absent.
+  rsvpCapacityChipLabel,
 } from "./rsvpMomentum";
-export type { RsvpMomentumModel } from "./rsvpMomentum";
+export type { RsvpMomentumModel, RsvpCapacityChipInput } from "./rsvpMomentum";
 
 // ORCH-1338 [guest-read-backend] — THE ONE shared social-proof payload contract
 // (types + the sample-size constant; dep-free, no fetch — I-MOR-0827). Shapes are

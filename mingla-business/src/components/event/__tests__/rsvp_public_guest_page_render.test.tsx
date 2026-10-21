@@ -168,7 +168,11 @@ describe("an unreplied guest", () => {
   it("sees capacity at zero going and the audience line for a public, listed event", async () => {
     const tree = await mount();
     const texts = hostTexts(tree);
-    expect(texts).toContain("Be the first to RSVP · 80 spots");
+    // [TEST-MOD-APPROVED #3827] nobody going → no going box; the capacity
+    // travels in the "80 spots" chip instead (going-box amendment R-2/R-4).
+    expect(texts).toContain("80 spots");
+    expect(texts).not.toContain("Be the first to RSVP · 80 spots");
+    expect(byTestID(tree, "orch-1157-rsvp-momentum")).toHaveLength(0);
     expect(texts).toContain("Listed on Mingla · anyone can RSVP.");
     expect(texts).not.toContain("Anyone with the link can RSVP.");
   });
@@ -381,10 +385,14 @@ describe("the momentum card", () => {
   };
 
   it("keeps the spots hidden when the host hides the spots-left count", async () => {
+    // [TEST-MOD-APPROVED #3827] at zero going there is no momentum unit in
+    // either case; the "80 spots" chip shows, and hides under the setting.
     const shown = await render({});
-    expect(textOf(byTestID(shown, "orch-1157-rsvp-momentum-sub")[0])).toBe("Be the first to RSVP · 80 spots");
+    expect(byTestID(shown, "orch-1157-rsvp-momentum")).toHaveLength(0);
+    expect(textOf(byTestID(shown, "issue-3827-rsvp-capacity-chip")[0])).toBe("80 spots");
     const hidden = await render({ hideRemainingCount: true });
-    expect(textOf(byTestID(hidden, "orch-1157-rsvp-momentum-sub")[0])).toBe("Be the first to RSVP");
+    expect(byTestID(hidden, "orch-1157-rsvp-momentum")).toHaveLength(0);
+    expect(byTestID(hidden, "issue-3827-rsvp-capacity-chip")).toHaveLength(0);
   });
 
   it("says 'Full' rather than promising a waitlist that is switched off", async () => {

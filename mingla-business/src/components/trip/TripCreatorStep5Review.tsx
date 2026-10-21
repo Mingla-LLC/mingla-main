@@ -19,7 +19,7 @@ import {
   TRIP_PRICE_REENTRY_MESSAGE,
   TRIP_PRICE_REENTRY_REQUIRED_CODE,
 } from "../../utils/tripPriceReentry";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { ThemeInput } from "@mingla/offering-rendering";
@@ -38,6 +38,7 @@ import type { Trip } from "../../services/tripsService";
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 import { TripPreview, type TripPreviewBrand } from "./TripPreview";
 import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import { buildDraftPreviewSocialProof } from "../../utils/draftPreviewSocialProof";
 
 export interface TripCreatorStep5ReviewProps {
   trip: Trip;
@@ -86,6 +87,20 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
   // comes from the cached brand record — the same query the wizard already warms.
   const brandQuery = useBrand(trip.brandId ?? null);
   const brandTheme = brandQuery.data?.theme ?? null;
+  // issue #3827 going-box — the going box buyers will see on this draft:
+  // none unless guests are on the host's own list (and the list is public).
+  const previewSocialProof = useMemo(
+    () =>
+      buildDraftPreviewSocialProof({
+        eventId: trip.id,
+        entityType: "trip",
+        extraGuestCount: trip.guestPrivacy?.extraGuestCount,
+        privateGuestList: trip.guestPrivacy?.privateGuestList ?? false,
+        hideRemainingCount: trip.guestPrivacy?.hideRemainingCount ?? false,
+        capacity: trip.businessTrip.capacity ?? null,
+      }),
+    [trip.id, trip.guestPrivacy, trip.businessTrip.capacity],
+  );
 
   return (
     <ScrollView
@@ -152,6 +167,7 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
           contentPadding={0}
           testID="trip-step5-preview"
           theme={resolveTheme(brandTheme, themeOverrides ?? null)}
+          socialProof={previewSocialProof}
         />
       </View>
       {onThemeChange !== undefined ? (

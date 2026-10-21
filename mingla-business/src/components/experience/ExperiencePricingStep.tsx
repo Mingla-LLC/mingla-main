@@ -54,6 +54,8 @@ import {
   priceDecimals,
   priceFallbackDecimals,
 } from "@mingla/offering-rendering/priceDecimals";
+import { ExtraGuestsField } from "../ui/ExtraGuestsField";
+import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 
 const MAX_PRICE_OPTIONS = 8;
 
@@ -97,6 +99,9 @@ export interface ExperiencePricingStepProps {
   setPrivateGuestList: (v: boolean) => void;
   hideRemainingCount: boolean;
   setHideRemainingCount: (v: boolean) => void;
+  /** issue #3827 going-box — guests on the host's own list (0..5000). */
+  extraGuestCount: number;
+  setExtraGuestCount: (n: number) => void;
   refundPolicy: RefundPolicy | null;
   setRefundPolicy: (policy: RefundPolicy | null) => void;
   liveSoldCount?: number;
@@ -145,11 +150,16 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
   setPrivateGuestList,
   hideRemainingCount,
   setHideRemainingCount,
+  extraGuestCount,
+  setExtraGuestCount,
   refundPolicy,
   setRefundPolicy,
   liveSoldCount = 0,
 }) => {
   const n = stops.length;
+  // Q1 (#3827) — locked on while private (an older private experience saved
+  // before this rule keeps an unlocked switch in its real state).
+  const hideRemainingLocked = privateGuestList && hideRemainingCount;
   const defaultOption = priceOptions[0];
   const hasNonPersonOption = priceOptions.some(
     (o) => !o.isHidden && o.priceBasis !== "person",
@@ -506,16 +516,31 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
       <Text style={styles.sectionLabel}>GUEST PRIVACY</Text>
       <ToggleRow
         label="Private guest list"
-        sub="Hide who's booked. Guests still see the booked count."
+        // issue #3827 going-box — private hides the whole booked box.
+        sub="Hide who's booked and how many. Only you see the list."
         value={privateGuestList}
         onToggle={() => setPrivateGuestList(!privateGuestList)}
         testID="experience-pricing-private-guestlist"
       />
+      {/* issue #3827 going-box — guests on the host's own list. */}
+      <ExtraGuestsField
+        value={extraGuestCount}
+        privateGuestList={privateGuestList}
+        onChange={setExtraGuestCount}
+        noun="booked"
+        testID="experience-pricing-extra-guests"
+      />
       <ToggleRow
         label="Hide remaining count"
-        sub={'Don\'t show "X spots left" or how full it is.'}
+        sub={
+          hideRemainingLocked
+            ? HIDE_REMAINING_LOCKED_SUB
+            : 'Don\'t show "X spots left" or how full it is.'
+        }
         value={hideRemainingCount}
         onToggle={() => setHideRemainingCount(!hideRemainingCount)}
+        // Q1 (#3827) — locked on while the guest list is private.
+        disabled={hideRemainingLocked}
         testID="experience-pricing-hide-count"
       />
     </View>
@@ -769,16 +794,26 @@ interface ToggleRowProps {
   sub?: string;
   value: boolean;
   onToggle: () => void;
+  /** issue #3827 going-box (Q1) — a locked switch shows its state, ignores taps. */
+  disabled?: boolean;
   testID?: string;
 }
 
-const ToggleRow: React.FC<ToggleRowProps> = ({ label, sub, value, onToggle, testID }) => (
+const ToggleRow: React.FC<ToggleRowProps> = ({
+  label,
+  sub,
+  value,
+  onToggle,
+  disabled = false,
+  testID,
+}) => (
   <Pressable
-    onPress={onToggle}
+    onPress={disabled ? undefined : onToggle}
     accessibilityRole="switch"
-    accessibilityState={{ checked: value }}
+    accessibilityState={{ checked: value, disabled }}
     accessibilityLabel={label}
-    style={styles.toggleRow}
+    disabled={disabled}
+    style={[styles.toggleRow, disabled && styles.toggleRowDisabled]}
     testID={testID}
   >
     {sub !== undefined ? (
@@ -797,6 +832,7 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ label, sub, value, onToggle, test
 
 const styles = StyleSheet.create({
   stepBody: { gap: spacing.md },
+  toggleRowDisabled: { opacity: 0.6 },
   title: {
     fontSize: typography.h2.fontSize,
     lineHeight: typography.h2.lineHeight,

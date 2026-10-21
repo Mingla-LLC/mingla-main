@@ -118,8 +118,9 @@ export const mapRsvpRpcPayload = (
   const config: RsvpOfferingConfig = {
     capacity:
       typeof payload.rsvpCapacity === "number" ? payload.rsvpCapacity : null,
+    // issue #3827 going-box — a withheld (private) count stays null, never 0.
     goingCount:
-      typeof payload.rsvpGoingCount === "number" ? payload.rsvpGoingCount : 0,
+      typeof payload.rsvpGoingCount === "number" ? payload.rsvpGoingCount : null,
     allowPlusOnes: payload.rsvpAllowPlusOnes === true,
     plusOnesMax:
       typeof payload.rsvpPlusOnesMax === "number" ? payload.rsvpPlusOnesMax : 0,

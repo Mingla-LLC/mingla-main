@@ -365,8 +365,16 @@ BEGIN
   PERFORM pg_temp.ur_assert(EXISTS (SELECT 1 FROM public.event_rsvps r
                                      WHERE r.id = (v_result ->> 'rsvpId')::uuid AND r.event_id = ev.o_event),
     'U-09c the row exists on the event');
-  PERFORM pg_temp.ur_assert((pg_temp.ur_read(b.o_brand_slug, ev.o_slug) -> 'rsvpGoingCount')::int = 0,
+  -- issue #3827 going-box: this fixture's guest list is private, so the reader now
+  -- withholds the count (NULL). "Pending does not count" is proved on the real
+  -- going-and-approved rows instead of on the withheld number.
+  PERFORM pg_temp.ur_assert(
+    (SELECT COALESCE(sum(1 + r.plus_count), 0) FROM public.event_rsvps r
+      WHERE r.event_id = ev.o_event AND r.rsvp_status = 'going' AND r.approval_status = 'approved') = 0,
     'U-09d a pending RSVP does not count as going');
+  PERFORM pg_temp.ur_assert(
+    jsonb_typeof(pg_temp.ur_read(b.o_brand_slug, ev.o_slug) -> 'rsvpGoingCount') = 'null',
+    'U-09e the private guest list withholds the going count (NULL, never 0)');
 END
 $u09$;
 ROLLBACK;

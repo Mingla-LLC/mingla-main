@@ -686,8 +686,11 @@ export default function ConsumerEventDetailScreen({
   const socialProofImpressionRef = useRef<boolean>(false);
   useEffect(() => {
     const proof = socialProofQuery.data;
+    // issue #3827 going-box — the impression fires when the box is visible:
+    // not private, count known, and somebody (real or on the host's own list).
     if (socialProofImpressionRef.current || !proof ||
-      proof.privateGuestList || proof.goingCount <= 0) return;
+      proof.privateGuestList || proof.goingCount === null ||
+      proof.goingCount + (proof.extraGuestCount ?? 0) <= 0) return;
     socialProofImpressionRef.current = true;
     postHogService.capture("social_proof_teaser_impression", {
       surface: "event_detail",
@@ -718,6 +721,8 @@ export default function ConsumerEventDetailScreen({
       socialProofQuery.isSuccess &&
       sp !== null &&
       sp.privateGuestList === false &&
+      // issue #3827 going-box — only with somebody REAL to list (null-safe).
+      sp.goingCount !== null &&
       sp.goingCount > 0
     ) {
       handleSeeWhosGoing();
@@ -1159,7 +1164,13 @@ export default function ConsumerEventDetailScreen({
   // RSVPs keep enabled=false → no panel.
   const rsvpConfig: RsvpOfferingConfig = {
     capacity: rsvpMomentum?.capacity ?? null,
-    goingCount: rsvpMomentum?.goingCount ?? 0,
+    // issue #3827 going-box — loading, a missing row and a private list all
+    // map to null: no "0 going" flash and no fabricated 0 (rule 9).
+    goingCount: rsvpMomentum ? rsvpMomentum.goingCount : null,
+    extraGuestCount:
+      rsvpMomentum?.extraGuestCount ?? socialProofQuery.data?.extraGuestCount ?? 0,
+    // issue #3827 going-box — the server's real-count full flag (social proof).
+    capacityFull: socialProofQuery.data?.capacityFull,
     allowPlusOnes: rsvpMomentum?.allowPlusOnes ?? false,
     plusOnesMax: rsvpMomentum?.plusOnesMax ?? 0,
     waitlistEnabled: rsvpMomentum?.waitlistEnabled ?? false,
@@ -1936,6 +1947,12 @@ export default function ConsumerEventDetailScreen({
           isRsvp
             ? (rsvpMomentum?.goingCount ?? 0)
             : (socialProofQuery.data?.goingCount ?? 0)
+        }
+        // issue #3827 going-box — header "N going · X on the host's list".
+        extraGuestCount={
+          isRsvp
+            ? (rsvpMomentum?.extraGuestCount ?? 0)
+            : (socialProofQuery.data?.extraGuestCount ?? 0)
         }
         onOpenProfile={setGuestProfileUserId}
         gateKind={isRsvp ? "rsvp" : "ticket"}

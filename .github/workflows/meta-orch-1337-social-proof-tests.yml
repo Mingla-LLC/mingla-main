@@ -181,6 +181,12 @@ jobs:
             # it guards. Named in FULL, one path per line — verified GREEN
             # (11 tests) on 2508-maps-chooser before registration.
             packages/offering-rendering/__tests__/issue_2508_maps_app_chooser.test.ts
+            # issue #3827 going-box — private hides the whole box, no box when nobody is
+            # going, guests on the host's own list add to the going number only. Pure
+            # derivations (every truth-table row) + the Explorer null/loading/header
+            # contract. Verified GREEN on 3827-going-box before registration.
+            packages/offering-rendering/__tests__/issue_3827_going_box_empty_and_private.implementor.test.ts
+            app-mobile/src/screens/Event/__tests__/issue_3827_rsvp_zero_and_loading.implementor.test.ts
           )
           for attempt in 1 2 3; do
             # issue #2469 — `publicEventSeedService.ts` (in DENO_TEST_FILES below)
