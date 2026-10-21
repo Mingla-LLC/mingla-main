@@ -33,6 +33,7 @@ import {
 import { formatCurrencyRound } from "../../utils/currency";
 import {
   visibleDelta,
+  visibleFunnelSteps,
   visitToPaidRate,
 } from "../../utils/trafficAnalyticsMath";
 import {
@@ -375,14 +376,7 @@ const TrendCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
 const FunnelCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
   const hasTraffic =
     data.captureStartedAt !== null && data.totals.pageViews >= 30;
-  const steps = [
-    { label: "Page visits", value: data.totals.pageViews },
-    { label: "Button taps", value: data.totals.buttonTaps },
-    { label: "Checkouts started", value: data.totals.checkoutStarts },
-    { label: "Bookings", value: data.totals.bookings },
-  ];
-  const visible = hasTraffic ? steps : steps.slice(-1);
-  const basis = Math.max(visible[0]?.value ?? 0, 1);
+  const visible = visibleFunnelSteps(data.totals, hasTraffic);
   return (
     <GlassCard variant="elevated" padding={spacing.lg} style={styles.card}>
       <Text style={styles.cardTitle} accessibilityRole="header">
@@ -420,7 +414,7 @@ const FunnelCard: React.FC<{ data: TrafficRollupBase }> = ({ data }) => {
                 <View
                   style={[
                     styles.funnelFill,
-                    { width: `${Math.max(4, (step.value / basis) * 100)}%` },
+                    { width: `${step.widthPercent}%` },
                   ]}
                 />
               </View>
