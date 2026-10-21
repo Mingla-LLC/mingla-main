@@ -3,7 +3,8 @@
  * ORCH-0954 strict-grep gate — I-PROPOSED-CONTROLLER-PROPS-PINNED.
  *
  * New Stripe connected accounts must use Stripe-managed risk and embedded
- * components: losses_collector=stripe, fees_collector=stripe, dashboard=none.
+ * components: losses_collector=stripe, fees_collector=application (#3645 flat
+ * 4.5% — platform pays processing), dashboard=none.
  */
 
 import { readFileSync } from "node:fs";
@@ -29,7 +30,7 @@ const block = constantMatch[0];
 for (
   const required of [
     'losses_collector: "stripe"',
-    'fees_collector: "stripe"',
+    'fees_collector: "application"',
     'dashboard: "none"',
   ]
 ) {
@@ -48,9 +49,16 @@ for (let i = 0; i < lines.length; i += 1) {
     continue;
   }
   const context = lines.slice(Math.max(0, i - 5), i + 6).join("\n");
-  if (/\b(express|application)\b/.test(context)) {
+  // Express dashboard is the forbidden legacy shape. fees_collector "application"
+  // is required (#3645); do not treat it as legacy.
+  if (/\bexpress\b/.test(context)) {
     fail(
       `Forbidden legacy controller literal near ${TARGET}:${i + 1}\n${context}`,
+    );
+  }
+  if (/fees_collector\s*:\s*"stripe"/.test(context)) {
+    fail(
+      `Forbidden fees_collector "stripe" near ${TARGET}:${i + 1} — #3645 requires "application"\n${context}`,
     );
   }
 }

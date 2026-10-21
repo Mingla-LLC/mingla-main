@@ -207,6 +207,8 @@ interface PublicEventPageAdapterProps {
   occurrences?: readonly PublicEventOccurrence[];
   /** issue #2160 — the organiser's multi-day pricing choice. */
   multiDatePricingMode?: MultiDatePricingMode;
+  /** issue #3281 — all-days pass (no day selection required). */
+  allDaysPass?: boolean;
   /** issue #2399 — route-owned refresh for malformed/stale day recovery. */
   onRetryOccurrences?: () => Promise<boolean>;
   /**
@@ -479,6 +481,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   bookable = true,
   occurrences = NO_OCCURRENCES,
   multiDatePricingMode = "per_day",
+  allDaysPass = false,
   onRetryOccurrences,
   refundPolicyState = UNKNOWN_REFUND_POLICY_STATE,
   bundleHideRemainingCount = null,
@@ -929,16 +932,23 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     isPurchaseEntryKind &&
     bookable &&
     acquisitionState.kind === "current";
+  const treatAsAllDaysPass =
+    allDaysPass === true || multiDatePricingMode === "all_days";
   const dayChooserState: "ready" | "error" | "offline" | "stale" = !online
     ? "offline"
     : occurrencesStale
       ? "stale"
-      : occurrences.length <= 1
-        ? "error"
-        : "ready";
+      : treatAsAllDaysPass
+        ? occurrences.length === 0
+          ? "error"
+          : "ready"
+        : occurrences.length <= 1
+          ? "error"
+          : "ready";
   const multiDatePurchaseReady =
     !requiresMultiDatePurchase ||
-    (dayChooserState === "ready" && selectedOccurrenceIds.length > 0);
+    (dayChooserState === "ready" &&
+      (treatAsAllDaysPass || selectedOccurrenceIds.length > 0));
   const selectedDayMultiplier =
     requiresMultiDatePurchase && multiDatePricingMode === "per_day"
       ? selectedOccurrenceIds.length
@@ -1274,6 +1284,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         occurrences={occurrences}
         selectedOccurrenceIds={selectedOccurrenceIds}
         pricingMode={multiDatePricingMode}
+        allDaysPass={treatAsAllDaysPass}
         isPaid={eventHasPaidTicket}
         highlightUnchosen={dayChoiceMissing}
         state={dayChooserState}

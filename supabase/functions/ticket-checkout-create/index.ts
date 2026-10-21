@@ -2934,7 +2934,8 @@ export const createTicketCheckoutCreateHandler = (
         taxBasis: "config_vat",
         stripeTaxCalculationId: null,
       });
-      const psApplicationFeeCents = psSubtotal.miglaFeeCents;
+      // #3645 flat 4.5%: application fee = take-rate + service fee (engine).
+      const psApplicationFeeCents = psBreakdown.application_fee_amount_cents;
 
       // #1930: one deterministic Paystack identity for the logical checkout.
       // Network ambiguity never rotates this reference to escape provider truth.
@@ -3312,14 +3313,16 @@ export const createTicketCheckoutCreateHandler = (
       serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
     };
     const buyerSubtotal = computeBuyerSubtotal(engineInput);
-    // application_fee_amount = Mingla's take-rate skim (miglaFeeCents), ALWAYS
-    // (independent of pass/absorb — the switch only changes the buyer-facing
-    // gross-up, not what Mingla collects). Direct-charge collection:
+    // #3645 flat 4.5%: application_fee_amount = miglaFeeCents + serviceFeeCents,
+    // ALWAYS (independent of pass/absorb — the switch only changes the
+    // buyer-facing gross-up, not what Mingla collects). Mingla pays card
+    // processing out of this cut (fees_collector: application). Direct-charge:
     // https://docs.stripe.com/api/payment_intents/create#create_payment_intent-application_fee_amount
     // https://docs.stripe.com/connect/direct-charges#collect-fees
     // Integer basis-point math (no float; invariant I-PROPOSED-TAKE-RATE-BPS-INTEGER).
     // Omitted from the Stripe body when it rounds to zero (existing >0 guard kept).
-    const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents;
+    const applicationFeeAmountCents =
+      buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
 
     // ORCH-0843 — persist the computed fee on the session row so the refund
     // flow (refund-order) can read it back via biz_refund_order and decide

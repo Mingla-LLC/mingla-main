@@ -269,7 +269,7 @@ edgeTest(
       // The trap `issue_3258_business_profile_prefill.test.ts` guards, re-checked
       // on the handler path: the `defaults` merge must not drop responsibilities.
       assertEquals(responsibilitiesOf(body).losses_collector, "stripe");
-      assertEquals(responsibilitiesOf(body).fees_collector, "stripe");
+      assertEquals(responsibilitiesOf(body).fees_collector, "application");
     });
   },
 );

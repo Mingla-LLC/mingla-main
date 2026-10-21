@@ -34,13 +34,23 @@ export const normalizePublicEventOccurrences = (
       continue;
     }
     const timezone = nonEmptyString(row.timezone) ?? fallbackTimezone ?? "UTC";
+    const overrideTitle = nonEmptyString(row.overrideTitle);
+    const overrideLocation = nonEmptyString(row.overrideLocation);
+    const placesLeft =
+      typeof row.placesLeft === "number" && Number.isFinite(row.placesLeft)
+        ? row.placesLeft
+        : null;
     byId.set(id, {
       id,
       startAt,
       endAt,
       timezone,
       isMaster: row.isMaster === true,
-      ticketsRemaining: null,
+      ticketsRemaining: placesLeft,
+      overrideTitle,
+      overrideLocation,
+      soldOut: row.soldOut === true ? true : row.soldOut === false ? false : null,
+      placesLeft,
     });
   }
   return [...byId.values()].sort(

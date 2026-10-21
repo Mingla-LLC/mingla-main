@@ -4,7 +4,9 @@
  * Different angle from the implementor happy path: malformed, stale, and
  * offline occurrence truth must replace the checkbox rows with explicit
  * recovery, and retry must remain an actual action rather than decorative copy.
- */
+ 
+ * [TEST-MOD-APPROVED #3281] fixture dates bumped past many-dates upcoming filter.
+*/
 import React from "react";
 
 import DayChooser from "../MultiDateDayChooser";
@@ -45,16 +47,16 @@ const palette = {
 const occurrences = [
   {
     id: "day-1",
-    startAt: "2026-08-29T10:00:00Z",
-    endAt: "2026-08-29T17:00:00Z",
+    startAt: "2027-08-29T10:00:00Z",
+    endAt: "2027-08-29T17:00:00Z",
     timezone: "Europe/London",
     isMaster: true,
     ticketsRemaining: null,
   },
   {
     id: "day-2",
-    startAt: "2026-08-30T10:00:00Z",
-    endAt: "2026-08-30T17:00:00Z",
+    startAt: "2027-08-30T10:00:00Z",
+    endAt: "2027-08-30T17:00:00Z",
     timezone: "Europe/London",
     isMaster: false,
     ticketsRemaining: null,

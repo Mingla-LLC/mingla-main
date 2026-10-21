@@ -81,7 +81,9 @@ Deno.test("seeded dark sweep emits exact single/multi/recurring/fallback rows an
   ];
   const rows = computePendingItems(candidates, iso(40));
   assertEquals(rows.length, 5);
-  assertEquals(rows[0].netCents, 17_560);
+  // #3645: net = gross − refunded − disputed − mingla (provider + partner ignored).
+  // 20000 - 1000 - 500 - 300 = 18200
+  assertEquals(rows[0].netCents, 18_200);
   assertEquals(rows.map((r) => r.anchorEndAt), [
     iso(1),
     iso(1),

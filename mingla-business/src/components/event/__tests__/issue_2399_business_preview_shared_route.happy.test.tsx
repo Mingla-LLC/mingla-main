@@ -1,3 +1,4 @@
+/** [TEST-MOD-APPROVED #3281] fixture dates bumped past many-dates upcoming filter. */
 /* eslint-disable import/first, @typescript-eslint/no-require-imports */
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
@@ -13,8 +14,8 @@ const draft = {
   date: null, doorsOpen: null, endsAt: null, endsAtUtc: null,
   timezone: "America/New_York", recurrenceRule: null,
   multiDates: [
-    { id: "day-2", date: "2026-08-30", startTime: "13:00", endTime: "16:00", overrides: { title: null, description: null, venueName: null, address: null, onlineUrl: null } },
-    { id: "day-1", date: "2026-08-29", startTime: "13:00", endTime: "16:00", overrides: { title: null, description: null, venueName: null, address: null, onlineUrl: null } },
+    { id: "day-2", date: "2027-08-30", startTime: "13:00", endTime: "16:00", overrides: { title: null, description: null, venueName: null, address: null, onlineUrl: null } },
+    { id: "day-1", date: "2027-08-29", startTime: "13:00", endTime: "16:00", overrides: { title: null, description: null, venueName: null, address: null, onlineUrl: null } },
   ],
   multiDatePricingMode: "per_day", venueName: "Venue", address: "Address",
   onlineUrl: null, city: "New York", locationGeo: null,
@@ -29,8 +30,8 @@ const draft = {
   rsvpDiscoverable: true, rsvpContributionEnabled: false,
   rsvpContributionSuggestedCents: null, rsvpContributionMinCents: null,
   lastStepReached: 0, status: "draft",
-  createdAt: "2026-08-20T00:00:00.000Z",
-  updatedAt: "2026-08-21T00:00:00.000Z",
+  createdAt: "2027-08-20T00:00:00.000Z",
+  updatedAt: "2027-08-21T00:00:00.000Z",
 } as DraftEvent;
 
 const router = {

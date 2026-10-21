@@ -26,3 +26,13 @@ Deno.test("a dual-role account uses the explicit surface mode", () => {
   assertStringIncludes(source, 'if (actorMode === "staff" && !isStaff) return json({ error: "Forbidden" }, 403)');
   assertStringIncludes(source, 'action: senderIsStaff ? "staff_reply" : "requester_reply"');
 });
+
+// #3988 — Hosts must not see a staff email as the reply display name.
+Deno.test("staff sender display name skips email-shaped candidates", () => {
+  assertStringIncludes(source, '!value.includes("@")');
+  assertStringIncludes(source, '"Mingla teammate"');
+  const pick = source.indexOf("senderDisplayName = [");
+  const fallback = source.indexOf('?? "Mingla teammate"', pick);
+  assert(pick >= 0 && fallback > pick);
+  assert(source.slice(pick, fallback).includes('!value.includes("@")'));
+});

@@ -1,13 +1,13 @@
 -- Issue #3872 PR 1 (money truth) — Stripe fee snapshots captured before #3872
 -- included Mingla's application fee; the one-time correction removes it (PG17).
+-- #3645: host net ignores the (corrected) provider fee.
 --
--- MINGLA-INVARIANT: I-3872-LEGACY-STRIPE-FEE-SNAPSHOTS-CORRECTED | issue #3872 | A Stripe fee snapshot captured before #3872 has its source's application fee removed exactly once, Paystack snapshots are untouched, and the corrected release net equals the provider balance net.
+-- MINGLA-INVARIANT: I-3872-LEGACY-STRIPE-FEE-SNAPSHOTS-CORRECTED | issue #3872 | A Stripe fee snapshot captured before #3872 has its source's application fee removed exactly once, Paystack snapshots are untouched. Under #3645 the release net is gross − mingla_fee (provider fee snapshotted, not deducted).
 --
 -- Fixture: production order 6d25e937's shape and the sandbox balance
--- transaction (fee 166 = Stripe 121 + application fee 45, net 2969).
--- Fails before #3872's §9: the correction does not exist and the release
--- deducts the application fee twice
--- (with gross 3135: 3135 - 45 - 166 = 2924 versus 3135 - 45 - 121 = 2969).
+-- transaction (fee 166 = Stripe 121 + application fee 45, BT net 2969).
+-- Correction still peels the 45 out of the snapshot; #3645 host net is
+-- 3135 - 45 = 3090 (not BT net 2969).
 
 BEGIN;
 
@@ -70,8 +70,9 @@ BEGIN
 
   PERFORM public.run_payout_release_dark_sweep(v_now);
   SELECT net_cents INTO v_net FROM public.payout_release_items WHERE source_id = v_order;
-  IF v_net <> 2969 THEN
-    RAISE EXCEPTION 'release net must equal the balance transaction net 2969, got %', v_net;
+  -- #3645: host net = gross − mingla_fee (3090); provider fee is not deducted.
+  IF v_net <> 3135 - 45 THEN
+    RAISE EXCEPTION 'release net must be 3090 (gross - mingla fee), got %', v_net;
   END IF;
   IF has_function_privilege('authenticated', 'public.issue_3872_correct_stripe_fee_snapshots()', 'EXECUTE') THEN
     RAISE EXCEPTION 'grants: the correction is service_role only';

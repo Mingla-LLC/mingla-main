@@ -121,7 +121,7 @@ Deno.test("#3258 — /v2/core/accounts carries defaults.profile.business_url AND
 
     // The half a bad merge silently destroys. SAME body, SAME request.
     assertEquals(responsibilitiesOf(body).losses_collector, "stripe");
-    assertEquals(responsibilitiesOf(body).fees_collector, "stripe");
+    assertEquals(responsibilitiesOf(body).fees_collector, "application");
     // `dashboard` rides the same spread and must survive too.
     assertEquals(body.dashboard, "none");
 
@@ -175,7 +175,7 @@ Deno.test("#3258 — a blank slug falls back to product_description, sends NO bu
     );
     // And the responsibilities still survive on the fallback path.
     assertEquals(responsibilitiesOf(body).losses_collector, "stripe");
-    assertEquals(responsibilitiesOf(body).fees_collector, "stripe");
+    assertEquals(responsibilitiesOf(body).fees_collector, "application");
   });
 });
 
@@ -194,7 +194,7 @@ Deno.test("#3258 — a caller supplying neither sends a byte-identical pre-#3258
     assertEquals(body.defaults, {
       responsibilities: {
         losses_collector: "stripe",
-        fees_collector: "stripe",
+        fees_collector: "application",
       },
     });
     assertEquals("profile" in defaultsOf(body), false);
@@ -223,7 +223,10 @@ Deno.test("#3258 — the URL always wins over a description; neither present lea
   });
   assertEquals("profile" in blank, false);
   assertEquals(blank, {
-    responsibilities: { losses_collector: "stripe", fees_collector: "stripe" },
+    responsibilities: {
+      losses_collector: "stripe",
+      fees_collector: "application",
+    },
   });
 });
 

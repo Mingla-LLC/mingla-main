@@ -304,6 +304,7 @@ export interface TicketCartMultiDaySelection {
   occurrences: readonly PublicEventOccurrenceLike[];
   selectedEventDateIds: readonly string[];
   pricingMode: "per_day" | "all_days";
+  allDaysPass?: boolean;
   timezone: string;
   onToggle: (eventDateId: string) => void;
   onRetry: () => void;
@@ -880,7 +881,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         (id) => validIds.has(id),
       );
       if (multiDaySelection.status !== "ready") return;
-      if (selectedIds.length === 0) {
+      const pass =
+        multiDaySelection.allDaysPass === true ||
+        multiDaySelection.pricingMode === "all_days";
+      if (!pass && selectedIds.length === 0) {
         // ⚠️ DELETE THIS AND a guest buys a day they never chose.
         setHighlightUnchosen(true);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -1048,8 +1052,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     : new Set(multiDaySelection.selectedEventDateIds).size;
   const dayTruthUnavailable =
     multiDaySelection !== null && multiDaySelection.status !== "ready";
+  const treatAsAllDaysPass =
+    multiDaySelection !== null &&
+    (multiDaySelection.allDaysPass === true ||
+      multiDaySelection.pricingMode === "all_days");
   const missingRequiredDay =
-    multiDaySelection !== null && selectedDayCount === 0;
+    multiDaySelection !== null &&
+    !treatAsAllDaysPass &&
+    selectedDayCount === 0;
 
   const ctaLabel = missingRequiredDay
     ? "Pick at least one day above"
@@ -1270,6 +1280,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             occurrences={multiDaySelection.occurrences}
             selectedEventDateIds={multiDaySelection.selectedEventDateIds}
             pricingMode={multiDaySelection.pricingMode}
+            allDaysPass={
+              multiDaySelection.allDaysPass === true ||
+              multiDaySelection.pricingMode === "all_days"
+            }
             isPaid={visibleTickets.some((ticket) => !ticket.isFree)}
             timezone={multiDaySelection.timezone}
             status={multiDaySelection.status}

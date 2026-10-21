@@ -149,7 +149,7 @@ Deno.test("ORCH-0954 amendment — Accounts v2 controller and Account Session pa
     assertEquals(accountBody.defaults, {
       responsibilities: {
         losses_collector: "stripe",
-        fees_collector: "stripe",
+        fees_collector: "application",
       },
     });
     assert(

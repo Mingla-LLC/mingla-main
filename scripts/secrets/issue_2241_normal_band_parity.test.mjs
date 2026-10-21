@@ -5,7 +5,7 @@
  * NO EXISTING TEST EXPECTATION CHANGES. This file is purely additive: the whole
  * pre-existing `issue_2241_secret_readiness.test.mjs` suite passes byte-for-byte
  * against this change, which is itself the evidence that the relaxation is
- * bounded. In particular `#2913 happy: exact provider defaults preserve 88/90
+ * bounded. In particular `#2913 happy: exact provider defaults preserve 89/90
  * user-managed parity` still passes normal mode at exactly 88 — because the
  * band is TOLERATED here, never demanded.
  *
@@ -22,6 +22,14 @@
  * - an out-of-band extra still fails normal mode
  * - a missing declared name still fails normal mode
  * - the relaxation ships with a replacement observation that can fail
+ *
+ * [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]. SPRINT_ROLLOVER_TOKEN is the 89th
+ * declared name. Manifest + band must still fit the unchanged 90-name
+ * absolute ceiling (and remediation's exact 90), so the band narrows to the
+ * one name remediation itself requires, CHECKOUT_REVOCATION_EXECUTE.
+ * ATTENDANCE_CLAIM_PEPPER's direct name is already absent from production
+ * (#2979 closed). Every assertion keeps its shape; only the pinned counts
+ * and the band literal move.
  */
 
 import assert from "node:assert/strict";
@@ -85,27 +93,26 @@ function readinessCode(code, detail = null) {
 // ---------------------------------------------------------------------------
 
 test("#2241 happy: normal mode accepts the approved migration band", () => {
-  assert.equal(declared.length, 88);
+  assert.equal(declared.length, 89);
   assert.deepEqual(
     [...ISSUE_2241_EXTRA_NAMES],
-    ["ATTENDANCE_CLAIM_PEPPER", "CHECKOUT_REVOCATION_EXECUTE"],
+    ["CHECKOUT_REVOCATION_EXECUTE"],
   );
 
   // 90 — today's production state. This is the state that refused every deploy.
   const full = parity([...declared, ...ISSUE_2241_EXTRA_NAMES]);
   assert.equal(full.liveUserManaged.length, 90);
 
-  // 89 and 88 — every remaining step of the documented removal order. Each
+  // 89 — the remaining step of the documented removal order. Each
   // in-band subset is accepted, so the gate can still pass at its own target.
   for (
     const band of [
-      ["ATTENDANCE_CLAIM_PEPPER"],
       ["CHECKOUT_REVOCATION_EXECUTE"],
       [],
     ]
   ) {
     const result = parity([...declared, ...band]);
-    assert.equal(result.liveUserManaged.length, 88 + band.length);
+    assert.equal(result.liveUserManaged.length, 89 + band.length);
   }
 
   // Platform-managed names are still excluded before the comparison, so the
@@ -223,8 +230,8 @@ test("#2241 regression: remediation mode still REQUIRES the band and exactly 90"
 test("#2241 regression: every out-of-scope secret invariant is unchanged", () => {
   assert.equal(manifest.policy.normal_ceiling, 87);
   assert.equal(manifest.policy.absolute_ceiling, 90);
-  assert.equal(manifest.secrets.length, 88);
-  assert.equal(contract.remediation.allowed_extra_live_names.length, 2);
+  assert.equal(manifest.secrets.length, 89);
+  assert.equal(contract.remediation.allowed_extra_live_names.length, 1);
   assert.equal(contract.remediation.production_ref, projectRef);
   assert.equal(contract.remediation.issue, 2241);
   assert.equal(contract.remediation.selected_functions.length, 23);
