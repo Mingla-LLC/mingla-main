@@ -47,7 +47,9 @@ export function violations(files) {
   } catch {
     return ["contract_or_manifest_invalid_json"];
   }
-  if (manifest.secrets?.length !== 88) failures.push("manifest:not_exact_88");
+  // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat (SPRINT_ROLLOVER_TOKEN).
+  // The band narrows to one name so manifest + band still equals exactly 90.
+  if (manifest.secrets?.length !== 89) failures.push("manifest:not_exact_89");
   const records = new Map(
     manifest.secrets?.map((record) => [record.name, record]),
   );
@@ -81,7 +83,7 @@ export function violations(files) {
     contract.remediation?.issue !== 2241 ||
     contract.remediation?.production_ref !== "gqnoajqerqhnvulmnyvv" ||
     contract.remediation?.expires_after_merge_hours !== 72 ||
-    contract.remediation?.allowed_extra_live_names?.length !== 2 ||
+    contract.remediation?.allowed_extra_live_names?.length !== 1 ||
     contract.remediation?.selected_functions?.length !== 23
   ) failures.push("contract:remediation_contract_invalid");
   for (
@@ -372,7 +374,7 @@ function readFiles() {
 
 function fixture() {
   const filler = Array.from(
-    { length: 86 },
+    { length: 87 },
     (_, index) => ({ name: `SAFE_${index}` }),
   );
   return {
@@ -399,7 +401,7 @@ function fixture() {
         issue: 2241,
         production_ref: "gqnoajqerqhnvulmnyvv",
         expires_after_merge_hours: 72,
-        allowed_extra_live_names: ["A", "B"],
+        allowed_extra_live_names: ["A"],
         selected_functions: Array.from(
           { length: 23 },
           (_, index) => `f${index}`,
@@ -518,7 +520,7 @@ function selfTest() {
     const broken = { ...clean, manifest: JSON.stringify({ secrets }) };
     if (
       !violations(broken).some((failure) =>
-        failure.includes("manifest:not_exact_88")
+        failure.includes("manifest:not_exact_89")
       )
     ) throw new Error("manifest cardinality reversion not caught");
   }

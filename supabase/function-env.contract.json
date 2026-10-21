@@ -2463,7 +2463,6 @@
   ],
   "remediation": {
     "allowed_extra_live_names": [
-      "ATTENDANCE_CLAIM_PEPPER",
       "CHECKOUT_REVOCATION_EXECUTE"
     ],
     "expires_after_merge_hours": 72,
