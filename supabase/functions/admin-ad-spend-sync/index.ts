@@ -46,9 +46,12 @@ import {
   AdDestinationError,
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
+import { markPlanPaused } from "../_shared/adPlanPauseTransition.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -253,6 +256,7 @@ async function pauseCampaignForReason(
   supabase: any,
   target: CampaignSpendTarget,
   connectionId: unknown,
+  planId: unknown,
   reason: string,
   totalSpendCents: number,
 ): Promise<{ ok: true } | { ok: false; detail: string }> {
@@ -282,6 +286,7 @@ async function pauseCampaignForReason(
       .from("ad_campaigns")
       .update({
         status: "PAUSED",
+        auto_pause_reason: reason,
         status_synced_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -313,6 +318,12 @@ async function pauseCampaignForReason(
         ok: false,
         detail: `pause_audit_write_failed: ${auditErr.message}`,
       };
+    }
+    if (typeof planId === "string" && UUID_REGEX.test(planId)) {
+      const planPause = await markPlanPaused(supabase, planId, reason);
+      if (!planPause.ok) {
+        return { ok: false, detail: planPause.detail };
+      }
     }
     return { ok: true };
   } catch (err) {
@@ -446,7 +457,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, amended_provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug, plan_version:ad_plan_versions(plan_id)",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -508,6 +519,7 @@ serve(async (req: Request): Promise<Response> => {
           supabase,
           target,
           row.connection_id,
+          (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
           "provider_currency_unresolved",
           cumulative.cents,
         );
@@ -564,6 +576,7 @@ serve(async (req: Request): Promise<Response> => {
           supabase,
           target,
           row.connection_id,
+          (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
           destinationPause,
           cumulative.cents,
         );
@@ -649,6 +662,7 @@ serve(async (req: Request): Promise<Response> => {
           supabase,
           target,
           row.connection_id,
+          (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
           reason,
           cumulative.cents,
         );
@@ -716,6 +730,7 @@ serve(async (req: Request): Promise<Response> => {
         supabase,
         target,
         row.connection_id,
+        (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
         "spend_fetch_failed",
         cumulative.cents,
       );
@@ -753,6 +768,7 @@ serve(async (req: Request): Promise<Response> => {
         supabase,
         target,
         row.connection_id,
+        (row.plan_version as { plan_id?: unknown } | null)?.plan_id,
         decision.pause,
         decision.total_spend_cents,
       );

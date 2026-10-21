@@ -39,6 +39,10 @@ import {
 import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
 import { isLaunchConfirmPhrase } from "../_shared/adLaunchConfirm.ts";
 import { runBudgetChange } from "../_shared/adBudgetChangeAction.ts";
+import {
+  markPlanPaused,
+  preparePlanForLaunch,
+} from "../_shared/adPlanPauseTransition.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
@@ -113,19 +117,24 @@ async function runPlannedAction(input: {
     );
   }
   if (action === "launch") {
-    const { error: launchableError } = await db.rpc(
-      "ad_plan_assert_launchable",
-      {
-        p_plan_version_id: versionId,
-        p_plan_hash: planHash,
-      },
-    );
-    if (launchableError) {
+    const prepared = await preparePlanForLaunch({
+      db,
+      planId: String(plan.id),
+      planState: String(plan.state),
+      campaigns: plannedCampaigns,
+      assertLaunchable: () =>
+        db.rpc("ad_plan_assert_launchable", {
+          p_plan_version_id: versionId,
+          p_plan_hash: planHash,
+        }),
+    });
+    if (!prepared.ok) {
       return json({
         error: "launch_blocked",
-        detail: launchableError.message,
-      }, 409);
+        detail: prepared.detail,
+      }, prepared.step === "legacy_reconcile" ? 503 : 409);
     }
+    plan.state = prepared.state;
     for (const row of plannedCampaigns) {
       if (startDateNotReached(row.starts_at ?? null)) {
         return json({
@@ -184,15 +193,6 @@ async function runPlannedAction(input: {
           );
         }
       }
-    }
-  } else if (["live", "partially_live"].includes(String(plan.state))) {
-    const { error: stateError } = await db.from("ad_plans")
-      .update({ state: "pause_requested" }).eq("id", plan.id);
-    if (stateError) {
-      return json(
-        { error: "pause_failed", detail: "plan_state_write_failed" },
-        503,
-      );
     }
   }
 
@@ -255,11 +255,18 @@ async function runPlannedAction(input: {
         effectiveStatus = null;
       }
       const nowIso = new Date().toISOString();
-      await db.from("ad_campaigns").update({
-        status: desired,
-        delivery_status: effectiveStatus,
-        status_synced_at: nowIso,
-      }).eq("id", row.id);
+      const { error: campaignStatusError } = await db.from("ad_campaigns")
+        .update({
+          status: desired,
+          auto_pause_reason: null,
+          delivery_status: effectiveStatus,
+          status_synced_at: nowIso,
+        }).eq("id", row.id);
+      if (campaignStatusError) {
+        throw new Error(
+          `campaign_status_write_failed: ${campaignStatusError.message}`,
+        );
+      }
       if (action === "launch" && adSetIds.length) {
         await db.from("ad_sets").update({ status: "ACTIVE" }).in(
           "id",
@@ -326,35 +333,36 @@ async function runPlannedAction(input: {
     }
   }
   const successes = outcomes.filter((row) => row.ok === true).length;
+  let planState = String(plan.state);
   if (action === "launch" && successes > 0) {
-    await db.from("ad_plans").update({
-      state: successes === outcomes.length ? "live" : "partially_live",
+    planState = successes === outcomes.length ? "live" : "partially_live";
+    const { error: planStateError } = await db.from("ad_plans").update({
+      state: planState,
     }).eq("id", plan.id);
-  } else if (action === "pause") {
-    await db.from("ad_plans").update({
-      state: successes === outcomes.length
-        ? "paused"
-        : successes > 0
-        ? "partially_live"
-        : plan.state,
-    }).eq("id", plan.id);
+    if (planStateError) {
+      return json({
+        error: "launch_failed",
+        detail: `plan_state_write_failed: ${planStateError.message}`,
+        outcomes,
+      }, 503);
+    }
+  } else if (action === "pause" && successes > 0) {
+    const planPause = await markPlanPaused(db, String(plan.id), "manual_pause");
+    if (!planPause.ok) {
+      return json({
+        error: "pause_failed",
+        detail: planPause.detail,
+        outcomes,
+      }, 503);
+    }
+    planState = planPause.transition.state;
   }
   const { data: updatedCampaign } = await db.from("ad_campaigns").select("*")
     .eq("id", campaign.id).maybeSingle();
   return json({
     campaign: updatedCampaign ?? campaign,
     plan_id: plan.id,
-    plan_state: action === "launch"
-      ? (successes === outcomes.length
-        ? "live"
-        : successes > 0
-        ? "partially_live"
-        : plan.state)
-      : (successes === outcomes.length
-        ? "paused"
-        : successes > 0
-        ? "partially_live"
-        : plan.state),
+    plan_state: planState,
     outcomes,
     ...(successes !== outcomes.length
       ? {
@@ -901,6 +909,7 @@ serve(async (req: Request): Promise<Response> => {
       .from("ad_campaigns")
       .update({
         status: toStatus,
+        auto_pause_reason: null,
         delivery_status: effectiveStatus,
         status_synced_at: nowIso,
       })
