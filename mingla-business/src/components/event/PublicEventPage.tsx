@@ -405,6 +405,17 @@ const mapBrandToPublicBrand = (
 // renderer now hands us the coordinate it already holds and `openMapsTarget`
 // anchors the link on it. The text forms survive only inside the one builder,
 // as the fallback for an event we hold no pin for.
+const openMapsForTarget = (
+  target: MapsOpenTarget,
+  app?: MapsAppId,
+): void => {
+  // issue #2508 — `app` is the map app the buyer picked in the shared chooser;
+  // undefined means nothing was asked and this is the exact #2468 path.
+  // #3187 P2-1 — a share recipient's directions tap (no-op off a shared link).
+  recordShareDestination("directions");
+  openMapsTarget(target, { app });
+};
+
 // issue #2508 — the copy-address host effect, beside the maps one. The shared
 // renderer owns the BUTTON; writing the clipboard is the app's job. The text it
 // receives has already cleared the SAME privacy gate as the maps link
@@ -629,11 +640,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   }, [engagementScope]);
   const handleOpenMaps = useCallback(
     (target: MapsOpenTarget, app?: MapsAppId): void => {
-      // issue #2508 — `app` is the map app the buyer picked in the shared chooser;
-      // undefined means nothing was asked and this is the exact #2468 path.
-      recordShareDestination("directions");
+      // issue #4037 — count the host's directions CTA, then the unchanged
+      // #2468 / #2508 / #3187 forwarder opens the maps app.
       void captureOfferingCta(engagementScope, "directions");
-      openMapsTarget(target, { app });
+      openMapsForTarget(target, app);
     },
     [engagementScope],
   );

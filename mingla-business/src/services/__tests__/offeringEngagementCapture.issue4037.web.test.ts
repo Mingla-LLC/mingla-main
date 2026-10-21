@@ -115,11 +115,15 @@ describe("#4037 buyer-web aggregate capture", () => {
     expect(sources.event).toContain(
       'captureOfferingCta(engagementScope, "directions")',
     );
+    // The brand page reads the scope through a ref so handleOpenExternal keeps
+    // the #3187 dependency list ([websiteUrl]).
     expect(sources.brand).toContain(
-      'captureOfferingCta(engagementScope, "website")',
+      'captureOfferingCta(engagementScopeRef.current, "website")',
     );
+    // The brand page reads the scope through a ref so handleOpenExternal keeps
+    // the #3187 dependency list ([websiteUrl]).
     expect(sources.brand).toContain(
-      'captureOfferingCta(engagementScope, "call")',
+      'captureOfferingCta(engagementScopeRef.current, "call")',
     );
     expect(sources.trip).toContain(
       'captureOfferingCta(engagementScope, "book")',

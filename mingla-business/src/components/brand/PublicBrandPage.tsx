@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import Head from "expo-router/head";
@@ -259,6 +259,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     () => ({ brandId: brand.id, entityType: "brand", entityId: null }),
     [brand.id],
   );
+  // The scope only changes with brand.id; a ref keeps handleOpenExternal's
+  // identity tied to the website link it compares against.
+  const engagementScopeRef = useRef(engagementScope);
+  engagementScopeRef.current = engagementScope;
   useEffect(() => {
     void captureOfferingPageView(engagementScope);
   }, [engagementScope]);
@@ -291,18 +295,18 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const websiteUrl = brand.links?.website;
   const handleOpenExternal = useCallback(
     (url: string): void => {
-      if (url.startsWith("tel:")) {
-        recordShareDestination("call");
-        void captureOfferingCta(engagementScope, "call");
-      } else if (websiteUrl !== undefined && url === websiteUrl) {
-        recordShareDestination("website");
-        void captureOfferingCta(engagementScope, "website");
+      if (url.startsWith("tel:")) recordShareDestination("call");
+      else if (websiteUrl !== undefined && url === websiteUrl) recordShareDestination("website");
+      // issue #4037 — the same two CTAs count toward the host's page traffic.
+      if (url.startsWith("tel:")) void captureOfferingCta(engagementScopeRef.current, "call");
+      else if (websiteUrl !== undefined && url === websiteUrl) {
+        void captureOfferingCta(engagementScopeRef.current, "website");
       }
       void Linking.openURL(url).catch((error: unknown) => {
         console.warn("[public-brand] could not open link", error instanceof Error ? error.message : String(error));
       });
     },
-    [engagementScope, websiteUrl],
+    [websiteUrl],
   );
 
   const handleOpenEvent = useCallback(
