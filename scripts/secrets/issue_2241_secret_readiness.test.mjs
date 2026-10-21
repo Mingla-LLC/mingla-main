@@ -11,6 +11,11 @@
  * declared (88) + band. Only the band's size changed. Leaving 93 would have
  * demanded three names nobody can produce — a check that cannot pass (#2113).
  *
+ * [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]. Declared moves 88 -> 89
+ * (SPRINT_ROLLOVER_TOKEN) and the band narrows to CHECKOUT_REVOCATION_EXECUTE
+ * alone, so remediation cardinality stays exactly 90 = declared (89) + band
+ * (1) under the unchanged 90-name absolute ceiling.
+ *
  * Load-bearing assertions include:
  * - unclassified imported environment read fails closed
  * - signed receipt replay is rejected
@@ -333,7 +338,7 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
   assert.deepEqual(Object.keys(contract.functions).sort(), effectivePolicy.diskFunctions);
-  assert.equal(manifest.secrets.length, 88);
+  assert.equal(manifest.secrets.length, 89);
 });
 
 test("#2241 happy: every exact direct reader is bundle-first with only its matching fallback", () => {
@@ -1344,7 +1349,7 @@ test("#2241 happy: normal deploy accepts a selected function with every required
     mergedCommit,
   });
   assert.deepEqual(result.selected_functions, ["admin-place-search"]);
-  assert.equal(result.live_user_managed_count, 88);
+  assert.equal(result.live_user_managed_count, 89);
   assert.equal(result.bundle_receipts, 0);
 });
 
@@ -1459,7 +1464,7 @@ test("#2241 adversarial: exact live/project/function sets and in-memory authorit
   );
 });
 
-test("#2241 adversarial: exact 88/90 cardinalities reject both off-by-one directions", () => {
+test("#2241 adversarial: exact 89/90 cardinalities reject both off-by-one directions", () => {
   const normal = manifest.secrets.map((record) => record.name);
   const remediation = [...normal, ...ISSUE_2241_EXTRA_NAMES];
   for (const liveNames of [normal.slice(1), [...normal, "UNAPPROVED_EXTRA"]]) {
@@ -2417,7 +2422,7 @@ const ISSUE_2913_EXACT_PLATFORM_MANAGED = Object.freeze([
   "SUPABASE_URL",
 ]);
 
-test("#2913 happy: exact provider defaults preserve 88/90 user-managed parity", () => {
+test("#2913 happy: exact provider defaults preserve 89/90 user-managed parity", () => {
   assert.deepEqual(
     contract.platform_managed,
     ISSUE_2913_EXACT_PLATFORM_MANAGED,
@@ -2441,7 +2446,7 @@ test("#2913 happy: exact provider defaults preserve 88/90 user-managed parity", 
     mode: "issue-2241-remediation",
   });
 
-  assert.equal(normal.liveUserManaged.length, 88);
+  assert.equal(normal.liveUserManaged.length, 89);
   assert.equal(remediation.liveUserManaged.length, 90);
 });
 
@@ -2550,10 +2555,10 @@ test("#2913 tester adversarial: a governed user name cannot hide as platform-man
 // bundle-first readers logged zero `governed_ad_legacy_fallback`, so a band of
 // five could never again match live and remediation mode could not pass at any
 // live count. These lock the band to what actually remains.
-test("#2241 regression: the migration band is exactly the two direct names still live", () => {
+test("#2241 regression: the migration band is exactly the one direct name remediation requires", () => {
   assert.deepEqual(
     [...ISSUE_2241_EXTRA_NAMES],
-    ["ATTENDANCE_CLAIM_PEPPER", "CHECKOUT_REVOCATION_EXECUTE"],
+    ["CHECKOUT_REVOCATION_EXECUTE"],
   );
   assert.deepEqual(
     contract.remediation.allowed_extra_live_names,

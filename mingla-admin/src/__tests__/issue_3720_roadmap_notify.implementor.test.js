@@ -41,4 +41,11 @@ describe("#3720 announcement publishing reports delivery truth", () => {
     assert.match(announcementPanel, /Email accepted/);
     assert.match(announcementPanel, /Email suppressed/);
   });
+
+  // #3988 — drafts can be archived (RPC already allows any status; UI was published-only).
+  it("offers Archive for draft and published announcements", () => {
+    assert.match(announcementPanel, /row\.status === "draft" \|\| row\.status === "published"/);
+    assert.match(announcementPanel, /onArchive\(row\.id\)/);
+    assert.match(service, /community_archive_announcement/);
+  });
 });

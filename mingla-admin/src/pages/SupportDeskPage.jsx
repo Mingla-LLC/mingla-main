@@ -53,8 +53,10 @@ import {
 import {
   listInternalSupportThreads,
   listProductSignals,
+  reassignInternalSupportThread,
   updateInternalSupportThread,
 } from "../services/supportProductWorkflowService";
+import { listSupportStaffRoster } from "../services/communityService";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -232,6 +234,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
   const [nextUpdateSource, setNextUpdateSource] = useState(null);
   const [productSignalSource, setProductSignalSource] = useState(null);
   const [productInboxOpen, setProductInboxOpen] = useState(false);
+  const [staffRoster, setStaffRoster] = useState([]);
 
   // ─── Queue fetch ────────────────────────────────────────────────────────────
 
@@ -239,7 +242,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
     setQueueLoading(true);
     setQueueError(null);
     try {
-      const [liveResult, internalRows, signals] = await Promise.all([
+      const [liveResult, internalRows, signals, roster] = await Promise.all([
         supabase
           .from("support_tickets")
           .select("id, requester_user_id, requester_segment, subject, status, priority, assigned_staff_id, conversation_id, brand_id, created_at, first_response_at, resolved_at, last_message_at, next_update_at, next_update_note, support_workflow_revision")
@@ -247,6 +250,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
           .limit(200),
         listInternalSupportThreads(),
         listProductSignals(),
+        listSupportStaffRoster(),
       ]);
       if (liveResult.error) throw liveResult.error;
       const liveRows = (liveResult.data || []).map((row) => ({
@@ -297,6 +301,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
       setBrandsById(bMap);
       setTickets(rows);
       setProductSignals(signals);
+      setStaffRoster((roster || []).filter((row) => row.enabled));
     } catch (err) {
       if (!mountedRef.current) return;
       setQueueError(err.message);
@@ -404,6 +409,36 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
     }
     if (mountedRef.current) setActing(false);
   }, [selectedTicket, myUserId, addToast, loadQueue]);
+
+  const handleReassignInternal = useCallback(async (assignedStaffId) => {
+    if (!selectedTicket || selectedTicket.source_kind !== "internal_thread") return;
+    if (!assignedStaffId || assignedStaffId === selectedTicket.assigned_staff_id) return;
+    setActing(true);
+    try {
+      const revision = await reassignInternalSupportThread({
+        threadId: selectedTicket.id,
+        expectedRevision: selectedTicket.workflow_revision ?? selectedTicket.revision,
+        assignedStaffId,
+      });
+      setSelectedTicket((t) => (t ? {
+        ...t,
+        assigned_staff_id: assignedStaffId,
+        workflow_revision: revision,
+        revision,
+      } : t));
+      addToast({ variant: "success", title: "Staff ticket reassigned" });
+      await logAdminAction("support.reassign", "internal_thread", selectedTicket.id);
+      await loadQueue();
+    } catch (error) {
+      addToast({
+        variant: "error",
+        title: "Couldn't reassign",
+        description: error?.message || String(error),
+      });
+    } finally {
+      if (mountedRef.current) setActing(false);
+    }
+  }, [selectedTicket, addToast, loadQueue]);
 
   const handleReply = useCallback(async () => {
     if (!selectedTicket || selectedTicket.source_kind !== "support_ticket") return;
@@ -883,7 +918,23 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
 
                 <div className="space-y-1">
                   <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Assigned</div>
-                  {assignee ? (
+                  {selectedTicket.source_kind === "internal_thread" ? (
+                    <Select
+                      value={selectedTicket.assigned_staff_id || ""}
+                      onChange={(e) => void handleReassignInternal(e.target.value)}
+                      disabled={acting || staffRoster.length === 0}
+                      options={[
+                        { value: "", label: "Choose a teammate" },
+                        ...staffRoster.map((row) => ({
+                          value: row.user_id,
+                          label: row.display_name
+                            || profilesById[row.user_id]?.display_name
+                            || profilesById[row.user_id]?.email
+                            || row.user_id.slice(0, 8),
+                        })),
+                      ]}
+                    />
+                  ) : assignee ? (
                     <div className="text-[var(--color-text-primary)] truncate">{profileLabel(assignee)}</div>
                   ) : selectedTicket.source_kind === "support_ticket" ? (
                     <Button

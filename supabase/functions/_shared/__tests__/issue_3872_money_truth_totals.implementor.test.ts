@@ -68,7 +68,8 @@ Deno.test("hosted Stripe: the line item amount is the stored buyer total (produc
   assertEquals(totals.buyer_fees_cents, 135);
   assertEquals(totals.tax_cents, 0);
   assertEquals(breakdown.tax_basis, "provider_hosted_checkout");
-  assertEquals(breakdown.application_fee_amount_cents, 45);
+  // #3645 flat 4.5%: application fee = take-rate (45) + service (90).
+  assertEquals(breakdown.application_fee_amount_cents, 135);
   assertIdentity(totals);
 });
 

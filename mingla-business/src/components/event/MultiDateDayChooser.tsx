@@ -1,42 +1,12 @@
 /**
- * MultiDateDayChooser — issue #2135, extended to MULTI-SELECT by issue #2160.
+ * MultiDateDayChooser — issue #2135 / #2160, wrapped onto shared EventDatePicker
+ * for issue #3281 many-dates (PR 4).
  *
- * A guest attending a two-day exhibition on both days makes ONE reservation and
- * gets admission for both, so this is a set of checkboxes, not a radiogroup.
- * The occurrences are now HANDED DOWN by the host (they ride the event payload
- * from the same reader that served the event — #2161); this component no longer
- * reads anything.
- *
- * The multi-date leg of the public event page: it reads this event's
- * materialised `event_dates` occurrences and renders them as an INLINE list of
- * selectable day rows, in the page flow, above the body.
- *
- * WHY INLINE RATHER THAN A SHEET (decision recorded so it is not re-litigated):
- *
- *   1. It is what the bug asks for. #2135's complaint is that a guest "can
- *      neither see nor choose the second day". A sheet fixes only the second
- *      half — every date stays hidden behind a tap nobody knows to take. Inline
- *      rows put every day on the page, unprompted.
- *   2. It keeps 10 KB out of every guest's boot payload. Reusing the /exp
- *      surface's `ExperienceReservePicker` here made that component reachable
- *      from two chunks, so Metro hoisted it (9,912 B) into `__common` — the
- *      eager payload EVERY visitor downloads, for an affordance only multi-date
- *      events use. Measured: inline costs +1,212 B, the shared sheet +10,238 B.
- *   3. A sheet is the right shape on /exp because that surface is a three-step
- *      wizard (day -> time -> party). Choosing one of a handful of days is a
- *      single decision and does not need the machinery.
- *
- * `ExperienceReservePicker` and the whole /exp surface are deliberately
- * UNTOUCHED by this file — this is a different affordance, not a competing
- * implementation of the same one.
- *
- * The host owns the SELECTION (it is what the checkout URL is built from); this
- * component owns the read and the rendering, and reports both upward.
- *
- * Anon-tolerant: no useAuth anywhere in the chain.
+ * Keeps exports, testIDs, pricing copy, and the lazy-load contract. Layout
+ * (chips / tiles / pass) comes from `@mingla/offering-rendering` chooseLayout.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -47,6 +17,11 @@ import {
 } from "react-native";
 
 import type { ThemePalette } from "@mingla/offering-rendering";
+import {
+  EventDatePicker,
+  type EventDatePickerOccurrenceRenderArgs,
+} from "@mingla/offering-rendering/EventDatePicker";
+import type { EventDateScheduleOccurrence } from "@mingla/offering-rendering/eventDateSchedule";
 
 import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
@@ -71,6 +46,11 @@ export interface MultiDateDayChooserProps {
    * multiplier HERE, before any total is shown.
    */
   pricingMode: MultiDatePricingMode;
+  /**
+   * issue #3281 — when true, show the all-days pass view (no day selection).
+   * Prefer the bundle's `allDaysPass` key; falls back to pricingMode === all_days.
+   */
+  allDaysPass?: boolean;
   /** True when this event has at least one ticket priced above zero. */
   isPaid: boolean;
   /**
@@ -84,22 +64,39 @@ export interface MultiDateDayChooserProps {
   onToggle: (eventDateId: string) => void;
 }
 
+const toScheduleOccurrences = (
+  occurrences: readonly PublicEventOccurrence[],
+  fallbackTimezone: string,
+): EventDateScheduleOccurrence[] =>
+  occurrences.map((o) => ({
+    id: o.id,
+    startAt: o.startAt,
+    endAt: o.endAt,
+    timezone: o.timezone || fallbackTimezone,
+    overrideTitle: o.overrideTitle ?? null,
+    overrideLocation: o.overrideLocation ?? null,
+    soldOut: o.soldOut ?? null,
+    placesLeft: o.placesLeft ?? o.ticketsRemaining ?? null,
+  }));
+
 /**
- * "Sat 22 Aug · 11 AM – 6 PM", degrading to the day alone when times are absent.
- *
- * issue #2209 — the label body MOVED to `formatOccurrenceLine` in
- * eventDateDisplay (I-14, the single owner of event date display) because the
- * public page's EYEBROW now renders the same days. Two copies of this string
- * would be two things a guest could see disagree about the same day. Output is
- * unchanged: `formatOccurrenceLine` returns null exactly where this returned
- * "Date to be confirmed", and that literal stays here because it is this
- * control's copy, not a date format.
+ * issue #2209 — the row label is owned by `formatOccurrenceLine` (I-14, the
+ * single owner of event date display) so a row's accessible name and the
+ * public page's eyebrow can never disagree about the same day.
  */
 const rowLabel = (
-  occurrence: PublicEventOccurrence,
+  occurrence: EventDateScheduleOccurrence,
   fallbackTimezone: string,
 ): string =>
-  formatOccurrenceLine(occurrence, fallbackTimezone) ?? "Date to be confirmed";
+  formatOccurrenceLine(
+    {
+      id: occurrence.id,
+      startAt: occurrence.startAt,
+      endAt: occurrence.endAt,
+      timezone: occurrence.timezone ?? fallbackTimezone,
+    },
+    fallbackTimezone,
+  ) ?? "Date to be confirmed";
 
 type WebTransitionStyle = ViewStyle & {
   transitionProperty: "background-color, border-color, color, opacity";
@@ -138,6 +135,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   occurrences,
   selectedOccurrenceIds,
   pricingMode,
+  allDaysPass: allDaysPassProp,
   isPaid,
   highlightUnchosen,
   state = "ready",
@@ -145,23 +143,27 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   onToggle,
 }) => {
   const reducedMotion = useReducedMotionOnWeb();
-  // Nothing to choose between → render nothing. A multi-date event that
-  // materialised a single row shows no dead affordance, and the host's CTA
-  // behaves exactly as it does for single dates.
-  if (state === "ready" && occurrences.length <= 1) return null;
+  const allDaysPass = allDaysPassProp === true || pricingMode === "all_days";
+  const scheduleOccurrences = useMemo(
+    () => toScheduleOccurrences(occurrences, timezone),
+    [occurrences, timezone],
+  );
+
+  // Nothing to choose between → render nothing (single-date stays byte-identical).
+  if (state === "ready" && !allDaysPass && occurrences.length <= 1) return null;
 
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
   const chosen = selectedOccurrenceIds.length;
-  // issue #2160 §7(b) — THE MULTIPLIER IS VISIBLE BEFORE ANY TOTAL IS.
-  // A guest who sees £10 on a two-day event and picks both days pays £20; the
-  // floating bar must never be the first place they learn that. A free event
-  // carries no price qualifier because there is nothing to qualify.
-  const countLine = chosen === 0
-    ? `${occurrences.length} days`
-    : isPaid && pricingMode === "per_day"
-      ? `Priced per day · ${chosen} of ${occurrences.length} selected`
-      : isPaid && pricingMode === "all_days"
-        ? `One price for all days · ${chosen} of ${occurrences.length} selected`
+  // issue #2160 §7(b) — THE PRICE BASIS IS VISIBLE BEFORE ANY TOTAL IS. An
+  // all-days pass names the approved mode copy; per-day names the multiplier.
+  const countLine = allDaysPass
+    ? isPaid
+      ? "One price for all days"
+      : "Every date of this event"
+    : chosen === 0
+      ? `${occurrences.length} days`
+      : isPaid && pricingMode === "per_day"
+        ? `Priced per day · ${chosen} of ${occurrences.length} selected`
         : `${chosen} of ${occurrences.length} selected`;
 
   const recovery =
@@ -191,14 +193,14 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
         <Text
           style={[styles.heading, { color: palette.primaryText }, fontStyle]}
         >
-          Pick your days
+          {allDaysPass ? "Your dates" : "Pick your days"}
         </Text>
         <Text style={[styles.count, { color: palette.tertiaryText }]}>
           {countLine}
         </Text>
       </View>
 
-      {highlightUnchosen && chosen === 0 ? (
+      {highlightUnchosen && !allDaysPass && chosen === 0 ? (
         <Text
           style={[styles.prompt, { color: palette.accent }, fontStyle]}
           testID="issue-2135-day-chooser-prompt"
@@ -235,86 +237,108 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
       ) : null}
 
       {/* Rows are SIBLINGS — never nested Pressables, which would flatten the
-          accessibility subtree (feedback_nested_pressable_flattens_a11y_subtree).
-          The container DROPS accessibilityRole="radiogroup": RN has no
-          checkbox-group role, and leaving "radiogroup" on a set of checkboxes
-          would announce "pick exactly one", which is the opposite of what this
-          control now does. A plain labelled group is the honest shape. */}
+          accessibility subtree. The group is a plain labelled container, never
+          "radiogroup": this is multi-select, so each row is a checkbox. */}
       {state === "ready" ? (
-        <View accessibilityLabel="Days you're attending" style={styles.rows}>
-          {occurrences.map((occurrence) => {
-            const selected = selectedOccurrenceIds.includes(occurrence.id);
-            const label = rowLabel(occurrence, timezone);
-            const webCheckboxProps = Platform.OS === "web"
-              ? {
-                  "aria-checked": selected,
-                  tabIndex: 0 as const,
-                  onKeyDown: (event: React.KeyboardEvent<HTMLElement>): void => {
-                    if ((event.key === " " || event.key === "Spacebar") && !event.repeat) {
-                      event.preventDefault();
-                      onToggle(occurrence.id);
-                    }
-                  },
-                }
-              : {};
-            return (
-              <Pressable
-                key={occurrence.id}
-                {...webCheckboxProps}
-                onPress={() => onToggle(occurrence.id)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: selected }}
-                accessibilityLabel={label}
-                style={[
-                  styles.row,
-                  { borderColor: palette.panelBorder },
-                  Platform.OS === "web"
-                    ? webTransitionStyle(reducedMotion)
-                    : null,
-                  selected
-                    ? {
-                        borderColor: palette.accent,
-                        backgroundColor: palette.accentWash,
+        <View accessibilityLabel="Days you're attending">
+          <EventDatePicker
+            occurrences={scheduleOccurrences}
+            selectedIds={selectedOccurrenceIds}
+            onToggle={onToggle}
+            allDaysPass={allDaysPass}
+            status="ready"
+            onRetry={onRetry}
+            accentColor={palette.accent}
+            mutedColor={palette.tertiaryText}
+            occurrenceTestIDPrefix="issue-2135-day-row"
+            occurrenceNativeIDPrefix="issue-2160-day-row"
+            testID="issue-2135-day-picker"
+            renderOccurrence={(row: EventDatePickerOccurrenceRenderArgs) => {
+              const selected = row.selected;
+              const label = rowLabel(row.occurrence, timezone);
+              const detail = [row.title, row.location, row.placesLeftLabel]
+                .filter((part): part is string => part !== null)
+                .join(" · ");
+              const webCheckboxProps = Platform.OS === "web"
+                ? {
+                    "aria-checked": selected,
+                    tabIndex: 0 as const,
+                    onKeyDown: (event: React.KeyboardEvent<HTMLElement>): void => {
+                      if (row.soldOut) return;
+                      if ((event.key === " " || event.key === "Spacebar") && !event.repeat) {
+                        event.preventDefault();
+                        row.toggle();
                       }
-                    : null,
-                ]}
-                testID={`issue-2135-day-row-${occurrence.id}`}
-                /* issue #2160 — a second, mode-neutral hook so a test can target
-                 the multi-select rows without depending on the #2135 id. */
-                nativeID={`issue-2160-day-row-${occurrence.id}`}
-              >
-                <View
-                  style={[
-                    styles.radio,
-                    {
-                      borderColor: selected
-                        ? palette.accent
-                        : palette.panelBorder,
                     },
+                  }
+                : {};
+              return (
+                <Pressable
+                  key={row.key}
+                  {...webCheckboxProps}
+                  onPress={row.toggle}
+                  disabled={row.soldOut}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected, disabled: row.soldOut }}
+                  accessibilityLabel={label}
+                  accessibilityHint={detail.length > 0 ? detail : undefined}
+                  style={[
+                    styles.row,
+                    { borderColor: palette.panelBorder },
+                    Platform.OS === "web"
+                      ? webTransitionStyle(reducedMotion)
+                      : null,
+                    selected
+                      ? {
+                          borderColor: palette.accent,
+                          backgroundColor: palette.accentWash,
+                        }
+                      : null,
+                    row.soldOut ? styles.rowSoldOut : null,
                   ]}
+                  testID={row.testID}
+                  nativeID={row.nativeID}
                 >
-                  {selected ? (
-                    <Text style={[styles.check, { color: palette.accentText }]}>
-                      ✓
+                  <View
+                    style={[
+                      styles.check,
+                      {
+                        borderColor: selected
+                          ? palette.accent
+                          : palette.panelBorder,
+                      },
+                    ]}
+                  >
+                    {selected ? (
+                      <Text style={[styles.checkMark, { color: palette.accentText }]}>
+                        ✓
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.rowText}>
+                    <Text
+                      style={[
+                        styles.rowLabel,
+                        {
+                          color: selected
+                            ? palette.primaryText
+                            : palette.secondaryText,
+                        },
+                        fontStyle,
+                      ]}
+                    >
+                      {label}
                     </Text>
-                  ) : null}
-                </View>
-                <Text
-                  style={[
-                    styles.rowLabel,
-                    {
-                      color: selected
-                        ? palette.primaryText
-                        : palette.secondaryText,
-                    },
-                    fontStyle,
-                  ]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
+                    {detail.length > 0 ? (
+                      <Text style={[styles.rowDetail, { color: palette.tertiaryText }]}>
+                        {detail}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
         </View>
       ) : null}
     </View>
@@ -322,8 +346,6 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
 };
 
 const styles = StyleSheet.create({
-  // Palette-themed with the OPAQUE card fill + panel border the page's other
-  // cards use, so Android never renders translucent glass here.
   host: {
     borderBottomWidth: 1,
     paddingBottom: 14,
@@ -339,7 +361,6 @@ const styles = StyleSheet.create({
   heading: { flex: 1, fontSize: 14, fontWeight: "900", letterSpacing: -0.2 },
   count: { fontSize: 12, fontWeight: "700" },
   prompt: { fontSize: 12, lineHeight: 16, fontWeight: "700" },
-  rows: { gap: 8 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -350,10 +371,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     minHeight: 48,
   },
-  // issue #2160 — a SQUARE check box, same 18pt box / 2pt border / accent fill
-  // as #2135's radio circle. The affordance now means "any number", so it must
-  // not look like "exactly one".
-  radio: {
+  rowSoldOut: { opacity: 0.45 },
+  // issue #2160 — a SQUARE check box: the affordance means "any number".
+  check: {
     width: 20,
     height: 20,
     borderRadius: 5,
@@ -361,8 +381,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  check: { fontSize: 14, lineHeight: 16, fontWeight: "900" },
-  rowLabel: { flex: 1, fontSize: 14, fontWeight: "700" },
+  checkMark: { fontSize: 14, lineHeight: 16, fontWeight: "900" },
+  rowText: { flex: 1, gap: 2 },
+  rowLabel: { fontSize: 14, fontWeight: "700" },
+  rowDetail: { fontSize: 12, fontWeight: "600" },
   recovery: { gap: 8 },
   retry: {
     minHeight: 44,

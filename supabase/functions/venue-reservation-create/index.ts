@@ -684,7 +684,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       consumerUserId: userId,
       guestCancelToken,
       buyerStatusTokenHash: await sha256Hex(buyerStatusToken),
-      applicationFeeAmountCents: psSubtotal.miglaFeeCents,
+      applicationFeeAmountCents: psBreakdown.application_fee_amount_cents,
       pricingBreakdown: psBreakdown,
       organicJourneyId,
     });
@@ -799,7 +799,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
   };
   const buyerSubtotal = computeBuyerSubtotal(engineInput);
-  const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents;
+  // #3645 flat 4.5%: application fee = take-rate + service fee.
+  const applicationFeeAmountCents =
+    buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
 
   // Tax: the reservation has no venue_tax_address (that lives on events). We
   // degrade to flat-absorb (one clean number, NO buyer tax form) UNLESS the

@@ -91,14 +91,14 @@ Deno.test("createRecipientAccount posts required Accounts v2 payload with bluepr
     assertEquals(body.defaults, {
       responsibilities: {
         losses_collector: "stripe",
-        fees_collector: "stripe",
+        fees_collector: "application",
       },
     });
     assertEquals(STRIPE_MANAGED_RISK_CONTROLLER, {
       defaults: {
         responsibilities: {
           losses_collector: "stripe",
-          fees_collector: "stripe",
+          fees_collector: "application",
         },
       },
       dashboard: "none",

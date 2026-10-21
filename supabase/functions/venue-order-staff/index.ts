@@ -716,7 +716,11 @@ async function billToPhone(
           mingla_brand_id: input.brandId,
           mingla_buyer_email: buyerEmail,
         },
-        ...venueOrderSplitFields(isCutover, paystackSubaccount, money.minglaFeeCents),
+        ...venueOrderSplitFields(
+          isCutover,
+          paystackSubaccount,
+          money.minglaFeeCents + money.platformServiceFeeCents,
+        ),
       });
       return jsonResponse({
         kind: "requires_paystack_redirect",
@@ -744,8 +748,11 @@ async function billToPhone(
         mingla_buyer_email: buyerEmail,
       },
     };
-    if (money.minglaFeeCents > 0) {
-      piBody.application_fee_amount = money.minglaFeeCents;
+    // #3645 flat 4.5%: application fee = take-rate + platform service fee.
+    const applicationFeeAmountCents =
+      money.minglaFeeCents + money.platformServiceFeeCents;
+    if (applicationFeeAmountCents > 0) {
+      piBody.application_fee_amount = applicationFeeAmountCents;
     }
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     const paymentIntent = await stripe.paymentIntents.create(piBody, {

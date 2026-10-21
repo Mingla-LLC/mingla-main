@@ -120,6 +120,8 @@ serve(async (req) => {
         .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
         .join(" ")
         .trim();
+      // Hosts must never see a raw staff email as the reply name. Prefer a
+      // human label; if every candidate looks like an email, fall back.
       senderDisplayName = [
         staffIdentity?.display_name,
         profileIdentity?.display_name,
@@ -128,7 +130,11 @@ serve(async (req) => {
         user.user_metadata?.full_name,
         user.user_metadata?.name,
         user.user_metadata?.display_name,
-      ].find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "Mingla teammate";
+      ].find((value) =>
+        typeof value === "string" &&
+        value.trim().length > 0 &&
+        !value.includes("@")
+      )?.trim() ?? "Mingla teammate";
     }
 
     // Insert the message. Use the USER client so the RLS INSERT policies

@@ -383,7 +383,7 @@ export function audit(base = repoRoot) {
   // [TEST-MOD-APPROVED #2830] — Sites appends the founder-approved slot-88
   // bundled security envelope; every #1772 field and ordering check stays fixed.
   for (const needle of [
-    "88-name envelope",
+    "89-name envelope",
     "canonical standard Base64",
     "fail-closed handler ordering",
     "provider executes the Node proof before both happy Deno suites",

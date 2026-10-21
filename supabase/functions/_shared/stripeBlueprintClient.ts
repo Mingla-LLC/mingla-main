@@ -32,11 +32,15 @@ const ENV_VAR_TO_ROLE: Record<string, StripeRole> = {
 
 export const STRIPE_BLUEPRINT_API_VERSION = "2026-04-22.preview" as const;
 
+// #3645 flat 4.5%: platform (application) pays Stripe processing fees so the
+// host keeps the full ticket when fees are passed. losses_collector stays on
+// Stripe. New Accounts v2 get this at create; existing connected accounts need
+// a Controllers API update / re-onboard before live Stripe payouts match the rule.
 export const STRIPE_MANAGED_RISK_CONTROLLER = {
   defaults: {
     responsibilities: {
       losses_collector: "stripe",
-      fees_collector: "stripe",
+      fees_collector: "application",
     },
   },
   dashboard: "none",
