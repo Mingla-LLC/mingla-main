@@ -332,6 +332,11 @@ export function CampaignBuilderPage() {
     // Per-ratio pre-cropped variant slots (4:5 / 1:1 / 9:16 / 1.91:1) →
     // { source_url, storage_path } — probed server-side, rescues off-ratio masters.
     variants: {},
+    stageCreativeIds: {
+      prospecting: [],
+      retarget: [],
+      abandoners: [],
+    },
     // #3697: TikTok-only is deliberately narrow and video-only. Pangle is an
     // explicit operator choice, never a silent placement broadening.
     tiktokPlacement: "tiktok",
@@ -372,6 +377,11 @@ export function CampaignBuilderPage() {
     googleBusinessName: "",
   });
   const [specialAdCategory, setSpecialAdCategory] = useState("NONE");
+  const [stageCreativeValidation, setStageCreativeValidation] = useState({
+    ok: false,
+    reason: "Choose stage creatives.",
+    stages: {},
+  });
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
 
@@ -1045,6 +1055,7 @@ export function CampaignBuilderPage() {
         allocations,
         creative: creative.creativeRow?.id ?? creative.publicUrl ?? null,
         tiktokPlacement: creative.tiktokPlacement,
+        stageCreativeIds: creative.stageCreativeIds,
         copy,
         specialAdCategory,
         name,
@@ -1059,6 +1070,7 @@ export function CampaignBuilderPage() {
       creative.creativeRow?.id,
       creative.publicUrl,
       creative.tiktokPlacement,
+      creative.stageCreativeIds,
       copy,
       specialAdCategory,
       name,
@@ -1130,6 +1142,11 @@ export function CampaignBuilderPage() {
           creative.kind !== "video" &&
           creative.tiktokPlacement !== "tiktok_pangle"
         ) return false;
+        if (
+          fundedPlatforms.some((platform) =>
+            ["meta", "snapchat", "tiktok"].includes(platform)
+          ) && !stageCreativeValidation.ok
+        ) return false;
         // #3697 (design §9) — the Builder blocks a video that does not fit a
         // platform this campaign runs on; change platforms or pick another.
         // The server backstop is the ad-plan funding fit gate.
@@ -1197,6 +1214,13 @@ export function CampaignBuilderPage() {
           creative.tiktokPlacement !== "tiktok_pangle"
         ) {
           return "TikTok-only needs a video. Pick a video or choose TikTok + Pangle.";
+        }
+        if (
+          fundedPlatforms.some((platform) =>
+            ["meta", "snapchat", "tiktok"].includes(platform)
+          ) && !stageCreativeValidation.ok
+        ) {
+          return stageCreativeValidation.reason ?? "Choose 2–4 valid creatives for every enabled stage.";
         }
         if (
           creative.kind === "video" &&
@@ -1349,6 +1373,7 @@ export function CampaignBuilderPage() {
           retarget: true,
           abandoners: true,
         },
+        stage_creative_ids: creative.stageCreativeIds,
         creative_library_id: creative.creativeRow?.id ?? null,
         creative_url: creative.kind === "image" ? creative.publicUrl : null,
         media_rights: {
@@ -2275,6 +2300,8 @@ export function CampaignBuilderPage() {
                 creativeExcluded={creativePartition.excluded}
                 creativeBuildable={creativePartition.buildable}
                 onChangePlatforms={() => jumpToStepId("promote")}
+                audienceStages={audience.stages}
+                onStageCreativeValidationChange={setStageCreativeValidation}
               />
               <section className="border-t border-[var(--gray-100)] pt-6">
                 <StepCopy

@@ -47,6 +47,7 @@ import {
   purgeCreative,
   runPreflight,
   unarchiveCreative,
+  updateAdCreativeTags,
 } from "../services/adEngineService";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Tabs } from "../components/ui/Tabs";
@@ -395,6 +396,10 @@ function CreativeLibraryPanel() {
   const [purge, setPurge] = useState({});
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [archiving, setArchiving] = useState(false);
+  const [tagTarget, setTagTarget] = useState(null);
+  const [tagDraft, setTagDraft] = useState(null);
+  const [tagSaving, setTagSaving] = useState(false);
+  const [tagError, setTagError] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletePhrase, setDeletePhrase] = useState("");
   const [deleteError, setDeleteError] = useState(null);
@@ -596,6 +601,45 @@ function CreativeLibraryPanel() {
     hide(creative.id);
     addToast({ variant: "success", title: "Restored. It's available for new campaigns again." });
     void load();
+  };
+
+  const editTags = (creative) => {
+    setTagTarget(creative);
+    setTagDraft({
+      stageTags: [...(creative.stage_tags ?? [])],
+      conceptTag: creative.concept_tag ?? "",
+      hookTag: creative.hook_tag ?? "",
+      eventId: creative.event_id ?? "",
+      licenceReference: creative.licence_reference ?? "",
+      dateLockedUntil: creative.date_locked_until
+        ? new Date(creative.date_locked_until).toISOString().slice(0, 16)
+        : "",
+    });
+    setTagError(null);
+  };
+
+  const saveTags = async () => {
+    if (!tagTarget || !tagDraft) return;
+    setTagSaving(true);
+    setTagError(null);
+    const { data, error: saveError } = await updateAdCreativeTags(tagTarget.id, {
+      ...tagDraft,
+      dateLockedUntil: tagDraft.dateLockedUntil
+        ? new Date(tagDraft.dateLockedUntil).toISOString()
+        : null,
+    });
+    setTagSaving(false);
+    if (saveError) {
+      const parsed = await parseEdgeError(saveError);
+      setTagError(String(parsed?.message ?? "The creative tags could not be saved."));
+      return;
+    }
+    setRows((current) => (current ?? []).map((row) =>
+      row.id === tagTarget.id ? { ...row, ...(data?.creative ?? {}) } : row
+    ));
+    setTagTarget(null);
+    setTagDraft(null);
+    addToast({ variant: "success", title: "Creative tags saved" });
   };
 
   const confirmDelete = async () => {
@@ -885,6 +929,7 @@ function CreativeLibraryPanel() {
                 onPlay={(row) => setPlaying(row)}
                 onArchive={(row) => setArchiveTarget(row)}
                 onRestore={(row) => void restore(row)}
+                onEditTags={(row) => editTags(row)}
                 onOpenMenu={(row) => void checkPurge(row)}
                 onDelete={(row) => {
                   setDeleteTarget(row);
@@ -926,6 +971,80 @@ function CreativeLibraryPanel() {
         <ModalFooter>
           <Button variant="secondary" onClick={() => setArchiveTarget(null)}>Cancel</Button>
           <Button variant="brandContrast" loading={archiving} onClick={() => void confirmArchive()}>Archive</Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal
+        open={Boolean(tagTarget)}
+        onClose={() => {
+          if (tagSaving) return;
+          setTagTarget(null);
+          setTagDraft(null);
+        }}
+        title={`Campaign tags · ${tagTarget?.name ?? "Creative"}`}
+        size="md"
+      >
+        <ModalBody>
+          {tagDraft && (
+            <div className="space-y-4">
+              <fieldset>
+                <legend className="mb-2 text-sm font-semibold">Stages</legend>
+                <div className="flex flex-wrap gap-3">
+                  {["prospecting", "retarget", "abandoners"].map((stage) => (
+                    <label key={stage} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={tagDraft.stageTags.includes(stage)}
+                        onChange={(event) => setTagDraft((current) => ({
+                          ...current,
+                          stageTags: event.target.checked
+                            ? [...current.stageTags, stage]
+                            : current.stageTags.filter((value) => value !== stage),
+                        }))}
+                      />
+                      {sentenceCase(stage)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              {[
+                ["Concept", "conceptTag", 120],
+                ["Hook", "hookTag", 120],
+                ["Event id", "eventId", 36],
+                ["Licence reference", "licenceReference", 240],
+              ].map(([label, key, maxLength]) => (
+                <label key={key} className="block text-sm font-semibold">
+                  {label}
+                  <input
+                    value={tagDraft[key]}
+                    maxLength={maxLength}
+                    onChange={(event) => setTagDraft((current) => ({
+                      ...current,
+                      [key]: event.target.value,
+                    }))}
+                    className="mt-1 h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm font-normal outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
+                  />
+                </label>
+              ))}
+              <label className="block text-sm font-semibold">
+                Auto-archive after
+                <input
+                  type="datetime-local"
+                  value={tagDraft.dateLockedUntil}
+                  onChange={(event) => setTagDraft((current) => ({
+                    ...current,
+                    dateLockedUntil: event.target.value,
+                  }))}
+                  className="mt-1 h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm font-normal outline-none focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]"
+                />
+              </label>
+              {tagError && <p role="alert" className="text-sm text-[var(--color-error-700)]">{tagError}</p>}
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" disabled={tagSaving} onClick={() => setTagTarget(null)}>Cancel</Button>
+          <Button variant="brandContrast" loading={tagSaving} onClick={() => void saveTags()}>Save tags</Button>
         </ModalFooter>
       </Modal>
 

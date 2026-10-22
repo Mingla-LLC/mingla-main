@@ -28,6 +28,11 @@ import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
 import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
+import { normalizeCreativeTagUpdate } from "../_shared/adCreativeTags.ts";
+import {
+  stageCreativeIds,
+  validateStageCreativeRows,
+} from "../_shared/adStageCreativeSelection.ts";
 import {
   applyLibraryFilters,
   creativeFitGateFailure,
@@ -44,13 +49,16 @@ import {
   pendingLibraryItems,
   storedCreativeValidation,
 } from "../_shared/adCreativeLifecycle.ts";
-import { destroyIfUnreferenced, type ReapDeps } from "../_shared/coverVideoReap.ts";
+import {
+  destroyIfUnreferenced,
+  type ReapDeps,
+} from "../_shared/coverVideoReap.ts";
 import { PLATFORMS } from "../_shared/adChannelCore.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   deletionOrder,
-  type ProviderObjectProbe,
   probeMetaObjects,
+  type ProviderObjectProbe,
   RECONCILE_DELETE_PHRASE,
   reconcileDecision,
   reconcileEvidence,
@@ -511,7 +519,10 @@ async function fundingFitGate(
     error: "creative_does_not_fit",
     platform: failure.platform,
     reasons: failure.reasons,
-    misfits: failure.misfits.map(({ platform, needs }) => ({ platform, needs })),
+    misfits: failure.misfits.map(({ platform, needs }) => ({
+      platform,
+      needs,
+    })),
   }, 422);
 }
 
@@ -1199,6 +1210,37 @@ export async function handleAdPlan(
     });
   }
 
+  if (action === "creative_update_tags") {
+    if (!(await isActiveAdmin(db, actor))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const creativeId = typeof body.creative_id === "string"
+      ? body.creative_id
+      : "";
+    if (!UUID_RE.test(creativeId)) {
+      return json(
+        { error: "validation_error", detail: "creative_id_invalid" },
+        400,
+      );
+    }
+    const normalizedTags = normalizeCreativeTagUpdate(body);
+    if (!normalizedTags.ok) {
+      return json(
+        { error: "validation_error", detail: normalizedTags.detail },
+        400,
+      );
+    }
+    const { data, error } = await db.from("ad_creatives").update({
+      ...normalizedTags.patch,
+      updated_at: new Date().toISOString(),
+    }).eq("id", creativeId).is("purged_at", null).select(
+      "id,stage_tags,concept_tag,hook_tag,event_id,licence_reference,date_locked_until,updated_at",
+    ).maybeSingle();
+    if (error) return databaseFailure(error);
+    if (!data) return json({ error: "creative_not_found" }, 404);
+    return json({ ok: true, creative: data });
+  }
+
   if (action === "creative_reuse") {
     if (!(await isActiveAdmin(db, actor))) {
       return json({ error: "forbidden" }, 403);
@@ -1241,7 +1283,8 @@ export async function handleAdPlan(
       : [];
     const reusable: Record<string, unknown> = { ...creative };
     delete reusable.purged_at;
-    reusable.source_job_id = creative.source_job_id ?? creative.source_job_ref ??
+    reusable.source_job_id = creative.source_job_id ??
+      creative.source_job_ref ??
       null;
     return json({
       ok: true,
@@ -1688,6 +1731,47 @@ export async function handleAdPlan(
       resolvedDestination.code = null;
       resolvedDestination.certification_mode = true;
     }
+    const paidSocialPlatforms = platforms.filter((platform) =>
+      platform === "meta" || platform === "snapchat" || platform === "tiktok"
+    );
+    if (plan.client_kind === "admin" && paidSocialPlatforms.length > 0) {
+      const parsedStageCreatives = stageCreativeIds(
+        canonicalInput.stage_creative_ids,
+      );
+      if (!parsedStageCreatives.ok) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: parsedStageCreatives.detail,
+        }, 422);
+      }
+      const { data: stageCreativeRows, error: stageCreativeError } =
+        parsedStageCreatives.allIds.length > 0
+          ? await db.from("ad_creatives").select(
+            "id,brand_id,status,purged_at,aspect_ratio,variants,has_audio",
+          ).in("id", parsedStageCreatives.allIds)
+          : { data: [], error: null };
+      if (stageCreativeError) return databaseFailure(stageCreativeError);
+      const stageSelection = asRecord(canonicalInput.stage_selection) ?? {};
+      const stageValidation = validateStageCreativeRows({
+        ids: parsedStageCreatives.byStage,
+        rows: stageCreativeRows ?? [],
+        enabledStages: {
+          prospecting: stageSelection.prospecting !== false,
+          retarget: stageSelection.retarget !== false,
+          abandoners: stageSelection.abandoners !== false,
+        },
+        platforms,
+        brandId: typeof resolvedDestination.brand_id === "string"
+          ? resolvedDestination.brand_id
+          : null,
+      });
+      if (!stageValidation.ok) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: stageValidation.detail,
+        }, 422);
+      }
+    }
     canonical.destination = destination;
     canonical.measurement = buildAdMeasurementManifest(resolvedDestination);
     canonical.delivery_budgets = Object.fromEntries(
@@ -1934,16 +2018,18 @@ export async function handleAdPlan(
     const deleted: Array<Record<string, unknown>> = [];
     if (deleteFirst) {
       for (const probe of deletionOrder(probes)) {
-        const allocation = (facts.allocations ?? []).find((row: Record<string, unknown>) =>
-          row.platform === probe.platform
-        );
+        const allocation = (facts.allocations ?? []).find((
+          row: Record<string, unknown>,
+        ) => row.platform === probe.platform);
         const { data: connection } = allocation
           ? await db.from("ad_connections").select("*")
             .eq("id", String(allocation.connection_id)).maybeSingle()
           : { data: null };
         let outcome = "deleted";
         try {
-          if (!connection) throw new Error(`${probe.platform}_connection_missing`);
+          if (!connection) {
+            throw new Error(`${probe.platform}_connection_missing`);
+          }
           await provider.remove(connection as AdConnectionRow, probe);
         } catch (error) {
           outcome = (error instanceof Error ? error.message : String(error))

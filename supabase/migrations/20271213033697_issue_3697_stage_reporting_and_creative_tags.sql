@@ -147,6 +147,24 @@ REVOKE ALL ON FUNCTION public.ad_archive_expired_creatives(timestamptz)
 GRANT EXECUTE ON FUNCTION public.ad_archive_expired_creatives(timestamptz)
   TO service_role;
 
+DO $cron$
+DECLARE
+  v_job_id bigint;
+BEGIN
+  SELECT jobid INTO v_job_id
+  FROM cron.job
+  WHERE jobname = 'issue_3697_archive_expired_ad_creatives';
+  IF v_job_id IS NOT NULL THEN
+    PERFORM cron.unschedule(v_job_id);
+  END IF;
+  PERFORM cron.schedule(
+    'issue_3697_archive_expired_ad_creatives',
+    '17 3 * * *',
+    $command$SELECT public.ad_archive_expired_creatives(now());$command$
+  );
+END
+$cron$;
+
 -- Historical Snap stats could include dates before the campaign object existed.
 -- Those rows cannot describe this Mingla campaign and must not survive.
 DELETE FROM public.ad_spend_daily d

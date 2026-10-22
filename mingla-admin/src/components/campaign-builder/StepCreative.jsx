@@ -22,7 +22,7 @@
  *      "Technical details" toggle (creativeCopy.js — mirrors ISSUE-980).
  */
 
-import { createElement, useCallback, useEffect, useState } from "react";
+import { createElement, useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Image as ImageIcon, Film, ChevronDown, ChevronRight, X } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -54,9 +54,23 @@ import {
   selectedVideoMisfitAlert,
 } from "../ad-engine/creativeLibraryModel";
 import { ADMIN_VIDEO_ACCEPT } from "../../services/adminVideoUpload";
+import { resolveAdvertisablePage } from "../../services/adDestinationsService";
+import {
+  CREATIVE_STAGES,
+  creativeFatigue,
+  creativeRatios,
+  MAX_CREATIVES_PER_STAGE,
+  PAID_SOCIAL_PLATFORMS,
+  validateStageCreativeSelection,
+} from "../../lib/adBuilder/stageCreativeRules";
 
 /** Ratio slots the backend accepts as pre-cropped variants (VARIANT_RATIOS). */
 const VARIANT_RATIOS = ["4:5", "1:1", "9:16", "1.91:1"];
+const EMPTY_STAGE_CREATIVE_IDS = Object.freeze({
+  prospecting: [],
+  retarget: [],
+  abandoners: [],
+});
 
 const PLACEMENT_STATUS = {
   pass: { badge: "success", label: "Fits" },
@@ -95,6 +109,8 @@ export function StepCreative({
   creativeExcluded = [],
   creativeBuildable = [],
   onChangePlatforms,
+  audienceStages = {},
+  onStageCreativeValidationChange,
 }) {
   const { addToast } = useToast();
   const [uploading, setUploading] = useState(false);
@@ -109,17 +125,108 @@ export function StepCreative({
   const [videoRefusals, setVideoRefusals] = useState([]);
   const [announcement, setAnnouncement] = useState("");
   const [autoSelectId, setAutoSelectId] = useState(null);
+  const [stageLibrary, setStageLibrary] = useState(null);
+  const [stageBrandId, setStageBrandId] = useState(null);
+  const [stageLibraryError, setStageLibraryError] = useState(null);
   const set = (patch) => onCreativeChange({ ...creative, ...patch });
 
   const isVideo = creative.kind === "video";
-  const eligiblePlatforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
+  const eligiblePlatforms = useMemo(
+    () => channelRows.filter((r) => r.eligible).map((r) => r.platform),
+    [channelRows],
+  );
   // The report/preview cover the channels that will actually build (funded);
   // before budget or when empty, fall back to the eligible set.
-  const reportPlatforms = fundedPlatforms.length > 0 ? fundedPlatforms : eligiblePlatforms;
+  const reportPlatforms = useMemo(
+    () => fundedPlatforms.length > 0 ? fundedPlatforms : eligiblePlatforms,
+    [eligiblePlatforms, fundedPlatforms],
+  );
   const runsTikTok = reportPlatforms.includes("tiktok");
   const tiktokPlacement = creative.tiktokPlacement === "tiktok_pangle"
     ? "tiktok_pangle"
     : "tiktok";
+  const paidSocialPlatforms = useMemo(
+    () => reportPlatforms.filter((platform) =>
+      PAID_SOCIAL_PLATFORMS.includes(platform)
+    ),
+    [reportPlatforms],
+  );
+  const stageCreativeIds = creative.stageCreativeIds ?? EMPTY_STAGE_CREATIVE_IDS;
+
+  useEffect(() => {
+    let active = true;
+    if (paidSocialPlatforms.length === 0) {
+      setStageLibrary([]);
+      setStageBrandId(null);
+      setStageLibraryError(null);
+      return () => { active = false; };
+    }
+    setStageLibrary(null);
+    setStageLibraryError(null);
+    (async () => {
+      try {
+        const resolved = await resolveAdvertisablePage(destination);
+        const brandId = resolved?.brand_id ?? null;
+        if (!brandId) {
+          throw new Error(
+            "This destination has no authoritative brand assignment for its Creative Library.",
+          );
+        }
+        const { data, error } = await listAdCreatives({
+          status: "active",
+          brand_id: brandId,
+        });
+        if (error) {
+          const parsed = await parseEdgeError(error);
+          throw new Error(parsed?.message ?? "The brand Creative Library could not be loaded.");
+        }
+        if (!active) return;
+        setStageBrandId(brandId);
+        setStageLibrary(data?.creatives ?? []);
+      } catch (error) {
+        if (!active) return;
+        setStageBrandId(null);
+        setStageLibrary([]);
+        setStageLibraryError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+    return () => { active = false; };
+  }, [destination, paidSocialPlatforms]);
+
+  useEffect(() => {
+    const result = stageLibrary === null && paidSocialPlatforms.length > 0
+      ? { ok: false, reason: "Loading the brand Creative Library.", stages: {} }
+      : validateStageCreativeSelection({
+        stageCreativeIds,
+        rows: stageLibrary ?? [],
+        enabledStages: audienceStages,
+        platforms: paidSocialPlatforms,
+        brandId: stageBrandId,
+      });
+    onStageCreativeValidationChange?.(result);
+  }, [
+    audienceStages,
+    onStageCreativeValidationChange,
+    paidSocialPlatforms,
+    stageBrandId,
+    stageCreativeIds,
+    stageLibrary,
+  ]);
+
+  const toggleStageCreative = (stage, creativeId) => {
+    const selected = stageCreativeIds[stage] ?? [];
+    const next = selected.includes(creativeId)
+      ? selected.filter((id) => id !== creativeId)
+      : selected.length < MAX_CREATIVES_PER_STAGE
+      ? [...selected, creativeId]
+      : selected;
+    set({
+      stageCreativeIds: {
+        ...stageCreativeIds,
+        [stage]: next,
+      },
+    });
+  };
 
   // #3697 — ready house videos plus this admin's in-flight uploads. A
   // permanently deleted creative never appears; archived ones stay out of new
@@ -529,6 +636,91 @@ export function StepCreative({
             </AlertCard>
           )}
         </fieldset>
+      )}
+
+      {paidSocialPlatforms.length > 0 && (
+        <section className="space-y-3 rounded-xl border border-[var(--gray-200)] p-3">
+          <div>
+            <h3 className="text-sm font-semibold">Creative rotation by stage</h3>
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              Choose 2–4 brand creatives for every enabled stage. Required sizes and audio are checked before Review.
+            </p>
+          </div>
+          {stageLibrary === null ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">Loading brand creatives…</p>
+          ) : stageLibraryError ? (
+            <AlertCard variant="error" title="Brand Creative Library unavailable">
+              {stageLibraryError}
+            </AlertCard>
+          ) : stageLibrary.length === 0 ? (
+            <AlertCard variant="warning" title="No active creatives for this brand">
+              Add and tag brand-owned media in the Creative Library before this campaign can continue.
+            </AlertCard>
+          ) : (
+            CREATIVE_STAGES.filter((stage) => audienceStages[stage] !== false).map((stage) => {
+              const selected = stageCreativeIds[stage] ?? [];
+              const validation = validateStageCreativeSelection({
+                stageCreativeIds,
+                rows: stageLibrary,
+                enabledStages: audienceStages,
+                platforms: paidSocialPlatforms,
+                brandId: stageBrandId,
+              }).stages[stage];
+              return (
+                <fieldset key={stage} className="space-y-2 rounded-lg border border-[var(--gray-200)] p-3">
+                  <legend className="px-1 text-sm font-semibold">
+                    {stage[0].toUpperCase() + stage.slice(1)} · {selected.length}/4
+                  </legend>
+                  <div className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
+                    {stageLibrary.map((row) => {
+                      const chosen = selected.includes(row.id);
+                      const fatigue = creativeFatigue(row);
+                      const ratios = creativeRatios(row);
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          aria-pressed={chosen}
+                          disabled={!chosen && selected.length >= MAX_CREATIVES_PER_STAGE}
+                          onClick={() => toggleStageCreative(stage, row.id)}
+                          className={[
+                            "flex min-w-0 gap-2 rounded-lg border p-2 text-left disabled:cursor-not-allowed disabled:opacity-50",
+                            chosen
+                              ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
+                              : "border-[var(--gray-200)]",
+                          ].join(" ")}
+                        >
+                          {row.preview_url ? (
+                            <img src={row.preview_url} alt="" className="h-14 w-12 shrink-0 rounded object-cover" />
+                          ) : (
+                            <span className="grid h-14 w-12 shrink-0 place-items-center rounded bg-[var(--gray-100)]">
+                              {row.kind === "video" ? <Film className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
+                            </span>
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold">{row.name}</span>
+                            <span className="mt-1 flex flex-wrap gap-1">
+                              {ratios.map((ratio) => <Badge key={ratio}>{ratio}</Badge>)}
+                              <Badge variant={row.has_audio === true ? "success" : "warning"}>
+                                {row.has_audio === true ? "Audio" : "No audio"}
+                              </Badge>
+                              <Badge variant={fatigue.variant}>{fatigue.label}</Badge>
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {validation?.errors?.length > 0 && (
+                    <ul className="space-y-1 text-xs text-[var(--color-error-700)]">
+                      {validation.errors.map((error) => <li key={error}>{error}</li>)}
+                    </ul>
+                  )}
+                </fieldset>
+              );
+            })
+          )}
+        </section>
       )}
 
 

@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useId, useState } from "react";
-import { Archive, Film, Image as ImageIcon, MoreHorizontal, Play, Trash2 } from "lucide-react";
+import { Archive, Film, Image as ImageIcon, MoreHorizontal, Play, Tag, Trash2 } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Dropdown } from "../ui/Dropdown";
@@ -129,6 +129,7 @@ export function CreativeCard({
   onPlay,
   onArchive,
   onRestore,
+  onEditTags,
   onOpenMenu,
   onDelete,
 }) {
@@ -154,6 +155,11 @@ export function CreativeCard({
           {ratio && <Badge variant="ink">{ratio}</Badge>}
           {creative.width && creative.height && isVideo && (
             <Badge variant="ink">{creative.width}×{creative.height}</Badge>
+          )}
+          {isVideo && (
+            <Badge variant={creative.has_audio === true ? "success" : "warning"}>
+              {creative.has_audio === true ? "Audio" : "No audio"}
+            </Badge>
           )}
           {creative.house_reuse_allowed !== true && <Badge variant="brand">From host</Badge>}
         </Badges>
@@ -206,6 +212,16 @@ export function CreativeCard({
           </div>
         )}
 
+        {(creative.stage_tags?.length > 0 || creative.concept_tag || creative.hook_tag) && (
+          <div className="flex flex-wrap gap-1" aria-label="Creative tags">
+            {(creative.stage_tags ?? []).map((stage) => (
+              <Badge key={stage} variant="default">{stage}</Badge>
+            ))}
+            {creative.concept_tag && <Badge variant="brand">Concept: {creative.concept_tag}</Badge>}
+            {creative.hook_tag && <Badge variant="ink">Hook: {creative.hook_tag}</Badge>}
+          </div>
+        )}
+
         <Footer note={archived ? "Shown under Archived only" : usageLine(creative)}>
           {archived ? (
             canManage && <Button size="sm" variant="secondary" onClick={() => onRestore?.(creative)}>Restore</Button>
@@ -239,6 +255,20 @@ export function CreativeCard({
             >
               {(close) => (
                 <div className="w-[260px]">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => { close(); onEditTags?.(creative); }}
+                    className="flex w-full items-start gap-2 rounded-lg px-2.5 py-[9px] text-left text-[13.5px] font-medium text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand-500)]"
+                  >
+                    <Tag className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      Edit campaign tags
+                      <small className="mt-0.5 block text-xs font-normal leading-snug text-[var(--color-text-tertiary-strong)]">
+                        Stage, concept, hook, event and licence.
+                      </small>
+                    </span>
+                  </button>
                   {!archived && (
                     <button
                       type="button"

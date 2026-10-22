@@ -199,12 +199,26 @@ export async function refreshAdAudiences(filters = {}) {
  */
 export async function listAdCreatives(filters = {}) {
   const body = { action: "creative_library" };
-  for (const key of ["status", "kind", "source", "q", "before"]) {
+  for (const key of ["status", "kind", "source", "q", "before", "brand_id"]) {
     if (filters[key] !== undefined && filters[key] !== null && filters[key] !== "") {
       body[key] = filters[key];
     }
   }
   return adPlanAction(body);
+}
+
+/** #3697 Creative Library campaign-stage and licence metadata. */
+export async function updateAdCreativeTags(creativeId, tags) {
+  return adPlanAction({
+    action: "creative_update_tags",
+    creative_id: creativeId,
+    stage_tags: tags.stageTags ?? [],
+    concept_tag: tags.conceptTag || null,
+    hook_tag: tags.hookTag || null,
+    event_id: tags.eventId || null,
+    licence_reference: tags.licenceReference || null,
+    date_locked_until: tags.dateLockedUntil || null,
+  });
 }
 
 /**

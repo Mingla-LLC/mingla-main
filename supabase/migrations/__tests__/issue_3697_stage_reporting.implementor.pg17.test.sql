@@ -42,6 +42,15 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
+    SELECT 1 FROM cron.job
+    WHERE jobname = 'issue_3697_archive_expired_ad_creatives'
+      AND schedule = '17 3 * * *'
+      AND command = 'SELECT public.ad_archive_expired_creatives(now());'
+  ) THEN
+    RAISE EXCEPTION '#3697 expired creative daily archive cron missing';
+  END IF;
+
+  IF NOT EXISTS (
     SELECT 1 FROM pg_views
     WHERE schemaname = 'public'
       AND viewname = 'ad_event_stage_summary_daily'
