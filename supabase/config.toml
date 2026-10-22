@@ -608,6 +608,10 @@ verify_jwt = false
 [functions.admin-ad-audiences]
 verify_jwt = false
 
+# Issue #3697 — active-admin read-only proxy for @usemingla Spark posts.
+[functions.admin-ad-tiktok-posts]
+verify_jwt = true
+
 # ISSUE-866 WP3 [Full Rooms Ad Engine — Creative Library] — records a canonical
 # creative row behind the A1-6 server-side byte-probe + the §2 validation matrix
 # + the COMMS-0102 crawler-permissiveness check. Same gate as the WP1 fns:

@@ -358,9 +358,13 @@ export function buildCreatePayload(platform, state) {
       // #3697: Pangle is opt-in. The server independently refuses an image on
       // TikTok-only, so a stale or forged client cannot broaden placement.
       tiktok_placement:
+        creative.tiktokCreativeSource !== "spark" &&
         creative.tiktokPlacement === "tiktok_pangle"
           ? "tiktok_pangle"
           : "tiktok",
+      ...(creative.tiktokCreativeSource === "spark"
+        ? { tiktok_spark_post_ids: creative.tiktokSparkPostIds ?? [] }
+        : {}),
       objective,
       optimization_goal: goalDefaults.optimization_goal,
       billing_event: goalDefaults.billing_event,

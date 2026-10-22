@@ -32,21 +32,31 @@ const SRC = (relativePath) =>
   readFileSync(resolve(__dirname, "..", relativePath), "utf8");
 
 const VERSION_ID = "11111111-1111-4111-8111-111111111111";
-const PLAN_HASH = "a286220176c586141d55df9d0861e141772e22db5e884e6f6508c9d7796399a3";
+const PLAN_HASH =
+  "a286220176c586141d55df9d0861e141772e22db5e884e6f6508c9d7796399a3";
 const CREATIVE_ID = "33333333-3333-4333-8333-333333333333";
 
 describe("#3697 the image-prepare step is named for Snapchat only", () => {
   it("only Snapchat needs an uploaded image", () => {
     assert.deepEqual([...IMAGE_PREPARATION_PLATFORMS], ["snapchat"]);
     assert.deepEqual(
-      preparationPlatformsFor({ platforms: ["meta", "snapchat", "tiktok"], kind: "image" }),
+      preparationPlatformsFor({
+        platforms: ["meta", "snapchat", "tiktok"],
+        kind: "image",
+      }),
       ["snapchat"],
     );
     assert.deepEqual(
-      preparationPlatformsFor({ platforms: ["meta", "snapchat"], kind: "video" }),
+      preparationPlatformsFor({
+        platforms: ["meta", "snapchat"],
+        kind: "video",
+      }),
       ["meta", "snapchat"],
     );
-    assert.deepEqual(preparationPlatformsFor({ platforms: ["snapchat"], kind: null }), []);
+    assert.deepEqual(
+      preparationPlatformsFor({ platforms: ["snapchat"], kind: null }),
+      [],
+    );
   });
 
   it("Create lists Prepare the image for Snapchat before Create paused on Snapchat", () => {
@@ -62,7 +72,10 @@ describe("#3697 the image-prepare step is named for Snapchat only", () => {
       steps.find((step) => step.id === "prepare:snapchat").label,
       "Prepare the image for Snapchat",
     );
-    const metaOnly = housePlanCreateSteps({ platforms: ["meta"], isImage: true });
+    const metaOnly = housePlanCreateSteps({
+      platforms: ["meta"],
+      isImage: true,
+    });
     assert.ok(!metaOnly.some((step) => step.id.startsWith("prepare:")));
   });
 
@@ -84,7 +97,10 @@ describe("#3697 the image-prepare step is named for Snapchat only", () => {
   it("a sealed image template reads as an image plan", () => {
     assert.equal(
       templatesCreativeKind({
-        snapchat: { creative: { creative_library_id: CREATIVE_ID }, creative_intent: { kind: "image" } },
+        snapchat: {
+          creative: { creative_library_id: CREATIVE_ID },
+          creative_intent: { kind: "image" },
+        },
       }),
       "image",
     );
@@ -108,18 +124,24 @@ describe("#3697 Resume on a failed Snapchat image plan prepares before it create
       appType: "custom",
       logLevel: "silent",
       server: { middlewareMode: true },
-      plugins: [{
-        name: "issue-3697-fake-supabase",
-        enforce: "pre",
-        resolveId(id) {
-          return /(^|\/)lib\/supabase(\.js)?$/.test(id) ? "\0fake-supabase" : null;
+      plugins: [
+        {
+          name: "issue-3697-fake-supabase",
+          enforce: "pre",
+          resolveId(id) {
+            return /(^|\/)lib\/supabase(\.js)?$/.test(id)
+              ? "\0fake-supabase"
+              : null;
+          },
+          load(id) {
+            if (id !== "\0fake-supabase") return null;
+            return (
+              "export const supabase = {};\n" +
+              "export const invokeWithRefresh = (...args) => globalThis.__issue3697Invoke(...args);\n"
+            );
+          },
         },
-        load(id) {
-          if (id !== "\0fake-supabase") return null;
-          return "export const supabase = {};\n" +
-            "export const invokeWithRefresh = (...args) => globalThis.__issue3697Invoke(...args);\n";
-        },
-      }],
+      ],
     });
     service = await vite.ssrLoadModule("/src/services/adEngineService.js");
   });
@@ -131,16 +153,29 @@ describe("#3697 Resume on a failed Snapchat image plan prepares before it create
 
   function fakeBackend(platforms) {
     calls.length = 0;
-    const templates = Object.fromEntries(platforms.map((platform) => [platform, {
-      creative: { creative_library_id: CREATIVE_ID, headline: "Femzy" },
-      creative_intent: { kind: "image", creative_library_id: CREATIVE_ID },
-    }]));
+    const templates = Object.fromEntries(
+      platforms.map((platform) => [
+        platform,
+        {
+          creative: { creative_library_id: CREATIVE_ID, headline: "Femzy" },
+          creative_intent: { kind: "image", creative_library_id: CREATIVE_ID },
+        },
+      ]),
+    );
     const aggregate = {
-      plan: { id: "plan-1", owner_kind: "mingla", state: "creation_failed_retryable" },
+      plan: {
+        id: "plan-1",
+        owner_kind: "mingla",
+        state: "creation_failed_retryable",
+      },
       version: {
         id: VERSION_ID,
         plan_hash: PLAN_HASH,
-        canonical_plan: { creative_library_id: CREATIVE_ID, lane: "consumer", execution_payloads: templates },
+        canonical_plan: {
+          creative_library_id: CREATIVE_ID,
+          lane: "consumer",
+          execution_payloads: templates,
+        },
       },
       provider_allocations: platforms.map((platform) => ({ platform })),
       campaigns: [],
@@ -148,7 +183,8 @@ describe("#3697 Resume on a failed Snapchat image plan prepares before it create
     const prepared = new Set();
     globalThis.__issue3697Invoke = (fn, { body }) => {
       calls.push({ fn, body });
-      if (fn === "ad-plan") return Promise.resolve({ data: aggregate, error: null });
+      if (fn === "ad-plan")
+        return Promise.resolve({ data: aggregate, error: null });
       if (fn === "admin-ad-creative-prepare") {
         if (body.action === "start") prepared.add(body.platform);
         return Promise.resolve({
@@ -160,7 +196,10 @@ describe("#3697 Resume on a failed Snapchat image plan prepares before it create
         });
       }
       if (fn === "admin-ad-create-campaign") {
-        return Promise.resolve({ data: { campaign: { id: "c-1" } }, error: null });
+        return Promise.resolve({
+          data: { campaign: { id: "c-1" } },
+          error: null,
+        });
       }
       throw new Error(`unexpected invoke ${fn}`);
     };
@@ -172,8 +211,13 @@ describe("#3697 Resume on a failed Snapchat image plan prepares before it create
     await service.resumeAdminAdPlan("plan-1", {
       onStep: (id, state) => steps.push(`${id}:${state}`),
     });
-    const prepareCalls = calls.filter((call) => call.fn === "admin-ad-creative-prepare");
-    assert.deepEqual(prepareCalls.map((call) => call.body.action), ["status", "start"]);
+    const prepareCalls = calls.filter(
+      (call) => call.fn === "admin-ad-creative-prepare",
+    );
+    assert.deepEqual(
+      prepareCalls.map((call) => call.body.action),
+      ["status", "start"],
+    );
     for (const call of prepareCalls) {
       assert.equal(call.body.platform, "snapchat");
       assert.equal(call.body.creative_library_id, CREATIVE_ID);
@@ -181,18 +225,34 @@ describe("#3697 Resume on a failed Snapchat image plan prepares before it create
       assert.equal(call.body.plan_version_id, VERSION_ID);
       assert.equal(call.body.plan_hash, PLAN_HASH);
     }
-    const firstPrepare = calls.findIndex((call) => call.fn === "admin-ad-creative-prepare");
-    const create = calls.findIndex((call) => call.fn === "admin-ad-create-campaign");
-    assert.ok(firstPrepare >= 0 && create > firstPrepare, "prepare must precede create");
+    const firstPrepare = calls.findIndex(
+      (call) => call.fn === "admin-ad-creative-prepare",
+    );
+    const create = calls.findIndex(
+      (call) => call.fn === "admin-ad-create-campaign",
+    );
+    assert.ok(
+      firstPrepare >= 0 && create > firstPrepare,
+      "prepare must precede create",
+    );
     assert.ok(steps.includes("prepare:snapchat:done"));
-    assert.ok(steps.indexOf("prepare:snapchat:done") < steps.indexOf("create:snapchat:running"));
+    assert.ok(
+      steps.indexOf("prepare:snapchat:done") <
+        steps.indexOf("create:snapchat:running"),
+    );
   });
 
   it("a Meta-only image plan never calls image preparation", async () => {
     fakeBackend(["meta"]);
     await service.resumeAdminAdPlan("plan-1", {});
-    assert.equal(calls.filter((call) => call.fn === "admin-ad-creative-prepare").length, 0);
-    assert.equal(calls.filter((call) => call.fn === "admin-ad-create-campaign").length, 1);
+    assert.equal(
+      calls.filter((call) => call.fn === "admin-ad-creative-prepare").length,
+      0,
+    );
+    assert.equal(
+      calls.filter((call) => call.fn === "admin-ad-create-campaign").length,
+      1,
+    );
   });
 });
 
@@ -203,7 +263,10 @@ describe("#3697 the Builder create path and the Creative Next gate", () => {
   it("Create builds the image step and prepares the image platforms", () => {
     assert.match(page, /isImage: creative\.kind === "image"/);
     assert.match(page, /preparationPlatformsFor\(\{/);
-    assert.match(page, /if \(preparePlatforms\.length > 0\) \{\s*try \{\s*await prepareBoundVideoCreative\(\{/);
+    assert.match(
+      page,
+      /if \(preparePlatforms\.length > 0\) \{\s*try \{\s*await prepareBoundVideoCreative\(\{/,
+    );
     assert.match(page, /platforms: preparePlatforms,\s*noun: creative\.kind,/);
   });
 
@@ -212,15 +275,18 @@ describe("#3697 the Builder create path and the Creative Next gate", () => {
     assert.match(campaigns, /isImage: facts\.isImage/);
   });
 
-  it("Next on Creative waits for Use this creative", () => {
+  it("Next on Creative waits for Use this creative unless TikTok supplies a reviewed Spark post", () => {
     const creativeCase = page.slice(
       page.indexOf('case "creative": {'),
       page.indexOf("const nextDisabledReason"),
     );
-    assert.match(creativeCase, /if \(!creative\.creativeRow\) return false;/);
+    assert.match(
+      creativeCase,
+      /if \(!sparkOnly && !creative\.creativeRow\) return false;/,
+    );
     assert.match(
       page,
-      /if \(!creative\.creativeRow\) \{\s*return "Press “Use this creative” to record it to the library before continuing\.";/,
+      /if \(!sparkOnly && !creative\.creativeRow\) \{\s*return "Press “Use this creative” to record it to the library before continuing\.";/,
     );
   });
 });

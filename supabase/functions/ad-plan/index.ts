@@ -33,6 +33,7 @@ import {
   stageCreativeIds,
   validateStageCreativeRows,
 } from "../_shared/adStageCreativeSelection.ts";
+import { tiktokSparkSelection } from "../_shared/adTikTokSpark.ts";
 import {
   applyLibraryFilters,
   creativeFitGateFailure,
@@ -1608,49 +1609,61 @@ export async function handleAdPlan(
     if (!(await canAccessPlan(db, actor, plan, "plan"))) {
       return json({ error: "forbidden" }, 403);
     }
+    const spark = tiktokSparkSelection(canonicalInput);
+    if (!spark.ok) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: spark.detail,
+      }, 422);
+    }
+    const sparkOnly = spark.present &&
+      requested.every((allocation) => allocation.platform === "tiktok");
     const creativeId = typeof canonicalInput.creative_library_id === "string"
       ? canonicalInput.creative_library_id
       : "";
-    if (!UUID_RE.test(creativeId)) {
+    if (!sparkOnly && !UUID_RE.test(creativeId)) {
       return json({
         error: "plan_preflight_failed",
         detail: "creative_library_id_required",
       }, 422);
     }
-    const { data: creative, error: creativeError } = await db
-      .from("ad_creatives")
-      .select("id,brand_id,status,source,source_brand_id,purged_at")
-      .eq("id", creativeId)
-      .maybeSingle();
-    if (creativeError) return databaseFailure(creativeError);
-    // #3697 (C-13) — an archived creative stays usable for a plan whose
-    // current version already carries it; a new selection refuses it.
-    let carriedOver = false;
-    if (creative?.status === "archived" && plan.current_version_id) {
-      const current = await loadVersion(db, plan.current_version_id);
-      carriedOver = current?.canonical_plan?.creative_library_id === creativeId;
-    }
-    const selectionError = creativeSelectionError(creative, {
-      frozen: carriedOver,
-    });
-    if (selectionError || !creative) {
-      return json({
-        error: "plan_preflight_failed",
-        detail: selectionError?.error ?? "creative_not_reusable",
-      }, 422);
-    }
-    const ownershipError = adCreativeOwnershipError({
-      ownerKind: plan.owner_kind,
-      planBrandId: plan.brand_id,
-      creativeBrandId: creative.brand_id,
-      creativeSource: creative.source,
-      creativeSourceBrandId: creative.source_brand_id,
-    });
-    if (ownershipError) {
-      return json(
-        { error: "plan_preflight_failed", detail: ownershipError },
-        422,
-      );
+    if (!sparkOnly) {
+      const { data: creative, error: creativeError } = await db
+        .from("ad_creatives")
+        .select("id,brand_id,status,source,source_brand_id,purged_at")
+        .eq("id", creativeId)
+        .maybeSingle();
+      if (creativeError) return databaseFailure(creativeError);
+      // #3697 (C-13) — an archived creative stays usable for a plan whose
+      // current version already carries it; a new selection refuses it.
+      let carriedOver = false;
+      if (creative?.status === "archived" && plan.current_version_id) {
+        const current = await loadVersion(db, plan.current_version_id);
+        carriedOver = current?.canonical_plan?.creative_library_id ===
+          creativeId;
+      }
+      const selectionError = creativeSelectionError(creative, {
+        frozen: carriedOver,
+      });
+      if (selectionError || !creative) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: selectionError?.error ?? "creative_not_reusable",
+        }, 422);
+      }
+      const ownershipError = adCreativeOwnershipError({
+        ownerKind: plan.owner_kind,
+        planBrandId: plan.brand_id,
+        creativeBrandId: creative.brand_id,
+        creativeSource: creative.source,
+        creativeSourceBrandId: creative.source_brand_id,
+      });
+      if (ownershipError) {
+        return json(
+          { error: "plan_preflight_failed", detail: ownershipError },
+          422,
+        );
+      }
     }
     const normalized = await normalizedAllocations(db, plan, requested);
     if (!normalized.ok) {

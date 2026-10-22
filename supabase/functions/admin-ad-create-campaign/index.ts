@@ -93,6 +93,10 @@ import {
   stageCreativeIds,
   validateStageCreativeRows,
 } from "../_shared/adStageCreativeSelection.ts";
+import {
+  assertTikTokSparkPostsOwned,
+  tiktokSparkSelection,
+} from "../_shared/adTikTokSpark.ts";
 import { providerExecutionTargeting } from "../_shared/adTargetingCompiler.ts";
 import {
   applySpecialAdCategoryRestrictions,
@@ -137,6 +141,8 @@ import {
   TIKTOK_PIXEL_GATED_OBJECTIVES,
   type TikTokCreateAdExtensions,
   tiktokFetchPurchaseSignal28d,
+  tiktokFetchSparkPostInfo,
+  tiktokFetchSparkPosts,
   tiktokPlacementsForCreative,
   tiktokUploadImage,
   validateTikTokAdText,
@@ -640,6 +646,9 @@ async function preparePaidSocialStages(
     baseAdSet: input.baseAdSet,
     budgetMode: input.budgetMode,
   });
+  if (runtime.creativeSource === "tiktok_spark") {
+    return { runtime, creativeRows: [] };
+  }
   const selected = stageCreativeIds(input.canonicalPlan.stage_creative_ids);
   if (!selected.ok) throw new Error(selected.detail);
   const neededIds = [
@@ -3043,7 +3052,7 @@ serve(async (req: Request): Promise<Response> => {
     const destVenueIdS = resolvedDestinationS.venue_id;
     const snapTrackedDestUrlS = `${destUrlS}${
       destUrlS.includes("?") ? "&" : "?"
-    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
+    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSquad.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
     const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
@@ -3761,6 +3770,14 @@ serve(async (req: Request): Promise<Response> => {
         ? body.request_id.trim()
         : null;
     const validateOnlyT = body.validate_only === true;
+    const sparkSelectionT = tiktokSparkSelection(boundCanonicalPlan ?? body);
+    if (!sparkSelectionT.ok) {
+      return json({
+        error: "validation_error",
+        detail: sparkSelectionT.detail,
+      }, 422);
+    }
+    const usesTikTokSparkT = sparkSelectionT.present;
 
     // (1) Pure input validation — all 400/422s BEFORE any provider call.
     const nameCheckT = validateTikTokName(name, "campaign_name");
@@ -3855,11 +3872,20 @@ serve(async (req: Request): Promise<Response> => {
     // branches. Everything else (PAUSED, targeting, persist) is byte-identical to
     // the image path.
     const creativeKindT = creativeT.kind === "video" ? "video" : "image";
+    if (
+      usesTikTokSparkT && body.tiktok_placement !== undefined &&
+      body.tiktok_placement !== "tiktok"
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_requires_tiktok_placement",
+      }, 422);
+    }
     let placementsT: string[];
     try {
       placementsT = tiktokPlacementsForCreative(
-        body.tiktok_placement,
-        creativeKindT,
+        usesTikTokSparkT ? "tiktok" : body.tiktok_placement,
+        usesTikTokSparkT ? "video" : creativeKindT,
       );
     } catch (err) {
       if (err instanceof AdApiError) {
@@ -3872,12 +3898,16 @@ serve(async (req: Request): Promise<Response> => {
     // T-P6) and it has no special-ad-category field — documented + observable,
     // never silently dropped.
     documentComplianceDrop("tiktok", body.compliance);
-    const adTextT = typeof creativeT.ad_text === "string"
+    const adTextT = usesTikTokSparkT
+      ? ""
+      : typeof creativeT.ad_text === "string"
       ? creativeT.ad_text.trim()
       : typeof creativeT.message === "string"
       ? creativeT.message.trim()
       : "";
-    const adTextCheckT = validateTikTokAdText(adTextT);
+    const adTextCheckT = usesTikTokSparkT
+      ? { ok: true as const }
+      : validateTikTokAdText(adTextT);
     if (!adTextCheckT.ok) {
       // AC-14: >100 weighted chars / emoji rejected edge-side, pre-call.
       return json(
@@ -3965,6 +3995,15 @@ serve(async (req: Request): Promise<Response> => {
         error: "validation_error",
         detail: "destination_brand_slug_required",
       }, 400);
+    }
+    if (
+      usesTikTokSparkT &&
+      !["event", "rsvp", "trip", "experience"].includes(pageTypeT)
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_destination_unsupported",
+      }, 422);
     }
 
     // CTA: TikTok CTAs are bare display strings (never a shared normalizer —
@@ -4100,6 +4139,12 @@ serve(async (req: Request): Promise<Response> => {
         detail: landingCheckT.message,
       }, 422);
     }
+    if (usesTikTokSparkT && !destEventIdT) {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_event_identity_required",
+      }, 422);
+    }
 
     // (5) Media resolve — for VIDEO (#997 C): a #866 library ref that
     // admin-ad-creative-prepare (tiktok) promoted to READY, carrying BOTH
@@ -4112,7 +4157,7 @@ serve(async (req: Request): Promise<Response> => {
       : "";
     let videoIdT = "";
     // ISSUE-997 C: SINGLE_VIDEO for a prepared video, else SINGLE_IMAGE (#866).
-    const adFormatT = creativeKindT === "video"
+    const adFormatT = usesTikTokSparkT || creativeKindT === "video"
       ? "SINGLE_VIDEO"
       : "SINGLE_IMAGE";
     const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
@@ -4122,7 +4167,7 @@ serve(async (req: Request): Promise<Response> => {
       ? creativeT.image_url.trim()
       : "";
     let creativeLibraryRowIdT: string | null = null;
-    if (creativeKindT === "video") {
+    if (!usesTikTokSparkT && creativeKindT === "video") {
       // ISSUE-997 C: video create is a pure READY-ref consumer — create NEVER
       // uploads provider media inline (mirror Snap creative_not_uploaded contract).
       if (!creativeLibraryIdT) {
@@ -4207,7 +4252,7 @@ serve(async (req: Request): Promise<Response> => {
       videoIdT = preparedVideoIdT;
       imageIdT = coverImageIdT; // the cover rides in image_ids:[cover] for SINGLE_VIDEO
       creativeLibraryRowIdT = String(libCreativeVT.id);
-    } else if (!imageIdT && creativeLibraryIdT) {
+    } else if (!usesTikTokSparkT && !imageIdT && creativeLibraryIdT) {
       const { data: libCreativeT } = await supabase
         .from("ad_creatives")
         .select("id, kind, content_hash")
@@ -4263,7 +4308,7 @@ serve(async (req: Request): Promise<Response> => {
       imageIdT = refImageIdT;
       creativeLibraryRowIdT = String(libCreativeT.id);
     }
-    if (!imageIdT && !imageUrlT) {
+    if (!usesTikTokSparkT && !imageIdT && !imageUrlT) {
       return json({
         error: "validation_error",
         detail:
@@ -4352,6 +4397,7 @@ serve(async (req: Request): Promise<Response> => {
 
       let tiktokStages: PaidSocialStagePreparation | null = null;
       let tiktokStageMedia = new Map<string, PaidSocialCreativeMedia>();
+      let tiktokSparkPostIds: string[] = [];
       if (destEventIdT) {
         if (
           countryCodesT.length !== 1 ||
@@ -4395,16 +4441,34 @@ serve(async (req: Request): Promise<Response> => {
                 `${belowFloorT.stage} is below TikTok's minimum ad-group budget.`,
             }, 422);
           }
-          tiktokStageMedia = await resolvePaidSocialCreativeMedia(supabase, {
-            platform: "tiktok",
-            connection: tconn,
-            lane,
-            creativeRows: tiktokStages.creativeRows,
-            creativeIds: tiktokStages.runtime.adSets.flatMap((stage) =>
-              tiktokStages!.runtime.creativeIds[stage.stage]
-            ),
-            tiktokPlacement: body.tiktok_placement,
-          });
+          if (tiktokStages.runtime.creativeSource === "tiktok_spark") {
+            tiktokSparkPostIds = [
+              ...new Set(
+                tiktokStages.runtime.adSets.flatMap((stage) =>
+                  tiktokStages!.runtime.creativeIds[stage.stage]
+                ),
+              ),
+            ];
+            const providerPosts = await tiktokFetchSparkPostInfo(
+              resolveTikTokClient(tconn),
+              { identityId: identityIdT, itemIds: tiktokSparkPostIds },
+            );
+            assertTikTokSparkPostsOwned(
+              tiktokSparkPostIds,
+              providerPosts.map((post) => post.itemId),
+            );
+          } else {
+            tiktokStageMedia = await resolvePaidSocialCreativeMedia(supabase, {
+              platform: "tiktok",
+              connection: tconn,
+              lane,
+              creativeRows: tiktokStages.creativeRows,
+              creativeIds: tiktokStages.runtime.adSets.flatMap((stage) =>
+                tiktokStages!.runtime.creativeIds[stage.stage]
+              ),
+              tiktokPlacement: body.tiktok_placement,
+            });
+          }
         } catch (error) {
           return json({
             error: "stage_preflight_failed",
@@ -4493,6 +4557,7 @@ serve(async (req: Request): Promise<Response> => {
         externalAdSetId: string;
         ads: Array<{
           creativeId: string | null;
+          externalCreativeId: string | null;
           name: string;
           externalAdId: string;
           reviewStatus: string | null;
@@ -4508,8 +4573,10 @@ serve(async (req: Request): Promise<Response> => {
             adSet: stage.adSet,
             ads: tiktokStages!.runtime.creativeIds[stage.stage].map(
               (creativeId, index) => {
+                const spark = tiktokStages!.runtime.creativeSource ===
+                  "tiktok_spark";
                 const media = tiktokStageMedia.get(creativeId);
-                if (!media?.tiktokImageId) {
+                if (!spark && !media?.tiktokImageId) {
                   throw new Error(`stage_creative_media_missing:${creativeId}`);
                 }
                 const adName = `${name} — ${stage.stage} — ${index + 1}`;
@@ -4518,13 +4585,15 @@ serve(async (req: Request): Promise<Response> => {
                   ad: {
                     ...adInputT,
                     name: adName,
-                    adFormat: media.kind === "video"
-                      ? "SINGLE_VIDEO"
-                      : "SINGLE_IMAGE",
-                    imageIds: [media.tiktokImageId],
-                    ...(media.tiktokVideoId
-                      ? { videoId: media.tiktokVideoId }
-                      : { videoId: undefined }),
+                    ...(spark ? { tiktokItemId: creativeId, imageIds: [] } : {
+                      adFormat: media!.kind === "video"
+                        ? "SINGLE_VIDEO"
+                        : "SINGLE_IMAGE",
+                      imageIds: [media!.tiktokImageId!],
+                      ...(media!.tiktokVideoId
+                        ? { videoId: media!.tiktokVideoId }
+                        : {}),
+                    }),
                   },
                 };
               },
@@ -4550,7 +4619,14 @@ serve(async (req: Request): Promise<Response> => {
                 ? tiktokStageMedia.get(creativeId)
                 : null;
               return {
-                creativeId,
+                creativeId: tiktokStages!.runtime.creativeSource ===
+                    "tiktok_spark"
+                  ? null
+                  : creativeId,
+                externalCreativeId:
+                  tiktokStages!.runtime.creativeSource === "tiktok_spark"
+                    ? creativeId
+                    : null,
                 name: `${name} — ${stage.stage} — ${index + 1}`,
                 externalAdId: ad.externalAdId,
                 reviewStatus: ad.reviewStatus,
@@ -4577,6 +4653,7 @@ serve(async (req: Request): Promise<Response> => {
           externalAdSetId: createdT.externalAdSetId,
           ads: [{
             creativeId: creativeLibraryRowIdT,
+            externalCreativeId: null,
             name: adInputT.name,
             externalAdId: createdT.externalAdId,
             reviewStatus: createdT.reviewStatus,
@@ -4706,7 +4783,7 @@ serve(async (req: Request): Promise<Response> => {
           return unit.ads.map((ad) => ({
             ad_set_id: local.id,
             external_ad_id: ad.externalAdId,
-            external_creative_id: null,
+            external_creative_id: ad.externalCreativeId,
             ...(ad.creativeId ? { creative_id: ad.creativeId } : {}),
             name: ad.name,
             status: "PAUSED",

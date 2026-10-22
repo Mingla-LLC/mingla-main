@@ -27,10 +27,15 @@ function Counter({ value, cap, warnAt }) {
     <span
       className={[
         "text-[10px] font-mono",
-        over ? "text-[#ef4444]" : warn ? "text-[var(--color-warning-700)]" : "text-[var(--color-text-tertiary)]",
+        over
+          ? "text-[#ef4444]"
+          : warn
+            ? "text-[var(--color-warning-700)]"
+            : "text-[var(--color-text-tertiary)]",
       ].join(" ")}
     >
-      {n}{cap ? `/${cap}` : ""}
+      {n}
+      {cap ? `/${cap}` : ""}
     </span>
   );
 }
@@ -46,7 +51,10 @@ function ChipsInput({ label, chips, onChange, placeholder, helper }) {
       <span className="block text-sm font-medium mb-1.5">{label}</span>
       <div className="flex flex-wrap gap-1.5 mb-1.5">
         {chips.map((chip) => (
-          <span key={chip} className="inline-flex items-center gap-1 h-7 px-2.5 text-xs rounded-full bg-[var(--gray-100)]">
+          <span
+            key={chip}
+            className="inline-flex items-center gap-1 h-7 px-2.5 text-xs rounded-full bg-[var(--gray-100)]"
+          >
             {chip}
             <button
               type="button"
@@ -78,11 +86,22 @@ function ChipsInput({ label, chips, onChange, placeholder, helper }) {
   );
 }
 
-function RepeatableFields({ label, values, onChange, min, max, cap, addLabel }) {
+function RepeatableFields({
+  label,
+  values,
+  onChange,
+  min,
+  max,
+  cap,
+  addLabel,
+}) {
   return (
     <div>
       <span className="block text-sm font-medium mb-1.5">
-        {label} <span className="text-xs text-[var(--color-text-tertiary)]">({min}–{max}, ≤{cap} chars each)</span>
+        {label}{" "}
+        <span className="text-xs text-[var(--color-text-tertiary)]">
+          ({min}–{max}, ≤{cap} chars each)
+        </span>
       </span>
       <div className="space-y-1.5">
         {values.map((value, index) => (
@@ -126,9 +145,20 @@ function RepeatableFields({ label, values, onChange, min, max, cap, addLabel }) 
   );
 }
 
-export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
+export function StepCopy({
+  copy,
+  onCopyChange,
+  channelRows,
+  isVideo = false,
+  tiktokSpark = false,
+}) {
   const set = (patch) => onCopyChange({ ...copy, ...patch });
-  const platforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
+  const allPlatforms = channelRows
+    .filter((r) => r.eligible)
+    .map((r) => r.platform);
+  const platforms = tiktokSpark
+    ? allPlatforms.filter((platform) => platform !== "tiktok")
+    : allPlatforms;
   const googleEligible = platforms.includes("google");
   const validation = validateCopy(copy, platforms);
   const strip = truncationPreview(copy, platforms);
@@ -142,118 +172,185 @@ export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
       <div>
         <h2 className="text-lg font-semibold">What does it say?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Write once — the strip below shows exactly what each channel will do to it. Never
-          discover a character limit from a rejection.
+          Write once — the strip below shows exactly what each channel will do
+          to it. Never discover a character limit from a rejection.
         </p>
-        {platforms.length > 0 ? (
-          <p className="text-xs text-[var(--color-text-secondary)] mt-1" data-testid="copy-building-for">
-            Building this copy for <span className="font-medium">{buildingFor}</span>. Change the
-            platforms back in <span className="font-medium">Channel health</span>.
-          </p>
-        ) : (
-          <p className="text-xs text-[var(--color-warning-700)] mt-1" data-testid="copy-building-for">
-            No platforms selected — pick at least one in Channel health to write copy for it.
+        {tiktokSpark && (
+          <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+            TikTok keeps each selected post&apos;s original caption. Only choose
+            its button below; shared copy is for any other selected platforms.
           </p>
         )}
+        {platforms.length > 0 ? (
+          <p
+            className="text-xs text-[var(--color-text-secondary)] mt-1"
+            data-testid="copy-building-for"
+          >
+            Building this copy for{" "}
+            <span className="font-medium">{buildingFor}</span>. Change the
+            platforms back in{" "}
+            <span className="font-medium">Channel health</span>.
+          </p>
+        ) : !tiktokSpark ? (
+          <p
+            className="text-xs text-[var(--color-warning-700)] mt-1"
+            data-testid="copy-building-for"
+          >
+            No platforms selected — pick at least one in Channel health to write
+            copy for it.
+          </p>
+        ) : null}
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-sm font-medium">Primary text</span>
-          <div className="flex gap-2">
-            {platforms.includes("meta") && <span className="text-[10px] text-[var(--color-text-tertiary)]">Meta <Counter value={copy.primary} cap={1024} warnAt={125} /></span>}
-            {platforms.includes("tiktok") && <span className="text-[10px] text-[var(--color-text-tertiary)]">TikTok <Counter value={copy.primary} cap={100} /></span>}
-            {platforms.includes("reddit") && <span className="text-[10px] text-[var(--color-text-tertiary)]">Reddit <Counter value={copy.primary} cap={300} warnAt={80} /></span>}
-          </div>
-        </div>
-        <Textarea
-          aria-label="Primary text"
-          rows={3}
-          value={copy.primary}
-          onChange={(e) => set({ primary: e.target.value })}
-          placeholder="Sold-out energy, Tuesday night. The room only holds 40…"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {platforms.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-medium">Headline</span>
+            <span className="text-sm font-medium">Primary text</span>
             <div className="flex gap-2">
-              {platforms.includes("meta") && <span className="text-[10px] text-[var(--color-text-tertiary)]">Meta <Counter value={copy.headline} cap={255} warnAt={27} /></span>}
-              {platforms.includes("snapchat") && <span className="text-[10px] text-[var(--color-text-tertiary)]">Snap <Counter value={copy.headline} cap={34} /></span>}
+              {platforms.includes("meta") && (
+                <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                  Meta <Counter value={copy.primary} cap={1024} warnAt={125} />
+                </span>
+              )}
+              {platforms.includes("tiktok") && (
+                <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                  TikTok <Counter value={copy.primary} cap={100} />
+                </span>
+              )}
+              {platforms.includes("reddit") && (
+                <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                  Reddit <Counter value={copy.primary} cap={300} warnAt={80} />
+                </span>
+              )}
             </div>
           </div>
-          <Input
-            aria-label="Headline"
-            value={copy.headline}
-            onChange={(e) => {
-              const headline = e.target.value;
-              // Seed Google's first RSA headline from the shared headline.
-              const gh = [...(copy.googleHeadlines ?? [])];
-              if (gh.length > 0 && (gh[0] === copy.headline || gh[0] === "")) gh[0] = headline;
-              set({ headline, googleHeadlines: gh });
-            }}
-            placeholder="Book the night"
+          <Textarea
+            aria-label="Primary text"
+            rows={3}
+            value={copy.primary}
+            onChange={(e) => set({ primary: e.target.value })}
+            placeholder="Sold-out energy, Tuesday night. The room only holds 40…"
           />
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-medium">Description <span className="text-xs text-[var(--color-text-tertiary)]">(optional)</span></span>
-            {platforms.includes("meta") && <span className="text-[10px] text-[var(--color-text-tertiary)]">Meta <Counter value={copy.description} cap={255} warnAt={30} /></span>}
-          </div>
-          <Input
-            aria-label="Description"
-            value={copy.description}
-            onChange={(e) => {
-              const description = e.target.value;
-              const gd = [...(copy.googleDescriptions ?? [])];
-              if (gd.length > 0 && (gd[0] === copy.description || gd[0] === "")) gd[0] = description;
-              set({ description, googleDescriptions: gd });
-            }}
-          />
-        </div>
-      </div>
+      )}
 
-      {platforms.some((platform) => CTA_OPTIONS_BY_PLATFORM[platform]) && (
-        <div className="space-y-2 rounded-xl border border-[var(--gray-200)] p-3" data-testid="platform-cta-controls">
+      {platforms.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium">Headline</span>
+              <div className="flex gap-2">
+                {platforms.includes("meta") && (
+                  <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                    Meta <Counter value={copy.headline} cap={255} warnAt={27} />
+                  </span>
+                )}
+                {platforms.includes("snapchat") && (
+                  <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                    Snap <Counter value={copy.headline} cap={34} />
+                  </span>
+                )}
+              </div>
+            </div>
+            <Input
+              aria-label="Headline"
+              value={copy.headline}
+              onChange={(e) => {
+                const headline = e.target.value;
+                // Seed Google's first RSA headline from the shared headline.
+                const gh = [...(copy.googleHeadlines ?? [])];
+                if (gh.length > 0 && (gh[0] === copy.headline || gh[0] === ""))
+                  gh[0] = headline;
+                set({ headline, googleHeadlines: gh });
+              }}
+              placeholder="Book the night"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium">
+                Description{" "}
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  (optional)
+                </span>
+              </span>
+              {platforms.includes("meta") && (
+                <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                  Meta{" "}
+                  <Counter value={copy.description} cap={255} warnAt={30} />
+                </span>
+              )}
+            </div>
+            <Input
+              aria-label="Description"
+              value={copy.description}
+              onChange={(e) => {
+                const description = e.target.value;
+                const gd = [...(copy.googleDescriptions ?? [])];
+                if (
+                  gd.length > 0 &&
+                  (gd[0] === copy.description || gd[0] === "")
+                )
+                  gd[0] = description;
+                set({ description, googleDescriptions: gd });
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {allPlatforms.some((platform) => CTA_OPTIONS_BY_PLATFORM[platform]) && (
+        <div
+          className="space-y-2 rounded-xl border border-[var(--gray-200)] p-3"
+          data-testid="platform-cta-controls"
+        >
           <div>
             <p className="text-sm font-semibold">Call to action by platform</p>
             <p className="text-xs text-[var(--color-text-secondary)]">
-              Each menu uses that platform&apos;s own allowlist. Google Search ads have no CTA button.
+              Each menu uses that platform&apos;s own allowlist. Google Search
+              ads have no CTA button.
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {platforms.filter((platform) => CTA_OPTIONS_BY_PLATFORM[platform]).map((platform) => {
-              const options = CTA_OPTIONS_BY_PLATFORM[platform];
-              const value = copy.platformCtas?.[platform]
-                ?? (platform === "meta" ? copy.cta : null)
-                ?? DEFAULT_PLATFORM_CTAS[platform];
-              return (
-                <label key={platform} className="block text-sm">
-                  <span className="mb-1 block font-medium">{PLATFORM_LABELS[platform] ?? platform}</span>
-                  <select
-                    aria-label={`${PLATFORM_LABELS[platform] ?? platform} call to action`}
-                    className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm"
-                    value={value}
-                    onChange={(event) => {
-                      const platformCtas = {
-                        ...(copy.platformCtas ?? {}),
-                        [platform]: event.target.value,
-                      };
-                      set({
-                        platformCtas,
-                        ...(platform === "meta" ? { cta: event.target.value } : {}),
-                      });
-                    }}
-                  >
-                    {options.map((option) => (
-                      <option key={option} value={option}>{option.replaceAll("_", " ")}</option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
+            {allPlatforms
+              .filter((platform) => CTA_OPTIONS_BY_PLATFORM[platform])
+              .map((platform) => {
+                const options = CTA_OPTIONS_BY_PLATFORM[platform];
+                const value =
+                  copy.platformCtas?.[platform] ??
+                  (platform === "meta" ? copy.cta : null) ??
+                  DEFAULT_PLATFORM_CTAS[platform];
+                return (
+                  <label key={platform} className="block text-sm">
+                    <span className="mb-1 block font-medium">
+                      {PLATFORM_LABELS[platform] ?? platform}
+                    </span>
+                    <select
+                      aria-label={`${PLATFORM_LABELS[platform] ?? platform} call to action`}
+                      className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm"
+                      value={value}
+                      onChange={(event) => {
+                        const platformCtas = {
+                          ...(copy.platformCtas ?? {}),
+                          [platform]: event.target.value,
+                        };
+                        set({
+                          platformCtas,
+                          ...(platform === "meta"
+                            ? { cta: event.target.value }
+                            : {}),
+                        });
+                      }}
+                    >
+                      {options.map((option) => (
+                        <option key={option} value={option}>
+                          {option.replaceAll("_", " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
           </div>
         </div>
       )}
@@ -303,11 +400,15 @@ export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
           Google-video path. Left blank → payload.js sends nothing → the create
           branch's derivation fallback stays intact (no behavior change). */}
       {googleEligible && isVideo && (
-        <div className="space-y-3 p-3 rounded-xl border border-[var(--gray-200)]" data-testid="google-demand-gen-copy">
+        <div
+          className="space-y-3 p-3 rounded-xl border border-[var(--gray-200)]"
+          data-testid="google-demand-gen-copy"
+        >
           <p className="text-sm font-semibold">Google Video (Demand Gen)</p>
           <p className="text-xs text-[var(--color-text-secondary)]">
-            Google runs your video as a Demand Gen ad. Write long headlines for it here — leave
-            them blank to reuse your Search headlines. The business name defaults to the brand name.
+            Google runs your video as a Demand Gen ad. Write long headlines for
+            it here — leave them blank to reuse your Search headlines. The
+            business name defaults to the brand name.
           </p>
           <RepeatableFields
             label="Long headlines"
@@ -321,7 +422,10 @@ export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-medium">
-                Business name <span className="text-xs text-[var(--color-text-tertiary)]">(optional)</span>
+                Business name{" "}
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  (optional)
+                </span>
               </span>
               <Counter value={copy.googleBusinessName ?? ""} cap={25} />
             </div>
@@ -337,13 +441,24 @@ export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
 
       {/* The live truncation preview strip (blueprint §1.6). */}
       {strip.length > 0 && (
-        <div className="p-3 rounded-xl border border-[var(--gray-200)] font-mono text-xs space-y-1 overflow-x-auto" data-testid="truncation-strip">
-          <p className="font-sans font-semibold text-sm mb-1.5">What each channel renders</p>
+        <div
+          className="p-3 rounded-xl border border-[var(--gray-200)] font-mono text-xs space-y-1 overflow-x-auto"
+          data-testid="truncation-strip"
+        >
+          <p className="font-sans font-semibold text-sm mb-1.5">
+            What each channel renders
+          </p>
           {strip.map((row) => (
             <div key={row.surface} className="flex gap-3 whitespace-nowrap">
-              <span className="w-36 shrink-0 text-[var(--color-text-secondary)]">{row.surface}</span>
+              <span className="w-36 shrink-0 text-[var(--color-text-secondary)]">
+                {row.surface}
+              </span>
               <span className="truncate max-w-96">"{row.text}"</span>
-              {row.suffix && <span className="text-[var(--color-text-tertiary)]">{row.suffix}</span>}
+              {row.suffix && (
+                <span className="text-[var(--color-text-tertiary)]">
+                  {row.suffix}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -358,7 +473,10 @@ export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
             </p>
           ))}
           {result.warn.map((message) => (
-            <p key={message} className="text-xs text-[var(--color-warning-700)] mt-1">
+            <p
+              key={message}
+              className="text-xs text-[var(--color-warning-700)] mt-1"
+            >
               {PLATFORM_LABELS[platform]}: {message}
             </p>
           ))}

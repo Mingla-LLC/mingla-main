@@ -13,12 +13,14 @@ import {
   type StagedAdSetPlan,
 } from "./adStagedCreatePlan.ts";
 import { stageCreativeIds } from "./adStageCreativeSelection.ts";
+import { tiktokSparkSelection } from "./adTikTokSpark.ts";
 
 type Row = Record<string, unknown>;
 
 export type PaidSocialStageRuntime = {
   plan: AdStagePlan;
   adSets: StagedAdSetPlan[];
+  creativeSource: "library" | "tiktok_spark";
   creativeIds: Record<AdStage, string[]>;
   snapshotRows: Array<{
     stage: AdStage;
@@ -60,7 +62,20 @@ export function buildPaidSocialStageRuntime(input: {
     & { namePrefix: string; targeting: Row };
   budgetMode: "daily" | "lifetime";
 }): PaidSocialStageRuntime {
-  const selected = stageCreativeIds(input.canonicalPlan.stage_creative_ids);
+  const spark = input.platform === "tiktok"
+    ? tiktokSparkSelection(input.canonicalPlan)
+    : { present: false as const, ok: true as const, ids: [] as [] };
+  if (!spark.ok) throw new Error(spark.detail);
+  const selected = spark.present
+    ? {
+      ok: true as const,
+      byStage: {
+        prospecting: spark.ids,
+        retarget: spark.ids,
+        abandoners: spark.ids,
+      },
+    }
+    : stageCreativeIds(input.canonicalPlan.stage_creative_ids);
   if (!selected.ok) throw new Error(selected.detail);
   const selection = record(input.canonicalPlan.stage_selection);
   const enabledStages = {
@@ -93,6 +108,7 @@ export function buildPaidSocialStageRuntime(input: {
   return {
     plan,
     adSets,
+    creativeSource: spark.present ? "tiktok_spark" : "library",
     creativeIds: selected.byStage,
     snapshotRows: plan.stages.map((stage) => ({
       stage: stage.stage,
