@@ -1,0 +1,4 @@
+{
+  "suite": "supabase-functions-deno",
+  "timeout_seconds": 30
+}

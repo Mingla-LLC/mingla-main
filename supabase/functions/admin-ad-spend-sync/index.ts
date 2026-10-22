@@ -37,10 +37,20 @@ import {
   type SpendSyncDecision,
   sumSpendCents,
 } from "../_shared/adSpendSync.ts";
+import {
+  type AdStageMetricRow,
+  type AdStageMetricTarget,
+  parseMetaStageMetrics,
+  parseSnapchatStageMetrics,
+  parseTikTokStageMetrics,
+} from "../_shared/adStageReporting.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import { resolveTikTokClient, tiktokApi } from "../_shared/tiktok.ts";
 import { resolveSnapchatClient } from "../_shared/snapchat.ts";
-import { fetchSnapchatCampaignStats } from "../_shared/snapchatSpendStats.ts";
+import {
+  fetchSnapchatAdSquadStats,
+  fetchSnapchatCampaignStats,
+} from "../_shared/snapchatSpendStats.ts";
 import { googleAdsRequest, resolveGoogleClient } from "../_shared/google.ts";
 import { redditRequest, resolveRedditClient } from "../_shared/reddit.ts";
 import {
@@ -168,6 +178,70 @@ async function fetchSnapchatSpendDays(
     timeZoneCache,
   });
   return parseSnapchatStatsSpend(payload);
+}
+
+async function fetchPaidSocialStageMetrics(
+  connection: AdConnectionRow,
+  platform: Platform,
+  externalCampaignId: string,
+  targets: readonly AdStageMetricTarget[],
+  snapchatTimeZoneCache: Map<string, string | null>,
+): Promise<AdStageMetricRow[]> {
+  if (targets.length === 0) return [];
+  if (platform === "meta") {
+    const client = resolveMetaClient(connection);
+    const { since, until } = spendWindow();
+    const payload = await metaGraph(
+      client,
+      "GET",
+      `${externalCampaignId}/insights`,
+      {
+        fields: "adset_id,spend,impressions,reach,frequency,actions,date_start",
+        time_increment: 1,
+        time_range: { since, until },
+        level: "adset",
+        limit: 1000,
+      },
+    );
+    return parseMetaStageMetrics(payload, targets);
+  }
+  if (platform === "tiktok") {
+    const client = resolveTikTokClient(connection);
+    const { since, until } = spendWindow();
+    const payload = await tiktokApi(client, "GET", "report/integrated/get/", {
+      advertiser_id: client.advertiserId,
+      report_type: "BASIC",
+      data_level: "AUCTION_ADGROUP",
+      dimensions: ["adgroup_id", "stat_time_day"],
+      metrics: [
+        "spend",
+        "impressions",
+        "reach",
+        "frequency",
+        "landing_page_view",
+        "conversion",
+        "total_complete_payment",
+      ],
+      start_date: since,
+      end_date: until,
+      filtering: { campaign_ids: [externalCampaignId] },
+      page_size: 1000,
+    });
+    return parseTikTokStageMetrics(payload, targets);
+  }
+  if (platform === "snapchat") {
+    const client = await resolveSnapchatClient(connection);
+    const batches = await Promise.all(targets.map(async (target) => {
+      const payload = await fetchSnapchatAdSquadStats(
+        client,
+        target.externalAdSetId,
+        { timeZoneCache: snapchatTimeZoneCache },
+      );
+      return parseSnapchatStageMetrics(payload, target);
+    }));
+    return batches.flat();
+  }
+  return [];
 }
 
 async function fetchGoogleSpendDays(
@@ -473,6 +547,7 @@ serve(async (req: Request): Promise<Response> => {
   const results: Array<Record<string, unknown>> = [];
   let paused = 0;
   let upserted = 0;
+  let stageMetricsUpserted = 0;
   // #3697: one Snap ad-account timezone read per account per sync run.
   const snapchatTimeZoneCache = new Map<string, string | null>();
 
@@ -605,6 +680,8 @@ serve(async (req: Request): Promise<Response> => {
     let spendConnection: AdConnectionRow | null = null;
     let fetchError: string | null = null;
     let upsertError: string | null = null;
+    let stageMetricsError: string | null = null;
+    let stageMetrics: AdStageMetricRow[] = [];
     try {
       const { data: conn } = await supabase
         .from("ad_connections")
@@ -650,6 +727,67 @@ serve(async (req: Request): Promise<Response> => {
           : String(err);
       // End-date enforcement is independent of spend fetch — continue with [].
       days = [];
+    }
+
+    if (
+      spendConnection && ["meta", "snapchat", "tiktok"].includes(platform)
+    ) {
+      try {
+        const { data: setRows, error: setError } = await supabase
+          .from("ad_sets")
+          .select("id,external_adset_id,stage,optimization_goal")
+          .eq("campaign_id", target.id)
+          .not("stage", "is", null);
+        if (setError) {
+          throw new Error(`stage_set_read_failed: ${setError.message}`);
+        }
+        const stageTargets = (setRows ?? []).flatMap(
+          (set: Record<string, unknown>) => {
+            const stage = String(set.stage ?? "");
+            if (!["prospecting", "retarget", "abandoners"].includes(stage)) {
+              return [];
+            }
+            return [{
+              id: String(set.id),
+              externalAdSetId: String(set.external_adset_id ?? ""),
+              stage: stage as AdStageMetricTarget["stage"],
+              optimizationGoal: String(set.optimization_goal ?? ""),
+            }];
+          },
+        );
+        stageMetrics = await fetchPaidSocialStageMetrics(
+          spendConnection,
+          platform as Platform,
+          target.external_campaign_id,
+          stageTargets,
+          snapchatTimeZoneCache,
+        );
+      } catch (err) {
+        stageMetricsError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    if (stageMetrics.length > 0) {
+      const currency = String(target.provider_currency ?? "").trim()
+        .toUpperCase();
+      const syncedAt = new Date().toISOString();
+      const { error: stageUpsertError } = await supabase
+        .from("ad_stage_metrics_daily")
+        .upsert(
+          stageMetrics.map((metric) => ({
+            campaign_id: target.id,
+            platform,
+            currency,
+            synced_at: syncedAt,
+            ...metric,
+          })),
+          { onConflict: "ad_set_id,metric_date" },
+        );
+      if (stageUpsertError) {
+        stageMetricsError = stageUpsertError.message;
+      } else {
+        stageMetricsUpserted += stageMetrics.length;
+      }
     }
 
     let draft: SpendSyncDecision;
@@ -722,6 +860,9 @@ serve(async (req: Request): Promise<Response> => {
         retryable: true,
         ...(fetchError ? { fetch_error: fetchError } : {}),
         ...(upsertError ? { upsert_error: upsertError } : {}),
+        ...(stageMetricsError
+          ? { stage_metrics_error: stageMetricsError }
+          : {}),
       });
       await touchSpendSyncWatermark(supabase, target.id);
       continue;
@@ -759,6 +900,9 @@ serve(async (req: Request): Promise<Response> => {
           total_spend_cents: cumulative.cents,
           ...(settlementResult ?? {}),
           ...(upsertError ? { upsert_error: upsertError } : {}),
+          ...(stageMetricsError
+            ? { stage_metrics_error: stageMetricsError }
+            : {}),
         });
         await touchSpendSyncWatermark(supabase, target.id);
         continue;
@@ -770,6 +914,9 @@ serve(async (req: Request): Promise<Response> => {
         fetch_error: fetchError,
         total_spend_cents: cumulative.cents,
         ...(upsertError ? { upsert_error: upsertError } : {}),
+        ...(stageMetricsError
+          ? { stage_metrics_error: stageMetricsError }
+          : {}),
       });
       continue;
     }
@@ -796,6 +943,9 @@ serve(async (req: Request): Promise<Response> => {
           total_spend_cents: decision.total_spend_cents,
           ...(fetchError ? { fetch_error: fetchError } : {}),
           ...(upsertError ? { upsert_error: upsertError } : {}),
+          ...(stageMetricsError
+            ? { stage_metrics_error: stageMetricsError }
+            : {}),
         });
         await touchSpendSyncWatermark(supabase, target.id);
         continue;
@@ -809,6 +959,9 @@ serve(async (req: Request): Promise<Response> => {
         days: decision.upserts.length,
         ...(fetchError ? { fetch_error: fetchError } : {}),
         ...(upsertError ? { upsert_error: upsertError } : {}),
+        ...(stageMetricsError
+          ? { stage_metrics_error: stageMetricsError }
+          : {}),
       });
     } else if (fetchError || upsertError) {
       results.push({
@@ -817,6 +970,9 @@ serve(async (req: Request): Promise<Response> => {
         total_spend_cents: decision.total_spend_cents,
         ...(settlementResult ?? {}),
         ...(fetchError && upsertError ? { fetch_error: fetchError } : {}),
+        ...(stageMetricsError
+          ? { stage_metrics_error: stageMetricsError }
+          : {}),
       });
       await touchSpendSyncWatermark(supabase, target.id);
     } else {
@@ -825,6 +981,10 @@ serve(async (req: Request): Promise<Response> => {
         total_spend_cents: decision.total_spend_cents,
         ...(settlementResult ?? {}),
         days: decision.upserts.length,
+        stage_metric_days: stageMetrics.length,
+        ...(stageMetricsError
+          ? { stage_metrics_error: stageMetricsError }
+          : {}),
       });
       // Rotate the 80-row sweep: every attempted row advances the watermark.
       await touchSpendSyncWatermark(supabase, target.id);
@@ -835,6 +995,7 @@ serve(async (req: Request): Promise<Response> => {
     ok: true,
     scanned: (campaigns ?? []).length,
     upserted,
+    stage_metrics_upserted: stageMetricsUpserted,
     paused,
     results,
   });

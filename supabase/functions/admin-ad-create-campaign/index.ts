@@ -2585,6 +2585,14 @@ serve(async (req: Request): Promise<Response> => {
         ),
       ].filter(Boolean)
       : [];
+    const snapSegmentIncludeIdsS = Array.isArray(targetingS.segment_include_ids)
+      ? [...new Set(targetingS.segment_include_ids.map((id) => String(id).trim()))]
+        .filter(Boolean)
+      : [];
+    const snapSegmentExcludeIdsS = Array.isArray(targetingS.segment_exclude_ids)
+      ? [...new Set(targetingS.segment_exclude_ids.map((id) => String(id).trim()))]
+        .filter(Boolean)
+      : [];
 
     const creativeS = (body.creative ?? {}) as Record<string, unknown>;
     // ISSUE-979 Bug 3: the global compliance intent reaches Snapchat's create
@@ -2934,6 +2942,12 @@ serve(async (req: Request): Promise<Response> => {
         // ISSUE-992 (3a): geocoded circles → circle geos; SCLS interest ids.
         ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
         ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
+        ...(snapSegmentIncludeIdsS.length > 0
+          ? { segment_include_ids: snapSegmentIncludeIdsS }
+          : {}),
+        ...(snapSegmentExcludeIdsS.length > 0
+          ? { segment_exclude_ids: snapSegmentExcludeIdsS }
+          : {}),
         budget_mode: "daily",
         bid_strategy: bidStrategyS,
         ...(typeof bidCentsS === "number" ? { bid_cents: bidCentsS } : {}),
@@ -3862,6 +3876,12 @@ serve(async (req: Request): Promise<Response> => {
           location_ids: locationIdsT,
           ...(interestCategoryIdsT.length > 0
             ? { interest_category_ids: interestCategoryIdsT }
+            : {}),
+          ...(Array.isArray(targetingT.audience_ids)
+            ? { audience_ids: targetingT.audience_ids }
+            : {}),
+          ...(Array.isArray(targetingT.excluded_audience_ids)
+            ? { excluded_audience_ids: targetingT.excluded_audience_ids }
             : {}),
           ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
           ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),

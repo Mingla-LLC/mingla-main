@@ -1289,6 +1289,10 @@ export interface SnapchatAdSquadSpec {
   circles?: SnapchatCircleGeo[];
   /** ISSUE-992 (3a): SCLS interest-segment category ids → targeting.interests. */
   interestCategoryIds?: string[];
+  /** #3697: provider ids resolved only from ad_audiences. */
+  segmentIncludeIds?: string[];
+  /** #3697: the event-buyer segment is always excluded. */
+  segmentExcludeIds?: string[];
   /** Minor units (cents). ABO squad budget; OMITTED under CBO. */
   budgetCents?: number;
   budgetMode?: "daily" | "lifetime";
@@ -1396,6 +1400,29 @@ export function buildSnapchatAdSquadBody(
     .filter(Boolean);
   if (interestCategoryIds.length > 0) {
     targeting.interests = [{ category_id: interestCategoryIds }];
+  }
+  const segmentIncludeIds = [...new Set(
+    (spec.segmentIncludeIds ?? []).map((id) => String(id).trim()).filter(Boolean),
+  )];
+  const segmentExcludeIds = [...new Set(
+    (spec.segmentExcludeIds ?? []).map((id) => String(id).trim()).filter(Boolean),
+  )];
+  if (segmentIncludeIds.some((id) => segmentExcludeIds.includes(id))) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "audience_include_exclude_overlap",
+      message: "A Snap audience segment cannot be included and excluded in the same ad squad.",
+    });
+  }
+  if (segmentIncludeIds.length > 0 || segmentExcludeIds.length > 0) {
+    targeting.segments = [
+      ...(segmentIncludeIds.length > 0
+        ? [{ segment_id: segmentIncludeIds, operation: "INCLUDE" }]
+        : []),
+      ...(segmentExcludeIds.length > 0
+        ? [{ segment_id: segmentExcludeIds, operation: "EXCLUDE" }]
+        : []),
+    ];
   }
 
   const body: Record<string, unknown> = {
@@ -2174,6 +2201,8 @@ export interface SnapchatAdSquadTargetingInput {
   circles?: SnapchatCircleGeo[];
   /** ISSUE-992 (3a): SCLS interest-segment category ids. */
   interests?: string[];
+  segment_include_ids?: string[];
+  segment_exclude_ids?: string[];
   budget_mode?: "daily" | "lifetime";
   bid_strategy?: string;
   bid_cents?: number;
@@ -2288,6 +2317,8 @@ export const snapchatAdapter: ChannelAdapter = {
       // interest ids ride through to targeting.interests.
       circles: t.circles,
       interestCategoryIds: t.interests,
+      segmentIncludeIds: t.segment_include_ids,
+      segmentExcludeIds: t.segment_exclude_ids,
       budgetCents: input.budgetCents,
       budgetMode: t.budget_mode,
       bidStrategy: t.bid_strategy,

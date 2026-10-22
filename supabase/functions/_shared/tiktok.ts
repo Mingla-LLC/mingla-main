@@ -1610,6 +1610,10 @@ export interface TikTokAdGroupSpec {
   ageGroups?: string[];
   /** ISSUE-989 — resolved numeric interest_category_ids (tool/interest_category). */
   interestCategoryIds?: string[];
+  /** #3697: provider ids resolved only from ad_audiences. */
+  audienceIds?: string[];
+  /** #3697: event-buyer audience ids that must be excluded. */
+  excludedAudienceIds?: string[];
   gender?: string;
   scheduleType?: string;
   /** UTC+0 "YYYY-MM-DD HH:MM:SS" (T-1). Defaults to now for SCHEDULE_FROM_NOW. */
@@ -1748,6 +1752,23 @@ export function buildTikTokAdGroupBody(
   // omitted entirely when none are picked so broad targeting is unchanged.
   if (spec.interestCategoryIds && spec.interestCategoryIds.length > 0) {
     body.interest_category_ids = spec.interestCategoryIds;
+  }
+  const audienceIds = [...new Set(
+    (spec.audienceIds ?? []).map((id) => String(id).trim()).filter(Boolean),
+  )];
+  const excludedAudienceIds = [...new Set(
+    (spec.excludedAudienceIds ?? []).map((id) => String(id).trim()).filter(Boolean),
+  )];
+  if (audienceIds.some((id) => excludedAudienceIds.includes(id))) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "audience_include_exclude_overlap",
+      message: "A TikTok audience cannot be included and excluded in the same ad group.",
+    });
+  }
+  if (audienceIds.length > 0) body.audience_ids = audienceIds;
+  if (excludedAudienceIds.length > 0) {
+    body.excluded_audience_ids = excludedAudienceIds;
   }
   if (spec.gender) {
     if (!(TIKTOK_GENDERS as readonly string[]).includes(spec.gender)) {
@@ -2353,6 +2374,8 @@ export interface TikTokAdGroupTargetingInput {
   location_ids?: string[];
   /** ISSUE-989 — numeric interest_category_ids from tool/interest_category. */
   interest_category_ids?: string[];
+  audience_ids?: string[];
+  excluded_audience_ids?: string[];
   age_groups?: string[];
   age_min?: number;
   age_max?: number;
@@ -2396,6 +2419,8 @@ function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSp
     bidPriceCents: t.bid_price_cents,
     locationIds: t.location_ids ?? [],
     interestCategoryIds: t.interest_category_ids,
+    audienceIds: t.audience_ids,
+    excludedAudienceIds: t.excluded_audience_ids,
     ageGroups,
     gender: t.gender,
     scheduleType: t.schedule_type,
