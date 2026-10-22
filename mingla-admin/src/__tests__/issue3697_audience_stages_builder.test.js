@@ -45,6 +45,14 @@ describe("#3697 staged campaign builder", () => {
       }),
       { prospecting: "Off", retarget: "100%", abandoners: "Off" },
     );
+    assert.deepEqual(
+      stageSplitLabels({
+        prospecting: true,
+        retarget: false,
+        abandoners: true,
+      }),
+      { prospecting: "90%", retarget: "Off", abandoners: "10%" },
+    );
   });
 
   it("stores stage selection on the immutable plan and locks buyer exclusion", () => {

@@ -40,7 +40,12 @@ export function stageSplitLabels(stages = {}) {
   const retarget = stages.retarget !== false;
   const abandoners = stages.abandoners !== false;
   if (prospecting) {
-    return { prospecting: "70%", retarget: "20%", abandoners: "10%" };
+    const prospectingPercent = 70 + (retarget ? 0 : 20) + (abandoners ? 0 : 10);
+    return {
+      prospecting: `${prospectingPercent}%`,
+      retarget: retarget ? "20%" : "Off",
+      abandoners: abandoners ? "10%" : "Off",
+    };
   }
   if (retarget && abandoners) {
     return { prospecting: "Off", retarget: "67%", abandoners: "33%" };
