@@ -52,6 +52,7 @@ import {
 // → reverse partner Transfer; account.updated → populate partner
 // external_account_currencies (closes the ORCH-1052 currency-match gate).
 import {
+  handleApplicationFeeCreated,
   handleChargeReversal,
   handleChargeSucceeded,
   syncPartnerAccountFromEvent,
@@ -2084,6 +2085,14 @@ export async function routeStripeEvent(
     case "application_fee.created":
     case "application_fee.refunded":
       brandId = await handleApplicationFee(supabase, event);
+      // Issue #3645: the fee id only exists from here on for direct charges
+      // (charge.succeeded carries application_fee: null), so the payout
+      // partner outcome is recorded now. Throws a retryable error while the
+      // ticket order is not finalized yet, so Stripe redelivers.
+      if (event.type === "application_fee.created") {
+        const outcome = await handleApplicationFeeCreated(supabase, event);
+        brandId = brandId ?? outcome.brandId;
+      }
       break;
     case "application_fee.refund.updated":
       brandId = await handleApplicationFeeRefund(supabase, stripe, event);
