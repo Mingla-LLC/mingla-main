@@ -587,7 +587,7 @@ BEGIN
     RAISE EXCEPTION 'rsvp_phone_country_without_phone' USING ERRCODE = '22023';
   END IF;
 
-  -- #4063 W0: an anonymous submission never changes an RSVP that already exists for that email. MINGLA-INVARIANT: I-4063-RSVP-SUBMIT-GUARD.
+  -- #4063 W0: an anonymous submission never changes an RSVP that already exists for that email.
   IF p_user_id IS NULL AND EXISTS (
     SELECT 1
       FROM public.event_rsvps r

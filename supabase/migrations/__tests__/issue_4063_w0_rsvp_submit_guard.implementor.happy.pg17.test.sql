@@ -1,4 +1,5 @@
 -- #4063 W0 happy path. Executed after the complete migration chain in CI.
+-- MINGLA-INVARIANT: I-4063-RSVP-SUBMIT-GUARD | issue #4063 | An anonymous RSVP submission never changes an RSVP that already exists for the same event and email.
 BEGIN;
 
 DO $test$
