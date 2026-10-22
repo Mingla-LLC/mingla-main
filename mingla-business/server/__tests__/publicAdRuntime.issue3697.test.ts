@@ -149,7 +149,7 @@ describe("#3697 public arrival runtime", () => {
     const handoff = html.indexOf("browserRuntimeScript");
     expect(capture).toBeGreaterThan(-1);
     expect(html).toContain("keepalive:true");
-    expect(html).toContain("__minglaEarlyEngagementCaptured");
+    expect(html).toContain("__minglaEarlyEngagementCapture");
     expect(html).toContain("__minglaAdPixelsBootstrapped");
     expect(html).toContain("__minglaAdPageViewKeys");
     expect(html).toContain("content_ids:[c.contentId]");
