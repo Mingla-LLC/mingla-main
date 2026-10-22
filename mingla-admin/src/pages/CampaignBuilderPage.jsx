@@ -736,13 +736,21 @@ export function CampaignBuilderPage() {
     return () => window.removeEventListener("hashchange", applyHash);
   }, [maxVisitedIndex]);
 
+  const goalSignals = useMemo(() => ({
+    metaPixelHasSignal: connections.meta?.extra?.pixel_has_signal === true,
+    snapPurchaseEvents28d: preflightRows?.find((row) => row.platform === "snapchat")
+      ?.purchase_events_28d ?? null,
+    tiktokPurchaseEvents28d: preflightRows?.find((row) => row.platform === "tiktok")
+      ?.purchase_events_28d ?? null,
+  }), [connections.meta?.extra?.pixel_has_signal, preflightRows]);
+
   // ── The channel plan (the A4.0(1) output) ──
   // ISSUE-979 Bug 1: Meta's optimization_goal comes from the SAME coherent
   // resolution the create payload uses (objectiveResolver) — one Meta goal in
   // play, so the per-category budget floor here and the create pair never
   // disagree. (Traffic wins over awareness for the two live goals, in any click
   // order — the valid OUTCOME_TRAFFIC / LINK_CLICKS pair.)
-  const metaGoal = resolveMetaObjective(goalIds).optimization_goal;
+  const metaGoal = resolveMetaObjective(goalIds, goalSignals).optimization_goal;
   // Lifetime: plan floors against the daily equivalent so channel eligibility
   // matches create-time D1 checks (not a zero daily while the total is large).
   const planningDailyCents = useMemo(() => {
@@ -769,6 +777,7 @@ export function CampaignBuilderPage() {
         allowlist: budget.allowlist,
         connections,
         metaGoal,
+        goalSignals,
       }),
     [
       preflightRows,
@@ -778,6 +787,7 @@ export function CampaignBuilderPage() {
       budget.allowlist,
       connections,
       metaGoal,
+      goalSignals,
     ],
   );
   // ── ISSUE-986: the platform picker resolves the channel set ──
@@ -827,6 +837,7 @@ export function CampaignBuilderPage() {
           allowlist: budget.allowlist,
           connections,
           metaGoal,
+          goalSignals,
         },
         selectedPlatforms,
         excluded: complianceExcluded,
@@ -838,6 +849,7 @@ export function CampaignBuilderPage() {
       budget.allowlist,
       connections,
       metaGoal,
+      goalSignals,
       selectedPlatforms,
       complianceExcluded,
     ],
@@ -910,10 +922,8 @@ export function CampaignBuilderPage() {
   // to show each channel's REAL resolved objective instead of one repeated
   // goal-label string. Never touches runCreate's own resolution.
   const resolvedGoalForDisplay = useMemo(
-    () => resolveGoalForPayload(goalIds, {
-      snapPixelInstalled: connections.snapchat?.extra?.pixel_installed === true,
-    }),
-    [goalIds, connections.snapchat?.extra?.pixel_installed],
+    () => resolveGoalForPayload(goalIds, goalSignals),
+    [goalIds, goalSignals],
   );
 
   // ── ISSUE-995 [Campaign Builder creative] Wave 3 — PROCEED-WITH-PASSING ──
@@ -1494,9 +1504,7 @@ export function CampaignBuilderPage() {
     // truth) — never goalIds[0] for one field and the full array for another.
     // Each platform's pair now comes from a single goals.js entry, so the Meta
     // objective/optimization_goal pairing is always valid, in any click order.
-    const resolvedGoal = resolveGoalForPayload(goalIds, {
-      snapPixelInstalled: connections.snapchat?.extra?.pixel_installed === true,
-    });
+    const resolvedGoal = resolveGoalForPayload(goalIds, goalSignals);
     // ISSUE-995 PROCEED-WITH-PASSING: skip funded channels this creative can't
     // build (reject or unresolved needs_transcode). The backend loop is already
     // per-channel independent — we simply don't issue their create call.
@@ -2146,8 +2154,9 @@ export function CampaignBuilderPage() {
                 <StepGoal
                   goalIds={goalIds}
                   onGoalsChange={setGoalIds}
-                  metaPixelHasSignal={connections.meta?.extra?.pixel_has_signal === true}
-                  snapPixelInstalled={connections.snapchat?.extra?.pixel_installed === true}
+                  metaPixelHasSignal={goalSignals.metaPixelHasSignal}
+                  snapPurchaseEvents28d={goalSignals.snapPurchaseEvents28d}
+                  tiktokPurchaseEvents28d={goalSignals.tiktokPurchaseEvents28d}
                 />
               </section>
               <section

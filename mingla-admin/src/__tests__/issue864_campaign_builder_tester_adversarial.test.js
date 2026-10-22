@@ -388,7 +388,7 @@ describe("channel plan — exclusion precedence + market gate", () => {
     );
   });
 
-  it("retargeting stays hidden while Sales admits only Meta", () => {
+  it("retargeting stays hidden while Sales maps all three paid-social channels", () => {
     for (const goalId of ["retargeting"]) {
       assert.equal(
         visibleGoals().some((g) => g.id === goalId),
@@ -414,7 +414,15 @@ describe("channel plan — exclusion precedence + market gate", () => {
       );
     }
     assert.equal(visibleGoals().some((g) => g.id === "conversions"), true);
-    assert.deepEqual(platformsForGoal("conversions"), ["meta"]);
+    assert.deepEqual(platformsForGoal("conversions"), ["meta", "snapchat", "tiktok"]);
+    assert.deepEqual(
+      platformsForGoal("conversions", {
+        metaPixelHasSignal: false,
+        snapPurchaseEvents28d: 19,
+        tiktokPurchaseEvents28d: 20,
+      }),
+      ["tiktok"],
+    );
   });
 
   it("disjoint goal selections fall back to the union AND flag disjoint=true", () => {

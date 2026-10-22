@@ -803,8 +803,8 @@ export const SNAPCHAT_OPTIMIZATION_GOALS = [
   "APP_REENGAGE_PURCHASE",
 ] as const;
 
-/** A1.1(6)/GR-21: SWIPES until #865's pixel is live and firing. */
-export const SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL = "SWIPES";
+/** #3697: traffic optimises for real page arrivals, never the shallow swipe proxy. */
+export const SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL = "PIXEL_PAGE_VIEW";
 
 /**
  * Pixel-measured goals gated on the #865 pixel signal (422
@@ -1960,6 +1960,61 @@ export interface SnapchatPixelSignalSnapshot {
   totalEvents: number;
 }
 
+export interface SnapchatPurchaseSignalSnapshot {
+  purchaseEvents28d: number;
+  domainsChecked: string[];
+}
+
+/** Domains surfaced by Snap's seven-day pixel-domain discovery response. */
+export function parseSnapchatPixelDomains(
+  payload: Record<string, unknown>,
+): string[] {
+  const domains = new Set<string>();
+  const wrappers = Array.isArray(payload.timeseries_stats)
+    ? payload.timeseries_stats
+    : [];
+  for (const wrapper of wrappers) {
+    if (!wrapper || typeof wrapper !== "object") continue;
+    const timeseries = ((wrapper as Record<string, unknown>).timeseries_stat ??
+      wrapper) as Record<string, unknown>;
+    const rows = Array.isArray(timeseries.domains) ? timeseries.domains : [];
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const domain = (row as Record<string, unknown>).domain_name;
+      if (typeof domain !== "string") continue;
+      const normalized = domain.trim().toLowerCase();
+      if (normalized) domains.add(normalized);
+    }
+  }
+  return [...domains];
+}
+
+/** Sum Snap's daily PURCHASE breakdown for one domain without using ad-attributed stats. */
+export function parseSnapchatPurchaseEvents(
+  payload: Record<string, unknown>,
+): number {
+  const wrappers = Array.isArray(payload.timeseries_stats)
+    ? payload.timeseries_stats
+    : [];
+  let purchases = 0;
+  for (const wrapper of wrappers) {
+    if (!wrapper || typeof wrapper !== "object") continue;
+    const timeseriesStat = ((wrapper as Record<string, unknown>).timeseries_stat ??
+      wrapper) as Record<string, unknown>;
+    const rows = Array.isArray(timeseriesStat.timeseries)
+      ? timeseriesStat.timeseries
+      : [];
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const breakdown = (row as Record<string, unknown>).event_type_breakdown;
+      if (!breakdown || typeof breakdown !== "object" || Array.isArray(breakdown)) continue;
+      const value = Number((breakdown as Record<string, unknown>).PURCHASE ?? 0);
+      if (Number.isFinite(value) && value > 0) purchases += value;
+    }
+  }
+  return purchases;
+}
+
 export function parseSnapchatPixelSignal(
   payload: Record<string, unknown>,
 ): SnapchatPixelSignalSnapshot {
@@ -1996,6 +2051,50 @@ export async function snapchatFetchPixelSignal(
     `pixels/${encodeURIComponent(pixelId)}/domains/stats`,
   );
   return parseSnapchatPixelSignal(payload);
+}
+
+/**
+ * Read the live 28-day PURCHASE count that gates PIXEL_PURCHASE. Snap requires
+ * one stats request per domain, so the seven-day domain endpoint is used only
+ * to discover the current pixel domains; the count itself comes from the
+ * documented 28-day event-type timeseries. An unreadable domain is a hard
+ * provider error — callers fail closed instead of treating stale state as
+ * permission to optimise for purchases.
+ */
+export async function snapchatFetchPurchaseSignal28d(
+  client: SnapchatClient,
+  pixelId: string,
+  nowMs = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<SnapchatPurchaseSignalSnapshot> {
+  const domainPayload = await snapchatApi(
+    client,
+    "GET",
+    `pixels/${encodeURIComponent(pixelId)}/domains/stats`,
+    undefined,
+    { fetchImpl },
+  );
+  // Bound provider fan-out. A pixel unexpectedly firing on more than 50
+  // domains is not a trustworthy Mingla optimisation signal.
+  const domains = parseSnapchatPixelDomains(domainPayload).slice(0, 50);
+  const endTime = new Date(nowMs).toISOString();
+  const startTime = new Date(nowMs - 28 * 24 * 60 * 60 * 1000).toISOString();
+  let purchaseEvents28d = 0;
+
+  for (const domain of domains) {
+    const url = new URL(
+      `${client.apiBase}/pixels/${encodeURIComponent(pixelId)}/stats`,
+    );
+    url.searchParams.set("start_time", startTime);
+    url.searchParams.set("end_time", endTime);
+    url.searchParams.set("granularity", "DAY");
+    url.searchParams.set("domain", domain);
+    url.searchParams.set("fields", "event_type");
+    const payload = await snapchatApi(client, "GET", url.toString(), undefined, { fetchImpl });
+    purchaseEvents28d += parseSnapchatPurchaseEvents(payload);
+  }
+
+  return { purchaseEvents28d, domainsChecked: domains };
 }
 
 // ── ISSUE-992 (3a): SCLS interest-segment search (targeting dimensions) ───────

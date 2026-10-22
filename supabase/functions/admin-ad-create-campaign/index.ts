@@ -115,12 +115,14 @@ import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import {
   assertTikTokIdentityAllowed,
   normalizeTikTokInterestCategoryIds,
+  resolveTikTokClient,
   resolveTikTokGeo,
   TIKTOK_BILLING_EVENTS,
   TIKTOK_GENDERS,
   TIKTOK_OPTIMIZATION_GOALS,
   TIKTOK_PIXEL_GATED_OBJECTIVES,
   type TikTokCreateAdExtensions,
+  tiktokFetchPurchaseSignal28d,
   tiktokPlacementsForCreative,
   tiktokUploadImage,
   validateTikTokAdText,
@@ -143,6 +145,7 @@ import {
 } from "../_shared/reddit.ts";
 import {
   buildSnapchatReviewDetail,
+  resolveSnapchatClient,
   SNAPCHAT_BID_STRATEGIES,
   SNAPCHAT_CIRCLE_UNITS,
   SNAPCHAT_DEFAULT_BID_STRATEGY,
@@ -156,6 +159,8 @@ import {
   type SnapchatCreateCampaignExtensions,
   type SnapchatCreateCreativeExtensions,
   snapchatDemographicsWithDefault,
+  snapchatFetchPixelSignal,
+  snapchatFetchPurchaseSignal28d,
   validateSnapchatBrandName,
   validateSnapchatCta,
   validateSnapchatDemographics,
@@ -190,6 +195,7 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const PURCHASE_SIGNAL_MIN_28D = 20;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -2367,7 +2373,7 @@ serve(async (req: Request): Promise<Response> => {
       }, 422);
     }
 
-    // A1.1(6) (OD-4 REVERSED): SWIPES default until #865's pixel fires.
+    // #3697: default to a real loaded page, never the shallow SWIPES proxy.
     const optimizationGoalS = typeof body.optimization_goal === "string"
       ? body.optimization_goal
       : SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL;
@@ -2684,12 +2690,42 @@ serve(async (req: Request): Promise<Response> => {
       }, 424);
     }
     if (SNAPCHAT_PIXEL_GATED_GOALS.includes(optimizationGoalS)) {
-      if (sconnExtra.pixel_installed !== true) {
+      try {
+        const snapClient = await resolveSnapchatClient(
+          sconn,
+          lane as "consumer" | "business",
+        );
+        if (optimizationGoalS === "PIXEL_PURCHASE") {
+          const signal = await snapchatFetchPurchaseSignal28d(snapClient, pixelIdS);
+          if (signal.purchaseEvents28d < PURCHASE_SIGNAL_MIN_28D) {
+            return json({
+              error: "purchase_signal_below_minimum",
+              detail:
+                `Snapchat Sales requires at least ${PURCHASE_SIGNAL_MIN_28D} PURCHASE events in the last 28 days; the live pixel count is ${signal.purchaseEvents28d}.`,
+              purchase_events_28d: signal.purchaseEvents28d,
+              required_purchase_events_28d: PURCHASE_SIGNAL_MIN_28D,
+            }, 422);
+          }
+        } else {
+          const signal = await snapchatFetchPixelSignal(snapClient, pixelIdS);
+          if (!signal.hasSignal) {
+            return json({
+              error: "pixel_goal_unavailable",
+              detail:
+                `${optimizationGoalS} requires a live Snap pixel signal. The current seven-day count is 0; no SWIPES fallback is allowed.`,
+            }, 422);
+          }
+        }
+      } catch (err) {
+        const detail = err instanceof AdApiError
+          ? err.toJSON()
+          : err instanceof Error
+          ? err.message
+          : String(err);
         return json({
-          error: "pixel_goal_unavailable",
-          detail:
-            `${optimizationGoalS} is pixel-measured and the Snap pixel sends no events yet (#865 owns the install) — optimizing to an event we don't send means no/erratic delivery (GR-21). Use SWIPES until the pixel fires.`,
-        }, 422);
+          error: "pixel_signal_unavailable",
+          detail,
+        }, 503);
       }
     }
 
@@ -3264,19 +3300,11 @@ serve(async (req: Request): Promise<Response> => {
         detail: objectiveCheckT.message,
       }, 422);
     }
-    // A1.0-6: no conversion optimization until #865 — the pixel has ZERO
-    // events (T-P4); optimizing to an event we don't send means no delivery.
-    if (TIKTOK_PIXEL_GATED_OBJECTIVES.includes(objectiveT)) {
-      return json({
-        error: "pixel_goal_unavailable",
-        detail:
-          `${objectiveT} is pixel-measured and the TikTok pixel sends no events yet (#865 owns the install — T-P4). Use TRAFFIC until the pixel fires.`,
-      }, 422);
-    }
-
     const optimizationGoalT = typeof body.optimization_goal === "string"
       ? body.optimization_goal
-      : "TRAFFIC_LANDING_PAGE_VIEW"; // A1.0-6 default
+      : objectiveT === "WEB_CONVERSIONS"
+      ? "CONVERT"
+      : "TRAFFIC_LANDING_PAGE_VIEW";
     if (
       !(TIKTOK_OPTIMIZATION_GOALS as readonly string[]).includes(
         optimizationGoalT,
@@ -3291,6 +3319,8 @@ serve(async (req: Request): Promise<Response> => {
     }
     const billingEventT = typeof body.billing_event === "string"
       ? body.billing_event
+      : objectiveT === "WEB_CONVERSIONS"
+      ? "OCPM"
       : "CPC";
     if (!(TIKTOK_BILLING_EVENTS as readonly string[]).includes(billingEventT)) {
       return json({
@@ -3476,6 +3506,50 @@ serve(async (req: Request): Promise<Response> => {
     }
     const tconn = tconnRow as unknown as AdConnectionRow;
     const tconnExtra = (tconn.extra ?? {}) as Record<string, unknown>;
+    const pixelIdT = typeof tconnExtra.pixel_id === "string"
+      ? tconnExtra.pixel_id.trim()
+      : "";
+
+    // #3697: WEB_CONVERSIONS is unlocked only by a live provider count of at
+    // least 20 CompletePayment events in 28 days. PRODUCT_SALES remains out of
+    // scope; never let the broader enum bypass the website-sales contract.
+    if (objectiveT === "PRODUCT_SALES") {
+      return json({
+        error: "objective_unavailable",
+        detail: "TikTok Product Sales is not supported by Mingla's website-sales campaign path.",
+      }, 422);
+    }
+    if (TIKTOK_PIXEL_GATED_OBJECTIVES.includes(objectiveT)) {
+      if (!pixelIdT) {
+        return json({
+          error: "tiktok_pixel_missing",
+          detail: "The TikTok connection carries no pixel_id. Reconnect TikTok before using Sales.",
+        }, 424);
+      }
+      try {
+        const tiktokClient = resolveTikTokClient(
+          tconn,
+          lane as "consumer" | "business",
+        );
+        const signal = await tiktokFetchPurchaseSignal28d(tiktokClient, pixelIdT);
+        if (signal.purchaseEvents28d < PURCHASE_SIGNAL_MIN_28D) {
+          return json({
+            error: "purchase_signal_below_minimum",
+            detail:
+              `TikTok Sales requires at least ${PURCHASE_SIGNAL_MIN_28D} CompletePayment events in the last 28 days; the live pixel count is ${signal.purchaseEvents28d}.`,
+            purchase_events_28d: signal.purchaseEvents28d,
+            required_purchase_events_28d: PURCHASE_SIGNAL_MIN_28D,
+          }, 422);
+        }
+      } catch (err) {
+        const detail = err instanceof AdApiError
+          ? err.toJSON()
+          : err instanceof Error
+          ? err.message
+          : String(err);
+        return json({ error: "pixel_signal_unavailable", detail }, 503);
+      }
+    }
 
     // (3) Identity fail-close BEFORE any create (T-6/AC-12): the adapter only
     // asserts identity at the AD step — post-campaign, mid-chain. Gate here so
@@ -3806,6 +3880,14 @@ serve(async (req: Request): Promise<Response> => {
             ? { bid_price_cents: bidPriceCentsT }
             : {}),
           ...(requestIdT ? { request_id: requestIdT } : {}),
+          ...(objectiveT === "WEB_CONVERSIONS"
+            ? {
+              promotion_type: "WEBSITE",
+              pixel_id: pixelIdT,
+              // TikTok's campaign-management enum for the Purchase event.
+              optimization_event: "SHOPPING",
+            }
+            : {}),
           // schedule_start_time defaults to NOW in UTC+0 inside the builder
           // (A1.1(a): TikTok schedule strings are UTC+0, never advertiser-tz).
         },

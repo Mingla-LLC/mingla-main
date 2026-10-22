@@ -8,21 +8,36 @@
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { AlertCard } from "../ui/Card";
-import { visibleGoals, platformsForGoals, DISJOINT_GOALS_WARNING } from "../../lib/adBuilder/goals";
+import {
+  visibleGoals,
+  platformsForGoals,
+  DISJOINT_GOALS_WARNING,
+  PURCHASE_SIGNAL_MIN_28D,
+  purchaseSignalEligible,
+} from "../../lib/adBuilder/goals";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
 
 export function StepGoal({
   goalIds,
   onGoalsChange,
   metaPixelHasSignal = false,
-  snapPixelInstalled = false,
+  snapPurchaseEvents28d = null,
+  tiktokPurchaseEvents28d = null,
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const goals = visibleGoals();
-  const { disjoint } = platformsForGoals(goalIds);
+  const signals = {
+    metaPixelHasSignal,
+    snapPurchaseEvents28d,
+    tiktokPurchaseEvents28d,
+  };
+  const { disjoint } = platformsForGoals(goalIds, signals);
+  const salesAvailable = metaPixelHasSignal ||
+    purchaseSignalEligible(snapPurchaseEvents28d) ||
+    purchaseSignalEligible(tiktokPurchaseEvents28d);
 
   const toggle = (id) => {
-    if (id === "conversions" && !metaPixelHasSignal) return;
+    if (id === "conversions" && !salesAvailable) return;
     onGoalsChange(goalIds.includes(id) ? goalIds.filter((g) => g !== id) : [...goalIds, id]);
   };
 
@@ -38,7 +53,7 @@ export function StepGoal({
       <div role="group" aria-label="Campaign goals" className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {goals.map((goal) => {
           const selected = goalIds.includes(goal.id);
-          const disabled = goal.requiresMetaPixelSignal === true && !metaPixelHasSignal;
+          const disabled = goal.id === "conversions" && !salesAvailable;
           return (
             <button
               key={goal.id}
@@ -67,10 +82,21 @@ export function StepGoal({
               )}
               {goal.id === "traffic" && (
                 <p className="text-xs text-[var(--color-text-tertiary)] mt-1.5">
-                  {snapPixelInstalled
-                    ? "Snap pixel detected. Snapchat will optimise for landing-page views."
-                    : "Snap pixel not detected. Snapchat will optimise for swipes until it records a page view."}
+                  Snapchat will optimise for pixel-backed page views. TikTok will optimise for loaded landing pages.
                 </p>
+              )}
+              {goal.id === "conversions" && (
+                <div className="text-xs text-[var(--color-text-tertiary)] mt-1.5 space-y-0.5">
+                  <p>Meta: {metaPixelHasSignal ? "available" : "waiting for a live pixel signal"}</p>
+                  <p>
+                    Snapchat: {Number.isFinite(snapPurchaseEvents28d) ? snapPurchaseEvents28d : "unavailable"}
+                    {` / ${PURCHASE_SIGNAL_MIN_28D} PURCHASE events (28 days)`}
+                  </p>
+                  <p>
+                    TikTok: {Number.isFinite(tiktokPurchaseEvents28d) ? tiktokPurchaseEvents28d : "unavailable"}
+                    {` / ${PURCHASE_SIGNAL_MIN_28D} CompletePayment events (28 days)`}
+                  </p>
+                </div>
               )}
               <p className="text-[10px] text-[var(--color-text-tertiary)] mt-1.5">
                 Channels: {Object.keys(goal.platforms).map((p) => PLATFORM_LABELS[p]).join(", ")}

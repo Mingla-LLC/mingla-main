@@ -210,9 +210,10 @@ export async function tiktokApi(
   method: "GET" | "POST",
   path: string,
   params?: Record<string, unknown>,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
 ): Promise<Record<string, unknown>> {
   const timeoutMs = opts.timeoutMs ?? 15_000;
+  const fetchImpl = opts.fetchImpl ?? fetch;
   const scrub = (text: string): string => text.split(client.token).join("[redacted]");
   let url = `${client.apiBase}/open_api/${client.apiVersion}/${path.replace(/^\//, "")}`;
 
@@ -242,7 +243,7 @@ export async function tiktokApi(
 
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await fetchImpl(url, init);
   } catch (err) {
     clearTimeout(timer);
     const detail = err instanceof Error ? err.message : String(err);
@@ -746,6 +747,7 @@ export const TIKTOK_OPTIMIZATION_GOALS = [
   "TRAFFIC_LANDING_PAGE_VIEW",
   "DESTINATION_VISIT",
   "PREFERRED_LEAD",
+  "CONVERT",
 ] as const;
 
 export const TIKTOK_BILLING_EVENTS = ["CPC", "CPM", "OCPM", "CPV"] as const;
@@ -1620,8 +1622,10 @@ export interface TikTokAdGroupSpec {
   /** ISO country codes for the GAB geo-lock gate (informational; ids stay numeric). */
   countryCodes?: string[];
   requestId?: string;
-  /** Native app-acquisition destination. Both fields are required together. */
-  promotionType?: "APP_IOS" | "APP_ANDROID";
+  /** Website-conversion fields; all four travel together for WEB_CONVERSIONS. */
+  pixelId?: string;
+  optimizationEvent?: string;
+  promotionType?: "WEBSITE" | "APP_IOS" | "APP_ANDROID";
   appId?: string;
   /** Injectable clock for tests. */
   nowMs?: number;
@@ -1702,8 +1706,27 @@ export function buildTikTokAdGroupBody(
     ...(spec.dayparting ? { dayparting: spec.dayparting } : {}),
     // A1.0-4: DISABLE at every level (fails-on-revert protected).
     operation_status: "DISABLE",
+    ...(spec.pixelId ? { pixel_id: spec.pixelId } : {}),
+    ...(spec.optimizationEvent ? { optimization_event: spec.optimizationEvent } : {}),
+    ...(spec.promotionType ? { promotion_type: spec.promotionType } : {}),
   };
-  const appPromotion = spec.promotionType !== undefined || spec.appId !== undefined;
+  const webConversion = spec.promotionType === "WEBSITE" ||
+    spec.pixelId !== undefined || spec.optimizationEvent !== undefined;
+  if (webConversion) {
+    if (
+      spec.promotionType !== "WEBSITE" || !spec.pixelId ||
+      spec.optimizationGoal !== "CONVERT" || !spec.optimizationEvent
+    ) {
+      throw new AdApiError({
+        platform: "tiktok",
+        code: "web_conversion_config_invalid",
+        message:
+          "TikTok website conversions require promotion_type=WEBSITE, optimization_goal=CONVERT, pixel_id, and optimization_event together.",
+      });
+    }
+  }
+  const appPromotion = spec.promotionType === "APP_IOS" ||
+    spec.promotionType === "APP_ANDROID" || spec.appId !== undefined;
   if (appPromotion) {
     if (
       spec.optimizationGoal !== "INSTALL" ||
@@ -2183,6 +2206,55 @@ export interface TikTokPixelSnapshot {
   eventsCount: number;
 }
 
+export interface TikTokPurchaseSignalSnapshot {
+  purchaseEvents28d: number;
+  startDate: string;
+  endDate: string;
+}
+
+const normalizeTikTokEventName = (value: unknown): string =>
+  typeof value === "string" ? value.replace(/[\s_-]+/g, "").toLowerCase() : "";
+
+const TIKTOK_PURCHASE_EVENT_NAMES = new Set([
+  "completepayment",
+]);
+
+/**
+ * Tolerant parser for TikTok's generic-object SDK response. Arrays represent
+ * distinct rows/days and are summed; sibling object branches use the maximum
+ * so a response that carries both a series and an aggregate cannot double
+ * count the same purchases.
+ */
+export function parseTikTokPurchaseEvents(payload: unknown): number {
+  if (Array.isArray(payload)) {
+    return payload.reduce((sum, item) => sum + parseTikTokPurchaseEvents(item), 0);
+  }
+  if (!payload || typeof payload !== "object") return 0;
+
+  const row = payload as Record<string, unknown>;
+  const eventName = row.event ?? row.event_name ?? row.event_type ?? row.name;
+  if (TIKTOK_PURCHASE_EVENT_NAMES.has(normalizeTikTokEventName(eventName))) {
+    for (const key of ["event_count", "events_count", "count", "total_events", "total"]) {
+      const value = Number(row[key]);
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+  }
+
+  const candidates: number[] = [];
+  for (const [key, value] of Object.entries(row)) {
+    if (TIKTOK_PURCHASE_EVENT_NAMES.has(normalizeTikTokEventName(key))) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric >= 0) candidates.push(numeric);
+      else candidates.push(parseTikTokPurchaseEvents(value));
+      continue;
+    }
+    if (value && typeof value === "object") {
+      candidates.push(parseTikTokPurchaseEvents(value));
+    }
+  }
+  return candidates.length > 0 ? Math.max(...candidates) : 0;
+}
+
 /** pixel/list — informational for #865; traffic campaigns never use it. */
 export async function tiktokFetchPixels(client: TikTokClient): Promise<TikTokPixelSnapshot[]> {
   const data = await tiktokApi(client, "GET", "pixel/list/", {
@@ -2201,6 +2273,28 @@ export async function tiktokFetchPixels(client: TikTokClient): Promise<TikTokPix
       activityStatus: typeof row.activity_status === "string" ? row.activity_status : null,
       eventsCount: Array.isArray(row.events) ? row.events.length : 0,
     }));
+}
+
+/** Live CompletePayment count for the 28-day Sales eligibility gate. */
+export async function tiktokFetchPurchaseSignal28d(
+  client: TikTokClient,
+  pixelId: string,
+  nowMs = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<TikTokPurchaseSignalSnapshot> {
+  const formatDate = (value: number): string => new Date(value).toISOString().slice(0, 10);
+  const endDate = formatDate(nowMs);
+  const startDate = formatDate(nowMs - 27 * 24 * 60 * 60 * 1000);
+  const data = await tiktokApi(client, "GET", "pixel/event/stats/", {
+    advertiser_id: client.advertiserId,
+    pixel_ids: [pixelId],
+    date_range: { start_date: startDate, end_date: endDate },
+  }, { fetchImpl });
+  return {
+    purchaseEvents28d: parseTikTokPurchaseEvents(data),
+    startDate,
+    endDate,
+  };
 }
 
 // ── The adapter ───────────────────────────────────────────────────────────────
@@ -2277,8 +2371,10 @@ export interface TikTokAdGroupTargetingInput {
   pacing?: string;
   country_codes?: string[];
   request_id?: string;
+  pixel_id?: string;
+  optimization_event?: string;
   /** Provider-native app acquisition identity; both fields are required together. */
-  promotion_type?: "APP_IOS" | "APP_ANDROID";
+  promotion_type?: "WEBSITE" | "APP_IOS" | "APP_ANDROID";
   app_id?: string;
 }
 
@@ -2311,6 +2407,8 @@ function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSp
     pacing: t.pacing,
     countryCodes: t.country_codes,
     requestId: t.request_id,
+    pixelId: t.pixel_id,
+    optimizationEvent: t.optimization_event,
     promotionType: t.promotion_type,
     appId: t.app_id,
   };

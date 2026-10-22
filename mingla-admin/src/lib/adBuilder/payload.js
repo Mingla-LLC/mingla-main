@@ -223,6 +223,7 @@ const TIKTOK_GOAL_DEFAULTS = {
     billing_event: "CPC",
   },
   REACH: { optimization_goal: "REACH", billing_event: "CPM" },
+  WEB_CONVERSIONS: { optimization_goal: "CONVERT", billing_event: "OCPM" },
 };
 
 /**
@@ -460,7 +461,7 @@ export function buildCreatePayload(platform, state) {
       name,
       objective: goal.platforms?.snapchat?.objective ?? "TRAFFIC",
       optimization_goal:
-        goal.platforms?.snapchat?.optimization_goal ?? "SWIPES",
+        goal.platforms?.snapchat?.optimization_goal ?? "PIXEL_PAGE_VIEW",
       ...budgetPayloadFromState(budget),
       // ISSUE-989: age/gender via demographics (STRINGS — GR-39). Absent →
       // server default [{min_age:"18"}].
