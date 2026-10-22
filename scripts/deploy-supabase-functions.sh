@@ -171,7 +171,7 @@ fi
 #
 # A file, not a secret: the constant travels with the bundle it describes and so
 # cannot name a different commit than the one deployed, and it spends no slot
-# against the founder-approved 89-name capacity target. This runs for EVERY
+# against the founder-approved 90-name capacity target. This runs for EVERY
 # deploy because the module is shared — whichever functions are being shipped,
 # the ones that bundle it get a stamp describing exactly themselves.
 release_bake_file="${repo_root}/supabase/functions/_shared/releaseAttestationBake.ts"

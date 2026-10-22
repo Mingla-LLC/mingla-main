@@ -129,10 +129,9 @@ export function violations(files) {
     failures.push("manifest: invalid JSON");
     manifest = {};
   }
-  // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat
-  // (SPRINT_ROLLOVER_TOKEN, read by product-avengers-sync).
-  if (manifest.rollout?.expected_user_managed_count !== 89) {
-    failures.push("manifest: expected user-managed count must be 89");
+  // #3645: the payout-release RAK is the approved 90th and final name.
+  if (manifest.rollout?.expected_user_managed_count !== 90) {
+    failures.push("manifest: expected user-managed count must be 90");
   }
   if (manifest.policy?.normal_ceiling !== 87) {
     failures.push("manifest: normal ceiling must remain 87");
@@ -174,9 +173,9 @@ export function violations(files) {
   ) {
     failures.push("manifest: bundled notification HMAC authority missing");
   }
-  if (records.size !== 89) {
+  if (records.size !== 90) {
     failures.push(
-      `manifest: exact record count must be 89, got ${records.size}`,
+      `manifest: exact record count must be 90, got ${records.size}`,
     );
   }
   if (
@@ -379,8 +378,8 @@ function selfTest() {
     {
       key: "manifest",
       value: valid.manifest.replace(
-        '"expected_user_managed_count": 89',
         '"expected_user_managed_count": 90',
+        '"expected_user_managed_count": 89',
       ),
       expected: "expected user-managed count",
     },
@@ -503,6 +502,6 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "issue-1430 refund replay safety gate PASS (provider identity, dark Stripe failure, bundled authority, exact 89-name manifest)",
+    "issue-1430 refund replay safety gate PASS (provider identity, dark Stripe failure, bundled authority, exact 90-name manifest)",
   );
 }

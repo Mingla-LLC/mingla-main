@@ -2,20 +2,10 @@
  * #2241 implementor proof — normal-mode migration-band parity, and the
  * post-deploy fallback watch that replaces the strictness being relaxed.
  *
- * NO EXISTING TEST EXPECTATION CHANGES. This file is purely additive: the whole
- * pre-existing `issue_2241_secret_readiness.test.mjs` suite passes byte-for-byte
- * against this change, which is itself the evidence that the relaxation is
- * bounded. In particular `#2913 happy: exact provider defaults preserve 89/90
- * user-managed parity` still passes normal mode at exactly 88 — because the
- * band is TOLERATED here, never demanded.
- *
- * The distinction is load-bearing. Making normal mode REQUIRE the band would
- * unblock today's 90-name production and then break at 89 and at the documented
- * 88-name target (docs/runbooks/SUPABASE_SECRET_CAPACITY.md: "The remaining
- * order is CHECKOUT_REVOCATION_EXECUTE (89), then ATTENDANCE_CLAIM_PEPPER last
- * (88) ... both must execute and report exact 88 parity"). A check that cannot
- * pass at its own target state is the #2113 shape — the same shape that forced
- * the band to narrow from five names to two on 2026-09-02.
+ * The distinction used to be load-bearing while direct compatibility names
+ * remained in production. #3645 closes that migration band at the exact
+ * 90-name manifest, so normal and remediation mode now converge on one live
+ * set while the same adversarial cases prove that no 91st name is admitted.
  *
  * Load-bearing assertions include:
  * - an in-band extra passes normal mode
@@ -23,13 +13,9 @@
  * - a missing declared name still fails normal mode
  * - the relaxation ships with a replacement observation that can fail
  *
- * [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]. SPRINT_ROLLOVER_TOKEN is the 89th
- * declared name. Manifest + band must still fit the unchanged 90-name
- * absolute ceiling (and remediation's exact 90), so the band narrows to the
- * one name remediation itself requires, CHECKOUT_REVOCATION_EXECUTE.
- * ATTENDANCE_CLAIM_PEPPER's direct name is already absent from production
- * (#2979 closed). Every assertion keeps its shape; only the pinned counts
- * and the band literal move.
+ * [TEST-MOD-APPROVED #3645] Seth approved the payout-release restricted key
+ * as the 90th and final absolute-ceiling name. The migration band is therefore
+ * empty; both modes require the exact declared set and the 91st name fails.
  */
 
 import assert from "node:assert/strict";
@@ -93,26 +79,17 @@ function readinessCode(code, detail = null) {
 // ---------------------------------------------------------------------------
 
 test("#2241 happy: normal mode accepts the approved migration band", () => {
-  assert.equal(declared.length, 89);
-  assert.deepEqual(
-    [...ISSUE_2241_EXTRA_NAMES],
-    ["CHECKOUT_REVOCATION_EXECUTE"],
-  );
+  assert.equal(declared.length, 90);
+  assert.deepEqual([...ISSUE_2241_EXTRA_NAMES], []);
 
-  // 90 — today's production state. This is the state that refused every deploy.
+  // 90 — today's production state and the exact absolute-ceiling authority.
   const full = parity([...declared, ...ISSUE_2241_EXTRA_NAMES]);
   assert.equal(full.liveUserManaged.length, 90);
 
-  // 89 — the remaining step of the documented removal order. Each
-  // in-band subset is accepted, so the gate can still pass at its own target.
-  for (
-    const band of [
-      ["CHECKOUT_REVOCATION_EXECUTE"],
-      [],
-    ]
-  ) {
+  // The empty in-band subset is the only permitted state at the ceiling.
+  for (const band of [[]]) {
     const result = parity([...declared, ...band]);
-    assert.equal(result.liveUserManaged.length, 89 + band.length);
+    assert.equal(result.liveUserManaged.length, 90 + band.length);
   }
 
   // Platform-managed names are still excluded before the comparison, so the
@@ -134,8 +111,7 @@ test("#2241 adversarial: normal mode still rejects any name outside the band", (
     () => parity([...declared, "UNAPPROVED_EXTRA"]),
     readinessCode("live_name_set_mismatch", "unexpected:UNAPPROVED_EXTRA"),
   );
-  // A 91st name alongside the full band is the exact breach the band must not
-  // become a doorway for.
+  // A 91st name is the exact breach the empty band must not admit.
   assert.throws(
     () => parity([...declared, ...ISSUE_2241_EXTRA_NAMES, "UNAPPROVED_EXTRA"]),
     readinessCode("live_name_set_mismatch", "unexpected:UNAPPROVED_EXTRA"),
@@ -202,25 +178,17 @@ test("#2241 adversarial: normal mode still rejects a missing declared name", () 
 // Remediation mode is untouched by the relaxation.
 // ---------------------------------------------------------------------------
 
-test("#2241 regression: remediation mode still REQUIRES the band and exactly 90", () => {
+test("#2241 regression: remediation mode still REQUIRES exactly 90", () => {
   const result = parity(
     [...declared, ...ISSUE_2241_EXTRA_NAMES],
     "issue-2241-remediation",
   );
   assert.equal(result.liveUserManaged.length, 90);
 
-  // Where normal mode now tolerates an absent band name, remediation must not.
-  for (const bandName of ISSUE_2241_EXTRA_NAMES) {
-    const live = [
-      ...declared,
-      ...ISSUE_2241_EXTRA_NAMES.filter((name) => name !== bandName),
-    ];
-    parity(live); // normal: accepted
-    assert.throws(
-      () => parity(live, "issue-2241-remediation"),
-      readinessCode("live_name_set_mismatch", `missing:${bandName}`),
-    );
-  }
+  assert.throws(
+    () => parity(declared.slice(1), "issue-2241-remediation"),
+    readinessCode("live_name_set_mismatch", `missing:${declared[0]}`),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -230,8 +198,8 @@ test("#2241 regression: remediation mode still REQUIRES the band and exactly 90"
 test("#2241 regression: every out-of-scope secret invariant is unchanged", () => {
   assert.equal(manifest.policy.normal_ceiling, 87);
   assert.equal(manifest.policy.absolute_ceiling, 90);
-  assert.equal(manifest.secrets.length, 89);
-  assert.equal(contract.remediation.allowed_extra_live_names.length, 1);
+  assert.equal(manifest.secrets.length, 90);
+  assert.equal(contract.remediation.allowed_extra_live_names.length, 0);
   assert.equal(contract.remediation.production_ref, projectRef);
   assert.equal(contract.remediation.issue, 2241);
   assert.equal(contract.remediation.selected_functions.length, 23);

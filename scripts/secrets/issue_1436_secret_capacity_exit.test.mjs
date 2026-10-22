@@ -25,20 +25,22 @@ const PAYMENT_FIELDS = [
 // credential envelope occupies slot 88 under the unchanged 87/90 policy.
 // [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]: SPRINT_ROLLOVER_TOKEN occupies
 // slot 89 under the same unchanged 87/90 policy and #2830 exception.
+// [TEST-MOD-APPROVED #3645] The payout-release RAK occupies the founder-approved
+// 90th and final absolute-ceiling slot.
 
 function record(name) {
   return manifest.secrets.find((entry) => entry.name === name);
 }
 
-test("issue #1436: final manifest is exactly 89 unique names with only approved slots 88 and 89", () => {
+test("issue #1436: final manifest is exactly 90 unique names", () => {
   const names = manifest.secrets.map((entry) => entry.name);
   assert.equal(manifest.rollout.live_audit_mode, "enforced");
   assert.equal(manifest.rollout.transition_stage, "complete");
-  assert.equal(manifest.rollout.expected_user_managed_count, 89);
+  assert.equal(manifest.rollout.expected_user_managed_count, 90);
   assert.equal(manifest.policy.normal_ceiling, 87);
   assert.equal(manifest.policy.absolute_ceiling, 90);
-  assert.equal(names.length, 89);
-  assert.equal(new Set(names).size, 89);
+  assert.equal(names.length, 90);
+  assert.equal(new Set(names).size, 90);
   assert.equal(manifest.exceptions.length, 1);
   assert.equal(manifest.exceptions[0].issue, 2830);
   assert.equal(manifest.exceptions[0].expires_at, "2026-11-28T03:40:33Z");
@@ -130,7 +132,7 @@ test("issue #1436: exact live-set parity passes and any retired direct-name retu
     nowMs: Date.parse("2026-08-03T00:00:00Z"),
   });
   assert.equal(exact.ok, true);
-  assert.equal(exact.count, 89);
+  assert.equal(exact.count, 90);
 
   for (const retired of RETIRED_DIRECT_NAMES) {
     const restored = auditSecretBudget({

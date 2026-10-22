@@ -14,7 +14,9 @@ const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
 // approved Sites credential envelope occupies bounded slot 88.
 // [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]: SPRINT_ROLLOVER_TOKEN joins the
 // post-rollout names the historical fixture removes, and the enforced target
-// is the approved 89-name manifest.
+// is the approved 90-name manifest.
+// [TEST-MOD-APPROVED #3645] The payout-release RAK fills the 90th and final
+// slot; historical transition fixtures remove it with the other later names.
 
 function clone(value) {
   return structuredClone(value);
@@ -53,6 +55,7 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
       "OFFERING_INVITE_TOKEN_PEPPER",
       "MINGLA_SITES_SECURITY_JSON",
       "SPRINT_ROLLOVER_TOKEN",
+      "STRIPE_RAK_PAYOUT_RELEASE_LIVE",
     ].includes(
       record.name,
     )
@@ -105,12 +108,12 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   assert.match(drifted.failures.join("\n"), /transition_count/);
 });
 
-test("issue #1203: enforced live audit uses only the approved 89-name target", () => {
+test("issue #1203: enforced live audit uses only the approved 90-name target", () => {
   const enforced = clone(manifest);
   enforced.rollout.live_audit_mode = "enforced";
-  enforced.rollout.expected_user_managed_count = 89;
+  enforced.rollout.expected_user_managed_count = 90;
   const target = enforced.secrets.map((record) => record.name);
-  assert.equal(target.length, 89);
+  assert.equal(target.length, 90);
   assert.equal(
     auditSecretBudget({
       manifest: enforced,
