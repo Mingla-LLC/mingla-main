@@ -603,6 +603,11 @@ verify_jwt = false
 [functions.admin-ad-spend-sync]
 verify_jwt = false
 
+# toward #3697 — pg_cron invokes the conversion retry with the service-role
+# bearer; the function validates that bearer before any read or provider call.
+[functions.ad-conversion-retry]
+verify_jwt = false
+
 # ISSUE-866 WP3 [Full Rooms Ad Engine — Creative Library] — records a canonical
 # creative row behind the A1-6 server-side byte-probe + the §2 validation matrix
 # + the COMMS-0102 crawler-permissiveness check. Same gate as the WP1 fns:
