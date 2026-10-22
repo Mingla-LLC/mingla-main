@@ -42,11 +42,28 @@ BEGIN
     RAISE EXCEPTION '#1856 broad metric table grant: %', v_acl;
   END IF;
 
-  SELECT array_to_string(proacl, ',') INTO v_function_acl
-  FROM pg_proc
-  WHERE oid = 'public.ad_archive_expired_creatives(timestamptz)'::regprocedure;
-  IF v_function_acl LIKE '%=X/%' OR v_function_acl LIKE '%anon=X%' OR v_function_acl LIKE '%authenticated=X%' THEN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) acl
+    WHERE p.oid = 'public.ad_archive_expired_creatives(timestamptz)'::regprocedure
+      AND acl.privilege_type = 'EXECUTE'
+      AND acl.grantee NOT IN (
+        p.proowner,
+        (SELECT oid FROM pg_roles WHERE rolname = 'service_role')
+      )
+  ) THEN
+    SELECT array_to_string(proacl, ',') INTO v_function_acl
+    FROM pg_proc
+    WHERE oid = 'public.ad_archive_expired_creatives(timestamptz)'::regprocedure;
     RAISE EXCEPTION '#1856 archive function executable outside service role: %', v_function_acl;
+  END IF;
+  IF NOT has_function_privilege(
+    'service_role',
+    'public.ad_archive_expired_creatives(timestamptz)',
+    'EXECUTE'
+  ) THEN
+    RAISE EXCEPTION '#1856 service role cannot execute archive function';
   END IF;
 
   IF NOT EXISTS (

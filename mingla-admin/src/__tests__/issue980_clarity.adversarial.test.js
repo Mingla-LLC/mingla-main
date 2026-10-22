@@ -173,13 +173,13 @@ describe("ISSUE-980 adversarial — real admin-ad-preflight/index.ts detail stri
     {
       name: "Snapchat P4 PASS detail — jargon on a PASSING check (not just fails/warns)",
       sourceFile: "admin-ad-preflight/index.ts",
-      sourceNeedle: "pixel EVENTS are #865's",
+      sourceNeedle: "Traffic optimises for PIXEL_PAGE_VIEW.",
       platform: "snapchat",
       checkId: "P4",
       status: "pass",
       detail:
-        "pixel px_1 ACTIVE — but pixel EVENTS are #865's; LANDING_PAGE_VIEW / PIXEL_* goals stay gated (422 pixel_goal_unavailable) until it fires; SWIPES is the honest goal today (A1.1(6)).",
-      bannedSubstrings: ["#865", "422", "A1.1(6)", "pixel_goal_unavailable"],
+        "pixel px_1 ACTIVE — 0 PURCHASE events in 28 days; Sales requires at least 20. Traffic optimises for PIXEL_PAGE_VIEW.",
+      bannedSubstrings: ["PIXEL_PAGE_VIEW", "28 days"],
     },
     {
       name: "TikTok P5 PASS detail — proof-tag T-P1 on a passing review-tier check",
@@ -319,7 +319,7 @@ describe("ISSUE-980 adversarial — ALL FIVE platforms (Snapchat included — ne
     // Snapchat specifically: the ONE platform (besides Meta) that carries a
     // combined objective + optimization_goal pair — the implementor's suite
     // never asserts this platform anywhere in issue980_review_real_objectives.
-    assert.equal(byPlatform.snapchat, "TRAFFIC · SWIPES", "Snapchat must render its own combined objective/optimization_goal pair, not Meta's or TikTok's");
+    assert.equal(byPlatform.snapchat, "TRAFFIC · PIXEL_PAGE_VIEW", "Snapchat must render its own page-view objective/optimization_goal pair, not Meta's or TikTok's");
 
     assert.equal(byPlatform.meta, "OUTCOME_TRAFFIC · LANDING_PAGE_VIEWS");
     assert.equal(byPlatform.tiktok, "TRAFFIC");

@@ -408,11 +408,11 @@ describe("channel plan", () => {
 // ── A4.0(5) — hidden goals ────────────────────────────────────────────────────
 
 describe("goal config", () => {
-  it("Sales is visible while only Retargeting remains hidden", () => {
+  it("Sales and Retargeting are visible beside the traffic and awareness goals", () => {
     const hidden = GOALS.filter((g) => !g.visible).map((g) => g.id).sort();
-    assert.deepEqual(hidden, ["retargeting"]);
+    assert.deepEqual(hidden, []);
     const visible = visibleGoals().map((g) => g.id).sort();
-    assert.deepEqual(visible, ["awareness", "conversions", "traffic"]);
+    assert.deepEqual(visible, ["awareness", "conversions", "retargeting", "traffic"]);
   });
   it("goals array is config-driven (multi-select intersection works)", () => {
     const { platforms } = platformsForGoals(["traffic"]);
