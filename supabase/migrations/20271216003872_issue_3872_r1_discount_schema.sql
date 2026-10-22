@@ -282,8 +282,9 @@ BEGIN
         AND COALESCE(public.biz_brand_effective_rank(m.brand_id,auth.uid()),0) < 30)
         INTO v_bad;
     ELSE
-      SELECT EXISTS (SELECT 1 FROM public.brands b WHERE b.id = ANY(p_ids)
-        AND COALESCE(public.biz_brand_effective_rank(b.id,auth.uid()),0) < 30)
+      SELECT EXISTS (SELECT 1 FROM public.venue_reservation_settings s
+        WHERE s.venue_id = ANY(p_ids)
+          AND COALESCE(public.biz_brand_effective_rank(s.brand_id,auth.uid()),0) < 30)
         INTO v_bad;
     END IF;
     IF v_bad THEN RAISE EXCEPTION 'insufficient_permission'; END IF;
@@ -297,9 +298,9 @@ BEGIN
   ELSIF p_kind = 'menu_item' THEN
     UPDATE public.menu_items SET discounts_allowed=p_allowed WHERE id=ANY(p_ids);
   ELSE
-    INSERT INTO public.venue_reservation_settings(brand_id,reservations_enabled,discounts_allowed)
-    SELECT id,false,p_allowed FROM unnest(p_ids) AS id
-    ON CONFLICT (brand_id) DO UPDATE SET discounts_allowed=EXCLUDED.discounts_allowed;
+    UPDATE public.venue_reservation_settings
+       SET discounts_allowed=p_allowed
+     WHERE venue_id=ANY(p_ids);
   END IF;
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
@@ -390,6 +391,12 @@ BEGIN
       WHERE checkout_kind='ticket' AND checkout_ref_id=NEW.id AND status='reserved';
     END IF;
   ELSIF TG_TABLE_NAME = 'venue_orders' THEN
+    -- Staff automatics/sale prices are consumed before the insert so a limited
+    -- use cannot race. Bind that already-consumed row to the order only after
+    -- the order insert succeeds; the M4 release seam handles failed inserts.
+    UPDATE public.discount_uses SET order_id=NEW.id
+    WHERE checkout_kind='venue_order' AND checkout_ref_id=NEW.id
+      AND status='consumed' AND channel='staff' AND order_id IS NULL;
     IF NEW.payment_status='paid' AND (TG_OP='INSERT' OR OLD.payment_status IS DISTINCT FROM NEW.payment_status) THEN
       UPDATE public.discount_uses SET status='consumed',consumed_at=now(),order_id=NEW.id
       WHERE checkout_kind='venue_order' AND checkout_ref_id=NEW.id AND status='reserved';

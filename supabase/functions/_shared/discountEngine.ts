@@ -149,9 +149,10 @@ export function normaliseDiscountCode(raw: unknown): string | null {
 }
 
 function rpcError(name: string, error: unknown): Error {
-  const message = typeof error === "object" && error !== null && "message" in error
-    ? String((error as { message: unknown }).message)
-    : String(error);
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message: unknown }).message)
+      : String(error);
   return new Error(`${name}_failed:${message}`);
 }
 
@@ -192,3 +193,15 @@ export async function callReserveDiscountUses(
   return data as ReserveDiscountUsesResult;
 }
 
+export async function callReleaseDiscountUses(
+  client: DiscountRpcClient,
+  kind: ReserveDiscountUsesArgs["kind"],
+  refId: string,
+): Promise<number> {
+  const { data, error } = await client.rpc("issue_3872_release_discount_uses", {
+    p_kind: kind,
+    p_ref_id: refId,
+  });
+  if (error) throw rpcError("discount_release", error);
+  return Number(data ?? 0);
+}

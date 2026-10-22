@@ -86,6 +86,8 @@ export interface VenueOrderRequest {
   tipBps: number | null;
   tipFlatCents: number | null;
   entrySource: string | null;
+  discountCode?: string | null;
+  quoteDigest?: string | null;
 }
 
 /**
@@ -126,6 +128,14 @@ export function venueOrderCreateBody(input: {
     tipFlatCents: request.tipFlatCents,
     src: request.entrySource,
     lines: venueOrderCartWireLines(request.lines),
+    ...(typeof request.discountCode === "string" &&
+        request.discountCode.trim().length > 0
+      ? { discountCode: request.discountCode.trim() }
+      : {}),
+    ...(typeof request.quoteDigest === "string" &&
+        request.quoteDigest.length > 0
+      ? { quoteDigest: request.quoteDigest }
+      : {}),
     ...(input.idempotencyKey === undefined
       ? {}
       : { idempotencyKey: input.idempotencyKey }),
@@ -229,6 +239,10 @@ export function parseVenueOrderPreview(
 ): VenueOrderPreview {
   return {
     currency: String(data.currency ?? ""),
+    listSubtotalCents: Number(
+      data.listSubtotalCents ?? data.subtotalCents ?? 0,
+    ),
+    discountCents: Number(data.discountCents ?? 0),
     subtotalCents: Number(data.subtotalCents ?? 0),
     serviceChargeCents: Number(data.serviceChargeCents ?? 0),
     serviceChargeLabel: typeof data.serviceChargeLabel === "string"
@@ -237,6 +251,34 @@ export function parseVenueOrderPreview(
     feesAndTaxCents: Number(data.feesAndTaxCents ?? 0),
     tipCents: Number(data.tipCents ?? 0),
     totalCents: Number(data.totalCents ?? 0),
+    discounts: Array.isArray(data.discounts)
+      ? (data.discounts as Array<Record<string, unknown>>).map((entry) => ({
+        id: String(entry.id ?? ""),
+        kind: String(entry.kind ?? ""),
+        name: String(entry.name ?? ""),
+        code: typeof entry.code === "string" ? entry.code : null,
+        amountCents: Number(entry.amountCents ?? 0),
+      }))
+      : [],
+    codeOutcome: data.codeOutcome !== null &&
+        typeof data.codeOutcome === "object"
+      ? {
+        supplied:
+          (data.codeOutcome as Record<string, unknown>).supplied === true,
+        applied: (data.codeOutcome as Record<string, unknown>).applied === true,
+        reason: typeof (data.codeOutcome as Record<string, unknown>).reason ===
+            "string"
+          ? String((data.codeOutcome as Record<string, unknown>).reason)
+          : null,
+        discountId:
+          typeof (data.codeOutcome as Record<string, unknown>).discountId ===
+              "string"
+            ? String((data.codeOutcome as Record<string, unknown>).discountId)
+            : null,
+      }
+      : { supplied: false, applied: false, reason: null, discountId: null },
+    notices: Array.isArray(data.notices) ? data.notices : [],
+    quoteDigest: typeof data.quoteDigest === "string" ? data.quoteDigest : null,
     tipsEnabled: data.tipsEnabled === true,
     counterPickupEnabled: data.counterPickupEnabled === true,
     lines: Array.isArray(data.lines)
@@ -249,6 +291,19 @@ export function parseVenueOrderPreview(
         quantity: Number(line.quantity ?? 0),
         modifiersTotalCents: Number(line.modifiersTotalCents ?? 0),
         lineTotalCents: Number(line.lineTotalCents ?? 0),
+        discountCents: Number(line.discountCents ?? 0),
+        netLineTotalCents: Number(
+          line.netLineTotalCents ?? line.lineTotalCents ?? 0,
+        ),
+        discounts: Array.isArray(line.discounts)
+          ? (line.discounts as Array<Record<string, unknown>>).map((entry) => ({
+            id: String(entry.discountId ?? entry.id ?? ""),
+            kind: String(entry.kind ?? ""),
+            name: String(entry.name ?? ""),
+            code: typeof entry.code === "string" ? entry.code : null,
+            amountCents: Number(entry.amountMinor ?? entry.amountCents ?? 0),
+          }))
+          : [],
         notes: typeof line.notes === "string" ? line.notes : null,
       }))
       : [],

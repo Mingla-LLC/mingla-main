@@ -121,10 +121,17 @@ export function withDiscounts(
   breakdown: PricingBreakdown,
   input: {
     listSubtotalCents: number;
+    /**
+     * The subtotal after discounts when the pricing breakdown base contains an
+     * additional venue-owned amount (for example a service charge). Ticket and
+     * deposit callers omit it because their breakdown base is already net.
+     */
+    netSubtotalCents?: number;
     discounts: readonly MoneyTruthDiscount[];
   },
 ): PricingBreakdownWithDiscounts {
-  const discount = input.listSubtotalCents - breakdown.base_cents;
+  const discount = input.listSubtotalCents -
+    (input.netSubtotalCents ?? breakdown.base_cents);
   assertWholeNonNegative("discount", discount);
   return {
     ...breakdown,

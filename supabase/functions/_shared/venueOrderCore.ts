@@ -211,7 +211,9 @@ export async function loadMenuSnapshot(
 
   const { data: items, error: itemsError } = await supabase
     .from("menu_items")
-    .select("id, menu_id, brand_id, name, price_cents, currency, is_available")
+    .select(
+      "id, menu_id, brand_id, name, price_cents, currency, is_available, discounts_allowed",
+    )
     .in("id", input.menuItemIds);
   if (itemsError) {
     throw new Error(`menu_items_lookup_failed: ${itemsError.message}`);
@@ -306,6 +308,58 @@ export async function loadMenuSnapshot(
   }
 
   return { itemsById, groupsByItemId, modifiersById, orderableItemIds };
+}
+
+/** The discount schedule uses the venue's own wall clock. */
+export async function loadVenueTimezone(
+  supabase: ServiceClient,
+  venueId: string,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("venue_availability_config")
+    .select("iana_timezone")
+    .eq("venue_id", venueId)
+    .maybeSingle();
+  if (error) throw new Error(`venue_timezone_lookup_failed: ${error.message}`);
+  const timezone = typeof data?.iana_timezone === "string"
+    ? data.iana_timezone.trim()
+    : "";
+  if (timezone) return timezone;
+
+  const { data: venue, error: venueError } = await supabase
+    .from("venue_listings")
+    .select("place_pool_id")
+    .eq("id", venueId)
+    .maybeSingle();
+  if (venueError) {
+    throw new Error(
+      `venue_timezone_place_lookup_failed: ${venueError.message}`,
+    );
+  }
+  if (typeof venue?.place_pool_id !== "string") return "UTC";
+  const { data: place, error: placeError } = await supabase
+    .from("place_pool")
+    .select("utc_offset_minutes")
+    .eq("id", venue.place_pool_id)
+    .maybeSingle();
+  if (placeError) {
+    throw new Error(
+      `venue_timezone_offset_lookup_failed: ${placeError.message}`,
+    );
+  }
+  return posixTimezoneForOffset(Number(place?.utc_offset_minutes));
+}
+
+/** PostgreSQL numeric zone signs are POSIX-reversed: UTC+05:30 is `-05:30`. */
+export function posixTimezoneForOffset(offsetMinutes: number): string {
+  if (!Number.isInteger(offsetMinutes) || Math.abs(offsetMinutes) > 14 * 60) {
+    return "UTC";
+  }
+  const sign = offsetMinutes >= 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `${sign}${hours}:${minutes}`;
 }
 
 /** The venue's OWN clock, via the shipped 3-step ladder. Never the server's. */
@@ -454,10 +508,11 @@ export async function insertVenueOrderRow(
   supabase: ServiceClient,
   row: Record<string, unknown>,
   lines: PricedLine[],
+  id?: string,
 ): Promise<string> {
   const { data, error } = await supabase
     .from("venue_orders")
-    .insert(row)
+    .insert(id === undefined ? row : { ...row, id })
     .select("id")
     .single();
   if (error || !data) {
@@ -478,6 +533,11 @@ export async function insertVenueOrderRow(
         quantity: line.quantity,
         modifiers_total_cents: line.modifiersTotalCents,
         line_total_cents: line.lineTotalCents,
+        discount_cents: "discountCents" in line
+          ? Number(
+            (line as PricedLine & { discountCents: number }).discountCents,
+          )
+          : 0,
         notes: line.notes,
         // OQ-3: tax_code is a SEAM. Deliberately left NULL — no F&B Stripe Tax
         // code is chosen by this phase, and none may be copied from memory.

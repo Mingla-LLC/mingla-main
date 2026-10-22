@@ -44,9 +44,20 @@ import {
   type PricingSwitches,
 } from "../_shared/allInPricingEngine.ts";
 import {
+  callDiscountQuoteLines,
+  callReleaseDiscountUses,
+  callReserveDiscountUses,
+  type DiscountQuote,
+  normaliseDiscountCode,
+} from "../_shared/discountEngine.ts";
+import { withDiscounts } from "../_shared/orderMoneyTruth.ts";
+import {
+  applyVenueDiscountQuote,
   computeVenueOrderMoney,
   priceCart,
   type RequestedLine,
+  venueDiscountEngineLines,
+  venueDiscountSnapshot,
   type VenueOrderErrorCode,
   venueOrderErrorCopy,
   venueOrderErrorStatus,
@@ -57,6 +68,7 @@ import {
   findReplayableVenueOrder,
   insertVenueOrderRow,
   loadMenuSnapshot,
+  loadVenueTimezone,
   markVenueOrderFailed,
   resolveOrderContext,
 } from "../_shared/venueOrderCore.ts";
@@ -79,6 +91,11 @@ import {
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function clientIp(req: Request): string | null {
+  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || req.headers.get("cf-connecting-ip")?.trim() || null;
+}
 
 /**
  * Issue #3380 — the phone refusal keeps its machine code (every client already
@@ -156,6 +173,38 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   const entrySource = typeof body.src === "string" && body.src.trim()
     ? body.src.trim().slice(0, 40)
     : null;
+  let discountCode: string | null = null;
+  if (body.discountCode !== undefined && body.discountCode !== null) {
+    if (
+      typeof body.discountCode !== "string" || body.discountCode.length > 32
+    ) {
+      return jsonResponse(
+        { error: "invalid_request", detail: "discount_code_invalid" },
+        400,
+      );
+    }
+    try {
+      discountCode = normaliseDiscountCode(body.discountCode);
+    } catch {
+      return jsonResponse(
+        { error: "invalid_request", detail: "discount_code_invalid" },
+        400,
+      );
+    }
+  }
+  if (
+    body.quoteDigest !== undefined &&
+    (typeof body.quoteDigest !== "string" ||
+      !/^[0-9a-f]{32}$/.test(body.quoteDigest))
+  ) {
+    return jsonResponse(
+      { error: "invalid_request", detail: "quote_digest_invalid" },
+      400,
+    );
+  }
+  const quoteDigest = typeof body.quoteDigest === "string"
+    ? body.quoteDigest
+    : null;
 
   // ── P-20 — a price in the request body is a VALIDATION ERROR, not a hint. ──
   const rawLines = Array.isArray(body.lines) ? body.lines : [];
@@ -168,6 +217,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     "totalCents",
     "price",
     "amount",
+    "discountCents",
+    "discountAmount",
+    "discountMinor",
+    "listSubtotalCents",
+    "netSubtotalCents",
   ];
   for (const raw of rawLines as Array<Record<string, unknown>>) {
     for (const key of PRICE_KEYS) {
@@ -213,6 +267,37 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     return fail(resolved.failure.code, { venue: resolved.failure.venue });
   }
   const ctx = resolved.context;
+
+  const discountAttemptScopes = discountCode === null ? [] : await Promise.all(
+    [
+      clientIp(req) ? `ip:${clientIp(req)}` : null,
+      buyerEmail.length > 0 ? `email:${buyerEmail}` : null,
+      ctx.spotId !== null ? `spot:${ctx.spotId}` : `spot:${ctx.servingVenueId}`,
+    ].filter((scope): scope is string => scope !== null).map(sha256Hex),
+  );
+  if (discountCode !== null) {
+    try {
+      const attempt = await supabase.rpc("issue_3872_code_attempt", {
+        p_scope_hashes: discountAttemptScopes,
+        p_record_failure: false,
+      });
+      if (attempt.error === null && attempt.data === false) {
+        return jsonResponse(
+          { error: "rate_limited", detail: "code_attempts" },
+          429,
+        );
+      }
+      if (attempt.error !== null) {
+        console.warn("[venue-order-create] discount limiter failed open", {
+          error: attempt.error,
+        });
+      }
+    } catch (error) {
+      console.warn("[venue-order-create] discount limiter failed open", {
+        error,
+      });
+    }
+  }
 
   // ── OQ-5 — the limiter. Soft + retryable when exceeded; fail-OPEN when the
   //    limiter itself breaks (structured log inside checkOrderRateLimit).
@@ -316,6 +401,54 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     pass_service_fee: pricing.pass_service_fee === true,
   };
 
+  const venueTimezone = await loadVenueTimezone(
+    supabase,
+    ctx.servingVenueId,
+  );
+  const discountEngineLines = venueDiscountEngineLines({
+    lines: cart.lines,
+    itemsById: menu.itemsById,
+    venueId: ctx.servingVenueId,
+    timezone: venueTimezone,
+  });
+  let discountQuote: DiscountQuote;
+  try {
+    discountQuote = await callDiscountQuoteLines(supabase, {
+      brandId: ctx.brandId,
+      currency: settlementCurrency,
+      lines: discountEngineLines,
+      code: discountCode,
+      buyer: {
+        email: buyerEmail || null,
+        phone: buyerPhoneE164,
+        userId,
+      },
+    });
+  } catch (error) {
+    console.error("[venue-order-create] discount quote failed", error);
+    return fail("order_total_invalid");
+  }
+  if (
+    discountCode !== null &&
+    discountQuote.codeOutcome.reason === "not_found"
+  ) {
+    try {
+      const recorded = await supabase.rpc("issue_3872_code_attempt", {
+        p_scope_hashes: discountAttemptScopes,
+        p_record_failure: true,
+      });
+      if (recorded.error !== null) {
+        console.warn("[venue-order-create] discount limiter record failed", {
+          error: recorded.error,
+        });
+      }
+    } catch (error) {
+      console.warn("[venue-order-create] discount limiter record failed", {
+        error,
+      });
+    }
+  }
+
   // The sitting's remembered tip (P-18 / OQ-2): asked on the FIRST round and
   // remembered thereafter, changeable at any round, never re-asked unprompted.
   let session: Record<string, unknown> | null = null;
@@ -337,25 +470,57 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       ? null
       : Number(session.tip_bps_choice));
 
-  const money = computeVenueOrderMoney({
-    subtotalCents: cart.subtotalCents,
-    serviceChargeBps: ctx.settings.service_charge_bps,
-    // D-9: where a service charge is set, the tip selector DEFAULTS TO NONE
-    // rather than stacking. An EXPLICIT tip is always honoured.
-    tipBps: ctx.settings.tips_enabled === false ? null : effectiveTipBps,
-    tipFlatCents: ctx.settings.tips_enabled === false ? null : tipFlatCents,
-    switches,
-    region,
-    currency: settlementCurrency,
-    effectiveTakeRateBps: Number(pricing.effective_take_rate_bps ?? 0),
-    takeRateSource:
-      (pricing.take_rate_source as "brand_override" | "platform_default") ??
-        "platform_default",
-    serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
-    vatRateBps: pricing.vat_rate_bps === null
-      ? 0
-      : Number(pricing.vat_rate_bps),
-  });
+  const priceDiscountedQuote = (quote: DiscountQuote) => {
+    const discountedCart = applyVenueDiscountQuote(cart.lines, quote);
+    const compute = (dropTip: boolean) =>
+      computeVenueOrderMoney({
+        subtotalCents: discountedCart.netSubtotalCents,
+        serviceChargeBps: ctx.settings.service_charge_bps,
+        // D-9: where a service charge is set, the tip selector DEFAULTS TO NONE
+        // rather than stacking. An EXPLICIT tip is always honoured.
+        tipBps: dropTip || ctx.settings.tips_enabled === false
+          ? null
+          : effectiveTipBps,
+        tipFlatCents: dropTip || ctx.settings.tips_enabled === false
+          ? null
+          : tipFlatCents,
+        switches,
+        region,
+        currency: settlementCurrency,
+        effectiveTakeRateBps: Number(pricing.effective_take_rate_bps ?? 0),
+        takeRateSource:
+          (pricing.take_rate_source as "brand_override" | "platform_default") ??
+            "platform_default",
+        serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
+        vatRateBps: pricing.vat_rate_bps === null
+          ? 0
+          : Number(pricing.vat_rate_bps),
+      });
+    let money = compute(false);
+    const notices: unknown[] = [...quote.notices];
+    if (
+      quote.discountMinor > 0 &&
+      money.totalCents - money.tipCents === 0 &&
+      money.tipCents > 0
+    ) {
+      money = compute(true);
+      notices.push({ type: "tip_dropped_free_order" });
+    }
+    const pricingBreakdown = withDiscounts(money.pricingBreakdown, {
+      listSubtotalCents: discountedCart.listSubtotalCents,
+      netSubtotalCents: discountedCart.netSubtotalCents,
+      discounts: quote.applied.map((entry) => ({
+        id: entry.discountId,
+        kind: entry.kind,
+        name: entry.name,
+        code: entry.code,
+        amountCents: entry.amountMinor,
+      })),
+    });
+    return { discountedCart, money, notices, pricingBreakdown };
+  };
+  let pricedDiscount = priceDiscountedQuote(discountQuote);
+  let { discountedCart, money, notices, pricingBreakdown } = pricedDiscount;
 
   // ── mode:"preview" — the cart's totals come from the SERVER. No row, no
   //    provider call, nothing charged. ───────────────────────────────────────
@@ -363,6 +528,8 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     return jsonResponse({
       kind: "preview",
       currency: settlementCurrency,
+      listSubtotalCents: discountedCart.listSubtotalCents,
+      discountCents: discountedCart.discountCents,
       subtotalCents: money.subtotalCents,
       serviceChargeCents: money.serviceChargeCents,
       serviceChargeLabel: ctx.settings.service_charge_label,
@@ -386,8 +553,18 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       // rather than stacking (D-9).
       tipsEnabled: ctx.settings.tips_enabled === true,
       counterPickupEnabled: ctx.settings.counter_pickup_enabled === true,
-      pricingBreakdown: money.pricingBreakdown,
-      lines: cart.lines,
+      discounts: discountQuote.applied.map((entry) => ({
+        id: entry.discountId,
+        kind: entry.kind,
+        name: entry.name,
+        code: entry.code,
+        amountCents: entry.amountMinor,
+      })),
+      codeOutcome: discountQuote.codeOutcome,
+      notices,
+      quoteDigest: discountQuote.digest,
+      pricingBreakdown,
+      lines: discountedCart.lines,
     });
   }
 
@@ -473,6 +650,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         buyerKey: `${buyerEmail}|${buyerPhoneE164}`,
         lines: requested,
         tipBps: effectiveTipBps,
+        discountCode,
       },
       sha256Hex,
     );
@@ -514,6 +692,78 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     }
   }
 
+  const orderId = crypto.randomUUID();
+  let discountUsesReserved = false;
+  const releaseDiscountUses = async (): Promise<void> => {
+    if (!discountUsesReserved) return;
+    try {
+      await callReleaseDiscountUses(supabase, "venue_order", orderId);
+    } catch (error) {
+      console.error("[venue-order-create] discount release failed", error);
+    }
+  };
+  if (discountedCart.discountCents > 0) {
+    try {
+      const reserve = await callReserveDiscountUses(supabase, {
+        kind: "venue_order",
+        refId: orderId,
+        brandId: ctx.brandId,
+        currency: settlementCurrency,
+        lines: discountEngineLines,
+        code: discountCode,
+        buyer: {
+          email: buyerEmail,
+          phone: buyerPhoneE164,
+          userId,
+        },
+        expectedDigest: quoteDigest ?? discountQuote.digest,
+        expiresAt: money.totalCents > 0
+          ? new Date(Date.now() + 30 * 60 * 1000).toISOString()
+          : new Date().toISOString(),
+        consume: false,
+      });
+      if (!reserve.ok) {
+        const reviewed = priceDiscountedQuote(reserve.quote);
+        return jsonResponse({
+          error: "checkout_review_required",
+          detail: reserve.quote.listDigest === discountQuote.listDigest
+            ? "discount_changed"
+            : "price_changed",
+          quote: {
+            kind: "preview",
+            currency: settlementCurrency,
+            listSubtotalCents: reviewed.discountedCart.listSubtotalCents,
+            discountCents: reviewed.discountedCart.discountCents,
+            subtotalCents: reviewed.money.subtotalCents,
+            serviceChargeCents: reviewed.money.serviceChargeCents,
+            serviceChargeLabel: ctx.settings.service_charge_label,
+            feesAndTaxCents: reviewed.money.feesAndTaxCents,
+            tipCents: reviewed.money.tipCents,
+            totalCents: reviewed.money.totalCents,
+            discounts: reserve.quote.applied.map((entry) => ({
+              id: entry.discountId,
+              kind: entry.kind,
+              name: entry.name,
+              code: entry.code,
+              amountCents: entry.amountMinor,
+            })),
+            codeOutcome: reserve.quote.codeOutcome,
+            notices: reviewed.notices,
+            quoteDigest: reserve.quote.digest,
+            lines: reviewed.discountedCart.lines,
+          },
+        }, 409);
+      }
+      discountUsesReserved = true;
+      discountQuote = reserve.quote;
+      pricedDiscount = priceDiscountedQuote(discountQuote);
+      ({ discountedCart, money, notices, pricingBreakdown } = pricedDiscount);
+    } catch (error) {
+      console.error("[venue-order-create] discount reserve failed", error);
+      return fail("internal_error");
+    }
+  }
+
   // ── The sitting. Minted only when the guest did not continue one. ────────
   let sessionId: string;
   if (session !== null) {
@@ -548,6 +798,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       .single();
     if (sessionError || !created) {
       console.error("[venue-order-create] session insert failed", sessionError);
+      await releaseDiscountUses();
       return fail("internal_error");
     }
     sessionId = String((created as Record<string, unknown>).id);
@@ -563,6 +814,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     );
     if (codeError || typeof code !== "string") {
       console.error("[venue-order-create] pickup code mint failed", codeError);
+      await releaseDiscountUses();
       return fail("internal_error");
     }
     pickupCode = code;
@@ -593,6 +845,9 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     money_path: "mingla",
     currency: settlementCurrency,
     subtotal_cents: money.subtotalCents,
+    list_subtotal_cents: discountedCart.listSubtotalCents,
+    discount_cents: discountedCart.discountCents,
+    discount_snapshot: venueDiscountSnapshot(discountQuote, settlementCurrency),
     service_charge_bps: money.serviceChargeBps,
     service_charge_cents: money.serviceChargeCents,
     tip_cents: money.tipCents,
@@ -606,7 +861,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     buyer_subtotal_cents: money.buyerSubtotalCents,
     tax_amount_cents: money.taxAmountCents,
     total_cents: money.totalCents,
-    pricing_breakdown: money.pricingBreakdown,
+    pricing_breakdown: pricingBreakdown,
     provider: routing.provider,
     stripe_account_id: routing.provider === "stripe" ? stripeAccountId : null,
     // A zero-total order is complete on arrival: nothing to charge, so nothing
@@ -622,11 +877,16 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       : null,
   };
 
-  let orderId: string;
   try {
-    orderId = await insertVenueOrderRow(supabase, orderRow, cart.lines);
+    await insertVenueOrderRow(
+      supabase,
+      orderRow,
+      discountedCart.lines,
+      orderId,
+    );
   } catch (err) {
     console.error("[venue-order-create] order insert failed", err);
+    await releaseDiscountUses();
     return fail("order_total_invalid");
   }
 
@@ -645,7 +905,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       pickupCode,
       totalCents: 0,
       currency: settlementCurrency,
-      pricingBreakdown: money.pricingBreakdown,
+      pricingBreakdown,
     });
   }
 
@@ -694,6 +954,9 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
           mingla_venue_order_id: orderId,
           mingla_brand_id: ctx.brandId,
           mingla_buyer_email: buyerEmail,
+          mingla_discount_ids: discountQuote.applied.map((entry) =>
+            entry.discountId
+          ).join(","),
         },
         // P-50 — NG partner share is ZERO at launch, so nothing partner-shaped
         // rides here; the subaccount split is the shipped unstamped-brand rail.
@@ -750,7 +1013,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         reference: init.reference,
         totalCents: money.totalCents,
         currency: "NGN",
-        pricingBreakdown: money.pricingBreakdown,
+        pricingBreakdown,
       });
     } catch (err) {
       await markVenueOrderFailed(
@@ -789,11 +1052,14 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
             mingla_venue_order_id: orderId,
             mingla_brand_id: ctx.brandId,
             mingla_buyer_email: buyerEmail,
+            mingla_discount_ids: discountQuote.applied.map((entry) =>
+              entry.discountId
+            ).join(","),
           },
           ...(money.minglaFeeCents + money.platformServiceFeeCents > 0
             ? {
-              application_fee_amount:
-                money.minglaFeeCents + money.platformServiceFeeCents,
+              application_fee_amount: money.minglaFeeCents +
+                money.platformServiceFeeCents,
             }
             : {}),
           statement_descriptor_suffix: "MINGLA",
@@ -806,6 +1072,9 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         metadata: {
           mingla_venue_order_id: orderId,
           mingla_brand_id: ctx.brandId,
+          mingla_discount_ids: discountQuote.applied.map((entry) =>
+            entry.discountId
+          ).join(","),
         },
       }, {
         idempotencyKey: `venue_order_web:${orderId}`,
@@ -832,7 +1101,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         url: checkoutSession.url,
         totalCents: money.totalCents,
         currency: settlementCurrency,
-        pricingBreakdown: money.pricingBreakdown,
+        pricingBreakdown,
       });
     } catch (err) {
       const failure = classifyStripeCheckoutSessionCreateFailure(err);
@@ -852,14 +1121,17 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         mingla_venue_order_id: orderId,
         mingla_brand_id: ctx.brandId,
         mingla_buyer_email: buyerEmail,
+        mingla_discount_ids: discountQuote.applied.map((entry) =>
+          entry.discountId
+        ).join(","),
       },
     };
     // #3645 flat 4.5%: application_fee_amount = take-rate + service fee — a
     // function of the fee basis, which cannot contain a tip. Under direct
     // charges the connected account receives everything else, so the TIP LANDS
     // IN THE VENUE'S BALANCE UNTOUCHED, by arithmetic rather than by policy.
-    const applicationFeeAmountCents =
-      money.minglaFeeCents + money.platformServiceFeeCents;
+    const applicationFeeAmountCents = money.minglaFeeCents +
+      money.platformServiceFeeCents;
     if (applicationFeeAmountCents > 0) {
       piBody.application_fee_amount = applicationFeeAmountCents;
     }
@@ -873,6 +1145,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       .update({ stripe_payment_intent_id: paymentIntent.id })
       .eq("id", orderId);
     if (persistError) {
+      await markVenueOrderFailed(supabase, orderId, persistError.message);
       return fail("payment_intent_create_failed");
     }
     return jsonResponse({
@@ -887,7 +1160,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       stripeAccountId,
       totalCents: money.totalCents,
       currency: settlementCurrency,
-      pricingBreakdown: money.pricingBreakdown,
+      pricingBreakdown,
     });
   } catch (err) {
     const failure = classifyStripePaymentIntentCreateFailure(err);
