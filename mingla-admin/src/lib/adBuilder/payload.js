@@ -385,9 +385,14 @@ export function buildCreatePayload(platform, state) {
       },
       ...destinationFields,
       creative: videoRef
-        ? { ad_text: copy.primary, ...videoRef }
+        ? {
+            ad_text: copy.primary,
+            call_to_action: copy.platformCtas?.tiktok ?? "Get ticket now",
+            ...videoRef,
+          }
         : {
             ad_text: copy.primary,
+            call_to_action: copy.platformCtas?.tiktok ?? "Get ticket now",
             image_url: creative.imageUrl,
             ...(creative.creativeLibraryId
               ? { creative_library_id: creative.creativeLibraryId }
@@ -435,9 +440,14 @@ export function buildCreatePayload(platform, state) {
       },
       ...destinationFields,
       creative: videoRef
-        ? { headline: copy.primary, ...videoRef }
+        ? {
+            headline: copy.primary,
+            call_to_action: copy.platformCtas?.reddit ?? "Buy Tickets",
+            ...videoRef,
+          }
         : {
             headline: copy.primary,
+            call_to_action: copy.platformCtas?.reddit ?? "Buy Tickets",
             image_url: creative.imageUrl,
           },
       // Bug 3: global compliance intent reaches Reddit's create path. Reddit has
@@ -494,6 +504,7 @@ export function buildCreatePayload(platform, state) {
       ...destinationFields,
       creative: {
         headline: copy.headline || copy.primary,
+        call_to_action: copy.platformCtas?.snapchat ?? "BUY_TICKETS",
         ...(creative.brandName ? { brand_name: creative.brandName } : {}),
         ...(creative.creativeLibraryId
           ? { creative_library_id: creative.creativeLibraryId }
@@ -650,7 +661,7 @@ export function buildCreatePayload(platform, state) {
               ? { creative_library_id: creative.creativeLibraryId }
               : {}),
           }),
-      call_to_action_type: copy.cta || "LEARN_MORE",
+      call_to_action_type: copy.platformCtas?.meta ?? copy.cta ?? "LEARN_MORE",
       ai_generated: creative.aiGenerated === true,
     },
     special_ad_categories: categories,

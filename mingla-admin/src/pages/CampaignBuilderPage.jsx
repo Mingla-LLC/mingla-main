@@ -350,6 +350,12 @@ export function CampaignBuilderPage() {
     headline: "",
     description: "",
     cta: "BUY_TICKETS",
+    platformCtas: {
+      meta: "BUY_TICKETS",
+      snapchat: "BUY_TICKETS",
+      tiktok: "Get ticket now",
+      reddit: "Buy Tickets",
+    },
     googleHeadlines: ["", "", ""],
     googleDescriptions: ["", ""],
     keywords: [],

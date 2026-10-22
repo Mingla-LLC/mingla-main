@@ -11,7 +11,8 @@ import { Plus, X } from "lucide-react";
 import { Input, Textarea } from "../ui/Input";
 import { Button } from "../ui/Button";
 import {
-  META_CTA_OPTIONS,
+  CTA_OPTIONS_BY_PLATFORM,
+  DEFAULT_PLATFORM_CTAS,
   truncationPreview,
   validateCopy,
   weightedLength,
@@ -214,17 +215,47 @@ export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
         </div>
       </div>
 
-      {platforms.includes("meta") && (
-        <label className="block text-sm max-w-xs">
-          <span className="block mb-1 font-medium">Call to action <span className="text-xs text-[var(--color-text-tertiary)]">(Meta — Google Search ads have no CTA button)</span></span>
-          <select
-            className="w-full h-10 px-3 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] text-sm"
-            value={copy.cta}
-            onChange={(e) => set({ cta: e.target.value })}
-          >
-            {META_CTA_OPTIONS.map((c) => <option key={c} value={c}>{c.replaceAll("_", " ")}</option>)}
-          </select>
-        </label>
+      {platforms.some((platform) => CTA_OPTIONS_BY_PLATFORM[platform]) && (
+        <div className="space-y-2 rounded-xl border border-[var(--gray-200)] p-3" data-testid="platform-cta-controls">
+          <div>
+            <p className="text-sm font-semibold">Call to action by platform</p>
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              Each menu uses that platform&apos;s own allowlist. Google Search ads have no CTA button.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {platforms.filter((platform) => CTA_OPTIONS_BY_PLATFORM[platform]).map((platform) => {
+              const options = CTA_OPTIONS_BY_PLATFORM[platform];
+              const value = copy.platformCtas?.[platform]
+                ?? (platform === "meta" ? copy.cta : null)
+                ?? DEFAULT_PLATFORM_CTAS[platform];
+              return (
+                <label key={platform} className="block text-sm">
+                  <span className="mb-1 block font-medium">{PLATFORM_LABELS[platform] ?? platform}</span>
+                  <select
+                    aria-label={`${PLATFORM_LABELS[platform] ?? platform} call to action`}
+                    className="h-10 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-sm"
+                    value={value}
+                    onChange={(event) => {
+                      const platformCtas = {
+                        ...(copy.platformCtas ?? {}),
+                        [platform]: event.target.value,
+                      };
+                      set({
+                        platformCtas,
+                        ...(platform === "meta" ? { cta: event.target.value } : {}),
+                      });
+                    }}
+                  >
+                    {options.map((option) => (
+                      <option key={option} value={option}>{option.replaceAll("_", " ")}</option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {googleEligible && (
