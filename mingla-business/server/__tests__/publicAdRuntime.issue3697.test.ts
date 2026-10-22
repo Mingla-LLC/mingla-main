@@ -6,6 +6,7 @@ import {
   jest,
   test,
 } from "@jest/globals";
+import { runInNewContext } from "node:vm";
 
 const rpc = jest.fn<any>();
 jest.mock("../supabaseRpc", () => ({
@@ -19,6 +20,10 @@ const publicSearch = require("../publicSearchDocument") as {
   attributionQueryFromRequest: (req: unknown) => string;
   handlePublicSearchDocument: (input: unknown) => Promise<void>;
   renderVisibleDocument: (input: Record<string, unknown>) => string;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { publicAdRuntimeScript } = require("../publicAdRuntime") as {
+  publicAdRuntimeScript: (input: Record<string, unknown>) => string;
 };
 
 const facts = {
@@ -54,6 +59,70 @@ const response = () => ({
     this.body = String(body);
   },
 });
+
+function runArrivalRuntime(storedConsent?: string) {
+  const storage = new Map<string, string>();
+  if (storedConsent !== undefined) {
+    storage.set("mingla_consent_v1", storedConsent);
+  }
+  const insertedScripts: { removed: boolean; remove: () => void }[] = [];
+  const makeScript = () => {
+    const script = {
+      removed: false,
+      async: false,
+      src: "",
+      setAttribute: jest.fn(),
+      remove() {
+        script.removed = true;
+      },
+    };
+    insertedScripts.push(script);
+    return script;
+  };
+  const elements = {
+    banner: { hidden: true },
+    ok: { onclick: null as null | (() => void) },
+    out: { onclick: null as null | (() => void) },
+  };
+  const document = {
+    readyState: "complete",
+    referrer: "",
+    cookie: "",
+    head: { appendChild: jest.fn() },
+    createElement: makeScript,
+    getElementsByTagName: () => [{ parentNode: { insertBefore: makeScript } }],
+    getElementById: (id: string) =>
+      id === "mingla-ad-privacy-banner"
+        ? elements.banner
+        : id === "mingla-ad-privacy-ok"
+        ? elements.ok
+        : id === "mingla-ad-privacy-opt-out"
+        ? elements.out
+        : null,
+    querySelector: () => null,
+    querySelectorAll: (selector: string) =>
+      selector === "script[data-mingla-pixel]" ? insertedScripts : [],
+    addEventListener: jest.fn(),
+  };
+  const context: Record<string, unknown> = {
+    document,
+    addEventListener: jest.fn(),
+    location: { href: "https://business.usemingla.com/e/acme/signal-night" },
+    localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    },
+    fetch: () => Promise.resolve({ ok: true }),
+    crypto: { randomUUID: () => "33333333-3333-4333-8333-333333333333" },
+    console,
+  };
+  context.window = context;
+  runInNewContext(
+    publicAdRuntimeScript({ facts, consentMode: "on_arrival" }),
+    context,
+  );
+  return { elements, insertedScripts, storage, window: context };
+}
 
 beforeEach(() => {
   rpc.mockReset();
@@ -102,6 +171,27 @@ describe("#3697 public arrival runtime", () => {
     expect(html).toContain(">Opt out of ad tracking</button>");
     expect(html).toContain(">Privacy policy</a>");
     expect(html).toContain(">Ad privacy choices</button>");
+  });
+
+  test("honours the hydrated app's remembered JSON opt-out before loading pixels", () => {
+    const runtime = runArrivalRuntime(
+      JSON.stringify({ choice: "denied", ts: 1_800_000_000_000 }),
+    );
+    expect(runtime.insertedScripts).toHaveLength(0);
+    expect(runtime.window.__minglaAdPixelsBootstrapped).not.toBe(true);
+    expect(runtime.window.__minglaPrebootConsentChoice).toBe("denied");
+    expect(runtime.elements.banner.hidden).toBe(true);
+  });
+
+  test("writes an early opt-out in the hydrated app's canonical JSON format", () => {
+    const runtime = runArrivalRuntime();
+    expect(runtime.window.__minglaAdPixelsBootstrapped).toBe(true);
+    runtime.elements.out.onclick?.();
+    expect(JSON.parse(runtime.storage.get("mingla_consent_v1") ?? "{}"))
+      .toMatchObject({ choice: "denied" });
+    expect(runtime.window.__minglaPrebootConsentChoice).toBe("denied");
+    expect(runtime.window.__minglaAdPixelsBootstrapped).toBe(false);
+    expect(runtime.insertedScripts.every((script) => script.removed)).toBe(true);
   });
 
   test("preserves every provider link identity and drops unrelated secrets", () => {
