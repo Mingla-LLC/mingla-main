@@ -135,8 +135,8 @@ BEGIN
     PERFORM public.business_update_rsvp_graph(
       v_event, pg_temp.issue_3065_rsvp_update_payload(39), NULL, NULL);
     RAISE EXCEPTION 'T-3065-12 FAIL: a stale writer at revision 39 was accepted over stored 40';
-  EXCEPTION WHEN serialization_failure THEN
-    NULL;  -- rsvp_revision_conflict is raised with ERRCODE 40001
+  EXCEPTION WHEN sqlstate 'PT409' THEN
+    NULL;  -- rsvp_revision_conflict is a non-retryable HTTP conflict
   END;
 
   -- T-3065-13 — a runaway counter (what production actually had: client at 98,
