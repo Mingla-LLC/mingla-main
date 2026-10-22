@@ -498,9 +498,9 @@ export function violations(files) {
   const manifest = json(files.manifest ?? "", "secret manifest", failures);
   const sitesSecret = manifest.secrets?.find((row) => row.name === "MINGLA_SITES_SECURITY_JSON");
   if (
-    // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat (SPRINT_ROLLOVER_TOKEN).
-    manifest.rollout?.expected_user_managed_count !== 89 ||
-    manifest.secrets?.length !== 89 ||
+    // #3645: the payout-release RAK is the approved 90th and final name.
+    manifest.rollout?.expected_user_managed_count !== 90 ||
+    manifest.secrets?.length !== 90 ||
     manifest.exceptions?.length !== 1 ||
     manifest.exceptions?.[0]?.issue !== 2830 ||
     sitesSecret?.class !== "credential_bundle" ||
@@ -989,7 +989,7 @@ export function violations(files) {
   for (const token of [
     "issue_2830_sites_foundation_happy.test.ts",
     "issue_2893_sites_live_readiness.test.ts",
-    "final 89-name bundled-authority state",
+    "final 90-name bundled-authority state",
   ]) need(files.secretWorkflow ?? "", token, "existing secret CI lane", failures);
   for (const token of [
     "mingla-site-cms-build:",
@@ -1114,7 +1114,7 @@ function selfTest() {
     ["publicPackage", '"next": "16.3.8"', '"next": "16.3.7"', "next advisory floor"],
     ["cmsPackage", '"next": "16.3.8"', '"next": "15.5.0"', "next major must remain"],
     ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],
-    ["secretWorkflow", "final 89-name bundled-authority state", "final state", "existing secret CI lane"],
+    ["secretWorkflow", "final 90-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
     // CMS job step name is unique; strip only that lane's --allowlist command.
     [

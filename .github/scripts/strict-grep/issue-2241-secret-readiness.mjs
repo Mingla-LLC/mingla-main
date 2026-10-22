@@ -47,9 +47,9 @@ export function violations(files) {
   } catch {
     return ["contract_or_manifest_invalid_json"];
   }
-  // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat (SPRINT_ROLLOVER_TOKEN).
-  // The band narrows to one name so manifest + band still equals exactly 90.
-  if (manifest.secrets?.length !== 89) failures.push("manifest:not_exact_89");
+  // #3645: Seth approved the payout-release RAK as the 90th and final name on
+  // 2026-10-22. No migration-band name fits above the absolute ceiling.
+  if (manifest.secrets?.length !== 90) failures.push("manifest:not_exact_90");
   const records = new Map(
     manifest.secrets?.map((record) => [record.name, record]),
   );
@@ -83,7 +83,7 @@ export function violations(files) {
     contract.remediation?.issue !== 2241 ||
     contract.remediation?.production_ref !== "gqnoajqerqhnvulmnyvv" ||
     contract.remediation?.expires_after_merge_hours !== 72 ||
-    contract.remediation?.allowed_extra_live_names?.length !== 1 ||
+    contract.remediation?.allowed_extra_live_names?.length !== 0 ||
     contract.remediation?.selected_functions?.length !== 23
   ) failures.push("contract:remediation_contract_invalid");
   for (
@@ -236,7 +236,7 @@ export function violations(files) {
       "normal mode accepts the approved migration band",
       "normal mode still rejects any name outside the band",
       "normal mode still rejects a missing declared name",
-      "remediation mode still REQUIRES the band and exactly 90",
+      "remediation mode still REQUIRES exactly 90",
       "every relaxed deploy route runs the fallback watch",
       "the watch fails closed on every way of not observing",
     ],
@@ -374,14 +374,14 @@ function readFiles() {
 
 function fixture() {
   const filler = Array.from(
-    { length: 87 },
+    { length: 88 },
     (_, index) => ({ name: `SAFE_${index}` }),
   );
   return {
     audit:
       "findCallBoundaryArguments dynamic_call_expression_undeclared dynamic_call_expression_unused dynamic_import_not_static callArgumentsAt tokenizeSyntax decodeIdentifierEscape invalid_identifier_escape skipRegexLiteral parseModuleLinkage buildGovernedBindingPlan parameterDefaultReceiver IDENTIFIER_REFERENCE_SITE computed_namespace_member consumedMemberPositions unrecognized_deno_env_access indirect_deno_env_get dynamic_getter_reference_undeclared allowed_identifier_references",
     bandTest:
-      "normal mode accepts the approved migration band normal mode still rejects any name outside the band normal mode still rejects a missing declared name remediation mode still REQUIRES the band and exactly 90 every relaxed deploy route runs the fallback watch the watch fails closed on every way of not observing",
+      "normal mode accepts the approved migration band normal mode still rejects any name outside the band normal mode still rejects a missing declared name remediation mode still REQUIRES exactly 90 every relaxed deploy route runs the fallback watch the watch fails closed on every way of not observing",
     claimFunction:
       'resolveAttendanceClaimPepperRing; issue_order_attendance_claim_proof_v2; p_generation: pepperRing.current.generation; p_allow_retry_rotation: true; json(503; "claim_link_temporarily_unavailable"',
     componentTest:
@@ -401,7 +401,7 @@ function fixture() {
         issue: 2241,
         production_ref: "gqnoajqerqhnvulmnyvv",
         expires_after_merge_hours: 72,
-        allowed_extra_live_names: ["A"],
+        allowed_extra_live_names: [],
         selected_functions: Array.from(
           { length: 23 },
           (_, index) => `f${index}`,
@@ -520,7 +520,7 @@ function selfTest() {
     const broken = { ...clean, manifest: JSON.stringify({ secrets }) };
     if (
       !violations(broken).some((failure) =>
-        failure.includes("manifest:not_exact_89")
+        failure.includes("manifest:not_exact_90")
       )
     ) throw new Error("manifest cardinality reversion not caught");
   }

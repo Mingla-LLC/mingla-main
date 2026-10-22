@@ -2462,9 +2462,7 @@
     "SUPABASE_URL"
   ],
   "remediation": {
-    "allowed_extra_live_names": [
-      "CHECKOUT_REVOCATION_EXECUTE"
-    ],
+    "allowed_extra_live_names": [],
     "expires_after_merge_hours": 72,
     "issue": 2241,
     "production_ref": "gqnoajqerqhnvulmnyvv",
@@ -3197,6 +3195,7 @@
         "STRIPE_RAK_DETACH_TEST",
         "STRIPE_RAK_ONBOARD_LIVE",
         "STRIPE_RAK_ONBOARD_TEST",
+        "STRIPE_RAK_PAYOUT_RELEASE_LIVE",
         "STRIPE_RAK_REFRESH_STATUS_LIVE",
         "STRIPE_RAK_REFRESH_STATUS_TEST",
         "STRIPE_RAK_TICKET_CHECKOUT_LIVE",

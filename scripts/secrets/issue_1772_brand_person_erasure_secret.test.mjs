@@ -67,14 +67,16 @@ const EXPECTED_FIELDS = [
 // security envelope; #1772's erasure field, reader, and ordering remain intact.
 // [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]: SPRINT_ROLLOVER_TOKEN is the 89th
 // top-level name; the AD envelope and #1772's field are untouched.
-test("#1772 keeps the exact governed 89-name envelope with no direct secret name", () => {
+// [TEST-MOD-APPROVED #3645] The payout-release RAK is the 90th name; the AD
+// envelope and #1772 field remain byte-for-byte unchanged.
+test("#1772 keeps the exact governed 90-name envelope with no direct erasure secret", () => {
   const names = manifest.secrets.map((entry) => entry.name);
-  assert.equal(names.length, 89);
+  assert.equal(names.length, 90);
   assert.equal(
     crypto.createHash("sha256").update(JSON.stringify(names)).digest("hex"),
-    "de0253ef5639d51075ceca6af4e69ec125e49f7c0ec10f9b67a1cb8df2c3ea7c",
+    "0a8e6db5a5618cd0b846a699606a0d7f0cdbeaf965cbfae25f0791f9190f59be",
   );
-  assert.equal(manifest.rollout.expected_user_managed_count, 89);
+  assert.equal(manifest.rollout.expected_user_managed_count, 90);
   assert.deepEqual(manifest.exceptions, [
     {
       issue: 2830,
