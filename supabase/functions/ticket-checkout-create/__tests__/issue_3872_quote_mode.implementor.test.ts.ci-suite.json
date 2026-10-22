@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3872_quote_mode.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-03-ticket-quote-mode",
+  "profile": "deno-1.46-stripe"
+}

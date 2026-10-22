@@ -219,6 +219,10 @@ jobs:
               # defined only in migrations this lane skips (#2117/#2489/#3313 prior).
               *20271123003281_issue_3281_r3_spacing_spots.sql) continue ;;
               *20271124003281_issue_3281_many_dates_foundation.sql) continue ;;
+              # #3872 ticket discounts — SKIPPED because this re-emits checkout
+              # functions whose current base and private-link identities exist only
+              # in migrations this filtered lane intentionally skips.
+              *20271216013872_issue_3872_r1_ticket_checkout.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

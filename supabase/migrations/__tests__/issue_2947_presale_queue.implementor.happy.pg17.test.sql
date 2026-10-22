@@ -144,19 +144,19 @@ $c04$;
 ROLLBACK;
 
 -- ─── C-05: base stays service_role-only ────────────────────────────────────
--- [TEST-MOD-APPROVED #3281] Round 2 (#3996) moved the base to its 15-argument signature.
+-- [TEST-MOD-APPROVED #3872] R1 adds code and quote-digest inputs to checkout.
 DO $c05$
 BEGIN
   PERFORM pg_temp.i2947s7_assert(
     NOT has_function_privilege(
       'authenticated',
-      'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer)',
+      'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text)',
       'EXECUTE'),
     'C-05a authenticated cannot EXECUTE create_session_base');
   PERFORM pg_temp.i2947s7_assert(
     has_function_privilege(
       'service_role',
-      'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer)',
+      'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text)',
       'EXECUTE'),
     'C-05b service_role can EXECUTE create_session_base');
 END

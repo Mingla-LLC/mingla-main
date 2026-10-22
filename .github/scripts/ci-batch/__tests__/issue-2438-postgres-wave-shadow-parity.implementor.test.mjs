@@ -813,6 +813,16 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // workflow bytes must still fail closed against the current registry.
     const onlinePublishWorkflow = ".github/workflows/issue-2333-online-event-publish.yml";
     fs.copyFileSync(path.join(ROOT, onlinePublishWorkflow), path.join(temp, onlinePublishWorkflow));
+    // [TEST-MOD-APPROVED #3872] The discount checkout migration extends two
+    // filtered replay inventories and re-seals their exact workflow bytes. The
+    // terminal-clone proof overlays those reviewed workflow changes alongside
+    // the registry patches so it exercises the proposed state, not HEAD's old
+    // inventories. validateRegistry below still rejects either workflow when
+    // its bytes disagree with the corresponding sourceSha256 authority.
+    for (const workflow of [
+      ".github/workflows/issue-1931-private-event-access.yml",
+      ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
+    ]) fs.copyFileSync(path.join(ROOT, workflow), path.join(temp, workflow));
     const terminal = effectiveManifest(temp);
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
     const phase3bMutation = (mutate) => { const copy = structuredClone(terminal); mutate(copy); writeManifest(copy); return copy; };
