@@ -22864,16 +22864,6 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
-      "workflow": "release-records.yml",
-      "ownerIssue": "#4084",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/release-records.yml",
-      "referenceFiles": [
-        "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts"
-      ],
-      "rationale": "#4084 adds the exact supersession regression suite as the first external consumer of this retained live provider; the provider is declared and subtracted without moving the frozen authority seal."
-    },
-    {
       "workflow": "rotate-apple-jwt.yml",
       "ownerIssue": "#2148",
       "transition": "retained-live-provider",
