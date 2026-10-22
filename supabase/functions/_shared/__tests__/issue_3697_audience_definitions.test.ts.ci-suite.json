@@ -1,3 +1,8 @@
 {
-  "suites": ["edge-runtime"]
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_audience_definitions.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-audience-definitions",
+  "profile": "deno-2-unit"
 }

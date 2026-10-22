@@ -1,4 +1,8 @@
 {
-  "suite": "supabase-functions-deno",
-  "timeout_seconds": 30
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_stage_reporting.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-stage-reporting",
+  "profile": "deno-2-unit"
 }

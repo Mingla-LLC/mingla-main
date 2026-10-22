@@ -1,4 +1,8 @@
 {
-  "suite": "implementor",
-  "reason": "Issue #3697 Snapchat post-launch status settles before read-back; pause and other platforms remain immediate."
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_snap_launch_readback.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-snap-launch-readback",
+  "profile": "deno-2-unit"
 }
