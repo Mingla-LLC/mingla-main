@@ -825,6 +825,32 @@ export const TIKTOK_GAB_COUNTRIES: readonly string[] = [
 export const TIKTOK_DEFAULT_PLACEMENT_TYPE = "PLACEMENT_TYPE_NORMAL";
 export const TIKTOK_DEFAULT_PLACEMENTS: readonly string[] = ["PLACEMENT_TIKTOK"];
 
+export type TikTokPlacementSelection = "tiktok" | "tiktok_pangle";
+
+/**
+ * #3697: TikTok-only delivery is video-only. An image is allowed only when
+ * Pangle is explicitly included; the default never silently broadens.
+ */
+export function tiktokPlacementsForCreative(
+  selection: unknown,
+  creativeKind: "image" | "video",
+): string[] {
+  const normalized: TikTokPlacementSelection = selection === "tiktok_pangle"
+    ? "tiktok_pangle"
+    : "tiktok";
+  if (creativeKind === "image" && normalized === "tiktok") {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "tiktok_video_required",
+      message:
+        "TikTok placement needs a video creative. Select TikTok + Pangle to use an image.",
+    });
+  }
+  return normalized === "tiktok_pangle"
+    ? ["PLACEMENT_TIKTOK", "PLACEMENT_PANGLE"]
+    : ["PLACEMENT_TIKTOK"];
+}
+
 /**
  * GR-68: TOPBUZZ/HELO are deprecated (400s); PLACEMENT_GLOBAL_APP_BUNDLE does
  * NOT support optimization_goal=TRAFFIC_LANDING_PAGE_VIEW (our default — the
@@ -2501,6 +2527,23 @@ export const tiktokAdapter: ChannelAdapter = {
       [idKey]: externalId,
       budget: dollars,
     });
+  },
+
+  getBudget: async (conn, level, externalId) => {
+    const client = resolveTikTokClient(conn);
+    assertNumericExternalId(level, externalId);
+    const row = await tiktokReadEntity(client, level, externalId);
+    const dollars = Number(row.budget);
+    const cents = Math.round(dollars * 100);
+    if (!Number.isFinite(dollars) || dollars <= 0 ||
+      !Number.isSafeInteger(cents) || Math.abs(cents / 100 - dollars) > 0.000001) {
+      throw new AdApiError({
+        platform: "tiktok",
+        code: "budget_readback_invalid",
+        message: "TikTok did not return an exact positive budget after the update.",
+      });
+    }
+    return { cents, field: "budget" };
   },
 
   /**

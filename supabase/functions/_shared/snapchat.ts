@@ -1415,7 +1415,10 @@ export function buildSnapchatAdSquadBody(
     body.event_sources = { MOBILE_APP: [spec.mobileAppId?.trim()] };
   }
   if (spec.endTime) body.end_time = spec.endTime;
-  if (pixelGated && spec.pixelId) body.pixel_id = spec.pixelId;
+  // #3697: attach the configured pixel to every squad, including traffic and
+  // awareness squads. Pixel-gated optimization still requires a live signal,
+  // but measurement must not disappear merely because the goal is SWIPES.
+  if (spec.pixelId) body.pixel_id = spec.pixelId;
 
   // ── Budget (ABO) + S-4 delivery_constraint (REQUIRED; adapter-derived). ─────
   if (typeof spec.budgetCents === "number" && spec.budgetCents > 0) {
@@ -2409,6 +2412,33 @@ export const snapchatAdapter: ChannelAdapter = {
     }
     const { path, body } = snapchatUpdateRequestForEntity(client, level, updated);
     await snapchatApi(client, "PUT", path, body);
+  },
+
+  getBudget: async (conn, level, externalId) => {
+    const client = await resolveSnapchatClient(conn);
+    const entity = await snapchatReadEntity(client, level, externalId);
+    const field = typeof entity.daily_budget_micro === "number"
+      ? "daily_budget_micro"
+      : typeof entity.lifetime_budget_micro === "number"
+      ? "lifetime_budget_micro"
+      : null;
+    if (!field) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "budget_readback_invalid",
+        message: "Snap did not return an editable budget field after the update.",
+      });
+    }
+    const micro = Number(entity[field]);
+    const cents = micro / 10_000;
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "budget_readback_invalid",
+        message: "Snap returned a budget that cannot be represented exactly in cents.",
+      });
+    }
+    return { cents, field };
   },
 
   /**

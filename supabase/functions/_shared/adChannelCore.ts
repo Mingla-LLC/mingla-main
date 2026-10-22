@@ -514,6 +514,17 @@ export interface ChannelAdapter {
   ): Promise<void>;
 
   /**
+   * Read the provider-owned budget after a mutation. Ads budget amendments
+   * are not complete until the platform returns the exact amount we wrote.
+   * Adapters that do not support governed budget changes may omit this hook.
+   */
+  getBudget?(
+    conn: AdConnectionRow,
+    level: Exclude<EntityLevel, "ad">,
+    externalId: string,
+  ): Promise<{ cents: number; field: string }>;
+
+  /**
    * §4.4b compensating-cleanup hook (optional — Google's atomic mutate never
    * needs it). meta → DELETE /{campaign_id} (cascades the ad set); reddit →
    * PATCH configured_status:"DELETED" (no DELETE verb exists — R-5).

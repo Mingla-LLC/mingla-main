@@ -1213,6 +1213,23 @@ export const metaAdapter: ChannelAdapter = {
     });
   },
 
+  getBudget: async (conn, _level, externalId) => {
+    const client = resolveMetaClient(conn);
+    const payload = await metaGraph(client, "GET", externalId, {
+      fields: "daily_budget",
+    });
+    const cents = Number(payload.daily_budget);
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new AdApiError({
+        platform: "meta",
+        code: "budget_readback_invalid",
+        message:
+          "Meta did not return an exact positive daily_budget after the update.",
+      });
+    }
+    return { cents, field: "daily_budget" };
+  },
+
   // §4.4b compensating cleanup: DELETE /{campaign_id} — live-proven to cascade
   // the child ad set. NOTE (QA P2-5): it does NOT cascade the AdCreative — that
   // is an ACCOUNT-level object, cleaned by rollbackCreative below.

@@ -121,6 +121,7 @@ import {
   TIKTOK_OPTIMIZATION_GOALS,
   TIKTOK_PIXEL_GATED_OBJECTIVES,
   type TikTokCreateAdExtensions,
+  tiktokPlacementsForCreative,
   tiktokUploadImage,
   validateTikTokAdText,
   validateTikTokBudgetFloor,
@@ -2666,26 +2667,25 @@ serve(async (req: Request): Promise<Response> => {
       }, 424);
     }
 
-    // A1.1(6)/AC-S-13: pixel-measured goals are gated on the #865 signal; a
-    // permitted pixel goal must carry pixel_id on the squad.
-    let pixelIdS: string | null = null;
+    // #3697: every ad squad carries the connected pixel for measurement.
+    // Pixel-measured optimisation remains gated on the live signal below.
+    const pixelIdS =
+      typeof sconnExtra.pixel_id === "string" && sconnExtra.pixel_id.trim()
+        ? sconnExtra.pixel_id.trim()
+        : null;
+    if (!pixelIdS) {
+      return json({
+        error: "snapchat_pixel_missing",
+        detail:
+          "The Snapchat connection carries no pixel_id. Reconnect Snapchat before creating an ad squad.",
+      }, 424);
+    }
     if (SNAPCHAT_PIXEL_GATED_GOALS.includes(optimizationGoalS)) {
       if (sconnExtra.pixel_installed !== true) {
         return json({
           error: "pixel_goal_unavailable",
           detail:
             `${optimizationGoalS} is pixel-measured and the Snap pixel sends no events yet (#865 owns the install) — optimizing to an event we don't send means no/erratic delivery (GR-21). Use SWIPES until the pixel fires.`,
-        }, 422);
-      }
-      pixelIdS =
-        typeof sconnExtra.pixel_id === "string" && sconnExtra.pixel_id.trim()
-          ? sconnExtra.pixel_id.trim()
-          : null;
-      if (!pixelIdS) {
-        return json({
-          error: "pixel_goal_unavailable",
-          detail:
-            "The connection carries no pixel_id — a pixel-measured goal requires pixel_id on the ad squad (A1.1(6)). Reconnect to capture it.",
         }, 422);
       }
     }
@@ -3341,6 +3341,18 @@ serve(async (req: Request): Promise<Response> => {
     // branches. Everything else (PAUSED, targeting, persist) is byte-identical to
     // the image path.
     const creativeKindT = creativeT.kind === "video" ? "video" : "image";
+    let placementsT: string[];
+    try {
+      placementsT = tiktokPlacementsForCreative(
+        body.tiktok_placement,
+        creativeKindT,
+      );
+    } catch (err) {
+      if (err instanceof AdApiError) {
+        return json({ error: err.code, detail: err.message }, 422);
+      }
+      throw err;
+    }
     // ISSUE-979 Bug 3: the global compliance intent reaches TikTok's create path
     // now. TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable,
     // T-P6) and it has no special-ad-category field — documented + observable,
@@ -3777,6 +3789,8 @@ serve(async (req: Request): Promise<Response> => {
           ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
           ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
           ...(genderT ? { gender: genderT } : {}),
+          placement_type: "PLACEMENT_TYPE_NORMAL",
+          placements: placementsT,
           budget_mode: "daily",
           // A1.1(b): bid_type REQUIRED under CBO — the builder defaults
           // BID_TYPE_NO_BID; campaign-level bid_type is deprecated in v1.3.

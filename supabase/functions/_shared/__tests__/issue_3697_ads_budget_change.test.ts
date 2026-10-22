@@ -109,7 +109,7 @@ Deno.test("#3697 starts from the latest amendment, not the frozen allocation", (
   assertEquals(plan.lines[0].daily_changed, false);
 });
 
-Deno.test("#3697 honest refusals: other providers' daily push, lifetime, FX", () => {
+Deno.test("#3697 daily pushes include TikTok; lifetime and FX still refuse", () => {
   const tiktok = meta({ id: "t", platform: "tiktok" as Platform });
   const daily = planBudgetChange({
     ownerKind: "mingla",
@@ -117,10 +117,9 @@ Deno.test("#3697 honest refusals: other providers' daily push, lifetime, FX", ()
     spendByCampaign: { t: 0 },
     newDailyCents: 6000,
   });
-  assertEquals(
-    daily.ok ? null : daily.error,
-    "budget_change_not_supported_for_tiktok",
-  );
+  // [TEST-MOD-APPROVED #3697] The new contract explicitly requires TikTok
+  // ad-group budget updates; the former refusal is the defect being removed.
+  assert(daily.ok);
   const capOnly = planBudgetChange({
     ownerKind: "mingla",
     campaigns: [tiktok],
@@ -266,12 +265,19 @@ function femzyTables(overrides: Record<string, Row[]> = {}) {
 }
 
 function adapter(calls: string[], fail = false) {
+  const budgets = new Map<string, number>();
   return (_platform: Platform) =>
     ({
       setBudget: (_conn: unknown, level: string, id: string, cents: number) => {
         calls.push(`${level}:${id}:${cents}`);
+        budgets.set(`${level}:${id}`, cents);
         return fail ? Promise.reject(new Error("meta 500")) : Promise.resolve();
       },
+      getBudget: (_conn: unknown, level: string, id: string) =>
+        Promise.resolve({
+          cents: budgets.get(`${level}:${id}`) ?? 0,
+          field: "daily_budget",
+        }),
     }) as unknown as ChannelAdapter;
 }
 
@@ -404,4 +410,93 @@ Deno.test("#3697 admin-ad-campaign-action routes change_budget admin-only", () =
     ),
   );
   assert(source.includes("runBudgetChange("));
+});
+
+Deno.test("#3697 Snap and TikTok mutate the persisted ad squad/group and read it back", async () => {
+  for (const platform of ["snapchat", "tiktok"] as const) {
+    const localCampaignId = platform === "snapchat"
+      ? "snap-campaign"
+      : "tiktok-campaign";
+    const externalAdSetId = platform === "snapchat"
+      ? "57bcb4ac-28d7-4e68-95e1-9f4e9076ccab"
+      : "1834567890123456789";
+    const tables = femzyTables({
+      ad_campaigns: [{
+        ...meta({ id: localCampaignId, platform }),
+        connection_id: "conn",
+        external_campaign_id: "campaign-parent",
+        plan_version_id: VERSION_ID,
+        plan_hash: HASH,
+      }],
+      ad_sets: [{
+        id: `${platform}-set`,
+        campaign_id: localCampaignId,
+        external_adset_id: externalAdSetId,
+        budget_cents: 3000,
+      }],
+      ad_spend_daily: [{
+        campaign_id: localCampaignId,
+        spend_cents: 500,
+        currency: "USD",
+      }],
+    });
+    const db = fakeDb(tables);
+    const calls: string[] = [];
+    const result = await runBudgetChange(
+      { db, getAdapter: adapter(calls) },
+      {
+        campaign: {
+          id: localCampaignId,
+          plan_version_id: VERSION_ID,
+          plan_hash: HASH,
+        },
+        actorId: "admin",
+        body: { daily_budget_cents: 3600, reason: "stage pacing" },
+      },
+    );
+    assertEquals(result.status, 200);
+    assertEquals(calls, [`ad_set:${externalAdSetId}:3600`]);
+    const evidence = db.rpcCalls[0].args.p_provider_evidence as Record<
+      string,
+      unknown
+    >;
+    assertEquals(evidence[localCampaignId], {
+      level: "ad_set",
+      confirmed: [{
+        level: "ad_set",
+        external_id: externalAdSetId,
+        daily_budget_cents: 3600,
+        provider_field: "daily_budget",
+      }],
+      pushed_at:
+        (evidence[localCampaignId] as Record<string, unknown>).pushed_at,
+    });
+  }
+});
+
+Deno.test("#3697 a mismatched provider read-back reverts and records nothing", async () => {
+  const db = fakeDb(femzyTables());
+  const calls: string[] = [];
+  const mismatching = () =>
+    ({
+      setBudget: (_conn: unknown, level: string, id: string, cents: number) => {
+        calls.push(`${level}:${id}:${cents}`);
+        return Promise.resolve();
+      },
+      getBudget: () => Promise.resolve({ cents: 4499, field: "daily_budget" }),
+    }) as unknown as ChannelAdapter;
+  const result = await runBudgetChange(
+    { db, getAdapter: mismatching },
+    {
+      campaign,
+      actorId: "admin",
+      body: { daily_budget_cents: 4500, reason: "read it back" },
+    },
+  );
+  assertEquals(result.status, 502);
+  assertEquals(calls, [
+    "campaign:52609700000001:4500",
+    "campaign:52609700000001:3000",
+  ]);
+  assertEquals(db.rpcCalls.length, 0);
 });

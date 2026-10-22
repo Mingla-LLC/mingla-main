@@ -19,6 +19,7 @@ import {
   type BudgetCampaign,
   type BudgetChangeLine,
   planBudgetChange,
+  proportionalSplit,
   spendToDate,
 } from "./adBudgetChange.ts";
 
@@ -39,6 +40,58 @@ export type BudgetChangeResult = {
   status: number;
   body: Record<string, unknown>;
 };
+
+type BudgetTarget = {
+  level: "campaign" | "ad_set";
+  externalId: string;
+  previousCents: number;
+  nextCents: number;
+};
+
+async function budgetTargets(
+  db: Db,
+  row: Record<string, unknown>,
+  line: BudgetChangeLine,
+): Promise<BudgetTarget[]> {
+  if (line.platform === "meta") {
+    const externalId = String(row.external_campaign_id ?? "");
+    if (!externalId) throw new Error("campaign_budget_target_missing");
+    return [{
+      level: "campaign",
+      externalId,
+      previousCents: line.previous_daily_cents,
+      nextCents: line.new_daily_cents,
+    }];
+  }
+  if (line.platform !== "snapchat" && line.platform !== "tiktok") {
+    throw new Error(`${line.platform}_budget_target_unsupported`);
+  }
+  const { data: adSets, error } = await db.from("ad_sets")
+    .select("id,external_adset_id,budget_cents")
+    .eq("campaign_id", row.id)
+    .order("id");
+  if (error || !Array.isArray(adSets) || adSets.length === 0) {
+    throw new Error("ad_set_budget_target_missing");
+  }
+  const ids = adSets.map((adSet: Record<string, unknown>) =>
+    String(adSet.external_adset_id ?? "")
+  );
+  if (ids.some((id: string) => !id)) {
+    throw new Error("ad_set_budget_target_missing");
+  }
+  const weights = adSets.map((adSet: Record<string, unknown>) => {
+    const cents = Number(adSet.budget_cents);
+    return Number.isSafeInteger(cents) && cents > 0 ? cents : 1;
+  });
+  const previous = proportionalSplit(line.previous_daily_cents, weights);
+  const next = proportionalSplit(line.new_daily_cents, weights);
+  return ids.map((externalId: string, index: number) => ({
+    level: "ad_set" as const,
+    externalId,
+    previousCents: previous[index],
+    nextCents: next[index],
+  }));
+}
 
 export async function runBudgetChange(
   deps: { db: Db; getAdapter: (platform: Platform) => ChannelAdapter },
@@ -142,18 +195,20 @@ export async function runBudgetChange(
     };
   }
 
-  const pushed: Array<
-    { line: BudgetChangeLine; connection: AdConnectionRow; externalId: string }
-  > = [];
+  const pushed: Array<{
+    line: BudgetChangeLine;
+    connection: AdConnectionRow;
+    target: BudgetTarget;
+  }> = [];
   const evidence: Record<string, Record<string, unknown>> = {};
   const revert = async () => {
     for (const done of pushed.reverse()) {
       try {
         await getAdapter(done.line.platform).setBudget(
           done.connection,
-          "campaign",
-          done.externalId,
-          done.line.previous_daily_cents,
+          done.target.level,
+          done.target.externalId,
+          done.target.previousCents,
         );
       } catch {
         // Surfaced below: the response names the provider that may differ.
@@ -175,24 +230,45 @@ export async function runBudgetChange(
         },
       };
     }
-    const externalId = String(row.external_campaign_id ?? "");
     try {
-      // The create path puts Meta's daily budget on the CBO campaign.
-      await getAdapter(line.platform).setBudget(
-        connection as AdConnectionRow,
-        "campaign",
-        externalId,
-        line.new_daily_cents,
-      );
-      pushed.push({
-        line,
-        connection: connection as AdConnectionRow,
-        externalId,
-      });
+      const adapter = getAdapter(line.platform);
+      if (typeof adapter.getBudget !== "function") {
+        throw new Error("provider_budget_readback_unavailable");
+      }
+      const targets = await budgetTargets(db, row, line);
+      const confirmed = [];
+      for (const target of targets) {
+        await adapter.setBudget(
+          connection as AdConnectionRow,
+          target.level,
+          target.externalId,
+          target.nextCents,
+        );
+        pushed.push({
+          line,
+          connection: connection as AdConnectionRow,
+          target,
+        });
+        const readback = await adapter.getBudget(
+          connection as AdConnectionRow,
+          target.level,
+          target.externalId,
+        );
+        if (readback.cents !== target.nextCents) {
+          throw new Error(
+            `provider_budget_readback_mismatch:${target.nextCents}:${readback.cents}`,
+          );
+        }
+        confirmed.push({
+          level: target.level,
+          external_id: target.externalId,
+          daily_budget_cents: readback.cents,
+          provider_field: readback.field,
+        });
+      }
       evidence[line.campaign_id] = {
-        level: "campaign",
-        external_campaign_id: externalId,
-        daily_budget_cents: line.new_daily_cents,
+        level: targets.length === 1 ? targets[0].level : "multiple_ad_sets",
+        confirmed,
         pushed_at: new Date().toISOString(),
       };
     } catch (error) {
