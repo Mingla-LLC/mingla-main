@@ -16,6 +16,7 @@ import {
 
 const ROOT = new URL("../../../../", import.meta.url);
 const read = (path: string) => Deno.readTextFileSync(new URL(path, ROOT));
+const WORKFLOW_ROOT = ".github/workflows/";
 const sha = (letter: string) => letter.repeat(40);
 
 const pr = {
@@ -121,7 +122,7 @@ Deno.test("#4084 a valid later attestation advances failed to deployed and keeps
 });
 
 Deno.test("#4084 only a successful real deployment can write the supersession status", () => {
-  const deploy = read(".github/workflows/deploy-functions.yml");
+  const deploy = read(WORKFLOW_ROOT + "deploy-functions.yml");
   assertMatch(deploy, /supersedes_pr:/);
   assertMatch(deploy, /statuses: write/);
   assertMatch(deploy, /success\(\).*inputs\.supersedes_pr != ''/);
@@ -131,7 +132,7 @@ Deno.test("#4084 only a successful real deployment can write the supersession st
   assertMatch(deploy, /EDGE_DEPLOY_ATTESTATION_FAILED/);
   assertMatch(deploy, /Do not redeploy older code/);
 
-  const release = read(".github/workflows/release-records.yml");
+  const release = read(WORKFLOW_ROOT + "release-records.yml");
   assertMatch(release, /github\.event\.context == 'mingla\/edge-deploy-supersession'/);
 
   const script = read(".github/scripts/release-records/attest-edge-deploy.mjs");
