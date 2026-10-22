@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
-import { brandFollowKeys } from "./useBrandFollow";
+import { brandFollowKeys } from "./brandFollowKeys";
 
 function isForbidden(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
@@ -19,13 +19,11 @@ export function useBrandFollowerSummary(brandId: string | null) {
   const { isAuthReady, user } = useAuth();
   const enabled = isAuthReady && !!user?.id && !!brandId;
   return useQuery({
-    queryKey: brandFollowKeys.followerSummary(
-      brandId ?? "",
-      user?.id ?? "",
-    ),
+    queryKey: brandFollowKeys.followerSummary(brandId ?? "", user?.id ?? ""),
     queryFn: async () =>
-      (await import("../services/brandFollowerCountService"))
-        .brandFollowerCountService.getHostSummary(brandId as string),
+      (
+        await import("../services/brandFollowerCountService")
+      ).brandFollowerCountService.getHostSummary(brandId as string),
     enabled,
     staleTime: 60_000,
     retry: (failureCount, error) => !isForbidden(error) && failureCount < 1,

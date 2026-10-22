@@ -5,6 +5,7 @@ import Svg, { Circle, Path } from "react-native-svg";
 
 import {
   accent,
+  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -15,13 +16,16 @@ import type { BrandFollowerSummary } from "../../types/brandFollowers";
 import { formatCount } from "../../utils/currency";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { Skeleton } from "../ui/Skeleton";
 
-export function followerSourceLine(summary: BrandFollowerSummary): string | null {
+export function followerSourceLine(
+  summary: BrandFollowerSummary,
+): string | null {
   if (summary.newThisWeek === 0) return null;
   const sources = summary.sourcesThisWeek;
   const parts = [
-    sources.checkout > 0 ? `${formatCount(sources.checkout)} from checkout` : null,
+    sources.checkout > 0
+      ? `${formatCount(sources.checkout)} from checkout`
+      : null,
     sources.brandPage > 0
       ? `${formatCount(sources.brandPage)} from the brand page`
       : null,
@@ -87,7 +91,9 @@ export const FollowersHomeTile: React.FC<FollowersHomeTileProps> = ({
 }) => {
   const router = useRouter();
   const summaryQuery = useBrandFollowerSummary(brandId);
-  const summary = summaryQuery.data;
+  // React Query returns undefined for no data, but older integration harnesses
+  // and defensive adapters may still surface null. Treat both as unavailable.
+  const summary = summaryQuery.data ?? undefined;
   const exact = summary === undefined ? "0" : formatCount(summary.total);
   const weekly = summary?.newThisWeek ?? 0;
   const sources = summary === undefined ? null : followerSourceLine(summary);
@@ -113,10 +119,15 @@ export const FollowersHomeTile: React.FC<FollowersHomeTileProps> = ({
           </View>
         </View>
         {summaryQuery.isLoading ? (
-          <View style={styles.loading} testID="followers-home-loading">
-            <Skeleton width={92} height={34} />
-            <Skeleton width="100%" height={46} />
-            <Skeleton width="72%" height={14} />
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={styles.loading}
+            testID="followers-home-loading"
+          >
+            <View style={[styles.loadingBlock, styles.loadingValue]} />
+            <View style={[styles.loadingBlock, styles.loadingChart]} />
+            <View style={[styles.loadingBlock, styles.loadingCaption]} />
           </View>
         ) : summaryQuery.isError || summary === undefined ? (
           <View style={styles.state}>
@@ -168,6 +179,13 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
   },
   loading: { gap: spacing.sm, marginTop: spacing.md },
+  loadingBlock: {
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  loadingValue: { width: 92, height: 34 },
+  loadingChart: { width: "100%", height: 46 },
+  loadingCaption: { width: "72%", height: 14 },
   state: { gap: spacing.xs, marginTop: spacing.md },
   body: { gap: spacing.sm, marginTop: spacing.md },
   valueRow: {
