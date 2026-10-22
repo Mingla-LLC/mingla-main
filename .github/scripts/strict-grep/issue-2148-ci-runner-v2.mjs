@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, SUITES_ADDED_SINCE_SEAL, withTrackedFilesScope, discoverWorkflowProviders, discoverLiveOrigins, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
 import { commandFingerprint, executesLeaves, absentFileIsFailure } from "../ci-batch/run-suite-batch.mjs";
-import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
+import { loadEffectiveManifest, trustedRegistryViews } from "../ci-batch/load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../..");
@@ -61,21 +61,33 @@ function errors(value, matrixSource = workflow()) {
 
 export function verifyLive() {
   const raw = manifest();
+  const registryViews = trustedRegistryViews(raw);
   const failures = errors(raw);
   assert.deepEqual(failures, [], failures.join("\n"));
   assert.deepEqual(validateManifestTextRepresentations(raw), []);
   const value = decodeManifestTextRepresentations(raw);
+  // [TEST-MOD-APPROVED #3682] Local descriptors are additive to the sealed
+  // registry. Keep every historical digest over the established projection and
+  // prove the loader-owned local projection separately; otherwise the first
+  // valid issue-owned suite makes this gate demand a new historical seal.
+  const localSuiteIds = new Set(registryViews?.localSuiteIds || []);
+  const localSuites = value.suites.filter((suite) => localSuiteIds.has(suite.id));
+  const establishedSuites = value.suites.filter((suite) => !localSuiteIds.has(suite.id));
+  const establishedCommandCount = 240 + SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0);
+  const localCommands = value.commandCapabilities.commands.slice(establishedCommandCount);
   // [#2439 SC-11.1 / SC-17.1] Wave-SCOPED selection, not positional slicing. A
   // positional slice silently re-partitions the moment another wave is appended,
   // and selecting by lifecycle VALUE would auto-pass at shadow and go wrong the
   // moment a later wave reached terminal. Every existing digest below is
   // unchanged under this selection, which is what proves it is the same set.
-  const baseline = value.suites.filter((suite) => !suite.migrationWave && !POST_SEAL_IDS.has(suite.id));
-  const postSeal = value.suites.filter((suite) => POST_SEAL_IDS.has(suite.id));
-  const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
-  const phase3b = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
-  const phase3c = value.suites.filter((suite) => suite.migrationWave === "phase3c-deno-wave");
-  assert.equal(value.suites.length, 84 + SUITES_ADDED_SINCE_SEAL.length);
+  const baseline = establishedSuites.filter((suite) => !suite.migrationWave && !POST_SEAL_IDS.has(suite.id));
+  const postSeal = establishedSuites.filter((suite) => POST_SEAL_IDS.has(suite.id));
+  const shadow = establishedSuites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
+  const phase3b = establishedSuites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
+  const phase3c = establishedSuites.filter((suite) => suite.migrationWave === "phase3c-deno-wave");
+  assert.equal(establishedSuites.length, 84 + SUITES_ADDED_SINCE_SEAL.length);
+  assert.equal(localSuites.length, localSuiteIds.size);
+  assert.deepEqual(localSuites.map((suite) => suite.id), [...localSuiteIds].sort());
   assert.equal(postSeal.length, POST_SEAL_IDS.size);
   assert.equal(baseline.flatMap((suite) => suite.steps).length, 51);
   assert.equal(shadow.length, 32);
@@ -97,19 +109,22 @@ export function verifyLive() {
   // and an open tail would silently absorb every later addition into a digest
   // named after a wave it does not belong to.
   assert.equal(orderedDigest(value.commandCapabilities.commands.slice(194, 240)), PHASE3C_CAPABILITY_SHA256, "Phase 3C assertion capabilities drifted");
-  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(240)), POST_SEAL_CAPABILITY_SHA256, "post-seal assertion capabilities drifted");
-  assert.deepEqual([...new Set(value.commandCapabilities.commands.slice(240).map((c) => c.suiteId))].sort(),
+  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(240, establishedCommandCount)), POST_SEAL_CAPABILITY_SHA256, "post-seal assertion capabilities drifted");
+  assert.deepEqual([...new Set(value.commandCapabilities.commands.slice(240, establishedCommandCount).map((c) => c.suiteId))].sort(),
     [...POST_SEAL_IDS].sort(), "post-seal capabilities must belong to declared post-seal suites");
+  assert.deepEqual([...new Set(localCommands.map((command) => command.suiteId))].sort(),
+    [...localSuiteIds].sort(), "additive capabilities must belong to trusted local suites");
+  assert.equal(localCommands.length, localSuites.reduce((sum, suite) => sum + suite.steps.length, 0));
   assert.equal(value.phase3cLeafCapabilities.registrySha256, PHASE3C_LEAF_SHA256, "Phase 3C leaf capabilities drifted");
   assert.equal(value.commandCapabilities.commands.length,
-    240 + SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.steps, 0));
+    establishedCommandCount + localSuites.reduce((sum, suite) => sum + suite.steps.length, 0));
   // [#2439 SC-2.3] The runner must route this wave through the LEAF branch.
   // Without this, 46 outers report executed and all 54 leaves silently never
   // run - a green check carrying no information on seventeen migrations.
   assert.ok(phase3c.every((suite) => executesLeaves(suite)), "phase3c-deno-wave must route through the runner leaf branch");
   assert.ok(phase3b.every((suite) => executesLeaves(suite)), "phase3b-postgres-wave leaf routing must be preserved");
-  assert.ok(baseline.concat(shadow, postSeal).every((suite) => !executesLeaves(suite)), "Phase 1, Phase 3A and post-seal suites must keep the single-command branch");
-  assert.equal(postSeal.flatMap((suite) => suite.steps).filter((step) => forbiddenEmbeddedSetup(step.run)).length, 0);
+  assert.ok(baseline.concat(shadow, postSeal, localSuites).every((suite) => !executesLeaves(suite)), "Phase 1, Phase 3A, post-seal and local suites must keep the single-command branch");
+  assert.equal(postSeal.concat(localSuites).flatMap((suite) => suite.steps).filter((step) => forbiddenEmbeddedSetup(step.run)).length, 0);
   // [#2439 SC-5.1] Fail-loud absence is derived per TARGET, not per wave: a
   // target registered as a conditional proof skips, anything else fails.
   const anyRequired = (suite) => suite.steps.flatMap((step) => step.children || [])
