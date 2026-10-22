@@ -39,8 +39,8 @@ test("fresh phone consent is bounded, nonmodal, and the reserve action reveals o
   });
   const before = await venueScrollTop(page);
 
-  await page.getByTestId("issue-2769-consent-manage").click();
-  await expect(page.getByText("Analytics help us improve Mingla")).toBeVisible();
+  await expect(page.getByText("Ad privacy", { exact: true })).toBeVisible();
+  await expect(page.getByText("We use cookies and advertising tools from Meta, Snapchat and TikTok to measure and improve our ads.")).toBeVisible();
   await page.getByTestId("issue-2769-consent-reject").click();
   await expect(region).toHaveCount(0);
   await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
@@ -60,7 +60,6 @@ test("the consent decision band stays reachable at 320x568, landscape, and effec
   ]) {
     await page.setViewportSize(viewport);
     await page.goto(harness);
-    await page.getByTestId("issue-2769-consent-manage").click();
     const region = page.getByRole("region", { name: "Cookie consent" });
     const box = await region.boundingBox();
     expect(box).not.toBeNull();
@@ -70,7 +69,7 @@ test("the consent decision band stays reachable at 320x568, landscape, and effec
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
     await expect(page.getByTestId("issue-2769-consent-accept")).toBeVisible();
     await expect(page.getByTestId("issue-2769-consent-reject")).toBeVisible();
-    await expect(page.getByTestId("issue-2769-consent-manage")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Privacy policy" })).toBeVisible();
   }
 });
 
@@ -88,6 +87,10 @@ test("1279 suppresses the colliding desktop action while the proven-safe 1280 la
 test("returning choices skip the invitation and preserve reservations-tab absence", async ({ browser }) => {
   for (const stored of ["denied", "granted"] as const) {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await context.route(
+      /connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com/,
+      (route) => route.abort(),
+    );
     await context.addInitScript(([key, value]) => localStorage.setItem(key, value), ["mingla_consent_v1", choice(stored)]);
     const page = await context.newPage();
     await page.goto(harness);
@@ -120,35 +123,24 @@ test("the canonical storage event reconciles another open venue page", async ({ 
   await context.close();
 });
 
-test("keyboard focus reaches Manage, Reject, and Accept with visible focus treatment", async ({ page }) => {
+test("keyboard focus reaches Privacy policy, OK, and Opt out in that order", async ({ page }) => {
   await page.goto(harness);
-  const privacy = page.getByRole("link", { name: "Privacy Policy" });
+  const privacy = page.getByRole("link", { name: "Privacy policy" });
   await privacy.focus();
   await expect(privacy).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByTestId("issue-2769-consent-accept")).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByTestId("issue-2769-consent-reject")).toBeFocused();
-  await page.keyboard.press("Tab");
-  const manage = page.getByTestId("issue-2769-consent-manage");
-  await expect(manage).toBeFocused();
-  expect(await manage.evaluate((node) => getComputedStyle(node).outlineWidth)).toBe("2px");
+  expect(await page.getByTestId("issue-2769-consent-reject").evaluate((node) => getComputedStyle(node).outlineWidth)).not.toBe("0px");
 });
 
-test("Manage exposes one focused host with explicit collapsed and expanded state", async ({ page }) => {
+test("a settled choice exposes one control that reopens the exact privacy choices", async ({ page }) => {
   await page.goto(harness);
-  const manage = page.getByTestId("issue-2769-consent-manage");
-  await manage.evaluate((node) => {
-    node.setAttribute("data-issue-2769-manage-identity", "stable");
-  });
-  await manage.focus();
-  await expect(manage).toBeFocused();
-  await expect(manage).toHaveAttribute("aria-expanded", "false");
-  await manage.click();
-  await expect(manage).toBeFocused();
-  await expect(manage).toHaveAttribute("aria-expanded", "true");
-  await manage.click();
-  await expect(manage).toBeFocused();
-  await expect(manage).toHaveAttribute("aria-expanded", "false");
-  await expect(manage).toHaveAttribute("data-issue-2769-manage-identity", "stable");
+  await page.getByTestId("issue-2769-consent-accept").click();
+  const choices = page.getByRole("button", { name: "Ad privacy choices" });
+  await expect(choices).toBeVisible();
+  await choices.click();
+  await expect(page.getByRole("region", { name: "Cookie consent" })).toBeVisible();
+  await expect(page.getByTestId("issue-2769-consent-reject")).toBeVisible();
 });

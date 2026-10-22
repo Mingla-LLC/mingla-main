@@ -686,12 +686,15 @@ let adPixelRuntime: typeof import("./adPixelRuntime.web") | null = null;
 
 /** Load the provider shims on arrival without placing them in the eager chunk. */
 async function bootstrapAdPixels(): Promise<void> {
-  if (!adTrackingAllowed() || adPixelsBootstrapped) return;
+  // Jest/SSR can execute consent actions without a browser global. Keep the
+  // web-only runtime out of that path just as initWebAnalytics already does.
+  if (!hasWindow() || !adTrackingAllowed() || adPixelsBootstrapped) return;
   adPixelRuntimePromise ??= import("./adPixelRuntime.web");
   const runtime = await adPixelRuntimePromise;
   adPixelRuntime = runtime;
-  // A user can opt out while the small runtime chunk is loading.
-  if (!adTrackingAllowed() || adPixelsBootstrapped) return;
+  // A user can opt out, or an SSR/test browser shim can disappear, while the
+  // small runtime chunk is loading.
+  if (!hasWindow() || !adTrackingAllowed() || adPixelsBootstrapped) return;
   runtime.bootstrapAdPixels(adPixelIds);
   adPixelsBootstrapped = window.__minglaAdPixelsBootstrapped === true;
 }

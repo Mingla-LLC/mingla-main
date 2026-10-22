@@ -22,7 +22,7 @@ async function assertPanelBounded(page: Page, width: number, height: number): Pr
   expect(box!.y).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(width);
   expect(box!.y + box!.height).toBeLessThanOrEqual(height);
-  for (const id of ["accept", "reject", "manage"] as const) {
+  for (const id of ["accept", "reject"] as const) {
     const control = page.getByTestId(`issue-2769-consent-${id}`);
     await expect(control).toBeVisible();
     const controlBox = await control.boundingBox();
@@ -38,8 +38,6 @@ test("phone, threshold, desktop, dynamic-height, and 200%-effective layouts obey
     const page = await freshPage(browser, width, height);
     await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(0);
     await expect(page.getByTestId("issue-2729-reserve-bar")).toHaveCount(0);
-    await assertPanelBounded(page, width, height);
-    await page.getByTestId("issue-2769-consent-manage").click();
     await assertPanelBounded(page, width, height);
     expect(await page.evaluate(() => ({ doc: document.documentElement.scrollWidth, body: document.body.scrollWidth })))
       .toEqual({ doc: width, body: width });
@@ -67,9 +65,6 @@ test("semantic omission is not hidden CSS and same-page settlement restores exac
   await page.goto(loopback);
   expect(await page.locator("[data-testid='issue-2729-reserve-cta']").count()).toBe(0);
   expect(await page.getByRole("button", { name: "Reserve a table" }).count()).toBe(0);
-  await page.getByTestId("issue-2769-consent-manage").click();
-  await expect(page.getByTestId("issue-2769-consent-manage")).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByTestId("issue-2769-consent-manage")).toHaveAttribute("aria-controls", "issue-2769-consent-details");
   await page.getByTestId("issue-2769-consent-reject").click();
   await expect(page.getByRole("region", { name: "Cookie consent" })).toHaveCount(0);
   await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
@@ -79,26 +74,24 @@ test("semantic omission is not hidden CSS and same-page settlement restores exac
   await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
 });
 
-test("privacy, Accept, Reject, and Manage have deterministic keyboard order and visible focus", async ({ page }) => {
+test("privacy, OK, and Opt out have deterministic keyboard order and visible focus", async ({ page }) => {
   await page.goto(loopback);
   const controls = [
-    page.getByRole("link", { name: "Privacy Policy" }),
+    page.getByRole("link", { name: "Privacy policy" }),
     page.getByTestId("issue-2769-consent-accept"),
     page.getByTestId("issue-2769-consent-reject"),
-    page.getByTestId("issue-2769-consent-manage"),
   ];
   await controls[0].focus();
   for (let index = 0; index < controls.length; index += 1) {
     await expect(controls[index]).toBeFocused();
     if (index + 1 < controls.length) await page.keyboard.press("Tab");
   }
-  const manage = controls[3];
-  expect(await manage.evaluate((node) => getComputedStyle(node).outlineWidth)).toBe("2px");
-  await page.keyboard.press("Enter");
-  await expect(manage).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator("#issue-2769-consent-details")).toBeVisible();
-  await page.keyboard.press("Shift+Tab");
-  await expect(controls[2]).toBeFocused();
+  expect(await controls[2].evaluate((node) => getComputedStyle(node).outlineWidth)).not.toBe("0px");
+  await controls[2].press("Enter");
+  const choices = page.getByRole("button", { name: "Ad privacy choices" });
+  await expect(choices).toBeVisible();
+  await choices.press("Enter");
+  await expect(page.getByRole("region", { name: "Cookie consent" })).toBeVisible();
 });
 
 test("page scroll remains available outside the nonmodal panel and the reading band owns local overflow", async ({ page }) => {
@@ -115,7 +108,6 @@ test("page scroll remains available outside the nonmodal panel and the reading b
   const nativeOwnerMoved = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>("*")).some((node) =>
     node.closest("[aria-label='Cookie consent']") === null && /(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollTop > 0));
   expect(nativeOwnerMoved || (await page.evaluate(() => window.scrollY)) > before).toBe(true);
-  await page.getByTestId("issue-2769-consent-manage").click();
   const readingBand = page.locator("[aria-label='Cookie consent']").locator("div").filter({ hasText: "Ad privacy" }).first();
   await expect(readingBand).toBeVisible();
   expect(await page.locator("body").evaluate((node) => getComputedStyle(node).overflowX)).not.toBe("scroll");
