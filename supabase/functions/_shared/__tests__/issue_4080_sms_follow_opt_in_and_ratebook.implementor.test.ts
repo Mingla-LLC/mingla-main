@@ -1,5 +1,5 @@
-// #3682 — SMS Follow is opt-in and provider rate failures stay fail-closed but actionable.
-// Run: deno test --allow-read supabase/functions/_shared/__tests__/issue_3682_sms_follow_opt_in_and_ratebook.implementor.test.ts
+// #4080 — SMS Follow is opt-in and provider rate failures stay fail-closed but actionable.
+// Run: deno test --allow-read supabase/functions/_shared/__tests__/issue_4080_sms_follow_opt_in_and_ratebook.implementor.test.ts
 
 import {
   assert,
@@ -27,7 +27,7 @@ const NG_RATE: SmsRateV1 = {
   sourceReference: "approved-test-rate-card",
 };
 
-Deno.test("#3682 SMS quote keeps author copy concise when Follow is off", async () => {
+Deno.test("#4080 SMS quote keeps author copy concise when Follow is off", async () => {
   const body =
     "CTRL V2 ticket yet? Sat 24 Oct: https://host.usemingla.com/e/ctrl/ctrl-v2";
   const quote = await buildMarketingBookQuote(
@@ -54,7 +54,7 @@ Deno.test("#3682 SMS quote keeps author copy concise when Follow is off", async 
   assertEquals(quote.smsSegments, 1);
 });
 
-Deno.test("#3682 expired rate book is specific, safe, and still blocks", () => {
+Deno.test("#4080 expired rate book is specific, safe, and still blocks", () => {
   const expired = { ...NG_RATE, expiresAt: "2026-10-22T17:59:59.999Z" };
   const thrown = assertRejects(
     async () => {
@@ -71,7 +71,7 @@ Deno.test("#3682 expired rate book is specific, safe, and still blocks", () => {
   });
 });
 
-Deno.test("#3682 invalid or unavailable rates expose no values", () => {
+Deno.test("#4080 invalid or unavailable rates expose no values", () => {
   assertEquals(
     marketingBookQuoteErrorCode(new Error("sms_rate_book_invalid")),
     "BOOK_BLAST_RATE_BOOK_UNAVAILABLE",
@@ -86,7 +86,7 @@ Deno.test("#3682 invalid or unavailable rates expose no values", () => {
   );
 });
 
-Deno.test("#3682 production quote and dispatch gate Follow on explicit true", () => {
+Deno.test("#4080 production quote and dispatch gate Follow on explicit true", () => {
   const send = Deno.readTextFileSync(
     new URL("../../marketing-send/index.ts", import.meta.url),
   );

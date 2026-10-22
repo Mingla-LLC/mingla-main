@@ -35,7 +35,7 @@ const previewProps: React.ComponentProps<typeof SmsPreviewPane> = {
   currencyCode: "NGN",
 };
 
-describe("#3682 SMS Follow opt-in", () => {
+describe("#4080 SMS Follow opt-in", () => {
   test("preview omits Follow by default and includes it only when selected", () => {
     let withoutFollow!: RenderedTree;
     let withFollow!: RenderedTree;
