@@ -152,7 +152,6 @@ import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
 import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
-import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 
@@ -504,8 +503,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const { isDesktop } = useResponsiveLayout();
   const online = useBuyerWebOnline();
   // #3682 Wave 2.3 — Presented-by Follow on buyer-web event / RSVP pages.
-  const brandFollow = useBrandFollow(user?.id ?? null, brand?.id ?? null);
-  const followerCountQuery = useBrandFollowerCount(brand?.id ?? null);
+  const brandFollow = useBrandFollow(user?.id ?? null, brand?.id ?? null, true);
   const [followUnfollowOpen, setFollowUnfollowOpen] = useState(false);
   const [followSignInOpen, setFollowSignInOpen] = useState(false);
   const [followByEmailOpen, setFollowByEmailOpen] = useState(false);
@@ -1742,10 +1740,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           }}
           presentedByFollow={presentedByFollow}
           presentedByFollowerCount={
-            followerCountQuery.isError ? null : followerCountQuery.data
+            brandFollow.followerCountError ? null : brandFollow.followerCount
           }
           presentedByFollowerCountLoading={
-            followerCountQuery.isPending && !followerCountQuery.isError
+            brandFollow.followerCountPending && !brandFollow.followerCountError
           }
           onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}
@@ -1980,10 +1978,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           callbacks={callbacks}
           theme={resolvedTheme}
           brandFollowerCount={
-            followerCountQuery.isError ? null : followerCountQuery.data
+            brandFollow.followerCountError ? null : brandFollow.followerCount
           }
           brandFollowerCountLoading={
-            followerCountQuery.isPending && !followerCountQuery.isError
+            brandFollow.followerCountPending && !brandFollow.followerCountError
           }
         />
       ) : (
@@ -2006,10 +2004,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           }}
           presentedByFollow={presentedByFollow}
           presentedByFollowerCount={
-            followerCountQuery.isError ? null : followerCountQuery.data
+            brandFollow.followerCountError ? null : brandFollow.followerCount
           }
           presentedByFollowerCountLoading={
-            followerCountQuery.isPending && !followerCountQuery.isError
+            brandFollow.followerCountPending && !brandFollow.followerCountError
           }
           onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}

@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
+import { brandFollowerCountService } from "../services/brandFollowerCountService";
 import { brandFollowsService } from "../services/brandFollowsService";
 
 export const brandFollowKeys = {
@@ -21,6 +22,9 @@ export const brandFollowKeys = {
 export interface UseBrandFollowResult {
   isFollowing: boolean;
   isPending: boolean;
+  followerCount: number | null;
+  followerCountPending: boolean;
+  followerCountError: boolean;
   toggle: () => Promise<boolean>;
   follow: () => Promise<void>;
   unfollow: () => Promise<void>;
@@ -29,6 +33,7 @@ export interface UseBrandFollowResult {
 export function useBrandFollow(
   userId: string | null,
   brandId: string | null,
+  includeFollowerCount = false,
 ): UseBrandFollowResult {
   const queryClient = useQueryClient();
   // brand_follows is auth.uid()-scoped; wait for a ready session so a cold
@@ -44,6 +49,17 @@ export function useBrandFollow(
       brandFollowsService.isFollowing(userId as string, brandId as string),
     enabled,
     staleTime: 60_000,
+  });
+
+  // Public aggregate: unlike follow status, this remains available before auth.
+  // Keeping it on the existing follow hook also preserves PublicEventPage's
+  // deliberately sealed dependency surface used by its close-button harness.
+  const followerCountQuery = useQuery({
+    queryKey: followerCountKey,
+    queryFn: () => brandFollowerCountService.getCount(brandId as string),
+    enabled: includeFollowerCount && !!brandId,
+    staleTime: 60_000,
+    retry: 1,
   });
 
   const mutation = useMutation({
@@ -101,6 +117,9 @@ export function useBrandFollow(
   return {
     isFollowing,
     isPending: mutation.isPending,
+    followerCount: followerCountQuery.data ?? null,
+    followerCountPending: followerCountQuery.isPending,
+    followerCountError: followerCountQuery.isError,
     toggle: () => mutation.mutateAsync(!isFollowing),
     follow: async () => {
       if (isFollowing) return;

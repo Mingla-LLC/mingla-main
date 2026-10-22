@@ -1,8 +1,14 @@
 // Issue #3682 — public count RPCs plus the auth-scoped Host summary RPC.
 import type { BrandFollowerSummary } from "../types/brandFollowers";
-import { supabase } from "./supabase";
 
 const MAX_BATCH_SIZE = 100;
+
+// Keep the public count parser usable in render-only and contract tests that do
+// not boot the app's Supabase environment. The real client is loaded only when
+// a query actually runs; production calls still use the one canonical client.
+const getSupabase = async (): Promise<
+  typeof import("./supabase").supabase
+> => (await import("./supabase")).supabase;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -87,6 +93,7 @@ export function parseBrandFollowerSummary(value: unknown): BrandFollowerSummary 
 
 export const brandFollowerCountService = {
   async getCount(brandId: string): Promise<number | null> {
+    const supabase = await getSupabase();
     const { data, error } = await supabase.rpc("get_brand_follower_count", {
       p_brand_id: brandId,
     });
@@ -98,6 +105,7 @@ export const brandFollowerCountService = {
     const uniqueBrandIds = [...new Set(brandIds.filter((id) => id.length > 0))].sort();
     if (uniqueBrandIds.length === 0) return {};
 
+    const supabase = await getSupabase();
     const counts: Record<string, number> = {};
     for (let offset = 0; offset < uniqueBrandIds.length; offset += MAX_BATCH_SIZE) {
       const chunk = uniqueBrandIds.slice(offset, offset + MAX_BATCH_SIZE);
@@ -128,6 +136,7 @@ export const brandFollowerCountService = {
   },
 
   async getHostSummary(brandId: string): Promise<BrandFollowerSummary> {
+    const supabase = await getSupabase();
     const { data, error } = await supabase.rpc("biz_brand_follower_summary_v1", {
       p_brand_id: brandId,
     });
