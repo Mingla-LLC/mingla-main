@@ -687,11 +687,11 @@ BEGIN
     'the attempt ledger accepts identity_mismatch and expired');
 
   -- ── (8) ONE PREDICATE, NOT TWO ────────────────────────────────────────────
-  -- The identity rail must reach the rule through the SAME function, so the two
-  -- rails can never drift apart.
+  -- The token rail must reach the canonical raw-contact rule, so order and
+  -- RSVP claims cannot drift apart.
   PERFORM pg_temp.i3524_ok(
     pg_get_functiondef('public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure)
-      LIKE '%account_owns_order_contact%',
+      LIKE '%account_owns_contact%',
     'the token rail evaluates the shared predicate');
   PERFORM pg_temp.i3524_ok(
     pg_get_functiondef('public.redeem_attendance_claim_handoff(uuid,text,uuid,uuid,bytea)'::regprocedure)

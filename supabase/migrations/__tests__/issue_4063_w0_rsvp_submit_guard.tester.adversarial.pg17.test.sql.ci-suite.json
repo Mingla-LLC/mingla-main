@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4063_w0_rsvp_submit_guard.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4063-w0-rsvp-submit-guard-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}
