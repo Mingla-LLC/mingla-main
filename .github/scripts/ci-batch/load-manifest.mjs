@@ -10,7 +10,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // input-free exact-current-main recovery trigger to their metadata.
 // #4037: re-sealed after the #922 business-web actionability provider gained
 // the same input-free recovery trigger.
-export const BOOTSTRAP_SHA256 = "0e775d16907bd25fb076675d979a864bab64a4faf7176ba0dbf4eea1beb49ad3";
+// #4084: re-sealed after release-records became an externally consumed
+// provider and the existing deploy-functions provider gained its exact
+// supersession regression consumer.
+export const BOOTSTRAP_SHA256 = "de170fcc53c478fd480f4669ed355905c1a43f5c40c71505caee1ed4d7f4aa5d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
