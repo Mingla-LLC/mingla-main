@@ -6,4 +6,3 @@
   "orderKey": "issue-3697-current-account-audiences",
   "command": ["deno", "test", "--allow-env", "--allow-net", "--no-check"]
 }
-

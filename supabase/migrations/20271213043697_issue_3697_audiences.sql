@@ -294,4 +294,3 @@ COMMENT ON TABLE public.ad_plan_stage_snapshots IS
   'Issue #3697 immutable-at-create stage/audience/budget evidence for one reviewed plan version.';
 
 COMMIT;
-
