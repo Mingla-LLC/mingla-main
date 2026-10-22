@@ -5,6 +5,13 @@ DECLARE
   v_acl text;
   v_function_acl text;
 BEGIN
+  IF COALESCE((
+    SELECT is_enabled
+    FROM public.feature_flags
+    WHERE flag_key = 'ad_buyer_list_sync_enabled'
+  ), true) THEN
+    RAISE EXCEPTION '#3697 buyer-list sync flag must ship off';
+  END IF;
   IF to_regclass('public.ad_stage_metrics_daily') IS NULL THEN
     RAISE EXCEPTION '#3697 ad_stage_metrics_daily missing';
   END IF;

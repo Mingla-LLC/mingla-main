@@ -4,6 +4,14 @@
 
 BEGIN;
 
+INSERT INTO public.feature_flags(flag_key, is_enabled, description)
+VALUES (
+  'ad_buyer_list_sync_enabled',
+  false,
+  'Privacy gate for Meta M8, Snapchat S5 and TikTok T5 hashed buyer-list audience sync'
+)
+ON CONFLICT(flag_key) DO NOTHING;
+
 ALTER TABLE public.ad_sets
   ADD COLUMN IF NOT EXISTS stage text NULL,
   ADD COLUMN IF NOT EXISTS audience_codes text[] NOT NULL DEFAULT '{}'::text[],
