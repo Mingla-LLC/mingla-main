@@ -70,15 +70,26 @@ export type StoredConsentSnapshot = ConsentChoice | "unresolved";
  * `before_send` and retain only the origin. Typed #3176 public pageviews remain
  * the route-level measurement owner.
  */
-function sanitizeLegacyPageview(event: CaptureResult | null): CaptureResult | null {
+function sanitizeLegacyPageview(
+  event: CaptureResult | null,
+): CaptureResult | null {
   if (event === null || event.event !== LEGACY_PAGEVIEW_EVENT) return event;
   const properties = { ...(event.properties ?? {}) } as Record<string, unknown>;
   for (const key of [
-    "$current_url", "$pathname", "$referrer", "$referring_domain",
-    "$search_engine", "$search_engine_keyword", "current_url", "pathname", "url",
-  ]) delete properties[key];
+    "$current_url",
+    "$pathname",
+    "$referrer",
+    "$referring_domain",
+    "$search_engine",
+    "$search_engine_keyword",
+    "current_url",
+    "pathname",
+    "url",
+  ])
+    delete properties[key];
   try {
-    const href = typeof window.location.href === "string" ? window.location.href : "";
+    const href =
+      typeof window.location.href === "string" ? window.location.href : "";
     properties.$current_url = new URL(href).origin;
   } catch {
     // No URL is safer than an unvalidated private route or query string.
@@ -87,8 +98,7 @@ function sanitizeLegacyPageview(event: CaptureResult | null): CaptureResult | nu
 }
 
 const extra = Constants.expoConfig?.extra as
-  | Record<string, string | undefined>
-  | undefined;
+  Record<string, string | undefined> | undefined;
 
 function readEnv(name: string): string | undefined {
   // Static `process.env.EXPO_PUBLIC_X` is inlined by babel-preset-expo for the
@@ -96,7 +106,9 @@ function readEnv(name: string): string | undefined {
   // dynamic process.env[name] bracket access (forbidden by COMMS-0028).
   switch (name) {
     case "EXPO_PUBLIC_POSTHOG_KEY":
-      return extra?.EXPO_PUBLIC_POSTHOG_KEY ?? process.env.EXPO_PUBLIC_POSTHOG_KEY;
+      return (
+        extra?.EXPO_PUBLIC_POSTHOG_KEY ?? process.env.EXPO_PUBLIC_POSTHOG_KEY
+      );
     case "EXPO_PUBLIC_POSTHOG_HOST":
       return (
         extra?.EXPO_PUBLIC_POSTHOG_HOST ?? process.env.EXPO_PUBLIC_POSTHOG_HOST
@@ -110,19 +122,36 @@ function readEnv(name: string): string | undefined {
     // client bundle). Missing id → the pixel simply never loads (no-op). Values
     // are set by Seth in app.config `extra` / .env — no VALUES in this repo.
     case "EXPO_PUBLIC_META_PIXEL_ID":
-      return extra?.EXPO_PUBLIC_META_PIXEL_ID ?? process.env.EXPO_PUBLIC_META_PIXEL_ID;
+      return (
+        extra?.EXPO_PUBLIC_META_PIXEL_ID ??
+        process.env.EXPO_PUBLIC_META_PIXEL_ID
+      );
     case "EXPO_PUBLIC_TIKTOK_PIXEL_CODE":
-      return extra?.EXPO_PUBLIC_TIKTOK_PIXEL_CODE ?? process.env.EXPO_PUBLIC_TIKTOK_PIXEL_CODE;
+      return (
+        extra?.EXPO_PUBLIC_TIKTOK_PIXEL_CODE ??
+        process.env.EXPO_PUBLIC_TIKTOK_PIXEL_CODE
+      );
     case "EXPO_PUBLIC_SNAP_PIXEL_ID":
-      return extra?.EXPO_PUBLIC_SNAP_PIXEL_ID ?? process.env.EXPO_PUBLIC_SNAP_PIXEL_ID;
+      return (
+        extra?.EXPO_PUBLIC_SNAP_PIXEL_ID ??
+        process.env.EXPO_PUBLIC_SNAP_PIXEL_ID
+      );
     case "EXPO_PUBLIC_REDDIT_PIXEL_ID":
-      return extra?.EXPO_PUBLIC_REDDIT_PIXEL_ID ?? process.env.EXPO_PUBLIC_REDDIT_PIXEL_ID;
+      return (
+        extra?.EXPO_PUBLIC_REDDIT_PIXEL_ID ??
+        process.env.EXPO_PUBLIC_REDDIT_PIXEL_ID
+      );
     // Reachable-everywhere Supabase endpoint for the fire-and-forget
     // attribution-capture POST (first-party; anon key is public-by-design).
     case "EXPO_PUBLIC_SUPABASE_URL":
-      return extra?.EXPO_PUBLIC_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
+      return (
+        extra?.EXPO_PUBLIC_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL
+      );
     case "EXPO_PUBLIC_SUPABASE_ANON_KEY":
-      return extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+      return (
+        extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+        process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
+      );
     default:
       return undefined;
   }
@@ -143,7 +172,12 @@ interface AdPixelIds {
   snap: string | null;
   reddit: string | null;
 }
-let adPixelIds: AdPixelIds = { meta: null, tiktok: null, snap: null, reddit: null };
+let adPixelIds: AdPixelIds = {
+  meta: null,
+  tiktok: null,
+  snap: null,
+  reddit: null,
+};
 let adPixelsBootstrapped = false;
 export type AdPixelConsentMode = "on_arrival" | "opt_in";
 let adPixelConsentMode: AdPixelConsentMode | null = null;
@@ -166,9 +200,17 @@ declare global {
     __minglaPrebootConsentChoice?: ConsentChoice;
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
-    fbq?: ((...args: unknown[]) => void) & { callMethod?: (...a: unknown[]) => void; queue?: unknown[] };
+    fbq?: ((...args: unknown[]) => void) & {
+      callMethod?: (...a: unknown[]) => void;
+      queue?: unknown[];
+    };
     _fbq?: unknown;
-    ttq?: { page?: (...a: unknown[]) => void; track?: (...a: unknown[]) => void; load?: (...a: unknown[]) => void; [k: string]: unknown };
+    ttq?: {
+      page?: (...a: unknown[]) => void;
+      track?: (...a: unknown[]) => void;
+      load?: (...a: unknown[]) => void;
+      [k: string]: unknown;
+    };
     TiktokAnalyticsObject?: string;
     snaptr?: ((...args: unknown[]) => void) & { queue?: unknown[] };
     rdt?: ((...args: unknown[]) => void) & { callQueue?: unknown[] };
@@ -202,12 +244,12 @@ async function resolveAdPixelConsentMode(): Promise<AdPixelConsentMode> {
     })
       .then(async (response) => {
         if (!response.ok) return "on_arrival" as const;
-        const payload = await response.json() as {
+        const payload = (await response.json()) as {
           ad_pixel_consent_mode?: unknown;
         };
         return payload.ad_pixel_consent_mode === "opt_in"
-          ? "opt_in" as const
-          : "on_arrival" as const;
+          ? ("opt_in" as const)
+          : ("on_arrival" as const);
       })
       .catch(() => "on_arrival" as const)
       .then((mode) => {
@@ -222,7 +264,11 @@ async function resolveAdPixelConsentMode(): Promise<AdPixelConsentMode> {
 function adTrackingAllowed(): boolean {
   const choice = readStoredConsent();
   if (choice === "denied") return false;
-  return adPixelConsentMode !== "opt_in" || choice === "granted";
+  const mode =
+    adPixelConsentMode ??
+    (hasWindow() ? window.__minglaAdPixelConsentMode : null) ??
+    "on_arrival";
+  return mode !== "opt_in" || choice === "granted";
 }
 
 function hasWindow(): boolean {
@@ -541,15 +587,18 @@ export function captureWebSearchOutcome(
 }
 
 /** Only public event/trip/experience/brand/venue pages are search inventory. */
-export function isHostPublicInventoryPathname(pathname: unknown): pathname is string {
+export function isHostPublicInventoryPathname(
+  pathname: unknown,
+): pathname is string {
   if (typeof pathname !== "string") return false;
   const segments = pathname.split("/").filter(Boolean);
   if (["e", "t", "exp"].includes(segments[0] ?? "")) {
     return segments.length === 3;
   }
   if (segments[0] !== "b") return false;
-  return segments.length === 2 ||
-    (segments.length === 4 && segments[2] === "v");
+  return (
+    segments.length === 2 || (segments.length === 4 && segments[2] === "v")
+  );
 }
 
 /**
@@ -595,7 +644,8 @@ export function identifyWeb(
 
 /** Read a feature flag (free-tier power feature, §4.G). Default-safe. */
 export function getFeatureFlagWeb(key: string): boolean | string | undefined {
-  if (readStoredConsent() !== "granted" || posthogClient === null) return undefined;
+  if (readStoredConsent() !== "granted" || posthogClient === null)
+    return undefined;
   try {
     return posthogClient?.getFeatureFlag(key);
   } catch {
@@ -619,7 +669,8 @@ export function getFeatureFlagWeb(key: string): boolean | string | undefined {
 const ATTR_TIMEOUT_MS = 4000;
 
 function injectPixelScriptOnce(src: string, marker: string): void {
-  if (window.document.querySelector(`script[data-mingla-pixel="${marker}"]`)) return;
+  if (window.document.querySelector(`script[data-mingla-pixel="${marker}"]`))
+    return;
   const s = window.document.createElement("script");
   s.async = true;
   s.src = src;
@@ -641,7 +692,7 @@ function currentAdPageViewKey(): string {
 }
 
 function markAdPageViewFired(): void {
-  const keys = window.__minglaAdPageViewKeys ??= {};
+  const keys = (window.__minglaAdPageViewKeys ??= {});
   keys[currentAdPageViewKey()] = true;
 }
 
@@ -670,7 +721,12 @@ function bootstrapMetaPixel(pixelId: string): void {
   if (window.fbq === undefined) {
     // Canonical fbq stub — queues calls until fbevents.js loads + sets callMethod.
     const n = createQueuedPixel("callMethod", "queue");
-    const stub = n as unknown as { push: unknown; loaded: boolean; version: string; queue: unknown[] };
+    const stub = n as unknown as {
+      push: unknown;
+      loaded: boolean;
+      version: string;
+      queue: unknown[];
+    };
     stub.push = n;
     stub.loaded = true;
     stub.version = "2.0";
@@ -678,7 +734,10 @@ function bootstrapMetaPixel(pixelId: string): void {
     window.fbq = n as unknown as Window["fbq"];
     window._fbq = window.fbq;
   }
-  injectPixelScriptOnce("https://connect.facebook.net/en_US/fbevents.js", "meta");
+  injectPixelScriptOnce(
+    "https://connect.facebook.net/en_US/fbevents.js",
+    "meta",
+  );
   window.fbq?.("init", pixelId);
   window.fbq?.("track", "PageView");
 }
@@ -696,22 +755,45 @@ function bootstrapTikTokPixel(pixelCode: string): void {
     _o?: Record<string, unknown>;
     [k: string]: unknown;
   };
-  ttq.push = ttq.push ?? ((a: unknown): void => {
-    ((ttq as unknown as { _q?: unknown[] })._q = (ttq as unknown as { _q?: unknown[] })._q ?? []).push(a);
-  });
+  ttq.push =
+    ttq.push ??
+    ((a: unknown): void => {
+      ((ttq as unknown as { _q?: unknown[] })._q =
+        (ttq as unknown as { _q?: unknown[] })._q ?? []).push(a);
+    });
   ttq.methods = [
-    "page", "track", "identify", "instances", "debug", "on", "off", "once",
-    "ready", "alias", "group", "enableCookie", "disableCookie", "holdConsent",
-    "revokeConsent", "grantConsent",
+    "page",
+    "track",
+    "identify",
+    "instances",
+    "debug",
+    "on",
+    "off",
+    "once",
+    "ready",
+    "alias",
+    "group",
+    "enableCookie",
+    "disableCookie",
+    "holdConsent",
+    "revokeConsent",
+    "grantConsent",
   ];
-  ttq.setAndDefer = function (obj: Record<string, unknown>, method: string): void {
+  ttq.setAndDefer = function (
+    obj: Record<string, unknown>,
+    method: string,
+  ): void {
     obj[method] = function (): void {
       // eslint-disable-next-line prefer-rest-params
       const args = Array.prototype.slice.call(arguments) as unknown[];
-      (obj as unknown as { push: (a: unknown) => void }).push([method, ...args]);
+      (obj as unknown as { push: (a: unknown) => void }).push([
+        method,
+        ...args,
+      ]);
     };
   };
-  for (const m of ttq.methods) ttq.setAndDefer(ttq as unknown as Record<string, unknown>, m);
+  for (const m of ttq.methods)
+    ttq.setAndDefer(ttq as unknown as Record<string, unknown>, m);
   ttq.load = function (id: string): void {
     ttq._i = ttq._i ?? {};
     ttq._i[id] = [];
@@ -719,7 +801,10 @@ function bootstrapTikTokPixel(pixelCode: string): void {
     ttq._t[id] = Number(new Date());
     ttq._o = ttq._o ?? {};
     ttq._o[id] = {};
-    injectPixelScriptOnce(`https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=${id}&lib=ttq`, "tiktok");
+    injectPixelScriptOnce(
+      `https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=${id}&lib=ttq`,
+      "tiktok",
+    );
   };
   ttq.load(pixelCode);
   ttq.page();
@@ -727,7 +812,10 @@ function bootstrapTikTokPixel(pixelCode: string): void {
 
 function bootstrapSnapPixel(pixelId: string): void {
   if (window.snaptr === undefined) {
-    window.snaptr = createQueuedPixel("handleRequest", "queue") as Window["snaptr"];
+    window.snaptr = createQueuedPixel(
+      "handleRequest",
+      "queue",
+    ) as Window["snaptr"];
   }
   injectPixelScriptOnce("https://sc-static.net/scevent.min.js", "snap");
   window.snaptr?.("init", pixelId);
@@ -752,10 +840,14 @@ function bootstrapAdPixels(): void {
   if (!adTrackingAllowed() || adPixelsBootstrapped) return;
   adPixelsBootstrapped = true; // set first so a throw can't cause a re-bootstrap loop
   window.__minglaAdPixelsBootstrapped = true;
-  if (adPixelIds.meta) safePixel(() => bootstrapMetaPixel(adPixelIds.meta as string));
-  if (adPixelIds.tiktok) safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
-  if (adPixelIds.snap) safePixel(() => bootstrapSnapPixel(adPixelIds.snap as string));
-  if (adPixelIds.reddit) safePixel(() => bootstrapRedditPixel(adPixelIds.reddit as string));
+  if (adPixelIds.meta)
+    safePixel(() => bootstrapMetaPixel(adPixelIds.meta as string));
+  if (adPixelIds.tiktok)
+    safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
+  if (adPixelIds.snap)
+    safePixel(() => bootstrapSnapPixel(adPixelIds.snap as string));
+  if (adPixelIds.reddit)
+    safePixel(() => bootstrapRedditPixel(adPixelIds.reddit as string));
   // Every provider bootstrap above emits its page-view event. Mark this exact
   // browser URL so the hydrated route effect cannot count the same landing a
   // second time. A later SPA navigation has a different href and still fires.
@@ -771,8 +863,7 @@ function expireAdCookie(name: string): void {
   if (!window.document) return;
   const expires = "Thu, 01 Jan 1970 00:00:00 GMT";
   for (const domain of ["", "; domain=.usemingla.com"]) {
-    window.document.cookie =
-      `${name}=; expires=${expires}; path=/${domain}; SameSite=Lax`;
+    window.document.cookie = `${name}=; expires=${expires}; path=/${domain}; SameSite=Lax`;
   }
 }
 
@@ -784,11 +875,9 @@ function stopAdPixels(): void {
     if (typeof revoke === "function") revoke();
   });
   if (typeof window.document?.querySelectorAll === "function") {
-    for (
-      const script of Array.from(
-        window.document.querySelectorAll('script[data-mingla-pixel]'),
-      )
-    ) {
+    for (const script of Array.from(
+      window.document.querySelectorAll("script[data-mingla-pixel]"),
+    )) {
       script.remove();
     }
   }
@@ -806,7 +895,7 @@ function stopAdPixels(): void {
 /** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
 export function fireAdPageView(): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
-  const keys = window.__minglaAdPageViewKeys ??= {};
+  const keys = (window.__minglaAdPageViewKeys ??= {});
   const key = currentAdPageViewKey();
   if (keys[key]) return;
   keys[key] = true;
@@ -824,52 +913,71 @@ export interface AdCommerceEventProps {
 }
 
 /** Offering view — one deduplicated ViewContent across the four pixels. */
-export function fireAdViewContent(props?: AdCommerceEventProps & {
-  eventId?: string;
-}): void {
+export function fireAdViewContent(
+  props?: AdCommerceEventProps & {
+    eventId?: string;
+  },
+): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
   const value = props?.value;
   const currency = props?.currency;
   const contentId = props?.contentId;
   if (!contentId) return;
   const brandId = props?.brandId;
-  const serverKeys = window.__minglaAdViewContentKeys ??= {};
+  const serverKeys = (window.__minglaAdViewContentKeys ??= {});
   if (serverKeys[contentId]) return;
-  const eventId = props?.eventId ?? globalThis.crypto?.randomUUID?.() ??
+  const eventId =
+    props?.eventId ??
+    globalThis.crypto?.randomUUID?.() ??
     `view-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const viewKey = contentId;
   if (firedViewContentKeys.has(viewKey)) return;
   firedViewContentKeys.add(viewKey);
   serverKeys[contentId] = true;
   safePixel(() =>
-    window.fbq?.("track", "ViewContent", definedProps({
-      value,
-      currency,
-      content_type: "product",
-      content_ids: [contentId],
-      brand_id: brandId,
-    }), { eventID: eventId })
+    window.fbq?.(
+      "track",
+      "ViewContent",
+      definedProps({
+        value,
+        currency,
+        content_type: "product",
+        content_ids: [contentId],
+        brand_id: brandId,
+      }),
+      { eventID: eventId },
+    ),
   );
   safePixel(() =>
-    window.ttq?.track?.("ViewContent", definedProps({
-      value,
-      currency,
-      content_type: "product",
-      content_id: contentId,
-      brand_id: brandId,
-    }), { event_id: eventId })
+    window.ttq?.track?.(
+      "ViewContent",
+      definedProps({
+        value,
+        currency,
+        content_type: "product",
+        content_id: contentId,
+        brand_id: brandId,
+      }),
+      { event_id: eventId },
+    ),
   );
   safePixel(() =>
-    window.snaptr?.("track", "VIEW_CONTENT", definedProps({
-      price: value,
-      currency,
-      item_ids: [contentId],
-      brand_id: brandId,
-      transaction_id: eventId,
-      client_dedup_id: eventId,
-    }))
+    window.snaptr?.(
+      "track",
+      "VIEW_CONTENT",
+      definedProps({
+        price: value,
+        currency,
+        item_ids: [contentId],
+        brand_id: brandId,
+        transaction_id: eventId,
+        client_dedup_id: eventId,
+      }),
+    ),
   );
-  safePixel(() => window.rdt?.("track", "ViewContent", definedProps({ value, currency })));
+  safePixel(() =>
+    window.rdt?.("track", "ViewContent", definedProps({ value, currency })),
+  );
 }
 
 /**
@@ -897,13 +1005,18 @@ function fireAdConversion(
   const currency = props.currency;
   safePixel(() =>
     // toward #3697 F-4: free/RSVP = CompleteRegistration (must match server CAPI).
-    window.fbq?.("track", purchase ? "Purchase" : "CompleteRegistration", definedProps({
-      value,
-      currency,
-      content_type: "product",
-      content_ids: props.contentId ? [props.contentId] : undefined,
-      brand_id: props.brandId,
-    }), { eventID: eventId })
+    window.fbq?.(
+      "track",
+      purchase ? "Purchase" : "CompleteRegistration",
+      definedProps({
+        value,
+        currency,
+        content_type: "product",
+        content_ids: props.contentId ? [props.contentId] : undefined,
+        brand_id: props.brandId,
+      }),
+      { eventID: eventId },
+    ),
   );
   safePixel(() =>
     window.ttq?.track?.(
@@ -916,20 +1029,28 @@ function fireAdConversion(
         brand_id: props.brandId,
       }),
       { event_id: eventId },
-    )
+    ),
   );
   safePixel(() =>
-    window.snaptr?.("track", purchase ? "PURCHASE" : "SIGN_UP", definedProps({
-      price: value,
-      currency,
-      item_ids: props.contentId ? [props.contentId] : undefined,
-      brand_id: props.brandId,
-      transaction_id: eventId,
-      client_dedup_id: eventId,
-    }))
+    window.snaptr?.(
+      "track",
+      purchase ? "PURCHASE" : "SIGN_UP",
+      definedProps({
+        price: value,
+        currency,
+        item_ids: props.contentId ? [props.contentId] : undefined,
+        brand_id: props.brandId,
+        transaction_id: eventId,
+        client_dedup_id: eventId,
+      }),
+    ),
   );
   safePixel(() =>
-    window.rdt?.("track", purchase ? "Purchase" : "SignUp", definedProps({ value, currency, conversion_id: eventId }))
+    window.rdt?.(
+      "track",
+      purchase ? "Purchase" : "SignUp",
+      definedProps({ value, currency, conversion_id: eventId }),
+    ),
   );
 }
 
@@ -965,26 +1086,34 @@ export function fireAdInitiateCheckout(
         brand_id: props.brandId,
       }),
       { eventID: eventId },
-    )
+    ),
   );
   safePixel(() =>
-    window.ttq?.track?.("InitiateCheckout", definedProps({
-      value: props.value,
-      currency: props.currency,
-      content_type: "product",
-      content_id: props.contentId,
-      brand_id: props.brandId,
-    }), { event_id: eventId })
+    window.ttq?.track?.(
+      "InitiateCheckout",
+      definedProps({
+        value: props.value,
+        currency: props.currency,
+        content_type: "product",
+        content_id: props.contentId,
+        brand_id: props.brandId,
+      }),
+      { event_id: eventId },
+    ),
   );
   safePixel(() =>
-    window.snaptr?.("track", "START_CHECKOUT", definedProps({
-      price: props.value,
-      currency: props.currency,
-      item_ids: props.contentId ? [props.contentId] : undefined,
-      brand_id: props.brandId,
-      transaction_id: eventId,
-      client_dedup_id: eventId,
-    }))
+    window.snaptr?.(
+      "track",
+      "START_CHECKOUT",
+      definedProps({
+        price: props.value,
+        currency: props.currency,
+        item_ids: props.contentId ? [props.contentId] : undefined,
+        brand_id: props.brandId,
+        transaction_id: eventId,
+        client_dedup_id: eventId,
+      }),
+    ),
   );
 }
 
@@ -1028,7 +1157,10 @@ export function getStoredClickAttribution(): StoredAdClick {
     const stored = JSON.parse(
       window.localStorage.getItem(AD_CLICK_KEY) ?? "{}",
     ) as { clickId?: unknown; expiresAt?: unknown };
-    if (typeof stored.expiresAt !== "number" || stored.expiresAt <= Date.now()) {
+    if (
+      typeof stored.expiresAt !== "number" ||
+      stored.expiresAt <= Date.now()
+    ) {
       window.localStorage.removeItem(AD_CLICK_KEY);
       return { clickId: null };
     }
@@ -1095,9 +1227,10 @@ export function getStoredAdMatchData(): StoredAdMatchData {
     fbc: cookieValue("_fbc"),
     scid: cookieValue("_scid"),
     ttp: cookieValue("_ttp"),
-    clientUserAgent: typeof window.navigator.userAgent === "string"
-      ? window.navigator.userAgent.slice(0, 1024)
-      : null,
+    clientUserAgent:
+      typeof window.navigator.userAgent === "string"
+        ? window.navigator.userAgent.slice(0, 1024)
+        : null,
     trackingOptOut: false,
   };
 }
@@ -1110,7 +1243,11 @@ function postAttr(
 ): Promise<Response> {
   return fetch(`${base}/functions/v1/attribution-capture`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${anon}`,
+      apikey: anon,
+    },
     body: JSON.stringify(body),
     signal,
   });
@@ -1131,8 +1268,8 @@ export interface CaptureAdClickDest {
  * Fire-and-forget, timeout-bounded — never delays the landing render.
  *
  * toward #3697 / #3699 (TEST-MOD #2771): first-party touch may run before the
- * cookie banner (consent_state=pending). Reject blocks further capture. Vendor
- * pixels stay grant-gated.
+ * banner. Arrival-mode regions record it as granted because sharing is on until
+ * opt-out; opt-in regions keep it pending. Reject blocks further capture.
  */
 export function captureAdClickIds(dest?: CaptureAdClickDest): void {
   if (!hasWindow() || readStoredConsent() === "denied") return;
@@ -1153,7 +1290,11 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     const adId = params.get("ad_id");
     const utm: Record<string, string> = {};
     for (const k of [
-      "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term",
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_content",
+      "utm_term",
       // Meta expands this macro from META_URL_TAGS. Keep it first-party so a
       // live delivery audit can reconcile touches by placement.
       "placement",
@@ -1166,30 +1307,32 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     const network = fbclid
       ? "meta"
       : ttclid
-      ? "tiktok"
-      : sccid
-      ? "snapchat"
-      : rdtCid
-      ? "reddit"
-      : gclid
-      ? "google"
-      : utmSource === "facebook" || utmSource === "meta"
-      ? "meta"
-      : utmSource === "tiktok"
-      ? "tiktok"
-      : utmSource === "snapchat" || utmSource === "snap"
-      ? "snapchat"
-      : utmSource === "reddit"
-      ? "reddit"
-      : utmSource === "google"
-      ? "google"
-      : "other";
+        ? "tiktok"
+        : sccid
+          ? "snapchat"
+          : rdtCid
+            ? "reddit"
+            : gclid
+              ? "google"
+              : utmSource === "facebook" || utmSource === "meta"
+                ? "meta"
+                : utmSource === "tiktok"
+                  ? "tiktok"
+                  : utmSource === "snapchat" || utmSource === "snap"
+                    ? "snapchat"
+                    : utmSource === "reddit"
+                      ? "reddit"
+                      : utmSource === "google"
+                        ? "google"
+                        : "other";
     // Pre-consent: only ad / campaign signals (no organic referrer scraping).
     // After Accept: referrer host may enrich entry_source (ISSUE-855 PR-2).
     const consent = readStoredConsent();
     const refHost = consent === "granted" ? readReferrerHost() : null;
     const hasAdSignal =
-      external !== null || afCId !== null || mcId !== null ||
+      external !== null ||
+      afCId !== null ||
+      mcId !== null ||
       Object.keys(utm).length > 0;
     // First-touch storage and raw landing measurement are separate concerns.
     // Keep the original click_id for checkout attribution, but record every
@@ -1208,11 +1351,12 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     if (consent !== "granted" && !hasAdSignal) {
       return;
     }
-    const consentState = consent === "granted"
-      ? "granted"
-      : consent === "denied"
-      ? "rejected"
-      : "pending";
+    const consentState =
+      consent === "denied"
+        ? "rejected"
+        : adTrackingAllowed()
+          ? "granted"
+          : "pending";
     const landingTouchKey = JSON.stringify({
       search: window.location.search,
       pageType: dest?.pageType ?? null,
@@ -1291,8 +1435,11 @@ interface PostTouchInput {
 }
 
 /** POST a touch to attribution-capture; returns the server click_id (or null). */
-export async function postAttributionTouch(input: PostTouchInput): Promise<string | null> {
-  // toward #3697: first-party touch allowed pre-consent; Reject stops it.
+export async function postAttributionTouch(
+  input: PostTouchInput,
+): Promise<string | null> {
+  // toward #3697: first-party touch allowed before a banner choice; the region
+  // mode decides whether server sharing is granted now or remains pending.
   if (readStoredConsent() === "denied") return null;
   const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
   const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
@@ -1301,12 +1448,13 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
   const timer = setTimeout(() => aborter.abort(), ATTR_TIMEOUT_MS);
   try {
     const consent = readStoredConsent();
-    const consentState = input.consentState ??
-      (consent === "granted"
-        ? "granted"
-        : consent === "denied"
+    const consentState =
+      input.consentState ??
+      (consent === "denied"
         ? "rejected"
-        : "pending");
+        : adTrackingAllowed()
+          ? "granted"
+          : "pending");
     const res = await postAttr(
       base,
       anon,
@@ -1325,11 +1473,11 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
         utm: input.utm,
         dest: input.dest
           ? {
-            page_type: input.dest.pageType,
-            brand_slug: input.dest.brandSlug ?? undefined,
-            entity_slug: input.dest.entitySlug ?? undefined,
-            event_id: input.dest.eventId ?? undefined,
-          }
+              page_type: input.dest.pageType,
+              brand_slug: input.dest.brandSlug ?? undefined,
+              entity_slug: input.dest.entitySlug ?? undefined,
+              event_id: input.dest.eventId ?? undefined,
+            }
           : undefined,
       },
       aborter.signal,

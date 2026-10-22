@@ -164,8 +164,10 @@ test("B2 postAttributionConversion is a no-op — never posts conversion or PII"
 // ═══ B3 — click capture forwards click-id + UTM only; no-op with no ad signal ═
 // [TEST-MOD-APPROVED #3697] pre-consent first-party touch is allowed for ad signals.
 test("B3 captureAdClickIds forwards click-id/UTM only (no PII) and no-ops with no ad signal", async () => {
-  // (a) With an fbclid + utm, pre-consent first-party touch is allowed (#3697).
+  // (a) In an opt-in region, an fbclid + utm may be captured first-party but
+  // remains pending until the visitor grants server sharing (#3697).
   const withSignal = loadHarness(ALL_PIXELS, "?fbclid=ABC123&utm_source=meta&utm_campaign=summer");
+  withSignal.win.__minglaAdPixelConsentMode = "opt_in";
   await withSignal.wa.initWebAnalytics();
   withSignal.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   await new Promise((r) => setTimeout(r, 10));
