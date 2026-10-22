@@ -332,6 +332,9 @@ export function CampaignBuilderPage() {
     // Per-ratio pre-cropped variant slots (4:5 / 1:1 / 9:16 / 1.91:1) →
     // { source_url, storage_path } — probed server-side, rescues off-ratio masters.
     variants: {},
+    // #3697: TikTok-only is deliberately narrow and video-only. Pangle is an
+    // explicit operator choice, never a silent placement broadening.
+    tiktokPlacement: "tiktok",
     validation: null,
     creativeRow: null,
     aiGenerated: false,
@@ -1041,6 +1044,7 @@ export function CampaignBuilderPage() {
         budget,
         allocations,
         creative: creative.creativeRow?.id ?? creative.publicUrl ?? null,
+        tiktokPlacement: creative.tiktokPlacement,
         copy,
         specialAdCategory,
         name,
@@ -1054,6 +1058,7 @@ export function CampaignBuilderPage() {
       allocations,
       creative.creativeRow?.id,
       creative.publicUrl,
+      creative.tiktokPlacement,
       copy,
       specialAdCategory,
       name,
@@ -1120,6 +1125,11 @@ export function CampaignBuilderPage() {
         // creative_library_id_required), so an image must be recorded with
         // "Use this creative" before Next — never discovered at create.
         if (!creative.creativeRow) return false;
+        if (
+          fundedPlatforms.includes("tiktok") &&
+          creative.kind !== "video" &&
+          creative.tiktokPlacement !== "tiktok_pangle"
+        ) return false;
         // #3697 (design §9) — the Builder blocks a video that does not fit a
         // platform this campaign runs on; change platforms or pick another.
         // The server backstop is the ad-plan funding fit gate.
@@ -1180,6 +1190,13 @@ export function CampaignBuilderPage() {
           return "Confirm the brand's right to use this creative in paid ads.";
         if (!creative.creativeRow) {
           return "Press “Use this creative” to record it to the library before continuing.";
+        }
+        if (
+          fundedPlatforms.includes("tiktok") &&
+          creative.kind !== "video" &&
+          creative.tiktokPlacement !== "tiktok_pangle"
+        ) {
+          return "TikTok-only needs a video. Pick a video or choose TikTok + Pangle.";
         }
         if (
           creative.kind === "video" &&
@@ -1644,6 +1661,7 @@ export function CampaignBuilderPage() {
           aiGenerated: creative.aiGenerated,
           creativeLibraryId: creative.creativeRow?.id ?? null,
           brandName: dest.brand_name ?? null,
+          tiktokPlacement: creative.tiktokPlacement,
         },
         copy,
         specialAdCategory,

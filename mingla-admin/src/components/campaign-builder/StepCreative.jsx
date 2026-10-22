@@ -116,6 +116,10 @@ export function StepCreative({
   // The report/preview cover the channels that will actually build (funded);
   // before budget or when empty, fall back to the eligible set.
   const reportPlatforms = fundedPlatforms.length > 0 ? fundedPlatforms : eligiblePlatforms;
+  const runsTikTok = reportPlatforms.includes("tiktok");
+  const tiktokPlacement = creative.tiktokPlacement === "tiktok_pangle"
+    ? "tiktok_pangle"
+    : "tiktok";
 
   // #3697 — ready house videos plus this admin's in-flight uploads. A
   // permanently deleted creative never appears; archived ones stay out of new
@@ -470,6 +474,62 @@ export function StepCreative({
           </button>
         ))}
       </div>
+
+      {runsTikTok && (
+        <fieldset className="space-y-2 rounded-xl border border-[var(--gray-200)] p-3">
+          <legend className="px-1 text-sm font-semibold text-[var(--color-text-primary)]">
+            TikTok placement
+          </legend>
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            TikTok-only ads require video. Choose TikTok + Pangle to use an image.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              {
+                value: "tiktok",
+                label: "TikTok only",
+                detail: "Video only",
+              },
+              {
+                value: "tiktok_pangle",
+                label: "TikTok + Pangle",
+                detail: "Image or video",
+              },
+            ].map((option) => (
+              <label
+                key={option.value}
+                className={[
+                  "flex cursor-pointer items-start gap-2 rounded-lg border p-3",
+                  tiktokPlacement === option.value
+                    ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
+                    : "border-[var(--gray-200)]",
+                ].join(" ")}
+              >
+                <input
+                  type="radio"
+                  name="tiktok-placement"
+                  value={option.value}
+                  checked={tiktokPlacement === option.value}
+                  onChange={() => set({ tiktokPlacement: option.value })}
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-[var(--color-text-primary)]">
+                    {option.label}
+                  </span>
+                  <span className="block text-xs text-[var(--color-text-secondary)]">
+                    {option.detail}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {!isVideo && tiktokPlacement === "tiktok" && (
+            <AlertCard variant="error" title="TikTok-only needs a video">
+              Pick a video, choose TikTok + Pangle, or remove TikTok from this campaign.
+            </AlertCard>
+          )}
+        </fieldset>
+      )}
 
 
       {!isVideo && (
