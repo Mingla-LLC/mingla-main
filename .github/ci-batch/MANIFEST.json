@@ -22874,6 +22874,16 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
+      "workflow": "release-records.yml",
+      "ownerIssue": "#4084",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/release-records.yml",
+      "referenceFiles": [
+        "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts"
+      ],
+      "rationale": "#4084 adds the bounded web and edge deployment supersession authority; its regression suite parses this workflow and is declared here as the exact independently discovered consumer."
+    },
+    {
       "workflow": "security-definer-anon-grant-gate.yml",
       "ownerIssue": "#2148",
       "transition": "retained-live-provider",

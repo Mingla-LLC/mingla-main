@@ -20,6 +20,7 @@ export const MAX_ISSUES = 10;
 export const MAX_GUIDE_KEYS = 20;
 export const REMINDER_DAYS = 7;
 export const EDGE_SUPERSESSION_CONTEXT = "mingla/edge-deploy-supersession";
+export const WEB_SUPERSESSION_CONTEXT = "mingla/web-deploy-supersession";
 
 const ISSUE_URL = String.raw`https://github\.com/Mingla-LLC/mingla-main/issues/(\d{1,7})(?:[/?#][^\s,)]*)?`;
 const REF = String.raw`(?:#(\d{1,7})\b|${ISSUE_URL})`;
@@ -201,6 +202,71 @@ export function edgeSupersessionVerdict({ pr, paths, selected, compareStatus, cu
   return { ok: true, expected };
 }
 
+function newestVercelState(project, statuses, checks) {
+  const named = (name) => isVercelName(name, project);
+  const evidence = [
+    ...(statuses ?? []).filter((item) => named(item?.context)).map((item) => ({
+      at: Date.parse(item?.updated_at ?? item?.created_at ?? 0),
+      id: Number(item?.id ?? 0),
+      state: item?.state,
+    })),
+    ...(checks ?? []).filter((item) => named(item?.name)).map((item) => ({
+      at: Date.parse(item?.completed_at ?? item?.started_at ?? 0),
+      id: Number(item?.id ?? 0),
+      state: item?.status === "completed" ? item?.conclusion : "pending",
+    })),
+  ].sort((a, b) => (Number.isNaN(b.at) ? 0 : b.at) - (Number.isNaN(a.at) ? 0 : a.at) || b.id - a.id);
+  const state = evidence[0]?.state;
+  return state === "success" ? "ready"
+    : ["failure", "error", "timed_out", "cancelled"].includes(state) ? "failed"
+    : "pending";
+}
+
+/**
+ * Validate a later reviewed web deployment before it may complete an older
+ * release record. Both pull requests remain immutable evidence; the later
+ * one must carry [deploy], touch every original web project, have a newest
+ * exact Vercel READY result for each, and sit on the current main ancestry.
+ */
+export function webSupersessionVerdict({
+  targetPr,
+  targetPaths,
+  successorPr,
+  successorPaths,
+  successorSubject,
+  successorStatuses,
+  successorChecks,
+  targetToSuccessorStatus,
+  successorToCurrentStatus,
+  currentSha,
+  mainHeadSha,
+}) {
+  const validPr = (pr) => pr?.merged_at && pr?.base?.ref === "main"
+    && /^[0-9a-f]{40}$/.test(String(pr?.merge_commit_sha ?? ""));
+  if (!validPr(targetPr)) return { ok: false, reason: "target_not_merged_to_main" };
+  if (!validPr(successorPr)) return { ok: false, reason: "successor_not_merged_to_main" };
+  if (targetPr.merge_commit_sha === successorPr.merge_commit_sha) return { ok: false, reason: "same_merge" };
+  if (!/^[0-9a-f]{40}$/.test(String(currentSha ?? "")) || currentSha !== mainHeadSha) {
+    return { ok: false, reason: "not_exact_current_main" };
+  }
+  if (targetToSuccessorStatus !== "ahead") return { ok: false, reason: "successor_not_descendant" };
+  if (!new Set(["ahead", "identical"]).has(successorToCurrentStatus)) {
+    return { ok: false, reason: "current_main_not_descendant" };
+  }
+  if (!(Date.parse(successorPr.merged_at) > Date.parse(targetPr.merged_at))) {
+    return { ok: false, reason: "successor_not_later" };
+  }
+  if (!hasDeployMarker(successorSubject)) return { ok: false, reason: "successor_missing_deploy_marker" };
+  const expected = webProjects(targetPaths);
+  const successorProjects = webProjects(successorPaths);
+  if (expected.length === 0) return { ok: false, reason: "no_web_projects" };
+  const missing = expected.filter((project) => !successorProjects.includes(project));
+  if (missing.length > 0) return { ok: false, reason: "project_mismatch", expected, actual: successorProjects };
+  const notReady = expected.filter((project) => newestVercelState(project, successorStatuses, successorChecks) !== "ready");
+  if (notReady.length > 0) return { ok: false, reason: "successor_not_ready", notReady };
+  return { ok: true, expected };
+}
+
 /** Migration versions added by a pull request ([{filename, status}]). */
 export function migrationsAdded(files) {
   const out = new Set();
@@ -286,15 +352,21 @@ export function recordMissing(data) {
 function deployLine(data) {
   const parts = [];
   const web = data?.deploy?.web ?? {};
-  for (const project of WEB_PROJECTS) {
-    const state = web[project];
-    if (!state) continue;
-    parts.push(
-      state === "ready" ? `${project} READY`
-      : state === "not_deployed" ? `${project} not deployed: the title has no [deploy]`
-      : state === "failed" ? `${project} failed`
-      : `${project} pending`,
-    );
+  const projects = WEB_PROJECTS.filter((project) => web[project]);
+  if (data?.web_supersession?.url && projects.length > 0 && data.web_supersession.project_count === projects.length) {
+    const original = projects.map((project) => `${project} ${visible(data?.web_original_state?.[project] ?? "unknown", 20)}`).join(", ");
+    parts.push(`${projects.join(", ")} READY by later reviewed PR #${data.web_supersession.successor_pr} run ${visible(data.web_supersession.url, 300)} (original merge: ${original})`);
+  } else {
+    for (const project of WEB_PROJECTS) {
+      const state = web[project];
+      if (!state) continue;
+      parts.push(
+        state === "ready" ? `${project} READY`
+        : state === "not_deployed" ? `${project} not deployed: the title has no [deploy]`
+        : state === "failed" ? `${project} failed`
+        : `${project} pending`,
+      );
+    }
   }
   const edge = data?.deploy?.edge ?? "none";
   const names = (data?.edge_functions ?? []).map((n) => visible(n, 80)).join(", ");
@@ -327,6 +399,30 @@ export function edgeSupersessionStatus(statuses) {
   };
 }
 
+/** The newest valid success attestation written by the reviewed web lane. */
+export function webSupersessionStatus(statuses) {
+  const exactUrl = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/actions\/runs\/(\d+)$/;
+  const exactDescription = /^Later PR (\d+) deployed all (\d+) changed web projects$/;
+  const valid = (statuses ?? []).filter((status) => {
+    if (status?.context !== WEB_SUPERSESSION_CONTEXT || status?.state !== "success") return false;
+    const url = exactUrl.exec(String(status?.target_url ?? ""));
+    const description = exactDescription.exec(String(status?.description ?? ""));
+    return Boolean(url && description && Number(description[1]) > 0 && Number(description[2]) > 0);
+  });
+  const newest = valid.sort((a, b) => Date.parse(b?.created_at ?? 0) - Date.parse(a?.created_at ?? 0) || Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
+  if (!newest) return null;
+  const url = exactUrl.exec(newest.target_url);
+  const description = exactDescription.exec(newest.description);
+  return {
+    run_id: Number(url[1]),
+    successor_pr: Number(description[1]),
+    project_count: Number(description[2]),
+    url: newest.target_url,
+    description: newest.description,
+    at: newest.created_at ?? null,
+  };
+}
+
 /** Original merge-SHA edge result before any later supersession. */
 export function originalEdgeDeployState(edge, edgeRuns) {
   if (edge.some((name) => name.startsWith("brand-site-"))) return "manual";
@@ -345,28 +441,21 @@ export function isVercelName(name, project) {
   return v === `Vercel \u2013 ${project}` || v === `Vercel - ${project}`;
 }
 
+/** Original merge-SHA web results before any later supersession. */
+export function originalWebDeployState({ web, marker, statuses, checks }) {
+  const out = {};
+  for (const project of web) out[project] = marker
+    ? newestVercelState(project, statuses, checks)
+    : "not_deployed";
+  return out;
+}
+
 /** The deploy state of each web project and of the edge functions. */
 export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
-  const out = { web: {}, edge: "none" };
-  for (const project of web) {
-    if (!marker) {
-      out.web[project] = "not_deployed";
-      continue;
-    }
-    // Only Vercel's own report for this project counts: a status context or
-    // check run named exactly "Vercel – <project>" (en dash, or the hyphen
-    // form). A CI job that merely mentions the project never stands in for
-    // the deploy. Of several check runs with that name, the newest counts.
-    const named = (n) => isVercelName(n, project);
-    const runs = checks.filter((c) => named(c?.name))
-      .sort((a, b) => Date.parse(b?.started_at ?? 0) - Date.parse(a?.started_at ?? 0) || Number(b?.id ?? 0) - Number(a?.id ?? 0));
-    const seen = [
-      ...statuses.filter((s) => named(s?.context)).map((s) => s.state),
-      ...runs.slice(0, 1).map((c) => (c.status === "completed" ? c.conclusion : "pending")),
-    ];
-    out.web[project] = seen.includes("success") ? "ready"
-      : seen.some((s) => s === "failure" || s === "error" || s === "timed_out" || s === "cancelled") ? "failed"
-      : "pending";
+  const out = { web: originalWebDeployState({ web, marker, statuses, checks }), edge: "none" };
+  const webSupersession = webSupersessionStatus(statuses);
+  if (webSupersession?.project_count === web.length) {
+    for (const project of web) out.web[project] = "ready";
   }
   out.edge = originalEdgeDeployState(edge, edgeRuns);
   if (["failed", "pending"].includes(out.edge) && edgeSupersessionStatus(statuses)) out.edge = "deployed";

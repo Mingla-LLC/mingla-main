@@ -20,6 +20,7 @@ import {
   parseFeatureGuide,
   parseIssueRefs,
   originalEdgeDeployState,
+  originalWebDeployState,
   readRecordData,
   recordCommentsFor,
   RECORD_MARKER_PREFIX,
@@ -27,6 +28,7 @@ import {
   renderRecord,
   REPO,
   visible,
+  webSupersessionStatus,
   webProjects,
 } from "./lib.mjs";
 
@@ -472,6 +474,8 @@ async function collect(number) {
     web_projects: web,
     deploy_marker: marker,
     deploy: deployState({ web, edge, marker, statuses, checks, edgeRuns }),
+    web_original_state: originalWebDeployState({ web, marker, statuses, checks }),
+    web_supersession: webSupersessionStatus(statuses),
     edge_original_state: originalEdgeDeployState(edge, edgeRuns),
     edge_supersession: edgeSupersessionStatus(statuses),
     feature_guide: guide.kind === "keys" ? guide.keys : guide.kind === "none" ? [] : null,

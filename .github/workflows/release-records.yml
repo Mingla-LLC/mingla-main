@@ -44,6 +44,10 @@ on:
         description: Pull request number to refresh
         required: true
         type: number
+      superseding_web_pr:
+        description: Later merged [deploy] PR whose READY Vercel evidence supersedes this PR
+        required: false
+        type: number
 
 permissions:
   contents: read
@@ -79,7 +83,7 @@ jobs:
 
   release-record:
     name: Release record
-    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'push' || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations' || github.event.context == 'mingla/edge-deploy-supersession')) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'push' || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations' || github.event.context == 'mingla/edge-deploy-supersession' || github.event.context == 'mingla/web-deploy-supersession')) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
     runs-on: ubuntu-latest
     # One queue per merge commit: the push to main, the Vercel statuses, the
     # migrations status and the edge deploy run of one merge never write its
@@ -94,7 +98,7 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
-      statuses: read
+      statuses: write
       checks: read
       actions: read
     steps:
@@ -109,6 +113,13 @@ jobs:
           node-version: '22'
         env:
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Attest a superseding web deployment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.superseding_web_pr != 0 }}
+        run: node .github/scripts/release-records/attest-web-deploy.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINGLA_TARGET_PR: ${{ inputs.pr }}
+          MINGLA_SUPERSEDING_WEB_PR: ${{ inputs.superseding_web_pr }}
       - name: Write or refresh the release record
         run: node .github/scripts/release-records/record.mjs
         env:
