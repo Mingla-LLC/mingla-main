@@ -1278,7 +1278,8 @@ const DENIED_FULL_SHA256 = [
   // after adding the value-blind preflight-only dispatch. The lane remains
   // outside PR cancellation, keeps the same concurrency policy, and still
   // delegates config materialization to the wrapper's locked deploy window.
-  // [TEST-MOD-APPROVED #4084] Re-derived after adding the guarded exact-PR
+  // [TEST-MOD-APPROVED #4084] The former byte digest became false when the
+  // reviewed deploy workflow gained its guarded exact-PR supersession path. Re-derived after adding the guarded exact-PR
   // supersession input and post-deploy attestation. The denied concurrency
   // classification and its adversarial reversions are unchanged.
   "bb873da6e52da751278c7f37538bc240446704c591fac53a3f78bb641b88de7f",
