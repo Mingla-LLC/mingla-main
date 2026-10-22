@@ -1,6 +1,7 @@
 /** Issue #3697 — translate the reviewed audience stage plan into provider ad sets. */
 
 import type { CreateAdSetInput, Platform } from "./adChannelCore.ts";
+import { SNAPCHAT_FREQUENCY_CAP_GOALS } from "./snapchat.ts";
 import type {
   AdStage,
   AdStagePlan,
@@ -50,14 +51,6 @@ export function targetingForStage(
       ...baseTargeting,
       ...(include.length > 0 ? { segment_include_ids: include } : {}),
       segment_exclude_ids: exclude,
-      ...(stage.frequencyCap
-        ? {
-          frequency_cap: {
-            impressions: stage.frequencyCap.impressions,
-            days: stage.frequencyCap.days,
-          },
-        }
-        : {}),
     };
   }
   if (platform === "tiktok") {
@@ -130,6 +123,12 @@ export function buildStagedAdSetPlan(input: {
       ...(input.baseAdSet.endTime ? { endTime: input.baseAdSet.endTime } : {}),
       ...(input.baseAdSet.validateOnly !== undefined
         ? { validateOnly: input.baseAdSet.validateOnly }
+        : {}),
+      ...(input.platform === "snapchat" && stage.frequencyCap &&
+          SNAPCHAT_FREQUENCY_CAP_GOALS.includes(
+            input.baseAdSet.optimizationGoal,
+          )
+        ? { frequencyCap: stage.frequencyCap }
         : {}),
     },
     audienceCodes: [...stage.audienceCodes],

@@ -401,6 +401,8 @@ export interface CreateAdSetInput {
   targeting: Record<string, unknown>;
   /** Provider-native promoted object (currently Meta app acquisition). */
   promotedObject?: Record<string, unknown>;
+  /** Provider-native impression cap, only when that goal supports it. */
+  frequencyCap?: { impressions: number; days: number };
   validateOnly?: boolean;
 }
 

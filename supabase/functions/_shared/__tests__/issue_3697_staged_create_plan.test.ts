@@ -99,7 +99,6 @@ Deno.test("#3697 provider stage payloads all exclude event buyers", () => {
       countries: ["NG"],
       segment_include_ids: ["checkout"],
       segment_exclude_ids: ["event-buyers"],
-      frequency_cap: { impressions: 3, days: 7 },
     },
   );
   assertEquals(
@@ -110,6 +109,37 @@ Deno.test("#3697 provider stage payloads all exclude event buyers", () => {
       excluded_audience_ids: ["event-buyers"],
     },
   );
+});
+
+Deno.test("#3697 Snap frequency cap appears only for documented compatible goals", () => {
+  const snapPlan: AdStagePlan = { ...plan, platform: "snapchat" };
+  const impressions = buildStagedAdSetPlan({
+    platform: "snapchat",
+    stagePlan: snapPlan,
+    budgetMode: "daily",
+    baseAdSet: {
+      namePrefix: "Snap compatible",
+      optimizationGoal: "IMPRESSIONS",
+      billingEvent: "IMPRESSION",
+      targeting: { countries: ["NG"] },
+    },
+  });
+  assertEquals(impressions[1].adSet.frequencyCap, {
+    impressions: 3,
+    days: 7,
+  });
+  const traffic = buildStagedAdSetPlan({
+    platform: "snapchat",
+    stagePlan: snapPlan,
+    budgetMode: "daily",
+    baseAdSet: {
+      namePrefix: "Snap traffic",
+      optimizationGoal: "PIXEL_PAGE_VIEW",
+      billingEvent: "IMPRESSION",
+      targeting: { countries: ["NG"] },
+    },
+  });
+  assertEquals(traffic[1].adSet.frequencyCap, undefined);
 });
 
 Deno.test("#3697 staged create fails closed without buyer exclusion", () => {
