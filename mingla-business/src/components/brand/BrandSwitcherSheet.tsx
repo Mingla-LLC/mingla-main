@@ -11,6 +11,8 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
+import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
+import { formatExactFollowers } from "@mingla/offering-rendering";
 import {
   useCurrentBrandStore,
   type Brand,
@@ -42,6 +44,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
 }) => {
   const brandList = useBrandListState();
   const brands = brandList.brands;
+  const followerCounts = useBrandFollowerCounts(brands.map((brand) => brand.id));
   const { user } = useAuth();
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
@@ -115,7 +118,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                loading flag even if the status machine regresses again. */}
             {brandList.status === "error" && brands.length === 0 ? (
               <View style={styles.loadingState}>
-                <Text style={styles.emptyText}>Couldn't load your brands.</Text>
+                <Text style={styles.emptyText}>Couldn’t load your brands.</Text>
               </View>
             ) : brands.length === 0 && brandList.isLoading ? (
               <View style={styles.loadingState}>
@@ -129,6 +132,16 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
               >
                 {brands.map((brand) => {
                   const isActive = currentBrandId === brand.id;
+                  const followerTotal = followerCounts.data?.[brand.id];
+                  const followerLine =
+                    typeof followerTotal === "number"
+                      ? formatExactFollowers(followerTotal)
+                      : null;
+                  const subline = isActive
+                    ? followerLine === null
+                      ? "Current brand"
+                      : `${followerLine} · Current brand`
+                    : followerLine;
                   return (
                     <View key={brand.id} style={styles.brandRowOuter}>
                       <Pressable
@@ -150,9 +163,9 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           <Text style={styles.brandName} numberOfLines={1}>
                             {brand.displayName}
                           </Text>
-                          {isActive ? (
+                          {subline !== null ? (
                             <Text style={styles.brandSub} numberOfLines={1}>
-                              Current brand
+                              {subline}
                             </Text>
                           ) : null}
                         </View>

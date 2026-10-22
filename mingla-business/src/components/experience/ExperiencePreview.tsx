@@ -105,6 +105,10 @@ export interface ExperiencePreviewProps {
   availabilityBlock?: React.ReactNode | null;
   /** Brand "View" tap → brand page (route-owned). */
   onViewBrand?: () => void;
+  /** #3682 — route-owned Follow control and public aggregate. */
+  presentedByFollow?: React.ReactNode;
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
   /** Floating-bar clearance (phone). */
   contentBottomInset?: number;
   /** Native safe-area top inset for the chrome. */
@@ -205,6 +209,9 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
   reserveControl,
   availabilityBlock = null,
   onViewBrand,
+  presentedByFollow,
+  presentedByFollowerCount,
+  presentedByFollowerCountLoading = false,
   contentBottomInset = 0,
   safeAreaTop = 0,
   socialProof = null,
@@ -235,6 +242,9 @@ export const ExperiencePreview: React.FC<ExperiencePreviewProps> = ({
         reserveControl={reserveControl}
         availabilityBlock={availabilityBlock}
         onViewBrand={onViewBrand}
+        presentedByFollow={presentedByFollow}
+        presentedByFollowerCount={presentedByFollowerCount}
+        presentedByFollowerCountLoading={presentedByFollowerCountLoading}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
         socialProof={socialProof}
@@ -275,6 +285,9 @@ const FoundationExperiencePreview: React.FC<{
   reserveControl?: React.ReactNode;
   availabilityBlock?: React.ReactNode | null;
   onViewBrand?: () => void;
+  presentedByFollow?: React.ReactNode;
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading: boolean;
   contentBottomInset: number;
   safeAreaTop: number;
   /** ORCH-1339 — route-fetched social proof for the shared body's momentum unit. */
@@ -298,6 +311,9 @@ const FoundationExperiencePreview: React.FC<{
   reserveControl,
   availabilityBlock = null,
   onViewBrand,
+  presentedByFollow,
+  presentedByFollowerCount,
+  presentedByFollowerCountLoading,
   contentBottomInset,
   safeAreaTop,
   socialProof = null,
@@ -404,6 +420,9 @@ const FoundationExperiencePreview: React.FC<{
         palette={palette}
         theme={theme}
         callbacks={{ onReserve: () => {}, onViewBrand }}
+        presentedByFollow={presentedByFollow}
+        presentedByFollowerCount={presentedByFollowerCount}
+        presentedByFollowerCountLoading={presentedByFollowerCountLoading}
         variant={isDesktop ? "desktop" : "phone"}
         formatStopTime={(iso: string | null) => formatStopTime(iso)}
         availabilityBlock={availabilityBlock}

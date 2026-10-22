@@ -36,6 +36,8 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
+import { useBrandFollowerCounts } from "../../src/hooks/useBrandFollowerCount";
+import { formatExactFollowers } from "@mingla/offering-rendering";
 import { hasStoredSupabaseWebSession } from "../../src/utils/storedWebSession";
 import { isAccountAuthWarming } from "../../src/utils/coldLoadAuthGates";
 // ORCH-1052 hotfix — surface the partner earnings entry on the Account tab
@@ -85,6 +87,7 @@ export default function AccountTab(): React.ReactElement {
   const { user, signOut, lastRecoveryEvent, clearLastRecoveryEvent } = useAuth();
   const brandList = useBrandListState();
   const brands = brandList.brands;
+  const followerCounts = useBrandFollowerCounts(brands.map((brand) => brand.id));
 
   // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
   // On a refresh/bookmark of /account the 3s auth bootstrap can time out and
@@ -326,6 +329,9 @@ export default function AccountTab(): React.ReactElement {
                     </Text>
                     <Text style={styles.brandEventCount} numberOfLines={1}>
                       {formatBrandEventCount(brand.stats.events)}
+                      {typeof followerCounts.data?.[brand.id] === "number"
+                        ? ` · ${formatExactFollowers(followerCounts.data[brand.id])}`
+                        : ""}
                     </Text>
                   </View>
                   <Icon name="chevR" size={16} color={textTokens.tertiary} />

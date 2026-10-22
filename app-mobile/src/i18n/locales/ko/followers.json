@@ -1,0 +1,17 @@
+{
+  "first": "첫 번째 팔로워가 되어 보세요",
+  "count_zero": "팔로워 {{formatted}}명",
+  "count_one": "팔로워 {{formatted}}명",
+  "count_two": "팔로워 {{formatted}}명",
+  "count_few": "팔로워 {{formatted}}명",
+  "count_many": "팔로워 {{formatted}}명",
+  "count_other": "팔로워 {{formatted}}명",
+  "a11y_none": "아직 팔로워가 없습니다",
+  "a11y_exact_zero": "팔로워 {{count}}명",
+  "a11y_exact_one": "팔로워 {{count}}명",
+  "a11y_exact_two": "팔로워 {{count}}명",
+  "a11y_exact_few": "팔로워 {{count}}명",
+  "a11y_exact_many": "팔로워 {{count}}명",
+  "a11y_exact_other": "팔로워 {{count}}명",
+  "a11y_approx": "약 {{formatted}}명의 팔로워"
+}

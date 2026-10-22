@@ -58,6 +58,20 @@ const I3281_BLOCK = [
 ].join("\n");
 const I3281_NAME = "pg_experience_slot_availability(";
 
+// #3682 — fourth binding amendment. The two aggregate-only count readers sit
+// directly after the #3281 public slot reader. The frozen #2986 count header is
+// deliberately unchanged.
+const I3682_ANCHOR = I3281_SIGNATURE;
+const I3682_SIGNATURES = [
+  "get_brand_follower_count(p_brand_id uuid)",
+  "get_brand_follower_counts(p_brand_ids uuid[])",
+];
+const I3682_BLOCK = [
+  "# #3682: aggregate-only brand follower counts for public brand and offering pages; one bigint or (brand_id, follower_count) rows for live brands, never a user id; batch capped at 100 ids.",
+  ...I3682_SIGNATURES,
+].join("\n");
+const I3682_NAMES = ["get_brand_follower_count(", "get_brand_follower_counts("];
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -100,8 +114,27 @@ const expectedAfter3281 = (base) => {
   return base.replace(`${I3281_ANCHOR}\n`, `${I3281_ANCHOR}\n${I3281_BLOCK}\n`);
 };
 
+const expectedAfter3682 = (base) => {
+  if (
+    I3682_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I3682_ANCHOR}\n${I3682_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (
+    I3682_NAMES.some((name) => base.includes(name)) ||
+    base.includes("# #3682: aggregate-only brand follower counts")
+  ) {
+    throw new Error("base contains a partial or lookalike #3682 follower-count reader set");
+  }
+  if (countExactLine(base, I3682_ANCHOR) !== 1) {
+    throw new Error("base #3682 insertion anchor is absent or duplicated");
+  }
+  return base.replace(`${I3682_ANCHOR}\n`, `${I3682_ANCHOR}\n${I3682_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter3281(expectedAfter3426(expectedAfter2986(base)));
+  expectedAfter3682(expectedAfter3281(expectedAfter3426(expectedAfter2986(base))));
 
 export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   const failures = [];
@@ -113,10 +146,15 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader plus the exact #3281 R3 slot reader",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, and #3682 aggregate follower-count readers",
     );
   }
-  for (const signature of [...SIGNATURES, I3426_SIGNATURE, I3281_SIGNATURE]) {
+  for (const signature of [
+    ...SIGNATURES,
+    I3426_SIGNATURE,
+    I3281_SIGNATURE,
+    ...I3682_SIGNATURES,
+  ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
   if (countExactLine(workflow, LIVE_GATE_LINE) !== 1) failures.push("the live ORCH-1392 anon-definer gate was removed, duplicated, or bypassed");
@@ -194,16 +232,25 @@ const runSelfTest = () => {
     ["#3281 lookalike overload", `${head}pg_experience_slot_availability(p_event_id uuid)\n`, workflow, false],
     ["#3281 moved away from its anchor", head.replace(`${I3281_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3281_BLOCK}\n`), workflow, false],
     ["#3281 plus a forged neighbour", head.replace(`${I3281_BLOCK}\n`, `${I3281_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    // #3682 — the fourth amendment is exactly two aggregate-only readers and
+    // their one product-decision comment.
+    ["#3682 block missing", head.replace(`${I3682_BLOCK}\n`, ""), workflow, false],
+    ["#3682 comment missing", head.replace(`${I3682_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#3682 comment substituted", head.replace("# #3682: aggregate-only brand follower counts", "# #3682: approved somehow"), workflow, false],
+    ["#3682 signature changed", head.replace(I3682_SIGNATURES[0], "get_brand_follower_count(brand_id uuid)"), workflow, false],
+    ["#3682 lookalike overload", `${head}get_brand_follower_count(p_brand_id uuid, p_debug boolean)\n`, workflow, false],
+    ["#3682 moved away from its anchor", head.replace(`${I3682_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3682_BLOCK}\n`), workflow, false],
+    ["#3682 plus a forged neighbour", head.replace(`${I3682_BLOCK}\n`, `${I3682_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
   ];
   for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all three amendments, the ONLY accepted head is that
+  // Once a base carries all four amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
-    throw new Error("self-test settled base with all three amendments failed");
+    throw new Error("self-test settled base with all four amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n`, workflow }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -220,7 +267,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + frozen #2117 live gate PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3682 aggregate follower-count readers + frozen #2117 live gate PASS\n",
   );
 };
 

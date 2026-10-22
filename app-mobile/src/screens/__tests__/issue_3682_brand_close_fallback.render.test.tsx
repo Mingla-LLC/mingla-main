@@ -44,6 +44,7 @@ jest.mock("react-native", () => {
   const React = require("react");
   const host =
     (name: string) =>
+    // eslint-disable-next-line react/display-name
     (props: { children?: unknown }) =>
       React.createElement(name, props, props.children ?? null);
   return {
@@ -116,6 +117,9 @@ jest.mock("../../hooks/useBrandFollow", () => ({
     mutedUntil: null,
     follow: () => Promise.resolve(),
   }),
+}));
+jest.mock("../../hooks/useBrandFollowerCount", () => ({
+  useBrandFollowerCount: () => ({ data: 1204, isError: false, isPending: false }),
 }));
 jest.mock("../../hooks/useBrandOfferingSections", () => ({
   useBrandHappeningNow: () => ({ data: [] }),

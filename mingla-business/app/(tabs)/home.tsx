@@ -46,6 +46,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { AnalyticsHomeTile } from "../../src/components/home/AnalyticsHomeTile";
+import { FollowersHomeTile } from "../../src/components/home/FollowersHomeTile";
 import { HomeAdsSection } from "../../src/components/home/HomeAdsSection";
 import {
   LiveOfferingCard,
@@ -1035,6 +1036,9 @@ export default function HomeTab(): React.ReactElement {
                     onRetry={() => void analyticsPreview.refetch()}
                   />
                 </View>
+                <View style={styles.desktopKpiCell}>
+                  <FollowersHomeTile brandId={currentBrand.id} />
+                </View>
               </View>
 
               {renderLiveSection()}
@@ -1158,6 +1162,7 @@ export default function HomeTab(): React.ReactElement {
                 onPress={handleOpenAnalytics}
                 onRetry={() => void analyticsPreview.refetch()}
               />
+              <FollowersHomeTile brandId={currentBrand.id} />
             </View>
           </View>
           {renderLiveSection()}

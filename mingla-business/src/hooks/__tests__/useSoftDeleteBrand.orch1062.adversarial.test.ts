@@ -79,7 +79,7 @@ const mkBrand = (id: string): unknown => ({
   displayName: id,
   slug: id,
   role: "owner",
-  stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+  stats: { events: 0, rev: 0, rev7d: 0, attendees: 0 },
   currentLiveEvent: null,
 });
 const mkAccount = (defaultBrandId: string | null): unknown => ({

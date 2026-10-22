@@ -134,7 +134,7 @@ export function buildConsumerTripOfferingBrand(
   detail: ConsumerTripDetail,
 ): TripOfferingBrand {
   return {
-    id: detail.tripId,
+    id: detail.brandId,
     slug: detail.brandSlug,
     name: detail.brandName,
     bio: null,

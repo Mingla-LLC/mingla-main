@@ -1,0 +1,17 @@
+{
+  "first": "Soyez la première personne à suivre",
+  "count_zero": "{{formatted}} abonnés",
+  "count_one": "{{formatted}} abonné",
+  "count_two": "{{formatted}} abonnés",
+  "count_few": "{{formatted}} abonnés",
+  "count_many": "{{formatted}} abonnés",
+  "count_other": "{{formatted}} abonnés",
+  "a11y_none": "Aucun abonné pour le moment",
+  "a11y_exact_zero": "{{count}} abonné",
+  "a11y_exact_one": "{{count}} abonné",
+  "a11y_exact_two": "{{count}} abonnés",
+  "a11y_exact_few": "{{count}} abonnés",
+  "a11y_exact_many": "{{count}} abonnés",
+  "a11y_exact_other": "{{count}} abonnés",
+  "a11y_approx": "environ {{formatted}} abonnés"
+}

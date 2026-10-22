@@ -67,6 +67,7 @@ import {
   ParallaxCoverShell,
   useResponsiveLayout,
   TripOfferingBody,
+  FollowerCountLine,
   TripOfferingPaymentChoice,
   normalizeCityCountry,
   type SocialProofSummary,
@@ -191,6 +192,10 @@ export interface TripPreviewProps {
   reserveControl?: React.ReactNode;
   /** Brand "View" tap → brand page (route-owned). */
   onViewBrand?: () => void;
+  /** #3682 — route-owned Follow control and public aggregate. */
+  presentedByFollow?: React.ReactNode;
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
   /** Floating-bar clearance (phone). */
   contentBottomInset?: number;
   /** Native safe-area top inset for the chrome. */
@@ -275,6 +280,9 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   onReserve,
   reserveControl,
   onViewBrand,
+  presentedByFollow,
+  presentedByFollowerCount,
+  presentedByFollowerCountLoading = false,
   contentBottomInset = 0,
   safeAreaTop = 0,
   socialProof = null,
@@ -320,6 +328,9 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
         onReserve={onReserve}
         reserveControl={reserveControl}
         onViewBrand={onViewBrand}
+        presentedByFollow={presentedByFollow}
+        presentedByFollowerCount={presentedByFollowerCount}
+        presentedByFollowerCountLoading={presentedByFollowerCountLoading}
         contentBottomInset={contentBottomInset}
         safeAreaTop={safeAreaTop}
         socialProof={socialProof}
@@ -373,6 +384,9 @@ const FoundationTripPreview: React.FC<{
   onReserve: (choice?: TripPaymentPlanChoice, lines?: TripReserveLine[]) => void;
   reserveControl?: React.ReactNode;
   onViewBrand?: () => void;
+  presentedByFollow?: React.ReactNode;
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading: boolean;
   contentBottomInset: number;
   safeAreaTop: number;
   /** ORCH-1339 — route-fetched social proof for the shared body's momentum unit. */
@@ -406,6 +420,9 @@ const FoundationTripPreview: React.FC<{
   onReserve,
   reserveControl,
   onViewBrand,
+  presentedByFollow,
+  presentedByFollowerCount,
+  presentedByFollowerCountLoading,
   contentBottomInset,
   safeAreaTop,
   socialProof = null,
@@ -461,6 +478,13 @@ const FoundationTripPreview: React.FC<{
         <Text style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}>
           {brand.name}
         </Text>
+        <FollowerCountLine
+          count={presentedByFollowerCount}
+          loading={presentedByFollowerCountLoading}
+          palette={palette}
+          variant="presentedBy"
+          testID="trip-preview-brand-follower-count"
+        />
       </View>
       <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
     </Pressable>
@@ -525,6 +549,9 @@ const FoundationTripPreview: React.FC<{
         theme={theme}
         state={offeringState}
         callbacks={callbacks}
+        presentedByFollow={presentedByFollow}
+        presentedByFollowerCount={presentedByFollowerCount}
+        presentedByFollowerCountLoading={presentedByFollowerCountLoading}
         variant={isDesktop ? "desktop" : "phone"}
         paymentPlanChoice={paymentPlanChoice}
         onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}

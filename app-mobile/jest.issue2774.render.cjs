@@ -61,5 +61,8 @@ module.exports = {
     // issue #2107 — mounts the Explorer welcome video, runs a restart whose
     // reloadAsync fails, and proves the released player is never touched again.
     "**/__tests__/issue_2107_welcome_video_released_on_restart.render.test.tsx",
+    // issue #3682 — the consumer app updates the public aggregate immediately
+    // on follow and restores the server count if the write fails.
+    "**/__tests__/issue_3682_follower_count_optimistic.render.test.tsx",
   ],
 };

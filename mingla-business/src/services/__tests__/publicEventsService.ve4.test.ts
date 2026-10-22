@@ -171,7 +171,7 @@ describe("Ve4 public brand lookup", () => {
       slug: "brand-3",
       claimStatus: "verified",
       city: "London",
-      stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+      stats: { events: 0, rev: 0, rev7d: 0, attendees: 0 },
     });
     expect(detail?.venue).toMatchObject({
       isVerifiedVenue: true,

@@ -1,0 +1,17 @@
+{
+  "first": "Γίνε το πρώτο άτομο που ακολουθεί",
+  "count_zero": "{{formatted}} ακόλουθοι",
+  "count_one": "{{formatted}} ακόλουθος",
+  "count_two": "{{formatted}} ακόλουθοι",
+  "count_few": "{{formatted}} ακόλουθοι",
+  "count_many": "{{formatted}} ακόλουθοι",
+  "count_other": "{{formatted}} ακόλουθοι",
+  "a11y_none": "Δεν υπάρχουν ακόμη ακόλουθοι",
+  "a11y_exact_zero": "{{count}} ακόλουθοι",
+  "a11y_exact_one": "{{count}} ακόλουθος",
+  "a11y_exact_two": "{{count}} ακόλουθοι",
+  "a11y_exact_few": "{{count}} ακόλουθοι",
+  "a11y_exact_many": "{{count}} ακόλουθοι",
+  "a11y_exact_other": "{{count}} ακόλουθοι",
+  "a11y_approx": "περίπου {{formatted}} ακόλουθοι"
+}

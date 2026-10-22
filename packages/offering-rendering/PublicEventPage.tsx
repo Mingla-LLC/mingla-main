@@ -67,6 +67,7 @@ import {
 } from "./offeringCta";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { EventCoverMedia } from "./EventCoverMedia";
+import { FollowerCountLine } from "./FollowerCountLine";
 // ORCH-1138 A1 — createThemePalette + the ThemePalette type + the color-math
 // helpers + resolveOfferingSurface were EXTRACTED VERBATIM into ./themePalette
 // (behavior-neutral) so all four public offering pages share one theming engine.
@@ -212,6 +213,9 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   brand,
   viewerRole,
   callbacks,
+  brandFollowerCount,
+  brandFollowerCountLoading = false,
+  brandFollowerCountLabels,
   useDirectionCIdentity = false,
   hideFloatingChrome = false,
   theme,
@@ -249,6 +253,9 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           brand={brand}
           variant={variant === "password-gate" ? "published" : variant}
           callbacks={callbacks}
+          brandFollowerCount={brandFollowerCount}
+          brandFollowerCountLoading={brandFollowerCountLoading}
+          brandFollowerCountLabels={brandFollowerCountLabels}
           theme={resolvedTheme}
           useDirectionCIdentity={useDirectionCIdentity}
           ScrollComponent={ScrollComponent}
@@ -314,6 +321,9 @@ interface PublishedBodyProps {
   brand: PublicEventPageProps["brand"];
   variant: "published" | "pre-sale" | "sold-out" | "past";
   callbacks: PublicEventPageProps["callbacks"];
+  brandFollowerCount: PublicEventPageProps["brandFollowerCount"];
+  brandFollowerCountLoading: boolean;
+  brandFollowerCountLabels: PublicEventPageProps["brandFollowerCountLabels"];
   theme: ResolvedTheme;
   useDirectionCIdentity: boolean;
   // META-ORCH-0991 (sheet rework — Bug 2): the scroll host (RN ScrollView by
@@ -329,6 +339,9 @@ const PublishedBody = ({
   brand,
   variant,
   callbacks,
+  brandFollowerCount,
+  brandFollowerCountLoading,
+  brandFollowerCountLabels,
   theme,
   useDirectionCIdentity,
   ScrollComponent,
@@ -694,6 +707,18 @@ const PublishedBody = ({
               <Text style={[styles.brandName, { color: palette.primaryText }]}>
                 {brand?.displayName ?? "Brand"}
               </Text>
+              {brandFollowerCountLoading || brandFollowerCount != null ? (
+                <View style={styles.brandFollowerCount}>
+                <FollowerCountLine
+                  count={brandFollowerCount}
+                  loading={brandFollowerCountLoading}
+                  labels={brandFollowerCountLabels}
+                  palette={palette}
+                  testID="legacy-event-presented-by-follower-count"
+                  variant="presentedBy"
+                />
+                </View>
+              ) : null}
             </View>
             {callbacks.onOpenBrand !== undefined ? (
               <Text style={[styles.brandCta, { color: palette.accent }]}>
@@ -1475,6 +1500,9 @@ const styles = StyleSheet.create({
   brandTextCol: {
     flex: 1,
     minWidth: 0,
+  },
+  brandFollowerCount: {
+    marginTop: 1,
   },
   brandKicker: {
     fontSize: 10,

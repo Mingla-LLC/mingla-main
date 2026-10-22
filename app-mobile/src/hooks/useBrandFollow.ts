@@ -20,6 +20,11 @@ export const brandFollowKeys = {
   status: (brandId: string, userId: string) =>
     ["consumerBrand", "follow", brandId, userId] as const,
   list: (userId: string) => ["consumerBrand", "followList", userId] as const,
+  followerCount: (brandId: string) =>
+    ["consumerBrand", "followerCount", brandId] as const,
+  followerCounts: (brandIds: readonly string[]) =>
+    ["consumerBrand", "followerCounts", [...brandIds].sort().join(",")] as const,
+  followerCountsAll: ["consumerBrand", "followerCounts"] as const,
 };
 
 export interface UseBrandFollowResult {
@@ -44,6 +49,7 @@ export function useBrandFollow(
   const queryClient = useQueryClient();
   const enabled = !!userId && !!brandId;
   const statusKey = brandFollowKeys.status(brandId ?? "", userId ?? "");
+  const followerCountKey = brandFollowKeys.followerCount(brandId ?? "");
 
   const statusQuery = useQuery({
     queryKey: statusKey,
@@ -66,22 +72,47 @@ export function useBrandFollow(
       return nextFollowing;
     },
     onMutate: async (nextFollowing: boolean) => {
-      await queryClient.cancelQueries({ queryKey: statusKey });
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: statusKey }),
+        queryClient.cancelQueries({ queryKey: followerCountKey }),
+      ]);
       const previous = queryClient.getQueryData<BrandFollowStatus>(statusKey);
+      const previousCount = queryClient.getQueryData<number | null>(
+        followerCountKey,
+      );
+      const previousFollowing =
+        previous?.following ?? statusQuery.data?.following === true;
+      const changed = previousFollowing !== nextFollowing;
       queryClient.setQueryData<BrandFollowStatus>(statusKey, {
         following: nextFollowing,
         mutedUntil: nextFollowing ? (previous?.mutedUntil ?? null) : null,
       });
-      return { previous };
+      if (
+        changed &&
+        typeof previousCount === "number" &&
+        Number.isSafeInteger(previousCount) &&
+        previousCount >= 0
+      ) {
+        queryClient.setQueryData<number>(
+          followerCountKey,
+          Math.max(0, previousCount + (nextFollowing ? 1 : -1)),
+        );
+      }
+      return { previous, previousCount };
     },
     onError: (_error, _nextFollowing, context) => {
       queryClient.setQueryData<BrandFollowStatus>(
         statusKey,
         context?.previous ?? { following: false, mutedUntil: null },
       );
+      queryClient.setQueryData(followerCountKey, context?.previousCount);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: statusKey });
+      void queryClient.invalidateQueries({ queryKey: followerCountKey });
+      void queryClient.invalidateQueries({
+        queryKey: brandFollowKeys.followerCountsAll,
+      });
       if (userId) {
         void queryClient.invalidateQueries({
           queryKey: brandFollowKeys.list(userId),

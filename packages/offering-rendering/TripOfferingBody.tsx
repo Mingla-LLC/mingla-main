@@ -62,6 +62,7 @@ import { LazyOfferingRefundLadder as TripRefundLadder } from "./LazyOfferingRefu
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
 import { BadgeCheck, Calendar, Minus, Moon, Plane, Plus, Users } from "./LucideIcons";
+import { FollowerCountLine, type FollowerCountLabels } from "./FollowerCountLine";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
@@ -97,6 +98,11 @@ export interface TripOfferingBodyProps {
   state: TripOfferingState;
   callbacks: TripOfferingCallbacks;
   variant: "phone" | "desktop";
+  presentedByFollow?: React.ReactNode;
+  /** #3682 — server count for the Presented-by card; unavailable stays hidden. */
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
   /**
    * The live pay-full/pay-over-time toggle value (the surface owns the useState).
    * Leg A back-compat: drives a SINGLE-package trip's toggle. Multi-package trips
@@ -152,6 +158,10 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   state,
   callbacks,
   variant,
+  presentedByFollow,
+  presentedByFollowerCount,
+  presentedByFollowerCountLoading = false,
+  presentedByFollowerCountLabels,
   paymentPlanChoice,
   onPaymentPlanChoiceChange,
   quantities,
@@ -387,65 +397,82 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
 
       {/* (5) Presented By. */}
       <View style={styles.section} testID="trip-body-presented-by">
-        <Pressable
-          onPress={callbacks.onViewBrand}
-          disabled={callbacks.onViewBrand === undefined}
-          accessibilityRole={callbacks.onViewBrand !== undefined ? "button" : undefined}
-          accessibilityLabel={`View ${brand.name}`}
-          style={[styles.brandRow, surface.card]}
-        >
-          <View
-            style={[
-              styles.brandTile,
-              brand.coverMediaUrl === null
-                ? { backgroundColor: palette.accent }
-                : null,
-            ]}
+        <View style={[styles.brandCard, surface.card]}>
+          <Pressable
+            onPress={callbacks.onViewBrand}
+            disabled={callbacks.onViewBrand === undefined}
+            accessibilityRole={callbacks.onViewBrand !== undefined ? "button" : undefined}
+            accessibilityLabel={`View ${brand.name}`}
+            style={styles.brandRow}
           >
-            {brand.coverMediaUrl !== null ? (
-              <EventCoverMedia
-                mediaUrl={brand.coverMediaUrl}
-                mediaType={brand.coverMediaType}
-                hue={brand.coverHue ?? undefined}
-                label=""
-                radius={999}
-                autoplay
-                playbackActive
-                muted
-                loop
-                height="100%"
-                width="100%"
-              />
-            ) : (
-              <View style={styles.brandInitialWrap}>
+            <View
+              style={[
+                styles.brandTile,
+                brand.coverMediaUrl === null
+                  ? { backgroundColor: palette.accent }
+                  : null,
+              ]}
+            >
+              {brand.coverMediaUrl !== null ? (
+                <EventCoverMedia
+                  mediaUrl={brand.coverMediaUrl}
+                  mediaType={brand.coverMediaType}
+                  hue={brand.coverHue ?? undefined}
+                  label=""
+                  radius={999}
+                  autoplay
+                  playbackActive
+                  muted
+                  loop
+                  height="100%"
+                  width="100%"
+                />
+              ) : (
+                <View style={styles.brandInitialWrap}>
+                  <Text
+                    style={[
+                      styles.brandInitial,
+                      { color: palette.accentText, fontFamily: boldFamily },
+                    ]}
+                  >
+                    {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.brandTextCol}>
+              <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
+              <View style={styles.brandNameRow}>
                 <Text
-                  style={[
-                    styles.brandInitial,
-                    { color: palette.accentText, fontFamily: boldFamily },
-                  ]}
+                  style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
                 >
-                  {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  {brand.name}
                 </Text>
+                {brand.verified ? (
+                  <BadgeCheck size={15} color={palette.accent} />
+                ) : null}
               </View>
-            )}
-          </View>
-          <View style={styles.brandTextCol}>
-            <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
-            <View style={styles.brandNameRow}>
-              <Text
-                style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                {brand.name}
-              </Text>
-              {brand.verified ? (
-                <BadgeCheck size={15} color={palette.accent} />
+              {presentedByFollowerCountLoading || presentedByFollowerCount != null ? (
+                <View style={styles.brandFollowerCount}>
+                  <FollowerCountLine
+                    count={presentedByFollowerCount}
+                    loading={presentedByFollowerCountLoading}
+                    labels={presentedByFollowerCountLabels}
+                    palette={palette}
+                    testID="trip-presented-by-follower-count"
+                    variant="presentedBy"
+                  />
+                </View>
               ) : null}
             </View>
-          </View>
-          {callbacks.onViewBrand !== undefined ? (
-            <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+            {presentedByFollow === undefined && callbacks.onViewBrand !== undefined ? (
+              <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+            ) : null}
+          </Pressable>
+          {presentedByFollow !== undefined ? (
+            <View style={styles.brandFollowSlot}>{presentedByFollow}</View>
           ) : null}
-        </Pressable>
+        </View>
       </View>
 
       {/* (6) About — collapsible, FOLDED here per Seth (after Presented-By). */}
@@ -937,13 +964,17 @@ const styles = StyleSheet.create({
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // ---- brand ----
+  brandCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  brandFollowSlot: { marginTop: 12 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
   },
   brandTile: {
     width: 42,
@@ -955,6 +986,7 @@ const styles = StyleSheet.create({
   brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   brandInitial: { fontSize: 18, fontWeight: "900" },
   brandTextCol: { flexShrink: 1, flexGrow: 1 },
+  brandFollowerCount: { marginTop: 1 },
   brandKicker: {
     fontSize: 10,
     fontWeight: "800",

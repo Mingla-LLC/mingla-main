@@ -21,6 +21,7 @@ import {
 } from "../../constants/designSystem";
 
 import { GlassCard } from "./GlassCard";
+import { Skeleton } from "./Skeleton";
 
 export interface KpiTileProps {
   label: string;
@@ -31,6 +32,7 @@ export interface KpiTileProps {
   /** Drives delta colour: `true` = success, `false` = error, `undefined` = neutral. */
   deltaUp?: boolean;
   sub?: string;
+  loading?: boolean;
   testID?: string;
   style?: StyleProp<ViewStyle>;
 }
@@ -41,6 +43,7 @@ export const KpiTile: React.FC<KpiTileProps> = ({
   delta,
   deltaUp,
   sub,
+  loading = false,
   testID,
   style,
 }) => {
@@ -57,15 +60,23 @@ export const KpiTile: React.FC<KpiTileProps> = ({
         <Text style={styles.label} numberOfLines={1}>
           {label.toUpperCase()}
         </Text>
-        <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
-          {String(value)}
-        </Text>
-        {delta !== undefined ? (
+        {loading ? (
+          <Skeleton
+            width={72}
+            height={24}
+            style={styles.valueSkeleton}
+          />
+        ) : (
+          <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
+            {String(value)}
+          </Text>
+        )}
+        {!loading && delta !== undefined ? (
           <Text style={[styles.delta, { color: deltaColor }]} numberOfLines={1}>
             {delta}
           </Text>
         ) : null}
-        {sub !== undefined ? (
+        {!loading && sub !== undefined ? (
           <Text style={styles.sub} numberOfLines={2}>
             {sub}
           </Text>
@@ -92,6 +103,9 @@ const styles = StyleSheet.create({
     fontWeight: typography.statValue.fontWeight,
     letterSpacing: typography.statValue.letterSpacing,
     color: textTokens.primary,
+    marginTop: spacing.xxs,
+  },
+  valueSkeleton: {
     marginTop: spacing.xxs,
   },
   delta: {

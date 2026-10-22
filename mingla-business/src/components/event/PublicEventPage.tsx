@@ -152,6 +152,7 @@ import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
 import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 
@@ -504,6 +505,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const online = useBuyerWebOnline();
   // #3682 Wave 2.3 — Presented-by Follow on buyer-web event / RSVP pages.
   const brandFollow = useBrandFollow(user?.id ?? null, brand?.id ?? null);
+  const followerCountQuery = useBrandFollowerCount(brand?.id ?? null);
   const [followUnfollowOpen, setFollowUnfollowOpen] = useState(false);
   const [followSignInOpen, setFollowSignInOpen] = useState(false);
   const [followByEmailOpen, setFollowByEmailOpen] = useState(false);
@@ -1739,6 +1741,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}
+          presentedByFollowerCount={
+            followerCountQuery.isError ? null : followerCountQuery.data
+          }
+          presentedByFollowerCountLoading={
+            followerCountQuery.isPending && !followerCountQuery.isError
+          }
           onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
@@ -1971,6 +1979,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           viewerRole={viewerRole}
           callbacks={callbacks}
           theme={resolvedTheme}
+          brandFollowerCount={
+            followerCountQuery.isError ? null : followerCountQuery.data
+          }
+          brandFollowerCountLoading={
+            followerCountQuery.isPending && !followerCountQuery.isError
+          }
         />
       ) : (
         <FoundationEventPreview
@@ -1991,6 +2005,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}
+          presentedByFollowerCount={
+            followerCountQuery.isError ? null : followerCountQuery.data
+          }
+          presentedByFollowerCountLoading={
+            followerCountQuery.isPending && !followerCountQuery.isError
+          }
           onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}

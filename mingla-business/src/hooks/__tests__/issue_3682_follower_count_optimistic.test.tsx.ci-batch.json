@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#3682",
+  "suite": {
+    "id": "issue-3682-business-follower-counts",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/app/**",
+      "mingla-business/jest.config.cjs",
+      "packages/offering-rendering/**"
+    ],
+    "steps": [
+      {
+        "name": "Business follower-count contracts",
+        "cwd": "mingla-business",
+        "run": "npx jest --config src/hooks/__tests__/jest.issue3682.cjs --runInBand",
+        "commandId": "assert:issue-3682-business-follower-counts:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config src/hooks/__tests__/jest.issue3682.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#3682",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/brand/__tests__/issue_3682_followers_kpi.test.tsx",
+      "mingla-business/src/components/checkout/__tests__/issue_3682_youre_in_count.test.tsx",
+      "mingla-business/src/components/home/__tests__/issue_3682_followers_home_tile.test.tsx",
+      "mingla-business/src/hooks/__tests__/issue_3682_follower_count_optimistic.test.tsx",
+      "mingla-business/src/hooks/__tests__/jest.issue3682.cjs",
+      "mingla-business/src/services/__tests__/issue_3682_follower_summary_parser.test.ts"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 7,
+      "p95": 10,
+      "evidence": "Local targeted run 2026-10-22"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 120
+  }
+}
