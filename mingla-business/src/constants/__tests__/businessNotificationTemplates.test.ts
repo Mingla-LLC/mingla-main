@@ -28,6 +28,7 @@ describe("template coverage", () => {
   // [TEST-MOD-APPROVED #3645] — #3645 PR10 added four organiser payout
   // visibility types; item 6 adds cancel_refunds_released on top of the
   // original 11 v1 types (new_follower still dropped).
+  // #3645 now adds the late and debt-withheld states to that same catalog.
   // [TEST-MOD-APPROVED #3720] Community/support adds three Host inbox types.
   test("22 business types include payout, Community, operational support, and Brand groups", () => {
     expect(TYPES).toHaveLength(22);
