@@ -91,6 +91,31 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
   const interests = audience.interests ?? [];
   const radius = audience.radius ?? DEFAULT_RADIUS_MI;
   const distanceUnit = audience.distanceUnit ?? "mile";
+  const stages = {
+    prospecting: audience.stages?.prospecting !== false,
+    retarget: audience.stages?.retarget !== false,
+    abandoners: audience.stages?.abandoners !== false,
+  };
+  const stageRows = [
+    {
+      id: "prospecting",
+      label: "Prospecting",
+      split: "70%",
+      detail: "Broad and lookalike audiences; buyers excluded.",
+    },
+    {
+      id: "retarget",
+      label: "Retarget",
+      split: "20%",
+      detail: "Recent viewers, engagers and event-page visitors.",
+    },
+    {
+      id: "abandoners",
+      label: "Checkout recovery",
+      split: "10%",
+      detail: "Checkout starters who have not bought.",
+    },
+  ];
 
   // ── City typeahead ──────────────────────────────────────────────────────────
   const [cityQuery, setCityQuery] = useState("");
@@ -277,11 +302,58 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
       <div>
         <h2 className="text-lg font-semibold">Who should see this?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Country + age is the recommended broad shape. Add cities to
-          laser-target a venue's neighborhood, and interests to reach the right
-          crowd.
+          The default 70/20/10 split folds any unavailable stage back into
+          prospecting. Location and age apply to prospecting.
         </p>
       </div>
+
+      <section className="space-y-3" aria-label="Audience stages">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          {stageRows.map((stage) => {
+            const enabled = stages[stage.id];
+            return (
+              <button
+                key={stage.id}
+                type="button"
+                role="checkbox"
+                aria-checked={enabled}
+                onClick={() =>
+                  set({
+                    stages: { ...stages, [stage.id]: !enabled },
+                  })}
+                className={[
+                  "rounded-xl border p-4 text-left",
+                  enabled
+                    ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
+                    : "border-[var(--gray-200)]",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold">{stage.label}</span>
+                  <span className="text-xs font-semibold text-[var(--color-brand-700)]">
+                    {stage.split}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                  {stage.detail}
+                </p>
+                {audience.stagePreview?.[stage.id]?.reason && (
+                  <p className="mt-2 text-xs text-[var(--color-warning-700)]">
+                    {audience.stagePreview[stage.id].reason}
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] p-3 text-sm">
+          <span aria-hidden="true">🔒</span>
+          <span className="font-medium">Exclude people who already bought</span>
+          <span className="text-[var(--color-text-secondary)]">
+            Locked on every stage and platform.
+          </span>
+        </div>
+      </section>
 
       <MultiSelect
         label="Countries"

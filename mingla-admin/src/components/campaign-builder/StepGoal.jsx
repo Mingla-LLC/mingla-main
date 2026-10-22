@@ -38,7 +38,16 @@ export function StepGoal({
 
   const toggle = (id) => {
     if (id === "conversions" && !salesAvailable) return;
-    onGoalsChange(goalIds.includes(id) ? goalIds.filter((g) => g !== id) : [...goalIds, id]);
+    if (id === "retargeting") {
+      onGoalsChange(goalIds.includes(id) ? [] : [id]);
+      return;
+    }
+    const withoutShortcut = goalIds.filter((goalId) => goalId !== "retargeting");
+    onGoalsChange(
+      withoutShortcut.includes(id)
+        ? withoutShortcut.filter((goalId) => goalId !== id)
+        : [...withoutShortcut, id],
+    );
   };
 
   return (

@@ -64,11 +64,19 @@ export const GOALS = [
   {
     id: "retargeting",
     label: "Bring back past visitors",
-    visible: false,
-    shipsWith: "#865",
-    hiddenReason:
-      "There are 0 custom audiences on every channel and no tracked-visitor seed until #865 Phase B.",
-    platforms: {},
+    description:
+      "Run only the retargeting and checkout-recovery stages, with buyers excluded.",
+    visible: true,
+    platforms: {
+      meta: {
+        objective: "OUTCOME_TRAFFIC",
+        optimization_goal: "LANDING_PAGE_VIEWS",
+      },
+      snapchat: { objective: "TRAFFIC", optimization_goal: "PIXEL_PAGE_VIEW" },
+      tiktok: { objective: "TRAFFIC" },
+    },
+    honestyNote:
+      "Any audience below 1,000 widens event → brand → market; if none qualifies, that stage is skipped.",
   },
 ];
 

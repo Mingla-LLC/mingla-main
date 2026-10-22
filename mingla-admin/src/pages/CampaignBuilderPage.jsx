@@ -274,7 +274,34 @@ export function CampaignBuilderPage() {
     ageMin: DEFAULT_AGE_MIN,
     ageMax: DEFAULT_AGE_MAX,
     gender: "all",
+    stages: {
+      prospecting: true,
+      retarget: true,
+      abandoners: true,
+    },
   });
+  const handleGoalsChange = useCallback((nextGoalIds) => {
+    setGoalIds(nextGoalIds);
+    if (nextGoalIds.length === 1 && nextGoalIds[0] === "retargeting") {
+      setAudience((current) => ({
+        ...current,
+        stages: {
+          prospecting: false,
+          retarget: true,
+          abandoners: true,
+        },
+      }));
+    } else if (goalIds.includes("retargeting")) {
+      setAudience((current) => ({
+        ...current,
+        stages: {
+          prospecting: true,
+          retarget: true,
+          abandoners: true,
+        },
+      }));
+    }
+  }, [goalIds]);
   const [budget, setBudget] = useState({
     mode: "daily",
     totalDailyCents: 0,
@@ -1294,6 +1321,11 @@ export function CampaignBuilderPage() {
           time_zone: scheduleZone,
         },
         audience_intent: audienceIntent,
+        stage_selection: audience.stages ?? {
+          prospecting: true,
+          retarget: true,
+          abandoners: true,
+        },
         creative_library_id: creative.creativeRow?.id ?? null,
         creative_url: creative.kind === "image" ? creative.publicUrl : null,
         media_rights: {
@@ -2153,7 +2185,7 @@ export function CampaignBuilderPage() {
                 </h2>
                 <StepGoal
                   goalIds={goalIds}
-                  onGoalsChange={setGoalIds}
+                  onGoalsChange={handleGoalsChange}
                   metaPixelHasSignal={goalSignals.metaPixelHasSignal}
                   snapPurchaseEvents28d={goalSignals.snapPurchaseEvents28d}
                   tiktokPurchaseEvents28d={goalSignals.tiktokPurchaseEvents28d}

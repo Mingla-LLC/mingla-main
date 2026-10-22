@@ -42,8 +42,22 @@ export const ADVANTAGE_PLUS_AGE_EXPLANATION =
  * Validate the audience step. Returns string[] of blocking errors (each with
  * its exact inline message — SC-5).
  */
-export function validateAudience({ countries, ageMin, ageMax, advantagePlusAudience = false }) {
+export function validateAudience({
+  countries,
+  ageMin,
+  ageMax,
+  advantagePlusAudience = false,
+  stages,
+}) {
   const errors = [];
+  if (
+    stages &&
+    stages.prospecting === false &&
+    stages.retarget === false &&
+    stages.abandoners === false
+  ) {
+    errors.push("Turn on at least one audience stage.");
+  }
   if (!Array.isArray(countries) || countries.length === 0) {
     errors.push("Pick at least one country.");
   }
