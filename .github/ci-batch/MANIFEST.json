@@ -20322,10 +20322,11 @@
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "17e3386157af6adc93ebee588b1cea195e6c94171f2635e3bb3bb4931a063c60",
+        "sourceSha256": "9f0ca1d5cf384d44bfa83345ad507c556b469c38c8440a072eb2958bb7063f7a",
         "triggers": [
           "pull_request",
-          "push"
+          "push",
+          "workflow_dispatch"
         ],
         "pathScope": [
           ".github/workflows/issue-922-business-web-actionable.yml",
