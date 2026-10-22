@@ -38,7 +38,8 @@ Deno.test("#3697 Snap link template carries UTMs plus campaign, squad and ad ids
       "utm_content={{ad.id}}",
       "mc_id={{campaign.id}}",
       "campaign_id={{campaign.id}}",
-      "ad_squad_id={{adSquad.id}}",
+      // Snap's WEB_VIEW creative contract names its squad macro `adSet.id`.
+      "ad_squad_id={{adSet.id}}",
       "ad_id={{ad.id}}",
     ]
   ) assert(template.includes(token), token);
