@@ -179,6 +179,9 @@ import {
 import type { Platform } from "../_shared/adChannelCore.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
+  compatibleMetaValidateReference,
+} from "../_shared/metaValidateReference.ts";
+import {
   boundPlanCampaignCurrency,
   boundPlanMoney,
   type BoundPlanOwnership,
@@ -5128,9 +5131,11 @@ serve(async (req: Request): Promise<Response> => {
   // ── VALIDATE-ONLY passthrough: zero objects created, zero DB writes. ─────────
   // QA P2-2: the ad-set layer is validated too (this is exactly where P1-1
   // hid), and the response NAMES which layers were validated. Meta's ad-set
-  // validate-only requires a campaign_id, so the ad set is validated against
-  // the connection's most recent persisted campaign; with none yet, the layer
-  // is reported as skipped with the reason — never silently.
+  // validate-only requires a campaign_id. A CBO lowest-cost campaign rejects an
+  // ad set whose goal differs from its existing ad sets, so use only a persisted
+  // campaign whose ad sets all share this request's goal. With none, report an
+  // explicit non-failure skip — never turn an unrelated campaign into a false
+  // validation failure.
   if (validateOnly) {
     const validatedLayers: string[] = [];
     const skippedLayers: { layer: string; reason: string }[] = [];
@@ -5138,17 +5143,22 @@ serve(async (req: Request): Promise<Response> => {
       await adapter.createCampaign(connection, campaignInput);
       validatedLayers.push("campaign");
 
-      const { data: referenceCampaign } = await supabase
-        .from("ad_campaigns")
-        .select("external_campaign_id")
-        .eq("connection_id", connection.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (referenceCampaign?.external_campaign_id) {
+      const { data: referenceCampaigns, error: referenceCampaignError } =
+        await supabase
+          .from("ad_campaigns")
+          .select("external_campaign_id,ad_sets(optimization_goal)")
+          .eq("connection_id", connection.id)
+          .eq("platform", "meta")
+          .order("created_at", { ascending: false });
+      if (referenceCampaignError) throw referenceCampaignError;
+      const referenceCampaignId = compatibleMetaValidateReference(
+        referenceCampaigns ?? [],
+        optimizationGoal,
+      );
+      if (referenceCampaignId) {
         await adapter.createAdSet(
           connection,
-          String(referenceCampaign.external_campaign_id),
+          referenceCampaignId,
           { ...adSetInput, validateOnly: true },
         );
         validatedLayers.push("ad_set");
@@ -5156,7 +5166,7 @@ serve(async (req: Request): Promise<Response> => {
         skippedLayers.push({
           layer: "ad_set",
           reason:
-            "no_reference_campaign — Meta ad-set validation needs a campaign_id; the first real create exercises this layer live (client-side goal/matrix/floor checks already passed).",
+            "no_reference_campaign_for_goal — Meta ad-set validation needs a campaign whose existing ad sets share the requested optimization goal; the first real create exercises this layer live (client-side goal/matrix/floor checks already passed).",
         });
       }
 

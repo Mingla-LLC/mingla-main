@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "suite": "deno",
+  "reason": "#3697 Meta validate-only reference selection regression"
+}
