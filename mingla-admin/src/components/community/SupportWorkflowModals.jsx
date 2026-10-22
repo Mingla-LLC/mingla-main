@@ -6,6 +6,7 @@ import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Select, TEXTAREA_CLASS } from "../crm/fields";
 import {
   createClientRequestId,
+  createBrandVisibleSupportTicket,
   createInternalSupportThread,
   createProductSignal,
   linkSourceToProductSignal,
@@ -42,6 +43,7 @@ export function InternalTicketModal({ open, brands, onClose, onCreated, onError 
     if (!open) return;
     setForm({
       clientRequestId: createClientRequestId(),
+      visibility: "internal",
       subject: "",
       details: "",
       customerEmail: "",
@@ -55,13 +57,15 @@ export function InternalTicketModal({ open, brands, onClose, onCreated, onError 
 
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const valid = form && form.subject.trim() && form.details.trim()
+    && (form.visibility !== "brand" || form.brandId)
     && form.nextUpdateNote.trim() && isAllowedNextUpdate(form.nextUpdateAt);
 
   async function submit() {
     if (!valid || saving) return;
     setSaving(true);
     try {
-      const id = await createInternalSupportThread({
+      const create = form.visibility === "brand" ? createBrandVisibleSupportTicket : createInternalSupportThread;
+      const id = await create({
         ...form,
         nextUpdateAt: toIso(form.nextUpdateAt),
       });
@@ -79,8 +83,21 @@ export function InternalTicketModal({ open, brands, onClose, onCreated, onError 
       <ModalBody>
         {form && (
           <div className="grid gap-4 md:grid-cols-2">
+            <label className={`${labelClass} md:col-span-2`}>
+              Who can see this ticket?
+              <Select
+                value={form.visibility}
+                onChange={(event) => set("visibility", event.target.value)}
+                options={[
+                  { value: "internal", label: "Internal work — Mingla staff only" },
+                  { value: "brand", label: "Visible to brand — notify the full active team" },
+                ]}
+              />
+            </label>
             <div className="md:col-span-2 rounded-xl border border-[var(--color-brand-100)] bg-[var(--color-brand-50)] p-3 text-sm text-[var(--color-text-secondary)]">
-              This is an internal work thread. Linking a customer adds context; it does not message them or create a live chat.
+              {form.visibility === "brand"
+                ? "This creates a live support conversation. Every active member of the selected brand can follow progress and receives an opening notification."
+                : "This is an internal work thread. Linking a customer adds context; it does not message them or create a live chat."}
             </div>
             <label className={`${labelClass} md:col-span-2`}>
               What needs attention?
@@ -90,12 +107,12 @@ export function InternalTicketModal({ open, brands, onClose, onCreated, onError 
               What did the customer or team report?
               <textarea className={TEXTAREA_CLASS} rows={5} value={form.details} onChange={(event) => set("details", event.target.value)} placeholder="Include what happened, what they expected and any useful context." />
             </label>
-            <label className={labelClass}>
+            {form.visibility === "internal" && <label className={labelClass}>
               Link customer by email <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span>
               <Input type="email" value={form.customerEmail} onChange={(event) => set("customerEmail", event.target.value)} placeholder="customer@example.com" />
-            </label>
+            </label>}
             <label className={labelClass}>
-              Link brand <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span>
+              {form.visibility === "brand" ? "Brand" : "Link brand"} {form.visibility === "internal" && <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span>}
               <Select
                 value={form.brandId}
                 onChange={(event) => set("brandId", event.target.value)}
@@ -103,10 +120,10 @@ export function InternalTicketModal({ open, brands, onClose, onCreated, onError 
                 options={brands.map((brand) => ({ value: brand.id, label: brand.name }))}
               />
             </label>
-            <label className={`${labelClass} md:col-span-2`}>
+            {form.visibility === "internal" && <label className={`${labelClass} md:col-span-2`}>
               Brand group context <span className="font-normal text-[var(--color-text-tertiary)]">(optional)</span>
               <Input value={form.brandGroupContext} onChange={(event) => set("brandGroupContext", event.target.value)} placeholder="Name or context only; a community group can be linked once it exists." />
-            </label>
+            </label>}
             <label className={labelClass}>
               Priority
               <Select

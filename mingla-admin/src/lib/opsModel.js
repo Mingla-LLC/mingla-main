@@ -882,6 +882,10 @@ export const PLAIN_STATES = {
 };
 export const STATE_LEGEND = ["ready", "short", "late", "notlive"];
 
+export function isRecapWorkCard(card) {
+  return typeof card?.title === "string" && card.title.trimStart().startsWith("Recap ");
+}
+
 /** The words of a state the server sent ({k, name}), falling back to the plain map. */
 export function stateName(state) {
   if (!state || typeof state !== "object") return "";

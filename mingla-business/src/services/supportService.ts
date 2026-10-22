@@ -26,9 +26,13 @@ export interface SupportTicket {
   priority: string;
   conversation_id: string;
   brand_id: string | null;
+  /** requester = private to its creator; brand = shared with active brand members. */
+  audience?: "requester" | "brand";
   created_at: string;
   last_message_at: string;
   resolved_at: string | null;
+  next_update_at?: string | null;
+  next_update_note?: string | null;
 }
 
 /**
@@ -40,7 +44,7 @@ export async function listOwnSupportTickets(): Promise<SupportTicket[]> {
   const { data, error } = await supabase
     .from("support_tickets")
     .select(
-      "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
+      "id, subject, status, priority, conversation_id, brand_id, audience, created_at, last_message_at, resolved_at, next_update_at, next_update_note",
     )
     .order("last_message_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -59,7 +63,7 @@ export async function getOwnSupportTicket(
   const { data, error } = await supabase
     .from("support_tickets")
     .select(
-      "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
+      "id, subject, status, priority, conversation_id, brand_id, audience, created_at, last_message_at, resolved_at, next_update_at, next_update_note",
     )
     .eq("id", ticketId)
     .maybeSingle();
@@ -115,7 +119,7 @@ export async function sendSupportMessage(
     throw new Error("Write a message before sending.");
   }
   const { data, error } = await supabase.functions.invoke("support-send", {
-    body: { ticketId, content: trimmed },
+    body: { ticketId, content: trimmed, actorMode: "requester" },
   });
   if (error) {
     throw new Error(error.message || "Couldn't send your message. Try again.");

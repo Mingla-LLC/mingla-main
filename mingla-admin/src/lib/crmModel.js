@@ -671,6 +671,32 @@ export function activityLine(entry, def, vocab) {
   return { headline: entry?.body || "", body: "", badge: "" };
 }
 
+/**
+ * Every contact channel evidenced by a saved touch, ordered by most-recent use.
+ * The record's scalar `channel` remains the preferred/default channel; this is
+ * the relationship history and must never be collapsed back into that field.
+ */
+export function channelsUsed(activity, channels = []) {
+  const labels = new Map((Array.isArray(channels) ? channels : []).map((item) => [item.id, item.label]));
+  const used = new Map();
+  for (const entry of Array.isArray(activity) ? activity : []) {
+    if (entry?.kind !== "touch" || typeof entry.channel !== "string" || !entry.channel) continue;
+    const at = typeof entry.occurred_at === "string" && Number.isFinite(Date.parse(entry.occurred_at))
+      ? entry.occurred_at
+      : null;
+    if (!at) continue;
+    const existing = used.get(entry.channel);
+    used.set(entry.channel, {
+      id: entry.channel,
+      label: labels.get(entry.channel) || entry.channel,
+      count: (existing?.count || 0) + 1,
+      firstUsedAt: !existing || Date.parse(at) < Date.parse(existing.firstUsedAt) ? at : existing.firstUsedAt,
+      lastUsedAt: !existing || Date.parse(at) > Date.parse(existing.lastUsedAt) ? at : existing.lastUsedAt,
+    });
+  }
+  return [...used.values()].sort((left, right) => Date.parse(right.lastUsedAt) - Date.parse(left.lastUsedAt));
+}
+
 /** "just now", "5m ago", "3h ago", "2d ago", then a date. */
 export function relativeTime(iso, now = Date.now()) {
   const then = new Date(iso).getTime();

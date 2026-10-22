@@ -72,6 +72,17 @@ interface OrderStatsRow {
   created_at: string | null;
   events: { brand_id: string | null } | null;
   order_line_items: { quantity: number | null }[] | null;
+  tickets: { status: string | null; admits_count: number | null }[] | null;
+}
+
+export function attendeeCountForOrderStats(row: Pick<OrderStatsRow, "tickets" | "order_line_items">): number {
+  const liveTickets = (row.tickets ?? []).filter((ticket) =>
+    ticket.status === "valid" || ticket.status === "used" || ticket.status === "transferred"
+  );
+  const hasAdmissionTruth = liveTickets.some((ticket) => Number.isInteger(ticket.admits_count) && Number(ticket.admits_count) > 0);
+  return hasAdmissionTruth
+    ? liveTickets.reduce((sum, ticket) => sum + (ticket.admits_count ?? 1), 0)
+    : (row.order_line_items ?? []).reduce((sum, line) => sum + (line.quantity ?? 0), 0);
 }
 
 interface BrandStatsAggregate {
@@ -723,7 +734,8 @@ export async function aggregateBrandStatsByBrandIds(
       refunded_amount_cents,
       created_at,
       events!inner ( brand_id ),
-      order_line_items ( quantity )
+      order_line_items ( quantity ),
+      tickets ( status, admits_count )
     `)
     .in("events.brand_id", brandIds)
     .not("payment_status", "in", "(failed,cancelled,refunded)");
@@ -736,11 +748,7 @@ export async function aggregateBrandStatsByBrandIds(
     const bucket = result.get(brandId);
     if (bucket === undefined) continue;
 
-    const qty = (row.order_line_items ?? []).reduce(
-      (sum, line) => sum + (line.quantity ?? 0),
-      0,
-    );
-    bucket.attendees += qty;
+    bucket.attendees += attendeeCountForOrderStats(row);
 
     const net = (row.total_cents ?? 0) - (row.refunded_amount_cents ?? 0);
     const currency = (row.currency ?? "").trim().toUpperCase();

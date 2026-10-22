@@ -80,6 +80,8 @@ export interface OrderRow {
     id: string;
     /** issue #3313 — lets the organiser count sold places per night per ticket type. */
     ticket_type_id?: string | null;
+    /** issue #3281 — people admitted by this pass (couple/group tickets > 1). */
+    admits_count?: number | null;
     status: string | null;
     used_at: string | null;
     ticket_event_dates?: Array<{ event_date_id: string }> | null;
@@ -211,6 +213,7 @@ export const fetchEventOrders = async (
       tickets (
         id,
         ticket_type_id,
+        admits_count,
         status,
         used_at,
         ticket_event_dates ( event_date_id )
@@ -348,6 +351,9 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
       ticketDays: (order.tickets ?? []).map((ticket) => ({
         ticketId: ticket.id,
         ticketTypeId: ticket.ticket_type_id ?? null,
+        admitsCount: Number.isInteger(ticket.admits_count) && Number(ticket.admits_count) > 0
+          ? Number(ticket.admits_count)
+          : undefined,
         eventDateIds: (ticket.ticket_event_dates ?? []).map(
           (link) => link.event_date_id,
         ),
@@ -430,8 +436,15 @@ export const getEventOrderRevenue = (
     if (order.status !== "paid" && order.status !== "refunded_partial") continue;
     // issue #3827 — guest-list tickets are never sold and never revenue.
     if (isCompOrder(order)) continue;
-    for (const line of order.lines) {
-      soldCount += Math.max(0, line.quantity - line.refundedQuantity);
+    const liveTickets = (order.ticketDays ?? []).filter((ticket) =>
+      ticket.status === "valid" || ticket.status === "used" || ticket.status === "transferred"
+    );
+    const hasAdmissionTruth = liveTickets.some((ticket) => Number.isInteger(ticket.admitsCount) && Number(ticket.admitsCount) > 0);
+    if (hasAdmissionTruth) {
+      soldCount += liveTickets.reduce((sum, ticket) => sum + (ticket.admitsCount ?? 1), 0);
+    } else {
+      // Legacy/persisted orders before #3281 have no admits_count snapshot.
+      for (const line of order.lines) soldCount += Math.max(0, line.quantity - line.refundedQuantity);
     }
     revenue += order.totalAtPurchase ?? order.totalGbpAtPurchase;
     refunded += order.refundedAmount ?? order.refundedAmountGbp;
