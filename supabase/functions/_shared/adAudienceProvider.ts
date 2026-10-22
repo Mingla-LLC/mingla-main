@@ -162,7 +162,8 @@ export function buildSnapAudienceRequest(
     Object.keys(row).length === 1 && typeof row.eq === "string" && row.eq.trim()
   );
   if (
-    !documentedOnly || source.exclude !== undefined ||
+    !documentedOnly || source.mingla_event_id !== undefined ||
+    source.exclude !== undefined ||
     source.event_ends_at !== undefined
   ) {
     throw new Error("snap_event_scope_contract_pending");

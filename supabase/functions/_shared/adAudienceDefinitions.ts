@@ -143,6 +143,10 @@ function snapRule(input: AudienceDefinitionInput): Record<string, unknown> {
   return {
     source_type: "PIXEL",
     pixel_id: input.pixelId,
+    // Server-owned scope metadata. Snap's documented Website Events predicate
+    // cannot express this event identity, so the provider builder must see and
+    // fail closed on it instead of creating a platform-wide pool.
+    mingla_event_id: input.eventId,
     prefill: true,
     pixel_spec_object: { or: { event: [eventRule] } },
     ...(input.code === "S3"

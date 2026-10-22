@@ -82,22 +82,24 @@ Deno.test("#3697 TikTok rule request keeps event content identity parity", () =>
 });
 
 Deno.test("#3697 undocumented Snap item/content scoping fails closed", () => {
-  const definition = buildAudienceDefinition({
-    ...base,
-    platform: "snapchat",
-    code: "S3",
-  });
-  assertThrows(
-    () =>
-      buildAudienceProviderRequest({
-        platform: "snapchat",
-        accountId: "30000000-0000-4000-8000-000000000003",
-        name: definition.name,
-        definition,
-      }),
-    Error,
-    "snap_event_scope_contract_pending",
-  );
+  for (const code of ["S2", "S3", "S4"]) {
+    const definition = buildAudienceDefinition({
+      ...base,
+      platform: "snapchat",
+      code,
+    });
+    assertThrows(
+      () =>
+        buildAudienceProviderRequest({
+          platform: "snapchat",
+          accountId: "30000000-0000-4000-8000-000000000003",
+          name: definition.name,
+          definition,
+        }),
+      Error,
+      "snap_event_scope_contract_pending",
+    );
+  }
 });
 
 Deno.test("#3697 buyer-list sync is flag-off and hash-only", () => {
