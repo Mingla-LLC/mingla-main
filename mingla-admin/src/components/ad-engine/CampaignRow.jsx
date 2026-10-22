@@ -84,6 +84,7 @@ export function CampaignRow({
       return `${currency} ${(cents / 100).toFixed(2)}`;
     }
   };
+  const formatStageNumber = (value) => new Intl.NumberFormat().format(value);
 
   return (
     <div
@@ -295,7 +296,7 @@ export function CampaignRow({
                   <dt className="text-[var(--color-text-tertiary)]">Spend</dt>
                   <dd className="text-right font-medium">{formatStageMoney(stage.currency, stage.spendCents)}</dd>
                   <dt className="text-[var(--color-text-tertiary)]">Results</dt>
-                  <dd className="text-right font-medium">{stage.results.toLocaleString()}</dd>
+                  <dd className="text-right font-medium">{formatStageNumber(stage.results)}</dd>
                   <dt className="text-[var(--color-text-tertiary)]">Cost / sale</dt>
                   <dd className="text-right font-medium">
                     {stage.costPerResultCents == null ? "—" : formatStageMoney(stage.currency, stage.costPerResultCents)}
