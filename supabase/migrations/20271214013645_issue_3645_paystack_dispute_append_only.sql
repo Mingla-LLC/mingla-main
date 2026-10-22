@@ -1,7 +1,5 @@
 -- Issue #3645 — Paystack dispute holds respect the append-only payout ledger.
 --
--- MINGLA-INVARIANT: I-3645-PAYSTACK-DISPUTE-APPEND-ONLY | issue #3645 | A Paystack dispute may change the executable release projection, but it never updates or deletes payout_release_items; unresolved disputes fail closed again at final transfer authorization.
-
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.paystack_release_has_unresolved_dispute(
