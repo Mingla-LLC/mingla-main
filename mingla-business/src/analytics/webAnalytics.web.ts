@@ -8,10 +8,11 @@
  * pulls posthog-js / gtag: this file only ever loads in the web export.
  *
  * What it does:
- *   - initWebAnalytics(): reads the canonical consent choice first. PostHog,
- *     GA4, pixels and attribution remain wholly absent until explicit grant.
- *       · PostHog: dynamically imported only after grant; US region locked.
- *       · GA4: denied-default then granted-update are queued after grant and
+ *   - initWebAnalytics(): reads the canonical consent choice first.
+ *       · Ad pixels load on arrival unless the user opted out or the region is
+ *         configured for opt-in.
+ *       · PostHog is dynamically imported only after grant; US region locked.
+ *       · GA4 denied-default then granted-update are queued after grant and
  *         BEFORE its config/measurement loads.
  *     Power features ON, free-tier only (§4.G): autocapture, error tracking,
  *     session replay (masked — §4.H), feature flags. Replay sampled (§4.I).
@@ -182,7 +183,6 @@ let adPixelsBootstrapped = false;
 export type AdPixelConsentMode = "on_arrival" | "opt_in";
 let adPixelConsentMode: AdPixelConsentMode | null = null;
 let adPixelModePromise: Promise<AdPixelConsentMode> | null = null;
-const firedViewContentKeys = new Set<string>();
 
 // First-party storage key for the captured ad click_id (threaded into checkout).
 const AD_CLICK_KEY = "mingla_ad_click_v1";
@@ -480,7 +480,7 @@ async function bootGrantedAnalytics(): Promise<void> {
   }
 
   // Pixels are last in the binding boot order: consent → GA → PostHog → pixels.
-  bootstrapAdPixels();
+  await bootstrapAdPixels();
 }
 
 function ensureGrantedAnalyticsBoot(): Promise<void> {
@@ -500,7 +500,7 @@ export async function initWebAnalytics(): Promise<void> {
   if (window.__minglaAdPixelsBootstrapped === true) {
     adPixelsBootstrapped = true;
   }
-  if (adTrackingAllowed()) bootstrapAdPixels();
+  if (adTrackingAllowed()) await bootstrapAdPixels();
   if (readStoredConsent() === "granted") await ensureGrantedAnalyticsBoot();
 }
 
@@ -508,7 +508,7 @@ export async function initWebAnalytics(): Promise<void> {
 export async function grantConsent(): Promise<void> {
   writeStoredConsent("granted");
   resolveAdPixelIds();
-  bootstrapAdPixels();
+  await bootstrapAdPixels();
   await ensureGrantedAnalyticsBoot();
   if (readStoredConsent() !== "granted" || consentGrantCaptured) return;
   consentGrantCaptured = true;
@@ -517,9 +517,8 @@ export async function grantConsent(): Promise<void> {
   // Deny-rate remains derived as sessions without a grant.
   captureWeb("consent_granted");
   gaEvent("consent_granted");
-  const pathname = (
-    window as unknown as { location?: { pathname?: unknown } }
-  ).location?.pathname;
+  const pathname = (window as unknown as { location?: { pathname?: unknown } })
+    .location?.pathname;
   if (typeof pathname === "string") captureHostPublicSearchPageView(pathname);
   // toward #3697 F-1: stamp Accept on the existing first-party touch only —
   // do not insert a second touch (first-touch-wins + visit inflation).
@@ -671,16 +670,6 @@ export function getFeatureFlagWeb(key: string): boolean | string | undefined {
 
 const ATTR_TIMEOUT_MS = 4000;
 
-function injectPixelScriptOnce(src: string, marker: string): void {
-  if (window.document.querySelector(`script[data-mingla-pixel="${marker}"]`))
-    return;
-  const s = window.document.createElement("script");
-  s.async = true;
-  s.src = src;
-  s.setAttribute("data-mingla-pixel", marker);
-  window.document.head.appendChild(s);
-}
-
 /** Wrap a single pixel call so its failure is a silent no-op (never blocks the page). */
 function safePixel(fn: () => void): void {
   try {
@@ -690,178 +679,21 @@ function safePixel(fn: () => void): void {
   }
 }
 
-function currentAdPageViewKey(): string | null {
-  const href = (
-    window as unknown as { location?: { href?: unknown } }
-  ).location?.href;
-  return typeof href === "string" && href.length > 0
-    ? href.split("#", 1)[0]
-    : null;
-}
+let adPixelRuntimePromise: Promise<
+  typeof import("./adPixelRuntime.web")
+> | null = null;
+let adPixelRuntime: typeof import("./adPixelRuntime.web") | null = null;
 
-function markAdPageViewFired(): void {
-  const key = currentAdPageViewKey();
-  if (key === null) return;
-  const keys = (window.__minglaAdPageViewKeys ??= {});
-  keys[key] = true;
-}
-
-function definedProps(obj: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const k of Object.keys(obj)) {
-    if (obj[k] !== undefined && obj[k] !== null) out[k] = obj[k];
-  }
-  return out;
-}
-
-type QueuedPixel = ((...args: unknown[]) => void) & Record<string, unknown>;
-
-/** Build the common vendor queue shim while preserving each vendor's handoff key. */
-function createQueuedPixel(handlerKey: string, queueKey: string): QueuedPixel {
-  const pixel = function queuedPixel(...args: unknown[]): void {
-    const handler = pixel[handlerKey];
-    if (typeof handler === "function") handler(...args);
-    else (pixel[queueKey] as unknown[][]).push(args);
-  } as QueuedPixel;
-  pixel[queueKey] = [];
-  return pixel;
-}
-
-function bootstrapMetaPixel(pixelId: string): void {
-  if (window.fbq === undefined) {
-    // Canonical fbq stub — queues calls until fbevents.js loads + sets callMethod.
-    const n = createQueuedPixel("callMethod", "queue");
-    const stub = n as unknown as {
-      push: unknown;
-      loaded: boolean;
-      version: string;
-      queue: unknown[];
-    };
-    stub.push = n;
-    stub.loaded = true;
-    stub.version = "2.0";
-    stub.queue = [];
-    window.fbq = n as unknown as Window["fbq"];
-    window._fbq = window.fbq;
-  }
-  injectPixelScriptOnce(
-    "https://connect.facebook.net/en_US/fbevents.js",
-    "meta",
-  );
-  window.fbq?.("init", pixelId);
-  window.fbq?.("track", "PageView");
-}
-
-function bootstrapTikTokPixel(pixelCode: string): void {
-  window.TiktokAnalyticsObject = "ttq";
-  const ttq = (window.ttq = window.ttq ?? {}) as unknown as {
-    methods: string[];
-    setAndDefer: (obj: Record<string, unknown>, method: string) => void;
-    load: (id: string) => void;
-    page: () => void;
-    push: (a: unknown) => void;
-    _i?: Record<string, unknown[]>;
-    _t?: Record<string, number>;
-    _o?: Record<string, unknown>;
-    [k: string]: unknown;
-  };
-  ttq.push =
-    ttq.push ??
-    ((a: unknown): void => {
-      ((ttq as unknown as { _q?: unknown[] })._q =
-        (ttq as unknown as { _q?: unknown[] })._q ?? []).push(a);
-    });
-  ttq.methods = [
-    "page",
-    "track",
-    "identify",
-    "instances",
-    "debug",
-    "on",
-    "off",
-    "once",
-    "ready",
-    "alias",
-    "group",
-    "enableCookie",
-    "disableCookie",
-    "holdConsent",
-    "revokeConsent",
-    "grantConsent",
-  ];
-  ttq.setAndDefer = function (
-    obj: Record<string, unknown>,
-    method: string,
-  ): void {
-    obj[method] = function (): void {
-      // eslint-disable-next-line prefer-rest-params
-      const args = Array.prototype.slice.call(arguments) as unknown[];
-      (obj as unknown as { push: (a: unknown) => void }).push([
-        method,
-        ...args,
-      ]);
-    };
-  };
-  for (const m of ttq.methods)
-    ttq.setAndDefer(ttq as unknown as Record<string, unknown>, m);
-  ttq.load = function (id: string): void {
-    ttq._i = ttq._i ?? {};
-    ttq._i[id] = [];
-    ttq._t = ttq._t ?? {};
-    ttq._t[id] = Number(new Date());
-    ttq._o = ttq._o ?? {};
-    ttq._o[id] = {};
-    injectPixelScriptOnce(
-      `https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=${id}&lib=ttq`,
-      "tiktok",
-    );
-  };
-  ttq.load(pixelCode);
-  ttq.page();
-}
-
-function bootstrapSnapPixel(pixelId: string): void {
-  if (window.snaptr === undefined) {
-    window.snaptr = createQueuedPixel(
-      "handleRequest",
-      "queue",
-    ) as Window["snaptr"];
-  }
-  injectPixelScriptOnce("https://sc-static.net/scevent.min.js", "snap");
-  window.snaptr?.("init", pixelId);
-  window.snaptr?.("track", "PAGE_VIEW");
-}
-
-function bootstrapRedditPixel(pixelId: string): void {
-  if (window.rdt === undefined) {
-    window.rdt = createQueuedPixel("sendEvent", "callQueue") as Window["rdt"];
-  }
-  injectPixelScriptOnce("https://www.redditstatic.com/ads/pixel.js", "reddit");
-  window.rdt?.("init", pixelId);
-  window.rdt?.("track", "PageVisit");
-}
-
-/**
- * Bootstrap the four ad pixels at the configured consent boundary. Each pixel
- * is isolated in its own try/catch so one broken loader can neither block the
- * page nor prevent the others from loading. Idempotent.
- */
-function bootstrapAdPixels(): void {
+/** Load the provider shims on arrival without placing them in the eager chunk. */
+async function bootstrapAdPixels(): Promise<void> {
   if (!adTrackingAllowed() || adPixelsBootstrapped) return;
-  adPixelsBootstrapped = true; // set first so a throw can't cause a re-bootstrap loop
-  window.__minglaAdPixelsBootstrapped = true;
-  if (adPixelIds.meta)
-    safePixel(() => bootstrapMetaPixel(adPixelIds.meta as string));
-  if (adPixelIds.tiktok)
-    safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
-  if (adPixelIds.snap)
-    safePixel(() => bootstrapSnapPixel(adPixelIds.snap as string));
-  if (adPixelIds.reddit)
-    safePixel(() => bootstrapRedditPixel(adPixelIds.reddit as string));
-  // Every provider bootstrap above emits its page-view event. Mark this exact
-  // browser URL so the hydrated route effect cannot count the same landing a
-  // second time. A later SPA navigation has a different href and still fires.
-  markAdPageViewFired();
+  adPixelRuntimePromise ??= import("./adPixelRuntime.web");
+  const runtime = await adPixelRuntimePromise;
+  adPixelRuntime = runtime;
+  // A user can opt out while the small runtime chunk is loading.
+  if (!adTrackingAllowed() || adPixelsBootstrapped) return;
+  runtime.bootstrapAdPixels(adPixelIds);
+  adPixelsBootstrapped = window.__minglaAdPixelsBootstrapped === true;
 }
 
 /** True while tracking is allowed and the arrival-time pixel boot ran. */
@@ -905,15 +737,7 @@ function stopAdPixels(): void {
 /** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
 export function fireAdPageView(): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
-  const keys = (window.__minglaAdPageViewKeys ??= {});
-  const key = currentAdPageViewKey();
-  if (key === null) return;
-  if (keys[key]) return;
-  keys[key] = true;
-  safePixel(() => window.fbq?.("track", "PageView"));
-  safePixel(() => window.ttq?.page?.());
-  safePixel(() => window.snaptr?.("track", "PAGE_VIEW"));
-  safePixel(() => window.rdt?.("track", "PageVisit"));
+  adPixelRuntime?.fireAdPageView();
 }
 
 export interface AdCommerceEventProps {
@@ -923,34 +747,6 @@ export interface AdCommerceEventProps {
   brandId?: string;
 }
 
-interface CompleteAdCommerceEventProps {
-  value: number;
-  currency: string;
-  contentId: string;
-  brandId: string;
-}
-
-/** #3697 — never emit a product event whose matching dimensions are partial. */
-function completeAdCommerceEventProps(
-  props: AdCommerceEventProps | null | undefined,
-): CompleteAdCommerceEventProps | null {
-  const value = props?.value;
-  const currency = props?.currency?.trim().toUpperCase() ?? "";
-  const contentId = props?.contentId?.trim() ?? "";
-  const brandId = props?.brandId?.trim() ?? "";
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    value < 0 ||
-    !/^[A-Z]{3}$/.test(currency) ||
-    !contentId ||
-    !brandId
-  ) {
-    return null;
-  }
-  return { value, currency, contentId, brandId };
-}
-
 /** Offering view — one deduplicated ViewContent across the four pixels. */
 export function fireAdViewContent(
   props?: AdCommerceEventProps & {
@@ -958,63 +754,7 @@ export function fireAdViewContent(
   },
 ): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
-  const completeProps = completeAdCommerceEventProps(props);
-  if (completeProps === null) return;
-  const { value, currency, contentId, brandId } = completeProps;
-  const serverKeys = (window.__minglaAdViewContentKeys ??= {});
-  if (serverKeys[contentId]) return;
-  const eventId =
-    props?.eventId ??
-    globalThis.crypto?.randomUUID?.() ??
-    `view-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const viewKey = contentId;
-  if (firedViewContentKeys.has(viewKey)) return;
-  firedViewContentKeys.add(viewKey);
-  serverKeys[contentId] = true;
-  safePixel(() =>
-    window.fbq?.(
-      "track",
-      "ViewContent",
-      definedProps({
-        value,
-        currency,
-        content_type: "product",
-        content_ids: [contentId],
-        brand_id: brandId,
-      }),
-      { eventID: eventId },
-    ),
-  );
-  safePixel(() =>
-    window.ttq?.track?.(
-      "ViewContent",
-      definedProps({
-        value,
-        currency,
-        content_type: "product",
-        content_id: contentId,
-        brand_id: brandId,
-      }),
-      { event_id: eventId },
-    ),
-  );
-  safePixel(() =>
-    window.snaptr?.(
-      "track",
-      "VIEW_CONTENT",
-      definedProps({
-        price: value,
-        currency,
-        item_ids: [contentId],
-        brand_id: brandId,
-        transaction_id: eventId,
-        client_dedup_id: eventId,
-      }),
-    ),
-  );
-  safePixel(() =>
-    window.rdt?.("track", "ViewContent", definedProps({ value, currency })),
-  );
+  adPixelRuntime?.fireAdViewContent(props);
 }
 
 /**
@@ -1026,70 +766,8 @@ export function fireAdPurchase(
   eventId: string,
   props: AdCommerceEventProps,
 ): void {
-  if (!adTrackingAllowed()) return;
-  // toward #3697 F-4: free tickets ($0) must match server sign-up events.
-  const isPaidPurchase = !(typeof props.value === "number" && props.value <= 0);
-  fireAdConversion(eventId, props, isPaidPurchase);
-}
-
-function fireAdConversion(
-  eventId: string,
-  props: AdCommerceEventProps,
-  purchase: boolean,
-): void {
-  if (!adTrackingAllowed() || !adPixelsBootstrapped || !eventId) return;
-  const completeProps = completeAdCommerceEventProps(props);
-  if (completeProps === null) return;
-  const { value, currency, contentId, brandId } = completeProps;
-  safePixel(() =>
-    // toward #3697 F-4: free/RSVP = CompleteRegistration (must match server CAPI).
-    window.fbq?.(
-      "track",
-      purchase ? "Purchase" : "CompleteRegistration",
-      definedProps({
-        value,
-        currency,
-        content_type: "product",
-        content_ids: [contentId],
-        brand_id: brandId,
-      }),
-      { eventID: eventId },
-    ),
-  );
-  safePixel(() =>
-    window.ttq?.track?.(
-      purchase ? "CompletePayment" : "CompleteRegistration",
-      definedProps({
-        value,
-        currency,
-        content_type: "product",
-        content_id: contentId,
-        brand_id: brandId,
-      }),
-      { event_id: eventId },
-    ),
-  );
-  safePixel(() =>
-    window.snaptr?.(
-      "track",
-      purchase ? "PURCHASE" : "SIGN_UP",
-      definedProps({
-        price: value,
-        currency,
-        item_ids: [contentId],
-        brand_id: brandId,
-        transaction_id: eventId,
-        client_dedup_id: eventId,
-      }),
-    ),
-  );
-  safePixel(() =>
-    window.rdt?.(
-      "track",
-      purchase ? "Purchase" : "SignUp",
-      definedProps({ value, currency, conversion_id: eventId }),
-    ),
-  );
+  if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
+  adPixelRuntime?.fireAdPurchase(eventId, props);
 }
 
 /**
@@ -1102,8 +780,8 @@ export function fireAdReservation(
   eventId: string,
   props: AdCommerceEventProps = {},
 ): void {
-  if (!adTrackingAllowed()) return;
-  fireAdConversion(eventId, props, false);
+  if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
+  adPixelRuntime?.fireAdReservation(eventId, props);
 }
 
 /** Checkout-start dedup pair: browser pixels share the checkout session id. */
@@ -1111,59 +789,8 @@ export function fireAdInitiateCheckout(
   eventId: string,
   props: AdCommerceEventProps = {},
 ): void {
-  if (!adTrackingAllowed() || !adPixelsBootstrapped || !eventId) return;
-  const completeProps = completeAdCommerceEventProps(props);
-  if (completeProps === null) return;
-  const { value, currency, contentId, brandId } = completeProps;
-  safePixel(() =>
-    window.fbq?.(
-      "track",
-      "InitiateCheckout",
-      definedProps({
-        value,
-        currency,
-        content_type: "product",
-        content_ids: [contentId],
-        brand_id: brandId,
-      }),
-      { eventID: eventId },
-    ),
-  );
-  safePixel(() =>
-    window.ttq?.track?.(
-      "InitiateCheckout",
-      definedProps({
-        value,
-        currency,
-        content_type: "product",
-        content_id: contentId,
-        brand_id: brandId,
-      }),
-      { event_id: eventId },
-    ),
-  );
-  safePixel(() =>
-    window.snaptr?.(
-      "track",
-      "START_CHECKOUT",
-      definedProps({
-        price: value,
-        currency,
-        item_ids: [contentId],
-        brand_id: brandId,
-        transaction_id: eventId,
-        client_dedup_id: eventId,
-      }),
-    ),
-  );
-}
-
-async function sha256Browser(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
+  adPixelRuntime?.fireAdInitiateCheckout(eventId, props);
 }
 
 /** TikTok Advanced Matching; raw buyer PII never leaves this function. */
@@ -1172,15 +799,7 @@ export async function identifyAdBuyer(input: {
   phone?: string | null;
 }): Promise<void> {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
-  const identify = window.ttq?.identify;
-  if (typeof identify !== "function") return;
-  const email = input.email?.trim().toLowerCase() ?? "";
-  const phone = input.phone?.replace(/[^0-9]/g, "") ?? "";
-  const payload = definedProps({
-    email: email ? await sha256Browser(email) : undefined,
-    phone_number: phone ? await sha256Browser(phone) : undefined,
-  });
-  if (Object.keys(payload).length > 0) safePixel(() => identify(payload));
+  await adPixelRuntime?.identifyAdBuyer(input);
 }
 
 // ── Click-id capture + first-party threading storage ──────────────────────────
