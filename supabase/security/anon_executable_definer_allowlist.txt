@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 196 (intended-public 27, internally-gated 108, predicate/read-helper 58, PostGIS 3).
+# Signature count: 197 (intended-public 28, internally-gated 108, predicate/read-helper 58, PostGIS 3).
 # (#1931 recomputed this line from the file itself AFTER its one appended signature, by
 #  counting non-comment, non-blank lines per section. The previous value of 194/25/109/57
 #  was already stale by two against the 192 lines then present; the count is not gate-
