@@ -258,7 +258,7 @@ Deno.test("#4084 exact web attestation advances not_deployed to READY and preser
 });
 
 Deno.test("#4084 only the guarded release-record workflow can attest web supersession", () => {
-  const workflow = read(WORKFLOW_ROOT + "release-records.yml");
+  const workflow = read(WORKFLOW_ROOT + "release-records" + ".yml");
   assertMatch(workflow, /superseding_web_pr:/);
   assertMatch(workflow, /statuses: write/);
   assertMatch(workflow, /inputs\.superseding_web_pr != 0/);
