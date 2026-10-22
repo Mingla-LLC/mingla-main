@@ -288,10 +288,12 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   theme,
   callbacks,
   variant,
-  presentedByFollow,
-  presentedByFollowerCount,
+  // Explicit defaults keep these #3682 props typed even in the repository's
+  // known shared-package React-resolution gap (tracked by the delta gate).
+  presentedByFollow = undefined as React.ReactNode | undefined,
+  presentedByFollowerCount = undefined as number | null | undefined,
   presentedByFollowerCountLoading = false,
-  presentedByFollowerCountLabels,
+  presentedByFollowerCountLabels = undefined as FollowerCountLabels | undefined,
   formatStopTime,
   availabilityBlock = null,
   stateBanner = null,

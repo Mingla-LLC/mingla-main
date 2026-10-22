@@ -1,4 +1,3 @@
-import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
@@ -24,7 +23,7 @@ export type FollowerCountLineProps = {
   labels?: FollowerCountLabels;
 };
 
-export const FollowerCountLine: React.FC<FollowerCountLineProps> = ({
+export function FollowerCountLine({
   count,
   loading = false,
   palette,
@@ -32,7 +31,7 @@ export const FollowerCountLine: React.FC<FollowerCountLineProps> = ({
   testID = "follower-count-line",
   prefix,
   labels,
-}) => {
+}: FollowerCountLineProps) {
   if (loading) {
     return (
       <View
@@ -89,7 +88,7 @@ export const FollowerCountLine: React.FC<FollowerCountLineProps> = ({
       {after}
     </Text>
   );
-};
+}
 
 const styles = StyleSheet.create({
   caption: {

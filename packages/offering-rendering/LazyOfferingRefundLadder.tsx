@@ -23,15 +23,21 @@
  * tries again. This file adds no copy.
  */
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 
+import type { FollowerCountLineProps } from "./FollowerCountLine";
 import type { OfferingRefundLadderProps } from "./OfferingRefundLadder";
 
 type OfferingRefundLadderModule = typeof import("./OfferingRefundLadder");
 
 let loadedLadder: OfferingRefundLadderModule | undefined;
 let pendingLadder: Promise<OfferingRefundLadderModule> | undefined;
+
+const DeferredFollowerCountLine = React.lazy(async () => {
+  const module = await import("./FollowerCountLine");
+  return { default: module.FollowerCountLine };
+});
 
 /** Load the ladder chunk once. A failed load is forgotten, so the next call retries. */
 export const loadOfferingRefundLadder = (): Promise<OfferingRefundLadderModule> => {
@@ -102,3 +108,12 @@ export const LazyOfferingRefundLadder = (props: OfferingRefundLadderProps) => {
   const height = failed ? 0 : reservedLadderHeight(props);
   return height > 0 ? <View style={{ height }} /> : null;
 };
+
+/** Keep secondary social proof out of the eager public-page payload. */
+export function LazyFollowerCountLine(props: FollowerCountLineProps) {
+  return (
+    <React.Suspense fallback={null}>
+      <DeferredFollowerCountLine {...props} />
+    </React.Suspense>
+  );
+}

@@ -1,4 +1,3 @@
-import React from "react";
 import { StyleSheet, View } from "react-native";
 
 import type { FollowerCountLabels } from "./FollowerCountLine";
@@ -18,7 +17,7 @@ export type PresentedByFollowerCountProps = {
 /** One shared secondary-count row for every Presented-by identity card. */
 export function PresentedByFollowerCount(
   props: PresentedByFollowerCountProps,
-): React.ReactElement | null {
+) {
   const { count, loading = false, labels, palette, testID } = props;
   if (!loading && count == null) return null;
   return (
