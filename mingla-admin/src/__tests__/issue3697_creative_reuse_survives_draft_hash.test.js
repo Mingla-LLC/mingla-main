@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-3697-CREATIVE-REUSE-SURVIVES-DRAFT-HASH | issue #3697 | Creative Library "Use in campaign" loads the chosen creative into a new Campaign Builder even after draft setup writes draft= into the URL
+// MINGLA-INVARIANT: I-3697-CREATIVE-REUSE-SURVIVES-HASH-REWRITE | issue #3697 | Creative Library "Use in campaign" loads the chosen creative into a new Campaign Builder even after the builder writes its saved-work id into the URL
 /**
  * Issue #3697 — "Use in campaign" opened an empty builder.
  *
