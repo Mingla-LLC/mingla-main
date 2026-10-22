@@ -79,7 +79,7 @@ jobs:
 
   release-record:
     name: Release record
-    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'push' || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations')) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name == 'push' || github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' || (github.event_name == 'status' && (startsWith(github.event.context, 'Vercel') || github.event.context == 'mingla/production-migrations' || github.event.context == 'mingla/edge-deploy-supersession')) || (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, 'Live check:') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) }}
     runs-on: ubuntu-latest
     # One queue per merge commit: the push to main, the Vercel statuses, the
     # migrations status and the edge deploy run of one merge never write its

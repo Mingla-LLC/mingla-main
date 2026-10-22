@@ -19,6 +19,7 @@ export const WEB_PROJECTS = [
 export const MAX_ISSUES = 10;
 export const MAX_GUIDE_KEYS = 20;
 export const REMINDER_DAYS = 7;
+export const EDGE_SUPERSESSION_CONTEXT = "mingla/edge-deploy-supersession";
 
 const ISSUE_URL = String.raw`https://github\.com/Mingla-LLC/mingla-main/issues/(\d{1,7})(?:[/?#][^\s,)]*)?`;
 const REF = String.raw`(?:#(\d{1,7})\b|${ISSUE_URL})`;
@@ -175,6 +176,31 @@ export function edgeFunctions(paths) {
   return [...[...out].sort(), ...(shared ? ["(shared code)"] : [])];
 }
 
+/** Concrete edge-function directories changed by a pull request. */
+export function concreteEdgeFunctions(paths) {
+  return edgeFunctions(paths).filter((name) => name !== "(shared code)");
+}
+
+/**
+ * Validate the facts the deploy workflow must prove before it may attest that
+ * a later main deployment supersedes an earlier failed edge deployment.
+ */
+export function edgeSupersessionVerdict({ pr, paths, selected, compareStatus, currentSha, preflightOnly }) {
+  if (preflightOnly) return { ok: false, reason: "preflight_only" };
+  if (!pr?.merged_at || pr?.base?.ref !== "main" || !/^[0-9a-f]{40}$/.test(String(pr?.merge_commit_sha ?? ""))) {
+    return { ok: false, reason: "target_not_merged_to_main" };
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(currentSha ?? ""))) return { ok: false, reason: "current_sha_invalid" };
+  if (!new Set(["ahead", "identical"]).has(compareStatus)) return { ok: false, reason: "current_main_not_descendant" };
+  const expected = concreteEdgeFunctions(paths);
+  const actual = [...new Set((selected ?? []).map((name) => String(name).trim()).filter(Boolean))].sort();
+  if (expected.length === 0) return { ok: false, reason: "no_concrete_functions" };
+  if (actual.length !== expected.length || actual.some((name, index) => name !== expected[index])) {
+    return { ok: false, reason: "selection_mismatch", expected, actual };
+  }
+  return { ok: true, expected };
+}
+
 /** Migration versions added by a pull request ([{filename, status}]). */
 export function migrationsAdded(files) {
   const out = new Set();
@@ -273,11 +299,45 @@ function deployLine(data) {
   const edge = data?.deploy?.edge ?? "none";
   const names = (data?.edge_functions ?? []).map((n) => visible(n, 80)).join(", ");
   if (edge === "manual") parts.push("Sites functions deploy only through their governed lane: check by hand");
-  else if (edge !== "none") parts.push(`edge functions ${names} ${edge}`);
+  else if (edge === "deployed" && data?.edge_supersession?.url) {
+    parts.push(`edge functions ${names} deployed by later reviewed run ${visible(data.edge_supersession.url, 300)} (original merge run ${visible(data.edge_original_state ?? "unknown", 20)})`);
+  } else if (edge !== "none") parts.push(`edge functions ${names} ${edge}`);
   return parts.length > 0 ? parts.join("; ") : "N/A (no web or edge function change)";
 }
 
 const EDGE_WORKFLOW = "Deploy Supabase Edge Functions";
+
+/** The newest valid success attestation written by the reviewed deploy workflow. */
+export function edgeSupersessionStatus(statuses) {
+  const exactUrl = /^https:\/\/github\.com\/Mingla-LLC\/mingla-main\/actions\/runs\/(\d+)$/;
+  const exactDescription = /^Later reviewed run (\d+) deployed all (\d+) changed edge functions$/;
+  const valid = (statuses ?? []).filter((status) => {
+    if (status?.context !== EDGE_SUPERSESSION_CONTEXT || status?.state !== "success") return false;
+    const url = exactUrl.exec(String(status?.target_url ?? ""));
+    const description = exactDescription.exec(String(status?.description ?? ""));
+    return Boolean(url && description && url[1] === description[1] && Number(description[2]) > 0);
+  });
+  const newest = valid.sort((a, b) => Date.parse(b?.created_at ?? 0) - Date.parse(a?.created_at ?? 0) || Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
+  if (!newest) return null;
+  return {
+    run_id: Number(exactUrl.exec(newest.target_url)[1]),
+    url: newest.target_url,
+    description: newest.description,
+    at: newest.created_at ?? null,
+  };
+}
+
+/** Original merge-SHA edge result before any later supersession. */
+export function originalEdgeDeployState(edge, edgeRuns) {
+  if (edge.some((name) => name.startsWith("brand-site-"))) return "manual";
+  if (edge.length === 0) return "none";
+  const run = (edgeRuns ?? []).filter((item) => item?.name === EDGE_WORKFLOW)
+    .sort((a, b) => Date.parse(b?.created_at ?? 0) - Date.parse(a?.created_at ?? 0) || Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
+  return !run || run.status !== "completed" ? "pending"
+    : run.conclusion === "success" ? "deployed"
+    : ["failure", "cancelled", "timed_out"].includes(run.conclusion) ? "failed"
+    : "pending";
+}
 
 /** True for "Vercel – mingla-admin" or "Vercel - mingla-admin", exactly. */
 export function isVercelName(name, project) {
@@ -308,17 +368,8 @@ export function deployState({ web, edge, marker, statuses, checks, edgeRuns }) {
       : seen.some((s) => s === "failure" || s === "error" || s === "timed_out" || s === "cancelled") ? "failed"
       : "pending";
   }
-  if (edge.some((n) => n.startsWith("brand-site-"))) out.edge = "manual";
-  else if (edge.length > 0) {
-    // Only the edge deploy workflow itself, by its exact name; of several
-    // runs (re-runs), the newest.
-    const run = edgeRuns.filter((r) => r?.name === EDGE_WORKFLOW)
-      .sort((a, b) => Date.parse(b?.created_at ?? 0) - Date.parse(a?.created_at ?? 0) || Number(b?.id ?? 0) - Number(a?.id ?? 0))[0];
-    out.edge = !run || run.status !== "completed" ? "pending"
-      : run.conclusion === "success" ? "deployed"
-      : ["failure", "cancelled", "timed_out"].includes(run.conclusion) ? "failed"
-      : "pending";
-  }
+  out.edge = originalEdgeDeployState(edge, edgeRuns);
+  if (["failed", "pending"].includes(out.edge) && edgeSupersessionStatus(statuses)) out.edge = "deployed";
   return out;
 }
 
