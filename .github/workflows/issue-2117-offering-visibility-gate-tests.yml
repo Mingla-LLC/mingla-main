@@ -223,6 +223,10 @@ jobs:
               # functions whose current base and private-link identities exist only
               # in migrations this filtered lane intentionally skips.
               *20271216013872_issue_3872_r1_ticket_checkout.sql) continue ;;
+              # #3872 public discount display — SKIPPED because this migration
+              # re-emits public readers whose current private-link and checkout
+              # identities exist only in migrations this filtered lane skips.
+              *20271216023872_issue_3872_r1_public_display.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

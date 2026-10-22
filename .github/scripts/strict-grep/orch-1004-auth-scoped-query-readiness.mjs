@@ -284,7 +284,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["useIntakeSchema.ts", "trip_intake_schemas has trip_intake_schemas_anon_select for published trips; the buyer checkout-trip intake pages read it anonymously (dual-use)"],
   // ── ORCH-1202 — newly-discovered genuinely-public/anon-safe hooks.
   ["useBrandStripeCountries.ts", "static 34-country list; no auth context, no auth.uid()-scoped read (anon-safe UI helper)"],
-  ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_allin SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147)"],
+  ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_pricing SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147/#3872)"],
   ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
   ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],

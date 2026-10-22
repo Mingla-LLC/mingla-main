@@ -1466,11 +1466,11 @@ const fetchTicketTypesRemaining = async (
 };
 
 // ORCH-1006 — per-tier ALL-IN (WYSIWYP). Server-computed via the SAME
-// compute_all_in_cents the cart + view use (pg_public_event_tier_allin RPC),
+// compute_all_in_cents the cart + view use (pg_public_event_tier_pricing RPC),
 // ZERO fee math in TS. RPC failure is non-fatal → every tier falls back to its
 // base price (never blank). Mirrors app-mobile's publicEventTicketsService.
 // ORCH-1147 — EXPORTED so the experience service reuses the SAME single owner
-// of pg_public_event_tier_allin (no duplicated RPC / fee math anywhere else).
+// of pg_public_event_tier_pricing (no duplicated RPC / fee math anywhere else).
 // ===========================================================================
 // ORCH-1167 [event-page-canonical] — the ONE canonical anon read RPC for the
 // standard ticketed-event public page body fields. Returns the full
@@ -1537,7 +1537,7 @@ export const fetchTierAllInCents = async (
   eventId: string,
 ): Promise<Map<string, number>> => {
   const map = new Map<string, number>();
-  const { data, error } = await supabase.rpc("pg_public_event_tier_allin", {
+  const { data, error } = await supabase.rpc("pg_public_event_tier_pricing", {
     p_event_id: eventId,
   });
   if (error !== null || !Array.isArray(data)) return map;
@@ -1732,6 +1732,18 @@ const directBundleTicketToStub = (
     description: asStringOrNull(ticket.description),
     priceGbp: isFree ? null : priceCents / 100,
     priceAllInGbp: isFree ? null : allInCents / 100,
+    salePriceGbp:
+      typeof ticket.saleBaseCents === "number"
+        ? ticket.saleBaseCents / 100
+        : null,
+    saleAllInGbp:
+      typeof ticket.saleAllInCents === "number"
+        ? ticket.saleAllInCents / 100
+        : null,
+    saleEndsAt: asStringOrNull(ticket.saleEndsAt),
+    saleName: asStringOrNull(ticket.saleName),
+    saleRemaining:
+      typeof ticket.saleRemaining === "number" ? ticket.saleRemaining : null,
     currency: asStringOrNull(ticket.currency) ?? fallbackCurrency,
     capacity:
       isUnlimited

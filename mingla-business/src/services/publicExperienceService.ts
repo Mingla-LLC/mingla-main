@@ -25,7 +25,7 @@
 
 import { supabase } from "./supabase";
 import type { RecurrenceRule } from "../store/draftEventStore";
-// ORCH-1147 — reuse the SINGLE owner of pg_public_event_tier_allin (no
+// ORCH-1147 — reuse the SINGLE owner of pg_public_event_tier_pricing (no
 // duplicated RPC / fee math here). The trip + event paths use the same helper.
 import { fetchTierAllInCents } from "./publicEventsService";
 import { normalizeStopStartOffset } from "../utils/experienceBookingSettings";
@@ -82,7 +82,7 @@ export interface PublicExperienceTicket {
   ticketsRemaining: number | null;
   /**
    * ORCH-1147 — server fee-grossed all-in in MAJOR units
-   * (`pg_public_event_tier_allin` → /100). Null = free / RPC miss; cart seed
+   * (`pg_public_event_tier_pricing` → /100). Null = free / RPC miss; cart seed
    * falls back to `priceCents`/base. NEVER recompute fees in TS.
    */
   priceAllInGbp?: number | null;

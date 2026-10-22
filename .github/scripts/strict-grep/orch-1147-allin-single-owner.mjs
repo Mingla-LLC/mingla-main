@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * ORCH-1147 (SC-11) — the per-tier server all-in
- * (`pg_public_event_tier_allin`) has exactly ONE owner of the RPC call:
+ * (`pg_public_event_tier_pricing`) has exactly ONE owner of the RPC call:
  * `fetchTierAllInCents` in `mingla-business/src/services/publicEventsService.ts`.
  *
  * The trip producer (`getPublicTripById`, same file) and the experience
@@ -11,7 +11,7 @@
  * that would re-introduce the two-source drift ORCH-1147 eliminated.
  *
  * The gate fails if:
- *   (a) `pg_public_event_tier_allin` is referenced anywhere OTHER than
+ *   (a) `pg_public_event_tier_pricing` is referenced anywhere OTHER than
  *       publicEventsService.ts (the single owner), OR
  *   (b) the trip-tier / experience source services contain the RPC string at
  *       all (`tripsService.ts`, `publicExperienceService.ts`).
@@ -27,7 +27,7 @@ const root = process.cwd().endsWith("mingla-business")
   : process.cwd();
 const failures = [];
 
-const RPC = "pg_public_event_tier_allin";
+const RPC = "pg_public_event_tier_pricing";
 
 // The ONLY file allowed to call the RPC (single owner = fetchTierAllInCents).
 const OWNER = "mingla-business/src/services/publicEventsService.ts";
@@ -77,13 +77,13 @@ const evaluateOwner = (rel, rawCode) => {
 if (SELF_TEST) {
   const GOOD_OWNER = `
     export const fetchTierAllInCents = async (eventId) => {
-      const { data } = await supabase.rpc("pg_public_event_tier_allin", { p_event_id: eventId });
+      const { data } = await supabase.rpc("pg_public_event_tier_pricing", { p_event_id: eventId });
       return data;
     };
   `;
   const BAD_OWNER_NOEXPORT = `
     const fetchTierAllInCents = async (eventId) => {
-      const { data } = await supabase.rpc("pg_public_event_tier_allin", { p_event_id: eventId });
+      const { data } = await supabase.rpc("pg_public_event_tier_pricing", { p_event_id: eventId });
       return data;
     };
   `;
@@ -92,7 +92,7 @@ if (SELF_TEST) {
     const m = await fetchTierAllInCents(eventId);
   `;
   const BAD_REUSER = `
-    const { data } = await supabase.rpc("pg_public_event_tier_allin", { p_event_id: eventId });
+    const { data } = await supabase.rpc("pg_public_event_tier_pricing", { p_event_id: eventId });
   `;
   const ok =
     evaluateOwner("owner.ts", GOOD_OWNER).length === 0 &&

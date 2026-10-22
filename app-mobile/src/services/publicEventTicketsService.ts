@@ -63,7 +63,8 @@ const rowToTicket = (row: TicketTypeRow): PublicTicketProps => ({
 });
 
 /**
- * ORCH-1006 Slice 3 — per-tier all-in row from pg_public_event_tier_allin.
+ * ORCH-1006/#3872 — per-tier list and sale pricing from
+ * pg_public_event_tier_pricing.
  * Server-computed via compute_all_in_cents (same math the cart uses). The only
  * arithmetic the client does is cents/100 below.
  */
@@ -72,6 +73,11 @@ interface TierAllInRow {
   base_cents: number | null;
   all_in_cents: number | null;
   currency: string | null;
+  sale_base_cents: number | null;
+  sale_all_in_cents: number | null;
+  sale_ends_at: string | null;
+  sale_name: string | null;
+  sale_remaining: number | null;
 }
 
 export const fetchPublicEventTickets = async (
@@ -79,7 +85,7 @@ export const fetchPublicEventTickets = async (
 ): Promise<PublicTicketProps[]> => {
   // Two server reads, ZERO fee math in TS:
   //  1. raw ticket_types rows (base price_cents only)
-  //  2. pg_public_event_tier_allin RPC — server-computed all-in per tier via the
+  //  2. pg_public_event_tier_pricing RPC — server-computed list and sale all-in via the
   //     SAME compute_all_in_cents math the cart uses (WYSIWYP parity).
   const [ticketsRes, allInRes] = await Promise.all([
     supabase
@@ -91,7 +97,7 @@ export const fetchPublicEventTickets = async (
       .eq("available_online", true)
       .is("deleted_at", null)
       .order("display_order", { ascending: true }),
-    supabase.rpc("pg_public_event_tier_allin", { p_event_id: eventId }),
+    supabase.rpc("pg_public_event_tier_pricing", { p_event_id: eventId }),
   ]);
 
   if (ticketsRes.error !== null) throw ticketsRes.error;
@@ -99,10 +105,12 @@ export const fetchPublicEventTickets = async (
   // ticket_type_id -> all_in_cents. RPC failure is non-fatal: every tier falls
   // back to its base price in rowToTicket below (never blank).
   const allInByTier = new Map<string, number>();
+  const saleByTier = new Map<string, TierAllInRow>();
   if (allInRes.error === null && Array.isArray(allInRes.data)) {
     for (const row of allInRes.data as TierAllInRow[]) {
       if (row?.ticket_type_id != null && typeof row.all_in_cents === "number") {
         allInByTier.set(row.ticket_type_id, row.all_in_cents);
+        saleByTier.set(row.ticket_type_id, row);
       }
     }
   }
@@ -111,6 +119,7 @@ export const fetchPublicEventTickets = async (
     const ticket = rowToTicket(row);
     // cents/100 is the ONLY math; no fee/tax derivation in TS.
     const allInCents = allInByTier.get(row.id);
+    const sale = saleByTier.get(row.id);
     if (ticket.isFree) {
       ticket.priceAllInGbp = null;
     } else if (typeof allInCents === "number") {
@@ -119,6 +128,17 @@ export const fetchPublicEventTickets = async (
       // No RPC row for this tier → fall back to base (priceGbp), never blank.
       ticket.priceAllInGbp = ticket.priceGbp;
     }
+    ticket.salePriceGbp =
+      typeof sale?.sale_base_cents === "number"
+        ? sale.sale_base_cents / 100
+        : null;
+    ticket.saleAllInGbp =
+      typeof sale?.sale_all_in_cents === "number"
+        ? sale.sale_all_in_cents / 100
+        : null;
+    ticket.saleEndsAt = sale?.sale_ends_at ?? null;
+    ticket.saleName = sale?.sale_name ?? null;
+    ticket.saleRemaining = sale?.sale_remaining ?? null;
     return ticket;
   });
 };
