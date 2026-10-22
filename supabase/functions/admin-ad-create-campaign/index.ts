@@ -2722,7 +2722,7 @@ serve(async (req: Request): Promise<Response> => {
     const destVenueIdS = resolvedDestinationS.venue_id;
     const snapTrackedDestUrlS = `${destUrlS}${
       destUrlS.includes("?") ? "&" : "?"
-    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSquad.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}`;
+    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSquad.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
     const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
@@ -3835,6 +3835,10 @@ serve(async (req: Request): Promise<Response> => {
             { key: "utm_medium", value: "paid" },
             { key: "utm_campaign", value: "__CAMPAIGN_ID__" },
             { key: "utm_content", value: "__CID__" },
+            { key: "mc_id", value: "__CAMPAIGN_ID__" },
+            { key: "campaign_id", value: "__CAMPAIGN_ID__" },
+            { key: "adset_id", value: "__AID__" },
+            { key: "ad_id", value: "__CID__" },
           ],
         };
 
