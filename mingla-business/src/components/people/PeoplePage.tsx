@@ -32,7 +32,6 @@ import { capturePeople } from "../../features/people/peopleAnalytics";
 import { useAudienceList } from "../../hooks/marketing/useAudienceList";
 import { useBrandPeople } from "../../hooks/marketing/useBrandPeople";
 import { useBrandCircleReach } from "../../hooks/marketing/useBrandCircleReach";
-import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
 import {
   useBrandPersonConflicts,
   useResolveBrandPersonConflict,
@@ -260,7 +259,6 @@ export function PeoplePage(): React.ReactElement {
   const importEnabled=authorized&&online&&!flag.isPending&&!flag.isFetching&&!flag.isError&&flag.data===true;
   const circleFollowers = useBrandCircleReach(brand?.id??null,"follower",roleResolved,role.accepted,role.rank,online);
   const circleExtended = useBrandCircleReach(brand?.id??null,"extended",roleResolved,role.accepted,role.rank,online);
-  const followerSummary = useBrandFollowerSummary(brand?.id ?? null);
   const [circleOpen,setCircleOpen]=React.useState<BrandCircleRing|null>(null);
   const [bookOpen, setBookOpen] = React.useState(false);
   const [groupsOpen, setGroupsOpen] = React.useState(false);
@@ -675,7 +673,7 @@ export function PeoplePage(): React.ReactElement {
               style={isWideDesktop ? styles.groupsColumnWide : styles.compactColumn}
             >
               {circleFollowers.kind!=="featureLoading"&&circleFollowers.kind!=="featureOff"?<>
-                <CircleReachBlock ring="follower" openerRef={followerCircleOpenerRef} query={circleFollowers} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"follower",dependencyState:"ready"});setCircleOpen("follower")}} followerTotal={followerSummary.data?.total ?? null}/>
+                <CircleReachBlock ring="follower" openerRef={followerCircleOpenerRef} query={circleFollowers} brandId={brand?.id ?? null} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"follower",dependencyState:"ready"});setCircleOpen("follower")}}/>
                 <CircleReachBlock ring="extended" openerRef={extendedCircleOpenerRef} query={circleExtended} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"extended",dependencyState:"ready"});setCircleOpen("extended")}}/>
               </>:null}
               <PeopleBlock

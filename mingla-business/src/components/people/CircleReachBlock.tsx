@@ -4,6 +4,7 @@ import { formatExactFollowers } from "@mingla/offering-rendering";
 import { glass, spacing, text, typography } from "../../constants/designSystem";
 import { capturePeople } from "../../features/people/peopleAnalytics";
 import type { useBrandCircleReach } from "../../hooks/marketing/useBrandCircleReach";
+import { useBrandFollowerSummary } from "../../hooks/useBrandFollowerSummary";
 import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
 import type { BrandCircleMember, BrandCircleRing } from "../../types/brandCircleReach";
 import { formatCount } from "../../utils/currency";
@@ -14,11 +15,12 @@ import { PeopleBlock } from "./PeoplePrimitives";
 
 export const CIRCLE_PREVIEW_LIMIT=3;
 type CircleQuery=ReturnType<typeof useBrandCircleReach>;
+type CircleReachBlockProps={ring:BrandCircleRing;query:CircleQuery;width:number;onSeeAll:()=>void;openerRef?:React.Ref<React.ElementRef<typeof Button>>;brandId?:string|null};
 const label=(ring:BrandCircleRing)=>ring==="follower"?"Followers":"Friends of followers";
 const count=(n:number)=>`${n} ${n===1?"person":"people"}`;
 export function CirclePersonRow({member,last=false}:{member:BrandCircleMember;last?:boolean}):React.ReactElement{return <View accessible accessibilityRole="text" accessibilityLabel={`${member.displayName}. ${member.reasonLabel}`} style={[styles.row,!last&&styles.divider]}><Avatar name={member.displayName} size="row" photo={member.avatarUrl??undefined} accessibilityLabel=" "/><View style={styles.copy}><Text maxFontSizeMultiplier={2} style={styles.name}>{member.displayName}</Text><Text maxFontSizeMultiplier={2} style={styles.reason}>{member.reasonLabel}</Text></View></View>}
 export function CircleReachLoading():React.ReactElement{return <View accessibilityLiveRegion="polite" style={styles.loading}><Text style={styles.status}>Checking current reach…</Text>{[0,1,2].map((row)=><View key={row} style={styles.row}><Skeleton width={40} height={40} radius="full"/><View style={styles.copy}><Skeleton width="48%" height={16}/><Skeleton width="68%" height={12}/></View></View>)}</View>}
-export function CircleReachBlock({ring,query,width,onSeeAll,openerRef,followerTotal}:{ring:BrandCircleRing;query:CircleQuery;width:number;onSeeAll:()=>void;openerRef?:React.Ref<React.ElementRef<typeof Button>>;followerTotal?:number|null}):React.ReactElement{
+function CircleReachBlockView({ring,query,width,onSeeAll,openerRef,followerTotal}:{ring:BrandCircleRing;query:CircleQuery;width:number;onSeeAll:()=>void;openerRef?:React.Ref<React.ElementRef<typeof Button>>;followerTotal?:number|null}):React.ReactElement{
   const [retrying,setRetrying]=React.useState(false),reduceMotion=useReducedMotionNative();
   const title=label(ring),availability=query.safeAvailability?.[ring==="follower"?"followers":"extended"],ringCount=query.counts?.[ring==="follower"?"followers":"extended"]??null;
   const rows=query.rows.filter((row)=>row.ring===ring).slice(0,CIRCLE_PREVIEW_LIMIT),ready=availability?.state==="ready"&&query.hasCurrentTruth;
@@ -39,5 +41,12 @@ export function CircleReachBlock({ring,query,width,onSeeAll,openerRef,followerTo
   return <PeopleBlock title={title} caption={ring==="follower"?"People who follow your brand.":"Friends of people who follow your brand."} count={summaryCount} icon={ring==="follower"?"users":"branch"} testID={`people-circle-${ring}-block`}>
     {loading?<CircleReachLoading/>:ready&&ringCount===0?<View style={[styles.empty,width>0&&width<352&&styles.centered]}><Text style={styles.status}>{ring==="follower"?"No followers to show yet.":"No friends of followers to show yet."}</Text><Text style={styles.reason}>{ring==="follower"?"When eligible people follow your brand, they’ll appear here.":"People appear here only after they opt into friends-of-followers reach."}</Text></View>:ready?<Animated.View style={{opacity:fade}}>{rows.map((member,index)=><CirclePersonRow key={member.memberId} member={member} last={index===rows.length-1}/>)}{ringCount!==null&&ringCount>CIRCLE_PREVIEW_LIMIT?<Button ref={openerRef} label="See all" accessibilityLabel={`See all ${title}`} trailingIcon="chevR" variant="secondary" fullWidth onPress={onSeeAll}/>:null}</Animated.View>:unavailable?<View style={[styles.empty,width>0&&width<352&&styles.centered]}><Text accessibilityLiveRegion="polite" style={styles.status}>{offline?"You’re offline. Connect to check current reach.":gated?"Friends of followers isn’t available yet.":"Reach is temporarily unavailable."}</Text>{!offline?<Text style={styles.reason}>{gated?"This stays off until people can control friends-of-followers reach in the Mingla app.":"Mingla couldn’t verify who is currently reachable."}</Text>:null}{!offline&&!gated?<Button label="Try again" variant="secondary" loading={retrying} disabled={retrying} onPress={retry}/>:null}</View>:null}
   </PeopleBlock>;
+}
+function FollowerCircleReachBlock(props:CircleReachBlockProps):React.ReactElement{
+  const followerSummary=useBrandFollowerSummary(props.brandId??null);
+  return <CircleReachBlockView {...props} followerTotal={followerSummary.data?.total??null}/>;
+}
+export function CircleReachBlock(props:CircleReachBlockProps):React.ReactElement{
+  return props.ring==="follower"?<FollowerCircleReachBlock {...props}/>:<CircleReachBlockView {...props}/>;
 }
 const styles=StyleSheet.create({row:{minHeight:64,flexDirection:"row",alignItems:"center",gap:spacing.sm,paddingVertical:10},divider:{borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:glass.border.profileBase},copy:{flex:1,minWidth:0,gap:spacing.xs},name:{...typography.body,fontWeight:"600",color:text.primary},reason:{...typography.bodySm,color:text.secondary},status:{...typography.caption,fontWeight:"600",color:text.secondary},loading:{gap:spacing.xs},empty:{minHeight:96,justifyContent:"center",alignItems:"flex-start",gap:spacing.xs},centered:{alignItems:"center"}});

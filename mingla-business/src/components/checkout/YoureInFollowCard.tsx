@@ -188,7 +188,7 @@ export function YoureInFollowCard({
         <View style={styles.row}>
           <Icon name="check" size={18} color="#4ade80" />
           <View style={styles.copy}>
-            <Text style={styles.title}>You’re now following {name}</Text>
+            <Text style={styles.title}>{"You're now following "}{name}</Text>
             <Text style={styles.detail}>{followingDetail}</Text>
           </View>
           <Pressable
