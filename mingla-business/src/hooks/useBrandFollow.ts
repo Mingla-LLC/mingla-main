@@ -5,18 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import { brandFollowsService } from "../services/brandFollowsService";
+import { brandFollowKeys } from "./brandFollowKeys";
 
-export const brandFollowKeys = {
-  status: (brandId: string, userId: string) =>
-    ["buyerBrand", "follow", brandId, userId] as const,
-  followerCount: (brandId: string) =>
-    ["buyerBrand", "followerCount", brandId] as const,
-  followerCounts: (brandIds: readonly string[]) =>
-    ["buyerBrand", "followerCounts", [...brandIds].sort().join(",")] as const,
-  followerCountsAll: ["buyerBrand", "followerCounts"] as const,
-  followerSummary: (brandId: string, userId: string) =>
-    ["buyerBrand", "followerSummary", brandId, userId] as const,
-};
+export { brandFollowKeys } from "./brandFollowKeys";
 
 export interface UseBrandFollowResult {
   isFollowing: boolean;
