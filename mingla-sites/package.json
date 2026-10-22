@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "next": "16.3.8",
+    "next": "16.4.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
@@ -20,16 +20,16 @@
     "@types/react": "19.1.12",
     "@types/react-dom": "19.1.9",
     "eslint": "9.34.0",
-    "eslint-config-next": "16.3.8",
+    "eslint-config-next": "16.4.2",
     "jsdom": "26.1.0",
     "typescript": "5.9.2",
-    "vitest": "5.0.0"
+    "vitest": "5.0.5"
   },
   "overrides": {
     "brace-expansion@^1": "1.1.21",
     "brace-expansion@^2": "2.1.7",
     "brace-expansion@^5": "5.0.12",
-    "dompurify": "3.4.14",
+    "dompurify": "3.4.17",
     "sharp": "0.35.5",
     "source-map-js": "1.2.2",
     "vite": "^8.2.4"
