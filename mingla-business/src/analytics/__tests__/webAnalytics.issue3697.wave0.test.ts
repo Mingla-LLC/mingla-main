@@ -135,6 +135,15 @@ test("#3697: opt-in region keeps the ad touch pending before approval", async ()
   expect(h.fetches[0].body.consent_state).toBe("pending");
 });
 
+test("#3697: consent grant tolerates a partial browser shell without location", async () => {
+  const h = harness();
+  delete h.win.location;
+
+  await expect(h.analytics.grantConsent()).resolves.toBeUndefined();
+
+  expect(h.local.get("mingla_consent_v1")).toContain('"granted"');
+});
+
 test("F-3: Reject stamps consent rejected and does not boot vendors", async () => {
   const h = harness("?fbclid=ABC");
   h.analytics.captureAdClickIds();

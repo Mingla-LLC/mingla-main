@@ -517,7 +517,10 @@ export async function grantConsent(): Promise<void> {
   // Deny-rate remains derived as sessions without a grant.
   captureWeb("consent_granted");
   gaEvent("consent_granted");
-  captureHostPublicSearchPageView(window.location.pathname);
+  const pathname = (
+    window as unknown as { location?: { pathname?: unknown } }
+  ).location?.pathname;
+  if (typeof pathname === "string") captureHostPublicSearchPageView(pathname);
   // toward #3697 F-1: stamp Accept on the existing first-party touch only —
   // do not insert a second touch (first-touch-wins + visit inflation).
   void postAttributionConsent("granted");
@@ -687,13 +690,20 @@ function safePixel(fn: () => void): void {
   }
 }
 
-function currentAdPageViewKey(): string {
-  return window.location.href.split("#", 1)[0];
+function currentAdPageViewKey(): string | null {
+  const href = (
+    window as unknown as { location?: { href?: unknown } }
+  ).location?.href;
+  return typeof href === "string" && href.length > 0
+    ? href.split("#", 1)[0]
+    : null;
 }
 
 function markAdPageViewFired(): void {
+  const key = currentAdPageViewKey();
+  if (key === null) return;
   const keys = (window.__minglaAdPageViewKeys ??= {});
-  keys[currentAdPageViewKey()] = true;
+  keys[key] = true;
 }
 
 function definedProps(obj: Record<string, unknown>): Record<string, unknown> {
@@ -897,6 +907,7 @@ export function fireAdPageView(): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
   const keys = (window.__minglaAdPageViewKeys ??= {});
   const key = currentAdPageViewKey();
+  if (key === null) return;
   if (keys[key]) return;
   keys[key] = true;
   safePixel(() => window.fbq?.("track", "PageView"));
