@@ -1883,6 +1883,7 @@ export function CampaignBuilderPage() {
           }
           results[resultKey] = {
             ...meta,
+            ...(validateOnly ? { validateOnly: true } : {}),
             error: {
               code: parsed?.body?.error,
               message:
