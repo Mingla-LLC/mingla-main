@@ -32,6 +32,7 @@ import {
   COUNTRY_OPTIONS,
   GENDER_OPTIONS,
   REDDIT_AGE_PASSTHROUGH_NOTE,
+  stageSplitLabels,
   validateAudience,
 } from "../../lib/adBuilder/audienceRules";
 
@@ -96,23 +97,24 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
     retarget: audience.stages?.retarget !== false,
     abandoners: audience.stages?.abandoners !== false,
   };
+  const stageSplits = stageSplitLabels(stages);
   const stageRows = [
     {
       id: "prospecting",
       label: "Prospecting",
-      split: "70%",
+      split: stageSplits.prospecting,
       detail: "Broad and lookalike audiences; buyers excluded.",
     },
     {
       id: "retarget",
       label: "Retarget",
-      split: "20%",
+      split: stageSplits.retarget,
       detail: "Recent viewers, engagers and event-page visitors.",
     },
     {
       id: "abandoners",
       label: "Checkout recovery",
-      split: "10%",
+      split: stageSplits.abandoners,
       detail: "Checkout starters who have not bought.",
     },
   ];
@@ -303,7 +305,8 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
         <h2 className="text-lg font-semibold">Who should see this?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
           The default 70/20/10 split folds any unavailable stage back into
-          prospecting. Location and age apply to prospecting.
+          prospecting. With prospecting off, the full budget stays with the
+          enabled warm stages. Location and age apply to prospecting.
         </p>
       </div>
 
@@ -320,7 +323,8 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
                 onClick={() =>
                   set({
                     stages: { ...stages, [stage.id]: !enabled },
-                  })}
+                  })
+                }
                 className={[
                   "rounded-xl border p-4 text-left",
                   enabled

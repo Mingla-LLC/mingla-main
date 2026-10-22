@@ -30,6 +30,28 @@ export function metaGendersFor(genderValue) {
   return null; // All → omit the field
 }
 
+/**
+ * The default plan is 70/20/10. The retargeting shortcut turns prospecting
+ * off, so the server conserves the same budget across the enabled warm stages
+ * in their 20:10 ratio (or gives it all to the only enabled warm stage).
+ */
+export function stageSplitLabels(stages = {}) {
+  const prospecting = stages.prospecting !== false;
+  const retarget = stages.retarget !== false;
+  const abandoners = stages.abandoners !== false;
+  if (prospecting) {
+    return { prospecting: "70%", retarget: "20%", abandoners: "10%" };
+  }
+  if (retarget && abandoners) {
+    return { prospecting: "Off", retarget: "67%", abandoners: "33%" };
+  }
+  return {
+    prospecting: "Off",
+    retarget: retarget ? "100%" : "Off",
+    abandoners: abandoners ? "100%" : "Off",
+  };
+}
+
 /** A4.f verbatim: Reddit has NO age field at all — render this passthrough note. */
 export const REDDIT_AGE_PASSTHROUGH_NOTE =
   "Reddit can't target by age at all — this campaign will reach adults of any age there. If age matters for this creative, exclude Reddit.";
@@ -71,7 +93,9 @@ export function validateAudience({
     errors.push("The minimum age can't be higher than the maximum.");
   }
   if (min < 13 || max > 65) {
-    errors.push("Meta's range is 13 to 65+. 65 means 65 and over — there's no band above it.");
+    errors.push(
+      "Meta's range is 13 to 65+. 65 means 65 and over — there's no band above it.",
+    );
   }
   if (advantagePlusAudience && min > 25) {
     errors.push(ADVANTAGE_PLUS_AGE_EXPLANATION);
