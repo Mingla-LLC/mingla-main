@@ -255,8 +255,7 @@ export interface PayoutWaterfall {
  * line except Gross and the final line (DESIGN §4.4).
  *
  * Binding rules encoded here:
- *  - `providerFeeCents` (charge processing) and the NG transfer-leg fee are
- *    DISTINCT lines — never merged/double-counted.
+ *  - `providerFeeCents` is never a host deduction: Mingla pays card processing.
  *  - Bank transfer fee and stamp duty are TWO separate lines.
  *  - NO "partner transfer fee" line — the partner principal is never reduced
  *    by transfer fees (v1.2 model B); only the brand's cash absorbs fees.
@@ -289,7 +288,8 @@ export const buildPayoutWaterfall = (
   pushDeduction("chargebacks", "Chargebacks / disputes", release.disputedCents);
   pushDeduction("mingla_fee", "Mingla fee", release.minglaFeeCents);
   pushDeduction("partner_share", "Partner share", release.partnerShareCents);
-  pushDeduction("provider_fee", "Payment processing fee", release.providerFeeCents);
+  // Provider processing is stored for platform reconciliation only. It is not
+  // subtracted from the host and therefore never appears as a money line.
 
   // NG transfer legs — ORGANISER legs only (partner principal is never a fee).
   const organiserLegs = legs.filter((leg) => leg.kind === "organiser");

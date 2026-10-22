@@ -65,7 +65,10 @@ import {
 // META-ORCH-1074 Sub-A: fire business.order_paid / event_sold_out /
 // low_inventory after a newly-finalized order. Idempotency keys collapse the
 // confirm-vs-webhook double-fire to one notification row per recipient.
-import { fireOrderFinalizeNotifications } from "../_shared/businessNotifyTriggers.ts";
+import {
+  fireOrderFinalizeNotifications,
+  storedHostNetCents,
+} from "../_shared/businessNotifyTriggers.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "../_shared/adConversionFire.ts";
 // #3682 — auto-follow brand after signed-in purchase (fail-open).
@@ -168,6 +171,7 @@ async function fetchOrderPayload(
     eventId: string;
     paymentStatus: "paid";
     totalCents: number;
+    hostNetCents: number | null;
     currency: string;
     taxAmountCents: number;
     /** issue #3281 — guest-chosen experience start; null when unset. */
@@ -205,7 +209,7 @@ async function fetchOrderPayload(
 
   const { data: orderRow } = await supabase
     .from("orders")
-    .select("tax_amount_cents, booked_start_at")
+    .select("tax_amount_cents, booked_start_at, pricing_breakdown, stripe_application_fee_amount_cents")
     .eq("id", session.order_id)
     .maybeSingle();
   const taxAmountCents = Number(orderRow?.tax_amount_cents ?? 0);
@@ -220,6 +224,11 @@ async function fetchOrderPayload(
     eventId: session.event_id,
     paymentStatus: "paid",
     totalCents: Number(session.total_cents ?? 0),
+    hostNetCents: storedHostNetCents(
+      Number(session.total_cents ?? 0),
+      orderRow?.pricing_breakdown,
+      orderRow?.stripe_application_fee_amount_cents,
+    ),
     currency: String(session.currency ?? "USD").trim(),
     taxAmountCents,
     bookedStartAt,
@@ -714,6 +723,7 @@ serve(async (req) => {
       eventId: refreshedSession.event_id,
       orderId: refreshedSession.order_id,
       totalCents: Number(refreshedSession.total_cents ?? 0),
+      hostNetCents: order?.hostNetCents ?? undefined,
       currency: refreshedSession.currency,
       qty: order?.tickets?.length ?? 0,
     }).catch((notifyErr) => {

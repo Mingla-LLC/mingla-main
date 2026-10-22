@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-// Issue #3645 — Host-facing copy never names the payment provider.
+// Issue #3645 — Host-facing copy names a provider only for the approved
+// Stripe automatic-tax disclosure.
 //
 // THE RULE. A host connects "a bank" and is paid by "our payment partner". The
 // words Stripe and Paystack must not appear in anything a host can read or
 // hear in the Host app: visible text, button labels, accessibility labels,
 // screen-reader announcements, placeholders, toasts, error messages,
-// notification and email templates.
+// notification and email templates. Seth's binding 2026-10-22 decision is the
+// sole exception: Stripe's roughly 0.5% automatic-tax fee is paid by the host
+// and must be shown as its own separate line. APPROVED_PROVIDER_COPY is exact
+// so that decision cannot become a general provider-naming escape hatch.
 //
 // WHAT IS CHECKED. Every string literal, template literal and piece of JSX
 // text in the Host app's `app/` and `src/` trees (tests excluded) that
@@ -64,6 +68,10 @@ const PROVIDER_ANYWHERE = /stripe|paystack/i;
 // The standalone word: not part of a longer identifier.
 const PROVIDER = /(?<![A-Za-z0-9_])(?:stripe|paystack)(?![A-Za-z0-9_])/i;
 const BARE_BRAND = /^(?:Stripe|Paystack)[^A-Za-z0-9]*$/;
+const APPROVED_PROVIDER_COPY = new Set([
+  "Stripe automatic-tax fee (~0.5%)",
+  "Manage your tax registrations and settings here. Stripe’s automatic-tax fee (about 0.5%) is paid by you and shown separately from Mingla’s 4.5% fee.",
+]);
 
 // Paths are relative to mingla-business/. A trailing "/" exempts a directory.
 const EXEMPT_FILES = [
@@ -178,10 +186,12 @@ function findCopy(ts, rel, sourceText) {
   const consider = (node, text) => {
     if (!PROVIDER.test(text)) return;
     const trimmed = text.trim();
+    const normalised = trimmed.replace(/\s+/g, " ");
+    if (APPROVED_PROVIDER_COPY.has(normalised)) return;
     // A single token is a code, key, route or function name, unless it is the
     // bare capitalised brand word.
     if (!/\s/.test(trimmed) && !BARE_BRAND.test(trimmed)) return;
-    found.push({ line: lineOf(node), text: trimmed.replace(/\s+/g, " ").slice(0, 160) });
+    found.push({ line: lineOf(node), text: normalised.slice(0, 160) });
   };
   const visit = (node) => {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
@@ -283,7 +293,7 @@ function report({ failures, notes, files }) {
   if (failures.length > 0) {
     for (const failure of failures) console.error(`[${TAG}] FAIL ${failure}`);
     console.error(
-      `[${TAG}] ${failures.length} problem(s). Host copy says "bank", "payout account" or "our payment partner", never the provider's name.\n` +
+      `[${TAG}] ${failures.length} problem(s). Apart from the exact approved Stripe automatic-tax disclosure, host copy says "bank", "payout account" or "our payment partner", never the provider's name.\n` +
         `  If the string is compared against server text and never shown, put this on the line above it:\n` +
         `    // ${ALLOW_MARKER} — <why it is never shown>\n` +
         `  Rule and history: docs/INVARIANT_REGISTRY.md, I-PROPOSED-3645-HOST-COPY-NO-PROVIDER-NAME.`,
@@ -338,6 +348,20 @@ function selfTest(ts) {
     ].join("\n"));
     expect("identifiers, codes, column lists, comments, types, keys, logs and test ids are not copy",
       run(ts, os).failures.length === 0);
+
+    // Seth's binding #3645 decision permits only the exact automatic-tax
+    // disclosure and its payout-breakdown label.
+    write("src/approved-tax-copy.tsx", [
+      `export const a = "Stripe automatic-tax fee (~0.5%)";`,
+      `export const b = "Manage your tax registrations and settings here. Stripe’s automatic-tax fee (about 0.5%) is paid by you and shown separately from Mingla’s 4.5% fee.";`,
+      ``,
+    ].join("\n"));
+    expect("the two exact approved automatic-tax disclosures are allowed",
+      run(ts, os).failures.length === 0);
+    write("src/approved-tax-copy.tsx", `export const a = "Stripe automatic-tax fee (~0.6%)";\n`);
+    expect("an altered automatic-tax disclosure is caught",
+      run(ts, os).failures.some((failure) => failure.includes("src/approved-tax-copy.tsx:1")));
+    fs.rmSync(path.join(os, "src/approved-tax-copy.tsx"));
 
     // 2. Each kind of copy fails.
     const cases = {

@@ -62,9 +62,6 @@ const ORGANISER_TERMS_SUMMARY = [
     CURRENT_MINGLA_TOS_VERSION +
     "). Those terms cover who sells, fees, refunds and chargebacks, payouts, and when Mingla may pause payouts.",
   "",
-  // #1180 — honest payout timing (binding meaning; legal source of truth is the website).
-  "Ticket and booking revenue is released to your payout account about a day after each payment, and typically arrives within 1–2 business days. In Nigeria, bank transfer fees and stamp duty are deducted from your payout.",
-  "",
   "Open the full Organiser Terms below before you accept.",
 ].join("\n");
 

@@ -36,6 +36,40 @@ export const ROLES_LOW_INVENTORY = ["brand_owner", "brand_admin"];
 export const LOW_INVENTORY_PCT = 0.1;
 
 /**
+ * Resolve the host amount only from stored checkout evidence. There is no
+ * percentage fallback: older orders can carry a different fee schedule.
+ */
+export function storedHostNetCents(
+  totalCents: number,
+  pricingBreakdown: unknown,
+  applicationFeeCents: unknown,
+): number | null {
+  const storedFee = Number(applicationFeeCents);
+  if (applicationFeeCents !== null && applicationFeeCents !== undefined && Number.isSafeInteger(storedFee) && storedFee >= 0) {
+    return Math.max(0, totalCents - storedFee);
+  }
+  const pricing = pricingBreakdown as
+    | { connected_account_payout_cents?: unknown }
+    | null
+    | undefined;
+  const rawNet = pricing?.connected_account_payout_cents;
+  const storedNet = Number(rawNet);
+  if (rawNet !== null && rawNet !== undefined && Number.isSafeInteger(storedNet) && storedNet >= 0) return storedNet;
+  return null;
+}
+
+export function newSaleHostBody(
+  eventTitle: string,
+  hostNetCents: number | null | undefined,
+  currency: string | null,
+): string {
+  if (!Number.isSafeInteger(hostNetCents) || (hostNetCents ?? -1) < 0) {
+    return `${eventTitle}: sale paid. Open Mingla to see its payout.`;
+  }
+  return `${eventTitle}: you'll get ${formatMoneyCents(hostNetCents as number, currency)}, paid out about a day from now.`;
+}
+
+/**
  * Fan out a business.* notification to every brand_team_member in `roles`.
  * One dispatchNotification per recipient, with a per-user idempotency suffix
  * (`${idempotencyKey}:${userId}`) so notify-dispatch's idempotency check
@@ -367,6 +401,8 @@ export async function fireOrderFinalizeNotifications(
     eventId: string;
     orderId: string;
     totalCents: number;
+    /** Stored host net from the order; production call sites always provide it when evidence exists. */
+    hostNetCents?: number;
     currency: string | null;
     qty: number;
   },
@@ -376,20 +412,23 @@ export async function fireOrderFinalizeNotifications(
   try {
     const cap = await resolveEventCapacity(supabase, input.eventId);
     const eventTitle = cap?.title && cap.title.length > 0 ? cap.title : "your listing";
-    const amount = formatMoneyCents(input.totalCents, input.currency);
+    const hostNetCents = Number.isSafeInteger(input.hostNetCents) && (input.hostNetCents ?? -1) >= 0
+      ? input.hostNetCents as number
+      : null;
 
     // 1. order_paid — always.
     await notifyBrandRoles(supabase, {
       brandId,
       roles: ROLES_ORDER_PAID,
       type: "business.order_paid",
-      title: "New sale 🎉",
-      body: `${eventTitle}: ${amount} just came in.`,
+      title: "New sale",
+      body: newSaleHostBody(eventTitle, hostNetCents, input.currency),
       data: {
         orderId: input.orderId,
         eventId: input.eventId,
         eventTitle,
         totalCents: input.totalCents,
+        ...(hostNetCents === null ? {} : { hostNetCents }),
         currency: input.currency,
         qty: input.qty,
       },
@@ -403,16 +442,25 @@ export async function fireOrderFinalizeNotifications(
     // Email stays owned by ticket-confirmation-dispatch (no double-email). Resolve
     // the master/earliest date for the copy; null-safe.
     let startAtIso: string | null = null;
-    const { data: masterDate } = await supabase
-      .from("event_dates")
-      .select("start_at")
-      .eq("event_id", input.eventId)
-      .order("is_master", { ascending: false })
-      .order("start_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (masterDate?.start_at && typeof masterDate.start_at === "string") {
-      startAtIso = masterDate.start_at;
+    try {
+      const { data: masterDate } = await supabase
+        .from("event_dates")
+        .select("start_at")
+        .eq("event_id", input.eventId)
+        .order("is_master", { ascending: false })
+        .order("start_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (masterDate?.start_at && typeof masterDate.start_at === "string") {
+        startAtIso = masterDate.start_at;
+      }
+    } catch (dateError) {
+      // Date enrichment is optional. It must never suppress the host's order,
+      // low-inventory, or sold-out notifications when the lookup is unavailable.
+      console.warn(
+        "[businessNotifyTriggers] event date lookup failed (non-fatal):",
+        dateError instanceof Error ? dateError.message : String(dateError),
+      );
     }
     await fireBuyerPurchaseConfirmationPush(supabase, {
       orderId: input.orderId,

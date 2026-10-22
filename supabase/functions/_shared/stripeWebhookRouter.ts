@@ -21,6 +21,7 @@ import {
 import {
   fireBuyerOrderNotify,
   fireOrderFinalizeNotifications,
+  storedHostNetCents,
 } from "./businessNotifyTriggers.ts";
 // ISSUE-865 WP-B — the single post-finalize ad-conversion hook (CAPI fan-out,
 // deduped with the browser pixel on the shared event_id; idempotent + fail-open).
@@ -1786,7 +1787,7 @@ async function handleTicketCheckoutPaymentIntent(
         if (brandId && eventId) {
           const { data: orderRow } = await supabase
             .from("orders")
-            .select("total_cents, currency")
+            .select("total_cents, currency, pricing_breakdown, stripe_application_fee_amount_cents")
             .eq("id", orderId)
             .maybeSingle();
           const { count: ticketCount } = await supabase
@@ -1800,6 +1801,11 @@ async function handleTicketCheckoutPaymentIntent(
             totalCents: Number(
               orderRow?.total_cents ?? paymentIntent.amount ?? 0,
             ),
+            hostNetCents: storedHostNetCents(
+              Number(orderRow?.total_cents ?? paymentIntent.amount ?? 0),
+              orderRow?.pricing_breakdown,
+              orderRow?.stripe_application_fee_amount_cents,
+            ) ?? undefined,
             currency: (orderRow?.currency as string | null) ??
               (typeof paymentIntent.currency === "string"
                 ? paymentIntent.currency

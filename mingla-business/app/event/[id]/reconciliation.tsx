@@ -53,6 +53,8 @@ import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useDoorSalesStore } from "../../../src/store/doorSalesStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventReconciliation } from "../../../src/hooks/useEventOrders";
+import { useBrandPayoutScreen } from "../../../src/hooks/useBrandPayoutScreen";
+import { canViewBrandPayments } from "../../../src/utils/brandPaymentsPermission";
 import {
   canPerformAction,
   gateCaptionFor,
@@ -66,7 +68,6 @@ import {
   computeReconciliation,
   type DiscrepancyEntry,
   type EventLifecycleStatus,
-  type PaymentMethodKey,
   type ReconciliationSummary,
 } from "../../../src/utils/reconciliation";
 
@@ -93,7 +94,13 @@ export default function ReconciliationRoute(): React.ReactElement {
   );
   const event = routeEvent.event;
   const brand = routeEvent.brand;
-  const { rank } = useCurrentBrandRole(brand?.id ?? null);
+  const paymentRole = useCurrentBrandRole(brand?.id ?? null);
+  const { rank } = paymentRole;
+  const payoutScreen = useBrandPayoutScreen(
+    canViewBrandPayments({ role: paymentRole.role, accepted: paymentRole.accepted })
+      ? brand?.id ?? null
+      : null,
+  );
 
   // Raw entries + useMemo per selector pattern rule (T-41 grep gate)
   const allOrderEntriesRead = useEventReconciliation(typeof eventId === "string" ? eventId : null);
@@ -139,6 +146,30 @@ export default function ReconciliationRoute(): React.ReactElement {
         : allDoorEntries.filter((s) => s.eventId === event.id),
     [allDoorEntries, event],
   );
+  const payoutData = payoutScreen.data;
+  const payoutMoney = useMemo(() => {
+    const rows = (payoutData?.releases ?? []).filter((row) => row.eventId === eventId);
+    if (payoutData == null || rows.length === 0) return null;
+    return rows.reduce((sum, row) => ({
+      minglaFeeCents: sum.minglaFeeCents + row.minglaFeeCents,
+      disputesCents: sum.disputesCents + row.disputedCents,
+      hostGetsCents: sum.hostGetsCents + row.netReleaseCents,
+      bankFeeCents: sum.bankFeeCents + row.transferFeeCents + row.stampDutyCents,
+      provider: row.provider,
+    }), {
+      minglaFeeCents: 0,
+      disputesCents: 0,
+      hostGetsCents: 0,
+      bankFeeCents: 0,
+      provider: rows[0]?.provider ?? null,
+    } as {
+      minglaFeeCents: number;
+      disputesCents: number;
+      hostGetsCents: number;
+      bankFeeCents: number;
+      provider: "stripe" | "paystack" | null;
+    });
+  }, [eventId, payoutData]);
 
   // ---- UI state ----
   const [byScannerExpanded, setByScannerExpanded] = useState<boolean>(false);
@@ -371,6 +402,7 @@ export default function ReconciliationRoute(): React.ReactElement {
           summary={summary}
           hasAnyData={hasAnyData}
           currency={currencyCodeOrNull(event.currency)}
+          payoutMoney={payoutMoney}
         />
 
         {/* SCANS section */}
@@ -514,16 +546,21 @@ interface RevenueSectionProps {
   // #962 G4 — null when the brand has no established currency; money rows render
   // "—" (never a fabricated £). A pre-bank brand has 0 sales so all amounts are 0.
   currency: string | null;
+  payoutMoney: {
+    minglaFeeCents: number;
+    disputesCents: number;
+    hostGetsCents: number;
+    bankFeeCents: number;
+    provider: "stripe" | "paystack" | null;
+  } | null;
 }
 
 const RevenueSection: React.FC<RevenueSectionProps> = ({
   summary,
   hasAnyData,
   currency,
+  payoutMoney,
 }) => {
-  // ORCH-0796 — real Stripe application_fee from order rows; null when no online activity.
-  // Door revenue contributes 1.0 net (cash; card_reader/NFC fee schedules ship when Terminal SDK lands).
-  const stripeFeeOnline = summary.stripeFeeOnlineMajor;
   // #962 G4 — hide the money glyph when the brand has no established currency.
   const fmt = (v: number): string =>
     currency === null ? "—" : formatCurrency(v, currency);
@@ -589,33 +626,30 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
       />
       <SectionDivider />
       <SectionRow
-        label="NET"
+        label="BUYERS PAID"
         value={hasAnyData ? fmt(summary.grossRevenue) : "—"}
         variant="big"
       />
       <SectionRow
-        label="Processing fee (online)"
-        value={
-          stripeFeeOnline !== null && currency !== null
-            ? `−${formatCurrency(stripeFeeOnline, currency)}`
-            : "—"
-        }
+        label="Mingla fee (4.5% on new sales)"
+        value={currency === null || payoutMoney === null ? "—" : `−${formatCurrency(payoutMoney.minglaFeeCents, currency, true)}`}
         variant="muted"
       />
-      <SectionRow label="Door fee" value={fmt(0)} variant="muted" />
+      <SectionRow label="Card processing" value="Mingla pays" variant="muted" />
+      {(payoutMoney?.disputesCents ?? 0) > 0 ? <SectionRow label="Disputes" value={currency === null || payoutMoney === null ? "—" : `−${formatCurrency(payoutMoney.disputesCents, currency, true)}`} variant="warn" /> : null}
       <SectionRow
-        label="EXPECTED PAYOUT"
-        value={
-          summary.expectedPayoutMajor !== null
-            ? fmt(summary.expectedPayoutMajor)
-            : "—"
-        }
+        label="YOU GET"
+        value={currency === null || payoutMoney === null ? "—" : formatCurrency(payoutMoney.hostGetsCents, currency, true)}
         variant="mid"
-        hint={
-          summary.expectedPayoutMajor !== null
-            ? "Net to your payout account after fees and refunds"
-            : "No payments yet"
-        }
+        hint={payoutMoney === null
+          ? "Payout data is not available for these sales yet"
+          : payoutMoney.provider === "stripe"
+            ? "Paid from your connected balance"
+            : payoutMoney.bankFeeCents > 0
+          ? currency === null
+            ? "Bank transfer fee is shown on the payout"
+            : `Bank transfer fee shown on payout: ${formatCurrency(payoutMoney.bankFeeCents, currency, true)}`
+          : "Bank transfer fee is shown on the payout when one applies"}
       />
     </View>
   );

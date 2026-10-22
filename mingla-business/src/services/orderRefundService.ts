@@ -161,8 +161,8 @@ export const issueOrderRefund = async (
           : "The buyer money has not moved.";
       const feeTruth =
         code === "refund_reconciliation_pending"
-          ? "Mingla is still confirming the processing fee refund."
-          : "The processing fee evidence needs review; no amount has been guessed.";
+          ? "Mingla is still confirming the Mingla fee refund."
+          : "The Mingla fee refund evidence needs review; no amount has been guessed.";
       const rawFeeAmount = payload?.application_fee_refunded_cents;
       const applicationFeeRefundedCents =
         typeof rawFeeAmount === "number" &&
@@ -201,7 +201,7 @@ export const issueOrderRefund = async (
     throw refundOrderError(
       "refund_reconciliation_pending",
       buyerRefundStatus === "succeeded"
-        ? "The buyer refund was issued. Mingla is still confirming the processing fee refund."
+        ? "The buyer refund was issued. Mingla is still confirming the Mingla fee refund."
         : "The buyer money has not moved. Mingla is still preparing the refund.",
       feeStatus,
       202,
@@ -220,7 +220,7 @@ export const issueOrderRefund = async (
     throw refundOrderError(
       "refund_evidence_conflict",
       buyerRefundStatus === "succeeded"
-        ? "The buyer refund was issued. The processing fee evidence needs review; no amount has been guessed."
+        ? "The buyer refund was issued. The Mingla fee refund evidence needs review; no amount has been guessed."
         : "The buyer money has not moved. The refund needs review before Mingla can proceed.",
       feeStatus,
       409,
@@ -231,7 +231,9 @@ export const issueOrderRefund = async (
     refundId: String(data.refund_id ?? ""),
     orderId: String(data.order_id ?? input.orderId),
     amountCents: Number(data.amount_cents ?? 0),
-    currency: String(data.currency ?? "GBP"),
+    currency: typeof data.currency === "string" && data.currency.length === 3
+      ? data.currency
+      : (() => { throw refundOrderError("internal_error", "The refund currency is missing. Nothing has been guessed."); })(),
     status: String(
       data.application_fee_refund_status ?? data.status,
     ) as RefundOrderResult["status"],

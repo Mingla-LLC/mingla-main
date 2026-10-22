@@ -44,6 +44,8 @@ export type BusinessNotificationType =
   | "business.dispute_opened"
   | "business.dispute_action_needed"
   | "business.payout_paid"
+  | "business.payout_late"
+  | "business.payout_debt_withheld"
   | "business.payout_failed"
   | "business.payout_waiting_for_bank"
   | "business.payouts_paused"
@@ -104,10 +106,10 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
 > = {
   "business.order_paid": {
     type: "business.order_paid",
-    pushTitle: "New sale 🎉",
-    pushBody: "{eventTitle}: {amount} just came in.",
-    inAppTitle: "You made a sale",
-    inAppBody: "{qty} × {eventTitle} — {amount}. Tap to see the order.",
+    pushTitle: "New sale",
+    pushBody: "{eventTitle}: you'll get {amount}, paid out about a day from now.",
+    inAppTitle: "New sale",
+    inAppBody: "{qty} × {eventTitle} — you'll get {amount}. Tap to see its payout.",
     severity: "info",
     family: "money",
     icon: "cash",
@@ -203,13 +205,39 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
   },
   "business.payout_paid": {
     type: "business.payout_paid",
-    pushTitle: "You got paid",
-    pushBody: "{amount} is on its way to your bank.",
-    inAppTitle: "You got paid",
-    inAppBody: "{amount} is on its way to your bank — expected {arrivalDate}.",
+    pushTitle: "Paid to your bank",
+    pushBody: "{amount} reached your bank.",
+    inAppTitle: "Paid to your bank",
+    inAppBody: "{amount} reached your bank. Tap to see the payout.",
     severity: "info",
     family: "money",
     icon: "bank",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.payout_late": {
+    type: "business.payout_late",
+    pushTitle: "Payout late",
+    pushBody: "Your {amount} payout is late. That’s on us, and we’re on it. No action needed.",
+    inAppTitle: "Payout late, on us",
+    inAppBody: "Your {amount} payout is late. That’s on us, and we’re on it. No action needed.",
+    severity: "warning",
+    family: "money",
+    icon: "clock",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.payout_debt_withheld": {
+    type: "business.payout_debt_withheld",
+    pushTitle: "Payout adjusted",
+    pushBody: "{amount} came out of this payout for a refund after an earlier payout.",
+    inAppTitle: "Refund after an earlier payout",
+    inAppBody: "{amount} came out of this payout for a refund after an earlier payout. Tap to see the line.",
+    severity: "info",
+    family: "money",
+    icon: "receipt",
     masterCategory: "paymentsTrust",
     defaultPush: true,
     defaultInApp: true,

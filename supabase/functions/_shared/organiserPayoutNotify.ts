@@ -192,10 +192,8 @@ export async function notifyPaystackReleaseOutcome(
     await deps.notifyBrandManagers(supabase, {
       brandId: release.brand_id,
       type: "business.payout_paid",
-      title: "You got paid",
-      body: `${
-        formatMoneyCents(amountCents, currency)
-      } is on its way to your bank.`,
+      title: "Paid to your bank",
+      body: `${formatMoneyCents(amountCents, currency)} reached your bank.`,
       data: {
         releaseId: release.id,
         provider: "paystack",

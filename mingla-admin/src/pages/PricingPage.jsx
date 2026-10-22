@@ -107,6 +107,11 @@ export function PricingPage() {
 
   const defaultBps = config?.default_take_rate_bps ?? null;
   const defaultPct = defaultBps == null ? "0.00" : bpsToPct(defaultBps);
+  const feeLabel = (takeValue) => {
+    const parsed = Number(takeValue);
+    if (!Number.isFinite(parsed)) return "—";
+    return `${(parsed + 3).toFixed(2).replace(/\.00$/, "")}%`;
+  };
 
   // ── global default: dirty + valid gating ─────────────────────────────
   const defaultDirty = defaultInput !== defaultPct;
@@ -421,7 +426,7 @@ export function PricingPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Pricing" description="Set Mingla's cut of every transaction." />
+      <PageHeader title="Pricing" description="Set Mingla's take portion. The fixed 3% service portion is added to make the total Mingla fee." />
 
       {loadError ? (
         <AlertCard
@@ -438,7 +443,7 @@ export function PricingPage() {
       ) : null}
 
       {/* ── Card A: Global default ──────────────────────────────────── */}
-      <SectionCard title="Mingla platform take-rate">
+      <SectionCard title={`Mingla fee: ${feeLabel(defaultInput || defaultPct)} (${defaultInput || defaultPct}% take + 3% service)`}>
         {loading ? (
           <div className="flex flex-col gap-3">
             <Skeleton width="160px" height="56px" />
@@ -455,7 +460,7 @@ export function PricingPage() {
                   onChange={onDefaultChange}
                   error={defaultError}
                   className="!h-14 !text-3xl text-right tabular-nums"
-                  aria-label="Mingla platform take-rate, percent"
+                  aria-label="Mingla take portion, percent"
                 />
               </div>
               <span
@@ -466,9 +471,8 @@ export function PricingPage() {
               </span>
             </div>
             <p className="text-sm text-[var(--color-text-secondary)] max-w-xl">
-              Mingla's cut of every sale, across all brands. This is what Mingla
-              earns — separate from the service fee a brand may add to cover
-              card-processing cost.
+              The default take portion is 1.5% and the service portion is 3%,
+              so Mingla keeps 4.5% in total. Mingla pays card processing.
             </p>
             <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-tertiary)]">
               <Clock className="w-3.5 h-3.5" />
@@ -616,7 +620,7 @@ export function PricingPage() {
             <div className="flex items-end gap-2">
               <div className="w-32">
                 <Input
-                  label="This brand's take-rate"
+                  label="This brand's take portion"
                   inputMode="decimal"
                   value={overrideInput}
                   onChange={(e) => {
@@ -625,7 +629,7 @@ export function PricingPage() {
                   }}
                   error={overrideError}
                   className="!h-12 !text-2xl text-right tabular-nums"
-                  aria-label="This brand's take-rate, percent"
+                  aria-label="This brand's take portion, percent"
                 />
               </div>
               <span
@@ -636,8 +640,9 @@ export function PricingPage() {
               </span>
             </div>
             <p className="text-xs text-[var(--color-text-tertiary)]">
-              Default is {defaultPct}%. To put this brand back on the default,
-              remove the override.
+              Total Mingla fee: {feeLabel(overrideInput || defaultPct)}
+              {" "}({overrideInput || defaultPct}% take + 3% service). To put this brand
+              back on the default, remove the override.
             </p>
           </div>
         </ModalBody>

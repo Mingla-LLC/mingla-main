@@ -20,7 +20,7 @@
  * Per J-A10 spec §3.5.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 // #1834 [keyboard-blocks-bank-field] — the body ScrollViews route through the
@@ -45,20 +45,13 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import type { Brand, BrandPayout } from "../../store/currentBrandStore";
-import { formatCurrency } from "../../utils/currency";
-import { formatRelativeTime } from "../../utils/relativeTime";
+import type { Brand } from "../../store/currentBrandStore";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { KpiTile } from "../ui/KpiTile";
 import { TopBar } from "../ui/TopBar";
-// V3 multi-country surfaces — Sub-C Session A + B
-import { BrandStripeBankSection } from "./BrandStripeBankSection";
-import { BrandStripeKycRemediationCard } from "./BrandStripeKycRemediationCard";
 import { BrandStripeOrphanedRefundsSection } from "./BrandStripeOrphanedRefundsSection";
-import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 // ORCH-0802 — Danger zone: Disconnect Stripe sheet (was HIDDEN-FLAW-2 in
 // investigation — detach hook+service shipped in B2a Path C V3 without a
 // UI surface).
@@ -70,7 +63,7 @@ import {
   rememberBrandPayoutCountry,
 } from "../../services/brandPayoutCountryService";
 // #1180 — held-payout receipt + release history (both rails) + explainer sheet.
-import { BrandPayoutBreakdown } from "./BrandPayoutBreakdown";
+import { BrandPayoutOverview } from "./BrandPayoutOverview";
 import { BrandPayoutTimelineExplainer } from "./BrandPayoutTimelineExplainer";
 import {
   useBrandPaystackStatus,
@@ -79,7 +72,6 @@ import {
 } from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { useBrandPayoutVisibility } from "../../hooks/useBrandPayoutVisibility";
-import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
 import { useCanManageBrandPayments } from "../../hooks/useCanManageBrandPayments";
@@ -89,7 +81,6 @@ import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutco
 import { isBrandChargeReady, isBrandPayoutReady } from "../../utils/brandPayout";
 import {
   overlayPayoutStatusOnStripeBanner,
-  payoutStatusToBannerConfig,
   resolveBrandPayoutStatus,
 } from "../../utils/brandPayoutVisibility";
 // #3258 — the status banner is resolved from status + requirements, not from a
@@ -116,7 +107,6 @@ import {
   BRAND_PAYMENTS_DENIED_BODY,
   BRAND_PAYMENTS_DENIED_TITLE,
 } from "../../utils/brandPaymentsPermission";
-import { majorFromMinor } from "../../utils/currency";
 import {
   buildAccountManagementWebReturnUrl,
   isSafeAccountManagementTargetUrl,
@@ -157,6 +147,10 @@ export interface BrandPaymentsViewProps {
    * the finance reports surface. NEW in J-A12.
    */
   onOpenReports: () => void;
+  /** Opens the host-facing support hub for a payout that cannot be sent. */
+  onContactSupport?: () => void;
+  /** Opens the canonical payout detail route for one ledger release. */
+  onOpenPayout?: (releaseId: string) => void;
   /**
    * #3645 — opens bank setup for a host who asked for a DIFFERENT country
    * (the Nigerian form's "Choose a different country"). Bank setup then opens
@@ -218,8 +212,10 @@ const PaymentsStatusCard: React.FC<{
 export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   brand,
   onBack,
+  onOpenPayout = () => {},
   onOpenOnboard,
   onOpenReports,
+  onContactSupport = onOpenOnboard,
   onChooseDifferentCountry,
 }) => {
   const insets = useSafeAreaInsets();
@@ -246,19 +242,12 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     onOpenOnboard();
   }, [canMutatePayouts, onOpenOnboard]);
 
-  const handleExport = useCallback((): void => {
-    onOpenReports();
-  }, [onOpenReports]);
-
   // V3 (Sub-C Session A): live status query gives access to requirements
   // shape for the KycRemediationCard. Sibling-pattern: cached + Realtime-fed.
   const stripeStatusQuery = useBrandStripeStatus(brand?.id ?? null);
   const stripeStatus = getEffectiveBrandStripeStatus({
     liveStatus: stripeStatusQuery.data?.status,
     cachedStatus: brand?.stripeStatus,
-  });
-  const stripeBalancesQuery = useBrandStripeBalances(brand?.id ?? null, {
-    stripeStatus,
   });
   // META-ORCH-1076 — Paystack rail. Enabled only for paystack brands; harmless
   // (disabled) for every Stripe brand. Hook runs unconditionally per React rules.
@@ -428,11 +417,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // #3645 — "Selling, add a bank to get paid" keeps its "Add bank" button
   // while the form is on screen: the button takes the host to the form. The
   // other states (next payout, paused) offer no action.
-  const paystackStatusBanner = payoutStatus === null
-    ? null
-    : payoutStatusToBannerConfig(payoutStatus, {
-      withCta: payoutStatus.kind === "selling_add_bank",
-    });
   // #3645 — card rail. A brand that can sell but whose payouts are not enabled
   // gets "Add bank" on the status card. Bank setup has nothing left to ask
   // such a brand (it answers "You're all set"), so the button opens payout
@@ -481,19 +465,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // specifically NOT by the two "Couldn’t refresh…" warning cards plus a live
   // Danger Zone, which is what a demoted user saw for the length of the 30s
   // role-cache window.
-  const deniedByServer = isPermissionDeniedError(stripeStatusQuery.error) ||
-    isPermissionDeniedError(stripeBalancesQuery.error);
-
-  // ORCH-0796 — `brand.payouts` and `brand.refunds` are intentionally unpopulated
-  // by mapBrandRowToUi today (ORCH-0742 collapsed the persist payload to currentBrandId
-  // only). This screen renders the empty state. Real per-brand payout/refund listing
-  // is tracked separately from per-event reconciliation.
-  const sortedPayouts = useMemo<BrandPayout[]>(() => {
-    if (brand === null) return [];
-    return (brand.payouts ?? [])
-      .slice()
-      .sort((a, b) => (a.arrivedAt < b.arrivedAt ? 1 : -1));
-  }, [brand]);
+  const deniedByServer = isPermissionDeniedError(stripeStatusQuery.error);
 
   // ----- Not-found state -----
   if (brand === null) {
@@ -573,7 +545,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   if (isPaystackBrand) {
     const connected = brand.paystackSubaccountCode != null ||
       paystackStatusQuery.data?.connected === true;
-    const ps = paystackStatusQuery.data;
     const handleDisconnect = (): void => {
       if (!canMutatePayouts) {
         Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
@@ -603,13 +574,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           },
         ],
       );
-    };
-    const handleChangeBank = (): void => {
-      if (!canMutatePayouts) {
-        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
-        return;
-      }
-      setPaystackEditing(true);
     };
     const handleClearProvider = (): void => {
       if (!canMutatePayouts) {
@@ -663,93 +627,19 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* #3645 PR10 — the one status card (selling-add-bank / next payout /
-              paused), then balance tiles. Both only once a payout state exists. */}
-          {paystackStatusBanner !== null
-            ? (
-              <PaymentsStatusCard
-                config={paystackStatusBanner}
-                onCta={handleGoToBankForm}
-              />
-            )
-            : null}
-          {connected && !paystackEditing && payoutVisibility !== null &&
-              payoutVisibility.currency !== null
-            ? (
-              <View style={styles.kpisRow}>
-                <KpiTile
-                  label="Earned"
-                  value={formatCurrency(
-                    payoutVisibility.earnedCents,
-                    payoutVisibility.currency,
-                    true,
-                  )}
-                  sub="Total from sales"
-                  style={styles.kpiCell}
-                />
-                <KpiTile
-                  label="On its way"
-                  value={formatCurrency(
-                    payoutVisibility.onItsWayCents,
-                    payoutVisibility.currency,
-                    true,
-                  )}
-                  sub="Held, then sent"
-                  style={styles.kpiCell}
-                />
-                <KpiTile
-                  label="Paid"
-                  value={formatCurrency(
-                    payoutVisibility.paidCents,
-                    payoutVisibility.currency,
-                    true,
-                  )}
-                  sub="Sent to your bank"
-                  style={styles.kpiCell}
-                />
-              </View>
-            )
-            : null}
+          <BrandPayoutOverview
+            brandId={brand.id}
+            onOpenPayout={onOpenPayout}
+            onOpenExplainer={handleOpenExplainer}
+            onOpenBank={handleGoToBankForm}
+            onOpenVerification={onOpenOnboard}
+            onContactSupport={onContactSupport}
+            onDisconnectBank={connected ? handleDisconnect : undefined}
+            onDownloadPayouts={onOpenReports}
+          />
           {connected && !paystackEditing
             ? (
-              <>
-              <GlassCard variant="elevated" padding={spacing.lg}>
-                <Text style={styles.notFoundTitle}>Bank connected</Text>
-                <Text style={styles.notFoundBody}>
-                  {ps?.account_number_masked != null
-                    ? `Payouts settle to ${ps.account_number_masked}, released about a day after each payment and typically arrive within 1–2 business days.`
-                    : "Your payout account is connected. Sales are held securely and released about a day after each payment, and typically arrive within 1–2 business days."}
-                  {ps?.is_verified === false
-                    ? " Your bank is still being verified — your first payout may take a little longer."
-                    : ""}
-                </Text>
-                <View style={styles.notFoundBtnRow}>
-                  <Button
-                    label="Change bank account"
-                    onPress={handleChangeBank}
-                    variant="secondary"
-                    size="md"
-                  />
-                </View>
-                <View style={{ marginTop: spacing.sm }}>
-                  <Button
-                    label={disconnectPaystackMutation.isPending
-                      ? "Disconnecting…"
-                      : "Disconnect bank"}
-                    onPress={handleDisconnect}
-                    variant="destructive"
-                    size="md"
-                    loading={disconnectPaystackMutation.isPending}
-                  />
-                </View>
-              </GlassCard>
-              {/* #1180 — payout-release history + gross→bank receipt (NG rail). */}
-              <BrandPayoutBreakdown
-                brandId={brand.id}
-                isNgBrand
-                onOpenExplainer={handleOpenExplainer}
-              />
-              </>
+              null
             )
             : (
               <View
@@ -783,39 +673,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     );
   }
 
-  // ----- Populated state -----
-
-  const liveBalances = stripeBalancesQuery.data;
-  const balanceCurrency = liveBalances?.currency ?? brand.defaultCurrency ??
-    null;
-  const availableDisplay = liveBalances && balanceCurrency !== null
-    ? formatCurrency(
-      majorFromMinor(liveBalances.availableMinor, balanceCurrency),
-      balanceCurrency,
-    )
-    : "—";
-  const pendingDisplay = liveBalances && balanceCurrency !== null
-    ? formatCurrency(
-      majorFromMinor(liveBalances.pendingMinor, balanceCurrency),
-      balanceCurrency,
-    )
-    : "—";
-  const balanceSub = liveBalances
-    ? "Ready to pay out"
-    : stripeStatus === "active"
-    ? "Balance unavailable"
-    : "Connect bank";
-  const lastPayoutAmount = sortedPayouts[0]?.amountGbp;
-  const lastPayoutCurrency = sortedPayouts[0]?.currency;
-  const lastPayoutDisplay = brand.lastPayoutAt !== undefined &&
-      lastPayoutAmount !== undefined &&
-      lastPayoutCurrency !== undefined
-    ? formatCurrency(lastPayoutAmount, lastPayoutCurrency)
-    : "—";
-  const lastPayoutSub = brand.lastPayoutAt !== undefined
-    ? formatRelativeTime(brand.lastPayoutAt)
-    : "No payouts yet";
-
   return (
     <View style={styles.host}>
       <View style={styles.barWrap}>
@@ -834,189 +691,32 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ORCH-0954 — Manage payouts & tax embedded account-management session,
-            for dashboard:'none' Stripe-managed-risk Connect controllers. */}
-        {stripeStatus === "active" || stripeStatus === "restricted"
-          ? (
-            <GlassCard
-              variant="base"
-              padding={spacing.md}
-              style={styles.manageStripeCard}
-            >
-              <View style={styles.manageStripeRow}>
-                <View style={styles.manageStripeIconCol}>
-                  <Icon name="bank" size={20} color={accent.warm} />
-                </View>
-                <View style={styles.manageStripeTextCol}>
-                  <Text style={styles.manageStripeTitle}>
-                    Manage payouts & tax
-                  </Text>
-                  <Text style={styles.manageStripeBody}>
-                    Update payout details and resolve payout account alerts.
-                  </Text>
-                  {accountSession.isError
-                    ? (
-                      <Text style={styles.manageStripeError}>
-                        Couldn{"’"}t open payout account management. Try again.
-                      </Text>
-                    )
-                    : null}
-                </View>
-              </View>
-              <View style={styles.manageStripeBtnRow}>
-                <Button
-                  label={accountSession.isPending
-                    ? "Opening..."
-                    : "Manage payouts & tax"}
-                  onPress={handleOpenAccountManagement}
-                  variant="primary"
-                  size="md"
-                  disabled={accountSession.isPending}
-                  leadingIcon="bank"
-                  accessibilityLabel="Manage payouts and tax"
-                />
-              </View>
-            </GlassCard>
-          )
-          : null}
-
-        {/* SECTION A — Status Banner (the ONE status card; #3645 PR10 payout
-            states are overlaid on it, never a second card) */}
-        {bannerConfig !== null
-          ? (
-            <PaymentsStatusCard
-              config={bannerConfig}
-              onCta={cardRailAddBank ? handleCardRailAddBank : handleMutatePayouts}
-            />
-          )
-          : null}
-        {cardRailAddBank && addBankFailed
-          ? (
-            <GlassCard
-              variant="base"
-              padding={spacing.md}
-              style={styles.statusRefreshWarning}
-            >
-              <Text
-                style={styles.statusRefreshTitle}
-                accessibilityRole="alert"
-                testID="payments-add-bank-error"
-              >
-                We couldn{"’"}t open bank setup. Try again.
-              </Text>
-            </GlassCard>
-          )
-          : null}
-
-        {stripeStatusQuery.isError
-          ? (
-            <GlassCard
-              variant="base"
-              padding={spacing.md}
-              style={styles.statusRefreshWarning}
-            >
-              <Text style={styles.statusRefreshTitle}>
-                Couldn{"’"}t refresh your payout status
-              </Text>
-              <Text style={styles.statusRefreshBody}>
-                Showing the last saved status. Continue verification will open
-                a fresh setup link.
-              </Text>
-            </GlassCard>
-          )
-          : null}
-
-        {stripeBalancesQuery.isError
-          ? (
-            <GlassCard
-              variant="base"
-              padding={spacing.md}
-              style={styles.statusRefreshWarning}
-            >
-              <Text style={styles.statusRefreshTitle}>
-                Couldn{"’"}t refresh your balance
-              </Text>
-              <Text style={styles.statusRefreshBody}>
-                Balance unavailable until it can be refreshed.
-              </Text>
-            </GlassCard>
-          )
-          : null}
-
-        {
-          /* SECTION A2 — V3 multi-country surfaces (Sub-C Session A + B).
-            Deadline banner on top (within 7 days, urgent). KYC remediation
-            card next (when status non-active and there's a requirement code).
-            Bank verification status (when connected). Orphaned refunds at
-            the bottom (only for detached brands). */
-        }
-        {brand && stripeStatusQuery.data?.requirements
-          ? (() => {
-            const reqs = stripeStatusQuery.data.requirements as
-              | { current_deadline?: number | null }
-              | undefined;
-            const deadline = reqs?.current_deadline ?? null;
-            return (
-              <BrandStripeDeadlineBanner
-                deadline={deadline}
-                onResolve={handleMutatePayouts}
-              />
-            );
-          })()
-          : null}
-
-        {brand && stripeStatus !== "active" && stripeStatus !== "not_connected"
-          ? (() => {
-            const requirements = (stripeStatusQuery.data?.requirements as
-              | {
-                disabled_reason?: string | null;
-                currently_due?: readonly string[] | null;
-                past_due?: readonly string[] | null;
-              }
-              | undefined) ?? null;
-            return (
-              <BrandStripeKycRemediationCard
-                requirements={requirements}
-                onResolve={handleMutatePayouts}
-              />
-            );
-          })()
-          : null}
-
-        {brand && (stripeStatus === "active" || stripeStatus === "restricted")
-          ? (
-            <BrandStripeBankSection
-              brandId={brand.id}
-              onResolve={handleMutatePayouts}
-            />
-          )
-          : null}
+        {(stripeStatus !== "active" || cardRailAddBank) && bannerConfig !== null ? (
+          <PaymentsStatusCard
+            config={bannerConfig}
+            onCta={cardRailAddBank ? () => void handleCardRailAddBank() : handleMutatePayouts}
+          />
+        ) : null}
+        {addBankFailed ? (
+          <Text style={styles.statusRefreshTitle} accessibilityRole="alert">
+            Couldn{"’"}t open bank setup. Try again.
+          </Text>
+        ) : null}
+        <BrandPayoutOverview
+          brandId={brand.id}
+          onOpenPayout={onOpenPayout}
+          onOpenExplainer={handleOpenExplainer}
+          onOpenBank={() => void handleCardRailAddBank()}
+          onOpenVerification={onOpenOnboard}
+          onContactSupport={onContactSupport}
+          onDisconnectBank={handleOpenDetach}
+          onDownloadPayouts={onOpenReports}
+          suppressAttention={stripeStatus !== "active" || cardRailAddBank}
+        />
 
         {brand && stripeStatusQuery.data?.detached_at != null
           ? <BrandStripeOrphanedRefundsSection brandId={brand.id} />
           : null}
-
-        {/* SECTION B — KPI Tiles (always rendered) */}
-        <View style={styles.kpisRow}>
-          <KpiTile
-            label="Available"
-            value={availableDisplay}
-            sub={balanceSub}
-            style={styles.kpiCell}
-          />
-          <KpiTile
-            label="Pending"
-            value={pendingDisplay}
-            sub={liveBalances ? "Still clearing" : "Balance unavailable"}
-            style={styles.kpiCell}
-          />
-          <KpiTile
-            label="Last payout"
-            value={lastPayoutDisplay}
-            sub={lastPayoutSub}
-            style={styles.kpiCell}
-          />
-        </View>
 
         {/* SECTION B.5 — ORCH-0955 embedded Tax tools.
             Mints an AccountSession with tax_registrations + tax_settings
@@ -1041,14 +741,14 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 <View style={styles.taxCtaTextCol}>
                   <Text style={styles.taxCtaTitle}>Tax & registrations</Text>
                   <Text style={styles.taxCtaBody}>
-                    Manage your tax registrations and settings here. Automatic
-                    tax calculation adds about 0.5% on top of processing fees.
-                    You're the merchant of record.
+                    Manage your tax registrations and settings here. Stripe’s
+                    automatic-tax fee (about 0.5%) is paid by you and shown
+                    separately from Mingla’s 4.5% fee.
                   </Text>
                   {taxAccountSession.isError
                     ? (
                       <Text style={styles.taxCtaError}>
-                        Couldn't open tax settings. Try again.
+                        Couldn’t open tax settings. Try again.
                       </Text>
                     )
                     : null}
@@ -1070,63 +770,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           )
           : null}
 
-        {/* SECTION C/D — #1180 held-payout receipt + release history + refunds.
-            Replaces the old always-empty RECENT PAYOUTS/REFUNDS lists (fed by the
-            never-populated brand.payouts/brand.refunds — ORCH-0796) with the real
-            event-anchored ledger read from brand_payout_releases /
-            payout_transfer_legs / payout_ledger_adjustments / organiser_payout_debts.
-            The Stripe rail passes isNgBrand=false. */}
-        <BrandPayoutBreakdown
-          brandId={brand.id}
-          isNgBrand={false}
-          onOpenExplainer={handleOpenExplainer}
-        />
-
-        {/* SECTION E — Export CTA */}
-        <View style={styles.exportRow}>
-          <Button
-            label="Export finance report"
-            onPress={handleExport}
-            variant="secondary"
-            size="md"
-            leadingIcon="chart"
-            fullWidth
-          />
-        </View>
-
-        {
-          /* SECTION F — ORCH-0802 Danger zone: Disconnect Stripe.
-            Only rendered for active/restricted (the only states where
-            there is a real connection to sever). Hidden for not_connected
-            (nothing to disconnect) and onboarding (would strand the brand
-            mid-onboarding without a recovery path). */
-        }
-        {(stripeStatus === "active" || stripeStatus === "restricted") &&
-            brand !== null
-          ? (
-            <View style={styles.dangerZone}>
-              <Text style={styles.dangerZoneTitle}>DANGER ZONE</Text>
-              <GlassCard variant="base" padding={spacing.md}>
-                <Text style={styles.dangerZoneBody}>
-                  Disconnecting closes {brand.displayName}{"’"}s payout
-                  account. It won{"’"}t be able to take payments until you
-                  connect a bank again. Existing buyers keep their bookings;
-                  refunds remain visible under your refund history.
-                </Text>
-                <View style={styles.dangerZoneBtnRow}>
-                  <Button
-                    label="Disconnect bank"
-                    onPress={handleOpenDetach}
-                    variant="destructive"
-                    size="md"
-                    leadingIcon="bank"
-                    accessibilityLabel={`Disconnect bank from ${brand.displayName}`}
-                  />
-                </View>
-              </GlassCard>
-            </View>
-          )
-          : null}
       </ScrollView>
 
       {

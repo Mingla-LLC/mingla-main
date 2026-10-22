@@ -55,6 +55,7 @@ export interface EventDetailKpiCardProps {
   currency?: string | null;
   readStatus?: EventOrdersReadStatus;
   onRetry?: () => void;
+  onOpenPayouts?: () => void;
 }
 
 export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
@@ -66,6 +67,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   currency,
   readStatus = "ready",
   onRetry,
+  onOpenPayouts,
 }) => {
   // #962 G16 — resolve the real code or null; hide money ("—") when null
   // (pre-bank brand). NEVER manufacture GBP.
@@ -92,21 +94,21 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
     >
       <View style={styles.row}>
         <View style={styles.col}>
-          <Text style={styles.label}>REVENUE</Text>
+          <Text style={styles.label}>BUYERS PAID</Text>
           <Text style={styles.bigValue}>{revenueLabel}</Text>
         </View>
         <View style={styles.colRight}>
           {showPayoutSplit
             ? (
               <>
-                <Text style={styles.label}>PAID OUT</Text>
+                <Text style={styles.label}>PAID TO BANK</Text>
                 <Text style={styles.midValue}>
                   {code !== null && hasData
                     ? formatCurrency(paidOutGbp as number, code)
                     : "—"}
                 </Text>
                 <Text style={[styles.label, styles.labelSecond]}>
-                  ON ITS WAY
+                  COMING TO YOU
                 </Text>
                 <Text style={styles.midValue}>
                   {code !== null && hasData
@@ -117,7 +119,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
             )
             : (
               <>
-                <Text style={styles.label}>PAYOUT</Text>
+                <Text style={styles.label}>YOU GET</Text>
                 <Text style={styles.midValue}>
                   {code !== null && hasData && payoutGbp !== null
                     ? formatCurrency(payoutGbp, code)
@@ -144,34 +146,18 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
       ) : readStatus === "stale-error" ? (
         <Text style={styles.coveredLine}>Unable to refresh</Text>
       ) : null}
-      <SparklineBar />
+      {onOpenPayouts !== undefined ? (
+        <Button
+          label="See payouts"
+          onPress={onOpenPayouts}
+          variant="ghost"
+          size="md"
+          accessibilityLabel="See payouts"
+        />
+      ) : null}
     </GlassCard>
   );
 };
-
-// ---- SparklineBar — composed inline placeholder --------------------
-
-const BAR_COUNT = 12;
-const BAR_HEIGHTS = [
-  0.45, 0.62, 0.4, 0.78, 0.55, 0.7, 0.85, 0.6, 0.5, 0.72, 0.45, 0.68,
-];
-
-const SparklineBar: React.FC = () => (
-  <View style={styles.sparklineRow}>
-    {Array.from({ length: BAR_COUNT }).map((_, idx) => {
-      const heightFraction = BAR_HEIGHTS[idx] ?? 0.5;
-      return (
-        <View
-          key={`bar-${idx}`}
-          style={[
-            styles.sparklineBar,
-            { height: `${heightFraction * 100}%` },
-          ]}
-        />
-      );
-    })}
-  </View>
-);
 
 const styles = StyleSheet.create({
   card: {
@@ -217,17 +203,6 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     marginTop: -spacing.sm,
     marginBottom: spacing.md,
-  },
-  sparklineRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 4,
-    height: 28,
-  },
-  sparklineBar: {
-    flex: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    borderRadius: 2,
   },
 });
 

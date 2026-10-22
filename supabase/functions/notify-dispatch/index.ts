@@ -379,6 +379,8 @@ type BusinessPreferenceType =
   | "business.dispute_opened"
   | "business.dispute_action_needed"
   | "business.payout_paid"
+  | "business.payout_late"
+  | "business.payout_debt_withheld"
   // #3645 PR10 — organiser payout visibility (both rails).
   | "business.payout_failed"
   | "business.payout_waiting_for_bank"
@@ -405,6 +407,8 @@ const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
   "business.dispute_opened": { push: true, in_app: true },
   "business.dispute_action_needed": { push: true, in_app: true },
   "business.payout_paid": { push: true, in_app: true },
+  "business.payout_late": { push: true, in_app: true },
+  "business.payout_debt_withheld": { push: true, in_app: true },
   "business.payout_failed": { push: true, in_app: true },
   "business.payout_waiting_for_bank": { push: true, in_app: true },
   "business.payouts_paused": { push: true, in_app: true },

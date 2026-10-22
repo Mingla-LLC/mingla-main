@@ -15,15 +15,10 @@
  *     INSIDE the total, never added on top) — the preview "Buyer pays" is exact
  *     for GB without any Stripe round-trip.
  *
- * Honest-limit on "You keep": the engine's payout is
- *   buyer_total − mingla_fee − tax_cents
- * and `tax_cents` requires a Stripe tax.calculations round-trip we cannot do
- * client-side. So `previewYouKeep` returns the FLAT-ABSORB FLOOR (tax_cents = 0)
- * — the honest worst case. For a VAT-registered brand passing VAT, the real
- * "you keep" can only be HIGHER (they stop eating the VAT); the preview never
- * overstates. Toggling the VAT switch therefore leaves BOTH preview numbers
- * unchanged client-side — which is the T-1 truth made visible: under inclusive
- * VAT the buyer pays the same either way, and we refuse to guess the VAT rate.
+ * The #3645 pricing preview is deliberately limited to the approved 4.5%:
+ * 1.5% Mingla fee + 3% service fee. It never invents a payment-provider or
+ * automatic-tax amount; those come from stored payout evidence and appear as
+ * separate lines where applicable.
  */
 
 import { MINGLA_SERVICE_FEE_BPS } from "../constants/pricing";
@@ -51,7 +46,7 @@ export interface PreviewResult {
   serviceFeeCents: number;
   /** What the buyer pays, all-in (exact for GB inclusive VAT). */
   buyerPaysCents: number;
-  /** Flat-absorb floor of the brand's Stripe payout (tax_cents = 0). */
+  /** Host amount after the approved 4.5% fee components in this preview. */
   youKeepFloorCents: number;
   /** Per-component split, mirroring engine `passed`/`absorbed` (tax excluded). */
   passed: { miglaFeeCents: number; serviceFeeCents: number };
@@ -80,8 +75,10 @@ export function computePreview(input: PreviewInput): PreviewResult {
   const passedService = input.switches.passServiceFee ? serviceFeeCents : 0;
 
   const buyerPaysCents = base + passedMingla + passedService;
-  // Flat-absorb floor: payout = buyer_total − mingla_fee − tax(0).
-  const youKeepFloorCents = buyerPaysCents - miglaFeeCents;
+  // Flat 4.5% payout truth: both Mingla's 1.5% take and the disclosed 3%
+  // service fee are retained from the sale. Passing a component increases the
+  // buyer total by that same component; absorbing it lowers what the host gets.
+  const youKeepFloorCents = buyerPaysCents - miglaFeeCents - serviceFeeCents;
 
   return {
     baseCents: base,
