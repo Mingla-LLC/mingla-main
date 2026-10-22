@@ -174,7 +174,7 @@ BEGIN
   BEGIN
     PERFORM public.business_update_rsvp_graph(f.v_event,
       pg_temp.chip_in_payload(2, true, 9900, 500), NULL, NULL);
-  EXCEPTION WHEN sqlstate '40001' THEN
+  EXCEPTION WHEN sqlstate 'PT409' THEN
     IF SQLERRM <> 'rsvp_revision_conflict' THEN RAISE EXCEPTION 'X-04 FAIL: stale revision raised %', SQLERRM; END IF;
     v_refused := true;
   END;
