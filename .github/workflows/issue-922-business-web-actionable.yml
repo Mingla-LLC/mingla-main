@@ -1,6 +1,7 @@
 name: Issue 922 Business Web Actionability
 
 on:
+  workflow_dispatch: {}
   push:
     branches: [Seth, main]
     paths: &issue922_paths

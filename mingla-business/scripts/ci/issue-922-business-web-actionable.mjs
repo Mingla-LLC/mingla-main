@@ -148,9 +148,14 @@ function validateWorkflow() {
     "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs",
     "mingla-business/vercel.json",
   ]) invariant(workflow.includes(`- "${owner}"`), `workflow does not watch owner: ${owner}`);
+  invariant(
+    /^  workflow_dispatch: \{\}$/m.test(workflow),
+    "workflow must support exact-main recovery dispatch",
+  );
 }
 
 function selfTest() {
+  validateWorkflow();
   const vercel = {
     buildCommand: "x && node scripts/inject-attendance-claim-bootstrap.mjs && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
     rewrites: [
