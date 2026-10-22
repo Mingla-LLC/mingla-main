@@ -25,7 +25,7 @@ import {
 } from "../../../src/constants/designSystem";
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import {
   readCheckoutResumePayload,
@@ -69,7 +69,7 @@ export default function CheckoutQueueScreen(): React.ReactElement {
     setBuyer,
     setEventDateIds,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   const [restoreChecked, setRestoreChecked] = useState(false);
   const [terminalMessage, setTerminalMessage] = useState<string | null>(null);

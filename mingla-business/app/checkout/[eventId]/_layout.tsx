@@ -17,21 +17,34 @@
  */
 
 import React from "react";
-import { Stack } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 
 import { CartProvider } from "../../../src/components/checkout/CartContext";
+import { TicketQuoteController } from "../../../src/components/checkout/TicketQuoteController";
+
+const firstParam = (value: string | string[] | undefined): string =>
+  Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+
+const CheckoutStack = (): React.ReactElement => {
+  const params = useLocalSearchParams<{
+    eventId?: string | string[];
+    ticketLink?: string | string[];
+  }>();
+  return (
+    <>
+      <TicketQuoteController
+        eventId={firstParam(params.eventId)}
+        ticketLinkToken={firstParam(params.ticketLink) || null}
+      />
+      <Stack screenOptions={{ headerShown: false }} />
+    </>
+  );
+};
 
 export default function CheckoutLayout(): React.ReactElement {
   return (
     <CartProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          // iOS: native swipe-back enabled by default. Confirmation
-          // screen (J-C5) blocks it explicitly via usePreventRemove
-          // in Cycle 8b. J-C1 / J-C2 / J-C3 keep default behaviour.
-        }}
-      />
+      <CheckoutStack />
     </CartProvider>
   );
 }

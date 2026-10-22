@@ -81,7 +81,7 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
-import { useCart, useCartTotals } from "../../../src/components/checkout/CartContext";
+import { useCart, useCartQuoteTotals } from "../../../src/components/checkout/CartContext";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
@@ -157,7 +157,7 @@ export default function TripIntakeScreen(): React.ReactElement {
     intakeUploadSessionId,
     setIntakeTierData,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   const schemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
     enabled: tripEventId !== null,

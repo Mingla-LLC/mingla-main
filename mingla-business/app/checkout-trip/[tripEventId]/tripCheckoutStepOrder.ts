@@ -196,9 +196,9 @@ export interface TripStepTier {
 }
 
 export interface TripCounterShapeInput {
-  /** `useCartTotals().isFree` — false for an EMPTY cart, which is the trap. */
+  /** `useCartQuoteTotals().isFree` — false for an EMPTY cart, which is the trap. */
   cartIsFree: boolean;
-  /** `useCartTotals().isEmpty`. */
+  /** `useCartQuoteTotals().isEmpty`. */
   cartIsEmpty: boolean;
   /**
    * The trip's own pricing tiers, `undefined` until the trip read resolves.
@@ -217,7 +217,7 @@ export interface TripCounterShapeInput {
  * `intake.hasIntake` raw breaks that promise twice, because both answer
  * "no" when they mean "not yet":
  *
- *  - `useCartTotals().isFree` is `!isEmpty && subtotal === 0`, so an EMPTY cart
+ *  - `useCartQuoteTotals().isFree` is `!isEmpty && subtotal === 0`, so an EMPTY cart
  *    is reported as NOT free. On a multi-tier free trip the cart step therefore
  *    opened at "1 OF 4" and flipped to "1 OF 3" the moment a tier was picked.
  *  - `hasIntake` is `false` while the schema read is in flight, so a trip that

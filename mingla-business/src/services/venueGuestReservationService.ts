@@ -1,5 +1,10 @@
 import type { AvailableSlot } from "../types/venueReservation";
 import type { GuestManageReservation } from "../utils/guestReservationManage";
+import type {
+  TicketQuoteCodeOutcome,
+  TicketQuoteDiscount,
+  TicketQuoteNotice,
+} from "@mingla/offering-rendering/discountQuote";
 import { supabase } from "./supabase";
 
 async function extractFunctionError(
@@ -57,6 +62,33 @@ export interface GuestReservationInput {
   guestNotes?: string | null;
   attributionClickId?: string | null;
   organicJourneyToken?: string | null;
+  discountCode?: string | null;
+  quoteDigest?: string | null;
+}
+
+export interface GuestReservationPreview {
+  kind: "preview";
+  depositListCents: number;
+  discountCents: number;
+  depositNetCents: number;
+  feesAndTaxCents: number;
+  totalCents: number;
+  currency: string;
+  discounts: TicketQuoteDiscount[];
+  codeOutcome: TicketQuoteCodeOutcome;
+  notices: TicketQuoteNotice[];
+  quoteDigest: string | null;
+  requiresPayment: boolean;
+}
+
+export class GuestReservationReviewError extends Error {
+  readonly quote: GuestReservationPreview;
+
+  constructor(quote: GuestReservationPreview) {
+    super("checkout_review_required");
+    this.name = "GuestReservationReviewError";
+    this.quote = quote;
+  }
 }
 
 export type GuestReservationResult =
@@ -221,10 +253,39 @@ export async function createGuestVenueReservation(
         guestNotes: input.guestNotes ?? null,
         attributionClickId: input.attributionClickId ?? null,
         organicJourneyToken: input.organicJourneyToken ?? null,
+        discountCode: input.discountCode ?? null,
+        quoteDigest: input.quoteDigest ?? null,
       },
     },
   );
   if (error !== null) {
+    const context = (error as { context?: unknown }).context;
+    if (
+      context !== null &&
+      typeof context === "object" &&
+      typeof (context as { clone?: unknown }).clone === "function"
+    ) {
+      try {
+        const raw = await (
+          (context as { clone: () => { text: () => Promise<string> } }).clone()
+        ).text();
+        const payload = JSON.parse(raw) as {
+          error?: unknown;
+          quote?: unknown;
+        };
+        if (
+          payload.error === "checkout_review_required" &&
+          payload.quote !== null &&
+          typeof payload.quote === "object"
+        ) {
+          throw new GuestReservationReviewError(
+            payload.quote as GuestReservationPreview,
+          );
+        }
+      } catch (caught) {
+        if (caught instanceof GuestReservationReviewError) throw caught;
+      }
+    }
     throw new Error(
       await extractFunctionError(
         error,
@@ -234,6 +295,40 @@ export async function createGuestVenueReservation(
   }
   if (data === null) {
     throw new Error("The reservation service returned no result.");
+  }
+  return data;
+}
+
+export async function previewGuestVenueReservation(
+  input: GuestReservationInput,
+): Promise<GuestReservationPreview> {
+  const { data, error } = await supabase.functions.invoke<GuestReservationPreview>(
+    "venue-reservation-create",
+    {
+      body: {
+        venueId: input.venueId,
+        brandId: input.brandId,
+        surface: "web",
+        mode: "preview",
+        reservedForUtc: input.reservedForUtc,
+        partySize: input.partySize,
+        buyer: input.buyer,
+        occasion: input.occasion ?? null,
+        guestNotes: input.guestNotes ?? null,
+        discountCode: input.discountCode ?? null,
+      },
+    },
+  );
+  if (error !== null) {
+    throw new Error(
+      await extractFunctionError(
+        error,
+        "We couldn’t get the reservation price. Try again.",
+      ),
+    );
+  }
+  if (data === null) {
+    throw new Error("The reservation service returned no price.");
   }
   return data;
 }

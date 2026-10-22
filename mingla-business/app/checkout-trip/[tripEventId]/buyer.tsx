@@ -82,7 +82,6 @@ import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
-import { tripSummedDueTodayCents } from "@mingla/offering-rendering";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 // issue #2337 — the trip rail's FREE branch used to render `error.message`
 // straight to the guest, so a handled 409 arrived as the literal transport
@@ -122,9 +121,10 @@ import { Input } from "../../../src/components/ui/Input";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { TicketQuoteSummary } from "../../../src/components/checkout/TicketQuoteSummary";
 import {
   isContinueDisabled,
   shouldShowConsentHintOnDisabledTap,
@@ -277,47 +277,21 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const {
     lines,
     buyer,
+    discountCode,
+    quote,
+    quoteStatus,
     intakeFormData,
     intakeUploadSessionId,
     setBuyer,
     recordResult,
     checkoutAttemptIdFor,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
-  // ORCH-1130 Fix #1 — "Total due today" (deposit) line for the order-summary
-  // box. When pay-over-time is selected AND the cart holds a plan-active tier,
-  // surface the DEPOSIT DUE TODAY alongside the full Total. Read from the SAME
-  // projectInstallmentSchedule(...).depositCents the public page + Review step
-  // use (mirror of index.tsx's dueTodayCents memo) — NEVER recomputed here.
-  // null → no due-today line (pay-in-full / no-plan), Total only (unchanged).
-  const dueTodayCents = useMemo<number | null>(() => {
-    if (
-      trip === null ||
-      !lines.some((line) => line.paymentPlanChoice === "installments")
-    ) return null;
-    return tripSummedDueTodayCents(
-      trip.pricingTiers.map((tier) => ({
-        ticketTypeId: tier.ticketTypeId,
-        priceCents: tier.priceCents,
-        priceAllInCents:
-          tier.priceAllInGbp == null
-            ? null
-            : Math.round(tier.priceAllInGbp * 100),
-        isFree: tier.priceCents === 0,
-        isUnlimited: tier.isUnlimited,
-        ticketsRemaining: tier.ticketsRemaining,
-        installmentSchedule: tier.installmentSchedule,
-      })),
-      Object.fromEntries(lines.map((line) => [line.ticketTypeId, line.quantity])),
-      Object.fromEntries(
-        lines.map((line) => [
-          line.ticketTypeId,
-          line.paymentPlanChoice ?? "full",
-        ]),
-      ),
-    );
-  }, [trip, lines]);
+  const dueTodayCents =
+    quote !== null && quote.dueTodayNetCents !== quote.netSubtotalCents
+      ? quote.dueTodayNetCents
+      : null;
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — fetch per-tier intake schemas to
   // decide whether to route Continue → /intake (before /payment) when any
@@ -536,6 +510,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       setSubmitting(false);
       return;
     }
+    if (quoteStatus !== "ready" || quote === null) {
+      submitInFlight.current = false;
+      setSubmitting(false);
+      return;
+    }
     freeReservationFiredRef.current = true;
     // issue #3351 — the answers the traveller committed on /intake, flattened
     // by the shared helper into the array shape `ticket-checkout-create`
@@ -553,6 +532,9 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         eventId: tripEventId,
         buyer,
         lines,
+        discountCode,
+        quoteDigest: quote.quoteDigest,
+        quoteListDigest: quote.quoteListDigest,
         ...(Platform.OS === "web"
           ? {
             checkoutContractVersion: 2 as const,
@@ -612,6 +594,9 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     intakeUploadSessionId,
     lines,
     buyer,
+    discountCode,
+    quote,
+    quoteStatus,
     checkoutAttemptIdFor,
     recordResult,
     router,
@@ -641,6 +626,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       return;
     }
     if (tripEventId === null) return;
+    if (quoteStatus !== "ready" || quote === null) return;
     // issue #2689 — claim before the consent network round trip (re-entry window).
     if (submitInFlight.current) return;
     submitInFlight.current = true;
@@ -736,6 +722,8 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     buyer.email,
     buyer.marketingOptIn,
     phoneCountry,
+    quote,
+    quoteStatus,
   ]);
 
   // issue #3351 — the label states what the tap actually does. A paid trip with
@@ -750,6 +738,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const continueDisabled =
     !authReady ||
     !intakeState.settled ||
+    quoteStatus !== "ready" ||
     isContinueDisabled({
       fieldsValid: validation.isValid,
       termsAccepted,
@@ -808,37 +797,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {lines.map((l) => (
-              <View key={l.ticketTypeId} style={styles.summaryLine}>
-                <Text style={styles.summaryLineQty}>{l.quantity}×</Text>
-                <Text style={styles.summaryLineName} numberOfLines={1}>
-                  {l.ticketName}
-                </Text>
-                <Text style={styles.summaryLineTotal}>
-                  {l.isFree
-                    ? "Free"
-                    : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-                </Text>
-              </View>
-            ))}
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotalValue}>
-                {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
-              </Text>
-            </View>
-            {/* ORCH-1130 Fix #1 — pay-over-time only: full Total stays above;
-                the amount charged TODAY (deposit) shows as its own labeled
-                line. Hidden for pay-in-full / no-plan. */}
-            {dueTodayCents !== null ? (
-              <View style={styles.summaryDueTodayRow}>
-                <Text style={styles.summaryDueTodayLabel}>Total due today</Text>
-                <Text style={styles.summaryDueTodayValue}>
-                  {formatCurrency(dueTodayCents, totals.currency, true)}
-                </Text>
-              </View>
-            ) : null}
+            {quote !== null ? <TicketQuoteSummary quote={quote} compact /> : null}
           </GlassCard>
         </Pressable>
 
@@ -1035,7 +994,9 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
+            {quoteStatus === "ready" && quote !== null
+              ? formatCurrency(quote.buyerTotalCents, quote.currency, true)
+              : "Updating…"}
           </Text>
         </View>
         {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under

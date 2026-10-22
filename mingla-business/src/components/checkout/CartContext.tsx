@@ -34,6 +34,11 @@ import {
   createCheckoutAttemptTracker,
   type CheckoutLinePlanChoice,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
+import {
+  ticketQuoteFeesAndTaxCents,
+  type TicketCheckoutReview,
+  type TicketQuote,
+} from "@mingla/offering-rendering/discountQuote";
 
 // ---- Types ----------------------------------------------------------
 
@@ -166,10 +171,19 @@ export interface OrderResult {
  * payment.tsx forwarding gate stays `isPlanActive`).
  */
 export type TripPaymentPlanChoice = "full" | "installments";
+export type TicketQuoteStatus = "idle" | "loading" | "ready" | "error";
 
 export interface CartState {
   lines: CartLine[];
   buyer: BuyerDetails;
+  /** #3872 — normalized code entered by the buyer; null means no code. */
+  discountCode: string | null;
+  /** #3872 — the only checkout-money authority rendered by the funnel. */
+  quote: TicketQuote | null;
+  quoteStatus: TicketQuoteStatus;
+  quoteErrorCode: string | null;
+  /** A create-time 409 that must be explicitly accepted before another create. */
+  checkoutReview: TicketCheckoutReview | null;
   /** Populated by Cycle 8b after stub Stripe / free-skip path. */
   result: OrderResult | null;
   /** ORCH-1130 — pay-full vs pay-over-time, carried public page → Review. */
@@ -237,6 +251,14 @@ type CartAction =
     paymentPlanChoice?: CheckoutLinePlanChoice;
   }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
+  | { type: "SET_DISCOUNT_CODE"; code: string | null }
+  | {
+    type: "SET_QUOTE_STATE";
+    quote: TicketQuote | null;
+    status: TicketQuoteStatus;
+    errorCode: string | null;
+  }
+  | { type: "SET_CHECKOUT_REVIEW"; review: TicketCheckoutReview | null }
   | { type: "RECORD_RESULT"; result: OrderResult }
   | { type: "SET_INTAKE_TIER"; ticketTypeId: string; data: unknown }
   | { type: "CLEAR_INTAKE_TIER"; ticketTypeId: string }
@@ -273,6 +295,11 @@ const EMPTY_BUYER: BuyerDetails = {
 const INITIAL_STATE: CartState = {
   lines: [],
   buyer: EMPTY_BUYER,
+  discountCode: null,
+  quote: null,
+  quoteStatus: "idle",
+  quoteErrorCode: null,
+  checkoutReview: null,
   result: null,
   intakeFormData: {},
   // ORCH-1130 — default to pay-in-full (deliberate non-surprising default).
@@ -359,6 +386,22 @@ const reducer = (state: CartState, action: CartAction): CartState => {
     }
     case "SET_BUYER":
       return { ...state, buyer: { ...state.buyer, ...action.patch } };
+    case "SET_DISCOUNT_CODE":
+      return {
+        ...state,
+        discountCode: action.code,
+        quoteStatus: state.lines.length > 0 ? "loading" : "idle",
+        checkoutReview: null,
+      };
+    case "SET_QUOTE_STATE":
+      return {
+        ...state,
+        quote: action.quote,
+        quoteStatus: action.status,
+        quoteErrorCode: action.errorCode,
+      };
+    case "SET_CHECKOUT_REVIEW":
+      return { ...state, checkoutReview: action.review };
     case "RECORD_RESULT":
       return { ...state, result: action.result };
     case "SET_INTAKE_TIER":
@@ -421,6 +464,13 @@ export interface CartContextValue extends CartState {
     paymentPlanChoice?: CheckoutLinePlanChoice;
   }) => void;
   setBuyer: (patch: Partial<BuyerDetails>) => void;
+  setDiscountCode: (code: string | null) => void;
+  setQuoteState: (
+    quote: TicketQuote | null,
+    status: TicketQuoteStatus,
+    errorCode?: string | null,
+  ) => void;
+  setCheckoutReview: (review: TicketCheckoutReview | null) => void;
   recordResult: (result: OrderResult) => void;
   /**
    * ORCH-0880 [Tr5 Traveler Intake Forms] — save/replace one tier's intake
@@ -482,6 +532,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const checkoutAttemptTrackerRef = useRef(createCheckoutAttemptTracker());
   const intakeUploadSessionRef = useRef(createCheckoutAttemptId());
 
+  const resetCheckoutAttempt = useCallback((): void => {
+    checkoutAttemptTrackerRef.current.reset();
+  }, []);
+
   const setLineQuantity = useCallback(
     (params: {
       ticketTypeId: string;
@@ -503,6 +557,33 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const setBuyer = useCallback((patch: Partial<BuyerDetails>): void => {
     dispatch({ type: "SET_BUYER", patch });
   }, []);
+
+  const setDiscountCode = useCallback((code: string | null): void => {
+    const normalized = code?.replace(/[\s-]+/g, "").toUpperCase() ?? "";
+    resetCheckoutAttempt();
+    dispatch({
+      type: "SET_DISCOUNT_CODE",
+      code: normalized.length > 0 ? normalized : null,
+    });
+  }, [resetCheckoutAttempt]);
+
+  const setQuoteState = useCallback(
+    (
+      quote: TicketQuote | null,
+      status: TicketQuoteStatus,
+      errorCode: string | null = null,
+    ): void => {
+      dispatch({ type: "SET_QUOTE_STATE", quote, status, errorCode });
+    },
+    [],
+  );
+
+  const setCheckoutReview = useCallback(
+    (review: TicketCheckoutReview | null): void => {
+      dispatch({ type: "SET_CHECKOUT_REVIEW", review });
+    },
+    [],
+  );
 
   const recordResult = useCallback((result: OrderResult): void => {
     dispatch({ type: "RECORD_RESULT", result });
@@ -564,14 +645,11 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
         bookedStartAt: state.bookedStartAt,
         bookedEndAt: state.bookedEndAt,
         partySize: state.partySize,
+        discountCode: state.discountCode,
         intakeFormData: Object.values(state.intakeFormData),
       }),
     [state],
   );
-
-  const resetCheckoutAttempt = useCallback((): void => {
-    checkoutAttemptTrackerRef.current.reset();
-  }, []);
 
   // ORCH-1138 Leg 3 — chosen experience occurrence setter.
   const setEventDateId = useCallback((eventDateId: string | null): void => {
@@ -609,6 +687,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       ...state,
       setLineQuantity,
       setBuyer,
+      setDiscountCode,
+      setQuoteState,
+      setCheckoutReview,
       recordResult,
       setIntakeTierData,
       clearIntakeTierData,
@@ -628,6 +709,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       state,
       setLineQuantity,
       setBuyer,
+      setDiscountCode,
+      setQuoteState,
+      setCheckoutReview,
       recordResult,
       setIntakeTierData,
       clearIntakeTierData,
@@ -657,7 +741,7 @@ export const useCart = (): CartContextValue => {
   return ctx;
 };
 
-export interface CartTotals {
+export interface CartQuoteTotals {
   /** Legacy compatibility only. Same value as subtotal. */
   subtotalGbp: number;
   /** Legacy compatibility only. Same value as total. */
@@ -690,39 +774,31 @@ export interface CartTotals {
   isEmpty: boolean;
 }
 
-export const useCartTotals = (): CartTotals => {
-  const { lines } = useCart();
-  return useMemo<CartTotals>((): CartTotals => {
-    let subtotal = 0;
-    // ORCH-1147 — accumulate the server fee-grossed all-in alongside the base.
-    // Each line falls back to its base when no all-in was plumbed (never NaN,
-    // never fabricated). All math in major units; convert the delta to cents
-    // once at the end (mirrors the consumer reference TicketCartSheet.tsx).
-    let allInTotal = 0;
-    let totalQuantity = 0;
-    let currency = "";
-    for (const line of lines) {
-      subtotal += line.unitPrice * line.quantity;
-      allInTotal += (line.unitPriceAllIn ?? line.unitPrice) * line.quantity;
-      totalQuantity += line.quantity;
-      currency = line.currency;
-    }
+export const useCartQuoteTotals = (): CartQuoteTotals => {
+  const { lines, quote, quoteStatus } = useCart();
+  return useMemo<CartQuoteTotals>((): CartQuoteTotals => {
+    const totalQuantity = lines.reduce(
+      (count, line) => count + line.quantity,
+      0,
+    );
     const isEmpty = totalQuantity === 0;
-    const isFree = !isEmpty && subtotal === 0;
-    // ORCH-1147 — combined fees+tax delta in MINOR units, GREATEST(0,…).
-    const feesTaxCents = Math.max(0, Math.round((allInTotal - subtotal) * 100));
+    const subtotal = quote === null ? 0 : quote.listSubtotalCents / 100;
+    const total = quote === null ? 0 : quote.netSubtotalCents / 100;
+    const allInTotal = quote === null ? 0 : quote.buyerTotalCents / 100;
+    const feesTaxCents = quote === null ? 0 : ticketQuoteFeesAndTaxCents(quote);
     return {
       subtotalGbp: subtotal,
-      totalGbp: subtotal,
+      totalGbp: total,
       subtotal,
-      total: subtotal,
+      total,
       allInTotal,
       feesTaxCents,
       hasFeesTaxDelta: feesTaxCents > 0,
-      currency,
+      currency: quote?.currency ?? lines[0]?.currency ?? "",
       totalQuantity,
-      isFree,
+      isFree:
+        !isEmpty && quoteStatus === "ready" && quote?.buyerTotalCents === 0,
       isEmpty,
     };
-  }, [lines]);
+  }, [lines, quote, quoteStatus]);
 };

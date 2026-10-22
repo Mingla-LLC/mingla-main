@@ -39,6 +39,8 @@ export interface CheckoutClientAttemptInput {
   bookedEndAt?: string | null;
   /** issue #3281 R2 — group party size; omit / non-positive keeps identical. */
   partySize?: number | null;
+  /** #3872 — normalized code rotates the client attempt identity. */
+  discountCode?: string | null;
   intakeFormData: unknown;
 }
 
@@ -207,6 +209,10 @@ export function checkoutClientAttemptFingerprint(
         Number.isFinite(input.partySize) &&
         input.partySize >= 1
       ? { partySize: Math.trunc(input.partySize) }
+      : {}),
+    ...(typeof input.discountCode === "string" &&
+        input.discountCode.trim().length > 0
+      ? { discountCode: input.discountCode.trim().toUpperCase() }
       : {}),
     intakeFormData,
   });

@@ -43,10 +43,11 @@ import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+import { CheckoutDiscountCodeField } from "../../../src/components/checkout/DiscountCodeField";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // experience checkout too (the event checkout already does; trips/experiences
 // didn't, undercounting started checkouts). Web-only (native no-op via .web split).
@@ -137,13 +138,14 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
 
   const {
     lines,
+    quoteStatus,
     setLineQuantity,
     setEventDateId,
     setBookedStartAt,
     setBookedEndAt,
     setPartySize,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   // META-ORCH-1187 P2 — fire `web_checkout_started` once the buyer lands on the
   // experience cart and the experience event id resolves (begin of the web
@@ -168,7 +170,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   // renders only on a real pass-fee delta (never split service-fee + VAT;
   // feedback_cart_combined_fees_tax_line). I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
   // ORCH-1152 — guard the empty cart: on mount the cart is empty and
-  // useCartTotals() returns currency "", which crashed formatCurrency
+  // useCartQuoteTotals() returns currency "", which crashed formatCurrency
   // (RangeError: Currency is invalid). Pass a safe code on the empty cart so the
   // computation never feeds "" into Intl. headlineAllIn is only DISPLAYED when
   // !isEmpty anyway. (formatCurrency is ALSO hardened against blank codes —
@@ -432,6 +434,12 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
+        <CheckoutDiscountCodeField
+          disabled={totals.isEmpty}
+          saleNameByLineRef={{
+            [stub.id]: ticket.saleName ?? "sale",
+          }}
+        />
         {showFeesTaxLine ? (
           <View style={styles.feesTaxRow}>
             <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
@@ -456,10 +464,12 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           variant="primary"
           size="lg"
           fullWidth
-          disabled={totals.isEmpty}
+          disabled={totals.isEmpty || quoteStatus !== "ready"}
           accessibilityLabel={
             totals.isEmpty
               ? "Add your spot above"
+              : quoteStatus !== "ready"
+                ? "Waiting for your latest total"
               : totals.isFree
                 ? "Reserve free spot"
                 : `Continue to buyer details, total ${headlineAllIn}`

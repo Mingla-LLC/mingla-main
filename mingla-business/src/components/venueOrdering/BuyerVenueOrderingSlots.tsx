@@ -182,6 +182,8 @@ export const BuyerVenueOrderingMenu: React.FC<
         preview={ordering.preview}
         previewStatus={ordering.previewStatus}
         previewError={ordering.previewError}
+        discountCode={ordering.discountCode ?? ""}
+        onDiscountCodeChange={ordering.setDiscountCode ?? (() => undefined)}
         tip={ordering.cart.state.tip}
         tipRemembered={ordering.tipRemembered}
         onTipChange={ordering.cart.setTip}

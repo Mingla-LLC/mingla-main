@@ -27,7 +27,10 @@ import { supabase } from "./supabase";
 import type { RecurrenceRule } from "../store/draftEventStore";
 // ORCH-1147 — reuse the SINGLE owner of pg_public_event_tier_pricing (no
 // duplicated RPC / fee math here). The trip + event paths use the same helper.
-import { fetchTierAllInCents } from "./publicEventsService";
+import {
+  fetchTierPricingCents,
+  type PublicTierPricing,
+} from "./publicEventsService";
 import { normalizeStopStartOffset } from "../utils/experienceBookingSettings";
 // ORCH-1138 Leg 3 — guard the brand theme + per-experience overrides into a
 // ThemeInput so the /exp/ route resolves a palette (Direction-A). Same guard the
@@ -86,6 +89,11 @@ export interface PublicExperienceTicket {
    * falls back to `priceCents`/base. NEVER recompute fees in TS.
    */
   priceAllInGbp?: number | null;
+  salePriceGbp?: number | null;
+  saleAllInGbp?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   /** issue #3281 R2 — unit beside the price (absent → person). */
   priceBasis?: PublicExperiencePriceBasis;
   blockMinutes?: number | null;
@@ -316,8 +324,8 @@ interface MapInput {
   dates: any[];
   /** ORCH-1076 — resolved buyer-readiness; defaults to true (back-compat). */
   bookable?: boolean;
-  /** ORCH-1147 — ticket_types.id → server all-in cents (single-owner fetch). */
-  allInById?: Map<string, number>;
+  /** ORCH-1147/#3872 — ticket_types.id → server list + sale pricing. */
+  pricingById?: Map<string, PublicTierPricing>;
   /**
    * ORCH-1138 Leg 3 (§4.3) — ticket_types.id → event-level remaining (from the
    * canonical pg_public_ticket_types_remaining reader). null = unlimited/unknown.
@@ -422,6 +430,13 @@ function mapRpcTicket(
         : typeof t.allInCents === "number" && t.allInCents > 0
           ? t.allInCents / 100
           : null,
+    salePriceGbp:
+      typeof t.saleBaseCents === "number" ? t.saleBaseCents / 100 : null,
+    saleAllInGbp:
+      typeof t.saleAllInCents === "number" ? t.saleAllInCents / 100 : null,
+    saleEndsAt: t.saleEndsAt ?? null,
+    saleName: t.saleName ?? null,
+    saleRemaining: t.saleRemaining ?? null,
     ...ticketUnitFields(t),
   };
 }
@@ -448,7 +463,8 @@ function mapExperience(input: MapInput): PublicExperience {
     row: (typeof tickets)[number],
     remaining: number | null,
   ): PublicExperienceTicket => {
-    const rowAllIn = input.allInById?.get(row.id);
+    const rowPricing = input.pricingById?.get(row.id);
+    const rowAllIn = rowPricing?.allInCents;
     return {
       ticketTypeId: row.id,
       name: row.name,
@@ -464,6 +480,17 @@ function mapExperience(input: MapInput): PublicExperience {
           : typeof rowAllIn === "number"
             ? rowAllIn / 100
             : null,
+      salePriceGbp:
+        typeof rowPricing?.saleBaseCents === "number"
+          ? rowPricing.saleBaseCents / 100
+          : null,
+      saleAllInGbp:
+        typeof rowPricing?.saleAllInCents === "number"
+          ? rowPricing.saleAllInCents / 100
+          : null,
+      saleEndsAt: rowPricing?.saleEndsAt ?? null,
+      saleName: rowPricing?.saleName ?? null,
+      saleRemaining: rowPricing?.saleRemaining ?? null,
       ...ticketUnitFields(row),
     };
   };
@@ -559,8 +586,8 @@ async function loadExperienceSidecars(eventId: string): Promise<{
   tickets: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   dates: any[];
-  /** ORCH-1147 — ticket_types.id → server all-in cents (single-owner fetch). */
-  allInById: Map<string, number>;
+  /** ORCH-1147/#3872 — ticket_types.id → server list + sale pricing. */
+  pricingById: Map<string, PublicTierPricing>;
   /** ORCH-1138 Leg 3 (§4.3) — ticket_types.id → event-level remaining. */
   remainingById: Map<string, number | null>;
 }> {
@@ -568,7 +595,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
   // fetchTierAllInCents never throws (RPC failure → empty map → base fallback
   // downstream); keep the throw-on-RLS guards on the three Supabase reads.
   // ORCH-1138 Leg 3 — also fold the canonical remaining reader in parallel.
-  const [stopsResp, ticketsResp, datesResp, allInById, remainingResp] =
+  const [stopsResp, ticketsResp, datesResp, pricingById, remainingResp] =
     await Promise.all([
       supabase
         .from("experience_stops")
@@ -592,7 +619,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
         .select("id, start_at, end_at, timezone, is_master")
         .eq("event_id", eventId)
         .order("start_at", { ascending: true }),
-      fetchTierAllInCents(eventId),
+      fetchTierPricingCents(eventId),
       // ORCH-1138 Leg 3 (§4.3) — canonical anon-callable remaining reader
       // (ORCH-0946). Non-fatal: an RPC error leaves remaining unknown (the page
       // simply omits the sold-out gate; the checkout 409 remains the backstop).
@@ -619,7 +646,7 @@ async function loadExperienceSidecars(eventId: string): Promise<{
     stops: stopsResp.data ?? [],
     tickets: ticketsResp.data ?? [],
     dates: datesResp.data ?? [],
-    allInById,
+    pricingById,
     remainingById,
   };
 }
@@ -657,6 +684,11 @@ interface RpcExpTicket {
   name: string;
   priceCents: number;
   allInCents: number | null;
+  saleBaseCents?: number | null;
+  saleAllInCents?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   currency: string;
   quantityTotal: number | null;
   isUnlimited: boolean;

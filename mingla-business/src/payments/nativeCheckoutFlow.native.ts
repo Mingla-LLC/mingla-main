@@ -46,6 +46,8 @@ import {
   readEdgeRefusal,
 } from "../services/checkoutErrorCopy";
 import { paidCheckoutErrorMessage } from "../services/ticketCheckoutService";
+import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutService";
+import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
 // ORCH-1246 (Apple 4.9) — Apple Pay sheet must show the product, not the company.
 import { buildApplePayCartItems } from "./applePayCartItems";
 
@@ -73,6 +75,10 @@ export interface NativeCheckoutInput {
   paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
   taxCalculationId?: string | null;
+  discountCode?: string | null;
+  /** #3872 — current callers always pass both; optional for pre-R1 call sites. */
+  quoteDigest?: string;
+  quoteListDigest?: string;
   /**
    * ORCH-1138 Leg 3 — the chosen experience occurrence's event_dates.id (adaptive
    * Reserve picker). Forwarded ONLY when present → byte-identical request on the
@@ -106,7 +112,7 @@ export interface NativeCheckoutInput {
 export type NativeCheckoutOutcome =
   | { outcome: "succeeded"; orderId: string }
   | { outcome: "canceled" }
-  | { outcome: "failed"; message: string };
+  | { outcome: "failed"; message: string; review?: TicketCheckoutReview };
 
 type CheckoutCreateResponse =
   | {
@@ -359,6 +365,9 @@ export const useNativeCheckoutFlow = (): (
             ...(input.buyer.address ? { address: input.buyer.address } : {}),
           },
           lines: input.lines,
+          ...(input.discountCode ? { discountCode: input.discountCode } : {}),
+          quoteDigest: input.quoteDigest ?? null,
+          quoteListDigest: input.quoteListDigest ?? null,
           ...(input.taxCalculationId
             ? { taxCalculationId: input.taxCalculationId }
             : {}),
@@ -395,10 +404,20 @@ export const useNativeCheckoutFlow = (): (
     );
 
     if (error) {
+      const refusal = await readEdgeRefusal(error);
+      const review = ticketCheckoutReviewFromError(
+        {
+          code: refusal.code,
+          detail: refusal.detail,
+          reviewQuote: refusal.quote ?? null,
+        },
+        null,
+      );
       const message = await nativeCheckoutRefusalMessage(error);
       return {
         outcome: "failed",
         message,
+        ...(review !== null ? { review } : {}),
       };
     }
 

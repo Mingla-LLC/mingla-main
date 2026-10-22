@@ -9,6 +9,8 @@ import {
   createVenueReservation,
   confirmVenueReservation,
   type CreateVenueReservationInput,
+  type VenueReservationPreview,
+  VenueReservationReviewError,
 } from "../services/venueReservationService";
 import { buildApplePayCartItems } from "../payments/applePayCartItem";
 import { myReservationsKeys } from "./useMyReservations";
@@ -37,6 +39,7 @@ import { myReservationsKeys } from "./useMyReservations";
 export type ReserveOutcome =
   | { outcome: "succeeded"; reservationId: string }
   | { outcome: "canceled" }
+  | { outcome: "review"; quote: VenueReservationPreview }
   | { outcome: "failed"; message: string };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
@@ -70,6 +73,9 @@ export const useReserveTable = (
     try {
       created = await createVenueReservation(input);
     } catch (err) {
+      if (err instanceof VenueReservationReviewError) {
+        return { outcome: "review", quote: err.quote };
+      }
       const originalMessage = err instanceof Error ? err.message : "Reservation failed.";
       return {
         outcome: "failed",

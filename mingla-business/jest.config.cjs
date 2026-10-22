@@ -515,7 +515,7 @@ module.exports = {
   transform: {
     // ORCH-1147 — `jsx: "react-jsx"` (was "react-native", which PRESERVES JSX
     // and makes node/ts-jest choke on any runtime import of a JSX-bearing .tsx —
-    // e.g. importing `useCartTotals` from CartContext.tsx). The automatic JSX
+    // e.g. importing `useCartQuoteTotals` from CartContext.tsx). The automatic JSX
     // runtime transpiles `<X/>` to `_jsx(...)` so node-env unit tests can import
     // hook logic from a .tsx module. Jest-only; the app build is Metro/babel and
     // is unaffected. The existing carousel .tsx tests read source as TEXT

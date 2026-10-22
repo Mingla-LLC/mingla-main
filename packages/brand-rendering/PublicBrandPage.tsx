@@ -1320,7 +1320,7 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
   onFocusEvent,
 }: EventMiniCardProps) => {
   const isRsvp = event.eventType === "rsvp";
-  const price = isRsvp
+  const listPrice = isRsvp
     ? null
     : minPriceLabel(
         event.tickets,
@@ -1328,6 +1328,17 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
         event.displayPriceCents,
         event.displayCurrency,
       );
+  const salePrice =
+    !isRsvp &&
+    typeof event.displaySalePriceCents === "number" &&
+    event.displaySalePriceCents > 0 &&
+    event.displaySalePriceCents < (event.displayPriceCents ?? Number.MAX_SAFE_INTEGER)
+      ? `From ${formatCurrencyRound(
+          event.displaySalePriceCents / 100,
+          event.displayCurrency ?? event.currency ?? "USD",
+        )}`
+      : null;
+  const price = salePrice ?? listPrice;
   const action = isRsvp ? "View RSVP" : "View tickets";
   const TypeIcon = isRsvp ? CalendarCheck : Ticket;
   return (
@@ -1386,9 +1397,19 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
           </Text>
         ) : null}
         {price !== null ? (
-          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-            {price}
-          </Text>
+          <View style={styles.oCardPriceRow}>
+            <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
+              {price}
+            </Text>
+            {salePrice !== null && listPrice !== null ? (
+              <Text
+                style={[styles.oCardListPrice, { color: palette.tertiaryText }]}
+                accessibilityLabel={`Regular price ${listPrice}`}
+              >
+                {listPrice}
+              </Text>
+            ) : null}
+          </View>
         ) : null}
         <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
           <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
@@ -2635,6 +2656,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     marginTop: 4,
+  },
+  oCardPriceRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  oCardListPrice: {
+    fontSize: 13,
+    textDecorationLine: "line-through",
   },
   buyPill: {
     alignItems: "center",

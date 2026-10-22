@@ -17,12 +17,13 @@ export interface TicketLike {
   isFree: boolean;
   priceGbp: number | null;
   priceAllInGbp?: number | null;
+  saleAllInGbp?: number | null;
 }
 
 /** The per-unit all-in price (WYSIWYP). Free / missing → 0. */
 export const ticketUnitAllIn = (ticket: TicketLike): number => {
   if (ticket.isFree) return 0;
-  const price = ticket.priceAllInGbp ?? ticket.priceGbp;
+  const price = ticket.saleAllInGbp ?? ticket.priceAllInGbp ?? ticket.priceGbp;
   return typeof price === "number" && Number.isFinite(price) ? price : 0;
 };
 

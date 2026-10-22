@@ -45,6 +45,13 @@ export interface MenuItemPublicRow {
   service_days?: number[] | null;
 }
 
+interface MenuSaleRow {
+  menu_item_id: string;
+  sale_price_cents: number | null;
+  sale_ends_at: string | null;
+  sale_name: string | null;
+}
+
 const PUBLIC_MENU_SELECT =
   "id, menu_id, brand_id, brand_slug, venue_id, venue_slug, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order, allows_notes, service_window_start, service_window_end, service_days";
 
@@ -94,6 +101,18 @@ export const fetchPublicMenuBundle = async (
     .order("menu_sort_order", { ascending: true })
     .order("item_sort_order", { ascending: true });
   if (error !== null) throw error;
+  const venueId = ((data ?? [])[0] as MenuItemPublicRow | undefined)?.venue_id;
+  const saleResult = typeof venueId === "string"
+    ? await supabase.rpc("pg_public_menu_item_sales", { p_venue_id: venueId })
+    : { data: [], error: null };
+  const salesByItemId = new Map<string, MenuSaleRow>(
+    saleResult.error === null && Array.isArray(saleResult.data)
+      ? (saleResult.data as MenuSaleRow[]).map((sale) => [
+        sale.menu_item_id,
+        sale,
+      ])
+      : [],
+  );
 
   const groups: PublicMenuGroup[] = [];
   const windows: Record<string, PublicMenuWindow> = {};
@@ -117,11 +136,15 @@ export const fetchPublicMenuBundle = async (
           : null,
       };
     }
+    const sale = salesByItemId.get(row.id);
     group.items.push({
       id: row.id,
       name: row.item_name,
       description: row.item_description,
       priceCents: row.price_cents,
+      salePriceCents: sale?.sale_price_cents ?? null,
+      saleEndsAt: sale?.sale_ends_at ?? null,
+      saleName: sale?.sale_name ?? null,
       currency: row.currency,
       // `=== true`, so a NULL from a pre-#1789 row reads as "no notes" rather
       // than "notes, probably".

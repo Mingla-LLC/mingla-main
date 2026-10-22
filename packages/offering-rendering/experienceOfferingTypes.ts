@@ -66,6 +66,11 @@ export interface ExperienceOfferingTicket {
    * the body falls back to `priceCents`. NEVER recompute fees client-side.
    */
   priceAllInCents?: number | null;
+  salePriceCents?: number | null;
+  saleAllInCents?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   currency: string;
   isFree: boolean;
   isUnlimited: boolean;

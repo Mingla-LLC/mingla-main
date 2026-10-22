@@ -162,6 +162,8 @@ interface BusinessPublicEventViewRow {
   // Arrives via the existing .select("*"); null when no priced tier → the
   // brand mini-card "From" label falls back to the min-of-tickets base.
   display_price_cents?: number | null;
+  display_sale_price_cents?: number | null;
+  display_sale_ends_at?: string | null;
   pricing_currency?: string | null;
 }
 
@@ -432,6 +434,8 @@ interface TicketTypeRow {
 export type PublicBrandRecord = Brand;
 export type PublicEventRecord = LiveEvent & {
   terminalSource: EventTerminalSource;
+  displaySalePriceCents?: number | null;
+  displaySaleEndsAt?: string | null;
 };
 
 /** issue #2160 — the organiser's per-event multi-day pricing choice. */
@@ -1356,6 +1360,8 @@ export const publicEventViewRowToEvent = (
       tickets.find((ticket) => ticket.currency !== undefined)?.currency,
     // ORCH-1006 Slice 3 — server-computed all-in lowest-tier price (cents).
     displayPriceCents: row.display_price_cents ?? null,
+    displaySalePriceCents: row.display_sale_price_cents ?? null,
+    displaySaleEndsAt: row.display_sale_ends_at ?? null,
     displayCurrency: row.pricing_currency ?? null,
     tickets,
     visibility: asVisibility(row.visibility),
@@ -1533,10 +1539,19 @@ export const fetchCanonicalEventBodyFields = async (
   };
 };
 
-export const fetchTierAllInCents = async (
+export interface PublicTierPricing {
+  allInCents: number | null;
+  saleBaseCents: number | null;
+  saleAllInCents: number | null;
+  saleEndsAt: string | null;
+  saleName: string | null;
+  saleRemaining: number | null;
+}
+
+export const fetchTierPricingCents = async (
   eventId: string,
-): Promise<Map<string, number>> => {
-  const map = new Map<string, number>();
+): Promise<Map<string, PublicTierPricing>> => {
+  const map = new Map<string, PublicTierPricing>();
   const { data, error } = await supabase.rpc("pg_public_event_tier_pricing", {
     p_event_id: eventId,
   });
@@ -1544,12 +1559,36 @@ export const fetchTierAllInCents = async (
   for (const row of data as Array<{
     ticket_type_id?: string;
     all_in_cents?: number;
+    sale_base_cents?: number | null;
+    sale_all_in_cents?: number | null;
+    sale_ends_at?: string | null;
+    sale_name?: string | null;
+    sale_remaining?: number | null;
   }>) {
-    if (row?.ticket_type_id != null && typeof row.all_in_cents === "number") {
-      map.set(row.ticket_type_id, row.all_in_cents);
+    if (row?.ticket_type_id != null) {
+      map.set(row.ticket_type_id, {
+        allInCents:
+          typeof row.all_in_cents === "number" ? row.all_in_cents : null,
+        saleBaseCents: row.sale_base_cents ?? null,
+        saleAllInCents: row.sale_all_in_cents ?? null,
+        saleEndsAt: row.sale_ends_at ?? null,
+        saleName: row.sale_name ?? null,
+        saleRemaining: row.sale_remaining ?? null,
+      });
     }
   }
   return map;
+};
+
+export const fetchTierAllInCents = async (
+  eventId: string,
+): Promise<Map<string, number>> => {
+  const pricing = await fetchTierPricingCents(eventId);
+  return new Map(
+    [...pricing.entries()].flatMap(([id, row]) =>
+      row.allInCents === null ? [] : [[id, row.allInCents] as const]
+    ),
+  );
 };
 
 const fetchTickets = async (
@@ -2310,9 +2349,43 @@ export const fetchPublicBrandEvents = async (
     ({ row, paidOnline }) => !paidOnline || readyBrandIds.has(row.brand_id),
   );
 
-  return visible.map(({ row, tickets, terminalSource }) =>
-    publicEventViewRowToEvent(row, tickets, terminalSource),
+  const saleResult = await supabase.rpc("pg_public_event_display_prices", {
+    p_event_ids: visible
+      .filter(({ row }) => row.event_type === "event")
+      .map(({ row }) => row.id),
+  });
+  if (saleResult?.error) throw saleResult.error;
+  const saleByEventId = new Map<
+    string,
+    {
+      display_price_cents: number | null;
+      display_sale_price_cents: number | null;
+      display_sale_ends_at: string | null;
+    }
+  >(
+    ((saleResult?.data ?? []) as Array<{
+      event_id: string;
+      display_price_cents: number | null;
+      display_sale_price_cents: number | null;
+      display_sale_ends_at: string | null;
+    }>).map((price) => [price.event_id, price]),
   );
+
+  return visible.map(({ row, tickets, terminalSource }) => {
+    const sale = saleByEventId.get(row.id);
+    return publicEventViewRowToEvent(
+      sale === undefined
+        ? row
+        : {
+            ...row,
+            display_price_cents: sale.display_price_cents,
+            display_sale_price_cents: sale.display_sale_price_cents,
+            display_sale_ends_at: sale.display_sale_ends_at,
+          },
+      tickets,
+      terminalSource,
+    );
+  });
 };
 
 // ORCH-0963 + META-ORCH-0972 — anon-callable bulk public-trips by brand.
@@ -2620,9 +2693,9 @@ export const getPublicTripById = async (
   // ORCH-0946 — remaining-capacity per ticket_type for the sold-out gate.
   // ORCH-1147 — per-tier server all-in (the SAME single owner as the event
   // path); RPC failure → empty map → base fallback downstream (never blank).
-  const [remainingById, allInById] = await Promise.all([
+  const [remainingById, pricingById] = await Promise.all([
     fetchTicketTypesRemaining(tripEventId),
-    fetchTierAllInCents(tripEventId),
+    fetchTierPricingCents(tripEventId),
   ]);
 
   const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
@@ -2736,9 +2809,20 @@ export const getPublicTripById = async (
         // tier / RPC miss → null; the cart seed owns the single base fallback
         // (mirrors the event path). NEVER recompute fees in TS.
         priceAllInGbp: (() => {
-          const cents = allInById.get(t.ticket_type_id);
+          const cents = pricingById.get(t.ticket_type_id)?.allInCents;
           return typeof cents === "number" ? cents / 100 : null;
         })(),
+        salePriceGbp: (() => {
+          const cents = pricingById.get(t.ticket_type_id)?.saleBaseCents;
+          return typeof cents === "number" ? cents / 100 : null;
+        })(),
+        saleAllInGbp: (() => {
+          const cents = pricingById.get(t.ticket_type_id)?.saleAllInCents;
+          return typeof cents === "number" ? cents / 100 : null;
+        })(),
+        saleEndsAt: pricingById.get(t.ticket_type_id)?.saleEndsAt ?? null,
+        saleName: pricingById.get(t.ticket_type_id)?.saleName ?? null,
+        saleRemaining: pricingById.get(t.ticket_type_id)?.saleRemaining ?? null,
       };
     }),
     inclusions: inclusions.map((i): TripInclusion => ({

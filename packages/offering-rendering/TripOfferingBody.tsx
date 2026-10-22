@@ -75,9 +75,11 @@ import type {
 import {
   projectTripSchedule,
   tripTierPriceLabel,
+  tripTierListPriceLabel,
   type TripOfferingState,
   type TripPaymentPlanChoice,
 } from "./useTripOfferingState";
+import { saleAvailabilityCopy } from "./discountQuote";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -747,6 +749,10 @@ const TripPackageRow: React.FC<{
         : tier.ticketsRemaining <= 5
           ? `${tier.ticketsRemaining} left`
           : `${tier.ticketsRemaining} available`;
+  const saleAvailability =
+    tripTierListPriceLabel(tier) === null
+      ? null
+      : saleAvailabilityCopy(tier.saleRemaining, tier.saleEndsAt);
 
   const hasPlan =
     tier.installmentSchedule !== null && tier.installmentSchedule !== undefined;
@@ -784,9 +790,19 @@ const TripPackageRow: React.FC<{
             </Text>
           ) : null}
           <Text style={[styles.pkgCap, surface.tertiaryText]}>{remainingLabel}</Text>
+          {saleAvailability !== null ? (
+            <Text style={[styles.pkgSaleAvailability, { color: palette.accent }]}>
+              {saleAvailability}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.pkgRight}>
+          {tripTierListPriceLabel(tier) !== null ? (
+            <Text style={[styles.pkgListPrice, surface.tertiaryText, styles.moneyText]}>
+              {tripTierListPriceLabel(tier)}
+            </Text>
+          ) : null}
           <Text
             style={[styles.pkgPrice, surface.primaryText, styles.moneyText]}
           >
@@ -994,7 +1010,9 @@ const styles = StyleSheet.create({
   pkgTextCol: { flex: 1, minWidth: 0 },
   pkgDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   pkgCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
+  pkgSaleAvailability: { fontSize: 12, fontWeight: "700", marginTop: 3 },
   pkgRight: { alignItems: "flex-end", gap: 8 },
+  pkgListPrice: { fontSize: 12, textDecorationLine: "line-through" },
   pkgPrice: { fontSize: 15, fontWeight: "900" },
   pkgStepper: { flexDirection: "row", alignItems: "center", gap: 12 },
   pkgStepBtn: {

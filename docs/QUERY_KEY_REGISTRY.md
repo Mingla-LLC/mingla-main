@@ -121,6 +121,27 @@ The consuming `loading` flag is bound to "no data yet for the current auth
 scope", never to `isFetching`, so a background refetch does not re-disable a
 resolved CTA (`docs/INVARIANT_REGISTRY.md:6537` bug class).
 
+### ticketQuoteKeys (useTicketQuote.ts) — issue #3872
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['ticket-checkout-quote']` |
+| `detail(input)` | Prefix plus event, surface, link, lines, dates, plan, party, code and buyer-limit identity |
+
+**Persistence:** none. Quotes are checkout-lifetime server snapshots and stay
+only in React Query memory. Any money-affecting input creates a distinct key.
+
+### venueReservationPreview (GuestVenueReservation / VenueReserveSheet) — issue #3872
+
+| Key | Shape |
+|-----|-------|
+| preview | `['venueReservationPreview', venueId, slotUtc, partySize, buyer identity fields, discountCode]` |
+
+**Persistence:** none. The web and native reservation surfaces keep the
+server-authored deposit preview only in React Query memory. The create request
+sends that preview's digest; a 409 replaces the displayed preview and requires
+one more explicit confirmation.
+
 ### brandPaystackKeys (useBrandPaystack.ts) — issue #2418
 
 | Sub-key | Shape |

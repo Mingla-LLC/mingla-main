@@ -166,7 +166,14 @@ const VenueOrderingMenuRow: React.FC<{
   onAdd,
   onSetQuantity,
 }) => {
-  const price = formatMenuPrice(item.priceCents, item.currency);
+  const price = formatMenuPrice(
+    item.salePriceCents ?? item.priceCents,
+    item.currency,
+  );
+  const listPrice = item.salePriceCents != null && item.priceCents != null &&
+      item.salePriceCents < item.priceCents
+    ? formatMenuPrice(item.priceCents, item.currency)
+    : null;
   const orderable = venueOrderingItemOrderable(item, groupOrderable);
   const needsChoice = optionGroups.length > 0;
   // The PLAIN line — this item with no options and no note. It is the only line
@@ -205,9 +212,18 @@ const VenueOrderingMenuRow: React.FC<{
         </View>
         <View style={styles.rowRight}>
           {price !== null ? (
-            <Text style={[styles.itemPrice, { color: palette.primaryText }]}>
-              {price}
-            </Text>
+            <View style={styles.itemPricePair}>
+              <Text style={[styles.itemPrice, { color: palette.primaryText }]}>
+                {price}
+              </Text>
+              {listPrice !== null ? (
+                <Text
+                  style={[styles.itemListPrice, { color: palette.tertiaryText }]}
+                >
+                  {listPrice}
+                </Text>
+              ) : null}
+            </View>
           ) : null}
           {!orderable ? null : needsChoice ? (
             <Pressable
@@ -443,7 +459,13 @@ const styles = StyleSheet.create({
   rowRight: { alignItems: "flex-end", gap: 8 },
   itemName: { fontSize: 16, lineHeight: 21, fontWeight: "700" },
   itemDesc: { fontSize: 14, lineHeight: 19 },
+  itemPricePair: { alignItems: "flex-end" },
   itemPrice: { fontSize: 16, lineHeight: 21, fontWeight: "800" },
+  itemListPrice: {
+    fontSize: 12,
+    lineHeight: 16,
+    textDecorationLine: "line-through",
+  },
   addBtn: {
     minHeight: 34,
     minWidth: 74,

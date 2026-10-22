@@ -55,6 +55,11 @@ export interface ConsumerExperienceTicket {
   priceCents: number;
   /** Server fee-grossed all-in (CENTS); null = free / RPC miss → base fallback. */
   priceAllInCents: number | null;
+  salePriceCents?: number | null;
+  saleAllInCents?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   currency: string;
   quantityTotal: number | null;
   isUnlimited: boolean;
@@ -162,6 +167,11 @@ interface RpcTicket {
   name: string;
   priceCents: number;
   allInCents: number | null;
+  saleBaseCents?: number | null;
+  saleAllInCents?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   currency: string;
   quantityTotal: number | null;
   isUnlimited: boolean;
@@ -271,6 +281,11 @@ function mapRpcTicket(
         : typeof t.allInCents === "number" && t.allInCents > 0
           ? t.allInCents
           : null,
+    salePriceCents: t.saleBaseCents ?? null,
+    saleAllInCents: t.saleAllInCents ?? null,
+    saleEndsAt: t.saleEndsAt ?? null,
+    saleName: t.saleName ?? null,
+    saleRemaining: t.saleRemaining ?? null,
     currency: t.currency ?? currencyFallback,
     quantityTotal: t.quantityTotal ?? null,
     isUnlimited: t.isUnlimited === true,

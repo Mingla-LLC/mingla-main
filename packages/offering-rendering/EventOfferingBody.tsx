@@ -106,6 +106,7 @@ import {
   eventAcquisitionNoticeCopy,
   type EventAcquisitionState,
 } from "./eventAcquisitionLifecycle";
+import { saleAvailabilityCopy } from "./discountQuote";
 
 import { normalizeCityCountry } from "./normalizeCityCountry";
 // issue #2468 — the ONE privacy gate + label composer for this card. The maps
@@ -260,12 +261,22 @@ const formatTicketPrice = (
   fallbackCurrency: string | null,
 ): string => {
   if (ticket.isFree) return "Free";
-  const price = ticket.priceAllInGbp ?? ticket.priceGbp;
+  const price = ticket.saleAllInGbp ?? ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return "—";
   // issue #1014 — a 0-priced ticket renders "Free" even without the isFree
   // flag (price is truth; NULL-currency events only carry 0-priced tickets).
   if (price === 0) return "Free";
   return formatMoney(price, ticket.currency ?? fallbackCurrency);
+};
+
+const formatTicketListPrice = (
+  ticket: PublicTicketProps,
+  fallbackCurrency: string | null,
+): string | null => {
+  if (ticket.saleAllInGbp == null) return null;
+  const list = ticket.priceAllInGbp ?? ticket.priceGbp;
+  if (list == null || list <= ticket.saleAllInGbp) return null;
+  return formatMoney(list, ticket.currency ?? fallbackCurrency);
 };
 
 const sortTickets = (tickets: PublicTicketProps[]): PublicTicketProps[] =>
@@ -1362,6 +1373,7 @@ const TicketStepperRow: React.FC<{
           : null;
 
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
+  const listPriceLabel = formatTicketListPrice(ticket, fallbackCurrency);
   // issue #2160 — explicitly typed so the render below never does a property
   // access on an un-inferable prop. See the comment at the render site.
   const pricingNoteText: string =
@@ -1372,6 +1384,10 @@ const TicketStepperRow: React.FC<{
   const canDecrement = quantity > 0;
 
   const capacityLabel = ticketAvailabilityCaption(ticket, hideRemainingCount);
+  const saleAvailability =
+    listPriceLabel === null
+      ? null
+      : saleAvailabilityCopy(ticket.saleRemaining, ticket.saleEndsAt);
 
   return (
     <View
@@ -1399,9 +1415,25 @@ const TicketStepperRow: React.FC<{
         <Text style={[styles.tierCap, surface.tertiaryText]}>
           {stateWord ?? capacityLabel}
         </Text>
+        {saleAvailability !== null ? (
+          <Text style={[styles.saleAvailability, { color: palette.accent }]}>
+            {saleAvailability}
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.stepperRight}>
+        {listPriceLabel !== null ? (
+          <Text
+            style={[
+              styles.tierListPrice,
+              surface.tertiaryText,
+              styles.moneyText,
+            ]}
+          >
+            {listPriceLabel}
+          </Text>
+        ) : null}
         <Text
           style={[
             styles.tierPrice,
@@ -1577,6 +1609,11 @@ const styles = StyleSheet.create({
   tierName: { fontSize: 15, fontWeight: "800" },
   tierDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   tierCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
+  saleAvailability: { fontSize: 12, fontWeight: "700", marginTop: 3 },
+  tierListPrice: {
+    fontSize: 12,
+    textDecorationLine: "line-through",
+  },
   tierPrice: { fontSize: 15, fontWeight: "900" },
   // #3859 — money must not inherit a host display face. Anton does not contain
   // U+20A6, so CoreText mixed a fallback naira glyph into the condensed run and

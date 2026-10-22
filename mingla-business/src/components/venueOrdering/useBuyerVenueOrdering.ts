@@ -97,6 +97,8 @@ export interface BuyerVenueOrdering {
   preview: VenueOrderPreview | null;
   previewStatus: "idle" | "loading" | "ready" | "error";
   previewError: string | null;
+  discountCode?: string;
+  setDiscountCode?: (code: string) => void;
   submitting: boolean;
   submitError: string | null;
   submit: () => void;
@@ -166,6 +168,7 @@ export function useBuyerVenueOrdering(
     rememberedTip: sitting?.tip ?? null,
     initialBuyer: { name: sitting?.buyerName ?? "" },
   });
+  const [discountCode, setDiscountCode] = useState("");
 
   const request: VenueOrderRequest = useMemo(
     () => ({
@@ -178,6 +181,7 @@ export function useBuyerVenueOrdering(
       tipBps: cart.state.tip.bps,
       tipFlatCents: cart.state.tip.flatCents,
       entrySource: input.entrySource,
+      discountCode: discountCode.trim().length > 0 ? discountCode.trim() : null,
     }),
     [
       cart.state.buyer,
@@ -187,6 +191,7 @@ export function useBuyerVenueOrdering(
       cart.state.tip.flatCents,
       config.spotState,
       config.venueId,
+      discountCode,
       input.entrySource,
       input.spotCode,
       sitting?.sessionId,
@@ -212,12 +217,14 @@ export function useBuyerVenueOrdering(
         tip: cart.state.tip,
         spot: config.spotState === "ok" ? input.spotCode : null,
         venue: config.venueId,
+        discountCode: discountCode.trim().toUpperCase(),
       }),
     [
       cart.state.lines,
       cart.state.tip,
       config.spotState,
       config.venueId,
+      discountCode,
       input.spotCode,
     ],
   );
@@ -315,7 +322,10 @@ export function useBuyerVenueOrdering(
     void (async () => {
       try {
         const created = await createVenueOrder(
-          request,
+          {
+            ...request,
+            quoteDigest: previewQuery.data?.quoteDigest ?? null,
+          },
           idempotencyKeyFor(priceSignature),
         );
         if (created.kind === "already_created") {
@@ -383,6 +393,7 @@ export function useBuyerVenueOrdering(
     persistSitting,
     priceSignature,
     request,
+    previewQuery.data?.quoteDigest,
     submitting,
   ]);
 
@@ -431,6 +442,8 @@ export function useBuyerVenueOrdering(
         : previewQuery.isError
           ? "We couldn't price that order. Nothing has been charged."
           : null,
+    discountCode,
+    setDiscountCode,
     submitting,
     submitError,
     submit,

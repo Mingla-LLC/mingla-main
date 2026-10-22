@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ActivityIndicator,
   Linking,
@@ -25,7 +26,10 @@ import {
   parsePhoneEntry,
   resolvePhoneStartCountry,
 } from "@mingla/phone-input/phoneNumber";
-import type { ThemePalette } from "@mingla/offering-rendering";
+import {
+  discountReasonCopy,
+  type ThemePalette,
+} from "@mingla/offering-rendering";
 import {
   radius,
   semantic,
@@ -33,7 +37,12 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
-import { createGuestVenueReservation } from "../../services/venueGuestReservationService";
+import {
+  createGuestVenueReservation,
+  GuestReservationReviewError,
+  previewGuestVenueReservation,
+  type GuestReservationPreview,
+} from "../../services/venueGuestReservationService";
 import { guestReservationManagePath } from "../../utils/guestReservationManage";
 import { guestReservationFailureCopy } from "./venueGuestReservationErrorCopy";
 import {
@@ -84,6 +93,17 @@ const INVALID_EMAIL_COPY = "Enter a valid email address.";
 const RESERVATION_FAILURE_COPY =
   "We couldn’t start your reservation. Check your details and try again.";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const formatMoney = (minor: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(minor / 100);
+  } catch {
+    return `${currency} ${(minor / 100).toFixed(2)}`;
+  }
+};
 
 const dateOptions = (): { value: string; label: string }[] => {
   const now = new Date();
@@ -191,6 +211,10 @@ export function GuestVenueReservation({
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discountDraft, setDiscountDraft] = useState("");
+  const [discountCode, setDiscountCode] = useState<string | null>(null);
+  const [reviewQuote, setReviewQuote] =
+    useState<GuestReservationPreview | null>(null);
   const [completedId, setCompletedId] = useState<string | null>(null);
   // #3392 — the free booking's private manage/cancel credential (web only).
   const [manageToken, setManageToken] = useState<string | null>(null);
@@ -249,6 +273,54 @@ export function GuestVenueReservation({
   const emailInvalid = !EMAIL_PATTERN.test(normalizedEmail);
   const contactInvalid = nameInvalid || emailInvalid;
 
+  const previewEnabled =
+    selectedSlot !== undefined &&
+    !contactInvalid &&
+    normalizedPhone !== null;
+  const reservationPreview = useQuery({
+    queryKey: [
+      "venueReservationPreview",
+      venueId,
+      selectedSlot?.slotStartUtc ?? null,
+      partySize,
+      normalizedName,
+      normalizedEmail,
+      normalizedPhone,
+      discountCode,
+    ],
+    enabled: previewEnabled,
+    queryFn: () =>
+      previewGuestVenueReservation({
+        venueId,
+        brandId,
+        reservedForUtc: selectedSlot?.slotStartUtc ?? "",
+        partySize,
+        buyer: {
+          name: normalizedName,
+          email: normalizedEmail,
+          phone: normalizedPhone ?? "",
+          phoneCountryIso: phoneCountry,
+          marketingOptIn,
+        },
+        occasion: occasion.trim() || null,
+        guestNotes: notes.trim() || null,
+        discountCode,
+      }),
+    retry: false,
+  });
+  const activePreview = reviewQuote ?? reservationPreview.data ?? null;
+
+  useEffect(() => {
+    setReviewQuote(null);
+  }, [
+    discountCode,
+    normalizedEmail,
+    normalizedName,
+    normalizedPhone,
+    partySize,
+    selectedUtc,
+  ]);
+
   useEffect(() => {
     if (phoneCountryChosen.current) return;
     setPhoneCountry(phoneStartCountry(countryCode, currency));
@@ -278,7 +350,12 @@ export function GuestVenueReservation({
     }
     if (nameInvalid) setNameTouched(true);
     if (emailInvalid) setEmailTouched(true);
-    if (selectedUtc === null || contactInvalid || normalizedPhone === null) {
+    if (
+      selectedUtc === null ||
+      contactInvalid ||
+      normalizedPhone === null ||
+      activePreview === null
+    ) {
       setPhoneTouched(true);
       setError(normalizedPhone === null ? phoneErrorCopy : null);
       return;
@@ -313,6 +390,8 @@ export function GuestVenueReservation({
         guestNotes: notes.trim() || null,
         attributionClickId: getStoredClickAttribution().clickId,
         organicJourneyToken: getVenueOrganicJourneyToken({ brandId, venueId }),
+        discountCode,
+        quoteDigest: activePreview.quoteDigest,
       });
       if (result.kind === "free_completed") {
         setManageToken(result.guestCancelToken ?? null);
@@ -335,6 +414,11 @@ export function GuestVenueReservation({
       }
       await Linking.openURL(redirect);
     } catch (caught) {
+      if (caught instanceof GuestReservationReviewError) {
+        setReviewQuote(caught.quote);
+        setError("Your discount or total changed. Review the updated amount.");
+        return;
+      }
       const errorCode =
         caught instanceof Error ? caught.message : RESERVATION_FAILURE_COPY;
       if (errorCode === "buyer_name_required") {
@@ -681,20 +765,151 @@ export function GuestVenueReservation({
             </Text>
             <Switch value={marketingOptIn} onValueChange={setMarketingOptIn} />
           </View>
+          {reservationPreview.isLoading || reservationPreview.isFetching ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={palette.accent} />
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                Getting your exact price…
+              </Text>
+            </View>
+          ) : reservationPreview.isError ? (
+            <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                We couldn’t get the reservation price.
+              </Text>
+              <Button
+                label="Try again"
+                variant="secondary"
+                onPress={() => void reservationPreview.refetch()}
+              />
+            </View>
+          ) : activePreview !== null ? (
+            <View style={[styles.priceCard, { borderColor: palette.panelBorder }]}>
+              {activePreview.requiresPayment ? (
+                <>
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.body, { color: palette.secondaryText }]}>Deposit</Text>
+                    <Text
+                      style={[
+                        styles.priceValue,
+                        { color: palette.primaryText },
+                        activePreview.discountCents > 0 && styles.listPrice,
+                      ]}
+                    >
+                      {formatMoney(
+                        activePreview.depositListCents,
+                        activePreview.currency,
+                      )}
+                    </Text>
+                  </View>
+                  {activePreview.discounts.map((discount) => (
+                    <View key={discount.discountId} style={styles.priceRow}>
+                      <Text style={[styles.body, { color: palette.secondaryText }]}>
+                        {discount.name}
+                      </Text>
+                      <Text style={styles.discountValue}>
+                        −{formatMoney(discount.amountMinor, activePreview.currency)}
+                      </Text>
+                    </View>
+                  ))}
+                  {activePreview.feesAndTaxCents > 0 ? (
+                    <View style={styles.priceRow}>
+                      <Text style={[styles.body, { color: palette.secondaryText }]}>Fees and tax</Text>
+                      <Text style={[styles.priceValue, { color: palette.primaryText }]}>
+                        {formatMoney(
+                          activePreview.feesAndTaxCents,
+                          activePreview.currency,
+                        )}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.totalLabel, { color: palette.primaryText }]}>Total</Text>
+                    <Text style={[styles.totalLabel, { color: palette.primaryText }]}>
+                      {formatMoney(activePreview.totalCents, activePreview.currency)}
+                    </Text>
+                  </View>
+                  <View style={styles.codeRow}>
+                    <Input
+                      value={discountDraft}
+                      onChangeText={(next: string) => setDiscountDraft(next.toUpperCase())}
+                      placeholder="Discount code"
+                      accessibilityLabel="Discount code"
+                    />
+                    <Button
+                      label="Apply"
+                      variant="secondary"
+                      disabled={discountDraft.trim().length === 0}
+                      onPress={() =>
+                        setDiscountCode(
+                          discountDraft.replace(/[\s-]+/g, "").toUpperCase(),
+                        )
+                      }
+                    />
+                  </View>
+                  {discountCode !== null &&
+                  activePreview.codeOutcome.status === "rejected" &&
+                  activePreview.codeOutcome.reason !== null ? (
+                    <Text style={styles.fieldError} accessibilityRole="alert">
+                      {discountReasonCopy({
+                        reason: activePreview.codeOutcome.reason,
+                        code: discountCode,
+                        required:
+                          activePreview.codeOutcome.required === null
+                            ? null
+                            : formatMoney(
+                                activePreview.codeOutcome.required,
+                                activePreview.currency,
+                              ),
+                        withName: activePreview.codeOutcome.with,
+                      })}
+                    </Text>
+                  ) : null}
+                  {discountCode !== null &&
+                  activePreview.codeOutcome.status === "applied" ? (
+                    <Button
+                      label={`Remove ${discountCode}`}
+                      variant="secondary"
+                      onPress={() => {
+                        setDiscountCode(null);
+                        setDiscountDraft("");
+                      }}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <Text style={[styles.body, { color: palette.secondaryText }]}>
+                  No deposit is required. Discount codes aren’t needed for this reservation.
+                </Text>
+              )}
+            </View>
+          ) : null}
           {error !== null ? (
             <Text style={styles.error} accessibilityLiveRegion="polite">
               {error}
             </Text>
           ) : null}
           <Button
-            label="Confirm reservation"
+            label={
+              activePreview?.requiresPayment
+                ? reviewQuote === null
+                  ? "Confirm & pay"
+                  : "Confirm updated total"
+                : "Confirm reservation"
+            }
             // ORCH-1162 Bug 3 — the primary fill takes the venue's accent, and
             // Button's own WCAG helpers pick the readable label colour for it.
             accentColor={palette.accent}
             size="lg"
             fullWidth
             loading={submitting}
-            disabled={submitting || contactInvalid || !availabilitySettled}
+            disabled={
+              submitting ||
+              contactInvalid ||
+              !availabilitySettled ||
+              activePreview === null ||
+              reservationPreview.isFetching
+            }
             onPress={() => void submit()}
           />
         </View>
@@ -748,4 +963,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   error: { ...typography.bodySm, color: semantic.error },
+  priceCard: {
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: spacing.md,
+  },
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  priceValue: { ...typography.bodySm, fontWeight: "600" },
+  listPrice: { textDecorationLine: "line-through" },
+  discountValue: { ...typography.bodySm, color: "#17623a", fontWeight: "600" },
+  totalLabel: { ...typography.body, fontWeight: "700" },
+  codeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
 });

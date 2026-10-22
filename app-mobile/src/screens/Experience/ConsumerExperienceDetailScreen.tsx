@@ -711,6 +711,10 @@ export default function ConsumerExperienceDetailScreen({
           accountId: user.id,
           eventId: seed.eventId,
           lines: payload.lines,
+          discountCode: payload.discountCode,
+          quoteDigest: payload.quoteDigest,
+          quoteListDigest: payload.quoteListDigest,
+          acceptedTotalCents: payload.totalCents,
           buyer: {
             ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
@@ -784,7 +788,7 @@ export default function ConsumerExperienceDetailScreen({
       } else if (result.outcome === "pending") {
         // The server has not finalized an order yet; the durable recovery
         // panel owns the state and prevents another provider attempt.
-      } else if (result.outcome === "canceled") {
+      } else if (result.outcome === "canceled" || result.outcome === "review") {
         // Silent: user dismissed PaymentSheet.
       } else {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -869,6 +873,7 @@ export default function ConsumerExperienceDetailScreen({
         setCheckoutTerminalOutcome(result);
       } else if (
         result.outcome === "pending" ||
+        result.outcome === "review" ||
         (result.outcome === "failed" && result.retryable !== undefined) ||
         (result.outcome === "canceled" && result.retryable === true)
       ) {
@@ -1101,6 +1106,17 @@ export default function ConsumerExperienceDetailScreen({
             name: sellableTicket.name,
             priceCents: sellablePriceCents,
             priceAllInCents: sellableTicket.isFree ? null : sellableAllInCents,
+            salePriceCents:
+              typeof sellableTicket.salePriceGbp === "number"
+                ? Math.round(sellableTicket.salePriceGbp * 100)
+                : null,
+            saleAllInCents:
+              typeof sellableTicket.saleAllInGbp === "number"
+                ? Math.round(sellableTicket.saleAllInGbp * 100)
+                : null,
+            saleEndsAt: sellableTicket.saleEndsAt ?? null,
+            saleName: sellableTicket.saleName ?? null,
+            saleRemaining: sellableTicket.saleRemaining ?? null,
             currency: sellableTicket.currency ?? seed.currency,
             isFree: sellableTicket.isFree || sellablePriceCents === 0,
             isUnlimited: sellableTicket.isUnlimited === true,
@@ -1138,6 +1154,11 @@ export default function ConsumerExperienceDetailScreen({
       name: opt.name,
       priceCents: opt.priceCents,
       priceAllInCents: opt.priceAllInCents,
+      salePriceCents: opt.salePriceCents ?? null,
+      saleAllInCents: opt.saleAllInCents ?? null,
+      saleEndsAt: opt.saleEndsAt ?? null,
+      saleName: opt.saleName ?? null,
+      saleRemaining: opt.saleRemaining ?? null,
       currency: opt.currency,
       isFree: opt.isFree,
       isUnlimited: opt.isUnlimited,
@@ -1157,6 +1178,11 @@ export default function ConsumerExperienceDetailScreen({
         name: freshDetail.ticket.name,
         priceCents: freshDetail.ticket.priceCents,
         priceAllInCents: freshDetail.ticket.priceAllInCents,
+        salePriceCents: freshDetail.ticket.salePriceCents ?? null,
+        saleAllInCents: freshDetail.ticket.saleAllInCents ?? null,
+        saleEndsAt: freshDetail.ticket.saleEndsAt ?? null,
+        saleName: freshDetail.ticket.saleName ?? null,
+        saleRemaining: freshDetail.ticket.saleRemaining ?? null,
         currency: freshDetail.ticket.currency,
         isFree: freshDetail.ticket.isFree,
         isUnlimited: freshDetail.ticket.isUnlimited,
@@ -1499,6 +1525,10 @@ export default function ConsumerExperienceDetailScreen({
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
         terminalOutcome={checkoutTerminalOutcome}
+        quoteEventDateId={selectedEventDateId}
+        quoteBookedStartAt={selectedBookedStartAt}
+        quoteBookedEndAt={selectedBookedEndAt}
+        quotePartySize={selectedPartySize}
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onTerminalRetry={() => setCheckoutTerminalOutcome(null)}

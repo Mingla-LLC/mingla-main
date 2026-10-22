@@ -3,7 +3,7 @@
 //
 // THE SHIPPED CRASH was on the EMPTY/initial cart: entering any of the three
 // business checkout selection screens mounts with an EMPTY cart, so the REAL
-// `useCartTotals()` returns `currency === ""`, and ORCH-1147R2's unconditional
+// `useCartQuoteTotals()` returns `currency === ""`, and ORCH-1147R2's unconditional
 // top-level `const headlineAllIn = formatCurrency(totals.allInTotal,
 // totals.currency)` fed "" into `new Intl.NumberFormat({ currency: "" })` →
 // `RangeError: Currency is invalid` → the screen crashed on mount before any
@@ -49,7 +49,7 @@ import { render, screen, act } from "@testing-library/react-native";
 import {
   CartProvider,
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../CartContext";
 import { formatCurrency } from "../../../utils/currency";
 
@@ -62,10 +62,10 @@ import { formatCurrency } from "../../../utils/currency";
 // invalid` from render() on the empty cart — the precise shipped failure. With
 // the fix in place, Layer 1 alone makes this unguarded shape safe (defense in
 // depth: the screens ALSO carry the Layer-2 `isEmpty ? "GBP"` guard, but Layer 1
-// is what protects this original shape). Drives the REAL useCartTotals so the
+// is what protects this original shape). Drives the REAL useCartQuoteTotals so the
 // empty-cart `currency === ""` path is exercised end-to-end, not faked.
 const BottomBar: React.FC = () => {
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
   const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency);
   const showFeesTaxLine =
     !totals.isEmpty && !totals.isFree && totals.hasFeesTaxDelta;

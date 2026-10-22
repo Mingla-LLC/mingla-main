@@ -75,6 +75,7 @@ import { BadgeCheck, Calendar, Clock, MapPin, Sparkles, Users } from "./LucideIc
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
+import { saleAvailabilityCopy } from "./discountQuote";
 
 /**
  * #1708 — every row independently optional, and every VALUE pre-formatted by the
@@ -178,7 +179,9 @@ export function experienceOptionPriceLabel(
 ): { label: string; isFree: boolean } {
   if (t.isFree || t.priceCents === 0) return { label: "Free", isFree: true };
   const cents =
-    typeof t.priceAllInCents === "number" && t.priceAllInCents > 0
+    typeof t.saleAllInCents === "number" && t.saleAllInCents > 0
+      ? t.saleAllInCents
+      : typeof t.priceAllInCents === "number" && t.priceAllInCents > 0
       ? t.priceAllInCents
       : t.priceCents;
   const basisLabel = experiencePriceBasisLabel(t.priceBasis, t.blockMinutes);
@@ -198,6 +201,18 @@ export function experienceOptionPriceLabel(
       isFree: false,
     };
   }
+}
+
+export function experienceOptionListPriceLabel(
+  t: ExperienceOfferingTicket,
+): string | null {
+  if (t.saleAllInCents == null) return null;
+  const listCents = t.priceAllInCents ?? t.priceCents;
+  if (listCents <= t.saleAllInCents) return null;
+  return experienceOptionPriceLabel({
+    ...t,
+    saleAllInCents: null,
+  }).label;
 }
 
 export function experiencePriceLabel(
@@ -326,6 +341,17 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
 
   const vibeLabels = experienceVibeLabels(data.intents);
   const { label: priceLabel, isFree } = experiencePriceLabel(data);
+  const listPriceLabel = data.ticket === null
+    ? null
+    : experienceOptionListPriceLabel(data.ticket);
+  const saleAvailability =
+    data.ticket === null || listPriceLabel === null
+      ? null
+      : saleAvailabilityCopy(
+          data.ticket.saleRemaining,
+          data.ticket.saleEndsAt,
+          data.timezone,
+        );
   // #3284 — section 10 gating (design part 1 §3.10). PAID uses the SAME rule as
   // experiencePriceLabel: a missing ticket or a free / zero-priced ticket is not
   // paid. Closed (ended or cancelled) and unknown render nothing.
@@ -673,10 +699,22 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                   ? "From"
                   : "Price"}
             </Text>
-            <Text style={[styles.pricingPrice, surface.primaryText]}>
-              {priceLabel}
-            </Text>
+            <View style={styles.pricingMoneyPair}>
+              {listPriceLabel !== null ? (
+                <Text style={[styles.pricingListPrice, surface.tertiaryText]}>
+                  {listPriceLabel}
+                </Text>
+              ) : null}
+              <Text style={[styles.pricingPrice, surface.primaryText]}>
+                {priceLabel}
+              </Text>
+            </View>
           </View>
+          {saleAvailability !== null ? (
+            <Text style={[styles.saleAvailability, { color: palette.accent }]}>
+              {saleAvailability}
+            </Text>
+          ) : null}
           {experienceOfferingOptions(data).length > 1 ? (
             <View
               style={styles.optionsList}
@@ -684,6 +722,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             >
               {experienceOfferingOptions<ExperienceOfferingTicket>(data).map((opt) => {
                 const { label: optLabel } = experienceOptionPriceLabel(opt);
+                const optListLabel = experienceOptionListPriceLabel(opt);
                 return (
                   <View key={opt.ticketTypeId} style={styles.optionRow}>
                     <Text
@@ -692,9 +731,16 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                     >
                       {opt.name}
                     </Text>
-                    <Text style={[styles.optionPrice, surface.secondaryText]}>
-                      {optLabel}
-                    </Text>
+                    <View style={styles.optionMoneyPair}>
+                      {optListLabel !== null ? (
+                        <Text style={[styles.optionListPrice, surface.tertiaryText]}>
+                          {optListLabel}
+                        </Text>
+                      ) : null}
+                      <Text style={[styles.optionPrice, surface.secondaryText]}>
+                        {optLabel}
+                      </Text>
+                    </View>
                   </View>
                 );
               })}
@@ -864,6 +910,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   pricingLabel: { fontSize: 13 },
+  pricingMoneyPair: { alignItems: "flex-end", gap: 2 },
+  pricingListPrice: { fontSize: 13, textDecorationLine: "line-through" },
+  saleAvailability: { fontSize: 12, fontWeight: "700", marginTop: 4 },
   // #3859 — system font guarantees currency-glyph coverage; host faces remain
   // on identity and headings, never on money where a fallback glyph can collide.
   pricingPrice: {
@@ -879,6 +928,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   optionName: { flex: 1, fontSize: 14, fontWeight: "700" },
+  optionMoneyPair: { alignItems: "flex-end", gap: 2 },
+  optionListPrice: { fontSize: 11, textDecorationLine: "line-through" },
   optionPrice: { fontSize: 13, fontWeight: "600", fontVariant: ["tabular-nums"] },
   reassure: { fontSize: 12, marginTop: 20, lineHeight: 17 },
 });

@@ -103,9 +103,10 @@ import { Input } from "../../../src/components/ui/Input";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { TicketQuoteSummary } from "../../../src/components/checkout/TicketQuoteSummary";
 import {
   isContinueDisabled,
   shouldShowConsentHintOnDisabledTap,
@@ -213,6 +214,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const {
     lines,
     buyer,
+    discountCode,
+    quote,
+    quoteStatus,
     setBuyer,
     recordResult,
     checkoutAttemptIdFor,
@@ -221,7 +225,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     bookedEndAt,
     partySize,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   // issue #2689 — synchronous re-entry guard (ref, not batched state). Consent
@@ -374,6 +378,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
       return;
     }
     if (experienceEventId === null) return;
+    if (quoteStatus !== "ready" || quote === null) return;
     // issue #2689 — claim before the consent network round trip (re-entry window).
     if (submitInFlight.current) return;
     submitInFlight.current = true;
@@ -428,6 +433,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           eventId: experienceEventId,
           buyer,
           lines,
+          discountCode,
+          quoteDigest: quote.quoteDigest,
+          quoteListDigest: quote.quoteListDigest,
           ...(eventDateId !== null ? { eventDateId } : {}),
           ...(bookedStartAt !== null ? { bookedStartAt } : {}),
           ...(bookedEndAt !== null ? { bookedEndAt } : {}),
@@ -492,6 +500,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     termsAccepted,
     experienceEventId,
     totals.isFree,
+    discountCode,
+    quote,
+    quoteStatus,
     lines,
     buyer,
     checkoutAttemptIdFor,
@@ -510,6 +521,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
 
   const continueDisabled =
     !authReady ||
+    quoteStatus !== "ready" ||
     isContinueDisabled({
       fieldsValid: validation.isValid,
       termsAccepted,
@@ -561,28 +573,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {lines.map((l) => (
-              <View key={l.ticketTypeId} style={styles.summaryLine}>
-                <Text style={styles.summaryLineQty}>{l.quantity}×</Text>
-                <Text style={styles.summaryLineName} numberOfLines={1}>
-                  {l.ticketName}
-                </Text>
-                <Text style={styles.summaryLineTotal}>
-                  {l.isFree
-                    ? "Free"
-                    : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-                </Text>
-              </View>
-            ))}
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotalValue}>
-                {totals.isFree
-                  ? "Free"
-                  : formatCurrency(totals.total, totals.currency)}
-              </Text>
-            </View>
+            {quote !== null ? <TicketQuoteSummary quote={quote} compact /> : null}
           </GlassCard>
         </Pressable>
 
@@ -774,9 +765,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {totals.isFree
-              ? "Free"
-              : formatCurrency(totals.total, totals.currency)}
+            {quoteStatus === "ready" && quote !== null
+              ? formatCurrency(quote.buyerTotalCents, quote.currency, true)
+              : "Updating…"}
           </Text>
         </View>
         <Pressable

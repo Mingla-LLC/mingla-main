@@ -43,7 +43,6 @@ import { projectInstallmentSchedule } from "../../../src/utils/installmentSchedu
 // projectInstallmentSchedule; this only formats the already-computed cents.
 import {
   formatTripTierInstallmentNote,
-  tripSummedDueTodayCents,
 } from "@mingla/offering-rendering";
 import type { TripPricingTier } from "../../../src/services/tripsService";
 import type {
@@ -69,11 +68,12 @@ import {
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
   type TripPaymentPlanChoice,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+import { CheckoutDiscountCodeField } from "../../../src/components/checkout/DiscountCodeField";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // trip checkout too (the event checkout already does; trips/experiences didn't,
 // undercounting started checkouts). Web-only (native no-op via the .web split).
@@ -177,9 +177,16 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const trip = publicTripQuery.data?.trip ?? null;
   const brand = publicTripQuery.data?.brand ?? null;
 
-  const { lines, paymentPlanChoice, setLineQuantity, setPaymentPlanChoice } =
+  const {
+    lines,
+    paymentPlanChoice,
+    quote,
+    quoteStatus,
+    setLineQuantity,
+    setPaymentPlanChoice,
+  } =
     useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   // META-ORCH-1187 P2 — fire `web_checkout_started` once the buyer lands on the
   // trip cart and the trip event id resolves (begin of the web purchase funnel),
@@ -227,7 +234,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // issue #3351 — the total is `isFree`-aware: a FREE cart never reaches the
   // payment step, so free+intake is 3 and free+no-intake is 2.
   // P2-1 — and it is derived FAIL-CLOSED. This is the screen the defect was
-  // visible on: the cart is empty until a tier is picked, `useCartTotals()`
+  // visible on: the cart is empty until a tier is picked, `useCartQuoteTotals()`
   // reports an empty cart as NOT free, so a multi-tier free trip opened at
   // "1 OF 4" and flipped to "1 OF 3" on the first tap. With no cart line the
   // trip's own tiers answer it instead.
@@ -246,33 +253,10 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // TODAY (read from the same projected schedule the toggle renders, never
   // recomputed); otherwise it reads the full cart total. No-plan / pay-in-full
   // → full total, unchanged.
-  const dueTodayCents = React.useMemo<number | null>(() => {
-    if (
-      trip === null ||
-      lines.every((line) => line.paymentPlanChoice !== "installments")
-    ) return null;
-    return tripSummedDueTodayCents(
-      trip.pricingTiers.map((tier) => ({
-        ticketTypeId: tier.ticketTypeId,
-        priceCents: tier.priceCents,
-        priceAllInCents:
-          tier.priceAllInGbp == null
-            ? null
-            : Math.round(tier.priceAllInGbp * 100),
-        isFree: tier.priceCents === 0,
-        isUnlimited: tier.isUnlimited,
-        ticketsRemaining: tier.ticketsRemaining,
-        installmentSchedule: tier.installmentSchedule,
-      })),
-      Object.fromEntries(lines.map((line) => [line.ticketTypeId, line.quantity])),
-      Object.fromEntries(
-        lines.map((line) => [
-          line.ticketTypeId,
-          line.paymentPlanChoice ?? "full",
-        ]),
-      ),
-    );
-  }, [trip, lines]);
+  const dueTodayCents =
+    quote !== null && quote.dueTodayNetCents !== quote.netSubtotalCents
+      ? quote.dueTodayNetCents
+      : null;
 
   // ORCH-1147R2 — the FULL-TOTAL (non-deposit) branch leads with the server
   // fee-grossed all-in (totals.allInTotal), NOT the bare base subtotal
@@ -283,7 +267,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // (feedback_cart_combined_fees_tax_line). The deposit branch (dueTodayCents)
   // is unchanged. I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
   // ORCH-1152 — guard the empty cart: on mount the cart is empty and
-  // useCartTotals() returns currency "", which crashed formatCurrency
+  // useCartQuoteTotals() returns currency "", which crashed formatCurrency
   // (RangeError: Currency is invalid). Pass a safe code on the empty cart so the
   // computation never feeds "" into Intl. headlineAllIn is only DISPLAYED when
   // !isEmpty anyway. (formatCurrency is ALSO hardened against blank codes —
@@ -731,6 +715,15 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
+        <CheckoutDiscountCodeField
+          disabled={totals.isEmpty}
+          saleNameByLineRef={Object.fromEntries(
+            trip.pricingTiers.map((tier) => [
+              tier.ticketTypeId,
+              tier.saleName ?? "sale",
+            ]),
+          )}
+        />
         {showFeesTaxLine ? (
           <View style={styles.feesTaxRow}>
             <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
@@ -761,10 +754,12 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           variant="primary"
           size="lg"
           fullWidth
-          disabled={totals.isEmpty}
+          disabled={totals.isEmpty || quoteStatus !== "ready"}
           accessibilityLabel={
             totals.isEmpty
               ? "Add a tier above"
+              : quoteStatus !== "ready"
+                ? "Waiting for your latest total"
               : totals.isFree
                 ? "Reserve free spot"
                 : dueTodayCents !== null

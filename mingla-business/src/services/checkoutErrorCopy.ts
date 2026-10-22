@@ -281,6 +281,8 @@ export interface CheckoutRefusal {
   status: number | null;
   code: string | null;
   detail: string | null;
+  /** #3872 only: fresh server quote carried by checkout_review_required. */
+  quote?: unknown;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -345,10 +347,14 @@ export const readEdgeRefusal = async (
   if (typeof json !== "function") return { status, code: null, detail: null };
   try {
     const body: unknown = await (json as () => Promise<unknown>).call(context);
+    const bodyRecord = asRecord(body);
     return {
       status,
       code: stringField(body, "error"),
       detail: stringField(body, "detail"),
+      ...(bodyRecord !== null && Object.prototype.hasOwnProperty.call(bodyRecord, "quote")
+        ? { quote: bodyRecord.quote }
+        : {}),
     };
   } catch {
     // A body that is already consumed / not JSON tells us nothing extra. The

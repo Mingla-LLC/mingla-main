@@ -23,6 +23,11 @@ import {
   normalizeCheckoutV2Lines,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
+import type {
+  CheckoutReviewDetail,
+  TicketCheckoutReview,
+  TicketQuote,
+} from "@mingla/offering-rendering/discountQuote";
 
 type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
   paymentPlanChoice?: CartLine["paymentPlanChoice"];
@@ -122,6 +127,28 @@ export interface TicketCheckoutCreateInput {
   queueContract?: "queue_v1";
   /** 256-bit hex; required when queueContract is sent. */
   queueDeviceToken?: string;
+  /** #3872 — normalized buyer-entered code; omitted means automatic pricing only. */
+  discountCode?: string | null;
+  /** #3872 — quote accepted by the buyer immediately before create. */
+  quoteDigest?: string;
+  /** #3872 — list-only digest used to classify a create-time 409. */
+  quoteListDigest?: string;
+}
+
+export interface TicketQuoteInput {
+  eventId: string;
+  buyer: BuyerDetails;
+  lines: TicketCheckoutCreateLine[];
+  ticketLinkToken?: string;
+  surface: "web" | "mobile-web" | "native";
+  paymentPlanChoice?: "full" | "installments";
+  eventDateId?: string;
+  eventDateIds?: readonly string[];
+  bookedStartAt?: string;
+  bookedEndAt?: string;
+  partySize?: number;
+  discountCode?: string | null;
+  queued?: boolean;
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -287,6 +314,21 @@ export interface TicketCheckoutConfirmResult {
 export const FINALIZATION_BACKOFF_MS = [1000, 1500, 2000, 3000, 4000, 5000] as const;
 
 const centsFromMajor = (value: number): number => Math.round(value * 100);
+
+const quoteBuyer = (buyer: BuyerDetails): BuyerDetails => ({
+  ...buyer,
+  // Quote mode intentionally runs before the contact step. These non-deliverable
+  // placeholders satisfy the edge's shared request-shape validation; once the
+  // guest supplies contact details, that identity is included in the next quote
+  // so per-buyer limits remain server-authoritative before create.
+  name: buyer.name.trim().length >= 2 ? buyer.name : "Mingla guest",
+  email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyer.email)
+    ? buyer.email
+    : "quote@usemingla.invalid",
+  phone: /^\+[1-9]\d{7,14}$/.test(buyer.phone)
+    ? buyer.phone
+    : "+12025550123",
+});
 
 /**
  * issue #2101 [named-buyer checkout] — the stable access-denial tokens the
@@ -476,6 +518,8 @@ export interface TicketCheckoutInvokeError extends Error {
    * constant and nothing else.
    */
   detail: string | null;
+  /** #3872 — fresh quote on checkout_review_required; absent otherwise. */
+  reviewQuote?: TicketQuote | null;
 }
 
 /**
@@ -644,6 +688,9 @@ const invokeOrThrow = async <T>(
     // `checkout_session_failed`, and a sold-out sale and a broken RPC read
     // identically to the guest.
     failure.detail = refusal.detail;
+    if (refusal.code === "checkout_review_required") {
+      failure.reviewQuote = (refusal.quote ?? null) as TicketQuote | null;
+    }
     throw failure;
   }
   return data as T;
@@ -770,6 +817,79 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   return PAID_CHECKOUT_FAILED_MESSAGE;
 };
 
+const REVIEW_DETAILS = new Set<CheckoutReviewDetail>([
+  "discount_changed",
+  "price_changed",
+  "lines",
+  "fingerprint",
+  "discount_code_invalid",
+]);
+
+/** Convert the one server 409 shape into the shared blocking review model. */
+export const ticketCheckoutReviewFromError = (
+  error: unknown,
+  previousTotalCents: number | null,
+): TicketCheckoutReview | null => {
+  const candidate = error as Partial<TicketCheckoutInvokeError> | null;
+  if (candidate?.code !== "checkout_review_required") return null;
+  const detail = REVIEW_DETAILS.has(candidate.detail as CheckoutReviewDetail)
+    ? (candidate.detail as CheckoutReviewDetail)
+    : "price_changed";
+  return {
+    kind: "review_required",
+    detail,
+    quote: candidate.reviewQuote ?? null,
+    previousTotalCents,
+  };
+};
+
+/**
+ * #3872 — side-effect-free ticket quote. The edge owns all discount, plan,
+ * fee and tax arithmetic; this client only shapes the request and renders the
+ * returned minor-unit values.
+ */
+export const quoteTicketCheckout = async (
+  input: TicketQuoteInput,
+): Promise<TicketQuote> => {
+  const buyer = quoteBuyer(input.buyer);
+  return invokeOrThrow<TicketQuote>("ticket-checkout-create", {
+    mode: "quote",
+    eventId: input.eventId,
+    buyer,
+    lines: input.lines.map((line) => ({
+      ticketTypeId: line.ticketTypeId,
+      quantity: line.quantity,
+      expectedUnitPriceCents: centsFromMajor(line.unitPrice),
+    })),
+    surface: input.surface,
+    ...(input.ticketLinkToken !== undefined && input.ticketLinkToken.length > 0
+      ? { ticketLinkToken: input.ticketLinkToken }
+      : {}),
+    ...(input.paymentPlanChoice !== undefined
+      ? { payment_plan_choice: input.paymentPlanChoice }
+      : {}),
+    ...(input.eventDateId !== undefined && input.eventDateId.length > 0
+      ? { eventDateId: input.eventDateId }
+      : {}),
+    ...(input.eventDateIds !== undefined && input.eventDateIds.length > 0
+      ? { eventDateIds: [...input.eventDateIds] }
+      : {}),
+    ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
+      ? { bookedStartAt: input.bookedStartAt }
+      : {}),
+    ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
+      ? { bookedEndAt: input.bookedEndAt }
+      : {}),
+    ...(typeof input.partySize === "number" && input.partySize >= 1
+      ? { partySize: Math.floor(input.partySize) }
+      : {}),
+    ...(typeof input.discountCode === "string" && input.discountCode.length > 0
+      ? { discountCode: input.discountCode }
+      : {}),
+    ...(input.queued === true ? { queueContract: "queue_v1" } : {}),
+  });
+};
+
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,
 ): Promise<TicketCheckoutCreateResult> => {
@@ -826,6 +946,16 @@ export const createTicketCheckout = async (
       }
       : {}),
     buyer: input.buyer,
+    ...(typeof input.discountCode === "string" && input.discountCode.length > 0
+      ? { discountCode: input.discountCode }
+      : {}),
+    ...(typeof input.quoteDigest === "string" && input.quoteDigest.length > 0
+      ? { quoteDigest: input.quoteDigest }
+      : {}),
+    ...(typeof input.quoteListDigest === "string" &&
+        input.quoteListDigest.length > 0
+      ? { quoteListDigest: input.quoteListDigest }
+      : {}),
     lines: input.lines.map((line) => ({
       ticketTypeId: line.ticketTypeId,
       quantity: line.quantity,

@@ -886,7 +886,7 @@ describe("T-11 issue #3351 P2-1 — the denominator never reads 'not yet' as 'no
   test("an EMPTY cart on an all-free trip does not read as the paid rail", () => {
     expect(
       tripCounterShape({
-        cartIsFree: false, // useCartTotals(): an empty cart is never "free"
+        cartIsFree: false, // useCartQuoteTotals(): an empty cart is never "free"
         cartIsEmpty: true,
         tiers: FREE_TIERS,
         intake: SETTLED_INTAKE,

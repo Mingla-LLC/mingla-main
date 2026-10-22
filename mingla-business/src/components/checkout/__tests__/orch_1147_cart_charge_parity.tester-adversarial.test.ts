@@ -3,7 +3,7 @@
 // DIFFERENT ANGLE than the implementor's happy-path (orch_1147_cart_allin_total
 // .test.ts), which unit-tests the DISPLAY math + the source-stub mapping. This
 // test attacks the ECONOMIC under-bill (D-1 / SC-6-Web) and the rounding floor:
-// it proves the CART display all-in (what the buyer is QUOTED, via useCartTotals)
+// it proves the CART display all-in (what the buyer is QUOTED, via useCartQuoteTotals)
 // EQUALS the WEB CHARGE basis (what Stripe actually bills, via the REAL shared
 // engine `computeBuyerSubtotal.buyerSubtotalCents`) for the SAME pass-fee inputs.
 // If display and charge ever diverge — the exact bug ORCH-1147 fixes — this fails.
@@ -24,7 +24,7 @@
 //   D. web charge must be the PRE-TAX subtotal, NOT the tax-inclusive total
 //      (billing buyer_total_cents would double-tax under automatic_tax).
 //
-// FAILS-ON-REVERT: if useCartTotals reverts to a base-only total, A/B/C fail
+// FAILS-ON-REVERT: if useCartQuoteTotals reverts to a base-only total, A/B/C fail
 // (allInTotal collapses to subtotal while the engine still grosses up).
 // I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN / I-PROPOSED-1147-WEB-CHARGE-BILLS-
 // FEE-GROSSED-SUBTOTAL (DRAFT).
@@ -43,16 +43,22 @@ import {
 
 // --- Same eager-hook harness as the implementor test (independent copy) ----
 let stubLines: CartLine[] = [];
+let stubQuote: import("@mingla/offering-rendering/discountQuote").TicketQuote | null = null;
 jest.mock("react", () => {
   const actual = jest.requireActual<typeof import("react")>("react");
   return {
     ...actual,
     useMemo: (factory: () => unknown): unknown => factory(),
-    useContext: (): unknown => ({ lines: stubLines }),
+    useContext: (): unknown => ({
+      lines: stubLines,
+      quote: stubQuote,
+      quoteStatus: "ready",
+    }),
   };
 });
 // eslint-disable-next-line import/first
-import { useCartTotals } from "../CartContext";
+import { useCartQuoteTotals } from "../CartContext";
+import { ticketQuoteFromLines } from "./ticketQuoteFixture";
 
 const line = (over: Partial<CartLine>): CartLine => ({
   ticketTypeId: over.ticketTypeId ?? "tt_1",
@@ -64,9 +70,10 @@ const line = (over: Partial<CartLine>): CartLine => ({
   currency: over.currency ?? "USD",
   isFree: over.isFree ?? false,
 });
-const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartTotals> => {
+const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartQuoteTotals> => {
   stubLines = lines;
-  return useCartTotals();
+  stubQuote = ticketQuoteFromLines(lines);
+  return useCartQuoteTotals();
 };
 
 // The SAME fee formula pg_public_event_tier_allin / compute_all_in_cents apply

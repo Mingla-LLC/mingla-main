@@ -211,12 +211,20 @@ export function tripTierPriceLabel(tier: TripOfferingTier): string {
   return formatTripPrice(tripTierUnitAllInCents(tier as TripTierLike), tier.currency);
 }
 
+export function tripTierListPriceLabel(tier: TripOfferingTier): string | null {
+  if (tier.saleAllInCents == null) return null;
+  const list = tier.priceAllInCents ?? tier.priceCents;
+  if (list <= tier.saleAllInCents) return null;
+  return formatTripPrice(list, tier.currency);
+}
+
 /** Map a TripOfferingTier into the RN-free math shape (carrying the server all-in). */
 function toTierLike(tier: TripOfferingTier): TripTierLike {
   return {
     ticketTypeId: tier.ticketTypeId,
     priceCents: tier.priceCents,
     priceAllInCents: tier.priceAllInCents ?? null,
+    saleAllInCents: tier.saleAllInCents ?? null,
     isFree: tier.isFree,
     isUnlimited: tier.isUnlimited,
     ticketsRemaining: tier.ticketsRemaining,

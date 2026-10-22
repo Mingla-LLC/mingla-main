@@ -2,7 +2,7 @@
 // — implementor happy-path regression test (Step 0.5).
 //
 // The bug ORCH-1147R2's render test MISSED: the EMPTY-cart state. On entering a
-// checkout screen the cart is empty, `useCartTotals()` returns currency "" (see
+// checkout screen the cart is empty, `useCartQuoteTotals()` returns currency "" (see
 // CartContext.tsx — `let currency = ""`), and ORCH-1147R2 added an UNCONDITIONAL
 // `const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency)` at
 // the top of all three checkout `index.tsx` screens. `formatCurrency("")` fed an
@@ -21,7 +21,7 @@
 //             value is only DISPLAYED when !isEmpty; the empty state shows "—".
 //
 // Runs under the default node/ts-jest config (no RTL). Like the ORCH-1147 test,
-// `useCartTotals` is a thin `useMemo` over `useContext(CartCtx)`; we make
+// `useCartQuoteTotals` is a thin `useMemo` over `useContext(CartCtx)`; we make
 // `useMemo` eager and feed `useContext` a stub cart, so the hook's PURE reduce
 // math (incl. the empty-cart `currency === ""` path) runs deterministically.
 //
@@ -42,21 +42,28 @@ import {
   formatMoney,
 } from "../../../utils/currency";
 import type { CartLine } from "../CartContext";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { ticketQuoteFromLines } from "./ticketQuoteFixture";
 
 // --- Make React hooks eager + inject a stub cart (same shim as ORCH-1147) ---
 let stubLines: CartLine[] = [];
+let stubQuote: TicketQuote | null = null;
 jest.mock("react", () => {
   const actual = jest.requireActual<typeof import("react")>("react");
   return {
     ...actual,
     useMemo: (factory: () => unknown): unknown => factory(),
-    useContext: (): unknown => ({ lines: stubLines }),
+    useContext: (): unknown => ({
+      lines: stubLines,
+      quote: stubQuote,
+      quoteStatus: "ready",
+    }),
   };
 });
 
 // Imported AFTER the mock so the hook picks up the eager React shims.
 // eslint-disable-next-line import/first
-import { useCartTotals } from "../CartContext";
+import { useCartQuoteTotals } from "../CartContext";
 
 const line = (over: Partial<CartLine>): CartLine => ({
   ticketTypeId: over.ticketTypeId ?? "tt_1",
@@ -69,16 +76,17 @@ const line = (over: Partial<CartLine>): CartLine => ({
   isFree: over.isFree ?? false,
 });
 
-const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartTotals> => {
+const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartQuoteTotals> => {
   stubLines = lines;
-  return useCartTotals();
+  stubQuote = ticketQuoteFromLines(lines);
+  return useCartQuoteTotals();
 };
 
 // The EXACT bottom-bar headline rule from all three checkout index.tsx screens
 // (post-ORCH-1152): the headline is computed ONLY when !isEmpty, and the
 // displayed cell is "—" on empty / "Free" when free / the headline otherwise.
 const selectionHeadline = (
-  totals: ReturnType<typeof useCartTotals>,
+  totals: ReturnType<typeof useCartQuoteTotals>,
 ): string => {
   // LAYER 2 — the screens' real guard (verbatim shape from index.tsx). The
   // empty-cart currency is replaced with a safe code so Intl is never fed "".

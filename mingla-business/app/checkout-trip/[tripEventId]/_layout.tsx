@@ -17,18 +17,28 @@
  */
 
 import React from "react";
-import { Stack } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 
 import { CartProvider } from "../../../src/components/checkout/CartContext";
+import { TicketQuoteController } from "../../../src/components/checkout/TicketQuoteController";
+
+const firstParam = (value: string | string[] | undefined): string =>
+  Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+
+const CheckoutStack = (): React.ReactElement => {
+  const params = useLocalSearchParams<{ tripEventId?: string | string[] }>();
+  return (
+    <>
+      <TicketQuoteController eventId={firstParam(params.tripEventId)} />
+      <Stack screenOptions={{ headerShown: false }} />
+    </>
+  );
+};
 
 export default function CheckoutTripLayout(): React.ReactElement {
   return (
     <CartProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      />
+      <CheckoutStack />
     </CartProvider>
   );
 }

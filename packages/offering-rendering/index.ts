@@ -11,6 +11,28 @@
 export { DirectionCIdentityOverlay, ParallaxCoverShell } from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 
+// #3872 — response types + final buyer copy for server-owned discount quotes.
+// Deliberately dependency-free so web and native consume one contract without
+// importing any pricing engine.
+export {
+  checkoutReviewReasonCopy,
+  discountReasonCopy,
+  saleAvailabilityCopy,
+  saleLimitedCopy,
+  ticketQuoteFeesAndTaxCents,
+} from "./discountQuote";
+export type {
+  CheckoutReviewDetail,
+  DiscountCodeReason,
+  DiscountReasonCopyInput,
+  TicketCheckoutReview,
+  TicketQuote,
+  TicketQuoteCodeOutcome,
+  TicketQuoteDiscount,
+  TicketQuoteLine,
+  TicketQuoteNotice,
+} from "./discountQuote";
+
 // issue #868 [cover-gallery] — the beneath-cover ordered card row over the full
 // [cover] ++ gallery hero sequence (card 0 = cover). Injected by ParallaxCoverShell.
 export { CoverGalleryRow } from "./CoverGalleryRow";

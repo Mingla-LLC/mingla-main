@@ -97,7 +97,15 @@ const MenuTab: React.FC<{
         ) : null}
         <View style={[styles.menuCard, surface.card]}>
           {group.items.map((item, index) => {
-            const price = formatMenuPrice(item.priceCents, item.currency);
+            const price = formatMenuPrice(
+              item.salePriceCents ?? item.priceCents,
+              item.currency,
+            );
+            const listPrice = item.salePriceCents != null &&
+                item.priceCents != null &&
+                item.salePriceCents < item.priceCents
+              ? formatMenuPrice(item.priceCents, item.currency)
+              : null;
             return (
               <View
                 key={item.id}
@@ -142,6 +150,16 @@ const MenuTab: React.FC<{
                     >
                       {price}
                     </Text>
+                    {listPrice !== null ? (
+                      <Text
+                        style={[
+                          styles.menuItemListPrice,
+                          { color: palette.tertiaryText },
+                        ]}
+                      >
+                        {listPrice}
+                      </Text>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -203,6 +221,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 21,
     fontWeight: "800",
+  },
+  menuItemListPrice: {
+    fontSize: 12,
+    lineHeight: 16,
+    textDecorationLine: "line-through",
   },
 });
 

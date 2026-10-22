@@ -15,9 +15,9 @@
 //       ("£67.93"), the "incl. VAT & fees" caption renders, and the bare base
 //       ("£65.00") is NOT the headline price.
 //   (B) bottom bar — renders the EXACT JSX from the three checkout index.tsx
-//       screens (the "Total" label, headlineAllIn = useCartTotals().allInTotal,
+//       screens (the "Total" label, headlineAllIn = useCartQuoteTotals().allInTotal,
 //       and the gated combined "Fees & tax" line) driven by the REAL
-//       useCartTotals reduce over a synthetic pass-fee CartLine. Asserts the
+//       useCartQuoteTotals reduce over a synthetic pass-fee CartLine. Asserts the
 //       rendered headline is the all-in, the relabel is "Total" (not
 //       "Subtotal"), and the single "Fees & tax" line renders the delta.
 //
@@ -35,7 +35,7 @@ import { QuantityRow } from "../../../components/checkout/QuantityRow";
 import {
   CartProvider,
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../CartContext";
 import { formatCurrency } from "../../../utils/currency";
 import type { TicketStub } from "../../../store/draftEventStore";
@@ -44,7 +44,7 @@ import type { TicketStub } from "../../../store/draftEventStore";
 // We mount the REAL CartProvider (a synchronous useReducer — no AsyncStorage /
 // no all-in RPC) and seed exactly one line via the REAL setLineQuantity, which
 // carries unitPriceAllIn into the reducer. The BottomBar then reads the REAL
-// useCartTotals reduce (allInTotal / feesTaxCents / hasFeesTaxDelta). Nothing
+// useCartQuoteTotals reduce (allInTotal / feesTaxCents / hasFeesTaxDelta). Nothing
 // about the money path is faked — only the seed shortcut replaces the deck UI.
 interface SeedLine {
   unitPrice: number;
@@ -100,11 +100,11 @@ const baseTicket = (over: Partial<TicketStub>): TicketStub =>
 // Reproduces verbatim: headlineAllIn = formatCurrency(allInTotal, currency);
 // showFeesTaxLine = !isEmpty && !isFree && hasFeesTaxDelta [&& dueToday===null];
 // label = (dueToday !== null && !isEmpty && !isFree) ? "Due today" : "Total".
-// Drives the REAL useCartTotals so the bind under test is exercised, not faked.
+// Drives the REAL useCartQuoteTotals so the bind under test is exercised, not faked.
 const BottomBar: React.FC<{ dueTodayCents?: number | null }> = ({
   dueTodayCents = null,
 }) => {
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
   const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency);
   const showFeesTaxLine =
     !totals.isEmpty &&
