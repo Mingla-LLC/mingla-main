@@ -37,6 +37,7 @@ import type { StripeClient } from "./stripe.ts";
 // stamps partner_brand_links.first_split_at; here we additionally surface a
 // push so the partner sees the win in real time.
 import { dispatchNotification, formatMoneyCents } from "./stripeEdgeAuth.ts";
+import { StripeWebhookRetryableError } from "./stripeWebhookRetry.ts";
 
 // 10% of the 1.5% application fee = 0.15% of GMV.
 // MINGLA_APPLICATION_FEE_RATE = 0.045 lives in installments/createInstallmentPI.ts (#3645)
@@ -219,6 +220,236 @@ async function isAfterBrandPayoutCutover(
   return finalizedMs > cutoverMs;
 }
 
+async function resolvePartnerAtChargeTime(
+  supabase: SupabaseClient,
+  brandId: string,
+  chargeCreatedIso: string,
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc(
+    "resolve_partner_for_brand_at_time",
+    { p_brand_id: brandId, p_at: chargeCreatedIso },
+  );
+  if (error) {
+    throw new Error(
+      `resolve_partner_for_brand_at_time failed: ${error.message}`,
+    );
+  }
+  return typeof data === "string" && data.length > 0 ? data : null;
+}
+
+/**
+ * The single Stripe call into the #1174 writer. Both charge.succeeded (when
+ * it carries a fee id) and application_fee.created (#3645) pass the same
+ * canonical values — fee id, charge.created, fee amount, currency — so a
+ * replay from either event is idempotent and any drift is rejected by the
+ * writer's replay-mismatch check.
+ */
+async function recordStripePartnerOutcome(
+  supabase: SupabaseClient,
+  input: {
+    applicationFeeId: string;
+    orderId: string;
+    brandId: string;
+    partnerAccountId: string | null;
+    chargeCreatedIso: string;
+    applicationFeeAmount: number;
+    currency: string;
+  },
+): Promise<"no_partner" | "held" | "transferred" | "pending_retry"> {
+  const partnerShareCents = Math.round(
+    input.applicationFeeAmount * PARTNER_SHARE_OF_FEE,
+  );
+  const { data: outcomeRow, error: outcomeError } = await supabase.rpc(
+    "record_payout_partner_outcome",
+    {
+      p_key: input.applicationFeeId,
+      p_order_id: input.orderId,
+      p_brand_id: input.brandId,
+      p_partner_account_id: input.partnerAccountId,
+      p_provider_sale_at: input.chargeCreatedIso,
+      p_mingla_fee_cents: input.applicationFeeAmount,
+      p_partner_share_cents: input.partnerAccountId ? partnerShareCents : 0,
+      p_currency: input.currency,
+      p_provider: "stripe",
+    },
+  );
+  if (outcomeError) {
+    throw new Error(
+      `record_payout_partner_outcome failed: ${outcomeError.message}`,
+    );
+  }
+  if (!input.partnerAccountId) return "no_partner";
+  const status =
+    (outcomeRow as { held_status?: string } | null)?.held_status ?? "held";
+  if (status === "held") return "held";
+  if (status === "transferred") return "transferred";
+  return "pending_retry";
+}
+
+export interface ApplicationFeeCreatedHandlerResult {
+  brandId: string | null;
+  status:
+    | "no_partner"
+    | "held"
+    | "transferred"
+    | "pending_retry"
+    | "pre_cutover"
+    | "no_application_fee"
+    | "not_ticket_order";
+}
+
+/** The stored charge.succeeded payload for a charge (immutable provider
+ * evidence written by this endpoint before routing). */
+async function loadStoredSucceededCharge(
+  supabase: SupabaseClient,
+  chargeId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase
+    .from("payment_webhook_events")
+    .select("payload")
+    .eq("type", "charge.succeeded")
+    .eq("payload->data->object->>id", chargeId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`stored charge lookup failed: ${error.message}`);
+  }
+  const payload = (data as { payload?: unknown } | null)?.payload;
+  if (!payload || typeof payload !== "object") return null;
+  const obj = ((payload as Record<string, unknown>).data as
+    | Record<string, unknown>
+    | undefined)?.object;
+  return obj && typeof obj === "object"
+    ? obj as Record<string, unknown>
+    : null;
+}
+
+/** A ticket-checkout PaymentIntent (and its charge) carries
+ * metadata.mingla_checkout_session_id; installment, venue, stay, RSVP and ad
+ * credit charges do not, so they never wait for a ticket order. */
+function isTicketCheckoutCharge(charge: Record<string, unknown>): boolean {
+  const md = (charge["metadata"] ?? {}) as Record<string, unknown>;
+  return typeof md.mingla_checkout_session_id === "string" &&
+    md.mingla_checkout_session_id.length > 0 &&
+    typeof md.mingla_installment_id !== "string";
+}
+
+/**
+ * Webhook handler: application_fee.created (#3645).
+ *
+ * For our direct charges, charge.succeeded carries `application_fee: null`
+ * (only `application_fee_amount`) and usually lands before the order row
+ * exists, so it can never record the partner outcome. The fee object arrives
+ * seconds later with the fee id; this handler records the same immutable
+ * outcome through the same #1174 writer:
+ *   - order: orders.stripe_charge_id = fee.charge (the order's own sale
+ *     charge; later installment charges never match);
+ *   - sale time: charge.created from the stored charge.succeeded payload;
+ *   - partner: resolve_partner_for_brand_at_time(brand, charge.created);
+ *   - only after the brand's payout_hold_cutover_at (same rule as today).
+ * A ticket charge whose order or stored charge is not there yet throws
+ * StripeWebhookRetryableError so Stripe redelivers instead of the event
+ * silently succeeding.
+ */
+export async function handleApplicationFeeCreated(
+  supabase: SupabaseClient,
+  event: {
+    id: string;
+    type: string;
+    data: { object: Record<string, unknown> };
+  },
+): Promise<ApplicationFeeCreatedHandlerResult> {
+  const fee = event.data.object;
+  const feeId = objectString(fee, "id");
+  if (!feeId) throw new Error("application_fee.created missing fee id");
+  const feeAmount = objectNumber(fee, "amount");
+  const feeCurrency = (objectString(fee, "currency") ?? "").toLowerCase();
+  const chargeRef = fee["charge"];
+  const chargeId = typeof chargeRef === "string" && chargeRef.length > 0
+    ? chargeRef
+    : chargeRef && typeof chargeRef === "object"
+    ? objectString(chargeRef as Record<string, unknown>, "id")
+    : null;
+  if (!chargeId || feeAmount === null || feeAmount <= 0) {
+    return { brandId: null, status: "no_application_fee" };
+  }
+  if (feeCurrency.length !== 3) {
+    throw new Error("application_fee.created missing currency");
+  }
+
+  const { data: orderRow, error: orderError } = await supabase
+    .from("orders")
+    .select("id")
+    .eq("stripe_charge_id", chargeId)
+    .maybeSingle();
+  if (orderError) {
+    throw new Error(`order lookup by charge failed: ${orderError.message}`);
+  }
+  const orderId = (orderRow as { id?: string } | null)?.id ?? null;
+
+  const charge = await loadStoredSucceededCharge(supabase, chargeId);
+  if (!orderId) {
+    if (charge && !isTicketCheckoutCharge(charge)) {
+      return { brandId: null, status: "not_ticket_order" };
+    }
+    throw new StripeWebhookRetryableError(
+      charge
+        ? "partner_attribution_order_pending"
+        : "partner_attribution_charge_evidence_pending",
+    );
+  }
+  if (!charge) {
+    throw new StripeWebhookRetryableError(
+      "partner_attribution_charge_evidence_pending",
+    );
+  }
+
+  const chargeCreatedUnix = objectNumber(charge, "created");
+  if (chargeCreatedUnix === null || chargeCreatedUnix <= 0) {
+    throw new Error("stored charge missing canonical charge.created");
+  }
+  const chargeFeeAmount = objectNumber(charge, "application_fee_amount");
+  const chargeCurrency = (objectString(charge, "currency") ?? "")
+    .toLowerCase();
+  if (
+    (chargeFeeAmount !== null && chargeFeeAmount !== feeAmount) ||
+    (chargeCurrency.length > 0 && chargeCurrency !== feeCurrency)
+  ) {
+    // The fee must be the charge's own fee; a mismatch would pin a value
+    // charge.succeeded could never replay. Surface it, never guess.
+    throw new Error("partner_attribution_fee_charge_mismatch");
+  }
+
+  const brandId = await resolveBrandIdForOrder(supabase, orderId);
+  if (!brandId) {
+    throw new Error("partner_attribution_order_brand_missing");
+  }
+  const chargeCreatedIso = new Date(chargeCreatedUnix * 1000).toISOString();
+  const postCutover = await isAfterBrandPayoutCutover(
+    supabase,
+    brandId,
+    chargeCreatedIso,
+  );
+  if (!postCutover) return { brandId, status: "pre_cutover" };
+
+  const partnerAccountId = await resolvePartnerAtChargeTime(
+    supabase,
+    brandId,
+    chargeCreatedIso,
+  );
+  const status = await recordStripePartnerOutcome(supabase, {
+    applicationFeeId: feeId,
+    orderId,
+    brandId,
+    partnerAccountId,
+    chargeCreatedIso,
+    applicationFeeAmount: feeAmount,
+    currency: feeCurrency,
+  });
+  return { brandId, status };
+}
+
 /**
  * Webhook handler: charge.succeeded.
  *
@@ -314,33 +545,16 @@ export async function handleChargeSucceeded(
     if (chargeCreatedUnix === null || chargeCreatedUnix <= 0) {
       throw new Error("charge.succeeded missing canonical charge.created");
     }
-    const { data: outcomeRow, error: outcomeError } = await supabase.rpc(
-      "record_payout_partner_outcome",
-      {
-        p_key: applicationFeeId,
-        p_order_id: orderId,
-        p_brand_id: brandId,
-        p_partner_account_id: partnerAccountId,
-        p_provider_sale_at: chargeCreatedIso,
-        p_mingla_fee_cents: applicationFeeAmount,
-        p_partner_share_cents: partnerAccountId ? partnerShareCents : 0,
-        p_currency: currency,
-        p_provider: "stripe",
-      },
-    );
-    if (outcomeError) {
-      throw new Error(
-        `record_payout_partner_outcome failed: ${outcomeError.message}`,
-      );
-    }
-    if (!partnerAccountId) {
-      return { brandId, status: "no_partner" };
-    }
-    const status =
-      (outcomeRow as { held_status?: string } | null)?.held_status ?? "held";
-    if (status === "held") return { brandId, status: "held" };
-    if (status === "transferred") return { brandId, status: "transferred" };
-    return { brandId, status: "pending_retry" };
+    const status = await recordStripePartnerOutcome(supabase, {
+      applicationFeeId,
+      orderId,
+      brandId,
+      partnerAccountId,
+      chargeCreatedIso,
+      applicationFeeAmount,
+      currency,
+    });
+    return { brandId, status };
   }
   if (!partnerAccountId) {
     return { brandId, status: "no_partner" };

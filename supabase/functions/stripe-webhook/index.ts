@@ -14,6 +14,10 @@ import {
 } from "../_shared/stripeIpAllowlist.ts";
 import { routeStripeEvent } from "../_shared/stripeWebhookRouter.ts";
 import {
+  isStripeWebhookRetryableError,
+  stripeWebhookResponseStatus,
+} from "../_shared/stripeWebhookRetry.ts";
+import {
   getStripeWebhookSecretsFromEnv,
   verifyStripeWebhookSignature,
 } from "../_shared/stripeWebhookSignature.ts";
@@ -208,10 +212,12 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
   }
 
   let processingError: string | null = null;
+  let processingRetryable = false;
   try {
     await routeStripeEvent(supabase, stripe, event);
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
+    processingRetryable = isStripeWebhookRetryableError(err);
     if (
       processingError.includes("source_refund_exact_match_missing") ||
       processingError.includes("source_identity_missing")
@@ -262,13 +268,26 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     });
   }
 
+  // Issue #3645 — a retryable failure (the event arrived before the row it
+  // depends on) answers 503 so Stripe redelivers; every other outcome keeps
+  // the 200 contract.
+  const responseStatus = stripeWebhookResponseStatus({
+    processingFailed: processingError !== null,
+    retryable: processingRetryable,
+    exhausted,
+  });
+
   return plainResponse({
-    status: processingError === null ? "ok" : "processing_failed",
+    status: processingError === null
+      ? "ok"
+      : responseStatus === 503
+      ? "processing_retry"
+      : "processing_failed",
     event_id: event.id,
     attempts: nextRetryCount,
     signature_secret: verified.secretName,
     ip_allowed: ipAllowed,
-  }, 200);
+  }, responseStatus);
 }
 
 if (Deno.env.get("DENO_TESTING") !== "1") {
