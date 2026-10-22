@@ -272,6 +272,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   // early read returns no row and would read as "no phone", so it folds
   // isAuthReady into enabled. Signed-out viewers never run it.
   "useOwnProfilePhoneOnFile.ts",
+  // #3872 — refund_preview reads the organiser's own order/refund authority
+  // through an auth.uid()-scoped RPC. A pre-auth read must not be cached as a
+  // missing or zero refund preview.
+  "useRefundPreview.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
@@ -285,6 +289,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   // ── ORCH-1202 — newly-discovered genuinely-public/anon-safe hooks.
   ["useBrandStripeCountries.ts", "static 34-country list; no auth context, no auth.uid()-scoped read (anon-safe UI helper)"],
   ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_pricing SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147/#3872)"],
+  ["useTicketQuote.ts", "ticket-checkout-create quote mode is the anonymous buyer checkout pricing read; it is explicitly self-authorizing and must remain available before sign-in (#3872)"],
   ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
   ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],

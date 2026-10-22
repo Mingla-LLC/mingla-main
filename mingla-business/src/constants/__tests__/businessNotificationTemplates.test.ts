@@ -30,8 +30,10 @@ describe("template coverage", () => {
   // original 11 v1 types (new_follower still dropped).
   // #3645 now adds the late and debt-withheld states to that same catalog.
   // [TEST-MOD-APPROVED #3720] Community/support adds three Host inbox types.
-  test("22 business types include payout, Community, operational support, and Brand groups", () => {
-    expect(TYPES).toHaveLength(22);
+  // [TEST-MOD-APPROVED #3872] Discount expiry, threshold and budget alerts add
+  // three Host inbox types to the same exhaustive catalog.
+  test("25 business types include payout, Community, support, Brand groups, and discounts", () => {
+    expect(TYPES).toHaveLength(25);
     expect(isBusinessNotificationType("business.new_follower")).toBe(false);
     expect(isBusinessNotificationType("business.order_paid")).toBe(true);
     expect(isBusinessNotificationType("business.payout_waiting_for_bank")).toBe(
@@ -57,6 +59,15 @@ describe("template coverage", () => {
     expect(isBusinessNotificationType("business.brand_group_message")).toBe(
       true,
     );
+    expect(isBusinessNotificationType("business.discount_limit_80")).toBe(
+      true,
+    );
+    expect(
+      isBusinessNotificationType("business.discount_ended"),
+    ).toBe(true);
+    expect(
+      isBusinessNotificationType("business.discount_needs_attention"),
+    ).toBe(true);
   });
 
   test("every type has non-empty copy within char budgets", () => {

@@ -38,18 +38,16 @@ const stripComments = (src: string): string =>
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 describe("ORCH-1130 Fix #1 — Total + Total due today under installments", () => {
-  // [TEST-MOD-APPROVED #3859] Mixed carts sum each line according to that
-  // line's explicit choice; they no longer project one cart-wide deposit.
+  // [TEST-MOD-APPROVED #3872] The server quote owns every payable amount,
+  // including mixed full-pay/installment carts and applied discounts.
   it("trip buyer.tsx renders a 'Total due today' line from per-line choices", () => {
     const code = stripComments(read(TRIP_BUYER));
     // Both labels present (full Total + due-today).
     expect(code).toMatch(/>Total</);
     expect(code).toMatch(/Total due today/);
-    // The shared aggregate is fed quantities and a per-ticket choice map.
     expect(code).toMatch(/dueTodayCents\s*!==\s*null/);
-    expect(code).toMatch(/tripSummedDueTodayCents\(/);
-    expect(code).toMatch(/line\.paymentPlanChoice\s*===\s*"installments"/);
-    expect(code).toMatch(/line\.paymentPlanChoice\s*\?\?\s*"full"/);
+    expect(code).toMatch(/quote\.dueTodayNetCents/);
+    expect(code).toMatch(/quote\.netSubtotalCents/);
   });
 
   it("trip payment.tsx renders a 'Total due today' line from the mixed-cart aggregate", () => {
@@ -57,8 +55,8 @@ describe("ORCH-1130 Fix #1 — Total + Total due today under installments", () =
     expect(code).toMatch(/>Total</);
     expect(code).toMatch(/Total due today/);
     expect(code).toMatch(/isUsingInstallments\s*\?/);
-    expect(code).toMatch(/tripSummedDueTodayCents\(/);
-    expect(code).toMatch(/formatCurrency\(dueTodayCents/);
+    expect(code).toMatch(/quote\?\.dueTodayNetCents/);
+    expect(code).toMatch(/formatQuoteMoney\(\s*dueTodayCents/);
   });
 });
 
@@ -99,16 +97,16 @@ describe("ORCH-1130 Fix #2 — vestigial Calculate-tax / billing-address form re
       const code = stripComments(read(screen));
       // The previous `address: readyTaxPreview.address` is gone.
       expect(code).not.toMatch(/address:\s*readyTaxPreview\.address/);
-      // The native create still gets the all-in via a NO-ADDRESS mode:"preview".
-      expect(code).toMatch(/mode:\s*"preview"/);
+      // Create consumes the exact server quote the buyer accepted.
+      expect(code).toMatch(/quoteDigest:\s*activeQuote\.quoteDigest/);
     }
   });
 
   it("the all-in total (incl. tax) is shown via the silent no-address preview", () => {
     for (const screen of [TRIP_PAYMENT, EVENT_PAYMENT, EXPERIENCE_PAYMENT]) {
       const code = stripComments(read(screen));
-      // displayAllIn prefers the server-computed preview total (cents) over base.
-      expect(code).toMatch(/allInPreviewCents/);
+      // displayAllIn is always derived from the server-owned quote total.
+      expect(code).toMatch(/quote\.buyerTotalCents/);
       expect(code).toMatch(/displayAllIn/);
     }
   });

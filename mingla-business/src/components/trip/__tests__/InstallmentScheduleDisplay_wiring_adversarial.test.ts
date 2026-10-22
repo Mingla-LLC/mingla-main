@@ -94,11 +94,11 @@ describe("A-01: Pay-button same-source-of-truth (visible ↔ a11y)", () => {
     const matches = src.match(/dueTodayCents/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(4);
   });
-  test("both label branches reference totals.total (no-plan fallback)", () => {
+  test("both label branches reference the server-quoted displayAllIn fallback", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
     // No-plan-branch must be present in BOTH visible + a11y label.
-    const visible = /label=\{[\s\S]*?totals\.total[\s\S]*?\}/m.test(src);
-    const a11y = /accessibilityLabel=\{[\s\S]*?totals\.total[\s\S]*?\}/m.test(
+    const visible = /label=\{[\s\S]*?displayAllIn[\s\S]*?\}/m.test(src);
+    const a11y = /accessibilityLabel=\{[\s\S]*?displayAllIn[\s\S]*?\}/m.test(
       src,
     );
     expect(visible).toBe(true);
@@ -371,7 +371,7 @@ describe("A-08: component header documents ORCH-0882 canonical targets", () => {
 describe("A-09: pre-Stripe banner a11y label cites mixed-cart totals", () => {
   // [TEST-MOD-APPROVED #3859] The banner now describes the truthful cart
   // aggregate rather than pretending every line shares one deposit schedule.
-  test("banner accessibilityLabel references due, remaining, and future count", () => {
+  test("banner accessibilityLabel references due today and the body carries the future count", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
     // Find the banner block — must contain both data sources in its a11y
     // label template. Catches a class of bug where the label hardcodes
@@ -383,8 +383,8 @@ describe("A-09: pre-Stripe banner a11y label cites mixed-cart totals", () => {
     if (bannerRegion === null) return;
     const labelText = bannerRegion[0];
     expect(labelText).toContain("dueTodayCents");
-    expect(labelText).toContain("remainingBalanceCents");
-    expect(labelText).toContain("futureInstallmentCount");
+    expect(labelText).toContain("Future scheduled payments");
+    expect(src).toContain("futureInstallmentCount");
   });
 });
 
@@ -392,13 +392,13 @@ describe("A-09: pre-Stripe banner a11y label cites mixed-cart totals", () => {
 // A-10 — No hardcoded currency symbol in banner
 // ---------------------------------------------------------------------------
 
-describe("A-10: banner copy uses formatCurrency (Constitution #10)", () => {
+describe("A-10: banner copy uses formatQuoteMoney (Constitution #10)", () => {
   test("banner body does not contain literal hardcoded currency symbols", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
     // Find the banner JSX block (the Text children of planBannerBody)
     // and assert no literal `$` or `£` or `€` appears as a JSX text
     // node within. The only currency literals allowed are inside
-    // formatCurrency() calls.
+    // formatQuoteMoney() calls.
     //
     // We scope to just the banner region by finding the Text element
     // with style={styles.planBannerBody}.
@@ -409,9 +409,9 @@ describe("A-10: banner copy uses formatCurrency (Constitution #10)", () => {
     if (bannerMatch === null) return;
     const bannerJsx = bannerMatch[0];
     // No literal `$` outside of `formatCurrency(`, no literal `£`, `€`.
-    // Strip every `formatCurrency(...)` substring first, then check
+    // Strip every `formatQuoteMoney(...)` substring first, then check
     // remainder for currency symbols.
-    const cleaned = bannerJsx.replace(/formatCurrency\([^)]*\)/g, "");
+    const cleaned = bannerJsx.replace(/formatQuoteMoney\([^)]*\)/g, "");
     expect(cleaned).not.toMatch(/[$£€]/);
   });
 });
@@ -423,49 +423,22 @@ describe("A-10: banner copy uses formatCurrency (Constitution #10)", () => {
 // called without the minor flag.
 // ---------------------------------------------------------------------------
 
-describe("A-11 (hotfix-2): cents-shape formatCurrency calls use minor:true", () => {
-  // [TEST-MOD-APPROVED #3859] The payment route formats aggregate cents after
-  // per-line choice composition; those values retain the same minor-unit rule.
-  test("every formatCurrency call on mixed-cart cents values passes minor:true", () => {
+describe("A-11 (hotfix-2): server-quote cents use the quote money formatter", () => {
+  // [TEST-MOD-APPROVED #3872] Quote amounts are always minor units. The
+  // quote-specific formatter removes the old caller-selected minor-unit flag.
+  test("every due-today display uses formatQuoteMoney", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
-    // Find every formatCurrency(...) call. For each call body that
-    // references a cents-suffix identifier (depositCents,
-    // fullPriceCents, amountCents) — that argument is in CENTS, so
-    // the call MUST include `, true` for the minor-unit flag.
-    //
-    // Multi-line calls are common in JSX, so we match across
-    // newlines via [\s\S]. Conservative balanced-paren matching
-    // would be ideal but for our shape (no nested function calls
-    // inside formatCurrency) `[^)]` across newlines suffices.
     const calls =
-      src.match(/formatCurrency\([\s\S]*?\)/g) ?? [];
+      src.match(/formatQuoteMoney\([\s\S]*?\)/g) ?? [];
     expect(calls.length).toBeGreaterThan(0);
-    let centsShapeChecked = 0;
-    for (const call of calls) {
-      const isCentsShape =
-        /dueTodayCents|remainingBalanceCents|fullCartCents/.test(call);
-      if (isCentsShape) {
-        centsShapeChecked += 1;
-        // Must contain `, true` BEFORE the closing paren — the
-        // minor-unit flag. Allow trailing comma + whitespace.
-        expect(call).toMatch(/,\s*true\s*,?\s*\)/);
-      }
-    }
-    // Sanity: we must have actually checked at least one cents-shape
-    // call (otherwise the test passes vacuously).
-    expect(centsShapeChecked).toBeGreaterThanOrEqual(2);
+    const dueTodayCalls = calls.filter((call) => /dueTodayCents/.test(call));
+    expect(dueTodayCalls.length).toBeGreaterThanOrEqual(3);
+    for (const call of dueTodayCalls) expect(call).toContain("quote?.currency");
   });
-  test("totals.total formatCurrency call does NOT use minor:true (CartContext is major units)", () => {
+  test("full-price display comes from the server quote, not a local cart subtotal", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
-    // The no-plan fallback Pay-button label uses totals.total (major
-    // units from CartContext). It must NOT pass minor:true or the
-    // amount would be 100× under-displayed.
-    const totalsCalls =
-      src.match(/formatCurrency\(\s*totals\.total[^)]*\)/g) ?? [];
-    expect(totalsCalls.length).toBeGreaterThanOrEqual(2); // visible + a11y
-    for (const call of totalsCalls) {
-      expect(call).not.toMatch(/,\s*true\s*\)/);
-    }
+    expect(src).toMatch(/formatQuoteMoney\(quote\.buyerTotalCents, quote\.currency\)/);
+    expect(src).not.toMatch(/formatCurrency\(\s*totals\.total/);
   });
 });
 

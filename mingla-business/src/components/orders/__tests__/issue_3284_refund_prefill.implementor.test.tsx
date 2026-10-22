@@ -51,6 +51,27 @@ jest.mock("../../../hooks/useEventOrders", () => ({
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => ({ rank: 100 }),
 }));
+// [TEST-MOD-APPROVED #3872] Refund money now comes from the server preview.
+// This suite is about policy captions and the final wire payload, so provide a
+// settled preview matching the frozen order fixture.
+jest.mock("../../../hooks/useRefundPreview", () => ({
+  useRefundPreview: () => ({
+    data: {
+      orderId: "order-3284",
+      currency: "GBP",
+      amountCents: 5000,
+      remainingCents: 5000,
+      withinRemaining: true,
+      lines: [
+        { orderLineItemId: "line-1", quantity: 2, amountCents: 5000 },
+      ],
+    },
+    isPending: false,
+    isFetching: false,
+    isDebouncing: false,
+    isError: false,
+  }),
+}));
 jest.mock("../../ui/Sheet", () => ({
   Sheet: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports

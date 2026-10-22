@@ -582,6 +582,7 @@ describe("#3314 B — EventOfferingBody and EventTicketBox read the setting", ()
     ticketQuantities: {},
     onChangeTicketQuantity: () => undefined,
     onProceedToCart: () => undefined,
+    refundPolicyState: { status: "unknown" } as const,
   };
 
   test("B-1 hidden: no tickets-left pill and no N available caption", () => {

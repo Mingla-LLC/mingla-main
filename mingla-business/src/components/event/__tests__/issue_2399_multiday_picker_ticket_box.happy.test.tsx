@@ -64,6 +64,7 @@ const ticket = {
   approvalRequired: false,
   waitlistEnabled: false,
   availableAt: "online" as const,
+  displayOrder: 0,
 };
 
 const theme = resolveTheme(null, null);
@@ -77,13 +78,31 @@ const mountBox = async (extra: Record<string, unknown> = {}) => {
         event={{
           id: "event-2399",
           name: "Two Day",
+          brandId: "brand-2399",
+          brandSlug: "brand-2399",
+          eventSlug: "two-day",
+          description: "A two-day event",
+          dateLine: "Two days",
+          dateSubline: null,
+          datesList: [],
+          status: "published",
+          endedAt: null,
+          format: "in-person",
+          venueName: "Test venue",
+          address: "1 Test Street",
+          hideAddressUntilTicket: false,
+          coverHue: 210,
+          coverMediaUrl: null,
+          coverMediaType: null,
+          coverCredit: null,
           currency: "GBP",
           tickets: [ticket],
+          partyTypes: [],
         }}
         bookable
         palette={palette}
         theme={theme}
-        variant="event"
+        variant="published"
         ticketQuantities={{ [ticket.id]: 1 }}
         onChangeTicketQuantity={() => undefined}
         onProceedToCart={() => undefined}

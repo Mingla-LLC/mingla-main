@@ -280,7 +280,7 @@ describe("ORCH-1130 adversarial — selector suppressed for unbuyable/no-plan tr
       "if (tier?.installmentSchedule == null || line.quantity < 1) return [];",
     );
     expect(src).toMatch(
-      /Platform\.OS\s*===\s*"web"\s*\?\s*planLines\.map/,
+      /Platform\.OS\s*===\s*"web"\s*\?\s*\(?\s*planLines\.map/,
     );
     expect(src).toMatch(
       /:\s*planLines\[0\]\s*!==\s*undefined\s*&&\s*projectedSchedule\s*!==\s*null\s*\?\s*\(\s*<TripPaymentChoice/,

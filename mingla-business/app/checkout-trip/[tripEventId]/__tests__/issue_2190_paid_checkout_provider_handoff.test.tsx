@@ -162,13 +162,14 @@ import {
   CartProvider,
   useCart,
 } from "../../../../src/components/checkout/CartContext";
+import { ticketQuoteFromLines } from "../../../../src/components/checkout/__tests__/ticketQuoteFixture";
 import PaymentScreen from "../payment";
 
 /** Seeds the cart exactly as the real funnel does, with a PAID line. */
 const SeedCart: React.FC = () => {
-  const { setLineQuantity, setBuyer } = useCart();
+  const { setLineQuantity, setBuyer, setQuoteState } = useCart();
   React.useEffect(() => {
-    setLineQuantity({
+    const line = {
       ticketTypeId: TICKET_TYPE_ID,
       ticketName: "Shared room",
       unitPrice: 15000,
@@ -176,7 +177,9 @@ const SeedCart: React.FC = () => {
       currency: "NGN",
       isFree: false,
       quantity: 1,
-    });
+    };
+    setLineQuantity(line);
+    setQuoteState(ticketQuoteFromLines([line]), "ready");
     setBuyer({
       name: "Ada Guest",
       email: "ada@example.test",

@@ -60,7 +60,9 @@ describe("ORCH-1178 — trip checkout always shows the cart step (supersedes ORC
   test("payment.tsx derives totalSteps + last-step index from tripFunnelSteps (no bookableTierCount, no literal 2)", () => {
     const src = strip(read("payment.tsx"));
     expect(src).not.toContain('from "./bookableTierCount"');
-    expect(src).toMatch(/tripFunnelTotalSteps,\s*tripPaymentStepIndex,/);
+    expect(src).toMatch(
+      /tripFunnelTotalSteps,\s*tripPaymentStepIndex(?:,|\s*})/,
+    );
     expect(src).toMatch(/totalSteps\s*=\s*tripFunnelTotalSteps\(/);
     expect(src).toMatch(/paymentStepIndex\s*=\s*tripPaymentStepIndex\(/);
     expect(src).toContain("totalSteps={totalSteps}");

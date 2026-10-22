@@ -678,7 +678,9 @@ describe("T-5 issue #3351 — no literal denominator survives, and the frozen sh
   });
 
   test("R-2a payment.tsx keeps its two-name import of tripFunnelSteps", () => {
-    expect(payment).toMatch(/tripFunnelTotalSteps,\s*tripPaymentStepIndex,/);
+    expect(payment).toMatch(
+      /tripFunnelTotalSteps,\s*tripPaymentStepIndex(?:,|\s*})/,
+    );
   });
 
   test("R-2a the const assignment shape and the literal step INDICES survive", () => {
@@ -1105,7 +1107,7 @@ describe("T-13 issue #3351 P2 — every pill is wired to the owner, and the dead
 
   test("the note is shown only while the read is genuinely pending", () => {
     expect(buyer).toMatch(
-      /intakeSchemasQuery\.isError === false && intakeState\.settled === false/,
+      /intakeSchemasQuery\.isError === false\s*&&\s*intakeState\.settled === false/,
     );
   });
 });

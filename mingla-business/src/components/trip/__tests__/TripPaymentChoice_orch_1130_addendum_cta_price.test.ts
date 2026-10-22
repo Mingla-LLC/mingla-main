@@ -125,25 +125,23 @@ describe("ORCH-1130 ADDENDUM — public trip page floating bar follows the toggl
 });
 
 describe("ORCH-1130 ADDENDUM — checkout index Subtotal flips to Due today", () => {
-  test("index reads the cart choice + projects the deposit for the Subtotal", () => {
+  test("index reads the server quote due-today total", () => {
     const src = indexSrc();
-    expect(src).toContain("projectInstallmentSchedule");
     expect(src).toContain("dueTodayCents");
-    expect(src).toContain('paymentPlanChoice !== "installments"');
+    expect(src).toContain("quote.dueTodayNetCents");
+    expect(src).toContain("quote.netSubtotalCents");
     expect(src).toContain('"Due today"');
   });
 });
 
 describe("ORCH-1130 ADDENDUM — payment Pay button shows the deposit on BOTH paths", () => {
-  test("isUsingInstallments → Pay {deposit} deposit, leading branch (native + web)", () => {
+  test("isUsingInstallments → Pay {server due-today} on native + web", () => {
     const src = paymentSrc();
-    // The deposit branch is evaluated FIRST (before the Platform web/native
-    // split), so native no longer shows the full total under installments.
     const idx = src.indexOf("isUsingInstallments && projectedSchedule !== null");
-    const platformIdx = src.indexOf('Platform.OS !== "web"', idx);
     expect(idx).toBeGreaterThan(-1);
-    expect(platformIdx).toBeGreaterThan(idx);
-    expect(src).toContain("projectedSchedule.depositCents");
-    expect(src).toContain("} deposit`");
+    expect(src).toContain("quote?.dueTodayNetCents");
+    expect(src).toContain("formatQuoteMoney(dueTodayCents");
+    expect(src).toContain("} today`");
+    expect((src.match(/formatQuoteMoney\(dueTodayCents/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });

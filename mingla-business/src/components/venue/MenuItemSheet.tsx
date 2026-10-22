@@ -28,6 +28,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
 import { Platform, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
@@ -209,6 +210,8 @@ export function MenuItemSheet({
   optionsSection,
   testID,
 }: MenuItemSheetProps): React.ReactElement {
+  const hasDiscountQueryClient =
+    React.useContext(QueryClientContext) !== undefined;
   const isEdit = item !== null;
   const code = normalizeCurrency(currency);
   const [name, setName] = useState<string>("");
@@ -613,7 +616,10 @@ export function MenuItemSheet({
             />
           ) : null}
 
-          {item !== null && brandId !== undefined && brandHasCurrency ? (
+          {item !== null &&
+          brandId !== undefined &&
+          brandHasCurrency &&
+          hasDiscountQueryClient ? (
             <React.Suspense fallback={null}>
               <Text style={styles.groupLabel}>Discounts</Text>
               <ItemDiscountControls

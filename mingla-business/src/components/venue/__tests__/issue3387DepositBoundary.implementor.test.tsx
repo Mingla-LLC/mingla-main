@@ -16,8 +16,38 @@ const mockReserved = jest.fn<any>();
 const mockClose = jest.fn<any>();
 const mockHost = (name: string) => (props: any) => require("react").createElement(name, props, props.children);
 const mockSlot = { slotStartUtc: "2030-01-01T18:00:00Z", label: "18:00", remaining: 10, isFull: false };
+const mockPreview = {
+  kind: "preview",
+  depositListCents: 2000,
+  discountCents: 0,
+  depositNetCents: 2000,
+  feesAndTaxCents: 0,
+  totalCents: 2000,
+  currency: "USD",
+  discounts: [],
+  codeOutcome: {
+    status: "none",
+    reason: null,
+    required: null,
+    with: null,
+    replaced: [],
+  },
+  notices: [],
+  quoteDigest: "quote-3387",
+  requiresPayment: true,
+};
 jest.mock("../../../../../app-mobile/src/services/supabase", () => ({ supabase: { functions: { invoke: (...args: Parameters<Invoke>) => mockInvoke(...args) } } }));
-jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }), { virtual: true });
+jest.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
+  useQuery: () => ({
+    data: mockPreview,
+    error: null,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: async () => ({ data: mockPreview, error: null }),
+  }),
+}), { virtual: true });
 jest.mock("@mingla/payments-native", () => ({ useStripePaymentSheet: () => ({ initPaymentSheet: mockInit, presentPaymentSheet: mockPresent, isPaymentSheetSupported: true }) }), { virtual: true });
 jest.mock("@stripe/stripe-react-native", () => ({ initStripe: jest.fn() }), { virtual: true });
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: (...args: any[]) => mockOpen(...args) }), { virtual: true });

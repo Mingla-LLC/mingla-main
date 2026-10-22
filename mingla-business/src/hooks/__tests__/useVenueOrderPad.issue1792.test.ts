@@ -152,6 +152,8 @@ describe("issue #1792 — the pad asks the SERVER for every number", () => {
     // particular is the VENUE's label (D-9), never one this layer invents.
     expect(result).toEqual({
       currency: "GBP",
+      listSubtotalCents: 2400,
+      discountCents: 0,
       subtotalCents: 2400,
       serviceChargeBps: 1250,
       serviceChargeCents: 300,
@@ -160,6 +162,8 @@ describe("issue #1792 — the pad asks the SERVER for every number", () => {
       spotLabel: "Table 12",
       venueName: "The Brasserie",
       staffTabsEnabled: true,
+      discounts: [],
+      lines: [],
     });
   });
 

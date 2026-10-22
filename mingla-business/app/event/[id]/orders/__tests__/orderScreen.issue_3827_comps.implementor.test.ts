@@ -15,7 +15,7 @@ const list = readFileSync(join(__dirname, "..", "index.tsx"), "utf8");
 
 describe("issue #3827 — order screen", () => {
   test("O-1 resend uses guest-list resend, not the dispatcher with a user token", () => {
-    expect(detail).toContain("resendGuestListTicket({ orderId: order.id");
+    expect(detail).toMatch(/resendGuestListTicket\(\{\s*orderId:\s*order\.id/);
     expect(detail).not.toContain("resendTicketConfirmation");
   });
 

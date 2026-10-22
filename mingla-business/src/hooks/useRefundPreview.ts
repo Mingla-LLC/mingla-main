@@ -1,6 +1,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 
 export interface RefundPreviewLineInput {
@@ -50,6 +51,7 @@ export function useRefundPreview(
   orderId: string | null,
   lines: RefundPreviewLineInput[],
 ): UseQueryResult<RefundPreview, Error> & { isDebouncing: boolean } {
+  const { isAuthReady } = useAuth();
   const immediateKey = JSON.stringify(lines);
   const [debouncedKey, setDebouncedKey] = useState(immediateKey);
   useEffect(() => {
@@ -61,6 +63,7 @@ export function useRefundPreview(
     [debouncedKey],
   );
   const enabled =
+    isAuthReady &&
     orderId !== null &&
     debouncedLines.length > 0 &&
     debouncedLines.every(

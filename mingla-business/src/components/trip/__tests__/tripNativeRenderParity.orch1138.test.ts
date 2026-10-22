@@ -116,11 +116,11 @@ describe("RT-6 ORCH-1138 — native-only render parity", () => {
     // §3 full-width route pills (the weight-aware fix, byte-preserved).
     const bodySrc = read("../packages/offering-rendering/TripOfferingBody.tsx");
     expect(bodySrc).toContain("const boldFamily = boldFontFamily(theme);");
-    expect(bodySrc).toContain(
-      "styles.title, surface.primaryText, { fontFamily: boldFamily }",
+    expect(bodySrc).toMatch(
+      /styles\.title,\s*surface\.primaryText,\s*\{ fontFamily: boldFamily \}/,
     );
-    expect(bodySrc).toContain(
-      "surface.primaryText, { fontFamily: boldFamily }",
+    expect(bodySrc).toMatch(
+      /surface\.primaryText,\s*\{ fontFamily: boldFamily \}/,
     );
     // the §3 route pills carry the bold family on their value text.
     expect(bodySrc).toMatch(
