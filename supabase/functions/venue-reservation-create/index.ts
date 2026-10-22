@@ -75,7 +75,8 @@ import { paystackReservationSplitFields } from "./ngPaystackSplit.ts";
 // conversion for a completed FREE RSVP (fire-and-forget, idempotent, fail-open).
 import {
   fireAdConversion,
-  persistReservationAttributionClickId,
+  persistReservationAdContext,
+  type CheckoutAdContextInput,
 } from "../_shared/adConversionFire.ts";
 // #3392 — web guest manage tokens are DERIVED from the checkout session id so
 // the confirmation email can re-derive the same token and link to the manage
@@ -129,7 +130,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   if (!body || typeof body !== "object" || Array.isArray(body) ||
       Object.keys(body).some((key) => ![
         "venueId", "brandId", "surface", "reservedForUtc", "partySize",
-        "buyer", "occasion", "guestNotes", "attributionClickId",
+        "buyer", "occasion", "guestNotes", "attributionClickId", "adMatchData",
         "organicJourneyToken", "returnContract",
       ].includes(key))) {
     return jsonResponse({ error: "reservation_payload_invalid" }, 400);
@@ -191,6 +192,30 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       body.attributionClickId.trim()
     ? body.attributionClickId.trim()
     : null;
+  const rawAdMatch = body.adMatchData && typeof body.adMatchData === "object" &&
+      !Array.isArray(body.adMatchData)
+    ? body.adMatchData as Record<string, unknown>
+    : {};
+  if (Object.keys(rawAdMatch).some((key) => ![
+    "fbp", "fbc", "scid", "ttp", "clientUserAgent", "trackingOptOut",
+  ].includes(key))) {
+    return jsonResponse({ error: "ad_match_data_invalid" }, 400);
+  }
+  const matchString = (value: unknown, max: number): string | null =>
+    typeof value === "string" && value.trim()
+      ? value.trim().slice(0, max)
+      : null;
+  const adContext: CheckoutAdContextInput = {
+    clickId: attributionClickId,
+    fbp: matchString(rawAdMatch.fbp, 512),
+    fbc: matchString(rawAdMatch.fbc, 512),
+    scid: matchString(rawAdMatch.scid, 512),
+    ttp: matchString(rawAdMatch.ttp, 512),
+    trackingOptOut: rawAdMatch.trackingOptOut === true,
+    clientIpAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    clientUserAgent: matchString(rawAdMatch.clientUserAgent, 1024) ??
+      matchString(req.headers.get("user-agent"), 1024),
+  };
   const organicJourneyToken = typeof body.organicJourneyToken === "string" &&
       body.organicJourneyToken.trim()
     ? body.organicJourneyToken.trim()
@@ -464,6 +489,11 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         });
         return jsonResponse({ error: "reservation_session_failed" }, 500);
       }
+      void persistReservationAdContext(
+        supabase as never,
+        freeCheckoutSessionId,
+        adContext,
+      );
     }
 
     // ISSUE-865 PR1 WP-2 TWO-TIER — a completed FREE RSVP fires the LEAD-type
@@ -478,6 +508,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         surface: surface === "web" ? "web" : "ios",
         eventType: "reservation",
         clickId: attributionClickId,
+        adContext,
       }).catch((adConvErr) => {
         console.warn(
           "[venue-reservation-create] free-RSVP ad-conversion fire failed (non-fatal):",
@@ -695,10 +726,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     // ISSUE-865 PR1 WP-2 — thread the ad click_id onto the session, DECOUPLED
     // from the fatal insert (a missing column / write failure never blocks the
     // reservation — mirrors the ticket P2-1 fix). Fire-and-forget, fail-open.
-    void persistReservationAttributionClickId(
+    void persistReservationAdContext(
       supabase as never,
       sessionId,
-      attributionClickId,
+      adContext,
     );
 
     const psReference = `mingla_resv_${sessionId}_${Date.now().toString(36)}`;
@@ -865,10 +896,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
   // ISSUE-865 PR1 WP-2 — thread the ad click_id onto the session, DECOUPLED from
   // the fatal insert (fail-open; a missing column never blocks the reservation).
-  void persistReservationAttributionClickId(
+  void persistReservationAdContext(
     supabase as never,
     sessionId,
-    attributionClickId,
+    adContext,
   );
 
   // ── WEB → hosted Stripe Checkout Session. ────────────────────────────────────

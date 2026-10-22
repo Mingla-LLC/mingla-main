@@ -2437,6 +2437,8 @@ export const createTicketCheckoutCreateHandler = (
       fbp: typeof body.fbp === "string" ? body.fbp : null,
       fbc: typeof body.fbc === "string" ? body.fbc : null,
       scid: typeof body.scid === "string" ? body.scid : null,
+      ttp: typeof body.ttp === "string" ? body.ttp : null,
+      trackingOptOut: body.ad_tracking_opt_out === true,
       clientIpAddress: checkoutClientIp(req),
       clientUserAgent: req.headers.get("user-agent") ??
         (typeof body.client_user_agent === "string" ? body.client_user_agent : null),

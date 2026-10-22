@@ -9,7 +9,11 @@ import {
 
 import { supabase } from "./supabase";
 import { randomId } from "../utils/randomId";
-import { getStoredClickAttribution } from "../analytics/webAnalytics";
+import {
+  getStoredAdMatchData,
+  getStoredClickAttribution,
+  identifyAdBuyer,
+} from "../analytics/webAnalytics";
 
 type StayEnvelope<T> =
   | { kind: "success"; data: T; requestId: string }
@@ -96,6 +100,14 @@ export const stayGuestService = {
     guest: StayGuestCheckoutInput["guest"],
   ): Promise<StayReservationGroup> {
     const attributionClickId = getStoredClickAttribution().clickId;
+    const adMatchData = getStoredAdMatchData?.() ?? {
+      fbp: null, fbc: null, scid: null, ttp: null,
+      clientUserAgent: null, trackingOptOut: false,
+    };
+    void identifyAdBuyer?.({
+      email: guest.email,
+      phone: guest.phone,
+    })?.catch(() => undefined);
     return invoke({
       action: "create_group",
       payload: {
@@ -103,6 +115,7 @@ export const stayGuestService = {
         guest,
         idempotencyKey: idempotencyKey("group"),
         ...(attributionClickId ? { attributionClickId } : {}),
+        adMatchData,
       },
       expectedVersion: quote.version,
     });

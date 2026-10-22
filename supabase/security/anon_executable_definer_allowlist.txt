@@ -23,6 +23,8 @@
 #  #1793 added pg_public_venue_ordering_state; #1929 added pg_direct_event_checkout_bundle.)
 
 # === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===
+# #3697: one non-sensitive country-mode scalar; exposes no country inventory and defaults on_arrival.
+ad_pixel_public_config(p_country_code text)
 check_username_availability(check_username text)
 is_username_available(p_username text)
 # #1384: static active currency metadata is required before sign-in and carries no user or brand data.

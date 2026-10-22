@@ -15,7 +15,7 @@
  *        it NEVER contains an email or phone field (SC-8/SC-9).
  *   (B3) captureAdClickIds forwards click-id + UTM ONLY (no PII) and does NOT
  *        fire when the URL carries no ad signal (byte-identical no-op).
- *   (B4) fireAdViewContent / fireAdPageView are NO-OPS pre-consent (SC-8).
+ *   (B4) arrival mode fires ViewContent once and opt-out is the stop gate.
  *
  * Hermetic: fake window/document + a captured global fetch. No network, no real
  * pixel scripts, no real charge.
@@ -203,17 +203,23 @@ test("B3 captureAdClickIds forwards click-id/UTM only (no PII) and no-ops with n
   expect(noSignal.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
 });
 
-// ═══ B4 — ViewContent / PageView are NO-OPS pre-consent (SC-8) ════════════════
-test("B4 fireAdViewContent / fireAdPageView do NOTHING before consent (SC-8)", async () => {
+// ═══ B4 — default arrival mode + once-only ViewContent ════════════════════════
+// [TEST-MOD-APPROVED #3697] Seth replaced pre-consent no-op with arrival mode.
+test("B4 arrival mode fires ViewContent once before a choice", async () => {
   const { wa, win } = loadHarness(ALL_PIXELS);
   await wa.initWebAnalytics();
-  // pre-consent: no pixels bootstrapped.
-  expect(wa.adPixelsReady()).toBe(false);
-  expect(() => wa.fireAdViewContent({ value: 10, currency: "GBP", contentId: "x" })).not.toThrow();
+  expect(wa.adPixelsReady()).toBe(true);
+  expect(() => wa.fireAdViewContent({
+    value: 10,
+    currency: "GBP",
+    contentId: "x",
+    eventId: "view-x",
+  })).not.toThrow();
+  wa.fireAdViewContent({ value: 10, currency: "GBP", contentId: "x", eventId: "view-x-again" });
   expect(() => wa.fireAdPageView()).not.toThrow();
-  // No pixel globals exist, so nothing could have fired.
-  expect(win.fbq).toBeUndefined();
-  expect(win.ttq).toBeUndefined();
-  expect(win.snaptr).toBeUndefined();
-  expect(win.rdt).toBeUndefined();
+  const fbq = win.fbq as unknown as { queue: unknown[][] };
+  expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "ViewContent")).toHaveLength(1);
+  expect(win.ttq).toBeDefined();
+  expect(win.snaptr).toBeDefined();
+  expect(win.rdt).toBeDefined();
 });

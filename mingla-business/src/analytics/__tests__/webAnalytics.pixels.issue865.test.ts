@@ -1,10 +1,10 @@
 /**
- * ISSUE-865 WP-C — browser ad-conversion pixels + consent gate (Stage C).
+ * ISSUE-865 WP-C + #3697 — browser ad pixels, arrival mode and opt-out.
  *
  * Runtime battery (jest / ts-jest, node env with a hand-rolled fake DOM). Covers:
  *   • the pixel loaders NO-OP when the pixel id is absent,
- *   • the CONSENT GATE blocks all pixel firing pre-consent (SC-8 / RT-3) — the
- *     pixels bootstrap ONLY on grantConsent, never before,
+ *   • default arrival mode boots pixels before a choice, while the retained
+ *     per-region opt_in mode still blocks until OK,
  *   • the DEDUP CONTRACT — fireAdPurchase fires the Meta Pixel with the shared
  *     event_id as `eventID` (== the server CAPI event_id) — SC-15,
  *   • a simulated pixel-LOAD FAILURE does NOT throw / break the flow (fail-open).
@@ -19,11 +19,13 @@ interface FakeEl {
   src: string;
   _attrs: Record<string, string>;
   setAttribute(k: string, v: string): void;
+  remove(): void;
 }
 
 interface HarnessOpts {
   extra: Record<string, string | undefined>;
   createElementThrows?: boolean;
+  consentMode?: "on_arrival" | "opt_in";
 }
 
 interface FbqSpy {
@@ -42,15 +44,22 @@ function loadHarness(opts: HarnessOpts): {
 } {
   const injected: FakeEl[] = [];
 
-  const makeEl = (tag: string): FakeEl => ({
-    tag,
-    async: false,
-    src: "",
-    _attrs: {},
-    setAttribute(k: string, v: string): void {
-      this._attrs[k] = v;
-    },
-  });
+  const makeEl = (tag: string): FakeEl => {
+    const element: FakeEl = {
+      tag,
+      async: false,
+      src: "",
+      _attrs: {},
+      setAttribute(k: string, v: string): void {
+        this._attrs[k] = v;
+      },
+      remove(): void {
+        const index = injected.indexOf(element);
+        if (index >= 0) injected.splice(index, 1);
+      },
+    };
+    return element;
+  };
 
   const store = new Map<string, string>();
   const fakeWindow: Record<string, unknown> = {
@@ -64,6 +73,8 @@ function loadHarness(opts: HarnessOpts): {
         if (m && injected.some((s) => s._attrs["data-mingla-pixel"] === m[1])) return {};
         return null;
       },
+      querySelectorAll: (sel: string): FakeEl[] =>
+        sel === 'script[data-mingla-pixel]' ? [...injected] : [],
       head: {
         appendChild: (el: FakeEl): void => {
           injected.push(el);
@@ -83,7 +94,17 @@ function loadHarness(opts: HarnessOpts): {
       },
     },
     location: { search: "", href: "https://usemingla.com/e/brand/event" },
+    ...(opts.consentMode
+      ? { __minglaAdPixelConsentMode: opts.consentMode }
+      : {}),
   };
+
+  (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(() =>
+    Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ad_pixel_consent_mode: "on_arrival" }),
+    })
+  );
 
   jest.resetModules();
   jest.doMock("expo-constants", () => ({
@@ -115,6 +136,7 @@ function loadHarness(opts: HarnessOpts): {
 
 afterEach(() => {
   delete (globalThis as unknown as { window?: unknown }).window;
+  delete (globalThis as unknown as { fetch?: unknown }).fetch;
   jest.resetModules();
 });
 
@@ -124,18 +146,36 @@ const META_EXTRA = {
   EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon",
 };
 
-test("CONSENT GATE — no pixel loads or fires before grantConsent (SC-8 / RT-3)", async () => {
+// [TEST-MOD-APPROVED #3697] Seth replaced opt-in-by-default with arrival + opt-out.
+test("DEFAULT ON_ARRIVAL — pixel loads and can fire before a banner choice", async () => {
   const { wa, injected, getFbq } = loadHarness({ extra: META_EXTRA });
   await wa.initWebAnalytics();
 
-  // Post-init, pre-consent: NOTHING is bootstrapped.
+  expect(wa.adPixelsReady()).toBe(true);
+  expect(getFbq()).toBeDefined();
+  expect(injected.some((s) => s._attrs["data-mingla-pixel"] === "meta")).toBe(true);
+
+  expect(() => wa.fireAdPurchase("order-xyz", {
+    value: 20,
+    currency: "GBP",
+    contentId: "event-xyz",
+  })).not.toThrow();
+  const queued = (getFbq() as unknown as { queue: unknown[][] }).queue;
+  expect(queued.some((args) => args[0] === "track" && args[1] === "Purchase")).toBe(true);
+});
+
+test("REGION OPT_IN — pixel waits for OK without requiring a rebuild", async () => {
+  const { wa, injected, getFbq } = loadHarness({
+    extra: META_EXTRA,
+    consentMode: "opt_in",
+  });
+  await wa.initWebAnalytics();
   expect(wa.adPixelsReady()).toBe(false);
   expect(getFbq()).toBeUndefined();
-  expect(injected.some((s) => s._attrs["data-mingla-pixel"] === "meta")).toBe(false);
-
-  // A Purchase fire pre-consent is a NO-OP (no fbq, no throw).
-  expect(() => wa.fireAdPurchase("order-xyz", { value: 20, currency: "GBP" })).not.toThrow();
-  expect(getFbq()).toBeUndefined();
+  expect(injected).toHaveLength(0);
+  await wa.grantConsent();
+  expect(wa.adPixelsReady()).toBe(true);
+  expect(getFbq()).toBeDefined();
 });
 
 test("grantConsent BOOTSTRAPS the Meta pixel; fireAdPurchase fires with the shared event_id (SC-15)", async () => {
@@ -157,7 +197,7 @@ test("grantConsent BOOTSTRAPS the Meta pixel; fireAdPurchase fires with the shar
   const queued = (fbqSpy.queue ?? []) as unknown[][];
   const purchase = queued.find((a) => a[0] === "track" && a[1] === "Purchase");
   expect(purchase).toBeDefined();
-  expect(purchase?.[2]).toEqual({ value: 20, currency: "GBP" });
+  expect(purchase?.[2]).toEqual({ value: 20, currency: "GBP", content_type: "product" });
   expect(purchase?.[3]).toEqual({ eventID: "order-xyz" }); // == server CAPI event_id
 });
 
@@ -183,4 +223,25 @@ test("a simulated pixel-LOAD FAILURE does NOT throw / break the flow (fail-open)
   // And the checkout Purchase fire that follows must not throw either.
   expect(() => wa.fireAdPurchase("order-xyz", { value: 20, currency: "GBP" })).not.toThrow();
   expect(() => wa.fireAdPageView()).not.toThrow();
+});
+
+test("OPT OUT stops pixels immediately and marks server sharing suppressed", async () => {
+  const { wa, injected, getFbq } = loadHarness({ extra: META_EXTRA });
+  await wa.initWebAnalytics();
+  expect(wa.adPixelsReady()).toBe(true);
+  expect(getFbq()).toBeDefined();
+  expect(injected).not.toHaveLength(0);
+
+  expect(() => wa.denyConsent()).not.toThrow();
+  expect(wa.adPixelsReady()).toBe(false);
+  expect(getFbq()).toBeUndefined();
+  expect(injected).toHaveLength(0);
+  expect(wa.getStoredAdMatchData()).toEqual({
+    fbp: null,
+    fbc: null,
+    scid: null,
+    ttp: null,
+    clientUserAgent: null,
+    trackingOptOut: true,
+  });
 });

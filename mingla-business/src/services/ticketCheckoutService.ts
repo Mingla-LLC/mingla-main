@@ -17,6 +17,7 @@ import {
   fireAdInitiateCheckout,
   getStoredAdMatchData,
   getStoredClickAttribution,
+  identifyAdBuyer,
 } from "../analytics/webAnalytics";
 import {
   isCheckoutAttemptId,
@@ -809,6 +810,12 @@ export const createTicketCheckout = async (
   };
   const clickId = getStoredClickAttribution().clickId;
   const matchData = getStoredAdMatchData();
+  // #3697: TikTok matching receives only browser-hashed values. This remains
+  // fire-and-forget so an ad blocker or Web Crypto failure cannot delay pay.
+  void identifyAdBuyer?.({
+    email: input.buyer.email,
+    phone: input.buyer.phone,
+  })?.catch(() => undefined);
   const site = await import("../analytics/siteAttribution")
     .then((module) => module.default?.())
     .catch(() => undefined);
@@ -883,6 +890,8 @@ export const createTicketCheckout = async (
     ...(matchData.fbp !== null ? { fbp: matchData.fbp } : {}),
     ...(matchData.fbc !== null ? { fbc: matchData.fbc } : {}),
     ...(matchData.scid !== null ? { scid: matchData.scid } : {}),
+    ...(typeof matchData.ttp === "string" ? { ttp: matchData.ttp } : {}),
+    ...(matchData.trackingOptOut === true ? { ad_tracking_opt_out: true } : {}),
     ...(matchData.clientUserAgent !== null
       ? { client_user_agent: matchData.clientUserAgent }
       : {}),
@@ -928,6 +937,7 @@ export const createTicketCheckout = async (
         ? checkoutResult.totalCents / 100
         : undefined,
       currency: checkoutResult.currency,
+      contentId: input.eventId,
     });
   }
   return result;

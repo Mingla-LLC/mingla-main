@@ -30,6 +30,20 @@ export async function sendOfferingEngagement(
   checkoutSessionId: string | null,
 ): Promise<void> {
   try {
+    const early = (window as Window & {
+      __minglaEarlyEngagementCaptured?: OfferingEngagementScope;
+    }).__minglaEarlyEngagementCaptured;
+    if (
+      eventType === "page_view" &&
+      early?.brandId === scope.brandId &&
+      early?.entityType === scope.entityType &&
+      early?.entityId === scope.entityId
+    ) {
+      delete (window as Window & {
+        __minglaEarlyEngagementCaptured?: OfferingEngagementScope;
+      }).__minglaEarlyEngagementCaptured;
+      return;
+    }
     const pageUrl = window.location.href;
     const referrer = document.referrer.trim();
     const { error } = await supabase.functions.invoke(

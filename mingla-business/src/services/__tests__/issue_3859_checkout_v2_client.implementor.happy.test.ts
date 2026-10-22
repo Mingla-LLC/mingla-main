@@ -8,13 +8,16 @@ jest.mock("../supabase", () => ({
 }));
 jest.mock("../../analytics/webAnalytics", () => ({
   fireAdInitiateCheckout: jest.fn(),
-  // [TEST-MOD-APPROVED #3697] Keep this checkout-v2 contract fixture focused
-  // on line choices while the new optional browser match fields are absent.
+  identifyAdBuyer: jest.fn(() => Promise.resolve()),
+  // [TEST-MOD-APPROVED #3697] The v2 wire carries the opt-out latch even when
+  // there is no attribution touch, plus TikTok's first-party match cookie.
   getStoredAdMatchData: () => ({
     fbp: null,
     fbc: null,
     scid: null,
+    ttp: "ttp-3697",
     clientUserAgent: null,
+    trackingOptOut: true,
   }),
   getStoredClickAttribution: () => ({ clickId: null }),
 }));
@@ -73,6 +76,8 @@ test("#3859 web v2 sends mixed line choices and no checkout-wide scalar", async 
   const body = invoke.mock.calls[0][1].body;
   expect(body.checkoutContractVersion).toBe(2);
   expect(body.checkoutAttemptId).toBe(ATTEMPT);
+  expect(body.ttp).toBe("ttp-3697");
+  expect(body.ad_tracking_opt_out).toBe(true);
   expect(body.purchaseTermsAccepted).toBe(true);
   expect(body.lines.map((line: { paymentPlanChoice: string }) =>
     line.paymentPlanChoice)).toEqual(["installments", "full"]);

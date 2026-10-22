@@ -145,6 +145,10 @@ interface AdPixelIds {
 }
 let adPixelIds: AdPixelIds = { meta: null, tiktok: null, snap: null, reddit: null };
 let adPixelsBootstrapped = false;
+export type AdPixelConsentMode = "on_arrival" | "opt_in";
+let adPixelConsentMode: AdPixelConsentMode | null = null;
+let adPixelModePromise: Promise<AdPixelConsentMode> | null = null;
+const firedViewContentKeys = new Set<string>();
 
 // First-party storage key for the captured ad click_id (threaded into checkout).
 const AD_CLICK_KEY = "mingla_ad_click_v1";
@@ -168,7 +172,56 @@ declare global {
     TiktokAnalyticsObject?: string;
     snaptr?: ((...args: unknown[]) => void) & { queue?: unknown[] };
     rdt?: ((...args: unknown[]) => void) & { callQueue?: unknown[] };
+    __minglaAdPixelConsentMode?: AdPixelConsentMode;
+    __minglaAdPixelsBootstrapped?: boolean;
+    __minglaAdViewContentKeys?: Record<string, true>;
   }
+}
+
+function resolveAdPixelIds(): void {
+  adPixelIds = {
+    meta: readEnv("EXPO_PUBLIC_META_PIXEL_ID") ?? null,
+    tiktok: readEnv("EXPO_PUBLIC_TIKTOK_PIXEL_CODE") ?? null,
+    snap: readEnv("EXPO_PUBLIC_SNAP_PIXEL_ID") ?? null,
+    reddit: readEnv("EXPO_PUBLIC_REDDIT_PIXEL_ID") ?? null,
+  };
+}
+
+async function resolveAdPixelConsentMode(): Promise<AdPixelConsentMode> {
+  if (adPixelConsentMode !== null) return adPixelConsentMode;
+  const injected = window.__minglaAdPixelConsentMode;
+  if (injected === "on_arrival" || injected === "opt_in") {
+    adPixelConsentMode = injected;
+    return injected;
+  }
+  if (adPixelModePromise === null) {
+    adPixelModePromise = fetch("/api/ad-pixel-config", {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        if (!response.ok) return "on_arrival" as const;
+        const payload = await response.json() as {
+          ad_pixel_consent_mode?: unknown;
+        };
+        return payload.ad_pixel_consent_mode === "opt_in"
+          ? "opt_in" as const
+          : "on_arrival" as const;
+      })
+      .catch(() => "on_arrival" as const)
+      .then((mode) => {
+        adPixelConsentMode = mode;
+        window.__minglaAdPixelConsentMode = mode;
+        return mode;
+      });
+  }
+  return adPixelModePromise;
+}
+
+function adTrackingAllowed(): boolean {
+  const choice = readStoredConsent();
+  if (choice === "denied") return false;
+  return adPixelConsentMode !== "opt_in" || choice === "granted";
 }
 
 function hasWindow(): boolean {
@@ -322,14 +375,7 @@ async function bootGrantedAnalytics(): Promise<void> {
   const posthogHost = readEnv("EXPO_PUBLIC_POSTHOG_HOST") ?? POSTHOG_US_HOST;
   gaMeasurementId = readEnv("EXPO_PUBLIC_GA4_MEASUREMENT_ID") ?? null;
 
-  // ISSUE-865 WP-C — resolve the ad-conversion pixel IDs only inside the
-  // granted boot. Scripts remain last in the same consent-gated sequence.
-  adPixelIds = {
-    meta: readEnv("EXPO_PUBLIC_META_PIXEL_ID") ?? null,
-    tiktok: readEnv("EXPO_PUBLIC_TIKTOK_PIXEL_CODE") ?? null,
-    snap: readEnv("EXPO_PUBLIC_SNAP_PIXEL_ID") ?? null,
-    reddit: readEnv("EXPO_PUBLIC_REDDIT_PIXEL_ID") ?? null,
-  };
+  resolveAdPixelIds();
 
   // GA4 first, with denied-default then granted-update queued before config.
   if (gaMeasurementId !== null && gaMeasurementId.length > 0) {
@@ -401,13 +447,21 @@ function ensureGrantedAnalyticsBoot(): Promise<void> {
 }
 
 export async function initWebAnalytics(): Promise<void> {
-  if (!hasWindow() || readStoredConsent() !== "granted") return;
-  await ensureGrantedAnalyticsBoot();
+  if (!hasWindow()) return;
+  resolveAdPixelIds();
+  await resolveAdPixelConsentMode();
+  if (window.__minglaAdPixelsBootstrapped === true) {
+    adPixelsBootstrapped = true;
+  }
+  if (adTrackingAllowed()) bootstrapAdPixels();
+  if (readStoredConsent() === "granted") await ensureGrantedAnalyticsBoot();
 }
 
 /** Accept handler — opens the PostHog + GA4 gates and persists the choice. */
 export async function grantConsent(): Promise<void> {
   writeStoredConsent("granted");
+  resolveAdPixelIds();
+  bootstrapAdPixels();
   await ensureGrantedAnalyticsBoot();
   if (readStoredConsent() !== "granted" || consentGrantCaptured) return;
   consentGrantCaptured = true;
@@ -425,6 +479,7 @@ export async function grantConsent(): Promise<void> {
 /** Reject handler — keeps vendor gates closed; stamps Reject on first-party touch. */
 export function denyConsent(): void {
   writeStoredConsent("denied");
+  stopAdPixels();
   // toward #3697 / #3703: stamp Reject; keep click_id for checkout threading so
   // the server can count locally with shared_with_platforms=false.
   void postAttributionConsent("rejected");
@@ -684,50 +739,117 @@ function bootstrapRedditPixel(pixelId: string): void {
  * block the page nor prevent the others from loading. Idempotent.
  */
 function bootstrapAdPixels(): void {
-  if (readStoredConsent() !== "granted" || adPixelsBootstrapped) return;
+  if (!adTrackingAllowed() || adPixelsBootstrapped) return;
   adPixelsBootstrapped = true; // set first so a throw can't cause a re-bootstrap loop
+  window.__minglaAdPixelsBootstrapped = true;
   if (adPixelIds.meta) safePixel(() => bootstrapMetaPixel(adPixelIds.meta as string));
   if (adPixelIds.tiktok) safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
   if (adPixelIds.snap) safePixel(() => bootstrapSnapPixel(adPixelIds.snap as string));
   if (adPixelIds.reddit) safePixel(() => bootstrapRedditPixel(adPixelIds.reddit as string));
 }
 
-/** True only after consent granted AND at least one pixel could bootstrap. */
+/** True while tracking is allowed and the arrival-time pixel boot ran. */
 export function adPixelsReady(): boolean {
-  return readStoredConsent() === "granted" && adPixelsBootstrapped;
+  return adTrackingAllowed() && adPixelsBootstrapped;
 }
 
-// ── Browser pixel fires (all no-op pre-consent / when no pixel loaded) ────────
+function expireAdCookie(name: string): void {
+  const expires = "Thu, 01 Jan 1970 00:00:00 GMT";
+  for (const domain of ["", "; domain=.usemingla.com"]) {
+    window.document.cookie =
+      `${name}=; expires=${expires}; path=/${domain}; SameSite=Lax`;
+  }
+}
+
+/** Immediately stop future pixel calls and discard browser match cookies. */
+function stopAdPixels(): void {
+  safePixel(() => window.fbq?.("consent", "revoke"));
+  safePixel(() => {
+    const revoke = window.ttq?.revokeConsent;
+    if (typeof revoke === "function") revoke();
+  });
+  if (typeof window.document.querySelectorAll === "function") {
+    for (
+      const script of Array.from(
+        window.document.querySelectorAll('script[data-mingla-pixel]'),
+      )
+    ) {
+      script.remove();
+    }
+  }
+  for (const name of ["_fbp", "_fbc", "_ttp", "_scid"]) expireAdCookie(name);
+  window.fbq = undefined;
+  window._fbq = undefined;
+  window.ttq = undefined;
+  window.snaptr = undefined;
+  adPixelsBootstrapped = false;
+  window.__minglaAdPixelsBootstrapped = false;
+}
+
+// ── Browser pixel fires (all no-op after opt-out / when no pixel loaded) ─────
 
 /** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
 export function fireAdPageView(): void {
-  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped) return;
+  if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
   safePixel(() => window.fbq?.("track", "PageView"));
   safePixel(() => window.ttq?.page?.());
   safePixel(() => window.snaptr?.("track", "PAGE_VIEW"));
   safePixel(() => window.rdt?.("track", "PageVisit"));
 }
 
-/** Offering view — ViewContent across the four pixels. No-op until bootstrapped. */
-export function fireAdViewContent(props?: {
+export interface AdCommerceEventProps {
   value?: number;
   currency?: string;
   contentId?: string;
+  brandId?: string;
+}
+
+/** Offering view — one deduplicated ViewContent across the four pixels. */
+export function fireAdViewContent(props?: AdCommerceEventProps & {
+  eventId?: string;
 }): void {
-  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped) return;
+  if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
   const value = props?.value;
   const currency = props?.currency;
   const contentId = props?.contentId;
+  if (!contentId) return;
+  const brandId = props?.brandId;
+  const serverKeys = window.__minglaAdViewContentKeys ??= {};
+  if (serverKeys[contentId]) return;
+  const eventId = props?.eventId ?? globalThis.crypto?.randomUUID?.() ??
+    `view-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const viewKey = contentId;
+  if (firedViewContentKeys.has(viewKey)) return;
+  firedViewContentKeys.add(viewKey);
+  serverKeys[contentId] = true;
   safePixel(() =>
     window.fbq?.("track", "ViewContent", definedProps({
       value,
       currency,
       content_type: "product",
-      content_ids: contentId ? [contentId] : undefined,
+      content_ids: [contentId],
+      brand_id: brandId,
+    }), { eventID: eventId })
+  );
+  safePixel(() =>
+    window.ttq?.track?.("ViewContent", definedProps({
+      value,
+      currency,
+      content_type: "product",
+      content_id: contentId,
+      brand_id: brandId,
+    }), { event_id: eventId })
+  );
+  safePixel(() =>
+    window.snaptr?.("track", "VIEW_CONTENT", definedProps({
+      price: value,
+      currency,
+      item_ids: [contentId],
+      brand_id: brandId,
+      transaction_id: eventId,
+      client_dedup_id: eventId,
     }))
   );
-  safePixel(() => window.ttq?.track?.("ViewContent", definedProps({ value, currency, content_id: contentId })));
-  safePixel(() => window.snaptr?.("track", "VIEW_CONTENT", definedProps({ price: value, currency })));
   safePixel(() => window.rdt?.("track", "ViewContent", definedProps({ value, currency })));
 }
 
@@ -738,9 +860,9 @@ export function fireAdViewContent(props?: {
  */
 export function fireAdPurchase(
   eventId: string,
-  props: { value?: number; currency?: string },
+  props: AdCommerceEventProps,
 ): void {
-  if (readStoredConsent() !== "granted") return;
+  if (!adTrackingAllowed()) return;
   // toward #3697 F-4: free tickets ($0) must match server sign-up events.
   const isPaidPurchase = !(typeof props.value === "number" && props.value <= 0);
   fireAdConversion(eventId, props, isPaidPurchase);
@@ -748,20 +870,32 @@ export function fireAdPurchase(
 
 function fireAdConversion(
   eventId: string,
-  props: { value?: number; currency?: string },
+  props: AdCommerceEventProps,
   purchase: boolean,
 ): void {
-  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped || !eventId) return;
+  if (!adTrackingAllowed() || !adPixelsBootstrapped || !eventId) return;
   const value = props.value;
   const currency = props.currency;
   safePixel(() =>
     // toward #3697 F-4: free/RSVP = CompleteRegistration (must match server CAPI).
-    window.fbq?.("track", purchase ? "Purchase" : "CompleteRegistration", definedProps({ value, currency }), { eventID: eventId })
+    window.fbq?.("track", purchase ? "Purchase" : "CompleteRegistration", definedProps({
+      value,
+      currency,
+      content_type: "product",
+      content_ids: props.contentId ? [props.contentId] : undefined,
+      brand_id: props.brandId,
+    }), { eventID: eventId })
   );
   safePixel(() =>
     window.ttq?.track?.(
       purchase ? "CompletePayment" : "CompleteRegistration",
-      definedProps({ value, currency, content_type: "product" }),
+      definedProps({
+        value,
+        currency,
+        content_type: "product",
+        content_id: props.contentId,
+        brand_id: props.brandId,
+      }),
       { event_id: eventId },
     )
   );
@@ -769,6 +903,8 @@ function fireAdConversion(
     window.snaptr?.("track", purchase ? "PURCHASE" : "SIGN_UP", definedProps({
       price: value,
       currency,
+      item_ids: props.contentId ? [props.contentId] : undefined,
+      brand_id: props.brandId,
       transaction_id: eventId,
       client_dedup_id: eventId,
     }))
@@ -786,34 +922,76 @@ function fireAdConversion(
  */
 export function fireAdReservation(
   eventId: string,
-  props: { value?: number; currency?: string } = {},
+  props: AdCommerceEventProps = {},
 ): void {
-  if (readStoredConsent() !== "granted") return;
+  if (!adTrackingAllowed()) return;
   fireAdConversion(eventId, props, false);
 }
 
 /** Checkout-start dedup pair: browser pixels share the checkout session id. */
 export function fireAdInitiateCheckout(
   eventId: string,
-  props: { value?: number; currency?: string } = {},
+  props: AdCommerceEventProps = {},
 ): void {
-  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped || !eventId) return;
+  if (!adTrackingAllowed() || !adPixelsBootstrapped || !eventId) return;
   safePixel(() =>
     window.fbq?.(
       "track",
       "InitiateCheckout",
-      definedProps({ value: props.value, currency: props.currency }),
+      definedProps({
+        value: props.value,
+        currency: props.currency,
+        content_type: "product",
+        content_ids: props.contentId ? [props.contentId] : undefined,
+        brand_id: props.brandId,
+      }),
       { eventID: eventId },
     )
+  );
+  safePixel(() =>
+    window.ttq?.track?.("InitiateCheckout", definedProps({
+      value: props.value,
+      currency: props.currency,
+      content_type: "product",
+      content_id: props.contentId,
+      brand_id: props.brandId,
+    }), { event_id: eventId })
   );
   safePixel(() =>
     window.snaptr?.("track", "START_CHECKOUT", definedProps({
       price: props.value,
       currency: props.currency,
+      item_ids: props.contentId ? [props.contentId] : undefined,
+      brand_id: props.brandId,
       transaction_id: eventId,
       client_dedup_id: eventId,
     }))
   );
+}
+
+async function sha256Browser(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** TikTok Advanced Matching; raw buyer PII never leaves this function. */
+export async function identifyAdBuyer(input: {
+  email?: string | null;
+  phone?: string | null;
+}): Promise<void> {
+  if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
+  const identify = window.ttq?.identify;
+  if (typeof identify !== "function") return;
+  const email = input.email?.trim().toLowerCase() ?? "";
+  const phone = input.phone?.replace(/[^0-9]/g, "") ?? "";
+  const payload = definedProps({
+    email: email ? await sha256Browser(email) : undefined,
+    phone_number: phone ? await sha256Browser(phone) : undefined,
+  });
+  if (Object.keys(payload).length > 0) safePixel(() => identify(payload));
 }
 
 // ── Click-id capture + first-party threading storage ──────────────────────────
@@ -860,7 +1038,9 @@ export interface StoredAdMatchData {
   fbp: string | null;
   fbc: string | null;
   scid: string | null;
+  ttp: string | null;
   clientUserAgent: string | null;
+  trackingOptOut: boolean;
 }
 
 function cookieValue(name: string): string | null {
@@ -880,16 +1060,26 @@ function cookieValue(name: string): string | null {
 
 /** Consent-gated browser match data persisted on checkout for server events. */
 export function getStoredAdMatchData(): StoredAdMatchData {
-  if (!hasWindow() || readStoredConsent() !== "granted") {
-    return { fbp: null, fbc: null, scid: null, clientUserAgent: null };
+  const trackingOptOut = hasWindow() && readStoredConsent() === "denied";
+  if (!hasWindow() || !adTrackingAllowed()) {
+    return {
+      fbp: null,
+      fbc: null,
+      scid: null,
+      ttp: null,
+      clientUserAgent: null,
+      trackingOptOut,
+    };
   }
   return {
     fbp: cookieValue("_fbp"),
     fbc: cookieValue("_fbc"),
     scid: cookieValue("_scid"),
+    ttp: cookieValue("_ttp"),
     clientUserAgent: typeof window.navigator.userAgent === "string"
       ? window.navigator.userAgent.slice(0, 1024)
       : null,
+    trackingOptOut: false,
   };
 }
 
