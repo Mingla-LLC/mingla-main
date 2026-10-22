@@ -26,9 +26,14 @@ export interface SmsCostAllocation<T> extends SmsCostInput<T> {
   allocatedCostMinor: number;
 }
 
-export function validatedSmsRates(now: Date): SmsRateV1[] {
-  const raw = resolveOfferingInviteSmsPriceBook();
-  if (!Array.isArray(raw)) throw new Error("cost_unavailable");
+export function validatedSmsRates(
+  now: Date,
+  suppliedRaw?: unknown[],
+): SmsRateV1[] {
+  const raw = suppliedRaw ?? resolveOfferingInviteSmsPriceBook();
+  if (!Array.isArray(raw)) {
+    throw new Error("cost_unavailable:sms_rate_book_missing");
+  }
   return raw.map((entry) => {
     const rate = entry as SmsRateV1;
     if (
@@ -42,11 +47,15 @@ export function validatedSmsRates(now: Date): SmsRateV1[] {
       rate.minorDenominator <= 0 ||
       !Number.isFinite(Date.parse(rate.effectiveAt)) ||
       !Number.isFinite(Date.parse(rate.expiresAt)) ||
-      Date.parse(rate.effectiveAt) > now.getTime() ||
-      Date.parse(rate.expiresAt) <= now.getTime() ||
       typeof rate.sourceReference !== "string" ||
       rate.sourceReference.length === 0
-    ) throw new Error("cost_unavailable");
+    ) throw new Error("cost_unavailable:sms_rate_book_invalid");
+    if (Date.parse(rate.effectiveAt) > now.getTime()) {
+      throw new Error("cost_unavailable:sms_rate_book_not_effective");
+    }
+    if (Date.parse(rate.expiresAt) <= now.getTime()) {
+      throw new Error("cost_unavailable:sms_rate_book_expired");
+    }
     return rate;
   });
 }
@@ -69,13 +78,15 @@ export function allocateSmsCosts<T>(
     if (
       country === null || !Number.isSafeInteger(input.segments) ||
       input.segments < 1
-    ) throw new Error("cost_unavailable");
+    ) throw new Error("cost_unavailable:sms_rate_unavailable");
     // orch-strict-grep-allow stripe-country-out-of-scope — messaging-provider selection, not Stripe/self-serve payout eligibility
     const provider = country === "NG" ? "termii" : "twilio";
     const rate = rates.find((candidate) =>
       candidate.country === country && candidate.provider === provider
     );
-    if (rate === undefined) throw new Error("cost_unavailable");
+    if (rate === undefined) {
+      throw new Error("cost_unavailable:sms_rate_unavailable");
+    }
     return {
       input,
       rate,

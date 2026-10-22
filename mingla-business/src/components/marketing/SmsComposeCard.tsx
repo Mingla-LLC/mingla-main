@@ -44,7 +44,9 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
+import { BrandSwitch } from "../ui/BrandSwitch";
 import { formatCurrency } from "../../utils/currency";
+import { smsBlastBodyWithFollow } from "../../utils/marketing/blastFollow";
 import { estimateSmsCost } from "../../utils/smsCost";
 
 // ORCH-1289 — Twilio MMS accepts up to 10 media items per message. Kept here as
@@ -75,6 +77,10 @@ export interface SmsComposeCardProps {
   /** Brand default currency (ISO 4217) for the cost estimate display. */
   currencyCode: string;
   editable?: boolean;
+  includeFollowCta?: boolean;
+  onIncludeFollowCtaChange?: (value: boolean) => void;
+  brandName?: string | null;
+  brandSlug?: string | null;
   // ORCH-1282 / ORCH-1289 — MMS photo attach (additive; SMS-only callers unaffected).
   /** Owning brand id; attach is disabled until a brand is resolved. */
   brandId?: string | null;
@@ -96,6 +102,10 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   reachableSms,
   currencyCode,
   editable = true,
+  includeFollowCta = false,
+  onIncludeFollowCtaChange,
+  brandName = null,
+  brandSlug = null,
   brandId = null,
   media = [],
   maxMedia = MMS_MAX_MEDIA,
@@ -104,9 +114,18 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   onRemoveMedia,
 }) => {
   const hasMedia = media.length > 0;
+  const bodyForEstimate = useMemo(
+    () =>
+      smsBlastBodyWithFollow(
+        value,
+        brandName,
+        includeFollowCta ? brandSlug : null,
+      ),
+    [value, brandName, brandSlug, includeFollowCta],
+  );
   const estimate = useMemo(
-    () => estimateSmsCost(value, reachableSms ?? 0, undefined, hasMedia),
-    [value, reachableSms, hasMedia],
+    () => estimateSmsCost(bodyForEstimate, reachableSms ?? 0, undefined, hasMedia),
+    [bodyForEstimate, reachableSms, hasMedia],
   );
 
   const hasBody = value.trim().length > 0;
@@ -186,6 +205,22 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
             ) : null}
           </>
         ) : null}
+      </View>
+
+      <View style={styles.followRow}>
+        <View style={styles.followCopy}>
+          <Text style={styles.followLabel}>Add a Follow link</Text>
+          <Text style={styles.followHint}>
+            Optional. Adds a separate Mingla brand link to the text.
+          </Text>
+        </View>
+        <BrandSwitch
+          value={includeFollowCta}
+          onValueChange={onIncludeFollowCtaChange}
+          disabled={!editable}
+          accessibilityLabel="Add a Follow link to this text"
+          accessibilityHint="Off by default to keep the message concise"
+        />
       </View>
 
       {/* ORCH-1282 / ORCH-1289 — attach up to `maxMedia` photos (turns the blast
@@ -371,6 +406,26 @@ const styles = StyleSheet.create({
     ...typography.labelCap,
     color: textTokens.tertiary,
     marginTop: spacing.xxs,
+  },
+  followRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  followCopy: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  followLabel: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    fontWeight: "600",
+  },
+  followHint: {
+    ...typography.labelCap,
+    color: textTokens.tertiary,
   },
   // ORCH-1282 — attach affordance + thumbnail chip.
   attachBtn: {
