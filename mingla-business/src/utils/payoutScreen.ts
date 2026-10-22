@@ -1,7 +1,4 @@
-import {
-  PAYOUT_RELEASE_STATUSES,
-  type PayoutReleaseStatus,
-} from "./payoutBreakdown";
+import type { PayoutReleaseStatus } from "./payoutBreakdown";
 
 export type HostPayoutState =
   | "scheduled"
@@ -109,7 +106,23 @@ const HOST_STATES: ReadonlySet<string> = new Set([
   "scheduled", "sending_today", "on_its_way", "paid", "waiting_for_bank",
   "late_on_us", "needs_you", "couldnt_send", "paused", "cancelled",
 ]);
-const LEDGER_STATES: ReadonlySet<string> = new Set(PAYOUT_RELEASE_STATUSES);
+// Keep the Home money tile from pulling the full payout-breakdown renderer into
+// the eager web bundle. The type-only import above still makes this allowlist
+// answer to the canonical ledger union at compile time.
+const LEDGER_STATES: ReadonlySet<PayoutReleaseStatus> = new Set([
+  "pending",
+  "released",
+  "in_flight",
+  "blocked_kyc",
+  "blocked_balance",
+  "blocked_otp",
+  "blocked_over_cap",
+  "fee_unreconciled",
+  "blocked_anchor",
+  "cancelled_event",
+  "reanchored",
+  "failed",
+]);
 
 export function parseBrandPayoutScreen(raw: unknown): BrandPayoutScreenDTO | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -128,7 +141,7 @@ export function parseBrandPayoutScreen(raw: unknown): BrandPayoutScreenDTO | nul
       id === null || currency === null || dueAt === null ||
       hostState === null || !HOST_STATES.has(hostState) ||
       (provider !== "stripe" && provider !== "paystack") ||
-      ledgerStatus === null || !LEDGER_STATES.has(ledgerStatus)
+      ledgerStatus === null || !LEDGER_STATES.has(ledgerStatus as PayoutReleaseStatus)
     ) return [];
     const rawItems = Array.isArray(row.items) ? row.items : [];
     const items = rawItems.flatMap((item): PayoutSaleDTO[] => {
