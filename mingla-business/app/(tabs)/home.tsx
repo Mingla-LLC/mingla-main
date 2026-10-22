@@ -53,7 +53,6 @@ import {
 } from "../../src/components/home/LiveOfferingCard";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
-import { KpiTile } from "../../src/components/ui/KpiTile";
 import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
@@ -81,6 +80,7 @@ import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { isCurrentBrandPending } from "../../src/utils/currentBrandPending";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
+import { useBrandPayoutScreen } from "../../src/hooks/useBrandPayoutScreen";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { hostAdCampaignKeys } from "../../src/hooks/marketing/useHostAdCampaigns";
 import { useBusinessRecent } from "../../src/hooks/useBusinessRecentHome";
@@ -117,7 +117,7 @@ import {
 
 import {
   currencyCodeOrNull,
-  formatCurrencyRound,
+  formatCurrency,
 } from "../../src/utils/currency";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-10 scanners see a stripped-down
 // door-list surface instead of the brand-owner KPI dashboard. Importing
@@ -125,6 +125,38 @@ import {
 // cleanly. The full HomeTab body below is unchanged for rank>=20.
 import { ScannerHome } from "../../src/components/scanners/ScannerHome";
 import { isScannerOnlyRank } from "../../src/utils/navTabGate";
+import { canViewBrandPayments } from "../../src/utils/brandPaymentsPermission";
+
+const HomeMoneyCard: React.FC<{
+  coming: string;
+  next: string;
+  salesWeek: string;
+  paidMonth: string;
+  warning: boolean;
+  onPress: () => void;
+}> = ({ coming, next, salesWeek, paidMonth, warning, onPress }) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={`Coming to you ${coming}. ${next}. Open Payments`}
+    style={({ pressed }) => [pressed ? styles.moneyCardPressed : null]}
+  >
+    <GlassCard variant="elevated" padding={spacing.md}>
+      <Text style={styles.moneyEyebrow}>COMING TO YOU</Text>
+      <Text style={styles.moneyAmount}>{coming}</Text>
+      <Text style={[styles.moneyNext, warning ? styles.moneyNextWarning : null]}>{next}</Text>
+      <View style={styles.moneyDivider} />
+      <View style={styles.moneyRow}>
+        <Text style={styles.moneyRowLabel}>Sales this week (what buyers paid)</Text>
+        <Text style={styles.moneyRowValue}>{salesWeek}</Text>
+      </View>
+      <View style={styles.moneyRow}>
+        <Text style={styles.moneyRowLabel}>Paid to your bank this month</Text>
+        <Text style={styles.moneyRowValue}>{paidMonth}</Text>
+      </View>
+    </GlassCard>
+  </Pressable>
+);
 
 // #3493 — BrandDeleteSheet loads on demand, through the same lazy owner as the
 // Account tab and Hub layout; a static import here kept it in `__common`.
@@ -215,12 +247,62 @@ export default function HomeTab(): React.ReactElement {
   const { user, isAuthReady } = useAuth();
   const queryClient = useQueryClient();
   const currentBrand = useCurrentBrand();
+  const role = useCurrentBrandRole(currentBrand?.id ?? null);
+  const canViewPayouts = canViewBrandPayments({
+    role: role.role,
+    accepted: role.accepted,
+  });
+  const payoutScreen = useBrandPayoutScreen(
+    canViewPayouts ? currentBrand?.id ?? null : null,
+  );
+  const nextPayout = useMemo(
+    () => [...(payoutScreen.data?.releases.filter((release) =>
+      release.hostState !== "paid" && release.hostState !== "cancelled"
+    ) ?? [])]
+      .sort((left, right) => Date.parse(left.dueAt) - Date.parse(right.dueAt))[0] ?? null,
+    [payoutScreen.data?.releases],
+  );
+  const payoutCurrency = payoutScreen.data?.currency ?? null;
+  const nextPayoutDate = nextPayout === null
+    ? null
+    : new Date(nextPayout.dueAt).toLocaleDateString(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
+  const homeMoney = {
+    coming: payoutCurrency === null ? "—" : formatCurrency(payoutScreen.data?.comingToYouCents ?? 0, payoutCurrency, true),
+    salesWeek: payoutCurrency === null ? "—" : formatCurrency(payoutScreen.data?.salesThisWeekCents ?? 0, payoutCurrency, true),
+    paidMonth: payoutCurrency === null ? "—" : formatCurrency(payoutScreen.data?.paidThisMonthCents ?? 0, payoutCurrency, true),
+    next: payoutScreen.data?.payoutsPaused
+      ? "Payouts paused"
+      : nextPayout?.hostState === "waiting_for_bank"
+        ? "Add a bank to get paid"
+        : nextPayout?.hostState === "late_on_us"
+          ? `Late, on us · was due ${nextPayoutDate}`
+          : nextPayout?.hostState === "sending_today"
+            ? "Sending today"
+            : nextPayout?.hostState === "on_its_way"
+              ? "On its way to your bank"
+              : nextPayout?.hostState === "needs_you"
+                ? "Needs you · finish verification"
+                : nextPayout?.hostState === "couldnt_send"
+                  ? "Couldn’t send · check bank details"
+        : nextPayout === null
+          ? "New sales will appear here"
+          : `Next payout: ${nextPayoutDate}`,
+    warning: payoutScreen.data?.payoutsPaused === true || [
+      "waiting_for_bank",
+      "late_on_us",
+      "needs_you",
+      "couldnt_send",
+    ].includes(nextPayout?.hostState ?? ""),
+  };
   const setCurrentBrand = useCurrentBrandStore((s) => s.setCurrentBrand);
   // ORCH-1055: rank-10 scanners render the stripped-down ScannerHome
   // instead of the brand-owner KPI dashboard. Hook MUST be called every
   // render (rules-of-hooks); the early-return branches on the resolved
   // value below, after all sibling hooks have run.
-  const role = useCurrentBrandRole(currentBrand?.id ?? null);
   const callerRank = role.rank;
   const analyticsPreview = useBrandTrafficRollup(
     currentBrand?.id ?? null,
@@ -308,6 +390,11 @@ export default function HomeTab(): React.ReactElement {
   const handleOpenAnalytics = useCallback((): void => {
     router.push("/analytics?entry=home_tile" as never);
   }, [router]);
+
+  const handleOpenPayments = useCallback((): void => {
+    if (currentBrand === null) return;
+    router.push(`/brand/${currentBrand.id}/payments` as never);
+  }, [currentBrand, router]);
 
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
@@ -628,14 +715,10 @@ export default function HomeTab(): React.ReactElement {
 
   // ORCH-1038 — analytics tiles render ONLY when there is real data to show
   // (no zero/empty placeholders); the to-do toggle carries guidance instead.
-  const hasRevenueData =
-    currentBrand?.defaultCurrency !== undefined &&
-    (currentBrand?.stats.rev7d ?? 0) > 0;
   // ORCH-1143 — the live cards moved OUT of the KPI grid into their own
   // accordion section above the locked pane; the "Last 7 days" KPI fallback now
   // shows only when there is rev7d data (it no longer doubles as the live slot).
   const hasLiveItems = liveItems.length > 0;
-  const showRevenueTile = hasRevenueData;
   // ORCH-1143 SC-7 — the "Upcoming" section header + list render the non-live
   // items only (live offerings are surfaced exclusively in the live carousel
   // above). When every active item is live, the Upcoming section hides cleanly
@@ -934,22 +1017,10 @@ export default function HomeTab(): React.ReactElement {
           ) : (
             <>
               <View style={styles.desktopKpiGrid}>
-                {showRevenueTile ? (
-                <View style={styles.desktopKpiCell}>
-                  <KpiTile
-                    label="Last 7 days"
-                    value={
-                      currentBrand.defaultCurrency !== undefined
-                        ? formatCurrencyRound(
-                            // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
-                            // BrandProfileView's "GMV / all time" tile.
-                            currentBrand.stats.rev7d,
-                            currentBrand.defaultCurrency,
-                          )
-                        : "—"
-                    }
-                  />
-                </View>
+                {canViewPayouts ? (
+                  <View style={styles.desktopKpiCell}>
+                    <HomeMoneyCard {...homeMoney} onPress={handleOpenPayments} />
+                  </View>
                 ) : null}
                 <View style={styles.desktopKpiCell}>
                   <AnalyticsHomeTile
@@ -1073,18 +1144,8 @@ export default function HomeTab(): React.ReactElement {
               </View>
           <View style={styles.mobileKpiOuter}>
             <View style={styles.mobileKpiStack}>
-              {showRevenueTile ? (
-                <KpiTile
-                  label="Last 7 days"
-                  value={
-                    currentBrand.defaultCurrency !== undefined
-                      ? formatCurrencyRound(
-                          currentBrand.stats.rev7d,
-                          currentBrand.defaultCurrency,
-                        )
-                      : "—"
-                  }
-                />
+              {canViewPayouts ? (
+                <HomeMoneyCard {...homeMoney} onPress={handleOpenPayments} />
               ) : null}
               <AnalyticsHomeTile
                 contract="traffic"
@@ -1205,6 +1266,54 @@ const HomeBrandLoading: React.FC = () => (
 );
 
 const styles = StyleSheet.create({
+  moneyCardPressed: { opacity: 0.82 },
+  moneyEyebrow: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "700",
+    letterSpacing: 1.1,
+    color: textTokens.tertiary,
+  },
+  moneyAmount: {
+    marginTop: spacing.xs,
+    fontSize: 30,
+    lineHeight: 38,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+    color: textTokens.primary,
+  },
+  moneyNext: {
+    marginTop: 2,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  moneyNextWarning: { color: "#fcd34d" },
+  moneyDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: glass.border.profileBase,
+    marginVertical: spacing.sm,
+  },
+  moneyRow: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  moneyRowLabel: {
+    flex: 1,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
+  moneyRowValue: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+    color: textTokens.primary,
+  },
   host: {
     flex: 1,
   },

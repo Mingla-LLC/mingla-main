@@ -171,6 +171,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // ── #3645 PR10 — organiser payout visibility RPC (payments managers via
   //    biz_can_manage_payments_for_brand; auth.uid()-scoped). Folds isAuthReady.
   "useBrandPayoutVisibility.ts",
+  // #3645 — the payout-screen RPC is finance_manager/auth.uid()-scoped and
+  // must not cache a pre-auth denial as an empty host ledger.
+  "useBrandPayoutScreen.ts",
   // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
   // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
   "useBrandConversionRollup.ts",

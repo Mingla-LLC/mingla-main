@@ -78,7 +78,10 @@ export interface EventMoneySummary {
    * `onlineRevenue - onlineNetMajor - onlineRefunded + appFeeRefunded`. Null
    * when no online activity exists. ORCH-0796.
    */
+  /** @deprecated Compatibility alias; this is Mingla's application fee, not processing. */
   stripeFeeOnlineMajor: number | null;
+  /** Mingla application fee retained on online sales. */
+  minglaFeeOnlineMajor: number | null;
   /**
    * Expected net to the organiser's Stripe account from this event, in
    * expected-currency major units. Sum of online net + cash door revenue.
@@ -183,7 +186,7 @@ export const summarizeEventMoney = (args: {
   // ORCH-0796 — net-to-organiser accumulators (minor units for precision).
   // Only paid + refunded_partial orders in the expected currency contribute.
   let onlineNetCents = 0;
-  let stripeFeeOnlineCents = 0;
+  let minglaFeeOnlineCents = 0;
   let hasAnyOnlinePayment = false;
   let hasAnyDoorPayment = false;
   let hasUnknownApplicationFeeRefund = false;
@@ -265,7 +268,7 @@ export const summarizeEventMoney = (args: {
       // pathological refund-overshoot edge case.
       const net = Math.max(0, totalCents - appFeeCents - refundedCents + appFeeRefundedCents);
       onlineNetCents += net;
-      stripeFeeOnlineCents += Math.max(0, appFeeCents - appFeeRefundedCents);
+      minglaFeeOnlineCents += Math.max(0, appFeeCents - appFeeRefundedCents);
     }
   }
 
@@ -302,7 +305,7 @@ export const summarizeEventMoney = (args: {
 
   // ORCH-0796 — null signals "no payments" so UI renders "—" instead of £0.00.
   const onlineNetMajor = hasAnyOnlinePayment && !hasUnknownApplicationFeeRefund ? round2(onlineNetCents / 100) : null;
-  const stripeFeeOnlineMajor = hasAnyOnlinePayment && !hasUnknownApplicationFeeRefund ? round2(stripeFeeOnlineCents / 100) : null;
+  const minglaFeeOnlineMajor = hasAnyOnlinePayment && !hasUnknownApplicationFeeRefund ? round2(minglaFeeOnlineCents / 100) : null;
   const expectedPayoutMajor =
     (hasAnyOnlinePayment || hasAnyDoorPayment) && !hasUnknownApplicationFeeRefund
       ? round2((onlineNetCents / 100) + (hasAnyDoorPayment ? doorRevenue : 0))
@@ -317,7 +320,8 @@ export const summarizeEventMoney = (args: {
     doorRefunded: round2(doorRefunded),
     totalRefunded,
     onlineNetMajor,
-    stripeFeeOnlineMajor,
+    stripeFeeOnlineMajor: minglaFeeOnlineMajor,
+    minglaFeeOnlineMajor,
     expectedPayoutMajor,
     revenueByMethod,
     byCurrency: Array.from(byCurrency.values()).sort((a, b) =>

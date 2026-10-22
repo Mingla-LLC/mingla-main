@@ -33,6 +33,7 @@ import { useInsightsNudgeInputs } from "./useGrowthToolsReads";
 import {
   buildBusinessTodos,
   type BusinessTodo,
+  type BusinessTodoInput,
   type InsightsNudgeTodo,
   type VenueOrderCompletenessTodo,
   type VenueTodoClaim,
@@ -47,6 +48,10 @@ import { routeForPipelineStateFix } from "../utils/deckReadinessRoutes";
 import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
 import { useVenueClaimOpenCountsByVenue } from "./useVenueClaimFeedback";
 import { useVenueOrderMetricsForVenues } from "./useVenueOrderMetrics";
+import { useBrandPayoutScreen } from "./useBrandPayoutScreen";
+import { formatCurrency } from "../utils/currency";
+import { useCurrentBrandRole } from "./useCurrentBrandRole";
+import { canViewBrandPayments } from "../utils/brandPaymentsPermission";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user, isAuthReady } = useAuth();
@@ -67,6 +72,12 @@ export function useBusinessTodos(): BusinessTodo[] {
   const pipelineStates = useBrandPipelineStates(currentBrand?.id ?? null);
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
+  const payoutRole = useCurrentBrandRole(currentBrand?.id ?? null);
+  const payoutScreen = useBrandPayoutScreen(
+    canViewBrandPayments({ role: payoutRole.role, accepted: payoutRole.accepted })
+      ? currentBrand?.id ?? null
+      : null,
+  );
   const currentBrandIdForDraft = currentBrand?.id ?? null;
   // Issue #1685 — EVERY unfinished venue draft of the CURRENT brand becomes its
   // own "Finish adding <venue>" row. `/venue/create` no longer resumes, so this
@@ -287,6 +298,25 @@ export function useBusinessTodos(): BusinessTodo[] {
     }));
   }, [currentBrand, venues, pipelineStates.data]);
 
+  const payoutAttention = useMemo<BusinessTodoInput["payoutAttention"]>(() => {
+    const data = payoutScreen.data;
+    if (data === null || data === undefined) return undefined;
+    const waiting = data.releases.find((release) => release.hostState === "waiting_for_bank");
+    if (waiting !== undefined) {
+      return {
+        kind: "add_bank",
+        amountLabel: formatCurrency(waiting.netReleaseCents, waiting.currency, true),
+      };
+    }
+    if (data.releases.some((release) => release.hostState === "couldnt_send")) {
+      return { kind: "fix_bank" };
+    }
+    if (data.releases.some((release) => release.hostState === "needs_you")) {
+      return { kind: "finish_stripe" };
+    }
+    return undefined;
+  }, [payoutScreen.data]);
+
   return useMemo(
     () =>
       buildBusinessTodos({
@@ -311,6 +341,7 @@ export function useBusinessTodos(): BusinessTodo[] {
         },
         stripeActive: isBrandChargeReady(currentBrand),
         payoutReady: isBrandPayoutReady(currentBrand),
+        payoutAttention,
         hasDraftPaidOffering: hasAnyDraftPaidOffering(drafts),
         stripeRoute:
           currentBrand !== null ? `/brand/${currentBrand.id}/payments` : "",
@@ -342,6 +373,7 @@ export function useBusinessTodos(): BusinessTodo[] {
       drafts,
       insightsNudges,
       venueOrderCompleteness,
+      payoutAttention,
     ],
   );
 }

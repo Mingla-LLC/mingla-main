@@ -90,6 +90,12 @@ export interface RefundSheetProps {
   onSuccess: (amountGbp: number) => void;
   /** issue #3284 — omit (or no terms) and the sheet renders exactly as before. */
   refundTerms?: RefundSheetRefundTerms;
+  /** Stored ledger amounts used only to explain a post-payout recovery. */
+  payoutImpact?: {
+    grossCents: number;
+    hostNetCents: number;
+    currency: string;
+  };
 }
 
 interface PartialLineState {
@@ -105,6 +111,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   onClose,
   onSuccess,
   refundTerms,
+  payoutImpact,
 }) => {
   // ORCH-0787: useRefundOrder is the server-truth mutation. Replaces the stub
   // useOrderStore.recordRefund (which only wrote to Zustand).
@@ -186,6 +193,12 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   const refundAmount = mode === "full"
     ? order.totalGbpAtPurchase - order.refundedAmountGbp
     : partialTotalGbp;
+  const payoutRecoveryCents = payoutImpact === undefined || payoutImpact.grossCents <= 0
+    ? null
+    : Math.min(
+        payoutImpact.hostNetCents,
+        Math.round(refundAmount * 100 * payoutImpact.hostNetCents / payoutImpact.grossCents),
+      );
 
   const trimmedLen = reason.trim().length;
   const reasonValid =
@@ -303,9 +316,19 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
       <View style={styles.body}>
         <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subhead}>
+        <Text
+          style={[
+            styles.subhead,
+            payoutRecoveryCents === null ? styles.subheadWithoutPayoutImpact : null,
+          ]}
+        >
           Buyer will see refund on their card in 3–5 business days.
         </Text>
+        {payoutRecoveryCents !== null && payoutImpact !== undefined ? (
+          <Text style={styles.payoutImpact} testID="refund-sheet-payout-impact">
+            If it already paid out, we take {formatCurrency(payoutRecoveryCents, payoutImpact.currency, true)} from your next payout and show it as a line there.
+          </Text>
+        ) : null}
 
         <ScrollView
           style={styles.scroll}
@@ -521,6 +544,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: textTokens.secondary,
     lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  subheadWithoutPayoutImpact: {
+    marginBottom: spacing.lg,
+  },
+  payoutImpact: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
     marginBottom: spacing.lg,
   },
   scroll: {

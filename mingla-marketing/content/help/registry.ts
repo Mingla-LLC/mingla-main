@@ -237,6 +237,11 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
         body:
           'No hosted page, no documents, no waiting for review. Choose your bank, type your ten-digit account number, tap verify. Paystack checks it against the bank and sends back the name on the account before you commit — so a wrong digit is caught before a payout goes anywhere.',
       },
+      {
+        title: 'What Mingla keeps',
+        body:
+          'Mingla keeps 4.5% of the ticket price on each paid sale (a 1.5% Mingla fee and a 3% service fee). You choose whether Buyers pay it on top. Mingla pays payment-provider card processing. Stripe’s automatic-tax fee (about 0.5%) is paid by you and shown separately.',
+      },
     ],
   },
   {
@@ -775,7 +780,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'An optional chip-in, not a ticket price',
         body:
-          'Turn on “Let guests chip in”, suggest an amount and set a minimum. Guests pay what they like, or nothing — it stays optional. Payouts are on from the moment you publish, with no extra setup.',
+          'Turn on “Let guests chip in”, suggest an amount and set a minimum. Guests pay what they like, or nothing — it stays optional. Chip-ins pay out about a day after each payment, once your bank is added.',
       },
       {
         title: 'Who can see what, then publish',

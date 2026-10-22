@@ -28,6 +28,7 @@ export function EntityListView({
   fetchPage,
   searchPlaceholder = "Search…",
   filters = [],
+  filterVariant = "dropdown",
   pageSize = 25,
   onRowClick,
   csv,
@@ -161,7 +162,29 @@ export function EntityListView({
           placeholder={searchPlaceholder}
           className="w-full sm:w-64"
         />
-        {filters.map((f) => {
+        {filterVariant === "chips" && filters.length === 1 ? (
+          <div className="flex w-full flex-wrap gap-2" role="group" aria-label={`Filter by ${filters[0].label.toLowerCase()}`}>
+            <button
+              type="button"
+              onClick={() => setFilter(filters[0].key, null)}
+              aria-pressed={!selectedFilters[filters[0].key]}
+              className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${!selectedFilters[filters[0].key] ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-text-primary)]" : "border-[var(--gray-200)] bg-white text-[var(--color-text-secondary)]"}`}
+            >
+              {filters[0].allLabel || "All"}
+            </button>
+            {filters[0].options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setFilter(filters[0].key, option.value)}
+                aria-pressed={selectedFilters[filters[0].key] === option.value}
+                className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${selectedFilters[filters[0].key] === option.value ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-text-primary)]" : "border-[var(--gray-200)] bg-white text-[var(--color-text-secondary)]"}`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : filters.map((f) => {
           const selectedLabel =
             f.options.find((o) => o.value === selectedFilters[f.key])?.label || f.label;
           return (

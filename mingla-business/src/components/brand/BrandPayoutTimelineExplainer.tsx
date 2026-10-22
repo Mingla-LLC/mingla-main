@@ -41,23 +41,23 @@ const STEPS: readonly Step[] = [
   {
     icon: "ticket",
     title: "A buyer pays",
-    body: "Each payout matures from when payment completes — not when the event ends.",
+    body: "The sale appears in Payments with the amount buyers paid and what you get.",
   },
   {
     icon: "clock",
     title: "About a day later, we release your payout",
-    body: "The hold covers the first day after payment. Refund and cancellation recovery after payout ships in a later update.",
+    body: "Mingla schedules the payout from the payment time, not the event date.",
   },
   {
     icon: "bank",
-    title: "Within 1–2 business days, it reaches your bank",
-    body: "Exact arrival depends on your bank.",
+    title: "It reaches your bank",
+    body: "Payments shows when it was sent and which bank is receiving it.",
   },
 ];
 
 const LEGEND: ReadonlyArray<{ term: string; def: string }> = [
-  { term: "Mingla fee", def: "Our platform fee, disclosed at checkout." },
-  { term: "Payment processing fee", def: "The card-processing cost on the sale." },
+  { term: "Mingla fee", def: "A flat 4.5%: 1.5% Mingla fee plus 3% service fee." },
+  { term: "Card processing", def: "Mingla pays this. It is never deducted from what you get." },
   { term: "Partner share", def: "Any revenue routed to a linked partner." },
   {
     term: "Bank transfer fee & stamp duty (Nigeria)",
@@ -101,7 +101,7 @@ export const BrandPayoutTimelineExplainer: React.FC<
           })}
         </View>
 
-        <Text style={styles.legendHeading}>What the deductions mean</Text>
+        <Text style={styles.legendHeading}>What Mingla keeps</Text>
         <View style={styles.legendList}>
           {LEGEND.map((item) => (
             <View key={item.term} style={styles.legendRow}>

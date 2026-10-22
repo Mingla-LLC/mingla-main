@@ -999,6 +999,7 @@ export default function EventDetailScreen(): React.ReactElement {
           payoutGbp={payoutGbp}
           paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
           onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
+          onOpenPayouts={() => event.brandId != null && router.push(`/brand/${event.brandId}/payments` as never)}
           coveredGbp={coveredGbp}
           currency={displayCurrency}
           readStatus={eventOrdersQuery.status}

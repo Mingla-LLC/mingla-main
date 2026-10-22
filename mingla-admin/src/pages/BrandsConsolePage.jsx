@@ -34,17 +34,11 @@ import {
 import { getBrandPayoutConsole } from "../services/adminMoneyService";
 import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
+import { formatMoneyMinor } from "../lib/moneyFormat";
 
 // Money formatter (cents + currency → string; never throws).
 function formatMoney(cents, currency) {
-  if (cents == null) return "—";
-  const code = (currency || "").toUpperCase();
-  const amount = Number(cents) / 100;
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: code || "USD" }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)}${code ? ` ${code}` : ""}`;
-  }
+  return formatMoneyMinor(cents, currency);
 }
 
 const TEAM_ROLE_OPTIONS = [
@@ -75,9 +69,11 @@ const ROLE_VARIANT = { brand_owner: "brand", brand_admin: "info", finance_manage
 const INVITE_VARIANT = { pending: "warning", accepted: "success", revoked: "error", expired: "default", declined: "error" };
 const TICKET_VARIANT = { open: "warning", pending: "info", resolved: "success", closed: "default" };
 
-function takeRate(bps) {
-  if (bps == null) return "default";
-  return `${bps / 100}%`;
+function minglaFeeLabel(bps) {
+  const takeBps = bps == null ? 150 : Number(bps);
+  const takePercent = takeBps / 100;
+  const totalPercent = (takeBps + 300) / 100;
+  return `Mingla fee: ${totalPercent}% (${takePercent}% take + 3% service)`;
 }
 
 function boolBadge(v) {
@@ -151,8 +147,8 @@ const COLUMNS = [
   },
   {
     key: "take_rate_bps_override",
-    label: "Take-rate",
-    render: (val) => <span className="text-sm">{takeRate(val)}</span>,
+    label: "Mingla fee",
+    render: (val) => <span className="text-sm">{minglaFeeLabel(val)}</span>,
   },
   {
     key: "payment_provider",
@@ -297,7 +293,7 @@ function buildBrandSections(detail, callbacks) {
           b.default_currency ? <span className="text-[var(--color-text-tertiary)]">{b.default_currency}</span> : "—",
         ),
         field("Pricing region", b.pricing_region),
-        field("Take-rate", takeRate(b.take_rate_bps_override)),
+        field("Mingla fee", minglaFeeLabel(b.take_rate_bps_override)),
         field("Payment provider", b.payment_provider),
         field("Payment country", b.payment_country),
         field("Stripe connect id", b.stripe_connect_id, (v) => <span className="font-mono text-xs break-all">{v}</span>),
@@ -446,16 +442,35 @@ function buildBrandSections(detail, callbacks) {
 // outstanding debt, recent payout + debt history). Read-only; the pause/resume
 // action lives in the footer.
 const RELEASE_STATUS_VARIANT = {
-  released: "success",
-  in_flight: "info",
-  pending: "warning",
+  paid: "success",
+  on_its_way: "info",
+  scheduled: "info",
+  sending_today: "info",
+  waiting_for_bank: "warning",
+  late_on_us: "warning",
+  needs_you: "warning",
+  couldnt_send: "error",
+  paused: "default",
+  cancelled: "default",
+};
+const RELEASE_STATUS_LABEL = {
+  paid: "Paid",
+  on_its_way: "On its way",
+  scheduled: "Scheduled",
+  sending_today: "Sending today",
+  waiting_for_bank: "Waiting for bank",
+  late_on_us: "Late, on us",
+  needs_you: "Needs you",
+  couldnt_send: "Couldn't send",
+  paused: "Paused",
+  cancelled: "Refunded to buyers",
 };
 
 function buildPayoutSection(console) {
   const pause = console.pause || {};
   const balances = console.balances || [];
   const debts = console.debts || [];
-  const releaseHistory = console.release_history || [];
+  const releaseHistory = console.payout_screen_rows || [];
   const debtHistory = console.debt_history || [];
   const fields = [
     field("Payouts paused", null, () =>
@@ -470,7 +485,9 @@ function buildPayoutSection(console) {
       ),
     ),
     field("Next payout", console.next_payout_at, (v) =>
-      v ? formatDateTime(v) : <span className="text-[var(--color-text-muted)]">—</span>,
+      pause.paused
+        ? <span className="text-[var(--color-text-muted)]">Paused</span>
+        : v ? formatDateTime(v) : <span className="text-[var(--color-text-muted)]">—</span>,
     ),
     field("Balance by currency", null, () =>
       balances.length === 0 ? (
@@ -480,12 +497,12 @@ function buildPayoutSection(console) {
           {balances.map((b) => (
             <span key={b.currency} className="text-xs break-all">
               <span className="font-medium">{(b.currency || "").toUpperCase()}</span>
-              {": "}on its way {formatMoney(b.pending_net_cents, b.currency)}
-              {" · in flight "}{formatMoney(b.in_flight_cents, b.currency)}
+              {": "}coming to host {formatMoney(
+                Number(b.pending_net_cents || 0) + Number(b.in_flight_cents || 0) + Number(b.blocked_cents || 0),
+                b.currency,
+              )}
               {" · paid "}{formatMoney(b.released_cents, b.currency)}
-              {Number(b.blocked_cents) > 0 && <span className="text-[var(--color-warning-700)]"> · blocked {formatMoney(b.blocked_cents, b.currency)}</span>}
               {Number(b.admin_paused_cents) > 0 && <span className="text-[var(--color-error-700)]"> · held (paused) {formatMoney(b.admin_paused_cents, b.currency)}</span>}
-              {Number(b.waiting_for_bank_cents) > 0 && <span className="text-[var(--color-text-tertiary)]"> · waiting for bank {formatMoney(b.waiting_for_bank_cents, b.currency)}</span>}
             </span>
           ))}
         </div>
@@ -516,13 +533,13 @@ function buildPayoutSection(console) {
         <div className="flex flex-col gap-1">
           {releaseHistory.map((h) => (
             <span key={h.id} className="flex flex-wrap items-center gap-1.5 text-xs">
-              <Badge variant={RELEASE_STATUS_VARIANT[h.status] || "default"}>{h.status}</Badge>
-              <span className="font-medium">{formatMoney(h.net_release_cents, h.currency)}</span>
+              <Badge variant={RELEASE_STATUS_VARIANT[h.status] || "default"}>{RELEASE_STATUS_LABEL[h.status] || h.status}</Badge>
+              <span className="font-medium">{formatMoney(h.host_gets_cents, h.currency)}</span>
               {h.provider && <span className="text-[var(--color-text-tertiary)]">{h.provider}</span>}
               <span className="text-[var(--color-text-tertiary)]">
-                {h.released_at ? `paid ${formatDate(h.released_at)}` : `due ${formatDate(h.releasable_at)}`}
+                {h.released_at ? `paid ${formatDate(h.released_at)}` : `due ${formatDate(h.due_at)}`}
               </span>
-              {h.error_message && <span className="text-[var(--color-error-700)]">{h.error_message}</span>}
+              {h.why && <span className="text-[var(--color-warning-700)]">{h.why}</span>}
             </span>
           ))}
         </div>

@@ -263,6 +263,23 @@ jest.mock("../../../hooks/useBrandStripeTaxAccountSession", () => ({
 jest.mock("../../../hooks/useBrandStripeAccountSession", () => ({
   useBrandStripeAccountSession: () => mockIdleMutation,
 }));
+jest.mock("../../../hooks/useBrandPayoutScreen", () => ({
+  // [TEST-MOD-APPROVED #3645] This suite owns the route permission boundary,
+  // not payout read-model parsing; keep the new overview deterministic.
+  useBrandPayoutScreen: () => ({
+    data: {
+      currency: "USD",
+      payoutsPaused: false,
+      salesThisWeekCents: 0,
+      comingToYouCents: 0,
+      paidThisMonthCents: 0,
+      releases: [],
+    },
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+}));
 
 jest.mock("../../../hooks/useBrandPaystack", () => {
   const idle = {
@@ -466,40 +483,28 @@ function respondForbidden(): void {
  * leg — the single most important anti-vacuity rule here.
  */
 const PAYMENT_CONTROL_MATCHERS: readonly RegExp[] = [
-  /DANGER ZONE/,
-  // [TEST-MOD-APPROVED #3645] was /Disconnect Stripe/: host copy no longer names the payment provider.
-  /Disconnect bank/,
-  /Manage payouts & tax/,
+  // [TEST-MOD-APPROVED #3645] the approved overview replaces legacy Stripe
+  // balance, bank-section and danger-zone controls with these host actions.
+  /Download payouts CSV/,
+  /How payouts work/,
   /Tax & registrations/,
-  /Export finance report/,
-  /^AVAILABLE$/,
-  /^PENDING$/,
-  /^LAST PAYOUT$/,
   /Connect your bank to get paid/,
   /^Connect bank$/,
 ];
 
 /** Live when the brand's Stripe account is active. */
 const LIVE_WHEN_ACTIVE: readonly RegExp[] = [
-  /DANGER ZONE/,
-  // [TEST-MOD-APPROVED #3645] was /Disconnect Stripe/: host copy no longer names the payment provider.
-  /Disconnect bank/,
-  /Manage payouts & tax/,
+  /Download payouts CSV/,
+  /How payouts work/,
   /Tax & registrations/,
-  /Export finance report/,
-  /^AVAILABLE$/,
-  /^PENDING$/,
-  /^LAST PAYOUT$/,
 ];
 
 /** Live when the brand has not connected Stripe yet. */
 const LIVE_WHEN_NOT_CONNECTED: readonly RegExp[] = [
   /Connect your bank to get paid/,
   /^Connect bank$/,
-  /Export finance report/,
-  /^AVAILABLE$/,
-  /^PENDING$/,
-  /^LAST PAYOUT$/,
+  /Download payouts CSV/,
+  /How payouts work/,
 ];
 
 /**
@@ -510,11 +515,8 @@ const LIVE_WHEN_NOT_CONNECTED: readonly RegExp[] = [
  * be opened by a stale ref.
  */
 const PAYMENT_CONTROL_TEST_IDS: readonly string[] = [
-  "payout-breakdown",
+  "payout-overview",
   "detach-sheet",
-  "bank-section",
-  "kyc-card",
-  "deadline-banner",
   "orphaned-refunds",
 ];
 
@@ -589,8 +591,8 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
   it("0. the matcher and role tables are non-empty and cover the SPEC's enumeration", () => {
     // Anti-vacuity floor: deleting entries fails HERE, before any loop below
     // can run zero times and report a green tick.
-    expect(PAYMENT_CONTROL_MATCHERS.length).toBeGreaterThanOrEqual(8);
-    expect(PAYMENT_CONTROL_TEST_IDS.length).toBeGreaterThanOrEqual(6);
+    expect(PAYMENT_CONTROL_MATCHERS.length).toBeGreaterThanOrEqual(5);
+    expect(PAYMENT_CONTROL_TEST_IDS.length).toBeGreaterThanOrEqual(3);
     expect(DENIED_ROLES).toHaveLength(3);
     expect(ALLOWED_ROLES).toHaveLength(3);
   });
@@ -634,9 +636,8 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
     // Rule 4 again, for the text-less controls: each testID asserted ABSENT for
     // a denied role must be PRESENT for an allowed one, or the absence proves
     // nothing. `bank-section` and `detach-sheet` are live on an active brand;
-    // `kyc-card`/`deadline-banner`/`orphaned-refunds` are status-conditional and
-    // are covered by the not-connected and stale-role legs.
-    for (const id of ["payout-breakdown", "detach-sheet", "bank-section"]) {
+    // `orphaned-refunds` is status-conditional and covered by stale-role legs.
+    for (const id of ["payout-overview", "detach-sheet"]) {
       await waitFor(() => {
         expect({ id, found: tree.queryAllByTestId(id).length > 0 })
           .toEqual({ id, found: true });
@@ -671,7 +672,7 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
       };
       const tree = await mount(BrandPaymentsRoute);
       await waitFor(() => {
-        expect(present(tree, /DANGER ZONE/)).toBe(true);
+        expect(tree.queryAllByTestId("payout-overview").length).toBeGreaterThan(0);
       });
       expect(present(tree, new RegExp(BRAND_PAYMENTS_DENIED_TITLE))).toBe(false);
     },

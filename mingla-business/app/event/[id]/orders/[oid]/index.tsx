@@ -29,7 +29,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   accent,
   canvas,
-  glass,
   radius as radiusTokens,
   semantic,
   spacing,
@@ -41,9 +40,12 @@ import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRo
 import { formatCurrency } from "../../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../../src/utils/deferAfterDismiss";
 import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
+import { useBrandPayoutScreen } from "../../../../../src/hooks/useBrandPayoutScreen";
+import { PAYOUT_STATE_COPY } from "../../../../../src/utils/payoutScreen";
 import { isCompOrder } from "../../../../../src/utils/compOrders";
 import { useCurrentBrandRole } from "../../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../../src/utils/permissionGates";
+import { canViewBrandPayments } from "../../../../../src/utils/brandPaymentsPermission";
 
 import { Button } from "../../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../../src/components/ui/EmptyState";
@@ -134,7 +136,7 @@ const statusBannerSpec = (
         borderColor: "rgba(34, 197, 94, 0.32)",
         iconName: "check",
         iconColor: "#34c759",
-        copy: currency === null ? "Free order · confirmed" : "Paid · settles in 3–5 days",
+        copy: currency === null ? "Free order · confirmed" : "Paid · payout scheduled about a day after payment",
       };
     case "refunded_full":
       return {
@@ -208,6 +210,18 @@ export default function OrderDetailRoute(): React.ReactElement {
     typeof orderId === "string" ? orderId : null,
   );
   const order = orderQuery.data ?? null;
+  const paymentRole = useCurrentBrandRole(order?.brandId ?? null);
+  const payoutScreen = useBrandPayoutScreen(
+    canViewBrandPayments({ role: paymentRole.role, accepted: paymentRole.accepted })
+      ? order?.brandId ?? null
+      : null,
+  );
+  const linkedPayout = payoutScreen.data?.releases.find((release) =>
+    release.items.some((item) => item.sourceType === "order" && item.sourceId === orderId)
+  ) ?? null;
+  const linkedSale = linkedPayout?.items.find((item) =>
+    item.sourceType === "order" && item.sourceId === orderId
+  ) ?? null;
   const routeEvent = useManagedEventRoute(
     typeof eventId === "string" ? eventId : null,
   );
@@ -230,7 +244,7 @@ export default function OrderDetailRoute(): React.ReactElement {
   // ORCH-0787: caller permission must be derived BEFORE any early returns to satisfy
   // Rules of Hooks. brandId may be empty while order is loading; canPerformAction
   // returns false on null/empty rank which gates the buttons off until order resolves.
-  const { rank: callerRank } = useCurrentBrandRole(orderQuery.data?.brandId ?? null);
+  const callerRank = paymentRole.rank;
   const canRefund = canPerformAction(callerRank, "REFUND_ORDER");
   // issue #3827 Q10 — resend runs through guest-list `resend`, whose server
   // gate is event manager and above.
@@ -412,11 +426,19 @@ export default function OrderDetailRoute(): React.ReactElement {
     );
   }
 
-  const banner = statusBannerSpec(
+  const baseBanner = statusBannerSpec(
     order.status,
     order.refundedAmountGbp,
     order.currency,
   );
+  const payoutBannerCopy = linkedPayout === null || order.status !== "paid"
+    ? null
+    : linkedPayout.hostState === "paid" && linkedPayout.releasedAt !== null
+      ? `Paid · in your payout of ${new Date(linkedPayout.releasedAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}`
+      : linkedPayout.hostState === "scheduled"
+        ? `Paid · payout scheduled for ${new Date(linkedPayout.dueAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}`
+        : `Paid · payout: ${PAYOUT_STATE_COPY[linkedPayout.hostState].label.toLowerCase()}`;
+  const banner = payoutBannerCopy === null ? baseBanner : { ...baseBanner, copy: payoutBannerCopy };
   const hue = hashStringToHue(order.id);
   const initials = getInitials(order.buyer.name);
 
@@ -488,7 +510,14 @@ export default function OrderDetailRoute(): React.ReactElement {
               </Text>
             </View>
           </View>
-          <View
+          <Pressable
+            disabled={linkedPayout === null}
+            onPress={() => linkedPayout === null
+              ? undefined
+              : router.push(`/brand/${order.brandId}/payments/${linkedPayout.id}` as never)}
+            accessibilityRole={linkedPayout === null ? undefined : "button"}
+            accessibilityLabel={linkedPayout === null ? banner.copy : `${banner.copy}. Open payout`}
+            accessibilityHint={linkedPayout === null ? undefined : "Opens the payout containing this order"}
             style={[
               styles.statusBanner,
               {
@@ -505,7 +534,7 @@ export default function OrderDetailRoute(): React.ReactElement {
             <Text style={styles.statusCopy} numberOfLines={2}>
               {banner.copy}
             </Text>
-          </View>
+          </Pressable>
         </GlassCard>
 
         {/* Lines table */}
@@ -578,6 +607,23 @@ export default function OrderDetailRoute(): React.ReactElement {
             last
           />
         </GlassCard>
+
+        {linkedPayout !== null && linkedSale !== null ? (
+          <Pressable
+            onPress={() => router.push(`/brand/${order.brandId}/payments/${linkedPayout.id}` as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Open payout money breakdown"
+          >
+            <GlassCard variant="base" padding={spacing.md} style={styles.lines}>
+              <Text style={styles.sectionLabel}>Money</Text>
+              <DetailRow label="Buyers paid" value={formatCurrency(linkedSale.grossCents, linkedPayout.currency, true)} />
+              <DetailRow label="Mingla fee" value={`−${formatCurrency(linkedSale.minglaFeeCents, linkedPayout.currency, true)}`} />
+              <DetailRow label="Card processing" value="Mingla pays" />
+              <DetailRow label="You get" value={formatCurrency(linkedSale.netCents, linkedPayout.currency, true)} bold last />
+              <Text style={styles.cancelLedgerCopy}>See its payout →</Text>
+            </GlassCard>
+          </Pressable>
+        ) : null}
 
         {/* Refund ledger — only when refunds exist */}
         {order.refunds.length > 0 ? (
@@ -678,6 +724,11 @@ export default function OrderDetailRoute(): React.ReactElement {
           mode={refundSheetMode}
           order={order}
           refundTerms={refundTerms}
+          payoutImpact={linkedSale === null || linkedPayout === null ? undefined : {
+            grossCents: linkedSale.grossCents,
+            hostNetCents: linkedSale.netCents,
+            currency: linkedPayout.currency,
+          }}
           onClose={() => setRefundSheetMode(null)}
           onSuccess={(amountGbp) => {
             // #1360: close the sheet FIRST, then defer the confirmation toast

@@ -80,8 +80,8 @@ const ROWS: SwitchRowDef[] = [
   {
     key: "passMinglaFee",
     label: "Mingla fee",
-    passLabel: "Add to price",
-    absorbLabel: "I'll cover it",
+    passLabel: "Buyers pay it",
+    absorbLabel: "I cover it",
     subPassed: "Buyers cover the Mingla fee.",
     subAbsorbed: "You cover the Mingla fee.",
     lockedPassed: "Added to price",
@@ -90,8 +90,8 @@ const ROWS: SwitchRowDef[] = [
   {
     key: "passServiceFee",
     label: "Service fee",
-    passLabel: "Add to price",
-    absorbLabel: "I'll cover it",
+    passLabel: "Buyers pay it",
+    absorbLabel: "I cover it",
     subPassed: "Buyers cover the service fee.",
     subAbsorbed: "You cover the service fee.",
     lockedPassed: "Added to price",
@@ -174,7 +174,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
   // (no symbol) when the brand has no established currency. NEVER manufacture
   // GBP (a null flowing into formatCurrency would coerce to GBP).
   const money = (cents: number): string =>
-    currency !== null ? formatCurrency(cents, currency, true) : (cents / 100).toFixed(2);
+    currency !== null ? formatCurrency(cents, currency, true) : "";
   const hasPrice = Number.isFinite(previewBaseCents) && previewBaseCents > 0;
   const vatUnregistered = vatRegistered !== true;
 
@@ -287,7 +287,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
           accessibilityRole="summary"
           accessibilityLabel={`Buyer pays ${money(
             preview.buyerPaysCents,
-          )} all in. You keep ${money(
+          )} all in. You get per ticket ${money(
             preview.youKeepFloorCents,
           )} before VAT.`}
         >
@@ -300,7 +300,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
           </View>
           <View style={styles.previewDivider} />
           <View style={styles.previewCol}>
-            <Text style={styles.previewHead}>You keep</Text>
+            <Text style={styles.previewHead}>You get per ticket</Text>
             <Text style={styles.previewKeep}>
               {money(preview.youKeepFloorCents)}
             </Text>

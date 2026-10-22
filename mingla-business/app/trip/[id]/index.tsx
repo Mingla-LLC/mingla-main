@@ -674,6 +674,7 @@ export default function TripDashboardRoute(): React.ReactElement {
           payoutGbp={moneySummary.onlineNetMajor}
           paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
           onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
+          onOpenPayouts={() => trip.brandId != null && router.push(`/brand/${trip.brandId}/payments` as never)}
           currency={displayCurrency}
           readStatus={recordOrdersQuery.status}
           onRetry={() => void recordOrdersQuery.refetch()}

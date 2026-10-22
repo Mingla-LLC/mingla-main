@@ -172,6 +172,11 @@ export interface BusinessTodoInput {
    * no bank row (legacy fixtures).
    */
   payoutReady?: boolean;
+  /** Server-derived payout action. Absent on loading/error so the readiness fallback remains honest. */
+  payoutAttention?: {
+    kind: "add_bank" | "fix_bank" | "finish_stripe";
+    amountLabel?: string;
+  };
   /** At least one draft has a paid (non-free, >0) ticket — gates the Stripe row. */
   hasDraftPaidOffering: boolean;
   /** Route to the brand's Stripe payments screen. */
@@ -451,6 +456,29 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
       sublabel: input.hasDraftPaidOffering
         ? "You have a paid offering ready"
         : "Set up payouts so you can sell",
+      action: { kind: "route", route: input.stripeRoute },
+    });
+  } else if (input.payoutAttention?.kind === "add_bank") {
+    todos.push({
+      id: "add_bank_to_get_paid",
+      label: input.payoutAttention.amountLabel
+        ? `Add a bank to get ${input.payoutAttention.amountLabel}`
+        : "Add a bank to get paid",
+      sublabel: "Your sales are waiting. Takes about a minute.",
+      action: { kind: "route", route: input.stripeRoute },
+    });
+  } else if (input.payoutAttention?.kind === "fix_bank") {
+    todos.push({
+      id: "fix_bank_details",
+      label: "Fix your bank details",
+      sublabel: "Your payout couldn’t be sent.",
+      action: { kind: "route", route: input.stripeRoute },
+    });
+  } else if (input.payoutAttention?.kind === "finish_stripe") {
+    todos.push({
+      id: "finish_stripe_to_get_paid",
+      label: "Finish verification to get paid",
+      sublabel: "Our payment partner needs to confirm your details before it can pay you.",
       action: { kind: "route", route: input.stripeRoute },
     });
   } else if (input.payoutReady === false) {
