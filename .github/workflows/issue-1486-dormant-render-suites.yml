@@ -17,7 +17,7 @@
 # be invoked by a workflow, and every "runs under X" hand-off in
 # testPathIgnorePatterns must name a config CI actually runs. Adding a config
 # without adding it here turns that gate red.
-name: Issue #1486 Dormant Render Suites
+name: "Issue #1486 Dormant Render Suites"
 
 on:
   pull_request:

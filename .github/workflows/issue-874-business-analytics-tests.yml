@@ -1,4 +1,4 @@
-name: Issue #874 Business Analytics
+name: "Issue #874 Business Analytics"
 
 on:
   pull_request:

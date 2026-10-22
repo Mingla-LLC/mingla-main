@@ -17,7 +17,7 @@
 #
 # NOT a required check (not in ruleset 13549056 / 19508605) — it reports.
 
-name: Issue #1532 Stay manager UX
+name: "Issue #1532 Stay manager UX"
 
 on:
   pull_request:

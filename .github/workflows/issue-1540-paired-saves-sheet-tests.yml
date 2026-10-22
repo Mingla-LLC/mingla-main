@@ -1,4 +1,4 @@
-name: Issue #1540 Paired liked-cards sheet
+name: "Issue #1540 Paired liked-cards sheet"
 
 # Guards the #1540 fix: the paired-saves bottom sheet must keep mounting its
 # gorhom list as a DIRECT child of <BottomSheet> (scrollMode="flatlist"), and

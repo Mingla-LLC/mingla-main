@@ -20,7 +20,7 @@
 # NOT a required check (not in ruleset 13549056 / 19508605) — it reports, it
 # does not gate.
 
-name: Issue #1501 Add Rooms or Places
+name: "Issue #1501 Add Rooms or Places"
 
 on:
   pull_request:

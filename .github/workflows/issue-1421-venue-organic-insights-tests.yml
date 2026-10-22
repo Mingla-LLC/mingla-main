@@ -1,4 +1,4 @@
-name: Issue #1421 Venue Organic Insights
+name: "Issue #1421 Venue Organic Insights"
 
 on:
   pull_request:

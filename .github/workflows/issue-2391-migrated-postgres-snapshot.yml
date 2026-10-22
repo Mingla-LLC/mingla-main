@@ -1,4 +1,4 @@
-name: Issue #2391 migrated PostgreSQL snapshot integrity
+name: "Issue #2391 migrated PostgreSQL snapshot integrity"
 
 on:
   pull_request:

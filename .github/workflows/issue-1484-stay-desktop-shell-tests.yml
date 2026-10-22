@@ -12,7 +12,7 @@
 # NOT a required check (not in ruleset 13549056 / 19508605) — it reports, it
 # does not gate.
 
-name: Issue #1484 Stay Desktop Shell
+name: "Issue #1484 Stay Desktop Shell"
 
 on:
   pull_request:

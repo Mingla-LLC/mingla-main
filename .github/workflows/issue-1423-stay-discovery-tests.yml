@@ -1,4 +1,4 @@
-name: Issue #1423 Consumer Stay discovery
+name: "Issue #1423 Consumer Stay discovery"
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: Issue #2391 tester ordered suffix integrity
+name: "Issue #2391 tester ordered suffix integrity"
 
 on:
   pull_request:

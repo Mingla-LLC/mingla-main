@@ -1,4 +1,4 @@
-name: Issue #1403 Listing Insights
+name: "Issue #1403 Listing Insights"
 
 on:
   pull_request:
