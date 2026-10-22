@@ -219,6 +219,10 @@ test("B4 arrival mode fires ViewContent once before a choice", async () => {
   expect(() => wa.fireAdPageView()).not.toThrow();
   const fbq = win.fbq as unknown as { queue: unknown[][] };
   expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "ViewContent")).toHaveLength(1);
+  expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "PageView")).toHaveLength(1);
+  (win.location as { href: string }).href = "https://usemingla.com/e/brand/next-event";
+  wa.fireAdPageView();
+  expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "PageView")).toHaveLength(2);
   expect(win.ttq).toBeDefined();
   expect(win.snaptr).toBeDefined();
   expect(win.rdt).toBeDefined();

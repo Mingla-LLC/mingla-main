@@ -174,6 +174,7 @@ declare global {
     rdt?: ((...args: unknown[]) => void) & { callQueue?: unknown[] };
     __minglaAdPixelConsentMode?: AdPixelConsentMode;
     __minglaAdPixelsBootstrapped?: boolean;
+    __minglaAdPageViewKeys?: Record<string, true>;
     __minglaAdViewContentKeys?: Record<string, true>;
   }
 }
@@ -635,6 +636,15 @@ function safePixel(fn: () => void): void {
   }
 }
 
+function currentAdPageViewKey(): string {
+  return window.location.href.split("#", 1)[0];
+}
+
+function markAdPageViewFired(): void {
+  const keys = window.__minglaAdPageViewKeys ??= {};
+  keys[currentAdPageViewKey()] = true;
+}
+
 function definedProps(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of Object.keys(obj)) {
@@ -746,6 +756,10 @@ function bootstrapAdPixels(): void {
   if (adPixelIds.tiktok) safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
   if (adPixelIds.snap) safePixel(() => bootstrapSnapPixel(adPixelIds.snap as string));
   if (adPixelIds.reddit) safePixel(() => bootstrapRedditPixel(adPixelIds.reddit as string));
+  // Every provider bootstrap above emits its page-view event. Mark this exact
+  // browser URL so the hydrated route effect cannot count the same landing a
+  // second time. A later SPA navigation has a different href and still fires.
+  markAdPageViewFired();
 }
 
 /** True while tracking is allowed and the arrival-time pixel boot ran. */
@@ -792,6 +806,10 @@ function stopAdPixels(): void {
 /** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
 export function fireAdPageView(): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
+  const keys = window.__minglaAdPageViewKeys ??= {};
+  const key = currentAdPageViewKey();
+  if (keys[key]) return;
+  keys[key] = true;
   safePixel(() => window.fbq?.("track", "PageView"));
   safePixel(() => window.ttq?.page?.());
   safePixel(() => window.snaptr?.("track", "PAGE_VIEW"));

@@ -151,6 +151,7 @@ describe("#3697 public arrival runtime", () => {
     expect(html).toContain("keepalive:true");
     expect(html).toContain("__minglaEarlyEngagementCaptured");
     expect(html).toContain("__minglaAdPixelsBootstrapped");
+    expect(html).toContain("__minglaAdPageViewKeys");
     expect(html).toContain("content_ids:[c.contentId]");
     expect(html).toContain("content_id:c.contentId");
     expect(html).toContain("item_ids:[c.contentId]");
@@ -186,6 +187,9 @@ describe("#3697 public arrival runtime", () => {
   test("writes an early opt-out in the hydrated app's canonical JSON format", () => {
     const runtime = runArrivalRuntime();
     expect(runtime.window.__minglaAdPixelsBootstrapped).toBe(true);
+    expect(runtime.window.__minglaAdPageViewKeys).toEqual({
+      "https://business.usemingla.com/e/acme/signal-night": true,
+    });
     runtime.elements.out.onclick?.();
     expect(JSON.parse(runtime.storage.get("mingla_consent_v1") ?? "{}"))
       .toMatchObject({ choice: "denied" });
