@@ -460,6 +460,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
               : undefined
           }
           canEditPrice={canEditTicketPrice}
+          brandId={draft.brandId}
           eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
           eventId={coverMediaEventId}
           privateLinksEnabled={editMode !== undefined}

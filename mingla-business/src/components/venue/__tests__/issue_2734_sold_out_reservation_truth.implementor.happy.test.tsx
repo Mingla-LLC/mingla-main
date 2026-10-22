@@ -46,6 +46,27 @@ jest.mock("../../../hooks/usePublicVenueAvailability", () => ({
 
 jest.mock("../../../services/venueGuestReservationService", () => ({
   __esModule: true,
+  GuestReservationReviewError: class GuestReservationReviewError extends Error {},
+  previewGuestVenueReservation: async () => ({
+    kind: "preview",
+    depositListCents: 0,
+    discountCents: 0,
+    depositNetCents: 0,
+    feesAndTaxCents: 0,
+    totalCents: 0,
+    currency: "USD",
+    discounts: [],
+    codeOutcome: {
+      status: "none",
+      reason: null,
+      required: null,
+      with: null,
+      replaced: [],
+    },
+    notices: [],
+    quoteDigest: "legacy-test-preview",
+    requiresPayment: false,
+  }),
   createGuestVenueReservation: (input: unknown) => mockCreateReservation(input),
 }));
 

@@ -17,7 +17,7 @@
  * is no new StepBodyProps field for a host to forget to pass.
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -42,8 +42,11 @@ import { GlassCard } from "../ui/GlassCard";
 import { ExtraGuestsField } from "../ui/ExtraGuestsField";
 import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 import { Icon } from "../ui/Icon";
+import { captureDiscountEvent } from "../../analytics/discountAnalytics";
 
 import { type StepBodyProps } from "./types";
+
+const loadDiscountService = () => import("../../services/discountService");
 
 // issue #3284 — design §4.5 organiser copy (event variants).
 const REFUND_HELPER_PAID =
@@ -102,16 +105,25 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
     </View>
     <View style={[styles.toggleTrack, on && styles.toggleTrackOn]}>
       <View
-        style={[styles.toggleThumb, on ? styles.toggleThumbOn : styles.toggleThumbOff]}
+        style={[
+          styles.toggleThumb,
+          on ? styles.toggleThumbOn : styles.toggleThumbOff,
+        ]}
       />
     </View>
   </Pressable>
 );
 
-export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
+export interface CreatorStep6SettingsProps extends StepBodyProps {
+  /** Present only after publish; the create wizard deliberately omits it. */
+  publishedEventId?: string;
+}
+
+export const CreatorStep6Settings: React.FC<CreatorStep6SettingsProps> = ({
   draft,
   updateDraft,
   editMode,
+  publishedEventId,
 }) => {
   // #1931 — Private ticket sales are not ready. The row stays VISIBLE but disabled, and a
   // legacy draft already stored as `private` stays SELECTED rather than being silently
@@ -120,7 +132,50 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
   // Q1 (#3827) — "Hide remaining count" is locked on while the list is
   // private. An older private event saved before this rule keeps an unlocked
   // switch showing its real state; turning it on then locks it.
-  const hideRemainingLocked = draft.privateGuestList && draft.hideRemainingCount;
+  const hideRemainingLocked =
+    draft.privateGuestList && draft.hideRemainingCount;
+  const [discountsAllowed, setLocalDiscountsAllowed] = useState(true);
+  const [discountsPending, setDiscountsPending] = useState(false);
+
+  useEffect(() => {
+    if (publishedEventId === undefined) return;
+    let active = true;
+    void loadDiscountService()
+      .then(({ fetchDiscountsAllowed }) =>
+        fetchDiscountsAllowed("event", publishedEventId),
+      )
+      .then((allowed) => {
+        if (active) setLocalDiscountsAllowed(allowed);
+      })
+      .catch(() => {
+        // The database defaults to allowed. Keep that honest default and let
+        // an explicit write surface any connectivity problem to the Host.
+      });
+    return () => {
+      active = false;
+    };
+  }, [publishedEventId]);
+
+  const handleDiscountsAllowed = useCallback((): void => {
+    if (publishedEventId === undefined || discountsPending) return;
+    const next = !discountsAllowed;
+    setLocalDiscountsAllowed(next);
+    setDiscountsPending(true);
+    void loadDiscountService()
+      .then(({ setDiscountsAllowed }) =>
+        setDiscountsAllowed("event", [publishedEventId], next),
+      )
+      .then(() =>
+        captureDiscountEvent("discount_allow_toggled", {
+          item_kind: "event",
+          allowed: next,
+        }),
+      )
+      .catch(() => {
+        setLocalDiscountsAllowed(!next);
+      })
+      .finally(() => setDiscountsPending(false));
+  }, [discountsAllowed, discountsPending, publishedEventId]);
 
   const handleSelectVisibility = useCallback(
     (visibility: DraftEventVisibility): void => {
@@ -159,7 +214,10 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
             onChange={handleRefundPolicyChange}
           />
         </GlassCard>
-        <Text style={styles.visibilityHelper} testID="event-settings-refund-helper">
+        <Text
+          style={styles.visibilityHelper}
+          testID="event-settings-refund-helper"
+        >
           {hasPaidTicket ? REFUND_HELPER_PAID : REFUND_HELPER_ALL_FREE}
         </Text>
         {soldTotal > 0 ? (
@@ -225,7 +283,9 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
             : VISIBILITY_HELPERS[draft.visibility]}
         </Text>
         {!privateSelectable && draft.visibility !== "private" ? (
-          <Text style={styles.visibilityHelper}>{PRIVATE_NOT_READY_HELPER}</Text>
+          <Text style={styles.visibilityHelper}>
+            {PRIVATE_NOT_READY_HELPER}
+          </Text>
         ) : null}
       </View>
 
@@ -233,7 +293,9 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
         label="Require approval to buy"
         sub="Manually approve every order."
         on={draft.requireApproval}
-        onToggle={() => updateDraft({ requireApproval: !draft.requireApproval })}
+        onToggle={() =>
+          updateDraft({ requireApproval: !draft.requireApproval })
+        }
       />
 
       <ToggleRow
@@ -292,6 +354,25 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
           })
         }
       />
+      {draft.inPersonPaymentsEnabled ? (
+        <Text
+          style={styles.doorFullPriceNote}
+          testID="event-door-full-price-note"
+        >
+          Door sales are always full price.
+        </Text>
+      ) : null}
+
+      {publishedEventId !== undefined ? (
+        <ToggleRow
+          label="Allow discounts on this event"
+          sub="You choose which tickets and discounts are eligible."
+          on={discountsAllowed}
+          onToggle={handleDiscountsAllowed}
+          disabled={discountsPending}
+          testID="event-discounts-allowed"
+        />
+      ) : null}
     </View>
   );
 };
@@ -299,6 +380,14 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
 const styles = StyleSheet.create({
   field: {
     marginBottom: spacing.md,
+  },
+  doorFullPriceNote: {
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+    marginLeft: spacing.sm,
+    color: textTokens.secondary,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
   },
   fieldLabel: {
     fontSize: typography.caption.fontSize,

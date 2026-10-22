@@ -57,6 +57,7 @@ import {
   type RefundPrefillOfferingType,
 } from "../../utils/refundPolicyPrefill";
 import { randomId } from "../../utils/randomId";
+import { useRefundPreview } from "../../hooks/useRefundPreview";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -177,35 +178,44 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     [order.lines],
   );
 
-  // Computed total for partial refund
-  const partialTotalGbp = useMemo<number>(() => {
-    if (mode !== "partial") return 0;
-    return partialLines.reduce((sum, p) => {
-      const orderLine = order.lines.find(
-        (l) => l.ticketTypeId === p.ticketTypeId,
-      );
-      if (orderLine === undefined) return sum;
-      return sum + p.selectedQty * orderLine.unitPriceGbpAtPurchase;
-    }, 0);
-  }, [mode, partialLines, order.lines]);
-
-  // Total amount the operator is about to refund
-  const refundAmount = mode === "full"
-    ? order.totalGbpAtPurchase - order.refundedAmountGbp
-    : partialTotalGbp;
+  const previewLines = useMemo(
+    () => mode === "full"
+      ? order.lines
+          .filter((line) => line.quantity - line.refundedQuantity > 0)
+          .map((line) => ({
+            orderLineItemId: line.orderLineItemId ?? "",
+            quantity: line.quantity - line.refundedQuantity,
+          }))
+      : partialLines
+          .filter((line) => line.selectedQty > 0)
+          .map((line) => ({
+            orderLineItemId: order.lines.find(
+              (candidate) => candidate.ticketTypeId === line.ticketTypeId,
+            )?.orderLineItemId ?? "",
+            quantity: line.selectedQty,
+          })),
+    [mode, order.lines, partialLines],
+  );
+  const previewQuery = useRefundPreview(visible ? order.id : null, previewLines);
+  const previewAmountCents = previewQuery.data === undefined
+    ? 0
+    : mode === "full"
+      ? previewQuery.data.remainingCents
+      : previewQuery.data.amountCents;
+  const refundAmount = previewAmountCents / 100;
   const payoutRecoveryCents = payoutImpact === undefined || payoutImpact.grossCents <= 0
     ? null
     : Math.min(
         payoutImpact.hostNetCents,
-        Math.round(refundAmount * 100 * payoutImpact.hostNetCents / payoutImpact.grossCents),
+        Math.round(previewAmountCents * payoutImpact.hostNetCents / payoutImpact.grossCents),
       );
 
   const trimmedLen = reason.trim().length;
   const reasonValid =
     trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX;
 
-  const partialHasSelection = mode === "partial" && partialTotalGbp > 0;
-  const fullHasAmount = mode === "full" && refundAmount > 0;
+  const partialHasSelection = mode === "partial" && previewLines.length > 0;
+  const fullHasAmount = mode === "full" && previewLines.length > 0;
 
   // Cycle 13a J-T6 G3: Confirm CTA gated on REFUND_ORDER (finance_manager+).
   // Hooks run on every render before any early-return shell (ORCH-0710).
@@ -217,6 +227,13 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     reasonValid &&
     canRefund &&
     moneyCurrency !== null &&
+    !previewQuery.isPending &&
+    !previewQuery.isFetching &&
+    !previewQuery.isDebouncing &&
+    !previewQuery.isError &&
+    previewQuery.data !== undefined &&
+    previewQuery.data.withinRemaining &&
+    previewAmountCents > 0 &&
     (mode === "full" ? fullHasAmount : partialHasSelection);
 
   const handleStepperChange = useCallback(
@@ -241,30 +258,12 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
     // ORCH-0787: build refund-order edge function payload using order_line_items.id
     // (the server-side UUID). For full refunds, refund remaining qty on every line.
-    const lines =
-      mode === "full"
-        ? order.lines
-            .filter((l) => l.quantity - l.refundedQuantity > 0)
-            .map((l) => ({
-              orderLineItemId: l.orderLineItemId ?? "",
-              quantity: l.quantity - l.refundedQuantity,
-              amountCents: Math.round(
-                (l.quantity - l.refundedQuantity) * l.unitPriceGbpAtPurchase * 100,
-              ),
-            }))
-        : partialLines
-            .filter((p) => p.selectedQty > 0)
-            .map((p) => {
-              const orderLine = order.lines.find(
-                (l) => l.ticketTypeId === p.ticketTypeId,
-              );
-              const unitPrice = orderLine?.unitPriceGbpAtPurchase ?? 0;
-              return {
-                orderLineItemId: orderLine?.orderLineItemId ?? "",
-                quantity: p.selectedQty,
-                amountCents: Math.round(p.selectedQty * unitPrice * 100),
-              };
-            });
+    const lines = previewLines.map((line) => ({
+      ...line,
+      amountCents: previewQuery.data?.lines.find(
+        (priced) => priced.orderLineItemId === line.orderLineItemId,
+      )?.amountCents ?? 0,
+    }));
 
     // Defensive: if any line is missing orderLineItemId, the order pre-dates the
     // ORCH-0787 migration. Surface a clear error instead of calling the edge fn.
@@ -296,7 +295,8 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     canSubmit,
     mode,
     order,
-    partialLines,
+    previewLines,
+    previewQuery.data,
     refundMutation,
     reason,
     onSuccess,
@@ -309,7 +309,9 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   const title =
     mode === "full"
-      ? `Refund ${moneyCurrency === null ? "—" : formatCurrency(refundAmount, moneyCurrency)}?`
+      ? previewQuery.isPending || previewQuery.isFetching || previewQuery.isDebouncing
+        ? "Checking refund…"
+        : `Refund ${moneyCurrency === null ? "—" : formatCurrency(refundAmount, moneyCurrency)}?`
       : `Refund partial`;
 
   return (
@@ -364,7 +366,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                         {line.ticketNameAtPurchase}
                       </Text>
                       <Text style={styles.lineSubline}>
-                        {maxRefundable} remaining · {moneyCurrency === null ? "—" : formatCurrency(line.unitPriceGbpAtPurchase, moneyCurrency)} each
+                        {maxRefundable} remaining · Paid {moneyCurrency === null ? "—" : formatCurrency(line.unitPriceGbpAtPurchase, moneyCurrency)} each
+                        {line.listUnitPriceGbpAtPurchase !== undefined &&
+                        line.listUnitPriceGbpAtPurchase > line.unitPriceGbpAtPurchase
+                          ? ` (was ${formatCurrency(line.listUnitPriceGbpAtPurchase, moneyCurrency ?? "GBP")})`
+                          : ""}
                       </Text>
                     </View>
                     <View style={styles.stepper}>
@@ -417,7 +423,11 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Refund total</Text>
                 <Text style={styles.summaryValueBold}>
-                  {moneyCurrency === null ? "—" : formatCurrency(partialTotalGbp, moneyCurrency)}
+                  {previewQuery.isPending || previewQuery.isFetching || previewQuery.isDebouncing
+                    ? "Checking…"
+                    : moneyCurrency === null
+                      ? "—"
+                      : formatCurrency(refundAmount, moneyCurrency)}
                 </Text>
               </View>
             </View>
@@ -486,6 +496,12 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
         {/* Sticky bottom CTAs */}
         <View style={styles.actions}>
+          {previewQuery.isError ? (
+            <View style={styles.previewError}>
+              <Text style={styles.errorCaption}>Couldn&apos;t price this refund — try again</Text>
+              <Button label="Try again" variant="secondary" size="sm" onPress={() => void previewQuery.refetch()} />
+            </View>
+          ) : null}
           {errorMessage !== null ? (
             <Text style={styles.errorCaption} accessibilityRole="text">
               {errorMessage}
@@ -501,7 +517,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             variant="destructive"
             size="lg"
             fullWidth
-            loading={submitting}
+            loading={submitting || previewQuery.isFetching || previewQuery.isDebouncing}
             disabled={!canSubmit}
             accessibilityLabel="Send refund"
           />
@@ -554,6 +570,10 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
     marginBottom: spacing.lg,
+  },
+  previewError: {
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
   scroll: {
     flex: 1,

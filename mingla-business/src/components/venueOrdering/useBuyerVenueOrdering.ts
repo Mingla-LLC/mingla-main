@@ -46,6 +46,7 @@ import {
   VenueOrderError,
   venueOrderGuestAction,
 } from "../../services/venueOrderingService";
+import { captureWeb } from "../../analytics/webAnalytics";
 
 const STATUS_POLL_INTERVAL_MS = 5000;
 
@@ -248,6 +249,33 @@ export function useBuyerVenueOrdering(
           : previewQuery.data !== undefined
             ? "ready"
             : "loading";
+  const discountAnalyticsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const preview = previewQuery.data;
+    if (preview === undefined || previewStatus !== "ready") return;
+    const digest = preview.quoteDigest ?? priceSignature;
+    const captureOnce = (event: string, suffix: string, properties: Readonly<Record<string, string | number>>): void => {
+      const key = `${digest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      captureWeb(event, properties);
+    };
+    if (preview.codeOutcome.supplied && preview.codeOutcome.applied) {
+      captureOnce("discount_code_applied", "code", { surface: "web_venue" });
+    } else if (preview.codeOutcome.supplied && preview.codeOutcome.reason !== null) {
+      captureOnce("discount_code_rejected", preview.codeOutcome.reason, {
+        reason: preview.codeOutcome.reason,
+        surface: "web_venue",
+      });
+    }
+    const automaticCount = preview.discounts.filter((row) => row.kind === "automatic").length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "web_venue",
+      });
+    }
+  }, [previewQuery.data, previewStatus, priceSignature]);
 
   const [live, setLive] = useState<VenueOrderLiveStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);

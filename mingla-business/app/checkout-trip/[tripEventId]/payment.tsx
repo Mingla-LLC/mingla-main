@@ -89,15 +89,8 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import {
-  formatQuoteMoney,
-  TicketCheckoutReviewPanel,
-  TicketQuoteSummary,
-} from "../../../src/components/checkout/TicketQuoteSummary";
-import {
-  tripFunnelTotalSteps,
-  tripPaymentStepIndex,
-} from "./tripFunnelSteps";
+import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
+import { tripFunnelTotalSteps, tripPaymentStepIndex } from "./tripFunnelSteps";
 // issue #3351 [free trip intake loop] — the flattener and the presence probe
 // both live in the step-order owner now, so the trip route holds exactly one
 // copy of each.
@@ -110,6 +103,16 @@ import {
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
+);
+const TicketCheckoutReviewPanel = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketCheckoutReviewPanel }),
+  ),
+);
+const TicketQuoteSummary = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketQuoteSummary }),
+  ),
 );
 
 export default function CheckoutTripPaymentScreen(): React.ReactElement {
@@ -134,9 +137,8 @@ function CheckoutTripPaymentScreenContent({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ tripEventId: string }>();
-  const tripEventId = typeof params.tripEventId === "string"
-    ? params.tripEventId
-    : null;
+  const tripEventId =
+    typeof params.tripEventId === "string" ? params.tripEventId : null;
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
@@ -180,7 +182,11 @@ function CheckoutTripPaymentScreenContent({
         (candidate) => candidate.ticketTypeId === line.ticketTypeId,
       );
       if (tier?.installmentSchedule == null || line.quantity < 1) return [];
-      const schedule = projectInstallmentSchedule(tier, new Date(), line.quantity);
+      const schedule = projectInstallmentSchedule(
+        tier,
+        new Date(),
+        line.quantity,
+      );
       return schedule === null ? [] : [{ line, tier, schedule }];
     });
   }, [lines, trip]);
@@ -188,15 +194,18 @@ function CheckoutTripPaymentScreenContent({
   // uses this as money authority; each line below owns its own schedule.
   const projectedSchedule = planLines[0]?.schedule ?? null;
   const isPlanActive = planLines.length > 0;
-  const planChoiceByTier = React.useMemo<Record<string, "full" | "installments">>(
-    () => Object.fromEntries(
-      lines.map((line) => [
-        line.ticketTypeId,
-        Platform.OS === "web"
-          ? line.paymentPlanChoice ?? "full"
-          : paymentPlanChoice,
-      ]),
-    ),
+  const planChoiceByTier = React.useMemo<
+    Record<string, "full" | "installments">
+  >(
+    () =>
+      Object.fromEntries(
+        lines.map((line) => [
+          line.ticketTypeId,
+          Platform.OS === "web"
+            ? (line.paymentPlanChoice ?? "full")
+            : paymentPlanChoice,
+        ]),
+      ),
     [lines, paymentPlanChoice],
   );
   const installmentPlanLines = planLines.filter(
@@ -241,9 +250,10 @@ function CheckoutTripPaymentScreenContent({
   // because nothing renders from it and it must be readable synchronously by
   // the very next Pay tap. Keyed by a fingerprint of what is actually being
   // bought, so it can only ever be replayed for the SAME cart.
-  const providerHandoffRef = useRef<
-    { fingerprint: string; handoff: TicketCheckoutProviderHandoff } | null
-  >(null);
+  const providerHandoffRef = useRef<{
+    fingerprint: string;
+    handoff: TicketCheckoutProviderHandoff;
+  } | null>(null);
   const cartFingerprint = JSON.stringify({
     eventId: tripEventId,
     email: buyer.email.trim().toLowerCase(),
@@ -348,33 +358,157 @@ function CheckoutTripPaymentScreenContent({
     }
   }, [router, tripEventId]);
 
-  const handlePay = useCallback(async (
-    acceptedQuote?: TicketQuote,
-  ): Promise<void> => {
-    if (processing) return;
-    if (tripEventId === null) return;
-    const activeQuote = acceptedQuote ?? quote;
-    if (activeQuote === null || (acceptedQuote === undefined && quoteStatus !== "ready")) return;
-    // ORCH-1192 — fire `checkout_started` ONCE per attempt at the top of
-    // handlePay (the `processing` early-return guards re-render/double-tap
-    // double-fire), BEFORE the web hosted-redirect or native PaymentSheet opens
-    // and BEFORE the purchase_completed success capture. value reflects the
-    // server-computed all-in preview when available. capture() no-ops on web
-    // (native postHogService is a web no-op) and when opted out / key absent.
-    postHogService.capture("checkout_started", {
-      event_id: tripEventId,
-      offering_type: "trip",
-      value: activeQuote.buyerTotalCents / 100,
-      currency: activeQuote.currency,
-      surface: "business_app",
-    });
-    // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
-    // with the server-computed all-in (incl. tax, venue-sourced). The buyer
-    // never types an address.
+  const handlePay = useCallback(
+    async (acceptedQuote?: TicketQuote): Promise<void> => {
+      if (processing) return;
+      if (tripEventId === null) return;
+      const activeQuote = acceptedQuote ?? quote;
+      if (
+        activeQuote === null ||
+        (acceptedQuote === undefined && quoteStatus !== "ready")
+      )
+        return;
+      // ORCH-1192 — fire `checkout_started` ONCE per attempt at the top of
+      // handlePay (the `processing` early-return guards re-render/double-tap
+      // double-fire), BEFORE the web hosted-redirect or native PaymentSheet opens
+      // and BEFORE the purchase_completed success capture. value reflects the
+      // server-computed all-in preview when available. capture() no-ops on web
+      // (native postHogService is a web no-op) and when opted out / key absent.
+      postHogService.capture("checkout_started", {
+        event_id: tripEventId,
+        offering_type: "trip",
+        value: activeQuote.buyerTotalCents / 100,
+        currency: activeQuote.currency,
+        surface: "business_app",
+      });
+      // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
+      // with the server-computed all-in (incl. tax, venue-sourced). The buyer
+      // never types an address.
 
-    if (Platform.OS === "web") {
-      // ---------- WEB PATH ----------
-      const surface: "web" = "web";
+      if (Platform.OS === "web") {
+        // ---------- WEB PATH ----------
+        const surface: "web" = "web";
+        try {
+          setProcessing(true);
+          setPaymentError(null);
+          mixpanelService.track("ticket_checkout_pay_started", {
+            surface,
+            eventId: tripEventId,
+            eventType: "trip",
+          });
+          // issue #2190 — ONE create per checkout, structurally (mirrors #2188).
+          //
+          // If this cart has already been handed a provider page, follow THAT
+          // instead of asking the server for a second checkout. The server
+          // refuses a duplicate create with 409 and it is right to: a second
+          // create for a cart with a live provider attempt is never what the
+          // guest wants. Re-following the URL we were already given is.
+          const held = providerHandoffRef.current;
+          if (held !== null && held.fingerprint === cartFingerprint) {
+            if (assignLocation(globalThis, held.handoff.redirectUrl)) return;
+            setProcessing(false);
+            setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+            return;
+          }
+          // createTicketCheckout is event_type-agnostic — the RPC
+          // biz_ticket_checkout_create_session branches on v_event.event_type='trip'.
+          const checkout = await createTicketCheckout({
+            eventId: tripEventId,
+            buyer,
+            lines,
+            discountCode,
+            quoteDigest: activeQuote.quoteDigest,
+            quoteListDigest: activeQuote.quoteListDigest,
+            surface,
+            checkoutContractVersion: 2,
+            checkoutAttemptId: checkoutAttemptIdFor({
+              eventId: tripEventId,
+              surface,
+            }),
+            // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers
+            // gathered by /checkout-trip/[tripEventId]/intake.tsx and stored
+            // in CartContext. Edge fn gates HTTP 400 intake_form_required +
+            // 409 intake_schema_stale; on stale, payment.tsx surfaces a Toast
+            // + routes back to /intake (rare — schema rarely changes mid-pay).
+            ...(intakeFormDataArray.length > 0
+              ? { intakeFormData: intakeFormDataArray }
+              : {}),
+            ...(intakeFormDataArray.length > 0
+              ? { intakeUploadSessionId }
+              : {}),
+          });
+          // issue #2190 — provider-neutral. Stripe brands answer with
+          // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
+          // the resolver owns that distinction so this screen never re-learns it.
+          // A null answer means there is genuinely nowhere to send the guest —
+          // surface it, never retry (a retry is the duplicate create that the
+          // server correctly 409s).
+          const handoff = ticketCheckoutProviderHandoff(checkout);
+          if (handoff === null) {
+            throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+          }
+          setCheckoutSessionId(handoff.checkoutSessionId);
+          // Remember it BEFORE navigating: if the redirect cannot run, the next
+          // Pay tap re-follows this URL rather than creating a second checkout.
+          providerHandoffRef.current = {
+            fingerprint: cartFingerprint,
+            handoff,
+          };
+
+          // sessionStorage persist BEFORE redirect so a provider-side cancel
+          // returns the buyer to a populated /payment screen and a success
+          // returns to /confirm with the order summary intact.
+          const storage = (
+            globalThis as unknown as { sessionStorage?: Storage }
+          ).sessionStorage;
+          writeCheckoutResumePayload(storage, tripEventId, {
+            checkoutSessionId: handoff.checkoutSessionId,
+            buyerStatusToken: handoff.buyerStatusToken,
+            lines,
+            buyer,
+          });
+          // ORCH-0915 T-A02 pins `const w = globalThis` as the end of the
+          // persist window: the resume payload is written, THEN the host is read.
+          const w = globalThis;
+          if (assignLocation(w, handoff.redirectUrl)) return;
+          // Sandbox / test environments where location.assign is unavailable.
+          setProcessing(false);
+          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+        } catch (error) {
+          setProcessing(false);
+          const review = ticketCheckoutReviewFromError(
+            error,
+            activeQuote.buyerTotalCents,
+          );
+          if (review !== null) {
+            setCheckoutReview(review);
+            setPaymentError(null);
+            return;
+          }
+          // issue #2190 — NEVER render the raw thrown string. supabase-js reports
+          // every handled refusal as "Edge Function returned a non-2xx status
+          // code"; the mapper is total and turns each bounded case into a
+          // sentence that also says whether money moved.
+          const message = paidCheckoutErrorMessage(error);
+          setPaymentError(message);
+          mixpanelService.track("ticket_checkout_failed", {
+            surface,
+            eventId: tripEventId,
+            eventType: "trip",
+            reason: "thrown_error",
+            message,
+          });
+        }
+        return;
+      }
+
+      // ---------- NATIVE PATH ----------
+      // ORCH-1130 Fix #2 — no buyer address; tax is venue-sourced server-side.
+      // Forward the silently-fetched no-address preview calculationId when
+      // available (lets the charge reuse the previewed Stripe Tax calculation);
+      // otherwise the no-address create recomputes the same venue-sourced all-in.
+      const surface: "native" = "native";
+
       try {
         setProcessing(true);
         setPaymentError(null);
@@ -383,94 +517,125 @@ function CheckoutTripPaymentScreenContent({
           eventId: tripEventId,
           eventType: "trip",
         });
-        // issue #2190 — ONE create per checkout, structurally (mirrors #2188).
-        //
-        // If this cart has already been handed a provider page, follow THAT
-        // instead of asking the server for a second checkout. The server
-        // refuses a duplicate create with 409 and it is right to: a second
-        // create for a cart with a live provider attempt is never what the
-        // guest wants. Re-following the URL we were already given is.
-        const held = providerHandoffRef.current;
-        if (held !== null && held.fingerprint === cartFingerprint) {
-          if (assignLocation(globalThis, held.handoff.redirectUrl)) return;
-          setProcessing(false);
-          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-          return;
-        }
-        // createTicketCheckout is event_type-agnostic — the RPC
-        // biz_ticket_checkout_create_session branches on v_event.event_type='trip'.
-        const checkout = await createTicketCheckout({
+
+        const outcome = await nativeCheckout({
           eventId: tripEventId,
-          buyer,
-          lines,
+          // #3859 boundary: Business-native preview + create remain paired on
+          // v1, so line-v2 fields are intentionally stripped on this branch.
+          lines: lines.map((line) => ({
+            ticketTypeId: line.ticketTypeId,
+            quantity: line.quantity,
+          })),
           discountCode,
           quoteDigest: activeQuote.quoteDigest,
           quoteListDigest: activeQuote.quoteListDigest,
-          surface,
-          checkoutContractVersion: 2,
-          checkoutAttemptId: checkoutAttemptIdFor({
-            eventId: tripEventId,
-            surface,
-          }),
-          // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers
-          // gathered by /checkout-trip/[tripEventId]/intake.tsx and stored
-          // in CartContext. Edge fn gates HTTP 400 intake_form_required +
-          // 409 intake_schema_stale; on stale, payment.tsx surfaces a Toast
-          // + routes back to /intake (rare — schema rarely changes mid-pay).
-          ...(intakeFormDataArray.length > 0
-            ? { intakeFormData: intakeFormDataArray }
-            : {}),
-          ...(intakeFormDataArray.length > 0 ? { intakeUploadSessionId } : {}),
+          buyer: {
+            name: buyer.name,
+            email: buyer.email,
+            phone: buyer.phone,
+            marketingOptIn: buyer.marketingOptIn === true,
+          },
+          // ORCH-1246 (Apple 4.9) — trip title so the Apple Pay sheet line item
+          // shows the product, not the company. Fallback "Ticket" if trip unloaded.
+          displayTitle: trip?.title ?? undefined,
+          ...(isPlanActive ? { paymentPlanChoice: paymentPlanChoice } : {}),
         });
-        // issue #2190 — provider-neutral. Stripe brands answer with
-        // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
-        // the resolver owns that distinction so this screen never re-learns it.
-        // A null answer means there is genuinely nowhere to send the guest —
-        // surface it, never retry (a retry is the duplicate create that the
-        // server correctly 409s).
-        const handoff = ticketCheckoutProviderHandoff(checkout);
-        if (handoff === null) {
-          throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-        }
-        setCheckoutSessionId(handoff.checkoutSessionId);
-        // Remember it BEFORE navigating: if the redirect cannot run, the next
-        // Pay tap re-follows this URL rather than creating a second checkout.
-        providerHandoffRef.current = { fingerprint: cartFingerprint, handoff };
 
-        // sessionStorage persist BEFORE redirect so a provider-side cancel
-        // returns the buyer to a populated /payment screen and a success
-        // returns to /confirm with the order summary intact.
-        const storage = (globalThis as unknown as { sessionStorage?: Storage })
-          .sessionStorage;
-        writeCheckoutResumePayload(storage, tripEventId, {
-          checkoutSessionId: handoff.checkoutSessionId,
-          buyerStatusToken: handoff.buyerStatusToken,
-          lines,
-          buyer,
+        mixpanelService.track("ticket_checkout_sheet_opened", {
+          surface,
+          eventId: tripEventId,
+          eventType: "trip",
+          outcome: outcome.outcome,
         });
-        // ORCH-0915 T-A02 pins `const w = globalThis` as the end of the
-        // persist window: the resume payload is written, THEN the host is read.
-        const w = globalThis;
-        if (assignLocation(w, handoff.redirectUrl)) return;
-        // Sandbox / test environments where location.assign is unavailable.
-        setProcessing(false);
-        setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-      } catch (error) {
-        setProcessing(false);
-        const review = ticketCheckoutReviewFromError(
-          error,
-          activeQuote.buyerTotalCents,
-        );
-        if (review !== null) {
-          setCheckoutReview(review);
-          setPaymentError(null);
+
+        if (outcome.outcome === "canceled") {
+          mixpanelService.track("ticket_checkout_cancelled", {
+            surface,
+            eventId: tripEventId,
+            eventType: "trip",
+          });
+          setProcessing(false);
           return;
         }
-        // issue #2190 — NEVER render the raw thrown string. supabase-js reports
-        // every handled refusal as "Edge Function returned a non-2xx status
-        // code"; the mapper is total and turns each bounded case into a
-        // sentence that also says whether money moved.
-        const message = paidCheckoutErrorMessage(error);
+
+        if (outcome.outcome === "failed") {
+          if (outcome.review !== undefined) {
+            setCheckoutReview({
+              ...outcome.review,
+              previousTotalCents: activeQuote.buyerTotalCents,
+            });
+            setPaymentError(null);
+            setProcessing(false);
+            return;
+          }
+          mixpanelService.track("ticket_checkout_failed", {
+            surface,
+            eventId: tripEventId,
+            eventType: "trip",
+            reason: "native_checkout_failed",
+            message: outcome.message,
+          });
+          setProcessing(false);
+          setPaymentError(outcome.message);
+          return;
+        }
+
+        // ORCH-0852 fire-and-forget pattern (mirror).
+        const sessionId = outcome.orderId;
+        setCheckoutSessionId(sessionId);
+        try {
+          await Promise.race([
+            confirmTicketCheckout(sessionId, ""),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("client_confirm_timeout")),
+                3000,
+              ),
+            ),
+          ]);
+        } catch (confirmErr) {
+          console.warn(
+            "[checkout-trip-payment] synchronous confirm failed or timed out; relying on webhook backup",
+            confirmErr,
+          );
+          mixpanelService.track("ticket_checkout_sync_confirm_failed", {
+            surface,
+            eventId: tripEventId,
+            eventType: "trip",
+            checkoutSessionId: sessionId,
+            reason:
+              confirmErr instanceof Error ? confirmErr.message : "unknown",
+          });
+        }
+
+        mixpanelService.track("ticket_checkout_succeeded", {
+          surface,
+          eventId: tripEventId,
+          eventType: "trip",
+          checkoutSessionId: sessionId,
+        });
+
+        setSuccessToast(true);
+
+        // Brief delay so the buyer sees the toast before unmount.
+        setTimeout(() => {
+          if (trip !== null && trip.brandSlug !== null) {
+            router.replace(
+              tripPublicPath({
+                brandSlug: trip.brandSlug,
+                tripSlug: trip.slug,
+              }) as never,
+            );
+          } else {
+            router.replace("/(tabs)/home" as never);
+          }
+        }, 1200);
+      } catch (error) {
+        setProcessing(false);
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Payment could not be completed. Please try again.";
         setPaymentError(message);
         mixpanelService.track("ticket_checkout_failed", {
           surface,
@@ -479,176 +644,38 @@ function CheckoutTripPaymentScreenContent({
           reason: "thrown_error",
           message,
         });
-      }
-      return;
-    }
-
-    // ---------- NATIVE PATH ----------
-    // ORCH-1130 Fix #2 — no buyer address; tax is venue-sourced server-side.
-    // Forward the silently-fetched no-address preview calculationId when
-    // available (lets the charge reuse the previewed Stripe Tax calculation);
-    // otherwise the no-address create recomputes the same venue-sourced all-in.
-    const surface: "native" = "native";
-
-    try {
-      setProcessing(true);
-      setPaymentError(null);
-      mixpanelService.track("ticket_checkout_pay_started", {
-        surface,
-        eventId: tripEventId,
-        eventType: "trip",
-      });
-
-      const outcome = await nativeCheckout({
-        eventId: tripEventId,
-        // #3859 boundary: Business-native preview + create remain paired on
-        // v1, so line-v2 fields are intentionally stripped on this branch.
-        lines: lines.map((line) => ({
-          ticketTypeId: line.ticketTypeId,
-          quantity: line.quantity,
-        })),
-        discountCode,
-        quoteDigest: activeQuote.quoteDigest,
-        quoteListDigest: activeQuote.quoteListDigest,
-        buyer: {
-          name: buyer.name,
-          email: buyer.email,
-          phone: buyer.phone,
-          marketingOptIn: buyer.marketingOptIn === true,
-        },
-        // ORCH-1246 (Apple 4.9) — trip title so the Apple Pay sheet line item
-        // shows the product, not the company. Fallback "Ticket" if trip unloaded.
-        displayTitle: trip?.title ?? undefined,
-        ...(isPlanActive ? { paymentPlanChoice: paymentPlanChoice } : {}),
-      });
-
-      mixpanelService.track("ticket_checkout_sheet_opened", {
-        surface,
-        eventId: tripEventId,
-        eventType: "trip",
-        outcome: outcome.outcome,
-      });
-
-      if (outcome.outcome === "canceled") {
-        mixpanelService.track("ticket_checkout_cancelled", {
-          surface,
-          eventId: tripEventId,
-          eventType: "trip",
-        });
+      } finally {
         setProcessing(false);
-        return;
       }
+    },
+    [
+      // issue #2190 — the redirect follower + the cart identity the held
+      // provider hand-off is keyed by are both read inside this handler.
+      assignLocation,
+      cartFingerprint,
+      buyer,
+      discountCode,
+      checkoutAttemptIdFor,
+      trip,
+      tripEventId,
+      lines,
+      intakeFormDataArray,
+      intakeUploadSessionId,
+      isPlanActive,
+      nativeCheckout,
+      paymentPlanChoice,
+      processing,
+      quote,
+      quoteStatus,
+      setCheckoutReview,
+      router,
+    ],
+  );
 
-      if (outcome.outcome === "failed") {
-        if (outcome.review !== undefined) {
-          setCheckoutReview({
-            ...outcome.review,
-            previousTotalCents: activeQuote.buyerTotalCents,
-          });
-          setPaymentError(null);
-          setProcessing(false);
-          return;
-        }
-        mixpanelService.track("ticket_checkout_failed", {
-          surface,
-          eventId: tripEventId,
-          eventType: "trip",
-          reason: "native_checkout_failed",
-          message: outcome.message,
-        });
-        setProcessing(false);
-        setPaymentError(outcome.message);
-        return;
-      }
-
-      // ORCH-0852 fire-and-forget pattern (mirror).
-      const sessionId = outcome.orderId;
-      setCheckoutSessionId(sessionId);
-      try {
-        await Promise.race([
-          confirmTicketCheckout(sessionId, ""),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("client_confirm_timeout")), 3000)
-          ),
-        ]);
-      } catch (confirmErr) {
-        console.warn(
-          "[checkout-trip-payment] synchronous confirm failed or timed out; relying on webhook backup",
-          confirmErr,
-        );
-        mixpanelService.track("ticket_checkout_sync_confirm_failed", {
-          surface,
-          eventId: tripEventId,
-          eventType: "trip",
-          checkoutSessionId: sessionId,
-          reason: confirmErr instanceof Error ? confirmErr.message : "unknown",
-        });
-      }
-
-      mixpanelService.track("ticket_checkout_succeeded", {
-        surface,
-        eventId: tripEventId,
-        eventType: "trip",
-        checkoutSessionId: sessionId,
-      });
-
-      setSuccessToast(true);
-
-      // Brief delay so the buyer sees the toast before unmount.
-      setTimeout(() => {
-        if (trip !== null && trip.brandSlug !== null) {
-          router.replace(
-            tripPublicPath({
-              brandSlug: trip.brandSlug,
-              tripSlug: trip.slug,
-            }) as never,
-          );
-        } else {
-          router.replace("/(tabs)/home" as never);
-        }
-      }, 1200);
-    } catch (error) {
-      setProcessing(false);
-      const message = error instanceof Error
-        ? error.message
-        : "Payment could not be completed. Please try again.";
-      setPaymentError(message);
-      mixpanelService.track("ticket_checkout_failed", {
-        surface,
-        eventId: tripEventId,
-        eventType: "trip",
-        reason: "thrown_error",
-        message,
-      });
-    } finally {
-      setProcessing(false);
-    }
-  }, [
-    // issue #2190 — the redirect follower + the cart identity the held
-    // provider hand-off is keyed by are both read inside this handler.
-    assignLocation,
-    cartFingerprint,
-    buyer,
-    discountCode,
-    checkoutAttemptIdFor,
-    trip,
-    tripEventId,
-    lines,
-    intakeFormDataArray,
-    intakeUploadSessionId,
-    isPlanActive,
-    nativeCheckout,
-    paymentPlanChoice,
-    processing,
-    quote,
-    quoteStatus,
-    setCheckoutReview,
-    router,
-  ]);
-
-  const displayAllIn = quote === null
-    ? "Updating…"
-    : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
+  const displayAllIn =
+    quote === null
+      ? "Updating…"
+      : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
 
   // ORCH-1178 — the cart step ALWAYS shows now, so the "Review & pay" step is
   // the LAST step of the index → buyer → [intake] → payment funnel: "3 OF 3"
@@ -710,8 +737,12 @@ function CheckoutTripPaymentScreenContent({
           title="Review changes"
           onBack={handleBack}
         />
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
           <TicketCheckoutReviewPanel
+            surface="web_trip"
             review={checkoutReview}
             accepting={processing}
             onBack={handleBack}
@@ -785,7 +816,7 @@ function CheckoutTripPaymentScreenContent({
                 }
                 style={[
                   styles.qtyBtn,
-                  (l.quantity <= 1 || processing) ? styles.qtyBtnDisabled : null,
+                  l.quantity <= 1 || processing ? styles.qtyBtnDisabled : null,
                 ]}
               >
                 <Text style={styles.qtyBtnGlyph}>−</Text>
@@ -825,8 +856,8 @@ function CheckoutTripPaymentScreenContent({
 
         {/* #3859 — web edits each eligible package independently. Native keeps
             its existing single v1 choice until preview + create migrate together. */}
-        {Platform.OS === "web"
-          ? planLines.map(({ line, tier, schedule }) => (
+        {Platform.OS === "web" ? (
+          planLines.map(({ line, tier, schedule }) => (
             <View key={line.ticketTypeId}>
               <Text style={styles.summaryLabel}>{line.ticketName}</Text>
               <TripPaymentChoice
@@ -836,24 +867,21 @@ function CheckoutTripPaymentScreenContent({
                 depositPct={tier.installmentSchedule?.deposit_pct ?? 0}
                 value={line.paymentPlanChoice ?? "full"}
                 onChange={(choice) =>
-                  setLinePaymentPlanChoice(line.ticketTypeId, choice)}
+                  setLinePaymentPlanChoice(line.ticketTypeId, choice)
+                }
               />
             </View>
           ))
-          : planLines[0] !== undefined && projectedSchedule !== null
-          ? (
-            <TripPaymentChoice
-              schedule={projectedSchedule}
-              fullPriceCents={projectedSchedule.fullPriceCents}
-              currency={projectedSchedule.currency}
-              depositPct={
-                planLines[0].tier.installmentSchedule?.deposit_pct ?? 0
-              }
-              value={paymentPlanChoice}
-              onChange={setPaymentPlanChoice}
-            />
-          )
-          : null}
+        ) : planLines[0] !== undefined && projectedSchedule !== null ? (
+          <TripPaymentChoice
+            schedule={projectedSchedule}
+            fullPriceCents={projectedSchedule.fullPriceCents}
+            currency={projectedSchedule.currency}
+            depositPct={planLines[0].tier.installmentSchedule?.deposit_pct ?? 0}
+            value={paymentPlanChoice}
+            onChange={setPaymentPlanChoice}
+          />
+        ) : null}
 
         {/* ORCH-1130 Fix #2 — the CartTaxPreview billing-address + "Calculate
             tax" form was REMOVED. Tax is venue-sourced server-side and the
@@ -863,20 +891,19 @@ function CheckoutTripPaymentScreenContent({
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
-            You'll be taken to our secure payment page to complete your purchase.
+            You'll be taken to our secure payment page to complete your
+            purchase.
           </Text>
-          {checkoutSessionId !== null
-            ? (
-              <Text style={styles.paymentMeta}>
-                Session {checkoutSessionId.slice(0, 8)}
-              </Text>
-            )
-            : null}
+          {checkoutSessionId !== null ? (
+            <Text style={styles.paymentMeta}>
+              Session {checkoutSessionId.slice(0, 8)}
+            </Text>
+          ) : null}
         </GlassCard>
 
-        {paymentError !== null
-          ? <Text style={styles.errorText}>{paymentError}</Text>
-          : null}
+        {paymentError !== null ? (
+          <Text style={styles.errorText}>{paymentError}</Text>
+        ) : null}
       </ScrollView>
 
       {/* Sticky bottom bar */}
@@ -886,8 +913,7 @@ function CheckoutTripPaymentScreenContent({
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
-        {
-          /* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
+        {/* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
             above the Pay button when cart has plan-active lines. Stripe's
             hosted checkout only displays the deposit amount, so this is
             the last in-product surface to set buyer expectations about
@@ -903,7 +929,10 @@ function CheckoutTripPaymentScreenContent({
             <Text style={styles.planBannerBody}>
               You&rsquo;ll be charged{" "}
               <Text style={styles.planBannerStrong}>
-                {formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)}
+                {formatQuoteMoney(
+                  dueTodayCents,
+                  quote?.currency ?? totals.currency,
+                )}
               </Text>{" "}
               today. The {futureInstallmentCount} future scheduled payment
               {futureInstallmentCount === 1 ? "" : "s"} will use the card you
@@ -920,19 +949,14 @@ function CheckoutTripPaymentScreenContent({
             <Text style={styles.planBannerTitle}>Paid in full today</Text>
             <Text style={styles.planBannerBody}>
               You&rsquo;ll be charged{" "}
-              <Text style={styles.planBannerStrong}>
-                {displayAllIn}
-              </Text>{" "}
-              today. No future installment bills will be scheduled for this
-              booking.
+              <Text style={styles.planBannerStrong}>{displayAllIn}</Text> today.
+              No future installment bills will be scheduled for this booking.
             </Text>
           </View>
         ) : null}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>
-            {displayAllIn}
-          </Text>
+          <Text style={styles.totalValue}>{displayAllIn}</Text>
         </View>
         {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under
             pay-over-time; mirrors the order-summary box + buyer step. */}
@@ -940,7 +964,10 @@ function CheckoutTripPaymentScreenContent({
           <View style={styles.dueTodayRow}>
             <Text style={styles.dueTodayLabel}>Total due today</Text>
             <Text style={styles.dueTodayValue}>
-              {formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)}
+              {formatQuoteMoney(
+                dueTodayCents,
+                quote?.currency ?? totals.currency,
+              )}
             </Text>
           </View>
         ) : null}
@@ -959,9 +986,11 @@ function CheckoutTripPaymentScreenContent({
           // `Pay over time, ${projectedSchedule.depositCents} deposit`; this
           // cart CTA deliberately says "today" because mixed carts also include
           // full-pay lines in the aggregate amount.
-          label={isUsingInstallments && projectedSchedule !== null
-            ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today`
-            : `Pay ${displayAllIn}`}
+          label={
+            isUsingInstallments && projectedSchedule !== null
+              ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today`
+              : `Pay ${displayAllIn}`
+          }
           onPress={() => void handlePay()}
           variant="primary"
           size="lg"
@@ -970,9 +999,11 @@ function CheckoutTripPaymentScreenContent({
           // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
           // immediately (only blocked while a charge is in flight).
           disabled={processing || quoteStatus !== "ready" || quote === null}
-          accessibilityLabel={isUsingInstallments && projectedSchedule !== null
-            ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today with card`
-            : `Pay ${displayAllIn} with card`}
+          accessibilityLabel={
+            isUsingInstallments && projectedSchedule !== null
+              ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today with card`
+              : `Pay ${displayAllIn} with card`
+          }
         />
       </View>
 

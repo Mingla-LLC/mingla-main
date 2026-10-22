@@ -88,10 +88,15 @@ export function parseBusinessDeepLink(
     }
     case "brand": {
       const brandId = rest[0];
-      const sub = rest[1];
+      const [sub, query = ""] = (rest[1] ?? "").split("?", 2);
       if (!brandId) return null;
       if (sub === "team") return `/brand/${brandId}/team`;
       if (sub === "listing") return `/brand/${brandId}/listing`;
+      if (sub === "discounts") {
+        return query
+          ? `/brand/${brandId}/discounts?${query}`
+          : `/brand/${brandId}/discounts`;
+      }
       // ORCH-1082 Gap 15: the KYC-stall reminder + deadline warnings emit
       // `mingla-business://brand/{id}/payments/onboard` (stripe-kyc-stall-reminder
       // notifyBrand deepLink). Without this branch the `payments` sub fell through
@@ -210,6 +215,18 @@ export function resolveBusinessNavTarget(
     case "business.payouts_resumed":
     case "business.account_status_changed":
       return paymentsTarget;
+
+    case "business.discount_limit_80":
+    case "business.discount_ended":
+    case "business.discount_needs_attention": {
+      const discountId = (data.discountId ?? data.relatedId) as
+        | string
+        | undefined;
+      if (!brandId) return ACCOUNT_FALLBACK;
+      return discountId
+        ? `/brand/${brandId}/discounts?focus=${discountId}`
+        : `/brand/${brandId}/discounts`;
+    }
 
     case "business.claim_decision":
       return brandId ? `/brand/${brandId}/listing` : ACCOUNT_FALLBACK;

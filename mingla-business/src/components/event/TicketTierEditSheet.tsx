@@ -43,7 +43,7 @@ import { useEventWaitlist } from "../../hooks/useEventWaitlist";
 import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { saleWindowCaution } from "../../utils/saleWindowCaution";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency, minorFromMajor } from "../../utils/currency";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // #2664 — Android has no `datetime` picker mode; the sale window has to step
 // date -> time and combine. See the module header for the crash mechanism.
@@ -62,6 +62,12 @@ import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 const TicketLinksSheet = React.lazy(() =>
   import("../guests/TicketLinksSheet").then((module) => ({
     default: module.TicketLinksSheet,
+  })),
+);
+
+const ItemDiscountControls = React.lazy(() =>
+  import("../discounts/ItemDiscountControls").then((module) => ({
+    default: module.ItemDiscountControls,
   })),
 );
 
@@ -414,6 +420,8 @@ export interface TicketTierEditSheetProps {
   canEditPrice?: boolean;
   /** ISO 4217 event/brand currency used for price copy in the sheet. */
   eventCurrency?: string;
+  /** Brand owning this published tier; required by the server discount writer. */
+  brandId?: string;
   /** Supabase events.id for planner waitlist reads on saved tiers. */
   eventId?: string | null;
   /**
@@ -485,6 +493,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   eventEndsAtIso = null,
   canEditPrice = true,
   eventCurrency,
+  brandId,
   eventId = null,
   renderUnderPrice,
   newTicketPreset = null,
@@ -1096,6 +1105,34 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               {/* #3645 — e.g. the payout country prompt, as the price is typed. */}
               {renderUnderPrice?.(ticketPriceTextIsPriced(isFree, priceText))}
             </View>
+          ) : null}
+
+          {initial !== null &&
+          privateLinksEnabled &&
+          eventId !== null &&
+          brandId !== undefined &&
+          canEditPrice &&
+          !isFree ? (
+            <React.Suspense fallback={null}>
+              <Text style={styles.sectionHeader}>Sale price</Text>
+              <ItemDiscountControls
+                brandId={brandId}
+                itemId={initial.id}
+                itemKind="ticket_type"
+                listingKind="event"
+                itemLabel={initial.name}
+                currency={priceCurrency}
+                listUnitCents={
+                  initial.priceGbp == null
+                    ? null
+                    : minorFromMajor(initial.priceGbp, priceCurrency ?? "GBP")
+                }
+                allowLabel="Allow discounts"
+                saleLabel="Offer a sale price"
+                countLimit
+                testID="ticket-tier-discount-controls"
+              />
+            </React.Suspense>
           ) : null}
 
           {/* Unlimited toggle — ORCH-0704 v2: locked when sales exist */}

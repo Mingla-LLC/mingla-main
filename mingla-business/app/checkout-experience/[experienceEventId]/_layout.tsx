@@ -20,7 +20,12 @@ import React from "react";
 import { Stack, useLocalSearchParams } from "expo-router";
 
 import { CartProvider } from "../../../src/components/checkout/CartContext";
-import { TicketQuoteController } from "../../../src/components/checkout/TicketQuoteController";
+
+const TicketQuoteController = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteController").then(
+    (module) => ({ default: module.TicketQuoteController }),
+  ),
+);
 
 const firstParam = (value: string | string[] | undefined): string =>
   Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
@@ -30,12 +35,10 @@ const CheckoutStack = (): React.ReactElement => {
     experienceEventId?: string | string[];
   }>();
   return (
-    <>
-      <TicketQuoteController
-        eventId={firstParam(params.experienceEventId)}
-      />
+    <React.Suspense fallback={null}>
+      <TicketQuoteController eventId={firstParam(params.experienceEventId)} />
       <Stack screenOptions={{ headerShown: false }} />
-    </>
+    </React.Suspense>
   );
 };
 

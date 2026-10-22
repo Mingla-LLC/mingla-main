@@ -19,12 +19,7 @@
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout/[eventId]/index.tsx; insets.bottom IS applied (bottom dock) for home-indicator clearance; the top status-bar overlap with back arrow / "Reserve your spot" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0876 mirror of ORCH-0859 [Tr2] REWORK 5b operator design ruling.
 
 import React, { useCallback, useEffect, useRef } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -41,9 +36,7 @@ import { projectInstallmentSchedule } from "../../../src/utils/installmentSchedu
 // ORCH-1181 — the shared per-package installment sub-line copy (business + web +
 // consumer identical). The deposit-due-today still comes from the existing
 // projectInstallmentSchedule; this only formats the already-computed cents.
-import {
-  formatTripTierInstallmentNote,
-} from "@mingla/offering-rendering";
+import { formatTripTierInstallmentNote } from "@mingla/offering-rendering";
 import type { TripPricingTier } from "../../../src/services/tripsService";
 import type {
   TicketAvailableAt,
@@ -73,11 +66,16 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
-import { CheckoutDiscountCodeField } from "../../../src/components/checkout/DiscountCodeField";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // trip checkout too (the event checkout already does; trips/experiences didn't,
 // undercounting started checkouts). Web-only (native no-op via the .web split).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+
+const CheckoutDiscountCodeField = React.lazy(() =>
+  import("../../../src/components/checkout/DiscountCodeField").then(
+    (module) => ({ default: module.CheckoutDiscountCodeField }),
+  ),
+);
 
 /**
  * Convert a TripPricingTier (DB shape) to a TicketStub (QuantityRow's
@@ -184,8 +182,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     quoteStatus,
     setLineQuantity,
     setPaymentPlanChoice,
-  } =
-    useCart();
+  } = useCart();
   const totals = useCartQuoteTotals();
 
   // META-ORCH-1187 P2 — fire `web_checkout_started` once the buyer lands on the
@@ -353,7 +350,9 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     // clamp to remaining/unlimited). The cart already enforces capacity at commit;
     // this keeps the seed honest (DEC-D per-package capacity).
     const stubById = new Map(
-      trip.pricingTiers.map((t) => [t.ticketTypeId, tierToTicketStub(t)] as const),
+      trip.pricingTiers.map(
+        (t) => [t.ticketTypeId, tierToTicketStub(t)] as const,
+      ),
     );
     const tierById = new Map(
       trip.pricingTiers.map((t) => [t.ticketTypeId, t] as const),
@@ -367,25 +366,28 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           : Math.max(0, stub.capacity);
       const qty = Math.min(line.quantity, cap);
       if (qty <= 0) return [];
-      return [{
-        stub,
-        qty,
-        paymentPlanChoice:
-          line.paymentPlanChoice === "installments" &&
+      return [
+        {
+          stub,
+          qty,
+          paymentPlanChoice:
+            line.paymentPlanChoice === "installments" &&
             tierById.get(line.ticketTypeId)?.installmentSchedule != null
-            ? "installments" as const
-            : "full" as const,
-      }];
+              ? ("installments" as const)
+              : ("full" as const),
+        },
+      ];
     });
     if (resolved.length === 0) return;
 
     // Are all resolved lines already in the cart at the requested qty? If not,
     // dispatch the writes and WAIT for the next commit (do NOT navigate here).
     const allLanded = resolved.every(({ stub, qty, paymentPlanChoice }) =>
-      lines.some((l) =>
-        l.ticketTypeId === stub.id &&
-        l.quantity === qty &&
-        (l.paymentPlanChoice ?? "full") === paymentPlanChoice
+      lines.some(
+        (l) =>
+          l.ticketTypeId === stub.id &&
+          l.quantity === qty &&
+          (l.paymentPlanChoice ?? "full") === paymentPlanChoice,
       ),
     );
     if (!allLanded) {
@@ -621,9 +623,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           <EventCoverMedia
             hue={0}
             mediaUrl={trip.coverMediaUrl}
-            mediaType={
-              trip.coverMediaType as "image" | "video" | "gif" | null
-            }
+            mediaType={trip.coverMediaType as "image" | "video" | "gif" | null}
             radius={0}
             label=""
             style={styles.miniCover}
@@ -715,15 +715,18 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
-        <CheckoutDiscountCodeField
-          disabled={totals.isEmpty}
-          saleNameByLineRef={Object.fromEntries(
-            trip.pricingTiers.map((tier) => [
-              tier.ticketTypeId,
-              tier.saleName ?? "sale",
-            ]),
-          )}
-        />
+        <React.Suspense fallback={null}>
+          <CheckoutDiscountCodeField
+            surface="web_trip"
+            disabled={totals.isEmpty}
+            saleNameByLineRef={Object.fromEntries(
+              trip.pricingTiers.map((tier) => [
+                tier.ticketTypeId,
+                tier.saleName ?? "sale",
+              ]),
+            )}
+          />
+        </React.Suspense>
         {showFeesTaxLine ? (
           <View style={styles.feesTaxRow}>
             <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
@@ -760,11 +763,11 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
               ? "Add a tier above"
               : quoteStatus !== "ready"
                 ? "Waiting for your latest total"
-              : totals.isFree
-                ? "Reserve free spot"
-                : dueTodayCents !== null
-                  ? `Continue to buyer details, due today ${formatCurrency(dueTodayCents, totals.currency, true)}`
-                  : `Continue to buyer details, total ${headlineAllIn}`
+                : totals.isFree
+                  ? "Reserve free spot"
+                  : dueTodayCents !== null
+                    ? `Continue to buyer details, due today ${formatCurrency(dueTodayCents, totals.currency, true)}`
+                    : `Continue to buyer details, total ${headlineAllIn}`
           }
         />
       </View>

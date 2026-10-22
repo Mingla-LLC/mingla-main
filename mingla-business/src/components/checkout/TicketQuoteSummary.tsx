@@ -1,22 +1,16 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   checkoutReviewReasonCopy,
   ticketQuoteFeesAndTaxCents,
-  type TicketCheckoutReview,
-  type TicketQuote,
+} from "@mingla/offering-rendering/ticketQuoteCopy";
+import type {
+  TicketCheckoutReview,
+  TicketQuote,
 } from "@mingla/offering-rendering/discountQuote";
-
-export const formatQuoteMoney = (minor: number, currency: string): string => {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currency || "USD",
-    }).format(minor / 100);
-  } catch {
-    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
-  }
-};
+import { captureDiscountEvent } from "../../analytics/discountAnalytics";
+import type { BuyerDiscountSurface } from "./DiscountCodeField";
+import { formatQuoteMoney } from "./quoteMoney";
 
 export interface TicketQuoteSummaryProps {
   quote: TicketQuote;
@@ -85,12 +79,25 @@ export interface TicketCheckoutReviewPanelProps {
   onAccept: () => void;
   onBack: () => void;
   accepting?: boolean;
+  surface?: BuyerDiscountSurface;
 }
 
 /** W-REVIEW409 — no payment retry occurs until the buyer accepts this panel. */
 export const TicketCheckoutReviewPanel: React.FC<
   TicketCheckoutReviewPanelProps
-> = ({ review, onAccept, onBack, accepting = false }) => {
+> = ({
+  review,
+  onAccept,
+  onBack,
+  accepting = false,
+  surface = "web_event",
+}) => {
+  useEffect(() => {
+    captureDiscountEvent("checkout_review_required", {
+      detail: review.detail,
+      surface,
+    });
+  }, [review.detail, surface]);
   const quote = review.quote;
   if (quote === null) {
     return (
@@ -194,8 +201,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#eb7825",
   },
   primaryButtonText: { color: "#ffffff", fontSize: 16, fontWeight: "800" },
-  secondaryButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  secondaryButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   secondaryButtonText: { color: "#7a3a11", fontWeight: "700" },
   buttonDisabled: { opacity: 0.55 },
 });
-

@@ -142,6 +142,33 @@ server-authored deposit preview only in React Query memory. The create request
 sends that preview's digest; a 409 replaces the displayed preview and requires
 one more explicit confirmation.
 
+### discountKeys (discountService.ts) — issue #3872
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['brand-discounts']` |
+| `access(brandId)` | `['brand-discounts', 'access', brandId]` |
+| `list(brandId, filter)` | `['brand-discounts', 'list', brandId, filter]` |
+| `prices(brandId)` | `['brand-discounts', 'prices', brandId]` |
+| `preview(brandId, draft)` | `['brand-discounts', 'preview', brandId, JSON.stringify(draft)]` |
+| `report(brandId, from, to)` | `['brand-discounts', 'report', brandId, from, to]` |
+| `orderLines(kind, orderId)` | `['brand-discounts', 'order-lines', kind, orderId]` |
+
+**Invalidation rule:** every successful Host discount or Allow-discounts write
+invalidates `discountKeys.all`. The preview includes the entire draft because
+every rule in it can change server eligibility or price; no buyer identity,
+code attempt or token is persisted outside React Query memory.
+
+### refundPreviewKeys (useRefundPreview.ts) — issue #3872
+
+| Sub-key | Shape |
+|---------|-------|
+| `preview(orderId, linesKey)` | `['refund-preview', orderId, JSON.stringify(lines)]` |
+
+**Freshness:** `staleTime: 0`, no retries and a 250 ms debounce. A refund
+confirmation is disabled while the server preview is pending or unavailable;
+the client never estimates a discounted refund amount.
+
 ### brandPaystackKeys (useBrandPaystack.ts) — issue #2418
 
 | Sub-key | Shape |

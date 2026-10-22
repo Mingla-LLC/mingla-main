@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
 import {
   ActivityIndicator,
   Linking,
@@ -26,10 +30,7 @@ import {
   parsePhoneEntry,
   resolvePhoneStartCountry,
 } from "@mingla/phone-input/phoneNumber";
-import {
-  discountReasonCopy,
-  type ThemePalette,
-} from "@mingla/offering-rendering";
+import { type ThemePalette } from "@mingla/offering-rendering";
 import {
   radius,
   semantic,
@@ -56,6 +57,12 @@ import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
+
+const DiscountReasonText = React.lazy(() =>
+  import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
+    default: module.DiscountReasonText,
+  })),
+);
 
 interface GuestVenueReservationProps {
   venueId: string;
@@ -143,7 +150,23 @@ const phoneStartCountry = (
     phoneCountryKnown,
   ) ?? "US";
 
-export function GuestVenueReservation({
+export function GuestVenueReservation(
+  props: GuestVenueReservationProps,
+): React.ReactElement {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { gcTime: Infinity } },
+      }),
+  );
+  return (
+    <QueryClientProvider client={queryClient}>
+      <GuestVenueReservationBody {...props} />
+    </QueryClientProvider>
+  );
+}
+
+function GuestVenueReservationBody({
   venueId,
   brandId,
   currency,
@@ -241,9 +264,7 @@ export function GuestVenueReservation({
     canSubmit: availabilitySettled && selectedSlot !== undefined && !submitting,
     reservedForUtc: selectedSlot?.slotStartUtc ?? null,
     selectableSlotUtcValues: availabilitySettled
-      ? slots
-          .filter((slot) => !slot.isFull)
-          .map((slot) => slot.slotStartUtc)
+      ? slots.filter((slot) => !slot.isFull).map((slot) => slot.slotStartUtc)
       : [],
   };
   const phoneDialCode = getCountryByCode(phoneCountry)?.dialCode ?? "+1";
@@ -274,9 +295,7 @@ export function GuestVenueReservation({
   const contactInvalid = nameInvalid || emailInvalid;
 
   const previewEnabled =
-    selectedSlot !== undefined &&
-    !contactInvalid &&
-    normalizedPhone !== null;
+    selectedSlot !== undefined && !contactInvalid && normalizedPhone !== null;
   const reservationPreview = useQuery({
     queryKey: [
       "venueReservationPreview",
@@ -309,6 +328,47 @@ export function GuestVenueReservation({
     retry: false,
   });
   const activePreview = reviewQuote ?? reservationPreview.data ?? null;
+  const discountAnalyticsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (activePreview === null || analyticsSurface !== "buyer_web") return;
+    const digest =
+      activePreview.quoteDigest ?? `${selectedUtc ?? "slot"}:${partySize}`;
+    const captureOnce = (
+      event: string,
+      suffix: string,
+      properties: Readonly<Record<string, string | number>>,
+    ): void => {
+      const key = `${digest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      captureWeb(event, properties);
+    };
+    if (
+      discountCode !== null &&
+      activePreview.codeOutcome.status === "applied"
+    ) {
+      captureOnce("discount_code_applied", "code", { surface: "web_deposit" });
+    } else if (
+      discountCode !== null &&
+      activePreview.codeOutcome.status === "rejected" &&
+      activePreview.codeOutcome.reason !== null
+    ) {
+      captureOnce("discount_code_rejected", activePreview.codeOutcome.reason, {
+        reason: activePreview.codeOutcome.reason,
+        surface: "web_deposit",
+      });
+    }
+    const automaticCount = activePreview.discounts.filter(
+      (row) => row.kind === "automatic",
+    ).length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "web_deposit",
+      });
+    }
+  }, [activePreview, analyticsSurface, discountCode, partySize, selectedUtc]);
 
   useEffect(() => {
     setReviewQuote(null);
@@ -353,8 +413,7 @@ export function GuestVenueReservation({
     if (
       selectedUtc === null ||
       contactInvalid ||
-      normalizedPhone === null ||
-      activePreview === null
+      normalizedPhone === null
     ) {
       setPhoneTouched(true);
       setError(normalizedPhone === null ? phoneErrorCopy : null);
@@ -374,6 +433,17 @@ export function GuestVenueReservation({
       currency,
     });
     try {
+      let checkoutPreview = activePreview;
+      if (checkoutPreview === null) {
+        const refreshedPreview = await reservationPreview.refetch();
+        if (refreshedPreview.error !== null) {
+          throw refreshedPreview.error;
+        }
+        checkoutPreview = refreshedPreview.data ?? null;
+      }
+      if (checkoutPreview === null) {
+        throw new Error("We couldn’t get the reservation price.");
+      }
       const result = await createGuestVenueReservation({
         venueId,
         brandId,
@@ -391,7 +461,7 @@ export function GuestVenueReservation({
         attributionClickId: getStoredClickAttribution().clickId,
         organicJourneyToken: getVenueOrganicJourneyToken({ brandId, venueId }),
         discountCode,
-        quoteDigest: activePreview.quoteDigest,
+        quoteDigest: checkoutPreview.quoteDigest,
       });
       if (result.kind === "free_completed") {
         setManageToken(result.guestCancelToken ?? null);
@@ -415,6 +485,12 @@ export function GuestVenueReservation({
       await Linking.openURL(redirect);
     } catch (caught) {
       if (caught instanceof GuestReservationReviewError) {
+        if (analyticsSurface === "buyer_web") {
+          captureWeb("checkout_review_required", {
+            detail: "discount_changed",
+            surface: "web_deposit",
+          });
+        }
         setReviewQuote(caught.quote);
         setError("Your discount or total changed. Review the updated amount.");
         return;
@@ -431,6 +507,7 @@ export function GuestVenueReservation({
         setError(null);
       } else {
         // #3387 — a refusal the guest can act on gets its own sentence.
+        // prettier-ignore -- #3393 source contract audits this exact refusal owner.
         setError(guestReservationFailureCopy(errorCode) ?? RESERVATION_FAILURE_COPY);
       }
       captureWeb("venue_reservation_failed", {
@@ -694,9 +771,7 @@ export function GuestVenueReservation({
             }}
             onBlur={() => setPhoneTouched(true)}
             error={
-              phoneTouched && normalizedPhone === null
-                ? phoneErrorCopy
-                : null
+              phoneTouched && normalizedPhone === null ? phoneErrorCopy : null
             }
             disabled={submitting}
             iconRenderer={(
@@ -773,9 +848,15 @@ export function GuestVenueReservation({
               </Text>
             </View>
           ) : reservationPreview.isError ? (
-            <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
+            <View
+              style={[styles.stateCard, { borderColor: palette.panelBorder }]}
+            >
               <Text style={[styles.body, { color: palette.secondaryText }]}>
-                We couldn’t get the reservation price.
+                {guestReservationFailureCopy(
+                  reservationPreview.error instanceof Error
+                    ? reservationPreview.error.message
+                    : "",
+                ) ?? "We couldn’t get the reservation price."}
               </Text>
               <Button
                 label="Try again"
@@ -784,11 +865,17 @@ export function GuestVenueReservation({
               />
             </View>
           ) : activePreview !== null ? (
-            <View style={[styles.priceCard, { borderColor: palette.panelBorder }]}>
+            <View
+              style={[styles.priceCard, { borderColor: palette.panelBorder }]}
+            >
               {activePreview.requiresPayment ? (
                 <>
                   <View style={styles.priceRow}>
-                    <Text style={[styles.body, { color: palette.secondaryText }]}>Deposit</Text>
+                    <Text
+                      style={[styles.body, { color: palette.secondaryText }]}
+                    >
+                      Deposit
+                    </Text>
                     <Text
                       style={[
                         styles.priceValue,
@@ -804,18 +891,33 @@ export function GuestVenueReservation({
                   </View>
                   {activePreview.discounts.map((discount) => (
                     <View key={discount.discountId} style={styles.priceRow}>
-                      <Text style={[styles.body, { color: palette.secondaryText }]}>
+                      <Text
+                        style={[styles.body, { color: palette.secondaryText }]}
+                      >
                         {discount.name}
                       </Text>
                       <Text style={styles.discountValue}>
-                        −{formatMoney(discount.amountMinor, activePreview.currency)}
+                        −
+                        {formatMoney(
+                          discount.amountMinor,
+                          activePreview.currency,
+                        )}
                       </Text>
                     </View>
                   ))}
                   {activePreview.feesAndTaxCents > 0 ? (
                     <View style={styles.priceRow}>
-                      <Text style={[styles.body, { color: palette.secondaryText }]}>Fees and tax</Text>
-                      <Text style={[styles.priceValue, { color: palette.primaryText }]}>
+                      <Text
+                        style={[styles.body, { color: palette.secondaryText }]}
+                      >
+                        Fees and tax
+                      </Text>
+                      <Text
+                        style={[
+                          styles.priceValue,
+                          { color: palette.primaryText },
+                        ]}
+                      >
                         {formatMoney(
                           activePreview.feesAndTaxCents,
                           activePreview.currency,
@@ -824,15 +926,32 @@ export function GuestVenueReservation({
                     </View>
                   ) : null}
                   <View style={styles.priceRow}>
-                    <Text style={[styles.totalLabel, { color: palette.primaryText }]}>Total</Text>
-                    <Text style={[styles.totalLabel, { color: palette.primaryText }]}>
-                      {formatMoney(activePreview.totalCents, activePreview.currency)}
+                    <Text
+                      style={[
+                        styles.totalLabel,
+                        { color: palette.primaryText },
+                      ]}
+                    >
+                      Total
+                    </Text>
+                    <Text
+                      style={[
+                        styles.totalLabel,
+                        { color: palette.primaryText },
+                      ]}
+                    >
+                      {formatMoney(
+                        activePreview.totalCents,
+                        activePreview.currency,
+                      )}
                     </Text>
                   </View>
                   <View style={styles.codeRow}>
                     <Input
                       value={discountDraft}
-                      onChangeText={(next: string) => setDiscountDraft(next.toUpperCase())}
+                      onChangeText={(next: string) =>
+                        setDiscountDraft(next.toUpperCase())
+                      }
                       placeholder="Discount code"
                       accessibilityLabel="Discount code"
                     />
@@ -850,20 +969,23 @@ export function GuestVenueReservation({
                   {discountCode !== null &&
                   activePreview.codeOutcome.status === "rejected" &&
                   activePreview.codeOutcome.reason !== null ? (
-                    <Text style={styles.fieldError} accessibilityRole="alert">
-                      {discountReasonCopy({
-                        reason: activePreview.codeOutcome.reason,
-                        code: discountCode,
-                        required:
-                          activePreview.codeOutcome.required === null
-                            ? null
-                            : formatMoney(
-                                activePreview.codeOutcome.required,
-                                activePreview.currency,
-                              ),
-                        withName: activePreview.codeOutcome.with,
-                      })}
-                    </Text>
+                    <React.Suspense fallback={null}>
+                      <DiscountReasonText
+                        style={styles.fieldError}
+                        input={{
+                          reason: activePreview.codeOutcome.reason,
+                          code: discountCode,
+                          required:
+                            activePreview.codeOutcome.required === null
+                              ? null
+                              : formatMoney(
+                                  activePreview.codeOutcome.required,
+                                  activePreview.currency,
+                                ),
+                          withName: activePreview.codeOutcome.with,
+                        }}
+                      />
+                    </React.Suspense>
                   ) : null}
                   {discountCode !== null &&
                   activePreview.codeOutcome.status === "applied" ? (
@@ -879,7 +1001,8 @@ export function GuestVenueReservation({
                 </>
               ) : (
                 <Text style={[styles.body, { color: palette.secondaryText }]}>
-                  No deposit is required. Discount codes aren’t needed for this reservation.
+                  No deposit is required. Discount codes aren’t needed for this
+                  reservation.
                 </Text>
               )}
             </View>
@@ -906,9 +1029,7 @@ export function GuestVenueReservation({
             disabled={
               submitting ||
               contactInvalid ||
-              !availabilitySettled ||
-              activePreview === null ||
-              reservationPreview.isFetching
+              !availabilitySettled
             }
             onPress={() => void submit()}
           />

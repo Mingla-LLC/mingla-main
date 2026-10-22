@@ -1,7 +1,7 @@
 import { describe, expect, test } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { saleAvailabilityCopy } from "@mingla/offering-rendering/discountQuote";
+import { saleAvailabilityCopy } from "@mingla/offering-rendering/saleAvailabilityCopy";
 
 const ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const read = (relative: string): string =>
@@ -9,12 +9,12 @@ const read = (relative: string): string =>
 
 describe("#3872 buyer discount client contract", () => {
   test("scarcity copy prefers a small remaining count and otherwise shows the end", () => {
-    expect(
-      saleAvailabilityCopy(4, "2027-01-01T20:00:00.000Z", "UTC"),
-    ).toBe("Only 4 left at this price");
-    expect(
-      saleAvailabilityCopy(11, "2027-01-01T20:00:00.000Z", "UTC"),
-    ).toMatch(/^Sale ends /);
+    expect(saleAvailabilityCopy(4, "2027-01-01T20:00:00.000Z", "UTC")).toBe(
+      "Only 4 left at this price",
+    );
+    expect(saleAvailabilityCopy(11, "2027-01-01T20:00:00.000Z", "UTC")).toMatch(
+      /^Sale ends /,
+    );
     expect(saleAvailabilityCopy(null, null)).toBeNull();
   });
 
@@ -23,7 +23,9 @@ describe("#3872 buyer discount client contract", () => {
       "app-mobile/src/components/expandedCard/TicketCartSheet.tsx",
     );
     expect(nativeCart).toContain("quoteDigest: acceptedQuote.quoteDigest");
-    expect(nativeCart).toContain("quoteListDigest: acceptedQuote.quoteListDigest");
+    expect(nativeCart).toContain(
+      "quoteListDigest: acceptedQuote.quoteListDigest",
+    );
     expect(nativeCart).toContain('terminalOutcome?.outcome === "review"');
     expect(nativeCart).not.toMatch(/price(?:AllIn)?Gbp\s*\*/);
   });
@@ -45,9 +47,7 @@ describe("#3872 buyer discount client contract", () => {
 
   test("public listing cards preserve list price beside the server sale minimum", () => {
     const brand = read("packages/brand-rendering/PublicBrandPage.tsx");
-    const service = read(
-      "mingla-business/src/services/publicEventsService.ts",
-    );
+    const service = read("mingla-business/src/services/publicEventsService.ts");
     expect(service).toContain('supabase.rpc("pg_public_event_display_prices"');
     expect(brand).toContain("event.displaySalePriceCents");
     expect(brand).toContain("styles.oCardListPrice");

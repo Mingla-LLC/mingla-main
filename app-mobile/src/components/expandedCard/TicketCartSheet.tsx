@@ -23,12 +23,7 @@
  * populated_empty_cart, populated_cart, submitting.
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -59,16 +54,18 @@ import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 
 import {
-  checkoutReviewReasonCopy,
-  discountReasonCopy,
-  saleLimitedCopy,
-  ticketQuoteFeesAndTaxCents,
-  type TicketQuote,
   type PublicTicketProps,
   QuantityRow,
   type QuantityRowTheme,
   type TripTierLike,
 } from "@mingla/offering-rendering";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { discountReasonCopy } from "@mingla/offering-rendering/discountReasonCopy";
+import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
+import {
+  checkoutReviewReasonCopy,
+  ticketQuoteFeesAndTaxCents,
+} from "@mingla/offering-rendering/ticketQuoteCopy";
 // #3372 — naira reads "₦", not "NGN", in the cart (the shared #3341 rule).
 // Deep specifier, not the barrel, so suites that mock the barrel stay untouched.
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
@@ -98,13 +95,11 @@ import { Icon } from "../ui/Icon";
 // from pg_public_event_tier_allin). The cart now shows the all-in total upfront
 // and goes straight to the native PaymentSheet — no address typed.
 import { ConsumerCartCard } from "./ConsumerCartCard";
-import {
-  EventDayChooser,
-  type EventDayChooserStatus,
-} from "./EventDayChooser";
+import { EventDayChooser, type EventDayChooserStatus } from "./EventDayChooser";
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 import { useTicketQuote } from "../../hooks/useTicketQuote";
+import { postHogService } from "../../services/postHogService";
 import { PhoneInput } from "../onboarding/PhoneInput";
 import {
   COUNTRIES,
@@ -121,9 +116,7 @@ import {
   type ExplorerCheckoutContactSeedAuthority,
   type ExplorerCheckoutContactSnapshot,
 } from "../../payments/explorerCheckoutContact.mjs";
-import {
-  ConsumerIntakeForm,
-} from "./ConsumerIntakeForm";
+import { ConsumerIntakeForm } from "./ConsumerIntakeForm";
 import {
   buildIntakeFormData,
   createIntakeUploadSessionId,
@@ -464,9 +457,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     () => Math.round(windowHeight * MAX_DYNAMIC_FRACTION),
     [windowHeight],
   );
-  const { lines, totals, setLineQuantity, reset } = useTicketCart(
-    fallbackCurrency,
-  );
+  const { lines, totals, setLineQuantity, reset } =
+    useTicketCart(fallbackCurrency);
   // #3859 — purchase acceptance is a required checkout act. Explorer's
   // account-level marketing remains on separately and has no cart control.
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
@@ -480,7 +472,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // ORCH-1025 — "What's included" breakdown panel expand/collapse.
   const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
   const [discountCode, setDiscountCode] = useState("");
-  const [dismissedSaleNotices, setDismissedSaleNotices] = useState<string[]>([]);
+  const [dismissedSaleNotices, setDismissedSaleNotices] = useState<string[]>(
+    [],
+  );
   const [highlightUnchosen, setHighlightUnchosen] = useState<boolean>(false);
   // ORCH-1016 REWORK (D2) — per-tier intake answers + per-tier per-question
   // validation errors. Keyed by ticket_type_id → { [questionId]: value/error }.
@@ -494,9 +488,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     createIntakeUploadSessionId(),
   );
   const lastOpenSeedRef = React.useRef<string | null>(null);
-  const contactSeedAuthorityRef = React.useRef<
-    ExplorerCheckoutContactSeedAuthority
-  >(EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.awaitingAccount);
+  const contactSeedAuthorityRef =
+    React.useRef<ExplorerCheckoutContactSeedAuthority>(
+      EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.awaitingAccount,
+    );
   const initialContactValidation = useMemo(
     () =>
       validateExplorerCheckoutContact({
@@ -564,9 +559,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         };
       })
       .filter(
-        (
-          t,
-        ): t is { tierId: string; tierName: string; schema: IntakeSchema } =>
+        (t): t is { tierId: string; tierName: string; schema: IntakeSchema } =>
           t !== null,
       );
   }, [lines, intakeSchemasByTier]);
@@ -591,7 +584,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         ? []
         : multiDaySelection.occurrences
             .filter((day) =>
-              multiDaySelection.selectedEventDateIds.includes(day.id)
+              multiDaySelection.selectedEventDateIds.includes(day.id),
             )
             .map((day) => day.id),
     [multiDaySelection],
@@ -626,8 +619,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const { query: quoteQuery, isDebouncing: quoteIsDebouncing } =
     useTicketQuote(quoteInput);
   const quote = quoteQuery.data ?? null;
-  const quoteIsLoading = quoteLines.length > 0 &&
-    (quoteIsDebouncing || quoteQuery.isFetching);
+  const quoteIsLoading =
+    quoteLines.length > 0 && (quoteIsDebouncing || quoteQuery.isFetching);
   const quoteIsReady = quote !== null && !quoteIsLoading && !quoteQuery.isError;
   const isFreeQuote = quoteIsReady && quote.buyerTotalCents === 0;
   const showsDueToday =
@@ -892,10 +885,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     // for the existing root auth flow to restore a signed-in account.
     if (!signedInBuyer) return;
     if (multiDaySelection !== null) {
-      const validIds = new Set(multiDaySelection.occurrences.map((day) => day.id));
-      const selectedIds = [...new Set(multiDaySelection.selectedEventDateIds)].filter(
-        (id) => validIds.has(id),
+      const validIds = new Set(
+        multiDaySelection.occurrences.map((day) => day.id),
       );
+      const selectedIds = [
+        ...new Set(multiDaySelection.selectedEventDateIds),
+      ].filter((id) => validIds.has(id));
       if (multiDaySelection.status !== "ready") return;
       // issue #3281 — an all-days pass has nothing to choose: the server
       // expands the pass to every upcoming date (ticket-checkout-create).
@@ -906,7 +901,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         if (selectedIds.length === 0) {
           // ⚠️ DELETE THIS AND a guest buys a day they never chose.
           setHighlightUnchosen(true);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Error,
+          );
           return;
         }
       }
@@ -1004,12 +1001,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       .sort((a, b) => a.displayOrder - b.displayOrder);
   }, [tickets]);
 
-  const allSoldOut = visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) => !t.isUnlimited && (t.capacity ?? 0) <= 0,
-    );
+  const allSoldOut =
+    visibleTickets.length > 0 &&
+    visibleTickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) <= 0);
 
-  const allUnavailable = visibleTickets.length > 0 &&
+  const allUnavailable =
+    visibleTickets.length > 0 &&
     visibleTickets.every(
       (t) =>
         t.visibility === "disabled" ||
@@ -1017,18 +1014,19 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         (!t.isUnlimited && (t.capacity ?? 0) <= 0),
     );
 
-  const renderState =
-    ((): "loading" | "empty" | "sold_out" | "sales_closed" | "populated" => {
-      if (tickets === undefined) return "loading";
-      if (visibleTickets.length === 0) return "empty";
-      if (allSoldOut) return "sold_out";
-      if (allUnavailable) return "sales_closed";
-      return "populated";
-    })();
+  const renderState = (():
+    "loading" | "empty" | "sold_out" | "sales_closed" | "populated" => {
+    if (tickets === undefined) return "loading";
+    if (visibleTickets.length === 0) return "empty";
+    if (allSoldOut) return "sold_out";
+    if (allUnavailable) return "sales_closed";
+    return "populated";
+  })();
 
-  const selectedDayCount = multiDaySelection === null
-    ? 0
-    : new Set(multiDaySelection.selectedEventDateIds).size;
+  const selectedDayCount =
+    multiDaySelection === null
+      ? 0
+      : new Set(multiDaySelection.selectedEventDateIds).size;
   const dayTruthUnavailable =
     multiDaySelection !== null && multiDaySelection.status !== "ready";
   const treatAsAllDaysPass =
@@ -1036,17 +1034,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     (multiDaySelection.allDaysPass === true ||
       multiDaySelection.pricingMode === "all_days");
   const missingRequiredDay =
-    multiDaySelection !== null &&
-    !treatAsAllDaysPass &&
-    selectedDayCount === 0;
+    multiDaySelection !== null && !treatAsAllDaysPass && selectedDayCount === 0;
 
   const ctaLabel = missingRequiredDay
     ? "Pick at least one day above"
     : totals.isEmpty
-    ? "Add tickets above"
-    : isFreeQuote
-    ? "Get tickets"
-    : "Continue to Payment";
+      ? "Add tickets above"
+      : isFreeQuote
+        ? "Get tickets"
+        : "Continue to Payment";
   const ctaDisabled =
     dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty) ||
@@ -1057,8 +1053,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     !termsAccepted ||
     !quoteIsReady;
   const ctaPressDisabled =
-    isSubmitting || !signedInBuyer || dayTruthUnavailable ||
-    (!missingRequiredDay && totals.isEmpty) || !quoteIsReady;
+    isSubmitting ||
+    !signedInBuyer ||
+    dayTruthUnavailable ||
+    (!missingRequiredDay && totals.isEmpty) ||
+    !quoteIsReady;
 
   // issue #2265 — the pending vocabulary. The old treatment was a bare spinner
   // (and, on the screen's fallback CTA, nothing at all but `disabled`), which is
@@ -1066,11 +1065,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const pendingCtaLabel = ((): string => {
     switch (pendingPhase) {
       case "creating":
-        return isFreeQuote ? "Getting your ticket…" : "Setting up your payment…";
+        return isFreeQuote
+          ? "Getting your ticket…"
+          : "Setting up your payment…";
       case "opening_payment_page":
         return "Opening the payment page…";
       case "presenting_sheet":
-        return Platform.OS === "ios" ? "Opening Apple Pay…" : "Opening payment…";
+        return Platform.OS === "ios"
+          ? "Opening Apple Pay…"
+          : "Opening payment…";
       case "confirming_payment":
         return "Confirming your payment…";
       default:
@@ -1079,57 +1082,113 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     }
   })();
 
-  const subtotalValueText = missingRequiredDay || dayTruthUnavailable || totals.isEmpty
-    ? "—"
-    : quoteIsLoading
-    ? "Updating…"
-    : quoteQuery.isError || quote === null
-    ? "—"
-    : formatCentsCurrency(quote.buyerTotalCents, quote.currency);
+  const subtotalValueText =
+    missingRequiredDay || dayTruthUnavailable || totals.isEmpty
+      ? "—"
+      : quoteIsLoading
+        ? "Updating…"
+        : quoteQuery.isError || quote === null
+          ? "—"
+          : formatCentsCurrency(quote.buyerTotalCents, quote.currency);
   // The all-in Total is the single-line label when no plan; the upper line of the
   // two-line bar when paying over time.
   const subtotalLabelText = showsDueToday ? "Total" : "Subtotal";
-  const dueTodayValueText = quote === null
-    ? "—"
-    : formatCentsCurrency(quote.dueTodayNetCents, quote.currency);
+  const dueTodayValueText =
+    quote === null
+      ? "—"
+      : formatCentsCurrency(quote.dueTodayNetCents, quote.currency);
   const codeOutcome = quote?.codeOutcome ?? null;
-  const appliedCodeDiscount = quote?.discounts.find(
-    (discount) => discount.kind === "code",
-  ) ?? null;
-  const codeFeedback = codeOutcome?.status === "rejected" &&
-      codeOutcome.reason !== null
-    ? t(`code.${codeOutcome.reason}`, {
-      code: discountCode.trim().toUpperCase(),
-      required:
-        codeOutcome.required === null || quote === null
-          ? undefined
-          : formatCentsCurrency(codeOutcome.required, quote.currency),
-      with: codeOutcome.with ?? undefined,
-      defaultValue: discountReasonCopy({
-        reason: codeOutcome.reason,
-        code: discountCode.trim().toUpperCase(),
-        required:
-          codeOutcome.required === null || quote === null
-            ? null
-            : formatCentsCurrency(codeOutcome.required, quote.currency),
-        withName: codeOutcome.with,
-      }),
-    })
-    : codeOutcome?.status === "applied" && codeOutcome.replaced.length > 0
-    ? t("code.replaced", {
-      code: discountCode.trim().toUpperCase(),
-      names: codeOutcome.replaced.join(", "),
-      defaultValue: `${discountCode.trim().toUpperCase()} applied instead of ${
-        codeOutcome.replaced.join(", ")
-      }.`,
-    })
-    : null;
+  const appliedCodeDiscount =
+    quote?.discounts.find((discount) => discount.kind === "code") ?? null;
+  const codeFeedback =
+    codeOutcome?.status === "rejected" && codeOutcome.reason !== null
+      ? t(`code.${codeOutcome.reason}`, {
+          code: discountCode.trim().toUpperCase(),
+          required:
+            codeOutcome.required === null || quote === null
+              ? undefined
+              : formatCentsCurrency(codeOutcome.required, quote.currency),
+          with: codeOutcome.with ?? undefined,
+          defaultValue: discountReasonCopy({
+            reason: codeOutcome.reason,
+            code: discountCode.trim().toUpperCase(),
+            required:
+              codeOutcome.required === null || quote === null
+                ? null
+                : formatCentsCurrency(codeOutcome.required, quote.currency),
+            withName: codeOutcome.with,
+          }),
+        })
+      : codeOutcome?.status === "applied" && codeOutcome.replaced.length > 0
+        ? t("code.replaced", {
+            code: discountCode.trim().toUpperCase(),
+            names: codeOutcome.replaced.join(", "),
+            defaultValue: `${discountCode.trim().toUpperCase()} applied instead of ${codeOutcome.replaced.join(
+              ", ",
+            )}.`,
+          })
+        : null;
   const activeSaleNotices = (quote?.notices ?? []).filter(
     (notice) => !dismissedSaleNotices.includes(notice.discountId),
   );
-  const reviewQuote = terminalOutcome?.outcome === "review"
-    ? terminalOutcome.review.quote
-    : null;
+  const reviewQuote =
+    terminalOutcome?.outcome === "review" ? terminalOutcome.review.quote : null;
+  const discountAnalyticsRef = React.useRef(new Set<string>());
+  useEffect(() => {
+    if (quote === null || !quoteIsReady) return;
+    const captureOnce = (
+      event: string,
+      suffix: string,
+      properties: Readonly<Record<string, string | number>>,
+    ): void => {
+      const key = `${quote.quoteDigest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      postHogService.capture(event, properties);
+    };
+    if (
+      discountCode.trim().length > 0 &&
+      quote.codeOutcome.status === "applied"
+    ) {
+      captureOnce("discount_code_applied", "code", {
+        surface: "explorer_cart",
+      });
+    }
+    if (
+      discountCode.trim().length > 0 &&
+      quote.codeOutcome.status === "rejected" &&
+      quote.codeOutcome.reason !== null
+    ) {
+      captureOnce("discount_code_rejected", quote.codeOutcome.reason, {
+        reason: quote.codeOutcome.reason,
+        surface: "explorer_cart",
+      });
+    }
+    const automaticCount = quote.discounts.filter(
+      (row) => row.kind === "automatic",
+    ).length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "explorer_cart",
+      });
+    }
+    for (const notice of quote.notices) {
+      captureOnce("sale_limited_shown", notice.discountId, {
+        surface: "explorer_cart",
+      });
+    }
+  }, [discountCode, quote, quoteIsReady]);
+  useEffect(() => {
+    if (terminalOutcome?.outcome !== "review") return;
+    const key = `review:${terminalOutcome.review.detail}`;
+    if (discountAnalyticsRef.current.has(key)) return;
+    discountAnalyticsRef.current.add(key);
+    postHogService.capture("checkout_review_required", {
+      detail: terminalOutcome.review.detail,
+      surface: "explorer_cart",
+    });
+  }, [terminalOutcome]);
   const handleReviewAccept = useCallback((): void => {
     if (reviewQuote === null || isSubmitting) return;
     onCheckout(checkoutPayloadFor(reviewQuote));
@@ -1171,14 +1230,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         {terminalOutcome?.outcome === "succeeded"
           ? (terminalOutcome.title ?? "You’re booked")
           : terminalOutcome?.outcome === "pending"
-          ? terminalOutcome.title
-          : terminalOutcome?.outcome === "canceled"
-          ? "Payment canceled"
-          : terminalOutcome?.outcome === "review"
-          ? t("review.title", { defaultValue: "Your total changed" })
-          : terminalOutcome?.outcome === "failed"
-          ? "Payment needs attention"
-          : "Get tickets"}
+            ? terminalOutcome.title
+            : terminalOutcome?.outcome === "canceled"
+              ? "Payment canceled"
+              : terminalOutcome?.outcome === "review"
+                ? t("review.title", { defaultValue: "Your total changed" })
+                : terminalOutcome?.outcome === "failed"
+                  ? "Payment needs attention"
+                  : "Get tickets"}
       </Text>
       <Pressable
         style={styles.closeIcon}
@@ -1222,58 +1281,59 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
   });
 
-  const terminalBody = terminalOutcome === null ? null : (
-    <View
-      style={styles.terminalBody}
-      accessibilityRole="alert"
-      accessibilityLiveRegion="polite"
-      testID="explorer-checkout-terminal-state"
-    >
-      <Text style={styles.terminalTitle}>
-        {terminalOutcome.outcome === "succeeded"
-          ? (terminalOutcome.title ?? "You’re booked")
-          : terminalOutcome.outcome === "pending"
-          ? terminalOutcome.title
-          : terminalOutcome.outcome === "canceled"
-          ? "Payment canceled"
-          : terminalOutcome.outcome === "review"
-          ? t("review.title", { defaultValue: "Your total changed" })
-          : "Payment needs attention"}
-      </Text>
-      {terminalOutcome.outcome === "review" ? (
-        <>
-          <Text style={styles.terminalMessage}>
-            {checkoutReviewReasonCopy(terminalOutcome.review.detail)}
-          </Text>
-          <View style={styles.reviewTotals}>
-            {quote !== null ? (
-              <Text style={styles.reviewOldTotal}>
-                {formatCentsCurrency(quote.buyerTotalCents, quote.currency)}
-              </Text>
-            ) : null}
-            <Text style={styles.reviewNewTotal}>
-              {reviewQuote === null
-                ? "—"
-                : formatCentsCurrency(
-                  reviewQuote.buyerTotalCents,
-                  reviewQuote.currency,
-                )}
-            </Text>
-          </View>
-        </>
-      ) : (
-        <Text style={styles.terminalMessage}>
+  const terminalBody =
+    terminalOutcome === null ? null : (
+      <View
+        style={styles.terminalBody}
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        testID="explorer-checkout-terminal-state"
+      >
+        <Text style={styles.terminalTitle}>
           {terminalOutcome.outcome === "succeeded"
-          ? "Your booking is confirmed and your tickets are ready."
-          : terminalOutcome.outcome === "pending"
-          ? terminalOutcome.message
-          : terminalOutcome.outcome === "canceled"
-          ? "No completed or pending payment was found. You can review your booking and try again."
-          : terminalOutcome.message}
+            ? (terminalOutcome.title ?? "You’re booked")
+            : terminalOutcome.outcome === "pending"
+              ? terminalOutcome.title
+              : terminalOutcome.outcome === "canceled"
+                ? "Payment canceled"
+                : terminalOutcome.outcome === "review"
+                  ? t("review.title", { defaultValue: "Your total changed" })
+                  : "Payment needs attention"}
         </Text>
-      )}
-    </View>
-  );
+        {terminalOutcome.outcome === "review" ? (
+          <>
+            <Text style={styles.terminalMessage}>
+              {checkoutReviewReasonCopy(terminalOutcome.review.detail)}
+            </Text>
+            <View style={styles.reviewTotals}>
+              {quote !== null ? (
+                <Text style={styles.reviewOldTotal}>
+                  {formatCentsCurrency(quote.buyerTotalCents, quote.currency)}
+                </Text>
+              ) : null}
+              <Text style={styles.reviewNewTotal}>
+                {reviewQuote === null
+                  ? "—"
+                  : formatCentsCurrency(
+                      reviewQuote.buyerTotalCents,
+                      reviewQuote.currency,
+                    )}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <Text style={styles.terminalMessage}>
+            {terminalOutcome.outcome === "succeeded"
+              ? "Your booking is confirmed and your tickets are ready."
+              : terminalOutcome.outcome === "pending"
+                ? terminalOutcome.message
+                : terminalOutcome.outcome === "canceled"
+                  ? "No completed or pending payment was found. You can review your booking and try again."
+                  : terminalOutcome.message}
+          </Text>
+        )}
+      </View>
+    );
 
   const sessionRequiredBody = sessionRequired ? (
     <View
@@ -1290,7 +1350,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     </View>
   ) : null;
 
-  const body = terminalBody ?? sessionRequiredBody ??
+  const body =
+    terminalBody ??
+    sessionRequiredBody ??
     (renderState === "loading" ? (
       <View style={styles.bodyMessageWrap}>
         <ActivityIndicator color="rgba(255,255,255,0.65)" />
@@ -1353,7 +1415,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           >
             {ticketRows}
           </View>
-        ) : ticketRows}
+        ) : (
+          ticketRows
+        )}
 
         <View style={styles.discountSection}>
           <Text style={styles.sectionLabel}>
@@ -1430,11 +1494,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               <Text style={styles.discountError}>
                 {quoteQuery.error.message === "rate_limited"
                   ? t("code.rate_limited", {
-                    defaultValue: "Too many tries. Wait a few minutes.",
-                  })
+                      defaultValue: "Too many tries. Wait a few minutes.",
+                    })
                   : t("quote.error", {
-                    defaultValue: "Couldn’t get your price.",
-                  })}
+                      defaultValue: "Couldn’t get your price.",
+                    })}
               </Text>
               <Pressable
                 onPress={() => void quoteQuery.refetch()}
@@ -1457,7 +1521,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             const name = sale?.name ?? ticket?.saleName ?? "sale";
             const currentQuantity = quoteLine?.quantity ?? 0;
             return (
-              <View key={`${notice.discountId}:${notice.lineRef}`} style={styles.saleNotice}>
+              <View
+                key={`${notice.discountId}:${notice.lineRef}`}
+                style={styles.saleNotice}
+              >
                 <Text style={styles.saleNoticeText}>
                   {saleLimitedCopy(name, notice.remaining)}
                 </Text>
@@ -1465,10 +1532,16 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   {notice.remaining > 0 && ticket !== undefined ? (
                     <Pressable
                       onPress={() => {
+                        postHogService.capture("sale_limited_choice", {
+                          choice: "reduce",
+                          surface: "explorer_cart",
+                        });
                         const seed: CartLineSeed = {
                           ticketTypeId: ticket.id,
                           ticketName: ticket.name,
-                          unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
+                          unitPriceCents: Math.round(
+                            (ticket.priceGbp ?? 0) * 100,
+                          ),
                           currency: ticket.currency ?? fallbackCurrency,
                           isFree: ticket.isFree,
                         };
@@ -1487,12 +1560,16 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                     </Pressable>
                   ) : null}
                   <Pressable
-                    onPress={() =>
+                    onPress={() => {
+                      postHogService.capture("sale_limited_choice", {
+                        choice: "keep",
+                        surface: "explorer_cart",
+                      });
                       setDismissedSaleNotices((current) => [
                         ...current,
                         notice.discountId,
-                      ])
-                    }
+                      ]);
+                    }}
                     accessibilityRole="button"
                     style={styles.saleNoticeButton}
                   >
@@ -1622,8 +1699,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                         styles.contactTextInputError,
                     ]}
                   />
-                  {contactTouched.name &&
-                  !contactDraftValidation.valid.name ? (
+                  {contactTouched.name && !contactDraftValidation.valid.name ? (
                     <Text style={styles.contactError}>
                       Enter the full name for this booking.
                     </Text>
@@ -1681,7 +1757,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                       setContactDraft((current) => ({
                         ...current,
                         phone:
-                          resolveUserPhoneE164(phone, contactPhoneCountry) ?? "",
+                          resolveUserPhoneE164(phone, contactPhoneCountry) ??
+                          "",
                       }));
                     }}
                     onChangeCountry={(countryCode) => {
@@ -1691,8 +1768,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                       setContactDraft((current) => ({
                         ...current,
                         phone:
-                          resolveUserPhoneE164(contactPhoneLocal, countryCode) ??
-                          "",
+                          resolveUserPhoneE164(
+                            contactPhoneLocal,
+                            countryCode,
+                          ) ?? "",
                       }));
                     }}
                     onBlur={() =>
@@ -1776,17 +1855,21 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                 onAnswersChange={(next) => setTierAnswers(tier.tierId, next)}
                 validationErrors={intakeErrors[tier.tierId]}
                 disabled={isSubmitting}
-                onUpload={(file) => uploadTripIntakeFile({
-                  eventId,
-                  ticketTypeId: tier.tierId,
-                  schemaVersionId: tier.schema.schema_version_id,
-                  uploadSessionId: intakeUploadSessionRef.current,
-                  ...file,
-                })}
-                onRemove={(claimId) => revokeTripIntakeFileClaim({
-                  claimId,
-                  uploadSessionId: intakeUploadSessionRef.current,
-                })}
+                onUpload={(file) =>
+                  uploadTripIntakeFile({
+                    eventId,
+                    ticketTypeId: tier.tierId,
+                    schemaVersionId: tier.schema.schema_version_id,
+                    uploadSessionId: intakeUploadSessionRef.current,
+                    ...file,
+                  })
+                }
+                onRemove={(claimId) =>
+                  revokeTripIntakeFileClaim({
+                    claimId,
+                    uploadSessionId: intakeUploadSessionRef.current,
+                  })
+                }
               />
             ))}
           </View>
@@ -1800,7 +1883,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             The public RPC exposes no VAT/service-fee SPLIT, so we never fabricate
             separate numbers — when an all-in delta exists we add the qualitative
             "Includes VAT & fees" note (G-3). Hidden for free-only carts. */}
-        {!missingRequiredDay && !dayTruthUnavailable && !totals.isEmpty && quote !== null ? (
+        {!missingRequiredDay &&
+        !dayTruthUnavailable &&
+        !totals.isEmpty &&
+        quote !== null ? (
           <View style={styles.breakdownWrap}>
             <Pressable
               onPress={() => setBreakdownOpen((v) => !v)}
@@ -1830,7 +1916,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                     <View style={styles.breakdownPricePair}>
                       {line.lineListCents > line.lineNetCents ? (
                         <Text style={styles.breakdownListValue}>
-                          {formatCentsCurrency(line.lineListCents, quote.currency)}
+                          {formatCentsCurrency(
+                            line.lineListCents,
+                            quote.currency,
+                          )}
                         </Text>
                       ) : null}
                       <Text style={styles.breakdownValue}>
@@ -1845,7 +1934,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                       {discount.name}
                     </Text>
                     <Text style={styles.breakdownDiscountValue}>
-                      −{formatCentsCurrency(discount.amountMinor, quote.currency)}
+                      −
+                      {formatCentsCurrency(
+                        discount.amountMinor,
+                        quote.currency,
+                      )}
                     </Text>
                   </View>
                 ))}
@@ -1853,7 +1946,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   <View style={styles.breakdownRow}>
                     <Text style={styles.breakdownLabel}>Fees &amp; tax</Text>
                     <Text style={styles.breakdownValue}>
-                      {formatCentsCurrency(ticketQuoteFeesAndTaxCents(quote), quote.currency)}
+                      {formatCentsCurrency(
+                        ticketQuoteFeesAndTaxCents(quote),
+                        quote.currency,
+                      )}
                     </Text>
                   </View>
                 ) : null}
@@ -1864,7 +1960,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   </Text>
                 </View>
                 {ticketQuoteFeesAndTaxCents(quote) > 0 ? (
-                  <Text style={styles.breakdownNote}>Includes VAT &amp; fees</Text>
+                  <Text style={styles.breakdownNote}>
+                    Includes VAT &amp; fees
+                  </Text>
                 ) : null}
               </View>
             ) : null}
@@ -1891,9 +1989,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             {reviewQuote === null
               ? "Review unavailable"
               : `Pay ${formatCentsCurrency(
-                reviewQuote.buyerTotalCents,
-                reviewQuote.currency,
-              )}`}
+                  reviewQuote.buyerTotalCents,
+                  reviewQuote.currency,
+                )}`}
           </Text>
         </Pressable>
         <Pressable
@@ -1912,8 +2010,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           onPress={
             (terminalOutcome.outcome === "canceled" &&
               terminalOutcome.retryable === true) ||
-              (terminalOutcome.outcome === "failed" &&
-                terminalOutcome.retryable === true)
+            (terminalOutcome.outcome === "failed" &&
+              terminalOutcome.retryable === true)
               ? onTerminalRetry
               : handleCancel
           }
@@ -1928,8 +2026,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           accessibilityLabel={
             (terminalOutcome.outcome === "canceled" &&
               terminalOutcome.retryable === true) ||
-              (terminalOutcome.outcome === "failed" &&
-                terminalOutcome.retryable === true)
+            (terminalOutcome.outcome === "failed" &&
+              terminalOutcome.retryable === true)
               ? "Review booking and try again"
               : "Close"
           }
@@ -1940,9 +2038,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         >
           <Text style={styles.ctaLabel}>
             {(terminalOutcome.outcome === "canceled" &&
-                terminalOutcome.retryable === true) ||
-                (terminalOutcome.outcome === "failed" &&
-                  terminalOutcome.retryable === true)
+              terminalOutcome.retryable === true) ||
+            (terminalOutcome.outcome === "failed" &&
+              terminalOutcome.retryable === true)
               ? "Review and try again"
               : "Close"}
           </Text>
@@ -1966,10 +2064,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       <View style={stickyBarStyle}>
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>{subtotalLabelText}</Text>
-          <Text
-            style={styles.subtotalValue}
-            accessibilityLiveRegion="polite"
-          >
+          <Text style={styles.subtotalValue} accessibilityLiveRegion="polite">
             {subtotalValueText}
           </Text>
         </View>
@@ -1987,7 +2082,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           disabled={ctaPressDisabled}
           accessibilityRole="button"
           accessibilityLabel={isSubmitting ? pendingCtaLabel : ctaLabel}
-          accessibilityState={{ disabled: ctaPressDisabled, busy: isSubmitting }}
+          accessibilityState={{
+            disabled: ctaPressDisabled,
+            busy: isSubmitting,
+          }}
           style={({ pressed }) => [
             styles.ctaButton,
             ctaDisabled && styles.ctaButtonDisabled,

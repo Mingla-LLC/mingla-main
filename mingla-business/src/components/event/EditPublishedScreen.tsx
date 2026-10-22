@@ -1789,7 +1789,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             />
           );
         case "settings":
-          return <CreatorStep6SettingsLazy {...stepBodyProps} />;
+          return (
+            <CreatorStep6SettingsLazy
+              {...stepBodyProps}
+              publishedEventId={liveEvent.serverEventId ?? undefined}
+            />
+          );
         case "rsvp-setup":
           // ORCH-1172 — mount the SAME Step-5 host-control body the create RSVP
           // wizard uses. Cross-field logic (capacity→waitlist, private→discover-

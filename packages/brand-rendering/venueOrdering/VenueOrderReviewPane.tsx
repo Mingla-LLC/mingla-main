@@ -44,10 +44,7 @@ import type {
   offeringSurfaceStyles,
   ThemePalette,
 } from "@mingla/offering-rendering";
-import {
-  discountReasonCopy,
-  type DiscountCodeReason,
-} from "@mingla/offering-rendering/discountQuote";
+import { type DiscountCodeReason } from "@mingla/offering-rendering/discountQuote";
 
 import { formatMenuPrice } from "../PublicMenuSections";
 import type {
@@ -58,6 +55,12 @@ import type {
   VenueOrderPreview,
   VenueOrderTipChoice,
 } from "./venueOrderingTypes";
+
+const DiscountReasonText = React.lazy(() =>
+  import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
+    default: module.DiscountReasonText,
+  })),
+);
 import {
   VENUE_ORDER_PARTY_SIZE_HELP,
   VENUE_ORDER_PARTY_SIZE_MAX,
@@ -181,14 +184,15 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   // The Pay button is live only when the SERVER has priced this exact basket.
   // A stale price behind a live button is how a guest is charged a number they
   // never saw.
-  const canPay = priced && !submitting && buyerFailure === null &&
-    cart.length > 0;
-  const tipDropped = preview?.notices.some(
-    (notice) =>
-      notice !== null &&
-      typeof notice === "object" &&
-      (notice as { type?: unknown }).type === "tip_dropped_free_order",
-  ) === true;
+  const canPay =
+    priced && !submitting && buyerFailure === null && cart.length > 0;
+  const tipDropped =
+    preview?.notices?.some(
+      (notice) =>
+        notice !== null &&
+        typeof notice === "object" &&
+        (notice as { type?: unknown }).type === "tip_dropped_free_order",
+    ) === true;
   const knownCodeReasons = new Set<DiscountCodeReason>([
     "not_found",
     "paused",
@@ -201,17 +205,14 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
     "min_subtotal",
     "incompatible_better_automatic",
   ]);
-  const codeReason = preview?.codeOutcome.reason ?? null;
-  const codeMessage = codeReason !== null &&
-      knownCodeReasons.has(codeReason as DiscountCodeReason)
-    ? discountReasonCopy({
-      reason: codeReason as DiscountCodeReason,
-      code: discountCode.trim().toUpperCase(),
-    })
-    : null;
-  const codeDiscount = preview?.discounts.find(
-    (discount) => discount.id === preview.codeOutcome.discountId,
-  ) ?? null;
+  const codeReason = preview?.codeOutcome?.reason ?? null;
+  const hasKnownCodeReason =
+    codeReason !== null &&
+    knownCodeReasons.has(codeReason as DiscountCodeReason);
+  const codeDiscount =
+    preview?.discounts?.find(
+      (discount) => discount.id === preview.codeOutcome?.discountId,
+    ) ?? null;
 
   return (
     <View style={styles.wrap}>
@@ -234,9 +235,10 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
       {/* ── the basket ──────────────────────────────────────────────────── */}
       <View style={[styles.card, surface.card]}>
         {cart.map((line, index) => {
-          const pricedLine = preview?.lines.find(
-            (candidate) => candidate.lineNo === index + 1,
-          ) ?? null;
+          const pricedLine =
+            preview?.lines.find(
+              (candidate) => candidate.lineNo === index + 1,
+            ) ?? null;
           return (
             <View
               key={line.key}
@@ -250,7 +252,9 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
             >
               <View style={styles.lineTop}>
                 <View style={styles.lineLeft}>
-                  <Text style={[styles.lineName, { color: palette.primaryText }]}>
+                  <Text
+                    style={[styles.lineName, { color: palette.primaryText }]}
+                  >
                     {line.itemName}
                   </Text>
                   {line.modifierNames.length > 0 ? (
@@ -267,13 +271,19 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                     <View style={styles.linePricePair}>
                       {pricedLine.discountCents > 0 ? (
                         <Text
-                          style={[styles.lineListTotal, { color: palette.tertiaryText }]}
+                          style={[
+                            styles.lineListTotal,
+                            { color: palette.tertiaryText },
+                          ]}
                         >
                           {money(pricedLine.lineTotalCents)}
                         </Text>
                       ) : null}
                       <Text
-                        style={[styles.lineTotal, { color: palette.primaryText }]}
+                        style={[
+                          styles.lineTotal,
+                          { color: palette.primaryText },
+                        ]}
                       >
                         {money(pricedLine.netLineTotalCents)}
                       </Text>
@@ -284,10 +294,16 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                       onPress={() => onSetQuantity(line.key, line.quantity - 1)}
                       accessibilityRole="button"
                       accessibilityLabel={`One fewer ${line.itemName}`}
-                      style={[styles.stepBtn, { borderColor: palette.panelBorder }]}
+                      style={[
+                        styles.stepBtn,
+                        { borderColor: palette.panelBorder },
+                      ]}
                     >
                       <Text
-                        style={[styles.stepGlyph, { color: palette.primaryText }]}
+                        style={[
+                          styles.stepGlyph,
+                          { color: palette.primaryText },
+                        ]}
                       >
                         −
                       </Text>
@@ -301,10 +317,16 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                       onPress={() => onSetQuantity(line.key, line.quantity + 1)}
                       accessibilityRole="button"
                       accessibilityLabel={`One more ${line.itemName}`}
-                      style={[styles.stepBtn, { borderColor: palette.panelBorder }]}
+                      style={[
+                        styles.stepBtn,
+                        { borderColor: palette.panelBorder },
+                      ]}
                     >
                       <Text
-                        style={[styles.stepGlyph, { color: palette.primaryText }]}
+                        style={[
+                          styles.stepGlyph,
+                          { color: palette.primaryText },
+                        ]}
                       >
                         +
                       </Text>
@@ -316,14 +338,18 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                 <Input
                   value={line.notes ?? ""}
                   onChangeText={(value: string) =>
-                    onSetNotes(line.key, value.trim() === "" ? null : value)}
+                    onSetNotes(line.key, value.trim() === "" ? null : value)
+                  }
                   placeholder="Anything they should know? (optional)"
                   placeholderTextColor={palette.tertiaryText}
                   accessibilityLabel={`A note for ${line.itemName}`}
                   maxLength={140}
                   style={[
                     styles.input,
-                    { borderColor: palette.panelBorder, color: palette.primaryText },
+                    {
+                      borderColor: palette.panelBorder,
+                      color: palette.primaryText,
+                    },
                   ]}
                 />
               ) : null}
@@ -409,9 +435,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
       {/* ── who this order belongs to (P-22 gate 8) ─────────────────────── */}
       <View style={[styles.card, surface.card, styles.block]}>
         <Text style={[styles.blockTitle, { color: palette.primaryText }]}>
-          {config.spotState === "ok"
-            ? "Who's ordering?"
-            : "Who's collecting?"}
+          {config.spotState === "ok" ? "Who's ordering?" : "Who's collecting?"}
         </Text>
         <Input
           value={buyer.name}
@@ -469,13 +493,17 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         <Text style={[styles.blockTitle, { color: palette.primaryText }]}>
           Discount code
         </Text>
-        {preview?.codeOutcome.applied === true && codeDiscount !== null ? (
+        {preview?.codeOutcome?.applied === true && codeDiscount !== null ? (
           <View style={styles.codeAppliedRow}>
             <View style={styles.codeAppliedCopy}>
-              <Text style={[styles.codeAppliedName, { color: palette.primaryText }]}>
+              <Text
+                style={[styles.codeAppliedName, { color: palette.primaryText }]}
+              >
                 {codeDiscount.name}
               </Text>
-              <Text style={[styles.blockHelp, { color: palette.secondaryText }]}>
+              <Text
+                style={[styles.blockHelp, { color: palette.secondaryText }]}
+              >
                 Saving {money(codeDiscount.amountCents)}
               </Text>
             </View>
@@ -485,7 +513,9 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
               accessibilityRole="button"
               accessibilityLabel="Remove discount code"
             >
-              <Text style={[styles.codeRemove, { color: palette.accent }]}>Remove</Text>
+              <Text style={[styles.codeRemove, { color: palette.accent }]}>
+                Remove
+              </Text>
             </Pressable>
           </View>
         ) : (
@@ -509,19 +539,25 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
           <Text style={[styles.blockHelp, { color: palette.secondaryText }]}>
             Checking code…
           </Text>
-        ) : codeMessage !== null ? (
-          <Text style={[styles.codeError, { color: palette.secondaryText }]}>
-            {codeMessage}
-          </Text>
+        ) : hasKnownCodeReason ? (
+          <React.Suspense fallback={null}>
+            <DiscountReasonText
+              style={[styles.codeError, { color: palette.secondaryText }]}
+              input={{
+                reason: codeReason as DiscountCodeReason,
+                code: discountCode.trim().toUpperCase(),
+              }}
+            />
+          </React.Suspense>
         ) : null}
         {priced && preview !== null ? (
           <View style={styles.totals}>
             <MoneyLine
               label="Items"
-              value={money(preview.listSubtotalCents)}
+              value={money(preview.listSubtotalCents ?? preview.subtotalCents)}
               palette={palette}
             />
-            {preview.discounts.map((discount) => (
+            {(preview.discounts ?? []).map((discount) => (
               <MoneyLine
                 key={discount.id}
                 label={discount.name}
@@ -549,7 +585,10 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
               />
             ) : null}
             <View
-              style={[styles.totalRule, { backgroundColor: palette.panelBorder }]}
+              style={[
+                styles.totalRule,
+                { backgroundColor: palette.panelBorder },
+              ]}
             />
             <MoneyLine
               label="Total"
@@ -603,8 +642,8 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
           {submitting
             ? "One moment…"
             : priced && preview !== null
-            ? `Pay ${money(preview.totalCents)}`
-            : "Pay"}
+              ? `Pay ${money(preview.totalCents)}`
+              : "Pay"}
         </Text>
       </Pressable>
     </View>
@@ -710,7 +749,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   stepGlyph: { fontSize: 17, lineHeight: 21, fontWeight: "800" },
-  stepCount: { fontSize: 15, fontWeight: "800", minWidth: 16, textAlign: "center" },
+  stepCount: {
+    fontSize: 15,
+    fontWeight: "800",
+    minWidth: 16,
+    textAlign: "center",
+  },
   input: {
     minHeight: 46,
     borderWidth: 1,

@@ -5,7 +5,7 @@ import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 import {
   quoteTicketCheckout,
   type TicketQuoteInput,
-} from "../services/ticketCheckoutService";
+} from "../services/ticketQuoteService";
 
 export const ticketQuoteKeys = {
   all: ["ticket-checkout-quote"] as const,
@@ -73,4 +73,3 @@ export const useTicketQuote = (
 
   return { query, isDebouncing };
 };
-

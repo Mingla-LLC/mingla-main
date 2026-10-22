@@ -106,7 +106,7 @@ import {
   eventAcquisitionNoticeCopy,
   type EventAcquisitionState,
 } from "./eventAcquisitionLifecycle";
-import { saleAvailabilityCopy } from "./discountQuote";
+import { saleAvailabilityCopy } from "./saleAvailabilityCopy";
 
 import { normalizeCityCountry } from "./normalizeCityCountry";
 // issue #2468 — the ONE privacy gate + label composer for this card. The maps
@@ -540,7 +540,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
     eventIsPaid &&
     (refundReadStatus === "set" || refundReadStatus === "none");
   const refundHost =
-    refundHostName !== undefined ? refundHostName : (brand?.displayName ?? null);
+    refundHostName !== undefined
+      ? refundHostName
+      : (brand?.displayName ?? null);
 
   // ORCH-1167-R2 — the inline-box CTA/total math moved INTO <EventTicketBox> (the
   // shared box now used both inline on phone/native AND in the desktop sticky
@@ -728,7 +730,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             }
             style={styles.brandRow}
           >
-            <View style={[styles.brandTile, { backgroundColor: palette.accent }]}>
+            <View
+              style={[styles.brandTile, { backgroundColor: palette.accent }]}
+            >
               {brand?.photo !== undefined && brand.photo.length > 0 ? (
                 <Image
                   source={{ uri: brand.photo }}
@@ -750,7 +754,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               )}
             </View>
             <View style={styles.brandTextCol}>
-              <Text style={[styles.brandKicker, { color: palette.secondaryText }]}>
+              <Text
+                style={[styles.brandKicker, { color: palette.secondaryText }]}
+              >
                 Presented by
               </Text>
               <Text
@@ -1117,11 +1123,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               Total
             </Text>
             <Text
-              style={[
-                styles.totalValue,
-                surface.primaryText,
-                styles.moneyText,
-              ]}
+              style={[styles.totalValue, surface.primaryText, styles.moneyText]}
               testID="orch-1167-running-total"
               accessibilityLiveRegion="polite"
             >
@@ -1434,13 +1436,7 @@ const TicketStepperRow: React.FC<{
             {listPriceLabel}
           </Text>
         ) : null}
-        <Text
-          style={[
-            styles.tierPrice,
-            surface.primaryText,
-            styles.moneyText,
-          ]}
-        >
+        <Text style={[styles.tierPrice, surface.primaryText, styles.moneyText]}>
           {ticket.isFree ? "Free" : priceLabel}
         </Text>
         {/* issue #2160 — the multiplier, said in words, next to the number it

@@ -59,6 +59,7 @@ import {
 } from "../../services/venueOrderingService";
 import { buildApplePayCartItems } from "../../payments/applePayCartItem";
 import { presentVenueOrderPayment } from "./venueOrderPaymentPresentation";
+import { postHogService } from "../../services/postHogService";
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
 const MERCHANT_IDENTIFIER = "merchant.com.mingla.app.v2";
@@ -284,6 +285,33 @@ export function useConsumerVenueOrdering(
           : previewQuery.data !== undefined
             ? "ready"
             : "loading";
+  const discountAnalyticsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const preview = previewQuery.data;
+    if (preview === undefined || previewStatus !== "ready") return;
+    const digest = preview.quoteDigest ?? priceSignature;
+    const captureOnce = (event: string, suffix: string, properties: Readonly<Record<string, string | number>>): void => {
+      const key = `${digest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      postHogService.capture(event, properties);
+    };
+    if (preview.codeOutcome.supplied && preview.codeOutcome.applied) {
+      captureOnce("discount_code_applied", "code", { surface: "explorer_venue" });
+    } else if (preview.codeOutcome.supplied && preview.codeOutcome.reason !== null) {
+      captureOnce("discount_code_rejected", preview.codeOutcome.reason, {
+        reason: preview.codeOutcome.reason,
+        surface: "explorer_venue",
+      });
+    }
+    const automaticCount = preview.discounts.filter((row) => row.kind === "automatic").length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "explorer_venue",
+      });
+    }
+  }, [previewQuery.data, previewStatus, priceSignature]);
 
   // ── the live order ────────────────────────────────────────────────────────
   const [live, setLive] = useState<VenueOrderLiveStatus | null>(null);

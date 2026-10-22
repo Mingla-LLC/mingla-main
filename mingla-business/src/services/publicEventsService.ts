@@ -1123,17 +1123,17 @@ const fetchPublicBrandVenueRows = async (brandSlug: string) => {
 const publicVenueSummary = (
   row: Awaited<ReturnType<typeof fetchPublicBrandVenueRows>>[number],
 ): PublicVenueSummary => ({
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    address: asStringOrNull(row.address),
-    city: asStringOrNull(row.city),
-    photoUrl:
-      asStringOrNull(row.cover_media_url) ??
-      (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
-        ? row.pool_photo_urls[0]
-        : null),
-  });
+  id: row.id,
+  slug: row.slug,
+  name: row.name,
+  address: asStringOrNull(row.address),
+  city: asStringOrNull(row.city),
+  photoUrl:
+    asStringOrNull(row.cover_media_url) ??
+    (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
+      ? row.pool_photo_urls[0]
+      : null),
+});
 
 export const fetchPublicBrandVenues = async (
   brandSlug: string,
@@ -1190,36 +1190,36 @@ const viewStatusToLiveStatus = (status: string): LiveEventStatus => {
 const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => {
   const { available_online, is_free, password_protected } = row;
   return {
-  id: row.id,
-  name: row.name,
-  priceGbp: is_free ? null : row.price_cents / 100,
-  currency: row.currency,
-  capacity: row.quantity_total,
-  isFree: is_free,
-  isUnlimited: row.is_unlimited,
-  visibility: row.is_hidden
-    ? "hidden"
-    : row.is_disabled
-      ? "disabled"
-      : "public",
-  displayOrder: row.display_order,
-  approvalRequired: row.requires_approval,
-  passwordProtected: password_protected,
-  password: null,
-  passwordConfigured: password_protected,
-  waitlistEnabled: row.waitlist_enabled,
-  minPurchaseQty: row.min_purchase_qty,
-  maxPurchaseQty: row.max_purchase_qty,
-  allowTransfers: row.allow_transfers,
-  description: row.description,
-  saleStartAt: row.sale_start_at,
-  saleEndAt: row.sale_end_at,
-  availableAt:
-    available_online && row.available_in_person
-      ? "both"
-      : available_online
-        ? "online"
-        : "door",
+    id: row.id,
+    name: row.name,
+    priceGbp: is_free ? null : row.price_cents / 100,
+    currency: row.currency,
+    capacity: row.quantity_total,
+    isFree: is_free,
+    isUnlimited: row.is_unlimited,
+    visibility: row.is_hidden
+      ? "hidden"
+      : row.is_disabled
+        ? "disabled"
+        : "public",
+    displayOrder: row.display_order,
+    approvalRequired: row.requires_approval,
+    passwordProtected: password_protected,
+    password: null,
+    passwordConfigured: password_protected,
+    waitlistEnabled: row.waitlist_enabled,
+    minPurchaseQty: row.min_purchase_qty,
+    maxPurchaseQty: row.max_purchase_qty,
+    allowTransfers: row.allow_transfers,
+    description: row.description,
+    saleStartAt: row.sale_start_at,
+    saleEndAt: row.sale_end_at,
+    availableAt:
+      available_online && row.available_in_person
+        ? "both"
+        : available_online
+          ? "online"
+          : "door",
   };
 };
 
@@ -1273,10 +1273,7 @@ export const publicEventViewRowToEvent = (
   // issue #2469 — the shared extractor owns the venueName/address split for
   // every surface. It reads the same `businessEvent.location` object as
   // `location` above; `location` is still read for `location.city` etc.
-  const seedLocation = extractPublicEventLocation(
-    public_theme,
-    location_text,
-  );
+  const seedLocation = extractPublicEventLocation(public_theme, location_text);
   const settings = asRecord(businessEvent.settings);
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
   // ORCH-0792: dates sourced from event_dates via master_* columns on the
@@ -1347,9 +1344,7 @@ export const publicEventViewRowToEvent = (
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
     // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9).
-    coverGallery: Array.isArray(cover_media_gallery)
-      ? cover_media_gallery
-      : [],
+    coverGallery: Array.isArray(cover_media_gallery) ? cover_media_gallery : [],
     coverMediaProvider: asEventCoverMediaProvider(row.cover_media_provider),
     coverMediaSourceUrl: asStringOrNull(row.cover_media_source_url),
     coverMediaCredit: asStringOrNull(row.cover_media_credit),
@@ -1586,7 +1581,7 @@ export const fetchTierAllInCents = async (
   const pricing = await fetchTierPricingCents(eventId);
   return new Map(
     [...pricing.entries()].flatMap(([id, row]) =>
-      row.allInCents === null ? [] : [[id, row.allInCents] as const]
+      row.allInCents === null ? [] : [[id, row.allInCents] as const],
     ),
   );
 };
@@ -1784,14 +1779,13 @@ const directBundleTicketToStub = (
     saleRemaining:
       typeof ticket.saleRemaining === "number" ? ticket.saleRemaining : null,
     currency: asStringOrNull(ticket.currency) ?? fallbackCurrency,
-    capacity:
-      isUnlimited
-        ? null
-        : typeof ticket.remaining === "number"
-          ? ticket.remaining
-          : typeof ticket.capacity === "number"
-            ? ticket.capacity
-            : null,
+    capacity: isUnlimited
+      ? null
+      : typeof ticket.remaining === "number"
+        ? ticket.remaining
+        : typeof ticket.capacity === "number"
+          ? ticket.capacity
+          : null,
     isFree,
     isUnlimited,
     visibility:
@@ -2018,8 +2012,10 @@ const cachedBundleUrl = (args: {
     return `/api/event-checkout-bundle?eventId=${encodeURIComponent(args.p_event_id)}`;
   }
   if (args.p_brand_slug !== null && args.p_event_slug !== null) {
-    return `/api/event-checkout-bundle?brandSlug=${encodeURIComponent(args.p_brand_slug)}`
-      + `&eventSlug=${encodeURIComponent(args.p_event_slug)}`;
+    return (
+      `/api/event-checkout-bundle?brandSlug=${encodeURIComponent(args.p_brand_slug)}` +
+      `&eventSlug=${encodeURIComponent(args.p_event_slug)}`
+    );
   }
   return null;
 };
@@ -2051,7 +2047,10 @@ const readCachedEventBundlePayload = async (args: {
     }
     return data;
   } catch (error) {
-    if (error instanceof Error && error.message === "invalid_direct_event_checkout_bundle") {
+    if (
+      error instanceof Error &&
+      error.message === "invalid_direct_event_checkout_bundle"
+    ) {
       throw error;
     }
     // Any transport failure degrades to exactly today's behaviour. This
@@ -2065,7 +2064,10 @@ const fetchDirectEventBundlePayload = async (args: {
   p_brand_slug: string | null;
   p_event_slug: string | null;
 }): Promise<JsonRecord | null> => {
-  const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", args);
+  const { data, error } = await supabase.rpc(
+    "pg_direct_event_checkout_bundle",
+    args,
+  );
   if (error !== null) throw error;
   if (data === null) return null;
   if (!isDirectEventBundle(data)) {
@@ -2080,9 +2082,8 @@ const readDirectEventBundle = async (args: {
   p_event_slug: string | null;
 }): Promise<PublicEventDetail | null | "fallback"> => {
   const cached = await readCachedEventBundlePayload(args);
-  const payload = cached === CACHE_MISS
-    ? await fetchDirectEventBundlePayload(args)
-    : cached;
+  const payload =
+    cached === CACHE_MISS ? await fetchDirectEventBundlePayload(args) : cached;
   return payload === null ? "fallback" : detailFromDirectBundle(payload);
 };
 
@@ -2106,11 +2107,16 @@ const RSVP_ENDPOINT_MISS = "miss" as const;
 export const rsvpEventRowFromPayload = (
   payload: unknown,
 ): BusinessPublicEventViewRow | null => {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+  if (
+    payload === null ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
     return null;
   }
   const row = (payload as JsonRecord).publicEventRow;
-  if (row === null || typeof row !== "object" || Array.isArray(row)) return null;
+  if (row === null || typeof row !== "object" || Array.isArray(row))
+    return null;
   const candidate = row as JsonRecord;
   return typeof candidate.id === "string" &&
     typeof candidate.brand_id === "string" &&
@@ -2128,8 +2134,8 @@ const readCachedRsvpPayload = async (
   if (!isWebRuntime()) return RSVP_ENDPOINT_MISS;
   try {
     const response = await fetch(
-      `/api/rsvp-event-bundle?brandSlug=${encodeURIComponent(brandSlug)}`
-        + `&eventSlug=${encodeURIComponent(eventSlug)}`,
+      `/api/rsvp-event-bundle?brandSlug=${encodeURIComponent(brandSlug)}` +
+        `&eventSlug=${encodeURIComponent(eventSlug)}`,
     );
     // 404 is the endpoint rendering the reader's SQL NULL.
     if (response.status === 404) return null;
@@ -2179,7 +2185,8 @@ export const getPublicEventBySlug = async (
   // Unlisted RSVP invite link — the view lists PUBLIC events only. On a miss the
   // exact-link RSVP row (see fetchDirectRsvpEventRow) takes its place and passes
   // the SAME trip/RSVP guards below, so it can only ever admit an RSVP.
-  const data = viewData ?? (await fetchDirectRsvpEventRow(brandSlug, eventSlug));
+  const data =
+    viewData ?? (await fetchDirectRsvpEventRow(brandSlug, eventSlug));
   if (data === null) return null;
   const row = data as BusinessPublicEventViewRow;
   if (row.event_type === "trip") {
@@ -2363,12 +2370,14 @@ export const fetchPublicBrandEvents = async (
       display_sale_ends_at: string | null;
     }
   >(
-    ((saleResult?.data ?? []) as Array<{
-      event_id: string;
-      display_price_cents: number | null;
-      display_sale_price_cents: number | null;
-      display_sale_ends_at: string | null;
-    }>).map((price) => [price.event_id, price]),
+    (
+      (saleResult?.data ?? []) as Array<{
+        event_id: string;
+        display_price_cents: number | null;
+        display_sale_price_cents: number | null;
+        display_sale_ends_at: string | null;
+      }>
+    ).map((price) => [price.event_id, price]),
   );
 
   return visible.map(({ row, tickets, terminalSource }) => {
@@ -2402,7 +2411,9 @@ export const fetchPublicBrandTrips = async (
   return rows.map(tripRowToCard);
 };
 
-const publicOfferingCard = (row: PublicExperienceCardRow | PublicUpcomingRowRaw) => ({
+const publicOfferingCard = (
+  row: PublicExperienceCardRow | PublicUpcomingRowRaw,
+) => ({
   brandId: row.brand_id,
   brandSlug: row.brand_slug,
   brandName: row.brand_name,

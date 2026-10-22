@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -7,13 +7,20 @@ import {
   TextInput,
   View,
 } from "react-native";
-import {
-  discountReasonCopy,
-  saleLimitedCopy,
-  type TicketQuote,
-} from "@mingla/offering-rendering/discountQuote";
+import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 
 import { useCart, type TicketQuoteStatus } from "./CartContext";
+import { captureDiscountEvent } from "../../analytics/discountAnalytics";
+
+const DiscountReasonText = React.lazy(() =>
+  import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
+    default: module.DiscountReasonText,
+  })),
+);
+
+export type BuyerDiscountSurface =
+  "web_event" | "web_experience" | "web_trip" | "web_venue" | "web_deposit";
 
 const money = (minor: number, currency: string): string => {
   try {
@@ -32,6 +39,7 @@ export interface DiscountCodeFieldProps {
   quoteStatus: TicketQuoteStatus;
   quoteErrorCode?: string | null;
   disabled?: boolean;
+  surface?: BuyerDiscountSurface;
   saleNameByLineRef?: Readonly<Record<string, string | null | undefined>>;
   onApply: (code: string) => void;
   onRemove: () => void;
@@ -44,6 +52,7 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
   quoteStatus,
   quoteErrorCode = null,
   disabled = false,
+  surface = "web_event",
   saleNameByLineRef = {},
   onApply,
   onRemove,
@@ -63,31 +72,60 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
       ) ?? null,
     [quote, value],
   );
-  const rejectedCopy =
-    value !== null && outcome?.status === "rejected" && outcome.reason !== null
-      ? discountReasonCopy({
-        reason: outcome.reason,
-        code: value,
-        required:
-          outcome.required === null
-            ? null
-            : money(outcome.required, quote?.currency ?? "USD"),
-        withName: outcome.with,
-      })
-      : null;
-  const saleNotice = quote?.notices.find(
-    (notice) => notice.type === "sale_limited",
-  ) ?? null;
-  const saleName = saleNotice === null
-    ? null
-    : saleNameByLineRef[saleNotice.lineRef] ?? "sale";
+  const saleNotice =
+    quote?.notices.find((notice) => notice.type === "sale_limited") ?? null;
+  const saleName =
+    saleNotice === null
+      ? null
+      : (saleNameByLineRef[saleNotice.lineRef] ?? "sale");
   const applying = value !== null && quoteStatus === "loading";
-  const rateLimited = quoteStatus === "error" && quoteErrorCode === "rate_limited";
+  const rateLimited =
+    quoteStatus === "error" && quoteErrorCode === "rate_limited";
   const canApply =
     normalizedDraft.length > 0 &&
     normalizedDraft !== value &&
     !disabled &&
     quoteStatus !== "loading";
+  const capturedRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (quote === null || quoteStatus !== "ready") return;
+    const captureOnce = (
+      event: string,
+      suffix: string,
+      properties: Readonly<Record<string, string | number>>,
+    ): void => {
+      const key = `${quote.quoteDigest}:${event}:${suffix}`;
+      if (capturedRef.current.has(key)) return;
+      capturedRef.current.add(key);
+      captureDiscountEvent(event, properties);
+    };
+    if (value !== null && quote.codeOutcome.status === "applied") {
+      captureOnce("discount_code_applied", "code", { surface });
+    }
+    if (
+      value !== null &&
+      quote.codeOutcome.status === "rejected" &&
+      quote.codeOutcome.reason !== null
+    ) {
+      captureOnce("discount_code_rejected", quote.codeOutcome.reason, {
+        reason: quote.codeOutcome.reason,
+        surface,
+      });
+    }
+    const automaticCount = quote.discounts.filter(
+      (row) => row.kind === "automatic",
+    ).length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface,
+      });
+    }
+    if (saleNotice !== null) {
+      captureOnce("sale_limited_shown", saleNotice.discountId, { surface });
+    }
+  }, [quote, quoteStatus, saleNotice, surface, value]);
 
   return (
     <View style={styles.wrap} testID="discount-code-field">
@@ -133,14 +171,17 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
         </Text>
       ) : null}
 
-      {value !== null && outcome?.status === "applied" && appliedDiscount !== null ? (
+      {value !== null &&
+      outcome?.status === "applied" &&
+      appliedDiscount !== null ? (
         <View style={styles.appliedChip} accessibilityLiveRegion="polite">
           <View style={styles.appliedCopy}>
             <Text style={styles.appliedTitle}>
               {value} · {appliedDiscount.name}
             </Text>
             <Text style={styles.appliedSaving}>
-              Saving {money(appliedDiscount.amountMinor, quote?.currency ?? "USD")}
+              Saving{" "}
+              {money(appliedDiscount.amountMinor, quote?.currency ?? "USD")}
             </Text>
             {outcome.replaced.length > 0 ? (
               <Text style={styles.replacedText}>
@@ -159,10 +200,23 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
         </View>
       ) : null}
 
-      {rejectedCopy !== null ? (
-        <Text style={styles.errorText} accessibilityRole="alert">
-          {rejectedCopy}
-        </Text>
+      {value !== null &&
+      outcome?.status === "rejected" &&
+      outcome.reason !== null ? (
+        <React.Suspense fallback={null}>
+          <DiscountReasonText
+            style={styles.errorText}
+            input={{
+              reason: outcome.reason,
+              code: value,
+              required:
+                outcome.required === null
+                  ? null
+                  : money(outcome.required, quote?.currency ?? "USD"),
+              withName: outcome.with,
+            }}
+          />
+        </React.Suspense>
       ) : null}
       {rateLimited ? (
         <Text style={styles.errorText} accessibilityRole="alert">
@@ -185,6 +239,7 @@ export const DiscountCodeField: React.FC<DiscountCodeFieldProps> = ({
 
 export interface CheckoutDiscountCodeFieldProps {
   disabled?: boolean;
+  surface?: BuyerDiscountSurface;
   saleNameByLineRef?: Readonly<Record<string, string | null | undefined>>;
 }
 
@@ -257,4 +312,3 @@ const styles = StyleSheet.create({
   errorText: { color: "#b42318", fontSize: 13 },
   noticeText: { color: "#8a4b08", fontSize: 13 },
 });
-

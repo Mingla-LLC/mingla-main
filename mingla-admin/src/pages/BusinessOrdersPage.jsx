@@ -14,7 +14,7 @@ import { SubscriberContextCard } from "../components/entity/SubscriberContextCar
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { listOrders, getOrder } from "../services/adminMoneyService";
+import { listOrders, getOrder, getDiscountMarginSummary } from "../services/adminMoneyService";
 import {
   createAdminRefundIdempotencyKey,
   refundOrder,
@@ -192,6 +192,7 @@ function buildOrderSections(bundle, onViewSubscriber) {
   const lineItems = Array.isArray(bundle.line_items) ? bundle.line_items : [];
   const installments = Array.isArray(bundle.installments) ? bundle.installments : [];
   const refunds = Array.isArray(bundle.refunds) ? bundle.refunds : [];
+  const discountLines = Array.isArray(bundle.discount_lines) ? bundle.discount_lines : [];
   const split = bundle.partner_split || null;
 
   const sections = [
@@ -201,6 +202,10 @@ function buildOrderSections(bundle, onViewSubscriber) {
         field("Order id", order.id, (v) => <span className="font-mono text-xs break-all">{v}</span>),
         field("Status", null, () => statusBadge(order.payment_status)),
         field("Amount", null, () => <span className="font-medium">{formatMoney(order.total_cents, order.currency)}</span>),
+        field("List subtotal", null, () => formatMoney(order.list_subtotal_cents ?? order.net_subtotal_cents ?? order.total_cents, order.currency)),
+        field("Discount", null, () => order.discount_cents > 0 ? `−${formatMoney(order.discount_cents, order.currency)}` : "—"),
+        field("Fees & tax", null, () => formatMoney((order.buyer_fees_cents ?? 0) + (order.tax_cents ?? 0), order.currency)),
+        field("Buyer paid", null, () => <span className="font-medium">{formatMoney(order.buyer_total_cents ?? order.total_cents, order.currency)}</span>),
         field("Refunded", null, () => (order.refunded_amount_cents ? formatMoney(order.refunded_amount_cents, order.currency) : "—")),
         field("Tax", null, () => (order.tax_amount_cents != null ? formatMoney(order.tax_amount_cents, order.currency) : "—")),
         field("App fee", null, () =>
@@ -255,9 +260,23 @@ function buildOrderSections(bundle, onViewSubscriber) {
               field(li.ticket_type_name || `Item ${i + 1}`, li, (item) => (
                 <span className="flex flex-wrap items-center gap-2">
                   <span>×{item.quantity}</span>
+                  {item.list_unit_price_cents > item.unit_price_cents && (
+                    <span className="text-xs line-through text-[var(--color-text-muted)]">{formatMoney(item.list_unit_price_cents, order.currency)} ea</span>
+                  )}
                   <span className="text-[var(--color-text-tertiary)]">{formatMoney(item.unit_price_cents, order.currency)} ea</span>
                   <span className="font-medium">{formatMoney(item.total_cents, order.currency)}</span>
                 </span>
+              )),
+            ),
+    },
+    {
+      label: `Discounts (${discountLines.length})`,
+      fields:
+        discountLines.length === 0
+          ? [noneField("No discounts")]
+          : discountLines.map((line) =>
+              field(line.name_snapshot || "Discount", null, () => (
+                <span className="font-medium text-emerald-700">−{formatMoney(line.amount_minor, line.currency || order.currency)}</span>
               )),
             ),
     },
@@ -461,11 +480,27 @@ export function BusinessOrdersPage() {
   const [error, setError] = useState(null);
   const [subUserId, setSubUserId] = useState(null);
   const [refundOpen, setRefundOpen] = useState(false);
+  const [marginSummary, setMarginSummary] = useState([]);
+  const [marginError, setMarginError] = useState(false);
 
   useEffect(() => {
     const sync = () => setSelectedOrderId(orderIdFromHash());
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  useEffect(() => {
+    const to = new Date();
+    const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+    let active = true;
+    getDiscountMarginSummary(from.toISOString(), to.toISOString())
+      .then((rows) => {
+        if (active) setMarginSummary(rows);
+      })
+      .catch(() => {
+        if (active) setMarginError(true);
+      });
+    return () => { active = false; };
   }, []);
 
   const loadOrder = useCallback(async (orderId) => {
@@ -560,6 +595,33 @@ export function BusinessOrdersPage() {
         title="Orders"
         description="Every order across the platform — buyer, offering, brand, amount, and status. Open one for the full money record. Read-only."
       />
+
+      <section className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-surface)] p-4" aria-label="Discount margin summary">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-[var(--color-text-primary)]">Discount margin · last 30 days</h2>
+            <p className="text-xs text-[var(--color-text-tertiary)]">Read-only platform view; buyer contact details are excluded.</p>
+          </div>
+          <Badge variant="outline">D38</Badge>
+        </div>
+        {marginError ? (
+          <p className="mt-3 text-sm text-[var(--color-text-tertiary)]">Couldn&apos;t load the margin summary.</p>
+        ) : marginSummary.length === 0 ? (
+          <p className="mt-3 text-sm text-[var(--color-text-tertiary)]">No discounted orders in this period.</p>
+        ) : (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {marginSummary.map((row) => (
+              <div key={row.currency} className="rounded-lg bg-[var(--gray-50)] p-3">
+                <p className="text-xs font-semibold uppercase text-[var(--color-text-tertiary)]">{row.currency}</p>
+                <p className="mt-1 font-semibold">{row.discountedOrderCount} discounted orders</p>
+                <p className="text-sm">Given: {formatMoney(row.discountCents, row.currency)}</p>
+                <p className="text-sm">Margin: {formatMoney(row.marginCents, row.currency)}</p>
+                {row.negativeMarginCount > 0 && <p className="text-sm text-red-700">{row.negativeMarginCount} below zero</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <EntityListView
         title="All orders"

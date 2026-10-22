@@ -64,6 +64,11 @@ verify_jwt = false
 [functions.discover-merged-events]
 verify_jwt = false
 
+# Issue #3872 — service-role cron sweeper. The gateway verifies the service JWT
+# and the handler compares the bearer again before lifecycle notifications.
+[functions.discount-maintenance-sweep]
+verify_jwt = true
+
 # ORCH-1079: the Google `places-autocomplete` proxy was RETIRED (business address
 # autocomplete now flows through `mapbox-geocode`). GOOGLE_MAPS_API_KEY is RETAINED
 # — six other edge fns still consume it (admin-seed-places / admin-refresh-places /
@@ -474,6 +479,11 @@ verify_jwt = false
 # Public HTML landing; auth is the HS256 token (not a user JWT).
 [functions.brand-follow-action]
 verify_jwt = false
+
+# Issue #3872 — signed-in Host discount control plane. The RPC repeats the
+# actor's rank check and owns validation/version conflicts.
+[functions.brand-discount-upsert]
+verify_jwt = true
 
 # #3682 Wave 2.5 — signed-out web Follow sheet (always 202 after floor).
 [functions.public-follow-request]

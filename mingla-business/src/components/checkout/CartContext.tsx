@@ -35,7 +35,6 @@ import {
   type CheckoutLinePlanChoice,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
 import {
-  ticketQuoteFeesAndTaxCents,
   type TicketCheckoutReview,
   type TicketQuote,
 } from "@mingla/offering-rendering/discountQuote";
@@ -238,36 +237,36 @@ export interface CartState {
 
 type CartAction =
   | {
-    type: "SET_LINE_QUANTITY";
-    ticketTypeId: string;
-    ticketName: string;
-    unitPrice: number;
-    unitPriceGbp?: number;
-    // ORCH-1147 — server fee-grossed all-in per unit (see CartLine.unitPriceAllIn).
-    unitPriceAllIn?: number;
-    currency: string;
-    isFree: boolean;
-    quantity: number;
-    paymentPlanChoice?: CheckoutLinePlanChoice;
-  }
+      type: "SET_LINE_QUANTITY";
+      ticketTypeId: string;
+      ticketName: string;
+      unitPrice: number;
+      unitPriceGbp?: number;
+      // ORCH-1147 — server fee-grossed all-in per unit (see CartLine.unitPriceAllIn).
+      unitPriceAllIn?: number;
+      currency: string;
+      isFree: boolean;
+      quantity: number;
+      paymentPlanChoice?: CheckoutLinePlanChoice;
+    }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
   | { type: "SET_DISCOUNT_CODE"; code: string | null }
   | {
-    type: "SET_QUOTE_STATE";
-    quote: TicketQuote | null;
-    status: TicketQuoteStatus;
-    errorCode: string | null;
-  }
+      type: "SET_QUOTE_STATE";
+      quote: TicketQuote | null;
+      status: TicketQuoteStatus;
+      errorCode: string | null;
+    }
   | { type: "SET_CHECKOUT_REVIEW"; review: TicketCheckoutReview | null }
   | { type: "RECORD_RESULT"; result: OrderResult }
   | { type: "SET_INTAKE_TIER"; ticketTypeId: string; data: unknown }
   | { type: "CLEAR_INTAKE_TIER"; ticketTypeId: string }
   | { type: "SET_PAYMENT_PLAN_CHOICE"; choice: TripPaymentPlanChoice }
   | {
-    type: "SET_LINE_PAYMENT_PLAN_CHOICE";
-    ticketTypeId: string;
-    choice: CheckoutLinePlanChoice;
-  }
+      type: "SET_LINE_PAYMENT_PLAN_CHOICE";
+      ticketTypeId: string;
+      choice: CheckoutLinePlanChoice;
+    }
   // ORCH-1138 Leg 3 — set/clear the chosen experience occurrence.
   | { type: "SET_EVENT_DATE_ID"; eventDateId: string | null }
   // issue #2160 — set/clear the chosen multi-date day SET.
@@ -375,12 +374,15 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         lines: state.lines.map((l) =>
           l.ticketTypeId === ticketTypeId
             ? {
-              ...l,
-              quantity,
-              unitPriceAllIn: unitPriceAllIn ?? l.unitPriceAllIn ?? l.unitPrice,
-              ...(paymentPlanChoice !== undefined ? { paymentPlanChoice } : {}),
-            }
-            : l
+                ...l,
+                quantity,
+                unitPriceAllIn:
+                  unitPriceAllIn ?? l.unitPriceAllIn ?? l.unitPrice,
+                ...(paymentPlanChoice !== undefined
+                  ? { paymentPlanChoice }
+                  : {}),
+              }
+            : l,
         ),
       };
     }
@@ -425,7 +427,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         lines: state.lines.map((line) =>
           line.ticketTypeId === action.ticketTypeId
             ? { ...line, paymentPlanChoice: action.choice }
-            : line
+            : line,
         ),
       };
     }
@@ -558,14 +560,17 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     dispatch({ type: "SET_BUYER", patch });
   }, []);
 
-  const setDiscountCode = useCallback((code: string | null): void => {
-    const normalized = code?.replace(/[\s-]+/g, "").toUpperCase() ?? "";
-    resetCheckoutAttempt();
-    dispatch({
-      type: "SET_DISCOUNT_CODE",
-      code: normalized.length > 0 ? normalized : null,
-    });
-  }, [resetCheckoutAttempt]);
+  const setDiscountCode = useCallback(
+    (code: string | null): void => {
+      const normalized = code?.replace(/[\s-]+/g, "").toUpperCase() ?? "";
+      resetCheckoutAttempt();
+      dispatch({
+        type: "SET_DISCOUNT_CODE",
+        code: normalized.length > 0 ? normalized : null,
+      });
+    },
+    [resetCheckoutAttempt],
+  );
 
   const setQuoteState = useCallback(
     (
@@ -609,10 +614,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   );
 
   const setLinePaymentPlanChoice = useCallback(
-    (
-      ticketTypeId: string,
-      choice: CheckoutLinePlanChoice,
-    ): void => {
+    (ticketTypeId: string, choice: CheckoutLinePlanChoice): void => {
       dispatch({ type: "SET_LINE_PAYMENT_PLAN_CHOICE", ticketTypeId, choice });
     },
     [],
@@ -785,7 +787,10 @@ export const useCartQuoteTotals = (): CartQuoteTotals => {
     const subtotal = quote === null ? 0 : quote.listSubtotalCents / 100;
     const total = quote === null ? 0 : quote.netSubtotalCents / 100;
     const allInTotal = quote === null ? 0 : quote.buyerTotalCents / 100;
-    const feesTaxCents = quote === null ? 0 : ticketQuoteFeesAndTaxCents(quote);
+    const feesTaxCents =
+      quote === null
+        ? 0
+        : Math.max(0, quote.buyerTotalCents - quote.dueTodayNetCents);
     return {
       subtotalGbp: subtotal,
       totalGbp: total,

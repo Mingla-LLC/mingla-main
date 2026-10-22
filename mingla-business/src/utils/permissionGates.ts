@@ -25,6 +25,11 @@ export const MIN_RANK = {
   VIEW_RECONCILIATION: BRAND_ROLE_RANK.finance_manager, // 30
   ADD_COMP_GUEST: BRAND_ROLE_RANK.event_manager, // 40
   MANAGE_TICKET_LINKS: BRAND_ROLE_RANK.event_manager, // 40
+  VIEW_DISCOUNTS: BRAND_ROLE_RANK.marketing_manager, // 20
+  MANAGE_DISCOUNT_CODES: BRAND_ROLE_RANK.marketing_manager, // 20
+  MANAGE_DISCOUNTS: BRAND_ROLE_RANK.finance_manager, // 30
+  DELETE_DISCOUNT_DRAFT: BRAND_ROLE_RANK.brand_admin, // 50; creator is server-side
+  EXPORT_DISCOUNT_BUYERS: BRAND_ROLE_RANK.event_manager, // 40
   MANAGE_SCANNERS: BRAND_ROLE_RANK.event_manager, // 40
   CREATE_EVENT: BRAND_ROLE_RANK.event_manager, // 40
   // Team management gates (J-T1..J-T4)

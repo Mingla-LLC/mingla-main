@@ -18,7 +18,10 @@ const mockHost = (name: string) => (props: any) => require("react").createElemen
 const mockSlot = { slotStartUtc: "2030-01-01T18:00:00Z", label: "18:00", slotLocalLabel: "18:00", remaining: 10, isFull: false };
 jest.mock("../../../../../app-mobile/src/services/supabase", () => ({ supabase: { functions: { invoke: (...args: Parameters<Invoke>) => mockInvoke(...args) } } }));
 jest.mock("../../../services/supabase", () => ({ supabase: { functions: { invoke: (...args: Parameters<Invoke>) => mockInvoke(...args) } } }));
-jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }), { virtual: true });
+jest.mock("@tanstack/react-query", () => ({
+  ...jest.requireActual<Record<string, unknown>>("@tanstack/react-query"),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
+}), { virtual: true });
 jest.mock("@mingla/payments-native", () => ({ useStripePaymentSheet: () => ({ initPaymentSheet: mockInit, presentPaymentSheet: mockPresent, isPaymentSheetSupported: true }) }), { virtual: true });
 jest.mock("@stripe/stripe-react-native", () => ({ initStripe: jest.fn() }), { virtual: true });
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: (...args: any[]) => mockOpen(...args) }), { virtual: true });
@@ -53,6 +56,20 @@ const advice = "This venue asks for a deposit for a party this size but hasn't f
 const input = { venueId: "venue-tester-3387", brandId: "brand-tester-3387", reservedForUtc: mockSlot.slotStartUtc, partySize: 8, buyer: { name: "QA Guest", email: "qa@example.invalid", phone: "+12025550123" } };
 const refusal = (body: unknown) => ({ data: null, error: { message: "Edge Function returned a non-2xx status code", context: { status: 409, text: async () => JSON.stringify(body) } } });
 const result = (data: unknown) => ({ data, error: null });
+const preview = result({
+  kind: "preview",
+  depositListCents: 0,
+  discountCents: 0,
+  depositNetCents: 0,
+  feesAndTaxCents: 0,
+  totalCents: 0,
+  currency: "USD",
+  discounts: [],
+  codeOutcome: { status: "none", reason: null, required: null, with: null, replaced: [] },
+  notices: [],
+  quoteDigest: "test-preview",
+  requiresPayment: false,
+});
 const fee = result({ kind: "requires_payment", reservationDraftId: "draft-3387", buyerStatusToken: "status-token", totalCents: 2550, currency: "USD", clientSecret: "qa-secret", publishableKey: null });
 async function withHook(assert: (run: ReturnType<typeof useReserveTable>) => Promise<void>) {
   let tree: any;
@@ -139,7 +156,13 @@ test("buyer web retains contact and selection after refusal, then completes a ma
   const one = (label: string) => tree.root.findAll((n: any) => typeof n.type === "string" && n.props.accessibilityLabel === label)[0];
   const submit = () => tree.root.findAll((n: any) => n.type === "Button" && n.props.label === "Confirm reservation")[0];
   const texts = () => tree.root.findAll((n: any) => n.type === "Text").map((n: any) => n.props.children).flat().join(" ");
-  mockInvoke.mockResolvedValueOnce(refusal({ message: code })).mockResolvedValueOnce(result({ kind: "free_completed", reservationId: "web-free" }));
+  const createResponses = [
+    refusal({ message: code }),
+    result({ kind: "free_completed", reservationId: "web-free" }),
+  ];
+  mockInvoke.mockImplementation(async (_name, options) =>
+    options.body.mode === "preview" ? preview : createResponses.shift()!,
+  );
   await Renderer.act(async () => { tree = Renderer.create(<GuestVenueReservation venueId={input.venueId} brandId={input.brandId} currency="USD" analyticsSurface="buyer_web" palette={{ page: "#000", primaryText: "#fff", secondaryText: "#aaa", tertiaryText: "#999", accent: "#f00", panelBorder: "#333" } as any} />); });
   try {
     await Renderer.act(async () => { one("Select 18:00").props.onPress(); });
@@ -154,12 +177,13 @@ test("buyer web retains contact and selection after refusal, then completes a ma
     expect(one("Name, required").props.value).toBe(input.buyer.name);
     expect(one("Email, required").props.value).toBe(input.buyer.email);
     expect(mockAnalytics.mock.calls.filter(call => call[0] === "venue_reservation_completed")).toHaveLength(0);
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    const createCalls = () => mockInvoke.mock.calls.filter((call) => call[1].body.mode !== "preview");
+    expect(createCalls()).toHaveLength(1);
     await Renderer.act(async () => { await submit().props.onPress(); });
     expect(texts()).toContain("Your table is reserved");
     expect(texts()).not.toContain(advice);
-    expect(mockInvoke).toHaveBeenCalledTimes(2);
-    expect(mockInvoke.mock.calls[1][1].body).toEqual(mockInvoke.mock.calls[0][1].body);
+    expect(createCalls()).toHaveLength(2);
+    expect(createCalls()[1][1].body).toEqual(createCalls()[0][1].body);
     expect(mockAnalytics.mock.calls.filter(call => call[0] === "venue_reservation_completed")).toHaveLength(1);
     expect(mockOpen).not.toHaveBeenCalled();
   } finally { await Renderer.act(async () => { tree.unmount(); }); }

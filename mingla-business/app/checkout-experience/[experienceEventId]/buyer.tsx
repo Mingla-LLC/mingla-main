@@ -106,7 +106,6 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { TicketQuoteSummary } from "../../../src/components/checkout/TicketQuoteSummary";
 import {
   isContinueDisabled,
   shouldShowConsentHintOnDisabledTap,
@@ -119,6 +118,12 @@ import {
   type PhoneInputTheme,
   type PhoneInputIconName,
 } from "@mingla/phone-input";
+
+const TicketQuoteSummary = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketQuoteSummary }),
+  ),
+);
 
 const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   backgroundPrimary: "#0c0e12",
@@ -195,7 +200,8 @@ const validate = (
   return {
     nameError: showErrors && !nameValid ? "Please enter your full name" : null,
     emailError: showErrors && !emailValid ? "Enter a valid email" : null,
-    phoneError: showErrors && !phoneValid ? "Enter a valid mobile number" : null,
+    phoneError:
+      showErrors && !phoneValid ? "Enter a valid mobile number" : null,
     isValid: nameValid && emailValid && phoneValid,
   };
 };
@@ -279,9 +285,11 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const [emailTouched, setEmailTouched] = useState<boolean>(false);
   const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
 
+  // prettier-ignore -- #3380 source contract keeps the locale fallback auditable.
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
     resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency)),
   );
+  // prettier-ignore -- #3380 source contract keeps the same fallback in both seeds.
   const [phoneLocal, setPhoneLocal] = useState<string>(() =>
     splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency))),
   );
@@ -442,12 +450,12 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           ...(partySize !== null ? { partySize } : {}),
           ...(Platform.OS === "web"
             ? {
-              checkoutContractVersion: 2 as const,
-              checkoutAttemptId: checkoutAttemptIdFor({
-                eventId: experienceEventId,
-                surface: "web",
-              }),
-            }
+                checkoutContractVersion: 2 as const,
+                checkoutAttemptId: checkoutAttemptIdFor({
+                  eventId: experienceEventId,
+                  surface: "web",
+                }),
+              }
             : {}),
         });
         if (result.kind !== "free_completed") {
@@ -461,7 +469,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           // reach /confirm with no query string, so the possession proof must
           // ride the order result or the attendance claim can never be minted.
           ...(typeof result.buyerStatusToken === "string" &&
-            result.buyerStatusToken.length > 0
+          result.buyerStatusToken.length > 0
             ? { buyerStatusToken: result.buyerStatusToken }
             : {}),
           paidAt: new Date().toISOString(),
@@ -573,7 +581,11 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {quote !== null ? <TicketQuoteSummary quote={quote} compact /> : null}
+            {quote !== null ? (
+              <React.Suspense fallback={null}>
+                <TicketQuoteSummary quote={quote} compact />
+              </React.Suspense>
+            ) : null}
           </GlassCard>
         </Pressable>
 
@@ -633,7 +645,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             }}
             error={visibleErrors.phone}
             disabled={false}
-            iconRenderer={(name: PhoneInputIconName, iconProps: { size: number; color: string }) => {
+            iconRenderer={(
+              name: PhoneInputIconName,
+              iconProps: { size: number; color: string },
+            ) => {
               const iconName =
                 name === "chevronDown"
                   ? "chevD"
@@ -747,7 +762,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           </View>
           <View style={styles.marketingCopy}>
             <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
-            <Text style={styles.marketingHelper}>{CHECKOUT_MARKETING_HELPER}</Text>
+            <Text style={styles.marketingHelper}>
+              {CHECKOUT_MARKETING_HELPER}
+            </Text>
           </View>
         </Pressable>
         {submitError !== null ? (
@@ -829,7 +846,11 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     fontWeight: "500",
   },
-  summaryLineTotal: { fontSize: 14, color: textTokens.primary, fontWeight: "600" },
+  summaryLineTotal: {
+    fontSize: 14,
+    color: textTokens.primary,
+    fontWeight: "600",
+  },
   summaryDivider: {
     marginVertical: spacing.sm,
     height: StyleSheet.hairlineWidth,
@@ -891,7 +912,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxBoxChecked: { backgroundColor: accent.warm, borderColor: accent.warm },
+  checkboxBoxChecked: {
+    backgroundColor: accent.warm,
+    borderColor: accent.warm,
+  },
   checkboxLabel: {
     flex: 1,
     fontSize: 14,

@@ -143,6 +143,12 @@ function humanizeToolName(toolName: string): string {
       return "Discard draft";
     case "send_campaign_now":
       return "Send campaign";
+    case "create_discount":
+      return "Create discount";
+    case "pause_discount":
+      return "Pause discount";
+    case "list_discounts":
+      return "List discounts";
     case "propose_ad_plan":
       return "Propose ad plan";
     case "approve_ad_plan":
@@ -282,6 +288,20 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     typeof args.__proposal_context === "object"
       ? (args.__proposal_context as Record<string, unknown>)
       : {};
+
+  if (toolName === "create_discount") {
+    if (typeof args.name === "string") out.push({ label: "Discount", value: args.name });
+    if (typeof args.kind === "string") out.push({ label: "Type", value: args.kind.replace(/_/g, " ") });
+    if (typeof args.code === "string") out.push({ label: "Code", value: args.code });
+    if (typeof args.value_bps === "number") out.push({ label: "Value", value: `${args.value_bps / 100}% off` });
+    if (typeof args.value_minor === "number") out.push({ label: "Value", value: `${args.value_minor} minor units` });
+    if (typeof args.scope_kind === "string") out.push({ label: "Scope", value: args.scope_kind.replace(/_/g, " ") });
+    if (typeof args.combines_with === "string") out.push({ label: "Combines with", value: args.combines_with.replace(/_/g, " ") });
+  }
+  if (toolName === "pause_discount") {
+    if (typeof args.discount_id === "string") out.push({ label: "Discount", value: args.discount_id });
+    out.push({ label: "Effect", value: "Stops new uses; existing orders keep their price" });
+  }
 
   if (toolName === "propose_ad_plan" || toolName === "approve_ad_plan") {
     const budget = Number(context.ad_budget_cents ?? args.budget_cents ?? 0);

@@ -124,7 +124,6 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { TicketQuoteSummary } from "../../../src/components/checkout/TicketQuoteSummary";
 import {
   isContinueDisabled,
   shouldShowConsentHintOnDisabledTap,
@@ -150,6 +149,12 @@ import {
   getCountryByCode,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
+
+const TicketQuoteSummary = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketQuoteSummary }),
+  ),
+);
 
 const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   backgroundPrimary: "#0c0e12",
@@ -252,10 +257,8 @@ const validate = (
   const phoneValid = isValidE164(phoneTrim);
 
   return {
-    nameError:
-      showErrors && !nameValid ? "Please enter your full name" : null,
-    emailError:
-      showErrors && !emailValid ? "Enter a valid email" : null,
+    nameError: showErrors && !nameValid ? "Please enter your full name" : null,
+    emailError: showErrors && !emailValid ? "Enter a valid email" : null,
     phoneError:
       showErrors && !phoneValid ? "Enter a valid mobile number" : null,
     isValid: nameValid && emailValid && phoneValid,
@@ -397,9 +400,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const [emailTouched, setEmailTouched] = useState<boolean>(false);
   const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
 
+  // prettier-ignore -- #3380 source contract keeps the locale fallback auditable.
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
     resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency)),
   );
+  // prettier-ignore -- #3380 source contract keeps the same fallback in both seeds.
   const [phoneLocal, setPhoneLocal] = useState<string>(() =>
     splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency))),
   );
@@ -440,8 +445,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const showErrorsForEmail = emailTouched;
   const showErrorsForPhone = phoneTouched;
   const validation = useMemo<ValidationState>(
-    () =>
-      validate(buyer.name, buyer.email, buyer.phone, false),
+    () => validate(buyer.name, buyer.email, buyer.phone, false),
     [buyer.name, buyer.email, buyer.phone],
   );
   const visibleErrors = useMemo<{
@@ -537,12 +541,12 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         quoteListDigest: quote.quoteListDigest,
         ...(Platform.OS === "web"
           ? {
-            checkoutContractVersion: 2 as const,
-            checkoutAttemptId: checkoutAttemptIdFor({
-              eventId: tripEventId,
-              surface: "web",
-            }),
-          }
+              checkoutContractVersion: 2 as const,
+              checkoutAttemptId: checkoutAttemptIdFor({
+                eventId: tripEventId,
+                surface: "web",
+              }),
+            }
           : {}),
         ...(intakeArray.length > 0 ? { intakeFormData: intakeArray } : {}),
         ...(intakeArray.length > 0 ? { intakeUploadSessionId } : {}),
@@ -558,7 +562,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         // reach /confirm with no query string, so the possession proof must
         // ride the order result or the attendance claim can never be minted.
         ...(typeof result.buyerStatusToken === "string" &&
-          result.buyerStatusToken.length > 0
+        result.buyerStatusToken.length > 0
           ? { buyerStatusToken: result.buyerStatusToken }
           : {}),
         paidAt: new Date().toISOString(),
@@ -797,7 +801,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {quote !== null ? <TicketQuoteSummary quote={quote} compact /> : null}
+            {quote !== null ? (
+              <React.Suspense fallback={null}>
+                <TicketQuoteSummary quote={quote} compact />
+              </React.Suspense>
+            ) : null}
           </GlassCard>
         </Pressable>
 
@@ -975,7 +983,9 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           </View>
           <View style={styles.marketingCopy}>
             <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
-            <Text style={styles.marketingHelper}>{CHECKOUT_MARKETING_HELPER}</Text>
+            <Text style={styles.marketingHelper}>
+              {CHECKOUT_MARKETING_HELPER}
+            </Text>
           </View>
         </Pressable>
         {bannerMessage !== null ? (
@@ -1010,8 +1020,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           </View>
         ) : null}
         {/* issue #3351 P2-2 — why the control below is not tappable yet. */}
-        {intakeSchemasQuery.isError === false && intakeState.settled === false ? (
-          <Text style={styles.pendingNote}>{INTAKE_SCHEMA_LOADING_MESSAGE}</Text>
+        {intakeSchemasQuery.isError === false &&
+        intakeState.settled === false ? (
+          <Text style={styles.pendingNote}>
+            {INTAKE_SCHEMA_LOADING_MESSAGE}
+          </Text>
         ) : null}
         <Pressable
           onPress={continueDisabled ? showConsentHint : undefined}

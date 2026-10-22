@@ -54,7 +54,9 @@ import {
   previewVenueReservation,
   type VenueReservationPreview,
 } from "../../services/venueReservationService";
-import { discountReasonCopy } from "@mingla/offering-rendering/discountQuote";
+import { discountReasonCopy } from "@mingla/offering-rendering/discountReasonCopy";
+import { guestReservationFailureCopy } from "@mingla/brand-rendering/venueGuestReservationErrorCopy";
+import { postHogService } from "../../services/postHogService";
 
 export interface VenueReserveSheetProps {
   visible: boolean;
@@ -259,11 +261,11 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
       ? phoneEntry.message
       : null;
   const composedPhoneE164 = needsPhone
-    ? (phoneEntry.ok ? phoneEntry.e164 : "")
-    : profilePhone;
-  const phoneOk = needsPhone
     ? phoneEntry.ok
-    : profilePhone.length > 0;
+      ? phoneEntry.e164
+      : ""
+    : profilePhone;
+  const phoneOk = needsPhone ? phoneEntry.ok : profilePhone.length > 0;
 
   const buyerName =
     (user?.display_name || user?.first_name || "Guest").trim() || "Guest";
@@ -303,6 +305,50 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     retry: false,
   });
   const activePreview = reviewQuote ?? preview.data ?? null;
+  const discountAnalyticsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (activePreview === null) return;
+    const digest =
+      activePreview.quoteDigest ??
+      `${selectedSlot?.slotStartUtc ?? "slot"}:${partySize}`;
+    const captureOnce = (
+      event: string,
+      suffix: string,
+      properties: Readonly<Record<string, string | number>>,
+    ): void => {
+      const key = `${digest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      postHogService.capture(event, properties);
+    };
+    if (
+      discountCode !== null &&
+      activePreview.codeOutcome.status === "applied"
+    ) {
+      captureOnce("discount_code_applied", "code", {
+        surface: "explorer_deposit",
+      });
+    } else if (
+      discountCode !== null &&
+      activePreview.codeOutcome.status === "rejected" &&
+      activePreview.codeOutcome.reason !== null
+    ) {
+      captureOnce("discount_code_rejected", activePreview.codeOutcome.reason, {
+        reason: activePreview.codeOutcome.reason,
+        surface: "explorer_deposit",
+      });
+    }
+    const automaticCount = activePreview.discounts.filter(
+      (row) => row.kind === "automatic",
+    ).length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "explorer_deposit",
+      });
+    }
+  }, [activePreview, discountCode, partySize, selectedSlot?.slotStartUtc]);
 
   useEffect(() => {
     setReviewQuote(null);
@@ -320,53 +366,82 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   };
 
   const handleConfirm = async (): Promise<void> => {
-    if (!selectedSlot || submitting || activePreview === null) return;
+    if (!selectedSlot || submitting) return;
     if (!phoneOk) {
       setPhoneTouched(true);
-      setError(phoneProblem ?? "Add a phone number so the venue can reach you.");
+      setError(
+        phoneProblem ?? "Add a phone number so the venue can reach you.",
+      );
       onReservationFailed?.("phone_invalid");
       return;
     }
     setError(null);
     setSubmitting(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const outcome = await reserve(
-      {
-        venueId,
-        brandId,
-        reservedForUtc: selectedSlot.slotStartUtc,
-        partySize,
-        buyer: {
-          name: buyerName,
-          email: buyerEmail,
-          phone: composedPhoneE164,
-          phoneCountryIso: needsPhone ? countryCode : null,
+    try {
+      let checkoutPreview = activePreview;
+      if (checkoutPreview === null) {
+        const refreshedPreview = await preview.refetch();
+        if (refreshedPreview.error !== null) {
+          throw refreshedPreview.error;
+        }
+        checkoutPreview = refreshedPreview.data ?? null;
+      }
+      if (checkoutPreview === null) {
+        throw new Error("Couldn't get the reservation price. Tap to try again.");
+      }
+      const outcome = await reserve(
+        {
+          venueId,
+          brandId,
+          reservedForUtc: selectedSlot.slotStartUtc,
+          partySize,
+          buyer: {
+            name: buyerName,
+            email: buyerEmail,
+            phone: composedPhoneE164,
+            phoneCountryIso: needsPhone ? countryCode : null,
+          },
+          discountCode,
+          quoteDigest: checkoutPreview.quoteDigest,
         },
-        discountCode,
-        quoteDigest: activePreview.quoteDigest,
-      },
-      // ORCH-1244 (Apple 4.9) — the on-screen venue name becomes the Apple Pay
-      // summary line label (not the bare merchant name "Mingla").
-      venueName,
-    );
-    setSubmitting(false);
-    if (outcome.outcome === "succeeded") {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onReserved(outcome.reservationId);
-      resetAndClose();
-      return;
+        // ORCH-1244 (Apple 4.9) — the on-screen venue name becomes the Apple Pay
+        // summary line label (not the bare merchant name "Mingla").
+        venueName,
+      );
+      setSubmitting(false);
+      if (outcome.outcome === "succeeded") {
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+        onReserved(outcome.reservationId);
+        resetAndClose();
+        return;
+      }
+      if (outcome.outcome === "canceled") {
+        // Stay on the confirm step silently (no booking).
+        return;
+      }
+      if (outcome.outcome === "review") {
+        postHogService.capture("checkout_review_required", {
+          detail: "discount_changed",
+          surface: "explorer_deposit",
+        });
+        setReviewQuote(outcome.quote);
+        setError("Your discount or total changed. Review the updated amount.");
+        return;
+      }
+      setError(outcome.message);
+      onReservationFailed?.("create_failed");
+    } catch (caught) {
+      setSubmitting(false);
+      const errorCode = caught instanceof Error ? caught.message : "";
+      setError(
+        guestReservationFailureCopy(errorCode) ??
+          "Couldn't get the reservation price. Tap to try again.",
+      );
+      onReservationFailed?.("create_failed");
     }
-    if (outcome.outcome === "canceled") {
-      // Stay on the confirm step silently (no booking).
-      return;
-    }
-    if (outcome.outcome === "review") {
-      setReviewQuote(outcome.quote);
-      setError("Your discount or total changed. Review the updated amount.");
-      return;
-    }
-    setError(outcome.message);
-    onReservationFailed?.("create_failed");
   };
 
   return (
@@ -601,7 +676,11 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
                     <View key={discount.discountId} style={styles.priceRow}>
                       <Text style={styles.priceLabel}>{discount.name}</Text>
                       <Text style={styles.discountValue}>
-                        −{formatMoney(discount.amountMinor, activePreview.currency)}
+                        −
+                        {formatMoney(
+                          discount.amountMinor,
+                          activePreview.currency,
+                        )}
                       </Text>
                     </View>
                   ))}
@@ -619,13 +698,18 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
                   <View style={styles.priceRow}>
                     <Text style={styles.totalLabel}>Total</Text>
                     <Text style={styles.totalLabel}>
-                      {formatMoney(activePreview.totalCents, activePreview.currency)}
+                      {formatMoney(
+                        activePreview.totalCents,
+                        activePreview.currency,
+                      )}
                     </Text>
                   </View>
                   <View style={styles.discountInputRow}>
                     <TextInput
                       value={discountDraft}
-                      onChangeText={(next) => setDiscountDraft(next.toUpperCase())}
+                      onChangeText={(next) =>
+                        setDiscountDraft(next.toUpperCase())
+                      }
                       placeholder="Discount code"
                       placeholderTextColor="rgba(255,255,255,0.38)"
                       autoCapitalize="characters"
@@ -680,13 +764,16 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
                         setDiscountDraft("");
                       }}
                     >
-                      <Text style={styles.removeCode}>Remove {discountCode}</Text>
+                      <Text style={styles.removeCode}>
+                        Remove {discountCode}
+                      </Text>
                     </Pressable>
                   ) : null}
                 </>
               ) : (
                 <Text style={styles.priceLabel}>
-                  No deposit is required. Discount codes aren&apos;t needed for this reservation.
+                  No deposit is required. Discount codes aren&apos;t needed for
+                  this reservation.
                 </Text>
               )}
             </View>
@@ -700,7 +787,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
 
           <Pressable
             onPress={() => void handleConfirm()}
-            disabled={submitting || activePreview === null || preview.isFetching}
+            disabled={submitting}
             accessibilityRole="button"
             accessibilityLabel="Confirm reservation"
             style={({ pressed }) => [
@@ -950,7 +1037,11 @@ const styles = StyleSheet.create({
   priceValue: { color: "rgba(255,255,255,0.92)", fontWeight: "600" },
   listPrice: { textDecorationLine: "line-through" },
   discountValue: { color: "#86efac", fontWeight: "700" },
-  totalLabel: { color: "rgba(255,255,255,0.96)", fontSize: 16, fontWeight: "700" },
+  totalLabel: {
+    color: "rgba(255,255,255,0.96)",
+    fontSize: 16,
+    fontWeight: "700",
+  },
   discountInputRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   discountInput: {
     flex: 1,

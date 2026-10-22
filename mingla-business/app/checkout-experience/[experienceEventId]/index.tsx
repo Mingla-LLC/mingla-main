@@ -47,11 +47,16 @@ import {
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
-import { CheckoutDiscountCodeField } from "../../../src/components/checkout/DiscountCodeField";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // experience checkout too (the event checkout already does; trips/experiences
 // didn't, undercounting started checkouts). Web-only (native no-op via .web split).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+
+const CheckoutDiscountCodeField = React.lazy(() =>
+  import("../../../src/components/checkout/DiscountCodeField").then(
+    (module) => ({ default: module.CheckoutDiscountCodeField }),
+  ),
+);
 
 const ticketToStub = (ticket: PublicExperienceTicket): TicketStub => ({
   id: ticket.ticketTypeId,
@@ -112,7 +117,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
       ? params.eventDateId
       : null;
   const seedQuantity = (() => {
-    const n = typeof params.quantity === "string" ? Number(params.quantity) : NaN;
+    const n =
+      typeof params.quantity === "string" ? Number(params.quantity) : NaN;
     return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
   })();
   const seedBookedStartAt =
@@ -124,7 +130,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
       ? params.bookedEndAt
       : null;
   const seedPartySize = (() => {
-    const n = typeof params.partySize === "string" ? Number(params.partySize) : NaN;
+    const n =
+      typeof params.partySize === "string" ? Number(params.partySize) : NaN;
     return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
   })();
   const seedTicketTypeId =
@@ -434,12 +441,15 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
-        <CheckoutDiscountCodeField
-          disabled={totals.isEmpty}
-          saleNameByLineRef={{
-            [stub.id]: ticket.saleName ?? "sale",
-          }}
-        />
+        <React.Suspense fallback={null}>
+          <CheckoutDiscountCodeField
+            surface="web_experience"
+            disabled={totals.isEmpty}
+            saleNameByLineRef={{
+              [stub.id]: ticket.saleName ?? "sale",
+            }}
+          />
+        </React.Suspense>
         {showFeesTaxLine ? (
           <View style={styles.feesTaxRow}>
             <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
@@ -451,11 +461,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>Total</Text>
           <Text style={styles.subtotalValue}>
-            {totals.isEmpty
-              ? "—"
-              : totals.isFree
-                ? "Free"
-                : headlineAllIn}
+            {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
           </Text>
         </View>
         <Button
@@ -470,9 +476,9 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
               ? "Add your spot above"
               : quoteStatus !== "ready"
                 ? "Waiting for your latest total"
-              : totals.isFree
-                ? "Reserve free spot"
-                : `Continue to buyer details, total ${headlineAllIn}`
+                : totals.isFree
+                  ? "Reserve free spot"
+                  : `Continue to buyer details, total ${headlineAllIn}`
           }
         />
       </View>

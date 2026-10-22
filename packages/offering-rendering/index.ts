@@ -8,19 +8,15 @@
 // same primitives in later legs (the page-specific booking/ticket/summary panel
 // is passed in as `stickyPanel` / children).
 
-export { DirectionCIdentityOverlay, ParallaxCoverShell } from "./ParallaxCoverShell";
+export {
+  DirectionCIdentityOverlay,
+  ParallaxCoverShell,
+} from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 
 // #3872 — response types + final buyer copy for server-owned discount quotes.
 // Deliberately dependency-free so web and native consume one contract without
 // importing any pricing engine.
-export {
-  checkoutReviewReasonCopy,
-  discountReasonCopy,
-  saleAvailabilityCopy,
-  saleLimitedCopy,
-  ticketQuoteFeesAndTaxCents,
-} from "./discountQuote";
 export type {
   CheckoutReviewDetail,
   DiscountCodeReason,
@@ -254,7 +250,10 @@ export {
   experienceOptionPriceLabel,
   experienceAvailabilityBanner,
 } from "./ExperienceOfferingBody";
-export type { ExperienceOfferingBodyProps, RightNowFacts } from "./ExperienceOfferingBody";
+export type {
+  ExperienceOfferingBodyProps,
+  RightNowFacts,
+} from "./ExperienceOfferingBody";
 export {
   StopSpine,
   stopLabelForIndex,
@@ -406,10 +405,7 @@ export type {
   ReserveSplitCtas,
 } from "./tripOfferingTypes";
 
-export {
-  useResponsiveLayout,
-  DESKTOP_BREAKPOINT,
-} from "./useResponsiveLayout";
+export { useResponsiveLayout, DESKTOP_BREAKPOINT } from "./useResponsiveLayout";
 export type { ResponsiveLayout } from "./useResponsiveLayout";
 
 // ===========================================================================
@@ -531,7 +527,10 @@ export type {
 // base. getPublicMapboxToken stays exported (sourced from ./mapboxToken) for
 // backward-compat with existing import paths — it is no longer used by the static
 // map itself.
-export { buildStaticMapUrl, getSupabaseFunctionsBaseUrl } from "./mapboxStaticImage";
+export {
+  buildStaticMapUrl,
+  getSupabaseFunctionsBaseUrl,
+} from "./mapboxStaticImage";
 export { getPublicMapboxToken } from "./mapboxToken";
 export type { StaticMapParams } from "./mapboxStaticImage";
 // issue #2468 — THE ONE "open in maps" deep-link builder. Sibling of the static

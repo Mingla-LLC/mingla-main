@@ -208,6 +208,8 @@ import { useBrandPeople } from "../../../../src/hooks/marketing/useBrandPeople";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import { useShareNetworkState } from "../../../../src/components/ui/useShareNetworkState";
+import { captureDiscountEvent } from "../../../../src/analytics/discountAnalytics";
+import { majorFromMinor } from "../../../../src/utils/currency";
 // ORCH-0891 M3 D-3 — wire the M2-shipped composer keyboard shortcuts.
 // On native this resolves to the no-op `.ts` sibling; web picks the
 // .web.ts implementation that installs the global keydown listener.
@@ -269,6 +271,30 @@ function makeMediaKey(): string {
   return `mms-${Date.now().toString(36)}-${mmsKeySeq}`;
 }
 
+function escapeBlastHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function discountValueForBlast(input: {
+  valueType: "percent" | "amount" | "set_price";
+  valueBps: number | null;
+  valueMinor: number | null;
+  currency: string | null;
+}): string {
+  if (input.valueType === "percent") return `${(input.valueBps ?? 0) / 100}% off`;
+  const currency = input.currency ?? "GBP";
+  const amount = new Intl.NumberFormat("en", {
+    style: "currency",
+    currency,
+  }).format(majorFromMinor(input.valueMinor ?? 0, currency));
+  return input.valueType === "set_price" ? `${amount} sale price` : `${amount} off`;
+}
+
 type CircleReachLoadState = {
   loading: boolean;
   page: BrandCircleReachSummary | null;
@@ -292,6 +318,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     audience?: string;
     draft?: string;
     template?: string;
+    discount?: string;
   }>();
   // Memoize so the pre-fill useEffect's dep array doesn't re-trigger on every
   // render — parseAudienceParam returns a new object literal each call.
@@ -306,6 +333,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const templateId =
     typeof params.template === "string" && params.template.length > 0
       ? params.template
+      : null;
+  const discountId =
+    typeof params.discount === "string" && params.discount.length > 0
+      ? params.discount
       : null;
 
   const { user } = useAuth();
@@ -335,6 +366,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // META-ORCH-1161 Sub-B — SMS blast body (plain text, separate from the HTML
   // email `body`). Only used when channel === 'sms'.
   const [smsBody, setSmsBody] = useState("");
+  const discountPrefillRef = useRef<string | null>(null);
   // ORCH-1282 / ORCH-1289 — MMS photo attach (up to MMS_MAX_MEDIA). `mmsMedia`
   // holds each picked photo with its optimistic local preview + verified public
   // URL. `mmsMediaUrls` (derived) is the VERIFIED-URL-only array that rides the
@@ -857,6 +889,41 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       cancelled = true;
     };
   }, [draftId]);
+
+  // #3872 — H-BLAST. A discount deep-link starts a fresh campaign with useful
+  // copy, but never overwrites a saved draft or an explicitly chosen template.
+  useEffect(() => {
+    if (
+      discountId === null ||
+      brandId === null ||
+      draftId !== null ||
+      templateId !== null ||
+      discountPrefillRef.current === discountId
+    ) return;
+    discountPrefillRef.current = discountId;
+    let cancelled = false;
+    void import("../../../../src/services/discountService")
+      .then(({ fetchBrandDiscountById }) => fetchBrandDiscountById(brandId, discountId))
+      .then((discount) => {
+        if (cancelled || discount === null) return;
+        const value = discountValueForBlast(discount);
+        const listingLink = `https://usemingla.com/b/${brandSlug ?? ""}`;
+        const copy = discount.kind === "code" && discount.code !== null
+          ? `Use code ${discount.code} for ${value} — ${listingLink}`
+          : `${discount.name}: ${value} — ${listingLink}`;
+        setSubject(discount.name);
+        setBody(`<p>${escapeBlastHtml(copy)}</p>`);
+        setSmsBody(copy);
+        setIsDirty(true);
+        captureDiscountEvent("discount_blast_started", { kind: discount.kind });
+      })
+      .catch(() => {
+        if (!cancelled) setErrorBanner("Couldn't load that discount — start fresh below.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [brandId, brandSlug, discountId, draftId, templateId]);
 
   // Auto-save draft (debounced via useComposerDraft). embedded_events is
   // derived from the body string via extractEmbeddedEventIds — Stage F

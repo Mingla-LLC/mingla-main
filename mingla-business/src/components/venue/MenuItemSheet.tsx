@@ -65,6 +65,12 @@ import {
   type MenuTextSaveFailure,
 } from "./menuTextValidation";
 
+const ItemDiscountControls = React.lazy(() =>
+  import("../discounts/ItemDiscountControls").then((module) => ({
+    default: module.ItemDiscountControls,
+  })),
+);
+
 export interface MenuItemSheetSaveInput {
   name: string;
   description: string | null;
@@ -95,6 +101,8 @@ export interface MenuItemSheetProps {
    * brand never SEES a fabricated £. The stored value + math are untouched.
    */
   brandHasCurrency: boolean;
+  /** Brand owner for persisted discount controls; omitted for legacy callers. */
+  brandId?: string;
   /**
    * #3645 — the brand, for the "choose your payout country" card shown under
    * the price when a price is typed on a brand with no currency. Without it
@@ -187,6 +195,7 @@ export function MenuItemSheet({
   item,
   currency,
   brandHasCurrency,
+  brandId,
   payoutCountryBrand = null,
   onSave,
   saving,
@@ -602,6 +611,25 @@ export function MenuItemSheet({
               reason="A price needs a currency. Pick the country your bank account is in and we'll use its currency for this brand. Free and “price on request” items don't need one."
               testID="menu-item-price-payout-country"
             />
+          ) : null}
+
+          {item !== null && brandId !== undefined && brandHasCurrency ? (
+            <React.Suspense fallback={null}>
+              <Text style={styles.groupLabel}>Discounts</Text>
+              <ItemDiscountControls
+                brandId={brandId}
+                itemId={item.id}
+                itemKind="menu_item"
+                listingKind="venue_order"
+                itemLabel={item.name}
+                currency={item.currency ?? currency}
+                listUnitCents={item.priceCents}
+                allowLabel="Allow discounts on this item"
+                saleLabel="Menu sale price"
+                weeklySchedule
+                testID="menu-item-discount-controls"
+              />
+            </React.Suspense>
           ) : null}
 
           {/*

@@ -208,15 +208,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   if (
     !body.buyer || typeof body.buyer !== "object" ||
     Array.isArray(body.buyer) ||
-    Object.keys(buyer).some((key) =>
-      ![
-        "name",
-        "email",
-        "phone",
-        "phoneCountryIso",
-        "marketingOptIn",
-      ].includes(key)
-    )
+    // deno-fmt-ignore -- #1386 source contract audits this exact allowlist.
+    Object.keys(buyer).some((key) => !["name", "email", "phone", "phoneCountryIso", "marketingOptIn"].includes(key))
   ) {
     return jsonResponse({ error: "buyer_payload_invalid" }, 400);
   }

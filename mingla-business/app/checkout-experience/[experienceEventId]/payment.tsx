@@ -35,13 +35,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -80,14 +74,20 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import {
-  formatQuoteMoney,
-  TicketCheckoutReviewPanel,
-  TicketQuoteSummary,
-} from "../../../src/components/checkout/TicketQuoteSummary";
+import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
+);
+const TicketCheckoutReviewPanel = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketCheckoutReviewPanel }),
+  ),
+);
+const TicketQuoteSummary = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketQuoteSummary }),
+  ),
 );
 
 export default function CheckoutExperiencePaymentScreen(): React.ReactElement {
@@ -161,9 +161,10 @@ function CheckoutExperiencePaymentScreenContent({
   // because nothing renders from it and it must be readable synchronously by
   // the very next Pay tap. Keyed by a fingerprint of what is actually being
   // bought, so it can only ever be replayed for the SAME cart.
-  const providerHandoffRef = useRef<
-    { fingerprint: string; handoff: TicketCheckoutProviderHandoff } | null
-  >(null);
+  const providerHandoffRef = useRef<{
+    fingerprint: string;
+    handoff: TicketCheckoutProviderHandoff;
+  } | null>(null);
   const cartFingerprint = JSON.stringify({
     eventId: experienceEventId,
     eventDateId,
@@ -298,32 +299,149 @@ function CheckoutExperiencePaymentScreenContent({
     }
   }, [router, experienceEventId]);
 
-  const handlePay = useCallback(async (
-    acceptedQuote?: TicketQuote,
-  ): Promise<void> => {
-    if (processing) return;
-    if (experienceEventId === null) return;
-    const activeQuote = acceptedQuote ?? quote;
-    if (activeQuote === null || (acceptedQuote === undefined && quoteStatus !== "ready")) return;
-    // ORCH-1192 — fire `checkout_started` ONCE per attempt at the top of
-    // handlePay (the `processing` early-return guards re-render/double-tap
-    // double-fire), BEFORE the web hosted-redirect or native PaymentSheet opens
-    // and BEFORE the purchase_completed success capture. value reflects the
-    // server-computed all-in preview when available. capture() no-ops on web
-    // (native postHogService is a web no-op) and when opted out / key absent.
-    postHogService.capture("checkout_started", {
-      event_id: experienceEventId,
-      offering_type: "experience",
-      value: activeQuote.buyerTotalCents / 100,
-      currency: activeQuote.currency,
-      surface: "business_app",
-    });
-    // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
-    // with the server-computed all-in (incl. tax, venue-sourced).
+  const handlePay = useCallback(
+    async (acceptedQuote?: TicketQuote): Promise<void> => {
+      if (processing) return;
+      if (experienceEventId === null) return;
+      const activeQuote = acceptedQuote ?? quote;
+      if (
+        activeQuote === null ||
+        (acceptedQuote === undefined && quoteStatus !== "ready")
+      )
+        return;
+      // ORCH-1192 — fire `checkout_started` ONCE per attempt at the top of
+      // handlePay (the `processing` early-return guards re-render/double-tap
+      // double-fire), BEFORE the web hosted-redirect or native PaymentSheet opens
+      // and BEFORE the purchase_completed success capture. value reflects the
+      // server-computed all-in preview when available. capture() no-ops on web
+      // (native postHogService is a web no-op) and when opted out / key absent.
+      postHogService.capture("checkout_started", {
+        event_id: experienceEventId,
+        offering_type: "experience",
+        value: activeQuote.buyerTotalCents / 100,
+        currency: activeQuote.currency,
+        surface: "business_app",
+      });
+      // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
+      // with the server-computed all-in (incl. tax, venue-sourced).
 
-    if (Platform.OS === "web") {
-      // ---------- WEB PATH ----------
-      const surface: "web" = "web";
+      if (Platform.OS === "web") {
+        // ---------- WEB PATH ----------
+        const surface: "web" = "web";
+        try {
+          setProcessing(true);
+          setPaymentError(null);
+          mixpanelService.track("ticket_checkout_pay_started", {
+            surface,
+            eventId: experienceEventId,
+            eventType: "experience",
+          });
+          // issue #2190 — ONE create per checkout, structurally (mirrors #2188).
+          //
+          // If this cart has already been handed a provider page, follow THAT
+          // instead of asking the server for a second checkout. The server
+          // refuses a duplicate create with 409 and it is right to: a second
+          // create for a cart with a live provider attempt is never what the
+          // guest wants. Re-following the URL we were already given is.
+          const held = providerHandoffRef.current;
+          if (held !== null && held.fingerprint === cartFingerprint) {
+            if (assignLocation(held.handoff.redirectUrl)) return;
+            setProcessing(false);
+            setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+            return;
+          }
+          const checkout = await createTicketCheckout({
+            eventId: experienceEventId,
+            buyer,
+            lines,
+            discountCode,
+            quoteDigest: activeQuote.quoteDigest,
+            quoteListDigest: activeQuote.quoteListDigest,
+            surface,
+            checkoutContractVersion: 2,
+            checkoutAttemptId: checkoutAttemptIdFor({
+              eventId: experienceEventId,
+              surface,
+            }),
+            // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when the buyer
+            // picked a slot (adaptive Reserve); null → request byte-identical.
+            ...(eventDateId !== null ? { eventDateId } : {}),
+            ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+            ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+            ...(partySize !== null ? { partySize } : {}),
+          });
+          // issue #2190 — provider-neutral. Stripe brands answer with
+          // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
+          // the resolver owns that distinction so this screen never re-learns it.
+          // A null answer means there is genuinely nowhere to send the guest —
+          // surface it, never retry (a retry is the duplicate create that the
+          // server correctly 409s).
+          const handoff = ticketCheckoutProviderHandoff(checkout);
+          if (handoff === null) {
+            throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+          }
+          setCheckoutSessionId(handoff.checkoutSessionId);
+          // Remember it BEFORE navigating: if the redirect cannot run, the next
+          // Pay tap re-follows this URL rather than creating a second checkout.
+          providerHandoffRef.current = {
+            fingerprint: cartFingerprint,
+            handoff,
+          };
+
+          // sessionStorage persist BEFORE redirect so a provider-side cancel
+          // returns the buyer to a populated /payment screen and a success
+          // returns to /confirm with the order summary intact.
+          const storage = (
+            globalThis as unknown as { sessionStorage?: Storage }
+          ).sessionStorage;
+          writeCheckoutResumePayload(storage, experienceEventId, {
+            checkoutSessionId: handoff.checkoutSessionId,
+            buyerStatusToken: handoff.buyerStatusToken,
+            lines,
+            buyer,
+            ...(eventDateId !== null ? { eventDateId } : {}),
+            ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+            ...(bookedEndAt !== null ? { bookedEndAt } : {}),
+            ...(partySize !== null ? { partySize } : {}),
+          });
+          if (assignLocation(handoff.redirectUrl)) return;
+          // Sandbox / test environments where location.assign is unavailable.
+          setProcessing(false);
+          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+        } catch (error) {
+          setProcessing(false);
+          const review = ticketCheckoutReviewFromError(
+            error,
+            activeQuote.buyerTotalCents,
+          );
+          if (review !== null) {
+            setCheckoutReview(review);
+            setPaymentError(null);
+            return;
+          }
+          // issue #2190 — NEVER render the raw thrown string. supabase-js reports
+          // every handled refusal as "Edge Function returned a non-2xx status
+          // code"; the mapper is total and turns each bounded case into a
+          // sentence that also says whether money moved.
+          const message = paidCheckoutErrorMessage(error);
+          setPaymentError(message);
+          mixpanelService.track("ticket_checkout_failed", {
+            surface,
+            eventId: experienceEventId,
+            eventType: "experience",
+            reason: "thrown_error",
+            message,
+          });
+        }
+        return;
+      }
+
+      // ---------- NATIVE PATH ----------
+      // ORCH-1130 Fix #2 — no buyer address; tax is venue-sourced server-side.
+      // Forward the silently-fetched no-address preview calculationId when
+      // available; otherwise the no-address create recomputes the same all-in.
+      const surface: "native" = "native";
+
       try {
         setProcessing(true);
         setPaymentError(null);
@@ -332,90 +450,116 @@ function CheckoutExperiencePaymentScreenContent({
           eventId: experienceEventId,
           eventType: "experience",
         });
-        // issue #2190 — ONE create per checkout, structurally (mirrors #2188).
-        //
-        // If this cart has already been handed a provider page, follow THAT
-        // instead of asking the server for a second checkout. The server
-        // refuses a duplicate create with 409 and it is right to: a second
-        // create for a cart with a live provider attempt is never what the
-        // guest wants. Re-following the URL we were already given is.
-        const held = providerHandoffRef.current;
-        if (held !== null && held.fingerprint === cartFingerprint) {
-          if (assignLocation(held.handoff.redirectUrl)) return;
-          setProcessing(false);
-          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-          return;
-        }
-        const checkout = await createTicketCheckout({
+
+        const outcome = await nativeCheckout({
           eventId: experienceEventId,
-          buyer,
           lines,
           discountCode,
           quoteDigest: activeQuote.quoteDigest,
           quoteListDigest: activeQuote.quoteListDigest,
-          surface,
-          checkoutContractVersion: 2,
-          checkoutAttemptId: checkoutAttemptIdFor({
-            eventId: experienceEventId,
-            surface,
-          }),
-          // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when the buyer
-          // picked a slot (adaptive Reserve); null → request byte-identical.
+          buyer: {
+            name: buyer.name,
+            email: buyer.email,
+            phone: buyer.phone,
+            marketingOptIn: buyer.marketingOptIn === true,
+          },
+          // ORCH-1246 (Apple 4.9) — experience title so the Apple Pay sheet line
+          // item shows the product, not the company. Fallback "Ticket" if unloaded.
+          displayTitle: experience?.title ?? undefined,
+          // ORCH-1138 Leg 3 — chosen occurrence ONLY when present; null → identical.
           ...(eventDateId !== null ? { eventDateId } : {}),
           ...(bookedStartAt !== null ? { bookedStartAt } : {}),
           ...(bookedEndAt !== null ? { bookedEndAt } : {}),
           ...(partySize !== null ? { partySize } : {}),
         });
-        // issue #2190 — provider-neutral. Stripe brands answer with
-        // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
-        // the resolver owns that distinction so this screen never re-learns it.
-        // A null answer means there is genuinely nowhere to send the guest —
-        // surface it, never retry (a retry is the duplicate create that the
-        // server correctly 409s).
-        const handoff = ticketCheckoutProviderHandoff(checkout);
-        if (handoff === null) {
-          throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-        }
-        setCheckoutSessionId(handoff.checkoutSessionId);
-        // Remember it BEFORE navigating: if the redirect cannot run, the next
-        // Pay tap re-follows this URL rather than creating a second checkout.
-        providerHandoffRef.current = { fingerprint: cartFingerprint, handoff };
 
-        // sessionStorage persist BEFORE redirect so a provider-side cancel
-        // returns the buyer to a populated /payment screen and a success
-        // returns to /confirm with the order summary intact.
-        const storage = (globalThis as unknown as { sessionStorage?: Storage })
-          .sessionStorage;
-        writeCheckoutResumePayload(storage, experienceEventId, {
-          checkoutSessionId: handoff.checkoutSessionId,
-          buyerStatusToken: handoff.buyerStatusToken,
-          lines,
-          buyer,
-          ...(eventDateId !== null ? { eventDateId } : {}),
-          ...(bookedStartAt !== null ? { bookedStartAt } : {}),
-          ...(bookedEndAt !== null ? { bookedEndAt } : {}),
-          ...(partySize !== null ? { partySize } : {}),
+        mixpanelService.track("ticket_checkout_sheet_opened", {
+          surface,
+          eventId: experienceEventId,
+          eventType: "experience",
+          outcome: outcome.outcome,
         });
-        if (assignLocation(handoff.redirectUrl)) return;
-        // Sandbox / test environments where location.assign is unavailable.
-        setProcessing(false);
-        setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-      } catch (error) {
-        setProcessing(false);
-        const review = ticketCheckoutReviewFromError(
-          error,
-          activeQuote.buyerTotalCents,
-        );
-        if (review !== null) {
-          setCheckoutReview(review);
-          setPaymentError(null);
+
+        if (outcome.outcome === "canceled") {
+          mixpanelService.track("ticket_checkout_cancelled", {
+            surface,
+            eventId: experienceEventId,
+            eventType: "experience",
+          });
+          setProcessing(false);
           return;
         }
-        // issue #2190 — NEVER render the raw thrown string. supabase-js reports
-        // every handled refusal as "Edge Function returned a non-2xx status
-        // code"; the mapper is total and turns each bounded case into a
-        // sentence that also says whether money moved.
-        const message = paidCheckoutErrorMessage(error);
+
+        if (outcome.outcome === "failed") {
+          if (outcome.review !== undefined) {
+            setCheckoutReview({
+              ...outcome.review,
+              previousTotalCents: activeQuote.buyerTotalCents,
+            });
+            setPaymentError(null);
+            setProcessing(false);
+            return;
+          }
+          mixpanelService.track("ticket_checkout_failed", {
+            surface,
+            eventId: experienceEventId,
+            eventType: "experience",
+            reason: "native_checkout_failed",
+            message: outcome.message,
+          });
+          setProcessing(false);
+          setPaymentError(outcome.message);
+          return;
+        }
+
+        // ORCH-0852 fire-and-forget pattern (mirror).
+        const sessionId = outcome.orderId;
+        setCheckoutSessionId(sessionId);
+        try {
+          await Promise.race([
+            confirmTicketCheckout(sessionId, ""),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("client_confirm_timeout")),
+                3000,
+              ),
+            ),
+          ]);
+        } catch (confirmErr) {
+          console.warn(
+            "[checkout-experience-payment] synchronous confirm failed or timed out; relying on webhook backup",
+            confirmErr,
+          );
+          mixpanelService.track("ticket_checkout_sync_confirm_failed", {
+            surface,
+            eventId: experienceEventId,
+            eventType: "experience",
+            checkoutSessionId: sessionId,
+            reason:
+              confirmErr instanceof Error ? confirmErr.message : "unknown",
+          });
+        }
+
+        mixpanelService.track("ticket_checkout_succeeded", {
+          surface,
+          eventId: experienceEventId,
+          eventType: "experience",
+          checkoutSessionId: sessionId,
+        });
+
+        setSuccessToast(true);
+
+        setTimeout(() => {
+          router.replace(
+            `/checkout-experience/${experienceEventId}/confirm` as never,
+          );
+        }, 1200);
+      } catch (error) {
+        setProcessing(false);
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Payment could not be completed. Please try again.";
         setPaymentError(message);
         mixpanelService.track("ticket_checkout_failed", {
           surface,
@@ -424,170 +568,37 @@ function CheckoutExperiencePaymentScreenContent({
           reason: "thrown_error",
           message,
         });
-      }
-      return;
-    }
-
-    // ---------- NATIVE PATH ----------
-    // ORCH-1130 Fix #2 — no buyer address; tax is venue-sourced server-side.
-    // Forward the silently-fetched no-address preview calculationId when
-    // available; otherwise the no-address create recomputes the same all-in.
-    const surface: "native" = "native";
-
-    try {
-      setProcessing(true);
-      setPaymentError(null);
-      mixpanelService.track("ticket_checkout_pay_started", {
-        surface,
-        eventId: experienceEventId,
-        eventType: "experience",
-      });
-
-      const outcome = await nativeCheckout({
-        eventId: experienceEventId,
-        lines,
-        discountCode,
-        quoteDigest: activeQuote.quoteDigest,
-        quoteListDigest: activeQuote.quoteListDigest,
-        buyer: {
-          name: buyer.name,
-          email: buyer.email,
-          phone: buyer.phone,
-          marketingOptIn: buyer.marketingOptIn === true,
-        },
-        // ORCH-1246 (Apple 4.9) — experience title so the Apple Pay sheet line
-        // item shows the product, not the company. Fallback "Ticket" if unloaded.
-        displayTitle: experience?.title ?? undefined,
-        // ORCH-1138 Leg 3 — chosen occurrence ONLY when present; null → identical.
-        ...(eventDateId !== null ? { eventDateId } : {}),
-        ...(bookedStartAt !== null ? { bookedStartAt } : {}),
-        ...(bookedEndAt !== null ? { bookedEndAt } : {}),
-        ...(partySize !== null ? { partySize } : {}),
-      });
-
-      mixpanelService.track("ticket_checkout_sheet_opened", {
-        surface,
-        eventId: experienceEventId,
-        eventType: "experience",
-        outcome: outcome.outcome,
-      });
-
-      if (outcome.outcome === "canceled") {
-        mixpanelService.track("ticket_checkout_cancelled", {
-          surface,
-          eventId: experienceEventId,
-          eventType: "experience",
-        });
+      } finally {
         setProcessing(false);
-        return;
       }
+    },
+    [
+      // issue #2190 — the redirect follower + the cart identity the held
+      // provider hand-off is keyed by are both read inside this handler.
+      assignLocation,
+      cartFingerprint,
+      buyer,
+      discountCode,
+      checkoutAttemptIdFor,
+      eventDateId,
+      bookedStartAt,
+      bookedEndAt,
+      partySize,
+      experienceEventId,
+      lines,
+      nativeCheckout,
+      processing,
+      quote,
+      quoteStatus,
+      setCheckoutReview,
+      router,
+    ],
+  );
 
-      if (outcome.outcome === "failed") {
-        if (outcome.review !== undefined) {
-          setCheckoutReview({
-            ...outcome.review,
-            previousTotalCents: activeQuote.buyerTotalCents,
-          });
-          setPaymentError(null);
-          setProcessing(false);
-          return;
-        }
-        mixpanelService.track("ticket_checkout_failed", {
-          surface,
-          eventId: experienceEventId,
-          eventType: "experience",
-          reason: "native_checkout_failed",
-          message: outcome.message,
-        });
-        setProcessing(false);
-        setPaymentError(outcome.message);
-        return;
-      }
-
-      // ORCH-0852 fire-and-forget pattern (mirror).
-      const sessionId = outcome.orderId;
-      setCheckoutSessionId(sessionId);
-      try {
-        await Promise.race([
-          confirmTicketCheckout(sessionId, ""),
-          new Promise((_, reject) =>
-            setTimeout(
-              () => reject(new Error("client_confirm_timeout")),
-              3000,
-            ),
-          ),
-        ]);
-      } catch (confirmErr) {
-        console.warn(
-          "[checkout-experience-payment] synchronous confirm failed or timed out; relying on webhook backup",
-          confirmErr,
-        );
-        mixpanelService.track("ticket_checkout_sync_confirm_failed", {
-          surface,
-          eventId: experienceEventId,
-          eventType: "experience",
-          checkoutSessionId: sessionId,
-          reason:
-            confirmErr instanceof Error ? confirmErr.message : "unknown",
-        });
-      }
-
-      mixpanelService.track("ticket_checkout_succeeded", {
-        surface,
-        eventId: experienceEventId,
-        eventType: "experience",
-        checkoutSessionId: sessionId,
-      });
-
-      setSuccessToast(true);
-
-      setTimeout(() => {
-        router.replace(
-          `/checkout-experience/${experienceEventId}/confirm` as never,
-        );
-      }, 1200);
-    } catch (error) {
-      setProcessing(false);
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Payment could not be completed. Please try again.";
-      setPaymentError(message);
-      mixpanelService.track("ticket_checkout_failed", {
-        surface,
-        eventId: experienceEventId,
-        eventType: "experience",
-        reason: "thrown_error",
-        message,
-      });
-    } finally {
-      setProcessing(false);
-    }
-  }, [
-    // issue #2190 — the redirect follower + the cart identity the held
-    // provider hand-off is keyed by are both read inside this handler.
-    assignLocation,
-    cartFingerprint,
-    buyer,
-    discountCode,
-    checkoutAttemptIdFor,
-    eventDateId,
-    bookedStartAt,
-    bookedEndAt,
-    partySize,
-    experienceEventId,
-    lines,
-    nativeCheckout,
-    processing,
-    quote,
-    quoteStatus,
-    setCheckoutReview,
-    router,
-  ]);
-
-  const displayAllIn = quote === null
-    ? "Updating…"
-    : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
+  const displayAllIn =
+    quote === null
+      ? "Updating…"
+      : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
 
   // Defensive shell while guards redirect.
   if (
@@ -618,8 +629,12 @@ function CheckoutExperiencePaymentScreenContent({
           title="Review changes"
           onBack={handleBack}
         />
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
           <TicketCheckoutReviewPanel
+            surface="web_experience"
             review={checkoutReview}
             accepting={processing}
             onBack={handleBack}
@@ -698,9 +713,7 @@ function CheckoutExperiencePaymentScreenContent({
       >
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>
-            {displayAllIn}
-          </Text>
+          <Text style={styles.totalValue}>{displayAllIn}</Text>
         </View>
         <Button
           label={`Pay ${displayAllIn}`}
