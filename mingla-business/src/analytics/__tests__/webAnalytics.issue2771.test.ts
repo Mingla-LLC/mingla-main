@@ -79,9 +79,9 @@ afterEach(() => {
   jest.resetModules();
 });
 
-// [TEST-MOD-APPROVED #3697] first-party attribution-capture may run pre-consent
-// for ad signals; vendor SDKs and postAttributionConversion stay dark.
-test("#2771 fresh and denied Business roots stay byte-dark until explicit grant", async () => {
+// [TEST-MOD-APPROVED #3697] first-party attribution capture and advertising
+// pixels run on arrival; product analytics stays dark and opt-out stops pixels.
+test("#3697 arrival mode boots ad pixels while analytics stays dark; opt-out stops pixels", async () => {
   const pending = harness("?fbclid=PRE&utm_source=meta");
   await pending.analytics.initWebAnalytics();
   pending.analytics.captureWeb("pregrant");
@@ -90,7 +90,7 @@ test("#2771 fresh and denied Business roots stay byte-dark until explicit grant"
   pending.analytics.postAttributionConversion({ eventId: "order-pre" });
 
   expect(pending.posthog.init).not.toHaveBeenCalled();
-  expect(pending.scripts).toHaveLength(0);
+  expect(pending.scripts.filter((script) => script.src.includes("facebook"))).toHaveLength(1);
   // toward #3697: first-party touch is allowed; conversion POST is a no-op.
   expect(
     pending.fetches.filter((url) => url.includes("attribution-capture")),
@@ -103,7 +103,7 @@ test("#2771 fresh and denied Business roots stay byte-dark until explicit grant"
   await pending.analytics.initWebAnalytics();
   expect(pending.local.get("mingla_consent_v1")).toContain('"denied"');
   expect(pending.posthog.init).not.toHaveBeenCalled();
-  expect(pending.scripts).toHaveLength(0);
+  expect(pending.analytics.adPixelsReady()).toBe(false);
 });
 
 test("#2771 Accept persists first and concurrent calls share one complete boot", async () => {

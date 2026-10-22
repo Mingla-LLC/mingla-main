@@ -98,12 +98,12 @@ const META_EXTRA = {
   EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon",
 };
 
-test("CONSENT GATE — fireAdReservation is a NO-OP before grantConsent (SC-8 / RT-3)", async () => {
+test("ARRIVAL MODE — fireAdReservation is available before the banner choice", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
-  expect(wa.adPixelsReady()).toBe(false);
+  expect(wa.adPixelsReady()).toBe(true);
   expect(() => wa.fireAdReservation("resv-1", { value: 0, currency: "GBP" })).not.toThrow();
-  expect(getFbq()).toBeUndefined();
+  expect(getFbq()).toBeDefined();
 });
 
 test("grantConsent → fireAdReservation fires Meta 'CompleteRegistration' with the shared eventID (not 'Purchase')", async () => {

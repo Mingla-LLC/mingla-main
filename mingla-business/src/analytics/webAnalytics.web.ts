@@ -608,9 +608,9 @@ export function getFeatureFlagWeb(key: string): boolean | string | undefined {
 // The four browser pixels (Meta fbq / TikTok ttq / Snapchat snaptr / Reddit rdt)
 // mirror the existing GA4 loader idiom: injected via a <script> tag, wrapped so
 // ANY failure (adblock, CSP, 404, slow CDN) is a SILENT NO-OP that never blocks
-// render, the Reserve/Pay tap, or navigation. They bootstrap ONLY on consent
-// grant (bootstrapAdPixels ← grantConsent) — never before, so EEA/London traffic
-// is not tracked pre-consent (SC-8 / RT-3). Every pixel Purchase carries the
+// render, the Reserve/Pay tap, or navigation. Issue #3697 boots them on arrival
+// by default in every market; a remembered opt-out or a region switched to
+// opt_in keeps them dark. Every pixel Purchase carries the
 // SHARED event_id (the Mingla order id) so browser + server CAPI (WP-B) dedup the
 // exact pair (A2-5 / SC-15). NOTHING here is on the tap→pay critical path.
 // ═════════════════════════════════════════════════════════════════════════════
@@ -734,9 +734,9 @@ function bootstrapRedditPixel(pixelId: string): void {
 }
 
 /**
- * Bootstrap the four ad pixels — called ONLY from grantConsent (consent-gated).
- * Each pixel is isolated in its own try/catch so one broken loader can neither
- * block the page nor prevent the others from loading. Idempotent.
+ * Bootstrap the four ad pixels at the configured consent boundary. Each pixel
+ * is isolated in its own try/catch so one broken loader can neither block the
+ * page nor prevent the others from loading. Idempotent.
  */
 function bootstrapAdPixels(): void {
   if (!adTrackingAllowed() || adPixelsBootstrapped) return;
@@ -754,6 +754,7 @@ export function adPixelsReady(): boolean {
 }
 
 function expireAdCookie(name: string): void {
+  if (!window.document) return;
   const expires = "Thu, 01 Jan 1970 00:00:00 GMT";
   for (const domain of ["", "; domain=.usemingla.com"]) {
     window.document.cookie =
@@ -768,7 +769,7 @@ function stopAdPixels(): void {
     const revoke = window.ttq?.revokeConsent;
     if (typeof revoke === "function") revoke();
   });
-  if (typeof window.document.querySelectorAll === "function") {
+  if (typeof window.document?.querySelectorAll === "function") {
     for (
       const script of Array.from(
         window.document.querySelectorAll('script[data-mingla-pixel]'),

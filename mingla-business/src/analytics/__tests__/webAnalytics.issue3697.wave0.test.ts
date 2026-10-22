@@ -218,7 +218,9 @@ test("#3697: malformed ad cookies fail open instead of blocking checkout", () =>
     fbp: null,
     fbc: null,
     scid: null,
+    ttp: null,
     clientUserAgent: null,
+    trackingOptOut: false,
   });
 });
 

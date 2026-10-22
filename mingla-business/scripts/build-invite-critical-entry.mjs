@@ -199,6 +199,22 @@ export function buildCriticalEntry(buildDir) {
       'manageLabel.textContent=open?"Manage":"Hide details"',
       'manage.setAttribute("aria-expanded",String(!open));manageLabel.textContent=open?"Manage":"Hide details"',
     )
+    // #3697 — the zero-JS invitation shell is still a Business web surface,
+    // so its banner must carry the same approved arrival-with-opt-out wording
+    // and two decisions as the React owner. Keep the legacy class names because
+    // they are private styling hooks, not user-visible consent semantics.
+    .replace(
+      '<section class="i922-consent ph-no-capture" role="region" aria-label="Cookie consent"><div class="i922-consent-panel"><div class="i922-reading-band"><div class="i922-consent-title">Cookies &amp; analytics</div><div class="i922-consent-body">We use cookies and privacy-first analytics to understand how people use Mingla and improve checkout. Nothing is tracked until you accept.</div><a class="i922-privacy" href="https://usemingla.com/privacy-policy" target="_blank" rel="noopener noreferrer" aria-label="Privacy Policy"><span class="i922-privacy-copy">See our <span class="i922-privacy-label">Privacy Policy</span>.</span></a><div class="i922-manage-note" id="issue-2769-consent-details">Analytics help us improve Mingla by measuring page views, funnel drop-off, and conversions. Choose Accept to turn them on, or Reject to keep them off. You can change this anytime by clearing your site data.</div></div><div class="i922-decision-band"><div class="i922-actions"><button class="i922-accept" type="button" aria-label="Accept cookies and analytics"><span class="i922-action-face i922-accept-face"><span class="i922-action-label">Accept all</span></span></button><button class="i922-reject" type="button" aria-label="Reject cookies and analytics"><span class="i922-action-face i922-reject-face"><span class="i922-action-label">Reject</span></span></button></div><button class="i922-manage" type="button" aria-label="Manage analytics preferences" aria-controls="issue-2769-consent-details" aria-expanded="false"><span class="i922-manage-label">Manage</span></button></div></div></section>',
+      '<section class="i922-consent ph-no-capture" role="region" aria-label="Cookie consent"><div class="i922-consent-panel"><div class="i922-reading-band"><div class="i922-consent-title">Ad privacy</div><div class="i922-consent-body">We use cookies and advertising tools from Meta, Snapchat and TikTok to measure and improve our ads.</div><a class="i922-privacy" href="https://usemingla.com/privacy-policy" target="_blank" rel="noopener noreferrer" aria-label="Privacy policy"><span class="i922-privacy-copy"><span class="i922-privacy-label">Privacy policy</span></span></a></div><div class="i922-decision-band"><div class="i922-actions"><button class="i922-accept" type="button" aria-label="OK"><span class="i922-action-face i922-accept-face"><span class="i922-action-label">OK</span></span></button><button class="i922-reject" type="button" aria-label="Opt out of ad tracking"><span class="i922-action-face i922-reject-face"><span class="i922-action-label">Opt out of ad tracking</span></span></button></div></div></div></section>',
+    )
+    .replace(
+      'var note=root.querySelector(".i922-manage-note");var manage=root.querySelector(".i922-manage");var manageLabel=root.querySelector(".i922-manage-label");',
+      "",
+    )
+    .replace(
+      'manage.addEventListener("click",function(){protect(function(){var open=note.getAttribute("data-open")==="true";note.setAttribute("data-open",String(!open));manage.setAttribute("aria-expanded",String(!open));manageLabel.textContent=open?"Manage":"Hide details"})});',
+      "",
+    )
     .replace("You're invited", "You\\'re invited")
     .replace("We'll bring you right back.", "We\\'ll bring you right back.")
     // Close the outer fail-closed wrapper before closing the inline IIFE.

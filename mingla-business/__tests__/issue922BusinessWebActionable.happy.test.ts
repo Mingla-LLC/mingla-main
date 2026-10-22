@@ -51,10 +51,22 @@ describe("issue #922 dedicated invitation entry", () => {
       expect(inviteRoute).toContain(copy);
       expect(builderSource).toContain(copy.replace(/'/g, "\\'"));
     }
-    for (const copy of ["Cookies &amp; analytics", "Accept all", "Reject", "Manage analytics preferences", "https://usemingla.com/privacy-policy"]) {
-      expect(consent).toContain(copy);
+    const compactConsent = consent.replace(/\s+/g, " ");
+    const proposal =
+      "We use cookies and advertising tools from Meta, Snapchat and TikTok to measure and improve our ads.";
+    for (const copy of [
+      "Ad privacy",
+      "Opt out of ad tracking",
+      "Privacy policy",
+      "https://usemingla.com/privacy-policy",
+    ]) {
+      expect(compactConsent).toContain(copy);
       expect(builderSource).toContain(copy);
     }
+    expect(compactConsent).toContain(proposal);
+    expect(builderSource).toContain(proposal);
+    expect(consent).toContain('label="OK"');
+    expect(builderSource).toContain(">OK<");
     expect(analytics.indexOf("__minglaPrebootConsentChoice")).toBeLessThan(analytics.indexOf("window.localStorage.getItem(CONSENT_STORAGE_KEY)"));
     expect(analytics).not.toContain("delete window.__minglaPrebootConsentChoice");
     expect(analytics).toContain('JSON.stringify({ choice, ts: Date.now() })');
