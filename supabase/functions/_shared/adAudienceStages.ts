@@ -85,7 +85,9 @@ function paidSocialPlatform(platform: Platform): PaidSocialPlatform | null {
 
 function cleanProviderId(row: AdAudienceRow | undefined): string | null {
   const id = row?.platform_audience_id?.trim();
-  return id && row?.status !== "error" ? id : null;
+  return id && (row?.status === "ready" || row?.status === "too_small")
+    ? id
+    : null;
 }
 
 function scopeMatches(
@@ -124,11 +126,9 @@ function qualifyingAudience(
   eventId: string,
 ): { row: AdAudienceRow | null; widened: AdStageTargeting["widened"] } {
   const scopes: AdAudienceScope[] = ["event", "brand", "market"];
-  let firstExistingScope: AdAudienceScope | null = null;
   for (const scope of scopes) {
     const row = candidateFor(rows, code, scope, market, brandId, eventId);
     if (!row) continue;
-    firstExistingScope ??= scope;
     if (
       row.status === "ready" &&
       Number.isFinite(row.approx_size) &&
@@ -136,9 +136,7 @@ function qualifyingAudience(
     ) {
       return {
         row,
-        widened: firstExistingScope !== scope
-          ? [{ code, from: firstExistingScope, to: scope }]
-          : [],
+        widened: scope !== "event" ? [{ code, from: "event", to: scope }] : [],
       };
     }
   }

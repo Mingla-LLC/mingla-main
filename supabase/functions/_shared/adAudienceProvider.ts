@@ -34,6 +34,12 @@ export type BuyerIdentifierBatch = {
   phoneSha256: string[];
 };
 
+export type AudienceProviderFact = {
+  platformAudienceId: string;
+  approxSize: number | null;
+  providerReady: boolean;
+};
+
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 function required(value: string, code: string): string {
@@ -145,10 +151,9 @@ export function buildMetaAudienceRequest(
 /**
  * Exact documented Snap Website Events envelope.
  *
- * Snap documents only an event equality predicate. Event- and URL-scoped Mingla
- * audiences therefore fail closed until #3697 records an approved supported
- * predicate; silently creating a platform-wide PAGE_VIEW/PURCHASE pool would
- * violate the build contract.
+ * Snap documents only an event equality predicate. #3697 therefore sends only
+ * the explicit market-fallback definitions produced by adAudienceDefinitions;
+ * it never labels this wire shape as event-scoped.
  */
 export function buildSnapAudienceRequest(
   input: AudienceProviderContext,
@@ -268,6 +273,87 @@ export function buildAudienceProviderRequest(
   if (input.platform === "meta") return buildMetaAudienceRequest(input);
   if (input.platform === "snapchat") return buildSnapAudienceRequest(input);
   return buildTikTokAudienceRequest(input);
+}
+
+function finiteCount(value: unknown): number | null {
+  const count = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim()
+    ? Number(value)
+    : NaN;
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count) : null;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function snapSegment(
+  payload: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const rows = Array.isArray(payload.segments) ? payload.segments : [];
+  const first = record(rows[0]);
+  return record(first?.segment) ?? first;
+}
+
+/** Parse only non-secret ids/counts from provider create/read responses. */
+export function audienceProviderFact(
+  platform: PaidSocialPlatform,
+  payload: Record<string, unknown>,
+  knownId = "",
+): AudienceProviderFact {
+  if (platform === "meta") {
+    const id = String(payload.id ?? knownId).trim();
+    if (!id) throw new Error("meta_audience_id_missing");
+    const lower = finiteCount(payload.approximate_count_lower_bound);
+    const upper = finiteCount(payload.approximate_count_upper_bound);
+    const operation = record(payload.operation_status);
+    const delivery = record(payload.delivery_status);
+    const statusCode = String(operation?.code ?? delivery?.code ?? "")
+      .toLowerCase();
+    return {
+      platformAudienceId: id,
+      approxSize: lower !== null && upper !== null
+        ? Math.floor((lower + upper) / 2)
+        : lower ?? upper,
+      providerReady: !statusCode ||
+        ["200", "normal", "ready", "active"].includes(statusCode),
+    };
+  }
+  if (platform === "snapchat") {
+    const segment = snapSegment(payload);
+    const id = String(segment?.id ?? knownId).trim();
+    if (!id) throw new Error("snap_audience_id_missing");
+    const status = String(
+      segment?.status ?? segment?.segment_status ?? "",
+    ).toUpperCase();
+    return {
+      platformAudienceId: id,
+      approxSize: finiteCount(
+        segment?.approximate_number_users ?? segment?.approximate_size,
+      ),
+      providerReady: !status || ["READY", "ACTIVE", "LIVE"].includes(status),
+    };
+  }
+  const data = record(payload.data) ?? {};
+  const list = Array.isArray(data.list) ? data.list : [];
+  const row = record(list[0]) ?? data;
+  const id = String(
+    row.custom_audience_id ?? row.audience_id ?? knownId,
+  ).trim();
+  if (!id) throw new Error("tiktok_audience_id_missing");
+  const status = String(
+    row.audience_status ?? row.status ?? "",
+  ).toUpperCase();
+  return {
+    platformAudienceId: id,
+    approxSize: finiteCount(row.audience_size ?? row.approximate_size),
+    providerReady: row.is_valid === false
+      ? false
+      : !status || ["READY", "AVAILABLE", "VALID", "ACTIVE"].includes(status),
+  };
 }
 
 /**

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_current_account_audiences.test.ts",
+  "lane": "deno",
+  "orderKey": "issue-3697-current-account-audiences",
+  "command": ["deno", "test", "--allow-env", "--allow-net", "--no-check"]
+}
+

@@ -603,6 +603,11 @@ verify_jwt = false
 [functions.admin-ad-spend-sync]
 verify_jwt = false
 
+# Issue #3697 — Admin reads/provider-size refresh plus the daily service-role
+# audience creator. The function authenticates both caller kinds in code.
+[functions.admin-ad-audiences]
+verify_jwt = false
+
 # ISSUE-866 WP3 [Full Rooms Ad Engine — Creative Library] — records a canonical
 # creative row behind the A1-6 server-side byte-probe + the §2 validation matrix
 # + the COMMS-0102 crawler-permissiveness check. Same gate as the WP1 fns:

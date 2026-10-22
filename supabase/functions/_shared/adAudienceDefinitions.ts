@@ -14,6 +14,7 @@ export type AudienceDefinitionInput = {
   brandSlug: string | null;
   eventId: string | null;
   eventSlug: string | null;
+  pageType?: "event" | "rsvp" | "trip" | "experience";
   pixelId: string;
   eventEndsAt?: string | null;
 };
@@ -56,9 +57,34 @@ const CODE_PLATFORM: Record<string, PaidSocialPlatform> = Object.fromEntries([
 
 export const AUTOMATIC_EVENT_AUDIENCE_CODES = Object.freeze(
   {
+    meta: ["M3", "M5", "M6"],
+    // Snap's documented Website Events segment rule cannot filter by Mingla's
+    // event/content id. Snap therefore uses honest market fallback pools (see
+    // AUTOMATIC_MARKET_AUDIENCE_CODES) instead of pretending these are scoped.
+    snapchat: [],
+    tiktok: ["T2", "T3", "T4"],
+  } satisfies Record<PaidSocialPlatform, string[]>,
+);
+
+/**
+ * Shared fallbacks created once per active market. Meta/TikTok use them only
+ * when an event pool is under 1,000 people. Snap uses them as its documented
+ * current-account capability: campaign geo targeting supplies the market
+ * boundary while the segment itself uses event equality only.
+ */
+export const AUTOMATIC_MARKET_AUDIENCE_CODES = Object.freeze(
+  {
     meta: ["M3", "M4", "M5", "M6"],
     snapchat: ["S2", "S3", "S4"],
     tiktok: ["T2", "T3", "T4"],
+  } satisfies Record<PaidSocialPlatform, string[]>,
+);
+
+export const AUTOMATIC_BRAND_AUDIENCE_CODES = Object.freeze(
+  {
+    meta: ["M3", "M4"],
+    snapchat: [],
+    tiktok: [],
   } satisfies Record<PaidSocialPlatform, string[]>,
 );
 
@@ -66,7 +92,20 @@ function eventPath(input: AudienceDefinitionInput): string {
   if (!input.brandSlug || !input.eventSlug) {
     throw new Error("event_audience_destination_missing");
   }
-  return `/e/${input.brandSlug}/${input.eventSlug}`;
+  const prefix = input.pageType === "trip"
+    ? "/t"
+    : input.pageType === "experience"
+    ? "/exp"
+    : "/e";
+  return `${prefix}/${input.brandSlug}/${input.eventSlug}`;
+}
+
+function offeringPathPrefixes(
+  input: AudienceDefinitionInput,
+  scope: "brand" | "market",
+): string[] {
+  const suffix = scope === "brand" ? `${input.brandSlug}/` : "";
+  return [`/e/${suffix}`, `/t/${suffix}`, `/exp/${suffix}`];
 }
 
 function scopeKey(input: AudienceDefinitionInput): string {
@@ -76,85 +115,106 @@ function scopeKey(input: AudienceDefinitionInput): string {
 }
 
 function metaRule(input: AudienceDefinitionInput): Record<string, unknown> {
-  const path = eventPath(input);
   if (input.code === "M3") {
+    const paths = input.scope === "event"
+      ? [eventPath(input)]
+      : offeringPathPrefixes(
+        input,
+        input.scope === "brand" ? "brand" : "market",
+      );
     return {
       source_type: "WEBSITE",
       pixel_id: input.pixelId,
-      inclusions: [{
+      inclusions: paths.map((path) => ({
         event: "PageView",
         url: { operator: "i_contains", value: path },
-      }],
+      })),
       exclusions: [],
     };
   }
   if (input.code === "M4") {
-    if (!input.brandSlug) throw new Error("brand_audience_destination_missing");
+    if (input.scope !== "market" && !input.brandSlug) {
+      throw new Error("brand_audience_destination_missing");
+    }
+    const brandPath = input.scope === "market"
+      ? "/b/"
+      : `/b/${input.brandSlug}`;
+    const eventPathPrefixes = offeringPathPrefixes(
+      input,
+      input.scope === "market" ? "market" : "brand",
+    );
     return {
       source_type: "WEBSITE",
       pixel_id: input.pixelId,
       inclusions: [
         {
           event: "PageView",
-          url: { operator: "i_contains", value: `/b/${input.brandSlug}` },
+          url: { operator: "i_contains", value: brandPath },
         },
-        {
+        ...eventPathPrefixes.map((value) => ({
           event: "PageView",
-          url: { operator: "i_contains", value: `/e/${input.brandSlug}/` },
-        },
+          url: { operator: "i_contains", value },
+        })),
       ],
       exclusions: [],
     };
   }
   if (input.code === "M5") {
+    const content = input.scope === "event"
+      ? { content_ids: [input.eventId] }
+      : {};
     return {
       source_type: "WEBSITE",
       pixel_id: input.pixelId,
-      inclusions: [{ event: "InitiateCheckout", content_ids: [input.eventId] }],
-      exclusions: [{ event: "Purchase", content_ids: [input.eventId] }],
+      inclusions: [{ event: "InitiateCheckout", ...content }],
+      exclusions: [{ event: "Purchase", ...content }],
     };
   }
   if (input.code === "M6") {
+    const content = input.scope === "event"
+      ? { content_ids: [input.eventId] }
+      : {};
     return {
       source_type: "WEBSITE",
       pixel_id: input.pixelId,
       inclusions: [
-        { event: "Purchase", content_ids: [input.eventId] },
-        { event: "CompleteRegistration", content_ids: [input.eventId] },
+        { event: "Purchase", ...content },
+        { event: "CompleteRegistration", ...content },
       ],
       exclusions: [],
-      event_ends_at: input.eventEndsAt ?? null,
+      ...(input.scope === "event"
+        ? { event_ends_at: input.eventEndsAt ?? null }
+        : {}),
     };
   }
   throw new Error(`audience_code_not_automatic:${input.code}`);
 }
 
 function snapRule(input: AudienceDefinitionInput): Record<string, unknown> {
-  const event = input.code === "S2"
-    ? "PAGE_VIEW"
+  if (input.scope !== "market") {
+    throw new Error("snap_event_scope_unsupported");
+  }
+  const events = input.code === "S2"
+    ? ["PAGE_VIEW"]
     : input.code === "S3"
-    ? "START_CHECKOUT"
+    ? ["START_CHECKOUT"]
     : input.code === "S4"
-    ? "PURCHASE"
-    : null;
-  if (!event) throw new Error(`audience_code_not_automatic:${input.code}`);
-  const eventRule: Record<string, unknown> = { eq: event };
-  if (input.code !== "S2") eventRule.item_ids = [input.eventId];
+    ? ["PURCHASE", "SIGN_UP"]
+    : [];
+  if (events.length === 0) {
+    throw new Error(`audience_code_not_automatic:${input.code}`);
+  }
   return {
     source_type: "PIXEL",
     pixel_id: input.pixelId,
-    // Server-owned scope metadata. Snap's documented Website Events predicate
-    // cannot express this event identity, so the provider builder must see and
-    // fail closed on it instead of creating a platform-wide pool.
-    mingla_event_id: input.eventId,
     prefill: true,
-    pixel_spec_object: { or: { event: [eventRule] } },
-    ...(input.code === "S3"
-      ? { exclude: { event: [{ eq: "PURCHASE", item_ids: [input.eventId] }] } }
-      : {}),
-    ...(input.code === "S4"
-      ? { event_ends_at: input.eventEndsAt ?? null }
-      : {}),
+    // The audience is intentionally broad; the ad squad's ordinary country
+    // targeting supplies the market boundary. S4 is a conservative all-buyer
+    // exclusion, so it always contains buyers of the advertised event.
+    mingla_scope: "market_fallback",
+    pixel_spec_object: {
+      or: { event: events.map((event) => ({ eq: event })) },
+    },
   };
 }
 
@@ -167,16 +227,17 @@ function tiktokRule(input: AudienceDefinitionInput): Record<string, unknown> {
     ? "CompletePayment"
     : null;
   if (!event) throw new Error(`audience_code_not_automatic:${input.code}`);
+  const content = input.scope === "event" ? { content_id: input.eventId } : {};
   return {
     audience_sub_type: "WEBSITE",
     pixel_id: input.pixelId,
-    inclusions: [{ event, content_id: input.eventId }],
+    inclusions: [{ event, ...content }],
     ...(input.code === "T3"
       ? {
-        exclusions: [{ event: "CompletePayment", content_id: input.eventId }],
+        exclusions: [{ event: "CompletePayment", ...content }],
       }
       : { exclusions: [] }),
-    ...(input.code === "T4"
+    ...(input.code === "T4" && input.scope === "event"
       ? { event_ends_at: input.eventEndsAt ?? null }
       : {}),
   };

@@ -5,6 +5,7 @@ import {
 
 import {
   AUTOMATIC_EVENT_AUDIENCE_CODES,
+  AUTOMATIC_MARKET_AUDIENCE_CODES,
   buildAudienceDefinition,
 } from "../adAudienceDefinitions.ts";
 
@@ -21,6 +22,11 @@ const base = {
 
 Deno.test("#3697 automatic audience catalog covers every contracted event code", () => {
   assertEquals(AUTOMATIC_EVENT_AUDIENCE_CODES, {
+    meta: ["M3", "M5", "M6"],
+    snapchat: [],
+    tiktok: ["T2", "T3", "T4"],
+  });
+  assertEquals(AUTOMATIC_MARKET_AUDIENCE_CODES, {
     meta: ["M3", "M4", "M5", "M6"],
     snapchat: ["S2", "S3", "S4"],
     tiktok: ["T2", "T3", "T4"],
@@ -41,15 +47,6 @@ Deno.test("#3697 checkout audiences exclude purchase with matching event id", ()
     { event: "Purchase", content_ids: ["event-1"] },
   ]);
 
-  const snap = buildAudienceDefinition({
-    ...base,
-    platform: "snapchat",
-    code: "S3",
-  });
-  assertEquals(snap.rule.exclude, {
-    event: [{ eq: "PURCHASE", item_ids: ["event-1"] }],
-  });
-
   const tiktok = buildAudienceDefinition({
     ...base,
     platform: "tiktok",
@@ -64,13 +61,38 @@ Deno.test("#3697 event buyer audiences are date-bound", () => {
   for (
     const [platform, code] of [
       ["meta", "M6"],
-      ["snapchat", "S4"],
       ["tiktok", "T4"],
     ] as const
   ) {
     const result = buildAudienceDefinition({ ...base, platform, code });
     assertEquals(result.rule.event_ends_at, base.eventEndsAt);
   }
+});
+
+Deno.test("#3697 Snap uses honest market pools and rejects fake event scoping", () => {
+  assertThrows(
+    () =>
+      buildAudienceDefinition({
+        ...base,
+        platform: "snapchat",
+        code: "S3",
+      }),
+    Error,
+    "snap_event_scope_unsupported",
+  );
+  const snap = buildAudienceDefinition({
+    ...base,
+    scope: "market",
+    brandId: null,
+    brandSlug: null,
+    eventId: null,
+    eventSlug: null,
+    platform: "snapchat",
+    code: "S3",
+  });
+  assertEquals(snap.rule.pixel_spec_object, {
+    or: { event: [{ eq: "START_CHECKOUT" }] },
+  });
 });
 
 Deno.test("#3697 code/platform mismatch fails closed", () => {
