@@ -193,7 +193,13 @@ export function CampaignBuilderPage() {
   const certificationContext = useMemo(certificationContextFromHash, []);
   const certificationMode = certificationContext.enabled === true;
   const creativePresetId = useMemo(creativeIdFromHash, []);
-  const isNewCreativeReuse = Boolean(creativePresetId && !draftIdFromHash());
+  // #3697: decided once at mount. Draft setup writes `draft=` into the hash
+  // before the draft is ready, so re-reading the hash on later renders turned
+  // a library "Use in campaign" into an empty builder.
+  const isNewCreativeReuse = useMemo(
+    () => Boolean(creativePresetId && !draftIdFromHash()),
+    [creativePresetId],
+  );
   // toward #3697 Wave 3 — console flag (missing key defaults ON in featureFlags).
   const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
   const [adsConsoleReady, setAdsConsoleReady] = useState(false);
@@ -1877,6 +1883,7 @@ export function CampaignBuilderPage() {
           }
           results[resultKey] = {
             ...meta,
+            ...(validateOnly ? { validateOnly: true } : {}),
             error: {
               code: parsed?.body?.error,
               message:

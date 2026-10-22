@@ -202,6 +202,8 @@ export function resolveBusinessNavTarget(
     case "business.dispute_opened":
     case "business.dispute_action_needed":
     case "business.payout_paid":
+    case "business.payout_late":
+    case "business.payout_debt_withheld":
     case "business.payout_failed":
     case "business.payout_waiting_for_bank":
     case "business.payouts_paused":

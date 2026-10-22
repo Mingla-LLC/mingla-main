@@ -15,29 +15,89 @@ import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
-import { listRefunds, listDisputes, getDispute, listPaystackDisputes, listPayouts, listRevenueLog, listOrganiserPayoutDebts } from "../services/adminMoneyService";
+import { listRefunds, listDisputes, getDispute, listPaystackDisputes, listPayouts, getPayoutSummary, listRevenueLog, listOrganiserPayoutDebts } from "../services/adminMoneyService";
 import { annotateDispute } from "../services/adminMoneyActService";
 import { PaystackDisputeDetail } from "../components/money/PaystackDisputeDetail";
 import { deadlineCountdown } from "../lib/paystackDisputeEvidence";
 import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
-import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
+import { timeAgo, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
+import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { formatMoneyMinor } from "../lib/moneyFormat";
 
 // ── Money formatter (cents + currency → string; never throws — I-1152 lesson) ──
 
 function formatMoney(cents, currency) {
-  if (cents == null) return "—";
-  const code = (currency || "").toUpperCase();
-  const amount = cents / 100;
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: code || "USD" }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)}${code ? ` ${code}` : ""}`;
-  }
+  return formatMoneyMinor(cents, currency);
 }
 
 function brandCell(val) {
   return val || <span className="text-[var(--color-text-muted)]">—</span>;
+}
+
+function formatCurrencyMap(values) {
+  const entries = Object.entries(values ?? {}).filter(([, cents]) => Number(cents) !== 0);
+  if (entries.length === 0) return "—";
+  return entries.map(([currency, cents]) => formatMoney(Number(cents), currency)).join(" + ");
+}
+
+function PayoutMetric({ title, value, sub, alert = false }) {
+  return (
+    <div className={`rounded-xl border p-4 ${alert ? "border-[var(--color-error-300)] bg-[var(--color-error-50)]" : "border-[var(--gray-200)] bg-white"}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">{title}</p>
+      <p className={`mt-1 text-xl font-semibold ${alert ? "text-[var(--color-error-700)]" : "text-[var(--color-text-primary)]"}`}>{value}</p>
+      {sub ? <p className="mt-1 text-xs text-[var(--color-text-secondary)]">{sub}</p> : null}
+    </div>
+  );
+}
+
+function PayoutDetailDrawer({ payout, onClose }) {
+  if (!payout) return null;
+  const debt = Number(payout.permanent_debt_withheld_cents || 0) + Number(payout.temporary_debt_withheld_cents || 0);
+  const line = (label, value, tone = "") => (
+    <div className="flex items-baseline justify-between gap-4 border-b border-[var(--gray-200)] py-3 last:border-b-0">
+      <span className="text-sm text-[var(--color-text-secondary)]">{label}</span>
+      <span className={`text-sm font-medium text-right ${tone}`}>{value}</span>
+    </div>
+  );
+  return (
+    <Modal open onClose={onClose} title={`${payout.brand_name} payout`} size="md">
+      <ModalBody>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Badge variant={payout.status === "paid" ? "success" : payout.status === "late_on_us" ? "error" : "warning"} dot>
+            {(payout.status || "—").replaceAll("_", " ")}
+          </Badge>
+          <Badge variant="default">{payout.provider}</Badge>
+          <span className="font-mono text-xs text-[var(--color-text-tertiary)]">{payout.id}</span>
+        </div>
+        {payout.why ? <p className="mb-4 rounded-lg border border-[var(--color-warning-300)] bg-[var(--color-warning-50)] p-3 text-sm">{payout.why}</p> : null}
+        <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">How this adds up</h3>
+        <div className="mt-2">
+          {line("Buyers paid", formatMoney(payout.gross_cents, payout.currency))}
+          {Number(payout.refunded_cents) > 0 ? line("Refunds", `−${formatMoney(payout.refunded_cents, payout.currency)}`) : null}
+          {Number(payout.disputed_cents) > 0 ? line("Disputes", `−${formatMoney(payout.disputed_cents, payout.currency)}`) : null}
+          {debt > 0 ? line("Refund after an earlier payout", `−${formatMoney(debt, payout.currency)}`) : null}
+          {line(payout.older_pricing ? "Mingla fee · older pricing" : "Mingla fee · 4.5%", `−${formatMoney(payout.mingla_fee_cents, payout.currency)}`)}
+          {line("Card processing", "Mingla pays")}
+          {payout.provider === "stripe" ? line("Stripe automatic-tax fee (~0.5%)", "Paid by host") : null}
+          {line("Host gets", formatMoney(payout.host_gets_cents, payout.currency))}
+          {Number(payout.transfer_fee_cents) > 0 ? line("Bank transfer fee", `−${formatMoney(payout.transfer_fee_cents, payout.currency)}`) : null}
+          {Number(payout.stamp_duty_cents) > 0 ? line("Stamp duty", `−${formatMoney(payout.stamp_duty_cents, payout.currency)}`) : null}
+          {line("Sent to bank", formatMoney(payout.sent_to_bank_cents, payout.currency))}
+        </div>
+        {Number(payout.transfer_fee_credit_owed_cents) > 0 ? (
+          <p className="mt-3 rounded-lg border border-[var(--color-error-300)] bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-700)]">
+            Mingla owes back {formatMoney(payout.transfer_fee_credit_owed_cents, payout.currency)}. It is added to the host&apos;s next payout.
+          </p>
+        ) : null}
+        <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+          <p><span className="text-[var(--color-text-tertiary)]">Sales:</span> {payout.sales_count}</p>
+          <p><span className="text-[var(--color-text-tertiary)]">Due:</span> {formatDateTime(payout.due_at)}</p>
+        </div>
+      </ModalBody>
+      <ModalFooter><Button variant="secondary" onClick={onClose}>Close</Button></ModalFooter>
+    </Modal>
+  );
 }
 
 function RefundReconcileButton({ row }) {
@@ -145,17 +205,26 @@ const PAYSTACK_DISPUTE_CSV = {
 };
 
 const PAYOUT_COLUMNS = [
-  { key: "created_at", label: "Created", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
   { key: "brand_name", label: "Brand", render: brandCell },
-  { key: "amount_cents", label: "Amount", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
-  { key: "status", label: "Status", render: (v) => <Badge variant={v === "paid" ? "success" : "warning"} dot>{v || "—"}</Badge> },
-  { key: "arrival_date", label: "Arrival date", render: (v) => (v ? formatDate(v) : <span className="text-[var(--color-text-muted)]">—</span>) },
+  { key: "provider", label: "Rail", render: (v) => <Badge variant="default">{v || "—"}</Badge> },
+  { key: "sales_count", label: "Sales", render: (v) => Number(v || 0).toLocaleString() },
+  { key: "gross_cents", label: "Buyers paid", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
+  { key: "mingla_fee_cents", label: "Mingla fee", render: (v, row) => formatMoney(v, row.currency) },
+  { key: "host_gets_cents", label: "Host gets", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
+  { key: "sent_to_bank_cents", label: "Sent to bank", render: (v, row) => formatMoney(v, row.currency) },
+  { key: "due_at", label: "Due", render: (v) => (v ? formatDateTime(v) : "—") },
+  { key: "status", label: "Status", render: (v) => <Badge variant={v === "paid" ? "success" : ["late_on_us", "couldnt_send", "needs_you"].includes(v) ? "error" : "warning"} dot>{(v || "—").replaceAll("_", " ")}</Badge> },
+  { key: "why", label: "Why", render: (v) => v || <span className="text-[var(--color-text-muted)]">—</span> },
+  { key: "transfer_fee_credit_owed_cents", label: "Mingla owes back", render: (v, row) => v > 0 ? <span className="font-medium text-[var(--color-error-700)]">{formatMoney(v, row.currency)}</span> : "—" },
 ];
 const PAYOUT_CSV = {
   columns: [
-    { key: "created_at", label: "Created" }, { key: "brand_name", label: "Brand" }, { key: "amount_cents", label: "Amount cents" },
-    { key: "currency", label: "Currency" }, { key: "status", label: "Status" }, { key: "arrival_date", label: "Arrival date" },
-    { key: "stripe_payout_id", label: "Payout id" },
+    { key: "id", label: "Payout id" }, { key: "brand_name", label: "Brand" }, { key: "provider", label: "Rail" },
+    { key: "sales_count", label: "Sales" },
+    { key: "gross_cents", label: "Buyers paid cents" }, { key: "mingla_fee_cents", label: "Mingla fee cents" },
+    { key: "host_gets_cents", label: "Host gets cents" }, { key: "sent_to_bank_cents", label: "Sent to bank cents" },
+    { key: "currency", label: "Currency" }, { key: "due_at", label: "Due" }, { key: "status", label: "Status" },
+    { key: "why", label: "Why" }, { key: "transfer_fee_credit_owed_cents", label: "Mingla owes back cents" },
   ],
   filename: "payouts",
 };
@@ -316,6 +385,15 @@ export function BusinessMoneyLedgerPage() {
   const [annotateOpen, setAnnotateOpen] = useState(false);
   const [note, setNote] = useState("");
   const [markReviewed, setMarkReviewed] = useState(false);
+  const [payoutSummary, setPayoutSummary] = useState(null);
+  const [selectedPayout, setSelectedPayout] = useState(null);
+
+  useEffect(() => {
+    if (activeTab !== "payouts") return;
+    let live = true;
+    void getPayoutSummary().then((value) => { if (live) setPayoutSummary(value); }).catch(() => { if (live) setPayoutSummary(null); });
+    return () => { live = false; };
+  }, [activeTab]);
 
   useEffect(() => {
     const sync = () => {
@@ -533,7 +611,19 @@ export function BusinessMoneyLedgerPage() {
         columns={PAYOUT_COLUMNS}
         fetchPage={listPayouts}
         searchPlaceholder="Search payout id"
-        filters={[{ key: "status", label: "Status", options: [{ value: "paid", label: "Paid" }, { value: "pending", label: "Pending" }, { value: "in_transit", label: "In transit" }, { value: "failed", label: "Failed" }] }]}
+        filters={[{ key: "status", label: "Status", allLabel: `All · ${payoutSummary?.total_count ?? 0}`, options: [
+          { value: "scheduled", label: `Scheduled · ${payoutSummary?.count_by_state?.scheduled ?? 0}` },
+          { value: "sending_today", label: `Sending today · ${payoutSummary?.count_by_state?.sending_today ?? 0}` },
+          { value: "on_its_way", label: `On its way · ${payoutSummary?.count_by_state?.on_its_way ?? 0}` },
+          { value: "paid", label: `Paid · ${payoutSummary?.count_by_state?.paid ?? 0}` },
+          { value: "waiting_for_bank", label: `Waiting for bank · ${payoutSummary?.count_by_state?.waiting_for_bank ?? 0}` },
+          { value: "late_on_us", label: `Late, on us · ${payoutSummary?.count_by_state?.late_on_us ?? 0}` },
+          { value: "needs_you", label: `Needs you · ${payoutSummary?.count_by_state?.needs_you ?? 0}` },
+          { value: "couldnt_send", label: `Couldn't send · ${payoutSummary?.count_by_state?.couldnt_send ?? 0}` },
+          { value: "paused", label: `Paused · ${payoutSummary?.count_by_state?.paused ?? 0}` },
+        ] }]}
+        filterVariant="chips"
+        onRowClick={setSelectedPayout}
         csv={PAYOUT_CSV}
         emptyMessage="No payouts yet."
         emptyIcon={Landmark}
@@ -573,12 +663,25 @@ export function BusinessMoneyLedgerPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Money ledger"
-        description="Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand."
+        title={activeTab === "payouts" ? "Money ledger · Payouts" : "Money ledger"}
+        description={activeTab === "payouts"
+          ? "Every sale's payout from the release ledger, across Stripe and Paystack. Each sale is due about 24 hours after payment."
+          : "Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand."}
         tabs={<Tabs tabs={TABS} activeTab={activeTab} onChange={changeTab} />}
       />
 
+      {activeTab === "payouts" && payoutSummary ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Payout summary">
+          <PayoutMetric title="Due next 24h" value={formatCurrencyMap(payoutSummary.due_next_24h_by_currency)} />
+          <PayoutMetric title="Late on us" value={`${payoutSummary.late_count ?? 0}`} sub={payoutSummary.oldest_late_due_at ? `Oldest due ${formatDateTime(payoutSummary.oldest_late_due_at)}` : "None late"} alert={(payoutSummary.late_count ?? 0) > 0} />
+          <PayoutMetric title="Waiting bank" value={`${payoutSummary.waiting_for_bank_count ?? 0}`} />
+          <PayoutMetric title="Paid last 24h" value={formatCurrencyMap(payoutSummary.paid_last_24h_by_currency)} />
+          <PayoutMetric title="Mingla owes back" value={formatCurrencyMap(payoutSummary.transfer_fee_credits_owed_by_currency)} alert={Object.values(payoutSummary.transfer_fee_credits_owed_by_currency ?? {}).some((v) => Number(v) > 0)} />
+        </div>
+      ) : null}
+
       {listView}
+      <PayoutDetailDrawer payout={selectedPayout} onClose={() => setSelectedPayout(null)} />
     </div>
   );
 }

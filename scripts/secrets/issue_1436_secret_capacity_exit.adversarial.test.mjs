@@ -17,15 +17,16 @@ const RETIRED_DIRECT_NAMES = [
 // [TEST-MOD-APPROVED #1770] Written reason: the approved standalone invite
 // pepper raised parity to 87; #2830's approved Sites envelope occupies slot 88.
 // [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]: SPRINT_ROLLOVER_TOKEN is slot 89.
+// [TEST-MOD-APPROVED #3645] The payout-release RAK is the 90th and final slot.
 
 test("issue #1436 adversarial: a same-count direct-name substitution cannot bypass exact-set parity", () => {
-  assert.equal(expectedNames.length, 89);
+  assert.equal(expectedNames.length, 90);
 
   for (const retiredName of RETIRED_DIRECT_NAMES) {
     const substitutedNames = expectedNames
       .filter((name) => name !== "MAPBOX_ACCESS_TOKEN")
       .concat(retiredName);
-    assert.equal(substitutedNames.length, 89);
+    assert.equal(substitutedNames.length, 90);
 
     const result = auditSecretBudget({
       manifest,

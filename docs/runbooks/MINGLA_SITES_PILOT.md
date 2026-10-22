@@ -47,8 +47,8 @@ after every launch gate below passes and the separate activation is approved.
    probes.
 5. A CMS application/database fault leaves the already published last-good page
    healthy, and a failed candidate publish leaves the Core pointer unchanged.
-6. Secret inventory shows the exact approved 89-name manifest (#3980), the sole #2830
-   slot-88 exception, zero missing/unexpected names, and zero high/critical
+6. Secret inventory shows the exact approved 90-name manifest (#3645), the sole #2830
+   capacity exception, zero missing/unexpected names, and zero high/critical
    dependency findings. A code merge does not authorize setting or distributing
    a live secret.
 

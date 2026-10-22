@@ -43,6 +43,8 @@ export interface TicketLinkRequest {
   ticketTypeName: string;
   createdAt: string;
   eventDateId: string | null;
+  /** issue #3827 — every date the group asked for (several on a multi-date event). */
+  dates?: Array<{ id: string; startAt: string; endAt: string; timezone: string }>;
   memberCount: number;
   members: TicketLinkPerson[];
 }

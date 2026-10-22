@@ -50,6 +50,7 @@ import type {
   OrderInstallmentForBrand,
   OrderInstallmentStatus,
 } from "../../../../src/services/orderInstallmentsService";
+import { formatCurrency as formatCurrencyAmount } from "../../../../src/utils/currency";
 import { projectInstallmentSchedule } from "../../../../src/utils/installmentScheduleProjection";
 // #3372 — naira shows "₦", not "NGN", on the host trip money screen (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
@@ -74,17 +75,10 @@ interface TravelerMoneyRow {
 }
 
 function formatCurrency(cents: number, currency: string): string {
-  try {
-    return withCurrencyGlyph(
-      new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency || "USD",
-      }).format(cents / 100),
-      currency,
-    );
-  } catch {
-    return `${(cents / 100).toFixed(2)} ${currency}`;
-  }
+  return withCurrencyGlyph(
+    formatCurrencyAmount(cents, currency, true),
+    currency,
+  );
 }
 
 function formatMoneyDate(iso: string): string {

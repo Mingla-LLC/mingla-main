@@ -154,12 +154,12 @@ export const ORGANISER_TERMS_SECTIONS: readonly OrganiserTermsSection[] = [
       {
         type: 'paragraph',
         lead: "Mingla's fee.",
-        text: 'Mingla charges a service fee on each paid sale. The current rate is shown in Mingla Host before you publish and on every payout breakdown.',
+        text: 'Mingla keeps 4.5% of the ticket price on each paid sale (a 1.5% Mingla fee and a 3% service fee). You choose whether Buyers pay it on top.',
       },
       {
         type: 'paragraph',
         lead: 'Other costs.',
-        text: 'Payment provider processing costs are taken from your payouts as shown in your breakdown. In Nigeria, bank transfer fees and stamp duty are also deducted (section 8).',
+        text: 'Mingla pays payment-provider card processing. Stripe’s automatic-tax fee (about 0.5%) is paid by you and shown separately. In Nigeria, the bank transfer fee and ₦50 stamp duty on each payout are deducted from that payout.',
       },
       {
         type: 'paragraph',

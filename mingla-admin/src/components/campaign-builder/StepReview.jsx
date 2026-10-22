@@ -635,7 +635,7 @@ export function StepReview({
               <AlertCard
                 key={key}
                 variant="error"
-                title={`${label}${destSuffix} create failed${result.error.code ? ` — ${result.error.code}` : ""}`}
+                title={`${label}${destSuffix} ${result.validateOnly ? "validation" : "create"} failed${result.error.code ? ` — ${result.error.code}` : ""}`}
                 action={
                   isDestination ? (
                     <Button

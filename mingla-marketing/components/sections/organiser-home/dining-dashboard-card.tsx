@@ -27,7 +27,7 @@ export function DiningDashboardCard() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-            Released after your events
+            Paid about a day after each sale
           </p>
           <p className="mt-1 flex items-baseline gap-1.5">
             <span className="text-4xl font-bold leading-none tracking-[-0.02em] text-text-primary tabular-nums">
@@ -39,7 +39,7 @@ export function DiningDashboardCard() {
           className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
           style={{ background: 'rgba(63,139,92,0.12)', color: 'var(--color-success)' }}
         >
-          99% kept
+          Keep 100% of your ticket price when buyers cover the fee
         </span>
       </div>
 

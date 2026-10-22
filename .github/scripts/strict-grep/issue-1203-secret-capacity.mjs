@@ -157,9 +157,10 @@ export function check({
     const names = manifest.secrets?.map((record) => record.name) ?? [];
     // [TEST-MOD-APPROVED #2830] Founder-approved slot 88 is a bounded
     // credential envelope protected by the unchanged 87/90 capacity policy.
-    // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat (SPRINT_ROLLOVER_TOKEN).
-    if (names.length !== 89 || new Set(names).size !== 89) {
-      violations.push(`${MANIFEST}:target_must_be_89_unique_names`);
+    // #3645: the founder-approved payout-release RAK occupies the 90th and
+    // final absolute-ceiling slot.
+    if (names.length !== 90 || new Set(names).size !== 90) {
+      violations.push(`${MANIFEST}:target_must_be_90_unique_names`);
     }
     if (names.includes(FORBIDDEN_DIRECT_PAYSTACK_CONTROL)) {
       violations.push(`${MANIFEST}:standalone_paystack_control_forbidden`);
@@ -327,7 +328,7 @@ function selfTest() {
             "supabase/functions/offering-invite-dispatch/index.ts",
           ],
         },
-        ...Array.from({ length: 86 }, (_, index) => ({ name: `SYNTH_${index}` })),
+        ...Array.from({ length: 87 }, (_, index) => ({ name: `SYNTH_${index}` })),
       ],
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],

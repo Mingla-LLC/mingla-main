@@ -17,8 +17,9 @@
  *      `TRANSITIONAL — B-cycle Stripe payout API`.
  *   4. moneySummary.ts contains both `expectedPayoutMajor` AND `onlineNetMajor`
  *      (the rename is complete at the source layer).
- *   5. reconciliation.tsx references `summary.expectedPayoutMajor` (the rename
- *      is complete at the UI layer).
+ *   5. reconciliation.tsx reads the canonical payout-screen ledger and renders
+ *      its Mingla-fee and host-net cents (the approved #3645 UI supersedes the
+ *      old aggregate `summary.expectedPayoutMajor` presentation).
  *
  * Codified by ORCH-0796 SPEC §7.8 + §9 (NEW invariant I-PROPOSED-BB).
  *
@@ -27,6 +28,7 @@
  * DISTINCT BAD fixtures. The disk-reading main path builds `inputs` from the
  * real tree and calls the SAME `check(...)`; the refactor is behavior-preserving
  * (identical verdict on the real tree, same messages in the same order).
+ * [TEST-MOD-APPROVED #3645] Check 5 follows the approved ledger-backed redesign.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -166,12 +168,16 @@ function check(inputs, failures) {
     }
   }
 
-  // Check 5 — reconciliation.tsx reads summary.expectedPayoutMajor
+  // Check 5 — reconciliation.tsx reads and renders canonical payout-screen money.
   if (!reconciliationTsxSrc) {
     failures.push(`Check 5 FAIL: cannot read ${reconciliationTsxPath}`);
-  } else if (!/summary\.expectedPayoutMajor/.test(reconciliationTsxSrc)) {
+  } else if (
+    !reconciliationTsxSrc.includes("useBrandPayoutScreen") ||
+    !reconciliationTsxSrc.includes("payoutMoney.minglaFeeCents") ||
+    !reconciliationTsxSrc.includes("payoutMoney.hostGetsCents")
+  ) {
     failures.push(
-      "Check 5 FAIL: reconciliation.tsx does not reference `summary.expectedPayoutMajor`",
+      "Check 5 FAIL: reconciliation.tsx does not render canonical payout-screen fee and host-net cents",
     );
   }
 }
@@ -184,7 +190,7 @@ if (process.argv.includes("--self-test")) {
     reconciliationTsxPath: "mingla-business/app/event/[id]/reconciliation.tsx",
   };
   const goodMoney = "export const s = { expectedPayoutMajor, onlineNetMajor };\n";
-  const goodTsx = "return summary.expectedPayoutMajor;\n";
+  const goodTsx = "useBrandPayoutScreen(); return payoutMoney.minglaFeeCents + payoutMoney.hostGetsCents;\n";
 
   // GOOD: derived fields present, no `* 0.96`, no payoutEstimate, no placeholder.
   let f = [];

@@ -65,7 +65,7 @@ describe("#2097 Business non-2xx refund truth", () => {
     expect(error.applicationFeeRefundedCents).toBeNull();
     expect(error.message).toMatch(/buyer refund was issued/i);
     // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
-    expect(error.message).toMatch(/still confirming the processing fee refund/i);
+    expect(error.message).toMatch(/still confirming the Mingla fee refund/i);
   });
 
   it("never claims a buyer refund for a pre-provider waiting state", async () => {
@@ -100,6 +100,6 @@ describe("#2097 Business non-2xx refund truth", () => {
     expect(error.buyerRefundStatus).toBe("succeeded");
     expect(error.applicationFeeRefundStatus).toBe("evidence_conflict");
     expect(error.message).toMatch(/buyer refund was issued/i);
-    expect(error.message).toMatch(/fee evidence needs review/i);
+    expect(error.message).toMatch(/Mingla fee refund evidence needs review/i);
   });
 });

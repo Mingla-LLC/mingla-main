@@ -383,6 +383,17 @@ jobs:
               #
               # Matched by EXACT filename, never an issue-number infix.
               *20271209003827_issue_3827_private_ticket_links.sql) continue ;;
+              # #3827 link cover and dates — SKIPPED because it alters the private-link
+              # tables created by the skipped 20271209003827 file above. The unfiltered
+              # full-chain lanes replay it in true filename order.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271211003827_issue_3827_link_cover_and_dates.sql) continue ;;
+              # #3827 orders-to-private-link foreign key — SKIPPED because it references
+              # ticket_type_links, created only by the skipped 20271209003827 file above.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271210003827_issue_3827_orders_ticket_link_fk.sql) continue ;;
               # #3281 R3 — rewrites public experience reader / create-session that
               # call helpers defined only in migrations this lane skips (#2489/#3313/#3281 prior).
               *20271123003281_issue_3281_r3_spacing_spots.sql) continue ;;

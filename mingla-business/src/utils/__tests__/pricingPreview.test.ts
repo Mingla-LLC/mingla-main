@@ -1,5 +1,6 @@
 /**
  * ORCH-1006 — pricing-preview parity tests.
+ * [TEST-MOD-APPROVED #3645] The approved flat host take is now 4.5%.
  *
  * Pins the client preview mirror to the engine's worked example and the
  * integer-bps contract. If these drift from `_shared/allInPricingEngine.ts`,
@@ -41,7 +42,7 @@ describe("computePreview — all absorbed (default brand posture)", () => {
     expect(r.passed.serviceFeeCents).toBe(0);
   });
   it("you-keep floor = base − mingla fee (tax floor 0)", () => {
-    expect(r.youKeepFloorCents).toBe(10000 - 150);
+    expect(r.youKeepFloorCents).toBe(10000 - 150 - 300);
   });
 });
 

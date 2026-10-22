@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import type { ThemePalette } from "@mingla/offering-rendering";
 
 import {
   accent,
@@ -28,10 +28,42 @@ import { formatCurrency } from "../../utils/currency";
 import { randomUuid } from "../../utils/randomId";
 import { supabase } from "../../services/supabase";
 import type { TicketLinkResolve, TicketLinkState } from "../../services/ticketLinkPublicTypes";
+import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
+import {
+  ticketLinkAsksForDates,
+  ticketLinkCheckoutDates,
+  ticketLinkCover,
+  ticketLinkDatesReady,
+  ticketLinkSignupDates,
+} from "../../utils/ticketLinkLandingModel";
 import { Button } from "../ui/Button";
+import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
+
+// issue #3827 — the shared multi-select day chooser the public event page
+// uses (checkbox rows, Space + aria-checked on web, reduced motion). Lazy for
+// the same reason it is lazy there: single-date links never load it.
+const MultiDateDayChooser = React.lazy(() => import("../event/MultiDateDayChooser"));
+
+// The link page's own dark surface, expressed as the chooser's palette.
+const LINK_PALETTE: ThemePalette = {
+  page: "#0c0e12",
+  accent: accent.warm,
+  accentText: accent.warm,
+  primaryText: textTokens.primary,
+  secondaryText: textTokens.secondary,
+  tertiaryText: textTokens.tertiary,
+  panel: glass.tint.profileBase,
+  panelStrong: glass.tint.profileBase,
+  panelBorder: glass.border.profileBase,
+  card: glass.tint.profileBase,
+  cutoutBorder: glass.border.profileBase,
+  glass: glass.tint.profileBase,
+  glassTint: "dark",
+  accentWash: "rgba(235,120,37,0.10)",
+};
 
 type PersonDraft = { id: string; name: string; email: string; phone: string };
 
@@ -79,6 +111,7 @@ const signupTicketLink = (input: {
   lead: { name: string; email: string; phone: string };
   guests: Array<{ name: string; email: string; phone: string }>;
   eventDateId: string | null;
+  eventDateIds?: string[];
   clientRequestId: string;
   website: string;
 }): Promise<{ status: "issued" | "pending"; alreadyPending?: boolean; people: Array<{ name: string; maskedEmail: string }> }> =>
@@ -170,6 +203,16 @@ const stateCopy = (state: TicketLinkState): { title: string; body: string } => {
   }
 };
 
+const toOccurrences = (dates: NonNullable<TicketLinkResolve["dates"]>): PublicEventOccurrence[] =>
+  dates.map((date) => ({
+    id: date.id,
+    startAt: date.startAt,
+    endAt: date.endAt,
+    timezone: date.timezone,
+    isMaster: false,
+    ticketsRemaining: null,
+  }));
+
 const dateLabel = (startAt: string | null, timezone: string | undefined): string => {
   if (!startAt) return "Date to be announced";
   try {
@@ -192,7 +235,7 @@ export default function TicketLinkLanding(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [lead, setLead] = useState<PersonDraft>(emptyPerson);
   const [guests, setGuests] = useState<PersonDraft[]>([]);
-  const [eventDateId, setEventDateId] = useState<string | null>(null);
+  const [selectedDateIds, setSelectedDateIds] = useState<readonly string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [outcome, setOutcome] = useState<"issued" | "pending" | null>(null);
@@ -204,7 +247,7 @@ export default function TicketLinkLanding(): React.ReactElement {
       .then((value) => {
         if (cancelled) return;
         setResolved(value);
-        setEventDateId(value.eventDateId ?? null);
+        setSelectedDateIds([]);
         if (value.state === "active" && value.kind === "private_ticket" && value.eventId) {
           try {
             globalThis.sessionStorage?.setItem(`mingla.ticketLink.${value.eventId}`, token);
@@ -223,8 +266,19 @@ export default function TicketLinkLanding(): React.ReactElement {
   }, [token]);
 
   const people = useMemo(() => [lead, ...guests], [lead, guests]);
-  const needsDateChoice = (resolved?.dates?.length ?? 0) > 0;
-  const valid = (!needsDateChoice || eventDateId !== null) && people.every(
+  const needsDateChoice = resolved !== null && ticketLinkAsksForDates(resolved);
+  const datesReady = resolved === null || ticketLinkDatesReady(resolved, selectedDateIds);
+  const occurrences = useMemo(
+    () => toOccurrences(resolved?.dates ?? []),
+    [resolved?.dates],
+  );
+  const toggleDate = useCallback((id: string): void => {
+    setSelectedDateIds((current) => {
+      const toggled = current.includes(id) ? current.filter((value) => value !== id) : [...current, id];
+      return occurrences.map((row) => row.id).filter((value) => toggled.includes(value));
+    });
+  }, [occurrences]);
+  const valid = datesReady && people.every(
     (person) =>
       person.name.trim().length > 0 &&
       EMAIL.test(person.email.trim()) &&
@@ -234,7 +288,7 @@ export default function TicketLinkLanding(): React.ReactElement {
   const submit = useCallback(async (): Promise<void> => {
     setShowErrors(true);
     setError(null);
-    if (!valid || submitting) return;
+    if (!valid || submitting || resolved === null) return;
     setSubmitting(true);
     try {
       const answer = await signupTicketLink({
@@ -245,7 +299,7 @@ export default function TicketLinkLanding(): React.ReactElement {
           email: guest.email.trim(),
           phone: guest.phone,
         })),
-        eventDateId,
+        ...ticketLinkSignupDates(resolved, selectedDateIds),
         clientRequestId: randomUuid(),
         website: "",
       });
@@ -259,7 +313,7 @@ export default function TicketLinkLanding(): React.ReactElement {
     } finally {
       setSubmitting(false);
     }
-  }, [eventDateId, guests, lead, submitting, token, valid]);
+  }, [guests, lead, resolved, selectedDateIds, submitting, token, valid]);
 
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={accent.warm} /></View>;
@@ -293,10 +347,28 @@ export default function TicketLinkLanding(): React.ReactElement {
   }
 
   const { event, tier } = resolved;
+  const dateChooser = (isPaid: boolean): React.ReactElement | null => needsDateChoice ? (
+    <View style={styles.dates}>
+      <React.Suspense fallback={<ActivityIndicator color={accent.warm} />}>
+        <MultiDateDayChooser
+          timezone={event.timezone}
+          palette={LINK_PALETTE}
+          occurrences={occurrences}
+          selectedOccurrenceIds={selectedDateIds}
+          pricingMode={resolved.multiDatePricingMode ?? "per_day"}
+          allDaysPass={resolved.allDaysPass === true}
+          isPaid={isPaid && (tier.allInCents ?? tier.priceCents ?? 0) > 0}
+          highlightUnchosen={showErrors && !datesReady}
+          onToggle={toggleDate}
+        />
+      </React.Suspense>
+    </View>
+  ) : null;
   if (resolved.kind === "private_ticket") {
     const continueToCheckout = (): void => {
-      if (!resolved.eventId) return;
-      const path = checkoutPublicPathWithSeed(resolved.eventId, { [tier.id]: 1 }, eventDateId ? [eventDateId] : null);
+      setShowErrors(true);
+      if (!resolved.eventId || !datesReady) return;
+      const path = checkoutPublicPathWithSeed(resolved.eventId, { [tier.id]: 1 }, ticketLinkCheckoutDates(resolved, selectedDateIds));
       router.push(`${path}${path.includes("?") ? "&" : "?"}ticketLink=${encodeURIComponent(token)}` as never);
     };
     return (
@@ -312,6 +384,7 @@ export default function TicketLinkLanding(): React.ReactElement {
               : formatCurrency((tier.allInCents ?? tier.priceCents ?? 0) / 100, tier.currency ?? event.currency)}
           </Text>
         </View>
+        {dateChooser(true)}
         <Button label="Continue to checkout" onPress={continueToCheckout} fullWidth size="lg" />
         <Legal />
       </ScrollView>
@@ -326,24 +399,7 @@ export default function TicketLinkLanding(): React.ReactElement {
       <Text style={styles.body}>
         Add contact details for everyone coming. Each guest receives their own pass.
       </Text>
-      {resolved.dates && resolved.dates.length > 0 ? (
-        <View style={styles.dates}>
-          <Text style={styles.personLabel}>Choose a date</Text>
-          {resolved.dates.map((date) => (
-            <Pressable
-              key={date.id}
-              onPress={() => setEventDateId(date.id)}
-              accessibilityRole="radio"
-              accessibilityLabel={`Choose ${dateLabel(date.startAt, date.timezone)}`}
-              accessibilityState={{ selected: eventDateId === date.id }}
-              style={[styles.dateRow, eventDateId === date.id && styles.dateRowActive]}
-            >
-              <Text style={styles.dateText}>{dateLabel(date.startAt, date.timezone)}</Text>
-              {eventDateId === date.id ? <Icon name="check" size={18} color={accent.warm} /> : null}
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
+      {dateChooser(false)}
       <PersonFields person={lead} label="Your details" showErrors={showErrors} onChange={setLead} />
       {guests.map((guest, index) => (
         <PersonFields
@@ -363,10 +419,7 @@ export default function TicketLinkLanding(): React.ReactElement {
           fullWidth
         />
       ) : null}
-      {showErrors && needsDateChoice && eventDateId === null ? (
-        <Text style={styles.error}>Choose an event date.</Text>
-      ) : null}
-      {showErrors && !valid && (!needsDateChoice || eventDateId !== null) ? (
+      {showErrors && !valid && datesReady ? (
         <Text style={styles.error}>Complete every field with a valid phone number and a different email for each person.</Text>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -383,11 +436,37 @@ export default function TicketLinkLanding(): React.ReactElement {
   );
 }
 
+export function TicketLinkCoverMedia({
+  event,
+}: {
+  event: NonNullable<TicketLinkResolve["event"]>;
+}): React.ReactElement | null {
+  // issue #3827 — a video cover plays through the shared EventCoverMedia with
+  // its poster; if the video cannot play, its poster is drawn as an image.
+  const [videoFailed, setVideoFailed] = useState(false);
+  useEffect(() => { setVideoFailed(false); }, [event.coverUrl]);
+  const cover = ticketLinkCover(event, videoFailed);
+  if (cover === null) return null;
+  return (
+    <EventCoverMedia
+      key={`${cover.mediaType}:${cover.mediaUrl}`}
+      mediaUrl={cover.mediaUrl}
+      mediaType={cover.mediaType}
+      posterUrl={cover.posterUrl}
+      radius={0}
+      height={210}
+      label="Event cover"
+      onMediaError={cover.mediaType === "video" ? () => setVideoFailed(true) : undefined}
+      testID="ticket-link-cover"
+    />
+  );
+}
+
 function EventCard({ resolved }: { resolved: TicketLinkResolve }): React.ReactElement {
   const event = resolved.event!;
   return (
     <View style={styles.eventCard}>
-      {event.coverUrl ? <Image source={{ uri: event.coverUrl }} style={styles.cover} /> : null}
+      <TicketLinkCoverMedia event={event} />
       <View style={styles.eventText}>
         <Text style={styles.eyebrow}>{event.brandName.toUpperCase()}</Text>
         <Text style={styles.eventTitle}>{event.title}</Text>
@@ -414,7 +493,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28, backgroundColor: "#0c0e12" },
   content: { width: "100%", maxWidth: 640, alignSelf: "center", padding: spacing.lg, paddingBottom: 64, gap: spacing.md },
   eventCard: { overflow: "hidden", borderRadius: radius.lg, backgroundColor: glass.tint.profileBase, borderWidth: 1, borderColor: glass.border.profileBase },
-  cover: { width: "100%", height: 210 },
   eventText: { padding: spacing.lg, gap: 4 },
   eyebrow: { color: accent.warm, fontSize: 11, fontWeight: "800", letterSpacing: 1.4 },
   eventTitle: { color: textTokens.primary, fontSize: 28, fontWeight: "800", letterSpacing: -0.6 },
@@ -425,9 +503,6 @@ const styles = StyleSheet.create({
   personHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   personLabel: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
   dates: { gap: spacing.xs },
-  dateRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase },
-  dateRowActive: { borderColor: accent.warm, backgroundColor: "rgba(255,122,69,0.08)" },
-  dateText: { color: textTokens.primary, fontSize: 14 },
   ticketCard: { padding: spacing.lg, gap: spacing.xs, borderRadius: radius.lg, backgroundColor: glass.tint.profileBase, borderWidth: 1, borderColor: glass.border.profileBase },
   ticketName: { color: textTokens.primary, fontSize: 22, fontWeight: "800" },
   price: { color: textTokens.primary, fontSize: 28, fontWeight: "800", marginTop: spacing.sm },

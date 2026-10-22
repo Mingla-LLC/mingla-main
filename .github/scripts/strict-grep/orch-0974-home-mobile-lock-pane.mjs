@@ -4,11 +4,12 @@
  *
  * Enforces the proposed Home mobile lock-pane invariant:
  *   - populated mobile Home has exactly one scrolling surface: FlatList
- *   - Last 7 days -> Analytics -> Live -> Recent order is preserved on wide and mobile
+ *   - Coming to you -> Analytics -> Live -> Recent order is preserved on wide and mobile
  *   - the removed Active events KPI cannot return
  *   - KPI/section-header styles and spacing contract remain explicit
  *   - pull-to-refresh stays on the FlatList and refreshes Analytics
  *   - Recent row rendering stays extracted to RecentRow/EventCoverMedia
+ * [TEST-MOD-APPROVED #3645] The approved Home money card replaces Last 7 days.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -133,8 +134,8 @@ if (homeSource.length > 0) {
       );
     }
     assertOrdered("C8: mobile-order", scopedCode, [
-      ["conditional Last 7 days", "{showRevenueTile ? ("],
-      ["Last 7 days tile", 'label="Last 7 days"'],
+      ["conditional Coming to you", "{canViewPayouts ? ("],
+      ["Coming to you card", "<HomeMoneyCard"],
       ["mobile Analytics tile", "<AnalyticsHomeTile"],
       ["mobile Live section", "{renderLiveSection()}"],
       ["Recent header", "style={styles.mobileRecentHeaderWrap}"],
@@ -168,8 +169,8 @@ if (homeSource.length > 0) {
     const wide = stripComments(homeSource.slice(wideStart, mobileStart));
     assertOrdered("C8: wide-order", wide, [
       ["wide KPI row", "style={styles.desktopKpiGrid}"],
-      ["conditional Last 7 days", "{showRevenueTile ? ("],
-      ["Last 7 days tile", 'label="Last 7 days"'],
+      ["conditional Coming to you", "{canViewPayouts ? ("],
+      ["Coming to you card", "<HomeMoneyCard"],
       ["wide Analytics tile", "<AnalyticsHomeTile"],
       ["wide Live section", "{renderLiveSection()}"],
       ["wide Recent section", "style={styles.desktopUpcomingPane}"],

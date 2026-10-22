@@ -64,6 +64,15 @@ export default function BrandPaymentsRoute(): React.ReactElement {
     router.push(`/brand/${brand.id}/payments/reports` as never);
   };
 
+  const handleOpenPayout = (releaseId: string): void => {
+    if (brand === null) return;
+    router.push(`/brand/${brand.id}/payments/${releaseId}` as never);
+  };
+
+  const handleContactSupport = (): void => {
+    router.push("/account/support?tab=support" as never);
+  };
+
   return (
     <View
       style={{
@@ -83,6 +92,8 @@ export default function BrandPaymentsRoute(): React.ReactElement {
           onBack={handleBack}
           onOpenOnboard={handleOpenOnboard}
           onOpenReports={handleOpenReports}
+          onOpenPayout={handleOpenPayout}
+          onContactSupport={handleContactSupport}
           onChooseDifferentCountry={handleChooseDifferentCountry}
         />
       </BrandPaymentsPermissionGate>

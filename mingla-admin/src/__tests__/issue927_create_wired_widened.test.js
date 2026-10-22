@@ -179,7 +179,10 @@ describe("ISSUE-927 — Meta/Google provider objects stay platform-specific", ()
     // [TEST-MOD-APPROVED #3697] v1.4 carries a canonical creative_intent beside
     // the provider rendering. The provider creative itself must remain clean.
     const flat = JSON.stringify(p.creative);
-    assert.ok(!flat.includes("creative_library_id"), "no library id in the Meta provider creative");
+    // [TEST-MOD-APPROVED #3697] Since #4039 the Meta create path resolves its
+    // 1:1/4:5/9:16 placement variants from the library row and rejects a
+    // request without creative.creative_library_id, so Meta now carries it.
+    assert.equal(p.creative.creative_library_id, baseState.creative.creativeLibraryId);
     assert.ok(!flat.includes("brand_name"), "no brand_name in the Meta provider creative");
     assert.equal(p.creative_intent.creative_library_id, baseState.creative.creativeLibraryId);
   });

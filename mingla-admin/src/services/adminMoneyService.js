@@ -132,7 +132,20 @@ export async function listPayouts({ search, filters = {}, page = 0, pageSize = 2
     p_offset: page * pageSize,
   });
   if (error) throw new Error(error.message || "Failed to load payouts.");
-  return { rows: data?.rows ?? [], total: data?.total ?? 0 };
+  return { rows: data?.rows ?? [], total: data?.total ?? 0, summary: data?.summary ?? null };
+}
+
+/** Unified Stripe + Paystack payout console headline totals. */
+export async function getPayoutSummary() {
+  const { data, error } = await supabase.rpc("admin_list_payouts", {
+    p_search: null,
+    p_status_filter: null,
+    p_brand_id: null,
+    p_limit: 1,
+    p_offset: 0,
+  });
+  if (error) throw new Error(error.message || "Failed to load payout summary.");
+  return data?.summary ?? null;
 }
 
 /** Platform application-fee revenue log. */
@@ -166,7 +179,26 @@ export async function listOrganiserPayoutDebts({ search, filters = {}, page = 0,
 
 /** Per-brand payout console bundle: pause state, balances, next payout, debts, history. */
 export async function getBrandPayoutConsole(brandId) {
-  return supabase.rpc("admin_get_brand_payout_console", { p_brand_id: brandId });
+  const [legacy, unified] = await Promise.all([
+    supabase.rpc("admin_get_brand_payout_console", { p_brand_id: brandId }),
+    supabase.rpc("admin_list_payouts", {
+      p_search: null,
+      p_status_filter: null,
+      p_brand_id: brandId,
+      p_limit: 25,
+      p_offset: 0,
+    }),
+  ]);
+  if (legacy.error) return legacy;
+  if (unified.error) return unified;
+  return {
+    data: {
+      ...legacy.data,
+      payout_screen_rows: unified.data?.rows ?? [],
+      payout_screen_summary: unified.data?.summary ?? null,
+    },
+    error: null,
+  };
 }
 
 // ── Subscription support context ──────────────────────────────────────────────

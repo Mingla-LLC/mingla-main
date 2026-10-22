@@ -524,6 +524,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           payoutGbp={moneySummary.onlineNetMajor}
           paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
           onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
+          onOpenPayouts={() => experience.brandId != null && router.push(`/brand/${experience.brandId}/payments` as never)}
           currency={experience.currency}
           readStatus={ordersQuery.status}
           onRetry={() => void ordersQuery.refetch()}

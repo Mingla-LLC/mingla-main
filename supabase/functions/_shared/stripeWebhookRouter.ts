@@ -21,6 +21,7 @@ import {
 import {
   fireBuyerOrderNotify,
   fireOrderFinalizeNotifications,
+  storedHostNetCents,
 } from "./businessNotifyTriggers.ts";
 // ISSUE-865 WP-B — the single post-finalize ad-conversion hook (CAPI fan-out,
 // deduped with the browser pixel on the shared event_id; idempotent + fail-open).
@@ -52,6 +53,7 @@ import {
 // → reverse partner Transfer; account.updated → populate partner
 // external_account_currencies (closes the ORCH-1052 currency-match gate).
 import {
+  handleApplicationFeeCreated,
   handleChargeReversal,
   handleChargeSucceeded,
   syncPartnerAccountFromEvent,
@@ -1785,7 +1787,7 @@ async function handleTicketCheckoutPaymentIntent(
         if (brandId && eventId) {
           const { data: orderRow } = await supabase
             .from("orders")
-            .select("total_cents, currency")
+            .select("total_cents, currency, pricing_breakdown, stripe_application_fee_amount_cents")
             .eq("id", orderId)
             .maybeSingle();
           const { count: ticketCount } = await supabase
@@ -1799,6 +1801,11 @@ async function handleTicketCheckoutPaymentIntent(
             totalCents: Number(
               orderRow?.total_cents ?? paymentIntent.amount ?? 0,
             ),
+            hostNetCents: storedHostNetCents(
+              Number(orderRow?.total_cents ?? paymentIntent.amount ?? 0),
+              orderRow?.pricing_breakdown,
+              orderRow?.stripe_application_fee_amount_cents,
+            ) ?? undefined,
             currency: (orderRow?.currency as string | null) ??
               (typeof paymentIntent.currency === "string"
                 ? paymentIntent.currency
@@ -2084,6 +2091,14 @@ export async function routeStripeEvent(
     case "application_fee.created":
     case "application_fee.refunded":
       brandId = await handleApplicationFee(supabase, event);
+      // Issue #3645: the fee id only exists from here on for direct charges
+      // (charge.succeeded carries application_fee: null), so the payout
+      // partner outcome is recorded now. Throws a retryable error while the
+      // ticket order is not finalized yet, so Stripe redelivers.
+      if (event.type === "application_fee.created") {
+        const outcome = await handleApplicationFeeCreated(supabase, event);
+        brandId = brandId ?? outcome.brandId;
+      }
       break;
     case "application_fee.refund.updated":
       brandId = await handleApplicationFeeRefund(supabase, stripe, event);

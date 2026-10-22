@@ -7,7 +7,7 @@ import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
 // "Earnings" card. The source ships as a zinc-900 dark card with a big balance,
 // a delta, a Topup button, and a 5-currency segmented bar with a code+percent
 // legend. Adapted to: LIGHT white card (elev-3) + warm accents, dashboard font
-// (Inter), a "99% kept" success chip in place of Topup, and a revenue-by-
+// (Inter), a fee-choice success chip in place of Topup, and a revenue-by-
 // category segmented bar (Events / Reservations / Trips / Experiences) in the
 // warm family. All figures are ILLUSTRATIVE Mingla mockups (ORCH-1007 reality-
 // anchor), not live account metrics.
@@ -40,7 +40,7 @@ export function EarningsCard() {
           Earnings
         </span>
         <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(63,139,92,0.10)] px-2.5 py-1 text-xs font-semibold text-[var(--color-success)] ring-1 ring-inset ring-[rgba(63,139,92,0.22)]">
-          99% kept
+          Keep 100% of your ticket price when buyers cover the fee
         </span>
       </div>
 

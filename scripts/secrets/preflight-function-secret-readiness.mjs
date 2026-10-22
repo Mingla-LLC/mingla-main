@@ -160,24 +160,12 @@ export function assertLiveNameParity({
   );
   const remediation = contract.remediation;
   const bandNames = sortedUnique(remediation.allowed_extra_live_names);
-  // #2241, founder-approved 2026-09-02. BOTH modes accept the approved
-  // two-name migration band; only remediation REQUIRES it (and, below,
-  // exactly 90). Normal mode used to expect the 88 declared names alone, so
-  // every normal deploy was refused for a migration state the policy
-  // explicitly permits — that is what pinned production on one revision.
-  // Requiring the band here instead would be the mirror bug: the documented
-  // removal order in docs/runbooks/SUPABASE_SECRET_CAPACITY.md takes live to
-  // 89 and then to the exact 88-name target, and a check that cannot pass at
-  // its own target state is the #2113 shape. So the band is TOLERATED, never
-  // demanded. The comparison stays exact in both directions: a DECLARED name
-  // that is absent still fails `missing:`, and any name outside
-  // manifest+band still fails `unexpected:`.
-  //
-  // #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat. The 89th
-  // declared name is SPRINT_ROLLOVER_TOKEN. The band in the contract narrowed
-  // to CHECKOUT_REVOCATION_EXECUTE alone, so remediation is still exactly 90
-  // (89 declared + 1 band) under the unchanged absolute ceiling, and normal
-  // mode passes at 89 and at 90. The literal 90 below is deliberately kept.
+  // #3645: Seth approved STRIPE_RAK_PAYOUT_RELEASE_LIVE as the 90th and final
+  // governed name on 2026-10-22. The migration band is therefore empty;
+  // normal and remediation modes both require the exact 90-name manifest.
+  // The comparison stays exact in both directions: a declared name that is
+  // absent fails `missing:`, and any 91st user-managed name fails `unexpected:`.
+  // The literal 90 below remains the fail-closed absolute-ceiling ratchet.
   const requiredLive = mode === "issue-2241-remediation"
     ? sortedUnique([...manifestNames, ...bandNames])
     : manifestNames;
@@ -310,7 +298,10 @@ export function evaluateFunctionReadiness({
         },
       });
     }
-    if (!liveSet.has("CHECKOUT_REVOCATION_EXECUTE")) {
+    if (
+      remediation.allowed_extra_live_names.includes("CHECKOUT_REVOCATION_EXECUTE") &&
+      !liveSet.has("CHECKOUT_REVOCATION_EXECUTE")
+    ) {
       throw new ReadinessError("checkout_transition_fallback_missing");
     }
   }

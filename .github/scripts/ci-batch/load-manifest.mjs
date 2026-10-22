@@ -8,7 +8,9 @@ export const ROOT = path.resolve(HERE, "../../..");
 export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281: re-sealed after the four affected live providers added the reviewed,
 // input-free exact-current-main recovery trigger to their metadata.
-export const BOOTSTRAP_SHA256 = "deddd1e3af4396d64f81e227ac3f6d0798ba7242ea8634eb48ec2dffa84ef7d1";
+// #4037: re-sealed after the #922 business-web actionability provider gained
+// the same input-free recovery trigger.
+export const BOOTSTRAP_SHA256 = "0e775d16907bd25fb076675d979a864bab64a4faf7176ba0dbf4eea1beb49ad3";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

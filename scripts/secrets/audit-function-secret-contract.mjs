@@ -35,16 +35,11 @@ export const FUNCTIONS_ROOT = resolve(REPO_ROOT, "supabase", "functions");
 // 2026-09-02. A band that still expects names nobody can produce is a check
 // that cannot pass (#2113).
 //
-// #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat. The 89th
-// declared name (SPRINT_ROLLOVER_TOKEN) means manifest + band must still fit
-// the unchanged 90-name absolute ceiling, so the band narrows again to the one
-// name remediation itself requires (`checkout_transition_fallback_missing`).
-// ATTENDANCE_CLAIM_PEPPER's direct name is already gone from production (its
-// #2979 recovery closed and it lives only as an AD_CONVERSION_TOKENS field),
-// so dropping it from the band only removes a tolerance nobody can use.
-export const ISSUE_2241_EXTRA_NAMES = Object.freeze([
-  "CHECKOUT_REVOCATION_EXECUTE",
-]);
+// #3980: count 89 approved by Seth Ogieva on 2026-10-21 in chat. #3645 then
+// consumed the founder-approved 90th and final absolute-ceiling slot for the
+// least-privilege live payout-release key on 2026-10-22. No migration-band
+// name can coexist with the exact 90-name governed set, so the band is empty.
+export const ISSUE_2241_EXTRA_NAMES = Object.freeze([]);
 
 export const ISSUE_2241_FUNCTIONS = Object.freeze([
   "brand-paystack-onboard",

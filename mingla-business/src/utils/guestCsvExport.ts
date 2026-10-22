@@ -387,6 +387,7 @@ export type ExportResult =
 const downloadCsvNative = async (
   csv: string,
   filename: string,
+  dialogTitle = "Export guest list",
 ): Promise<"shared" | "dismissed"> => {
   // [TRANSITIONAL] Native CSV file export is degraded — RN built-in
   // Share API can't share files directly without expo-sharing +
@@ -406,11 +407,28 @@ const downloadCsvNative = async (
       title: filename,
     },
     {
-      dialogTitle: "Export guest list",
+      dialogTitle,
       subject: filename,
     },
   );
   return result.action === "sharedAction" ? "shared" : "dismissed";
+};
+
+/**
+ * Shared CSV delivery primitive for reports that already own their serializer.
+ * This keeps file-export shares on the one explicitly allowlisted path.
+ */
+export const exportCsvText = async (
+  csv: string,
+  filename: string,
+  dialogTitle = "Export CSV",
+): Promise<ExportResult> => {
+  if (Platform.OS === "web") {
+    downloadCsvWeb(csv, filename);
+    return { method: "downloaded" };
+  }
+  const action = await downloadCsvNative(csv, filename, dialogTitle);
+  return { method: action };
 };
 
 export const exportGuestsCsv = async (

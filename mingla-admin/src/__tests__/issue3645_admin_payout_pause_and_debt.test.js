@@ -1,4 +1,5 @@
 // Issue #3645 PR9 [Admin payout pause/resume + debt view] — regression pin.
+// [TEST-MOD-APPROVED #3645] The unified console now consumes payout_screen_rows.
 //
 // Source-level proof (node:test + fs, mirrors the ORCH-1274/1278 admin pattern)
 // that the admin pause/resume + debt view is wired end-to-end and keeps its hard
@@ -160,7 +161,7 @@ describe("#3645 PR9 — UI wiring (read-only ledger tab + brands pause/resume)",
     assert.match(BRANDS, /Resume payouts/);
     assert.ok(!DIRECT_WRITE_RE.test(stripJs(BRANDS)), "BrandsConsole must route writes through the audited service");
     // The console renders the payout + debt history the RPC returns (not dropped).
-    assert.match(BRANDS, /release_history/);
+    assert.match(BRANDS, /payout_screen_rows/);
     assert.match(BRANDS, /debt_history/);
     assert.match(BRANDS, /Recent payouts/);
     assert.match(BRANDS, /Recent debts/);
