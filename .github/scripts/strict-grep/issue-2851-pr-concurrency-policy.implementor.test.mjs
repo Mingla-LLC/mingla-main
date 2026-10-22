@@ -1251,7 +1251,12 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // unchanged and canonical, the PR links job has no job-level block, and the
   // new group never cancels a pull request run. Derived locally with this
   // file's own canonical projection on the branch.
-  "ae36cf0dff1b245c57757d20544742abba656876e0934db259606c4d35645f36";
+  // [TEST-MOD-APPROVED #4037] Re-derived after one existing PR-family
+  // workflow (#922 business-web actionability) gained the input-free
+  // workflow_dispatch event required by the exact-current-main recovery
+  // contract. The PR-family inventory, workflow identities, concurrency blocks
+  // and reusable-workflow calls are unchanged.
+  "7cfc84d970b2691bfe6974bd3ef1b8879eaac830ec38e59a0c67a0857a629208";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
