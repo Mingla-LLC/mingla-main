@@ -637,8 +637,18 @@ export function buildCreatePayload(platform, state) {
       ...(copy.headline ? { headline: copy.headline } : {}),
       ...(copy.description ? { description: copy.description } : {}),
       // ISSUE-995: video rides on the library ref (kind:"video" +
-      // creative_library_id) instead of an inline image_url; image is unchanged.
-      ...(videoRef ? videoRef : { image_url: creative.imageUrl }),
+      // creative_library_id) instead of an inline image_url.
+      // #3697: an image also carries its library id — the Meta create path
+      // resolves the 1:1/4:5/9:16 placement variants from that row and
+      // rejects a request without it (meta_placement_variants_required).
+      ...(videoRef
+        ? videoRef
+        : {
+            image_url: creative.imageUrl,
+            ...(creative.creativeLibraryId
+              ? { creative_library_id: creative.creativeLibraryId }
+              : {}),
+          }),
       call_to_action_type: copy.cta || "LEARN_MORE",
       ai_generated: creative.aiGenerated === true,
     },
