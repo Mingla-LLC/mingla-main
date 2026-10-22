@@ -1144,7 +1144,9 @@ export default function HomeTab(): React.ReactElement {
               </View>
           <View style={styles.mobileKpiOuter}>
             <View style={styles.mobileKpiStack}>
-              {canViewPayouts ? <HomeMoneyCard {...homeMoney} onPress={handleOpenPayments} /> : null}
+              {canViewPayouts ? (
+                <HomeMoneyCard {...homeMoney} onPress={handleOpenPayments} />
+              ) : null}
               <AnalyticsHomeTile
                 contract="traffic"
                 data={analyticsPreview.data}

@@ -20,7 +20,6 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
-import { Skeleton } from "../ui/Skeleton";
 
 export interface BrandPayoutOverviewProps {
   brandId: string;
@@ -31,6 +30,9 @@ export interface BrandPayoutOverviewProps {
   onContactSupport: () => void;
   onDisconnectBank?: () => void;
   onDownloadPayouts: () => void;
+  /** Current payout account when it has not appeared on a release yet. */
+  bankAccountLabel?: string | null;
+  bankAccountVerified?: boolean;
   /** An account-level banner is already occupying the one-alert slot. */
   suppressAttention?: boolean;
 }
@@ -140,6 +142,8 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
   onContactSupport,
   onDisconnectBank,
   onDownloadPayouts,
+  bankAccountLabel = null,
+  bankAccountVerified,
   suppressAttention = false,
 }) => {
   const query = useBrandPayoutScreen(brandId);
@@ -173,8 +177,8 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
   if (query.isLoading) {
     return (
       <View style={styles.container} testID="payout-overview-loading">
-        <Skeleton width="100%" height={132} radius="lg" />
-        <Skeleton width="100%" height={88} radius="lg" />
+        <View style={[styles.loadingBlock, styles.loadingHero]} />
+        <View style={[styles.loadingBlock, styles.loadingRow]} />
       </View>
     );
   }
@@ -194,7 +198,8 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
       ? "WAITING FOR YOUR BANK"
       : "NEXT PAYOUT";
   const heroAmount = next === null ? 0 : amountFor(next);
-  const latestBank = data?.releases.find((release) => release.bankMask !== null)?.bankMask ?? null;
+  const latestBank = bankAccountLabel ??
+    data?.releases.find((release) => release.bankMask !== null)?.bankMask ?? null;
   const hasSuccessfulPayout = data?.releases.some((release) => release.hostState === "paid") ?? false;
   const renderMoney = (cents: number): string => currency === null
     ? "—"
@@ -248,7 +253,7 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
         <KpiTile label="Paid this month" value={renderMoney(data?.paidThisMonthCents ?? 0)} sub="Reached your bank" style={styles.kpi} />
       </View>
 
-      <Pressable onPress={onOpenExplainer} accessibilityRole="button" style={styles.rateLine}>
+      <Pressable onPress={onOpenExplainer} accessibilityRole="button" accessibilityLabel="How payouts work" style={styles.rateLine}>
         <Text style={styles.rateText}>Mingla keeps a flat 4.5%. Mingla pays card processing.</Text>
         <Text style={styles.learnText}>How payouts work</Text>
       </Pressable>
@@ -274,9 +279,9 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
       {latestBank !== null ? (
         <GlassCard variant="base" padding={spacing.md}>
           <Text style={styles.title}>{latestBank}</Text>
-          <Text style={styles.body}>{hasSuccessfulPayout ? "Account verified" : "Account on file"}</Text>
+          <Text style={styles.body}>{bankAccountVerified === true || hasSuccessfulPayout ? "Account verified" : "Account on file"}</Text>
           <View style={styles.bankActions}>
-            <Button label="Change" onPress={onOpenBank} variant="secondary" size="md" />
+            <Button label="Change bank account" onPress={onOpenBank} variant="secondary" size="md" />
             {onDisconnectBank !== undefined ? (
               <Button label="Disconnect bank" onPress={onDisconnectBank} variant="ghost" size="md" />
             ) : null}
@@ -291,6 +296,9 @@ export const BrandPayoutOverview: React.FC<BrandPayoutOverviewProps> = ({
 
 const styles = StyleSheet.create({
   container: { gap: spacing.md },
+  loadingBlock: { width: "100%", borderRadius: 16, backgroundColor: glass.tint.profileElevated },
+  loadingHero: { height: 132 },
+  loadingRow: { height: 88 },
   hero: { borderWidth: 1, borderColor: "rgba(244,114,182,0.28)" },
   alertCard: { borderWidth: 1, borderColor: "rgba(245,158,11,0.45)", backgroundColor: "#362811" },
   errorAlertCard: { borderColor: "rgba(239,68,68,0.5)", backgroundColor: "#35171B" },

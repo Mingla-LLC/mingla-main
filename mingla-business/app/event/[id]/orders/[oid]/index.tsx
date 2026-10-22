@@ -516,6 +516,7 @@ export default function OrderDetailRoute(): React.ReactElement {
               ? undefined
               : router.push(`/brand/${order.brandId}/payments/${linkedPayout.id}` as never)}
             accessibilityRole={linkedPayout === null ? undefined : "button"}
+            accessibilityLabel={linkedPayout === null ? banner.copy : `${banner.copy}. Open payout`}
             accessibilityHint={linkedPayout === null ? undefined : "Opens the payout containing this order"}
             style={[
               styles.statusBanner,

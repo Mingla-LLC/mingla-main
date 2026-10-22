@@ -33,6 +33,9 @@
  * `--self-test` proves, on in-memory fixtures and on in-memory mutants of the
  * real files, that each failure mode trips the gate and that correct wiring
  * passes.
+ * [TEST-MOD-APPROVED #3645] A host money surface may delegate ISO minor-unit
+ * formatting to the canonical Business formatter, while still visibly routing
+ * its result through this shared glyph rule.
  *
  * Exit codes: 0 — clean (or self-test proven) · 1 — violation.
  */
@@ -256,6 +259,7 @@ const nextNonSpace = (code, from) => {
 };
 const lineOf = (code, index) => code.slice(0, index).split("\n").length;
 const RULE_CALL = /(?<![\w$.])withCurrencyGlyph\s*\(/;
+const DELEGATED_BUSINESS_FORMATTER = /withCurrencyGlyph\s*\(\s*formatCurrencyAmount\s*\(/;
 
 /**
  * Every `new Intl.NumberFormat(…, { style: "currency" })` in already-blanked
@@ -353,7 +357,8 @@ export function checkWiredSource(rel, src) {
   const failures = [];
   const code = blankComments(src);
   const formatters = currencyFormatters(code);
-  if (formatters.length === 0) {
+  const delegatesToBusinessFormatter = DELEGATED_BUSINESS_FORMATTER.test(code);
+  if (formatters.length === 0 && !delegatesToBusinessFormatter) {
     failures.push(`${rel}: no currency formatter found — the file no longer formats money, so take it off WIRED_FILES rather than let the gate check nothing.`);
   }
   for (const f of formatters.filter((x) => !x.wrapped)) {
@@ -493,6 +498,7 @@ function selfTest() {
 
   // Imports, copies, hardcoded glyphs.
   const good = `import { withCurrencyGlyph } from "${SHARED_SPECIFIER}";\nexport const f = (c, code) => withCurrencyGlyph(${CURRENCY}.format(c), code);\n`;
+  const delegated = `import { withCurrencyGlyph } from "${SHARED_SPECIFIER}";\nimport { formatCurrency as formatCurrencyAmount } from "../../utils/currency";\nexport const f = (c, code) => withCurrencyGlyph(formatCurrencyAmount(c, code, true), code);\n`;
   const biz = "mingla-business/src/components/trip/Fixture.tsx";
   const pkg = "packages/offering-rendering/Fixture.tsx";
   expect("correct business file", checkWiredSource(biz, good), []);
@@ -508,6 +514,8 @@ function selfTest() {
   trips("hardcoded escaped glyph", biz, `${good}const sym = "\\u20a6";\n`);
   trips("no formatter at all", biz, `import { withCurrencyGlyph } from "${SHARED_SPECIFIER}";\nexport const x = 1;\n`);
   trips("one of two formatters unwrapped", biz, `${good}export const g = (c, code) => ${CURRENCY}.format(c);\n`);
+  if (checkWiredSource(biz, delegated).length > 0) problems.push("delegated Business formatter: correct shared-glyph wiring was rejected");
+  trips("delegated Business formatter without glyph", biz, delegated.replace("withCurrencyGlyph(formatCurrencyAmount(c, code, true), code)", "formatCurrencyAmount(c, code, true)"));
   expect("glyph only in a comment is fine", checkWiredSource(biz, `${good}// reads "₦25,000"\n`), []);
 
   // Symbol helper.

@@ -1,6 +1,5 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../services/supabase";
 import {
   parseBrandPayoutScreen,
   type BrandPayoutScreenDTO,
@@ -17,6 +16,10 @@ export function useBrandPayoutScreen(
     queryKey: brandPayoutScreenKey(brandId ?? "none"),
     enabled: isAuthReady && user !== null && brandId !== null,
     queryFn: async () => {
+      // Keep the native Supabase/AsyncStorage graph behind the authenticated
+      // query boundary. Screens may import this hook during headless render or
+      // web boot before a request is enabled.
+      const { supabase } = await import("../services/supabase");
       const { data, error } = await supabase.rpc("brand_get_payout_screen", {
         p_brand_id: brandId,
       });

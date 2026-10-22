@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Platform, Pressable, Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -7,6 +7,7 @@ import { accent, glass, spacing, text as textTokens, typography } from "../../co
 import { useBrandPayoutScreen } from "../../hooks/useBrandPayoutScreen";
 import type { Brand } from "../../store/currentBrandStore";
 import { formatCurrency } from "../../utils/currency";
+import { exportCsvText } from "../../utils/guestCsvExport";
 import type { PayoutScreenReleaseDTO } from "../../utils/payoutScreen";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -28,22 +29,6 @@ const rowsToCsv = (rows: readonly PayoutScreenReleaseDTO[]): string => [
   ["payout_id", "offering", "provider", "currency", "status", "due_at", "paid_at", "buyers_paid_cents", "refunds_cents", "disputes_cents", "mingla_fee_cents", "earlier_refund_withheld_cents", "maturity_recredit_cents", "host_gets_cents", "bank_transfer_fee_cents", "stamp_duty_cents", "transfer_fee_credit_owed_cents", "sent_to_bank_cents"],
   ...rows.map((row) => [row.id, row.offeringName, row.provider, row.currency, row.hostState, row.dueAt, row.releasedAt ?? "", row.grossCents, row.refundedCents, row.disputedCents, row.minglaFeeCents, row.permanentDebtWithheldCents + row.temporaryDebtWithheldCents, row.maturityRecreditCents, row.netReleaseCents, row.transferFeeCents, row.stampDutyCents, row.transferFeeCreditCents, row.cashToBankCents]),
 ].map((row) => row.map(escapeCsv).join(",")).join("\n");
-
-const downloadCsv = async (filename: string, csv: string): Promise<void> => {
-  if (Platform.OS === "web" && typeof document !== "undefined") {
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    return;
-  }
-  await Share.share({ title: filename, message: csv });
-};
 
 const MoneyLine: React.FC<{ label: string; value: string; total?: boolean }> = ({ label, value, total = false }) => (
   <View style={[styles.moneyLine, total ? styles.totalLine : null]}>
@@ -79,7 +64,11 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
   const currency = query.data?.currency ?? brand?.defaultCurrency ?? null;
   const money = (cents: number): string => currency === null ? "—" : formatCurrency(cents, currency, true);
   const exportRows = useCallback(async (): Promise<void> => {
-    await downloadCsv(`${brand?.displayName ?? "mingla"}-payouts.csv`, rowsToCsv(releases));
+    await exportCsvText(
+      rowsToCsv(releases),
+      `${brand?.displayName ?? "mingla"}-payouts.csv`,
+      "Export payouts",
+    );
   }, [brand?.displayName, releases]);
 
   if (brand === null) {
@@ -91,7 +80,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
       <TopBar leftKind="back" title="Finance" onBack={onBack} rightSlot={<Icon name="download" size={20} color={textTokens.primary} />} />
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xl + insets.bottom }]}>
         <View style={styles.periods}>
-          {PERIODS.map((value) => <Pressable key={value} onPress={() => setPeriod(value)} accessibilityRole="button" accessibilityState={{ selected: period === value }} style={[styles.period, period === value ? styles.periodSelected : null]}><Text style={styles.periodText}>{PERIOD_LABEL[value]}</Text></Pressable>)}
+          {PERIODS.map((value) => <Pressable key={value} onPress={() => setPeriod(value)} accessibilityRole="button" accessibilityLabel={`Show ${PERIOD_LABEL[value]} finance report`} accessibilityState={{ selected: period === value }} style={[styles.period, period === value ? styles.periodSelected : null]}><Text style={styles.periodText}>{PERIOD_LABEL[value]}</Text></Pressable>)}
         </View>
 
         {query.isLoading ? <GlassCard variant="base" padding={spacing.lg}><Text style={styles.title}>Loading finance data…</Text></GlassCard> : null}

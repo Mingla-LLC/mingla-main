@@ -52,6 +52,8 @@ import type {
 } from "../../../../src/services/orderInstallmentsService";
 import { formatCurrency as formatCurrencyAmount } from "../../../../src/utils/currency";
 import { projectInstallmentSchedule } from "../../../../src/utils/installmentScheduleProjection";
+// #3372 — naira shows "₦", not "NGN", on the host trip money screen (#3341 rule).
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 type MoneyFilter = "all" | "atRisk";
 type LastChargeStatus = OrderInstallmentStatus | "at_risk";
@@ -73,7 +75,10 @@ interface TravelerMoneyRow {
 }
 
 function formatCurrency(cents: number, currency: string): string {
-  return formatCurrencyAmount(cents, currency, true);
+  return withCurrencyGlyph(
+    formatCurrencyAmount(cents, currency, true),
+    currency,
+  );
 }
 
 function formatMoneyDate(iso: string): string {

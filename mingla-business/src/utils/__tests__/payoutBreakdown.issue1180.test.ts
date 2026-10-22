@@ -1,5 +1,6 @@
 /**
  * #1180 [payout-ui-copy] — implementor happy-path regression suite.
+ * [TEST-MOD-APPROVED #3645] Provider processing is Mingla-paid and never a host line.
  *
  * Angle: the PURE derivation layer (arithmetic + 12-state dictionary + currency
  * glyph). Runs under the default node/ts-jest config (the REQUIRED
@@ -89,8 +90,8 @@ describe("#1180 gross→bank waterfall (Stripe, released)", () => {
     minglaFeeCents: 7000,
     partnerShareCents: 0,
     providerFeeCents: 2000,
-    netReleaseCents: 86000,
-    organiserCashDeliveredCents: 86000,
+    netReleaseCents: 88000,
+    organiserCashDeliveredCents: 88000,
   });
   const { lines, final } = buildPayoutWaterfall(release, []);
   const map = byKey(lines);
@@ -100,22 +101,21 @@ describe("#1180 gross→bank waterfall (Stripe, released)", () => {
       "gross",
       "refunds",
       "mingla_fee",
-      "provider_fee",
     ]);
     expect(map.gross.valueCents).toBe(100000);
     expect(map.gross.sign).toBeNull();
     expect(map.refunds).toMatchObject({ valueCents: 5000, sign: "−" });
     expect(map.mingla_fee).toMatchObject({ valueCents: 7000, sign: "−" });
-    expect(map.provider_fee).toMatchObject({ valueCents: 2000, sign: "−" });
+    expect(map.provider_fee).toBeUndefined();
     expect(map.chargebacks).toBeUndefined();
     expect(map.partner_share).toBeUndefined();
   });
 
   it("final line is 'Cash to your bank' == organiser_cash_delivered_cents", () => {
     expect(final.label).toBe("Cash to your bank");
-    expect(final.valueCents).toBe(86000);
+    expect(final.valueCents).toBe(88000);
     expect(final.confirming).toBe(false);
-    expect(formatCurrency(final.valueCents, "gbp", true)).toBe("£860.00");
+    expect(formatCurrency(final.valueCents, "gbp", true)).toBe("£880.00");
   });
 });
 
@@ -128,8 +128,8 @@ describe("#1180 NG transfer-leg itemization (reconciled)", () => {
     minglaFeeCents: 250000,
     partnerShareCents: 1000000,
     providerFeeCents: 75000,
-    netReleaseCents: 3665200,
-    organiserCashDeliveredCents: 3665200,
+    netReleaseCents: 3750000,
+    organiserCashDeliveredCents: 3740200,
   });
   const legs: PayoutTransferLegDTO[] = [
     makeLeg({ kind: "organiser", estimatedFeeCents: 5000, actualFeeCents: 4800, stampDutyCents: 5000, actualStampDutyCents: 5000 }),
@@ -154,8 +154,8 @@ describe("#1180 NG transfer-leg itemization (reconciled)", () => {
     expect(map.partner_share.valueCents).toBe(1000000);
   });
 
-  it("provider (charge) fee and transfer fee are distinct, never merged", () => {
-    expect(map.provider_fee.valueCents).toBe(75000);
+  it("provider (charge) fee is hidden while the host bank fee stays separate", () => {
+    expect(map.provider_fee).toBeUndefined();
     expect(map.transfer_fee.valueCents).toBe(4800);
   });
 

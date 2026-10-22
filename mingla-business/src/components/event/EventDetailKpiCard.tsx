@@ -94,7 +94,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
     >
       <View style={styles.row}>
         <View style={styles.col}>
-          <Text style={styles.label}>BUYERS PAID</Text>
+          <Text style={styles.label}>{code === null ? "REVENUE" : "BUYERS PAID"}</Text>
           <Text style={styles.bigValue}>{revenueLabel}</Text>
         </View>
         <View style={styles.colRight}>
@@ -119,7 +119,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
             )
             : (
               <>
-                <Text style={styles.label}>YOU GET</Text>
+                <Text style={styles.label}>{code === null ? "PAYOUT" : "YOU GET"}</Text>
                 <Text style={styles.midValue}>
                   {code !== null && hasData && payoutGbp !== null
                     ? formatCurrency(payoutGbp, code)

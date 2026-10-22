@@ -20,7 +20,7 @@ import { annotateDispute } from "../services/adminMoneyActService";
 import { PaystackDisputeDetail } from "../components/money/PaystackDisputeDetail";
 import { deadlineCountdown } from "../lib/paystackDisputeEvidence";
 import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
-import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
+import { timeAgo, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { formatMoneyMinor } from "../lib/moneyFormat";

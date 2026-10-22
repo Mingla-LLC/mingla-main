@@ -99,7 +99,7 @@ const mockRole = useCurrentBrandRole as jest.Mock;
 
 const refetch = jest.fn();
 
-const setRole = (rank: number): void =>
+const setRole = (rank: number): void => {
   mockRole.mockReturnValue({
     role: rank >= 30 ? "finance_manager" : "brand_staff",
     rank,
@@ -107,6 +107,7 @@ const setRole = (rank: number): void =>
     isLoading: false,
     isError: false,
   });
+};
 
 const setLedger = (
   over: Partial<{
@@ -114,13 +115,14 @@ const setLedger = (
     isError: boolean;
     data: BrandPayoutLedger | undefined;
   }> = {},
-): void =>
+): void => {
   mockLedger.mockReturnValue({
     isLoading: over.isLoading ?? false,
     isError: over.isError ?? false,
     data: over.data,
     refetch,
   });
+};
 
 const makeRelease = (
   over: Partial<BrandPayoutReleaseDTO> = {},
@@ -179,15 +181,17 @@ beforeEach(() => {
 // 1 + 2. Receipt adds up on screen + NG itemization (finance_manager, released)
 // ============================================================================
 describe("#1180 receipt renders and ADDS UP (NG released, finance_manager)", () => {
-  // Internally-consistent NG release: 50000 − 2500 − 10000 − 750 − 48 − 50 = 36652 (major ₦).
+  // [TEST-MOD-APPROVED #3645] Processing is brand-borne and must never enter
+  // the host waterfall: 50000 − 2500 − 10000 = 37500 host net, then
+  // 37500 − 48 − 50 = 37402 cash to bank (major ₦).
   const release = makeRelease({
     status: "released",
     grossCents: 5_000_000,
     minglaFeeCents: 250_000,
     partnerShareCents: 1_000_000,
     providerFeeCents: 75_000,
-    netReleaseCents: 3_665_200,
-    organiserCashDeliveredCents: 3_665_200,
+    netReleaseCents: 3_750_000,
+    organiserCashDeliveredCents: 3_740_200,
   });
   const legs = [
     makeLeg({ kind: "organiser", actualFeeCents: 4_800, estimatedFeeCents: 5_000, actualStampDutyCents: 5_000, stampDutyCents: 5_000 }),
@@ -215,12 +219,12 @@ describe("#1180 receipt renders and ADDS UP (NG released, finance_manager)", () 
     expect(screen.getAllByText("₦50,000.00").length).toBeGreaterThanOrEqual(1); // gross
     expect(screen.getAllByText("−₦2,500.00").length).toBeGreaterThanOrEqual(1); // mingla
     expect(screen.getAllByText("−₦10,000.00").length).toBeGreaterThanOrEqual(1); // partner share
-    expect(screen.getAllByText("−₦750.00").length).toBeGreaterThanOrEqual(1); // provider fee
+    expect(screen.queryByText("−₦750.00")).toBeNull(); // processing is paid by Mingla
     expect(screen.getAllByText("−₦48.00").length).toBeGreaterThanOrEqual(1); // transfer fee (actual)
     expect(screen.getAllByText("−₦50.00").length).toBeGreaterThanOrEqual(1); // stamp duty
-    // Final: 50000 − 2500 − 10000 − 750 − 48 − 50 = 36652 → the ARITHMETIC adds up on screen.
+    // Final: 50000 − 2500 − 10000 − 48 − 50 = 37402 → the ARITHMETIC adds up on screen.
     expect(screen.getAllByText("Cash to your bank").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("₦36,652.00").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("₦37,402.00").length).toBeGreaterThanOrEqual(1);
     // NEVER a "NGN 50,000.00" glyph regression.
     expect(screen.queryByText(/NGN\s?50,000/)).toBeNull();
   });
@@ -405,7 +409,8 @@ describe("#1180 payout explainer sheet", () => {
     expect(screen.getByText("How payouts work")).toBeTruthy();
     expect(screen.getByText("A buyer pays")).toBeTruthy();
     expect(screen.getByText(/About a day later, we release your payout/)).toBeTruthy();
-    expect(screen.getByText(/Within 1–2 business days, it reaches your bank/)).toBeTruthy();
+    expect(screen.getByText("It reaches your bank")).toBeTruthy();
+    expect(screen.getByText(/Payments shows when it was sent/)).toBeTruthy();
     expect(screen.getByText(/₦50 stamp duty per transfer/)).toBeTruthy();
     expect(screen.queryByText(/next business day/i)).toBeNull();
   });

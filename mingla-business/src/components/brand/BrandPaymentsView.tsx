@@ -636,6 +636,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             onContactSupport={onContactSupport}
             onDisconnectBank={connected ? handleDisconnect : undefined}
             onDownloadPayouts={onOpenReports}
+            bankAccountLabel={connected
+              ? paystackStatusQuery.data?.account_number_masked ?? "Bank account connected"
+              : null}
+            bankAccountVerified={paystackStatusQuery.data?.is_verified === true}
           />
           {connected && !paystackEditing
             ? (
