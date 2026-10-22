@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-stripe-fee-make-good/__tests__/issue_3645_stripe_fee_make_good.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3645-stripe-fee-make-good",
+  "profile": "deno-1.46-stripe"
+}
