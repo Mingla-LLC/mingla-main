@@ -177,6 +177,20 @@ export async function loadAdsOperationsOverview() {
   return supabase.rpc("ad_admin_operations_overview");
 }
 
+/** #3697 — server-owned provider audiences; ids never come from the browser. */
+export async function listAdAudiences(filters = {}) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "list", ...filters },
+  });
+}
+
+/** Refresh provider sizes/rules without allowing a caller-supplied provider id. */
+export async function refreshAdAudiences(filters = {}) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "refresh", ...filters },
+  });
+}
+
 /**
  * Creative Library inventory for the unified Admin Ads surface.
  * #3697: optional `{ status: 'active'|'archived', kind, source: 'house'|'host',

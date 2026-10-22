@@ -20,6 +20,7 @@ import { loadFeatureFlags } from "../lib/featureFlags";
 import { invokeWithRefresh } from "../lib/supabase";
 import { AdConnectionsPanel } from "../components/AdConnectionsPanel";
 import { AppDownloadReadinessPanel } from "../components/app-readiness/AppDownloadReadinessPanel";
+import { AdAudiencesPanel } from "../components/ad-engine/AdAudiencesPanel";
 import { CreativeDropZone } from "../components/ad-engine/CreativeDropZone";
 import { CreativeCard, UploadCard } from "../components/ad-engine/CreativeCard";
 import { useAdminVideoUploads } from "../components/ad-engine/useAdminVideoUploads";
@@ -61,6 +62,7 @@ const PREFLIGHT_BADGE = {
 const ADS_TABS = [
   { id: "overview", label: "Overview" },
   { id: "campaigns", label: "Campaigns" },
+  { id: "audiences", label: "Audiences" },
   { id: "creative-library", label: "Creative Library" },
   { id: "connections", label: "Connections" },
 ];
@@ -1075,6 +1077,7 @@ export function AdEnginePage() {
       />
 
       {shownTab === "campaigns" && <CampaignsPage embedded />}
+      {shownTab === "audiences" && <AdAudiencesPanel />}
       {shownTab === "creative-library" && <CreativeLibraryPanel />}
 
       {shownTab === "connections" && (
