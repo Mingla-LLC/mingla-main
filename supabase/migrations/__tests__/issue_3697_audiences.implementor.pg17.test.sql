@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-3697-AUDIENCE-AUTHORITY | issue #3697 | Provider audience identifiers and targeting rules are server-written, while browsers cannot read audience rows directly.
 BEGIN;
 
 DO $test$

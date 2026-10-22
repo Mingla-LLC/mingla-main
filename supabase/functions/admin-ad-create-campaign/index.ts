@@ -4157,7 +4157,7 @@ serve(async (req: Request): Promise<Response> => {
       : "";
     let videoIdT = "";
     // ISSUE-997 C: SINGLE_VIDEO for a prepared video, else SINGLE_IMAGE (#866).
-    const adFormatT = usesTikTokSparkT || creativeKindT === "video"
+    const adFormatT = creativeKindT === "video"
       ? "SINGLE_VIDEO"
       : "SINGLE_IMAGE";
     const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
@@ -4527,6 +4527,7 @@ serve(async (req: Request): Promise<Response> => {
           // SINGLE_IMAGE: the ad image. SINGLE_VIDEO (#997 C): the video cover +
           // the prepared video_id (both from external_ref_extra at prepare).
           adFormat: adFormatT,
+          ...(usesTikTokSparkT ? { adFormat: "SINGLE_VIDEO" as const } : {}),
           imageIds: [imageIdT],
           ...(videoIdT ? { videoId: videoIdT } : {}),
           // A1.0-5: the canonical page is the ad-visible URL; attribution rides

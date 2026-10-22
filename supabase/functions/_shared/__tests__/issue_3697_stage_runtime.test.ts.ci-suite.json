@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "suite",
   "path": "supabase/functions/_shared/__tests__/issue_3697_stage_runtime.test.ts",
-  "lane": "deno",
+  "lane": "deno2-discovered",
   "orderKey": "issue-3697-stage-runtime",
-  "command": ["deno", "test", "--allow-env", "--allow-net", "--no-check"]
+  "profile": "deno-2-unit"
 }

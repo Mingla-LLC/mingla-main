@@ -1,4 +1,8 @@
 {
-  "suite": "deno",
-  "issue": 3697
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_tiktok_spark.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-tiktok-spark",
+  "profile": "deno-2-unit"
 }

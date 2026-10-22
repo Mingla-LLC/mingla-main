@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-3697-STAGE-METRICS | issue #3697 | Provider facts are stored per day and ad set while campaign totals remain in the campaign spend ledger.
 BEGIN;
 
 DO $test$

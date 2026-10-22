@@ -1,5 +1,8 @@
 -- toward #3697: region consent, opt-out match state and scheduled retry proof.
 -- MINGLA-INVARIANT: I-3697-PIXEL-CONSENT-RETRY | issue #3697 | Region pixel mode defaults to on-arrival, browser opt-out state reaches every conversion source, and retry remains service-only and bounded by the edge worker.
+-- MINGLA-INVARIANT: I-PROPOSED-3697-OPT-OUT-LATCH | issue #3697 | A buyer opt-out suppresses every server ad-platform send even when an attribution touch exists.
+-- MINGLA-INVARIANT: I-PROPOSED-3697-PUBLIC-PIXEL-MODE | issue #3697 | The public config returns only one non-sensitive pixel mode and defaults missing regions to on-arrival.
+-- MINGLA-INVARIANT: I-PROPOSED-3697-REGION-PIXEL-MODE | issue #3697 | Country pixel-mode overrides are admin-readable, server-written, and default to on-arrival.
 \set ON_ERROR_STOP on
 BEGIN;
 

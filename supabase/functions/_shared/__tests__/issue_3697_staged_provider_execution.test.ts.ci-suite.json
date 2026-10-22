@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "suite",
   "path": "supabase/functions/_shared/__tests__/issue_3697_staged_provider_execution.test.ts",
-  "lane": "deno",
+  "lane": "deno2-discovered",
   "orderKey": "issue-3697-staged-provider-execution",
-  "command": ["deno", "test", "--allow-read", "--no-check"]
+  "profile": "deno-2-unit"
 }
