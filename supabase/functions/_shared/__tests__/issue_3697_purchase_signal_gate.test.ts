@@ -6,14 +6,14 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   parseSnapchatPurchaseEvents,
-  snapchatFetchPurchaseSignal28d,
   type SnapchatClient,
+  snapchatFetchPurchaseSignal28d,
 } from "../snapchat.ts";
 import {
-  parseTikTokPurchaseEvents,
   buildTikTokAdGroupBody,
-  tiktokFetchPurchaseSignal28d,
+  parseTikTokPurchaseEvents,
   type TikTokClient,
+  tiktokFetchPurchaseSignal28d,
 } from "../tiktok.ts";
 
 const successJson = (body: unknown) =>
@@ -58,7 +58,9 @@ Deno.test("#3697 Snap reads every discovered domain over an exact 28-day window"
         }],
       }));
     }
-    const purchase = url.searchParams.get("domain") === "usemingla.com" ? 12 : 9;
+    const purchase = url.searchParams.get("domain") === "usemingla.com"
+      ? 12
+      : 9;
     return Promise.resolve(successJson({
       request_status: "SUCCESS",
       timeseries_stats: [{
@@ -89,8 +91,14 @@ Deno.test("#3697 Snap reads every discovered domain over an exact 28-day window"
   assertEquals(signal.purchaseEvents28d, 21);
   assertEquals(signal.domainsChecked, ["usemingla.com", "www.usemingla.com"]);
   assertEquals(urls.length, 3);
-  assertEquals(urls[1].searchParams.get("start_time"), "2026-09-24T12:00:00.000Z");
-  assertEquals(urls[1].searchParams.get("end_time"), "2026-10-22T12:00:00.000Z");
+  assertEquals(
+    urls[1].searchParams.get("start_time"),
+    "2026-09-24T12:00:00.000Z",
+  );
+  assertEquals(
+    urls[1].searchParams.get("end_time"),
+    "2026-10-22T12:00:00.000Z",
+  );
   assertEquals(urls[1].searchParams.get("fields"), "event_type");
 });
 

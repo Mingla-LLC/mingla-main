@@ -1,6 +1,9 @@
 /** #3697 Wave 2 — browser/server identity and provider-body reliability. */
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import type { ConversionSendInput, SenderConnection } from "../adConversionFire.ts";
+import type {
+  ConversionSendInput,
+  SenderConnection,
+} from "../adConversionFire.ts";
 import { sendMetaConversion } from "../metaCapi.ts";
 import { sendSnapConversion } from "../snapCapi.ts";
 import { sendTikTokConversion } from "../tiktokEvents.ts";
@@ -38,10 +41,12 @@ function capture(body: Record<string, unknown> = {}) {
   return {
     fetchImpl: ((_url: string | URL | Request, init?: RequestInit) => {
       sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return Promise.resolve(new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }));
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
     }) as typeof fetch,
     sent: () => sent,
   };
@@ -66,10 +71,14 @@ Deno.test("#3697 Meta CAPI carries event content and brand identity", async () =
 
 Deno.test("#3697 TikTok CAPI carries event, brand, _ttp and external buyer id", async () => {
   const wire = capture({ code: 0, message: "OK" });
-  const result = await sendTikTokConversion(input("CompletePayment"), connection, {
-    getToken: () => "token",
-    fetchImpl: wire.fetchImpl,
-  });
+  const result = await sendTikTokConversion(
+    input("CompletePayment"),
+    connection,
+    {
+      getToken: () => "token",
+      fetchImpl: wire.fetchImpl,
+    },
+  );
   assertEquals(result.status, "sent");
   const event = (wire.sent().data as Record<string, unknown>[])[0];
   assertEquals(event.user, {
@@ -91,14 +100,20 @@ Deno.test("#3697 TikTok CAPI carries event, brand, _ttp and external buyer id", 
 });
 
 Deno.test("#3697 Snap CAPI carries item, brand and external buyer id", async () => {
-  const wire = capture({ request_status: "SUCCESS", results: [{ sub_request_status: "SUCCESS" }] });
+  const wire = capture({
+    request_status: "SUCCESS",
+    results: [{ sub_request_status: "SUCCESS" }],
+  });
   const result = await sendSnapConversion(input("PURCHASE"), connection, {
     getToken: () => "token",
     fetchImpl: wire.fetchImpl,
   });
   assertEquals(result.status, "sent");
   const event = (wire.sent().data as Record<string, unknown>[])[0];
-  assertEquals((event.user_data as Record<string, unknown>).external_id, "hashed-buyer-id");
+  assertEquals(
+    (event.user_data as Record<string, unknown>).external_id,
+    "hashed-buyer-id",
+  );
   assertEquals(event.custom_data, {
     value: 42,
     currency: "NGN",
@@ -109,7 +124,10 @@ Deno.test("#3697 Snap CAPI carries item, brand and external buyer id", async () 
 });
 
 Deno.test("#3697 Snap CAPI treats a 200 provider envelope failure as failed", async () => {
-  const outer = capture({ request_status: "ERROR", debug_message: "invalid event" });
+  const outer = capture({
+    request_status: "ERROR",
+    debug_message: "invalid event",
+  });
   const outerResult = await sendSnapConversion(input("PURCHASE"), connection, {
     getToken: () => "token",
     fetchImpl: outer.fetchImpl,
@@ -123,7 +141,10 @@ Deno.test("#3697 Snap CAPI treats a 200 provider envelope failure as failed", as
 
   const nested = capture({
     request_status: "SUCCESS",
-    results: [{ sub_request_status: "FAILURE", errors: [{ message: "bad item" }] }],
+    results: [{
+      sub_request_status: "FAILURE",
+      errors: [{ message: "bad item" }],
+    }],
   });
   const nestedResult = await sendSnapConversion(input("PURCHASE"), connection, {
     getToken: () => "token",

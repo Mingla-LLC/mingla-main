@@ -1,4 +1,11 @@
-import { afterAll, beforeEach, describe, expect, jest, test } from "@jest/globals";
+import {
+  afterAll,
+  beforeEach,
+  describe,
+  expect,
+  jest,
+  test,
+} from "@jest/globals";
 
 const rpc = jest.fn<any>();
 jest.mock("../supabaseRpc", () => ({
@@ -40,8 +47,12 @@ const response = () => ({
   statusCode: 0,
   headers: {} as Record<string, string>,
   body: "",
-  setHeader(name: string, value: string) { this.headers[name.toLowerCase()] = String(value); },
-  end(body = "") { this.body = String(body); },
+  setHeader(name: string, value: string) {
+    this.headers[name.toLowerCase()] = String(value);
+  },
+  end(body = "") {
+    this.body = String(body);
+  },
 });
 
 beforeEach(() => {
@@ -95,22 +106,34 @@ describe("#3697 public arrival runtime", () => {
 
   test("preserves every provider link identity and drops unrelated secrets", () => {
     const kept = publicSearch.attributionQueryFromRequest({
-      url: "/e/a/b?utm_source=snapchat&mc_id=camp&campaign_id=campaign&adset_id=set&ad_squad_id=squad&ad_id=ad&fbclid=fb&ttclid=tt&ScCid=snap&rdt_cid=reddit&token=secret",
+      url:
+        "/e/a/b?utm_source=snapchat&mc_id=camp&campaign_id=campaign&adset_id=set&ad_squad_id=squad&ad_id=ad&fbclid=fb&ttclid=tt&ScCid=snap&rdt_cid=reddit&token=secret",
     });
-    for (const expected of [
-      "utm_source=snapchat", "mc_id=camp", "campaign_id=campaign",
-      "adset_id=set", "ad_squad_id=squad", "ad_id=ad", "fbclid=fb",
-      "ttclid=tt", "ScCid=snap", "rdt_cid=reddit",
-    ]) expect(kept).toContain(expected);
+    for (
+      const expected of [
+        "utm_source=snapchat",
+        "mc_id=camp",
+        "campaign_id=campaign",
+        "adset_id=set",
+        "ad_squad_id=squad",
+        "ad_id=ad",
+        "fbclid=fb",
+        "ttclid=tt",
+        "ScCid=snap",
+        "rdt_cid=reddit",
+      ]
+    ) expect(kept).toContain(expected);
     expect(kept).not.toContain("token");
   });
 
   test("reads a country override without making the page depend on it", async () => {
-    rpc.mockImplementation((name: string) => Promise.resolve(
-      name === "resolve_public_search_document"
-        ? resolution
-        : { ad_pixel_consent_mode: "opt_in" },
-    ));
+    rpc.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "resolve_public_search_document"
+          ? resolution
+          : { ad_pixel_consent_mode: "opt_in" },
+      )
+    );
     const res = response();
     await publicSearch.handlePublicSearchDocument({
       req: {
@@ -123,12 +146,16 @@ describe("#3697 public arrival runtime", () => {
       slugs: ["acme", "signal-night"],
     });
     expect(res.statusCode).toBe(200);
-    expect(rpc).toHaveBeenCalledWith("ad_pixel_public_config", { p_country_code: "FR" });
+    expect(rpc).toHaveBeenCalledWith("ad_pixel_public_config", {
+      p_country_code: "FR",
+    });
     expect(res.body).toContain('"consentMode":"opt_in"');
 
-    rpc.mockImplementation((name: string) => name === "resolve_public_search_document"
-      ? Promise.resolve(resolution)
-      : Promise.reject(new Error("config unavailable")));
+    rpc.mockImplementation((name: string) =>
+      name === "resolve_public_search_document"
+        ? Promise.resolve(resolution)
+        : Promise.reject(new Error("config unavailable"))
+    );
     const fallback = response();
     await publicSearch.handlePublicSearchDocument({
       req: {
