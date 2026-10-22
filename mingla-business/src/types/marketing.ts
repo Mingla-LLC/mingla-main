@@ -172,6 +172,8 @@ export interface ChannelPayloadEmail {
 export interface ChannelPayloadSms {
   kind: "sms";
   body: string;
+  /** Optional Follow link. Missing/false keeps the host-authored SMS concise. */
+  include_follow_cta?: boolean;
   short_url_token?: string;
   /**
    * ORCH-1282 — MMS photo attachment. Verified PUBLIC URLs on the
