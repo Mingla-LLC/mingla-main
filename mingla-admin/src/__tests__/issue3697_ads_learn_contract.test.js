@@ -131,7 +131,7 @@ test("#3697 4.1 click ids live in localStorage for exactly seven days", () => {
 
 test("#3697 4.2 Snap landing macros are complete", () => {
   const create = read("supabase/functions/admin-ad-create-campaign/index.ts");
-  assert.match(create, /utm_source=snapchat&utm_medium=paid_social&utm_campaign=\{\{campaign\.id\}\}&ad_squad_id=\{\{adSquad\.id\}\}&ad_id=\{\{ad\.id\}\}&mc_id=\{\{campaign\.id\}\}/);
+  assert.match(create, /utm_source=snapchat&utm_medium=paid_social&utm_campaign=\{\{campaign\.id\}\}&ad_squad_id=\{\{adSet\.id\}\}&ad_id=\{\{ad\.id\}\}&mc_id=\{\{campaign\.id\}\}/);
 });
 
 test("#3697 4.3 Meta URL tags include ad-set and ad ids", () => {
