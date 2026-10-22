@@ -122,7 +122,12 @@ const PARTIAL_REFERENCE_DELTAS = [{
   // the frozen 73/c0813be9… authority is unchanged and still asserted at full
   // strength below.
   workflow: "deploy-functions.yml",
-  referenceFiles: ["scripts/ci/issue2948-deploy-invocation-shape.test.mjs"],
+  referenceFiles: [
+    "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+    // [TEST-MOD-APPROVED #4084] Independently mirror the reviewed
+    // supersession regression consumer added to this retained provider.
+    "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
+  ],
 }, {
   workflow: "production-supabase-authority.yml",
   referenceFiles: ["scripts/ci/issue2948-deploy-invocation-shape.test.mjs"],
