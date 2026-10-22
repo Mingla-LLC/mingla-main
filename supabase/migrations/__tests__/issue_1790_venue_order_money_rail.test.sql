@@ -660,7 +660,8 @@ END $t$;
 -- ---------------------------------------------------------------------------
 -- T-P1 — PAYOUT ATTACH. A paid Mingla-path order with a fee snapshot attaches
 -- at payment (confirmed_at) + 1 day with surface='venue_menu_order',
--- occurrence_key='venue_order:<id>', event_id NULL, partner_share_cents = 0.
+-- occurrence_key='venue_order:<id>', event_id NULL, partner_share_cents = 0,
+-- and the full charged application fee (Mingla + platform service fee).
 -- T-P2 — a venue_collected order past maturity produces ZERO candidates.
 -- ---------------------------------------------------------------------------
 DO $t$
@@ -707,8 +708,8 @@ BEGIN
   IF v_rel.partner_share_cents <> 0 THEN
     RAISE EXCEPTION 'issue_1790 T-P1 / P-50: partner_share_cents is % — NG partner share must be 0 at launch', v_rel.partner_share_cents;
   END IF;
-  IF v_rel.mingla_fee_cents <> 450 THEN
-    RAISE EXCEPTION 'issue_1790 T-P1: mingla_fee_cents is % — the arm must use ORDER-arm semantics, not the reservation arm''s literal 0', v_rel.mingla_fee_cents;
+  IF v_rel.mingla_fee_cents <> 585 THEN
+    RAISE EXCEPTION 'issue_1790 T-P1: mingla_fee_cents is % — expected the full 450 + 135 application fee from the order arm', v_rel.mingla_fee_cents;
   END IF;
 
   SELECT count(*) INTO v_cnt FROM public.payout_release_items

@@ -5,6 +5,9 @@
 -- Also pins Paystack dispute pending-item net to the flat 4.5% host formula
 -- (gross − refunded − disputed − mingla_fee; partner_share and provider_fee
 -- stay off the host net).
+-- [TEST-MOD-APPROVED #3645] The old H2 expected an UPDATE to the immutable
+-- payout item. The release projection now carries the dispute hold while the
+-- item remains the append-only sale snapshot.
 
 BEGIN;
 
@@ -86,8 +89,8 @@ BEGIN
 END
 $h1$;
 
--- H2: Paystack dispute on a pending release recomputes net without partner_share
--- or provider_fee (flat 4.5% host formula).
+-- H2: Paystack dispute on a pending release recomputes the executable release
+-- without mutating the append-only item.
 DO $h2$
 DECLARE
   v_owner constant uuid := '3645fe00-0000-4000-8000-000000000011';
@@ -98,6 +101,7 @@ DECLARE
   v_now   timestamptz := timestamptz '2026-10-22 15:00:00+00';
   v_out   jsonb;
   v_item  record;
+  v_release record;
 BEGIN
   INSERT INTO auth.users(id) VALUES (v_owner);
   INSERT INTO public.creator_accounts(id, email)
@@ -145,14 +149,20 @@ BEGIN
 
   SELECT * INTO v_item FROM public.payout_release_items
    WHERE source_type = 'order' AND source_id = v_order;
-  IF v_item.disputed_cents <> 2000 THEN
-    RAISE EXCEPTION 'H2: disputed_cents must be 2000, got %', v_item.disputed_cents;
+  IF v_item.disputed_cents <> 0 OR v_item.net_cents <> 10000 - 450 THEN
+    RAISE EXCEPTION 'H2: immutable item changed: disputed %, net %',
+      v_item.disputed_cents, v_item.net_cents;
+  END IF;
+  SELECT * INTO v_release FROM public.brand_payout_releases WHERE id = v_rel;
+  IF v_release.disputed_cents <> 2000 THEN
+    RAISE EXCEPTION 'H2: release disputed_cents must be 2000, got %',
+      v_release.disputed_cents;
   END IF;
   -- Old bug: 10000 - 2000 - 450 - 45 - 300 = 7205.
   -- Flat 4.5%: 10000 - 2000 - 450 = 7550.
-  IF v_item.net_cents <> 10000 - 2000 - 450 THEN
+  IF v_release.net_release_cents <> 10000 - 2000 - 450 THEN
     RAISE EXCEPTION 'H2: net must be 7550 (ignore partner/provider), got %',
-      v_item.net_cents;
+      v_release.net_release_cents;
   END IF;
 END
 $h2$;

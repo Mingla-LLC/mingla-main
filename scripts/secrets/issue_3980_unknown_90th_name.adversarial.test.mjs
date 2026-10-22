@@ -7,9 +7,10 @@
  * Production carried the 88 declared names plus SPRINT_ROLLOVER_TOKEN (the
  * GitHub token product-avengers-sync reads), and every edge deploy failed
  * `live_name_set_mismatch` / `unexpected:SPRINT_ROLLOVER_TOKEN`. This file
- * proves the value-blind preflight now accepts exactly that live set, still
- * rejects any unknown 90th name, and keeps remediation at exactly 90 under the
- * unchanged 87/90 ceilings. Names only: no value, digest or metadata appears.
+ * proves the value-blind preflight now accepts the #3645-expanded 90-name set,
+ * still rejects any unknown 91st name, and keeps remediation at exactly 90.
+ *
+ * [TEST-MOD-APPROVED #3645] The governed set is now 90, with an empty band.
  */
 
 import assert from "node:assert/strict";
@@ -88,13 +89,13 @@ test("#3980 adversarial: without the manifest record the same live set is still 
   );
 });
 
-test("#3980 adversarial: the preflight still rejects an unknown 90th name", () => {
+test("#3980 adversarial: the preflight rejects an unknown 91st name", () => {
   const live = [...before3980, NAME];
   assert.throws(
     () => parity([...live, "UNKNOWN_NINETIETH_NAME"]),
     readinessCode("live_name_set_mismatch", "unexpected:UNKNOWN_NINETIETH_NAME"),
   );
-  // A swap that keeps the count at 89 is refused in both directions.
+  // A swap that keeps the count at 90 is refused in both directions.
   assert.throws(
     () => parity([...before3980, "UNKNOWN_NINETIETH_NAME"]),
     (error) =>

@@ -2,7 +2,7 @@
  * Issue #2241 — bind the operator runbook's production unset sequence to the
  * machine contract it claims to describe.
  *
- * The five names in `remediation.allowed_extra_live_names` are locked in three
+ * The names in `remediation.allowed_extra_live_names` are locked in three
  * places in code (the contract, the contract audit, and the strict readiness
  * gate). `docs/runbooks/SUPABASE_SECRET_CAPACITY.md` is the operator's ONLY
  * authority for the order and arithmetic of removing them from production, and
@@ -14,7 +14,10 @@
  *
  * This guard only ever ADDS assertions. It never authorises a live name that
  * the readiness gate rejects, never widens `allowed_extra_live_names`, and
- * never permits a sixth user-managed slot.
+ * never permits a user-managed name above the absolute ceiling.
+ *
+ * [TEST-MOD-APPROVED #3645] The final approved manifest slot closes the
+ * remediation band, so an empty sequence is now a valid and enforced state.
  */
 
 import assert from "node:assert/strict";
@@ -50,13 +53,9 @@ const extraNames = [...contract.remediation.allowed_extra_live_names].sort();
 /** What live parity legitimately equals mid-remediation. */
 const remediationCount = declaredCount + extraNames.length;
 
-// The runbook was rewritten on 2026-09-02 (#3048, #3067): three of the five
-// names were actually removed in production and the migration band was narrowed
-// to the two that remain. The old anchor sentence — "may the five direct names
-// be removed, one at a time, in this order:" — no longer exists, and pinning a
-// five-name sequence against a two-name band would be asserting a state that
-// can no longer occur (#2113). This anchors on the sentence the runbook now
-// uses to order what is left.
+// The runbook historically listed a shrinking removal sequence. #3645 consumes
+// the final approved slot only after the last direct fallback left production,
+// so an empty contract band must map to no documented removal sequence.
 const SEQUENCE_ANCHOR = "The remaining order is";
 const SEQUENCE_TERMINATOR = "Stop on any fallback";
 
@@ -66,6 +65,18 @@ const SEQUENCE_TERMINATOR = "Stop on any fallback";
  * name can never silently join the sequence.
  */
 function documentedUnsetSequence() {
+  if (extraNames.length === 0) {
+    assert.ok(
+      RUNBOOK.includes("the #2241 migration band is empty"),
+      "runbook does not state that the remediation band is empty",
+    );
+    assert.equal(
+      RUNBOOK.includes(SEQUENCE_ANCHOR),
+      false,
+      "runbook still documents removals after the contract band became empty",
+    );
+    return [];
+  }
   const start = RUNBOOK.indexOf(SEQUENCE_ANCHOR);
   assert.notEqual(
     start,
@@ -123,11 +134,19 @@ test("the runbook's remaining-count arithmetic descends to the declared state", 
     expected,
     "runbook counts do not descend one-per-unset from the remediation state",
   );
-  assert.equal(
-    sequence.at(-1).remaining,
-    declaredCount,
-    "the last documented unset does not land on the declared manifest count",
-  );
+  if (sequence.length === 0) {
+    assert.equal(
+      remediationCount,
+      declaredCount,
+      "an empty removal sequence is valid only at exact manifest parity",
+    );
+  } else {
+    assert.equal(
+      sequence.at(-1).remaining,
+      declaredCount,
+      "the last documented unset does not land on the declared manifest count",
+    );
+  }
 });
 
 test("the runbook's stated parity numbers are the derived ones", () => {
@@ -148,6 +167,13 @@ test("the runbook's stated parity numbers are the derived ones", () => {
 });
 
 test("the runbook's parity sentence lists exactly the allowed extra names", () => {
+  if (extraNames.length === 0) {
+    assert.ok(
+      RUNBOOK.includes("the migration band is empty"),
+      "runbook does not state empty-band parity",
+    );
+    return;
+  }
   const anchor = `live names equal the exact ${declaredCount}-name manifest plus`;
   const start = RUNBOOK.indexOf(anchor);
   assert.notEqual(start, -1, "runbook no longer states remediation parity");
