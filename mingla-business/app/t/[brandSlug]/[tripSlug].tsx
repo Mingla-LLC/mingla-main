@@ -92,6 +92,7 @@ import {
   captureBuyerWebPublicPageViewed,
   resolveBuyerWebPublicLifecycle,
 } from "../../../src/analytics/publicParityWebAdapter";
+import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
@@ -171,6 +172,7 @@ export default function PublicTripRoute(): React.ReactElement {
   // Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
   const parityViewFiredRef = useRef<boolean>(false);
+  const adViewContentFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -187,12 +189,40 @@ export default function PublicTripRoute(): React.ReactElement {
       entitySlug: typeof tripSlug === "string" ? tripSlug : null,
     });
     fireAdPageView();
-    fireAdViewContent();
   }, [brandSlug, tripSlug]);
 
   useEffect(() => {
     const payload = query.data;
-    if (parityViewFiredRef.current || payload === null || payload === undefined) {
+    if (
+      adViewContentFiredRef.current ||
+      payload === null ||
+      payload === undefined
+    ) {
+      return;
+    }
+    const currency = payload.trip.pricingTiers.find(
+      (tier) => tier.currency,
+    )?.currency;
+    const viewContent = buildAdViewContentPayload({
+      contentId: payload.trip.id,
+      brandId: payload.trip.brandId,
+      currency,
+      valuesMajor: payload.trip.pricingTiers
+        .filter((tier) => tier.currency === currency)
+        .map((tier) => tier.priceCents / 100),
+    });
+    if (viewContent === null) return;
+    adViewContentFiredRef.current = true;
+    fireAdViewContent(viewContent);
+  }, [query.data]);
+
+  useEffect(() => {
+    const payload = query.data;
+    if (
+      parityViewFiredRef.current ||
+      payload === null ||
+      payload === undefined
+    ) {
       return;
     }
     parityViewFiredRef.current = true;
