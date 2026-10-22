@@ -123,8 +123,13 @@ test('H8 Business is native Share/Copy and web Share/Copy/QR without provider bu
   const modal = readBusinessShareModal();
   assert.match(modal, /canWebShare\(\)/);
   assert.match(modal, /Platform\.OS === 'web'/);
-  assert.match(modal, /QRCode value=\{prepared\.url\}/);
-  assert.match(modal, /copyPublicUrl\(prepared\.url\)/);
+  // [TEST-MOD-APPROVED #3988] A validated canonical fallback is now the
+  // effective target after retryable preview preparation failures. Every
+  // external action must use that same target so Share, Copy, and QR agree.
+  assert.match(modal, /const shareTarget = prepared[\s\S]*: fallback/);
+  assert.match(modal, /copyPublicUrl\(shareTarget\.url\)/);
+  assert.match(modal, /QRCode value=\{shareTarget\.url\}/);
+  assert.match(modal, /Preview unavailable\. You can still share this link\./);
   assert.doesNotMatch(modal, /WhatsApp|Twitter|Instagram|Copy message|raw URL/);
 });
 
@@ -194,8 +199,8 @@ test('H13 Business web traps focus, closes on idle Escape, returns focus, and pr
   assert.match(modal, /last\.focus\?\.\(\)/);
   assert.match(modal, /invokingControl\?\.focus\?\.\(\)/);
   assert.match(modal, /canWebShare\(\) \? <Pressable/);
-  assert.match(modal, /copyPublicUrl\(prepared\.url\)/);
-  assert.match(modal, /QRCode value=\{prepared\.url\}/);
+  assert.match(modal, /copyPublicUrl\(shareTarget\.url\)/);
+  assert.match(modal, /QRCode value=\{shareTarget\.url\}/);
   assert.match(modal, /accessibilityViewIsModal/);
   assert.match(dialogOpenTag, /role=\{Platform\.OS === 'web' \? 'dialog' : undefined\}/);
   assert.match(dialogOpenTag, /aria-modal=\{Platform\.OS === 'web' \? true : undefined\}/);
@@ -207,8 +212,9 @@ test('H14 summaries honor status-first hierarchy and Consumer search has an icon
   const business = readBusinessShareModal();
   for (const source of [consumer, business]) {
     const summary = source.slice(source.indexOf('<View style={styles.summary}>'), source.indexOf('</View>\n      {prep', source.indexOf('<View style={styles.summary}>')));
-    assert.ok(summary.indexOf('status') < summary.indexOf('prepared?.title'));
-    assert.ok(summary.indexOf('prepared?.title') < summary.lastIndexOf('facts'));
+    const title = summary.indexOf('numberOfLines={2} style={styles.title}');
+    assert.ok(summary.indexOf('status') < title);
+    assert.ok(title < summary.lastIndexOf('facts'));
     assert.match(summary, /numberOfLines=\{2\}/);
   }
   assert.match(consumer, /<Icon name="search-outline"/);
@@ -242,8 +248,9 @@ test('H16 safe-area, accessibility-size, and recipient-state contracts are expli
   // [TEST-MOD-APPROVED #1719] Written reason: the second orchestrator review restored the binding
   // 92px/64×72 compact geometry and responsive `Share {title}` header, so the prior plain-Share
   // assertions were wrong at standard text sizes and must now pin both standard and accessibility modes.
+  assert.match(consumer, /const shareHeading = prepared && fontScale < 1\.4 \? `Share \$\{prepared\.title\}` : 'Share'/);
+  assert.match(business, /const shareHeading = shareTarget && fontScale < 1\.4 \? `Share \$\{shareTarget\.title\}` : 'Share'/);
   for (const source of [consumer, business]) {
-    assert.match(source, /const shareHeading = prepared && fontScale < 1\.4 \? `Share \$\{prepared\.title\}` : 'Share'/);
     const heading = source.match(/<Text\b[^>]*>\{shareHeading\}<\/Text>/)?.[0] ?? '';
     assert.notEqual(heading, '', 'the dynamic share heading Text is missing');
     assert.match(heading, /numberOfLines=\{1\}/);

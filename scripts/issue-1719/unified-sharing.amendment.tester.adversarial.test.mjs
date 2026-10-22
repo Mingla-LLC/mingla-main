@@ -136,7 +136,11 @@ test('A-T5 Consumer and Business reject same-turn duplicate native Share and kee
   assert.match(businessShare, /if \(shareFlightRef\.current\) return/);
   assert.match(businessShare, /shareFlightRef\.current = true/);
   assert.match(businessShare, /finally \{ shareFlightRef\.current = false;/);
-  assert.match(businessShare, /prepared\.media !== null && readiness !== 'ready'/);
+  // [TEST-MOD-APPROVED #3988] Business now gates the effective share target:
+  // prepared media still waits for readiness, while a validated canonical
+  // fallback can share immediately after a retryable preparation failure.
+  assert.match(businessShare, /if \(!shareTarget \|\| busy \|\| !shareReady\) return/);
+  assert.match(business, /const shareReady = Boolean\(shareTarget && \(fallback \|\| prepared\?\.media === null \|\| readiness === 'ready'\)\)/);
   assert.doesNotMatch(business.slice(business.indexOf('const copy ='), business.indexOf('const facts =')), /readiness !== 'ready'/);
 });
 
