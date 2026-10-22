@@ -1,6 +1,6 @@
 import React from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
-import { formatExactFollowers } from "@mingla/offering-rendering";
+import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import { glass, spacing, text, typography } from "../../constants/designSystem";
 import { capturePeople } from "../../features/people/peopleAnalytics";
 import type { useBrandCircleReach } from "../../hooks/marketing/useBrandCircleReach";

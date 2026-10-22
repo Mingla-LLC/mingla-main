@@ -90,8 +90,9 @@ BEGIN
     RAISE EXCEPTION 'bundle invalid/ambiguous/unknown identity did not fail closed';
   END IF;
 
-  -- Tier projection: online hidden + disabled remain visible to the direct-link
-  -- bundle; deleted and offline tiers do not.
+  -- Tier projection: #3827 made hidden ticket tiers private-link-only. The
+  -- direct event bundle keeps visible + disabled online tiers, while hidden,
+  -- deleted and offline tiers do not appear.
   v_event := v_ids[1];
   UPDATE public.events
      SET location_geo = point(3.3792, 6.5244),
@@ -115,8 +116,8 @@ BEGIN
    WHERE event_id = v_event AND name = 'i1929 deleted tier';
   SELECT public.pg_direct_event_checkout_bundle(v_event, NULL, NULL) INTO v_payload;
   SELECT count(*) INTO v_count FROM json_array_elements(v_payload->'tickets');
-  IF v_count <> 3
-     OR NOT EXISTS (SELECT 1 FROM json_array_elements(v_payload->'tickets') t WHERE t->>'name' = 'i1929 hidden tier' AND (t->>'isHidden')::boolean)
+  IF v_count <> 2
+     OR EXISTS (SELECT 1 FROM json_array_elements(v_payload->'tickets') t WHERE t->>'name' = 'i1929 hidden tier')
      OR NOT EXISTS (SELECT 1 FROM json_array_elements(v_payload->'tickets') t WHERE t->>'name' = 'i1929 disabled tier' AND (t->>'isDisabled')::boolean)
      OR EXISTS (SELECT 1 FROM json_array_elements(v_payload->'tickets') t WHERE t->>'name' IN ('i1929 offline tier','i1929 deleted tier')) THEN
     RAISE EXCEPTION 'bundle tier projection failed';

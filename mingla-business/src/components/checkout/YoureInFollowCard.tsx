@@ -16,10 +16,9 @@ import {
 } from "react-native";
 
 import { brandFollowsService } from "../../services/brandFollowsService";
-import { brandFollowerCountService } from "../../services/brandFollowerCountService";
 import { supabase } from "../../services/supabase";
 import { Icon } from "../ui/Icon";
-import { formatCompactCount } from "@mingla/offering-rendering";
+import { formatCompactCount } from "@mingla/offering-rendering/followerCount";
 
 export function youreInFollowingDetail(count: number | null): string {
   if (count === null) return "New dates and offers first.";
@@ -90,7 +89,9 @@ export function YoureInFollowCard({
         userId
           ? brandFollowsService.getFollowMeta(userId, brandId)
           : Promise.resolve(null),
-        brandFollowerCountService.getCount(brandId),
+        import("../../services/brandFollowerCountService").then((module) =>
+          module.brandFollowerCountService.getCount(brandId),
+        ),
       ]);
       if (cancelled) return;
       setCount(results[1].status === "fulfilled" ? results[1].value : null);

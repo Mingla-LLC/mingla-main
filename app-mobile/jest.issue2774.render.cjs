@@ -18,6 +18,10 @@ module.exports = {
       "react-test-renderer",
       "$1",
     ),
+    "^react-i18next$": path.resolve(
+      __dirname,
+      "src/test/reactI18next.render.mock.cjs",
+    ),
     "^@mingla/offering-rendering/(.*)$": path.resolve(
       __dirname,
       "../packages/offering-rendering/$1",

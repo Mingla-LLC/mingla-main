@@ -73,7 +73,10 @@ import {
   type ThemePalette,
 } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
-import { FollowerCountLine, type FollowerCountLabels } from "./FollowerCountLine";
+import {
+  PresentedByFollowerCount,
+  type FollowerCountLabels,
+} from "./PresentedByFollowerCount";
 // ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
 import { taxonomyLabel } from "./taxonomyLabels";
 import {
@@ -760,18 +763,13 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               >
                 {brand?.displayName ?? "Brand"}
               </Text>
-              {presentedByFollowerCountLoading || presentedByFollowerCount != null ? (
-                <View style={styles.brandFollowerCount}>
-                  <FollowerCountLine
-                    count={presentedByFollowerCount}
-                    loading={presentedByFollowerCountLoading}
-                    labels={presentedByFollowerCountLabels}
-                    palette={palette}
-                    testID="event-presented-by-follower-count"
-                    variant="presentedBy"
-                  />
-                </View>
-              ) : null}
+              <PresentedByFollowerCount
+                count={presentedByFollowerCount}
+                loading={presentedByFollowerCountLoading}
+                labels={presentedByFollowerCountLabels}
+                palette={palette}
+                testID="event-presented-by-follower-count"
+              />
             </View>
             {presentedByFollow === undefined && onOpenBrand !== undefined ? (
               <Text style={[styles.brandCta, { color: palette.accent }]}>
@@ -1673,7 +1671,6 @@ const styles = StyleSheet.create({
   brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   brandInitial: { fontSize: 18, fontWeight: "900" },
   brandTextCol: { flexShrink: 1, flexGrow: 1 },
-  brandFollowerCount: { marginTop: 1 },
   brandKicker: {
     fontSize: 10,
     fontWeight: "800",

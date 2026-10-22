@@ -14,6 +14,7 @@ import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
 import {
+  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -21,7 +22,6 @@ import {
 } from "../../constants/designSystem";
 
 import { GlassCard } from "./GlassCard";
-import { Skeleton } from "./Skeleton";
 
 export interface KpiTileProps {
   label: string;
@@ -61,10 +61,11 @@ export const KpiTile: React.FC<KpiTileProps> = ({
           {label.toUpperCase()}
         </Text>
         {loading ? (
-          <Skeleton
-            width={72}
-            height={24}
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
             style={styles.valueSkeleton}
+            testID={testID === undefined ? "kpi-loading" : `${testID}-loading`}
           />
         ) : (
           <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit>
@@ -106,6 +107,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxs,
   },
   valueSkeleton: {
+    width: 72,
+    height: 24,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     marginTop: spacing.xxs,
   },
   delta: {

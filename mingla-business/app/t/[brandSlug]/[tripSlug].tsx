@@ -93,7 +93,7 @@ import {
   resolveBuyerWebPublicLifecycle,
 } from "../../../src/analytics/publicParityWebAdapter";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
-import { usePresentedByFollow } from "../../../src/components/brand/usePresentedByFollow";
+import { useBrandFollowerCount } from "../../../src/hooks/useBrandFollowerCount";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
 // re-enters the eager __common chunk and fails the budget gate.
@@ -102,6 +102,10 @@ import type { GuestFunnelEntity } from "../../../src/services/guestFunnelLink";
 const SeeWhosGoingGate = React.lazy(
   () => import("../../../src/components/event/SeeWhosGoingGate"),
 );
+const PresentedByFollow = React.lazy(async () => {
+  const module = await import("../../../src/components/brand/usePresentedByFollow");
+  return { default: module.PresentedByFollow };
+});
 import {
   buildTripOfferingBrand,
   buildTripOfferingData,
@@ -436,11 +440,7 @@ const ResolvedTripPage: React.FC<{
   );
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => resolveOfferingSurface(theme), [theme]);
-  const presentedBy = usePresentedByFollow({
-    brandId: payload.brand.id,
-    brandName: payload.brand.name,
-    palette,
-  });
+  const followerCountQuery = useBrandFollowerCount(payload.brand.id);
 
   // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
   // §3). Wired WEB-ONLY (SPEC §4.4.1): on business native the prop is not
@@ -788,9 +788,21 @@ const ResolvedTripPage: React.FC<{
         onClose={onClose}
         onShare={onShare}
         onViewBrand={handleViewBrand}
-        presentedByFollow={presentedBy.node}
-        presentedByFollowerCount={presentedBy.followerCount}
-        presentedByFollowerCountLoading={presentedBy.followerCountLoading}
+        presentedByFollow={
+          <React.Suspense fallback={null}>
+            <PresentedByFollow
+              brandId={payload.brand.id}
+              brandName={payload.brand.name}
+              palette={palette}
+            />
+          </React.Suspense>
+        }
+        presentedByFollowerCount={
+          followerCountQuery.isError ? null : (followerCountQuery.data ?? null)
+        }
+        presentedByFollowerCountLoading={
+          followerCountQuery.isPending && !followerCountQuery.isError
+        }
         stateBanner={stateBanner}
         paymentPlanChoice={paymentPlanChoice}
         onPaymentPlanChoiceChange={handleSynchronizedPaymentPlanChoice}
@@ -812,8 +824,6 @@ const ResolvedTripPage: React.FC<{
         onScrollViewLayout={handleScrollLayout}
         testID="orch-1138-trip-preview"
       />
-
-      {presentedBy.overlays}
 
       {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
           lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the

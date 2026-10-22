@@ -62,7 +62,10 @@ import { LazyOfferingRefundLadder as TripRefundLadder } from "./LazyOfferingRefu
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
 import { BadgeCheck, Calendar, Minus, Moon, Plane, Plus, Users } from "./LucideIcons";
-import { FollowerCountLine, type FollowerCountLabels } from "./FollowerCountLine";
+import {
+  PresentedByFollowerCount,
+  type FollowerCountLabels,
+} from "./PresentedByFollowerCount";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
@@ -452,18 +455,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                   <BadgeCheck size={15} color={palette.accent} />
                 ) : null}
               </View>
-              {presentedByFollowerCountLoading || presentedByFollowerCount != null ? (
-                <View style={styles.brandFollowerCount}>
-                  <FollowerCountLine
-                    count={presentedByFollowerCount}
-                    loading={presentedByFollowerCountLoading}
-                    labels={presentedByFollowerCountLabels}
-                    palette={palette}
-                    testID="trip-presented-by-follower-count"
-                    variant="presentedBy"
-                  />
-                </View>
-              ) : null}
+              <PresentedByFollowerCount
+                count={presentedByFollowerCount}
+                loading={presentedByFollowerCountLoading}
+                labels={presentedByFollowerCountLabels}
+                palette={palette}
+                testID="trip-presented-by-follower-count"
+              />
             </View>
             {presentedByFollow === undefined && callbacks.onViewBrand !== undefined ? (
               <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
@@ -986,7 +984,6 @@ const styles = StyleSheet.create({
   brandInitialWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   brandInitial: { fontSize: 18, fontWeight: "900" },
   brandTextCol: { flexShrink: 1, flexGrow: 1 },
-  brandFollowerCount: { marginTop: 1 },
   brandKicker: {
     fontSize: 10,
     fontWeight: "800",

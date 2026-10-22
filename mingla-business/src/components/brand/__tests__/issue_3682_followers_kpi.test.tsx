@@ -61,7 +61,7 @@ describe("#3682 follower KPI", () => {
       path.resolve(__dirname, "../../ui/KpiTile.tsx"),
       "utf8",
     );
-    expect(source).toContain("width={72}");
-    expect(source).toContain("height={24}");
+    expect(source).toContain("width: 72");
+    expect(source).toContain("height: 24");
   });
 });

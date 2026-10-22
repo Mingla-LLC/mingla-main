@@ -37,7 +37,7 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandListState } from "../../src/hooks/useBrandListShim";
 import { useBrandFollowerCounts } from "../../src/hooks/useBrandFollowerCount";
-import { formatExactFollowers } from "@mingla/offering-rendering";
+import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import { hasStoredSupabaseWebSession } from "../../src/utils/storedWebSession";
 import { isAccountAuthWarming } from "../../src/utils/coldLoadAuthGates";
 // ORCH-1052 hotfix — surface the partner earnings entry on the Account tab

@@ -1,14 +1,18 @@
-import { FollowButton } from "@mingla/brand-rendering";
 import type { ThemePalette } from "@mingla/offering-rendering";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Platform } from "react-native";
+import type { FollowButtonProps } from "@mingla/brand-rendering/FollowButton";
 
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
-import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { Toast } from "../ui/Toast";
+
+const FollowButton = React.lazy<React.FC<FollowButtonProps>>(async () => {
+  const module = await import("@mingla/brand-rendering/FollowButton");
+  return { default: module.FollowButton };
+});
 
 const FollowByEmailSheet = React.lazy(() =>
   import("./FollowByEmailSheet").then((module) => ({
@@ -25,8 +29,6 @@ type Input = {
 type Result = {
   node: React.ReactNode;
   overlays: React.ReactNode;
-  followerCount: number | null;
-  followerCountLoading: boolean;
 };
 
 export function usePresentedByFollow({
@@ -37,7 +39,6 @@ export function usePresentedByFollow({
   const router = useRouter();
   const { user } = useAuth();
   const brandFollow = useBrandFollow(user?.id ?? null, brandId);
-  const followerCountQuery = useBrandFollowerCount(brandId);
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailPending, setEmailPending] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
@@ -45,29 +46,31 @@ export function usePresentedByFollow({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const node = (
-    <FollowButton
-      brandName={brandName}
-      palette={palette}
-      isFollowing={brandFollow.isFollowing}
-      followPending={brandFollow.isPending || emailPending}
-      state={emailPending && !brandFollow.isFollowing ? "pending" : undefined}
-      size="lg"
-      onPress={() => {
-        if (!user?.id) {
-          if (Platform.OS === "web") setEmailOpen(true);
-          else setSignInOpen(true);
-          return;
-        }
-        if (brandFollow.isFollowing) {
-          setUnfollowOpen(true);
-          return;
-        }
-        void brandFollow.follow().catch(() => {
-          setErrorMessage("Couldn't follow. Try again.");
-        });
-      }}
-      testID="presented-by-follow"
-    />
+    <React.Suspense fallback={null}>
+      <FollowButton
+        brandName={brandName}
+        palette={palette}
+        isFollowing={brandFollow.isFollowing}
+        followPending={brandFollow.isPending || emailPending}
+        state={emailPending && !brandFollow.isFollowing ? "pending" : undefined}
+        size="lg"
+        onPress={() => {
+          if (!user?.id) {
+            if (Platform.OS === "web") setEmailOpen(true);
+            else setSignInOpen(true);
+            return;
+          }
+          if (brandFollow.isFollowing) {
+            setUnfollowOpen(true);
+            return;
+          }
+          void brandFollow.follow().catch(() => {
+            setErrorMessage("Couldn't follow. Try again.");
+          });
+        }}
+        testID="presented-by-follow"
+      />
+    </React.Suspense>
   );
 
   const overlays = (
@@ -125,10 +128,15 @@ export function usePresentedByFollow({
   return {
     node,
     overlays,
-    followerCount: followerCountQuery.isError
-      ? null
-      : (followerCountQuery.data ?? null),
-    followerCountLoading:
-      followerCountQuery.isPending && !followerCountQuery.isError,
   };
 }
+
+export const PresentedByFollow: React.FC<Input> = (props) => {
+  const presentedBy = usePresentedByFollow(props);
+  return (
+    <>
+      {presentedBy.node}
+      {presentedBy.overlays}
+    </>
+  );
+};

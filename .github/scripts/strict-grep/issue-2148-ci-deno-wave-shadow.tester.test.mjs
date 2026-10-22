@@ -37,6 +37,13 @@ const WAVE = "phase3c-deno-wave";
 const processInvocationsAtStart = trackedFilesProcessInvocations();
 const BASE = JSON.parse(read(".github/ci-batch/MANIFEST.json"));
 const EFFECTIVE = loadEffectiveManifest();
+const structuredClone = (value) => {
+  const copy = globalThis.structuredClone(value);
+  for (const symbol of Object.getOwnPropertySymbols(value)) {
+    Object.defineProperty(copy, symbol, Object.getOwnPropertyDescriptor(value, symbol));
+  }
+  return copy;
+};
 const waveSuites = (value) => value.suites.filter((suite) => suite.migrationWave === WAVE);
 const waveLeaves = (value) => waveSuites(value).flatMap((suite) => suite.steps.flatMap((step) => (step.children || []).map((child) => ({ suite, step, child }))));
 const byIdIn = (value) => (id) => value.suites.find((suite) => suite.id === id);

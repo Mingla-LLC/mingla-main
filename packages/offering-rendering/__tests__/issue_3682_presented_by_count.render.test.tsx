@@ -7,18 +7,22 @@ const bodies = {
   trip: await read("TripOfferingBody.tsx"),
   experience: await read("ExperienceOfferingBody.tsx"),
 };
+const sharedCount = await read("PresentedByFollowerCount.tsx");
 
 Deno.test("#3682 all four offering bodies render the shared count line from optional props", () => {
   for (const [name, source] of Object.entries(bodies)) {
     for (const signature of [
       "presentedByFollowerCount?: number | null",
       "presentedByFollowerCountLoading?: boolean",
-      "<FollowerCountLine",
+      "<PresentedByFollowerCount",
       "count={presentedByFollowerCount}",
       "loading={presentedByFollowerCountLoading}",
     ]) {
       if (!source.includes(signature)) throw new Error(`${name} missing ${signature}`);
     }
+  }
+  for (const signature of ["<LazyFollowerCountLine", 'variant="presentedBy"']) {
+    if (!sharedCount.includes(signature)) throw new Error(`shared count missing ${signature}`);
   }
 });
 
@@ -28,7 +32,7 @@ Deno.test("#3682 Trip and Experience keep Follow as a sibling of identity", () =
     if (!source.includes("presentedByFollow?: React.ReactNode")) {
       throw new Error(`${name} missing presentedByFollow prop`);
     }
-    const card = source.slice(source.indexOf("styles.brandFollowerCount"));
+    const card = source.slice(source.indexOf("<PresentedByFollowerCount"));
     const close = card.indexOf("</Pressable>");
     const slot = card.indexOf("{presentedByFollow}");
     if (close < 0 || slot < close) {

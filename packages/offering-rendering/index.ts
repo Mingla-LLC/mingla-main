@@ -48,7 +48,7 @@ export {
   formatExactCount,
   formatExactFollowers,
 } from "./followerCount";
-export { FollowerCountLine } from "./FollowerCountLine";
+export { LazyFollowerCountLine as FollowerCountLine } from "./LazyFollowerCountLine";
 export type { FollowerCountLabels, FollowerCountLineProps } from "./FollowerCountLine";
 
 export { CountAwareGallery } from "./CountAwareGallery";

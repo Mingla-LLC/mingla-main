@@ -12,7 +12,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
-import { formatExactFollowers } from "@mingla/offering-rendering";
+import { formatExactFollowers } from "@mingla/offering-rendering/followerCount";
 import {
   useCurrentBrandStore,
   type Brand,

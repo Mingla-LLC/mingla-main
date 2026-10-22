@@ -42,7 +42,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
-import { FollowButton as SharedFollowButton } from "./FollowButton";
+import { SharedFollowButton } from "./SharedFollowButton";
 import {
   AtSign,
   CalendarCheck,
@@ -68,6 +68,7 @@ import {
   type FollowerCountLabels,
   type ThemePalette,
 } from "@mingla/offering-rendering";
+
 import {
   ParallaxCoverShell,
   useResponsiveLayout,
@@ -847,9 +848,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           followPending={followPending}
           followState={followState}
           followCaption={followCaption}
-          followerCount={followerCount}
-          followerCountLoading={followerCountLoading}
-          followerCountLabels={followerCountLabels}
+          followerCount={followerCount} followerCountLoading={followerCountLoading} followerCountLabels={followerCountLabels}
           onToggleFollow={callbacks.onToggleFollow}
           onFollowingMenu={callbacks.onFollowingMenu}
           desktop
@@ -868,13 +867,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             Share
           </Text>
         </Pressable>
-        {showFeaturedTeaser ? (
-          <View style={styles.deskNextWrap}>
-            <Text
-              style={[styles.deskNextLabel, { color: palette.tertiaryText }]}
-            >
-              Next up
-            </Text>
+            {showFeaturedTeaser ? (
+              <View style={styles.deskNextWrap}>
+                <Text style={[styles.deskNextLabel, { color: palette.tertiaryText }]}>Next up</Text>
             <NextOfferingTeaser
               item={upcoming[0]}
               theme={resolvedTheme}

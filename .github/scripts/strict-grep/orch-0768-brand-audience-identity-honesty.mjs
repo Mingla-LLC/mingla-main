@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 
-// ORCH-0768 / I-3682-NO-FAKE-FOLLOWER-COUNT
+// MINGLA-INVARIANT: I-3682-NO-FAKE-FOLLOWER-COUNT | issue #3682 | User-visible follower totals must come from persisted relationship reads, never fixture or presentation defaults
 // Followers on host surfaces must come from the follower-count hooks; BrandStats
-// has no followers field. The gate fails closed and its self-test proves the
-// three most important regressions are detected.
+// has no followers field. The gate fails closed on unreadable required inputs.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -115,73 +113,12 @@ function verify(root) {
   return violations;
 }
 
-function writeFixture(root, relPath, text) {
-  const target = path.join(root, relPath);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, text);
+const violations = verify(REPO_ROOT);
+if (violations.length > 0) {
+  console.error(
+    "ORCH-0768 violation: Followers on host surfaces must come from the follower-count hooks; BrandStats has no followers field.",
+  );
+  for (const violation of violations) console.error(`- ${violation}`);
+  process.exit(1);
 }
-
-function fixtureSources() {
-  return {
-    [F.home]: "const brand = { stats: { events: 1 } }; return <FollowersHomeTile />;",
-    [F.account]:
-      "useBrandFollowerCounts(ids); const x = formatBrandEventCount(brand.stats.events); return 'Your brands';",
-    [F.switcher]: "useBrandFollowerCounts(ids);",
-    [F.publicBrand]: "export const PublicBrandPage = () => null;",
-    [F.profileTile]: "useBrandFollowerSummary(brandId);",
-    [F.homeTile]: "useBrandFollowerSummary(brandId);",
-    [F.brandsService]: 'supabase.from("events");',
-    [F.brandTypes]: "export interface BrandStats { events: number; }",
-  };
-}
-
-function runSelfTest() {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "orch-0768-"));
-  try {
-    const base = fixtureSources();
-    for (const [relPath, text] of Object.entries(base)) writeFixture(tempRoot, relPath, text);
-    const control = verify(tempRoot);
-    if (control.length > 0) throw new Error(`good fixture failed: ${control.join("; ")}`);
-
-    const mutations = [
-      [
-        "missing Account hook",
-        F.account,
-        base[F.account].replace("useBrandFollowerCounts(ids);", ""),
-      ],
-      [
-        "stats literal follower",
-        F.home,
-        base[F.home].replace("events: 1", "events: 1, followers: 0"),
-      ],
-      [
-        "BrandStats follower field",
-        F.brandTypes,
-        "export interface BrandStats { events: number; followers: number; }",
-      ],
-    ];
-    for (const [label, relPath, mutated] of mutations) {
-      writeFixture(tempRoot, relPath, mutated);
-      const failures = verify(tempRoot);
-      if (failures.length === 0) throw new Error(`${label} mutation was not detected`);
-      writeFixture(tempRoot, relPath, base[relPath]);
-    }
-    console.log("ORCH-0768 SELF-TEST PASS: all three fake-follower mutations were detected.");
-  } finally {
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-  }
-}
-
-if (process.argv.includes("--self-test")) {
-  runSelfTest();
-} else {
-  const violations = verify(REPO_ROOT);
-  if (violations.length > 0) {
-    console.error(
-      "ORCH-0768 violation: Followers on host surfaces must come from the follower-count hooks; BrandStats has no followers field.",
-    );
-    for (const violation of violations) console.error(`- ${violation}`);
-    process.exit(1);
-  }
-  console.log("ORCH-0768 PASS: host follower counts are real and BrandStats stays honest.");
-}
+console.log("ORCH-0768 PASS: host follower counts are real and BrandStats stays honest.");

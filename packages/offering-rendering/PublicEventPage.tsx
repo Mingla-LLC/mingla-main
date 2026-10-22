@@ -67,7 +67,7 @@ import {
 } from "./offeringCta";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { EventCoverMedia } from "./EventCoverMedia";
-import { FollowerCountLine } from "./FollowerCountLine";
+import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
 // ORCH-1138 A1 — createThemePalette + the ThemePalette type + the color-math
 // helpers + resolveOfferingSurface were EXTRACTED VERBATIM into ./themePalette
 // (behavior-neutral) so all four public offering pages share one theming engine.
@@ -707,18 +707,13 @@ const PublishedBody = ({
               <Text style={[styles.brandName, { color: palette.primaryText }]}>
                 {brand?.displayName ?? "Brand"}
               </Text>
-              {brandFollowerCountLoading || brandFollowerCount != null ? (
-                <View style={styles.brandFollowerCount}>
-                <FollowerCountLine
-                  count={brandFollowerCount}
-                  loading={brandFollowerCountLoading}
-                  labels={brandFollowerCountLabels}
-                  palette={palette}
-                  testID="legacy-event-presented-by-follower-count"
-                  variant="presentedBy"
-                />
-                </View>
-              ) : null}
+              <PresentedByFollowerCount
+                count={brandFollowerCount}
+                loading={brandFollowerCountLoading}
+                labels={brandFollowerCountLabels}
+                palette={palette}
+                testID="legacy-event-presented-by-follower-count"
+              />
             </View>
             {callbacks.onOpenBrand !== undefined ? (
               <Text style={[styles.brandCta, { color: palette.accent }]}>
@@ -1500,9 +1495,6 @@ const styles = StyleSheet.create({
   brandTextCol: {
     flex: 1,
     minWidth: 0,
-  },
-  brandFollowerCount: {
-    marginTop: 1,
   },
   brandKicker: {
     fontSize: 10,

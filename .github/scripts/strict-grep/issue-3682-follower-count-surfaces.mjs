@@ -50,10 +50,11 @@ const FORMAT_SCAN_ROOTS = [
 const WIRING = [
   ["app-mobile/src/screens/ConsumerBrandProfileScreen.tsx", "followerCountLoading="],
   ["mingla-business/src/components/brand/PublicBrandPage.tsx", "followerCountLoading="],
-  ["packages/offering-rendering/EventOfferingBody.tsx", "<FollowerCountLine"],
-  ["packages/offering-rendering/RsvpOfferingBody.tsx", "<FollowerCountLine"],
-  ["packages/offering-rendering/TripOfferingBody.tsx", "<FollowerCountLine"],
-  ["packages/offering-rendering/ExperienceOfferingBody.tsx", "<FollowerCountLine"],
+  ["packages/offering-rendering/EventOfferingBody.tsx", "<PresentedByFollowerCount"],
+  ["packages/offering-rendering/RsvpOfferingBody.tsx", "<PresentedByFollowerCount"],
+  ["packages/offering-rendering/TripOfferingBody.tsx", "<PresentedByFollowerCount"],
+  ["packages/offering-rendering/ExperienceOfferingBody.tsx", "<PresentedByFollowerCount"],
+  ["packages/offering-rendering/PresentedByFollowerCount.tsx", "<LazyFollowerCountLine"],
   ["packages/offering-rendering/TripOfferingBody.tsx", "presentedByFollow"],
   ["packages/offering-rendering/ExperienceOfferingBody.tsx", "presentedByFollow"],
 ];
@@ -151,7 +152,7 @@ function runSelfTest() {
     [
       "missing body wiring",
       "packages/offering-rendering/EventOfferingBody.tsx",
-      (source) => source.replace("<FollowerCountLine", "<Text"),
+      (source) => source.replace("<PresentedByFollowerCount", "<Text"),
     ],
     [
       "crossed trip identity",

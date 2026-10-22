@@ -1,4 +1,4 @@
-import { FollowButton } from "@mingla/brand-rendering";
+import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import type { ThemePalette } from "@mingla/offering-rendering/themePalette";
 import React from "react";
 import { Alert } from "react-native";
