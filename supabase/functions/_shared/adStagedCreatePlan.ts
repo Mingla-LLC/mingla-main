@@ -66,8 +66,9 @@ export function targetingForStage(
 /**
  * Paid social stages use ad-set/ad-group/ad-squad budgets so the reviewed
  * 70/20/10 allocation is the value actually sent to the provider. A stage
- * omitted for audience size has already had its share folded into prospecting
- * by buildAdStagePlan.
+ * omitted for audience size has already had its share folded into prospecting,
+ * or redistributed across the enabled warm stages when prospecting is off, by
+ * buildAdStagePlan.
  */
 export function buildStagedAdSetPlan(input: {
   platform: Platform;
@@ -93,8 +94,8 @@ export function buildStagedAdSetPlan(input: {
   const executable = input.stagePlan.stages.filter((stage) =>
     stage.enabled && stage.executable
   );
-  if (!executable.some((stage) => stage.stage === "prospecting")) {
-    throw new Error("stage_plan_prospecting_required");
+  if (executable.length === 0) {
+    throw new Error("stage_plan_executable_stage_required");
   }
   if (executable.some((stage) => stage.budgetCents <= 0)) {
     throw new Error("stage_plan_budget_required");

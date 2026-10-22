@@ -170,16 +170,41 @@ function stageBudgetShares(
     abandoners: totalCents - Math.floor(totalCents * 0.7) -
       Math.floor(totalCents * 0.2),
   };
-  let prospecting = base.prospecting;
-  for (const stage of ["retarget", "abandoners"] as const) {
-    if (!enabled[stage] || !executable[stage]) prospecting += base[stage];
+  if (enabled.prospecting && executable.prospecting) {
+    let prospecting = base.prospecting;
+    for (const stage of ["retarget", "abandoners"] as const) {
+      if (!enabled[stage] || !executable[stage]) prospecting += base[stage];
+    }
+    return {
+      prospecting,
+      retarget: enabled.retarget && executable.retarget ? base.retarget : 0,
+      abandoners: enabled.abandoners && executable.abandoners
+        ? base.abandoners
+        : 0,
+    };
   }
+
+  // The Admin retargeting shortcut intentionally turns prospecting off. Keep
+  // the entered total intact by redistributing it across the executable warm
+  // stages in their default 20:10 ratio (or entirely to the sole survivor).
+  const warmStages = (["retarget", "abandoners"] as const).filter((stage) =>
+    enabled[stage] && executable[stage]
+  );
+  if (warmStages.length === 0) {
+    return { prospecting: 0, retarget: 0, abandoners: 0 };
+  }
+  if (warmStages.length === 1) {
+    return {
+      prospecting: 0,
+      retarget: warmStages[0] === "retarget" ? totalCents : 0,
+      abandoners: warmStages[0] === "abandoners" ? totalCents : 0,
+    };
+  }
+  const retarget = Math.floor(totalCents * (20 / 30));
   return {
-    prospecting,
-    retarget: enabled.retarget && executable.retarget ? base.retarget : 0,
-    abandoners: enabled.abandoners && executable.abandoners
-      ? base.abandoners
-      : 0,
+    prospecting: 0,
+    retarget,
+    abandoners: totalCents - retarget,
   };
 }
 

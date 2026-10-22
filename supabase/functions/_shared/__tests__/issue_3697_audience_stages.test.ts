@@ -80,6 +80,59 @@ Deno.test("#3697 too-small event audiences widen brand then market", () => {
   assertEquals(prospecting.budgetCents, 8001);
 });
 
+Deno.test("#3697 retargeting shortcut conserves budget without prospecting", () => {
+  const plan = buildAdStagePlan({
+    platform: "meta",
+    market: "NG",
+    brandId: "brand-1",
+    eventId: "event-1",
+    totalBudgetCents: 10_001,
+    enabledStages: {
+      prospecting: false,
+      retarget: true,
+      abandoners: true,
+    },
+    rows: [
+      row("M3", "event", 2_000, "visitors"),
+      row("M5", "event", 1_500, "checkout"),
+      row("M6", "event", 1_200, "buyers"),
+    ],
+  });
+  assert(plan);
+  assertEquals(plan.stages.map((stage) => stage.budgetCents), [
+    0,
+    6_667,
+    3_334,
+  ]);
+  assertEquals(
+    plan.stages.reduce((total, stage) => total + stage.budgetCents, 0),
+    10_001,
+  );
+  assertEquals(plan.stages[0].executable, false);
+});
+
+Deno.test("#3697 retargeting shortcut gives the full budget to its only viable stage", () => {
+  const plan = buildAdStagePlan({
+    platform: "meta",
+    market: "NG",
+    brandId: "brand-1",
+    eventId: "event-1",
+    totalBudgetCents: 10_000,
+    enabledStages: {
+      prospecting: false,
+      retarget: true,
+      abandoners: true,
+    },
+    rows: [
+      row("M3", "event", 2_000, "visitors"),
+      row("M5", "event", 900, "checkout"),
+      row("M6", "event", 1_200, "buyers"),
+    ],
+  });
+  assert(plan);
+  assertEquals(plan.stages.map((stage) => stage.budgetCents), [0, 10_000, 0]);
+});
+
 Deno.test("#3697 missing buyer audience blocks every stage fail closed", () => {
   const plan = buildAdStagePlan({
     platform: "meta",

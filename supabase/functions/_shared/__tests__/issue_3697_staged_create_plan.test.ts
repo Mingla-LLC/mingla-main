@@ -91,6 +91,32 @@ Deno.test("#3697 executable stages carry the folded budget and buyer exclusion",
   assertEquals(stages[1].audienceCodes, ["M5"]);
 });
 
+Deno.test("#3697 retargeting shortcut creates only its executable warm stages", () => {
+  const warmOnly: AdStagePlan = {
+    ...plan,
+    stages: plan.stages.map((stage) =>
+      stage.stage === "prospecting"
+        ? { ...stage, enabled: false, executable: false, budgetCents: 0 }
+        : stage.stage === "retarget"
+        ? { ...stage, executable: true, budgetCents: 6_667 }
+        : { ...stage, budgetCents: 3_334 }
+    ),
+  };
+  const stages = buildStagedAdSetPlan({
+    platform: "meta",
+    stagePlan: warmOnly,
+    budgetMode: "daily",
+    baseAdSet: {
+      namePrefix: "Retarget only",
+      optimizationGoal: "LANDING_PAGE_VIEWS",
+      billingEvent: "IMPRESSIONS",
+      targeting: { geo_locations: { countries: ["NG"] } },
+    },
+  });
+  assertEquals(stages.map((stage) => stage.stage), ["retarget", "abandoners"]);
+  assertEquals(stages.map((stage) => stage.budgetCents), [6_667, 3_334]);
+});
+
 Deno.test("#3697 provider stage payloads all exclude event buyers", () => {
   const stage = plan.stages[2];
   assertEquals(
