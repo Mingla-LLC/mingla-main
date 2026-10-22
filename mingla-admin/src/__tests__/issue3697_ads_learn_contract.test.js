@@ -108,7 +108,7 @@ test("#3697 3.2 server events send external_id, sc_cookie1 and click id", () => 
 });
 
 test("#3697 3.3 InitiateCheckout browser and server share checkout session id", () => {
-  const web = read("mingla-business/src/analytics/webAnalytics.web.ts");
+  const web = read("mingla-business/src/analytics/adPixelRuntime.web.ts");
   const server = read("supabase/functions/_shared/adConversionFire.ts");
   assert.match(web, /"InitiateCheckout"[\s\S]*?eventID: eventId/);
   assert.match(web, /"START_CHECKOUT"[\s\S]*?client_dedup_id: eventId/);
