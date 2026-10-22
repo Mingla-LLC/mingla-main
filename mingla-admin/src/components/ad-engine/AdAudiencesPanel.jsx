@@ -30,7 +30,9 @@ function SelectFilter({ label, value, onChange, options }) {
       >
         <option value="">All</option>
         {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
         ))}
       </select>
     </label>
@@ -65,20 +67,23 @@ export function AdAudiencesPanel() {
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  const options = useMemo(() => ({
-    markets: audienceFilterValues(rows, "market").map((value) => ({
-      value,
-      label: value,
-    })),
-    brands: audienceFilterValues(rows, "brand_id").map((value) => ({
-      value,
-      label: rows.find((row) => row.brand_id === value)?.brand_name ?? value,
-    })),
-    events: audienceFilterValues(rows, "event_id").map((value) => ({
-      value,
-      label: rows.find((row) => row.event_id === value)?.event_name ?? value,
-    })),
-  }), [rows]);
+  const options = useMemo(
+    () => ({
+      markets: audienceFilterValues(rows, "market").map((value) => ({
+        value,
+        label: value,
+      })),
+      brands: audienceFilterValues(rows, "brand_id").map((value) => ({
+        value,
+        label: rows.find((row) => row.brand_id === value)?.brand_name ?? value,
+      })),
+      events: audienceFilterValues(rows, "event_id").map((value) => ({
+        value,
+        label: rows.find((row) => row.event_id === value)?.event_name ?? value,
+      })),
+    }),
+    [rows],
+  );
 
   const refresh = async () => {
     setRefreshing(true);
@@ -113,7 +118,9 @@ export function AdAudiencesPanel() {
         <SelectFilter
           label="Platform"
           value={filters.platform}
-          onChange={(platform) => setFilters((current) => ({ ...current, platform }))}
+          onChange={(platform) =>
+            setFilters((current) => ({ ...current, platform }))
+          }
           options={PAID_SOCIAL_PLATFORMS.map((value) => ({
             value,
             label: value[0].toUpperCase() + value.slice(1),
@@ -122,36 +129,47 @@ export function AdAudiencesPanel() {
         <SelectFilter
           label="Market"
           value={filters.market}
-          onChange={(market) => setFilters((current) => ({ ...current, market }))}
+          onChange={(market) =>
+            setFilters((current) => ({ ...current, market }))
+          }
           options={options.markets}
         />
         <SelectFilter
           label="Brand"
           value={filters.brand_id}
-          onChange={(brand_id) => setFilters((current) => ({ ...current, brand_id }))}
+          onChange={(brand_id) =>
+            setFilters((current) => ({ ...current, brand_id }))
+          }
           options={options.brands}
         />
         <SelectFilter
           label="Event"
           value={filters.event_id}
-          onChange={(event_id) => setFilters((current) => ({ ...current, event_id }))}
+          onChange={(event_id) =>
+            setFilters((current) => ({ ...current, event_id }))
+          }
           options={options.events}
         />
       </div>
 
       {!buyerListEnabled && (
-        <AlertCard variant="info" title="Buyer-list audiences are off">
+        <AlertCard variant="info" title="Off: needs privacy approval">
           M8, S5 and T5 need privacy approval before customer-list sync can run.
         </AlertCard>
       )}
-      {error && <AlertCard variant="error" title="Audiences need attention">{error}</AlertCard>}
+      {error && (
+        <AlertCard variant="error" title="Audiences need attention">
+          {error}
+        </AlertCard>
+      )}
       {loading ? (
         <div className="flex items-center gap-2 py-8 text-sm text-[var(--color-text-secondary)]">
           <Spinner size="sm" /> Loading audiences…
         </div>
       ) : (rows ?? []).length === 0 ? (
         <p className="py-8 text-sm text-[var(--color-text-secondary)]">
-          No audiences match these filters. The daily sync creates event audiences for scheduled public events with ads.
+          No audiences match these filters. The daily sync creates event
+          audiences for scheduled public events with ads.
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -171,19 +189,39 @@ export function AdAudiencesPanel() {
                 const status = audienceStatus(row.status);
                 const fix = audienceErrorCopy(row);
                 return (
-                  <tr key={row.id} className="border-b border-[var(--gray-100)] align-top">
+                  <tr
+                    key={row.id}
+                    className="border-b border-[var(--gray-100)] align-top"
+                  >
                     <td className="px-3 py-3">
-                      <div className="font-semibold">{row.code} · {row.name}</div>
+                      <div className="font-semibold">
+                        {row.code} · {row.name}
+                      </div>
                       <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
                         {row.platform}
                       </div>
-                      {fix && <div className="mt-1 text-xs text-[var(--color-error-700)]">{fix}</div>}
+                      {fix && (
+                        <div className="mt-1 text-xs text-[var(--color-error-700)]">
+                          {fix}
+                        </div>
+                      )}
                     </td>
-                    <td className="px-3 py-3">{row.scope} · {row.event_name ?? row.brand_name ?? row.market ?? "—"}</td>
-                    <td className="px-3 py-3 tabular-nums">{formatAudienceSize(row.approx_size)}</td>
-                    <td className="px-3 py-3"><Badge variant={status.variant}>{status.label}</Badge></td>
+                    <td className="px-3 py-3">
+                      {row.scope} ·{" "}
+                      {row.event_name ?? row.brand_name ?? row.market ?? "—"}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">
+                      {formatAudienceSize(row.approx_size)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                    </td>
                     <td className="px-3 py-3">{row.window_days} days</td>
-                    <td className="px-3 py-3">{row.last_synced_at ? new Date(row.last_synced_at).toLocaleString() : "Never"}</td>
+                    <td className="px-3 py-3">
+                      {row.last_synced_at
+                        ? new Date(row.last_synced_at).toLocaleString()
+                        : "Never"}
+                    </td>
                   </tr>
                 );
               })}
