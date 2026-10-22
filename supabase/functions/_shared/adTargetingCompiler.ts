@@ -386,9 +386,13 @@ export function compileProviderTargeting(
         id,
       }));
     }
-    compiled.targeting_automation = {
-      advantage_audience: refs.advantageAudience === true ? 1 : 0,
-    };
+    // The Meta adapter already defaults ordinary targeting to literal
+    // (advantage_audience: 0). Emit an override only for the prospecting stage
+    // where #3697 explicitly turns Advantage+ suggestions on; keeping the
+    // default absent preserves frozen pre-stage execution snapshots.
+    if (refs.advantageAudience === true) {
+      compiled.targeting_automation = { advantage_audience: 1 };
+    }
   } else if (platform === "tiktok") {
     const locations = compiledLocations(cities, refs);
     if (cities.length && locations.missing.length) {
