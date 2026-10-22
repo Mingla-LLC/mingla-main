@@ -116,7 +116,7 @@ test("page scroll remains available outside the nonmodal panel and the reading b
     node.closest("[aria-label='Cookie consent']") === null && /(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollTop > 0));
   expect(nativeOwnerMoved || (await page.evaluate(() => window.scrollY)) > before).toBe(true);
   await page.getByTestId("issue-2769-consent-manage").click();
-  const readingBand = page.locator("[aria-label='Cookie consent']").locator("div").filter({ hasText: "Cookies & analytics" }).first();
+  const readingBand = page.locator("[aria-label='Cookie consent']").locator("div").filter({ hasText: "Ad privacy" }).first();
   await expect(readingBand).toBeVisible();
   expect(await page.locator("body").evaluate((node) => getComputedStyle(node).overflowX)).not.toBe("scroll");
   expect(await scrollOwner.count()).toBeGreaterThan(0);

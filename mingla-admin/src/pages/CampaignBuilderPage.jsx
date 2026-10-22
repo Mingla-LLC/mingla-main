@@ -2129,8 +2129,8 @@ export function CampaignBuilderPage() {
 
   const summary = buildLaunchSummary({
     channelRows: plannedRows,
-    allocations: allocations.filter((allocation) =>
-      creativePartition.buildable.includes(allocation.platform),
+    allocations: allocations.filter((a) =>
+      creativePartition.buildable.includes(a.platform),
     ),
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
