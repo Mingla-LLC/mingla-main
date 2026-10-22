@@ -124,7 +124,8 @@ const PARTIAL_REFERENCE_DELTAS = [{
   workflow: "deploy-functions.yml",
   referenceFiles: [
     "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
-    // [TEST-MOD-APPROVED #4084] Independently mirror the reviewed
+  // [TEST-MOD-APPROVED #4084] The former one-reference expectation became
+  // false when this suite started consuming the workflow itself. Independently mirror the reviewed
     // supersession regression consumer added to this retained provider.
     "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
   ],
