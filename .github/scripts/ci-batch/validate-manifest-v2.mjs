@@ -182,16 +182,6 @@ const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dc
 // independently said 606 and 603, auto-merged clean with no conflict marker.
 export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
   Object.freeze({
-    // [#4084] The release-record workflow becomes an independently discovered
-    // provider when its regression suite pins the exact web supersession lane.
-    // Declare only that consumer; omission or widening remains a hard failure.
-    issue: 4084,
-    workflow: "release-records.yml",
-    referenceFiles: Object.freeze([
-      "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
-    ]),
-  }),
-  Object.freeze({
     // [#2899] Sites recovery is a new live workflow provider after the frozen
     // #2148 seal. Subtract only its exact independently discovered consumer;
     // omission or widening remains a hard failure without moving c0813….
