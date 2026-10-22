@@ -73,6 +73,7 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ push: mockPush, replace: jest.fn() }),
 }));
 jest.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({ data: null, error: null, isLoading: false }),
   useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
   useQueries: () => [],
 }));
