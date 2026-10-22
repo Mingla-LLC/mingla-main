@@ -147,7 +147,7 @@ export async function recordAppReadinessEvent(event) {
 // and the spend-sync rows (spend vs cap). All are admin-RLS reads.
 export const CAMPAIGN_LIST_SELECT = [
   "*",
-  "ad_sets(*, ads(*))",
+  "ad_sets(*, ads(*), ad_stage_metrics_daily(*))",
   "plan_version:ad_plan_versions(schedule_time_zone:canonical_plan->schedule->>time_zone)",
   "connection:ad_connections(external_account_id,platform)",
   "ad_spend_daily(spend_cents,currency,synced_at)",
@@ -583,7 +583,7 @@ export async function getConnection(platform, lane = "consumer") {
 export async function getCampaignDetail(campaignId) {
   return supabase
     .from("ad_campaigns")
-    .select("*, ad_sets(*, ads(*))")
+    .select("*, ad_sets(*, ads(*), ad_stage_metrics_daily(*))")
     .eq("id", campaignId)
     .maybeSingle();
 }
