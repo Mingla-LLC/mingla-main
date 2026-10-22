@@ -39,7 +39,7 @@
     "jsdom": "26.1.0",
     "tsx": "4.20.5",
     "typescript": "5.9.2",
-    "vitest": "5.0.0"
+    "vitest": "5.0.5"
   },
   "overrides": {
     "brace-expansion@^1": "1.1.21",
