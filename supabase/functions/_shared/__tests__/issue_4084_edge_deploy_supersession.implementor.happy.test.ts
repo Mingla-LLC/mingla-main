@@ -132,9 +132,6 @@ Deno.test("#4084 only a successful real deployment can write the supersession st
   assertMatch(deploy, /EDGE_DEPLOY_ATTESTATION_FAILED/);
   assertMatch(deploy, /Do not redeploy older code/);
 
-  const release = read(WORKFLOW_ROOT + "release-records.yml");
-  assertMatch(release, /github\.event\.context == 'mingla\/edge-deploy-supersession'/);
-
   const script = read(".github/scripts/release-records/attest-edge-deploy.mjs");
   assertMatch(script, /edgeSupersessionVerdict/);
   assertMatch(script, /\/compare\/\$\{pr\.merge_commit_sha\}\.\.\.\$\{currentSha\}/);

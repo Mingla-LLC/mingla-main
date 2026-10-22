@@ -259,17 +259,6 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
     ]),
   }),
-  Object.freeze({
-    // [#4084] The release-record workflow becomes an externally consumed
-    // provider when the supersession regression suite reads its status-event
-    // wiring. Subtract this exact post-seal provider without moving the frozen
-    // authority digest.
-    issue: 4084,
-    workflow: "release-records.yml",
-    referenceFiles: Object.freeze([
-      "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
-    ]),
-  }),
 ]);
 // [#2774] Reviewed reference-file additions to providers that ALREADY belong to
 // the frozen 73-provider authority. Unlike PROVIDERS_ADDED_SINCE_SEAL, these
