@@ -118,7 +118,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                loading flag even if the status machine regresses again. */}
             {brandList.status === "error" && brands.length === 0 ? (
               <View style={styles.loadingState}>
-                <Text style={styles.emptyText}>Couldn’t load your brands.</Text>
+                <Text style={styles.emptyText}>{"Couldn't load your brands."}</Text>
               </View>
             ) : brands.length === 0 && brandList.isLoading ? (
               <View style={styles.loadingState}>

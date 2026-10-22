@@ -470,6 +470,16 @@ const renderPublicEventPage = (
       // assertion below is untouched.
       case "../../hooks/useBrandFollow":
         return require("./harness/useBrandFollow.publicEventPage.mock");
+      // [TEST-MOD-APPROVED #3682] Harness registration only — follower totals
+      // do not participate in the close callback; every close assertion stays.
+      case "../../hooks/useBrandFollowerCount":
+        return {
+          useBrandFollowerCount: () => ({
+            data: undefined,
+            isPending: false,
+            isError: false,
+          }),
+        };
       // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
       // assertion changed. #3782 mounted SimpleConfirmDialog for unfollow /
       // follow confirm; the close-callback contract is unrelated and every
