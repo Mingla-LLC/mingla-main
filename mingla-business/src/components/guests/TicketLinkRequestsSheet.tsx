@@ -6,6 +6,7 @@ import type { TicketLinkRequest } from "../../services/ticketLinksService";
 import { Button } from "../ui/Button";
 import { IconChrome } from "../ui/IconChrome";
 import { Sheet } from "../ui/Sheet";
+import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
 
 const loadLinks = () => import("../../services/ticketLinksService");
 const requestId = () => globalThis.crypto?.randomUUID?.() ?? "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
@@ -71,6 +72,13 @@ export const TicketLinkRequestsSheet: React.FC<{
           <View key={request.id} style={styles.card}>
             <Text style={styles.cardTitle}>{request.members[0]?.name ?? "Guest"} · {request.memberCount} {request.memberCount === 1 ? "person" : "people"}</Text>
             <Text style={styles.muted}>{request.linkLabel} · {request.ticketTypeName}</Text>
+            {(request.dates?.length ?? 0) > 0 ? (
+              <Text style={styles.muted} testID={`ticket-link-request-dates-${request.id}`}>
+                {(request.dates ?? [])
+                  .map((date) => formatOccurrenceLine(date, date.timezone) ?? "Date to be confirmed")
+                  .join(" · ")}
+              </Text>
+            ) : null}
             {request.members.map((member) => (
               <View key={member.position} style={styles.person}>
                 <Text style={styles.personName}>{member.position === 0 ? `${member.name} (lead)` : member.name}</Text>

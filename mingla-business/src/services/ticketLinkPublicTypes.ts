@@ -16,6 +16,10 @@ export interface TicketLinkResolve {
     brandSlug: string;
     eventSlug: string;
     coverUrl: string | null;
+    /** issue #3827 — present only while the link is active. */
+    coverMediaType?: "image" | "video" | "gif" | null;
+    /** issue #3827 — a video cover's still; present only while the link is active. */
+    coverPosterUrl?: string | null;
     startAt: string | null;
     endAt: string | null;
     timezone: string;
@@ -40,4 +44,8 @@ export interface TicketLinkResolve {
     saleEndAt?: string | null;
   };
   dates?: Array<{ id: string; startAt: string; endAt: string; timezone: string }>;
+  /** issue #3827 — how a multi-date event prices its days; active links only. */
+  multiDatePricingMode?: "per_day" | "all_days";
+  /** issue #3827 — one pass covers every date; the guest picks nothing. */
+  allDaysPass?: boolean;
 }

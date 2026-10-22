@@ -20,6 +20,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const E164 = /^\+[1-9][0-9]{1,14}$/;
 const MAX_BODY_BYTES = 8_192;
+const MAX_EVENT_DATES = 60;
 
 type RpcResult = { data: unknown; error: { message: string; hint?: string | null } | null };
 type Person = { name: string; email: string; phone: string };
@@ -51,9 +52,16 @@ export function parseTicketLinkPublicBody(value: unknown): Record<string, unknow
   if (value.op === "resolve" || value.op === "preview") {
     return only(value, ["op", "token"]) ? value : null;
   }
-  if (value.op !== "signup" || !only(value, ["op", "token", "lead", "guests", "eventDateId", "clientRequestId", "website"])) return null;
+  if (value.op !== "signup" || !only(value, ["op", "token", "lead", "guests", "eventDateId", "eventDateIds", "clientRequestId", "website"])) return null;
   if (!isPerson(value.lead) || !Array.isArray(value.guests) || value.guests.length > 9 || !value.guests.every(isPerson)) return null;
   if (!(value.eventDateId === null || value.eventDateId === undefined || (typeof value.eventDateId === "string" && UUID.test(value.eventDateId)))) return null;
+  // issue #3827 — several dates on an event that asks for one. Absent on every
+  // event that does not ask, so that request stays byte-identical.
+  if (value.eventDateIds !== undefined && !(
+    Array.isArray(value.eventDateIds) && value.eventDateIds.length <= MAX_EVENT_DATES &&
+    value.eventDateIds.every((id) => typeof id === "string" && UUID.test(id)) &&
+    new Set(value.eventDateIds.map((id) => String(id).toLowerCase())).size === value.eventDateIds.length
+  )) return null;
   if (typeof value.clientRequestId !== "string" || !UUID.test(value.clientRequestId)) return null;
   if (typeof value.website !== "string" || value.website.length > 500) return null;
   return value;
@@ -123,8 +131,17 @@ function previewOf(data: unknown): Record<string, unknown> {
     eventTitle: event.title,
     brandName: event.brandName,
     startAt: event.startAt,
-    ogImageUrl: event.coverUrl ?? null,
+    // issue #3827 — a video cover's URL is an .mp4; a preview image is its poster.
+    ogImageUrl: event.coverMediaType === "video" ? (event.coverPosterUrl ?? null) : (event.coverUrl ?? null),
   };
+}
+
+/** The chosen date set, with a legacy single date folded in once. */
+export function signupDateIds(body: Record<string, unknown>): string[] {
+  const ids = (Array.isArray(body.eventDateIds) ? body.eventDateIds : []).map((id) => String(id).toLowerCase());
+  const single = typeof body.eventDateId === "string" ? body.eventDateId.toLowerCase() : null;
+  if (single !== null && !ids.includes(single)) ids.push(single);
+  return ids;
 }
 
 function peopleFrom(body: Record<string, unknown>): Person[] {
@@ -189,14 +206,24 @@ export function createTicketLinkPublicHandler(deps: TicketLinkPublicDeps): (req:
     } catch {
       return json({ ok: false, code: "link_service_unavailable" }, 503);
     }
-    const { data, error } = await deps.rpc("pg_ticket_link_signup", {
-      p_token_hash: tokenHash,
-      p_members: submitted.map((person) => ({ name: person.name, email: person.email, phoneE164: person.phone })),
-      p_event_date_id: body.eventDateId ?? null,
-      p_client_request_id: body.clientRequestId,
-      p_ip_hash: ipHash,
-      p_qr_token_pepper: qrPepperValue,
-    });
+    const members = submitted.map((person) => ({ name: person.name, email: person.email, phoneE164: person.phone }));
+    const { data, error } = Array.isArray(body.eventDateIds)
+      ? await deps.rpc("pg_ticket_link_signup_days", {
+        p_token_hash: tokenHash,
+        p_members: members,
+        p_event_date_ids: signupDateIds(body),
+        p_client_request_id: body.clientRequestId,
+        p_ip_hash: ipHash,
+        p_qr_token_pepper: qrPepperValue,
+      })
+      : await deps.rpc("pg_ticket_link_signup", {
+        p_token_hash: tokenHash,
+        p_members: members,
+        p_event_date_id: body.eventDateId ?? null,
+        p_client_request_id: body.clientRequestId,
+        p_ip_hash: ipHash,
+        p_qr_token_pepper: qrPepperValue,
+      });
     if (error) return rpcFailure(error);
     const out = isObject(data) ? data : {};
     const ids = Array.isArray(out.emailQueuedOrderIds) ? out.emailQueuedOrderIds.filter((id): id is string => typeof id === "string") : [];
