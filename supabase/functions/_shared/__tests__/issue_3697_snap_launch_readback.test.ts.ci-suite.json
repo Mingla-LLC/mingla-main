@@ -1,0 +1,4 @@
+{
+  "suite": "implementor",
+  "reason": "Issue #3697 Snapchat post-launch status settles before read-back; pause and other platforms remain immediate."
+}
