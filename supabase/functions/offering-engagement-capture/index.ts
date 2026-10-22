@@ -334,9 +334,11 @@ export async function handleOfferingEngagementCapture(
     );
     if (error !== null) {
       console.error("[offering-engagement-capture] capture unavailable", error);
+      return empty(req, 503);
     }
   } catch (error) {
     console.error("[offering-engagement-capture] capture failed", error);
+    return empty(req, 503);
   }
   return empty(req);
 }
