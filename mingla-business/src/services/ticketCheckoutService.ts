@@ -31,6 +31,8 @@ type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
 
 export interface TicketCheckoutCreateInput {
   eventId: string;
+  /** #3697 browser-only conversion matching; never forwarded as authority. */
+  brandId?: string;
   buyer: BuyerDetails;
   lines: TicketCheckoutCreateLine[];
   /** issue #3827 — bearer proof for hidden private-ticket tiers. */
@@ -938,6 +940,7 @@ export const createTicketCheckout = async (
         : undefined,
       currency: checkoutResult.currency,
       contentId: input.eventId,
+      brandId: input.brandId,
     });
   }
   return result;

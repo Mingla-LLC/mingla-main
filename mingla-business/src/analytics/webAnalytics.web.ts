@@ -923,6 +923,34 @@ export interface AdCommerceEventProps {
   brandId?: string;
 }
 
+interface CompleteAdCommerceEventProps {
+  value: number;
+  currency: string;
+  contentId: string;
+  brandId: string;
+}
+
+/** #3697 — never emit a product event whose matching dimensions are partial. */
+function completeAdCommerceEventProps(
+  props: AdCommerceEventProps | null | undefined,
+): CompleteAdCommerceEventProps | null {
+  const value = props?.value;
+  const currency = props?.currency?.trim().toUpperCase() ?? "";
+  const contentId = props?.contentId?.trim() ?? "";
+  const brandId = props?.brandId?.trim() ?? "";
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    !/^[A-Z]{3}$/.test(currency) ||
+    !contentId ||
+    !brandId
+  ) {
+    return null;
+  }
+  return { value, currency, contentId, brandId };
+}
+
 /** Offering view — one deduplicated ViewContent across the four pixels. */
 export function fireAdViewContent(
   props?: AdCommerceEventProps & {
@@ -930,11 +958,9 @@ export function fireAdViewContent(
   },
 ): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped) return;
-  const value = props?.value;
-  const currency = props?.currency;
-  const contentId = props?.contentId;
-  if (!contentId) return;
-  const brandId = props?.brandId;
+  const completeProps = completeAdCommerceEventProps(props);
+  if (completeProps === null) return;
+  const { value, currency, contentId, brandId } = completeProps;
   const serverKeys = (window.__minglaAdViewContentKeys ??= {});
   if (serverKeys[contentId]) return;
   const eventId =
@@ -1012,8 +1038,9 @@ function fireAdConversion(
   purchase: boolean,
 ): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped || !eventId) return;
-  const value = props.value;
-  const currency = props.currency;
+  const completeProps = completeAdCommerceEventProps(props);
+  if (completeProps === null) return;
+  const { value, currency, contentId, brandId } = completeProps;
   safePixel(() =>
     // toward #3697 F-4: free/RSVP = CompleteRegistration (must match server CAPI).
     window.fbq?.(
@@ -1023,8 +1050,8 @@ function fireAdConversion(
         value,
         currency,
         content_type: "product",
-        content_ids: props.contentId ? [props.contentId] : undefined,
-        brand_id: props.brandId,
+        content_ids: [contentId],
+        brand_id: brandId,
       }),
       { eventID: eventId },
     ),
@@ -1036,8 +1063,8 @@ function fireAdConversion(
         value,
         currency,
         content_type: "product",
-        content_id: props.contentId,
-        brand_id: props.brandId,
+        content_id: contentId,
+        brand_id: brandId,
       }),
       { event_id: eventId },
     ),
@@ -1049,8 +1076,8 @@ function fireAdConversion(
       definedProps({
         price: value,
         currency,
-        item_ids: props.contentId ? [props.contentId] : undefined,
-        brand_id: props.brandId,
+        item_ids: [contentId],
+        brand_id: brandId,
         transaction_id: eventId,
         client_dedup_id: eventId,
       }),
@@ -1085,16 +1112,19 @@ export function fireAdInitiateCheckout(
   props: AdCommerceEventProps = {},
 ): void {
   if (!adTrackingAllowed() || !adPixelsBootstrapped || !eventId) return;
+  const completeProps = completeAdCommerceEventProps(props);
+  if (completeProps === null) return;
+  const { value, currency, contentId, brandId } = completeProps;
   safePixel(() =>
     window.fbq?.(
       "track",
       "InitiateCheckout",
       definedProps({
-        value: props.value,
-        currency: props.currency,
+        value,
+        currency,
         content_type: "product",
-        content_ids: props.contentId ? [props.contentId] : undefined,
-        brand_id: props.brandId,
+        content_ids: [contentId],
+        brand_id: brandId,
       }),
       { eventID: eventId },
     ),
@@ -1103,11 +1133,11 @@ export function fireAdInitiateCheckout(
     window.ttq?.track?.(
       "InitiateCheckout",
       definedProps({
-        value: props.value,
-        currency: props.currency,
+        value,
+        currency,
         content_type: "product",
-        content_id: props.contentId,
-        brand_id: props.brandId,
+        content_id: contentId,
+        brand_id: brandId,
       }),
       { event_id: eventId },
     ),
@@ -1117,10 +1147,10 @@ export function fireAdInitiateCheckout(
       "track",
       "START_CHECKOUT",
       definedProps({
-        price: props.value,
-        currency: props.currency,
-        item_ids: props.contentId ? [props.contentId] : undefined,
-        brand_id: props.brandId,
+        price: value,
+        currency,
+        item_ids: [contentId],
+        brand_id: brandId,
         transaction_id: eventId,
         client_dedup_id: eventId,
       }),

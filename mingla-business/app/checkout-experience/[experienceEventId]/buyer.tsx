@@ -426,6 +426,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
       try {
         const result = await createTicketCheckout({
           eventId: experienceEventId,
+          brandId: experience?.brandId,
           buyer,
           lines,
           ...(eventDateId !== null ? { eventDateId } : {}),
@@ -502,6 +503,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     bookedStartAt,
     bookedEndAt,
     partySize,
+    experience?.brandId,
   ]);
 
   const continueLabel = totals.isFree

@@ -485,6 +485,7 @@ function CheckoutPaymentScreenContent({
             : {};
         const checkout = await createTicketCheckout({
           eventId,
+          brandId: event?.brandId ?? brand?.id,
           ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
           buyer,
           lines,
@@ -738,6 +739,7 @@ function CheckoutPaymentScreenContent({
     cartFingerprint,
     buyer,
     checkoutAttemptIdFor,
+    brand?.id,
     event,
     eventId,
     // issue #2135 — the chosen occurrence is read inside this handler.

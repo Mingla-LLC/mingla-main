@@ -159,6 +159,7 @@ test("DEFAULT ON_ARRIVAL — pixel loads and can fire before a banner choice", a
     value: 20,
     currency: "GBP",
     contentId: "event-xyz",
+    brandId: "brand-xyz",
   })).not.toThrow();
   const queued = (getFbq() as unknown as { queue: unknown[][] }).queue;
   expect(queued.some((args) => args[0] === "track" && args[1] === "Purchase")).toBe(true);
@@ -191,13 +192,24 @@ test("grantConsent BOOTSTRAPS the Meta pixel; fireAdPurchase fires with the shar
   expect(injected.some((s) => s._attrs["data-mingla-pixel"] === "meta")).toBe(true);
 
   // The DEDUP fire: the 4th arg eventID MUST equal the shared event_id (order id).
-  wa.fireAdPurchase("order-xyz", { value: 20, currency: "GBP" });
+  wa.fireAdPurchase("order-xyz", {
+    value: 20,
+    currency: "GBP",
+    contentId: "event-xyz",
+    brandId: "brand-xyz",
+  });
   const fbqSpy = fbq as unknown as { queue?: unknown[][] };
   // fbevents.js is not loaded in the test, so calls sit on the stub queue.
   const queued = (fbqSpy.queue ?? []) as unknown[][];
   const purchase = queued.find((a) => a[0] === "track" && a[1] === "Purchase");
   expect(purchase).toBeDefined();
-  expect(purchase?.[2]).toEqual({ value: 20, currency: "GBP", content_type: "product" });
+  expect(purchase?.[2]).toEqual({
+    value: 20,
+    currency: "GBP",
+    content_type: "product",
+    content_ids: ["event-xyz"],
+    brand_id: "brand-xyz",
+  });
   expect(purchase?.[3]).toEqual({ eventID: "order-xyz" }); // == server CAPI event_id
 });
 

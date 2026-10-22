@@ -2,12 +2,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const invoke = jest.fn();
+const mockFireAdInitiateCheckout = jest.fn();
 
 jest.mock("../supabase", () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
 }));
 jest.mock("../../analytics/webAnalytics", () => ({
-  fireAdInitiateCheckout: jest.fn(),
+  fireAdInitiateCheckout: (...args: unknown[]) =>
+    mockFireAdInitiateCheckout(...args),
   identifyAdBuyer: jest.fn(() => Promise.resolve()),
   // [TEST-MOD-APPROVED #3697] The v2 wire carries the opt-out latch even when
   // there is no attribution touch, plus TikTok's first-party match cookie.
@@ -25,6 +27,7 @@ jest.mock("../../analytics/webAnalytics", () => ({
 import { createTicketCheckout } from "../ticketCheckoutService";
 
 const EVENT_ID = "11111111-1111-4111-8111-111111111111";
+const BRAND_ID = "44444444-4444-4444-8444-444444444444";
 const STANDARD = "22222222-2222-4222-8222-222222222222";
 const VIP = "33333333-3333-4333-8333-333333333333";
 const ATTEMPT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -58,8 +61,16 @@ const lines = [
 
 beforeEach(() => {
   invoke.mockReset();
+  mockFireAdInitiateCheckout.mockReset();
   invoke.mockResolvedValue({
-    data: { kind: "free_completed", orderId: "order", tickets: [] },
+    data: {
+      kind: "free_completed",
+      orderId: "order",
+      checkoutSessionId: "checkout-3697",
+      totalCents: 50000,
+      currency: "USD",
+      tickets: [],
+    },
     error: null,
   });
 });
@@ -67,6 +78,7 @@ beforeEach(() => {
 test("#3859 web v2 sends mixed line choices and no checkout-wide scalar", async () => {
   await createTicketCheckout({
     eventId: EVENT_ID,
+    brandId: BRAND_ID,
     buyer,
     lines,
     surface: "web",
@@ -82,6 +94,13 @@ test("#3859 web v2 sends mixed line choices and no checkout-wide scalar", async 
   expect(body.lines.map((line: { paymentPlanChoice: string }) =>
     line.paymentPlanChoice)).toEqual(["installments", "full"]);
   expect(body).not.toHaveProperty("payment_plan_choice");
+  expect(body).not.toHaveProperty("brandId");
+  expect(mockFireAdInitiateCheckout).toHaveBeenCalledWith("checkout-3697", {
+    value: 500,
+    currency: "USD",
+    contentId: EVENT_ID,
+    brandId: BRAND_ID,
+  });
 });
 
 test("#3859 v2 refuses missing purchase terms before transport", async () => {

@@ -117,24 +117,49 @@ test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct
   await wa.grantConsent(); // bootstraps all four
   expect(wa.adPixelsReady()).toBe(true);
 
-  wa.fireAdPurchase(ORDER_ID, { value: 35, currency: "GBP" });
+  wa.fireAdPurchase(ORDER_ID, {
+    value: 35,
+    currency: "GBP",
+    contentId: "event-865",
+    brandId: "brand-865",
+  });
 
   // Meta — fbq('track','Purchase', props, { eventID }).
   const fbq = win.fbq as unknown as { queue: unknown[][] };
   const metaCall = fbq.queue.find((a) => a[0] === "track" && a[1] === "Purchase");
   expect(metaCall).toBeDefined();
+  expect(metaCall?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_ids: ["event-865"],
+    brand_id: "brand-865",
+  });
   expect(metaCall?.[3]).toEqual({ eventID: ORDER_ID });
 
   // TikTok — ttq.track('CompletePayment', props, { event_id }); track defers onto _q.
   const ttq = win.ttq as unknown as { _q: unknown[][] };
   const ttCall = (ttq._q ?? []).find((a) => a[0] === "track" && a[1] === "CompletePayment");
   expect(ttCall).toBeDefined();
+  expect(ttCall?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_id: "event-865",
+    brand_id: "brand-865",
+  });
   expect(ttCall?.[3]).toEqual({ event_id: ORDER_ID });
 
   // Snap — snaptr('track','PURCHASE', { ... client_dedup_id }); queues args.
   const snaptr = win.snaptr as unknown as { queue: unknown[][] };
   const snCall = snaptr.queue.find((a) => a[0] === "track" && a[1] === "PURCHASE");
   expect(snCall).toBeDefined();
+  expect(snCall?.[2]).toMatchObject({
+    price: 35,
+    currency: "GBP",
+    item_ids: ["event-865"],
+    brand_id: "brand-865",
+  });
   expect((snCall?.[2] as Record<string, unknown>).client_dedup_id).toBe(ORDER_ID);
   expect((snCall?.[2] as Record<string, unknown>).transaction_id).toBe(ORDER_ID);
 
@@ -143,6 +168,55 @@ test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct
   const rdCall = rdt.callQueue.find((a) => a[0] === "track" && a[1] === "Purchase");
   expect(rdCall).toBeDefined();
   expect((rdCall?.[2] as Record<string, unknown>).conversion_id).toBe(ORDER_ID);
+});
+
+// [TEST-MOD-APPROVED #3697] Browser checkout-start parity on all three paid
+// social providers, including the shared dedup id and event-scoped identity.
+test("#3697 InitiateCheckout carries the same complete product identity on all paid-social pixels", async () => {
+  const { wa, win } = loadHarness(ALL_PIXELS);
+  await wa.initWebAnalytics();
+  wa.fireAdInitiateCheckout("checkout-3697", {
+    value: 35,
+    currency: "GBP",
+    contentId: "event-3697",
+    brandId: "brand-3697",
+  });
+
+  const meta = (win.fbq as unknown as { queue: unknown[][] }).queue.find(
+    (args) => args[0] === "track" && args[1] === "InitiateCheckout",
+  );
+  expect(meta?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_ids: ["event-3697"],
+    brand_id: "brand-3697",
+  });
+  expect(meta?.[3]).toEqual({ eventID: "checkout-3697" });
+
+  const tiktok = (win.ttq as unknown as { _q: unknown[][] })._q.find(
+    (args) => args[0] === "track" && args[1] === "InitiateCheckout",
+  );
+  expect(tiktok?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_id: "event-3697",
+    brand_id: "brand-3697",
+  });
+  expect(tiktok?.[3]).toEqual({ event_id: "checkout-3697" });
+
+  const snap = (win.snaptr as unknown as { queue: unknown[][] }).queue.find(
+    (args) => args[0] === "track" && args[1] === "START_CHECKOUT",
+  );
+  expect(snap?.[2]).toMatchObject({
+    price: 35,
+    currency: "GBP",
+    item_ids: ["event-3697"],
+    brand_id: "brand-3697",
+    transaction_id: "checkout-3697",
+    client_dedup_id: "checkout-3697",
+  });
 });
 
 // ═══ B2 — browser conversion POST retired (trusted server path only) ═════════
@@ -215,9 +289,16 @@ test("B4 arrival mode fires ViewContent once before a choice", async () => {
     value: 10,
     currency: "GBP",
     contentId: "x",
+    brandId: "brand-x",
     eventId: "view-x",
   })).not.toThrow();
-  wa.fireAdViewContent({ value: 10, currency: "GBP", contentId: "x", eventId: "view-x-again" });
+  wa.fireAdViewContent({
+    value: 10,
+    currency: "GBP",
+    contentId: "x",
+    brandId: "brand-x",
+    eventId: "view-x-again",
+  });
   expect(() => wa.fireAdPageView()).not.toThrow();
   const fbq = win.fbq as unknown as { queue: unknown[][] };
   expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "ViewContent")).toHaveLength(1);
@@ -228,4 +309,35 @@ test("B4 arrival mode fires ViewContent once before a choice", async () => {
   expect(win.ttq).toBeDefined();
   expect(win.snaptr).toBeDefined();
   expect(win.rdt).toBeDefined();
+});
+
+// [TEST-MOD-APPROVED #3697] Product events must never degrade into anonymous
+// value-only signals: those cannot build the event-scoped audiences in §4.
+test("#3697 incomplete product identity emits no browser commerce event", async () => {
+  const { wa, win } = loadHarness(ALL_PIXELS);
+  await wa.initWebAnalytics();
+
+  wa.fireAdViewContent({
+    value: 10,
+    currency: "GBP",
+    contentId: "event-1",
+  });
+  wa.fireAdInitiateCheckout("checkout-1", {
+    value: 10,
+    currency: "GBP",
+    brandId: "brand-1",
+  });
+  wa.fireAdPurchase("order-1", {
+    value: 10,
+    currency: "GBP",
+    contentId: "event-1",
+  });
+
+  const fbq = win.fbq as unknown as { queue: unknown[][] };
+  expect(
+    fbq.queue.filter((args) =>
+      args[0] === "track" &&
+      ["ViewContent", "InitiateCheckout", "Purchase"].includes(String(args[1]))
+    ),
+  ).toHaveLength(0);
 });

@@ -551,6 +551,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       // v_event.event_type='trip' server-side.
       const result = await createTicketCheckout({
         eventId: tripEventId,
+        brandId: trip?.brandId,
         buyer,
         lines,
         ...(Platform.OS === "web"
@@ -615,6 +616,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     checkoutAttemptIdFor,
     recordResult,
     router,
+    trip?.brandId,
   ]);
 
   const showConsentHint = useCallback((): void => {
