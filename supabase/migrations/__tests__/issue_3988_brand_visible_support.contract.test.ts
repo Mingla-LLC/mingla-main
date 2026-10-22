@@ -1,3 +1,5 @@
+// MINGLA-INVARIANT: I-3988-BRAND-SUPPORT-AUDIENCE | issue #3988 | Only tickets explicitly marked for a brand are readable by accepted members whose membership has not been removed; internal staff threads remain private.
+// MINGLA-INVARIANT: I-3988-BRAND-SUPPORT-FANOUT | issue #3988 | Opening or materially progressing a brand-visible support ticket enqueues one idempotent notification for every accepted member whose membership has not been removed.
 import {
   assert,
   assertStringIncludes,

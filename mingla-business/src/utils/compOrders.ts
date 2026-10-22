@@ -10,18 +10,35 @@ import type { OrderRecord } from "../store/orderStore";
 export const isCompOrder = (order: Pick<OrderRecord, "source">): boolean =>
   order.source === "comp";
 
+type AdmissionTicket = {
+  status: string | null;
+  admitsCount?: number | null;
+};
+
+/** People admitted by live passes, or the legacy pass count when snapshots lack that truth. */
+export const activeAdmissionCount = (
+  tickets: AdmissionTicket[] | null | undefined,
+  fallback?: number,
+): number => {
+  let total = 0;
+  let known = false;
+  for (const ticket of tickets ?? []) {
+    if (!/^(valid|used|transferred)$/.test(ticket.status ?? "")) continue;
+    const admits = ticket.admitsCount;
+    total += admits && admits > 0 ? ((known = true), admits) : 1;
+  }
+  return known ? total : (fallback ?? total);
+};
+
 /** Live (not void, not refunded) tickets of one order: the places it holds. */
 export const liveTicketCount = (order: OrderRecord): number => {
   if (order.status !== "paid" && order.status !== "refunded_partial") return 0;
-  if (order.ticketDays !== undefined && order.ticketDays.length > 0) {
-    return order.ticketDays.filter(
-      (ticket) => ticket.status === "valid" || ticket.status === "used",
-    ).length;
-  }
-  return order.lines.reduce(
-    (sum, line) => sum + Math.max(0, line.quantity - line.refundedQuantity),
-    0,
-  );
+  return order.ticketDays?.length
+    ? activeAdmissionCount(order.ticketDays)
+    : order.lines.reduce(
+        (sum, line) => sum + Math.max(0, line.quantity - line.refundedQuantity),
+        0,
+      );
 };
 
 /** Places held by live guest-list tickets across the event's orders. */

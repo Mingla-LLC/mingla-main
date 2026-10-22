@@ -16,6 +16,9 @@
 
 import { supabase } from "./supabase";
 
+const SUPPORT_TICKET_FIELDS =
+  "id,subject,status,priority,conversation_id,brand_id,audience,created_at,last_message_at,resolved_at,next_update_at,next_update_note";
+
 /** A support ticket as the requester sees it (their own rows only, via RLS). */
 export interface SupportTicket {
   id: string;
@@ -43,9 +46,7 @@ export interface SupportTicket {
 export async function listOwnSupportTickets(): Promise<SupportTicket[]> {
   const { data, error } = await supabase
     .from("support_tickets")
-    .select(
-      "id, subject, status, priority, conversation_id, brand_id, audience, created_at, last_message_at, resolved_at, next_update_at, next_update_note",
-    )
+    .select(SUPPORT_TICKET_FIELDS)
     .order("last_message_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as SupportTicket[];
@@ -62,9 +63,7 @@ export async function getOwnSupportTicket(
 ): Promise<SupportTicket | null> {
   const { data, error } = await supabase
     .from("support_tickets")
-    .select(
-      "id, subject, status, priority, conversation_id, brand_id, audience, created_at, last_message_at, resolved_at, next_update_at, next_update_note",
-    )
+    .select(SUPPORT_TICKET_FIELDS)
     .eq("id", ticketId)
     .maybeSingle();
   if (error) throw new Error(error.message);

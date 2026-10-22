@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import type { OrderRecord, OrderSource, RefundRecord } from "../store/orderStore";
-import { isCompOrder } from "../utils/compOrders";
+import { isCompOrder, liveTicketCount } from "../utils/compOrders";
 import { busiestNightSoldByTicketType } from "../utils/perNightCapacity";
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import {
@@ -351,9 +351,7 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
       ticketDays: (order.tickets ?? []).map((ticket) => ({
         ticketId: ticket.id,
         ticketTypeId: ticket.ticket_type_id ?? null,
-        admitsCount: Number.isInteger(ticket.admits_count) && Number(ticket.admits_count) > 0
-          ? Number(ticket.admits_count)
-          : undefined,
+        admitsCount: ticket.admits_count,
         eventDateIds: (ticket.ticket_event_dates ?? []).map(
           (link) => link.event_date_id,
         ),
@@ -436,16 +434,7 @@ export const getEventOrderRevenue = (
     if (order.status !== "paid" && order.status !== "refunded_partial") continue;
     // issue #3827 — guest-list tickets are never sold and never revenue.
     if (isCompOrder(order)) continue;
-    const liveTickets = (order.ticketDays ?? []).filter((ticket) =>
-      ticket.status === "valid" || ticket.status === "used" || ticket.status === "transferred"
-    );
-    const hasAdmissionTruth = liveTickets.some((ticket) => Number.isInteger(ticket.admitsCount) && Number(ticket.admitsCount) > 0);
-    if (hasAdmissionTruth) {
-      soldCount += liveTickets.reduce((sum, ticket) => sum + (ticket.admitsCount ?? 1), 0);
-    } else {
-      // Legacy/persisted orders before #3281 have no admits_count snapshot.
-      for (const line of order.lines) soldCount += Math.max(0, line.quantity - line.refundedQuantity);
-    }
+    soldCount += liveTicketCount(order);
     revenue += order.totalAtPurchase ?? order.totalGbpAtPurchase;
     refunded += order.refundedAmount ?? order.refundedAmountGbp;
   }

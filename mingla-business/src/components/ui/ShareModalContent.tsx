@@ -3,7 +3,6 @@ import { AccessibilityInfo, ActivityIndicator, AppState, Dimensions, Image, Plat
 import type { ShareEntityKind } from '@mingla/sharing';
 import type { BusinessShareFailureReason, PreparedBusinessShare } from '../../services/contentShareAdapter';
 import { copyPublicUrl, sharePublicUrl } from '../../utils/sharePublicUrl';
-import { canonicalShareFallback } from '../../utils/canonicalShareFallback';
 import { Sheet } from './Sheet';
 import { useShareNetworkState } from './useShareNetworkState';
 
@@ -69,6 +68,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
   const onCloseRef = useRef(onClose);
   const dialogRef = useRef<View | null>(null);
   const [prepared, setPrepared] = useState<PreparedBusinessShare | null>(null);
+  const [fallback, setFallback] = useState<{ title: string; url: string; description?: string } | null>(null);
   const [previewCopy, setPreviewCopy] = useState({ facts: '', kind: '', status: '' });
   // #2589 — WHY it failed, not just THAT it failed. `null` = no failure.
   const [failure, setFailure] = useState<BusinessShareFailureReason | null>(null);
@@ -90,6 +90,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
         const { selectCompactPreviewFacts, shareKindLabel, statusLabel } = await import('../../services/contentShareAdapter');
         if (generation.current === token) {
           setFailure(null);
+          setFallback(null);
           setPrepared(value);
           setPreviewCopy({
             facts: selectCompactPreviewFacts(value.facts, 2).join(' · '),
@@ -101,15 +102,24 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
       })
       .catch((error: unknown) => {
         const reason = shareFailureReasonOf(error);
-        if (generation.current === token) setFailure(reason);
+        if (generation.current === token) {
+          setFailure(reason);
+          if (RETRYABLE_SHARE_FAILURES.has(reason)) {
+            void import('../../utils/canonicalShareFallback').then(({ canonicalShareFallback }) => {
+              if (generation.current === token) setFallback(canonicalShareFallback({ title, url, description }));
+            }).catch(() => undefined);
+          } else {
+            setFallback(null);
+          }
+        }
         trackBusinessShareEvent('share_failure', { kind: contentKind, failure_type: 'prepare', failure_reason: reason, result_class: 'failed', duration_ms: Date.now() - startedAt });
       });
-  }, [contentKind, url]);
+  }, [contentKind, description, title, url]);
 
   useEffect(() => {
     if (!visible) return;
     generation.current += 1;
-    setPrepared(null); setPreviewCopy({ facts: '', kind: '', status: '' }); setFailure(null); setBusy(false); setCopied(false); setShowQr(false);
+    setPrepared(null); setFallback(null); setPreviewCopy({ facts: '', kind: '', status: '' }); setFailure(null); setBusy(false); setCopied(false); setShowQr(false);
     setPosterFailed(false); setActionError(null); setContentHeight(0); setReadiness('idle');
     trackBusinessShareEvent('share_sheet_opened', { kind: contentKind, result: 'committed' });
     prepare();
@@ -216,9 +226,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
 
   const facts = previewCopy.facts;
   const status = previewCopy.status;
-  const fallback = failure !== null && RETRYABLE_SHARE_FAILURES.has(failure)
-    ? canonicalShareFallback({ title, url, description })
-    : null;
   const shareTarget = prepared
     ? { title: prepared.title, url: prepared.url, description: prepared.shareMessage }
     : fallback;
