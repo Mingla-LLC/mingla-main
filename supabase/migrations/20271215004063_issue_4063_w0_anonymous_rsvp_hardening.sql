@@ -392,6 +392,17 @@ BEGIN
 
   IF NOT v_eligible THEN RETURN jsonb_build_object('result', 'ineligible'); END IF;
 
+  -- Preserve the established RSVP duplicate-owner contract before asking
+  -- whether this account owns the guest contact. A claimant who already owns
+  -- another RSVP for this event can never take this row; returning conflict
+  -- here keeps the refusal deterministic while still validating the proof,
+  -- event, source, and eligibility first.
+  IF p_kind = 'rsvp' AND EXISTS (
+    SELECT 1 FROM public.event_rsvps other
+     WHERE other.event_id = p_event_id AND other.user_id = p_user_id
+       AND other.id <> p_source_id
+  ) THEN RETURN jsonb_build_object('result', 'conflict'); END IF;
+
   -- #4063: both order and RSVP links use the single raw-contact predicate.
   -- A refusal returns before any owner, token, delivery, or chat write.
   IF NOT public.account_owns_contact(
@@ -421,11 +432,6 @@ BEGIN
   END IF;
 
   IF p_kind = 'rsvp' THEN
-    IF EXISTS (
-      SELECT 1 FROM public.event_rsvps other
-       WHERE other.event_id = p_event_id AND other.user_id = p_user_id
-         AND other.id <> p_source_id
-    ) THEN RETURN jsonb_build_object('result', 'conflict'); END IF;
     UPDATE public.event_rsvps SET user_id = p_user_id WHERE id = p_source_id;
     RETURN jsonb_build_object('result', 'claimed', 'eventId', p_event_id);
   END IF;
