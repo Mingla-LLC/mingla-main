@@ -26,6 +26,12 @@ Deno.test("#3988 brand-visible support is explicit and leaves internal threads p
 Deno.test("#3988 creation and progress fan out idempotently to active accepted brand members", () => {
   assertStringIncludes(sql, "member.accepted_at IS NOT NULL");
   assertStringIncludes(sql, "member.removed_at IS NULL");
+  assertStringIncludes(
+    normalizedSql,
+    "category_key, user_id, brand_id, country_code, payload, idempotency_key, status",
+  );
+  assertStringIncludes(sql, "p_brand_id, NULL,");
+  assertStringIncludes(sql, "NEW.brand_id, NULL,");
   assertStringIncludes(sql, "'business.support_brand_opened:'");
   assertStringIncludes(sql, "'business.support_brand_progress:'");
   assertStringIncludes(sql, "ON CONFLICT (idempotency_key) DO NOTHING");

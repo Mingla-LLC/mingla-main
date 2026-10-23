@@ -266,21 +266,24 @@ BEGIN
       'issue_1529_adv_producer_discovery_matched_zero__guard_is_vacuous';
   END IF;
   -- Everything that TOUCHES the table, writers and readers alike.
-  IF v_count < 12 THEN
+  -- [TEST-MOD-APPROVED #3988] Fifteen established producers, two brand-support
+  -- producers, one drain-derived producer, and twelve proved readers are the
+  -- exact live catalog after #3988: 30 functions that touch the outbox.
+  IF v_count < 30 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_12_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_30_got_%',
       v_count;
   END IF;
 
-  -- [TEST-MOD-APPROVED #3720] Waves 3, 6, and 7 add three country-aware
-  -- producers. And the WRITERS specifically. ELEVEN: the floor is the number that
+  -- [TEST-MOD-APPROVED #3988] Brand-visible support adds two country-aware,
+  -- push-only producers. EIGHTEEN: the writer floor is the number that
   -- actually exists, so a producer disappearing is caught as well as one
   -- appearing.
   SELECT count(*) INTO v_count
   FROM issue_1529_adv_producers WHERE writes_outbox;
-  IF v_count < 11 THEN
+  IF v_count < 18 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_11_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_18_got_%',
       v_count;
   END IF;
 END;
@@ -306,6 +309,8 @@ DECLARE
     'issue_3720_admin_question_action',
     'issue_3720_admin_update_idea',
     'issue_3988_enqueue_alert',
+    'issue_3988_create_brand_support_ticket',
+    'issue_3988_notify_brand_support_progress',
     'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
