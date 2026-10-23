@@ -653,7 +653,7 @@ export function validateCertificationEvidence(
     ? evidence.capabilities
     : [];
   requireValue(
-    rows.length === 145,
+    rows.length === 148,
     `evidence_capability_count:${rows.length}`,
     failures,
   );

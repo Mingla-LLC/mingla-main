@@ -190,9 +190,12 @@ function objectValue(value) {
 
 export function CampaignBuilderPage() {
   const { addToast } = useToast();
-  const certificationContext = useMemo(certificationContextFromHash, []);
+  const certificationContext = useMemo(
+    () => certificationContextFromHash(),
+    [],
+  );
   const certificationMode = certificationContext.enabled === true;
-  const creativePresetId = useMemo(creativeIdFromHash, []);
+  const creativePresetId = useMemo(() => creativeIdFromHash(), []);
   // #3697: decided once at mount. Draft setup writes `draft=` into the hash
   // before the draft is ready, so re-reading the hash on later renders turned
   // a library "Use in campaign" into an empty builder.
@@ -643,7 +646,6 @@ export function CampaignBuilderPage() {
       certification_approval_reference: certificationApprovalReference,
       broader_accepted: broaderAccepted,
       create_results: createResults,
-      request_ids: requestIdsRef.current,
       // Typed LAUNCH/certification phrases are authorization, not draft data.
     }),
     [
@@ -678,7 +680,11 @@ export function CampaignBuilderPage() {
           draft_id: draftContextRef.current.id,
           expected_revision: draftRevisionRef.current,
           current_step: step,
-          draft_state: { ...snapshot, active_step: step },
+          draft_state: {
+            ...snapshot,
+            active_step: step,
+            request_ids: requestIdsRef.current,
+          },
           plan_id: planPreview?.plan_id ?? draftPlanIdRef.current,
         });
         if (error) {
@@ -700,13 +706,18 @@ export function CampaignBuilderPage() {
 
   useEffect(() => {
     if (!draftReady) return undefined;
-    setDraftSaveStatus((current) =>
-      current === "saving" ? current : "unsaved",
-    );
+    const statusTimer = window.setTimeout(() => {
+      setDraftSaveStatus((current) =>
+        current === "saving" ? current : "unsaved",
+      );
+    }, 0);
     const timer = window.setTimeout(() => {
       void persistDraft();
     }, 1000);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(statusTimer);
+      window.clearTimeout(timer);
+    };
   }, [draftReady, draftSnapshot, persistDraft]);
 
   const dirty = Boolean(
@@ -760,7 +771,9 @@ export function CampaignBuilderPage() {
   );
 
   useEffect(() => {
-    loadPreflight();
+    const preflightTimer = window.setTimeout(() => {
+      void loadPreflight();
+    }, 0);
     // Connection rows carry Meta's per-category floors (extra.minimum_budgets).
     (async () => {
       const loaded = {};
@@ -776,6 +789,7 @@ export function CampaignBuilderPage() {
       }
       setConnections(loaded);
     })();
+    return () => window.clearTimeout(preflightTimer);
   }, [loadPreflight]);
 
   // Deep-link ?step= (visited steps only — no forward skip).
@@ -928,8 +942,12 @@ export function CampaignBuilderPage() {
       ? zonedLocalToIso(budget.endsAtLocal, scheduleZone)
       : null;
     if (startsAt !== budget.startsAt || endsAt !== budget.endsAt) {
-      setBudget((current) => ({ ...current, startsAt, endsAt }));
+      const timer = window.setTimeout(() => {
+        setBudget((current) => ({ ...current, startsAt, endsAt }));
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [
     scheduleZone,
     budget.startsAtLocal,
@@ -1045,8 +1063,11 @@ export function CampaignBuilderPage() {
   ]);
 
   useEffect(() => {
-    setPreparationRows({});
-    setPreparationRunningPlatform(null);
+    const timer = window.setTimeout(() => {
+      setPreparationRows({});
+      setPreparationRunningPlatform(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [creative.creativeRow?.id]);
 
   // ISSUE-1009 [partial-failure retry lockout] — the page owns completion
@@ -1069,13 +1090,17 @@ export function CampaignBuilderPage() {
   // title in runCreate, so the created campaigns stay distinguishable.
   useEffect(() => {
     if (!nameTouched && firstDestination) {
-      setName(
-        suggestCampaignName({
-          brandName: firstDestination.brand_name,
-          title: firstDestination.title,
-        }),
-      );
+      const timer = window.setTimeout(() => {
+        setName(
+          suggestCampaignName({
+            brandName: firstDestination.brand_name,
+            title: firstDestination.title,
+          }),
+        );
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [firstDestination, nameTouched]);
 
   const planFingerprint = useMemo(
@@ -1123,11 +1148,14 @@ export function CampaignBuilderPage() {
   );
 
   useEffect(() => {
-    setPlanPreview(null);
-    setBroaderAccepted(false);
-    setLaunchPhrase("");
-    setCreateSteps(null);
-    setCreateError(null);
+    const timer = window.setTimeout(() => {
+      setPlanPreview(null);
+      setBroaderAccepted(false);
+      setLaunchPhrase("");
+      setCreateSteps(null);
+      setCreateError(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [planFingerprint]);
 
   // ── Per-step gate (Next disabled until the step is valid) ──
