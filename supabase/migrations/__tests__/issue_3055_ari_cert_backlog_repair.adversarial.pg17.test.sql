@@ -1,3 +1,5 @@
+-- [TEST-MOD-APPROVED #3872] Production fixture excludes the three R1 discount
+-- capabilities; X3 and chain restoration move with the tip census 145→148.
 -- [TEST-MOD-APPROVED #1984] X3 expected abort moves with tip census 138→140.
 -- [TEST-MOD-APPROVED #1982] X3 expected abort moves with tip census 137→138.
 -- =====================================================================================
@@ -210,7 +212,10 @@ BEGIN
                           'ari.ads.approve_ad_plan',
                           'ari.ads.pause_ad_campaign',
                           'ari.ads.end_ad_campaign',
-                          'ari.ads.get_ad_campaign_report');
+                          'ari.ads.get_ad_campaign_report',
+                          'ari.discounts.list',
+                          'ari.discounts.create',
+                          'ari.discounts.pause');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements SET evidence_mode = 'unsupported'
@@ -263,7 +268,7 @@ ROLLBACK TO SAVEPOINT x2;
 SAVEPOINT x3;
 INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode) VALUES ('ari.stray.unknown_capability', 'read');
 SELECT pg_temp.issue_3055_adv_expect_abort('T-3055-X3',
-  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 146 requirement rows but ari_cert_finalize_run demands 145 capabilities',
+  'issue_3055_preflight_requirements_disagree_with_live_finalizer: 149 requirement rows but ari_cert_finalize_run demands 148 capabilities',
   true);
 ROLLBACK TO SAVEPOINT x3;
 
@@ -360,9 +365,11 @@ COMMIT;
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
 -- [TEST-MOD-APPROVED #1984] Tip census after #3055 was #1984 (138→140); #1982 still required for revoke.
 -- [TEST-MOD-APPROVED #3697] Tip census is now #3697 (140→145 Host Ads).
+-- [TEST-MOD-APPROVED #3872] Tip census is now #3872 (145→148 Discounts R1).
 \ir ../20270704001982_issue_1982_ari_cert_capability_census.sql
 \ir ../20270705001984_issue_1984_ari_cert_capability_census.sql
 \ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
+\ir ../20271216043872_issue_3872_r1_host_operations.sql
 
 DO $restored$
 BEGIN
