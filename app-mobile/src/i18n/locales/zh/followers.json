@@ -1,0 +1,17 @@
+{
+  "first": "成为第一个关注者",
+  "count_zero": "{{formatted}} 位关注者",
+  "count_one": "{{formatted}} 位关注者",
+  "count_two": "{{formatted}} 位关注者",
+  "count_few": "{{formatted}} 位关注者",
+  "count_many": "{{formatted}} 位关注者",
+  "count_other": "{{formatted}} 位关注者",
+  "a11y_none": "还没有关注者",
+  "a11y_exact_zero": "{{count}} 位关注者",
+  "a11y_exact_one": "{{count}} 位关注者",
+  "a11y_exact_two": "{{count}} 位关注者",
+  "a11y_exact_few": "{{count}} 位关注者",
+  "a11y_exact_many": "{{count}} 位关注者",
+  "a11y_exact_other": "{{count}} 位关注者",
+  "a11y_approx": "约 {{formatted}} 位关注者"
+}

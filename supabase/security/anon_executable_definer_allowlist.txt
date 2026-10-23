@@ -43,6 +43,9 @@ pg_public_experiences_by_brand(p_brand_slug text)
 # empty slots (not an error) for private/draft/non-experience ids; exposes only
 # startAt/remaining/full — no buyer identity, holds, or authoring fields.
 pg_experience_slot_availability(p_event_id uuid, p_event_date_id uuid, p_ticket_type_id uuid)
+# #3682: aggregate-only brand follower counts for public brand and offering pages; one bigint or (brand_id, follower_count) rows for live brands, never a user id; batch capped at 100 ids.
+get_brand_follower_count(p_brand_id uuid)
+get_brand_follower_counts(p_brand_ids uuid[])
 pg_public_rsvp_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_social_proof(p_event_id uuid)
 # #2101: the ONE bounded public eligibility advisory. Returns exactly

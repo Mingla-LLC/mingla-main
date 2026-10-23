@@ -1,0 +1,17 @@
+{
+  "first": "Wees de eerste die volgt",
+  "count_zero": "{{formatted}} volgers",
+  "count_one": "{{formatted}} volger",
+  "count_two": "{{formatted}} volgers",
+  "count_few": "{{formatted}} volgers",
+  "count_many": "{{formatted}} volgers",
+  "count_other": "{{formatted}} volgers",
+  "a11y_none": "Nog geen volgers",
+  "a11y_exact_zero": "{{count}} volgers",
+  "a11y_exact_one": "{{count}} volger",
+  "a11y_exact_two": "{{count}} volgers",
+  "a11y_exact_few": "{{count}} volgers",
+  "a11y_exact_many": "{{count}} volgers",
+  "a11y_exact_other": "{{count}} volgers",
+  "a11y_approx": "ongeveer {{formatted}} volgers"
+}

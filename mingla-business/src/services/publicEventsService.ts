@@ -832,7 +832,7 @@ const publicBrandCore = (
     displayName,
     slug,
     role: "owner" as const,
-    stats: { events, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+    stats: { events, rev: 0, rev7d: 0, attendees: 0 },
     currentLiveEvent: null,
     bio,
     tagline,

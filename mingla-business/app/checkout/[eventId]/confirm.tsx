@@ -61,7 +61,7 @@ import {
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
-import { YoureInFollowCard } from "../../../src/components/checkout/YoureInFollowCard";
+import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
 import {
   TicketConfirmVerdictHero,
   type TicketConfirmEnding,

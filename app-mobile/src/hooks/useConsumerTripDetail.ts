@@ -169,6 +169,7 @@ export interface RefundPolicyShape {
 export interface ConsumerTripDetail {
   tripId: string;
   tripSlug: string;
+  brandId: string;
   brandSlug: string;
   brandName: string;
   brandVerified: boolean;
@@ -449,6 +450,7 @@ async function fetchTripDetail(
   return {
     tripId: p.id,
     tripSlug: p.tripSlug,
+    brandId: p.brandId,
     brandSlug: p.brand.slug,
     brandName: p.brand.name,
     brandVerified: p.brand.verified === true,

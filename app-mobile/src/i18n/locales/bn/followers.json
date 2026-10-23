@@ -1,0 +1,17 @@
+{
+  "first": "প্রথম অনুসরণকারী হন",
+  "count_zero": "{{formatted}} অনুসরণকারী",
+  "count_one": "{{formatted}} অনুসরণকারী",
+  "count_two": "{{formatted}} অনুসরণকারী",
+  "count_few": "{{formatted}} অনুসরণকারী",
+  "count_many": "{{formatted}} অনুসরণকারী",
+  "count_other": "{{formatted}} অনুসরণকারী",
+  "a11y_none": "এখনও কোনো অনুসরণকারী নেই",
+  "a11y_exact_zero": "{{count}} অনুসরণকারী",
+  "a11y_exact_one": "{{count}} অনুসরণকারী",
+  "a11y_exact_two": "{{count}} অনুসরণকারী",
+  "a11y_exact_few": "{{count}} অনুসরণকারী",
+  "a11y_exact_many": "{{count}} অনুসরণকারী",
+  "a11y_exact_other": "{{count}} অনুসরণকারী",
+  "a11y_approx": "প্রায় {{formatted}} অনুসরণকারী"
+}

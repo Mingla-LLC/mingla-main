@@ -18,6 +18,21 @@ import {
 import { brandFollowsService } from "../../services/brandFollowsService";
 import { supabase } from "../../services/supabase";
 import { Icon } from "../ui/Icon";
+import { formatCompactCount } from "@mingla/offering-rendering/followerCount";
+
+export function youreInFollowingDetail(count: number | null): string {
+  if (count === null) return "New dates and offers first.";
+  const others = count - 1;
+  if (others <= 0) return "New dates and offers first.";
+  if (others === 1) return "You and 1 other hear about new dates first.";
+  return `You and ${formatCompactCount(others) ?? others} others hear about new dates first.`;
+}
+
+export function youreInOfferDetail(count: number | null): string {
+  if (count === null || count === 0) return "Follow to hear about them first.";
+  if (count === 1) return "Join 1 other. New dates and offers first.";
+  return `Join ${formatCompactCount(count) ?? count} others. New dates and offers first.`;
+}
 
 export type YoureInFollowCardProps = {
   brandId: string | null;
@@ -40,6 +55,7 @@ export function YoureInFollowCard({
 }: YoureInFollowCardProps): React.ReactElement | null {
   const [userId, setUserId] = useState<string | null>(null);
   const [mode, setMode] = useState<CardMode>("loading");
+  const [count, setCount] = useState<number | null>(null);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -62,27 +78,35 @@ export function YoureInFollowCard({
   useEffect(() => {
     let cancelled = false;
     const resolve = async (): Promise<void> => {
-      if (!userId || !brandId) {
-        // Signed-out / no brand: contact-keyed follow is Wave 2.5 — offer soft CTA.
-        if (!cancelled) setMode(brandName.trim().length > 0 ? "offer" : "hidden");
+      if (!brandId) {
+        if (!cancelled) {
+          setCount(null);
+          setMode(brandName.trim().length > 0 ? "offer" : "hidden");
+        }
         return;
       }
-      try {
-        const meta = await brandFollowsService.getFollowMeta(userId, brandId);
-        if (cancelled) return;
-        if (!meta.following) {
-          setMode("offer");
-          return;
-        }
-        const freshAutoFollow =
-          meta.source !== null &&
-          AUTO_FOLLOW_SOURCES.has(meta.source) &&
-          meta.createdAtMs !== null &&
-          Date.now() - meta.createdAtMs <= UNDO_WINDOW_MS;
-        setMode(freshAutoFollow ? "following_undo" : "already");
-      } catch {
-        if (!cancelled) setMode("offer");
+      const results = await Promise.allSettled([
+        userId
+          ? brandFollowsService.getFollowMeta(userId, brandId)
+          : Promise.resolve(null),
+        import("../../services/brandFollowerCountService").then((module) =>
+          module.brandFollowerCountService.getCount(brandId),
+        ),
+      ]);
+      if (cancelled) return;
+      setCount(results[1].status === "fulfilled" ? results[1].value : null);
+
+      const meta = results[0].status === "fulfilled" ? results[0].value : null;
+      if (meta === null || !meta.following) {
+        setMode("offer");
+        return;
       }
+      const freshAutoFollow =
+        meta.source !== null &&
+        AUTO_FOLLOW_SOURCES.has(meta.source) &&
+        meta.createdAtMs !== null &&
+        Date.now() - meta.createdAtMs <= UNDO_WINDOW_MS;
+      setMode(freshAutoFollow ? "following_undo" : "already");
     };
     void resolve();
     return () => {
@@ -96,6 +120,9 @@ export function YoureInFollowCard({
     setBusy(true);
     try {
       await brandFollowsService.unfollowBrand(userId, brandId);
+      setCount((current) =>
+        current === null ? null : Math.max(0, current - 1),
+      );
       setMode("offer");
     } catch {
       setUndoError("Couldn't undo. Try again, or unfollow from your email.");
@@ -117,6 +144,7 @@ export function YoureInFollowCard({
     setUndoError(null);
     try {
       await brandFollowsService.followBrand(userId, brandId);
+      setCount((current) => (current === null ? null : current + 1));
       setMode("following_undo");
     } catch {
       setUndoError(`Couldn't follow ${brandName}. Try again.`);
@@ -130,6 +158,8 @@ export function YoureInFollowCard({
   }
 
   const name = brandName.trim().length > 0 ? brandName.trim() : "this brand";
+  const followingDetail = youreInFollowingDetail(count);
+  const offerDetail = youreInOfferDetail(count);
 
   if (mode === "already") {
     return (
@@ -142,7 +172,7 @@ export function YoureInFollowCard({
           <Icon name="check" size={18} color="#4ade80" />
           <View style={styles.copy}>
             <Text style={styles.title}>You follow {name}</Text>
-            <Text style={styles.detail}>New dates and offers first.</Text>
+            <Text style={styles.detail}>{followingDetail}</Text>
           </View>
         </View>
       </View>
@@ -159,8 +189,8 @@ export function YoureInFollowCard({
         <View style={styles.row}>
           <Icon name="check" size={18} color="#4ade80" />
           <View style={styles.copy}>
-            <Text style={styles.title}>You're now following {name}</Text>
-            <Text style={styles.detail}>New dates and offers first.</Text>
+            <Text style={styles.title}>{"You're now following "}{name}</Text>
+            <Text style={styles.detail}>{followingDetail}</Text>
           </View>
           <Pressable
             onPress={() => {
@@ -198,7 +228,7 @@ export function YoureInFollowCard({
       <View style={styles.row}>
         <View style={styles.copy}>
           <Text style={styles.title}>Want new dates from {name}?</Text>
-          <Text style={styles.detail}>Follow to hear about them first.</Text>
+          <Text style={styles.detail}>{offerDetail}</Text>
         </View>
         <Pressable
           onPress={() => {

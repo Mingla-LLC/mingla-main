@@ -622,6 +622,9 @@ test("material count, attribution, setup, env, marker, and sibling reversions ar
 test("provider discovery work accounting stays inside its reviewed count bounds", () => {
   const value = manifest();
   Object.assign(value, effectiveManifest());
+  const effectiveForTrust = effectiveManifest();
+  Object.defineProperties(value, Object.fromEntries(Object.getOwnPropertySymbols(effectiveForTrust)
+    .map((symbol) => [symbol, Object.getOwnPropertyDescriptor(effectiveForTrust, symbol)])));
   const providers = discoverWorkflowProviders(ROOT);
   const accounting = providerDiscoveryAccounting();
   // Byte-identity is the acceptance test for the A7-SC2 pre-filter, not speed.

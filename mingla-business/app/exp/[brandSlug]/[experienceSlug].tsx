@@ -92,6 +92,7 @@ import {
 } from "../../../src/analytics/publicParityWebAdapter";
 import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
+import { useBrandFollowerCount } from "../../../src/hooks/useBrandFollowerCount";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
 // re-enters the eager __common chunk and fails the budget gate.
@@ -108,6 +109,10 @@ import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferin
 const SeeWhosGoingGate = React.lazy(
   () => import("../../../src/components/event/SeeWhosGoingGate"),
 );
+const PresentedByFollow = React.lazy(async () => {
+  const module = await import("../../../src/components/brand/usePresentedByFollow");
+  return { default: module.PresentedByFollow };
+});
 import {
   ExperienceReservePicker,
   type ExperienceReserveMode,
@@ -422,6 +427,7 @@ const ResolvedExperiencePage: React.FC<{
   );
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => resolveOfferingSurface(theme), [theme]);
+  const followerCountQuery = useBrandFollowerCount(brand.id);
 
   // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
   // §3). Wired WEB-ONLY (SPEC §4.4.1): on business native the prop is not
@@ -803,6 +809,21 @@ const ResolvedExperiencePage: React.FC<{
         onClose={onClose}
         onShare={handleShareTap}
         onViewBrand={handleViewBrand}
+        presentedByFollow={
+          <React.Suspense fallback={null}>
+            <PresentedByFollow
+              brandId={brand.id}
+              brandName={brand.name}
+              palette={palette}
+            />
+          </React.Suspense>
+        }
+        presentedByFollowerCount={
+          followerCountQuery.isError ? null : (followerCountQuery.data ?? null)
+        }
+        presentedByFollowerCountLoading={
+          followerCountQuery.isPending && !followerCountQuery.isError
+        }
         stateBanner={stateBanner}
         reserveControl={reserveControl}
         contentBottomInset={contentBottomInset}

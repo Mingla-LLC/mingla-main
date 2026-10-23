@@ -1,0 +1,17 @@
+{
+  "first": "फ़ॉलो करने वाले पहले व्यक्ति बनें",
+  "count_zero": "{{formatted}} फ़ॉलोअर",
+  "count_one": "{{formatted}} फ़ॉलोअर",
+  "count_two": "{{formatted}} फ़ॉलोअर",
+  "count_few": "{{formatted}} फ़ॉलोअर",
+  "count_many": "{{formatted}} फ़ॉलोअर",
+  "count_other": "{{formatted}} फ़ॉलोअर",
+  "a11y_none": "अभी कोई फ़ॉलोअर नहीं",
+  "a11y_exact_zero": "{{count}} फ़ॉलोअर",
+  "a11y_exact_one": "{{count}} फ़ॉलोअर",
+  "a11y_exact_two": "{{count}} फ़ॉलोअर",
+  "a11y_exact_few": "{{count}} फ़ॉलोअर",
+  "a11y_exact_many": "{{count}} फ़ॉलोअर",
+  "a11y_exact_other": "{{count}} फ़ॉलोअर",
+  "a11y_approx": "लगभग {{formatted}} फ़ॉलोअर"
+}

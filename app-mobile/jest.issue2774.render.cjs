@@ -18,6 +18,10 @@ module.exports = {
       "react-test-renderer",
       "$1",
     ),
+    "^react-i18next$": path.resolve(
+      __dirname,
+      "src/test/reactI18next.render.mock.cjs",
+    ),
     "^@mingla/offering-rendering/(.*)$": path.resolve(
       __dirname,
       "../packages/offering-rendering/$1",
@@ -61,5 +65,8 @@ module.exports = {
     // issue #2107 — mounts the Explorer welcome video, runs a restart whose
     // reloadAsync fails, and proves the released player is never touched again.
     "**/__tests__/issue_2107_welcome_video_released_on_restart.render.test.tsx",
+    // issue #3682 — the consumer app updates the public aggregate immediately
+    // on follow and restores the server count if the write fails.
+    "**/__tests__/issue_3682_follower_count_optimistic.render.test.tsx",
   ],
 };

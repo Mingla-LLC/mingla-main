@@ -1,0 +1,17 @@
+{
+  "first": "Jadilah orang pertama yang mengikuti",
+  "count_zero": "{{formatted}} pengikut",
+  "count_one": "{{formatted}} pengikut",
+  "count_two": "{{formatted}} pengikut",
+  "count_few": "{{formatted}} pengikut",
+  "count_many": "{{formatted}} pengikut",
+  "count_other": "{{formatted}} pengikut",
+  "a11y_none": "Belum ada pengikut",
+  "a11y_exact_zero": "{{count}} pengikut",
+  "a11y_exact_one": "{{count}} pengikut",
+  "a11y_exact_two": "{{count}} pengikut",
+  "a11y_exact_few": "{{count}} pengikut",
+  "a11y_exact_many": "{{count}} pengikut",
+  "a11y_exact_other": "{{count}} pengikut",
+  "a11y_approx": "sekitar {{formatted}} pengikut"
+}

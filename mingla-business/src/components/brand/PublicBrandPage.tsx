@@ -31,6 +31,7 @@ import {
 } from "../../constants/publicUrls";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import type {
   PublicExperienceCard,
   PublicTripCard,
@@ -228,6 +229,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // #3682 Wave 2.3 — Follow on buyer web / Host preview. Anon-tolerant: useAuth
   // returns null user; the Follow control still renders and prompts sign-in.
   const brandFollow = useBrandFollow(user?.id ?? null, brand.id);
+  const followerCountQuery = useBrandFollowerCount(brand.id);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [unfollowOpen, setUnfollowOpen] = useState(false);
   const [signInFollowOpen, setSignInFollowOpen] = useState(false);
@@ -559,6 +561,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         menu={menu}
         venues={venues}
         venuesLoadState={venuesLoadState}
+        followerCount={
+          followerCountQuery.isError ? null : followerCountQuery.data
+        }
+        followerCountLoading={
+          followerCountQuery.isPending && !followerCountQuery.isError
+        }
         isFollowing={brandFollow.isFollowing}
         followPending={brandFollow.isPending || followEmailPending}
         followState={

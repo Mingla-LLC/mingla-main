@@ -54,6 +54,7 @@ export default function BrandProfileRoute(): React.ReactElement {
     typeof idParam === "string" && idParam.length > 0 ? idParam : null;
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
 
   // ORCH-1100 Wave 3 — cold-direct-load auth-readiness flash fix.
   // On a refresh/bookmark of /brand/{id} the session is still warming and the
@@ -258,6 +259,11 @@ export default function BrandProfileRoute(): React.ReactElement {
         onRetry={() => {
           void brandQuery.refetch();
         }}
+        onOpenPeople={
+          brand?.id === currentBrandId
+            ? () => router.push("/(tabs)/marketing/people" as never)
+            : undefined
+        }
         effectiveStripeStatus={effectiveStripeStatus}
         onBack={handleBack}
         onEdit={handleOpenEdit}

@@ -1,0 +1,17 @@
+{
+  "first": "İlk takip eden sen ol",
+  "count_zero": "{{formatted}} takipçi",
+  "count_one": "{{formatted}} takipçi",
+  "count_two": "{{formatted}} takipçi",
+  "count_few": "{{formatted}} takipçi",
+  "count_many": "{{formatted}} takipçi",
+  "count_other": "{{formatted}} takipçi",
+  "a11y_none": "Henüz takipçi yok",
+  "a11y_exact_zero": "{{count}} takipçi",
+  "a11y_exact_one": "{{count}} takipçi",
+  "a11y_exact_two": "{{count}} takipçi",
+  "a11y_exact_few": "{{count}} takipçi",
+  "a11y_exact_many": "{{count}} takipçi",
+  "a11y_exact_other": "{{count}} takipçi",
+  "a11y_approx": "yaklaşık {{formatted}} takipçi"
+}

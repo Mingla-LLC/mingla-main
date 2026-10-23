@@ -83,6 +83,7 @@ import {
 import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
 
 import { Icon } from "../../components/ui/Icon";
+import { PresentedByFollowButton } from "../../components/brand/PresentedByFollowButton";
 import {
   BaseBottomSheet,
   BottomSheetScrollView,
@@ -120,6 +121,8 @@ import {
 // (ConsumerEventReserveBar) is retired from the experience screen.
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
+import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import { useEventTheme } from "../../hooks/useEventTheme";
 import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
@@ -440,6 +443,10 @@ export default function ConsumerExperienceDetailScreen({
     seed?.eventSlug ?? null,
   );
   const freshDetail = freshDetailQuery.detail;
+  const followerCountQuery = useBrandFollowerCount(
+    freshDetail?.brandId ?? seed?.brandId ?? null,
+  );
+  const followerCountLabels = useFollowerCountLabels();
 
   // ORCH-1138 rework (§4.C.5) — the seed's anon-safe brandTheme (COMMS-0009) is
   // the SYNCHRONOUS fallback so the page renders themed immediately and never
@@ -1236,6 +1243,13 @@ export default function ConsumerExperienceDetailScreen({
     }
   }
   const offeringBrand = buildExperienceOfferingBrandFromSeed(seed);
+  const presentedByFollow = (
+    <PresentedByFollowButton
+      brandId={offeringBrand.id}
+      brandName={offeringBrand.name}
+      palette={palette}
+    />
+  );
 
   // State banner driven by the resolved CTA (one owner — resolveOfferingCta).
   const stateBanner =
@@ -1395,6 +1409,14 @@ export default function ConsumerExperienceDetailScreen({
               brand={offeringBrand}
               palette={palette}
               theme={theme}
+              presentedByFollow={presentedByFollow}
+              presentedByFollowerCount={
+                followerCountQuery.isError ? null : followerCountQuery.data
+              }
+              presentedByFollowerCountLoading={
+                followerCountQuery.isPending && !followerCountQuery.isError
+              }
+              presentedByFollowerCountLabels={followerCountLabels}
               callbacks={{ onReserve: beginBooking, onViewBrand: handleViewBrand }}
               variant="phone"
               formatStopTime={(iso: string | null) => formatStartTime(iso)}

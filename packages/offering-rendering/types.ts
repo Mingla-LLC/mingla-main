@@ -12,6 +12,7 @@ import type { ScrollViewProps } from "react-native";
 
 import type { ResolvedTheme, ThemeInput } from "./designTokens";
 import type { EventAcquisitionState } from "./eventAcquisitionLifecycle";
+import type { FollowerCountLabels } from "./FollowerCountLine";
 import type { MapsAppId, MapsOpenTarget } from "./mapsDeepLink";
 
 export type EventCoverMediaType = "image" | "video" | "gif";
@@ -250,6 +251,10 @@ export interface PublicEventPageProps {
   brand: PublicBrandProps | null;
   viewerRole: ViewerRole;
   callbacks: PublicEventCallbacks;
+  /** #3682 — server count for the Presented-by card; unavailable stays hidden. */
+  brandFollowerCount?: number | null;
+  brandFollowerCountLoading?: boolean;
+  brandFollowerCountLabels?: FollowerCountLabels;
   /** Business public-web #1615 identity overlay; absent keeps consumer/native parity unchanged. */
   useDirectionCIdentity?: boolean;
   /**

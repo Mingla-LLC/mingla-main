@@ -42,6 +42,7 @@ import {
   type ResolvedTheme,
   type SocialProofSummary,
   type ThemePalette,
+  type FollowerCountLabels,
 } from "@mingla/offering-rendering";
 import {
   EventOfferingBody,
@@ -132,6 +133,9 @@ export interface FoundationEventPreviewProps {
   refundHostName?: string | null;
   /** #3682 — Presented-by Follow slot (adapter-owned FollowButton). */
   presentedByFollow?: React.ReactNode;
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
   testID?: string;
 }
 
@@ -172,6 +176,9 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   refundPolicyState,
   refundHostName,
   presentedByFollow,
+  presentedByFollowerCount,
+  presentedByFollowerCountLoading = false,
+  presentedByFollowerCountLabels,
   testID,
 }) => {
   const { isDesktop } = useResponsiveLayout();
@@ -230,6 +237,9 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       refundPolicyState={refundPolicyState}
       refundHostName={refundHostName}
       presentedByFollow={presentedByFollow}
+      presentedByFollowerCount={presentedByFollowerCount}
+      presentedByFollowerCountLoading={presentedByFollowerCountLoading}
+      presentedByFollowerCountLabels={presentedByFollowerCountLabels}
       testID="orch-1167-event-body"
     />
   );

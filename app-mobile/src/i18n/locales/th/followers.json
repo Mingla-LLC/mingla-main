@@ -1,0 +1,17 @@
+{
+  "first": "เป็นคนแรกที่ติดตาม",
+  "count_zero": "ผู้ติดตาม {{formatted}} คน",
+  "count_one": "ผู้ติดตาม {{formatted}} คน",
+  "count_two": "ผู้ติดตาม {{formatted}} คน",
+  "count_few": "ผู้ติดตาม {{formatted}} คน",
+  "count_many": "ผู้ติดตาม {{formatted}} คน",
+  "count_other": "ผู้ติดตาม {{formatted}} คน",
+  "a11y_none": "ยังไม่มีผู้ติดตาม",
+  "a11y_exact_zero": "ผู้ติดตาม {{count}} คน",
+  "a11y_exact_one": "ผู้ติดตาม {{count}} คน",
+  "a11y_exact_two": "ผู้ติดตาม {{count}} คน",
+  "a11y_exact_few": "ผู้ติดตาม {{count}} คน",
+  "a11y_exact_many": "ผู้ติดตาม {{count}} คน",
+  "a11y_exact_other": "ผู้ติดตาม {{count}} คน",
+  "a11y_approx": "ผู้ติดตามประมาณ {{formatted}} คน"
+}

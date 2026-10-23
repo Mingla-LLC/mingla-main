@@ -83,6 +83,16 @@ jest.mock("../../../hooks/useCreatorAccount", () => ({
   }),
 }));
 
+// [TEST-MOD-APPROVED #3682] Harness registration only — follower totals are
+// outside this suite's creation-flow lifecycle contract; every assertion stays.
+jest.mock("../../../hooks/useBrandFollowerCount", () => ({
+  useBrandFollowerCounts: () => ({
+    data: undefined,
+    isPending: false,
+    isError: false,
+  }),
+}));
+
 jest.mock("../../../store/currentBrandStore", () => ({
   useCurrentBrandStore: (
     selector: (state: {

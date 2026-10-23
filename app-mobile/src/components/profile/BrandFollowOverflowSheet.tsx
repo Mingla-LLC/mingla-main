@@ -11,7 +11,9 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 
+import { brandFollowKeys } from "../../hooks/useBrandFollow";
 import {
   brandFollowIsMuted,
   brandFollowsService,
@@ -40,6 +42,7 @@ export const BrandFollowOverflowSheet: React.FC<Props> = ({
   onOpenChannels,
 }) => {
   const [mutePicker, setMutePicker] = useState(false);
+  const queryClient = useQueryClient();
   if (!row) return null;
   const muted = brandFollowIsMuted(row.mutedUntil);
 
@@ -92,6 +95,12 @@ export const BrandFollowOverflowSheet: React.FC<Props> = ({
             void brandFollowsService
               .unfollowBrand(userId, row.brandId)
               .then(() => {
+                void queryClient.invalidateQueries({
+                  queryKey: brandFollowKeys.followerCount(row.brandId),
+                });
+                void queryClient.invalidateQueries({
+                  queryKey: brandFollowKeys.followerCountsAll,
+                });
                 toastManager.show(`Unfollowed ${row.brandName}.`, "success");
                 onUnfollowed();
                 onClose();

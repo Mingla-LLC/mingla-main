@@ -1,0 +1,17 @@
+{
+  "first": "Seja a primeira pessoa a seguir",
+  "count_zero": "{{formatted}} seguidores",
+  "count_one": "{{formatted}} seguidor",
+  "count_two": "{{formatted}} seguidores",
+  "count_few": "{{formatted}} seguidores",
+  "count_many": "{{formatted}} seguidores",
+  "count_other": "{{formatted}} seguidores",
+  "a11y_none": "Ainda não há seguidores",
+  "a11y_exact_zero": "{{count}} seguidores",
+  "a11y_exact_one": "{{count}} seguidor",
+  "a11y_exact_two": "{{count}} seguidores",
+  "a11y_exact_few": "{{count}} seguidores",
+  "a11y_exact_many": "{{count}} seguidores",
+  "a11y_exact_other": "{{count}} seguidores",
+  "a11y_approx": "cerca de {{formatted}} seguidores"
+}
