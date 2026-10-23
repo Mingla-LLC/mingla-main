@@ -11,15 +11,15 @@ export interface SaleAvailabilityTextProps {
   style?: StyleProp<TextStyle>;
 }
 
-export const SaleAvailabilityText: React.FC<SaleAvailabilityTextProps> = ({
+export const SaleAvailabilityText = ({
   active,
   remaining,
   endsAt,
   timezone,
   style,
-}) => {
+}: SaleAvailabilityTextProps) => {
   const copy = active
     ? saleAvailabilityCopy(remaining, endsAt, timezone)
     : null;
-  return copy === null ? null : <Text style={style}>{copy}</Text>;
+  return copy === null ? null : React.createElement(Text, { style }, copy);
 };

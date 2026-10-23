@@ -15,14 +15,15 @@ BEGIN;
 -- [TEST-MOD-APPROVED #1982] Brand invitation revoke; 137→138 / 136→137.
 -- [TEST-MOD-APPROVED #1984] Listing conversion + reservation metrics; 138→140 / 137→139.
 -- [TEST-MOD-APPROVED #3697] Host Ads tools; 140→145 / 139→144.
+-- [TEST-MOD-APPROVED #3872] Host Discounts tools; 145→148 / 144→147.
 -- Reject an incomplete evidence set that omits ari.experience.unpublish.
 DO $certification$
 DECLARE
   v_run_id uuid;
   v_error text;
 BEGIN
-  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 145 THEN
-    RAISE EXCEPTION '#1973/#3697 expected exactly 145 certification requirements';
+  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 148 THEN
+    RAISE EXCEPTION '#1973/#3872 expected exactly 148 certification requirements';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.ari_cert_capability_requirements
@@ -69,8 +70,8 @@ BEGIN
     RAISE EXCEPTION '#1973/#1980 finalizer accepted incomplete evidence missing unpublish';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
-    IF v_error <> 'ari_cert_missing_capabilities:144' THEN
-      RAISE EXCEPTION '#1973/#3697 expected 144-row rejection, received %', v_error;
+    IF v_error <> 'ari_cert_missing_capabilities:147' THEN
+      RAISE EXCEPTION '#1973/#3872 expected 147-row rejection, received %', v_error;
     END IF;
   END;
 END;

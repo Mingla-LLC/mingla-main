@@ -272,7 +272,8 @@ export function StayOperationsPanel() {
   }, [groupId]);
 
   useEffect(() => {
-    loadGroup();
+    const timer = window.setTimeout(() => void loadGroup(), 0);
+    return () => window.clearTimeout(timer);
   }, [loadGroup]);
 
   const openRow = useCallback((row) => {

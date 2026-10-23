@@ -1,4 +1,3 @@
-// @ts-expect-error shared package React resolves through each app workspace.
 import React from "react";
 import { AccessibilityInfo, Platform, StyleSheet } from "react-native";
 

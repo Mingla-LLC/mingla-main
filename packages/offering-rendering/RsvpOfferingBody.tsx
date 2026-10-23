@@ -1402,7 +1402,12 @@ export const useRsvpOfferingState = (
       ? (
         // The injected field exposes no ref; this wrapper is what a blocked
         // decision tap scrolls to (and, on web, focuses the input inside).
-        <View {...(inline ? { ref: primaryPhoneRef } : {})} collapsable={false}>
+        <View
+          ref={inline ? (node: View | null) => {
+            primaryPhoneRef.current = node;
+          } : undefined}
+          collapsable={false}
+        >
         {renderPhoneField({
           countryCode: phoneCountry,
           rawValue: phoneRawValue,
@@ -1577,7 +1582,10 @@ export const useRsvpOfferingState = (
               disabled={submitting}
             />
             {renderPhoneField ? (
-              <View {...{ ref: guestFieldRef(g.id, "phone") }} collapsable={false}>
+              <View
+                ref={(node: View | null) => guestFieldRef(g.id, "phone")(node)}
+                collapsable={false}
+              >
               {renderPhoneField({
               role: "plus_one",
               guestId: g.id,

@@ -156,7 +156,7 @@
     "lucide-react": "0.577.0",
     "lucide-react-native": "^0.577.0",
     "mixpanel-react-native": "^3.3.0",
-    "onesignal-expo-plugin": "^2.5.0",
+    "onesignal-expo-plugin": "2.5.0",
     "posthog-js": "^1.205.0",
     "posthog-react-native": "^4.50.0",
     "posthog-react-native-session-replay": "^1.6.0",

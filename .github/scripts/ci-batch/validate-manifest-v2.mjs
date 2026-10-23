@@ -523,12 +523,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #3040] Re-banked after adding the reviewed local
 // `@mingla/video-upload` package (pure JS web TUS lane) and its lockfile link.
 // [TEST-MOD-APPROVED #3872] Re-banked after the mandated final R1 dependency
-// updates in the touched Explorer and Host package trees.
+// updates in the touched Explorer and Host package trees, including the Host
+// OneSignal pin that keeps its transitive Expo family on the approved line.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "c965c2567fe3d0db9b44bbc0d45f3c761b434033e9acad98883ceff45d28c787",
   "app-mobile/package-lock.json": "a98fc185f2b21c4c42a99137ea0c55bafa3838b984c5ec33e6f60e6000545ac9",
-  "mingla-business/package.json": "b4ce5139b064480eae5d7e4b1ba52d26be03c28a90b3df7e773842f7756a3a40",
-  "mingla-business/package-lock.json": "bb43ac3dada979fe50d27f742ded5204d2634f7ecb6faba07e3a4b663c256b6a",
+  "mingla-business/package.json": "bbe315942249d9690ab22371098a0fb926616cc9f9c4d8cb4f9c957c284ea04e",
+  "mingla-business/package-lock.json": "a18c94ecbead7cb439c7760298454116ca94547c0a5efa9166b226d1904cff46",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

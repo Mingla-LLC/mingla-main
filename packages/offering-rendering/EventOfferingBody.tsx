@@ -56,6 +56,7 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
+  findNodeHandle,
   Image,
   LayoutAnimation,
   Platform,
@@ -173,7 +174,7 @@ export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
   const copy = eventAcquisitionNoticeCopy(state, eventType, brandName);
   const surface = offeringSurfaceStyles(palette);
   const noticeId = `issue-1902-${eventType}-acquisition-notice`;
-  const nativeNoticeHandleRef = useRef<number | null>(null);
+  const nativeNoticeRef = useRef<View | null>(null);
   const statusProps: WebStatusProps | NativeStatusProps =
     Platform.OS === "web"
       ? {
@@ -190,17 +191,15 @@ export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
     if (Platform.OS === "web" && typeof document !== "undefined") {
       document.getElementById(noticeId)?.focus();
     } else {
-      const handle = nativeNoticeHandleRef.current;
+      const handle = findNodeHandle(nativeNoticeRef.current);
       if (handle !== null) AccessibilityInfo?.setAccessibilityFocus?.(handle);
     }
     AccessibilityInfo?.announceForAccessibility?.(copy.announcement);
   }, [copy.announcement, focusOnMount, noticeId]);
   return (
     <View
+      ref={nativeNoticeRef}
       nativeID={noticeId}
-      onLayout={(event: LayoutChangeEvent) => {
-        nativeNoticeHandleRef.current = event.target;
-      }}
       accessible
       accessibilityLabel={copy.announcement}
       {...statusProps}

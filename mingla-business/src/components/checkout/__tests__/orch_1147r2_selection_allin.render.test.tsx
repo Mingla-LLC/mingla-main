@@ -39,13 +39,15 @@ import {
 } from "../CartContext";
 import { formatCurrency } from "../../../utils/currency";
 import type { TicketStub } from "../../../store/draftEventStore";
+import { ticketQuoteFromLines } from "./ticketQuoteFixture";
 
 // --- real-provider cart seeding ------------------------------------------
 // We mount the REAL CartProvider (a synchronous useReducer — no AsyncStorage /
-// no all-in RPC) and seed exactly one line via the REAL setLineQuantity, which
-// carries unitPriceAllIn into the reducer. The BottomBar then reads the REAL
-// useCartQuoteTotals reduce (allInTotal / feesTaxCents / hasFeesTaxDelta). Nothing
-// about the money path is faked — only the seed shortcut replaces the deck UI.
+// no all-in RPC), seed exactly one line via the REAL setLineQuantity, then seed
+// the matching server quote through the REAL setQuoteState API. The BottomBar
+// reads only that quote through useCartQuoteTotals, matching the #3872
+// server-authoritative money contract. Only the seed shortcut replaces the deck
+// UI; production must never recover totals from CartLine arithmetic.
 interface SeedLine {
   unitPrice: number;
   unitPriceAllIn?: number;
@@ -63,9 +65,9 @@ const CartSeeder: React.FC<{ line: SeedLine; children: React.ReactNode }> = ({
   line,
   children,
 }) => {
-  const { lines, setLineQuantity } = useCart();
+  const { lines, setLineQuantity, setQuoteState } = useCart();
   React.useLayoutEffect(() => {
-    setLineQuantity({
+    const cartLine = {
       ticketTypeId: "tt_1",
       ticketName: "General",
       unitPrice: line.unitPrice,
@@ -73,7 +75,10 @@ const CartSeeder: React.FC<{ line: SeedLine; children: React.ReactNode }> = ({
       currency: line.currency ?? "GBP",
       isFree: line.isFree ?? false,
       quantity: line.quantity,
-    });
+      paymentPlanChoice: "full" as const,
+    };
+    setLineQuantity(cartLine);
+    setQuoteState(ticketQuoteFromLines([cartLine]), "ready");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return lines.length > 0 ? <>{children}</> : null;

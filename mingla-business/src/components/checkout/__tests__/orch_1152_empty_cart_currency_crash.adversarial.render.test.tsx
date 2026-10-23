@@ -52,6 +52,7 @@ import {
   useCartQuoteTotals,
 } from "../CartContext";
 import { formatCurrency } from "../../../utils/currency";
+import { ticketQuoteFromLines } from "./ticketQuoteFixture";
 
 // --- the bottom-bar JSX from the three checkout index.tsx screens, using the
 // ORIGINAL pre-ORCH-1152 UNCONDITIONAL headline shape
@@ -127,7 +128,7 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
 
     // populate: GBP pass-fee line → headline becomes the all-in
     act(() => {
-      cartApi?.setLineQuantity({
+      const line = {
         ticketTypeId: "tt_1",
         ticketName: "General",
         unitPrice: 65,
@@ -135,7 +136,10 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
         currency: "GBP",
         isFree: false,
         quantity: 1,
-      });
+        paymentPlanChoice: "full" as const,
+      };
+      cartApi?.setLineQuantity(line);
+      cartApi?.setQuoteState(ticketQuoteFromLines([line]), "ready");
     });
     expect(screen.getByTestId("bar-value").props.children).toBe("£67.93");
 
@@ -162,7 +166,7 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
   it("a NON-GBP (USD) cart emptied back out still renders '—' (fallback is currency-independent)", () => {
     renderEmpty();
     act(() => {
-      cartApi?.setLineQuantity({
+      const line = {
         ticketTypeId: "tt_usd",
         ticketName: "GA",
         unitPrice: 50,
@@ -170,7 +174,10 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
         currency: "USD",
         isFree: false,
         quantity: 1,
-      });
+        paymentPlanChoice: "full" as const,
+      };
+      cartApi?.setLineQuantity(line);
+      cartApi?.setQuoteState(ticketQuoteFromLines([line]), "ready");
     });
     // populated USD cart renders the USD all-in (proves it's a real non-GBP path)
     expect(screen.getByTestId("bar-value").props.children).toBe("$52.25");
