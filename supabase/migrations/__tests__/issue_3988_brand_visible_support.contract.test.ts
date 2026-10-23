@@ -10,6 +10,7 @@ const root = new URL(
   import.meta.url,
 );
 const sql = await Deno.readTextFile(root);
+const normalizedSql = sql.replace(/\s+/g, " ");
 
 Deno.test("#3988 brand-visible support is explicit and leaves internal threads private", () => {
   assertStringIncludes(sql, "audience IN ('requester', 'brand')");
@@ -28,4 +29,11 @@ Deno.test("#3988 creation and progress fan out idempotently to active accepted b
   assertStringIncludes(sql, "'business.support_brand_opened:'");
   assertStringIncludes(sql, "'business.support_brand_progress:'");
   assertStringIncludes(sql, "ON CONFLICT (idempotency_key) DO NOTHING");
+});
+
+Deno.test("#3988 progress trigger helper is not client-executable", () => {
+  assertStringIncludes(
+    normalizedSql,
+    "REVOKE ALL ON FUNCTION public.issue_3988_notify_brand_support_progress() FROM PUBLIC, anon, authenticated, service_role;",
+  );
 });

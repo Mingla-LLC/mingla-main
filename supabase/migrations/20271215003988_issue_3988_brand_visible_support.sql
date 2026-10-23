@@ -229,6 +229,12 @@ BEGIN
 END;
 $function$;
 
+-- Trigger helpers are invoked by PostgreSQL, never by a client role. PostgreSQL
+-- grants new functions to PUBLIC by default, so close that inherited execute
+-- path before attaching the trigger.
+REVOKE ALL ON FUNCTION public.issue_3988_notify_brand_support_progress()
+  FROM PUBLIC, anon, authenticated, service_role;
+
 DROP TRIGGER IF EXISTS tg_issue_3988_brand_support_progress ON public.support_tickets;
 CREATE TRIGGER tg_issue_3988_brand_support_progress
   AFTER UPDATE OF assigned_staff_id, status, next_update_at, next_update_note ON public.support_tickets
