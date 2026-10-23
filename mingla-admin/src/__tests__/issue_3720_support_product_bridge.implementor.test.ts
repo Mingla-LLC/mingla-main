@@ -14,7 +14,10 @@ const supportSend = await Deno.readTextFile(
 );
 
 Deno.test("the inbox distinguishes live chats from staff-created internal tickets", () => {
-  assertMatch(page, /source_label:\s*"Live chat"/);
+  // [TEST-MOD-APPROVED #3988] The former literal pinned every live support row
+  // to "Live chat" and rejected the shipped brand-visible support audience.
+  // Keep both public-conversation labels bound to the audience decision.
+  assertMatch(page, /source_label:\s*row\.audience === "brand" \? "Brand-visible" : "Live chat"/);
   assertMatch(page, /source_label:\s*"Staff-created"/);
   assertMatch(page, /Support inbox/);
   assertMatch(page, /No customer linked/);
