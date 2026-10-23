@@ -3,6 +3,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { normalizeCreativeTagUpdate } from "../adCreativeTags.ts";
+import { resolveCreativeTagBrand } from "../adCreativeTags.ts";
 
 Deno.test("#3697 Creative Library tags normalize, deduplicate and clear", () => {
   assertEquals(
@@ -111,4 +112,43 @@ Deno.test("#3697 tag action stays admin-only and uses the strict normalizer", as
   assertStringIncludes(block, "isActiveAdmin");
   assertStringIncludes(block, "normalizeCreativeTagUpdate(body)");
   assertStringIncludes(block, '.is("purged_at", null)');
+});
+
+Deno.test("#3697 event tags link new creatives to the server-owned event brand", () => {
+  const brandId = "22222222-2222-4222-8222-222222222222";
+  assertEquals(resolveCreativeTagBrand(null, brandId), {
+    ok: true,
+    brandId,
+  });
+  assertEquals(resolveCreativeTagBrand(brandId, brandId), {
+    ok: true,
+    brandId,
+  });
+  assertEquals(
+    resolveCreativeTagBrand(
+      "33333333-3333-4333-8333-333333333333",
+      brandId,
+    ),
+    { ok: false, detail: "creative_brand_conflict" },
+  );
+  assertEquals(resolveCreativeTagBrand(null, null), {
+    ok: false,
+    detail: "event_brand_unavailable",
+  });
+});
+
+Deno.test("#3697 tag action derives brand authority from the event and guards races", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../ad-plan/index.ts", import.meta.url),
+  );
+  const start = source.indexOf('if (action === "creative_update_tags")');
+  const end = source.indexOf('if (action === "creative_reuse")', start);
+  const block = source.slice(start, end);
+  assertStringIncludes(block, 'db.from("events").select("brand_id")');
+  assertStringIncludes(block, "resolveCreativeTagBrand(");
+  assertStringIncludes(block, "{ brand_id: resolvedBrandId }");
+  assertStringIncludes(
+    block,
+    "`brand_id.is.null,brand_id.eq.${resolvedBrandId}`",
+  );
 });

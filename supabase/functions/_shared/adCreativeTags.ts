@@ -9,6 +9,13 @@ export type CreativeTagPatch = {
   date_locked_until: string | null;
 };
 
+export type CreativeTagBrandResolution =
+  | { ok: true; brandId: string }
+  | {
+    ok: false;
+    detail: "event_brand_unavailable" | "creative_brand_conflict";
+  };
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STAGES = new Set(["prospecting", "retarget", "abandoners"]);
@@ -73,4 +80,25 @@ export function normalizeCreativeTagUpdate(
       date_locked_until: dateLockedUntil,
     },
   };
+}
+
+/**
+ * Event tags are also the server-owned bridge into a brand's Creative Library.
+ * A caller never supplies the brand id: it is resolved from the event, and an
+ * already-scoped creative cannot be moved across brands by editing tags.
+ */
+export function resolveCreativeTagBrand(
+  existingBrandId: unknown,
+  eventBrandId: unknown,
+): CreativeTagBrandResolution {
+  if (typeof eventBrandId !== "string" || !UUID_RE.test(eventBrandId)) {
+    return { ok: false, detail: "event_brand_unavailable" };
+  }
+  if (
+    existingBrandId !== null && existingBrandId !== undefined &&
+    existingBrandId !== eventBrandId
+  ) {
+    return { ok: false, detail: "creative_brand_conflict" };
+  }
+  return { ok: true, brandId: eventBrandId };
 }

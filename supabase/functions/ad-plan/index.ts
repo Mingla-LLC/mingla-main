@@ -28,7 +28,10 @@ import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
 import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
-import { normalizeCreativeTagUpdate } from "../_shared/adCreativeTags.ts";
+import {
+  normalizeCreativeTagUpdate,
+  resolveCreativeTagBrand,
+} from "../_shared/adCreativeTags.ts";
 import {
   stageCreativeIds,
   validateStageCreativeRows,
@@ -1231,14 +1234,55 @@ export async function handleAdPlan(
         400,
       );
     }
-    const { data, error } = await db.from("ad_creatives").update({
+    let resolvedBrandId: string | null = null;
+    if (normalizedTags.patch.event_id) {
+      const [{ data: event, error: eventError }, {
+        data: creative,
+        error: creativeError,
+      }] = await Promise.all([
+        db.from("events").select("brand_id").eq(
+          "id",
+          normalizedTags.patch.event_id,
+        ).maybeSingle(),
+        db.from("ad_creatives").select("id,brand_id").eq("id", creativeId)
+          .is("purged_at", null).maybeSingle(),
+      ]);
+      if (eventError) return databaseFailure(eventError);
+      if (creativeError) return databaseFailure(creativeError);
+      if (!creative) return json({ error: "creative_not_found" }, 404);
+      const brandResolution = resolveCreativeTagBrand(
+        creative.brand_id,
+        event?.brand_id,
+      );
+      if (!brandResolution.ok) {
+        return json({ error: brandResolution.detail }, 409);
+      }
+      resolvedBrandId = brandResolution.brandId;
+    }
+    let updateQuery = db.from("ad_creatives").update({
       ...normalizedTags.patch,
+      ...(resolvedBrandId ? { brand_id: resolvedBrandId } : {}),
       updated_at: new Date().toISOString(),
-    }).eq("id", creativeId).is("purged_at", null).select(
-      "id,stage_tags,concept_tag,hook_tag,event_id,licence_reference,date_locked_until,updated_at",
+    }).eq("id", creativeId).is("purged_at", null);
+    if (resolvedBrandId) {
+      updateQuery = updateQuery.or(
+        `brand_id.is.null,brand_id.eq.${resolvedBrandId}`,
+      );
+    }
+    const { data, error } = await updateQuery.select(
+      "id,brand_id,stage_tags,concept_tag,hook_tag,event_id,licence_reference,date_locked_until,updated_at",
     ).maybeSingle();
     if (error) return databaseFailure(error);
-    if (!data) return json({ error: "creative_not_found" }, 404);
+    if (!data) {
+      return json(
+        {
+          error: resolvedBrandId
+            ? "creative_brand_conflict"
+            : "creative_not_found",
+        },
+        resolvedBrandId ? 409 : 404,
+      );
+    }
     return json({ ok: true, creative: data });
   }
 
