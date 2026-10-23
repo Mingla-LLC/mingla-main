@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/venue-reservation-create/__tests__/issue_3872_deposit_discounts.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-09-deposit-discounts",
+  "profile": "deno-1.46-stripe"
+}

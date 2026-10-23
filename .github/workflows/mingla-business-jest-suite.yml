@@ -103,6 +103,16 @@ jobs:
             console.log("\nmingla-business jest suite is GREEN.");
           '
 
+      # #3872 — this required source-contract file keeps the spec-mandated
+      # `.render.test.tsx` name, while the stock config deliberately excludes
+      # that suffix. It needs no render runtime, so invoke it explicitly under
+      # the same node/ts-jest config and override only the catch-all exclusion.
+      - name: "#3872 discount-code field states stay CI-reachable"
+        run: >-
+          npx jest --ci --runInBand --runTestsByPath
+          src/components/checkout/__tests__/DiscountCodeField.issue3872.render.test.tsx
+          --testPathIgnorePatterns=/node_modules/
+
       - name: "#1487 deterministic venue-first worker restoration"
         if: always()
         run: |

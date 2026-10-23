@@ -152,6 +152,13 @@ interface MenuRow {
   service_days?: number[] | null;
 }
 
+interface MenuSaleRow {
+  menu_item_id: string;
+  sale_price_cents: number | null;
+  sale_ends_at: string | null;
+  sale_name: string | null;
+}
+
 const asHours = (value: unknown): ConsumerPublicVenue["hours"] => {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -169,7 +176,10 @@ const asHours = (value: unknown): ConsumerPublicVenue["hours"] => {
   });
 };
 
-const groupMenus = (rows: MenuRow[]): PublicMenuGroup[] => {
+const groupMenus = (
+  rows: MenuRow[],
+  salesByItemId: ReadonlyMap<string, MenuSaleRow> = new Map(),
+): PublicMenuGroup[] => {
   const groups: PublicMenuGroup[] = [];
   const map = new Map<string, PublicMenuGroup>();
   for (const row of rows) {
@@ -184,11 +194,15 @@ const groupMenus = (rows: MenuRow[]): PublicMenuGroup[] => {
       map.set(row.menu_id, group);
       groups.push(group);
     }
+    const sale = salesByItemId.get(row.id);
     group.items.push({
       id: row.id,
       name: row.item_name,
       description: row.item_description,
       priceCents: row.price_cents,
+      salePriceCents: sale?.sale_price_cents ?? null,
+      saleEndsAt: sale?.sale_ends_at ?? null,
+      saleName: sale?.sale_name ?? null,
       currency: row.currency,
       // Issue #1793 — `=== true` rather than a truthy read, so a NULL from a
       // pre-#1789 row is "no notes" instead of "notes, probably".
@@ -280,7 +294,7 @@ export async function fetchConsumerPublicVenue(
   // reservability probe: a Stay prices nightly (#1562), not by spend band.
   const pricedByPlace =
     row.place_pool_id !== null && row.venue_category !== "stay";
-  const [menuResult, reservableResult, projectedResult, currencyResult] =
+  const [menuResult, reservableResult, projectedResult, currencyResult, saleResult] =
     await Promise.all([
       row.venue_category === "stay"
         ? Promise.resolve({ data: [], error: null })
@@ -308,7 +322,18 @@ export async function fetchConsumerPublicVenue(
       pricedByPlace
         ? supabase.rpc("issue_1384_supported_currencies")
         : Promise.resolve({ data: null, error: null }),
+      row.venue_category === "stay"
+        ? Promise.resolve({ data: [], error: null })
+        : supabase.rpc("pg_public_menu_item_sales", { p_venue_id: row.id }),
     ]);
+  const salesByItemId = new Map<string, MenuSaleRow>(
+    saleResult.error === null && Array.isArray(saleResult.data)
+      ? (saleResult.data as MenuSaleRow[]).map((sale) => [
+        sale.menu_item_id,
+        sale,
+      ])
+      : [],
+  );
   const resolved = (
     Array.isArray(reservableResult.data)
       ? reservableResult.data[0]
@@ -377,7 +402,7 @@ export async function fetchConsumerPublicVenue(
     }),
     menu:
       menuResult.error === null
-        ? groupMenus((menuResult.data ?? []) as MenuRow[])
+        ? groupMenus((menuResult.data ?? []) as MenuRow[], salesByItemId)
         : [],
     menuState: menuResult.error === null ? "ready" : "error",
     menuWindows:

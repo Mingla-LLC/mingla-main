@@ -55,6 +55,27 @@ jest.mock("../../../hooks/usePublicVenueAvailability", () => ({
 jest.mock("../../../services/venueGuestReservationService", () => ({
   __esModule: true,
   createGuestVenueReservation: (input: unknown) => mockCreateReservation(input),
+  previewGuestVenueReservation: () =>
+    Promise.resolve({
+      kind: "preview",
+      depositListCents: 0,
+      discountCents: 0,
+      depositNetCents: 0,
+      feesAndTaxCents: 0,
+      totalCents: 0,
+      currency: "NGN",
+      discounts: [],
+      codeOutcome: {
+        status: "none",
+        reason: null,
+        required: null,
+        with: null,
+        replaced: [],
+      },
+      notices: [],
+      quoteDigest: "issue-3380-preview",
+      requiresPayment: false,
+    }),
 }));
 
 jest.mock("../../../services/venueOrganicCaptureService", () => ({
@@ -166,6 +187,9 @@ const renderReservation = async (countryCode: string | null): Promise<Tree> => {
 };
 
 const confirm = async (tree: Tree): Promise<void> => {
+  await TestRenderer.act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
   await TestRenderer.act(async () => {
     call(byProp(tree, "label", "Confirm reservation"), "onPress");
     await Promise.resolve();

@@ -5,93 +5,59 @@ import {
   identifyAdBuyer,
 } from "../analytics/webAnalytics";
 import { supabase } from "./supabase";
+import type {
+  GuestReservationBuyer as GuestReservationBuyerContract,
+  GuestReservationInput,
+  GuestReservationPreview,
+} from "./venueGuestReservationTypes";
+export type {
+  GuestReservationInput,
+  GuestReservationPreview,
+} from "./venueGuestReservationTypes";
 
-async function extractFunctionError(
-  error: unknown,
-  fallback: string,
-): Promise<string> {
-  if (error === null || typeof error !== "object") return fallback;
-  const context = (error as { context?: unknown }).context;
-  if (
-    context !== null &&
-    typeof context === "object" &&
-    typeof (context as { text?: unknown }).text === "function"
-  ) {
-    try {
-      const raw = await (context as { text: () => Promise<string> }).text();
-      try {
-        const parsed = JSON.parse(raw) as {
-          error?: unknown;
-          message?: unknown;
-        };
-        if (typeof parsed.error === "string") return parsed.error;
-        if (typeof parsed.message === "string") return parsed.message;
-      } catch {
-        if (raw.length > 0 && raw.length < 200 && !raw.startsWith("<!")) {
-          return raw;
-        }
-      }
-    } catch {
-      return fallback;
-    }
-  }
-  const message = (error as { message?: unknown }).message;
-  return typeof message === "string" &&
-      message.length > 0 &&
-      !message.startsWith("Edge Function returned")
-    ? message
-    : fallback;
-}
-
-export interface GuestReservationBuyer {
-  name: string;
-  email: string;
-  phone: string;
+export interface GuestReservationBuyer extends GuestReservationBuyerContract {
   phoneCountryIso?: string | null;
-  marketingOptIn: boolean;
 }
 
-export interface GuestReservationInput {
-  venueId: string;
-  brandId: string;
-  reservedForUtc: string;
-  partySize: number;
-  buyer: GuestReservationBuyer;
-  occasion?: string | null;
-  guestNotes?: string | null;
-  attributionClickId?: string | null;
-  organicJourneyToken?: string | null;
+export class GuestReservationReviewError extends Error {
+  readonly quote: GuestReservationPreview;
+
+  constructor(quote: GuestReservationPreview) {
+    super("checkout_review_required");
+    this.name = "GuestReservationReviewError";
+    this.quote = quote;
+  }
 }
 
 export type GuestReservationResult =
   | {
-    kind: "free_completed";
-    reservationId: string;
-    reservedForUtc: string;
-    partySize: number;
-    brandId: string;
-    /**
-     * #3392 — the private manage/cancel credential for a web booking. The
-     * server stores only its hash, so this response is the one place it exists.
-     */
-    guestCancelToken?: string;
-  }
+      kind: "free_completed";
+      reservationId: string;
+      reservedForUtc: string;
+      partySize: number;
+      brandId: string;
+      /**
+       * #3392 — the private manage/cancel credential for a web booking. The
+       * server stores only its hash, so this response is the one place it exists.
+       */
+      guestCancelToken?: string;
+    }
   | {
-    kind: "requires_web_redirect";
-    reservationDraftId: string;
-    buyerStatusToken: string;
-    hostedCheckoutUrl: string | null;
-    totalCents: number;
-    currency: string;
-  }
+      kind: "requires_web_redirect";
+      reservationDraftId: string;
+      buyerStatusToken: string;
+      hostedCheckoutUrl: string | null;
+      totalCents: number;
+      currency: string;
+    }
   | {
-    kind: "requires_paystack_redirect";
-    reservationDraftId: string;
-    buyerStatusToken: string;
-    authorizationUrl: string;
-    totalCents: number;
-    currency: string;
-  };
+      kind: "requires_paystack_redirect";
+      reservationDraftId: string;
+      buyerStatusToken: string;
+      authorizationUrl: string;
+      totalCents: number;
+      currency: string;
+    };
 
 export interface GuestReservationConfirmResult {
   status: "completed" | "pending" | "failed";
@@ -109,9 +75,7 @@ export interface GuestVenueRefundSummary {
   updated_at: string;
   attentionDeliveryState?: "parked" | "recovery_required" | null;
   attentionRecoveryCode?:
-    | "delivery_acceptance_unknown"
-    | "delivery_undelivered"
-    | null;
+    "delivery_acceptance_unknown" | "delivery_undelivered" | null;
 }
 
 export async function fetchGuestVenueRefund(input: {
@@ -210,36 +174,47 @@ export async function createGuestVenueReservation(
   input: GuestReservationInput,
 ): Promise<GuestReservationResult> {
   const adMatchData = getStoredAdMatchData?.() ?? {
-    fbp: null, fbc: null, scid: null, ttp: null,
-    clientUserAgent: null, trackingOptOut: false,
+    fbp: null,
+    fbc: null,
+    scid: null,
+    ttp: null,
+    clientUserAgent: null,
+    trackingOptOut: false,
   };
   void identifyAdBuyer?.({
     email: input.buyer.email,
     phone: input.buyer.phone,
   })?.catch(() => undefined);
-  const { data, error } = await supabase.functions.invoke<
-    GuestReservationResult
-  >(
-    "venue-reservation-create",
-    {
-      body: {
-        venueId: input.venueId,
-        brandId: input.brandId,
-        surface: "web",
-        reservedForUtc: input.reservedForUtc,
-        partySize: input.partySize,
-        buyer: input.buyer,
-        occasion: input.occasion ?? null,
-        guestNotes: input.guestNotes ?? null,
-        attributionClickId: input.attributionClickId ?? null,
-        adMatchData,
-        organicJourneyToken: input.organicJourneyToken ?? null,
+  const { data, error } =
+    await supabase.functions.invoke<GuestReservationResult>(
+      "venue-reservation-create",
+      {
+        body: {
+          venueId: input.venueId,
+          brandId: input.brandId,
+          surface: "web",
+          reservedForUtc: input.reservedForUtc,
+          partySize: input.partySize,
+          buyer: input.buyer,
+          occasion: input.occasion ?? null,
+          guestNotes: input.guestNotes ?? null,
+          attributionClickId: input.attributionClickId ?? null,
+          adMatchData,
+          organicJourneyToken: input.organicJourneyToken ?? null,
+          discountCode: input.discountCode ?? null,
+          quoteDigest: input.quoteDigest ?? null,
+        },
       },
-    },
-  );
+    );
   if (error !== null) {
+    const quoteService = await import("./venueGuestReservationQuoteService");
+    const reviewQuote =
+      await quoteService.readGuestReservationReviewQuote(error);
+    if (reviewQuote !== null) {
+      throw new GuestReservationReviewError(reviewQuote);
+    }
     throw new Error(
-      await extractFunctionError(
+      await quoteService.extractFunctionError(
         error,
         "We couldn’t start your reservation. Check your details and try again.",
       ),
@@ -251,21 +226,30 @@ export async function createGuestVenueReservation(
   return data;
 }
 
+export async function previewGuestVenueReservation(
+  input: GuestReservationInput,
+): Promise<GuestReservationPreview> {
+  return import("./venueGuestReservationQuoteService").then((module) =>
+    module.previewGuestVenueReservation(input),
+  );
+}
+
 export async function confirmGuestVenueReservation(input: {
   reservationDraftId: string;
   buyerStatusToken: string;
 }): Promise<GuestReservationConfirmResult> {
-  const { data, error } = await supabase.functions.invoke<
-    GuestReservationConfirmResult
-  >(
-    "venue-reservation-confirm",
-    { body: input },
-  );
+  const { data, error } =
+    await supabase.functions.invoke<GuestReservationConfirmResult>(
+      "venue-reservation-confirm",
+      { body: input },
+    );
   if (error !== null) {
     throw new Error(
-      await extractFunctionError(
-        error,
-        "We couldn’t confirm the payment yet. Try again in a moment.",
+      await import("./venueGuestReservationQuoteService").then((module) =>
+        module.extractFunctionError(
+          error,
+          "We couldn’t confirm the payment yet. Try again in a moment.",
+        ),
       ),
     );
   }

@@ -284,6 +284,8 @@ export interface OrderPadPreviewVars {
 
 export interface OrderPadPreview {
   currency: string;
+  listSubtotalCents: number;
+  discountCents: number;
   subtotalCents: number;
   serviceChargeBps: number;
   serviceChargeCents: number;
@@ -293,6 +295,18 @@ export interface OrderPadPreview {
   spotLabel: string | null;
   venueName: string | null;
   staffTabsEnabled: boolean;
+  discounts: {
+    id: string;
+    kind: string;
+    name: string;
+    amountCents: number;
+  }[];
+  lines: {
+    lineNo: number;
+    discountCents: number;
+    lineTotalCents: number;
+    netLineTotalCents: number;
+  }[];
 }
 
 /**
@@ -319,6 +333,10 @@ export function usePreviewStaffOrder(): UseMutationResult<
       });
       return {
         currency: String(data.currency ?? ""),
+        listSubtotalCents: Number(
+          data.listSubtotalCents ?? data.subtotalCents ?? 0,
+        ),
+        discountCents: Number(data.discountCents ?? 0),
         subtotalCents: Number(data.subtotalCents ?? 0),
         serviceChargeBps: Number(data.serviceChargeBps ?? 0),
         serviceChargeCents: Number(data.serviceChargeCents ?? 0),
@@ -327,6 +345,24 @@ export function usePreviewStaffOrder(): UseMutationResult<
         spotLabel: typeof data.spotLabel === "string" ? data.spotLabel : null,
         venueName: typeof data.venueName === "string" ? data.venueName : null,
         staffTabsEnabled: data.staffTabsEnabled === true,
+        discounts: Array.isArray(data.discounts)
+          ? (data.discounts as Record<string, unknown>[]).map((entry) => ({
+            id: String(entry.id ?? ""),
+            kind: String(entry.kind ?? ""),
+            name: String(entry.name ?? "Discount"),
+            amountCents: Number(entry.amountCents ?? 0),
+          }))
+          : [],
+        lines: Array.isArray(data.lines)
+          ? (data.lines as Record<string, unknown>[]).map((line) => ({
+            lineNo: Number(line.lineNo ?? 0),
+            discountCents: Number(line.discountCents ?? 0),
+            lineTotalCents: Number(line.lineTotalCents ?? 0),
+            netLineTotalCents: Number(
+              line.netLineTotalCents ?? line.lineTotalCents ?? 0,
+            ),
+          }))
+          : [],
       };
     },
     onError: () => undefined,

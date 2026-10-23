@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { fireBuyerPurchaseConfirmationPush } from "../_shared/businessNotifyTriggers.ts";
@@ -89,7 +88,9 @@ import {
   freeCheckoutBreakdown,
   hostedCheckoutBreakdown,
   persistTicketSessionMoneyTruth,
+  withDiscounts,
 } from "../_shared/orderMoneyTruth.ts";
+import { normaliseDiscountCode } from "../_shared/discountEngine.ts";
 // issue #2216 — a free reservation lands the guest on the SAME confirmation
 // carousel a paid one does, so it owes the guest the SAME rendered pass.
 import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
@@ -127,6 +128,7 @@ import {
   TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
 import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
+import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -287,10 +289,12 @@ const enrollWaitlistOffer = async (
     .select("id, created_at")
     .maybeSingle();
 
-  let waitlistEntryId: string | null =
-    typeof wlInserted?.id === "string" ? wlInserted.id : null;
-  let createdAt: string | null =
-    typeof wlInserted?.created_at === "string" ? wlInserted.created_at : null;
+  let waitlistEntryId: string | null = typeof wlInserted?.id === "string"
+    ? wlInserted.id
+    : null;
+  let createdAt: string | null = typeof wlInserted?.created_at === "string"
+    ? wlInserted.created_at
+    : null;
 
   if (wlErr?.code === "23505" || (!wlInserted && wlErr === null)) {
     let q = client
@@ -369,16 +373,16 @@ const recordCheckoutRefusal = async (
     // never an exception at all.
     const outcome = await Promise.race([
       client.rpc("issue_2579_record_checkout_refusal", {
-      p_event_id: input.eventId.length > 0 ? input.eventId : null,
-      p_ticket_type_id: input.ticketTypeId,
-      // RAW. The RPC owns the allowlist; see the note above.
-      p_raise_token: input.message ?? null,
-      p_quantity_requested: input.quantity,
-      p_surface: input.surface,
-      // FULL E.164 in; the RPC stores the dial code only. Extraction lives
-      // there because the migration's probe runs in CI and a new edge test
-      // file would run in no lane.
-      p_buyer_phone_e164: input.phoneE164,
+        p_event_id: input.eventId.length > 0 ? input.eventId : null,
+        p_ticket_type_id: input.ticketTypeId,
+        // RAW. The RPC owns the allowlist; see the note above.
+        p_raise_token: input.message ?? null,
+        p_quantity_requested: input.quantity,
+        p_surface: input.surface,
+        // FULL E.164 in; the RPC stores the dial code only. Extraction lives
+        // there because the migration's probe runs in CI and a new edge test
+        // file would run in no lane.
+        p_buyer_phone_e164: input.phoneE164,
         p_buyer_email: input.email,
       }),
       new Promise<undefined>((resolve) => {
@@ -434,7 +438,7 @@ const recordCheckoutRefusal = async (
  */
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
-type CheckoutMode = "create" | "preview";
+type CheckoutMode = "create" | "preview" | "quote";
 // ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
 // validateBuyerAddress are REMOVED. Tax is sourced at the VENUE (SPEC §B.1),
 // never the buyer — the buyer never types an address in the native flow. The
@@ -965,7 +969,39 @@ export const createTicketCheckoutCreateHandler = (
       // to what the CI gates and the #2579 regression test already pin.
       return await jsonResponse(body, status);
     };
-    const mode: CheckoutMode = body.mode === "preview" ? "preview" : "create";
+    const mode: CheckoutMode = body.mode === "preview"
+      ? "preview"
+      : body.mode === "quote"
+      ? "quote"
+      : "create";
+    const quoteMode = mode === "quote" || mode === "preview";
+    let discountCode: string | null = null;
+    if (body.discountCode !== undefined && body.discountCode !== null) {
+      if (
+        typeof body.discountCode !== "string" ||
+        body.discountCode.length > 32
+      ) {
+        return jsonResponse(
+          { error: "invalid_request", detail: "discount_code_invalid" },
+          400,
+        );
+      }
+      try {
+        discountCode = normaliseDiscountCode(body.discountCode);
+      } catch {
+        return jsonResponse(
+          { error: "invalid_request", detail: "discount_code_invalid" },
+          400,
+        );
+      }
+    }
+    const quoteDigest = typeof body.quoteDigest === "string" &&
+        /^[0-9a-f]{32}$/.test(body.quoteDigest)
+      ? body.quoteDigest
+      : null;
+    const quoteListDigest = typeof body.quoteListDigest === "string"
+      ? body.quoteListDigest
+      : null;
     // ORCH-1072: OPTIONAL chosen experience occurrence (event_dates.id). When a
     // recurring/multi-date experience is booked, the consumer Book sheet sends the
     // picked date here so the order records WHICH occurrence was booked. Validated
@@ -1006,7 +1042,9 @@ export const createTicketCheckoutCreateHandler = (
     let partySize: number | null = null;
     if (typeof partySizeRaw === "number" && Number.isFinite(partySizeRaw)) {
       partySize = Math.trunc(partySizeRaw);
-    } else if (typeof partySizeRaw === "string" && partySizeRaw.trim().length > 0) {
+    } else if (
+      typeof partySizeRaw === "string" && partySizeRaw.trim().length > 0
+    ) {
       const n = Number.parseInt(partySizeRaw.trim(), 10);
       if (!Number.isFinite(n)) {
         return refuse({ error: "booked_party_invalid" }, 422);
@@ -1078,7 +1116,9 @@ export const createTicketCheckoutCreateHandler = (
     //
     // Default is unchanged: an event with no policy row, or mode
     // 'unrestricted', returns `allowed_unrestricted` and this block is a no-op.
-    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;
+    let accessDecision: Awaited<
+      ReturnType<typeof ticketCheckoutAccessDecision>
+    >;
     try {
       accessDecision = await ticketCheckoutAccessDecision(supabase, {
         eventId,
@@ -1190,8 +1230,7 @@ export const createTicketCheckoutCreateHandler = (
           500,
         );
       }
-      const allDaysPass =
-        passRow !== null &&
+      const allDaysPass = passRow !== null &&
         typeof passRow === "object" &&
         (passRow as { is_multi_date?: unknown }).is_multi_date === true &&
         (passRow as { is_recurring?: unknown }).is_recurring !== true &&
@@ -1220,7 +1259,9 @@ export const createTicketCheckoutCreateHandler = (
         }>;
         const upcoming = rows
           .map((r) => r.id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
+          .filter((id): id is string =>
+            typeof id === "string" && id.length > 0
+          );
         if (upcoming.length === 0) {
           return refuse({ error: "occurrence_not_available" }, 422);
         }
@@ -1284,7 +1325,9 @@ export const createTicketCheckoutCreateHandler = (
           500,
         );
       }
-      const rows = (occRows ?? []) as Array<{ id: string; end_at: string | null }>;
+      const rows = (occRows ?? []) as Array<
+        { id: string; end_at: string | null }
+      >;
       if (rows.length !== eventDateIds.length) {
         // At least one id is not an occurrence of THIS event (or was deleted).
         return refuse({ error: "occurrence_not_found" }, 422);
@@ -1403,10 +1446,9 @@ export const createTicketCheckoutCreateHandler = (
         .select("capacity_scope, is_recurring, recurrence_rules")
         .eq("id", eventId)
         .maybeSingle();
-      const scope =
-        scopeRow && typeof scopeRow === "object"
-          ? (scopeRow as { capacity_scope?: unknown }).capacity_scope
-          : null;
+      const scope = scopeRow && typeof scopeRow === "object"
+        ? (scopeRow as { capacity_scope?: unknown }).capacity_scope
+        : null;
       if (
         orderedEventDateIds.length === 0 &&
         (scope === "per_day" || scope === "per_start")
@@ -1414,16 +1456,13 @@ export const createTicketCheckoutCreateHandler = (
         orderedEventDateIds.push(eventDateId);
         anchorEventDateId = eventDateId;
       }
-      const rules =
-        scopeRow && typeof scopeRow === "object"
-          ? (scopeRow as { recurrence_rules?: unknown }).recurrence_rules
-          : null;
-      const isRecurring =
-        scopeRow && typeof scopeRow === "object"
-          ? (scopeRow as { is_recurring?: unknown }).is_recurring === true
-          : false;
-      const openDaily =
-        isRecurring &&
+      const rules = scopeRow && typeof scopeRow === "object"
+        ? (scopeRow as { recurrence_rules?: unknown }).recurrence_rules
+        : null;
+      const isRecurring = scopeRow && typeof scopeRow === "object"
+        ? (scopeRow as { is_recurring?: unknown }).is_recurring === true
+        : false;
+      const openDaily = isRecurring &&
         rules !== null &&
         typeof rules === "object" &&
         !Array.isArray(rules) &&
@@ -1452,6 +1491,294 @@ export const createTicketCheckoutCreateHandler = (
       }
     }
 
+    // #3872: resolve the private-link capability before quote/create diverge.
+    // The raw token never reaches SQL, logs or persistence.
+    let ticketLinkHash: string | null = null;
+    if (ticketLinkToken !== null) {
+      try {
+        const pepper = await resolveOfferingInviteTokenPepper();
+        ticketLinkHash = await hashTicketLinkToken(
+          ticketLinkToken,
+          pepper.bytes,
+        );
+      } catch {
+        return jsonResponse({ error: "ticket_link_not_active" }, 409);
+      }
+    }
+
+    // #3872 TC-25: the limiter protects both quote and create attempts. It is
+    // fail-open because a limiter outage must not become a checkout outage.
+    const discountAttemptScopes = discountCode === null
+      ? []
+      : await Promise.all(
+        [
+          checkoutClientIp(req) ? `ip:${checkoutClientIp(req)}` : null,
+          userId ? `user:${userId}` : null,
+          buyerEmail.length > 0 ? `email:${buyerEmail}` : null,
+        ].filter((scope): scope is string => scope !== null).map(sha256Hex),
+      );
+    if (discountCode !== null) {
+      try {
+        const attempt = await supabase.rpc("issue_3872_code_attempt", {
+          p_scope_hashes: discountAttemptScopes,
+          p_record_failure: false,
+        });
+        if (attempt.error === null && attempt.data === false) {
+          return jsonResponse(
+            { error: "rate_limited", detail: "code_attempts" },
+            429,
+          );
+        }
+        if (attempt.error !== null) {
+          console.warn(
+            "[ticket-checkout-create] discount limiter failed open",
+            {
+              error: attempt.error,
+            },
+          );
+        }
+      } catch (error) {
+        console.warn("[ticket-checkout-create] discount limiter failed open", {
+          error,
+        });
+      }
+    }
+
+    const recordUnknownDiscountAttempt = async (
+      quote: Record<string, unknown>,
+    ): Promise<void> => {
+      const codeOutcome = quote.codeOutcome as
+        | { reason?: unknown }
+        | null
+        | undefined;
+      if (discountCode === null || codeOutcome?.reason !== "not_found") return;
+      try {
+        const recorded = await supabase.rpc("issue_3872_code_attempt", {
+          p_scope_hashes: discountAttemptScopes,
+          p_record_failure: true,
+        });
+        if (recorded.error !== null) {
+          console.warn(
+            "[ticket-checkout-create] discount limiter record failed",
+            {
+              error: recorded.error,
+            },
+          );
+        }
+      } catch (error) {
+        console.warn(
+          "[ticket-checkout-create] discount limiter record failed",
+          {
+            error,
+          },
+        );
+      }
+    };
+
+    const loadTicketQuote = async (): Promise<Record<string, unknown>> => {
+      const { data, error } = await supabase.rpc("issue_3872_ticket_quote", {
+        p_event_id: eventId,
+        p_lines: lines,
+        p_event_date_ids: orderedEventDateIds.length > 0
+          ? orderedEventDateIds
+          : null,
+        p_booked_start_at: bookedStartAt,
+        p_booked_end_at: bookedEndAt,
+        p_booked_party_size: partySize,
+        p_payment_plan_choice: paymentPlanChoice,
+        p_discount_code: discountCode,
+        p_buyer_email: buyerEmail,
+        p_buyer_phone_e164: buyerPhoneE164,
+        p_buyer_user_id: userId,
+        p_link_token_hash: ticketLinkHash,
+        p_queued: queueEngaged,
+      });
+      if (error !== null || data === null || typeof data !== "object") {
+        throw new Error(error?.message ?? "ticket_quote_failed");
+      }
+      return data as Record<string, unknown>;
+    };
+
+    const buildTicketQuoteEnvelope = async (
+      quote: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> => {
+      const dueTodayNetCents = Number(quote.dueTodayNetCents ?? 0);
+      const { data: pricingRows, error: pricingError } = await supabase.rpc(
+        "resolve_event_pricing_inputs",
+        { p_event_id: eventId },
+      );
+      if (
+        pricingError !== null || !Array.isArray(pricingRows) ||
+        pricingRows.length === 0
+      ) {
+        throw new Error(pricingError?.message ?? "pricing_config_unavailable");
+      }
+      const pricing = pricingRows[0] as {
+        pass_tax: boolean;
+        pass_mingla_fee: boolean;
+        pass_service_fee: boolean;
+        pricing_region: string | null;
+        pricing_currency: string | null;
+        venue_tax_address: Record<string, unknown> | null;
+        effective_take_rate_bps: number;
+        take_rate_source: "brand_override" | "platform_default";
+        stripe_account_id: string | null;
+        payment_provider: string | null;
+        payment_country: string | null;
+        vat_rate_bps: number | null;
+      };
+      const provider = resolveProviderRouting(pricing);
+      const currency =
+        (pricing.pricing_currency ?? String(quote.currency ?? ""))
+          .trim().toUpperCase();
+      if (currency.length === 0) throw new Error("pricing_currency_missing");
+      const switches: PricingSwitches = {
+        pass_tax: pricing.pass_tax,
+        pass_mingla_fee: pricing.pass_mingla_fee,
+        pass_service_fee: pricing.pass_service_fee,
+      };
+      const stripeRegion = ["GB", "US", "EU", "CH"].includes(
+          (pricing.pricing_region ?? "").trim().toUpperCase(),
+        )
+        ? (pricing.pricing_region!.trim().toUpperCase() as PricingRegion)
+        : "GB";
+      const region: PricingRegion = provider.provider === "paystack"
+        ? "NG"
+        : stripeRegion;
+      const allInInput: ComputeAllInInput = {
+        baseCents: dueTodayNetCents,
+        switches,
+        region,
+        currency,
+        effectiveTakeRateBps: pricing.effective_take_rate_bps,
+        takeRateSource: pricing.take_rate_source,
+        serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
+      };
+      const subtotal = computeBuyerSubtotal(allInInput);
+      let taxCents: number | null = quoteMode && surface !== "native"
+        ? null
+        : 0;
+      let buyerTotalCents = subtotal.buyerSubtotalCents;
+      let calculationId: string | null = null;
+
+      if (provider.provider === "paystack") {
+        const configuredVat = computeConfigVat(
+          subtotal.buyerSubtotalCents,
+          pricing.vat_rate_bps ?? 0,
+          switches.pass_tax,
+        );
+        taxCents = configuredVat.taxCents;
+        buyerTotalCents = configuredVat.buyerTotalCents;
+      } else if (
+        surface === "native" && dueTodayNetCents > 0 && switches.pass_tax &&
+        pricing.venue_tax_address !== null &&
+        pricing.stripe_account_id !== null &&
+        ["GB", "US", "EU", "CH"].includes(
+          (pricing.pricing_region ?? "").trim().toUpperCase(),
+        )
+      ) {
+        try {
+          const stripe = stripeTicketCheckout();
+          // @ts-ignore -- Stripe Tax is supplied by the runtime SDK.
+          const registrations = await stripe.tax.registrations.list(
+            { status: "active" },
+            { stripeAccount: pricing.stripe_account_id },
+          );
+          if (
+            Array.isArray(registrations?.data) && registrations.data.length > 0
+          ) {
+            const behavior = taxBehaviorForRegion(region);
+            // @ts-ignore -- Stripe Tax is supplied by the runtime SDK.
+            const calculation = await stripe.tax.calculations.create(
+              {
+                currency: currency.toLowerCase(),
+                line_items: [{
+                  amount: subtotal.buyerSubtotalCents,
+                  reference: eventId.slice(0, 500),
+                  tax_code: "txcd_50010001",
+                  tax_behavior: behavior,
+                }],
+                customer_details: {
+                  // deno-lint-ignore no-explicit-any
+                  address: pricing.venue_tax_address as any,
+                  address_source: "billing" as const,
+                },
+              },
+              { stripeAccount: pricing.stripe_account_id },
+            );
+            buyerTotalCents = Number(
+              calculation.amount_total ?? subtotal.buyerSubtotalCents,
+            );
+            taxCents = behavior === "inclusive"
+              ? buyerTotalCents - Math.round(
+                buyerTotalCents / inclusiveVatDivisorForRegion(region),
+              )
+              : Math.max(0, buyerTotalCents - subtotal.buyerSubtotalCents);
+            calculationId = String(calculation.id ?? "") || null;
+          }
+        } catch (error) {
+          console.warn("[ticket-checkout-create] quote tax degraded", {
+            error,
+          });
+          taxCents = 0;
+          buyerTotalCents = subtotal.buyerSubtotalCents;
+          calculationId = null;
+        }
+      }
+
+      return {
+        kind: "quote",
+        ...quote,
+        currency,
+        feesCents: subtotal.buyerSubtotalCents - dueTodayNetCents,
+        taxCents,
+        buyerTotalCents,
+        calculationId,
+        subtotalCents: dueTodayNetCents,
+        totalCents: buyerTotalCents,
+      };
+    };
+
+    // Preview is now an alias of quote. This branch precedes intake, plan
+    // capability, session, inventory and every payment-provider create call.
+    if (quoteMode) {
+      try {
+        const quote = await loadTicketQuote();
+        await recordUnknownDiscountAttempt(quote);
+        return jsonResponse(await buildTicketQuoteEnvelope(quote));
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        if (detail.includes("discount_code_invalid")) {
+          return jsonResponse(
+            { error: "invalid_request", detail: "discount_code_invalid" },
+            400,
+          );
+        }
+        return jsonResponse({ error: "checkout_quote_failed", detail }, 409);
+      }
+    }
+
+    const checkoutReviewResponse = async (
+      fixedDetail?: "lines" | "fingerprint" | "discount_code_invalid",
+    ): Promise<Response> => {
+      let freshQuote: Record<string, unknown> | null = null;
+      try {
+        freshQuote = await buildTicketQuoteEnvelope(await loadTicketQuote());
+      } catch {
+        // Invalid event/line inputs intentionally return quote:null.
+      }
+      const detail = fixedDetail ??
+        (quoteListDigest !== null &&
+            freshQuote?.quoteListDigest === quoteListDigest
+          ? "discount_changed"
+          : "price_changed");
+      return await refuse({
+        error: "checkout_review_required",
+        detail,
+        quote: freshQuote,
+      }, 409);
+    };
+
     // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake gate.
     // I-PROPOSED-TR5-INTAKE-REQUIRED-BLOCKS-CHECKOUT (DRAFT) — for each tier
     // in the buyer's cart, look up trip_intake_schemas. If a tier has schema
@@ -1465,10 +1792,9 @@ export const createTicketCheckoutCreateHandler = (
     // Trip-only effect; single-event flow unchanged (no event-side intake forms).
     let canonicalIntakeFormData: unknown[] = [];
     const intakeBody = Array.isArray(body.intake_form_data)
-        ? (body.intake_form_data as Array<Record<string, unknown>>)
-        : [];
+      ? (body.intake_form_data as Array<Record<string, unknown>>)
+      : [];
     if (tripGateRow?.event_type === "trip") {
-
       // Pull schemas for every ticket_type_id present in the cart.
       const ticketTypeIds = Array.from(
         new Set(lines.map((line) => line.ticketTypeId)),
@@ -1666,6 +1992,7 @@ export const createTicketCheckoutCreateHandler = (
         // issue #3281 R2 — end + party. Absent => string-identical to start-only.
         bookedEndAt,
         partySize,
+        discountCode,
       });
     const buyerStatusToken = randomBuyerStatusToken();
 
@@ -1678,18 +2005,6 @@ export const createTicketCheckoutCreateHandler = (
         },
       )
       : { data: null, error: null };
-    let ticketLinkHash: string | null = null;
-    if (ticketLinkToken !== null) {
-      try {
-        const pepper = await resolveOfferingInviteTokenPepper();
-        ticketLinkHash = await hashTicketLinkToken(
-          ticketLinkToken,
-          pepper.bytes,
-        );
-      } catch {
-        return jsonResponse({ error: "ticket_link_not_active" }, 409);
-      }
-    }
     const ticketLinkSessionCall = resolvedAttempt.error === null &&
         resolvedAttempt.data === null && ticketLinkHash !== null
       ? await supabase.rpc(
@@ -1715,6 +2030,8 @@ export const createTicketCheckoutCreateHandler = (
           p_booked_start_at: bookedStartAt,
           p_booked_end_at: bookedEndAt,
           p_booked_party_size: partySize,
+          p_discount_code: discountCode,
+          p_expected_quote_digest: quoteDigest,
         },
       )
       : null;
@@ -1756,6 +2073,8 @@ export const createTicketCheckoutCreateHandler = (
           // issue #3281 R2 — block end + group party (null = legacy person path).
           p_booked_end_at: bookedEndAt,
           p_booked_party_size: partySize,
+          p_discount_code: discountCode,
+          p_expected_quote_digest: quoteDigest,
       },
       );
     const sessionResult: unknown = sessionCall.data;
@@ -1766,6 +2085,12 @@ export const createTicketCheckoutCreateHandler = (
         "[ticket-checkout-create] session RPC failed",
         sessionError,
       );
+      if (sessionError?.message?.includes("checkout_quote_changed")) {
+        return await checkoutReviewResponse();
+      }
+      if (sessionError?.message?.includes("discount_code_invalid")) {
+        return await checkoutReviewResponse("discount_code_invalid");
+      }
       // ═══ issue #2579 — RECORD THE REFUSAL, BECAUSE NOTHING ELSE DOES ═══
       //
       // The RPC refuses by RAISE, which rolls its transaction back, so no
@@ -1789,8 +2114,8 @@ export const createTicketCheckoutCreateHandler = (
       });
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         {
-        return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
-      }
+          return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+        }
       }
       if (
         sessionError?.message?.includes(
@@ -1813,7 +2138,14 @@ export const createTicketCheckoutCreateHandler = (
         return jsonResponse({ error: "event_date_choice_required" }, 422);
       }
       if (
-        ["link_not_found", "link_revoked", "link_expired", "event_unavailable", "event_ended", "tier_unavailable"]
+        [
+          "link_not_found",
+          "link_revoked",
+          "link_expired",
+          "event_unavailable",
+          "event_ended",
+          "tier_unavailable",
+        ]
           .some((token) => sessionError?.message?.includes(token))
       ) {
         return jsonResponse({ error: "ticket_link_not_active" }, 409);
@@ -1894,8 +2226,69 @@ export const createTicketCheckoutCreateHandler = (
     }
 
     let session = sessionResult as Record<string, unknown>;
+    await recordUnknownDiscountAttempt(session);
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
     let checkoutV2Fingerprint: string | null = null;
+    let checkoutListSubtotalCents = Number(
+      session.listSubtotalCents ?? session.totalCents ?? 0,
+    );
+    const checkoutDiscounts: Array<{
+      id: string;
+      kind: string;
+      name: string;
+      code: string | null;
+      amountCents: number;
+    }> = [];
+    const discountById = new Map<string, typeof checkoutDiscounts[number]>();
+    const collectDiscount = (entry: Record<string, unknown>): void => {
+      const id = String(entry.discountId ?? entry.id ?? "");
+      if (id.length === 0) return;
+      const amount = Number(
+        entry.amountMinor ?? entry.amountCents ?? entry.lineMinor ?? 0,
+      );
+      const prior = discountById.get(id);
+      if (prior) {
+        prior.amountCents += Number.isFinite(amount) ? amount : 0;
+        return;
+      }
+      const normalized = {
+        id,
+        kind: String(entry.kind ?? "automatic"),
+        name: String(entry.name ?? "Discount"),
+        code: typeof entry.code === "string" ? entry.code : null,
+        amountCents: Number.isFinite(amount) ? amount : 0,
+      };
+      discountById.set(id, normalized);
+      checkoutDiscounts.push(normalized);
+    };
+    if (Array.isArray(session.discounts)) {
+      for (const entry of session.discounts) {
+        if (entry && typeof entry === "object") {
+          collectDiscount(entry as Record<string, unknown>);
+        }
+      }
+    } else {
+      const storedItems = Array.isArray(session.lineItems)
+        ? session.lineItems
+        : Array.isArray(session.items)
+        ? session.items
+        : [];
+      for (const item of storedItems) {
+        if (!item || typeof item !== "object") continue;
+        const applied = (item as Record<string, unknown>).applied;
+        if (!Array.isArray(applied)) continue;
+        for (const entry of applied) {
+          if (entry && typeof entry === "object") {
+            collectDiscount(entry as Record<string, unknown>);
+          }
+        }
+      }
+    }
+    const checkoutDiscountIds = checkoutDiscounts.map((entry) => entry.id);
+    const checkoutDiscountMetadata = checkoutDiscountIds.join(",").slice(
+      0,
+      500,
+    );
 
     if (intakeBody.length > 0) {
       const intakeUploadSessionId = resolveIntakeUploadSessionId(
@@ -1917,7 +2310,11 @@ export const createTicketCheckoutCreateHandler = (
       if (attached.error !== null || !Array.isArray(attached.data)) {
         const stale = attached.error?.message?.includes("intake_schema_stale");
         return jsonResponse(
-          { error: stale ? "intake_schema_stale" : "intake_upload_claim_invalid" },
+          {
+            error: stale
+              ? "intake_schema_stale"
+              : "intake_upload_claim_invalid",
+          },
           409,
         );
       }
@@ -1942,6 +2339,9 @@ export const createTicketCheckoutCreateHandler = (
           ticketTypeId,
           quantity: Number(item.quantity),
           unitPriceCents: Number(item.unitPriceCents),
+          listUnitPriceCents: Number(
+            item.listUnitPriceCents ?? item.unitPriceCents,
+          ),
           totalCents: Number(item.totalCents),
           paymentPlanChoice: requested?.paymentPlanChoice ?? "full" as const,
           requestedQuantity: requested?.quantity,
@@ -1957,7 +2357,7 @@ export const createTicketCheckoutCreateHandler = (
           line.totalCents === line.unitPriceCents * line.quantity
         );
       if (!canonicalLineSetIsExact) {
-        return refuse({ error: "checkout_review_required" }, 409);
+        return await checkoutReviewResponse("lines");
       }
 
       const { data: contractSessionRow, error: contractSessionError } =
@@ -1999,6 +2399,24 @@ export const createTicketCheckoutCreateHandler = (
       if (computedPlan.hasInstallments && computedPlan.dueTodayCents <= 0) {
         return refuse({ error: "installment_deposit_invalid" }, 409);
       }
+      try {
+        const listPlan = computeMultiLineInstallmentPlan({
+          bookedAt: new Date(contractSessionRow.created_at),
+          lines: canonicalLines.map((line) => ({
+            ticketTypeId: line.ticketTypeId,
+            lineTotalCents: line.listUnitPriceCents * line.quantity,
+            paymentPlanChoice: line.paymentPlanChoice,
+            template: tierByTicketType.get(line.ticketTypeId)?.installments ??
+              null,
+          })),
+        });
+        checkoutListSubtotalCents = listPlan.dueTodayCents;
+      } catch (error) {
+        if (error instanceof MultiLineInstallmentError) {
+          return refuse({ error: error.code }, 409);
+        }
+        throw error;
+      }
 
       const fullPriceCents = canonicalLines.reduce(
         (sum, line) => sum + line.totalCents,
@@ -2034,6 +2452,7 @@ export const createTicketCheckoutCreateHandler = (
           bookedStartAt,
           bookedEndAt,
           partySize,
+          discountCode,
           intakeFormData: canonicalIntakeFormData,
           quote: {
             currency,
@@ -2064,7 +2483,7 @@ export const createTicketCheckoutCreateHandler = (
           detail.includes("checkout_fingerprint_conflict") ||
           detail.includes("checkout_lines_conflict")
         ) {
-          return refuse({ error: "checkout_review_required" }, 409);
+          return await checkoutReviewResponse("fingerprint");
         }
         return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
       }
@@ -2073,6 +2492,7 @@ export const createTicketCheckoutCreateHandler = (
         ...session,
         totalCents: bound.totalCents,
         subtotalCents: bound.totalCents,
+        listSubtotalCents: checkoutListSubtotalCents,
         installmentSchedule: bound.installmentSchedule,
       };
     }
@@ -2112,7 +2532,9 @@ export const createTicketCheckoutCreateHandler = (
           p_device_token_hash: queueDeviceTokenHash,
         },
       );
-      const joinMsg = typeof joinErr?.message === "string" ? joinErr.message : "";
+      const joinMsg = typeof joinErr?.message === "string"
+        ? joinErr.message
+        : "";
       const joinPastQueue = joinMsg.includes(
         "issue_2947_session_not_queued_hold",
       );
@@ -2372,7 +2794,8 @@ export const createTicketCheckoutCreateHandler = (
           : {};
       sessionUpdate.metadata = {
         ...existingMeta,
-        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ?? {}),
+        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ??
+          {}),
         event_date_id: anchorEventDateId,
         event_date_ids: orderedEventDateIds,
       };
@@ -2441,7 +2864,9 @@ export const createTicketCheckoutCreateHandler = (
       trackingOptOut: body.ad_tracking_opt_out === true,
       clientIpAddress: checkoutClientIp(req),
       clientUserAgent: req.headers.get("user-agent") ??
-        (typeof body.client_user_agent === "string" ? body.client_user_agent : null),
+        (typeof body.client_user_agent === "string"
+          ? body.client_user_agent
+          : null),
     });
     scheduleCheckoutAdStart(
       fireAdCheckoutStart(supabase as never, checkoutSessionId),
@@ -2545,22 +2970,30 @@ export const createTicketCheckoutCreateHandler = (
         await persistTicketSessionMoneyTruth(
           supabase,
           checkoutSessionId,
-          freeCheckoutBreakdown({
-            region: freeRegion,
-            currency: String(
-              freePricing?.pricing_currency ?? session.currency ?? "",
-            ).toLowerCase(),
-            switches: {
-              pass_tax: freePricing?.pass_tax === true,
-              pass_mingla_fee: freePricing?.pass_mingla_fee === true,
-              pass_service_fee: freePricing?.pass_service_fee === true,
+          withDiscounts(
+            freeCheckoutBreakdown({
+              region: freeRegion,
+              currency: String(
+                freePricing?.pricing_currency ?? session.currency ?? "",
+              ).toLowerCase(),
+              switches: {
+                pass_tax: freePricing?.pass_tax === true,
+                pass_mingla_fee: freePricing?.pass_mingla_fee === true,
+                pass_service_fee: freePricing?.pass_service_fee === true,
+              },
+              effectiveTakeRateBps: Number(
+                freePricing?.effective_take_rate_bps ?? 0,
+              ),
+              takeRateSource: freePricing?.take_rate_source ??
+                "platform_default",
+            }),
+            {
+              listSubtotalCents: checkoutListSubtotalCents,
+              discounts: checkoutDiscounts,
             },
-            effectiveTakeRateBps: Number(
-              freePricing?.effective_take_rate_bps ?? 0,
-            ),
-            takeRateSource: freePricing?.take_rate_source ??
-              "platform_default",
-          }),
+          ),
+          undefined,
+          checkoutListSubtotalCents,
         );
       }
       const { data: finalized, error: finalizeError } = await supabase.rpc(
@@ -2801,16 +3234,16 @@ export const createTicketCheckoutCreateHandler = (
       // = orderId.
       if (finalizedRecord.replayed !== true) {
         void fireAdConversion(supabase as never, { orderId, surface: "web" })
-        .catch(
-          (adConvErr) => {
-            console.warn(
-              "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
-              adConvErr instanceof Error
-                ? adConvErr.message
-                : String(adConvErr),
-            );
-          },
-        );
+          .catch(
+            (adConvErr) => {
+              console.warn(
+                "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
+                adConvErr instanceof Error
+                  ? adConvErr.message
+                  : String(adConvErr),
+              );
+            },
+          );
         // #3682 — free RSVP auto-follow from the persisted session buyer, not
         // the request auth uid (idempotency can reuse another session).
         void (async () => {
@@ -2955,13 +3388,19 @@ export const createTicketCheckoutCreateHandler = (
           pricing.vat_rate_bps ?? 0,
           psSwitches.pass_tax,
         );
-      const psBreakdown: PricingBreakdown = buildPricingBreakdown({
-        input: psEngineInput,
-        amountTotalCents: psBuyerTotalCents,
-        taxCents: psTaxCents,
-        taxBasis: "config_vat",
-        stripeTaxCalculationId: null,
-      });
+      const psBreakdown: PricingBreakdown = withDiscounts(
+        buildPricingBreakdown({
+          input: psEngineInput,
+          amountTotalCents: psBuyerTotalCents,
+          taxCents: psTaxCents,
+          taxBasis: "config_vat",
+          stripeTaxCalculationId: null,
+        }),
+        {
+          listSubtotalCents: checkoutListSubtotalCents,
+          discounts: checkoutDiscounts,
+        },
+      );
       // #3645 flat 4.5%: application fee = take-rate + service fee (engine).
       const psApplicationFeeCents = psBreakdown.application_fee_amount_cents;
 
@@ -3031,6 +3470,8 @@ export const createTicketCheckoutCreateHandler = (
         supabase,
         checkoutSessionId,
         psBreakdown,
+        undefined,
+        checkoutListSubtotalCents,
       );
 
       // Callback the in-app browser intercepts. The buyer never parses payment
@@ -3102,6 +3543,9 @@ export const createTicketCheckoutCreateHandler = (
             mingla_checkout_session_id: checkoutSessionId,
             mingla_event_id: eventId,
             mingla_buyer_email: buyerEmail,
+            ...(checkoutDiscountMetadata.length > 0
+              ? { mingla_discount_ids: checkoutDiscountMetadata }
+              : {}),
             // issue #2160 — how many days this reservation covers. Omitted for
             // every one-day reservation → byte-identical Paystack metadata.
             ...(orderedEventDateIds.length > 1
@@ -3349,8 +3793,8 @@ export const createTicketCheckoutCreateHandler = (
     // https://docs.stripe.com/connect/direct-charges#collect-fees
     // Integer basis-point math (no float; invariant I-PROPOSED-TAKE-RATE-BPS-INTEGER).
     // Omitted from the Stripe body when it rounds to zero (existing >0 guard kept).
-    const applicationFeeAmountCents =
-      buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
+    // deno-fmt-ignore -- ORCH-0843 audits this exact take-rate + service-fee expression.
+    const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
 
     // ORCH-0843 — persist the computed fee on the session row so the refund
     // flow (refund-order) can read it back via biz_refund_order and decide
@@ -3449,14 +3893,23 @@ export const createTicketCheckoutCreateHandler = (
       // breakdown and explicit totals from that SAME variable before the
       // provider call; Stripe's automatic tax (if any) is reconciled from the
       // paid Checkout Session in the webhook.
-      const hostedBreakdown = hostedCheckoutBreakdown(
+      const hostedBreakdownWithoutDiscounts = hostedCheckoutBreakdown(
         engineInput,
         buyerSubtotal.buyerSubtotalCents,
+      );
+      const hostedBreakdown = withDiscounts(
+        hostedBreakdownWithoutDiscounts,
+        {
+          listSubtotalCents: checkoutListSubtotalCents,
+          discounts: checkoutDiscounts,
+        },
       );
       await persistTicketSessionMoneyTruth(
         supabase,
         checkoutSessionId,
         hostedBreakdown,
+        undefined,
+        checkoutListSubtotalCents,
       );
 
       let stripeWeb: ReturnType<typeof stripeTicketCheckout>;
@@ -3521,6 +3974,9 @@ export const createTicketCheckoutCreateHandler = (
             mingla_checkout_session_id: checkoutSessionId,
             mingla_event_id: eventId,
             mingla_buyer_email: buyerEmail,
+            ...(checkoutDiscountMetadata.length > 0
+              ? { mingla_discount_ids: checkoutDiscountMetadata }
+              : {}),
             // ORCH-0869 [Tr3 Installment Payments]: mark deposit PI as
             // installment-plan-root so finalize RPC (Stage 1b) can write the
             // installment_plan_root=true flag on the orders row + create
@@ -3573,7 +4029,23 @@ export const createTicketCheckoutCreateHandler = (
                     // the correct basis. (OQ-1: corrects the dispatch's shorthand
                     // "bill buyer_total_cents" for the WEB hosted-Checkout path.)
                     unit_amount: buyerSubtotal.buyerSubtotalCents,
-                    product_data: { name: `Tickets — ${eventName}` },
+                    product_data: {
+                      name: `Tickets — ${eventName}`,
+                      ...(checkoutListSubtotalCents > totalCents
+                        ? {
+                          description: `Includes ${
+                            checkoutDiscounts.map((entry) => entry.name).join(
+                              ", ",
+                            )
+                          } (−${
+                            formatMoneyCents(
+                              checkoutListSubtotalCents - totalCents,
+                              currency,
+                            )
+                          })`,
+                        }
+                        : {}),
+                    },
                   },
                   quantity: 1,
                 },
@@ -3616,6 +4088,9 @@ export const createTicketCheckoutCreateHandler = (
               metadata: {
                 mingla_checkout_session_id: checkoutSessionId,
                 mingla_event_id: eventId,
+                ...(checkoutDiscountMetadata.length > 0
+                  ? { mingla_discount_ids: checkoutDiscountMetadata }
+                  : {}),
               },
             },
             {
@@ -4043,15 +4518,21 @@ export const createTicketCheckoutCreateHandler = (
       taxCents = Math.max(0, taxCalculation.amount_total - taxAmountCents);
     }
 
-    const pricingBreakdown: PricingBreakdown = buildPricingBreakdown({
-      input: engineInput,
-      amountTotalCents: taxCalculation.amount_total,
-      taxCents,
-      taxBasis,
-      stripeTaxCalculationId: taxCalculation.id.length > 0
-        ? taxCalculation.id
-        : null,
-    });
+    const pricingBreakdown: PricingBreakdown = withDiscounts(
+      buildPricingBreakdown({
+        input: engineInput,
+        amountTotalCents: taxCalculation.amount_total,
+        taxCents,
+        taxBasis,
+        stripeTaxCalculationId: taxCalculation.id.length > 0
+          ? taxCalculation.id
+          : null,
+      }),
+      {
+        listSubtotalCents: checkoutListSubtotalCents,
+        discounts: checkoutDiscounts,
+      },
+    );
 
     await supabase
       .from("ticket_checkout_sessions")
@@ -4075,24 +4556,9 @@ export const createTicketCheckoutCreateHandler = (
       supabase,
       checkoutSessionId,
       pricingBreakdown,
+      undefined,
+      checkoutListSubtotalCents,
     );
-
-    if (mode === "preview") {
-      return jsonResponse({
-        kind: "preview",
-        checkoutSessionId,
-        subtotalCents: totalCents,
-        taxCents,
-        totalCents: pricingBreakdown.buyer_total_cents,
-        // ORCH-1034 — settlement (charge) currency, not the legacy GBP-fallback.
-        currency: currency.toUpperCase(),
-        taxBreakdown: taxCalculation.tax_breakdown,
-        calculationId: taxCalculation.id.length > 0 ? taxCalculation.id : null,
-        calculationExpiresAt: null,
-        // ORCH-1006 §C.4 — the all-in breakdown feeds WYSIWYP (no buyer address).
-        pricingBreakdown,
-      });
-    }
 
     let paymentIntent: {
       id: string;
@@ -4145,6 +4611,9 @@ export const createTicketCheckoutCreateHandler = (
           mingla_event_id: eventId,
           mingla_buyer_email: buyerEmail,
           mingla_tax_calculation_id: taxCalculation.id,
+          ...(checkoutDiscountMetadata.length > 0
+            ? { mingla_discount_ids: checkoutDiscountMetadata }
+            : {}),
           // ORCH-0869: deposit PI marker for finalize RPC discrimination.
           ...(isInstallmentPlan
             ? { mingla_installment_plan_root: "true" }
@@ -4166,7 +4635,9 @@ export const createTicketCheckoutCreateHandler = (
             ? {
               mingla_event_date_id: anchorEventDateId,
               ...(orderedEventDateIds.length > 1
-                ? { mingla_event_date_count: String(orderedEventDateIds.length) }
+                ? {
+                  mingla_event_date_count: String(orderedEventDateIds.length),
+                }
                 : {}),
             }
             : {}),

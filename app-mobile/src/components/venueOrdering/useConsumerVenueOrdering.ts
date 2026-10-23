@@ -59,6 +59,7 @@ import {
 } from "../../services/venueOrderingService";
 import { buildApplePayCartItems } from "../../payments/applePayCartItem";
 import { presentVenueOrderPayment } from "./venueOrderPaymentPresentation";
+import { postHogService } from "../../services/postHogService";
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
 const MERCHANT_IDENTIFIER = "merchant.com.mingla.app.v2";
@@ -99,6 +100,8 @@ export interface ConsumerVenueOrdering {
   preview: VenueOrderPreview | null;
   previewStatus: "idle" | "loading" | "ready" | "error";
   previewError: string | null;
+  discountCode?: string;
+  setDiscountCode?: (code: string) => void;
   submitting: boolean;
   submitError: string | null;
   submit: () => void;
@@ -196,6 +199,7 @@ export function useConsumerVenueOrdering(
     rememberedTip: sitting?.tip ?? null,
     initialBuyer: { name: sitting?.buyerName ?? "" },
   });
+  const [discountCode, setDiscountCode] = useState("");
 
   // ── the request. ONE shape, priced by the server and charged by the server.
   const request: VenueOrderRequest = useMemo(
@@ -209,6 +213,7 @@ export function useConsumerVenueOrdering(
       tipBps: cart.state.tip.bps,
       tipFlatCents: cart.state.tip.flatCents,
       entrySource: input.entrySource,
+      discountCode: discountCode.trim().length > 0 ? discountCode.trim() : null,
     }),
     [
       cart.state.buyer,
@@ -218,6 +223,7 @@ export function useConsumerVenueOrdering(
       cart.state.tip.flatCents,
       config.spotState,
       config.venueId,
+      discountCode,
       input.entrySource,
       input.spotCode,
       sitting?.sessionId,
@@ -246,12 +252,14 @@ export function useConsumerVenueOrdering(
         tip: cart.state.tip,
         spot: config.spotState === "ok" ? input.spotCode : null,
         venue: config.venueId,
+        discountCode: discountCode.trim().toUpperCase(),
       }),
     [
       cart.state.lines,
       cart.state.tip,
       config.spotState,
       config.venueId,
+      discountCode,
       input.spotCode,
     ],
   );
@@ -277,6 +285,33 @@ export function useConsumerVenueOrdering(
           : previewQuery.data !== undefined
             ? "ready"
             : "loading";
+  const discountAnalyticsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const preview = previewQuery.data;
+    if (preview === undefined || previewStatus !== "ready") return;
+    const digest = preview.quoteDigest ?? priceSignature;
+    const captureOnce = (event: string, suffix: string, properties: Readonly<Record<string, string | number>>): void => {
+      const key = `${digest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      postHogService.capture(event, properties);
+    };
+    if (preview.codeOutcome.supplied && preview.codeOutcome.applied) {
+      captureOnce("discount_code_applied", "code", { surface: "explorer_venue" });
+    } else if (preview.codeOutcome.supplied && preview.codeOutcome.reason !== null) {
+      captureOnce("discount_code_rejected", preview.codeOutcome.reason, {
+        reason: preview.codeOutcome.reason,
+        surface: "explorer_venue",
+      });
+    }
+    const automaticCount = preview.discounts.filter((row) => row.kind === "automatic").length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "explorer_venue",
+      });
+    }
+  }, [previewQuery.data, previewStatus, priceSignature]);
 
   // ── the live order ────────────────────────────────────────────────────────
   const [live, setLive] = useState<VenueOrderLiveStatus | null>(null);
@@ -373,7 +408,10 @@ export function useConsumerVenueOrdering(
     void (async () => {
       try {
         const created = await createVenueOrder(
-          request,
+          {
+            ...request,
+            quoteDigest: previewQuery.data?.quoteDigest ?? null,
+          },
           idempotencyKeyFor(priceSignature),
         );
         if (created.kind === "already_created") {
@@ -526,6 +564,7 @@ export function useConsumerVenueOrdering(
     presentPaymentSheet,
     priceSignature,
     request,
+    previewQuery.data?.quoteDigest,
     sitting?.buyerStatusToken,
     submitting,
   ]);
@@ -606,6 +645,8 @@ export function useConsumerVenueOrdering(
         : previewQuery.isError
           ? "We couldn't price that order. Nothing has been charged."
           : null,
+    discountCode,
+    setDiscountCode,
     submitting,
     submitError,
     submit,

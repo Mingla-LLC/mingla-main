@@ -50,6 +50,9 @@ export type BusinessNotificationType =
   | "business.payout_waiting_for_bank"
   | "business.payouts_paused"
   | "business.payouts_resumed"
+  | "business.discount_limit_80"
+  | "business.discount_ended"
+  | "business.discount_needs_attention"
   | "business.account_status_changed"
   | "business.new_review"
   | "business.claim_decision"
@@ -295,6 +298,45 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     severity: "info",
     family: "money",
     icon: "bank",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.discount_limit_80": {
+    type: "business.discount_limit_80",
+    pushTitle: "Discount almost used up",
+    pushBody: "{name} has {left} left.",
+    inAppTitle: "Discount almost used up",
+    inAppBody: "{name} has {left} left.",
+    severity: "info",
+    family: "money",
+    icon: "tag",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.discount_ended": {
+    type: "business.discount_ended",
+    pushTitle: "Discount ended",
+    pushBody: "{name} has ended ({reason}).",
+    inAppTitle: "Discount ended",
+    inAppBody: "{name} has ended ({reason}).",
+    severity: "info",
+    family: "money",
+    icon: "tag",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.discount_needs_attention": {
+    type: "business.discount_needs_attention",
+    pushTitle: "A discount needs attention",
+    pushBody: "{name} {reason}. Open Discounts to fix it.",
+    inAppTitle: "A discount needs attention",
+    inAppBody: "{name} {reason}. Open Discounts to fix it.",
+    severity: "warning",
+    family: "money",
+    icon: "tag",
     masterCategory: "paymentsTrust",
     defaultPush: true,
     defaultInApp: true,
@@ -557,4 +599,7 @@ const FALLBACK_LITERALS: Readonly<Record<string, string>> = {
   memberName: "A new teammate",
   role: "a teammate",
   status: "updated",
+  name: "A discount",
+  left: "a few",
+  reason: "its limit was reached",
 };

@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "6db9fd1a9e499900a30ad5e313d01daf1da816ae346531cf5f51b3b9f23126f4",
-      "value": "7164bcaa0054358e7e790fc27cf9d649193663efebd3493ab74f5f170808d7b8"
+      "value": "2a78462d7a8b56bc6d5f734b9e80aadec2af592655ec470a2bece67e77033a70"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3040 scopes the #2262 zero-dependency step to changes that touch composer-owned files, without changing triggers, path scope, jobs or execution topology."
+  "reason": "Issue #3040 scopes the #2262 zero-dependency step to composer-owned changes; issue #3872 keeps that topology while comparing dependency sections rather than rejecting an unrelated scripts-only manifest edit."
 }

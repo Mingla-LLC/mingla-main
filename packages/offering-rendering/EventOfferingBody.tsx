@@ -56,6 +56,7 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
+  findNodeHandle,
   Image,
   LayoutAnimation,
   Platform,
@@ -131,7 +132,10 @@ import { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 // #3284 — section 9: the shared refund ladder + the three-state read it is gated on.
 // #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
 // import ./OfferingRefundLadder statically here.
-import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
+import {
+  LazyOfferingRefundLadder as OfferingRefundLadder,
+  LazySaleAvailabilityText,
+} from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
 
 // Re-export the pure totals so a single import surface stays one place.
@@ -170,7 +174,7 @@ export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
   const copy = eventAcquisitionNoticeCopy(state, eventType, brandName);
   const surface = offeringSurfaceStyles(palette);
   const noticeId = `issue-1902-${eventType}-acquisition-notice`;
-  const nativeNoticeHandleRef = useRef<number | null>(null);
+  const nativeNoticeRef = useRef<View | null>(null);
   const statusProps: WebStatusProps | NativeStatusProps =
     Platform.OS === "web"
       ? {
@@ -187,17 +191,15 @@ export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
     if (Platform.OS === "web" && typeof document !== "undefined") {
       document.getElementById(noticeId)?.focus();
     } else {
-      const handle = nativeNoticeHandleRef.current;
+      const handle = findNodeHandle(nativeNoticeRef.current);
       if (handle !== null) AccessibilityInfo?.setAccessibilityFocus?.(handle);
     }
     AccessibilityInfo?.announceForAccessibility?.(copy.announcement);
   }, [copy.announcement, focusOnMount, noticeId]);
   return (
     <View
+      {...{ ref: nativeNoticeRef }}
       nativeID={noticeId}
-      onLayout={(event: LayoutChangeEvent) => {
-        nativeNoticeHandleRef.current = event.target;
-      }}
       accessible
       accessibilityLabel={copy.announcement}
       {...statusProps}
@@ -264,12 +266,22 @@ const formatTicketPrice = (
   fallbackCurrency: string | null,
 ): string => {
   if (ticket.isFree) return "Free";
-  const price = ticket.priceAllInGbp ?? ticket.priceGbp;
+  const price = ticket.saleAllInGbp ?? ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return "—";
   // issue #1014 — a 0-priced ticket renders "Free" even without the isFree
   // flag (price is truth; NULL-currency events only carry 0-priced tickets).
   if (price === 0) return "Free";
   return formatMoney(price, ticket.currency ?? fallbackCurrency);
+};
+
+const formatTicketListPrice = (
+  ticket: PublicTicketProps,
+  fallbackCurrency: string | null,
+): string | null => {
+  if (ticket.saleAllInGbp == null) return null;
+  const list = ticket.priceAllInGbp ?? ticket.priceGbp;
+  if (list == null || list <= ticket.saleAllInGbp) return null;
+  return formatMoney(list, ticket.currency ?? fallbackCurrency);
 };
 
 const sortTickets = (tickets: PublicTicketProps[]): PublicTicketProps[] =>
@@ -540,7 +552,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
     eventIsPaid &&
     (refundReadStatus === "set" || refundReadStatus === "none");
   const refundHost =
-    refundHostName !== undefined ? refundHostName : (brand?.displayName ?? null);
+    refundHostName !== undefined
+      ? refundHostName
+      : (brand?.displayName ?? null);
 
   // ORCH-1167-R2 — the inline-box CTA/total math moved INTO <EventTicketBox> (the
   // shared box now used both inline on phone/native AND in the desktop sticky
@@ -728,7 +742,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             }
             style={styles.brandRow}
           >
-            <View style={[styles.brandTile, { backgroundColor: palette.accent }]}>
+            <View
+              style={[styles.brandTile, { backgroundColor: palette.accent }]}
+            >
               {brand?.photo !== undefined && brand.photo.length > 0 ? (
                 <Image
                   source={{ uri: brand.photo }}
@@ -750,7 +766,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               )}
             </View>
             <View style={styles.brandTextCol}>
-              <Text style={[styles.brandKicker, { color: palette.secondaryText }]}>
+              <Text
+                style={[styles.brandKicker, { color: palette.secondaryText }]}
+              >
                 Presented by
               </Text>
               <Text
@@ -1124,11 +1142,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               Total
             </Text>
             <Text
-              style={[
-                styles.totalValue,
-                surface.primaryText,
-                styles.moneyText,
-              ]}
+              style={[styles.totalValue, surface.primaryText, styles.moneyText]}
               testID="orch-1167-running-total"
               accessibilityLiveRegion="polite"
             >
@@ -1380,6 +1394,7 @@ const TicketStepperRow: React.FC<{
           : null;
 
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
+  const listPriceLabel = formatTicketListPrice(ticket, fallbackCurrency);
   // issue #2160 — explicitly typed so the render below never does a property
   // access on an un-inferable prop. See the comment at the render site.
   const pricingNoteText: string =
@@ -1390,7 +1405,6 @@ const TicketStepperRow: React.FC<{
   const canDecrement = quantity > 0;
 
   const capacityLabel = ticketAvailabilityCaption(ticket, hideRemainingCount);
-
   return (
     <View
       style={[
@@ -1417,16 +1431,27 @@ const TicketStepperRow: React.FC<{
         <Text style={[styles.tierCap, surface.tertiaryText]}>
           {stateWord ?? capacityLabel}
         </Text>
+        <LazySaleAvailabilityText
+          active={listPriceLabel !== null}
+          remaining={ticket.saleRemaining}
+          endsAt={ticket.saleEndsAt}
+          style={[styles.saleAvailability, { color: palette.accent }]}
+        />
       </View>
 
       <View style={styles.stepperRight}>
-        <Text
-          style={[
-            styles.tierPrice,
-            surface.primaryText,
-            styles.moneyText,
-          ]}
-        >
+        {listPriceLabel !== null ? (
+          <Text
+            style={[
+              styles.tierListPrice,
+              surface.tertiaryText,
+              styles.moneyText,
+            ]}
+          >
+            {listPriceLabel}
+          </Text>
+        ) : null}
+        <Text style={[styles.tierPrice, surface.primaryText, styles.moneyText]}>
           {ticket.isFree ? "Free" : priceLabel}
         </Text>
         {/* issue #2160 — the multiplier, said in words, next to the number it
@@ -1595,6 +1620,11 @@ const styles = StyleSheet.create({
   tierName: { fontSize: 15, fontWeight: "800" },
   tierDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   tierCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
+  saleAvailability: { fontSize: 12, fontWeight: "700", marginTop: 3 },
+  tierListPrice: {
+    fontSize: 12,
+    textDecorationLine: "line-through",
+  },
   tierPrice: { fontSize: 15, fontWeight: "900" },
   // #3859 — money must not inherit a host display face. Anton does not contain
   // U+20A6, so CoreText mixed a fallback naira glyph into the condensed run and

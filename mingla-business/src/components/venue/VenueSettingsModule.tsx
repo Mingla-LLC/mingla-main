@@ -85,6 +85,12 @@ import type { VenueModuleLeaveHandle } from "./venueLeaveContract";
 import { venueScrollBottomPad } from "./venueShellScroll";
 import { VenueDetailsEditor } from "./VenueDetailsEditor";
 
+const ItemDiscountControls = React.lazy(() =>
+  import("../discounts/ItemDiscountControls").then((module) => ({
+    default: module.ItemDiscountControls,
+  })),
+);
+
 export type VenueSettingsLeaveHandle = VenueModuleLeaveHandle;
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
@@ -619,6 +625,30 @@ export const VenueSettingsModule = forwardRef<
                 Guests pay {feePreview} all-in at booking.
               </Text>
             ) : null}
+
+            {feeEnabled &&
+            draftCents > 0 &&
+            brandHasCurrency &&
+            brandId !== null &&
+            venueId !== null &&
+            rank >= BRAND_ROLE_RANK.finance_manager ? (
+              <React.Suspense fallback={null}>
+                <View style={styles.discountControls}>
+                  <ItemDiscountControls
+                    brandId={brandId}
+                    itemId={venueId}
+                    itemKind="venue_deposit"
+                    listingKind="reservation_deposit"
+                    itemLabel="Reservation deposit"
+                    currency={currency}
+                    listUnitCents={draftCents}
+                    allowLabel="Allow discounts on deposits"
+                    saleLabel="Deposit sale price"
+                    testID="venue-deposit-discount-controls"
+                  />
+                </View>
+              </React.Suspense>
+            ) : null}
           </Section>
 
           {/* 6 — Cancellation / no-show policy (single source = settings row). */}
@@ -926,6 +956,9 @@ const styles = StyleSheet.create({
   amountWarn: {
     ...typography.bodySm,
     color: semantic.warning,
+  },
+  discountControls: {
+    marginTop: spacing.md,
   },
   blockCard: {
     marginTop: spacing.sm,

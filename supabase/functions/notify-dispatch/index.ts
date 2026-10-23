@@ -386,6 +386,9 @@ type BusinessPreferenceType =
   | "business.payout_waiting_for_bank"
   | "business.payouts_paused"
   | "business.payouts_resumed"
+  | "business.discount_limit_80"
+  | "business.discount_ended"
+  | "business.discount_needs_attention"
   | "business.account_status_changed"
   | "business.new_review"
   | "business.claim_decision"
@@ -420,6 +423,9 @@ const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
   "business.payout_waiting_for_bank": { push: true, in_app: true },
   "business.payouts_paused": { push: true, in_app: true },
   "business.payouts_resumed": { push: true, in_app: true },
+  "business.discount_limit_80": { push: true, in_app: true },
+  "business.discount_ended": { push: true, in_app: true },
+  "business.discount_needs_attention": { push: true, in_app: true },
   "business.account_status_changed": { push: true, in_app: true },
   "business.new_review": { push: true, in_app: true },
   "business.claim_decision": { push: true, in_app: true },

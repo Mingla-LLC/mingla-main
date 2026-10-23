@@ -1402,7 +1402,12 @@ export const useRsvpOfferingState = (
       ? (
         // The injected field exposes no ref; this wrapper is what a blocked
         // decision tap scrolls to (and, on web, focuses the input inside).
-        <View {...(inline ? { ref: primaryPhoneRef } : {})} collapsable={false}>
+        <View
+          {...(inline
+            ? { ref: primaryPhoneRef as React.RefObject<View | null> }
+            : {})}
+          collapsable={false}
+        >
         {renderPhoneField({
           countryCode: phoneCountry,
           rawValue: phoneRawValue,

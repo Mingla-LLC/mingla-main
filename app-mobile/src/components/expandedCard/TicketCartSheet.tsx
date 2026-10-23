@@ -23,12 +23,7 @@
  * populated_empty_cart, populated_cart, submitting.
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -42,6 +37,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 // ORCH-1016 REWORK-4 (FIX A) — import the gorhom scroll host re-export so this
 // sheet scrolls via the SAME proven ROOT-CAUSE wiring as
@@ -61,14 +57,15 @@ import {
   type PublicTicketProps,
   QuantityRow,
   type QuantityRowTheme,
-  // ORCH-1182 — the SINGLE-OWNER per-package deposit math (tripBoxTotals). The
-  // cart sums the SAME qty-scaled deposit the §10 box + the per-tile note already
-  // use, over its OWN live cart quantities, so the sticky-bar "Due today" tracks
-  // the cart (never the stale unit-deposit projectedSchedule.depositCents). Pure /
-  // RN-free (I-MOR-0827); never recomputes fees (WYSIWYP / ORCH-1147).
-  tripTierDepositTodayCents,
   type TripTierLike,
 } from "@mingla/offering-rendering";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { discountReasonCopy } from "@mingla/offering-rendering/discountReasonCopy";
+import { saleLimitedCopy } from "@mingla/offering-rendering/saleLimitedCopy";
+import {
+  checkoutReviewReasonCopy,
+  ticketQuoteFeesAndTaxCents,
+} from "@mingla/offering-rendering/ticketQuoteCopy";
 // #3372 — naira reads "₦", not "NGN", in the cart (the shared #3341 rule).
 // Deep specifier, not the barrel, so suites that mock the barrel stay untouched.
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
@@ -98,12 +95,11 @@ import { Icon } from "../ui/Icon";
 // from pg_public_event_tier_allin). The cart now shows the all-in total upfront
 // and goes straight to the native PaymentSheet — no address typed.
 import { ConsumerCartCard } from "./ConsumerCartCard";
-import {
-  EventDayChooser,
-  type EventDayChooserStatus,
-} from "./EventDayChooser";
+import { EventDayChooser, type EventDayChooserStatus } from "./EventDayChooser";
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
+import { useTicketQuote } from "../../hooks/useTicketQuote";
+import { postHogService } from "../../services/postHogService";
 import { PhoneInput } from "../onboarding/PhoneInput";
 import {
   COUNTRIES,
@@ -120,9 +116,7 @@ import {
   type ExplorerCheckoutContactSeedAuthority,
   type ExplorerCheckoutContactSnapshot,
 } from "../../payments/explorerCheckoutContact.mjs";
-import {
-  ConsumerIntakeForm,
-} from "./ConsumerIntakeForm";
+import { ConsumerIntakeForm } from "./ConsumerIntakeForm";
 import {
   buildIntakeFormData,
   createIntakeUploadSessionId,
@@ -287,6 +281,10 @@ export interface TicketCartCheckoutPayload {
    * the venue server-side, so the buyer never types an address.
    */
   totalCents: number;
+  /** #3872 — exact server quote accepted by the buyer. */
+  discountCode: string | null;
+  quoteDigest: string;
+  quoteListDigest: string;
   /**
    * ORCH-1016 REWORK (D2) — per-tier trip intake answers for selected tiers
    * that carry an intake schema. Empty array when no selected tier has a
@@ -408,6 +406,11 @@ export interface TicketCartSheetProps {
    * "Hide remaining count"). Omitted ⇒ unchanged for trip/experience carts.
    */
   hideRemainingCount?: boolean;
+  /** Money-affecting reservation choices included in the authoritative quote. */
+  quoteEventDateId?: string | null;
+  quoteBookedStartAt?: string | null;
+  quoteBookedEndAt?: string | null;
+  quotePartySize?: number | null;
   onCancel: () => void;
   /** Available only after server truth says a new attempt is safe. */
   onTerminalRetry?: () => void;
@@ -436,10 +439,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   installmentNoteByTicketId,
   multiDaySelection = null,
   hideRemainingCount = false,
+  quoteEventDateId = null,
+  quoteBookedStartAt = null,
+  quoteBookedEndAt = null,
+  quotePartySize = null,
   onCancel,
   onTerminalRetry,
   onCheckout,
 }) => {
+  const { t } = useTranslation("discounts");
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   // ORCH-1138 — clamp the dynamic content snap to ~92% of the window so a tall
@@ -449,9 +457,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     () => Math.round(windowHeight * MAX_DYNAMIC_FRACTION),
     [windowHeight],
   );
-  const { lines, totals, setLineQuantity, reset } = useTicketCart(
-    fallbackCurrency,
-  );
+  const { lines, totals, setLineQuantity, reset } =
+    useTicketCart(fallbackCurrency);
   // #3859 — purchase acceptance is a required checkout act. Explorer's
   // account-level marketing remains on separately and has no cart control.
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
@@ -464,6 +471,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const sessionRequired = visible && !signedInBuyer && terminalOutcome === null;
   // ORCH-1025 — "What's included" breakdown panel expand/collapse.
   const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
+  const [discountCode, setDiscountCode] = useState("");
+  const [dismissedSaleNotices, setDismissedSaleNotices] = useState<string[]>(
+    [],
+  );
   const [highlightUnchosen, setHighlightUnchosen] = useState<boolean>(false);
   // ORCH-1016 REWORK (D2) — per-tier intake answers + per-tier per-question
   // validation errors. Keyed by ticket_type_id → { [questionId]: value/error }.
@@ -477,9 +488,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     createIntakeUploadSessionId(),
   );
   const lastOpenSeedRef = React.useRef<string | null>(null);
-  const contactSeedAuthorityRef = React.useRef<
-    ExplorerCheckoutContactSeedAuthority
-  >(EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.awaitingAccount);
+  const contactSeedAuthorityRef =
+    React.useRef<ExplorerCheckoutContactSeedAuthority>(
+      EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.awaitingAccount,
+    );
   const initialContactValidation = useMemo(
     () =>
       validateExplorerCheckoutContact({
@@ -547,115 +559,72 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         };
       })
       .filter(
-        (
-          t,
-        ): t is { tierId: string; tierName: string; schema: IntakeSchema } =>
+        (t): t is { tierId: string; tierName: string; schema: IntakeSchema } =>
           t !== null,
       );
   }, [lines, intakeSchemasByTier]);
 
-  // ORCH-1025 — all-in pricing, derived ONLY from server data (G-1 WYSIWYP / G-3
-  // no fabricated numbers). For each cart line we read the tier's server-computed
-  // all-in major-unit price (`priceAllInGbp`, = compute_all_in_cents / 100 from
-  // pg_public_event_tier_allin) and its base price (`priceGbp`). The ONLY client
-  // arithmetic is sum + (× quantity) + ×100/÷100 — NO inline tax/fee math.
-  //   - baseCents  : Σ base price_cents × qty  (the "Tickets" subtotal — the
-  //                  Mingla fee is folded into the all-in, not split out here)
-  //   - allInCents : Σ all-in cents × qty  (the amount the buyer pays; the
-  //                  authoritative charge is the PI built from the same engine)
-  //   - feesTaxCents = allInCents − baseCents  (the ONE truthful derived figure;
-  //                  the public RPC exposes no VAT/fee SPLIT, so we never
-  //                  fabricate separate VAT vs service-fee numbers — see report)
-  // When a tier has no server all-in (RPC miss → priceAllInGbp falls back to
-  // priceGbp in the service), its all-in == base, contributing 0 to feesTax and
-  // dropping the "includes VAT & fees" affordance for that tier automatically.
-  // #2230 physical-Android proof: day selection can update while this sheet is
-  // held open by the native bottom-sheet host. Recompute this tiny cart sum on
-  // every render so a host that preserves the selection wrapper identity can
-  // never leave the displayed total one day behind the chooser.
-  const pricing = ((): {
-    baseCents: number;
-    allInCents: number;
-    feesTaxCents: number;
-    hasAllInDelta: boolean;
-  } => {
-    let baseCents = 0;
-    let allInCents = 0;
-    for (const line of lines) {
-      if (line.quantity <= 0) continue;
-      const ticket = tickets?.find((t) => t.id === line.ticketTypeId);
-      // Base from the cart line (authoritative price_cents seed).
-      const lineBaseCents = line.unitPriceCents * line.quantity;
-      // All-in from the tier's server priceAllInGbp; fall back to base when the
-      // RPC produced no figure for this tier (never invent a number).
-      const allInMajor =
-        ticket?.priceAllInGbp != null ? ticket.priceAllInGbp : null;
-      const lineAllInCents =
-        allInMajor != null
-          ? Math.round(allInMajor * 100) * line.quantity
-          : lineBaseCents;
-      baseCents += lineBaseCents;
-      allInCents += lineAllInCents;
-    }
-    const selectedDayCount = multiDaySelection === null
-      ? 1
-      : new Set(multiDaySelection.selectedEventDateIds).size;
-    const dayMultiplier =
-      multiDaySelection?.pricingMode === "per_day" ? selectedDayCount : 1;
-    baseCents *= dayMultiplier;
-    allInCents *= dayMultiplier;
-    const feesTaxCents = Math.max(0, allInCents - baseCents);
-    return {
-      baseCents,
-      allInCents,
-      feesTaxCents,
-      hasAllInDelta: feesTaxCents > 0,
-    };
-  })();
-
-  // ORCH-1182 — the qty-scaled "Due today" for a pay-over-time plan cart, summed
-  // over the cart's OWN LIVE lines (the BUG: the parent previously passed the
-  // qty-1 unit deposit `projectedSchedule.depositCents`, so qty 2 of a €500 / 25%
-  // tier showed €125 instead of €250). For each line whose tier is on a plan this
-  // buyer is paying over time (`planTiersByTicketId`), the line contributes its
-  // qty-scaled DEPOSIT (tripTierDepositTodayCents — the SAME single-owner deposit
-  // math the §10 box + the per-tile note use); every other line contributes its
-  // FULL qty-scaled all-in (tripTierUnitAllInCents × qty). Mirrors the package's
-  // tripSummedDueTodayCents semantics over the cart's actual quantities so the
-  // sticky bar can never diverge from the tiles / cart lines. NEVER recomputes
-  // fees. `hasPlanLine` gates the two-line bar — no plan line → existing behavior.
-  const dueToday = useMemo<{ cents: number; hasPlanLine: boolean }>(() => {
-    if (
-      planTiersByTicketId === undefined ||
-      Object.keys(planTiersByTicketId).length === 0
-    ) {
-      return { cents: 0, hasPlanLine: false };
-    }
-    let cents = 0;
-    let hasPlanLine = false;
-    for (const line of lines) {
-      if (line.quantity <= 0) continue;
-      const planTier = planTiersByTicketId[line.ticketTypeId];
-      if (planTier !== undefined) {
-        const deposit = tripTierDepositTodayCents(planTier, line.quantity);
-        if (deposit !== null) {
-          cents += deposit;
-          hasPlanLine = true;
-          continue;
-        }
-      }
-      // Non-plan (or 0-deposit) line: full qty-scaled all-in. Prefer the tier's
-      // server all-in when we hold it; else the cart line's own all-in subtotal
-      // (the same value `pricing` summed) so totals stay consistent.
-      const ticket = tickets?.find((t) => t.id === line.ticketTypeId);
-      const lineAllIn =
-        ticket?.priceAllInGbp != null
-          ? Math.round(ticket.priceAllInGbp * 100) * line.quantity
-          : line.unitPriceCents * line.quantity;
-      cents += lineAllIn;
-    }
-    return { cents, hasPlanLine };
-  }, [lines, planTiersByTicketId, tickets]);
+  const quoteLines = useMemo(
+    () =>
+      lines
+        .filter((line) => line.quantity > 0)
+        .map((line) => ({
+          ticketTypeId: line.ticketTypeId,
+          quantity: line.quantity,
+          paymentPlanChoice:
+            planTiersByTicketId?.[line.ticketTypeId] !== undefined
+              ? ("installments" as const)
+              : ("full" as const),
+        })),
+    [lines, planTiersByTicketId],
+  );
+  const quoteEventDateIds = useMemo(
+    () =>
+      multiDaySelection === null
+        ? []
+        : multiDaySelection.occurrences
+            .filter((day) =>
+              multiDaySelection.selectedEventDateIds.includes(day.id),
+            )
+            .map((day) => day.id),
+    [multiDaySelection],
+  );
+  const quoteInput = useMemo(
+    () => ({
+      eventId,
+      // A quote prices the cart; it does not record account-level marketing
+      // state. The checkout submission below remains the single owner of that
+      // already-established Explorer account setting.
+      buyer: contactValidation.normalized,
+      lines: quoteLines,
+      eventDateId: quoteEventDateId,
+      eventDateIds: quoteEventDateIds,
+      bookedStartAt: quoteBookedStartAt,
+      bookedEndAt: quoteBookedEndAt,
+      partySize: quotePartySize,
+      discountCode: discountCode.trim().length > 0 ? discountCode.trim() : null,
+    }),
+    [
+      contactValidation.normalized,
+      discountCode,
+      eventId,
+      quoteBookedEndAt,
+      quoteBookedStartAt,
+      quoteEventDateId,
+      quoteEventDateIds,
+      quoteLines,
+      quotePartySize,
+    ],
+  );
+  const { query: quoteQuery, isDebouncing: quoteIsDebouncing } =
+    useTicketQuote(quoteInput);
+  const quote = quoteQuery.data ?? null;
+  const quoteIsLoading =
+    quoteLines.length > 0 && (quoteIsDebouncing || quoteQuery.isFetching);
+  const quoteIsReady = quote !== null && !quoteIsLoading && !quoteQuery.isError;
+  const isFreeQuote = quoteIsReady && quote.buyerTotalCents === 0;
+  const showsDueToday =
+    quoteIsReady && quote.dueTodayNetCents < quote.buyerTotalCents;
 
   // META-ORCH-0991 Wave A — open/close is owned by BaseBottomSheet
   // (declarative `visible`). The prior sheetRef + snapToIndex/close effect is
@@ -771,6 +740,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       setTermsAccepted(false);
       setConsentHintVisible(false);
       setHighlightUnchosen(false);
+      setDiscountCode("");
+      setDismissedSaleNotices([]);
       setIntakeAnswers({});
       setIntakeErrors({});
       intakeUploadSessionRef.current = createIntakeUploadSessionId();
@@ -868,18 +839,58 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     [],
   );
 
+  const checkoutPayloadFor = useCallback(
+    (acceptedQuote: TicketQuote): TicketCartCheckoutPayload => {
+      const intakeFormData = buildIntakeFormData(
+        selectedSchemaTiers.map((tier) => tier.tierId),
+        intakeSchemasByTier ?? new Map<string, IntakeSchema>(),
+        intakeAnswers,
+      );
+      return {
+        lines: quoteLines,
+        marketingOptIn: true,
+        purchaseTermsAccepted: termsAccepted,
+        buyer: contactValidation.normalized,
+        totalCents: acceptedQuote.buyerTotalCents,
+        discountCode:
+          discountCode.trim().length > 0 ? discountCode.trim() : null,
+        quoteDigest: acceptedQuote.quoteDigest,
+        quoteListDigest: acceptedQuote.quoteListDigest,
+        intakeFormData,
+        ...(intakeFormData.length > 0
+          ? { intakeUploadSessionId: intakeUploadSessionRef.current }
+          : {}),
+        ...(quoteEventDateIds.length > 0
+          ? { eventDateIds: quoteEventDateIds }
+          : {}),
+      };
+    },
+    [
+      contactValidation.normalized,
+      discountCode,
+      intakeAnswers,
+      intakeSchemasByTier,
+      quoteEventDateIds,
+      quoteLines,
+      selectedSchemaTiers,
+      termsAccepted,
+    ],
+  );
+
   const handleConfirm = useCallback((): void => {
     // ORCH-1025 — no taxPreview gate: the buyer can pay immediately. The cart is
     // unblocked the moment it has lines (and any required intake is valid).
-    if (isSubmitting) return;
+    if (isSubmitting || !quoteIsReady || quote === null) return;
     // #3859 P1 — buyer web owns anonymous identity collection. Native waits
     // for the existing root auth flow to restore a signed-in account.
     if (!signedInBuyer) return;
     if (multiDaySelection !== null) {
-      const validIds = new Set(multiDaySelection.occurrences.map((day) => day.id));
-      const selectedIds = [...new Set(multiDaySelection.selectedEventDateIds)].filter(
-        (id) => validIds.has(id),
+      const validIds = new Set(
+        multiDaySelection.occurrences.map((day) => day.id),
       );
+      const selectedIds = [
+        ...new Set(multiDaySelection.selectedEventDateIds),
+      ].filter((id) => validIds.has(id));
       if (multiDaySelection.status !== "ready") return;
       // issue #3281 — an all-days pass has nothing to choose: the server
       // expands the pass to every upcoming date (ticket-checkout-create).
@@ -890,7 +901,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         if (selectedIds.length === 0) {
           // ⚠️ DELETE THIS AND a guest buys a day they never chose.
           setHighlightUnchosen(true);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          void Haptics.notificationAsync(
+            Haptics.NotificationFeedbackType.Error,
+          );
           return;
         }
       }
@@ -947,12 +960,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       }
     }
 
-    const intakeFormData = buildIntakeFormData(
-      selectedSchemaTiers.map((t) => t.tierId),
-      intakeSchemasByTier ?? new Map<string, IntakeSchema>(),
-      intakeAnswers,
-    );
-
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     // Non-blocking audit write — purchase acceptance is transactional only.
     void recordConsent({
@@ -965,42 +972,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       userId: signedInBuyer ? buyerUserId : null,
       eventId,
     }).catch(() => undefined);
-    // ORCH-1025 — payload omits `address` and `taxCalculationId` (G-2). The
-    // all-in total (derived only from server all_in_cents) rides as `totalCents`
-    // for the paid/free branch + telemetry; the charge is the PI amount.
-    const selectedEventDateIds = multiDaySelection === null
-      ? []
-      : multiDaySelection.occurrences
-          .filter((day) => multiDaySelection.selectedEventDateIds.includes(day.id))
-          .map((day) => day.id);
-    onCheckout({
-      lines: lines
-        .filter((l) => l.quantity > 0)
-        .map((l) => ({
-          ticketTypeId: l.ticketTypeId,
-          quantity: l.quantity,
-          // #3859 — only this exact tier's choice is authoritative.
-          paymentPlanChoice:
-            planTiersByTicketId?.[l.ticketTypeId] !== undefined
-              ? "installments"
-              : "full",
-        })),
-      // Explorer account marketing is always on outside checkout. This flag
-      // reports that account state; the purchase checkbox never changes it.
-      marketingOptIn: true,
-      purchaseTermsAccepted: termsAccepted,
-      buyer: contactValidation.normalized,
-      totalCents: pricing.allInCents,
-      intakeFormData,
-      ...(intakeFormData.length > 0
-        ? { intakeUploadSessionId: intakeUploadSessionRef.current }
-        : {}),
-      // ⚠️ DELETE THIS AND every Explorer pass mints undated, admitting on
-      // any day and inflating every day's roster (#2230 F-3/F-4).
-      ...(selectedEventDateIds.length > 0
-        ? { eventDateIds: selectedEventDateIds }
-        : {}),
-    });
+    onCheckout(checkoutPayloadFor(quote));
   }, [
     totals.isEmpty,
     isSubmitting,
@@ -1011,12 +983,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     signedInBuyer,
     buyerUserId,
     eventId,
+    checkoutPayloadFor,
     selectedSchemaTiers,
     intakeAnswers,
     intakeSchemasByTier,
-    lines,
-    planTiersByTicketId,
-    pricing.allInCents,
+    quote,
+    quoteIsReady,
     multiDaySelection,
     onCheckout,
   ]);
@@ -1029,12 +1001,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       .sort((a, b) => a.displayOrder - b.displayOrder);
   }, [tickets]);
 
-  const allSoldOut = visibleTickets.length > 0 &&
-    visibleTickets.every(
-      (t) => !t.isUnlimited && (t.capacity ?? 0) <= 0,
-    );
+  const allSoldOut =
+    visibleTickets.length > 0 &&
+    visibleTickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) <= 0);
 
-  const allUnavailable = visibleTickets.length > 0 &&
+  const allUnavailable =
+    visibleTickets.length > 0 &&
     visibleTickets.every(
       (t) =>
         t.visibility === "disabled" ||
@@ -1042,18 +1014,19 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         (!t.isUnlimited && (t.capacity ?? 0) <= 0),
     );
 
-  const renderState =
-    ((): "loading" | "empty" | "sold_out" | "sales_closed" | "populated" => {
-      if (tickets === undefined) return "loading";
-      if (visibleTickets.length === 0) return "empty";
-      if (allSoldOut) return "sold_out";
-      if (allUnavailable) return "sales_closed";
-      return "populated";
-    })();
+  const renderState = (():
+    "loading" | "empty" | "sold_out" | "sales_closed" | "populated" => {
+    if (tickets === undefined) return "loading";
+    if (visibleTickets.length === 0) return "empty";
+    if (allSoldOut) return "sold_out";
+    if (allUnavailable) return "sales_closed";
+    return "populated";
+  })();
 
-  const selectedDayCount = multiDaySelection === null
-    ? 0
-    : new Set(multiDaySelection.selectedEventDateIds).size;
+  const selectedDayCount =
+    multiDaySelection === null
+      ? 0
+      : new Set(multiDaySelection.selectedEventDateIds).size;
   const dayTruthUnavailable =
     multiDaySelection !== null && multiDaySelection.status !== "ready";
   const treatAsAllDaysPass =
@@ -1061,17 +1034,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     (multiDaySelection.allDaysPass === true ||
       multiDaySelection.pricingMode === "all_days");
   const missingRequiredDay =
-    multiDaySelection !== null &&
-    !treatAsAllDaysPass &&
-    selectedDayCount === 0;
+    multiDaySelection !== null && !treatAsAllDaysPass && selectedDayCount === 0;
 
   const ctaLabel = missingRequiredDay
     ? "Pick at least one day above"
     : totals.isEmpty
-    ? "Add tickets above"
-    : totals.isFree
-    ? "Claim Free Ticket"
-    : "Continue to Payment";
+      ? "Add tickets above"
+      : isFreeQuote
+        ? "Get tickets"
+        : "Continue to Payment";
   const ctaDisabled =
     dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty) ||
@@ -1079,10 +1050,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     !signedInBuyer ||
     contactEditorVisible ||
     !contactValidation.isValid ||
-    !termsAccepted;
+    !termsAccepted ||
+    !quoteIsReady;
   const ctaPressDisabled =
-    isSubmitting || !signedInBuyer || dayTruthUnavailable ||
-    (!missingRequiredDay && totals.isEmpty);
+    isSubmitting ||
+    !signedInBuyer ||
+    dayTruthUnavailable ||
+    (!missingRequiredDay && totals.isEmpty) ||
+    !quoteIsReady;
 
   // issue #2265 — the pending vocabulary. The old treatment was a bare spinner
   // (and, on the screen's fallback CTA, nothing at all but `disabled`), which is
@@ -1090,11 +1065,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const pendingCtaLabel = ((): string => {
     switch (pendingPhase) {
       case "creating":
-        return totals.isFree ? "Getting your ticket…" : "Setting up your payment…";
+        return isFreeQuote
+          ? "Getting your ticket…"
+          : "Setting up your payment…";
       case "opening_payment_page":
         return "Opening the payment page…";
       case "presenting_sheet":
-        return Platform.OS === "ios" ? "Opening Apple Pay…" : "Opening payment…";
+        return Platform.OS === "ios"
+          ? "Opening Apple Pay…"
+          : "Opening payment…";
       case "confirming_payment":
         return "Confirming your payment…";
       default:
@@ -1103,29 +1082,117 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     }
   })();
 
-  // ORCH-1025 — the sticky bar shows the ALL-IN total (sum of server all_in_cents),
-  // not the base subtotal, so the buyer sees the exact amount they'll pay upfront.
-  //
-  // ORCH-1182 (supersedes the ORCH-1130 `dueTodayCents` scalar) — when this is a
-  // pay-over-time PLAN cart (`dueToday.hasPlanLine`) the sticky bar shows BOTH a
-  // "Total" line (the qty-scaled all-in) AND a "Due today" line (the qty-scaled
-  // deposit, summed over the cart's OWN live lines — never the stale unit deposit).
-  // Otherwise (events / no-plan / pay-in-full / free / empty) it shows the single
-  // "Subtotal" all-in line, byte-identical to before.
-  const showsDueToday =
-    dueToday.hasPlanLine &&
-    dueToday.cents > 0 &&
-    !totals.isEmpty &&
-    !totals.isFree;
-  const subtotalValueText = missingRequiredDay || dayTruthUnavailable || totals.isEmpty
-    ? "—"
-    : totals.isFree
-    ? "Free"
-    : formatCentsCurrency(pricing.allInCents, totals.currency);
+  const subtotalValueText =
+    missingRequiredDay || dayTruthUnavailable || totals.isEmpty
+      ? "—"
+      : quoteIsLoading
+        ? "Updating…"
+        : quoteQuery.isError || quote === null
+          ? "—"
+          : formatCentsCurrency(quote.buyerTotalCents, quote.currency);
   // The all-in Total is the single-line label when no plan; the upper line of the
   // two-line bar when paying over time.
   const subtotalLabelText = showsDueToday ? "Total" : "Subtotal";
-  const dueTodayValueText = formatCentsCurrency(dueToday.cents, totals.currency);
+  const dueTodayValueText =
+    quote === null
+      ? "—"
+      : formatCentsCurrency(quote.dueTodayNetCents, quote.currency);
+  const codeOutcome = quote?.codeOutcome ?? null;
+  const appliedCodeDiscount =
+    quote?.discounts.find((discount) => discount.kind === "code") ?? null;
+  const codeFeedback =
+    codeOutcome?.status === "rejected" && codeOutcome.reason !== null
+      ? t(`code.${codeOutcome.reason}`, {
+          code: discountCode.trim().toUpperCase(),
+          required:
+            codeOutcome.required === null || quote === null
+              ? undefined
+              : formatCentsCurrency(codeOutcome.required, quote.currency),
+          with: codeOutcome.with ?? undefined,
+          defaultValue: discountReasonCopy({
+            reason: codeOutcome.reason,
+            code: discountCode.trim().toUpperCase(),
+            required:
+              codeOutcome.required === null || quote === null
+                ? null
+                : formatCentsCurrency(codeOutcome.required, quote.currency),
+            withName: codeOutcome.with,
+          }),
+        })
+      : codeOutcome?.status === "applied" && codeOutcome.replaced.length > 0
+        ? t("code.replaced", {
+            code: discountCode.trim().toUpperCase(),
+            names: codeOutcome.replaced.join(", "),
+            defaultValue: `${discountCode.trim().toUpperCase()} applied instead of ${codeOutcome.replaced.join(
+              ", ",
+            )}.`,
+          })
+        : null;
+  const activeSaleNotices = (quote?.notices ?? []).filter(
+    (notice) => !dismissedSaleNotices.includes(notice.discountId),
+  );
+  const reviewQuote =
+    terminalOutcome?.outcome === "review" ? terminalOutcome.review.quote : null;
+  const discountAnalyticsRef = React.useRef(new Set<string>());
+  useEffect(() => {
+    if (quote === null || !quoteIsReady) return;
+    const captureOnce = (
+      event: string,
+      suffix: string,
+      properties: Readonly<Record<string, string | number>>,
+    ): void => {
+      const key = `${quote.quoteDigest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      postHogService.capture(event, properties);
+    };
+    if (
+      discountCode.trim().length > 0 &&
+      quote.codeOutcome.status === "applied"
+    ) {
+      captureOnce("discount_code_applied", "code", {
+        surface: "explorer_cart",
+      });
+    }
+    if (
+      discountCode.trim().length > 0 &&
+      quote.codeOutcome.status === "rejected" &&
+      quote.codeOutcome.reason !== null
+    ) {
+      captureOnce("discount_code_rejected", quote.codeOutcome.reason, {
+        reason: quote.codeOutcome.reason,
+        surface: "explorer_cart",
+      });
+    }
+    const automaticCount = quote.discounts.filter(
+      (row) => row.kind === "automatic",
+    ).length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "explorer_cart",
+      });
+    }
+    for (const notice of quote.notices) {
+      captureOnce("sale_limited_shown", notice.discountId, {
+        surface: "explorer_cart",
+      });
+    }
+  }, [discountCode, quote, quoteIsReady]);
+  useEffect(() => {
+    if (terminalOutcome?.outcome !== "review") return;
+    const key = `review:${terminalOutcome.review.detail}`;
+    if (discountAnalyticsRef.current.has(key)) return;
+    discountAnalyticsRef.current.add(key);
+    postHogService.capture("checkout_review_required", {
+      detail: terminalOutcome.review.detail,
+      surface: "explorer_cart",
+    });
+  }, [terminalOutcome]);
+  const handleReviewAccept = useCallback((): void => {
+    if (reviewQuote === null || isSubmitting) return;
+    onCheckout(checkoutPayloadFor(reviewQuote));
+  }, [checkoutPayloadFor, isSubmitting, onCheckout, reviewQuote]);
 
   // ORCH-1016 REWORK-4 (FIX A) — the CTA bar must clear BOTH the OS home
   // indicator AND Mingla's floating GlassBottomNav. This sheet renders BELOW the
@@ -1163,12 +1230,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         {terminalOutcome?.outcome === "succeeded"
           ? (terminalOutcome.title ?? "You’re booked")
           : terminalOutcome?.outcome === "pending"
-          ? terminalOutcome.title
-          : terminalOutcome?.outcome === "canceled"
-          ? "Payment canceled"
-          : terminalOutcome?.outcome === "failed"
-          ? "Payment needs attention"
-          : "Get tickets"}
+            ? terminalOutcome.title
+            : terminalOutcome?.outcome === "canceled"
+              ? "Payment canceled"
+              : terminalOutcome?.outcome === "review"
+                ? t("review.title", { defaultValue: "Your total changed" })
+                : terminalOutcome?.outcome === "failed"
+                  ? "Payment needs attention"
+                  : "Get tickets"}
       </Text>
       <Pressable
         style={styles.closeIcon}
@@ -1212,33 +1281,59 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
   });
 
-  const terminalBody = terminalOutcome === null ? null : (
-    <View
-      style={styles.terminalBody}
-      accessibilityRole="alert"
-      accessibilityLiveRegion="polite"
-      testID="explorer-checkout-terminal-state"
-    >
-      <Text style={styles.terminalTitle}>
-        {terminalOutcome.outcome === "succeeded"
-          ? (terminalOutcome.title ?? "You’re booked")
-          : terminalOutcome.outcome === "pending"
-          ? terminalOutcome.title
-          : terminalOutcome.outcome === "canceled"
-          ? "Payment canceled"
-          : "Payment needs attention"}
-      </Text>
-      <Text style={styles.terminalMessage}>
-        {terminalOutcome.outcome === "succeeded"
-          ? "Your booking is confirmed and your tickets are ready."
-          : terminalOutcome.outcome === "pending"
-          ? terminalOutcome.message
-          : terminalOutcome.outcome === "canceled"
-          ? "No completed or pending payment was found. You can review your booking and try again."
-          : terminalOutcome.message}
-      </Text>
-    </View>
-  );
+  const terminalBody =
+    terminalOutcome === null ? null : (
+      <View
+        style={styles.terminalBody}
+        accessibilityRole="alert"
+        accessibilityLiveRegion="polite"
+        testID="explorer-checkout-terminal-state"
+      >
+        <Text style={styles.terminalTitle}>
+          {terminalOutcome.outcome === "succeeded"
+            ? (terminalOutcome.title ?? "You’re booked")
+            : terminalOutcome.outcome === "pending"
+              ? terminalOutcome.title
+              : terminalOutcome.outcome === "canceled"
+                ? "Payment canceled"
+                : terminalOutcome.outcome === "review"
+                  ? t("review.title", { defaultValue: "Your total changed" })
+                  : "Payment needs attention"}
+        </Text>
+        {terminalOutcome.outcome === "review" ? (
+          <>
+            <Text style={styles.terminalMessage}>
+              {checkoutReviewReasonCopy(terminalOutcome.review.detail)}
+            </Text>
+            <View style={styles.reviewTotals}>
+              {quote !== null ? (
+                <Text style={styles.reviewOldTotal}>
+                  {formatCentsCurrency(quote.buyerTotalCents, quote.currency)}
+                </Text>
+              ) : null}
+              <Text style={styles.reviewNewTotal}>
+                {reviewQuote === null
+                  ? "—"
+                  : formatCentsCurrency(
+                      reviewQuote.buyerTotalCents,
+                      reviewQuote.currency,
+                    )}
+              </Text>
+            </View>
+          </>
+        ) : (
+          <Text style={styles.terminalMessage}>
+            {terminalOutcome.outcome === "succeeded"
+              ? "Your booking is confirmed and your tickets are ready."
+              : terminalOutcome.outcome === "pending"
+                ? terminalOutcome.message
+                : terminalOutcome.outcome === "canceled"
+                  ? "No completed or pending payment was found. You can review your booking and try again."
+                  : terminalOutcome.message}
+          </Text>
+        )}
+      </View>
+    );
 
   const sessionRequiredBody = sessionRequired ? (
     <View
@@ -1255,7 +1350,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     </View>
   ) : null;
 
-  const body = terminalBody ?? sessionRequiredBody ??
+  const body =
+    terminalBody ??
+    sessionRequiredBody ??
     (renderState === "loading" ? (
       <View style={styles.bodyMessageWrap}>
         <ActivityIndicator color="rgba(255,255,255,0.65)" />
@@ -1318,7 +1415,176 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           >
             {ticketRows}
           </View>
-        ) : ticketRows}
+        ) : (
+          ticketRows
+        )}
+
+        <View style={styles.discountSection}>
+          <Text style={styles.sectionLabel}>
+            {t("code.label", { defaultValue: "DISCOUNT CODE" })}
+          </Text>
+          {codeOutcome?.status === "applied" && appliedCodeDiscount !== null ? (
+            <View style={styles.discountAppliedRow}>
+              <View style={styles.discountAppliedCopy}>
+                <Text style={styles.discountAppliedName}>
+                  {appliedCodeDiscount.name}
+                </Text>
+                <Text style={styles.discountAppliedSaving}>
+                  {t("code.saving", {
+                    amount: formatCentsCurrency(
+                      appliedCodeDiscount.amountMinor,
+                      quote?.currency ?? fallbackCurrency,
+                    ),
+                    defaultValue: `Saving ${formatCentsCurrency(
+                      appliedCodeDiscount.amountMinor,
+                      quote?.currency ?? fallbackCurrency,
+                    )}`,
+                  })}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setDiscountCode("")}
+                disabled={isSubmitting}
+                accessibilityRole="button"
+                accessibilityLabel={t("code.remove", {
+                  defaultValue: "Remove discount code",
+                })}
+              >
+                <Text style={styles.discountRemove}>
+                  {t("code.remove_short", { defaultValue: "Remove" })}
+                </Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.discountInputRow}>
+              <TextInput
+                value={discountCode}
+                onChangeText={setDiscountCode}
+                placeholder={t("code.placeholder", {
+                  defaultValue: "Enter a code",
+                })}
+                placeholderTextColor="rgba(255,255,255,0.36)"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!isSubmitting}
+                accessibilityLabel={t("code.input_label", {
+                  defaultValue: "Discount code",
+                })}
+                style={styles.discountInput}
+              />
+              {quoteIsLoading && discountCode.trim().length > 0 ? (
+                <ActivityIndicator color="#eb7825" />
+              ) : null}
+            </View>
+          )}
+          {codeFeedback !== null ? (
+            <Text
+              style={
+                codeOutcome?.status === "rejected"
+                  ? styles.discountError
+                  : styles.discountMessage
+              }
+              accessibilityLiveRegion="polite"
+            >
+              {codeFeedback}
+            </Text>
+          ) : null}
+          {quoteQuery.isError ? (
+            <View style={styles.quoteError} accessibilityRole="alert">
+              <Text style={styles.discountError}>
+                {quoteQuery.error.message === "rate_limited"
+                  ? t("code.rate_limited", {
+                      defaultValue: "Too many tries. Wait a few minutes.",
+                    })
+                  : t("quote.error", {
+                      defaultValue: "Couldn’t get your price.",
+                    })}
+              </Text>
+              <Pressable
+                onPress={() => void quoteQuery.refetch()}
+                accessibilityRole="button"
+              >
+                <Text style={styles.quoteRetry}>
+                  {t("quote.retry", { defaultValue: "Try again" })}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {activeSaleNotices.map((notice) => {
+            const quoteLine = quote?.lines.find(
+              (line) => line.ticketTypeId === notice.lineRef,
+            );
+            const ticket = tickets?.find((row) => row.id === notice.lineRef);
+            const sale = quote?.discounts.find(
+              (discount) => discount.discountId === notice.discountId,
+            );
+            const name = sale?.name ?? ticket?.saleName ?? "sale";
+            const currentQuantity = quoteLine?.quantity ?? 0;
+            return (
+              <View
+                key={`${notice.discountId}:${notice.lineRef}`}
+                style={styles.saleNotice}
+              >
+                <Text style={styles.saleNoticeText}>
+                  {saleLimitedCopy(name, notice.remaining)}
+                </Text>
+                <View style={styles.saleNoticeActions}>
+                  {notice.remaining > 0 && ticket !== undefined ? (
+                    <Pressable
+                      onPress={() => {
+                        postHogService.capture("sale_limited_choice", {
+                          choice: "reduce",
+                          surface: "explorer_cart",
+                        });
+                        const seed: CartLineSeed = {
+                          ticketTypeId: ticket.id,
+                          ticketName: ticket.name,
+                          unitPriceCents: Math.round(
+                            (ticket.priceGbp ?? 0) * 100,
+                          ),
+                          currency: ticket.currency ?? fallbackCurrency,
+                          isFree: ticket.isFree,
+                        };
+                        setLineQuantity(seed, notice.remaining);
+                      }}
+                      accessibilityRole="button"
+                      style={styles.saleNoticeButton}
+                    >
+                      <Text style={styles.saleNoticeButtonText}>
+                        {t("sale_limited.buy", {
+                          count: notice.remaining,
+                          sale: name,
+                          defaultValue: `Buy ${notice.remaining} at ${name}`,
+                        })}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    onPress={() => {
+                      postHogService.capture("sale_limited_choice", {
+                        choice: "keep",
+                        surface: "explorer_cart",
+                      });
+                      setDismissedSaleNotices((current) => [
+                        ...current,
+                        notice.discountId,
+                      ]);
+                    }}
+                    accessibilityRole="button"
+                    style={styles.saleNoticeButton}
+                  >
+                    <Text style={styles.saleNoticeButtonText}>
+                      {t("sale_limited.keep", {
+                        count: currentQuantity,
+                        defaultValue: `Keep ${currentQuantity} at list`,
+                      })}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </View>
 
         {/* #3859 — purchase terms only; Explorer marketing has no cart toggle. */}
         <Pressable
@@ -1433,8 +1699,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                         styles.contactTextInputError,
                     ]}
                   />
-                  {contactTouched.name &&
-                  !contactDraftValidation.valid.name ? (
+                  {contactTouched.name && !contactDraftValidation.valid.name ? (
                     <Text style={styles.contactError}>
                       Enter the full name for this booking.
                     </Text>
@@ -1492,7 +1757,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                       setContactDraft((current) => ({
                         ...current,
                         phone:
-                          resolveUserPhoneE164(phone, contactPhoneCountry) ?? "",
+                          resolveUserPhoneE164(phone, contactPhoneCountry) ??
+                          "",
                       }));
                     }}
                     onChangeCountry={(countryCode) => {
@@ -1502,8 +1768,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                       setContactDraft((current) => ({
                         ...current,
                         phone:
-                          resolveUserPhoneE164(contactPhoneLocal, countryCode) ??
-                          "",
+                          resolveUserPhoneE164(
+                            contactPhoneLocal,
+                            countryCode,
+                          ) ?? "",
                       }));
                     }}
                     onBlur={() =>
@@ -1587,17 +1855,21 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                 onAnswersChange={(next) => setTierAnswers(tier.tierId, next)}
                 validationErrors={intakeErrors[tier.tierId]}
                 disabled={isSubmitting}
-                onUpload={(file) => uploadTripIntakeFile({
-                  eventId,
-                  ticketTypeId: tier.tierId,
-                  schemaVersionId: tier.schema.schema_version_id,
-                  uploadSessionId: intakeUploadSessionRef.current,
-                  ...file,
-                })}
-                onRemove={(claimId) => revokeTripIntakeFileClaim({
-                  claimId,
-                  uploadSessionId: intakeUploadSessionRef.current,
-                })}
+                onUpload={(file) =>
+                  uploadTripIntakeFile({
+                    eventId,
+                    ticketTypeId: tier.tierId,
+                    schemaVersionId: tier.schema.schema_version_id,
+                    uploadSessionId: intakeUploadSessionRef.current,
+                    ...file,
+                  })
+                }
+                onRemove={(claimId) =>
+                  revokeTripIntakeFileClaim({
+                    claimId,
+                    uploadSessionId: intakeUploadSessionRef.current,
+                  })
+                }
               />
             ))}
           </View>
@@ -1611,7 +1883,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             The public RPC exposes no VAT/service-fee SPLIT, so we never fabricate
             separate numbers — when an all-in delta exists we add the qualitative
             "Includes VAT & fees" note (G-3). Hidden for free-only carts. */}
-        {!missingRequiredDay && !dayTruthUnavailable && !totals.isEmpty && !totals.isFree ? (
+        {!missingRequiredDay &&
+        !dayTruthUnavailable &&
+        !totals.isEmpty &&
+        quote !== null ? (
           <View style={styles.breakdownWrap}>
             <Pressable
               onPress={() => setBreakdownOpen((v) => !v)}
@@ -1633,19 +1908,47 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             </Pressable>
             {breakdownOpen ? (
               <View style={styles.breakdownBody}>
-                <View style={styles.breakdownRow}>
-                  <Text style={styles.breakdownLabel}>Tickets</Text>
-                  <Text style={styles.breakdownValue}>
-                    {formatCentsCurrency(pricing.baseCents, totals.currency)}
-                  </Text>
-                </View>
-                {pricing.hasAllInDelta ? (
+                {quote.lines.map((line) => (
+                  <View key={line.ticketTypeId} style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>
+                      {line.ticketName} × {line.quantity}
+                    </Text>
+                    <View style={styles.breakdownPricePair}>
+                      {line.lineListCents > line.lineNetCents ? (
+                        <Text style={styles.breakdownListValue}>
+                          {formatCentsCurrency(
+                            line.lineListCents,
+                            quote.currency,
+                          )}
+                        </Text>
+                      ) : null}
+                      <Text style={styles.breakdownValue}>
+                        {formatCentsCurrency(line.lineNetCents, quote.currency)}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+                {quote.discounts.map((discount) => (
+                  <View key={discount.discountId} style={styles.breakdownRow}>
+                    <Text style={styles.breakdownDiscountLabel}>
+                      {discount.name}
+                    </Text>
+                    <Text style={styles.breakdownDiscountValue}>
+                      −
+                      {formatCentsCurrency(
+                        discount.amountMinor,
+                        quote.currency,
+                      )}
+                    </Text>
+                  </View>
+                ))}
+                {ticketQuoteFeesAndTaxCents(quote) > 0 ? (
                   <View style={styles.breakdownRow}>
                     <Text style={styles.breakdownLabel}>Fees &amp; tax</Text>
                     <Text style={styles.breakdownValue}>
                       {formatCentsCurrency(
-                        pricing.feesTaxCents,
-                        totals.currency,
+                        ticketQuoteFeesAndTaxCents(quote),
+                        quote.currency,
                       )}
                     </Text>
                   </View>
@@ -1653,11 +1956,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                 <View style={[styles.breakdownRow, styles.breakdownTotalRow]}>
                   <Text style={styles.breakdownTotalLabel}>Total</Text>
                   <Text style={styles.breakdownTotalValue}>
-                    {formatCentsCurrency(pricing.allInCents, totals.currency)}
+                    {formatCentsCurrency(quote.buyerTotalCents, quote.currency)}
                   </Text>
                 </View>
-                {pricing.hasAllInDelta ? (
-                  <Text style={styles.breakdownNote}>Includes VAT &amp; fees</Text>
+                {ticketQuoteFeesAndTaxCents(quote) > 0 ? (
+                  <Text style={styles.breakdownNote}>
+                    Includes VAT &amp; fees
+                  </Text>
                 ) : null}
               </View>
             ) : null}
@@ -1667,14 +1972,46 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     ));
 
   const stickyFooter =
-    terminalOutcome !== null ? (
+    terminalOutcome?.outcome === "review" ? (
+      <View style={stickyBarStyle}>
+        <Pressable
+          onPress={handleReviewAccept}
+          disabled={reviewQuote === null || isSubmitting}
+          accessibilityRole="button"
+          accessibilityLabel="Accept the new total and pay"
+          style={({ pressed }) => [
+            styles.ctaButton,
+            (reviewQuote === null || isSubmitting) && styles.ctaButtonDisabled,
+            pressed && styles.ctaButtonPressed,
+          ]}
+        >
+          <Text style={styles.ctaLabel}>
+            {reviewQuote === null
+              ? "Review unavailable"
+              : `Pay ${formatCentsCurrency(
+                  reviewQuote.buyerTotalCents,
+                  reviewQuote.currency,
+                )}`}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={onTerminalRetry}
+          disabled={isSubmitting || onTerminalRetry === undefined}
+          accessibilityRole="button"
+          accessibilityLabel="Back to tickets"
+          style={styles.reviewBackButton}
+        >
+          <Text style={styles.reviewBackLabel}>Back to tickets</Text>
+        </Pressable>
+      </View>
+    ) : terminalOutcome !== null ? (
       <View style={stickyBarStyle}>
         <Pressable
           onPress={
             (terminalOutcome.outcome === "canceled" &&
               terminalOutcome.retryable === true) ||
-              (terminalOutcome.outcome === "failed" &&
-                terminalOutcome.retryable === true)
+            (terminalOutcome.outcome === "failed" &&
+              terminalOutcome.retryable === true)
               ? onTerminalRetry
               : handleCancel
           }
@@ -1689,8 +2026,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           accessibilityLabel={
             (terminalOutcome.outcome === "canceled" &&
               terminalOutcome.retryable === true) ||
-              (terminalOutcome.outcome === "failed" &&
-                terminalOutcome.retryable === true)
+            (terminalOutcome.outcome === "failed" &&
+              terminalOutcome.retryable === true)
               ? "Review booking and try again"
               : "Close"
           }
@@ -1701,9 +2038,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         >
           <Text style={styles.ctaLabel}>
             {(terminalOutcome.outcome === "canceled" &&
-                terminalOutcome.retryable === true) ||
-                (terminalOutcome.outcome === "failed" &&
-                  terminalOutcome.retryable === true)
+              terminalOutcome.retryable === true) ||
+            (terminalOutcome.outcome === "failed" &&
+              terminalOutcome.retryable === true)
               ? "Review and try again"
               : "Close"}
           </Text>
@@ -1727,10 +2064,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       <View style={stickyBarStyle}>
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>{subtotalLabelText}</Text>
-          <Text
-            style={styles.subtotalValue}
-            accessibilityLiveRegion="polite"
-          >
+          <Text style={styles.subtotalValue} accessibilityLiveRegion="polite">
             {subtotalValueText}
           </Text>
         </View>
@@ -1748,7 +2082,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           disabled={ctaPressDisabled}
           accessibilityRole="button"
           accessibilityLabel={isSubmitting ? pendingCtaLabel : ctaLabel}
-          accessibilityState={{ disabled: ctaPressDisabled, busy: isSubmitting }}
+          accessibilityState={{
+            disabled: ctaPressDisabled,
+            busy: isSubmitting,
+          }}
           style={({ pressed }) => [
             styles.ctaButton,
             ctaDisabled && styles.ctaButtonDisabled,
@@ -1927,6 +2264,108 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   unavailableTickets: { opacity: 0.45 },
+  discountSection: {
+    marginTop: 16,
+  },
+  discountInputRow: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+  },
+  discountInput: {
+    flex: 1,
+    color: "rgba(255, 255, 255, 0.96)",
+    fontSize: 15,
+  },
+  discountAppliedRow: {
+    minHeight: 56,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "rgba(34, 197, 94, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.30)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  discountAppliedCopy: { flex: 1 },
+  discountAppliedName: {
+    color: "rgba(255,255,255,0.96)",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  discountAppliedSaving: {
+    color: "#86efac",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  discountRemove: {
+    color: "#eb7825",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  discountMessage: {
+    color: "rgba(255,255,255,0.70)",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  discountError: {
+    color: "#fca5a5",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  quoteError: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  quoteRetry: {
+    color: "#eb7825",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  saleNotice: {
+    marginTop: 10,
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.32)",
+    gap: 10,
+  },
+  saleNoticeText: {
+    color: "#fde68a",
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  saleNoticeActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  saleNoticeButton: {
+    minHeight: 38,
+    borderRadius: 10,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  saleNoticeButtonText: {
+    color: "rgba(255,255,255,0.90)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   // Marketing opt-in
   checkboxRow: {
     flexDirection: "row",
@@ -2125,6 +2564,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.88)",
   },
+  breakdownPricePair: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 8,
+  },
+  breakdownListValue: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.42)",
+    textDecorationLine: "line-through",
+  },
+  breakdownDiscountLabel: {
+    fontSize: 14,
+    color: "#86efac",
+  },
+  breakdownDiscountValue: {
+    fontSize: 14,
+    color: "#86efac",
+    fontWeight: "600",
+  },
   breakdownTotalRow: {
     marginTop: 4,
     paddingTop: 10,
@@ -2205,6 +2663,33 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.72)",
     fontSize: 16,
     lineHeight: 24,
+  },
+  reviewTotals: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 12,
+  },
+  reviewOldTotal: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 17,
+    textDecorationLine: "line-through",
+  },
+  reviewNewTotal: {
+    color: "rgba(255,255,255,0.96)",
+    fontSize: 24,
+    fontWeight: "700",
+  },
+  reviewBackButton: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  reviewBackLabel: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 14,
+    fontWeight: "600",
   },
   ctaButton: {
     height: 52,

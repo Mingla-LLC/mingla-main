@@ -12,7 +12,7 @@
 //       the "Fees & tax" line reads totals.feesTaxCents (gated on
 //       hasFeesTaxDelta), and the per-tier all-in is the forwarded
 //       priceAllInGbp. We replicate that EXACT derivation against the real
-//       useCartTotals reduce (no device / no React renderer).
+//       useCartQuoteTotals reduce (no device / no React renderer).
 //   (2) SOURCE-TEXT — read the four ACTUAL changed files and assert the fix
 //       lines exist: the per-tier forward in the wrapper, and per offering
 //       type the bottom-bar all-in bind + "Total" relabel + a11y all-in +
@@ -23,22 +23,29 @@
 import { describe, expect, jest, test } from "@jest/globals";
 
 import type { CartLine } from "../CartContext";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { ticketQuoteFromLines } from "./ticketQuoteFixture";
 
 // --- Make React hooks eager + inject a stub cart -------------------------
 // `useMemo(factory)` -> factory(); `useContext(ctx)` -> the injected cart value.
 let stubLines: CartLine[] = [];
+let stubQuote: TicketQuote | null = null;
 jest.mock("react", () => {
   const actual = jest.requireActual<typeof import("react")>("react");
   return {
     ...actual,
     useMemo: (factory: () => unknown): unknown => factory(),
-    useContext: (): unknown => ({ lines: stubLines }),
+    useContext: (): unknown => ({
+      lines: stubLines,
+      quote: stubQuote,
+      quoteStatus: "ready",
+    }),
   };
 });
 
 // Imported AFTER the mock so the hook picks up the eager React shims.
 // eslint-disable-next-line import/first
-import { useCartTotals } from "../CartContext";
+import { useCartQuoteTotals } from "../CartContext";
 
 const line = (over: Partial<CartLine>): CartLine => ({
   ticketTypeId: over.ticketTypeId ?? "tt_1",
@@ -51,9 +58,10 @@ const line = (over: Partial<CartLine>): CartLine => ({
   isFree: over.isFree ?? false,
 });
 
-const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartTotals> => {
+const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartQuoteTotals> => {
   stubLines = lines;
-  return useCartTotals();
+  stubQuote = ticketQuoteFromLines(lines);
+  return useCartQuoteTotals();
 };
 
 // Replicates the EXACT R2 bottom-bar derivation (index.tsx):
@@ -61,10 +69,10 @@ const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartTotals> => {
 //   showFeesTaxLine = !isEmpty && !isFree && hasFeesTaxDelta [&& dueToday===null]
 // We assert on the raw numbers the formatter would render so the test is
 // currency-agnostic and exercises the bind, not the Intl output.
-const headlineSource = (totals: ReturnType<typeof useCartTotals>): number =>
+const headlineSource = (totals: ReturnType<typeof useCartQuoteTotals>): number =>
   totals.allInTotal;
 const showFeesTaxLine = (
-  totals: ReturnType<typeof useCartTotals>,
+  totals: ReturnType<typeof useCartQuoteTotals>,
   dueTodayCents: number | null = null,
 ): boolean =>
   !totals.isEmpty &&

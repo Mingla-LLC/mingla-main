@@ -94,6 +94,13 @@ export const fetchPublicMenuBundle = async (
     .order("menu_sort_order", { ascending: true })
     .order("item_sort_order", { ascending: true });
   if (error !== null) throw error;
+  const venueId = ((data ?? [])[0] as MenuItemPublicRow | undefined)?.venue_id;
+  const salesByItemId =
+    typeof venueId === "string"
+      ? await import("./publicMenuSalesService").then((module) =>
+          module.fetchPublicMenuSales(venueId),
+        )
+      : new Map();
 
   const groups: PublicMenuGroup[] = [];
   const windows: Record<string, PublicMenuWindow> = {};
@@ -117,11 +124,15 @@ export const fetchPublicMenuBundle = async (
           : null,
       };
     }
+    const sale = salesByItemId.get(row.id);
     group.items.push({
       id: row.id,
       name: row.item_name,
       description: row.item_description,
       priceCents: row.price_cents,
+      salePriceCents: sale?.sale_price_cents ?? null,
+      saleEndsAt: sale?.sale_ends_at ?? null,
+      saleName: sale?.sale_name ?? null,
       currency: row.currency,
       // `=== true`, so a NULL from a pre-#1789 row reads as "no notes" rather
       // than "notes, probably".

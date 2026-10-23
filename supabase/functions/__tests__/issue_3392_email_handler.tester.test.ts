@@ -301,6 +301,36 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
                 : {}),
             }]);
           }
+          if (table === "rpc/issue_3872_discount_quote_lines") {
+            const line = body.p_lines[0];
+            return response({
+              lines: [{
+                lineRef: line.lineRef,
+                listUnitMinor: line.listUnitMinor,
+                netUnitMinor: line.listUnitMinor,
+                qty: line.qty,
+                unitsCounted: line.qty,
+                lineListMinor: line.listUnitMinor * line.qty,
+                lineNetMinor: line.listUnitMinor * line.qty,
+                lineDiscountMinor: 0,
+                applied: [],
+              }],
+              listSubtotalMinor: line.listUnitMinor * line.qty,
+              discountMinor: 0,
+              netSubtotalMinor: line.listUnitMinor * line.qty,
+              applied: [],
+              codeOutcome: {
+                status: "none",
+                reason: null,
+                required: null,
+                with: null,
+                replaced: [],
+              },
+              notices: [],
+              digest: "a".repeat(32),
+              listDigest: "b".repeat(32),
+            });
+          }
           if (table.startsWith("rpc/")) return response(null);
           const rows = tables[table] ?? [];
           let result: Row[];
@@ -387,7 +417,11 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
       async () => {
         reset();
         const created = await post(createOrigin, createBody());
-        assertEquals(created.status, 200);
+        assertEquals(
+          created.status,
+          200,
+          JSON.stringify({ body: created.body, logs, rejected }),
+        );
         assertEquals(created.body.kind, "free_completed");
         assertEquals(
           created.body.brandId,
@@ -440,7 +474,11 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
           createBody(),
           "Bearer fixture-user-jwt",
         );
-        assertEquals(created.status, 200);
+        assertEquals(
+          created.status,
+          200,
+          JSON.stringify({ body: created.body, logs, rejected }),
+        );
         assertEquals(created.body.kind, "requires_paystack_redirect");
         const token = created.body.guestCancelToken;
         assertEquals(created.body.buyerStatusToken, token);
@@ -531,7 +569,11 @@ Deno.test("#3392 independent actual-handler credential/recipient boundary", asyn
         stripe = true;
         tables.brands[0].default_currency = "GBP";
         const created = await post(createOrigin, createBody());
-        assertEquals(created.status, 200);
+        assertEquals(
+          created.status,
+          200,
+          JSON.stringify({ body: created.body, logs, rejected }),
+        );
         assertEquals(created.body.kind, "requires_web_redirect");
         const token = created.body.guestCancelToken;
         assertMatch(token, /^qa39\.[A-Za-z0-9_-]{43}$/);

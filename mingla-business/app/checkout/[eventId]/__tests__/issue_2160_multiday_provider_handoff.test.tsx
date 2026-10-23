@@ -175,6 +175,7 @@ import {
   CartProvider,
   useCart,
 } from "../../../../src/components/checkout/CartContext";
+import { ticketQuoteFromLines } from "../../../../src/components/checkout/__tests__/ticketQuoteFixture";
 import PaymentScreen from "../payment";
 
 const DAY_1 = "occ-2160-day-1";
@@ -193,9 +194,10 @@ const DAY_2 = "occ-2160-day-2";
  * in-place update.)
  */
 const SeedCart: React.FC<{ days: readonly string[] }> = ({ days }) => {
-  const { setLineQuantity, setBuyer, setEventDateIds } = useCart();
+  const { setLineQuantity, setBuyer, setEventDateIds, setQuoteState } =
+    useCart();
   React.useEffect(() => {
-    setLineQuantity({
+    const line = {
       ticketTypeId: TICKET_TYPE_ID,
       ticketName: "General admission",
       unitPrice: 15000,
@@ -203,7 +205,9 @@ const SeedCart: React.FC<{ days: readonly string[] }> = ({ days }) => {
       currency: "NGN",
       isFree: false,
       quantity: 1,
-    });
+    };
+    setLineQuantity(line);
+    setQuoteState(ticketQuoteFromLines([line]), "ready");
     setBuyer({
       name: "Ada Guest",
       email: "ada@example.test",

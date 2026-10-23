@@ -1,6 +1,8 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 
-const SRC = await Deno.readTextFile("supabase/functions/notify-dispatch/index.ts");
+const SRC = await Deno.readTextFile(
+  "supabase/functions/notify-dispatch/index.ts",
+);
 
 function position(needle: string): number {
   const found = SRC.indexOf(needle);
@@ -10,53 +12,82 @@ function position(needle: string): number {
 
 Deno.test("preference lookup failure stops every durable or provider side effect", () => {
   const lookup = position('.from("business_notification_type_preferences")');
-  const lookupFailure = position('"business_notification_preference_lookup_failed"');
-  const notificationInsert = position('.from("notifications")\n        .insert(insertPayload)');
-  const userEmailDispatch = SRC.indexOf("dispatchDurableLegacyEmail", lookupFailure);
+  const lookupFailure = position(
+    '"business_notification_preference_lookup_failed"',
+  );
+  const notificationInsert = position(
+    '.from("notifications")\n        .insert(insertPayload)',
+  );
+  const userEmailDispatch = SRC.indexOf(
+    "dispatchDurableLegacyEmail",
+    lookupFailure,
+  );
   const pushDispatch = position("pushSent = await sendPush(");
 
   assert(lookup < lookupFailure);
   assert(lookupFailure < notificationInsert);
   assert(userEmailDispatch < 0 || lookupFailure < userEmailDispatch);
   assert(lookupFailure < pushDispatch);
-  assertStringIncludes(SRC.slice(lookup, notificationInsert), "retryPending: true");
+  assertStringIncludes(
+    SRC.slice(lookup, notificationInsert),
+    "retryPending: true",
+  );
 });
 
 Deno.test("in-app suppression and push veto are independent channel decisions", () => {
   const suppression = position("businessChannels?.in_app === false");
-  const insert = position('.from("notifications")\n        .insert(insertPayload)');
+  const insert = position(
+    '.from("notifications")\n        .insert(insertPayload)',
+  );
   const pushVeto = position("businessChannels?.push === false");
   const coarseVeto = position("pref.push_enabled === false");
 
-  assert(suppression < insert, "suppression timestamp must be part of the durable insert");
-  assert(insert < pushVeto, "push OFF must retain the auditable notification row");
-  assert(pushVeto < coarseVeto, "legacy coarse preference remains an additional veto");
+  assert(
+    suppression < insert,
+    "suppression timestamp must be part of the durable insert",
+  );
+  assert(
+    insert < pushVeto,
+    "push OFF must retain the auditable notification row",
+  );
+  assert(
+    pushVeto < coarseVeto,
+    "legacy coarse preference remains an additional veto",
+  );
   assertEquals(
-    SRC.slice(suppression - 80, suppression + 180).includes("businessChannels?.push"),
+    SRC.slice(suppression - 80, suppression + 180).includes(
+      "businessChannels?.push",
+    ),
     false,
     "push state must not control inbox suppression",
   );
   assertEquals(
-    SRC.slice(pushVeto - 40, pushVeto + 220).includes("businessChannels?.in_app"),
+    SRC.slice(pushVeto - 40, pushVeto + 220).includes(
+      "businessChannels?.in_app",
+    ),
     false,
     "in-app state must not control provider push",
   );
 });
 
 // [TEST-MOD-APPROVED #3645] — #3645 PR10 added four organiser payout
-// visibility preference types; the allowlist is now fifteen exact keys.
-Deno.test("only the locked fifteen exact Business types enter the new lookup", () => {
+// visibility preference types; the allowlist was fifteen exact literal keys.
+// [TEST-MOD-APPROVED #3872] — R1 adds three Host discount lifecycle keys.
+Deno.test("only the locked eighteen exact Business literal types enter the new lookup", () => {
   assertStringIncludes(SRC, "if (userId && isBusinessPreferenceType(type))");
   assertStringIncludes(
     SRC,
     "Object.prototype.hasOwnProperty.call(\n    BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS,\n    type,\n  )",
   );
   assertEquals(
-    (SRC.match(/^  "business\.[a-z_]+": \{ push:/gm) ?? []).length,
-    15,
+    (SRC.match(/^  "business\.[a-z0-9_]+": \{ push:/gm) ?? []).length,
+    18,
   );
   assertStringIncludes(SRC, '"business.payout_waiting_for_bank"');
   assertStringIncludes(SRC, '"business.payouts_paused"');
   assertStringIncludes(SRC, '"business.payout_failed"');
   assertStringIncludes(SRC, '"business.payouts_resumed"');
+  assertStringIncludes(SRC, '"business.discount_limit_80"');
+  assertStringIncludes(SRC, '"business.discount_ended"');
+  assertStringIncludes(SRC, '"business.discount_needs_attention"');
 });

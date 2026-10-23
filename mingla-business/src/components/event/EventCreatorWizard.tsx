@@ -150,7 +150,7 @@ import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
  */
 
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
-import { CreatorStep2When } from "./CreatorStep2When";
+import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";

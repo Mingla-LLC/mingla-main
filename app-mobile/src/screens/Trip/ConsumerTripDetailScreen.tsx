@@ -636,6 +636,17 @@ export default function ConsumerTripDetailScreen({
           typeof t.priceAllInGbp === "number"
             ? Math.round(t.priceAllInGbp * 100)
             : null,
+        salePriceCents:
+          typeof t.salePriceGbp === "number"
+            ? Math.round(t.salePriceGbp * 100)
+            : null,
+        saleAllInCents:
+          typeof t.saleAllInGbp === "number"
+            ? Math.round(t.saleAllInGbp * 100)
+            : null,
+        saleEndsAt: t.saleEndsAt ?? null,
+        saleName: t.saleName ?? null,
+        saleRemaining: t.saleRemaining ?? null,
         description: t.description ?? null,
       });
     }
@@ -710,6 +721,7 @@ export default function ConsumerTripDetailScreen({
           ticketTypeId: tier.ticketTypeId,
           priceCents: tier.priceCents,
           priceAllInCents: tier.priceAllInCents ?? null,
+          saleAllInCents: tier.saleAllInCents ?? null,
           isFree: tier.isFree,
           isUnlimited: tier.isUnlimited,
           ticketsRemaining: tier.ticketsRemaining,
@@ -803,6 +815,10 @@ export default function ConsumerTripDetailScreen({
           accountId: user.id,
           eventId: detail.tripId,
           lines: payload.lines,
+          discountCode: payload.discountCode,
+          quoteDigest: payload.quoteDigest,
+          quoteListDigest: payload.quoteListDigest,
+          acceptedTotalCents: payload.totalCents,
           buyer: {
             ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
@@ -867,7 +883,7 @@ export default function ConsumerTripDetailScreen({
       } else if (result.outcome === "pending") {
         // The server has not finalized an order yet; the recovery panel owns
         // the durable state and keeps retry unavailable.
-      } else if (result.outcome === "canceled") {
+      } else if (result.outcome === "canceled" || result.outcome === "review") {
         // Silent: user dismissed PaymentSheet.
       } else {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -908,6 +924,7 @@ export default function ConsumerTripDetailScreen({
         setCheckoutTerminalOutcome(result);
       } else if (
         result.outcome === "pending" ||
+        result.outcome === "review" ||
         (result.outcome === "failed" && result.retryable !== undefined) ||
         (result.outcome === "canceled" && result.retryable === true)
       ) {

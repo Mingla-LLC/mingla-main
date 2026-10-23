@@ -130,6 +130,8 @@ export function checkoutIdempotencyKey(input: {
    * issue #3281 R2 — group party size. Omitted when absent / non-positive.
    */
   partySize?: number | null;
+  /** #3872: already-normalised code; omitted so code-less keys stay identical. */
+  discountCode?: string | null;
 }): string {
   const lineKey = input.lines
     .map((line) => `${line.ticketTypeId}:${line.quantity}`)
@@ -142,27 +144,29 @@ export function checkoutIdempotencyKey(input: {
   const bookedEnd = typeof input.bookedEndAt === "string"
     ? input.bookedEndAt.trim()
     : "";
-  const party =
-    typeof input.partySize === "number" &&
+  const party = typeof input.partySize === "number" &&
       Number.isFinite(input.partySize) &&
       input.partySize >= 1
-      ? Math.trunc(input.partySize)
-      : null;
+    ? Math.trunc(input.partySize)
+    : null;
+  const discountCode = typeof input.discountCode === "string"
+    ? input.discountCode.trim()
+    : "";
   return [
     "ticket_checkout",
     input.eventId,
     input.buyerEmail.trim().toLowerCase(),
     input.buyerPhoneE164,
     lineKey,
-    ...(dayKeys.length > 0
-      ? [`days:${[...dayKeys].sort().join(",")}`]
-      : []),
+    ...(dayKeys.length > 0 ? [`days:${[...dayKeys].sort().join(",")}`] : []),
     ...(bookedStart.length > 0 ? [`start:${bookedStart}`] : []),
     ...(bookedEnd.length > 0 ? [`end:${bookedEnd}`] : []),
     ...(party !== null ? [`party:${party}`] : []),
-    ...(input.paymentPlanChoice !== undefined && input.paymentPlanChoice !== "auto"
+    ...(input.paymentPlanChoice !== undefined &&
+        input.paymentPlanChoice !== "auto"
       ? [`choice:${input.paymentPlanChoice}`]
       : []),
+    ...(discountCode.length > 0 ? [`code:${discountCode}`] : []),
   ].join(":");
 }
 

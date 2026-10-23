@@ -49,7 +49,11 @@ import {
   View,
 } from "react-native";
 
-import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
+import {
+  boldFontFamily,
+  offeringSurfaceStyles,
+  type ThemePalette,
+} from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { ChipGroup, type Chip } from "./ChipGroup";
@@ -58,10 +62,21 @@ import { DayByDay } from "./DayByDay";
 // experience pages too). Imported under its trip name so this body is unchanged.
 // #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
 // import ./OfferingRefundLadder statically here.
-import { LazyOfferingRefundLadder as TripRefundLadder } from "./LazyOfferingRefundLadder";
+import {
+  LazyOfferingRefundLadder as TripRefundLadder,
+  LazySaleAvailabilityText,
+} from "./LazyOfferingRefundLadder";
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
-import { BadgeCheck, Calendar, Minus, Moon, Plane, Plus, Users } from "./LucideIcons";
+import {
+  BadgeCheck,
+  Calendar,
+  Minus,
+  Moon,
+  Plane,
+  Plus,
+  Users,
+} from "./LucideIcons";
 import {
   PresentedByFollowerCount,
   type FollowerCountLabels,
@@ -79,6 +94,7 @@ import type {
 import {
   projectTripSchedule,
   tripTierPriceLabel,
+  tripTierListPriceLabel,
   type TripOfferingState,
   type TripPaymentPlanChoice,
 } from "./useTripOfferingState";
@@ -127,7 +143,10 @@ export interface TripOfferingBodyProps {
    * plan row defaults to "full".
    */
   planChoiceByTier?: Record<string, TripPaymentPlanChoice>;
-  onChangePlanChoice?: (ticketTypeId: string, value: TripPaymentPlanChoice) => void;
+  onChangePlanChoice?: (
+    ticketTypeId: string,
+    value: TripPaymentPlanChoice,
+  ) => void;
   /**
    * Phone-only docked reserve node (the SAME <TripReserveBar variant="docked"> the
    * surface builds) — passed in so it renders as the LAST body child, flush beneath
@@ -293,10 +312,16 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
       {!isDesktop ? (
         <View style={styles.leadBlock} testID="trip-body-title">
           {eyebrow !== null && eyebrow.length > 0 ? (
-            <Text style={[styles.eyebrowLead, surface.primaryText]}>{eyebrow}</Text>
+            <Text style={[styles.eyebrowLead, surface.primaryText]}>
+              {eyebrow}
+            </Text>
           ) : null}
           <Text
-            style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}
+            style={[
+              styles.title,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
           >
             {data.title}
           </Text>
@@ -314,7 +339,10 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           <View
             style={[
               styles.fullPill,
-              { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+              {
+                backgroundColor: palette.accentWash,
+                borderColor: palette.panelBorder,
+              },
             ]}
           >
             <Calendar size={17} color={palette.accent} />
@@ -334,7 +362,10 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           <View
             style={[
               styles.fullPill,
-              { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+              {
+                backgroundColor: palette.accentWash,
+                borderColor: palette.panelBorder,
+              },
             ]}
             testID="trip-body-route-pill"
           >
@@ -404,7 +435,9 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           <Pressable
             onPress={callbacks.onViewBrand}
             disabled={callbacks.onViewBrand === undefined}
-            accessibilityRole={callbacks.onViewBrand !== undefined ? "button" : undefined}
+            accessibilityRole={
+              callbacks.onViewBrand !== undefined ? "button" : undefined
+            }
             accessibilityLabel={`View ${brand.name}`}
             style={styles.brandRow}
           >
@@ -444,10 +477,16 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               )}
             </View>
             <View style={styles.brandTextCol}>
-              <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
+              <Text style={[styles.brandKicker, surface.tertiaryText]}>
+                Presented by
+              </Text>
               <View style={styles.brandNameRow}>
                 <Text
-                  style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
+                  style={[
+                    styles.brandName,
+                    surface.primaryText,
+                    { fontFamily: boldFamily },
+                  ]}
                 >
                   {brand.name}
                 </Text>
@@ -463,8 +502,11 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                 testID="trip-presented-by-follower-count"
               />
             </View>
-            {presentedByFollow === undefined && callbacks.onViewBrand !== undefined ? (
-              <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+            {presentedByFollow === undefined &&
+            callbacks.onViewBrand !== undefined ? (
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
             ) : null}
           </Pressable>
           {presentedByFollow !== undefined ? (
@@ -476,7 +518,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
       {/* (6) About — collapsible, FOLDED here per Seth (after Presented-By). */}
       {aboutText.length > 0 ? (
         <View style={styles.section} testID="trip-body-about">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             About this trip
           </Text>
           <Text
@@ -505,7 +553,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
       {/* (7) Itinerary — shared DayByDay spine. */}
       {data.days.length > 0 ? (
         <View style={styles.section} testID="trip-body-itinerary">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             Day by day
           </Text>
           <DayByDay
@@ -521,7 +575,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
       {/* (8) What's included. */}
       {includedChips.length > 0 ? (
         <View style={styles.section} testID="trip-body-included">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             What&rsquo;s included
           </Text>
           <ChipGroup chips={includedChips} palette={palette} />
@@ -531,7 +591,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
       {/* (8) What's NOT included. */}
       {excludedChips.length > 0 ? (
         <View style={styles.section} testID="trip-body-excluded">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             What&rsquo;s not included
           </Text>
           <ChipGroup chips={excludedChips} palette={palette} />
@@ -558,7 +624,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
           docked/floating bar ALL read the SAME shared `state` → never diverge. N=1
           renders exactly as Leg A (one row, the same toggle). */}
       <View style={styles.section} testID="trip-body-pay-box">
-        <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+        <Text
+          style={[
+            styles.secTitle,
+            surface.primaryText,
+            { fontFamily: boldFamily },
+          ]}
+        >
           {data.tiers.length > 1 ? "Choose your package" : "Choose how you pay"}
         </Text>
 
@@ -580,12 +652,13 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     quantity={quantities?.[tier.ticketTypeId] ?? 0}
                     disabled={data.bookable === false || state.isClosed}
                     onChange={(qty) => {
-                      const clamped = state.clampQuantity(tier.ticketTypeId, qty);
+                      const clamped = state.clampQuantity(
+                        tier.ticketTypeId,
+                        qty,
+                      );
                       onChangeQuantity?.(tier.ticketTypeId, clamped);
                     }}
-                    planChoice={
-                      planChoiceByTier?.[tier.ticketTypeId] ?? "full"
-                    }
+                    planChoice={planChoiceByTier?.[tier.ticketTypeId] ?? "full"}
                     onChangePlanChoice={
                       onChangePlanChoice !== undefined
                         ? (v) => onChangePlanChoice(tier.ticketTypeId, v)
@@ -596,12 +669,21 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                 ))}
 
                 {/* Σ all-in / Σ due-today summary row (WYSIWYP). */}
-                <View style={[styles.totalRow, { borderTopColor: palette.panelBorder }]}>
+                <View
+                  style={[
+                    styles.totalRow,
+                    { borderTopColor: palette.panelBorder },
+                  ]}
+                >
                   <Text style={[styles.selectTierName, surface.secondaryText]}>
                     {summaryRowLabel ?? "Total"}
                   </Text>
                   <Text
-                    style={[styles.selectPrice, surface.primaryText, styles.moneyText]}
+                    style={[
+                      styles.selectPrice,
+                      surface.primaryText,
+                      styles.moneyText,
+                    ]}
                     testID="trip-body-select-total"
                   >
                     {summaryPriceLabel ?? "—"}
@@ -611,7 +693,8 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
             ) : (
               <>
                 {/* Leg-A fallback: the single-tier read-only preview + toggle. */}
-                {state.projectedSchedule !== null && state.isClosed === false ? (
+                {state.projectedSchedule !== null &&
+                state.isClosed === false ? (
                   <View style={styles.payChoiceWrap}>
                     <TripPaymentChoice
                       schedule={state.projectedSchedule}
@@ -628,13 +711,21 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
 
                 <View style={styles.selectRow}>
                   <Text
-                    style={[styles.selectTierName, surface.primaryText, { fontFamily: boldFamily }]}
+                    style={[
+                      styles.selectTierName,
+                      surface.primaryText,
+                      { fontFamily: boldFamily },
+                    ]}
                     numberOfLines={1}
                   >
                     {state.selectedTier.tierName}
                   </Text>
                   <Text
-                    style={[styles.selectPrice, surface.primaryText, styles.moneyText]}
+                    style={[
+                      styles.selectPrice,
+                      surface.primaryText,
+                      styles.moneyText,
+                    ]}
                     testID="trip-body-select-total"
                   >
                     {summaryPriceLabel ?? "—"}
@@ -649,7 +740,9 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               accessibilityRole="button"
               accessibilityState={{ disabled: !reserveTappable }}
               accessibilityLabel={
-                state.cta.kind === "unavailable" ? state.cta.title : "Reserve my spot"
+                state.cta.kind === "unavailable"
+                  ? state.cta.title
+                  : "Reserve my spot"
               }
               style={[
                 styles.boxProceed,
@@ -667,7 +760,9 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                 style={[
                   styles.boxProceedText,
                   {
-                    color: reserveTappable ? palette.accentText : palette.tertiaryText,
+                    color: reserveTappable
+                      ? palette.accentText
+                      : palette.tertiaryText,
                   },
                   summaryPriceLabel !== null && summaryPriceLabel !== "Free"
                     ? styles.moneyText
@@ -678,7 +773,8 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               </Text>
             </Pressable>
             <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-              All-in price — taxes &amp; fees included, no surprises at checkout.
+              All-in price — taxes &amp; fees included, no surprises at
+              checkout.
             </Text>
           </View>
         ) : null}
@@ -686,9 +782,17 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
 
       {/* (11) Where you'll be — destination map, FOLDED here per Seth (after §9/§10).
           Rule 9: only when real lat/lng resolve a proxy URL. */}
-      {data.destinationLat !== null && data.destinationLng !== null && mapUrl !== null ? (
+      {data.destinationLat !== null &&
+      data.destinationLng !== null &&
+      mapUrl !== null ? (
         <View style={styles.section} testID="trip-body-map">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             Where you&rsquo;ll be
           </Text>
           <View
@@ -704,7 +808,9 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               resizeMode="cover"
               accessibilityLabel={`Map of ${data.destinationText ?? "the destination"}`}
             />
-            <View style={[styles.mapCapPill, { backgroundColor: palette.page }]}>
+            <View
+              style={[styles.mapCapPill, { backgroundColor: palette.page }]}
+            >
               <Text style={[styles.mapCap, surface.primaryText]}>
                 {data.destinationText ?? "Destination"}
               </Text>
@@ -772,6 +878,7 @@ const TripPackageRow: React.FC<{
         : tier.ticketsRemaining <= 5
           ? `${tier.ticketsRemaining} left`
           : `${tier.ticketsRemaining} available`;
+  const listPriceLabel = tripTierListPriceLabel(tier);
 
   const hasPlan =
     tier.installmentSchedule !== null && tier.installmentSchedule !== undefined;
@@ -796,7 +903,11 @@ const TripPackageRow: React.FC<{
       <View style={styles.pkgHeaderRow}>
         <View style={styles.pkgTextCol}>
           <Text
-            style={[styles.selectTierName, surface.primaryText, { fontFamily: boldFamily }]}
+            style={[
+              styles.selectTierName,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
             numberOfLines={2}
           >
             {tier.tierName}
@@ -804,14 +915,36 @@ const TripPackageRow: React.FC<{
           {tier.description !== null &&
           tier.description !== undefined &&
           tier.description.length > 0 ? (
-            <Text style={[styles.pkgDesc, surface.secondaryText]} numberOfLines={2}>
+            <Text
+              style={[styles.pkgDesc, surface.secondaryText]}
+              numberOfLines={2}
+            >
               {tier.description}
             </Text>
           ) : null}
-          <Text style={[styles.pkgCap, surface.tertiaryText]}>{remainingLabel}</Text>
+          <Text style={[styles.pkgCap, surface.tertiaryText]}>
+            {remainingLabel}
+          </Text>
+          <LazySaleAvailabilityText
+            active={listPriceLabel !== null}
+            remaining={tier.saleRemaining}
+            endsAt={tier.saleEndsAt}
+            style={[styles.pkgSaleAvailability, { color: palette.accent }]}
+          />
         </View>
 
         <View style={styles.pkgRight}>
+          {listPriceLabel !== null ? (
+            <Text
+              style={[
+                styles.pkgListPrice,
+                surface.tertiaryText,
+                styles.moneyText,
+              ]}
+            >
+              {listPriceLabel}
+            </Text>
+          ) : null}
           <Text
             style={[styles.pkgPrice, surface.primaryText, styles.moneyText]}
           >
@@ -821,17 +954,24 @@ const TripPackageRow: React.FC<{
             <View
               style={[
                 styles.pkgSoldOut,
-                { backgroundColor: palette.card, borderColor: palette.panelBorder },
+                {
+                  backgroundColor: palette.card,
+                  borderColor: palette.panelBorder,
+                },
               ]}
             >
-              <Text style={[styles.pkgSoldOutText, { color: palette.tertiaryText }]}>
+              <Text
+                style={[styles.pkgSoldOutText, { color: palette.tertiaryText }]}
+              >
                 Sold out
               </Text>
             </View>
           ) : (
             <View style={styles.pkgStepper}>
               <Pressable
-                onPress={canDecrement ? () => onChange(quantity - 1) : undefined}
+                onPress={
+                  canDecrement ? () => onChange(quantity - 1) : undefined
+                }
                 disabled={!canDecrement}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove one ${tier.tierName}`}
@@ -845,13 +985,19 @@ const TripPackageRow: React.FC<{
                 <Minus size={18} color={palette.primaryText} />
               </Pressable>
               <Text
-                style={[styles.pkgQty, surface.primaryText, { fontFamily: boldFamily }]}
+                style={[
+                  styles.pkgQty,
+                  surface.primaryText,
+                  { fontFamily: boldFamily },
+                ]}
                 accessibilityLabel={`${quantity} ${tier.tierName} selected`}
               >
                 {quantity}
               </Text>
               <Pressable
-                onPress={canIncrement ? () => onChange(quantity + 1) : undefined}
+                onPress={
+                  canIncrement ? () => onChange(quantity + 1) : undefined
+                }
                 disabled={!canIncrement}
                 accessibilityRole="button"
                 accessibilityLabel={`Add one ${tier.tierName}`}
@@ -909,7 +1055,10 @@ const MetaPill: React.FC<{
   >
     {icon}
     <Text
-      style={[styles.pillText, { color: palette.primaryText, fontFamily: font }]}
+      style={[
+        styles.pillText,
+        { color: palette.primaryText, fontFamily: font },
+      ]}
       numberOfLines={1}
     >
       {label}
@@ -941,7 +1090,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 12,
   },
-  fullPillText: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
+  fullPillText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
   // ---- §4 meta pills (Leg A.4: COMPACT icon+label row — tighter padding/font so
   //      days&nights + seats-left sit side-by-side on one line) ----
   pillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
@@ -957,7 +1112,12 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 12, fontWeight: "700" },
   // ---- sections ----
   section: { marginTop: 24 },
-  secTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 12 },
+  secTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
   about: { fontSize: 16, lineHeight: 23 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
@@ -990,7 +1150,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: "uppercase",
   },
-  brandNameRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1 },
+  brandNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 1,
+  },
   brandName: { fontSize: 15, fontWeight: "800" },
   brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
   // ---- §10 box (ONE merged box: payment toggle + price row + reserve CTA) ----
@@ -1023,7 +1188,9 @@ const styles = StyleSheet.create({
   pkgTextCol: { flex: 1, minWidth: 0 },
   pkgDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   pkgCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
+  pkgSaleAvailability: { fontSize: 12, fontWeight: "700", marginTop: 3 },
   pkgRight: { alignItems: "flex-end", gap: 8 },
+  pkgListPrice: { fontSize: 12, textDecorationLine: "line-through" },
   pkgPrice: { fontSize: 15, fontWeight: "900" },
   pkgStepper: { flexDirection: "row", alignItems: "center", gap: 12 },
   pkgStepBtn: {
@@ -1035,7 +1202,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pkgStepBtnDisabled: { opacity: 0.4 },
-  pkgQty: { fontSize: 16, fontWeight: "900", minWidth: 18, textAlign: "center" },
+  pkgQty: {
+    fontSize: 16,
+    fontWeight: "900",
+    minWidth: 18,
+    textAlign: "center",
+  },
   pkgSoldOut: {
     borderRadius: 999,
     borderWidth: 1,
@@ -1061,7 +1233,12 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   boxProceedText: { fontSize: 16, fontWeight: "900" },
-  reassure: { fontSize: 12, marginTop: 12, lineHeight: 17, textAlign: "center" },
+  reassure: {
+    fontSize: 12,
+    marginTop: 12,
+    lineHeight: 17,
+    textAlign: "center",
+  },
   // ---- §11 map ----
   mapBlock: {
     borderRadius: 16,

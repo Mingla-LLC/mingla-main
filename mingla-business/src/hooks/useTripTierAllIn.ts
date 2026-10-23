@@ -2,7 +2,7 @@
  * useTripTierAllIn — META-ORCH-1174 Leg B3 [trip-page multi-tier selector].
  *
  * Resolves the SERVER all-in (tax/fee-inclusive) cents per ticket_type for a trip's
- * event, via the single-owner `fetchTierAllInCents` (pg_public_event_tier_allin) the
+ * event, via the single-owner `fetchTierAllInCents` (pg_public_event_tier_pricing) the
  * cart + event public page already use (ORCH-1147). Trips ride the SAME engine — the
  * §10 multi-package box DISPLAYS + SUMS this all-in (WYSIWYP, I-PROPOSED-1174-ALLIN-
  * SERVER-SOURCED) instead of the bare base price (which is all trip pages showed

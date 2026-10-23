@@ -44,6 +44,7 @@ import type {
   offeringSurfaceStyles,
   ThemePalette,
 } from "@mingla/offering-rendering";
+import { type DiscountCodeReason } from "@mingla/offering-rendering/discountQuote";
 
 import { formatMenuPrice } from "../PublicMenuSections";
 import type {
@@ -54,6 +55,12 @@ import type {
   VenueOrderPreview,
   VenueOrderTipChoice,
 } from "./venueOrderingTypes";
+
+const DiscountReasonText = React.lazy(() =>
+  import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
+    default: module.DiscountReasonText,
+  })),
+);
 import {
   VENUE_ORDER_PARTY_SIZE_HELP,
   VENUE_ORDER_PARTY_SIZE_MAX,
@@ -76,6 +83,8 @@ export interface VenueOrderReviewPaneProps {
   preview: VenueOrderPreview | null;
   previewStatus: VenueOrderPreviewStatus;
   previewError: string | null;
+  discountCode?: string;
+  onDiscountCodeChange?: (code: string) => void;
   tip: VenueOrderTipChoice;
   /** OQ-2 — true once the sitting has an answer. Changes the heading, not the row. */
   tipRemembered: boolean;
@@ -139,6 +148,8 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   preview,
   previewStatus,
   previewError,
+  discountCode = "",
+  onDiscountCodeChange = () => undefined,
   tip,
   tipRemembered,
   onTipChange,
@@ -175,6 +186,33 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   // never saw.
   const canPay = priced && !submitting && buyerFailure === null &&
     cart.length > 0;
+  const tipDropped =
+    preview?.notices?.some(
+      (notice) =>
+        notice !== null &&
+        typeof notice === "object" &&
+        (notice as { type?: unknown }).type === "tip_dropped_free_order",
+    ) === true;
+  const knownCodeReasons = new Set<DiscountCodeReason>([
+    "not_found",
+    "paused",
+    "not_started",
+    "ended",
+    "used_up",
+    "buyer_limit",
+    "queue",
+    "not_applicable",
+    "min_subtotal",
+    "incompatible_better_automatic",
+  ]);
+  const codeReason = preview?.codeOutcome?.reason ?? null;
+  const hasKnownCodeReason =
+    codeReason !== null &&
+    knownCodeReasons.has(codeReason as DiscountCodeReason);
+  const codeDiscount =
+    preview?.discounts?.find(
+      (discount) => discount.id === preview.codeOutcome?.discountId,
+    ) ?? null;
 
   return (
     <View style={styles.wrap}>
@@ -197,9 +235,10 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
       {/* ── the basket ──────────────────────────────────────────────────── */}
       <View style={[styles.card, surface.card]}>
         {cart.map((line, index) => {
-          const pricedLine = preview?.lines.find(
-            (candidate) => candidate.lineNo === index + 1,
-          ) ?? null;
+          const pricedLine =
+            preview?.lines.find(
+              (candidate) => candidate.lineNo === index + 1,
+            ) ?? null;
           return (
             <View
               key={line.key}
@@ -213,7 +252,9 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
             >
               <View style={styles.lineTop}>
                 <View style={styles.lineLeft}>
-                  <Text style={[styles.lineName, { color: palette.primaryText }]}>
+                  <Text
+                    style={[styles.lineName, { color: palette.primaryText }]}
+                  >
                     {line.itemName}
                   </Text>
                   {line.modifierNames.length > 0 ? (
@@ -227,21 +268,42 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                 <View style={styles.lineRight}>
                   {/* The line's own money, when the server has stated it. */}
                   {pricedLine === null ? null : (
-                    <Text
-                      style={[styles.lineTotal, { color: palette.primaryText }]}
-                    >
-                      {money(pricedLine.lineTotalCents)}
-                    </Text>
+                    <View style={styles.linePricePair}>
+                      {pricedLine.discountCents > 0 ? (
+                        <Text
+                          style={[
+                            styles.lineListTotal,
+                            { color: palette.tertiaryText },
+                          ]}
+                        >
+                          {money(pricedLine.lineTotalCents)}
+                        </Text>
+                      ) : null}
+                      <Text
+                        style={[
+                          styles.lineTotal,
+                          { color: palette.primaryText },
+                        ]}
+                      >
+                        {money(pricedLine.netLineTotalCents)}
+                      </Text>
+                    </View>
                   )}
                   <View style={styles.stepper}>
                     <Pressable
                       onPress={() => onSetQuantity(line.key, line.quantity - 1)}
                       accessibilityRole="button"
                       accessibilityLabel={`One fewer ${line.itemName}`}
-                      style={[styles.stepBtn, { borderColor: palette.panelBorder }]}
+                      style={[
+                        styles.stepBtn,
+                        { borderColor: palette.panelBorder },
+                      ]}
                     >
                       <Text
-                        style={[styles.stepGlyph, { color: palette.primaryText }]}
+                        style={[
+                          styles.stepGlyph,
+                          { color: palette.primaryText },
+                        ]}
                       >
                         −
                       </Text>
@@ -255,10 +317,16 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                       onPress={() => onSetQuantity(line.key, line.quantity + 1)}
                       accessibilityRole="button"
                       accessibilityLabel={`One more ${line.itemName}`}
-                      style={[styles.stepBtn, { borderColor: palette.panelBorder }]}
+                      style={[
+                        styles.stepBtn,
+                        { borderColor: palette.panelBorder },
+                      ]}
                     >
                       <Text
-                        style={[styles.stepGlyph, { color: palette.primaryText }]}
+                        style={[
+                          styles.stepGlyph,
+                          { color: palette.primaryText },
+                        ]}
                       >
                         +
                       </Text>
@@ -270,14 +338,18 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
                 <Input
                   value={line.notes ?? ""}
                   onChangeText={(value: string) =>
-                    onSetNotes(line.key, value.trim() === "" ? null : value)}
+                    onSetNotes(line.key, value.trim() === "" ? null : value)
+                  }
                   placeholder="Anything they should know? (optional)"
                   placeholderTextColor={palette.tertiaryText}
                   accessibilityLabel={`A note for ${line.itemName}`}
                   maxLength={140}
                   style={[
                     styles.input,
-                    { borderColor: palette.panelBorder, color: palette.primaryText },
+                    {
+                      borderColor: palette.panelBorder,
+                      color: palette.primaryText,
+                    },
                   ]}
                 />
               ) : null}
@@ -324,7 +396,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
       ) : null}
 
       {/* ── the tip row (D-2 / P-18 / OQ-2) ─────────────────────────────── */}
-      {config.tipsEnabled ? (
+      {config.tipsEnabled && !tipDropped ? (
         <View style={[styles.card, surface.card, styles.block]}>
           <Text style={[styles.blockTitle, { color: palette.primaryText }]}>
             {tipRemembered ? "Tip — you can change it" : "Add a tip?"}
@@ -354,12 +426,16 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         </View>
       ) : null}
 
+      {tipDropped ? (
+        <Text style={[styles.freeTipMessage, { color: palette.secondaryText }]}>
+          Your order is free, so no tip is added.
+        </Text>
+      ) : null}
+
       {/* ── who this order belongs to (P-22 gate 8) ─────────────────────── */}
       <View style={[styles.card, surface.card, styles.block]}>
         <Text style={[styles.blockTitle, { color: palette.primaryText }]}>
-          {config.spotState === "ok"
-            ? "Who's ordering?"
-            : "Who's collecting?"}
+          {config.spotState === "ok" ? "Who's ordering?" : "Who's collecting?"}
         </Text>
         <Input
           value={buyer.name}
@@ -414,13 +490,81 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
 
       {/* ── the money. All five numbers are the server's. ───────────────── */}
       <View style={[styles.card, surface.card, styles.block]}>
+        <Text style={[styles.blockTitle, { color: palette.primaryText }]}>
+          Discount code
+        </Text>
+        {preview?.codeOutcome?.applied === true && codeDiscount !== null ? (
+          <View style={styles.codeAppliedRow}>
+            <View style={styles.codeAppliedCopy}>
+              <Text
+                style={[styles.codeAppliedName, { color: palette.primaryText }]}
+              >
+                {codeDiscount.name}
+              </Text>
+              <Text
+                style={[styles.blockHelp, { color: palette.secondaryText }]}
+              >
+                Saving {money(codeDiscount.amountCents)}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => onDiscountCodeChange("")}
+              disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Remove discount code"
+            >
+              <Text style={[styles.codeRemove, { color: palette.accent }]}>
+                Remove
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Input
+            value={discountCode}
+            onChangeText={onDiscountCodeChange}
+            placeholder="Enter a code"
+            placeholderTextColor={palette.tertiaryText}
+            accessibilityLabel="Discount code"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            editable={!submitting}
+            maxLength={32}
+            style={[
+              styles.input,
+              { borderColor: palette.panelBorder, color: palette.primaryText },
+            ]}
+          />
+        )}
+        {previewStatus === "loading" && discountCode.trim().length > 0 ? (
+          <Text style={[styles.blockHelp, { color: palette.secondaryText }]}>
+            Checking code…
+          </Text>
+        ) : hasKnownCodeReason ? (
+          <React.Suspense fallback={null}>
+            <DiscountReasonText
+              style={[styles.codeError, { color: palette.secondaryText }]}
+              input={{
+                reason: codeReason as DiscountCodeReason,
+                code: discountCode.trim().toUpperCase(),
+              }}
+            />
+          </React.Suspense>
+        ) : null}
         {priced && preview !== null ? (
           <View style={styles.totals}>
             <MoneyLine
               label="Items"
-              value={money(preview.subtotalCents)}
+              value={money(preview.listSubtotalCents ?? preview.subtotalCents)}
               palette={palette}
             />
+            {(preview.discounts ?? []).map((discount) => (
+              <MoneyLine
+                key={discount.id}
+                label={discount.name}
+                value={`−${money(discount.amountCents)}`}
+                palette={palette}
+              />
+            ))}
             {preview.serviceChargeCents > 0 ? (
               <MoneyLine
                 label={preview.serviceChargeLabel}
@@ -441,7 +585,10 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
               />
             ) : null}
             <View
-              style={[styles.totalRule, { backgroundColor: palette.panelBorder }]}
+              style={[
+                styles.totalRule,
+                { backgroundColor: palette.panelBorder },
+              ]}
             />
             <MoneyLine
               label="Total"
@@ -495,8 +642,8 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
           {submitting
             ? "One moment…"
             : priced && preview !== null
-            ? `Pay ${money(preview.totalCents)}`
-            : "Pay"}
+              ? `Pay ${money(preview.totalCents)}`
+              : "Pay"}
         </Text>
       </Pressable>
     </View>
@@ -585,6 +732,12 @@ const styles = StyleSheet.create({
   lineRight: { alignItems: "flex-end", gap: 8 },
   lineName: { fontSize: 15, lineHeight: 20, fontWeight: "700" },
   lineMods: { fontSize: 13, lineHeight: 18 },
+  linePricePair: { alignItems: "flex-end" },
+  lineListTotal: {
+    fontSize: 12,
+    lineHeight: 16,
+    textDecorationLine: "line-through",
+  },
   lineTotal: { fontSize: 15, lineHeight: 20, fontWeight: "800" },
   stepper: { flexDirection: "row", alignItems: "center", gap: 10 },
   stepBtn: {
@@ -596,7 +749,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   stepGlyph: { fontSize: 17, lineHeight: 21, fontWeight: "800" },
-  stepCount: { fontSize: 15, fontWeight: "800", minWidth: 16, textAlign: "center" },
+  stepCount: {
+    fontSize: 15,
+    fontWeight: "800",
+    minWidth: 16,
+    textAlign: "center",
+  },
   input: {
     minHeight: 46,
     borderWidth: 1,
@@ -615,6 +773,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   tipChipLabel: { fontSize: 14, fontWeight: "800" },
+  freeTipMessage: { fontSize: 13, lineHeight: 18 },
+  codeAppliedRow: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  codeAppliedCopy: { flex: 1 },
+  codeAppliedName: { fontSize: 14, lineHeight: 19, fontWeight: "800" },
+  codeRemove: { fontSize: 13, lineHeight: 18, fontWeight: "800" },
+  codeError: { fontSize: 13, lineHeight: 18 },
   totals: { gap: 8 },
   moneyRow: {
     flexDirection: "row",

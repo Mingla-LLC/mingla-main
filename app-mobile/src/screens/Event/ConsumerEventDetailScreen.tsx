@@ -987,6 +987,10 @@ export default function ConsumerEventDetailScreen({
           accountId: user.id,
           eventId: seed.eventId,
           lines: payload.lines,
+          discountCode: payload.discountCode,
+          quoteDigest: payload.quoteDigest,
+          quoteListDigest: payload.quoteListDigest,
+          acceptedTotalCents: payload.totalCents,
           buyer: {
             ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
@@ -1057,7 +1061,7 @@ export default function ConsumerEventDetailScreen({
       } else if (result.outcome === "pending") {
         // The server has not finalized an order yet. The cart switches to the
         // durable terminal panel; retry remains unavailable while this is true.
-      } else if (result.outcome === "canceled") {
+      } else if (result.outcome === "canceled" || result.outcome === "review") {
         // Silent: user dismissed PaymentSheet.
       } else {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -1095,6 +1099,7 @@ export default function ConsumerEventDetailScreen({
         setCheckoutTerminalOutcome(result);
       } else if (
         result.outcome === "pending" ||
+        result.outcome === "review" ||
         (result.outcome === "failed" && result.retryable !== undefined) ||
         (result.outcome === "canceled" && result.retryable === true)
       ) {

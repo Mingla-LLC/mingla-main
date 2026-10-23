@@ -85,6 +85,7 @@ const PayoutBreakdown: React.FC<{ release: PayoutScreenReleaseDTO }> = ({ releas
   return (
     <GlassCard variant="base" padding={spacing.lg}>
       <Text style={styles.sectionTitle}>How we got to this number</Text>
+      {(release.discountCents ?? 0) > 0 ? <BreakdownLine label="Discounts you gave" value={`−${money(release.discountCents ?? 0)}`} /> : null}
       <BreakdownLine label="Buyers paid" value={money(release.grossCents)} />
       {release.refundedCents > 0 ? <BreakdownLine label="Refunds" value={`−${money(release.refundedCents)}`} /> : null}
       {release.disputedCents > 0 ? <BreakdownLine label="Disputes" value={`−${money(release.disputedCents)}`} /> : null}

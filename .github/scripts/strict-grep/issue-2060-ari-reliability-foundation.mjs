@@ -11,7 +11,10 @@ import { fileURLToPath } from "node:url";
 // MINGLA-INVARIANT: I-ARI-CORRELATED-RELEASE-TRUTH | issue #2060 | Ari release evidence remains correlated across code, capability, runtime, and deployed verification.
 // MINGLA-INVARIANT: I-ARI-LEDGER-CERTIFICATION | issue #2060 | Ari capability-ledger certification is complete, immutable, independently derived, and fails closed on drift.
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 const FILES = {
   edge: "supabase/functions/_shared/agentReliability.ts",
@@ -28,33 +31,46 @@ const FILES = {
   schema: "docs/contracts/ari-certification-evidence.schema.json",
   digest: "docs/contracts/ari-certification-digest-v1.json",
   certifier: "scripts/ari/certify-capabilities.mjs",
-  migration: "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql",
-  currentMigration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
+  migration:
+    "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql",
+  currentMigration:
+    "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
   // #1984 — census pin (138→140). #3055 remains the byte-identity twin of
-  // [TEST-MOD-APPROVED #3697] Host Ads tools (140→145).
+  // [TEST-MOD-APPROVED #3872] R1 Discounts tools (145→148).
   // #1981 and stays pinned below; do not rewrite applied/history migrations.
-  censusMigration: "supabase/migrations/20270824003697_issue_3697_ari_cert_capability_census.sql",
-  census3055Migration: "supabase/migrations/20270630003055_issue_3055_ari_cert_backlog_repair.sql",
-  census1980Migration: "supabase/migrations/20270621001980_issue_1980_ari_cert_capability_census.sql",
-  census1981Migration: "supabase/migrations/20270625001981_issue_1981_ari_cert_capability_census.sql",
-  setDigestMigration: "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
+  censusMigration:
+    "supabase/migrations/20270824003697_issue_3697_ari_cert_capability_census.sql",
+  census3055Migration:
+    "supabase/migrations/20270630003055_issue_3055_ari_cert_backlog_repair.sql",
+  census1980Migration:
+    "supabase/migrations/20270621001980_issue_1980_ari_cert_capability_census.sql",
+  census1981Migration:
+    "supabase/migrations/20270625001981_issue_1981_ari_cert_capability_census.sql",
+  setDigestMigration:
+    "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
   workflow: ".github/workflows/issue-2060-ari-reliability.yml",
-  crossRuntimeGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
-  independentVerdictGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
-  unicodeBoundaryGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
+  crossRuntimeGuard:
+    "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
+  independentVerdictGuard:
+    "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
+  unicodeBoundaryGuard:
+    "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
   gate: ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
 };
 
 function readLive() {
-  return Object.fromEntries(Object.entries(FILES).map(([key, rel]) => {
-    const raw = fs.readFileSync(path.join(ROOT, rel), "utf8");
-    return [key, rel.endsWith(".json") ? JSON.parse(raw) : raw];
-  }));
+  return Object.fromEntries(
+    Object.entries(FILES).map(([key, rel]) => {
+      const raw = fs.readFileSync(path.join(ROOT, rel), "utf8");
+      return [key, rel.endsWith(".json") ? JSON.parse(raw) : raw];
+    }),
+  );
 }
 
 function need(source, values, label) {
-  for (const value of values) assert.ok(source.includes(value), `${label}: missing ${value}`);
+  for (const value of values)
+    assert.ok(source.includes(value), `${label}: missing ${value}`);
 }
 
 function errorTuples(source, marker) {
@@ -77,12 +93,18 @@ function errorTuples(source, marker) {
 // #3055 — the span of #1981's certification statements: helper, begin_run,
 // finalize_run, their REVOKE/GRANTs and the two function COMMENTs.
 function certificationStatements(source, label) {
-  const start = source.indexOf("CREATE OR REPLACE FUNCTION private.ari_cert_requirements_set_digest_v1()");
+  const start = source.indexOf(
+    "CREATE OR REPLACE FUNCTION private.ari_cert_requirements_set_digest_v1()",
+  );
   assert.ok(start >= 0, `${label}: set-digest helper statement not found`);
-  const tail = /COMMENT ON FUNCTION public\.ari_cert_finalize_run\(uuid\) IS\n  '[^']*';/g;
+  const tail =
+    /COMMENT ON FUNCTION public\.ari_cert_finalize_run\(uuid\) IS\n  '[^']*';/g;
   tail.lastIndex = start;
   const end = tail.exec(source);
-  assert.ok(end, `${label}: finalize_run COMMENT statement not found after the helper`);
+  assert.ok(
+    end,
+    `${label}: finalize_run COMMENT statement not found after the helper`,
+  );
   return source.slice(start, end.index + end[0].length);
 }
 
@@ -90,7 +112,9 @@ const REQUIREMENT_INSERT =
   /INSERT INTO public\.ari_cert_capability_requirements \(capability_id, evidence_mode\)\nVALUES\n[\s\S]*?ON CONFLICT \(capability_id\) DO (?:NOTHING|UPDATE[\s\S]*?);/g;
 
 function requirementPairs(statement) {
-  return [...statement.matchAll(/\('(ari\.[a-z0-9_.]+)',\s*'([a-z_]+)'\)/g)].map((m) => [m[1], m[2]]);
+  return [
+    ...statement.matchAll(/\('(ari\.[a-z0-9_.]+)',\s*'([a-z_]+)'\)/g),
+  ].map((m) => [m[1], m[2]]);
 }
 
 function dollarBlock(source, tag) {
@@ -111,58 +135,110 @@ function checkBacklogRepair(fixture) {
   );
 
   const repairInserts = repair.match(REQUIREMENT_INSERT) ?? [];
-  for (const [label, source] of [["#1980", fixture.census1980Migration], ["#1981", fixture.census1981Migration]]) {
+  for (const [label, source] of [
+    ["#1980", fixture.census1980Migration],
+    ["#1981", fixture.census1981Migration],
+  ]) {
     const inserts = source.match(REQUIREMENT_INSERT) ?? [];
-    assert.equal(inserts.length, 1, `${label} census must carry exactly one requirement INSERT`);
-    assert.ok(repairInserts.includes(inserts[0]), `#3055 repair must carry ${label}'s requirement INSERT verbatim`);
+    assert.equal(
+      inserts.length,
+      1,
+      `${label} census must carry exactly one requirement INSERT`,
+    );
+    assert.ok(
+      repairInserts.includes(inserts[0]),
+      `#3055 repair must carry ${label}'s requirement INSERT verbatim`,
+    );
   }
 
   const preflight = dollarBlock(repair, "$issue_3055_preflight$");
   const postflight = dollarBlock(repair, "$issue_3055_postflight$");
-  const owned = [...preflight.matchAll(
-    /\('(ari\.[a-z0-9_.]+)',\s*'#(\d+)',\s*(NULL|'[a-z_]+'),\s*(NULL|'[a-z_]+')\)/g,
-  )].map((m) => ({
+  const owned = [
+    ...preflight.matchAll(
+      /\('(ari\.[a-z0-9_.]+)',\s*'#(\d+)',\s*(NULL|'[a-z_]+'),\s*(NULL|'[a-z_]+')\)/g,
+    ),
+  ].map((m) => ({
     id: m[1],
     issue: m[2],
     production: m[3] === "NULL" ? null : m[3].slice(1, -1),
     chain: m[4] === "NULL" ? null : m[4].slice(1, -1),
   }));
-  assert.equal(owned.length, 8, "#3055 repair must own exactly the eight backlog requirement rows");
+  assert.equal(
+    owned.length,
+    8,
+    "#3055 repair must own exactly the eight backlog requirement rows",
+  );
 
   const ledgerIds = new Set(fixture.ledger.capabilities.map((row) => row.id));
   for (const row of owned) {
     if (row.chain === null) {
-      assert.ok(!ledgerIds.has(row.id), `#3055 repair retires ${row.id}, but the ledger still lists it`);
+      assert.ok(
+        !ledgerIds.has(row.id),
+        `#3055 repair retires ${row.id}, but the ledger still lists it`,
+      );
     } else {
-      assert.ok(ledgerIds.has(row.id), `#3055 repair certifies ${row.id}, which the ledger does not list`);
+      assert.ok(
+        ledgerIds.has(row.id),
+        `#3055 repair certifies ${row.id}, which the ledger does not list`,
+      );
     }
   }
   const insertedPairs = new Map(repairInserts.flatMap(requirementPairs));
-  for (const row of owned.filter((r) => r.issue === "1980" || r.issue === "1981")) {
-    assert.equal(insertedPairs.get(row.id), row.chain,
-      `#3055 repair guards ${row.id} at ${row.chain}, but its copied INSERT writes ${insertedPairs.get(row.id)}`);
+  for (const row of owned.filter(
+    (r) => r.issue === "1980" || r.issue === "1981",
+  )) {
+    assert.equal(
+      insertedPairs.get(row.id),
+      row.chain,
+      `#3055 repair guards ${row.id} at ${row.chain}, but its copied INSERT writes ${insertedPairs.get(row.id)}`,
+    );
   }
 
   // Delta-shaped (binding decision on #3055): no guard compares to a count literal.
-  for (const [label, block] of [["pre-flight", preflight], ["post-flight", postflight]]) {
-    assert.ok(!/(?:<>|!=|=|<|>)\s*\d{2,}\b/.test(block),
-      `#3055 repair ${label} compares against a numeric literal — guards must be delta-shaped`);
+  for (const [label, block] of [
+    ["pre-flight", preflight],
+    ["post-flight", postflight],
+  ]) {
+    assert.ok(
+      !/(?:<>|!=|=|<|>)\s*\d{2,}\b/.test(block),
+      `#3055 repair ${label} compares against a numeric literal — guards must be delta-shaped`,
+    );
   }
-  assert.equal((repair.match(/^BEGIN;$/gm) ?? []).length, 1, "#3055 repair must self-wrap: exactly one BEGIN;");
-  assert.equal((repair.match(/^COMMIT;$/gm) ?? []).length, 1, "#3055 repair must self-wrap: exactly one COMMIT;");
+  assert.equal(
+    (repair.match(/^BEGIN;$/gm) ?? []).length,
+    1,
+    "#3055 repair must self-wrap: exactly one BEGIN;",
+  );
+  assert.equal(
+    (repair.match(/^COMMIT;$/gm) ?? []).length,
+    1,
+    "#3055 repair must self-wrap: exactly one COMMIT;",
+  );
 }
 
 export function checkContract(fixture) {
-  need(fixture.gate, [
-    `${LOCAL_DECLARATION_PREFIX}I-ARI-LOGICAL-TURN-ONCE | issue #2060 |`,
-    `${LOCAL_DECLARATION_PREFIX}I-ARI-EXECUTION-ONCE | issue #2060 |`,
-    `${LOCAL_DECLARATION_PREFIX}I-ARI-RESULT-HONESTY | issue #2060 |`,
-    `${LOCAL_DECLARATION_PREFIX}I-ARI-RECOVERY-PARITY | issue #2060 |`,
-    `${LOCAL_DECLARATION_PREFIX}I-ARI-CORRELATED-RELEASE-TRUTH | issue #2060 |`,
-    `${LOCAL_DECLARATION_PREFIX}I-ARI-LEDGER-CERTIFICATION | issue #2060 |`,
-  ], "local invariant declarations");
-  assert.equal(fixture.ledger.capabilities.length, 145, "canonical ledger must stay exactly 145 rows");
-  assert.equal(new Set(fixture.ledger.capabilities.map((row) => row.id)).size, 145, "capability IDs must be unique");
+  need(
+    fixture.gate,
+    [
+      `${LOCAL_DECLARATION_PREFIX}I-ARI-LOGICAL-TURN-ONCE | issue #2060 |`,
+      `${LOCAL_DECLARATION_PREFIX}I-ARI-EXECUTION-ONCE | issue #2060 |`,
+      `${LOCAL_DECLARATION_PREFIX}I-ARI-RESULT-HONESTY | issue #2060 |`,
+      `${LOCAL_DECLARATION_PREFIX}I-ARI-RECOVERY-PARITY | issue #2060 |`,
+      `${LOCAL_DECLARATION_PREFIX}I-ARI-CORRELATED-RELEASE-TRUTH | issue #2060 |`,
+      `${LOCAL_DECLARATION_PREFIX}I-ARI-LEDGER-CERTIFICATION | issue #2060 |`,
+    ],
+    "local invariant declarations",
+  );
+  assert.equal(
+    fixture.ledger.capabilities.length,
+    148,
+    "canonical ledger must stay exactly 148 rows",
+  );
+  assert.equal(
+    new Set(fixture.ledger.capabilities.map((row) => row.id)).size,
+    148,
+    "capability IDs must be unique",
+  );
   for (const row of fixture.ledger.capabilities) {
     const owner = fixture.owners.domains?.[row.domain];
     assert.ok(owner, `missing certification owner for ${row.id}`);
@@ -174,122 +250,215 @@ export function checkContract(fixture) {
     "venue operations must depend on #1979",
   );
 
-  assert.equal(fixture.schema.properties.capabilities.minItems, 145, "evidence schema row floor");
-  assert.equal(fixture.schema.properties.capabilities.maxItems, 145, "evidence schema row ceiling");
+  assert.equal(
+    fixture.schema.properties.capabilities.minItems,
+    148,
+    "evidence schema row floor",
+  );
+  assert.equal(
+    fixture.schema.properties.capabilities.maxItems,
+    148,
+    "evidence schema row ceiling",
+  );
   assert.ok(
     fixture.schema.properties.capabilities.items.properties.scenario_evidence,
     "evidence schema must require structured scenario evidence",
   );
-  assert.equal(fixture.schema.properties.cleanup.properties.verified_zero_residue.const, true, "cleanup must be true");
-  assert.equal(fixture.schema.properties.rollback.properties.stranded_operation_count.const, 0, "rollback must strand zero");
-  assert.equal(fixture.schema.properties.run.properties.native_artifacts.maxItems, 3, "native tuple ceiling");
   assert.equal(
-    fixture.schema.properties.run.properties.server_attestation.properties.canonicalization.const,
+    fixture.schema.properties.cleanup.properties.verified_zero_residue.const,
+    true,
+    "cleanup must be true",
+  );
+  assert.equal(
+    fixture.schema.properties.rollback.properties.stranded_operation_count
+      .const,
+    0,
+    "rollback must strand zero",
+  );
+  assert.equal(
+    fixture.schema.properties.run.properties.native_artifacts.maxItems,
+    3,
+    "native tuple ceiling",
+  );
+  assert.equal(
+    fixture.schema.properties.run.properties.server_attestation.properties
+      .canonicalization.const,
     "ARI-CERT-TUPLE-V1",
     "attestation canonicalization",
   );
-  assert.equal(fixture.digest.contract, "ARI-CERT-TUPLE-V1", "portable digest contract");
+  assert.equal(
+    fixture.digest.contract,
+    "ARI-CERT-TUPLE-V1",
+    "portable digest contract",
+  );
 
   const seamById = new Map(fixture.seams.seams.map((seam) => [seam.id, seam]));
-  assert.equal(seamById.get("task_state_and_client_turn")?.owner_issue, 1985, "#1985 task-state owner");
-  assert.equal(seamById.get("atomic_execution_receipt")?.owner_issue, 1972, "#1972 receipt owner");
-  assert.equal(seamById.get("brand_domain_readback")?.owner_issue, 2063, "#2063 brand owner");
-  assert.equal(seamById.get("task_state_and_client_turn")?.state, "ready", "#1985 seam must be ready");
-  assert.equal(seamById.get("atomic_execution_receipt")?.state, "ready", "#1972 seam must be ready");
-  assert.equal(seamById.get("brand_domain_readback")?.state, "ready", "#2063 brand seam must be ready");
+  assert.equal(
+    seamById.get("task_state_and_client_turn")?.owner_issue,
+    1985,
+    "#1985 task-state owner",
+  );
+  assert.equal(
+    seamById.get("atomic_execution_receipt")?.owner_issue,
+    1972,
+    "#1972 receipt owner",
+  );
+  assert.equal(
+    seamById.get("brand_domain_readback")?.owner_issue,
+    2063,
+    "#2063 brand owner",
+  );
+  assert.equal(
+    seamById.get("task_state_and_client_turn")?.state,
+    "ready",
+    "#1985 seam must be ready",
+  );
+  assert.equal(
+    seamById.get("atomic_execution_receipt")?.state,
+    "ready",
+    "#1972 seam must be ready",
+  );
+  assert.equal(
+    seamById.get("brand_domain_readback")?.state,
+    "ready",
+    "#2063 brand seam must be ready",
+  );
   assert.equal(
     seamById.get("venue_operations_readback")?.state,
     "dependency_pending",
     "venue ops receipt-backed confirm alias remains dependency-pending",
   );
-  assert.equal(fixture.observability.status, "hot_path_wired", "observability must reflect hot-path wire");
-  for (const metric of ["dedupe_replay_count", "stuck_executing_count", "reconciliation_age_ms", "telemetry_missing_count"]) {
-    assert.ok(fixture.observability.required_metrics.includes(metric), `missing observability metric ${metric}`);
+  assert.equal(
+    fixture.observability.status,
+    "hot_path_wired",
+    "observability must reflect hot-path wire",
+  );
+  for (const metric of [
+    "dedupe_replay_count",
+    "stuck_executing_count",
+    "reconciliation_age_ms",
+    "telemetry_missing_count",
+  ]) {
+    assert.ok(
+      fixture.observability.required_metrics.includes(metric),
+      `missing observability metric ${metric}`,
+    );
   }
-  for (const alert of ["canonical_readback_mismatch", "stuck_or_unknown_operation", "missing_telemetry"]) {
-    assert.ok(fixture.observability.required_alerts.some((row) => row.id === alert), `missing observability alert ${alert}`);
+  for (const alert of [
+    "canonical_readback_mismatch",
+    "stuck_or_unknown_operation",
+    "missing_telemetry",
+  ]) {
+    assert.ok(
+      fixture.observability.required_alerts.some((row) => row.id === alert),
+      `missing observability alert ${alert}`,
+    );
   }
 
-  need(fixture.edge, [
-    "ARI_PROTOCOL_VERSION = 1",
-    '"DEADLINE_EXCEEDED"',
-    '"RESULT_UNKNOWN"',
-    '"RECONCILIATION_REQUIRED"',
-    '"MINIMUM_VERSION_REQUIRED"',
-    "request_id: string",
-    "client_turn_id: string | null",
-    "execution_id: string | null",
-    "release_sha: string",
-    "function_version: string",
-    "RELEASE_SHA_PATTERN.test(sha)",
-    ": ARI_UNATTESTED_RELEASE",
-    "createAriDeadline",
-    "decideAriFinalization",
-    "mapLegacyAriErrorCode",
-    'event: "ari_reliability"',
-    "tenant_ref: string | null",
-    "sanitizeAriTelemetryEvent",
-    "user_message: definition.userMessage",
-  ], "edge reliability");
+  need(
+    fixture.edge,
+    [
+      "ARI_PROTOCOL_VERSION = 1",
+      '"DEADLINE_EXCEEDED"',
+      '"RESULT_UNKNOWN"',
+      '"RECONCILIATION_REQUIRED"',
+      '"MINIMUM_VERSION_REQUIRED"',
+      "request_id: string",
+      "client_turn_id: string | null",
+      "execution_id: string | null",
+      "release_sha: string",
+      "function_version: string",
+      "RELEASE_SHA_PATTERN.test(sha)",
+      ": ARI_UNATTESTED_RELEASE",
+      "createAriDeadline",
+      "decideAriFinalization",
+      "mapLegacyAriErrorCode",
+      'event: "ari_reliability"',
+      "tenant_ref: string | null",
+      "sanitizeAriTelemetryEvent",
+      "user_message: definition.userMessage",
+    ],
+    "edge reliability",
+  );
 
-  need(fixture.edgeHttp, [
-    "runWithAriRequest",
-    "ariJsonResponse",
-    "ariErrorResponse",
-    "emitAriPhase",
-    "successEnvelope",
-    "errorEnvelope",
-  ], "edge reliability HTTP");
+  need(
+    fixture.edgeHttp,
+    [
+      "runWithAriRequest",
+      "ariJsonResponse",
+      "ariErrorResponse",
+      "emitAriPhase",
+      "successEnvelope",
+      "errorEnvelope",
+    ],
+    "edge reliability HTTP",
+  );
 
-  need(fixture.agentChat, [
-    'from "../_shared/agentReliabilityHttp.ts"',
-    "runWithAriRequest",
-    "ariJsonResponse",
-    "ariErrorResponse",
-    'emitAriPhase("received"',
-    'emitAriPhase("authorized"',
-  ], "agent-chat hot-path wire");
+  need(
+    fixture.agentChat,
+    [
+      'from "../_shared/agentReliabilityHttp.ts"',
+      "runWithAriRequest",
+      "ariJsonResponse",
+      "ariErrorResponse",
+      'emitAriPhase("received"',
+      'emitAriPhase("authorized"',
+    ],
+    "agent-chat hot-path wire",
+  );
 
-  need(fixture.agentConfirm, [
-    'from "../_shared/agentReliabilityHttp.ts"',
-    "decideAriFinalization",
-    "runWithAriRequest",
-    "ariJsonResponse",
-    "ariErrorResponse",
-    'emitAriPhase("execution_claimed"',
-    'emitAriPhase("canonical_readback"',
-    "updateAriRequest({ executionId: body.pending_action_id })",
-  ], "agent-confirm-action hot-path wire");
+  need(
+    fixture.agentConfirm,
+    [
+      'from "../_shared/agentReliabilityHttp.ts"',
+      "decideAriFinalization",
+      "runWithAriRequest",
+      "ariJsonResponse",
+      "ariErrorResponse",
+      'emitAriPhase("execution_claimed"',
+      'emitAriPhase("canonical_readback"',
+      "updateAriRequest({ executionId: body.pending_action_id })",
+    ],
+    "agent-confirm-action hot-path wire",
+  );
 
-  need(fixture.agentChatService, [
-    'from "./agentReliability"',
-    "assertAriEnvelope",
-    "unwrapAriDomainPayload",
-    "allowUnattestedRelease",
-  ], "Business agentChatService envelope unwrap");
+  need(
+    fixture.agentChatService,
+    [
+      'from "./agentReliability"',
+      "assertAriEnvelope",
+      "unwrapAriDomainPayload",
+      "allowUnattestedRelease",
+    ],
+    "Business agentChatService envelope unwrap",
+  );
 
-  need(fixture.useAgentChat, [
-    "canDispatchAriIntent",
-    "reduceAriClientIntent",
-    "createAriClientIntent",
-  ], "useAgentChat recovery gate");
+  need(
+    fixture.useAgentChat,
+    ["canDispatchAriIntent", "reduceAriClientIntent", "createAriClientIntent"],
+    "useAgentChat recovery gate",
+  );
 
-  need(fixture.business, [
-    "stableId: string",
-    '| "server_reconcile";',
-    "canDispatchAriIntent",
-    'reason: "offline"',
-    'reason: "in_flight"',
-    'reason: "server_reconcile"',
-    'lastCode: "CORRELATION_MISMATCH"',
-    "retryDelayMs",
-    "assertAriEnvelope",
-    "ARI_CLIENT_ERROR_REGISTRY",
-    "authoritative pending action UUID",
-    'case "reauthorized"',
-    'event.operationState === "executing"',
-    '? "in_flight"',
-  ], "Business recovery");
+  need(
+    fixture.business,
+    [
+      "stableId: string",
+      '| "server_reconcile";',
+      "canDispatchAriIntent",
+      'reason: "offline"',
+      'reason: "in_flight"',
+      'reason: "server_reconcile"',
+      'lastCode: "CORRELATION_MISMATCH"',
+      "retryDelayMs",
+      "assertAriEnvelope",
+      "ARI_CLIENT_ERROR_REGISTRY",
+      "authoritative pending action UUID",
+      'case "reauthorized"',
+      'event.operationState === "executing"',
+      '? "in_flight"',
+    ],
+    "Business recovery",
+  );
   assert.deepEqual(
     [...errorTuples(fixture.business, "ARI_CLIENT_ERROR_REGISTRY").entries()],
     [...errorTuples(fixture.edge, "ARI_ERROR_REGISTRY").entries()],
@@ -301,127 +470,167 @@ export function checkContract(fixture) {
     "edge and Business success tuples must remain exhaustive and identical",
   );
 
-  need(fixture.certifier, [
-    "ledger.capabilities.length !== 145",
-    '`ledger_not_certifiable:${planned.capability_id}',
-    '`status_laundering:${planned.capability_id}',
-    'verified_zero_residue === true',
-    'stranded_operation_count === 0',
-    'tester_verdict === "PASS"',
-    "requirements_digest === plan.requirements_digest",
-    "releaseArtifacts.length === 7",
-    '"concurrent_confirm_no_second_side_effect"',
-    '"revoked_during_retry_zero_new_side_effect"',
-    '"business_ios_simulator"',
-    '"business_ios_physical"',
-    '"business_android"',
-    "failures.push(...validatePublishedSchema(evidence, schema))",
-    "capabilityEvidenceDigest",
-    "scenarioEvidenceDigest",
-    "canonicalCertificationTuple",
-    "canonicalCertificationDigest",
-    "inspectNativeArtifactManifest",
-    "native_artifact_release_correlation",
-    "export function signCertificationAttestation",
-    "server_attestation_key_required",
-    '"capability_set_digest"',
-    '"native_artifact_set_digest"',
-    '"cleanup_digest"',
-    '"rollback_digest"',
-    '"run_manifest_digest"',
-    'dependency_issues: dependencyIssues',
-  ], "certifier");
+  need(
+    fixture.certifier,
+    [
+      "ledger.capabilities.length !== 148",
+      "`ledger_not_certifiable:${planned.capability_id}",
+      "`status_laundering:${planned.capability_id}",
+      "verified_zero_residue === true",
+      "stranded_operation_count === 0",
+      'tester_verdict === "PASS"',
+      "requirements_digest === plan.requirements_digest",
+      "releaseArtifacts.length === 7",
+      '"concurrent_confirm_no_second_side_effect"',
+      '"revoked_during_retry_zero_new_side_effect"',
+      '"business_ios_simulator"',
+      '"business_ios_physical"',
+      '"business_android"',
+      "failures.push(...validatePublishedSchema(evidence, schema))",
+      "capabilityEvidenceDigest",
+      "scenarioEvidenceDigest",
+      "canonicalCertificationTuple",
+      "canonicalCertificationDigest",
+      "inspectNativeArtifactManifest",
+      "native_artifact_release_correlation",
+      "export function signCertificationAttestation",
+      "server_attestation_key_required",
+      '"capability_set_digest"',
+      '"native_artifact_set_digest"',
+      '"cleanup_digest"',
+      '"rollback_digest"',
+      '"run_manifest_digest"',
+      "dependency_issues: dependencyIssues",
+    ],
+    "certifier",
+  );
 
-  need(fixture.currentMigration, [
-    "'ari.sites.read_site', 'read'",
-    "'ari.sites.rollback', 'write'",
-  ], "#2830 sites capability rows");
+  need(
+    fixture.currentMigration,
+    ["'ari.sites.read_site', 'read'", "'ari.sites.rollback', 'write'"],
+    "#2830 sites capability rows",
+  );
 
-  need(fixture.censusMigration, [
-    "v_capability_count <> 145",
-    "'capability_count', 145",
-  ], "#3697 reachable certification census");
+  need(
+    fixture.censusMigration,
+    ["v_capability_count <> 145", "'capability_count', 145"],
+    "#3697 reachable certification census",
+  );
   checkBacklogRepair(fixture);
 
-  need(fixture.setDigestMigration, [
-    "private.ari_cert_requirements_set_digest_v1",
-    "'requirements-set'",
-    "'requirement'",
-    "v_requirements_digest := private.ari_cert_requirements_set_digest_v1()",
-    "IS DISTINCT FROM private.ari_cert_requirements_set_digest_v1()",
-  ], "#2060 Pass-5 requirements set digest");
+  need(
+    fixture.setDigestMigration,
+    [
+      "private.ari_cert_requirements_set_digest_v1",
+      "'requirements-set'",
+      "'requirement'",
+      "v_requirements_digest := private.ari_cert_requirements_set_digest_v1()",
+      "IS DISTINCT FROM private.ari_cert_requirements_set_digest_v1()",
+    ],
+    "#2060 Pass-5 requirements set digest",
+  );
 
-  need(fixture.migration, [
-    "CREATE TABLE IF NOT EXISTS public.ari_cert_runs",
-    "CREATE TABLE IF NOT EXISTS public.ari_cert_evidence",
-    "CREATE TABLE IF NOT EXISTS public.ari_cert_release_artifacts",
-    "CREATE TABLE IF NOT EXISTS public.ari_cert_fixtures",
-    "FORCE ROW LEVEL SECURITY",
-    "ari_cert_evidence_is_immutable",
-    "v_capability_count <> 116",
-    "v_artifact_count <> 7",
-    "cleanup_state <> 'removed'",
-    "stranded_operation_count IS DISTINCT FROM 0",
-    "requirements_digest text NOT NULL",
-    "prior_compatible_pair",
-    "ari_cert_capability_requirements",
-    "ari_cert_terminal_status_requires_finalizer",
-    "ari_cert_record_evidence",
-    "ari_cert_missing_matrix_evidence",
-    "ari_cert_invalid_evidence_digest",
-    "ari_certification_attestation_key",
-    "extensions.hmac",
-    "private.ari_cert_verified_provenance",
-    "ari_cert_unverified_provenance",
-    "business_ios_physical",
-    "v_run_manifest_digest",
-    "private.ari_cert_canonical_tuple_v1",
-    "private.ari_cert_digest_v1",
-    "private.ari_cert_native_artifacts_valid",
-    "ari_cert_invalid_native_artifacts",
-  ], "certification migration");
-  assert.ok(!fixture.migration.includes("CREATE TABLE public.agent_operation_receipts"), "must not duplicate #1972 receipt");
-  assert.ok(!fixture.migration.includes("CREATE TABLE public.agent_task_state"), "must not duplicate #1985 state");
+  need(
+    fixture.migration,
+    [
+      "CREATE TABLE IF NOT EXISTS public.ari_cert_runs",
+      "CREATE TABLE IF NOT EXISTS public.ari_cert_evidence",
+      "CREATE TABLE IF NOT EXISTS public.ari_cert_release_artifacts",
+      "CREATE TABLE IF NOT EXISTS public.ari_cert_fixtures",
+      "FORCE ROW LEVEL SECURITY",
+      "ari_cert_evidence_is_immutable",
+      "v_capability_count <> 116",
+      "v_artifact_count <> 7",
+      "cleanup_state <> 'removed'",
+      "stranded_operation_count IS DISTINCT FROM 0",
+      "requirements_digest text NOT NULL",
+      "prior_compatible_pair",
+      "ari_cert_capability_requirements",
+      "ari_cert_terminal_status_requires_finalizer",
+      "ari_cert_record_evidence",
+      "ari_cert_missing_matrix_evidence",
+      "ari_cert_invalid_evidence_digest",
+      "ari_certification_attestation_key",
+      "extensions.hmac",
+      "private.ari_cert_verified_provenance",
+      "ari_cert_unverified_provenance",
+      "business_ios_physical",
+      "v_run_manifest_digest",
+      "private.ari_cert_canonical_tuple_v1",
+      "private.ari_cert_digest_v1",
+      "private.ari_cert_native_artifacts_valid",
+      "ari_cert_invalid_native_artifacts",
+    ],
+    "certification migration",
+  );
+  assert.ok(
+    !fixture.migration.includes("CREATE TABLE public.agent_operation_receipts"),
+    "must not duplicate #1972 receipt",
+  );
+  assert.ok(
+    !fixture.migration.includes("CREATE TABLE public.agent_task_state"),
+    "must not duplicate #1985 state",
+  );
 
-  need(fixture.rollback, [
-    "Never roll back one",
-    "Do not down-migrate additive #2060 tables",
-    "zero stranded pending/executing/reconciling operations",
-    "--validate /absolute/path/to/evidence.json",
-  ], "rollback runbook");
-  need(fixture.workflow, [
-    "issue_2060_ari_reliability_foundation.test.ts",
-    "issue_2060_ari_certification_foundation.test.ts",
-    "certify-capabilities.issue2060.test.mjs",
-    "agentReliability.issue2060.test.ts",
-    "issue_2060_ari_envelope_wire.implementor.test.ts",
-    "agentChatService.issue2060.wire.test.ts",
-    "deno check supabase/functions/_shared/agentReliability.ts",
-    "npx tsc --noEmit --pretty false",
-    "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
-    "issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
-    "issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql",
-    "certify-capabilities.issue2060.canonical-digest.implementor.test.mjs",
-    "certify-capabilities.issue2060.unicode-boundary.tester.adversarial.test.mjs",
-    "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
-  ], "CI workflow");
-  need(fixture.crossRuntimeGuard, [
-    "issue_2060_cross_runtime_certification_not_correlated",
-    "v_sql_digest <> v_js_digest",
-    "v_incomplete_native_accepted",
-  ], "cross-runtime certification guard");
-  need(fixture.independentVerdictGuard, [
-    "has_function_privilege",
-    "ari_cert_record_completion(uuid,text,text,text,integer)",
-    "has_table_privilege",
-    "issue_2060_independent_verdict_boundary_open",
-  ], "independent verdict certification guard");
-  need(fixture.unicodeBoundaryGuard, [
-    "issue_2060_unicode_node_pg_digest_mismatch",
-    "issue_2060_unicode_value_not_bound",
-    "issue_2060_invalid_native_begin_accepted",
-    "issue_2060_invalid_native_finalize_accepted",
-  ], "Unicode boundary certification guard");
+  need(
+    fixture.rollback,
+    [
+      "Never roll back one",
+      "Do not down-migrate additive #2060 tables",
+      "zero stranded pending/executing/reconciling operations",
+      "--validate /absolute/path/to/evidence.json",
+    ],
+    "rollback runbook",
+  );
+  need(
+    fixture.workflow,
+    [
+      "issue_2060_ari_reliability_foundation.test.ts",
+      "issue_2060_ari_certification_foundation.test.ts",
+      "certify-capabilities.issue2060.test.mjs",
+      "agentReliability.issue2060.test.ts",
+      "issue_2060_ari_envelope_wire.implementor.test.ts",
+      "agentChatService.issue2060.wire.test.ts",
+      "deno check supabase/functions/_shared/agentReliability.ts",
+      "npx tsc --noEmit --pretty false",
+      "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
+      "issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
+      "issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql",
+      "certify-capabilities.issue2060.canonical-digest.implementor.test.mjs",
+      "certify-capabilities.issue2060.unicode-boundary.tester.adversarial.test.mjs",
+      "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
+    ],
+    "CI workflow",
+  );
+  need(
+    fixture.crossRuntimeGuard,
+    [
+      "issue_2060_cross_runtime_certification_not_correlated",
+      "v_sql_digest <> v_js_digest",
+      "v_incomplete_native_accepted",
+    ],
+    "cross-runtime certification guard",
+  );
+  need(
+    fixture.independentVerdictGuard,
+    [
+      "has_function_privilege",
+      "ari_cert_record_completion(uuid,text,text,text,integer)",
+      "has_table_privilege",
+      "issue_2060_independent_verdict_boundary_open",
+    ],
+    "independent verdict certification guard",
+  );
+  need(
+    fixture.unicodeBoundaryGuard,
+    [
+      "issue_2060_unicode_node_pg_digest_mismatch",
+      "issue_2060_unicode_value_not_bound",
+      "issue_2060_invalid_native_begin_accepted",
+      "issue_2060_invalid_native_finalize_accepted",
+    ],
+    "Unicode boundary certification guard",
+  );
 }
 
 function clone(value) {
@@ -438,49 +647,352 @@ function selfTest() {
   const good = readLive();
   checkContract(good);
   bad(good, (x) => x.ledger.capabilities.pop(), "reduced ledger");
-  bad(good, (x) => { delete x.owners.domains.brands; }, "missing owner");
-  bad(good, (x) => { x.seams.seams[0].owner_issue = 2060; }, "competing state owner");
-  bad(good, (x) => { x.seams.seams[0].state = "dependency_pending"; }, "task-state seam reverted");
-  bad(good, (x) => { x.observability.status = "integration_held_until_1972_1985_merge"; }, "observability held again");
-  bad(good, (x) => { x.observability.required_alerts.pop(); }, "missing alert");
-  bad(good, (x) => { x.edge = x.edge.replaceAll('"RESULT_UNKNOWN"', '"RESULT_LOST"'); }, "unknown result family");
-  bad(good, (x) => { x.business = x.business.replaceAll('reason: "offline"', 'reason: "terminal"'); }, "offline gate");
-  bad(good, (x) => { x.certifier = x.certifier.replace("ledger.capabilities.length !== 145", "false"); }, "row completeness");
-  bad(good, (x) => { x.migration = x.migration.replace("ari_cert_evidence_is_immutable", "evidence_is_mutable"); }, "immutable evidence");
-  bad(good, (x) => { x.rollback = x.rollback.replace("Do not down-migrate additive #2060 tables", "Down-migrate #2060 tables"); }, "forward rollback");
-  bad(good, (x) => { x.workflow = x.workflow.replaceAll("agentReliability.issue2060.test.ts", "missing.test.ts"); }, "CI wiring");
-  bad(good, (x) => { x.workflow = x.workflow.replaceAll("issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql", "missing-cross-runtime.test.sql"); }, "cross-runtime CI wiring");
-  bad(good, (x) => { x.crossRuntimeGuard = x.crossRuntimeGuard.replace("v_sql_digest <> v_js_digest", "false"); }, "cross-runtime digest bypass");
-  bad(good, (x) => { x.owners.domains.venues.dependency_issues = [1978]; }, "missing venue operations owner");
-  bad(good, (x) => { delete x.schema.properties.capabilities.items.properties.scenario_evidence; }, "schema evidence bypass");
-  bad(good, (x) => { x.digest.contract = "JSONB-TEXT"; }, "portable digest contract removed");
-  bad(good, (x) => { x.certifier = x.certifier.replaceAll("inspectNativeArtifactManifest", "trustNativeTuple"); }, "native tuple validation removed");
-  bad(good, (x) => { x.edge = x.edge.replace("user_message: definition.userMessage", "user_message: options.userMessage"); }, "raw error echo");
-  bad(good, (x) => { x.business = x.business.replace('ROLE_REVOKED: {', 'ROLE_REVOKED_REMOVED: {'); }, "error tuple drift");
-  bad(good, (x) => { x.edge = x.edge.replace('operationState: "executed"', 'operationState: "pending"'); }, "success tuple drift");
-  bad(good, (x) => { x.certifier = x.certifier.replace("validatePublishedSchema(evidence, schema)", "[]"); }, "schema not executed");
-  bad(good, (x) => { x.migration = x.migration.replace("ari_cert_missing_matrix_evidence", "matrix_not_checked"); }, "forged matrix accepted");
-  bad(good, (x) => { x.certifier = x.certifier.replace("signCertificationAttestation", "trustCallerAttestation"); }, "unsigned certification");
-  bad(good, (x) => { x.migration = x.migration.replace("extensions.hmac", "caller_signature"); }, "server signature removed");
-  bad(good, (x) => { x.migration = x.migration.replaceAll("private.ari_cert_verified_provenance", "private.unverified_claims"); }, "canonical provenance removed");
-  bad(good, (x) => { x.setDigestMigration = x.setDigestMigration.replaceAll("ari_cert_requirements_set_digest_v1", "ari_cert_requirements_count_only"); }, "set-digest helper removed");
-  bad(good, (x) => { x.workflow = x.workflow.replaceAll("issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql", "missing-unicode-boundary.test.sql"); }, "Unicode boundary CI wiring");
-  bad(good, (x) => { x.unicodeBoundaryGuard = x.unicodeBoundaryGuard.replace("issue_2060_unicode_value_not_bound", "unicode_values_unbound"); }, "Unicode bound-field guard removed");
-  bad(good, (x) => { x.agentChat = x.agentChat.replaceAll("agentReliabilityHttp", "agentReliabilityMissing"); }, "agent-chat wire removed");
-  bad(good, (x) => { x.agentConfirm = x.agentConfirm.replaceAll("decideAriFinalization", "decideNothing"); }, "confirm finalization removed");
-  bad(good, (x) => { x.gate = x.gate.replace(`${LOCAL_DECLARATION_PREFIX}I-ARI-RESULT-HONESTY | issue #2060 |`, "result-honesty declaration removed"); }, "result honesty local declaration");
+  bad(
+    good,
+    (x) => {
+      delete x.owners.domains.brands;
+    },
+    "missing owner",
+  );
+  bad(
+    good,
+    (x) => {
+      x.seams.seams[0].owner_issue = 2060;
+    },
+    "competing state owner",
+  );
+  bad(
+    good,
+    (x) => {
+      x.seams.seams[0].state = "dependency_pending";
+    },
+    "task-state seam reverted",
+  );
+  bad(
+    good,
+    (x) => {
+      x.observability.status = "integration_held_until_1972_1985_merge";
+    },
+    "observability held again",
+  );
+  bad(
+    good,
+    (x) => {
+      x.observability.required_alerts.pop();
+    },
+    "missing alert",
+  );
+  bad(
+    good,
+    (x) => {
+      x.edge = x.edge.replaceAll('"RESULT_UNKNOWN"', '"RESULT_LOST"');
+    },
+    "unknown result family",
+  );
+  bad(
+    good,
+    (x) => {
+      x.business = x.business.replaceAll(
+        'reason: "offline"',
+        'reason: "terminal"',
+      );
+    },
+    "offline gate",
+  );
+  bad(
+    good,
+    (x) => {
+      x.certifier = x.certifier.replace(
+        "ledger.capabilities.length !== 148",
+        "false",
+      );
+    },
+    "row completeness",
+  );
+  bad(
+    good,
+    (x) => {
+      x.migration = x.migration.replace(
+        "ari_cert_evidence_is_immutable",
+        "evidence_is_mutable",
+      );
+    },
+    "immutable evidence",
+  );
+  bad(
+    good,
+    (x) => {
+      x.rollback = x.rollback.replace(
+        "Do not down-migrate additive #2060 tables",
+        "Down-migrate #2060 tables",
+      );
+    },
+    "forward rollback",
+  );
+  bad(
+    good,
+    (x) => {
+      x.workflow = x.workflow.replaceAll(
+        "agentReliability.issue2060.test.ts",
+        "missing.test.ts",
+      );
+    },
+    "CI wiring",
+  );
+  bad(
+    good,
+    (x) => {
+      x.workflow = x.workflow.replaceAll(
+        "issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
+        "missing-cross-runtime.test.sql",
+      );
+    },
+    "cross-runtime CI wiring",
+  );
+  bad(
+    good,
+    (x) => {
+      x.crossRuntimeGuard = x.crossRuntimeGuard.replace(
+        "v_sql_digest <> v_js_digest",
+        "false",
+      );
+    },
+    "cross-runtime digest bypass",
+  );
+  bad(
+    good,
+    (x) => {
+      x.owners.domains.venues.dependency_issues = [1978];
+    },
+    "missing venue operations owner",
+  );
+  bad(
+    good,
+    (x) => {
+      delete x.schema.properties.capabilities.items.properties
+        .scenario_evidence;
+    },
+    "schema evidence bypass",
+  );
+  bad(
+    good,
+    (x) => {
+      x.digest.contract = "JSONB-TEXT";
+    },
+    "portable digest contract removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.certifier = x.certifier.replaceAll(
+        "inspectNativeArtifactManifest",
+        "trustNativeTuple",
+      );
+    },
+    "native tuple validation removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.edge = x.edge.replace(
+        "user_message: definition.userMessage",
+        "user_message: options.userMessage",
+      );
+    },
+    "raw error echo",
+  );
+  bad(
+    good,
+    (x) => {
+      x.business = x.business.replace(
+        "ROLE_REVOKED: {",
+        "ROLE_REVOKED_REMOVED: {",
+      );
+    },
+    "error tuple drift",
+  );
+  bad(
+    good,
+    (x) => {
+      x.edge = x.edge.replace(
+        'operationState: "executed"',
+        'operationState: "pending"',
+      );
+    },
+    "success tuple drift",
+  );
+  bad(
+    good,
+    (x) => {
+      x.certifier = x.certifier.replace(
+        "validatePublishedSchema(evidence, schema)",
+        "[]",
+      );
+    },
+    "schema not executed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.migration = x.migration.replace(
+        "ari_cert_missing_matrix_evidence",
+        "matrix_not_checked",
+      );
+    },
+    "forged matrix accepted",
+  );
+  bad(
+    good,
+    (x) => {
+      x.certifier = x.certifier.replace(
+        "signCertificationAttestation",
+        "trustCallerAttestation",
+      );
+    },
+    "unsigned certification",
+  );
+  bad(
+    good,
+    (x) => {
+      x.migration = x.migration.replace("extensions.hmac", "caller_signature");
+    },
+    "server signature removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.migration = x.migration.replaceAll(
+        "private.ari_cert_verified_provenance",
+        "private.unverified_claims",
+      );
+    },
+    "canonical provenance removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.setDigestMigration = x.setDigestMigration.replaceAll(
+        "ari_cert_requirements_set_digest_v1",
+        "ari_cert_requirements_count_only",
+      );
+    },
+    "set-digest helper removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.workflow = x.workflow.replaceAll(
+        "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
+        "missing-unicode-boundary.test.sql",
+      );
+    },
+    "Unicode boundary CI wiring",
+  );
+  bad(
+    good,
+    (x) => {
+      x.unicodeBoundaryGuard = x.unicodeBoundaryGuard.replace(
+        "issue_2060_unicode_value_not_bound",
+        "unicode_values_unbound",
+      );
+    },
+    "Unicode bound-field guard removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.agentChat = x.agentChat.replaceAll(
+        "agentReliabilityHttp",
+        "agentReliabilityMissing",
+      );
+    },
+    "agent-chat wire removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.agentConfirm = x.agentConfirm.replaceAll(
+        "decideAriFinalization",
+        "decideNothing",
+      );
+    },
+    "confirm finalization removed",
+  );
+  bad(
+    good,
+    (x) => {
+      x.gate = x.gate.replace(
+        `${LOCAL_DECLARATION_PREFIX}I-ARI-RESULT-HONESTY | issue #2060 |`,
+        "result-honesty declaration removed",
+      );
+    },
+    "result honesty local declaration",
+  );
   // #3055 — the reachable backlog repair.
-  bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("v_requirements_digest := private.ari_cert_requirements_set_digest_v1();", "v_requirements_digest := private.ari_cert_requirements_set_digest_v1(); -- drift"); }, "#3055 repair function drift from #1981");
-  bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("  ('ari.growth.read_report', 'read')\nON CONFLICT", "  ('ari.growth.read_report', 'write')\nON CONFLICT"); }, "#3055 repair #1980 INSERT not verbatim");
-  bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("('ari.rsvp.update',                '#1977', NULL,          'write')", "('ari.rsvp.update',                '#1977', NULL,          NULL)"); }, "#3055 repair retires a ledger capability");
-  bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("('ari.order.refund_preview',       '#1981', NULL,          'read')", "('ari.order.refund_preview',       '#1981', NULL,          'write')"); }, "#3055 guard disagrees with copied INSERT");
-  bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("IF v_rows <> v_denominators[1]::integer THEN", "IF v_rows <> 132 THEN"); }, "#3055 absolute count guard");
-  bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace(/^COMMIT;$/m, ""); }, "#3055 repair not self-wrapped");
+  bad(
+    good,
+    (x) => {
+      x.census3055Migration = x.census3055Migration.replace(
+        "v_requirements_digest := private.ari_cert_requirements_set_digest_v1();",
+        "v_requirements_digest := private.ari_cert_requirements_set_digest_v1(); -- drift",
+      );
+    },
+    "#3055 repair function drift from #1981",
+  );
+  bad(
+    good,
+    (x) => {
+      x.census3055Migration = x.census3055Migration.replace(
+        "  ('ari.growth.read_report', 'read')\nON CONFLICT",
+        "  ('ari.growth.read_report', 'write')\nON CONFLICT",
+      );
+    },
+    "#3055 repair #1980 INSERT not verbatim",
+  );
+  bad(
+    good,
+    (x) => {
+      x.census3055Migration = x.census3055Migration.replace(
+        "('ari.rsvp.update',                '#1977', NULL,          'write')",
+        "('ari.rsvp.update',                '#1977', NULL,          NULL)",
+      );
+    },
+    "#3055 repair retires a ledger capability",
+  );
+  bad(
+    good,
+    (x) => {
+      x.census3055Migration = x.census3055Migration.replace(
+        "('ari.order.refund_preview',       '#1981', NULL,          'read')",
+        "('ari.order.refund_preview',       '#1981', NULL,          'write')",
+      );
+    },
+    "#3055 guard disagrees with copied INSERT",
+  );
+  bad(
+    good,
+    (x) => {
+      x.census3055Migration = x.census3055Migration.replace(
+        "IF v_rows <> v_denominators[1]::integer THEN",
+        "IF v_rows <> 132 THEN",
+      );
+    },
+    "#3055 absolute count guard",
+  );
+  bad(
+    good,
+    (x) => {
+      x.census3055Migration = x.census3055Migration.replace(/^COMMIT;$/m, "");
+    },
+    "#3055 repair not self-wrapped",
+  );
   console.log("issue-2060 self-test: 1 GOOD + 38 BAD fixtures passed");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 else {
   checkContract(readLive());
-  console.log("issue-2060 Ari reliability foundation: PASS (145 capabilities; #2060 history remains 116)");
+  console.log(
+    "issue-2060 Ari reliability foundation: PASS (148 capabilities; #2060 history remains 116)",
+  );
 }

@@ -23,7 +23,7 @@
  *   (3) **Pay-button copy contract** (SC-4c + Constitution #3 — no
  *       silent failures): `payment.tsx` source contains both the
  *       mixed-cart `${dueTodayCents}` installments CTA literal AND the
- *       `${totals.total}` no-plan-branch CTA literal.
+ *       server-quoted `displayAllIn` no-plan-branch CTA literal.
  *
  * Fails-on-revert verified at HEAD before fix (see implementation report
  * §Regression Test). Reverting any of these contracts breaks at least
@@ -350,15 +350,15 @@ describe("ORCH-0882 SC-4c — Pay-button CTA copy honesty", () => {
   test("payment.tsx preserves the no-plan-branch full-price CTA literal", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
     // Empty-state preservation (SC-5a) — when no plan is active, the
-    // full-price CTA must still render. Match against `totals.total`
-    // which is the cart subtotal binding.
-    expect(src).toMatch(/Pay \$\{[^}]*totals\.total[^}]*\}/);
+    // full-price CTA must still render from the accepted server quote.
+    expect(src).toContain("`Pay ${displayAllIn}`");
   });
 
-  test("payment.tsx pre-Stripe banner accessibility label cites due + remaining", () => {
+  test("payment.tsx pre-Stripe banner cites server due-today + future payments", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
     expect(src).toContain("dueTodayCents");
-    expect(src).toContain("remainingBalanceCents");
+    expect(src).toContain("futureInstallmentCount");
+    expect(src).toContain("formatQuoteMoney");
     expect(src).toMatch(/Payment plan active/);
   });
 });

@@ -127,7 +127,7 @@ const formatPrice = (
   fallbackCurrency: string | null,
 ): string | null => {
   if (ticket.isFree) return "Free";
-  const price = ticket.priceAllInGbp ?? ticket.priceGbp;
+  const price = ticket.saleAllInGbp ?? ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return null;
   // issue #1014 — 0-priced renders "Free" even without the isFree flag.
   if (price === 0) return "Free";
@@ -364,7 +364,7 @@ const lowestPriceString = (
   let lowestValue = Number.POSITIVE_INFINITY;
   for (const t of tickets) {
     if (t.isFree) continue;
-    const value = t.priceAllInGbp ?? t.priceGbp;
+    const value = t.saleAllInGbp ?? t.priceAllInGbp ?? t.priceGbp;
     if (value === null || value === undefined) continue;
     if (value < lowestValue) {
       lowestValue = value;

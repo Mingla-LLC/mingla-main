@@ -131,6 +131,7 @@ const mapEvent = (event: PublicEventRecord): PublicBrandEvent => ({
   currency: event.currency,
   // ORCH-1006 Slice 3 — prefer server-computed all-in for "From £X".
   displayPriceCents: event.displayPriceCents ?? null,
+  displaySalePriceCents: event.displaySalePriceCents ?? null,
   displayCurrency: event.displayCurrency ?? null,
   tickets: event.tickets.map((ticket) => ({
     priceGbp: ticket.priceGbp,

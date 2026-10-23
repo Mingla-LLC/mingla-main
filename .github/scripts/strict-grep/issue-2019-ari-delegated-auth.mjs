@@ -145,7 +145,9 @@ function check(s, manifest) {
   // [TEST-MOD-APPROVED #1982] revoke_brand_invitation (125 + 1 = 126).
   // [TEST-MOD-APPROVED #1984] listing conversion + reservation metrics (126 + 2 = 128).
   // [TEST-MOD-APPROVED #3697] Host Ads propose/approve/pause/end/report (128 + 5 = 133).
-  if (declarationCount !== 133) failures.push(`expected 133 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #3872] Discount list/create/pause extend the exact
+  // caller-bound registry and authorization denominator (133 + 3 = 136).
+  if (declarationCount !== 136) failures.push(`expected 136 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

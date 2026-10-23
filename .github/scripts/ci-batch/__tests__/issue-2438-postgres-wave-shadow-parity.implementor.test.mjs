@@ -37,6 +37,15 @@ const effectiveManifest = (root = ROOT) => loadEffectiveManifest({
 const declaredAdditionsIn = (root) => PROVIDERS_ADDED_SINCE_SEAL
   .filter((item) => fs.existsSync(path.join(root, ".github/workflows", item.workflow))).length;
 const digest = (value) => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
+// [TEST-MOD-APPROVED #3872] Temp clones start at committed HEAD while this PR
+// intentionally re-banks the package authorities after its required dependency
+// updates. Overlay the four sealed files together with the validator under
+// review so clone-based proofs exercise one coherent proposed state.
+const overlayPackageAuthorities = (targetRoot) => {
+  for (const relative of Object.keys(PACKAGE_AUTHORITY_DIGESTS)) {
+    fs.copyFileSync(path.join(ROOT, relative), path.join(targetRoot, relative));
+  }
+};
 const WRAPPERS = {
   "issue-1022-theme-control-tests.yml":"f4d461a534e2d0a0273e9ea60957605a4f6e9f832229f74cf9f695445ff655df",
   "issue-1461-venue-current-brand-race-tests.yml":"30bff6582d3d775133eb9c1ffc997b8985f24fc6985fec7585a2ba0f1ce88785",
@@ -332,6 +341,7 @@ test("provider authority ignores reserved tester bytes but rejects eligible sour
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-provider-authority-")));
   try {
     execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
+    overlayPackageAuthorities(temp);
     git(temp, ["config", "user.email", "ci@example.invalid"]); git(temp, ["config", "user.name", "CI"]);
     fs.rmSync(path.join(temp, RESERVED_TESTER), { force: true }); git(temp, ["add", "-A"]);
     if (git(temp, ["status", "--porcelain"])) git(temp, ["commit", "-qm", "tester absent"]);
@@ -808,6 +818,7 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // this contract is proven against the code under review, not against HEAD.
     fs.cpSync(path.join(ROOT, ".github/scripts"), path.join(temp, ".github/scripts"), { recursive: true });
     fs.cpSync(path.join(ROOT, ".github/ci-batch"), path.join(temp, ".github/ci-batch"), { recursive: true });
+    overlayPackageAuthorities(temp);
     // [TEST-MOD-APPROVED #3176] The prior reconstruction was correct while every
     // workflow byte named by the overlaid registry also lived at HEAD. Current
     // main changed #2333's replay inventory and its derived sourceSha256 together;
@@ -816,6 +827,19 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // workflow bytes must still fail closed against the current registry.
     const onlinePublishWorkflow = ".github/workflows/issue-2333-online-event-publish.yml";
     fs.copyFileSync(path.join(ROOT, onlinePublishWorkflow), path.join(temp, onlinePublishWorkflow));
+    // [TEST-MOD-APPROVED #3872] The discount checkout migration extends two
+    // filtered replay inventories and re-seals their exact workflow bytes. The
+    // terminal-clone proof overlays those reviewed workflow changes alongside
+    // the registry patches so it exercises the proposed state, not HEAD's old
+    // inventories. validateRegistry below still rejects either workflow when
+    // its bytes disagree with the corresponding sourceSha256 authority.
+    for (const filename of [
+      "issue-1931-private-event-access.yml",
+      "issue-2117-offering-visibility-gate-tests.yml",
+    ]) {
+      const workflow = path.join(".github", "workflows", filename);
+      fs.copyFileSync(path.join(ROOT, workflow), path.join(temp, workflow));
+    }
     const terminal = effectiveManifest(temp);
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
     const phase3bMutation = (mutate) => { const copy = structuredClone(terminal); mutate(copy); writeManifest(copy); return copy; };

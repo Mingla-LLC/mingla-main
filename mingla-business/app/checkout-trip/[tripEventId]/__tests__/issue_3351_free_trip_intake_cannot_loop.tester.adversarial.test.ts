@@ -846,7 +846,7 @@ describe("A-9 issue #3351 — tripCounterShape may assume; nextTripCheckoutStep 
   });
 
   test("an absent cart with an unknown or empty tier list never reads as PAID", () => {
-    // P2-1's first half: `useCartTotals().isFree` is false for an EMPTY cart, so
+    // P2-1's first half: `useCartQuoteTotals().isFree` is false for an EMPTY cart, so
     // the cart step promised a payment step that would never happen.
     for (const intake of RAW_FACTS) {
       for (const cartIsFree of [true, false]) {

@@ -261,9 +261,11 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // [TEST-MOD-APPROVED #3697] Wave 0 D10-1 purge job uses the same idiom (+1 → 7).
   // [TEST-MOD-APPROVED #3697] Wave 2 hourly spend-sync cron uses the same idiom (+1 → 8).
   // [TEST-MOD-APPROVED #3720] Wave 3 Drive binding provisioner uses the same idiom (+1 → 9).
+  // [TEST-MOD-APPROVED #3872] Discount maintenance atomically removes any
+  // stale job before restoring the same named job in the same migration (+1 → 10).
   // [TEST-MOD-APPROVED #3697] The airtight ads release adds three guarded
   // unschedule-then-reschedule pairs: conversion retry, creative archival, and
-  // audience sync (+3 → 12). Prove each pair before accepting the new count.
+  // audience sync (+3 → 13). Prove each pair before accepting the combined count.
   const issue3697Pairs = [
     {
       file: "supabase/migrations/20271213023697_issue_3697_conversion_retry.sql",
@@ -295,7 +297,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   assert.ok(repo.scheduleCalls > 0, "anti-vacuity: the repo scan must parse real migrations");
   assert.equal(
     repo.dynamicUnschedules,
-    12,
+    13,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

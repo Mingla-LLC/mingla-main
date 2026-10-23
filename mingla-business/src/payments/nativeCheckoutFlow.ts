@@ -7,6 +7,8 @@
 // in app/checkout/[eventId]/payment.tsx), so this hook is never invoked
 // on web; the stub exists so the import resolves cleanly.
 
+import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
+
 export interface NativeCheckoutInput {
   eventId: string;
   lines: Array<{ ticketTypeId: string; quantity: number }>;
@@ -31,6 +33,10 @@ export interface NativeCheckoutInput {
   paymentPlanChoice?: "full" | "installments";
   idempotencyKey?: string;
   taxCalculationId?: string | null;
+  discountCode?: string | null;
+  /** #3872 — current callers always pass both; optional for pre-R1 call sites. */
+  quoteDigest?: string;
+  quoteListDigest?: string;
   /** ORCH-1138 Leg 3 — chosen experience occurrence (web stub never invokes). */
   eventDateId?: string;
   /** issue #3281 — the chosen day SET (web stub never invokes; type parity). */
@@ -52,7 +58,7 @@ export interface NativeCheckoutInput {
 export type NativeCheckoutOutcome =
   | { outcome: "succeeded"; orderId: string }
   | { outcome: "canceled" }
-  | { outcome: "failed"; message: string };
+  | { outcome: "failed"; message: string; review?: TicketCheckoutReview };
 
 export const useNativeCheckoutFlow = (): (
   input: NativeCheckoutInput,

@@ -184,7 +184,7 @@ const formatTicketPrice = (
   if (ticket.isFree) return "Free";
   // ORCH-1006: show the server-computed all-in price; fall back to base. Never
   // recompute fees here — priceAllInGbp is compute_all_in_cents output / 100.
-  const price = ticket.priceAllInGbp ?? ticket.priceGbp;
+  const price = ticket.saleAllInGbp ?? ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return "—";
   // issue #1014 — 0-priced renders "Free" even without the isFree flag
   // (NULL-currency events only carry 0-priced tickets).

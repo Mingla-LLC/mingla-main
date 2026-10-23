@@ -140,7 +140,7 @@ test("#3859 legacy lines may omit a choice but v2 refuses them before transport"
   expect(invoke).not.toHaveBeenCalled();
 });
 
-test("#3859 Business-native preview and create remain explicitly paired on v1", () => {
+test("#3872 Business quote and create remain paired by server digests", () => {
   const source = readFileSync(
     join(
       __dirname,
@@ -154,8 +154,6 @@ test("#3859 Business-native preview and create remain explicitly paired on v1", 
     ),
     "utf8",
   );
-  const previewStart = source.indexOf('mode: "preview"');
-  const previewEnd = source.indexOf("// ----- Handlers -----", previewStart);
   const nativeCreateStart = source.indexOf(
     "const outcome = await nativeCheckout({",
   );
@@ -171,31 +169,30 @@ test("#3859 Business-native preview and create remain explicitly paired on v1", 
     webCreateStart,
   );
 
-  expect(previewStart).toBeGreaterThan(-1);
-  expect(previewEnd).toBeGreaterThan(previewStart);
   expect(nativeCreateStart).toBeGreaterThan(-1);
   expect(nativeCreateEnd).toBeGreaterThan(nativeCreateStart);
   expect(webCreateStart).toBeGreaterThan(-1);
   expect(webCreateEnd).toBeGreaterThan(webCreateStart);
 
-  const preview = source.slice(previewStart, previewEnd);
   const nativeCreate = source.slice(nativeCreateStart, nativeCreateEnd);
   const webCreate = source.slice(webCreateStart, webCreateEnd);
 
-  expect(preview.length).toBeGreaterThan(40);
   expect(nativeCreate.length).toBeGreaterThan(40);
   expect(webCreate.length).toBeGreaterThan(40);
 
-  expect(preview).not.toContain("checkoutContractVersion");
   expect(nativeCreate).not.toContain("checkoutContractVersion");
   expect(nativeCreate).toContain("paymentPlanChoice");
+  expect(nativeCreate).toContain("quoteDigest: activeQuote.quoteDigest");
+  expect(nativeCreate).toContain("quoteListDigest: activeQuote.quoteListDigest");
   expect(webCreate).toContain("checkoutContractVersion: 2");
   expect(webCreate).toContain("checkoutAttemptId");
+  expect(webCreate).toContain("quoteDigest: activeQuote.quoteDigest");
+  expect(webCreate).toContain("quoteListDigest: activeQuote.quoteListDigest");
   expect(webCreate).not.toContain("paymentPlanChoice:");
   expect(source).toContain("planLines.map(({ line, tier, schedule })");
   expect(source).toContain(
     "setLinePaymentPlanChoice(line.ticketTypeId, choice)",
   );
   expect(source).not.toContain("setLinePaymentPlanChoices");
-  expect(source).toContain("formatCurrency(dueTodayCents, totals.currency, true)");
+  expect(source).toContain("formatQuoteMoney(dueTodayCents");
 });

@@ -37,6 +37,12 @@ pg_public_brand_upcoming(p_brand_slug text, p_cursor_at timestamp with time zone
 pg_public_brand_offering_section(p_brand_slug text, p_section text, p_cursor_at timestamp with time zone, p_cursor_id uuid, p_limit integer)
 pg_public_event_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_event_tier_allin(p_event_id uuid)
+# #3872 R1: public event tiers with server-owned list, all-in and current sale prices; only already-public tier facts, bounded to one event.
+pg_public_event_tier_pricing(p_event_id uuid)
+# #3872 R1: bounded batch of public event display prices for cards and links; rejects more than 100 ids and returns no authoring or buyer data.
+pg_public_event_display_prices(p_event_ids uuid[])
+# #3872 R1: current sale overlays for one public venue menu; returns item ids and price facts only, with no order or buyer data.
+pg_public_menu_item_sales(p_venue_id uuid)
 pg_public_experience_by_slug(p_brand_slug text, p_experience_slug text)
 pg_public_experiences_by_brand(p_brand_slug text)
 # #3281 R3: buyer time-step remaining for public live experiences only. Returns

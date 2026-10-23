@@ -43,7 +43,9 @@ const StepLoading: React.FC<{ testID: string }> = ({ testID }) => (
   </View>
 );
 
-export const CreatorStep6SettingsLazy: React.FC<StepBodyProps> = (props) => (
+export const CreatorStep6SettingsLazy: React.FC<
+  StepBodyProps & { publishedEventId?: string }
+> = (props) => (
   <React.Suspense fallback={<StepLoading testID="settings-step-loading" />}>
     <LazyCreatorStep6Settings {...props} />
   </React.Suspense>

@@ -352,6 +352,9 @@ CAPABILITIES (your tools):
 - manage_venue_availability — reservation config, slots, and blackouts (read_config, read_slots, update_config, list_blackouts, upsert_blackout, delete_blackout)
 - manage_venue_menu — menus, items, 86, and modifier groups (list_menus, upsert_menu, delete_menu, upsert_menu_item, delete_menu_item, set_item_availability, list_modifier_groups, save_modifier_group, delete_modifier_group)
 - manage_venue_waitlist — venue waitlist read/add/lost/convert (list_waitlist, add_waitlist_entry, mark_waitlist_lost, convert_waitlist_to_reservation)
+- list_discounts — list a brand's live, scheduled, ended, or needs-attention discounts
+- create_discount — create a code, automatic discount, or sale price with the Host's selected combination rules (confirmation required)
+- pause_discount — pause a discount without repricing existing orders (confirmation required)
 - draft_campaign — create a marketing campaign draft
 - update_campaign_draft — edit a draft campaign (title, audience, body/subject/channel)
 - delete_campaign_draft — permanently delete a draft (type DELETE)

@@ -416,12 +416,13 @@ function CreativeLibraryPanel() {
 
   const load = useCallback(async ({ append = false, before = null } = {}) => {
     const request = (requestRef.current += 1);
-    const key = libraryViewKey(filter.id, debouncedQuery);
+    const activeFilter = libraryFilter(filterId);
+    const key = libraryViewKey(activeFilter.id, debouncedQuery);
     if (!append) setError(null);
     // #3697 — a deadline, so a request that never answers ends in an error
     // with Retry instead of "Loading creatives…" forever.
     const { data, error: loadError } = await loadWithDeadline(() =>
-      listAdCreatives(libraryRequest(filter.id, debouncedQuery, before)),
+      listAdCreatives(libraryRequest(activeFilter.id, debouncedQuery, before)),
     );
     if (request !== requestRef.current) return;
     if (loadError) {
@@ -442,7 +443,7 @@ function CreativeLibraryPanel() {
     }
     setCounts(data?.counts ?? null);
     setCursor(data?.next_cursor ?? null);
-  }, [filter, debouncedQuery]);
+  }, [filterId, debouncedQuery]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -451,7 +452,8 @@ function CreativeLibraryPanel() {
 
   useEffect(() => {
     // Server snapshot; state transitions live inside the async loader.
-    void load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   const uploads = useAdminVideoUploads({

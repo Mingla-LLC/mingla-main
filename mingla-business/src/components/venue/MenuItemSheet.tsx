@@ -28,6 +28,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { QueryClientContext } from "@tanstack/react-query";
 import { Platform, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
@@ -58,12 +59,19 @@ import {
   menuPriceNeedsCurrency,
 } from "./menuMoneyDraft";
 import { MenuTextCounter } from "./MenuTextCounter";
+import { VENUE_MENU_DISCOUNT_LISTING_KIND } from "../discounts/discountListingKinds";
 import {
   menuTextFieldIds,
   validateMenuText,
   type MenuTextField as MenuTextFieldKind,
   type MenuTextSaveFailure,
 } from "./menuTextValidation";
+
+const ItemDiscountControls = React.lazy(() =>
+  import("../discounts/ItemDiscountControls").then((module) => ({
+    default: module.ItemDiscountControls,
+  })),
+);
 
 export interface MenuItemSheetSaveInput {
   name: string;
@@ -95,6 +103,8 @@ export interface MenuItemSheetProps {
    * brand never SEES a fabricated £. The stored value + math are untouched.
    */
   brandHasCurrency: boolean;
+  /** Brand owner for persisted discount controls; omitted for legacy callers. */
+  brandId?: string;
   /**
    * #3645 — the brand, for the "choose your payout country" card shown under
    * the price when a price is typed on a brand with no currency. Without it
@@ -187,6 +197,7 @@ export function MenuItemSheet({
   item,
   currency,
   brandHasCurrency,
+  brandId,
   payoutCountryBrand = null,
   onSave,
   saving,
@@ -200,6 +211,8 @@ export function MenuItemSheet({
   optionsSection,
   testID,
 }: MenuItemSheetProps): React.ReactElement {
+  const hasDiscountQueryClient =
+    React.useContext(QueryClientContext) !== undefined;
   const isEdit = item !== null;
   const code = normalizeCurrency(currency);
   const [name, setName] = useState<string>("");
@@ -448,13 +461,7 @@ export function MenuItemSheet({
     }
     onClearSaveFailure?.();
     onClose();
-  }, [
-    itemDirty,
-    onClearSaveFailure,
-    onClose,
-    optionsDirty,
-    optionsSaving,
-  ]);
+  }, [itemDirty, onClearSaveFailure, onClose, optionsDirty, optionsSaving]);
 
   const handleLeaveDiscard = useCallback((): void => {
     setLeaveOpen(false);
@@ -602,6 +609,28 @@ export function MenuItemSheet({
               reason="A price needs a currency. Pick the country your bank account is in and we'll use its currency for this brand. Free and “price on request” items don't need one."
               testID="menu-item-price-payout-country"
             />
+          ) : null}
+
+          {item !== null &&
+          brandId !== undefined &&
+          brandHasCurrency &&
+          hasDiscountQueryClient ? (
+            <React.Suspense fallback={null}>
+              <Text style={styles.groupLabel}>Discounts</Text>
+              <ItemDiscountControls
+                brandId={brandId}
+                itemId={item.id}
+                itemKind="menu_item"
+                listingKind={VENUE_MENU_DISCOUNT_LISTING_KIND}
+                itemLabel={item.name}
+                currency={item.currency ?? currency}
+                listUnitCents={item.priceCents}
+                allowLabel="Allow discounts on this item"
+                saleLabel="Menu sale price"
+                weeklySchedule
+                testID="menu-item-discount-controls"
+              />
+            </React.Suspense>
           ) : null}
 
           {/*
@@ -794,9 +823,7 @@ export function MenuItemSheet({
           visible
           onClose={() => setLeaveOpen(false)}
           onConfirm={handleLeaveDiscard}
-          title={
-            isEdit ? "Save your item changes?" : "Save this new item?"
-          }
+          title={isEdit ? "Save your item changes?" : "Save this new item?"}
           description={
             isEdit
               ? "You changed this dish. If you leave without saving, those changes are gone."

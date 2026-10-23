@@ -60,6 +60,16 @@ export async function getOrder(orderId) {
   return supabase.rpc("admin_get_order", { p_order_id: orderId });
 }
 
+/** Read-only 30-day discount and margin rollup, grouped by currency. */
+export async function getDiscountMarginSummary(from, to) {
+  const { data, error } = await supabase.rpc("admin_discount_margin_summary", {
+    p_from: from,
+    p_to: to,
+  });
+  if (error) throw new Error(error.message || "Failed to load discount margins.");
+  return Array.isArray(data) ? data : [];
+}
+
 // ── Refunds / disputes / payouts / platform revenue (Money ledger) ─────────────
 
 /** Refunds list. Filters: status. */

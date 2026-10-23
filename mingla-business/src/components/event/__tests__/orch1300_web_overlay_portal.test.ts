@@ -39,7 +39,10 @@ import { WebOverlayPortal } from "../../../../../packages/phone-input/WebOverlay
 type PortalResult = { __isPortal?: true; children?: unknown; container?: unknown };
 
 describe("ORCH-1300 WebOverlayPortal (web)", () => {
-  const MARKER = { marker: "overlay-children" };
+  // [TEST-MOD-APPROVED #3872] Keep the portal child a valid ReactNode. The
+  // previous arbitrary object happened to compile only while this dependency
+  // stayed out of TypeScript's refreshed program graph.
+  const MARKER = "overlay-children";
 
   afterEach(() => {
     // Clean up the stubbed global between cases.

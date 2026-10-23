@@ -83,12 +83,23 @@ const config: VenueOrderingConfig = {
 
 const preview: VenueOrderPreview = {
   currency: "GBP",
+  listSubtotalCents: 2000,
+  discountCents: 0,
   subtotalCents: 2000,
   serviceChargeCents: 250,
   serviceChargeLabel: "House service",
   feesAndTaxCents: 120,
   tipCents: 200,
   totalCents: 2570,
+  discounts: [],
+  codeOutcome: {
+    supplied: false,
+    applied: false,
+    reason: null,
+    discountId: null,
+  },
+  notices: [],
+  quoteDigest: null,
   lines: [{
     lineNo: 1,
     menuItemId: "22222222-2222-4222-8222-222222222222",
@@ -98,6 +109,9 @@ const preview: VenueOrderPreview = {
     quantity: 2,
     modifiersTotalCents: 0,
     lineTotalCents: 2000,
+    discountCents: 0,
+    netLineTotalCents: 2000,
+    discounts: [],
     notes: null,
   }],
   tipsEnabled: true,

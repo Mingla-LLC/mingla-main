@@ -185,6 +185,7 @@ import {
   CartProvider,
   useCart,
 } from "../../../../src/components/checkout/CartContext";
+import { ticketQuoteFromLines } from "../../../../src/components/checkout/__tests__/ticketQuoteFixture";
 import BuyerScreen from "../buyer";
 
 /**
@@ -192,9 +193,9 @@ import BuyerScreen from "../buyer";
  * occurrence via `setEventDateId`, and the buyer form writes the guest details.
  */
 const SeedCart: React.FC<{ eventDateId: string | null }> = ({ eventDateId }) => {
-  const { setLineQuantity, setBuyer, setEventDateId } = useCart();
+  const { setLineQuantity, setBuyer, setEventDateId, setQuoteState } = useCart();
   React.useEffect(() => {
-    setLineQuantity({
+    const line = {
       ticketTypeId: TICKET_TYPE_ID,
       ticketName: "Free entry",
       unitPrice: 0,
@@ -202,7 +203,9 @@ const SeedCart: React.FC<{ eventDateId: string | null }> = ({ eventDateId }) => 
       currency: "NGN",
       isFree: true,
       quantity: 1,
-    });
+    };
+    setLineQuantity(line);
+    setQuoteState(ticketQuoteFromLines([line]), "ready");
     setBuyer({
       name: "Ada Guest",
       email: "ada@example.test",

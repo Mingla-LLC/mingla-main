@@ -46,6 +46,7 @@ import {
   VenueOrderError,
   venueOrderGuestAction,
 } from "../../services/venueOrderingService";
+import { captureWeb } from "../../analytics/webAnalytics";
 
 const STATUS_POLL_INTERVAL_MS = 5000;
 
@@ -97,6 +98,8 @@ export interface BuyerVenueOrdering {
   preview: VenueOrderPreview | null;
   previewStatus: "idle" | "loading" | "ready" | "error";
   previewError: string | null;
+  discountCode?: string;
+  setDiscountCode?: (code: string) => void;
   submitting: boolean;
   submitError: string | null;
   submit: () => void;
@@ -166,6 +169,7 @@ export function useBuyerVenueOrdering(
     rememberedTip: sitting?.tip ?? null,
     initialBuyer: { name: sitting?.buyerName ?? "" },
   });
+  const [discountCode, setDiscountCode] = useState("");
 
   const request: VenueOrderRequest = useMemo(
     () => ({
@@ -178,6 +182,7 @@ export function useBuyerVenueOrdering(
       tipBps: cart.state.tip.bps,
       tipFlatCents: cart.state.tip.flatCents,
       entrySource: input.entrySource,
+      discountCode: discountCode.trim().length > 0 ? discountCode.trim() : null,
     }),
     [
       cart.state.buyer,
@@ -187,6 +192,7 @@ export function useBuyerVenueOrdering(
       cart.state.tip.flatCents,
       config.spotState,
       config.venueId,
+      discountCode,
       input.entrySource,
       input.spotCode,
       sitting?.sessionId,
@@ -212,12 +218,14 @@ export function useBuyerVenueOrdering(
         tip: cart.state.tip,
         spot: config.spotState === "ok" ? input.spotCode : null,
         venue: config.venueId,
+        discountCode: discountCode.trim().toUpperCase(),
       }),
     [
       cart.state.lines,
       cart.state.tip,
       config.spotState,
       config.venueId,
+      discountCode,
       input.spotCode,
     ],
   );
@@ -241,6 +249,33 @@ export function useBuyerVenueOrdering(
           : previewQuery.data !== undefined
             ? "ready"
             : "loading";
+  const discountAnalyticsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const preview = previewQuery.data;
+    if (preview === undefined || previewStatus !== "ready") return;
+    const digest = preview.quoteDigest ?? priceSignature;
+    const captureOnce = (event: string, suffix: string, properties: Readonly<Record<string, string | number>>): void => {
+      const key = `${digest}:${event}:${suffix}`;
+      if (discountAnalyticsRef.current.has(key)) return;
+      discountAnalyticsRef.current.add(key);
+      captureWeb(event, properties);
+    };
+    if (preview.codeOutcome.supplied && preview.codeOutcome.applied) {
+      captureOnce("discount_code_applied", "code", { surface: "web_venue" });
+    } else if (preview.codeOutcome.supplied && preview.codeOutcome.reason !== null) {
+      captureOnce("discount_code_rejected", preview.codeOutcome.reason, {
+        reason: preview.codeOutcome.reason,
+        surface: "web_venue",
+      });
+    }
+    const automaticCount = preview.discounts.filter((row) => row.kind === "automatic").length;
+    if (automaticCount > 0) {
+      captureOnce("discount_auto_applied", String(automaticCount), {
+        count: automaticCount,
+        surface: "web_venue",
+      });
+    }
+  }, [previewQuery.data, previewStatus, priceSignature]);
 
   const [live, setLive] = useState<VenueOrderLiveStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -315,7 +350,10 @@ export function useBuyerVenueOrdering(
     void (async () => {
       try {
         const created = await createVenueOrder(
-          request,
+          {
+            ...request,
+            quoteDigest: previewQuery.data?.quoteDigest ?? null,
+          },
           idempotencyKeyFor(priceSignature),
         );
         if (created.kind === "already_created") {
@@ -383,6 +421,7 @@ export function useBuyerVenueOrdering(
     persistSitting,
     priceSignature,
     request,
+    previewQuery.data?.quoteDigest,
     submitting,
   ]);
 
@@ -431,6 +470,8 @@ export function useBuyerVenueOrdering(
         : previewQuery.isError
           ? "We couldn't price that order. Nothing has been charged."
           : null,
+    discountCode,
+    setDiscountCode,
     submitting,
     submitError,
     submit,

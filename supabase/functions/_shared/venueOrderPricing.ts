@@ -38,6 +38,7 @@ import {
   type TaxBasis,
   taxBehaviorForRegion,
 } from "./allInPricingEngine.ts";
+import type { DiscountEngineLine, DiscountQuote } from "./discountEngine.ts";
 
 // ---------------------------------------------------------------------------
 // P-29 — error codes and the EXACT user-visible copy. VERBATIM from the spec
@@ -172,7 +173,8 @@ export const VENUE_ORDER_ERRORS = {
   staff_tabs_disabled: {
     status: 409,
     guest: null,
-    staff: "Tabs are switched off for this venue. Settle each round as it goes.",
+    staff:
+      "Tabs are switched off for this venue. Settle each round as it goes.",
   },
   tab_bill_already_sent: {
     status: 409,
@@ -245,6 +247,7 @@ export interface MenuItemRow {
   price_cents: number | null;
   currency: string;
   is_available: boolean;
+  discounts_allowed?: boolean;
 }
 
 export interface MenuModifierRow {
@@ -292,6 +295,83 @@ export interface PricedLine {
   lineTotalCents: number;
   notes: string | null;
   modifiers: PricedModifier[];
+}
+
+export interface DiscountedVenueLine extends PricedLine {
+  listLineCents: number;
+  netLineCents: number;
+  discountCents: number;
+  netUnitPriceCents: number;
+  discounts: DiscountQuote["lines"][number]["applied"];
+}
+
+export interface DiscountedVenueCart {
+  listSubtotalCents: number;
+  discountCents: number;
+  netSubtotalCents: number;
+  lines: DiscountedVenueLine[];
+}
+
+/** Build the SQL engine input without performing any discount arithmetic. */
+export function venueDiscountEngineLines(input: {
+  lines: readonly PricedLine[];
+  itemsById: ReadonlyMap<string, MenuItemRow>;
+  venueId: string;
+  timezone: string;
+}): DiscountEngineLine[] {
+  return input.lines.map((line) => ({
+    lineRef: String(line.lineNo).padStart(3, "0"),
+    itemKind: "menu_item",
+    itemId: line.menuItemId,
+    listingKind: "venue_order",
+    listingId: input.venueId,
+    listUnitMinor: line.unitPriceCents + line.modifiersTotalCents,
+    qty: line.quantity,
+    valueScale: 1,
+    countScale: 1,
+    allowed: input.itemsById.get(line.menuItemId)?.discounts_allowed !== false,
+    tz: input.timezone || "UTC",
+  }));
+}
+
+/** Join SQL-owned quote lines back to their list-price venue lines. */
+export function applyVenueDiscountQuote(
+  lines: readonly PricedLine[],
+  quote: DiscountQuote,
+): DiscountedVenueCart {
+  const quoteByRef = new Map(quote.lines.map((line) => [line.lineRef, line]));
+  const discountedLines = lines.map((line): DiscountedVenueLine => {
+    const quoted = quoteByRef.get(String(line.lineNo).padStart(3, "0"));
+    if (quoted === undefined) {
+      throw new Error("venue_discount_quote_line_missing");
+    }
+    return {
+      ...line,
+      listLineCents: quoted.lineListMinor,
+      netLineCents: quoted.lineNetMinor,
+      discountCents: quoted.lineDiscountMinor,
+      netUnitPriceCents: quoted.netUnitMinor,
+      discounts: quoted.applied,
+    };
+  });
+  return {
+    listSubtotalCents: quote.listSubtotalMinor,
+    discountCents: quote.discountMinor,
+    netSubtotalCents: quote.netSubtotalMinor,
+    lines: discountedLines,
+  };
+}
+
+export function venueDiscountSnapshot(
+  quote: DiscountQuote,
+  currency: string,
+): Record<string, unknown> | null {
+  if (quote.discountMinor <= 0 || quote.applied.length === 0) return null;
+  return {
+    currency: currency.toUpperCase(),
+    applied: quote.applied,
+    lines: quote.lines,
+  };
 }
 
 export type CartFailure =
@@ -351,7 +431,9 @@ export function priceCart(input: {
         failure: { code: "item_not_orderable", item: item.name },
       };
     }
-    if (!Number.isInteger(req.quantity) || req.quantity < 1 || req.quantity > 99) {
+    if (
+      !Number.isInteger(req.quantity) || req.quantity < 1 || req.quantity > 99
+    ) {
       return { ok: false, failure: { code: "order_total_invalid" } };
     }
 
@@ -366,7 +448,9 @@ export function priceCart(input: {
     }
 
     // Every chosen modifier must belong to a group of THIS item and be available.
-    const groupIds = new Set(groups.filter((g) => g.is_active).map((g) => g.id));
+    const groupIds = new Set(
+      groups.filter((g) => g.is_active).map((g) => g.id),
+    );
     for (const modifierId of req.modifierIds) {
       const modifier = modifiersById.get(modifierId);
       if (
@@ -420,7 +504,8 @@ export function priceCart(input: {
       // A negative-portion modifier can never drive a line below zero.
       return { ok: false, failure: { code: "order_total_invalid" } };
     }
-    const lineTotalCents = (unitPriceCents + modifiersTotalCents) * req.quantity;
+    const lineTotalCents = (unitPriceCents + modifiersTotalCents) *
+      req.quantity;
 
     lines.push({
       lineNo,
@@ -558,7 +643,8 @@ export function computeVenueOrderMoney(
     taxCents = vat.taxCents;
     amountTotalCents = vat.buyerTotalCents;
   } else if (
-    input.switches.pass_tax && taxBehaviorForRegion(input.region) === "inclusive"
+    input.switches.pass_tax &&
+    taxBehaviorForRegion(input.region) === "inclusive"
   ) {
     const divisor = inclusiveVatDivisorForRegion(input.region);
     taxCents = engine.buyerSubtotalCents -
@@ -645,7 +731,9 @@ export function resolveTipCents(
   tipBps: number | null,
   tipFlatCents: number | null,
 ): number {
-  if (tipFlatCents !== null && Number.isInteger(tipFlatCents) && tipFlatCents > 0) {
+  if (
+    tipFlatCents !== null && Number.isInteger(tipFlatCents) && tipFlatCents > 0
+  ) {
     return tipFlatCents;
   }
   if (tipBps !== null && Number.isInteger(tipBps) && tipBps > 0) {
@@ -682,6 +770,8 @@ export interface VenueOrderIdempotencyInput {
   buyerKey: string;
   lines: RequestedLine[];
   tipBps: number | null;
+  /** Already-normalised. Omitted so code-less keys stay byte-identical. */
+  discountCode?: string | null;
 }
 
 export function venueOrderIdempotencyFingerprint(
@@ -703,6 +793,7 @@ export function venueOrderIdempotencyFingerprint(
     `buyer:${input.buyerKey.trim().toLowerCase()}`,
     lineKey,
     `tip:${input.tipBps ?? "none"}`,
+    ...(input.discountCode ? [`code:${input.discountCode}`] : []),
   ].join(":");
 }
 

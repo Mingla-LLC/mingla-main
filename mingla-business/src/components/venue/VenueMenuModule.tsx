@@ -1366,6 +1366,7 @@ export function VenueMenuModule({
         item={editingItem}
         currency={currency}
         brandHasCurrency={brandHasCurrency}
+        brandId={brandId ?? undefined}
         payoutCountryBrand={brand}
         onSave={handleSaveItem}
         saving={upsertItem.isPending}

@@ -10,6 +10,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  PACKAGE_AUTHORITY_DIGESTS,
   trackedFilesProcessInvocations,
   validateRegistry,
   withTrackedFilesScope,
@@ -51,6 +52,19 @@ function cloneFixture(prefix, source = ROOT) {
     throw error;
   }
   return { parent, root: fs.realpathSync(clone) };
+}
+
+// [TEST-MOD-APPROVED #3872] This clone deliberately starts at committed HEAD.
+// Overlay the dependency-authority files and validator under review so its
+// alternate-root assertions exercise one coherent proposed registry state.
+function overlayPackageAuthorities(targetRoot) {
+  for (const relative of Object.keys(PACKAGE_AUTHORITY_DIGESTS)) {
+    fs.copyFileSync(path.join(ROOT, relative), path.join(targetRoot, relative));
+  }
+  fs.copyFileSync(
+    path.join(ROOT, ".github/scripts/ci-batch/validate-manifest-v2.mjs"),
+    path.join(targetRoot, ".github/scripts/ci-batch/validate-manifest-v2.mjs"),
+  );
 }
 
 function readRegistry(root) {
@@ -102,6 +116,7 @@ function assertProviderDrift(errors, provider) {
 test("committed A to B to A truth stays fresh inside an outer scope for a different root", () => {
   const fixture = cloneFixture("issue3336-wrong-root-");
   try {
+    overlayPackageAuthorities(fixture.root);
     const sourceRoot = fs.realpathSync(ROOT);
     assert.notEqual(sourceRoot, fixture.root, "the wrong-root attack requires distinct resolved roots A and B");
 

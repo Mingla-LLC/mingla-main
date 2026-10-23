@@ -51,6 +51,9 @@ Deno.test("ORCH-1082 no-regression: every existing business.* + stripe.* type st
     "business.payout_waiting_for_bank",
     "business.payouts_paused",
     "business.payouts_resumed",
+    "business.discount_limit_80",
+    "business.discount_ended",
+    "business.discount_needs_attention",
     "business.account_status_changed",
     "business.claim_decision",
     "business.team_member_joined",
@@ -63,7 +66,11 @@ Deno.test("ORCH-1082 no-regression: every existing business.* + stripe.* type st
     "stripe.partner_detach_completed", // ← ORCH-1082 17a
   ];
   for (const t of businessTypes) {
-    assertEquals(resolveOneSignalApp(t), "business", `${t} must route to business`);
+    assertEquals(
+      resolveOneSignalApp(t),
+      "business",
+      `${t} must route to business`,
+    );
   }
 });
 
@@ -83,7 +90,11 @@ Deno.test("ORCH-1082 no-regression: real consumer/neutral prefixes still → con
     "partner_stripe.something_else",
   ];
   for (const t of consumerTypes) {
-    assertEquals(resolveOneSignalApp(t), "consumer", `${t} must route to consumer`);
+    assertEquals(
+      resolveOneSignalApp(t),
+      "consumer",
+      `${t} must route to consumer`,
+    );
   }
 });
 

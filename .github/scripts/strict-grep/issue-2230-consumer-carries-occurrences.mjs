@@ -161,15 +161,18 @@ export function check(raw) {
   }
   for (const token of [
     '"Pick at least one day above"',
-    "allInCents *= dayMultiplier",
-    "totalCents: pricing.allInCents",
-    "eventDateIds: selectedEventDateIds",
+    "eventDateIds: quoteEventDateIds",
+    "totalCents: acceptedQuote.buyerTotalCents",
+    "quoteDigest: acceptedQuote.quoteDigest",
+    "quoteListDigest: acceptedQuote.quoteListDigest",
     'accessibilityLiveRegion="polite"',
     "void Haptics.selectionAsync()",
   ]) if (!sheet.includes(token)) failures.push(`cart contract missing: ${token}`);
-  if (!sheet.includes("const pricing = (():") ||
-      /const pricing = useMemo<[\s\S]{0,1800}selectedEventDateIds/.test(sheet)) {
-    failures.push("day-priced cart total can remain stale behind the native sheet host");
+  if (!sheet.includes("const quoteEventDateIds = useMemo(") ||
+      !sheet.includes("eventDateIds: quoteEventDateIds,") ||
+      !sheet.includes("useTicketQuote(quoteInput)") ||
+      /dayMultiplier|allInCents\s*\*=/.test(sheet)) {
+    failures.push("multi-day pricing is not owned solely by the authoritative server quote");
   }
   for (const token of [
     'accessibilityLabel="Days you\'re attending"',
@@ -219,7 +222,9 @@ if (process.argv.includes("--self-test")) {
     ["sheet", "<EventDayChooser", "<View"],
     ["sheet", "allowUnboundedNameWrap={multiDaySelection !== null}", "allowUnboundedNameWrap={false}"],
     ["sheet", "numberOfLines={multiDaySelection === null ? 1 : undefined}", "numberOfLines={1}"],
-    ["sheet", "const pricing = (():", "const pricing = useMemo<"],
+    ["sheet", "eventDateIds: quoteEventDateIds,", "eventDateIds: [],"],
+    ["sheet", "totalCents: acceptedQuote.buyerTotalCents", "totalCents: totals.totalCents"],
+    ["sheet", "quoteDigest: acceptedQuote.quoteDigest", "quoteDigest: \"client-owned\""],
     ["quantityRow", "allowUnboundedNameWrap = false", "allowUnboundedNameWrap = true"],
     // [#2439 SC-15.1] The workflow-text mutant is replaced by registry mutants
     // that attack the same three properties plus the ones a filename read could

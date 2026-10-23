@@ -52,6 +52,9 @@ const SUPPLY_RPCS = [
 
 const READINESS_MARKER = "pg_brand_can_collect(";
 const OBSOLETE_READINESS_MARKER = "pg_brand_can_charge(";
+const PRESERVED_WRAPPER_SIGNATURES = Object.freeze({
+  pg_public_experience_by_slug: "text,text",
+});
 
 /**
  * Find the latest migration body that defines `public.<name>` (descending sort,
@@ -64,6 +67,52 @@ function findLatestDefining(files, fnName) {
     if (body.includes(marker)) return { name: f, body };
   }
   return null;
+}
+
+function findPreviousDefining(files, fnName, latestName) {
+  const marker = `CREATE OR REPLACE FUNCTION public.${fnName}`;
+  let passedLatest = false;
+  for (const f of files) {
+    if (f === latestName) {
+      passedLatest = true;
+      continue;
+    }
+    if (!passedLatest) continue;
+    const body = fs.readFileSync(path.join(migrationsDir, f), "utf8");
+    if (body.includes(marker)) return { name: f, body };
+  }
+  return null;
+}
+
+/**
+ * #3872 wraps the exact prior SQL-language body in a MATERIALIZED CTE so it can
+ * enrich only the returned display JSON. The prior body still owns readiness.
+ * Accept that additive shape only when the migration fails closed on the exact
+ * pg_proc source digest and the immediately previous definition still carries
+ * the provider-neutral predicate.
+ */
+function isPreservedReadinessWrapper(
+  latestMigrationBody,
+  latestFunctionBody,
+  previousFunctionBody,
+  fnName,
+) {
+  const signature = PRESERVED_WRAPPER_SIGNATURES[fnName];
+  if (signature === undefined) return false;
+  const escapedName = fnName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedSignature = signature.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const digestGuard = new RegExp(
+    `md5\\(prosrc\\)[\\s\\S]{0,160}public\\.${escapedName}\\(${escapedSignature}\\)'::regprocedure\\)\\s*<>\\s*'[0-9a-f]{32}'`,
+  );
+  return (
+    digestGuard.test(latestMigrationBody) &&
+    latestFunctionBody.includes("issue_3872_original(payload) AS MATERIALIZED") &&
+    latestFunctionBody.includes("%s") &&
+    latestFunctionBody.includes("FROM issue_3872_original") &&
+    latestFunctionBody.includes("v_body") &&
+    previousFunctionBody.includes(READINESS_MARKER) &&
+    !previousFunctionBody.includes(OBSOLETE_READINESS_MARKER)
+  );
 }
 
 /**
@@ -108,10 +157,27 @@ function checkRpc(files, fnName) {
     return false;
   }
   if (!fnBody.includes(READINESS_MARKER)) {
-    console.error(
-      `ORCH-1076 FAIL: latest definition of \`${fnName}\` (${latest.name}) is missing provider-neutral readiness marker \`${READINESS_MARKER}\`.`,
+    const previous = findPreviousDefining(files, fnName, latest.name);
+    const previousBody = previous === null
+      ? ""
+      : sliceFunctionBody(previous.body, fnName) ?? "";
+    if (
+      !isPreservedReadinessWrapper(
+        latest.body,
+        fnBody,
+        previousBody,
+        fnName,
+      )
+    ) {
+      console.error(
+        `ORCH-1076 FAIL: latest definition of \`${fnName}\` (${latest.name}) neither carries provider-neutral readiness marker \`${READINESS_MARKER}\` nor digest-locks and executes the prior ready body.`,
+      );
+      return false;
+    }
+    console.log(
+      `OK   [${fnName}] ${latest.name} digest-locks and executes the ready body from ${previous.name}`,
     );
-    return false;
+    return true;
   }
   if (fnBody.includes(OBSOLETE_READINESS_MARKER)) {
     console.error(
@@ -192,6 +258,38 @@ function runSelfTest() {
   expect(
     !bodyWith.includes(OBSOLETE_READINESS_MARKER),
     "with-marker fixture excludes Stripe-only admission",
+  );
+
+  // [TEST-MOD-APPROVED #3872] Additive display wrappers may preserve the exact
+  // prior body instead of duplicating its large SQL text. Prove the exception is
+  // narrow: it needs the source digest, MATERIALIZED execution, and prior guard.
+  const wrapperMigration = `
+    IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='public.pg_public_experience_by_slug(text,text)'::regprocedure) <> '0123456789abcdef0123456789abcdef' THEN RAISE EXCEPTION 'drift'; END IF;
+    CREATE OR REPLACE FUNCTION public.pg_public_experience_by_slug(a text,b text)
+    AS $body$ WITH issue_3872_original(payload) AS MATERIALIZED ( %s )
+    SELECT payload FROM issue_3872_original; -- v_body
+  `;
+  const wrapperBody = sliceFunctionBody(
+    wrapperMigration,
+    "pg_public_experience_by_slug",
+  );
+  expect(
+    isPreservedReadinessWrapper(
+      wrapperMigration,
+      wrapperBody,
+      bodyWith,
+      "pg_public_experience_by_slug",
+    ),
+    "digest-locked wrapper executing the prior ready body passes",
+  );
+  expect(
+    !isPreservedReadinessWrapper(
+      wrapperMigration.replace("md5(prosrc)", "prosrc"),
+      wrapperBody,
+      bodyWith,
+      "pg_public_experience_by_slug",
+    ),
+    "wrapper without the exact-source digest guard fails",
   );
 
   if (selfFails > 0) {

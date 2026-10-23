@@ -59,6 +59,15 @@ import {
   type TaxBasis,
   taxBehaviorForRegion,
 } from "../_shared/allInPricingEngine.ts";
+import {
+  callDiscountQuoteLines,
+  callReleaseDiscountUses,
+  callReserveDiscountUses,
+  type DiscountQuote,
+  normaliseDiscountCode,
+} from "../_shared/discountEngine.ts";
+import { withDiscounts } from "../_shared/orderMoneyTruth.ts";
+import { loadVenueTimezone } from "../_shared/venueOrderCore.ts";
 // META-ORCH-1076 Paystack routing — same provider-neutral arm ticket-checkout
 // uses; activates only for NG/paystack brands (no NEW Paystack work — reuse).
 import {
@@ -74,9 +83,9 @@ import { paystackReservationSplitFields } from "./ngPaystackSplit.ts";
 // checkout session (fee path, decoupled + fail-open) and fire the lead-type
 // conversion for a completed FREE RSVP (fire-and-forget, idempotent, fail-open).
 import {
+  type CheckoutAdContextInput,
   fireAdConversion,
   persistReservationAdContext,
-  type CheckoutAdContextInput,
 } from "../_shared/adConversionFire.ts";
 // #3392 — web guest manage tokens are DERIVED from the checkout session id so
 // the confirmation email can re-derive the same token and link to the manage
@@ -109,9 +118,15 @@ interface ReservationSettingsRow {
   fee_refundable: boolean;
   cancel_cutoff_hours: number;
   no_show_fee_policy: string;
+  discounts_allowed: boolean;
 }
 
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
+
+function clientIp(req: Request): string | null {
+  const forwarded = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || req.headers.get("cf-connecting-ip")?.trim() || null;
+}
 
 serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   if (req.method === "OPTIONS") {
@@ -127,12 +142,28 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
-  if (!body || typeof body !== "object" || Array.isArray(body) ||
-      Object.keys(body).some((key) => ![
-        "venueId", "brandId", "surface", "reservedForUtc", "partySize",
-        "buyer", "occasion", "guestNotes", "attributionClickId", "adMatchData",
-        "organicJourneyToken", "returnContract",
-      ].includes(key))) {
+  if (
+    !body || typeof body !== "object" || Array.isArray(body) ||
+    Object.keys(body).some((key) =>
+      ![
+        "venueId",
+        "brandId",
+        "surface",
+        "reservedForUtc",
+        "partySize",
+        "buyer",
+        "occasion",
+        "guestNotes",
+        "attributionClickId",
+        "adMatchData",
+        "organicJourneyToken",
+        "returnContract",
+        "mode",
+        "discountCode",
+        "quoteDigest",
+      ].includes(key)
+    )
+  ) {
     return jsonResponse({ error: "reservation_payload_invalid" }, 400);
   }
 
@@ -145,6 +176,30 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   const bodyVenueId = typeof body.venueId === "string" ? body.venueId : "";
   const legacyBrandId = typeof body.brandId === "string" ? body.brandId : "";
   const surface: ReserveSurface = body.surface === "web" ? "web" : "native";
+  const mode = body.mode === "preview" ? "preview" : "create";
+  let discountCode: string | null = null;
+  if (body.discountCode !== undefined && body.discountCode !== null) {
+    if (
+      typeof body.discountCode !== "string" || body.discountCode.length > 32
+    ) {
+      return jsonResponse(
+        { error: "invalid_request", detail: "discount_code_invalid" },
+        400,
+      );
+    }
+    try {
+      discountCode = normaliseDiscountCode(body.discountCode);
+    } catch {
+      return jsonResponse(
+        { error: "invalid_request", detail: "discount_code_invalid" },
+        400,
+      );
+    }
+  }
+  const quoteDigest = typeof body.quoteDigest === "string" &&
+      /^[0-9a-f]{32}$/.test(body.quoteDigest)
+    ? body.quoteDigest
+    : null;
   const reservedForUtc = typeof body.reservedForUtc === "string"
     ? body.reservedForUtc
     : "";
@@ -152,10 +207,12 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     ? Number(body.partySize)
     : NaN;
   const buyer = (body.buyer ?? {}) as Record<string, unknown>;
-  if (!body.buyer || typeof body.buyer !== "object" || Array.isArray(body.buyer) ||
-      Object.keys(buyer).some((key) => ![
-        "name", "email", "phone", "phoneCountryIso", "marketingOptIn",
-      ].includes(key))) {
+  if (
+    !body.buyer || typeof body.buyer !== "object" ||
+    Array.isArray(body.buyer) ||
+    // deno-fmt-ignore -- #1386 source contract audits this exact allowlist.
+    Object.keys(buyer).some((key) => !["name", "email", "phone", "phoneCountryIso", "marketingOptIn"].includes(key))
+  ) {
     return jsonResponse({ error: "buyer_payload_invalid" }, 400);
   }
   const buyerName = typeof buyer.name === "string" ? buyer.name.trim() : "";
@@ -174,8 +231,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     ? null
     : typeof buyer.phoneCountryIso === "string" &&
         /^[A-Z]{2}$/.test(buyer.phoneCountryIso)
-      ? buyer.phoneCountryIso
-      : undefined;
+    ? buyer.phoneCountryIso
+    : undefined;
   const marketingOptIn = buyer.marketingOptIn === true;
   const occasion = typeof body.occasion === "string" && body.occasion.trim()
     ? body.occasion.trim()
@@ -196,9 +253,18 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       !Array.isArray(body.adMatchData)
     ? body.adMatchData as Record<string, unknown>
     : {};
-  if (Object.keys(rawAdMatch).some((key) => ![
-    "fbp", "fbc", "scid", "ttp", "clientUserAgent", "trackingOptOut",
-  ].includes(key))) {
+  if (
+    Object.keys(rawAdMatch).some((key) =>
+      ![
+        "fbp",
+        "fbc",
+        "scid",
+        "ttp",
+        "clientUserAgent",
+        "trackingOptOut",
+      ].includes(key)
+    )
+  ) {
     return jsonResponse({ error: "ad_match_data_invalid" }, 400);
   }
   const matchString = (value: unknown, max: number): string | null =>
@@ -212,7 +278,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     scid: matchString(rawAdMatch.scid, 512),
     ttp: matchString(rawAdMatch.ttp, 512),
     trackingOptOut: rawAdMatch.trackingOptOut === true,
-    clientIpAddress: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    clientIpAddress:
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
     clientUserAgent: matchString(rawAdMatch.clientUserAgent, 1024) ??
       matchString(req.headers.get("user-agent"), 1024),
   };
@@ -241,6 +308,11 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   if (buyerPhoneCountryIso === undefined) {
     return jsonResponse({ error: "buyer_phone_country_invalid" }, 400);
   }
+  // Keep the canonical handset-country evidence explicit before any provider
+  // call; every free and paid persistence arm carries this same value.
+  const phoneEvidence = {
+    countryIso: buyerPhoneCountryIso,
+  };
   const reservedForMs = Date.parse(reservedForUtc);
   if (Number.isNaN(reservedForMs)) {
     return jsonResponse({ error: "reserved_for_invalid" }, 400);
@@ -334,7 +406,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   const { data: settingsRows, error: settingsErr } = await supabase
     .from("venue_reservation_settings")
     .select(
-      "reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, fee_refundable, cancel_cutoff_hours, no_show_fee_policy",
+      "reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, fee_refundable, cancel_cutoff_hours, no_show_fee_policy, discounts_allowed",
     )
     .eq("venue_id", venueId)
     .maybeSingle();
@@ -407,125 +479,65 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     return jsonResponse({ error: "deposit_amount_unconfigured" }, 409);
   }
 
+  if (mode === "preview" && !hasFee) {
+    return jsonResponse({
+      kind: "preview",
+      depositListCents: 0,
+      discountCents: 0,
+      depositNetCents: 0,
+      feesAndTaxCents: 0,
+      totalCents: 0,
+      currency: settings.fee_currency?.trim().toUpperCase() || "XXX",
+      discounts: [],
+      codeOutcome: {
+        status: "none",
+        reason: null,
+        required: null,
+        with: null,
+        replaced: [],
+      },
+      notices: [],
+      quoteDigest: null,
+      requiresPayment: false,
+    });
+  }
+
   // ════════════════════════════════════════════════════════════════════════════
   // FREE PATH — no fee, no deposit threshold. Mint the reservation directly.
   // ════════════════════════════════════════════════════════════════════════════
   if (!hasFee) {
-    // #3392 — the credential row's id is chosen here so the manage token can be
-    // derived from it before either row is written.
     const freeCheckoutSessionId = crypto.randomUUID();
     const guestCancelToken = surface === "web"
       ? await issueWebManageToken(freeCheckoutSessionId)
       : null;
-    // This zero-value credential row has no settlement currency. Preserve a
-    // configured venue currency when present; otherwise use ISO 4217 "no
-    // currency" rather than fabricating USD/GBP discovery or refund semantics.
-    const freeSessionCurrency = settings.fee_currency?.trim().toUpperCase() ||
-      "XXX";
-    const { data: created, error: createErr } = await supabase.rpc(
-      "pg_create_guest_reservation",
-      {
-        p_venue_id: venueId,
-        p_reserved_for: reservedForIso,
-        p_party_size: partySize,
-        p_source: reservationSource,
-        p_created_via: createdVia,
-        p_consumer_user_id: userId ?? null,
-        p_guest_name: buyerName,
-        p_guest_phone_e164: buyerPhoneE164,
-        p_guest_email: buyerEmail,
-        p_fee_cents: null,
-        p_fee_currency: null,
-        p_payment_intent_id: null,
-        p_payment_status: "none",
-        p_guest_cancel_token: null,
-        p_occasion: occasion,
-        p_guest_notes: guestNotes,
-        p_status: "confirmed",
-        p_guest_phone_country_iso: buyerPhoneCountryIso,
-      },
-    );
-    if (createErr !== null || !created) {
-      return classifyRpcError(createErr, "free reservation create");
-    }
-    const row = (Array.isArray(created) ? created[0] : created) as Record<
-      string,
-      unknown
-    >;
-    const reservationId = String(row.id ?? "");
-    if (guestCancelToken && reservationId) {
-      const { error: freeSessionError } = await supabase.from(
-        "reservation_checkout_sessions",
-      ).insert({
-        id: freeCheckoutSessionId,
-        brand_id: brandId,
-        venue_id: venueId,
-        reserved_for: reservedForIso,
-        party_size: partySize,
-        buyer_name: buyerName,
-        buyer_email: buyerEmail,
-        buyer_phone_e164: buyerPhoneE164,
-        buyer_phone_country_iso: buyerPhoneCountryIso,
-        occasion,
-        guest_notes: guestNotes,
-        marketing_opt_in: marketingOptIn,
-        amount_cents: 0,
-        currency: freeSessionCurrency,
-        created_via: "web",
-        consumer_user_id: null,
-        guest_cancel_token: null,
-        guest_cancel_token_hash: `v1:${await sha256Hex(guestCancelToken)}`,
-        buyer_status_token_hash: await sha256Hex(guestCancelToken),
-        application_fee_amount_cents: 0,
-        pricing_breakdown: null,
-        status: "completed",
-        reservation_id: reservationId,
-        organic_journey_id: organicJourneyId,
-      });
-      if (freeSessionError) {
-        console.error("free_reservation_guest_credential_persist_failed", {
-          reservation_id: reservationId,
-          error_code: freeSessionError.code,
-        });
-        return jsonResponse({ error: "reservation_session_failed" }, 500);
-      }
-      void persistReservationAdContext(
-        supabase as never,
-        freeCheckoutSessionId,
-        adContext,
-      );
-    }
-
-    // ISSUE-865 PR1 WP-2 TWO-TIER — a completed FREE RSVP fires the LEAD-type
-    // conversion (eventType 'reservation' → Meta 'Schedule' / TikTok
-    // 'CompleteRegistration' / Snap 'SAVE' / Reddit 'Lead', value £0) so it is
-    // counted as a "customer your ads drove". FIRE-AND-FORGET (not awaited) so the
-    // guest's confirmation is never delayed; idempotent + fail-open. event_id =
-    // reservationId; the inline click_id lets the send resolve touch → campaign.
-    if (reservationId) {
-      void fireAdConversion(supabase as never, {
-        reservationId,
-        surface: surface === "web" ? "web" : "ios",
-        eventType: "reservation",
-        clickId: attributionClickId,
-        adContext,
-      }).catch((adConvErr) => {
-        console.warn(
-          "[venue-reservation-create] free-RSVP ad-conversion fire failed (non-fatal):",
-          adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
-        );
-      });
-    }
-
-    return jsonResponse({
-      kind: "free_completed",
-      reservationId,
-      reservedForUtc: reservedForIso,
-      partySize,
+    return await completeFreeReservation(supabase, {
+      checkoutSessionId: freeCheckoutSessionId,
       brandId,
       venueId,
-      guestCancelToken: guestCancelToken ?? undefined,
-      receiptUrl: reservationId ? `/o/${reservationId}` : undefined,
+      reservedForIso,
+      partySize,
+      reservationSource,
+      createdVia,
+      userId,
+      buyerName,
+      buyerEmail,
+      buyerPhoneE164,
+      buyerPhoneCountryIso: phoneEvidence.countryIso,
+      occasion,
+      guestNotes,
+      marketingOptIn,
+      currency: settings.fee_currency?.trim().toUpperCase() || "XXX",
+      guestCancelToken,
+      buyerStatusToken: guestCancelToken ?? randomBuyerStatusToken(),
+      organicJourneyId,
+      attributionClickId,
+      adContext,
+      surface,
+      depositListCents: null,
+      discountCents: 0,
+      discountCode: null,
+      discountSnapshot: null,
+      persistCredential: guestCancelToken !== null,
     });
   }
 
@@ -603,22 +615,251 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     }
   }
 
+  const discountAttemptScopes = discountCode === null ? [] : await Promise.all(
+    [
+      clientIp(req) ? `ip:${clientIp(req)}` : null,
+      userId !== null ? `user:${userId}` : null,
+      `email:${buyerEmail}`,
+    ].filter((scope): scope is string => scope !== null).map(sha256Hex),
+  );
+  if (discountCode !== null) {
+    try {
+      const attempt = await supabase.rpc("issue_3872_code_attempt", {
+        p_scope_hashes: discountAttemptScopes,
+        p_record_failure: false,
+      });
+      if (attempt.error === null && attempt.data === false) {
+        return jsonResponse(
+          { error: "rate_limited", detail: "code_attempts" },
+          429,
+        );
+      }
+      if (attempt.error !== null) {
+        console.warn(
+          "[venue-reservation-create] discount limiter failed open",
+          {
+            error: attempt.error,
+          },
+        );
+      }
+    } catch (error) {
+      console.warn("[venue-reservation-create] discount limiter failed open", {
+        error,
+      });
+    }
+  }
+
+  const discountEngineLines = [{
+    lineRef: "deposit",
+    itemKind: "venue_deposit" as const,
+    itemId: venueId,
+    listingId: venueId,
+    listingKind: "reservation_deposit" as const,
+    listUnitMinor: baseFeeCents,
+    qty: 1,
+    valueScale: 1,
+    countScale: 1,
+    allowed: settings.discounts_allowed !== false,
+    tz: await loadVenueTimezone(supabase, venueId),
+  }];
+  let discountQuote: DiscountQuote;
+  try {
+    discountQuote = await callDiscountQuoteLines(supabase, {
+      brandId,
+      currency,
+      lines: discountEngineLines,
+      code: discountCode,
+      buyer: { email: buyerEmail, phone: buyerPhoneE164, userId },
+    });
+  } catch (error) {
+    console.error("[venue-reservation-create] discount quote failed", error);
+    return jsonResponse({ error: "pricing_config_unavailable" }, 409);
+  }
+  if (
+    discountCode !== null && discountQuote.codeOutcome.reason === "not_found"
+  ) {
+    try {
+      const recorded = await supabase.rpc("issue_3872_code_attempt", {
+        p_scope_hashes: discountAttemptScopes,
+        p_record_failure: true,
+      });
+      if (recorded.error !== null) {
+        console.warn(
+          "[venue-reservation-create] discount limiter record failed",
+          {
+            error: recorded.error,
+          },
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "[venue-reservation-create] discount limiter record failed",
+        {
+          error,
+        },
+      );
+    }
+  }
+  const depositNetCents = discountQuote.netSubtotalMinor;
+
   const providerRouting = resolveProviderRouting({
     payment_provider: pricing.payment_provider,
     payment_country: pricing.payment_country,
     pricing_currency: pricing.pricing_currency,
   });
+  const depositMoney = priceReservationDeposit(
+    pricing,
+    providerRouting.provider,
+    depositNetCents,
+    currency,
+  );
+  const discountPricingBreakdown = withDiscounts(
+    depositMoney.pricingBreakdown,
+    {
+      listSubtotalCents: baseFeeCents,
+      discounts: discountQuote.applied.map((entry) => ({
+        id: entry.discountId,
+        kind: entry.kind,
+        name: entry.name,
+        code: entry.code,
+        amountCents: entry.amountMinor,
+      })),
+    },
+  );
+
+  const previewPayload = (quote: DiscountQuote) => {
+    const quotedMoney = priceReservationDeposit(
+      pricing,
+      providerRouting.provider,
+      quote.netSubtotalMinor,
+      currency,
+    );
+    return {
+      kind: "preview",
+      depositListCents: quote.listSubtotalMinor,
+      discountCents: quote.discountMinor,
+      depositNetCents: quote.netSubtotalMinor,
+      feesAndTaxCents: quotedMoney.totalCents - quote.netSubtotalMinor,
+      totalCents: quotedMoney.totalCents,
+      currency: quotedMoney.currency,
+      discounts: quote.applied.map((entry) => ({
+        id: entry.discountId,
+        kind: entry.kind,
+        name: entry.name,
+        code: entry.code,
+        amountCents: entry.amountMinor,
+      })),
+      codeOutcome: quote.codeOutcome,
+      notices: quote.notices,
+      quoteDigest: quote.digest,
+      requiresPayment: quote.netSubtotalMinor > 0,
+    };
+  };
+  if (mode === "preview") return jsonResponse(previewPayload(discountQuote));
 
   // #3392 — pick the session id first: a web booking's token (it is both the
   // `bst` status token and the guest manage token) is derived from it, so the
   // confirmation email sent after payment can re-derive the same credential.
   const checkoutSessionId = crypto.randomUUID();
+  const sessionExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
   const buyerStatusToken = surface === "web"
     ? await issueWebManageToken(checkoutSessionId)
     : randomBuyerStatusToken();
   // #1221: one plaintext is held only by the browser/in-memory response. The
   // checkout session stores only the versioned SHA-256 credential hash.
   const guestCancelToken = surface === "web" ? buyerStatusToken : null;
+
+  let discountUsesReserved = false;
+  const releaseDiscountUses = async (): Promise<void> => {
+    if (!discountUsesReserved) return;
+    try {
+      await callReleaseDiscountUses(
+        supabase,
+        "reservation_deposit",
+        checkoutSessionId,
+      );
+    } catch (error) {
+      console.error(
+        "[venue-reservation-create] discount release failed",
+        error,
+      );
+    }
+  };
+  const reserveDiscountUses = async (
+    expiresAt: string,
+  ): Promise<Response | null> => {
+    if (discountQuote.discountMinor <= 0) return null;
+    try {
+      const reserved = await callReserveDiscountUses(supabase, {
+        kind: "reservation_deposit",
+        refId: checkoutSessionId,
+        brandId,
+        currency,
+        lines: discountEngineLines,
+        code: discountCode,
+        buyer: { email: buyerEmail, phone: buyerPhoneE164, userId },
+        expectedDigest: quoteDigest ?? discountQuote.digest,
+        expiresAt,
+        consume: false,
+      });
+      if (!reserved.ok) {
+        return jsonResponse({
+          error: "checkout_review_required",
+          detail: reserved.quote.listDigest === discountQuote.listDigest
+            ? "discount_changed"
+            : "price_changed",
+          quote: previewPayload(reserved.quote),
+        }, 409);
+      }
+      discountUsesReserved = true;
+      discountQuote = reserved.quote;
+      return null;
+    } catch (error) {
+      console.error(
+        "[venue-reservation-create] discount reserve failed",
+        error,
+      );
+      return jsonResponse({ error: "reservation_session_failed" }, 500);
+    }
+  };
+
+  if (depositNetCents === 0) {
+    const reserveFailure = await reserveDiscountUses(new Date().toISOString());
+    if (reserveFailure !== null) return reserveFailure;
+    return await completeFreeReservation(supabase, {
+      checkoutSessionId,
+      brandId,
+      venueId,
+      reservedForIso,
+      partySize,
+      reservationSource,
+      createdVia,
+      userId,
+      buyerName,
+      buyerEmail,
+      buyerPhoneE164,
+      buyerPhoneCountryIso: phoneEvidence.countryIso,
+      occasion,
+      guestNotes,
+      marketingOptIn,
+      currency: depositMoney.currency,
+      guestCancelToken,
+      buyerStatusToken,
+      organicJourneyId,
+      attributionClickId,
+      adContext,
+      surface,
+      depositListCents: baseFeeCents,
+      discountCents: baseFeeCents,
+      discountCode,
+      discountSnapshot: reservationDiscountSnapshot(
+        discountQuote,
+        depositMoney.currency,
+      ),
+      persistCredential: true,
+      releaseDiscountUses,
+    });
+  }
 
   // ── PAYSTACK ARM (NG) — same provider-neutral reuse as ticket-checkout. ──────
   if (providerRouting.provider === "paystack") {
@@ -667,34 +908,12 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       // a fee venue on Paystack with no payout subaccount is not charge-ready.
       return jsonResponse({ error: "stripe_account_not_ready" }, 409);
     }
-    const psSwitches: PricingSwitches = {
-      pass_tax: pricing.pass_tax,
-      pass_mingla_fee: pricing.pass_mingla_fee,
-      pass_service_fee: pricing.pass_service_fee,
-    };
-    const psEngineInput: ComputeAllInInput = {
-      baseCents: baseFeeCents,
-      switches: psSwitches,
-      region: "NG",
-      currency: "NGN",
-      effectiveTakeRateBps: pricing.effective_take_rate_bps,
-      takeRateSource: pricing.take_rate_source,
-      serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
-    };
-    const psSubtotal = computeBuyerSubtotal(psEngineInput);
-    const { taxCents: psTaxCents, buyerTotalCents: psBuyerTotalCents } =
-      computeConfigVat(
-        psSubtotal.buyerSubtotalCents,
-        pricing.vat_rate_bps ?? 0,
-        psSwitches.pass_tax,
-      );
-    const psBreakdown: PricingBreakdown = buildPricingBreakdown({
-      input: psEngineInput,
-      amountTotalCents: psBuyerTotalCents,
-      taxCents: psTaxCents,
-      taxBasis: "config_vat",
-      stripeTaxCalculationId: null,
-    });
+    const psSubtotal = depositMoney.buyerSubtotal;
+    const psBuyerTotalCents = depositMoney.totalCents;
+    const psBreakdown = discountPricingBreakdown;
+
+    const reserveFailure = await reserveDiscountUses(sessionExpiresAt);
+    if (reserveFailure !== null) return reserveFailure;
 
     const sessionId = await insertReservationSession(supabase, {
       checkoutSessionId,
@@ -705,7 +924,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerName,
       buyerEmail,
       buyerPhoneE164,
-      buyerPhoneCountryIso,
+      buyerPhoneCountryIso: phoneEvidence.countryIso,
       occasion,
       guestNotes,
       marketingOptIn,
@@ -717,9 +936,15 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerStatusTokenHash: await sha256Hex(buyerStatusToken),
       applicationFeeAmountCents: psBreakdown.application_fee_amount_cents,
       pricingBreakdown: psBreakdown,
+      depositListCents: baseFeeCents,
+      discountCents: discountQuote.discountMinor,
+      discountCode,
+      discountSnapshot: reservationDiscountSnapshot(discountQuote, "NGN"),
+      expiresAt: sessionExpiresAt,
       organicJourneyId,
     });
     if (sessionId === null) {
+      await releaseDiscountUses();
       return jsonResponse({ error: "reservation_session_failed" }, 500);
     }
 
@@ -733,19 +958,23 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     );
 
     const psReference = `mingla_resv_${sessionId}_${Date.now().toString(36)}`;
-    await supabase
+    const { error: referenceError } = await supabase
       .from("reservation_checkout_sessions")
       .update({
         paystack_reference: psReference,
         updated_at: new Date().toISOString(),
       })
       .eq("id", sessionId);
+    if (referenceError !== null) {
+      await failReservationSession(supabase, sessionId, referenceError.message);
+      return jsonResponse({ error: "reservation_session_failed" }, 500);
+    }
 
     const callbackUrl = `${PRODUCTION_BUSINESS_WEB_ORIGIN}/reserve/${
       encodeURIComponent(brandId)
-    }/confirm?rcs=${
-      encodeURIComponent(sessionId)
-    }&bst=${encodeURIComponent(buyerStatusToken)}`;
+    }/confirm?rcs=${encodeURIComponent(sessionId)}&bst=${
+      encodeURIComponent(buyerStatusToken)
+    }`;
 
     let psInit: { authorization_url: string; reference: string };
     try {
@@ -760,6 +989,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
           mingla_reservation_session_id: sessionId,
           mingla_brand_id: brandId,
           mingla_buyer_email: buyerEmail,
+          mingla_discount_ids: discountQuote.applied.map((entry) =>
+            entry.discountId
+          ).join(","),
         },
         // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
         // an UNSTAMPED brand; a STAMPED (cut-over) brand omits the split fields →
@@ -795,6 +1027,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       totalCents: psBuyerTotalCents,
       currency: "NGN",
       pricingBreakdown: psBreakdown,
+      depositListCents: baseFeeCents,
+      discountCents: discountQuote.discountMinor,
+      depositNetCents,
       venueId,
       guestCancelToken: guestCancelToken ?? undefined,
     });
@@ -806,64 +1041,15 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     return jsonResponse({ error: "stripe_account_not_ready" }, 409);
   }
 
-  // region behavior (no buyer tax form — venue-sourced via the brand region).
-  const rawRegion = typeof pricing.pricing_region === "string"
-    ? pricing.pricing_region.trim().toUpperCase()
-    : "";
-  const regionIsEnabled = (ENABLED_PRICING_REGIONS as readonly string[])
-    .includes(rawRegion);
-  const pricingRegion = (regionIsEnabled ? rawRegion : "GB") as PricingRegion;
-  const regionUnmappedForceFlatAbsorb = !regionIsEnabled;
-
-  const pricingSwitches: PricingSwitches = {
-    pass_tax: pricing.pass_tax,
-    pass_mingla_fee: pricing.pass_mingla_fee,
-    pass_service_fee: pricing.pass_service_fee,
-  };
-  const engineInput: ComputeAllInInput = {
-    baseCents: baseFeeCents,
-    switches: pricingSwitches,
-    region: pricingRegion,
-    currency,
-    effectiveTakeRateBps: pricing.effective_take_rate_bps,
-    takeRateSource: pricing.take_rate_source,
-    serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
-  };
-  const buyerSubtotal = computeBuyerSubtotal(engineInput);
+  const buyerSubtotal = depositMoney.buyerSubtotal;
   // #3645 flat 4.5%: application fee = take-rate + service fee.
-  const applicationFeeAmountCents =
-    buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
-
-  // Tax: the reservation has no venue_tax_address (that lives on events). We
-  // degrade to flat-absorb (one clean number, NO buyer tax form) UNLESS the
-  // brand passes tax in an enabled region — in which case the inclusive VAT is
-  // re-derived deterministically from the region divisor (the buyer is never
-  // asked for an address; the basis is the venue's own region). This is the
-  // WYSIWYP all-in.
-  const taxBehavior = taxBehaviorForRegion(pricingRegion);
-  let taxBasis: TaxBasis = "unresolved_flat_absorb";
-  let amountTotalCents = buyerSubtotal.buyerSubtotalCents;
-  let taxCents = 0;
-  if (
-    pricing.pass_tax && !regionUnmappedForceFlatAbsorb &&
-    taxBehavior === "inclusive"
-  ) {
-    // inclusive region (GB/EU/CH): the VAT is inside the subtotal; extract the
-    // display portion via the region divisor (the engine owns the amount math).
-    const divisor = inclusiveVatDivisorForRegion(pricingRegion);
-    taxCents = buyerSubtotal.buyerSubtotalCents -
-      Math.round(buyerSubtotal.buyerSubtotalCents / divisor);
-    taxBasis = "venue_resolved";
-    amountTotalCents = buyerSubtotal.buyerSubtotalCents;
-  }
-  const pricingBreakdown: PricingBreakdown = buildPricingBreakdown({
-    input: engineInput,
-    amountTotalCents,
-    taxCents,
-    taxBasis,
-    stripeTaxCalculationId: null,
-  });
+  const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents +
+    buyerSubtotal.serviceFeeCents;
+  const pricingBreakdown = discountPricingBreakdown;
   const totalCents = pricingBreakdown.buyer_total_cents;
+
+  const reserveFailure = await reserveDiscountUses(sessionExpiresAt);
+  if (reserveFailure !== null) return reserveFailure;
 
   // Persist the in-flight session FIRST (the durable charge record).
   const sessionId = await insertReservationSession(supabase, {
@@ -875,7 +1061,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     buyerName,
     buyerEmail,
     buyerPhoneE164,
-    buyerPhoneCountryIso,
+    buyerPhoneCountryIso: phoneEvidence.countryIso,
     occasion,
     guestNotes,
     marketingOptIn,
@@ -888,9 +1074,18 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     applicationFeeAmountCents,
     pricingBreakdown,
     stripeAccountId,
+    depositListCents: baseFeeCents,
+    discountCents: discountQuote.discountMinor,
+    discountCode,
+    discountSnapshot: reservationDiscountSnapshot(
+      discountQuote,
+      depositMoney.currency,
+    ),
+    expiresAt: sessionExpiresAt,
     organicJourneyId,
   });
   if (sessionId === null) {
+    await releaseDiscountUses();
     return jsonResponse({ error: "reservation_session_failed" }, 500);
   }
 
@@ -909,6 +1104,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     const baseUrl = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
       Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL");
     if (!baseUrl || !/^https:\/\/[^\s]+$/.test(baseUrl)) {
+      await failReservationSession(supabase, sessionId, "web_base_url_missing");
       return jsonResponse({ error: "web_base_url_missing" }, 500);
     }
     const successUrl =
@@ -922,6 +1118,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
           mingla_reservation_session_id: sessionId,
           mingla_brand_id: brandId,
           mingla_buyer_email: buyerEmail,
+          mingla_discount_ids: discountQuote.applied.map((entry) =>
+            entry.discountId
+          ).join(","),
         },
         statement_descriptor_suffix: "MINGLA",
       };
@@ -951,6 +1150,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
           metadata: {
             mingla_reservation_session_id: sessionId,
             mingla_brand_id: brandId,
+            mingla_discount_ids: discountQuote.applied.map((entry) =>
+              entry.discountId
+            ).join(","),
           },
         },
         {
@@ -967,15 +1169,28 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       );
     }
     if (!checkoutSession.url) {
+      await failReservationSession(
+        supabase,
+        sessionId,
+        "checkout_session_url_missing",
+      );
       return jsonResponse({ error: "checkout_session_url_missing" }, 502);
     }
-    await supabase
+    const { error: checkoutPersistError } = await supabase
       .from("reservation_checkout_sessions")
       .update({
         stripe_checkout_session_id: checkoutSession.id,
         updated_at: new Date().toISOString(),
       })
       .eq("id", sessionId);
+    if (checkoutPersistError !== null) {
+      await failReservationSession(
+        supabase,
+        sessionId,
+        checkoutPersistError.message,
+      );
+      return jsonResponse({ error: "reservation_session_failed" }, 500);
+    }
     return jsonResponse({
       kind: "requires_web_redirect",
       reservationDraftId: sessionId,
@@ -984,6 +1199,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       totalCents,
       currency: currency.toUpperCase(),
       pricingBreakdown,
+      depositListCents: baseFeeCents,
+      discountCents: discountQuote.discountMinor,
+      depositNetCents,
       venueId,
       guestCancelToken: guestCancelToken ?? undefined,
     });
@@ -1053,6 +1271,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         mingla_reservation_session_id: sessionId,
         mingla_brand_id: brandId,
         mingla_buyer_email: buyerEmail,
+        mingla_discount_ids: discountQuote.applied.map((entry) =>
+          entry.discountId
+        ).join(","),
       },
     };
     if (applicationFeeAmountCents > 0) {
@@ -1089,6 +1310,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         await cancelPaymentIntentIfClientAvailable(stripe, paymentIntent.id);
       } catch { /* best-effort */ }
     }
+    await failReservationSession(supabase, sessionId, persistErr.message);
     return jsonResponse({
       error: "payment_session_persist_failed",
       detail: persistErr.message,
@@ -1104,6 +1326,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     clientSecret,
     paymentIntentId: paymentIntent.id,
     pricingBreakdown,
+    depositListCents: baseFeeCents,
+    discountCents: discountQuote.discountMinor,
+    depositNetCents,
     // ORCH-1238 — fail-closed mode-validated resolver. Throws (→ 500 via the
     // wrapEdgeHandler onError envelope) rather than ever returning a pk whose
     // prefix mismatches MINGLA_STRIPE_MODE.
@@ -1121,6 +1346,260 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+function priceReservationDeposit(
+  pricing: BrandPricingRow,
+  provider: "stripe" | "paystack",
+  baseCents: number,
+  currency: string,
+) {
+  if (provider === "paystack") {
+    const switches: PricingSwitches = {
+      pass_tax: pricing.pass_tax,
+      pass_mingla_fee: pricing.pass_mingla_fee,
+      pass_service_fee: pricing.pass_service_fee,
+    };
+    const input: ComputeAllInInput = {
+      baseCents,
+      switches,
+      region: "NG",
+      currency: "NGN",
+      effectiveTakeRateBps: pricing.effective_take_rate_bps,
+      takeRateSource: pricing.take_rate_source,
+      serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
+    };
+    const buyerSubtotal = computeBuyerSubtotal(input);
+    const { taxCents, buyerTotalCents } = computeConfigVat(
+      buyerSubtotal.buyerSubtotalCents,
+      pricing.vat_rate_bps ?? 0,
+      switches.pass_tax,
+    );
+    return {
+      currency: "NGN",
+      buyerSubtotal,
+      totalCents: buyerTotalCents,
+      pricingBreakdown: buildPricingBreakdown({
+        input,
+        amountTotalCents: buyerTotalCents,
+        taxCents,
+        taxBasis: "config_vat",
+        stripeTaxCalculationId: null,
+      }),
+    };
+  }
+
+  const rawRegion = typeof pricing.pricing_region === "string"
+    ? pricing.pricing_region.trim().toUpperCase()
+    : "";
+  const regionIsEnabled = (ENABLED_PRICING_REGIONS as readonly string[])
+    .includes(rawRegion);
+  const pricingRegion = (regionIsEnabled ? rawRegion : "GB") as PricingRegion;
+  const regionUnmappedForceFlatAbsorb = !regionIsEnabled;
+  const switches: PricingSwitches = {
+    pass_tax: pricing.pass_tax,
+    pass_mingla_fee: pricing.pass_mingla_fee,
+    pass_service_fee: pricing.pass_service_fee,
+  };
+  const input: ComputeAllInInput = {
+    baseCents,
+    switches,
+    region: pricingRegion,
+    currency,
+    effectiveTakeRateBps: pricing.effective_take_rate_bps,
+    takeRateSource: pricing.take_rate_source,
+    serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
+  };
+  const buyerSubtotal = computeBuyerSubtotal(input);
+  const taxBehavior = taxBehaviorForRegion(pricingRegion);
+  let taxBasis: TaxBasis = "unresolved_flat_absorb";
+  let taxCents = 0;
+  if (
+    pricing.pass_tax && !regionUnmappedForceFlatAbsorb &&
+    taxBehavior === "inclusive"
+  ) {
+    const divisor = inclusiveVatDivisorForRegion(pricingRegion);
+    taxCents = buyerSubtotal.buyerSubtotalCents -
+      Math.round(buyerSubtotal.buyerSubtotalCents / divisor);
+    taxBasis = "venue_resolved";
+  }
+  return {
+    currency: currency.toUpperCase(),
+    buyerSubtotal,
+    totalCents: buyerSubtotal.buyerSubtotalCents,
+    pricingBreakdown: buildPricingBreakdown({
+      input,
+      amountTotalCents: buyerSubtotal.buyerSubtotalCents,
+      taxCents,
+      taxBasis,
+      stripeTaxCalculationId: null,
+    }),
+  };
+}
+
+function reservationDiscountSnapshot(
+  quote: DiscountQuote,
+  currency: string,
+): Record<string, unknown> | null {
+  if (quote.discountMinor <= 0 || quote.applied.length === 0) return null;
+  return {
+    currency: currency.toUpperCase(),
+    applied: quote.applied,
+    lines: quote.lines,
+  };
+}
+
+interface FreeReservationInput {
+  checkoutSessionId: string;
+  brandId: string;
+  venueId: string;
+  reservedForIso: string;
+  partySize: number;
+  reservationSource: string;
+  createdVia: "consumer" | "guest";
+  userId: string | null;
+  buyerName: string;
+  buyerEmail: string;
+  buyerPhoneE164: string;
+  buyerPhoneCountryIso: string | null;
+  occasion: string | null;
+  guestNotes: string | null;
+  marketingOptIn: boolean;
+  currency: string;
+  guestCancelToken: string | null;
+  buyerStatusToken: string;
+  organicJourneyId: string | null;
+  attributionClickId: string | null;
+  adContext: CheckoutAdContextInput;
+  surface: ReserveSurface;
+  depositListCents: number | null;
+  discountCents: number;
+  discountCode: string | null;
+  discountSnapshot: Record<string, unknown> | null;
+  persistCredential: boolean;
+  releaseDiscountUses?: () => Promise<void>;
+}
+
+// Both ordinary no-deposit reservations and deposits discounted to zero finish
+// through this one rail. The latter always writes the completed credential row
+// so the database consumes the reserved discount atomically.
+// deno-lint-ignore no-explicit-any
+async function completeFreeReservation(
+  supabase: any,
+  input: FreeReservationInput,
+): Promise<Response> {
+  const buyerPhoneCountryIso = input.buyerPhoneCountryIso;
+  const { data: created, error: createErr } = await supabase.rpc(
+    "pg_create_guest_reservation",
+    {
+      p_venue_id: input.venueId,
+      p_reserved_for: input.reservedForIso,
+      p_party_size: input.partySize,
+      p_source: input.reservationSource,
+      p_created_via: input.createdVia,
+      p_consumer_user_id: input.userId ?? null,
+      p_guest_name: input.buyerName,
+      p_guest_phone_e164: input.buyerPhoneE164,
+      p_guest_email: input.buyerEmail,
+      p_fee_cents: null,
+      p_fee_currency: null,
+      p_payment_intent_id: null,
+      p_payment_status: "none",
+      p_guest_cancel_token: null,
+      p_occasion: input.occasion,
+      p_guest_notes: input.guestNotes,
+      p_status: "confirmed",
+      p_guest_phone_country_iso: buyerPhoneCountryIso,
+    },
+  );
+  if (createErr !== null || !created) {
+    await input.releaseDiscountUses?.();
+    return classifyRpcError(createErr, "free reservation create");
+  }
+  const row = (Array.isArray(created) ? created[0] : created) as Record<
+    string,
+    unknown
+  >;
+  const reservationId = String(row.id ?? "");
+  if (input.persistCredential && reservationId) {
+    const { error: freeSessionError } = await supabase.from(
+      "reservation_checkout_sessions",
+    ).insert({
+      id: input.checkoutSessionId,
+      brand_id: input.brandId,
+      venue_id: input.venueId,
+      reserved_for: input.reservedForIso,
+      party_size: input.partySize,
+      buyer_name: input.buyerName,
+      buyer_email: input.buyerEmail,
+      buyer_phone_e164: input.buyerPhoneE164,
+      buyer_phone_country_iso: buyerPhoneCountryIso,
+      occasion: input.occasion,
+      guest_notes: input.guestNotes,
+      marketing_opt_in: input.marketingOptIn,
+      amount_cents: 0,
+      deposit_list_cents: input.depositListCents,
+      discount_cents: input.discountCents,
+      discount_code: input.discountCode,
+      discount_snapshot: input.discountSnapshot,
+      currency: input.currency.toUpperCase(),
+      created_via: input.surface === "web" ? "web" : "app",
+      consumer_user_id: input.userId,
+      guest_cancel_token: null,
+      guest_cancel_token_hash: input.guestCancelToken
+        ? `v1:${await sha256Hex(input.guestCancelToken)}`
+        : null,
+      buyer_status_token_hash: await sha256Hex(input.buyerStatusToken),
+      application_fee_amount_cents: 0,
+      pricing_breakdown: null,
+      status: "completed",
+      reservation_id: reservationId,
+      organic_journey_id: input.organicJourneyId,
+    });
+    if (freeSessionError) {
+      console.error("free_reservation_guest_credential_persist_failed", {
+        reservation_id: reservationId,
+        error_code: freeSessionError.code,
+      });
+      await input.releaseDiscountUses?.();
+      return jsonResponse({ error: "reservation_session_failed" }, 500);
+    }
+    void persistReservationAdContext(
+      supabase as never,
+      input.checkoutSessionId,
+      input.adContext,
+    );
+  }
+
+  if (reservationId) {
+    void fireAdConversion(supabase as never, {
+      reservationId,
+      surface: input.surface === "web" ? "web" : "ios",
+      eventType: "reservation",
+      clickId: input.attributionClickId,
+      adContext: input.adContext,
+    }).catch((adConvErr) => {
+      console.warn(
+        "[venue-reservation-create] free-RSVP ad-conversion fire failed (non-fatal):",
+        adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+      );
+    });
+  }
+
+  return jsonResponse({
+    kind: "free_completed",
+    reservationId,
+    reservedForUtc: input.reservedForIso,
+    partySize: input.partySize,
+    brandId: input.brandId,
+    venueId: input.venueId,
+    guestCancelToken: input.guestCancelToken ?? undefined,
+    buyerStatusToken: input.buyerStatusToken,
+    depositListCents: input.depositListCents ?? 0,
+    discountCents: input.discountCents,
+    depositNetCents: 0,
+    receiptUrl: reservationId ? `/o/${reservationId}` : undefined,
+  });
+}
+
 // #3392 — a web guest's manage token. Derived from the checkout session id when
 // the manage key ring is installed; otherwise the pre-#3392 random token, so a
 // missing or broken key never blocks a booking. Logs a reason code only.
@@ -1130,9 +1609,12 @@ async function issueWebManageToken(checkoutSessionId: string): Promise<string> {
     randomToken: randomBuyerStatusToken,
   });
   if (!issued.derived) {
-    console.warn("[venue-reservation-create] venue_reservation_manage_key_unavailable", {
-      reason: issued.reason,
-    });
+    console.warn(
+      "[venue-reservation-create] venue_reservation_manage_key_unavailable",
+      {
+        reason: issued.reason,
+      },
+    );
   }
   return issued.token;
 }
@@ -1198,6 +1680,11 @@ interface SessionInsert {
   pricingBreakdown: PricingBreakdown;
   stripeAccountId?: string | null;
   organicJourneyId: string | null;
+  depositListCents: number;
+  discountCents: number;
+  discountCode: string | null;
+  discountSnapshot: Record<string, unknown> | null;
+  expiresAt: string;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1223,6 +1710,10 @@ async function insertReservationSession(
       guest_notes: s.guestNotes,
       marketing_opt_in: s.marketingOptIn,
       amount_cents: s.amountCents,
+      deposit_list_cents: s.depositListCents,
+      discount_cents: s.discountCents,
+      discount_code: s.discountCode,
+      discount_snapshot: s.discountSnapshot,
       currency: s.currency.toUpperCase(),
       created_via: s.createdVia,
       consumer_user_id: s.consumerUserId,
@@ -1235,7 +1726,7 @@ async function insertReservationSession(
       pricing_breakdown: s.pricingBreakdown,
       stripe_account_id: s.stripeAccountId ?? null,
       status: "pending",
-      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      expires_at: s.expiresAt,
       organic_journey_id: s.organicJourneyId,
     })
     .select("id")

@@ -551,7 +551,7 @@ export function PeoplePage(): React.ReactElement {
                       book.kind === "error"
                         ? {
                             label: "Try again",
-                            onPress: async (): Promise<void> => {
+                            onPress: async () => {
                               await book.refetch();
                             },
                             variant: "secondary",
@@ -693,7 +693,7 @@ export function PeoplePage(): React.ReactElement {
                     title="Couldn’t load groups."
                     cta={{
                       label: "Try again",
-                      onPress: async (): Promise<void> => {
+                      onPress: async () => {
                         await Promise.all([groups.refetch(), ...(manualEnabled ? [manualGroups.refetch()] : [])]);
                       },
                       variant: "secondary",

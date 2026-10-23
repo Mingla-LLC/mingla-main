@@ -18,7 +18,19 @@ describe("issue #3859 — Explorer expired-session checkout guard", () => {
         testID: "explorer-checkout-session-required",
       }),
     ).toBeTruthy();
-    expect(renderer.root.findAllByType("TextInput" as never)).toHaveLength(0);
+    // #3872 adds an independent discount-code TextInput. This session test
+    // guards the booking-contact editor specifically, so assert those fields
+    // stay closed without treating the discount input as contact UI.
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Full name for this booking",
+      }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Email for this booking",
+      }),
+    ).toHaveLength(0);
     expect(renderer.root.findAllByType("PhoneInput" as never)).toHaveLength(0);
     expect(
       renderer.root.findAllByProps({ accessibilityRole: "checkbox" }),
@@ -51,7 +63,16 @@ describe("issue #3859 — Explorer expired-session checkout guard", () => {
         "+15555550123",
       ]),
     );
-    expect(renderer.root.findAllByType("TextInput" as never)).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Full name for this booking",
+      }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Email for this booking",
+      }),
+    ).toHaveLength(0);
     expect(renderer.root.findAllByType("PhoneInput" as never)).toHaveLength(0);
     expect(
       renderer.root.findByProps({ testID: `quantity-${TEST_TICKET_ID}` }).props

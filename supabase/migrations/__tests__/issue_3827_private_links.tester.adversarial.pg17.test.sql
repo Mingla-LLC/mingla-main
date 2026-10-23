@@ -19,7 +19,7 @@ BEGIN
     'public.biz_ticket_link_list(uuid,uuid)',
     'public.pg_ticket_link_resolve(text)',
     'public.pg_ticket_link_signup(text,jsonb,uuid,uuid,text,text)',
-    'public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer)'
+    'public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text)'
   ] LOOP
     PERFORM pg_temp.i3827a_assert(
       NOT has_function_privilege('anon',v_sig,'EXECUTE')
@@ -47,10 +47,11 @@ BEGIN
     AND pg_get_functiondef('public.pg_public_event_by_slug(text,text)'::regprocedure)
       LIKE '%COALESCE(tt.is_hidden, false) = false%',
     'direct and public event readers strip hidden tiers server-side');
+  -- [TEST-MOD-APPROVED #3872] R1 adds code and quote-digest inputs to checkout.
   PERFORM pg_temp.i3827a_assert(
-    pg_get_functiondef('public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer)'::regprocedure)
+    pg_get_functiondef('public.issue_3872_ticket_line_price(uuid,uuid,integer,jsonb,timestamptz,integer)'::regprocedure)
       LIKE '%issue_3827_link_unlocks_tier%',
-    'checkout base admits a hidden tier only through the transaction-local link guard');
+    'checkout line owner admits a hidden tier only through the transaction-local link guard');
 END $shape$;
 
 ROLLBACK;

@@ -99,9 +99,11 @@ const EXPECTED_PLAN = Object.freeze({
   // two locally declared batch:A executions (self-test and plain), exactly as
   // the note above instructs. Read off
   // `node .github/scripts/strict-grep/issue-3449-class-a-shard-plan.mjs`.
-  executions: 1039,
-  loadsSeconds: [169.0, 169.0, 169.0],
-  counts: [342, 353, 344],
+  // [TEST-MOD-APPROVED #3872] Re-derived after merging the discount gates
+  // with the exact-main catalog additions using the live plan command.
+  executions: 1047,
+  loadsSeconds: [169.3, 169.3, 169.2],
+  counts: [345, 356, 346],
 });
 
 const tempDir = (label) => fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), `issue-3449-${label}-`));

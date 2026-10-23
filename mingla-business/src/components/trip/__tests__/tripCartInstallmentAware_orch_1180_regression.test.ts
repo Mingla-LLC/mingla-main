@@ -83,14 +83,12 @@ describe("ORCH-1180 FIX B — checkout cart seed reads the per-line choice", () 
 });
 
 describe("ORCH-1180 the cart is then AWARE — deposit branch fires on 'installments'", () => {
-  // [TEST-MOD-APPROVED #3859] Awareness is now per line: one installment line
-  // activates the aggregate while full-pay siblings remain fully due today.
-  test("dueTodayCents follows per-line choices through the shared aggregate", () => {
+  // [TEST-MOD-APPROVED #3872] The quote service consumes each line's explicit
+  // choice and returns the one authoritative due-today amount.
+  test("dueTodayCents follows the server quote", () => {
     const src = checkoutIndexSrc();
-    expect(src).toContain(
-      'lines.every((line) => line.paymentPlanChoice !== "installments")',
-    );
-    expect(src).toContain("tripSummedDueTodayCents(");
-    expect(src).toContain('line.paymentPlanChoice ?? "full"');
+    expect(src).toContain("quote.dueTodayNetCents");
+    expect(src).toContain("quote.netSubtotalCents");
+    expect(src).toContain('"Due today"');
   });
 });

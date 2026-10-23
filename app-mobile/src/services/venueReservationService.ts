@@ -20,7 +20,15 @@
  */
 
 import { supabase } from "./supabase";
-import { extractFunctionError } from "../utils/edgeFunctionError";
+import {
+  extractFunctionError,
+  extractFunctionErrorFields,
+} from "../utils/edgeFunctionError";
+import type {
+  TicketQuoteCodeOutcome,
+  TicketQuoteDiscount,
+  TicketQuoteNotice,
+} from "@mingla/offering-rendering/discountQuote";
 import { getVenueOrganicJourneyToken } from "./venueOrganicCaptureService";
 
 export interface VenueReservationBuyer {
@@ -48,6 +56,33 @@ export interface CreateVenueReservationInput {
   buyer: VenueReservationBuyer;
   occasion?: string | null;
   guestNotes?: string | null;
+  discountCode?: string | null;
+  quoteDigest?: string | null;
+}
+
+export interface VenueReservationPreview {
+  kind: "preview";
+  depositListCents: number;
+  discountCents: number;
+  depositNetCents: number;
+  feesAndTaxCents: number;
+  totalCents: number;
+  currency: string;
+  discounts: TicketQuoteDiscount[];
+  codeOutcome: TicketQuoteCodeOutcome;
+  notices: TicketQuoteNotice[];
+  quoteDigest: string | null;
+  requiresPayment: boolean;
+}
+
+export class VenueReservationReviewError extends Error {
+  readonly quote: VenueReservationPreview;
+
+  constructor(quote: VenueReservationPreview) {
+    super("checkout_review_required");
+    this.name = "VenueReservationReviewError";
+    this.quote = quote;
+  }
 }
 
 /** The all-in pricing breakdown the server returns (display only — WYSIWYP). */
@@ -155,6 +190,8 @@ export async function createVenueReservation(
         },
         ...(input.occasion ? { occasion: input.occasion } : {}),
         ...(input.guestNotes ? { guestNotes: input.guestNotes } : {}),
+        discountCode: input.discountCode ?? null,
+        quoteDigest: input.quoteDigest ?? null,
         organicJourneyToken: getVenueOrganicJourneyToken({
           brandId: input.brandId,
           venueId: input.venueId,
@@ -164,15 +201,61 @@ export async function createVenueReservation(
   );
 
   if (error) {
-    const message = await extractFunctionError(
+    const fields = await extractFunctionErrorFields(
       error,
       "Couldn't start your reservation. Tap to try again.",
     );
-    throw new Error(message);
+    const reviewQuote = fields.body?.quote;
+    if (
+      fields.token === "checkout_review_required" &&
+      reviewQuote !== null &&
+      typeof reviewQuote === "object"
+    ) {
+      throw new VenueReservationReviewError(
+        reviewQuote as VenueReservationPreview,
+      );
+    }
+    throw new Error(fields.token);
   }
   if (!data) {
     throw new Error("Empty reservation response from server.");
   }
+  return data;
+}
+
+export async function previewVenueReservation(
+  input: CreateVenueReservationInput,
+): Promise<VenueReservationPreview> {
+  const { data, error } = await supabase.functions.invoke<VenueReservationPreview>(
+    "venue-reservation-create",
+    {
+      body: {
+        venueId: input.venueId,
+        brandId: input.brandId,
+        surface: "native",
+        mode: "preview",
+        returnContract: "host_v1",
+        reservedForUtc: input.reservedForUtc,
+        partySize: input.partySize,
+        buyer: {
+          ...input.buyer,
+          marketingOptIn: input.buyer.marketingOptIn === true,
+        },
+        ...(input.occasion ? { occasion: input.occasion } : {}),
+        ...(input.guestNotes ? { guestNotes: input.guestNotes } : {}),
+        discountCode: input.discountCode ?? null,
+      },
+    },
+  );
+  if (error) {
+    throw new Error(
+      await extractFunctionError(
+        error,
+        "Couldn't get the reservation price. Tap to try again.",
+      ),
+    );
+  }
+  if (!data) throw new Error("Empty reservation preview from server.");
   return data;
 }
 

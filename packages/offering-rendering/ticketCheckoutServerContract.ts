@@ -6,8 +6,8 @@
  */
 
 import {
-  canonicalJson,
   type CanonicalCheckoutLine,
+  canonicalJson,
   isCheckoutAttemptId,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "./ticketCheckoutContract.ts";
@@ -48,6 +48,8 @@ export function canonicalCheckoutV2FingerprintInput(input: {
   bookedEndAt?: string | null;
   /** issue #3281 R2 — group party; omit/non-positive keeps fingerprint identical. */
   partySize?: number | null;
+  /** #3872: normalised discount code; absent preserves the v2 fingerprint. */
+  discountCode?: string | null;
   intakeFormData: unknown;
   quote: {
     currency: string;
@@ -70,12 +72,14 @@ export function canonicalCheckoutV2FingerprintInput(input: {
   const bookedEnd = typeof input.bookedEndAt === "string"
     ? input.bookedEndAt.trim()
     : "";
-  const party =
-    typeof input.partySize === "number" &&
+  const party = typeof input.partySize === "number" &&
       Number.isFinite(input.partySize) &&
       input.partySize >= 1
-      ? Math.trunc(input.partySize)
-      : null;
+    ? Math.trunc(input.partySize)
+    : null;
+  const discountCode = typeof input.discountCode === "string"
+    ? input.discountCode.trim()
+    : "";
   return canonicalJson({
     contractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
     eventId: input.eventId,
@@ -89,6 +93,7 @@ export function canonicalCheckoutV2FingerprintInput(input: {
     ...(bookedStart.length > 0 ? { bookedStartAt: bookedStart } : {}),
     ...(bookedEnd.length > 0 ? { bookedEndAt: bookedEnd } : {}),
     ...(party !== null ? { partySize: party } : {}),
+    ...(discountCode.length > 0 ? { discountCode } : {}),
     intakeFormData,
     quote: input.quote,
   });

@@ -22,6 +22,11 @@ import {
   isCheckoutAttemptId,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
+import type {
+  CheckoutReviewDetail,
+  TicketCheckoutReview,
+  TicketQuote,
+} from "@mingla/offering-rendering/discountQuote";
 import { initStripe } from "@stripe/stripe-react-native";
 // META-ORCH-1076 [Paystack Africa] — in-app browser for the Paystack hosted
 // checkout redirect (the pre-ORCH-0849 hosted-checkout primitive). The buyer
@@ -104,6 +109,11 @@ export interface NativeCheckoutInput {
   /** Signed-in Explorer account that owns v2 restart recovery. */
   accountId?: string;
   eventId: string;
+  /** #3872 — normalized code and the exact server quote the buyer accepted. */
+  discountCode?: string | null;
+  quoteDigest?: string;
+  quoteListDigest?: string;
+  acceptedTotalCents?: number;
   lines: Array<{
     ticketTypeId: string;
     quantity: number;
@@ -429,6 +439,8 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
     ),
     paymentPlanChoice: input.paymentPlanChoice ?? null,
     purchaseTermsAccepted: input.purchaseTermsAccepted === true,
+    discountCode: input.discountCode?.trim().toUpperCase() ?? null,
+    quoteDigest: input.quoteDigest ?? null,
     intakeFormData: input.intakeFormData ?? null,
     idempotencyKey: input.idempotencyKey ?? null,
     ...(input.bookedStartAt !== undefined &&
@@ -681,7 +693,7 @@ export const useNativeCheckoutFlow = (): ((
       const result = await runCheckout(input, fingerprint);
       if (
         input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION &&
-        result.outcome === "succeeded"
+        (result.outcome === "succeeded" || result.outcome === "review")
       ) {
         checkoutAttemptTracker.reset();
       }
@@ -797,6 +809,7 @@ export const useNativeCheckoutFlow = (): ((
             marketingOptIn: input.buyer.marketingOptIn === true,
           },
           providerInput: { surface: "native" },
+          discountCode: input.discountCode ?? null,
           lines: input.lines.map((line) => ({
             ticketTypeId: line.ticketTypeId,
             quantity: line.quantity,
@@ -831,6 +844,9 @@ export const useNativeCheckoutFlow = (): ((
               checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
               checkoutAttemptId,
               purchaseTermsAccepted: true,
+              discountCode: input.discountCode ?? null,
+              quoteDigest: input.quoteDigest,
+              quoteListDigest: input.quoteListDigest,
             }
             : {}),
           buyer: {
@@ -904,9 +920,32 @@ export const useNativeCheckoutFlow = (): ((
       // can only be read once. Status is a property, not the stream.
       const status =
         (error as { context?: { status?: number } })?.context?.status ?? null;
-      const { token: rawToken, detail: refusalDetail } =
+      const { token: rawToken, detail: refusalDetail, body: refusalBody } =
         await extractFunctionErrorFields(error, "");
       const token = rawToken.length > 0 ? rawToken : null;
+      if (status === 409 && token === "checkout_review_required") {
+        const reviewDetails = new Set<CheckoutReviewDetail>([
+          "discount_changed",
+          "price_changed",
+          "lines",
+          "fingerprint",
+          "discount_code_invalid",
+        ]);
+        const detail = reviewDetails.has(refusalDetail as CheckoutReviewDetail)
+          ? (refusalDetail as CheckoutReviewDetail)
+          : "price_changed";
+        const quote = (refusalBody?.quote ?? null) as TicketQuote | null;
+        const review: TicketCheckoutReview = {
+          kind: "review_required",
+          detail,
+          quote,
+          previousTotalCents:
+            typeof input.acceptedTotalCents === "number"
+              ? input.acceptedTotalCents
+              : null,
+        };
+        return { outcome: "review", review };
+      }
       const raiseCopy = nativeCheckoutBookedStartRaiseMessage(
         refusalDetail,
         token,

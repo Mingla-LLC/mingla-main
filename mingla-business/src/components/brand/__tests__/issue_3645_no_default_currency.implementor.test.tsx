@@ -283,7 +283,22 @@ async function pick(tree: Renderer, countryCode: string): Promise<void> {
   await TestRenderer.act(async () => {
     (sheet.props.onPick as (code: string) => void)(countryCode);
   });
-  await settle();
+  // The real field awaits both the brand mutation and its best-effort
+  // payout-country receipt before leaving the visible saving state. Six
+  // generic event-loop turns were enough in isolation but could inspect the
+  // tree too early under the full two-worker suite. Wait for the user-visible
+  // operation to finish instead, while still failing closed on a stuck save.
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    await TestRenderer.act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    if (
+      byTestId(tree.root, "brand-payout-country-field-saving").length === 0
+    ) {
+      return;
+    }
+  }
+  throw new Error("Payout country pick did not leave the saving state.");
 }
 
 beforeEach(() => {

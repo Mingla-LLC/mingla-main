@@ -47,6 +47,26 @@ export interface ExplicitOrderTotals {
   pricing_source: PricingSource;
 }
 
+export interface MoneyTruthDiscount {
+  id: string;
+  kind: string;
+  name: string;
+  code: string | null;
+  amountCents: number;
+}
+
+export type PricingBreakdownWithDiscounts = PricingBreakdown & {
+  list_subtotal_cents: number;
+  discount_cents: number;
+  discounts: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    code: string | null;
+    amount_cents: number;
+  }>;
+};
+
 function assertWholeNonNegative(name: string, value: number): void {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`order_money_truth_invalid_${name}:${value}`);
@@ -61,17 +81,21 @@ function assertWholeNonNegative(name: string, value: number): void {
 export function explicitTotalsFromBreakdown(
   breakdown: PricingBreakdown,
   pricingSource: PricingSource = "computed_at_checkout",
+  listSubtotalCents?: number,
 ): ExplicitOrderTotals {
   const net = breakdown.base_cents;
+  const list = listSubtotalCents ?? net;
+  const discount = list - net;
   const fees = breakdown.buyer_subtotal_cents - breakdown.base_cents;
   const tax = breakdown.buyer_total_cents - breakdown.buyer_subtotal_cents;
+  assertWholeNonNegative("discount", discount);
   assertWholeNonNegative("net_subtotal", net);
   assertWholeNonNegative("buyer_fees", fees);
   assertWholeNonNegative("tax", tax);
   assertWholeNonNegative("buyer_total", breakdown.buyer_total_cents);
   return {
-    list_subtotal_cents: net,
-    discount_cents: 0,
+    list_subtotal_cents: list,
+    discount_cents: discount,
     net_subtotal_cents: net,
     buyer_fees_cents: fees,
     tax_cents: tax,
@@ -84,10 +108,42 @@ export function explicitTotalsFromBreakdown(
 export function sessionMoneyTruthPatch(
   breakdown: PricingBreakdown,
   pricingSource: PricingSource = "computed_at_checkout",
+  listSubtotalCents?: number,
 ): ExplicitOrderTotals & { pricing_breakdown: PricingBreakdown } {
   return {
-    ...explicitTotalsFromBreakdown(breakdown, pricingSource),
+    ...explicitTotalsFromBreakdown(breakdown, pricingSource, listSubtotalCents),
     pricing_breakdown: breakdown,
+  };
+}
+
+/** Add the immutable list/discount snapshot to the provider money breakdown. */
+export function withDiscounts(
+  breakdown: PricingBreakdown,
+  input: {
+    listSubtotalCents: number;
+    /**
+     * The subtotal after discounts when the pricing breakdown base contains an
+     * additional venue-owned amount (for example a service charge). Ticket and
+     * deposit callers omit it because their breakdown base is already net.
+     */
+    netSubtotalCents?: number;
+    discounts: readonly MoneyTruthDiscount[];
+  },
+): PricingBreakdownWithDiscounts {
+  const discount = input.listSubtotalCents -
+    (input.netSubtotalCents ?? breakdown.base_cents);
+  assertWholeNonNegative("discount", discount);
+  return {
+    ...breakdown,
+    list_subtotal_cents: input.listSubtotalCents,
+    discount_cents: discount,
+    discounts: input.discounts.map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      name: entry.name,
+      code: entry.code,
+      amount_cents: entry.amountCents,
+    })),
   };
 }
 
@@ -138,7 +194,10 @@ export function freeCheckoutBreakdown(args: {
 }
 
 // deno-lint-ignore no-explicit-any
-type MinimalSupabase = { from: (table: string) => any; rpc: (...args: any[]) => any };
+type MinimalSupabase = {
+  from: (table: string) => any;
+  rpc: (...args: any[]) => any;
+};
 
 /**
  * Persist the explicit totals and breakdown on an unfinalized ticket session.
@@ -151,9 +210,14 @@ export async function persistTicketSessionMoneyTruth(
   checkoutSessionId: string,
   breakdown: PricingBreakdown,
   pricingSource: PricingSource = "computed_at_checkout",
+  listSubtotalCents?: number,
 ): Promise<boolean> {
   try {
-    const patch = sessionMoneyTruthPatch(breakdown, pricingSource);
+    const patch = sessionMoneyTruthPatch(
+      breakdown,
+      pricingSource,
+      listSubtotalCents,
+    );
     const { error } = await supabase
       .from("ticket_checkout_sessions")
       .update({ ...patch, updated_at: new Date().toISOString() })
@@ -216,10 +280,13 @@ export async function recordTicketProviderTotal(
     }
     const result = (data ?? null) as Record<string, unknown> | null;
     if (result && result.outcome === "mismatch") {
-      console.error("[order-money-truth] provider total disagrees with checkout", {
-        checkoutSessionId: args.checkoutSessionId,
-        result,
-      });
+      console.error(
+        "[order-money-truth] provider total disagrees with checkout",
+        {
+          checkoutSessionId: args.checkoutSessionId,
+          result,
+        },
+      );
     }
     return result;
   } catch (err) {

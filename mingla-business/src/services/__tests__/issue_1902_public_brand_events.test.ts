@@ -97,6 +97,9 @@ test("production adapter admits current ticketed + RSVP rows, reuses bundle tick
   const bundleEventIds: string[] = [];
   const ticketEventIds: string[] = [];
   rpcMock.mockImplementation(((name: string, args: { p_event_id?: string }) => {
+    if (name === "pg_public_event_display_prices") {
+      return Promise.resolve({ data: [], error: null });
+    }
     if (name !== "pg_direct_event_checkout_bundle") {
       throw new Error(`unexpected RPC ${name}`);
     }

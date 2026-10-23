@@ -160,25 +160,18 @@ describe("#3281 native checkout refusals render friendly copy", () => {
 });
 
 describe("#3281 the native all-in price check carries the chosen day set", () => {
-  const payment = fs.readFileSync(
-    path.join(__dirname, "..", "..", "..", "app", "checkout", "[eventId]", "payment.tsx"),
+  const controller = fs.readFileSync(
+    path.join(__dirname, "..", "..", "components", "checkout", "TicketQuoteController.tsx"),
+    "utf8",
+  );
+  const hook = fs.readFileSync(
+    path.join(__dirname, "..", "..", "hooks", "useTicketQuote.ts"),
     "utf8",
   );
 
-  it("the mode:\"preview\" create body forwards eventDateIds and re-runs when they change", () => {
-    const start = payment.indexOf('mode: "preview"');
-    expect(start).toBeGreaterThan(-1);
-    const effectEnd = payment.indexOf("}, [", start);
-    expect(effectEnd).toBeGreaterThan(start);
-    const previewBlock = payment.slice(start, effectEnd);
-    const codeOnly = previewBlock
-      .split("\n")
-      .filter((line) => !line.trimStart().startsWith("//"))
-      .join("\n");
-    expect(codeOnly).toMatch(/eventDateIds:\s*\[\.\.\.eventDateIds\]/);
-
-    const depsEnd = payment.indexOf("]);", effectEnd);
-    const deps = payment.slice(effectEnd, depsEnd);
-    expect(deps).toMatch(/\beventDateIds\b/);
+  it("the quote input forwards eventDateIds and its query identity changes with the chosen set", () => {
+    expect(controller).toContain("eventDateIds: cart.eventDateIds");
+    expect(controller).toMatch(/cart\.eventDateIds,[\s\S]*?cart\.bookedStartAt/);
+    expect(hook).toContain("[...(input.eventDateIds ?? [])].sort()");
   });
 });

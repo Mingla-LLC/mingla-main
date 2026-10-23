@@ -145,7 +145,6 @@ const CLASSIFIED: Record<string, Row> = {
   'https://reactnavigation.org': { verdict: 'inert', why: 'React Navigation documentation strings' },
   'https://react.dev': { verdict: 'inert', why: 'React warning text' },
   'https://developer.mozilla.org': { verdict: 'inert', why: 'MDN links in library warning text' },
-  'https://radix-ui.com': { verdict: 'inert', why: 'library documentation string' },
   'https://prosemirror.net': { verdict: 'inert', why: 'library documentation string' },
   'https://feross.org': { verdict: 'inert', why: 'library author link' },
   'https://github.com': { verdict: 'inert', why: 'library issue links in warning text' },

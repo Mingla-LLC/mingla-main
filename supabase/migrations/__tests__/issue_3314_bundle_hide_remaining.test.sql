@@ -279,7 +279,9 @@ BEGIN;
 DO $h07$
 DECLARE
   b record; o_pub record; o_hid record;
-  v_src text; v_before_src text; v_event uuid;
+  v_src text; v_wrapper_src text; v_before_src text; v_event uuid;
+  v_wrapper_prefix constant text := E'WITH issue_3872_original(payload) AS MATERIALIZED (\n';
+  v_wrapper_suffix constant text := E'\n)\nSELECT public.issue_3872_enrich_public_ticket_payload';
   v_cte_hunk constant text :=
        E'      -- issue #3314 — the organiser''s "Hide remaining count", read from the raw\n'
     || E'      -- row (theme.business_event.settings), never from the public_theme above:\n'
@@ -309,8 +311,17 @@ BEGIN
   SELECT * INTO o_pub FROM pg_temp.h3314_event(b.o_brand, 'h07-pub', 'public', 'true'::jsonb);
   SELECT * INTO o_hid FROM pg_temp.h3314_event(b.o_brand, 'h07-hid', 'hidden', NULL);
 
-  SELECT p.prosrc INTO v_src FROM pg_proc p
+  SELECT p.prosrc INTO v_wrapper_src FROM pg_proc p
    WHERE p.oid = 'public.pg_direct_event_checkout_bundle(uuid,text,text)'::regprocedure;
+  PERFORM pg_temp.h3314_assert(
+    left(v_wrapper_src,length(v_wrapper_prefix))=v_wrapper_prefix
+      AND strpos(v_wrapper_src,v_wrapper_suffix)>length(v_wrapper_prefix),
+    'H-07 #3872 keeps the audited body intact inside its additive sale wrapper');
+  v_src:=substring(
+    v_wrapper_src
+    FROM length(v_wrapper_prefix)+1
+    FOR strpos(v_wrapper_src,v_wrapper_suffix)-length(v_wrapper_prefix)-1
+  ) || E';\n';
   PERFORM pg_temp.h3314_assert(
     (length(v_src) - length(replace(v_src, v_cte_hunk, ''))) = length(v_cte_hunk)
       AND (length(v_src) - length(replace(v_src, v_key_hunk, ''))) = length(v_key_hunk),
@@ -318,9 +329,10 @@ BEGIN
   PERFORM pg_temp.h3314_assert(md5(v_src) = '00c7efab5b85a2d9f68f2efe31c9cc42',
     'H-07b the installed body is byte-identical to 20271124003281 (md5 ' || md5(v_src) || ')');
   -- Keep the CTE projection: #3281 schedule sold-out/placesLeft still read it.
-  v_before_src := replace(v_src, v_key_hunk, '');
-  PERFORM pg_temp.h3314_assert(md5(v_before_src) = 'bb592bd96ba612ae11eade657ea819c2',
-    'H-07c removing only the hideRemainingCount key gives the #3281 comparison body (md5 ' || md5(v_before_src) || ')');
+  PERFORM pg_temp.h3314_assert(md5(replace(v_src, v_key_hunk, '')) = 'bb592bd96ba612ae11eade657ea819c2',
+    'H-07c removing only the hideRemainingCount key gives the #3281 comparison body (md5 '
+      || md5(replace(v_src, v_key_hunk, '')) || ')');
+  v_before_src := replace(v_wrapper_src, v_key_hunk, '');
   EXECUTE format(
     'CREATE FUNCTION pg_temp.h3314_bundle_before(p_event_id uuid, p_brand_slug text, p_event_slug text) '
     'RETURNS json LANGUAGE sql STABLE SET search_path TO '''' AS %L', v_before_src);

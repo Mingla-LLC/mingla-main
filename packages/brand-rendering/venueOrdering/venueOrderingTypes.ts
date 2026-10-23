@@ -121,11 +121,31 @@ export interface VenueOrderPricedLine {
   quantity: number;
   modifiersTotalCents: number;
   lineTotalCents: number;
+  discountCents: number;
+  netLineTotalCents: number;
+  discounts: VenueOrderDiscountLine[];
   notes: string | null;
+}
+
+export interface VenueOrderDiscountLine {
+  id: string;
+  kind: string;
+  name: string;
+  code: string | null;
+  amountCents: number;
+}
+
+export interface VenueOrderCodeOutcome {
+  supplied: boolean;
+  applied: boolean;
+  reason: string | null;
+  discountId: string | null;
 }
 
 export interface VenueOrderPreview {
   currency: string;
+  listSubtotalCents: number;
+  discountCents: number;
   subtotalCents: number;
   /** D-9 — ALWAYS its own labelled line. Never merged into fees & tax. */
   serviceChargeCents: number;
@@ -135,6 +155,10 @@ export interface VenueOrderPreview {
   /** P-18 — outside every fee, by arithmetic rather than by policy. */
   tipCents: number;
   totalCents: number;
+  discounts: VenueOrderDiscountLine[];
+  codeOutcome: VenueOrderCodeOutcome;
+  notices: unknown[];
+  quoteDigest: string | null;
   lines: VenueOrderPricedLine[];
   tipsEnabled: boolean;
   counterPickupEnabled: boolean;

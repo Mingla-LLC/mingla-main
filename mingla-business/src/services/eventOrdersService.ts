@@ -18,6 +18,8 @@ interface OrderLineItemRow {
   ticket_type_id: string;
   quantity: number;
   unit_price_cents: number;
+  list_unit_price_cents?: number | null;
+  discount_cents?: number | null;
   total_cents: number;
   ticket_types: { name: string; is_free: boolean } | null;
 }
@@ -51,6 +53,12 @@ export interface OrderRow {
   buyer_phone_e164: string | null;
   buyer_phone: string | null;
   total_cents: number;
+  list_subtotal_cents?: number | null;
+  net_subtotal_cents?: number | null;
+  discount_cents?: number | null;
+  buyer_fees_cents?: number | null;
+  tax_cents?: number | null;
+  buyer_total_cents?: number | null;
   currency: string | null;
   payment_method: string;
   payment_status: string;
@@ -190,6 +198,12 @@ export const fetchEventOrders = async (
       buyer_phone,
       buyer_phone_e164,
       total_cents,
+      list_subtotal_cents,
+      net_subtotal_cents,
+      discount_cents,
+      buyer_fees_cents,
+      tax_cents,
+      buyer_total_cents,
       currency,
       payment_method,
       payment_status,
@@ -223,6 +237,8 @@ export const fetchEventOrders = async (
         ticket_type_id,
         quantity,
         unit_price_cents,
+        list_unit_price_cents,
+        discount_cents,
         total_cents,
         ticket_types (name, is_free)
       ),
@@ -371,6 +387,9 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
           ticketTypeId: line.ticket_type_id,
           ticketNameAtPurchase: line.ticket_types?.name ?? "Ticket",
           unitPriceGbpAtPurchase: line.unit_price_cents / 100,
+          listUnitPriceGbpAtPurchase:
+            (line.list_unit_price_cents ?? line.unit_price_cents) / 100,
+          discountCents: line.discount_cents ?? 0,
           unitPriceAtPurchase: line.unit_price_cents / 100,
           isFreeAtPurchase: line.ticket_types?.is_free ?? line.unit_price_cents === 0,
           quantity: line.quantity,
@@ -382,6 +401,12 @@ export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
       totalGbpAtPurchase: order.total_cents / 100,
       totalAtPurchase: order.total_cents / 100,
       totalCents: order.total_cents,
+      listSubtotalCents: order.list_subtotal_cents ?? undefined,
+      netSubtotalCents: order.net_subtotal_cents ?? undefined,
+      discountCents: order.discount_cents ?? 0,
+      buyerFeesCents: order.buyer_fees_cents ?? 0,
+      taxCents: order.tax_cents ?? 0,
+      buyerTotalCents: order.buyer_total_cents ?? order.total_cents,
       currency: orderCurrency,
       paymentMethod:
         order.total_cents === 0 &&

@@ -73,6 +73,11 @@ export interface TripOfferingTier {
    * fees client-side. Each surface adapter resolves it via fetchTierAllInCents.
    */
   priceAllInCents?: number | null;
+  salePriceCents?: number | null;
+  saleAllInCents?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   /** Optional per-package description (tier_metadata.description) — shown in the row. */
   description?: string | null;
   currency: string;

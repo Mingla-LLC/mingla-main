@@ -20,12 +20,14 @@
 -- (prior pin 135). It is not a free constant: the same number is enforced
 -- against `docs/contracts/ari-capability-ledger.json` and the tool registry by
 -- `.github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs`
--- ("145 capabilities, 133 registered tools, complete bijection"). Moving the
+-- ("148 capabilities, 136 registered tools, complete bijection"). Moving the
 -- ledger without moving this test turns this file red on purpose.
 -- [TEST-MOD-APPROVED #1982] 138 after revoke_brand_invitation (prior pin 137).
 -- [TEST-MOD-APPROVED #1984] 140 after listing_conversion + reservation_metrics
 -- [TEST-MOD-APPROVED #3697] 145 after Host Ads propose/approve/pause/end/report
 -- (prior pin 138).
+-- [TEST-MOD-APPROVED #3872] 148 after Host Discounts
+-- list_discounts/create_discount/close_discount (prior pin 145).
 --
 -- All fixtures roll back.
 -- =====================================================================================
@@ -36,7 +38,7 @@ BEGIN;
 
 DO $test$
 DECLARE
-  c_ledger_denominator constant integer := 145;
+  c_ledger_denominator constant integer := 148;
   v_requirement_rows integer;
   v_finalizer_denominator integer;
   v_reported_count integer;

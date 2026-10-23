@@ -52,6 +52,14 @@ export interface PublicTicketProps {
    * compute_all_in_cents output divided by 100.
    */
   priceAllInGbp?: number | null;
+  /** #3872: current server-owned sale price, in major units; null off-sale. */
+  salePriceGbp?: number | null;
+  /** #3872: current server-owned sale all-in price, in major units. */
+  saleAllInGbp?: number | null;
+  /** Absolute end of the current sale window; null for an open-ended sale. */
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   currency: string | null;
   isFree: boolean;
   isUnlimited: boolean;

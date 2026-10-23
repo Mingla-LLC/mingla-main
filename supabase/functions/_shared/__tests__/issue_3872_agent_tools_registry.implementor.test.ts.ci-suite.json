@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3872_agent_tools_registry.implementor.test.ts",
+  "lane": "stripe-deno",
+  "profile": "deno-1.46-stripe",
+  "orderKey": "issue-3872-08-agent-tools"
+}

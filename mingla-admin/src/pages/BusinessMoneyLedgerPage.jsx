@@ -452,16 +452,16 @@ export function BusinessMoneyLedgerPage() {
   }, []);
 
   useEffect(() => {
-    if (disputeId) loadDispute(disputeId);
+    if (!disputeId) return undefined;
+    const timer = window.setTimeout(() => void loadDispute(disputeId), 0);
+    return () => window.clearTimeout(timer);
   }, [disputeId, loadDispute]);
 
-  // Reset the annotate form each time the modal opens.
-  useEffect(() => {
-    if (annotateOpen) {
-      setNote(disputeBundle?.dispute?.admin_internal_note || "");
-      setMarkReviewed(false);
-    }
-  }, [annotateOpen, disputeBundle]);
+  const openAnnotate = useCallback(() => {
+    setNote(disputeBundle?.dispute?.admin_internal_note || "");
+    setMarkReviewed(false);
+    setAnnotateOpen(true);
+  }, [disputeBundle]);
 
   const runAnnotate = useCallback(async ({ reason }) => {
     const trimmedNote = note.trim();
@@ -520,7 +520,7 @@ export function BusinessMoneyLedgerPage() {
         />
         {disputeBundle && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
-            <Button variant="secondary" size="md" onClick={() => setAnnotateOpen(true)}>
+            <Button variant="secondary" size="md" onClick={openAnnotate}>
               Add internal note / Mark reviewed
             </Button>
           </div>

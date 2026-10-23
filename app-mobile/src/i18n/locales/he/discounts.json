@@ -1,0 +1,33 @@
+{
+  "code": {
+    "label": "DISCOUNT CODE",
+    "placeholder": "Enter a code",
+    "input_label": "Discount code",
+    "remove": "Remove discount code",
+    "remove_short": "Remove",
+    "saving": "Saving {{amount}}",
+    "replaced": "{{code}} applied instead of {{names}}.",
+    "rate_limited": "Too many tries. Wait a few minutes.",
+    "not_found": "That code doesn't exist.",
+    "paused": "{{code}} isn't available right now.",
+    "not_started": "{{code}} starts later.",
+    "ended": "{{code}} has ended.",
+    "used_up": "{{code}} has been fully used.",
+    "buyer_limit": "You've already used {{code}}.",
+    "queue": "Codes can't be used while you're in the queue.",
+    "not_applicable": "{{code}} isn't valid for these items.",
+    "min_subtotal": "Add {{required}} more to use {{code}}.",
+    "incompatible_better_automatic": "{{code}} can't be combined with {{with}} — you already have the better price."
+  },
+  "quote": {
+    "error": "Couldn't get your price.",
+    "retry": "Try again"
+  },
+  "sale_limited": {
+    "buy": "Buy {{count}} at {{sale}}",
+    "keep": "Keep {{count}} at list"
+  },
+  "review": {
+    "title": "Your total changed"
+  }
+}
