@@ -106,6 +106,10 @@ const EXACT_PUBLIC_DEPENDENCIES = {
 // Major must stay 16; patch/minor above the floor may move without editing this gate.
 const NEXT_ADVISORY_FLOOR = Object.freeze([16, 3, 8]);
 const NEXT_MAJOR = 16;
+// #4057 raised both Sites trees to the patched 3.4.17 line. Treat that as an
+// advisory floor so a later safe patch does not make current main red again.
+const DOMPURIFY_ADVISORY_FLOOR = Object.freeze([3, 4, 17]);
+const DOMPURIFY_MAJOR = 3;
 const ARI_TOOLS = [
   "get_brand_site",
   "list_site_pages",
@@ -166,6 +170,17 @@ function versionGte(actual, floor) {
     if (actual[i] < floor[i]) return false;
   }
   return true;
+}
+
+function assertDompurifyOverride(raw, label, failures) {
+  const version = parseSemverTriple(raw);
+  if (
+    version === null ||
+    version[0] !== DOMPURIFY_MAJOR ||
+    !versionGte(version, DOMPURIFY_ADVISORY_FLOOR)
+  ) {
+    failures.push(`${label}: DOMPurify override drifted`);
+  }
 }
 
 /** Exact dep map minus `next`, plus next major+floor (advisory soft pin — #3713). */
@@ -611,7 +626,7 @@ export function violations(files) {
     "production dependency set/version drifted",
     failures,
   );
-  if (cmsPackage.overrides?.dompurify !== "3.4.14") failures.push("CMS package: DOMPurify override drifted");
+  assertDompurifyOverride(cmsPackage.overrides?.dompurify, "CMS package", failures);
   const publicPackage = json(files.publicPackage ?? "", "public package", failures);
   assertProductionDependencies(
     publicPackage.dependencies,
@@ -620,7 +635,7 @@ export function violations(files) {
     "production dependency isolation drifted",
     failures,
   );
-  if (publicPackage.overrides?.dompurify !== "3.4.14") failures.push("public runtime: DOMPurify override drifted");
+  assertDompurifyOverride(publicPackage.overrides?.dompurify, "public runtime", failures);
 
   const cmsConfig = files.cmsConfig ?? "";
   for (const token of [
@@ -1110,9 +1125,11 @@ function selfTest() {
     ["publicStyles", "  .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));", "  .gallery {\n    grid-template-columns: 1fr 1fr;", "Restaurant Website v1 visual contract"],
     ["publicStyles", ".gallery > * {\n  min-width: 0;\n}", ".gallery > * {\n  min-width: auto;\n}", "Restaurant Website v1 visual contract"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
-    ["publicPackage", '"next": "16.3.8"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.8"', "production dependency isolation"],
-    ["publicPackage", '"next": "16.3.8"', '"next": "16.3.7"', "next advisory floor"],
-    ["cmsPackage", '"next": "16.3.8"', '"next": "15.5.0"', "next major must remain"],
+    ["publicPackage", '"next": "16.4.2"', '"@payloadcms/next": "3.88.0",\n    "next": "16.4.2"', "production dependency isolation"],
+    ["publicPackage", '"next": "16.4.2"', '"next": "16.3.7"', "next advisory floor"],
+    ["cmsPackage", '"next": "16.4.2"', '"next": "15.5.0"', "next major must remain"],
+    ["cmsPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],
+    ["publicPackage", '"dompurify": "3.4.17"', '"dompurify": "3.4.16"', "DOMPurify override"],
     ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],
     ["secretWorkflow", "final 90-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
