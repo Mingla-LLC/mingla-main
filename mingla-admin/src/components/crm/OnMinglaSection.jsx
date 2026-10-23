@@ -21,6 +21,7 @@ import {
   expectedSavedWords,
   hostMissing,
   hostUpcomingRows,
+  isRecapWorkCard,
   opsErrorWords,
   requestKey,
   todayIso,
@@ -218,7 +219,23 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
               </ul>
             )}
             {(past.length > 0 || recent.length > 0) && (
-              <p className={`text-[12.5px] text-[var(--color-text-tertiary)] ${WORDS}`}>Past: {[...past.map((p) => p.title), ...recent.map((x) => `${x.title} (now on Mingla)`)].join(", ")}</p>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Past events</span>
+                <ul className="flex min-w-0 flex-col gap-1">
+                  {past.map((item) => (
+                    <li key={`past-${item.id || item.title}`} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2">
+                      <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{item.title}</span>
+                      <StatePill state={{ k: "done", name: "Happened" }} />
+                    </li>
+                  ))}
+                  {recent.map((item) => (
+                    <li key={`fulfilled-${item.id || item.title}`} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[var(--gray-200)] px-3 py-2">
+                      <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{item.title}</span>
+                      <StatePill state={{ k: "done", name: "Happened" }} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             {series && (
               <p className={`text-[12.5px] text-[var(--color-text-tertiary)] ${WORDS}`}>
@@ -272,7 +289,7 @@ export function OnMinglaSection({ record, online, me, ownerNames = [], onAssignM
             {work.map((c) => (
               <li key={c.id}>
                 <a href={`#/work-board?card=${c.id}`} className={`flex min-h-11 min-w-0 flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--gray-50)] ${FOCUS}`} aria-label={`${c.title}: ${workWords(c)}. Open the card`}>
-                  <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{c.title}</span>
+                  <span className={`min-w-0 flex-1 text-[13px] text-[var(--color-text-primary)] ${WORDS}`}>{c.title}{isRecapWorkCard(c) ? <span className="ml-2 inline-flex rounded-full bg-[var(--color-brand-50)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-brand-700)]">T+2 recap</span> : null}</span>
                   <span className="whitespace-nowrap text-[12.5px] text-[var(--color-text-tertiary)]">{workWords(c)}</span>
                 </a>
               </li>

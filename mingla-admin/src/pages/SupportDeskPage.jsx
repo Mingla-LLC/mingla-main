@@ -57,6 +57,7 @@ import {
   updateInternalSupportThread,
 } from "../services/supportProductWorkflowService";
 import { listSupportStaffRoster } from "../services/communityService";
+import { isActiveUnassignedTicket } from "../lib/supportTicketMetrics";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -245,7 +246,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
       const [liveResult, internalRows, signals, roster] = await Promise.all([
         supabase
           .from("support_tickets")
-          .select("id, requester_user_id, requester_segment, subject, status, priority, assigned_staff_id, conversation_id, brand_id, created_at, first_response_at, resolved_at, last_message_at, next_update_at, next_update_note, support_workflow_revision")
+          .select("id, requester_user_id, requester_segment, subject, status, priority, assigned_staff_id, conversation_id, brand_id, audience, created_by, created_at, first_response_at, resolved_at, last_message_at, next_update_at, next_update_note, support_workflow_revision")
           .order("last_message_at", { ascending: false })
           .limit(200),
         listInternalSupportThreads(),
@@ -256,7 +257,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
       const liveRows = (liveResult.data || []).map((row) => ({
         ...row,
         source_kind: "support_ticket",
-        source_label: "Live chat",
+        source_label: row.audience === "brand" ? "Brand-visible" : "Live chat",
         workflow_revision: row.support_workflow_revision,
         details: null,
         brand_group_context: null,
@@ -554,14 +555,14 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
   // ─── Derived ──────────────────────────────────────────────────────────────────
 
   const unassignedCount = useMemo(
-    () => tickets.filter((t) => !t.assigned_staff_id).length,
+    () => tickets.filter(isActiveUnassignedTicket).length,
     [tickets],
   );
 
   const visibleTickets = useMemo(
     () => tickets.filter((ticket) => (
       (statusFilter === "all" || ticket.status === statusFilter)
-      && (!unassignedOnly || !ticket.assigned_staff_id)
+      && (!unassignedOnly || isActiveUnassignedTicket(ticket))
     )),
     [tickets, statusFilter, unassignedOnly],
   );
@@ -706,14 +707,14 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
           <div className="divide-y divide-[var(--gray-200)] lg:hidden">
             {visibleTickets.map((t) => {
               const r = profilesById[t.requester_user_id];
-              return <button key={t.id} type="button" onClick={() => openTicket(t)} className="block w-full p-4 text-left hover:bg-[var(--gray-50)]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{t.subject}</p><p className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">{r ? profileLabel(r) : "No customer linked"}</p></div><Badge variant={STATUS_BADGE[t.status] || "default"}>{t.status}</Badge></div><div className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--color-text-tertiary)]"><span>Idle {timeAgo(t.last_message_at)}</span>{t.next_update_at ? <span className={hasActiveNextUpdate(t) ? "" : "font-semibold text-[var(--color-error-700)]"}>{formatDateTime(t.next_update_at)}</span> : <Badge variant="error">Promise needed</Badge>}</div></button>;
+              return <button key={t.id} type="button" onClick={() => openTicket(t)} className="block w-full p-4 text-left hover:bg-[var(--gray-50)]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{t.subject}</p><p className="mt-1 truncate text-xs text-[var(--color-text-secondary)]">{t.audience === "brand" ? brandsById[t.brand_id]?.name || "Brand team" : r ? profileLabel(r) : "No customer linked"}</p></div><Badge variant={STATUS_BADGE[t.status] || "default"}>{t.status}</Badge></div><div className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--color-text-tertiary)]"><span>Idle {timeAgo(t.last_message_at)}</span>{t.next_update_at ? <span className={hasActiveNextUpdate(t) ? "" : "font-semibold text-[var(--color-error-700)]"}>{formatDateTime(t.next_update_at)}</span> : <Badge variant="error">Promise needed</Badge>}</div></button>;
             })}
           </div>
           <div className="hidden lg:block">
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-[var(--gray-200)] text-left text-[var(--color-text-tertiary)]">
-                  <th className="w-[22%] py-2.5 px-4">Requester</th>
+                  <th className="w-[22%] py-2.5 px-4">Requester / brand</th>
                   <th className="w-[30%] py-2.5 px-4">Subject</th>
                   <th className="w-[14%] py-2.5 px-4">Status</th>
                   <th className="w-[12%] py-2.5 px-4">Idle</th>
@@ -731,8 +732,8 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                     >
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-2 min-w-0">
-                          <Avatar src={r?.avatar_url} name={r ? profileLabel(r) : "Internal"} size="sm" />
-                          <span className="truncate text-[var(--color-text-primary)]">{r ? profileLabel(r) : "No customer linked"}</span>
+                          <Avatar src={t.audience === "brand" ? undefined : r?.avatar_url} name={t.audience === "brand" ? brandsById[t.brand_id]?.name || "Brand team" : r ? profileLabel(r) : "Internal"} size="sm" />
+                          <span className="truncate text-[var(--color-text-primary)]">{t.audience === "brand" ? brandsById[t.brand_id]?.name || "Brand team" : r ? profileLabel(r) : "No customer linked"}</span>
                         </div>
                       </td>
                       <td className="py-2.5 px-4 max-w-[260px]">
@@ -889,9 +890,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                   <Badge variant={selectedTicket.source_kind === "support_ticket" ? "brand" : "default"}>
                     {selectedTicket.source_label}
                   </Badge>
-                  {selectedTicket.source_kind === "support_ticket" && <span className="text-xs text-[var(--color-text-tertiary)]">Customer can see the conversation</span>}
+                  {selectedTicket.source_kind === "support_ticket" && <span className="text-xs text-[var(--color-text-tertiary)]">{selectedTicket.audience === "brand" ? "Every active brand member can see the conversation" : "Customer can see the conversation"}</span>}
                 </div>
-                <div className="space-y-1">
+                {selectedTicket.audience !== "brand" && <div className="space-y-1">
                   <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Customer</div>
                   {requester ? (
                     <div className="flex items-center gap-2">
@@ -907,7 +908,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                     <div className="text-sm text-[var(--color-text-tertiary)]">No customer linked</div>
                   )}
                   {requester?.segment && <Badge variant="info">{requester.segment}</Badge>}
-                </div>
+                </div>}
 
                 {brand && (
                   <div className="space-y-1">

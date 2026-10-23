@@ -82,14 +82,27 @@ serve(async (req) => {
     // requester/assignee regardless of the caller's RLS view.
     const { data: ticket, error: tErr } = await admin
       .from("support_tickets")
-      .select("id, requester_user_id, assigned_staff_id, conversation_id, first_response_at, next_update_at")
+      .select("id, requester_user_id, assigned_staff_id, conversation_id, first_response_at, next_update_at, audience, brand_id")
       .eq("id", ticketId)
       .maybeSingle();
     if (tErr) return json({ error: tErr.message }, 500);
     if (!ticket) return json({ error: "ticket_not_found" }, 404);
 
     // Authorize: requester (own ticket) OR staff/admin.
-    const isRequester = ticket.requester_user_id === user.id;
+    const isDirectRequester = ticket.requester_user_id === user.id;
+    let isBrandRequester = false;
+    if (ticket.audience === "brand" && ticket.brand_id) {
+      const { data: membership } = await admin
+        .from("brand_team_members")
+        .select("id")
+        .eq("brand_id", ticket.brand_id)
+        .eq("user_id", user.id)
+        .not("accepted_at", "is", null)
+        .is("removed_at", null)
+        .maybeSingle();
+      isBrandRequester = membership !== null;
+    }
+    const isRequester = isDirectRequester || isBrandRequester;
     const [{ data: staff }, { data: adm }] = await Promise.all([
       userClient.rpc("is_support_staff", { p_user_id: user.id }),
       userClient.rpc("is_admin_user"),
