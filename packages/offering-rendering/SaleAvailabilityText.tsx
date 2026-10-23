@@ -1,3 +1,4 @@
+// @ts-ignore shared package React resolves through each app workspace.
 import React from "react";
 import { Text, type StyleProp, type TextStyle } from "react-native";
 

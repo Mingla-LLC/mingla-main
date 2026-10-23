@@ -198,7 +198,7 @@ export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
   }, [copy.announcement, focusOnMount, noticeId]);
   return (
     <View
-      ref={nativeNoticeRef}
+      {...{ ref: nativeNoticeRef }}
       nativeID={noticeId}
       accessible
       accessibilityLabel={copy.announcement}
