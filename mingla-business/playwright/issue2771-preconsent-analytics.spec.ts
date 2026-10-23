@@ -6,6 +6,7 @@ const CONSENT_KEY = 'mingla_consent_v1'
 
 const ANALYTICS_REQUEST = /posthog|us\.i\.posthog\.com|us-assets\.i\.posthog\.com|googletagmanager\.com|google-analytics\.com|doubleclick/i
 const AD_REQUEST = /connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com|attribution-capture/i
+const STRIPE_MODE_REQUEST = /\/functions\/v1\/stripe-mode(?:[/?#]|$)/
 const ANALYTICS_STORAGE = /^(ph_|_ga|_gcl)/i
 const AD_STORAGE = /^(_fbp|_fbc|_ttp|_scid|rdt_|mingla_ad_click_v1)/i
 
@@ -18,6 +19,15 @@ async function observe(page: Page): Promise<TrackingRequests> {
   const requests: TrackingRequests = { analytics: [], ads: [] }
   await page.route('**/*', async (route) => {
     const url = route.request().url()
+    // [TEST-MOD-APPROVED #3988] This analytics oracle must not inherit the
+    // live backend's Stripe mode. CI exports a pk_test_ fixture; a successful
+    // live stripe-mode response makes the unrelated boot handshake replace
+    // the consent UI with the fatal boundary. The adversarial #2771 oracle
+    // already aborts this same transport, which is fail-soft by contract.
+    if (STRIPE_MODE_REQUEST.test(url)) {
+      await route.abort()
+      return
+    }
     if (ANALYTICS_REQUEST.test(url) || AD_REQUEST.test(url)) {
       if (ANALYTICS_REQUEST.test(url)) requests.analytics.push(url)
       if (AD_REQUEST.test(url)) requests.ads.push(url)
