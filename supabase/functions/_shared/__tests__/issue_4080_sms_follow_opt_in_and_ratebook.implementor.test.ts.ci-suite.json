@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4080_sms_follow_opt_in_and_ratebook.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4080-sms-follow-opt-in-and-ratebook",
+  "profile": "deno-2-unit"
+}
