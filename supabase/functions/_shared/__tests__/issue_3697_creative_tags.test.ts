@@ -2,10 +2,8 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  normalizeCreativeTagUpdate,
-  resolveCreativeTagBrand,
-} from "../adCreativeTags.ts";
+import { normalizeCreativeTagUpdate } from "../adCreativeTags.ts";
+import { resolveCreativeTagBrand } from "../adCreativeTags.ts";
 
 Deno.test("#3697 Creative Library tags normalize, deduplicate and clear", () => {
   assertEquals(
