@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-3872-HOST-CHOICE | issue #3872 | Product defaults may preselect values, but every permitted discount kind, combination, and scope remains Host-selectable.
 import { describe, expect, test } from "@jest/globals";
 const TestRenderer = require("react-test-renderer") as unknown;
 import type { DiscountDraft } from "../../../services/discountService";

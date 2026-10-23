@@ -64,6 +64,9 @@
         "@expo/prebuild-config": [
           "54"
         ],
+        "@expo/require-utils": [
+          "55"
+        ],
         "@expo/schema-utils": [
           "0.1"
         ],

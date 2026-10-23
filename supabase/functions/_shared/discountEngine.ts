@@ -1,7 +1,5 @@
 // #3872 R1 discounts — wire contract for the SQL-owned discount engine.
 //
-// MINGLA-INVARIANT: I-3872-ENGINE-SINGLE-OWNER | issue #3872 | All discount money arithmetic lives in public.issue_3872_discount_apply; TypeScript only normalises codes and carries typed RPC payloads.
-
 export type DiscountKind = "code" | "automatic" | "sale_price";
 export type DiscountValueType = "percent" | "amount" | "set_price";
 

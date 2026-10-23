@@ -80,4 +80,3 @@ export const TicketQuoteController: React.FC<TicketQuoteControllerProps> = ({
 
   return null;
 };
-

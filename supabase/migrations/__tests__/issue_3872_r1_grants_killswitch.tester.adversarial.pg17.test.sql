@@ -24,8 +24,21 @@ values ('38721400-0000-4000-8100-000000000001','discounts','pilot');
 update public.feature_flags set is_enabled=false where flag_key='discounts_enabled';
 
 do $test$
-declare v_internal regprocedure;
+declare
+  v_internal regprocedure;
+  v_capability_count integer;
 begin
+  select count(*) into v_capability_count
+  from public.ari_cert_capability_requirements
+  where (capability_id, evidence_mode) in (
+    ('ari.discounts.list', 'read'),
+    ('ari.discounts.create', 'write'),
+    ('ari.discounts.pause', 'write')
+  );
+  if v_capability_count <> 3 then
+    raise exception 'T14 Ari discount certification requirements are incomplete';
+  end if;
+
   if not has_function_privilege('anon','public.pg_public_event_tier_pricing(uuid)','EXECUTE')
      or not has_function_privilege('anon','public.pg_public_event_display_prices(uuid[])','EXECUTE')
      or not has_function_privilege('anon','public.pg_public_menu_item_sales(uuid)','EXECUTE') then

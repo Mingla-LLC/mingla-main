@@ -184,8 +184,8 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   // The Pay button is live only when the SERVER has priced this exact basket.
   // A stale price behind a live button is how a guest is charged a number they
   // never saw.
-  const canPay =
-    priced && !submitting && buyerFailure === null && cart.length > 0;
+  const canPay = priced && !submitting && buyerFailure === null &&
+    cart.length > 0;
   const tipDropped =
     preview?.notices?.some(
       (notice) =>

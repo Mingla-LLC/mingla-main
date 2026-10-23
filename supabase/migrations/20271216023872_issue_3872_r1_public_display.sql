@@ -400,11 +400,6 @@ AS $fn$
             ORDER BY item.ordinality
           )
           FROM json_array_elements(entry.value) WITH ORDINALITY item(value,ordinality)
-          JOIN public.ticket_types tt ON tt.id=(item.value->>p_id_key)::uuid
-          WHERE tt.deleted_at IS NULL
-            AND COALESCE(tt.available_online,false)
-            AND COALESCE(tt.is_hidden,false)=false
-            AND COALESCE(tt.is_disabled,false)=false
         ),'[]'::jsonb)::json
         WHEN p_object_key IS NOT NULL AND entry.key=p_object_key
              AND json_typeof(entry.value)='object'

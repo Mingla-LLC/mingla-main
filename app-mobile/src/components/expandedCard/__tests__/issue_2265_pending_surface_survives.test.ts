@@ -199,9 +199,9 @@ describe("#2265 SC-7/8/10 — the CTA names the phase, it does not just spin", (
     }
   });
 
-  it("splits the free rail's wording on the cart's own free-ness", () => {
+  it("splits the free rail's wording on the accepted server quote", () => {
     expect(CART_SHEET).toMatch(
-      /totals\.isFree \? "Getting your ticket…" : "Setting up your payment…"/,
+      /isFreeQuote\s*\? "Getting your ticket…"\s*:\s*"Setting up your payment…"/,
     );
   });
 

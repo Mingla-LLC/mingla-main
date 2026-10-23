@@ -16,12 +16,27 @@ Deno.test("#1857 reservation Edge never infers country and persists ISO before p
     "p_guest_phone_country_iso: buyerPhoneCountryIso",
   );
   assert(!source.includes("normalizePhoneE164"));
-  const firstSessionWrite = source.indexOf(
-    "buyer_phone_country_iso: buyerPhoneCountryIso",
+  const paystackSessionCreate = source.indexOf(
+    "insertReservationSession(supabase, {",
   );
-  const firstProviderCall = Math.min(...[
-    source.indexOf("stripeTicketCheckout("),
-    source.indexOf("paystackInitializeTransaction("),
-  ].filter((index) => index >= 0));
-  assert(firstSessionWrite >= 0 && firstSessionWrite < firstProviderCall);
+  const stripeSessionCreate = source.indexOf(
+    "insertReservationSession(supabase, {",
+    paystackSessionCreate + 1,
+  );
+  const paystackProviderCall = source.indexOf("paystackInitializeTransaction(");
+  const stripeProviderCall = source.indexOf("stripeTicketCheckout(");
+  assert(
+    paystackSessionCreate >= 0 &&
+      paystackSessionCreate < paystackProviderCall &&
+      source.slice(paystackSessionCreate, paystackProviderCall).includes(
+        "buyerPhoneCountryIso: phoneEvidence.countryIso",
+      ),
+  );
+  assert(
+    stripeSessionCreate >= 0 &&
+      stripeSessionCreate < stripeProviderCall &&
+      source.slice(stripeSessionCreate, stripeProviderCall).includes(
+        "buyerPhoneCountryIso: phoneEvidence.countryIso",
+      ),
+  );
 });

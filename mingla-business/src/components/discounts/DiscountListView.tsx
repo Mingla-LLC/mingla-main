@@ -220,7 +220,7 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
               <Text style={styles.state}>Loading discounts…</Text>
             ) : list.isError ? (
               <View style={styles.stateBox}>
-                <Text style={styles.state}>Couldn't load discounts.</Text>
+                <Text style={styles.state}>Couldn’t load discounts.</Text>
                 <Button
                   label="Try again"
                   variant="secondary"
@@ -235,7 +235,7 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
                   discounts
                 </Text>
                 <Text style={styles.heroSub}>
-                  Create one when you're ready. Defaults guide you; every
+                  Create one when you’re ready. Defaults guide you; every
                   available choice stays editable.
                 </Text>
                 <Button
@@ -263,7 +263,7 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
           <Text style={styles.state}>Loading prices…</Text>
         ) : prices.isError ? (
           <View style={styles.stateBox}>
-            <Text style={styles.state}>Couldn't load prices.</Text>
+            <Text style={styles.state}>Couldn’t load prices.</Text>
             <Button
               label="Try again"
               variant="secondary"

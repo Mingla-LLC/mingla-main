@@ -510,7 +510,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
             ) : previewQuery.isError ? (
               <>
                 <Text style={styles.errorText}>
-                  Couldn't load the preview. You can still save; Mingla checks
+                  Couldn’t load the preview. You can still save; Mingla checks
                   the price at checkout.
                 </Text>
                 <Pressable onPress={() => void previewQuery.refetch()}>

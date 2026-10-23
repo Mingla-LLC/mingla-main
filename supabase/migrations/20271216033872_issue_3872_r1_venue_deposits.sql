@@ -1,5 +1,4 @@
 -- Issue #3872 R1 discounts — M4 venue orders and reservation deposits.
--- MINGLA-INVARIANT: I-3872-SNAPSHOT | issue #3872 | Venue/deposit discount lines are expanded atomically from the inserted checkout snapshot and remain immutable.
 
 BEGIN;
 

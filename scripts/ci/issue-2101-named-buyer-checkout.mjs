@@ -827,8 +827,8 @@ const selfTest = () => {
       // Move the event-date read ahead of the decision by deleting the decision
       // block's leading marker, which is how a reorder would present.
       edgeSource = edgeReal.replace(
-        "    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;",
-        '    const _hoisted = supabase.from("event_dates");\n    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;',
+        "    let accessDecision: Awaited<",
+        '    const _hoisted = supabase.from("event_dates");\n    let accessDecision: Awaited<',
       );
     }
     const found = checkEdgeFenceOn(edgeSource, mutatedShared);

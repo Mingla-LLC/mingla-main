@@ -1,9 +1,17 @@
 -- Issue #3872 R1 Discounts — Host control plane, reports, notifications and ops.
--- MINGLA-INVARIANT: I-3872-HOST-CHOICE | issue #3872 | Product defaults preselect values but every permitted discount kind, combination and scope remains Host-selectable.
--- MINGLA-INVARIANT: I-3872-REPORT-NO-PII | issue #3872 | The aggregate report contains no buyer contact; the contact export repeats the event-manager rank gate.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
+
+-- The capability ledger and the production certification denominator move
+-- together. Read-only listing needs read evidence; both Host mutations need
+-- the full write matrix before Ari certification can finish.
+INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
+VALUES
+  ('ari.discounts.list', 'read'),
+  ('ari.discounts.create', 'write'),
+  ('ari.discounts.pause', 'write')
+ON CONFLICT (capability_id) DO NOTHING;
 
 -- The M1 seam deliberately accepted every create field. R1's editor also needs
 -- an optimistic, full-field update without moving any pricing arithmetic into

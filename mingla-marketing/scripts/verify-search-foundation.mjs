@@ -54,6 +54,9 @@ const SEARCH_READY_PATHS = [
   '/help/build-your-menu',
   '/help/build-your-guest-list-and-groups',
   '/help/send-a-campaign-to-a-group',
+  '/help/discount-codes',
+  '/help/sale-prices-and-automatic-discounts',
+  '/help/allow-discounts-switch',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -96,6 +99,9 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/build-your-menu',
   '/help/build-your-guest-list-and-groups',
   '/help/send-a-campaign-to-a-group',
+  '/help/discount-codes',
+  '/help/sale-prices-and-automatic-discounts',
+  '/help/allow-discounts-switch',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [

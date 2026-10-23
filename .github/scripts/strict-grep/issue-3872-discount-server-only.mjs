@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Invariant: I-3872-DISCOUNT-MONEY-SERVER-ONLY.
+// MINGLA-INVARIANT: I-3872-DISCOUNT-MONEY-SERVER-ONLY | issue #3872 | Buyer clients display server quotes and submit their digests; they never calculate discounted ticket, venue-order, or reservation totals locally.
 // Buyer clients may display a server quote and submit its digest, but may not
 // compute discounted ticket, venue-order, or reservation totals locally.
 
@@ -7,7 +7,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 
 const FILES = {
   cart: "mingla-business/src/components/checkout/CartContext.tsx",
@@ -50,7 +53,8 @@ export function validate(sources) {
   const failures = [];
   for (const [key, source] of Object.entries(sources)) {
     for (const [needle, label] of FORBIDDEN) {
-      if (source.includes(needle)) failures.push(`${key}: ${label} (${needle})`);
+      if (source.includes(needle))
+        failures.push(`${key}: ${label} (${needle})`);
     }
     for (const needle of REQUIRED[key] ?? []) {
       if (!source.includes(needle)) failures.push(`${key}: missing ${needle}`);

@@ -423,7 +423,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
       ) : null}
       {saleMutation.isError ? (
         <Text style={styles.error}>
-          Couldn't save this sale. Check the price and try again.
+          Couldn’t save this sale. Check the price and try again.
         </Text>
       ) : null}
       {saved ? <Text style={styles.saved}>Sale settings saved.</Text> : null}

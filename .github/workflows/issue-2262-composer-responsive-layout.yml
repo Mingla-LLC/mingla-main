@@ -226,9 +226,25 @@ jobs:
           owned_re='^mingla-business/(app/\(tabs\)/marketing/(campaigns/compose\.tsx|_layout\.tsx)|src/components/marketing/(ComposerCommitBar|ComposerHeader|ComposerStepWho|SmsComposeCard)\.tsx|src/components/marketing/ComposerV2/|src/components/marketing/__tests__/orch1100ComposerInteraction\.test\.ts|jest\.issue2262\.|playwright\.issue2262\.|playwright/issue2262/)'
           changed="$(git diff --name-only origin/main)"
           owned="$(printf '%s\n' "$changed" | grep -E "$owned_re" || true)"
+          manifest_dependency_changed() {
+            node - "$1" <<'NODE'
+          const { execFileSync } = require("node:child_process");
+          const fs = require("node:fs");
+          const path = process.argv[2];
+          const base = JSON.parse(execFileSync("git", ["show", `origin/main:${path}`], { encoding: "utf8" }));
+          const head = JSON.parse(fs.readFileSync(path, "utf8"));
+          const fields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "overrides"];
+          const pick = (value) => Object.fromEntries(fields.map((field) => [field, value[field] ?? null]));
+          process.exit(JSON.stringify(pick(base)) === JSON.stringify(pick(head)) ? 0 : 1);
+          NODE
+          }
           deps="$(git diff --name-only origin/main -- \
-                 mingla-business/package.json mingla-business/package-lock.json \
-                 mingla-admin/package.json mingla-admin/package-lock.json)"
+                 mingla-business/package-lock.json mingla-admin/package-lock.json)"
+          for manifest in mingla-business/package.json mingla-admin/package.json; do
+            if ! manifest_dependency_changed "$manifest"; then
+              deps="${deps}${deps:+$'\n'}${manifest}"
+            fi
+          done
           if [ -z "$deps" ]; then
             echo "OK — no dependency added, removed or bumped."
             exit 0

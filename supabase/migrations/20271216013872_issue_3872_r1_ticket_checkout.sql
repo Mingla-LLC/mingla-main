@@ -1,5 +1,4 @@
 -- #3872 R1 Discounts — ticket quote/create/finalize integration.
--- MINGLA-INVARIANT: I-3872-ENGINE-PARITY | issue #3872 | quote and create call the same SQL line, plan and discount owners.
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 

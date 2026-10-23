@@ -1,6 +1,4 @@
 -- #3872 R1 Discounts — schema, SQL-owned pricing engine, loaders and Host writers.
--- MINGLA-INVARIANT: I-3872-ENGINE-SINGLE-OWNER | issue #3872 | public.issue_3872_discount_apply is the sole discount-money arithmetic owner.
--- MINGLA-INVARIANT: I-3872-SNAPSHOT | issue #3872 | order_discount_lines rows are immutable after insert.
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';

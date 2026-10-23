@@ -833,10 +833,13 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // the registry patches so it exercises the proposed state, not HEAD's old
     // inventories. validateRegistry below still rejects either workflow when
     // its bytes disagree with the corresponding sourceSha256 authority.
-    for (const workflow of [
-      ".github/workflows/issue-1931-private-event-access.yml",
-      ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
-    ]) fs.copyFileSync(path.join(ROOT, workflow), path.join(temp, workflow));
+    for (const filename of [
+      "issue-1931-private-event-access.yml",
+      "issue-2117-offering-visibility-gate-tests.yml",
+    ]) {
+      const workflow = path.join(".github", "workflows", filename);
+      fs.copyFileSync(path.join(ROOT, workflow), path.join(temp, workflow));
+    }
     const terminal = effectiveManifest(temp);
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
     const phase3bMutation = (mutate) => { const copy = structuredClone(terminal); mutate(copy); writeManifest(copy); return copy; };

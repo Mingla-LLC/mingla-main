@@ -1,4 +1,5 @@
 -- Issue #3872 R1 discounts: independent adversarial schema and authorization suite.
+-- MINGLA-INVARIANT: I-3872-SNAPSHOT | issue #3872 | Order discount lines are immutable after insertion, including ticket, venue-order, and reservation snapshots.
 \set ON_ERROR_STOP on
 begin;
 

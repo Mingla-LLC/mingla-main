@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-3872-EXCLUDED-RAILS | issue #3872 | Promotion codes stay excluded from staff venue orders, stays, RSVP, and comps in R1.
 // #3872: staff venue orders may receive automatic/sale pricing, but promo
 // codes, stays, RSVP, and comps remain outside the R1 discount rails.
 import fs from "node:fs";
@@ -34,7 +35,9 @@ function checkStaff(source, failures) {
     .map((match) => match[1].trim())
     .filter((value) => value !== "null" && value !== "NULL");
   if (unsafeCodeArg.length > 0) {
-    failures.push(`staff RPC carries a non-null code: ${unsafeCodeArg.join(", ")}`);
+    failures.push(
+      `staff RPC carries a non-null code: ${unsafeCodeArg.join(", ")}`,
+    );
   }
 }
 
@@ -51,7 +54,9 @@ function checkForbiddenFiles(files, needles, failures, label) {
     const source = fs.readFileSync(file, "utf8");
     for (const needle of needles) {
       if (source.includes(needle)) {
-        failures.push(`${label}: ${path.relative(root, file)} contains ${needle}`);
+        failures.push(
+          `${label}: ${path.relative(root, file)} contains ${needle}`,
+        );
       }
     }
   }
@@ -71,7 +76,8 @@ async function handleTabClose(_c, _r, body): Promise<Response> {
 }`;
   const failures = [];
   checkStaff(good, failures);
-  if (failures.length > 0) throw new Error(`good fixture failed: ${failures.join("; ")}`);
+  if (failures.length > 0)
+    throw new Error(`good fixture failed: ${failures.join("; ")}`);
   for (const bad of [
     good.replace('"discountCode" in body', '"promo" in body'),
     good.replace("p_code: null", "p_code: body.code"),
@@ -89,7 +95,10 @@ if (process.argv.includes("--self-test")) {
 }
 
 const failures = [];
-const staffFile = path.join(root, "supabase/functions/venue-order-staff/index.ts");
+const staffFile = path.join(
+  root,
+  "supabase/functions/venue-order-staff/index.ts",
+);
 if (!fs.existsSync(staffFile)) failures.push("venue-order-staff is missing");
 else checkStaff(fs.readFileSync(staffFile, "utf8"), failures);
 
@@ -100,9 +109,14 @@ checkForbiddenFiles(
   "staff order pad",
 );
 const stayFiles = walk(path.join(root, "supabase/functions")).filter((file) =>
-  /\/stay-[^/]+\//.test(file)
+  /\/stay-[^/]+\//.test(file),
 );
-checkForbiddenFiles(stayFiles, ["issue_3872_", "discountEngine"], failures, "stay rail");
+checkForbiddenFiles(
+  stayFiles,
+  ["issue_3872_", "discountEngine"],
+  failures,
+  "stay rail",
+);
 
 if (failures.length > 0) {
   console.error(`I-3872-EXCLUDED-RAILS FAIL:\n  ${failures.join("\n  ")}`);

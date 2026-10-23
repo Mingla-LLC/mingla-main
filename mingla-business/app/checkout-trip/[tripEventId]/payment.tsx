@@ -909,8 +909,7 @@ function CheckoutTripPaymentScreenContent({
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
-            You'll be taken to our secure payment page to complete your
-            purchase.
+            {"You'll be taken to our secure payment page to complete your purchase."}
           </Text>
           {checkoutSessionId !== null ? (
             <Text style={styles.paymentMeta}>

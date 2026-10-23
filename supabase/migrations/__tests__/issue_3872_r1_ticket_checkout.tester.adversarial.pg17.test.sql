@@ -1,6 +1,5 @@
 -- #3872 R1 ticket checkout adversarial contract.
 -- MINGLA-INVARIANT: I-3872-CHECKOUT-ANON-REVOKED | issue #3872 | Checkout mutation and quote RPCs remain service-role only and legacy identities stay absent.
--- MINGLA-INVARIANT: I-3872-USE-LIMITS | issue #3872 | Limits use checkout-session buyer identity, failed/expired reservations release, and a late finalize consumes its released reservation.
 \set ON_ERROR_STOP on
 BEGIN;
 

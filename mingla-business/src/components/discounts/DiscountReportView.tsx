@@ -84,7 +84,7 @@ export const DiscountReportView: React.FC<DiscountReportViewProps> = ({
   if (query.isError || !report)
     return (
       <View style={styles.stateBox}>
-        <Text style={styles.state}>Couldn't load the report.</Text>
+        <Text style={styles.state}>Couldn’t load the report.</Text>
         <Button
           label="Try again"
           onPress={() => void query.refetch()}
