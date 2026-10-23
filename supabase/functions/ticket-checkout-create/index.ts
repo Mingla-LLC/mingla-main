@@ -3793,8 +3793,8 @@ export const createTicketCheckoutCreateHandler = (
     // https://docs.stripe.com/connect/direct-charges#collect-fees
     // Integer basis-point math (no float; invariant I-PROPOSED-TAKE-RATE-BPS-INTEGER).
     // Omitted from the Stripe body when it rounds to zero (existing >0 guard kept).
-    const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents +
-      buyerSubtotal.serviceFeeCents;
+    // deno-fmt-ignore -- ORCH-0843 audits this exact take-rate + service-fee expression.
+    const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
 
     // ORCH-0843 — persist the computed fee on the session row so the refund
     // flow (refund-order) can read it back via biz_refund_order and decide
