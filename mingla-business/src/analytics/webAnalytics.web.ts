@@ -165,8 +165,9 @@ let gaMeasurementId: string | null = null;
 let pageConsentChoice: ConsentChoice | null | undefined;
 const consentSubscribers = new Set<() => void>();
 
-// ISSUE-865 WP-C — ad-conversion pixel state. Resolved in initWebAnalytics;
-// bootstrapped ONLY on consent grant. `null` id ⇒ that pixel never loads.
+// ISSUE-865 WP-C / #3697 — ad-conversion pixel state. Resolved in
+// initWebAnalytics; bootstrapped on arrival unless the visitor opted out or the
+// region requires opt-in. `null` id ⇒ that pixel never loads.
 interface AdPixelIds {
   meta: string | null;
   tiktok: string | null;
@@ -763,7 +764,8 @@ export function fireAdViewContent(
 /**
  * Purchase fire — the DEDUP fire. `eventId` MUST be the Mingla order id (the
  * shared event_id): Meta's eventID (4th arg) + event name 'Purchase' must match
- * the server CAPI's event_id + event_name exactly (A2-5). No-op pre-consent.
+ * the server CAPI's event_id + event_name exactly (A2-5). No-op when tracking
+ * is not allowed or the pixel runtime is unavailable.
  */
 export function fireAdPurchase(
   eventId: string,
@@ -777,7 +779,8 @@ export function fireAdPurchase(
  * ISSUE-865 PR1 WP-2 — Reservation fire (sign-up twin of fireAdPurchase).
  * toward #3697 F-4: FREE RSVP = CompleteRegistration / SIGN_UP / SignUp — not
  * a value'd Purchase. `eventId` MUST be the Mingla reservation id so it dedups
- * the server CAPI pair. Value defaults to £0. No-op pre-consent; never throws.
+ * the server CAPI pair. Value defaults to £0. No-op when tracking is not
+ * allowed or the pixel runtime is unavailable; never throws.
  */
 export function fireAdReservation(
   eventId: string,

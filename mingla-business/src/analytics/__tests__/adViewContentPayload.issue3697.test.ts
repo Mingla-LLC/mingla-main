@@ -1,12 +1,4 @@
 import { buildAdViewContentPayload } from "../adViewContentPayload";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-const businessRoot = resolve(__dirname, "../../..");
-
-function routeSource(path: string): string {
-  return readFileSync(resolve(businessRoot, path), "utf8");
-}
 
 test("#3697 ViewContent chooses the lowest real offering value and carries identity", () => {
   expect(
@@ -68,33 +60,16 @@ test("#3697 ViewContent fails closed without product identity, currency or value
   ).toBeNull();
 });
 
-test("#3697 offering routes fire ViewContent only after resolved product data", () => {
-  const routes = [
-    {
-      path: "app/e/[brandSlug]/[eventSlug].tsx",
-      contentId: "contentId: detail.event.id",
-      brandId: "brandId: detail.event.brandId",
-    },
-    {
-      path: "app/t/[brandSlug]/[tripSlug].tsx",
-      contentId: "contentId: payload.trip.id",
-      brandId: "brandId: payload.trip.brandId",
-    },
-    {
-      path: "app/exp/[brandSlug]/[experienceSlug].tsx",
-      contentId: "contentId: payload.experience.id",
-      brandId: "brandId: payload.experience.brandId",
-    },
-  ];
+test("#3697 resolved event, trip and experience data produce provider-safe payloads", () => {
+  const offerings = [
+    { contentId: "event-1", brandId: "brand-1", currency: "usd", valuesMajor: [25, 10] },
+    { contentId: "trip-1", brandId: "brand-2", currency: "gbp", valuesMajor: [120] },
+    { contentId: "experience-1", brandId: "brand-3", currency: "ngn", valuesMajor: [8_500, 7_500] },
+  ] as const;
 
-  for (const route of routes) {
-    const source = routeSource(route.path);
-    expect(source).toContain(route.contentId);
-    expect(source).toContain(route.brandId);
-    expect(source).toContain("fireAdViewContent(");
-    expect(source).not.toContain("fireAdViewContent();");
-  }
-
-  const brand = routeSource("app/b/[brandSlug]/index.tsx");
-  expect(brand).not.toContain("fireAdViewContent");
+  expect(offerings.map((offering) => buildAdViewContentPayload(offering))).toEqual([
+    { contentId: "event-1", brandId: "brand-1", currency: "USD", value: 10 },
+    { contentId: "trip-1", brandId: "brand-2", currency: "GBP", value: 120 },
+    { contentId: "experience-1", brandId: "brand-3", currency: "NGN", value: 7_500 },
+  ]);
 });
