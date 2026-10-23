@@ -135,6 +135,21 @@ function validKey(value: unknown): value is string {
   return typeof value === "string" && IDEMPOTENCY_KEY.test(value);
 }
 
+function validAdMatchData(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const data = value as Record<string, unknown>;
+  const allowed = new Set([
+    "fbp", "fbc", "scid", "ttp", "clientUserAgent", "trackingOptOut",
+  ]);
+  if (Object.keys(data).some((key) => !allowed.has(key))) return false;
+  if (data.trackingOptOut !== undefined && typeof data.trackingOptOut !== "boolean") return false;
+  return ["fbp", "fbc", "scid", "ttp", "clientUserAgent"].every((key) =>
+    data[key] === undefined || data[key] === null ||
+    (typeof data[key] === "string" && (data[key] as string).length <= 1024)
+  );
+}
+
 function validGuest(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const guest = value as Record<string, unknown>;
@@ -201,6 +216,7 @@ function validPayload(value: unknown): value is RequestBody {
           !/\s/.test(payload.attributionClickId)
         )
       ) &&
+      validAdMatchData(payload.adMatchData) &&
       body.expectedVersion !== undefined &&
       body.expectedVersion !== null &&
       validGuest(payload.guest);
@@ -620,6 +636,48 @@ export async function handleStayReservations(
       dependencies,
     );
     return errorResponse(error, requestId);
+  }
+
+  if (body.action === "create_group") {
+    const projection = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : {};
+    const groupId = typeof projection.groupId === "string" && UUID.test(projection.groupId)
+      ? projection.groupId
+      : null;
+    const match = payload.adMatchData && typeof payload.adMatchData === "object"
+      ? payload.adMatchData as Record<string, unknown>
+      : {};
+    if (groupId) {
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      if (serviceKey) {
+        const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+          createClient(url, serviceKey, {
+            auth: { autoRefreshToken: false, persistSession: false },
+          }) as unknown as RpcClient;
+        const forwardedFor = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+        const userAgent = typeof match.clientUserAgent === "string"
+          ? match.clientUserAgent
+          : req.headers.get("user-agent");
+        const { error: contextError } = await service.rpc(
+          "issue_3697_set_stay_ad_context",
+          {
+            p_group_id: groupId,
+            p_context: {
+              ...match,
+              clientIpAddress: forwardedFor,
+              clientUserAgent: userAgent,
+            },
+          },
+        );
+        if (contextError) {
+          console.warn(JSON.stringify({
+            event: "stay_ad_context_persist_failed",
+            requestId,
+          }));
+        }
+      }
+    }
   }
 
   console.info(JSON.stringify({

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/offering-engagement-capture/issue_3697_early_capture_ack.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-early-capture-ack",
+  "profile": "deno-2-unit"
+}

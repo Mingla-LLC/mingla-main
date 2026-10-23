@@ -120,6 +120,7 @@ Deno.test("#3697 Snap CAPI sends sc_cookie1, click id and shared dedup id", asyn
   assertEquals(event.user_data, {
     sc_click_id: "snap-click",
     sc_cookie1: "snap-cookie",
+    external_id: "hashed-buyer-id",
     client_ip_address: "203.0.113.8",
     client_user_agent: "Issue3697/1.0",
   });

@@ -25,6 +25,7 @@ import {
   captureBuyerWebPublicPageViewed,
   resolveBuyerWebPublicLifecycle,
 } from "../../../src/analytics/publicParityWebAdapter";
+import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
 
 import {
   spacing,
@@ -73,6 +74,7 @@ export default function PublicEventRoute(): React.ReactElement {
   // (top of the web acquisition funnel). Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
   const parityViewFiredRef = useRef<boolean>(false);
+  const adViewContentFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -90,8 +92,42 @@ export default function PublicEventRoute(): React.ReactElement {
       entitySlug: typeof eventSlug === "string" ? eventSlug : null,
     });
     fireAdPageView();
-    fireAdViewContent();
   }, [brandSlug, eventSlug]);
+
+  useEffect(() => {
+    const detail = publicEventQuery.data;
+    if (
+      adViewContentFiredRef.current ||
+      detail === null ||
+      detail === undefined
+    ) {
+      return;
+    }
+    const tickets = Array.isArray(detail.tickets) ? detail.tickets : [];
+    const currency =
+      detail.event.displayCurrency ??
+      detail.event.currency ??
+      tickets.find((ticket) => ticket.currency)?.currency;
+    const valuesMajor = [
+      typeof detail.event.displayPriceCents === "number"
+        ? detail.event.displayPriceCents / 100
+        : null,
+      ...tickets.map(
+        (ticket) =>
+          ticket.priceAllInGbp ?? ticket.priceGbp ?? (ticket.isFree ? 0 : null),
+      ),
+    ];
+    const payload = buildAdViewContentPayload({
+      contentId: detail.event.id,
+      brandId: detail.event.brandId,
+      currency,
+      valuesMajor,
+      freeWhenUnpriced: detail.event.event_type === "rsvp",
+    });
+    if (payload === null) return;
+    adViewContentFiredRef.current = true;
+    fireAdViewContent(payload);
+  }, [publicEventQuery.data]);
 
   useEffect(() => {
     const detail = publicEventQuery.data;

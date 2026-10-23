@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "kind": "shared-module-policy-patch",
+  "ownerIssue": "#3697",
+  "target": {
+    "kind": "shared_module",
+    "module_path": "supabase/functions/_shared/capiTokens.ts"
+  },
+  "basePolicySha256": "da2b4ca635694dc0dc0d48a6629523ded8f9b564a1c8b1cac9e99d0b7ca42f1e",
+  "operations": [
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@29043:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@32082:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/metaCapi.ts@4748:getToken:call_argument:metaApiVersion:getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "remove_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/snapCapi.ts@1429:deps.getToken:grouped_reference:deps.getToken",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@33438:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/adConversionFire.ts@37074:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/metaCapi.ts@4915:getToken:call_argument:metaApiVersion:getToken",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_member",
+      "field": "allowed_identifier_references",
+      "key": "getToken",
+      "value": "supabase/functions/_shared/snapCapi.ts@2613:deps.getToken:grouped_reference:deps.getToken",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "1908b55853cb511cf810ab992c83aedb94ef74c105d28d466a10747bf2245588",
+  "reason": "Issue #3697 added consent and matching data to the conversion senders, so the sealed dynamic-token reference locations move without widening any allowed secret names."
+}

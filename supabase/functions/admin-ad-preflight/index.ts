@@ -111,6 +111,7 @@ import {
   tiktokFetchAdvertiser,
   tiktokFetchIdentity,
   tiktokFetchPixels,
+  tiktokFetchPurchaseSignal28d,
   tiktokFetchRegions,
 } from "../_shared/tiktok.ts";
 import {
@@ -118,6 +119,7 @@ import {
   snapchatFetchAdAccount,
   snapchatFetchFundingSources,
   snapchatFetchPixels,
+  snapchatFetchPurchaseSignal28d,
 } from "../_shared/snapchat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -152,6 +154,8 @@ interface PreflightRow {
   overall: "green" | "amber" | "red" | "not_connected";
   checks: PreflightCheck[];
   checked_at: string;
+  /** Live provider count; null means the read failed or no pixel exists. */
+  purchase_events_28d?: number | null;
 }
 
 /**
@@ -173,6 +177,7 @@ async function snapchatPreflight(
   const push = (id: string, label: string, status: CheckStatus, detail: string | null = null) =>
     checks.push({ id, label, status, detail });
   const now = (): string => new Date().toISOString();
+  let purchaseEvents28d: number | null = null;
 
   let client;
   try {
@@ -251,21 +256,33 @@ async function snapchatPreflight(
       : "SNAPCHAT_PROFILE_ID missing — creative create is impossible without profile_properties.profile_id (fail-close; A1.2-8).",
   );
 
-  // P4 — pixel: exists+ACTIVE ⇒ pass with the goal-gating note; else WARN
-  // (SWIPES never uses it; #865 owns pixel EVENTS — A1.1(6)).
+  // P4 — live 28-day PURCHASE count. Sales is available only at >=20; traffic
+  // uses PIXEL_PAGE_VIEW and never silently falls back to SWIPES.
   try {
     const pixels = await snapchatFetchPixels(client);
     const active = pixels.find((p) => p.status === "ACTIVE") ?? null;
+    if (active) {
+      purchaseEvents28d = (await snapchatFetchPurchaseSignal28d(client, active.id))
+        .purchaseEvents28d;
+    }
     push(
       "P4",
-      "Pixel present",
+      "Purchase signal (28 days)",
       active ? "pass" : "warn",
       active
-        ? `pixel ${active.id} ACTIVE — but pixel EVENTS are #865's; LANDING_PAGE_VIEW / PIXEL_* goals stay gated (422 pixel_goal_unavailable) until it fires; SWIPES is the honest goal today (A1.1(6)).`
-        : "No ACTIVE pixel on the ad account — SWIPES campaigns are unaffected; pixel goals stay gated until #865.",
+        ? `pixel ${active.id} ACTIVE — ${purchaseEvents28d} PURCHASE events in 28 days; Sales requires at least 20. Traffic optimises for PIXEL_PAGE_VIEW.`
+        : "No ACTIVE pixel on the ad account — pixel-measured goals are unavailable.",
     );
   } catch (err) {
-    push("P4", "Pixel present", "warn", err instanceof Error ? err.message : String(err));
+    purchaseEvents28d = null;
+    push(
+      "P4",
+      "Purchase signal (28 days)",
+      "warn",
+      `Live purchase count unavailable — Sales stays disabled. ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
 
   // P5 — access tier: own-OAuth-app refresh token (Mingla Ads Engine) — no
@@ -295,6 +312,7 @@ async function snapchatPreflight(
     overall: anyHardFail ? "red" : anyWarn ? "amber" : "green",
     checks,
     checked_at: now(),
+    purchase_events_28d: purchaseEvents28d,
   };
 }
 
@@ -315,6 +333,7 @@ async function tiktokPreflight(
   const checks: PreflightCheck[] = [];
   const push = (id: string, label: string, status: CheckStatus, detail: string | null = null) =>
     checks.push({ id, label, status, detail });
+  let purchaseEvents28d: number | null = null;
 
   let client;
   try {
@@ -407,21 +426,33 @@ async function tiktokPreflight(
     push("P3", "TT_USER identity AVAILABLE", "fail", err instanceof Error ? err.message : String(err));
   }
 
-  // P4 — pixel signal: zero events ⇒ WARN (conversion objectives stay gated
-  // until #865 wires the pixel — T-P4; TRAFFIC never uses it).
+  // P4 — CompletePayment count read live from pixel/event/stats. Sales stays
+  // disabled below 20; TRAFFIC always uses landing-page views, never clicks.
   try {
     const pixels = await tiktokFetchPixels(client);
-    const withEvents = pixels.find((p) => p.eventsCount > 0);
+    const pixel = pixels[0] ?? null;
+    if (pixel) {
+      purchaseEvents28d = (await tiktokFetchPurchaseSignal28d(client, pixel.pixelId))
+        .purchaseEvents28d;
+    }
     push(
       "P4",
-      "Pixel firing",
-      withEvents ? "pass" : "warn",
-      withEvents
-        ? null
-        : "Pixel has zero events (NO_RECENT_ACTIVITY) — WEB_CONVERSIONS/PRODUCT_SALES and Smart+ stay gated until #865 installs the pixel; TRAFFIC and APP_PROMOTION+INSTALL are the honest objectives today.",
+      "CompletePayment signal (28 days)",
+      pixel ? "pass" : "warn",
+      pixel
+        ? `${purchaseEvents28d} CompletePayment events in 28 days; Sales requires at least 20. Traffic optimises for TRAFFIC_LANDING_PAGE_VIEW.`
+        : "No pixel is available — WEB_CONVERSIONS stays disabled.",
     );
   } catch (err) {
-    push("P4", "Pixel firing", "warn", err instanceof Error ? err.message : String(err));
+    purchaseEvents28d = null;
+    push(
+      "P4",
+      "CompletePayment signal (28 days)",
+      "warn",
+      `Live purchase count unavailable — Sales stays disabled. ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
 
   // P5 — access tier: own-app long-lived token; the developer app was
@@ -475,6 +506,7 @@ async function tiktokPreflight(
     overall: anyHardFail ? "red" : anyWarn ? "amber" : "green",
     checks,
     checked_at: new Date().toISOString(),
+    purchase_events_28d: purchaseEvents28d,
   };
 }
 

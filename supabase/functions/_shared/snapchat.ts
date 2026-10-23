@@ -86,8 +86,8 @@
 
 import {
   AdApiError,
-  AdNotConnectedError,
   type AdConnectionRow,
+  AdNotConnectedError,
   type AdvertiserStatus,
   type AuthedClient,
   centsToPlatformBudget,
@@ -103,7 +103,8 @@ import {
 // ── Env config (NAMES per SPEC §7 — values live in Function Secrets) ──────────
 
 export const SNAPCHAT_API_BASE = "https://adsapi.snapchat.com/v1";
-export const SNAPCHAT_TOKEN_URL = "https://accounts.snapchat.com/login/oauth2/access_token";
+export const SNAPCHAT_TOKEN_URL =
+  "https://accounts.snapchat.com/login/oauth2/access_token";
 
 export type SnapchatLane = "consumer" | "business";
 
@@ -114,7 +115,9 @@ export type SnapchatLane = "consumer" | "business";
  * SNAPCHAT_MINGLABIZ_* names simply fail-close until seeded.
  */
 function laneEnvName(base: string, lane: SnapchatLane): string {
-  return lane === "business" ? base.replace(/^SNAPCHAT_/, "SNAPCHAT_MINGLABIZ_") : base;
+  return lane === "business"
+    ? base.replace(/^SNAPCHAT_/, "SNAPCHAT_MINGLABIZ_")
+    : base;
 }
 
 export function snapchatDefaultTokenEnvVar(lane: SnapchatLane): string {
@@ -162,7 +165,8 @@ export function resolveSnapchatEnvConfig(
   conn?: Pick<AdConnectionRow, "token_env_var"> | null,
   lane: SnapchatLane = "consumer",
 ): SnapchatEnvValues {
-  const refreshTokenEnvVar = (conn?.token_env_var ?? snapchatDefaultTokenEnvVar(lane)).trim() ||
+  const refreshTokenEnvVar =
+    (conn?.token_env_var ?? snapchatDefaultTokenEnvVar(lane)).trim() ||
     snapchatDefaultTokenEnvVar(lane);
   const read = (name: string): string => (Deno.env.get(name) ?? "").trim();
   const refreshToken = read(refreshTokenEnvVar);
@@ -171,7 +175,8 @@ export function resolveSnapchatEnvConfig(
   if (!refreshToken || !clientId || !clientSecret) {
     throw new AdNotConnectedError("snapchat", "snapchat_not_connected");
   }
-  const readOptional = (name: string): string | null => read(laneEnvName(name, lane)) || null;
+  const readOptional = (name: string): string | null =>
+    read(laneEnvName(name, lane)) || null;
   return {
     refreshToken,
     refreshTokenEnvVar,
@@ -179,7 +184,8 @@ export function resolveSnapchatEnvConfig(
     clientSecret,
     apiBase: read("SNAPCHAT_API_BASE") || SNAPCHAT_API_BASE,
     tokenUrl: read("SNAPCHAT_TOKEN_URL") || SNAPCHAT_TOKEN_URL,
-    envAdAccountId: read(laneEnvName("SNAPCHAT_AD_ACCOUNT_ID", lane)).toLowerCase(),
+    envAdAccountId: read(laneEnvName("SNAPCHAT_AD_ACCOUNT_ID", lane))
+      .toLowerCase(),
     envOrgId: readOptional("SNAPCHAT_ORG_ID"),
     envProfileId: readOptional("SNAPCHAT_PROFILE_ID"),
     envPixelId: readOptional("SNAPCHAT_PIXEL_ID"),
@@ -212,7 +218,9 @@ const TOKEN_EXPIRY_MARGIN_MS = 60_000;
  * (AC-S-8). The refresh token and minted access token are never logged,
  * returned to callers, or persisted.
  */
-export async function mintSnapchatAccessToken(env: SnapchatEnvValues): Promise<string> {
+export async function mintSnapchatAccessToken(
+  env: SnapchatEnvValues,
+): Promise<string> {
   const cached = snapchatTokenCache.get(env.refreshTokenEnvVar);
   if (cached && cached.expiresAtMs > Date.now()) return cached.token;
 
@@ -239,12 +247,16 @@ export async function mintSnapchatAccessToken(env: SnapchatEnvValues): Promise<s
   } catch {
     payload = {};
   }
-  const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
+  const accessToken = typeof payload.access_token === "string"
+    ? payload.access_token
+    : "";
   if (!response.ok || !accessToken) {
     // Revoked/expired refresh token or OAuth client mismatch — fail-close.
     throw new AdNotConnectedError("snapchat", "snapchat_not_connected");
   }
-  const expiresIn = typeof payload.expires_in === "number" ? payload.expires_in : 3600;
+  const expiresIn = typeof payload.expires_in === "number"
+    ? payload.expires_in
+    : 3600;
   snapchatTokenCache.set(env.refreshTokenEnvVar, {
     token: accessToken,
     expiresAtMs: Date.now() + expiresIn * 1000 - TOKEN_EXPIRY_MARGIN_MS,
@@ -276,7 +288,9 @@ export async function resolveSnapchatClient(
   const effectiveLane: SnapchatLane = conn?.lane ?? lane ?? "consumer";
   const env = resolveSnapchatEnvConfig(conn ?? null, effectiveLane);
 
-  if (env.envAdAccountId && !SNAPCHAT_AD_ACCOUNT_ID_REGEX.test(env.envAdAccountId)) {
+  if (
+    env.envAdAccountId && !SNAPCHAT_AD_ACCOUNT_ID_REGEX.test(env.envAdAccountId)
+  ) {
     // Env misconfig is loud — an operator typo must not read as "absent".
     throw new AdApiError({
       platform: "snapchat",
@@ -291,7 +305,9 @@ export async function resolveSnapchatClient(
   // pre-secrets connect, junk, uppercase) is ABSENCE, never a pin — otherwise
   // the mismatch guard below bricks the lane forever after the secrets land.
   if (!SNAPCHAT_AD_ACCOUNT_ID_REGEX.test(connAccountId)) connAccountId = "";
-  if (env.envAdAccountId && connAccountId && env.envAdAccountId !== connAccountId) {
+  if (
+    env.envAdAccountId && connAccountId && env.envAdAccountId !== connAccountId
+  ) {
     throw new AdApiError({
       platform: "snapchat",
       code: "account_mismatch",
@@ -306,9 +322,11 @@ export async function resolveSnapchatClient(
   }
 
   const connExtra = (conn?.extra ?? {}) as Record<string, unknown>;
-  const profileId = (typeof connExtra.profile_id === "string" && connExtra.profile_id.trim()) ||
+  const profileId =
+    (typeof connExtra.profile_id === "string" && connExtra.profile_id.trim()) ||
     env.envProfileId;
-  const pixelId = (typeof connExtra.pixel_id === "string" && connExtra.pixel_id.trim()) ||
+  const pixelId =
+    (typeof connExtra.pixel_id === "string" && connExtra.pixel_id.trim()) ||
     env.envPixelId;
 
   const accessToken = await mintSnapchatAccessToken(env);
@@ -326,7 +344,10 @@ export async function resolveSnapchatClient(
 // ── Envelope + API wrapper (S-9 double-assert — RT-3) ─────────────────────────
 
 /** Scrubs Bearer-token shapes out of provider text (SC-SEC-1 defense-in-depth). */
-export function scrubSnapchatSecrets(text: string, accessToken?: string): string {
+export function scrubSnapchatSecrets(
+  text: string,
+  accessToken?: string,
+): string {
   let out = text;
   if (accessToken) out = out.split(accessToken).join("[redacted]");
   // Snap OAuth tokens are opaque; also strip anything that looks like a bearer.
@@ -344,15 +365,22 @@ export function assertSnapchatEnvelope(
   payload: Record<string, unknown>,
   context: string,
 ): void {
-  const requestId = typeof payload.request_id === "string" ? payload.request_id : null;
+  const requestId = typeof payload.request_id === "string"
+    ? payload.request_id
+    : null;
   const requestStatus = payload.request_status;
-  if (typeof requestStatus !== "string" || requestStatus.toUpperCase() !== "SUCCESS") {
+  if (
+    typeof requestStatus !== "string" ||
+    requestStatus.toUpperCase() !== "SUCCESS"
+  ) {
     throw new AdApiError({
       platform: "snapchat",
       code: "snapchat_request_failed",
       message: `Snap ${context}: request_status=${String(requestStatus)} (${
         scrubSnapchatSecrets(
-          JSON.stringify(payload.debug_message ?? payload.display_message ?? ""),
+          JSON.stringify(
+            payload.debug_message ?? payload.display_message ?? "",
+          ),
         )
       })`,
       traceId: requestId,
@@ -372,11 +400,14 @@ export function assertSnapchatEnvelope(
         throw new AdApiError({
           platform: "snapchat",
           code: "snapchat_sub_request_failed",
-          message: `Snap ${context}: sub_request_status=${sub} — the 200/SUCCESS envelope carried a per-entity failure (${
-            scrubSnapchatSecrets(
-              JSON.stringify(record.debug_message ?? record.display_message ?? ""),
-            )
-          })`,
+          message:
+            `Snap ${context}: sub_request_status=${sub} — the 200/SUCCESS envelope carried a per-entity failure (${
+              scrubSnapchatSecrets(
+                JSON.stringify(
+                  record.debug_message ?? record.display_message ?? "",
+                ),
+              )
+            })`,
           traceId: requestId,
         });
       }
@@ -424,7 +455,10 @@ export async function snapchatApi(
     throw new AdApiError({
       platform: "snapchat",
       code: "network_error",
-      message: scrubSnapchatSecrets(`Snap API request failed: ${detail}`, client.accessToken),
+      message: scrubSnapchatSecrets(
+        `Snap API request failed: ${detail}`,
+        client.accessToken,
+      ),
     });
   }
   clearTimeout(timer);
@@ -436,11 +470,15 @@ export async function snapchatApi(
     payload = {};
   }
   if (!response.ok) {
-    const requestId = typeof payload.request_id === "string" ? payload.request_id : null;
-    const detail = payload.debug_message ?? payload.display_message ?? payload.error ?? "";
+    const requestId = typeof payload.request_id === "string"
+      ? payload.request_id
+      : null;
+    const detail = payload.debug_message ?? payload.display_message ??
+      payload.error ?? "";
     // #3697: carry Snap's own error_code (e.g. E1008) so a failure is
     // diagnosable from ad_status_events / sync result rows.
-    const errorCode = typeof payload.error_code === "string" || typeof payload.error_code === "number"
+    const errorCode = typeof payload.error_code === "string" ||
+        typeof payload.error_code === "number"
       ? String(payload.error_code)
       : null;
     throw new AdApiError({
@@ -448,7 +486,9 @@ export async function snapchatApi(
       code: `http_${response.status}`,
       subcode: errorCode,
       message: scrubSnapchatSecrets(
-        `Snap API ${method} ${path.replace(/^https?:\/\/[^/]+/i, "")}: HTTP ${response.status}${
+        `Snap API ${method} ${
+          path.replace(/^https?:\/\/[^/]+/i, "")
+        }: HTTP ${response.status}${
           errorCode ? ` error_code=${errorCode}` : ""
         } ${JSON.stringify(detail)}`,
         client.accessToken,
@@ -456,7 +496,10 @@ export async function snapchatApi(
       traceId: requestId,
     });
   }
-  assertSnapchatEnvelope(payload, `${method} ${path.replace(/^https?:\/\/[^/]+/i, "")}`);
+  assertSnapchatEnvelope(
+    payload,
+    `${method} ${path.replace(/^https?:\/\/[^/]+/i, "")}`,
+  );
   return payload;
 }
 
@@ -496,11 +539,15 @@ export async function snapchatCollectPages(
     const rows = payload[collection];
     if (Array.isArray(rows)) {
       for (const row of rows) {
-        if (row && typeof row === "object") items.push(row as Record<string, unknown>);
+        if (row && typeof row === "object") {
+          items.push(row as Record<string, unknown>);
+        }
       }
     }
     const paging = (payload.paging ?? {}) as Record<string, unknown>;
-    nextPath = typeof paging.next_link === "string" && paging.next_link ? paging.next_link : null;
+    nextPath = typeof paging.next_link === "string" && paging.next_link
+      ? paging.next_link
+      : null;
   }
   return items;
 }
@@ -513,7 +560,11 @@ export type SnapchatValidation =
 
 function throwValidation(check: SnapchatValidation): void {
   if (!check.ok) {
-    throw new AdApiError({ platform: "snapchat", code: check.detail, message: check.message });
+    throw new AdApiError({
+      platform: "snapchat",
+      code: check.detail,
+      message: check.message,
+    });
   }
 }
 
@@ -525,7 +576,9 @@ export const SNAPCHAT_NAME_MAX_CHARS = 375;
 export const SNAPCHAT_WEB_VIEW_URL_MAX_CHARS = 2048;
 
 /** headline: required on a creative, ≤34 chars (GR-54). */
-export function validateSnapchatHeadline(headline: unknown): SnapchatValidation {
+export function validateSnapchatHeadline(
+  headline: unknown,
+): SnapchatValidation {
   if (typeof headline !== "string" || !headline.trim()) {
     return {
       ok: false,
@@ -549,8 +602,12 @@ export function validateSnapchatHeadline(headline: unknown): SnapchatValidation 
  * (often the safer, guaranteed-policy-match choice — GR-54 note); present,
  * ≤32 chars.
  */
-export function validateSnapchatBrandName(brandName: unknown): SnapchatValidation {
-  if (brandName === undefined || brandName === null || brandName === "") return { ok: true };
+export function validateSnapchatBrandName(
+  brandName: unknown,
+): SnapchatValidation {
+  if (brandName === undefined || brandName === null || brandName === "") {
+    return { ok: true };
+  }
   if (typeof brandName !== "string") {
     return {
       ok: false,
@@ -570,15 +627,23 @@ export function validateSnapchatBrandName(brandName: unknown): SnapchatValidatio
 }
 
 /** name (campaign/squad/ad/creative): required, ≤375 chars (GR-54). */
-export function validateSnapchatName(name: unknown, field: string): SnapchatValidation {
+export function validateSnapchatName(
+  name: unknown,
+  field: string,
+): SnapchatValidation {
   if (typeof name !== "string" || !name.trim()) {
-    return { ok: false, detail: "name_required", message: `${field} is required.` };
+    return {
+      ok: false,
+      detail: "name_required",
+      message: `${field} is required.`,
+    };
   }
   if (name.trim().length > SNAPCHAT_NAME_MAX_CHARS) {
     return {
       ok: false,
       detail: "name_too_long",
-      message: `${field} is ${name.trim().length}/${SNAPCHAT_NAME_MAX_CHARS} characters (GR-54).`,
+      message:
+        `${field} is ${name.trim().length}/${SNAPCHAT_NAME_MAX_CHARS} characters (GR-54).`,
     };
   }
   return { ok: true };
@@ -595,14 +660,16 @@ export function validateSnapchatWebViewUrl(url: unknown): SnapchatValidation {
     return {
       ok: false,
       detail: "invalid_destination_url",
-      message: "web_view_properties.url must be an https URL (SSL required — GR-54).",
+      message:
+        "web_view_properties.url must be an https URL (SSL required — GR-54).",
     };
   }
   if (url.length > SNAPCHAT_WEB_VIEW_URL_MAX_CHARS) {
     return {
       ok: false,
       detail: "invalid_destination_url",
-      message: `web_view_properties.url exceeds ${SNAPCHAT_WEB_VIEW_URL_MAX_CHARS} characters (GR-54).`,
+      message:
+        `web_view_properties.url exceeds ${SNAPCHAT_WEB_VIEW_URL_MAX_CHARS} characters (GR-54).`,
     };
   }
   return { ok: true };
@@ -618,7 +685,9 @@ export const SNAPCHAT_VIDEO_MAX_DURATION_SECONDS = 180;
  * renders 1800 s — that figure most likely covers LONGFORM_VIDEO, not the Top
  * Snap; confirm live during live-fire (A1.2-14, flagged contradiction #5).
  */
-export function validateSnapchatVideoDuration(seconds: number): SnapchatValidation {
+export function validateSnapchatVideoDuration(
+  seconds: number,
+): SnapchatValidation {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return {
       ok: false,
@@ -691,7 +760,10 @@ export const SNAPCHAT_APP_INSTALL_CTA_ALLOWLIST: readonly string[] = [
   "PLAY_GAME",
 ] as const;
 
-export const SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE: Record<string, readonly string[]> = {
+export const SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE: Record<
+  string,
+  readonly string[]
+> = {
   WEB_VIEW: SNAPCHAT_WEB_VIEW_CTA_ALLOWLIST,
   APP_INSTALL: SNAPCHAT_APP_INSTALL_CTA_ALLOWLIST,
 };
@@ -701,13 +773,17 @@ export const SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE: Record<string, readonly st
  * not exist on ANY creative type. Reservation-traffic defaults: BUY_TICKETS
  * (ticketed) / BOOK_NOW (bookable) — far higher intent than MORE/VIEW.
  */
-export function validateSnapchatCta(creativeType: string, cta: unknown): SnapchatValidation {
+export function validateSnapchatCta(
+  creativeType: string,
+  cta: unknown,
+): SnapchatValidation {
   // QA-867-WP5 F-2: own-key lookup — a prototype-chain key ("toString",
   // "constructor", …) must fail CLOSED as invalid_cta, never surface the
   // inherited function and TypeError on .includes.
-  const allowlist = Object.hasOwn(SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE, creativeType)
-    ? SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE[creativeType]
-    : undefined;
+  const allowlist =
+    Object.hasOwn(SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE, creativeType)
+      ? SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE[creativeType]
+      : undefined;
   if (!allowlist) {
     return {
       ok: false,
@@ -720,10 +796,11 @@ export function validateSnapchatCta(creativeType: string, cta: unknown): Snapcha
     return {
       ok: false,
       detail: "invalid_cta",
-      message:
-        `call_to_action "${String(cta)}" is not valid for a ${creativeType} creative (VIEW_MORE does not exist on any type — S-3). Valid: ${
-          allowlist.join(", ")
-        }.`,
+      message: `call_to_action "${
+        String(cta)
+      }" is not valid for a ${creativeType} creative (VIEW_MORE does not exist on any type — S-3). Valid: ${
+        allowlist.join(", ")
+      }.`,
     };
   }
   return { ok: true };
@@ -803,8 +880,8 @@ export const SNAPCHAT_OPTIMIZATION_GOALS = [
   "APP_REENGAGE_PURCHASE",
 ] as const;
 
-/** A1.1(6)/GR-21: SWIPES until #865's pixel is live and firing. */
-export const SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL = "SWIPES";
+/** #3697: traffic optimises for real page arrivals, never the shallow swipe proxy. */
+export const SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL = "PIXEL_PAGE_VIEW";
 
 /**
  * Pixel-measured goals gated on the #865 pixel signal (422
@@ -832,7 +909,9 @@ export const SNAPCHAT_BID_STRATEGIES = [
 export const SNAPCHAT_DEFAULT_BID_STRATEGY = "AUTO_BID";
 export const SNAPCHAT_MIN_BID_MICRO = 10_000;
 
-export function validateSnapchatObjective(objective: unknown): SnapchatValidation {
+export function validateSnapchatObjective(
+  objective: unknown,
+): SnapchatValidation {
   if (
     typeof objective !== "string" ||
     !(SNAPCHAT_OBJECTIVE_V2_TYPES as readonly string[]).includes(objective)
@@ -848,7 +927,9 @@ export function validateSnapchatObjective(objective: unknown): SnapchatValidatio
   return { ok: true };
 }
 
-export function validateSnapchatOptimizationGoal(goal: unknown): SnapchatValidation {
+export function validateSnapchatOptimizationGoal(
+  goal: unknown,
+): SnapchatValidation {
   if (
     typeof goal !== "string" ||
     !(SNAPCHAT_OPTIMIZATION_GOALS as readonly string[]).includes(goal)
@@ -867,9 +948,10 @@ export function validateSnapchatOptimizationGoal(goal: unknown): SnapchatValidat
 // ── GR-39: demographics — min_age "18" default; STRINGS, not numbers ──────────
 
 export const SNAPCHAT_GENDERS = ["MALE", "FEMALE"] as const;
-export const SNAPCHAT_DEFAULT_DEMOGRAPHICS: readonly Record<string, unknown>[] = [
-  { min_age: "18" },
-];
+export const SNAPCHAT_DEFAULT_DEMOGRAPHICS: readonly Record<string, unknown>[] =
+  [
+    { min_age: "18" },
+  ];
 
 /**
  * GR-39: min_age/max_age are STRINGS ("18", never 18); genders ∈ MALE|FEMALE
@@ -877,12 +959,15 @@ export const SNAPCHAT_DEFAULT_DEMOGRAPHICS: readonly Record<string, unknown>[] =
  * Snapchat skews 13–34 and an age-unbounded squad serves heavily to minors
  * (a real problem for a venue/reservation product).
  */
-export function validateSnapchatDemographics(demographics: unknown): SnapchatValidation {
+export function validateSnapchatDemographics(
+  demographics: unknown,
+): SnapchatValidation {
   if (!Array.isArray(demographics) || demographics.length === 0) {
     return {
       ok: false,
       detail: "demographics_invalid",
-      message: "targeting.demographics must be a non-empty array (default [{ min_age: \"18\" }]).",
+      message:
+        'targeting.demographics must be a non-empty array (default [{ min_age: "18" }]).',
     };
   }
   for (const entry of demographics) {
@@ -911,11 +996,14 @@ export function validateSnapchatDemographics(demographics: unknown): SnapchatVal
       return {
         ok: false,
         detail: "demographics_invalid",
-        message: "demographics.max_age must be a STRING of digits when present (GR-39).",
+        message:
+          "demographics.max_age must be a STRING of digits when present (GR-39).",
       };
     }
     if (record.genders !== undefined) {
-      const genders = Array.isArray(record.genders) ? record.genders : [record.genders];
+      const genders = Array.isArray(record.genders)
+        ? record.genders
+        : [record.genders];
       for (const gender of genders) {
         if (!(SNAPCHAT_GENDERS as readonly string[]).includes(String(gender))) {
           return {
@@ -958,7 +1046,11 @@ export function validateSnapchatBudgetFloorMicro(input: {
   micro: number;
 }): SnapchatValidation {
   if (!Number.isFinite(input.micro) || input.micro <= 0) {
-    return { ok: false, detail: "budget_invalid", message: "Budget must be a positive amount." };
+    return {
+      ok: false,
+      detail: "budget_invalid",
+      message: "Budget must be a positive amount.",
+    };
   }
   const floor = input.level === "campaign"
     ? SNAPCHAT_MIN_CAMPAIGN_BUDGET_MICRO
@@ -1047,7 +1139,9 @@ export function buildSnapchatCampaignBody(
   throwValidation(validateSnapchatObjective(spec.objective));
   if (
     spec.promotionType !== undefined &&
-    !(SNAPCHAT_PROMOTION_TYPES as readonly string[]).includes(spec.promotionType)
+    !(SNAPCHAT_PROMOTION_TYPES as readonly string[]).includes(
+      spec.promotionType,
+    )
   ) {
     throw new AdApiError({
       platform: "snapchat",
@@ -1065,7 +1159,8 @@ export function buildSnapchatCampaignBody(
     // only ever the explicit top-down launch. Deleting this line is the
     // fails-on-revert target of the PAUSED fuzz.
     status: "PAUSED",
-    start_time: spec.startTime ?? new Date(spec.nowMs ?? Date.now()).toISOString(),
+    start_time: spec.startTime ??
+      new Date(spec.nowMs ?? Date.now()).toISOString(),
     buy_model: spec.buyModel ?? "AUCTION",
     // S-1: the key is objective_v2_type — objective_v2 400s. S-6: the legacy
     // top-level `objective` key is NEVER present in this body (deprecated
@@ -1114,7 +1209,9 @@ export function buildSnapchatCampaignBody(
   if (typeof spec.dailyBudgetCents === "number" && spec.dailyBudgetCents > 0) {
     // CBO — THE one cents→micro conversion (A1.1(1)); floor AFTER conversion.
     const micro = centsToPlatformBudget("snapchat", spec.dailyBudgetCents);
-    throwValidation(validateSnapchatBudgetFloorMicro({ level: "campaign", micro }));
+    throwValidation(
+      validateSnapchatBudgetFloorMicro({ level: "campaign", micro }),
+    );
     body.daily_budget_micro = micro;
   }
   if (typeof spec.spendCapCents === "number" && spec.spendCapCents > 0) {
@@ -1289,6 +1386,10 @@ export interface SnapchatAdSquadSpec {
   circles?: SnapchatCircleGeo[];
   /** ISSUE-992 (3a): SCLS interest-segment category ids → targeting.interests. */
   interestCategoryIds?: string[];
+  /** #3697: provider ids resolved only from ad_audiences. */
+  segmentIncludeIds?: string[];
+  /** #3697: the event-buyer segment is always excluded. */
+  segmentExcludeIds?: string[];
   /** Minor units (cents). ABO squad budget; OMITTED under CBO. */
   budgetCents?: number;
   budgetMode?: "daily" | "lifetime";
@@ -1306,7 +1407,18 @@ export interface SnapchatAdSquadSpec {
   mobileAppId?: string;
   /** Exact single-OS targeting for app acquisition. */
   deviceOs?: "ios" | "android";
+  /** Auction frequency cap; supported only by Snap's documented goals. */
+  frequencyCap?: { impressions: number; days: number };
 }
+
+export const SNAPCHAT_FREQUENCY_CAP_GOALS = Object.freeze([
+  "IMPRESSIONS",
+  "SWIPES",
+  "VIDEO_VIEWS_15_SEC",
+  "VIDEO_VIEWS",
+  "STORY_OPENS",
+  "USES",
+]);
 
 export function buildSnapchatAdSquadBody(
   campaignExternalId: string,
@@ -1318,10 +1430,13 @@ export function buildSnapchatAdSquadBody(
     throw new AdApiError({
       platform: "snapchat",
       code: "targeting_countries_required",
-      message: "targeting.countries is required (ISO codes — Snap geos take country_code).",
+      message:
+        "targeting.countries is required (ISO codes — Snap geos take country_code).",
     });
   }
-  const demographics = snapchatDemographicsWithDefault(spec.demographics ?? null);
+  const demographics = snapchatDemographicsWithDefault(
+    spec.demographics ?? null,
+  );
   throwValidation(validateSnapchatDemographics(demographics));
 
   // S-7: MIN_ROAS deprecated 10 Feb 2025 — allowlist is exactly the three.
@@ -1370,7 +1485,8 @@ export function buildSnapchatAdSquadBody(
     ...(locations ? { locations } : {}),
     demographics,
   };
-  const appDestination = spec.deviceOs !== undefined || spec.mobileAppId !== undefined;
+  const appDestination = spec.deviceOs !== undefined ||
+    spec.mobileAppId !== undefined;
   if (appDestination) {
     if (
       spec.optimizationGoal !== "APP_INSTALLS" ||
@@ -1397,6 +1513,38 @@ export function buildSnapchatAdSquadBody(
   if (interestCategoryIds.length > 0) {
     targeting.interests = [{ category_id: interestCategoryIds }];
   }
+  const segmentIncludeIds = [
+    ...new Set(
+      (spec.segmentIncludeIds ?? []).map((id) => String(id).trim()).filter(
+        Boolean,
+      ),
+    ),
+  ];
+  const segmentExcludeIds = [
+    ...new Set(
+      (spec.segmentExcludeIds ?? []).map((id) => String(id).trim()).filter(
+        Boolean,
+      ),
+    ),
+  ];
+  if (segmentIncludeIds.some((id) => segmentExcludeIds.includes(id))) {
+    throw new AdApiError({
+      platform: "snapchat",
+      code: "audience_include_exclude_overlap",
+      message:
+        "A Snap audience segment cannot be included and excluded in the same ad squad.",
+    });
+  }
+  if (segmentIncludeIds.length > 0 || segmentExcludeIds.length > 0) {
+    targeting.segments = [
+      ...(segmentIncludeIds.length > 0
+        ? [{ segment_id: segmentIncludeIds, operation: "INCLUDE" }]
+        : []),
+      ...(segmentExcludeIds.length > 0
+        ? [{ segment_id: segmentExcludeIds, operation: "EXCLUDE" }]
+        : []),
+    ];
+  }
 
   const body: Record<string, unknown> = {
     name: spec.name,
@@ -1409,19 +1557,49 @@ export function buildSnapchatAdSquadBody(
     placement_v2: { config: "AUTOMATIC" },
     // GR-11 / fails-on-revert target: PAUSED explicitly.
     status: "PAUSED",
-    start_time: spec.startTime ?? new Date(spec.nowMs ?? Date.now()).toISOString(),
+    start_time: spec.startTime ??
+      new Date(spec.nowMs ?? Date.now()).toISOString(),
   };
+  if (spec.frequencyCap) {
+    if (
+      !SNAPCHAT_FREQUENCY_CAP_GOALS.includes(spec.optimizationGoal) ||
+      !Number.isInteger(spec.frequencyCap.impressions) ||
+      spec.frequencyCap.impressions <= 0 ||
+      !Number.isInteger(spec.frequencyCap.days) ||
+      spec.frequencyCap.days <= 0 || spec.frequencyCap.days > 30
+    ) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "frequency_cap_unsupported",
+        message:
+          "Snap frequency caps require a supported optimization goal, a positive impression count, and a 1–30 day interval.",
+      });
+    }
+    body.cap_and_exclusion_config = {
+      frequency_cap_config: [{
+        frequency_cap_count: spec.frequencyCap.impressions,
+        frequency_cap_type: "IMPRESSIONS",
+        time_interval: spec.frequencyCap.days,
+        frequency_cap_interval: "DAYS",
+      }],
+    };
+  }
   if (appDestination) {
     body.event_sources = { MOBILE_APP: [spec.mobileAppId?.trim()] };
   }
   if (spec.endTime) body.end_time = spec.endTime;
-  if (pixelGated && spec.pixelId) body.pixel_id = spec.pixelId;
+  // #3697: attach the configured pixel to every squad, including traffic and
+  // awareness squads. Pixel-gated optimization still requires a live signal,
+  // but measurement must not disappear merely because the goal is SWIPES.
+  if (spec.pixelId) body.pixel_id = spec.pixelId;
 
   // ── Budget (ABO) + S-4 delivery_constraint (REQUIRED; adapter-derived). ─────
   if (typeof spec.budgetCents === "number" && spec.budgetCents > 0) {
     // THE one cents→micro conversion (A1.1(1)); floor in micro AFTER it.
     const micro = centsToPlatformBudget("snapchat", spec.budgetCents);
-    throwValidation(validateSnapchatBudgetFloorMicro({ level: "ad_squad", micro }));
+    throwValidation(
+      validateSnapchatBudgetFloorMicro({ level: "ad_squad", micro }),
+    );
     if (budgetMode === "lifetime") {
       body.lifetime_budget_micro = micro;
       // S-4: derived from the budget field used — never admin input.
@@ -1438,12 +1616,15 @@ export function buildSnapchatAdSquadBody(
 
   // ── Bidding (S-7): bid_micro required for the cap strategies, min 10,000;
   //    OMITTED for AUTO_BID. ──────────────────────────────────────────────────
-  if (bidStrategy === "LOWEST_COST_WITH_MAX_BID" || bidStrategy === "TARGET_COST") {
+  if (
+    bidStrategy === "LOWEST_COST_WITH_MAX_BID" || bidStrategy === "TARGET_COST"
+  ) {
     if (typeof spec.bidCents !== "number" || spec.bidCents <= 0) {
       throw new AdApiError({
         platform: "snapchat",
         code: "bid_micro_required",
-        message: `bid_strategy ${bidStrategy} requires bid_cents (converted ×10,000 to bid_micro).`,
+        message:
+          `bid_strategy ${bidStrategy} requires bid_cents (converted ×10,000 to bid_micro).`,
       });
     }
     const bidMicro = centsToPlatformBudget("snapchat", spec.bidCents);
@@ -1451,7 +1632,8 @@ export function buildSnapchatAdSquadBody(
       throw new AdApiError({
         platform: "snapchat",
         code: "bid_micro_below_minimum",
-        message: `bid_micro ${bidMicro} is below Snap's ${SNAPCHAT_MIN_BID_MICRO} micro minimum (S-7).`,
+        message:
+          `bid_micro ${bidMicro} is below Snap's ${SNAPCHAT_MIN_BID_MICRO} micro minimum (S-7).`,
       });
     }
     body.bid_micro = bidMicro;
@@ -1516,7 +1698,9 @@ export function buildSnapchatCreativeBody(
     type: creativeType,
     top_snap_media_id: spec.topSnapMediaId,
     headline: spec.headline.trim(),
-    ...(spec.brandName && spec.brandName.trim() ? { brand_name: spec.brandName.trim() } : {}),
+    ...(spec.brandName && spec.brandName.trim()
+      ? { brand_name: spec.brandName.trim() }
+      : {}),
     // A1.2-8: unverifiable pre-create — this create IS the verification.
     profile_properties: { profile_id: spec.profileId.trim() },
     // Destination policy v1 (A1.1(5) / D-P1): canonical page, never the OneLink.
@@ -1571,7 +1755,8 @@ export function buildSnapchatAdBody(
     throw new AdApiError({
       platform: "snapchat",
       code: "invalid_external_id",
-      message: `Snap creative ids are lowercase UUIDs; got "${spec.creativeExternalId}".`,
+      message:
+        `Snap creative ids are lowercase UUIDs; got "${spec.creativeExternalId}".`,
     });
   }
   return {
@@ -1608,8 +1793,9 @@ export function snapchatStatusForAdvertiserStatus(
       throw new AdApiError({
         platform: "snapchat",
         code: "invalid_status",
-        message:
-          `Refusing to write status "${String(never)}" — the Snap status writer emits ONLY ACTIVE|PAUSED (DELETE is rollback-only).`,
+        message: `Refusing to write status "${
+          String(never)
+        }" — the Snap status writer emits ONLY ACTIVE|PAUSED (DELETE is rollback-only).`,
       });
     }
   }
@@ -1628,18 +1814,29 @@ export function engineStatusFromSnapchat(status: unknown): string | null {
 }
 
 /** Snap returns delivery_status as an ARRAY at every level — text-column form. */
-export function snapchatDeliveryStatusText(deliveryStatus: unknown): string | null {
+export function snapchatDeliveryStatusText(
+  deliveryStatus: unknown,
+): string | null {
   if (Array.isArray(deliveryStatus) && deliveryStatus.length > 0) {
     return deliveryStatus.map((entry) => String(entry)).join(",");
   }
-  if (typeof deliveryStatus === "string" && deliveryStatus) return deliveryStatus;
+  if (typeof deliveryStatus === "string" && deliveryStatus) {
+    return deliveryStatus;
+  }
   return null;
 }
 
 /** The AD review enum (GR-38) — distinct from the creative enum. */
-export const SNAPCHAT_AD_REVIEW_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
+export const SNAPCHAT_AD_REVIEW_STATUSES = [
+  "PENDING",
+  "APPROVED",
+  "REJECTED",
+] as const;
 /** The CREATIVE review enum (GR-38) — do NOT map one onto the other. */
-export const SNAPCHAT_CREATIVE_REVIEW_STATUSES = ["PENDING_REVIEW", "APPROVED"] as const;
+export const SNAPCHAT_CREATIVE_REVIEW_STATUSES = [
+  "PENDING_REVIEW",
+  "APPROVED",
+] as const;
 
 /**
  * GR-38: BOTH review vocabularies + review_status_reasons (the only
@@ -1655,15 +1852,21 @@ export function buildSnapchatReviewDetail(input: {
   const detail: Record<string, unknown> = {};
   const feedback = input.adReviewFeedback ?? null;
   if (feedback) {
-    if (feedback.review_status !== undefined && feedback.review_status !== null) {
+    if (
+      feedback.review_status !== undefined && feedback.review_status !== null
+    ) {
       detail.review_status = feedback.review_status;
     }
     if (
-      feedback.creative_review_status !== undefined && feedback.creative_review_status !== null
+      feedback.creative_review_status !== undefined &&
+      feedback.creative_review_status !== null
     ) {
       detail.creative_review_status = feedback.creative_review_status;
     }
-    if (feedback.delivery_status !== undefined && feedback.delivery_status !== null) {
+    if (
+      feedback.delivery_status !== undefined &&
+      feedback.delivery_status !== null
+    ) {
       detail.delivery_status = feedback.delivery_status;
     }
   }
@@ -1689,9 +1892,13 @@ export function snapchatLaunchWarning(
     return "Launched, but the ad is REJECTED — delivery is blocked. Check review_status_reasons " +
       "(persisted in the ad's review detail) and edit the creative; editing re-triggers review.";
   }
-  if (adReviewStatus === "PENDING" || creativeReviewStatus === "PENDING_REVIEW") {
+  if (
+    adReviewStatus === "PENDING" || creativeReviewStatus === "PENDING_REVIEW"
+  ) {
     return "Launched, but Snap review is pending " +
-      `(ad: ${adReviewStatus ?? "unknown"}, creative: ${creativeReviewStatus ?? "unknown"}) — ` +
+      `(ad: ${adReviewStatus ?? "unknown"}, creative: ${
+        creativeReviewStatus ?? "unknown"
+      }) — ` +
       "delivery starts after approval (3–5 business days standard, no published SLA). " +
       "Snap also re-reviews post-launch and can pause a live campaign.";
   }
@@ -1700,7 +1907,10 @@ export function snapchatLaunchWarning(
 
 // ── Entity paths + read/modify/write status updates ───────────────────────────
 
-function assertSnapchatExternalId(level: EntityLevel, externalId: string): void {
+function assertSnapchatExternalId(
+  level: EntityLevel,
+  externalId: string,
+): void {
   if (!SNAPCHAT_ENTITY_ID_REGEX.test(externalId)) {
     throw new AdApiError({
       platform: "snapchat",
@@ -1710,12 +1920,18 @@ function assertSnapchatExternalId(level: EntityLevel, externalId: string): void 
   }
 }
 
-const ENTITY_PATHS: Record<EntityLevel, { getPath: string; collection: string; entity: string }> =
-  {
-    campaign: { getPath: "campaigns", collection: "campaigns", entity: "campaign" },
-    ad_set: { getPath: "adsquads", collection: "adsquads", entity: "adsquad" },
-    ad: { getPath: "ads", collection: "ads", entity: "ad" },
-  };
+const ENTITY_PATHS: Record<
+  EntityLevel,
+  { getPath: string; collection: string; entity: string }
+> = {
+  campaign: {
+    getPath: "campaigns",
+    collection: "campaigns",
+    entity: "campaign",
+  },
+  ad_set: { getPath: "adsquads", collection: "adsquads", entity: "adsquad" },
+  ad: { getPath: "ads", collection: "ads", entity: "ad" },
+};
 
 /**
  * Read-only fields stripped before a PUT — Snap updates are FULL-object PUTs
@@ -1773,31 +1989,41 @@ export function snapchatUpdateRequestForEntity(
   entity: Record<string, unknown>,
 ): { path: string; body: Record<string, unknown> } {
   if (level === "campaign") {
-    const accountId = typeof entity.ad_account_id === "string" && entity.ad_account_id
-      ? entity.ad_account_id
-      : client.adAccountId;
+    const accountId =
+      typeof entity.ad_account_id === "string" && entity.ad_account_id
+        ? entity.ad_account_id
+        : client.adAccountId;
     return {
       path: `adaccounts/${accountId}/campaigns`,
       body: { campaigns: [entity] },
     };
   }
   if (level === "ad_set") {
-    const campaignId = typeof entity.campaign_id === "string" ? entity.campaign_id : "";
+    const campaignId = typeof entity.campaign_id === "string"
+      ? entity.campaign_id
+      : "";
     if (!campaignId) {
       throw new AdApiError({
         platform: "snapchat",
         code: "entity_incomplete",
-        message: "The ad squad read did not carry campaign_id — cannot build the PUT path.",
+        message:
+          "The ad squad read did not carry campaign_id — cannot build the PUT path.",
       });
     }
-    return { path: `campaigns/${campaignId}/adsquads`, body: { adsquads: [entity] } };
+    return {
+      path: `campaigns/${campaignId}/adsquads`,
+      body: { adsquads: [entity] },
+    };
   }
-  const adSquadId = typeof entity.ad_squad_id === "string" ? entity.ad_squad_id : "";
+  const adSquadId = typeof entity.ad_squad_id === "string"
+    ? entity.ad_squad_id
+    : "";
   if (!adSquadId) {
     throw new AdApiError({
       platform: "snapchat",
       code: "entity_incomplete",
-      message: "The ad read did not carry ad_squad_id — cannot build the PUT path.",
+      message:
+        "The ad read did not carry ad_squad_id — cannot build the PUT path.",
     });
   }
   return { path: `adsquads/${adSquadId}/ads`, body: { ads: [entity] } };
@@ -1825,12 +2051,23 @@ export async function pollSnapchatCreativePackaging(
 ): Promise<void> {
   const intervalMs = opts.intervalMs ?? SNAPCHAT_PACKAGING_POLL_INTERVAL_MS;
   const maxAttempts = opts.maxAttempts ?? SNAPCHAT_PACKAGING_POLL_MAX_ATTEMPTS;
-  const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const sleep = opts.sleep ??
+    ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const payload = await snapchatApi(client, "GET", `creatives/${creativeExternalId}`, undefined, {
-      fetchImpl: opts.fetchImpl,
-    });
-    const creative = snapchatEntityFromPayload(payload, "creatives", "creative");
+    const payload = await snapchatApi(
+      client,
+      "GET",
+      `creatives/${creativeExternalId}`,
+      undefined,
+      {
+        fetchImpl: opts.fetchImpl,
+      },
+    );
+    const creative = snapchatEntityFromPayload(
+      payload,
+      "creatives",
+      "creative",
+    );
     const packaging = typeof creative.packaging_status === "string"
       ? creative.packaging_status.toUpperCase()
       : "";
@@ -1868,7 +2105,11 @@ export interface SnapchatAccountSnapshot {
 export async function snapchatFetchAdAccount(
   client: SnapchatClient,
 ): Promise<SnapchatAccountSnapshot> {
-  const payload = await snapchatApi(client, "GET", `adaccounts/${client.adAccountId}`);
+  const payload = await snapchatApi(
+    client,
+    "GET",
+    `adaccounts/${client.adAccountId}`,
+  );
   const account = snapchatEntityFromPayload(payload, "adaccounts", "adaccount");
   if (!account.id) {
     throw new AdApiError({
@@ -1884,7 +2125,9 @@ export async function snapchatFetchAdAccount(
     status: typeof account.status === "string" ? account.status : null,
     currency: typeof account.currency === "string" ? account.currency : null,
     timezone: typeof account.timezone === "string" ? account.timezone : null,
-    organizationId: typeof account.organization_id === "string" ? account.organization_id : null,
+    organizationId: typeof account.organization_id === "string"
+      ? account.organization_id
+      : null,
     fundingSourceIds: Array.isArray(account.funding_source_ids)
       ? account.funding_source_ids.map((id) => String(id))
       : [],
@@ -1957,6 +2200,66 @@ export interface SnapchatPixelSignalSnapshot {
   totalEvents: number;
 }
 
+export interface SnapchatPurchaseSignalSnapshot {
+  purchaseEvents28d: number;
+  domainsChecked: string[];
+}
+
+/** Domains surfaced by Snap's seven-day pixel-domain discovery response. */
+export function parseSnapchatPixelDomains(
+  payload: Record<string, unknown>,
+): string[] {
+  const domains = new Set<string>();
+  const wrappers = Array.isArray(payload.timeseries_stats)
+    ? payload.timeseries_stats
+    : [];
+  for (const wrapper of wrappers) {
+    if (!wrapper || typeof wrapper !== "object") continue;
+    const timeseries = ((wrapper as Record<string, unknown>).timeseries_stat ??
+      wrapper) as Record<string, unknown>;
+    const rows = Array.isArray(timeseries.domains) ? timeseries.domains : [];
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const domain = (row as Record<string, unknown>).domain_name;
+      if (typeof domain !== "string") continue;
+      const normalized = domain.trim().toLowerCase();
+      if (normalized) domains.add(normalized);
+    }
+  }
+  return [...domains];
+}
+
+/** Sum Snap's daily PURCHASE breakdown for one domain without using ad-attributed stats. */
+export function parseSnapchatPurchaseEvents(
+  payload: Record<string, unknown>,
+): number {
+  const wrappers = Array.isArray(payload.timeseries_stats)
+    ? payload.timeseries_stats
+    : [];
+  let purchases = 0;
+  for (const wrapper of wrappers) {
+    if (!wrapper || typeof wrapper !== "object") continue;
+    const timeseriesStat =
+      ((wrapper as Record<string, unknown>).timeseries_stat ??
+        wrapper) as Record<string, unknown>;
+    const rows = Array.isArray(timeseriesStat.timeseries)
+      ? timeseriesStat.timeseries
+      : [];
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const breakdown = (row as Record<string, unknown>).event_type_breakdown;
+      if (
+        !breakdown || typeof breakdown !== "object" || Array.isArray(breakdown)
+      ) continue;
+      const value = Number(
+        (breakdown as Record<string, unknown>).PURCHASE ?? 0,
+      );
+      if (Number.isFinite(value) && value > 0) purchases += value;
+    }
+  }
+  return purchases;
+}
+
 export function parseSnapchatPixelSignal(
   payload: Record<string, unknown>,
 ): SnapchatPixelSignalSnapshot {
@@ -1971,7 +2274,9 @@ export function parseSnapchatPixelSignal(
     const domains = Array.isArray(timeseries.domains) ? timeseries.domains : [];
     for (const domain of domains) {
       if (!domain || typeof domain !== "object") continue;
-      const value = Number((domain as Record<string, unknown>).total_events ?? 0);
+      const value = Number(
+        (domain as Record<string, unknown>).total_events ?? 0,
+      );
       if (Number.isFinite(value) && value > 0) totalEvents += value;
     }
   }
@@ -1993,6 +2298,56 @@ export async function snapchatFetchPixelSignal(
     `pixels/${encodeURIComponent(pixelId)}/domains/stats`,
   );
   return parseSnapchatPixelSignal(payload);
+}
+
+/**
+ * Read the live 28-day PURCHASE count that gates PIXEL_PURCHASE. Snap requires
+ * one stats request per domain, so the seven-day domain endpoint is used only
+ * to discover the current pixel domains; the count itself comes from the
+ * documented 28-day event-type timeseries. An unreadable domain is a hard
+ * provider error — callers fail closed instead of treating stale state as
+ * permission to optimise for purchases.
+ */
+export async function snapchatFetchPurchaseSignal28d(
+  client: SnapchatClient,
+  pixelId: string,
+  nowMs = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<SnapchatPurchaseSignalSnapshot> {
+  const domainPayload = await snapchatApi(
+    client,
+    "GET",
+    `pixels/${encodeURIComponent(pixelId)}/domains/stats`,
+    undefined,
+    { fetchImpl },
+  );
+  // Bound provider fan-out. A pixel unexpectedly firing on more than 50
+  // domains is not a trustworthy Mingla optimisation signal.
+  const domains = parseSnapchatPixelDomains(domainPayload).slice(0, 50);
+  const endTime = new Date(nowMs).toISOString();
+  const startTime = new Date(nowMs - 28 * 24 * 60 * 60 * 1000).toISOString();
+  let purchaseEvents28d = 0;
+
+  for (const domain of domains) {
+    const url = new URL(
+      `${client.apiBase}/pixels/${encodeURIComponent(pixelId)}/stats`,
+    );
+    url.searchParams.set("start_time", startTime);
+    url.searchParams.set("end_time", endTime);
+    url.searchParams.set("granularity", "DAY");
+    url.searchParams.set("domain", domain);
+    url.searchParams.set("fields", "event_type");
+    const payload = await snapchatApi(
+      client,
+      "GET",
+      url.toString(),
+      undefined,
+      { fetchImpl },
+    );
+    purchaseEvents28d += parseSnapchatPurchaseEvents(payload);
+  }
+
+  return { purchaseEvents28d, domainsChecked: domains };
 }
 
 // ── ISSUE-992 (3a): SCLS interest-segment search (targeting dimensions) ───────
@@ -2017,7 +2372,11 @@ export function parseSnapchatInterests(
     if (!row || typeof row !== "object") continue;
     const scls = (row.scls ?? row.interests ?? row) as Record<string, unknown>;
     const idRaw = scls.id ?? scls.category_id;
-    const id = typeof idRaw === "string" ? idRaw : typeof idRaw === "number" ? String(idRaw) : "";
+    const id = typeof idRaw === "string"
+      ? idRaw
+      : typeof idRaw === "number"
+      ? String(idRaw)
+      : "";
     const name = typeof scls.name === "string" ? scls.name : "";
     if (!id || !name || seen.has(id)) continue;
     seen.add(id);
@@ -2033,7 +2392,9 @@ export function filterSnapchatInterests(
 ): SnapchatInterestSegment[] {
   const q = (opts.q ?? "").trim().toLowerCase();
   const limit = opts.limit ?? 15;
-  const matched = interests.filter((i) => q.length === 0 || i.name.toLowerCase().includes(q));
+  const matched = interests.filter((i) =>
+    q.length === 0 || i.name.toLowerCase().includes(q)
+  );
   matched.sort((a, b) => {
     const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
     const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
@@ -2054,8 +2415,15 @@ export async function snapchatFetchInterests(
   q: string,
   opts: { limit?: number } = {},
 ): Promise<SnapchatInterestSegment[]> {
-  const rows = await snapchatCollectPages(client, "targeting/interests/scls", "targeting_dimensions");
-  return filterSnapchatInterests(parseSnapchatInterests(rows), { q, limit: opts.limit });
+  const rows = await snapchatCollectPages(
+    client,
+    "targeting/interests/scls",
+    "targeting_dimensions",
+  );
+  return filterSnapchatInterests(parseSnapchatInterests(rows), {
+    q,
+    limit: opts.limit,
+  });
 }
 
 // ── Interface-input adapters (extensions ride the base A4.a shapes) ───────────
@@ -2072,6 +2440,8 @@ export interface SnapchatAdSquadTargetingInput {
   circles?: SnapchatCircleGeo[];
   /** ISSUE-992 (3a): SCLS interest-segment category ids. */
   interests?: string[];
+  segment_include_ids?: string[];
+  segment_exclude_ids?: string[];
   budget_mode?: "daily" | "lifetime";
   bid_strategy?: string;
   bid_cents?: number;
@@ -2137,11 +2507,15 @@ export const snapchatAdapter: ChannelAdapter = {
   },
 
   createCampaign: async (conn, input: CreateCampaignInput) => {
-    if (input.validateOnly === true) refuseSnapchatValidateOnly("campaign create");
+    if (input.validateOnly === true) {
+      refuseSnapchatValidateOnly("campaign create");
+    }
     // Fail-close FIRST (RT-1): the mint resolves BEFORE input validation, so a
     // broken connection always surfaces 424 snapchat_not_connected.
     const client = await resolveSnapchatClient(conn);
-    const extensions = input as CreateCampaignInput & SnapchatCreateCampaignExtensions;
+    const extensions = input as
+      & CreateCampaignInput
+      & SnapchatCreateCampaignExtensions;
     const body = buildSnapchatCampaignBody(client.adAccountId, {
       name: input.name,
       objective: input.objective,
@@ -2160,20 +2534,27 @@ export const snapchatAdapter: ChannelAdapter = {
       `adaccounts/${client.adAccountId}/campaigns`,
       { campaigns: [body] },
     );
-    const campaign = snapchatEntityFromPayload(payload, "campaigns", "campaign");
+    const campaign = snapchatEntityFromPayload(
+      payload,
+      "campaigns",
+      "campaign",
+    );
     const externalId = typeof campaign.id === "string" ? campaign.id : "";
     if (!externalId) {
       throw new AdApiError({
         platform: "snapchat",
         code: "create_no_id",
-        message: "Snap campaign create returned SUCCESS but no campaign id — refusing to persist.",
+        message:
+          "Snap campaign create returned SUCCESS but no campaign id — refusing to persist.",
       });
     }
     return { externalId, status: "PAUSED" };
   },
 
   createAdSet: async (conn, campaignExternalId, input: CreateAdSetInput) => {
-    if (input.validateOnly === true) refuseSnapchatValidateOnly("ad-squad create");
+    if (input.validateOnly === true) {
+      refuseSnapchatValidateOnly("ad-squad create");
+    }
     const client = await resolveSnapchatClient(conn); // fail-close first
     assertSnapchatExternalId("campaign", campaignExternalId);
     const t = (input.targeting ?? {}) as SnapchatAdSquadTargetingInput;
@@ -2186,6 +2567,8 @@ export const snapchatAdapter: ChannelAdapter = {
       // interest ids ride through to targeting.interests.
       circles: t.circles,
       interestCategoryIds: t.interests,
+      segmentIncludeIds: t.segment_include_ids,
+      segmentExcludeIds: t.segment_exclude_ids,
       budgetCents: input.budgetCents,
       budgetMode: t.budget_mode,
       bidStrategy: t.bid_strategy,
@@ -2195,6 +2578,7 @@ export const snapchatAdapter: ChannelAdapter = {
       endTime: t.end_time,
       mobileAppId: t.mobile_app_id,
       deviceOs: t.device_os,
+      frequencyCap: input.frequencyCap,
     });
     const payload = await snapchatApi(
       client,
@@ -2208,7 +2592,8 @@ export const snapchatAdapter: ChannelAdapter = {
       throw new AdApiError({
         platform: "snapchat",
         code: "create_no_id",
-        message: "Snap ad-squad create returned SUCCESS but no id — refusing to persist.",
+        message:
+          "Snap ad-squad create returned SUCCESS but no id — refusing to persist.",
       });
     }
     return { externalId };
@@ -2221,9 +2606,13 @@ export const snapchatAdapter: ChannelAdapter = {
    * unpackaged creative.
    */
   createCreative: async (conn, input: CreateCreativeInput) => {
-    if (input.validateOnly === true) refuseSnapchatValidateOnly("creative create");
+    if (input.validateOnly === true) {
+      refuseSnapchatValidateOnly("creative create");
+    }
     const client = await resolveSnapchatClient(conn); // fail-close first
-    const extensions = input as CreateCreativeInput & SnapchatCreateCreativeExtensions;
+    const extensions = input as
+      & CreateCreativeInput
+      & SnapchatCreateCreativeExtensions;
     const topSnapMediaId = extensions.topSnapMediaId ?? "";
     if (!topSnapMediaId) {
       throw new AdApiError({
@@ -2238,7 +2627,9 @@ export const snapchatAdapter: ChannelAdapter = {
       throw new AdNotConnectedError("snapchat", "snapchat_profile_missing");
     }
     const body = buildSnapchatCreativeBody(client.adAccountId, {
-      name: input.campaignName ? `${input.campaignName} — creative` : input.adName ?? "creative",
+      name: input.campaignName
+        ? `${input.campaignName} — creative`
+        : input.adName ?? "creative",
       creativeType: extensions.creativeType,
       topSnapMediaId,
       headline: input.headline ?? "",
@@ -2257,13 +2648,20 @@ export const snapchatAdapter: ChannelAdapter = {
       `adaccounts/${client.adAccountId}/creatives`,
       { creatives: [body] },
     );
-    const creative = snapchatEntityFromPayload(payload, "creatives", "creative");
-    const externalCreativeId = typeof creative.id === "string" ? creative.id : "";
+    const creative = snapchatEntityFromPayload(
+      payload,
+      "creatives",
+      "creative",
+    );
+    const externalCreativeId = typeof creative.id === "string"
+      ? creative.id
+      : "";
     if (!externalCreativeId) {
       throw new AdApiError({
         platform: "snapchat",
         code: "create_no_id",
-        message: "Snap creative create returned SUCCESS but no id — refusing to persist.",
+        message:
+          "Snap creative create returned SUCCESS but no id — refusing to persist.",
       });
     }
     // A1.1(2): the packaging poll — an unpackaged creative fails the ad create.
@@ -2281,21 +2679,29 @@ export const snapchatAdapter: ChannelAdapter = {
       creativeExternalId: input.externalCreativeId,
       creativeType: extensions.creativeType,
     });
-    const payload = await snapchatApi(client, "POST", `adsquads/${adSetExternalId}/ads`, {
-      ads: [body],
-    });
+    const payload = await snapchatApi(
+      client,
+      "POST",
+      `adsquads/${adSetExternalId}/ads`,
+      {
+        ads: [body],
+      },
+    );
     const ad = snapchatEntityFromPayload(payload, "ads", "ad");
     const externalId = typeof ad.id === "string" ? ad.id : "";
     if (!externalId) {
       throw new AdApiError({
         platform: "snapchat",
         code: "create_no_id",
-        message: "Snap ad create returned SUCCESS but no id — refusing to persist.",
+        message:
+          "Snap ad create returned SUCCESS but no id — refusing to persist.",
       });
     }
     return {
       externalId,
-      reviewStatus: typeof ad.review_status === "string" ? ad.review_status : null,
+      reviewStatus: typeof ad.review_status === "string"
+        ? ad.review_status
+        : null,
     };
   },
 
@@ -2310,7 +2716,11 @@ export const snapchatAdapter: ChannelAdapter = {
     const entity = await snapchatReadEntity(client, level, externalId);
     const updated = snapchatStripReadOnlyFields(entity);
     updated.status = snapchatStatusForAdvertiserStatus(status);
-    const { path, body } = snapchatUpdateRequestForEntity(client, level, updated);
+    const { path, body } = snapchatUpdateRequestForEntity(
+      client,
+      level,
+      updated,
+    );
     await snapchatApi(client, "PUT", path, body);
   },
 
@@ -2341,11 +2751,21 @@ export const snapchatAdapter: ChannelAdapter = {
     // The creative's review vocabulary rides on the referenced creative —
     // best-effort (a creative read hiccup must not kill a sync sweep).
     let creativeReviewStatus: string | null = null;
-    const creativeId = typeof entity.creative_id === "string" ? entity.creative_id : "";
+    const creativeId = typeof entity.creative_id === "string"
+      ? entity.creative_id
+      : "";
     if (creativeId && SNAPCHAT_ENTITY_ID_REGEX.test(creativeId)) {
       try {
-        const payload = await snapchatApi(client, "GET", `creatives/${creativeId}`);
-        const creative = snapchatEntityFromPayload(payload, "creatives", "creative");
+        const payload = await snapchatApi(
+          client,
+          "GET",
+          `creatives/${creativeId}`,
+        );
+        const creative = snapchatEntityFromPayload(
+          payload,
+          "creatives",
+          "creative",
+        );
         creativeReviewStatus = typeof creative.review_status === "string"
           ? creative.review_status
           : null;
@@ -2382,7 +2802,8 @@ export const snapchatAdapter: ChannelAdapter = {
       throw new AdApiError({
         platform: "snapchat",
         code: "unsupported_level",
-        message: "Snap budgets live on the campaign (CBO) or ad squad — never the ad.",
+        message:
+          "Snap budgets live on the campaign (CBO) or ad squad — never the ad.",
       });
     }
     const client = await resolveSnapchatClient(conn); // fail-close first
@@ -2407,8 +2828,41 @@ export const snapchatAdapter: ChannelAdapter = {
         message: detail,
       });
     }
-    const { path, body } = snapchatUpdateRequestForEntity(client, level, updated);
+    const { path, body } = snapchatUpdateRequestForEntity(
+      client,
+      level,
+      updated,
+    );
     await snapchatApi(client, "PUT", path, body);
+  },
+
+  getBudget: async (conn, level, externalId) => {
+    const client = await resolveSnapchatClient(conn);
+    const entity = await snapchatReadEntity(client, level, externalId);
+    const field = typeof entity.daily_budget_micro === "number"
+      ? "daily_budget_micro"
+      : typeof entity.lifetime_budget_micro === "number"
+      ? "lifetime_budget_micro"
+      : null;
+    if (!field) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "budget_readback_invalid",
+        message:
+          "Snap did not return an editable budget field after the update.",
+      });
+    }
+    const micro = Number(entity[field]);
+    const cents = micro / 10_000;
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "budget_readback_invalid",
+        message:
+          "Snap returned a budget that cannot be represented exactly in cents.",
+      });
+    }
+    return { cents, field };
   },
 
   /**

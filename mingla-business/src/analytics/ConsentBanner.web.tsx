@@ -1,6 +1,6 @@
 /** Buyer-web cookie consent, composed as one viewport-bounded persistent action. */
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Linking,
   Platform,
@@ -54,8 +54,7 @@ const safeTop = "max(16px, env(safe-area-inset-top, 0px))";
 
 export function ConsentBanner(): React.ReactElement | null {
   const consentState = useWebConsentState();
-  const [manageOpen, setManageOpen] = useState<boolean>(false);
-  const manageButtonRef = useRef<View | null>(null);
+  const [preferencesOpen, setPreferencesOpen] = useState<boolean>(false);
   const [compact, setCompact] = useState<boolean>(
     () => typeof window !== "undefined" && window.innerWidth < 320,
   );
@@ -68,17 +67,23 @@ export function ConsentBanner(): React.ReactElement | null {
     return () => query.removeEventListener("change", sync);
   }, []);
 
-  // RNW does not serialize accessibilityState.expanded on this Pressable in
-  // the installed runtime. Keep the native semantic input below, and correct
-  // only the real web host so assistive technology receives the binding state.
-  useLayoutEffect(() => {
-    const manageButton = manageButtonRef.current;
-    if (manageButton instanceof HTMLElement) {
-      manageButton.setAttribute("aria-expanded", String(manageOpen));
-    }
-  }, [manageOpen]);
-
-  if (Platform.OS !== "web" || consentState !== "unresolved") return null;
+  if (Platform.OS !== "web") return null;
+  if (consentState !== "unresolved" && !preferencesOpen) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Ad privacy choices"
+        onPress={() => setPreferencesOpen(true)}
+        style={({ focused, hovered }: WebPressableState) => [
+          styles.choiceLinkHost,
+          hovered ? styles.manageHovered : null,
+          focused ? styles.focusRing : null,
+        ]}
+      >
+        <Text style={styles.choiceLink}>Ad privacy choices</Text>
+      </Pressable>
+    );
+  }
 
   return (
     <View
@@ -114,15 +119,15 @@ export function ConsentBanner(): React.ReactElement | null {
             } as WebConsentStyle as StyleProp<ViewStyle>),
           ]}
         >
-          <Text style={styles.title}>Cookies &amp; analytics</Text>
+          <Text style={styles.title}>Ad privacy</Text>
           <Text style={styles.body}>
-            We use cookies and privacy-first analytics to understand how people
-            use Mingla and improve checkout. Nothing is tracked until you accept.
+            We use cookies and advertising tools from Meta, Snapchat and TikTok
+            to measure and improve our ads.
           </Text>
           <Pressable
             onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
             accessibilityRole="link"
-            accessibilityLabel="Privacy Policy"
+            accessibilityLabel="Privacy policy"
             style={({ focused }: WebPressableState) => [
               styles.privacyLink,
               focused ? styles.focusRing : null,
@@ -130,75 +135,51 @@ export function ConsentBanner(): React.ReactElement | null {
           >
             {({ focused, hovered }: WebPressableState) => (
               <Text style={styles.body}>
-                See our{" "}
                 <Text
                   style={[
                     styles.link,
                     focused || hovered ? styles.linkActive : null,
                   ]}
                 >
-                  Privacy Policy
+                  Privacy policy
                 </Text>
-                .
               </Text>
             )}
           </Pressable>
-
-          {manageOpen ? (
-            <Text nativeID="issue-2769-consent-details" style={styles.manageNote}>
-              Analytics help us improve Mingla by measuring page views, funnel
-              drop-off, and conversions. Choose Accept to turn them on, or Reject
-              to keep them off. You can change this anytime by clearing your site
-              data.
-            </Text>
-          ) : null}
         </View>
 
         <View style={styles.decisionBand}>
           <View style={[styles.actions, compact ? styles.actionsCompact : null]}>
             <View style={styles.action}>
               <Button
-                label="Accept all"
-                onPress={grantConsent}
+                label="OK"
+                onPress={() => {
+                  void grantConsent().finally(() => setPreferencesOpen(false));
+                }}
                 variant="primary"
                 size="md"
                 fullWidth
                 accentColor={accent.warm}
-                accessibilityLabel="Accept cookies and analytics"
+                accessibilityLabel="OK"
                 testID="issue-2769-consent-accept"
               />
             </View>
             <View style={styles.action}>
               <Button
-                label="Reject"
-                onPress={denyConsent}
+                label="Opt out of ad tracking"
+                onPress={() => {
+                  denyConsent();
+                  setPreferencesOpen(false);
+                }}
                 variant="secondary"
                 size="md"
                 fullWidth
-                accessibilityLabel="Reject cookies and analytics"
+                accessibilityLabel="Opt out of ad tracking"
                 testID="issue-2769-consent-reject"
               />
             </View>
           </View>
 
-          <Pressable
-            ref={manageButtonRef}
-            onPress={() => setManageOpen((open) => !open)}
-            accessibilityRole="button"
-            accessibilityLabel="Manage analytics preferences"
-            accessibilityState={{ expanded: manageOpen }}
-            aria-controls="issue-2769-consent-details"
-            testID="issue-2769-consent-manage"
-            style={({ focused, hovered }: WebPressableState) => [
-              styles.manageBtn,
-              hovered ? styles.manageHovered : null,
-              focused ? styles.focusRing : null,
-            ]}
-          >
-            <Text style={styles.manageLabel}>
-              {manageOpen ? "Hide details" : "Manage"}
-            </Text>
-          </Pressable>
         </View>
       </View>
     </View>
@@ -210,6 +191,23 @@ const styles = StyleSheet.create({
     position: "absolute",
     alignItems: "center",
     zIndex: 9999,
+  },
+  choiceLinkHost: {
+    position: "absolute",
+    right: spacing.md,
+    bottom: spacing.md,
+    zIndex: 9998,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.sm,
+    backgroundColor: "rgba(18, 20, 26, 0.92)",
+  },
+  choiceLink: {
+    color: accent.warm,
+    fontSize: 13,
+    fontWeight: "700",
+    textDecorationLine: "underline",
   },
   panel: {
     width: "100%",

@@ -20,7 +20,11 @@
  * clears billing is legitimate — blueprint §1.0 buttons).
  */
 
-import { platformsForGoals } from "./goals.js";
+import {
+  goalById,
+  platformsForGoals,
+  PURCHASE_SIGNAL_MIN_28D,
+} from "./goals.js";
 import {
   channelFloorCents,
   floorLabel,
@@ -97,11 +101,12 @@ export function planChannels(input) {
     allowlist = null,
     connections = {},
     metaGoal = "LINK_CLICKS",
+    goalSignals = null,
     createWired = CREATE_WIRED,
   } = input;
 
   const preflightByPlatform = new Map(preflightRows.map((r) => [r.platform, r]));
-  const { platforms: goalPlatforms } = platformsForGoals(goalIds);
+  const { platforms: goalPlatforms } = platformsForGoals(goalIds, goalSignals);
   const goalSet = new Set(goalPlatforms);
 
   return ALL_PLATFORMS.map((platform) => {
@@ -151,8 +156,23 @@ export function planChannels(input) {
 
     // 3. Goal support.
     if (goalIds.length > 0 && !goalSet.has(platform)) {
-      row.excludedReason =
-        `${PLATFORM_LABELS[platform]} can't run the selected goal${goalIds.length > 1 ? "s" : ""} today.`;
+      const salesRequested = goalIds.includes("conversions") &&
+        Boolean(goalById("conversions")?.platforms?.[platform]);
+      if (salesRequested && goalSignals !== null) {
+        const count = platform === "snapchat"
+          ? goalSignals.snapPurchaseEvents28d
+          : platform === "tiktok"
+          ? goalSignals.tiktokPurchaseEvents28d
+          : null;
+        row.excludedReason = platform === "meta"
+          ? "Meta Sales needs a live pixel signal."
+          : `${PLATFORM_LABELS[platform]} Sales needs ${PURCHASE_SIGNAL_MIN_28D} purchase events in 28 days; live count: ${
+            Number.isFinite(count) ? count : "unavailable"
+          }.`;
+      } else {
+        row.excludedReason =
+          `${PLATFORM_LABELS[platform]} can't run the selected goal${goalIds.length > 1 ? "s" : ""} today.`;
+      }
       return row;
     }
 

@@ -478,6 +478,7 @@ function CheckoutTripPaymentScreenContent({
         // biz_ticket_checkout_create_session branches on v_event.event_type='trip'.
         const checkout = await createTicketCheckout({
           eventId: tripEventId,
+          brandId: trip?.brandId,
           buyer,
           lines,
           surface,
@@ -941,7 +942,7 @@ function CheckoutTripPaymentScreenContent({
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
           <Text style={styles.paymentCopy}>
-            You'll be taken to our secure payment page to complete your purchase.
+            {"You'll be taken to our secure payment page to complete your purchase."}
           </Text>
           {checkoutSessionId !== null
             ? (

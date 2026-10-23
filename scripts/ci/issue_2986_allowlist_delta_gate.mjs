@@ -58,6 +58,19 @@ const I3281_BLOCK = [
 ].join("\n");
 const I3281_NAME = "pg_experience_slot_availability(";
 
+// #3697 — fourth binding amendment. Exactly ONE intended-public reader returns
+// the non-sensitive pixel consent mode for one country and defaults to
+// on_arrival. It exposes neither the region inventory nor any credential.
+const I3697_OLD_HEADER = "# Signature count: 196 (intended-public 27, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
+const I3697_NEW_HEADER = "# Signature count: 197 (intended-public 28, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
+const I3697_ANCHOR = "# === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===";
+const I3697_SIGNATURE = "ad_pixel_public_config(p_country_code text)";
+const I3697_BLOCK = [
+  "# #3697: one non-sensitive country-mode scalar; exposes no country inventory and defaults on_arrival.",
+  I3697_SIGNATURE,
+].join("\n");
+const I3697_NAME = "ad_pixel_public_config(";
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -100,8 +113,29 @@ const expectedAfter3281 = (base) => {
   return base.replace(`${I3281_ANCHOR}\n`, `${I3281_ANCHOR}\n${I3281_BLOCK}\n`);
 };
 
+const expectedAfter3697 = (base) => {
+  if (
+    countExactLine(base, I3697_SIGNATURE) === 1 &&
+    base.includes(`${I3697_ANCHOR}\n${I3697_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (base.includes(I3697_NAME) || base.includes("# #3697:")) {
+    throw new Error("base contains a partial or lookalike #3697 reader");
+  }
+  if (countExactLine(base, I3697_OLD_HEADER) !== 1) {
+    throw new Error("base #3697 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I3697_ANCHOR) !== 1) {
+    throw new Error("base #3697 insertion anchor is absent or duplicated");
+  }
+  return base
+    .replace(I3697_OLD_HEADER, I3697_NEW_HEADER)
+    .replace(`${I3697_ANCHOR}\n`, `${I3697_ANCHOR}\n${I3697_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter3281(expectedAfter3426(expectedAfter2986(base)));
+  expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base))));
 
 export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   const failures = [];
@@ -113,10 +147,10 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader plus the exact #3281 R3 slot reader",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, and #3697 pixel-mode reader",
     );
   }
-  for (const signature of [...SIGNATURES, I3426_SIGNATURE, I3281_SIGNATURE]) {
+  for (const signature of [...SIGNATURES, I3426_SIGNATURE, I3281_SIGNATURE, I3697_SIGNATURE]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
   if (countExactLine(workflow, LIVE_GATE_LINE) !== 1) failures.push("the live ORCH-1392 anon-definer gate was removed, duplicated, or bypassed");
@@ -138,7 +172,7 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
 const fixtureBase = () => [
   "# fixture",
   OLD_HEADER,
-  "# === INTENDED-PUBLIC READS ===",
+  I3697_ANCHOR,
   I3426_ANCHOR,
   ANCHOR,
   I3281_ANCHOR,
@@ -194,12 +228,22 @@ const runSelfTest = () => {
     ["#3281 lookalike overload", `${head}pg_experience_slot_availability(p_event_id uuid)\n`, workflow, false],
     ["#3281 moved away from its anchor", head.replace(`${I3281_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3281_BLOCK}\n`), workflow, false],
     ["#3281 plus a forged neighbour", head.replace(`${I3281_BLOCK}\n`, `${I3281_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    // #3697 — the fourth amendment is exactly one reader, one comment and the
+    // matching count correction.
+    ["#3697 reader missing", head.replace(`${I3697_BLOCK}\n`, ""), workflow, false],
+    ["#3697 comment missing", head.replace(`${I3697_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#3697 comment substituted", head.replace("# #3697: one non-sensitive country-mode scalar", "# #3697: approved somehow"), workflow, false],
+    ["#3697 signature changed", head.replace(I3697_SIGNATURE, "ad_pixel_public_config(country_code text)"), workflow, false],
+    ["#3697 lookalike overload", `${head}ad_pixel_public_config(p_country_code text, p_debug boolean)\n`, workflow, false],
+    ["#3697 moved away from its anchor", head.replace(`${I3697_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3697_BLOCK}\n`), workflow, false],
+    ["#3697 plus a forged neighbour", head.replace(`${I3697_BLOCK}\n`, `${I3697_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#3697 count not corrected", head.replace(I3697_NEW_HEADER, I3697_OLD_HEADER), workflow, false],
   ];
   for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all three amendments, the ONLY accepted head is that
+  // Once a base carries all four amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
@@ -220,7 +264,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + frozen #2117 live gate PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + frozen #2117 live gate PASS\n",
   );
 };
 

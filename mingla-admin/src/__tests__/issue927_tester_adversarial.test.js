@@ -130,7 +130,7 @@ describe("927-QA — hostile state shapes never crash or relabel", () => {
       assert.equal(reddit.objective, "CLICKS");
       const snap = buildCreatePayload("snapchat", state);
       assert.equal(snap.platform, "snapchat");
-      assert.equal(snap.optimization_goal, "SWIPES");
+      assert.equal(snap.optimization_goal, "PIXEL_PAGE_VIEW");
     });
   }
 

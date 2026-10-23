@@ -1,5 +1,9 @@
 import type { AvailableSlot } from "../types/venueReservation";
 import type { GuestManageReservation } from "../utils/guestReservationManage";
+import {
+  getStoredAdMatchData,
+  identifyAdBuyer,
+} from "../analytics/webAnalytics";
 import { supabase } from "./supabase";
 
 async function extractFunctionError(
@@ -205,6 +209,14 @@ export async function fetchPublicVenueSlots(
 export async function createGuestVenueReservation(
   input: GuestReservationInput,
 ): Promise<GuestReservationResult> {
+  const adMatchData = getStoredAdMatchData?.() ?? {
+    fbp: null, fbc: null, scid: null, ttp: null,
+    clientUserAgent: null, trackingOptOut: false,
+  };
+  void identifyAdBuyer?.({
+    email: input.buyer.email,
+    phone: input.buyer.phone,
+  })?.catch(() => undefined);
   const { data, error } = await supabase.functions.invoke<
     GuestReservationResult
   >(
@@ -220,6 +232,7 @@ export async function createGuestVenueReservation(
         occasion: input.occasion ?? null,
         guestNotes: input.guestNotes ?? null,
         attributionClickId: input.attributionClickId ?? null,
+        adMatchData,
         organicJourneyToken: input.organicJourneyToken ?? null,
       },
     },

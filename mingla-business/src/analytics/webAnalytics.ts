@@ -44,18 +44,28 @@ export const fireAdPageView = noopVoid;
 export const fireAdViewContent = noopVoid;
 export const fireAdPurchase = (
   _eventId: string,
-  _props: { value?: number; currency?: string },
+  _props: AdCommerceEventProps,
 ): void => {};
 // ISSUE-865 PR1 WP-2 — reservation (lead-type) browser fire is WEB-ONLY; native
 // no-op keeps the .web/.native export surface at parity (i-1378 shim gate).
 export const fireAdReservation = (
   _eventId: string,
-  _props?: { value?: number; currency?: string },
+  _props?: AdCommerceEventProps,
 ): void => {};
 export const fireAdInitiateCheckout = (
   _eventId: string,
-  _props?: { value?: number; currency?: string },
+  _props?: AdCommerceEventProps,
 ): void => {};
+export interface AdCommerceEventProps {
+  value?: number;
+  currency?: string;
+  contentId?: string;
+  brandId?: string;
+}
+export const identifyAdBuyer = async (_input: {
+  email?: string | null;
+  phone?: string | null;
+}): Promise<void> => {};
 export const adPixelsReady = (): boolean => false;
 export const getStoredClickAttribution = (): { clickId: string | null } => ({
   clickId: null,
@@ -64,8 +74,17 @@ export const getStoredAdMatchData = (): {
   fbp: string | null;
   fbc: string | null;
   scid: string | null;
+  ttp: string | null;
   clientUserAgent: string | null;
-} => ({ fbp: null, fbc: null, scid: null, clientUserAgent: null });
+  trackingOptOut: boolean;
+} => ({
+  fbp: null,
+  fbc: null,
+  scid: null,
+  ttp: null,
+  clientUserAgent: null,
+  trackingOptOut: false,
+});
 export const postAttributionTouch = async (
   _input: unknown,
 ): Promise<string | null> => null;

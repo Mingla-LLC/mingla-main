@@ -5,10 +5,10 @@
  * Rules encoded here:
  *  - Goals are an ARRAY, not hardcoded branches (A1 extensibility contract):
  *    #865 adds Reservations/Retargeting by appending entries, no rewrite.
- *  - Sales is shown only as a Meta goal and is disabled by the UI until the
- *    connection's real pixel-signal check passes.
- *  - Meta traffic optimizes for landing-page views; Snap does the same only
- *    after its real pixel-stats read reports a signal (otherwise SWIPES).
+ *  - Sales spans Meta, Snapchat and TikTok. Snapchat/TikTok require at least
+ *    20 live provider purchase events in 28 days.
+ *  - Traffic uses loaded page views on every supported platform, never shallow
+ *    swipe/click optimization when a page-view goal exists.
  *  - The goal step is MULTI-SELECT (A4.0(1)); disjoint-channel selections get
  *    a warning, not a block (blueprint §1.1 validation).
  */
@@ -27,9 +27,9 @@ export const GOALS = [
       google: { channel_type: "SEARCH", strategy: "maximize_clicks" },
       tiktok: { objective: "TRAFFIC" },
       reddit: { objective: "CLICKS" },
-      snapchat: { objective: "TRAFFIC", optimization_goal: "SWIPES" },
+      snapchat: { objective: "TRAFFIC", optimization_goal: "PIXEL_PAGE_VIEW" },
     },
-    honestyNote: "Meta optimizes for landing-page views. Snapchat does when its pixel is detected; otherwise it optimizes for swipes.",
+    honestyNote: "Meta, Snapchat and TikTok optimise for loaded landing pages, not taps or swipes.",
   },
   {
     id: "awareness",
@@ -50,22 +50,33 @@ export const GOALS = [
   {
     id: "conversions",
     label: "Sales (ticket purchases)",
-    description: "Optimise Meta delivery for completed ticket purchases.",
+    description: "Optimise delivery for completed ticket purchases.",
     visible: true,
     requiresMetaPixelSignal: true,
     platforms: {
       meta: { objective: "OUTCOME_SALES", optimization_goal: "OFFSITE_CONVERSIONS" },
+      snapchat: { objective: "SALES", optimization_goal: "PIXEL_PURCHASE" },
+      tiktok: { objective: "WEB_CONVERSIONS", optimization_goal: "CONVERT" },
     },
-    honestyNote: "Available once the connected Meta pixel has recorded a real signal.",
+    honestyNote:
+      "Meta needs a live pixel signal. Snapchat and TikTok each need at least 20 purchase events in the last 28 days.",
   },
   {
     id: "retargeting",
     label: "Bring back past visitors",
-    visible: false,
-    shipsWith: "#865",
-    hiddenReason:
-      "There are 0 custom audiences on every channel and no tracked-visitor seed until #865 Phase B.",
-    platforms: {},
+    description:
+      "Run only the retargeting and checkout-recovery stages, with buyers excluded.",
+    visible: true,
+    platforms: {
+      meta: {
+        objective: "OUTCOME_TRAFFIC",
+        optimization_goal: "LANDING_PAGE_VIEWS",
+      },
+      snapchat: { objective: "TRAFFIC", optimization_goal: "PIXEL_PAGE_VIEW" },
+      tiktok: { objective: "TRAFFIC" },
+    },
+    honestyNote:
+      "Any audience below 1,000 widens event → brand → market; if none qualifies, that stage is skipped.",
   },
 ];
 
@@ -79,10 +90,26 @@ export function goalById(id) {
 }
 
 /** Platforms that can natively express a goal (before endpoint/market/budget gates). */
-export function platformsForGoal(goalId) {
+export const PURCHASE_SIGNAL_MIN_28D = 20;
+
+export function purchaseSignalEligible(count) {
+  return Number.isFinite(count) && count >= PURCHASE_SIGNAL_MIN_28D;
+}
+
+export function salesPlatformEligible(platform, signals = null) {
+  if (signals === null) return true;
+  if (platform === "meta") return signals.metaPixelHasSignal === true;
+  if (platform === "snapchat") return purchaseSignalEligible(signals.snapPurchaseEvents28d);
+  if (platform === "tiktok") return purchaseSignalEligible(signals.tiktokPurchaseEvents28d);
+  return true;
+}
+
+export function platformsForGoal(goalId, signals = null) {
   const goal = goalById(goalId);
   if (!goal) return [];
-  return Object.keys(goal.platforms);
+  return Object.keys(goal.platforms).filter((platform) =>
+    goalId !== "conversions" || salesPlatformEligible(platform, signals)
+  );
 }
 
 /**
@@ -90,8 +117,8 @@ export function platformsForGoal(goalId) {
  * disjoint warning (blueprint §1.1): two goals with no shared channel run as
  * separate campaigns under one budget plan — fine, but say so.
  */
-export function platformsForGoals(goalIds) {
-  const sets = goalIds.map((id) => new Set(platformsForGoal(id)));
+export function platformsForGoals(goalIds, signals = null) {
+  const sets = goalIds.map((id) => new Set(platformsForGoal(id, signals)));
   if (sets.length === 0) return { platforms: [], disjoint: false };
   const union = new Set(sets.flatMap((s) => [...s]));
   const intersection = [...union].filter((p) => sets.every((s) => s.has(p)));

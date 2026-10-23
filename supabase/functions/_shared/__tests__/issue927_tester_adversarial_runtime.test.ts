@@ -147,7 +147,7 @@ function resetDb(): void {
       currency: "USD",
       external_account_id: "snap-acct-1",
       token_env_var: null,
-      extra: {},
+      extra: { pixel_id: "snap-pixel-qa-1" },
     },
   };
   db.activeRequest = null;
@@ -210,8 +210,9 @@ function tableRowFor(table: string, params: URLSearchParams): unknown {
           },
         },
         destination_snapshot: {
-          canonical_url:
-            "https://business.qa927.example/e/velvet-lounge/friday-live",
+          canonical_url: platform === "tiktok"
+            ? "https://usemingla.com/"
+            : "https://business.qa927.example/e/velvet-lounge/friday-live",
         },
         host_currency: "USD",
       };
@@ -288,6 +289,15 @@ const supabaseMock = Deno.serve({ port: 0, onListen: () => {} }, async (req) => 
     db.writes.push({ method: "POST", path: url.pathname, body });
     if (db.failInsertTable === table) {
       return json({ message: "forced db failure (qa927)", code: "QA500" }, 500);
+    }
+    if (Array.isArray(body)) {
+      return json(
+        body.map((item) => ({
+          id: typeof item.id === "string" ? item.id : crypto.randomUUID(),
+          ...item,
+        })),
+        201,
+      );
     }
     const row = { id: (body?.id as string) ?? crypto.randomUUID(), ...body };
     return json(row, 201);
@@ -490,23 +500,49 @@ const redditBody = (over: Record<string, unknown> = {}): Record<string, unknown>
   ...over,
 });
 
-const tiktokBody = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
-  platform: "tiktok",
-  lane: "consumer",
-  name: "QA927 TikTok — Friday Live",
-  objective: "TRAFFIC",
-  budget: { type: "daily", amount_cents: 2000 },
-  plan_version_id: "92700000-0000-4000-8000-000000000001",
-  plan_hash: "a".repeat(64),
-  audience_intent: { countries: ["US"], ageMin: 21, ageMax: 45 },
-  targeting: { countries: ["US"], age_min: 21, age_max: 45 },
-  destination: { page_type: "event", brand_slug: "velvet-lounge", entity_slug: "friday-live" },
-  creative: {
-    ad_text: "Friday Live at Velvet Lounge",
-    image_url: "https://cdn.qa927.example/creative.jpg",
-  },
-  ...over,
-});
+const TIKTOK_VIDEO_CREATIVE_ID = "92700000-0000-4000-8000-000000000004";
+
+const tiktokBody = (over: Record<string, unknown> = {}): Record<string, unknown> => {
+  // #3697 makes the TikTok-only placement video-only. Seed the exact READY
+  // library ref that the create path consumes so these tests still reach their
+  // intended validate, create, rollback, and geo branches.
+  db.adCreativeRow = {
+    id: TIKTOK_VIDEO_CREATIVE_ID,
+    kind: "video",
+    content_hash: "qa927-video-hash",
+    duration_seconds: 15,
+  };
+  db.refRow = {
+    external_ref: "qa927-video-material",
+    external_ref_extra: {
+      video_id: "video-qa-1",
+      cover_image_id: "cover-qa-1",
+    },
+    status: "ready",
+    content_hash: "qa927-video-hash",
+  };
+  return {
+    platform: "tiktok",
+    lane: "consumer",
+    name: "QA927 TikTok — Friday Live",
+    objective: "TRAFFIC",
+    budget: { type: "daily", amount_cents: 2000 },
+    plan_version_id: "92700000-0000-4000-8000-000000000001",
+    plan_hash: "a".repeat(64),
+    audience_intent: { countries: ["US"], ageMin: 21, ageMax: 45 },
+    targeting: { countries: ["US"], age_min: 21, age_max: 45 },
+    // This adapter-level suite uses a Mingla marketing page so it exercises the
+    // single ad-group path. Event campaigns are intentionally covered by the
+    // dedicated #3697 70/20/10 staged-plan suites.
+    destination: { page_type: "marketing", brand_slug: "mingla", entity_slug: "explorer" },
+    creative: {
+      kind: "video",
+      ad_text: "Friday Live at Velvet Lounge",
+      creative_library_id: TIKTOK_VIDEO_CREATIVE_ID,
+    },
+    ...over,
+  };
+};
 
 const adTreeWrites = () =>
   db.writes.filter((w) =>
@@ -834,7 +870,6 @@ Deno.test({
     const paths = tiktok.api.map((r) => `${r.method} ${r.path}`);
     const order = [
       "GET /open_api/v1.3/tool/region/",
-      "POST /open_api/v1.3/file/image/ad/upload/",
       "POST /open_api/v1.3/campaign/create/",
       "POST /open_api/v1.3/adgroup/create/",
       "POST /open_api/v1.3/ad/create/",
@@ -880,10 +915,13 @@ Deno.test({
 
     // Destination policy on the ad.
     const adFlat = JSON.stringify(adBody);
-    assertStringIncludes(adFlat, "https://business.qa927.example/e/velvet-lounge/friday-live");
+    assertStringIncludes(adFlat, "https://usemingla.com/");
     assert(!adFlat.includes("go.usemingla.com"), "the OneLink may never be the TikTok landing page");
     assertStringIncludes(adFlat, "__CAMPAIGN_ID__");
-    assertEquals((adBody.creatives as Record<string, unknown>[])[0].image_ids, ["img-qa-1"]);
+    const adCreative = (adBody.creatives as Record<string, unknown>[])[0];
+    assertEquals(adCreative.ad_format, "SINGLE_VIDEO");
+    assertEquals(adCreative.video_id, "video-qa-1");
+    assertEquals(adCreative.image_ids, ["cover-qa-1"]);
 
     // DB rows PAUSED ×3 + audit.
     const campaignInsert = db.writes.find((w) => w.path === "/rest/v1/ad_campaigns")!.body!;
@@ -1049,6 +1087,7 @@ Deno.test({
       lane: "consumer",
       name: "QA927 Snap — Friday Live",
       objective: "TRAFFIC",
+      optimization_goal: "IMPRESSIONS",
       budget: { type: "daily", amount_cents: 2000 },
       plan_version_id: "92700000-0000-4000-8000-000000000001",
       plan_hash: "a".repeat(64),

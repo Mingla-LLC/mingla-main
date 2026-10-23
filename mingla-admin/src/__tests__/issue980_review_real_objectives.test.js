@@ -120,11 +120,14 @@ describe("ISSUE-980 finding #3 — wiring is real, not just a lib function nobod
   });
 
   it("CampaignBuilderPage.jsx resolves the goal for display and threads it into buildLaunchSummary", () => {
-    // Distinct from runCreate's own (pre-existing, untouched) resolveGoalForPayload
-    // call — this is the NEW display-only memo this fix adds.
     assert.match(
       page,
-      /const\s+resolvedGoalForDisplay\s*=\s*useMemo\([\s\S]*?resolveGoalForPayload\(goalIds,\s*\{[\s\S]*?snapPixelInstalled:[\s\S]*?\}\),[\s\S]*?\[goalIds,/,
+      /const\s+goalSignals\s*=\s*useMemo\([\s\S]*?metaPixelHasSignal:[\s\S]*?snapPurchaseEvents28d:[\s\S]*?tiktokPurchaseEvents28d:/,
+      "display resolution must use the same live signal gates as create",
+    );
+    assert.match(
+      page,
+      /const\s+resolvedGoalForDisplay\s*=\s*useMemo\([\s\S]*?resolveGoalForPayload\(goalIds,\s*goalSignals\),[\s\S]*?\[goalIds,\s*goalSignals\]/,
       "must compute a dedicated display resolution, separate from runCreate's",
     );
     assert.ok(page.includes("resolvedGoal: resolvedGoalForDisplay"), "must pass the resolution into buildLaunchSummary");

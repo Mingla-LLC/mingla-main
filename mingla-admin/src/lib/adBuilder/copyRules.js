@@ -292,3 +292,34 @@ export const META_CTA_OPTIONS = [
   "LEARN_MORE",
   "SIGN_UP",
 ];
+
+// #3697 — expose only provider-native allowlisted values. TikTok display
+// strings and Snap enums are not Meta enums and must never pass through a
+// shared case normalizer.
+export const CTA_OPTIONS_BY_PLATFORM = Object.freeze({
+  meta: META_CTA_OPTIONS,
+  snapchat: [
+    "BUY_TICKETS",
+    "BOOK_NOW",
+    "VIEW_MENU",
+    "SHOWTIMES",
+    "MORE",
+    "SIGN_UP",
+  ],
+  tiktok: ["Get ticket now", "Book now", "Get showtimes", "Learn more"],
+  reddit: [
+    "Buy Tickets",
+    "Book Now",
+    "See Menu",
+    "Get Directions",
+    "Remind Me",
+    "Learn More",
+  ],
+});
+
+export const DEFAULT_PLATFORM_CTAS = Object.freeze({
+  meta: "BUY_TICKETS",
+  snapchat: "BUY_TICKETS",
+  tiktok: "Get ticket now",
+  reddit: "Buy Tickets",
+});
