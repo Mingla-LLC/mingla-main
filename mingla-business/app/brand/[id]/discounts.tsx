@@ -1,5 +1,5 @@
 import React, { Suspense } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -10,6 +10,8 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useAuth } from "../../../src/context/AuthContext";
+import { createDiscountBlastDraft } from "../../../src/services/discountBlastService";
 
 const LazyDiscountList = React.lazy(async () => {
   const mod =
@@ -23,6 +25,46 @@ export default function DiscountsRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { rank } = useCurrentBrandRole(brandId ?? null);
+  const { user } = useAuth();
+  const blastInFlightRef = React.useRef(false);
+  const shareInBlast = React.useCallback(
+    (discountId: string): void => {
+      if (
+        brandId === undefined ||
+        user?.id === undefined ||
+        blastInFlightRef.current
+      ) {
+        if (user?.id === undefined) {
+          Alert.alert(
+            "Sign in again",
+            "Your session is needed to create a Blast draft.",
+          );
+        }
+        return;
+      }
+      blastInFlightRef.current = true;
+      void createDiscountBlastDraft({
+        accountId: user.id,
+        brandId,
+        discountId,
+      })
+        .then((draftId) => {
+          router.push(
+            `/(tabs)/marketing/campaigns/compose?draft=${draftId}` as never,
+          );
+        })
+        .catch((error: unknown) => {
+          Alert.alert(
+            "Couldn't create the Blast",
+            error instanceof Error ? error.message : "Try again in a moment.",
+          );
+        })
+        .finally(() => {
+          blastInFlightRef.current = false;
+        });
+    },
+    [brandId, router, user?.id],
+  );
   return (
     <View style={[styles.page, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -49,11 +91,7 @@ export default function DiscountsRoute(): React.ReactElement {
               router.push(`/brand/${brandId}/discounts/report` as never)
             }
             onOpenRoute={(route) => router.push(route as never)}
-            onShareBlast={(discountId) =>
-              router.push(
-                `/(tabs)/marketing/campaigns/compose?discount=${discountId}` as never,
-              )
-            }
+            onShareBlast={shareInBlast}
           />
         </Suspense>
       ) : null}

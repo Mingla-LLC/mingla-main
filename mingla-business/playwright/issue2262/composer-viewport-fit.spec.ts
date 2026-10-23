@@ -67,13 +67,9 @@ async function open(page: Page, query = ""): Promise<void> {
   ).toBe(true);
   await page.goto(`${HARNESS_URL}${query}`);
   await page.waitForSelector('[data-testid="composer-commit-bar"]', { timeout: 15000 });
-  // Tiptap mounts asynchronously after the first onLayout. Wait for the real
-  // editable on email cases instead of sleeping for a guessed duration, so the
-  // vacuity guard below cannot race a healthy editor on a cold browser start.
-  const channel = new URLSearchParams(query.replace(/^\?/, "")).get("channel");
-  if (channel !== "sms") {
-    await page.waitForSelector(".ProseMirror", { timeout: 15000 });
-  }
+  // Tiptap mounts after the first onLayout; give the editable a beat to exist
+  // so a draft's real height is in the tree before anything is measured.
+  await page.waitForTimeout(150);
 }
 
 async function rectOf(page: Page, testId: string): Promise<Rect> {
