@@ -163,7 +163,7 @@ test("consent write failure preserves denied choice for every same-page reader",
   await page.evaluate(() => {
     Storage.prototype.setItem = function setItem(): never { throw new Error("quota"); };
   });
-  await page.getByRole("button", { name: "Reject cookies and analytics" }).click();
+  await page.getByRole("button", { name: "Opt out of ad tracking" }).click();
   await expectFullApp(page, requests);
   const result = await page.evaluate(() => ({
     stored: window.localStorage.getItem("mingla_consent_v1"),
