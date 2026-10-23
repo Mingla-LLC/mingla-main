@@ -2064,10 +2064,7 @@ const fetchDirectEventBundlePayload = async (args: {
   p_brand_slug: string | null;
   p_event_slug: string | null;
 }): Promise<JsonRecord | null> => {
-  const { data, error } = await supabase.rpc(
-    "pg_direct_event_checkout_bundle",
-    args,
-  );
+  const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", args);
   if (error !== null) throw error;
   if (data === null) return null;
   if (!isDirectEventBundle(data)) {

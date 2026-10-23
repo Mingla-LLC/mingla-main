@@ -43,6 +43,7 @@ import { ExtraGuestsField } from "../ui/ExtraGuestsField";
 import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 import { Icon } from "../ui/Icon";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
+import { doorFullPriceNotice } from "../discounts/discountUiContract";
 
 import { type StepBodyProps } from "./types";
 
@@ -354,12 +355,12 @@ export const CreatorStep6Settings: React.FC<CreatorStep6SettingsProps> = ({
           })
         }
       />
-      {draft.inPersonPaymentsEnabled ? (
+      {doorFullPriceNotice(draft.inPersonPaymentsEnabled) !== null ? (
         <Text
           style={styles.doorFullPriceNote}
           testID="event-door-full-price-note"
         >
-          Door sales are always full price.
+          {doorFullPriceNotice(draft.inPersonPaymentsEnabled)}
         </Text>
       ) : null}
 

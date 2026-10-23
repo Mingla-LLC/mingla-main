@@ -124,6 +124,7 @@ export const PricesWorkspace: React.FC<PricesWorkspaceProps> = ({
             disabled={rank < 30}
             style={styles.check}
             accessibilityRole="checkbox"
+            accessibilityLabel={`Select ${row.itemName}`}
             accessibilityState={{
               checked: selected.includes(row.id),
               disabled: rank < 30,
@@ -136,6 +137,8 @@ export const PricesWorkspace: React.FC<PricesWorkspaceProps> = ({
           <Pressable
             style={styles.copy}
             onPress={() => onOpenOwner(row.ownerRoute)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${row.itemName} in ${row.listingName}`}
           >
             <Text style={styles.name}>{row.itemName}</Text>
             <Text style={styles.sub}>{row.listingName}</Text>

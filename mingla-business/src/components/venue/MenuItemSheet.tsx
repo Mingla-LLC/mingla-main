@@ -49,6 +49,7 @@ import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { formatCurrency, normalizeCurrency } from "../../utils/currency";
 import type { MenuItem } from "../../services/menusService";
+import { VENUE_MENU_DISCOUNT_LISTING_KIND } from "../../services/discountService";
 import type { Brand } from "../../types/brand";
 import { LazyPayoutCountryInlinePrompt } from "../brand/LazyPayoutCountryInlinePrompt";
 import {
@@ -626,7 +627,7 @@ export function MenuItemSheet({
                 brandId={brandId}
                 itemId={item.id}
                 itemKind="menu_item"
-                listingKind="venue_order"
+                listingKind={VENUE_MENU_DISCOUNT_LISTING_KIND}
                 itemLabel={item.name}
                 currency={item.currency ?? currency}
                 listUnitCents={item.priceCents}

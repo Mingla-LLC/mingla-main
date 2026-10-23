@@ -58,6 +58,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
+import { canShowTicketTierDiscountControls } from "../discounts/discountUiContract";
 
 const TicketLinksSheet = React.lazy(() =>
   import("../guests/TicketLinksSheet").then((module) => ({
@@ -1107,25 +1108,27 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             </View>
           ) : null}
 
-          {initial !== null &&
-          privateLinksEnabled &&
-          eventId !== null &&
-          brandId !== undefined &&
-          canEditPrice &&
-          !isFree ? (
+          {canShowTicketTierDiscountControls({
+            hasPersistedTier: initial !== null,
+            privateLinksEnabled,
+            hasEventId: eventId !== null,
+            hasBrandId: brandId !== undefined,
+            canEditPrice,
+            isFree,
+          }) ? (
             <React.Suspense fallback={null}>
               <Text style={styles.sectionHeader}>Sale price</Text>
               <ItemDiscountControls
-                brandId={brandId}
-                itemId={initial.id}
+                brandId={brandId!}
+                itemId={initial!.id}
                 itemKind="ticket_type"
                 listingKind="event"
-                itemLabel={initial.name}
+                itemLabel={initial!.name}
                 currency={priceCurrency}
                 listUnitCents={
-                  initial.priceGbp == null
+                  initial!.priceGbp == null
                     ? null
-                    : minorFromMajor(initial.priceGbp, priceCurrency ?? "GBP")
+                    : minorFromMajor(initial!.priceGbp, priceCurrency ?? "GBP")
                 }
                 allowLabel="Allow discounts"
                 saleLabel="Offer a sale price"

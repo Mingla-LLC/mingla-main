@@ -133,6 +133,11 @@ export const TicketCheckoutReviewPanel: React.FC<
         style={[styles.primaryButton, accepting && styles.buttonDisabled]}
         disabled={accepting}
         onPress={onAccept}
+        accessibilityLabel={
+          accepting
+            ? "Accepting updated total"
+            : `Pay ${formatQuoteMoney(quote.buyerTotalCents, quote.currency)}`
+        }
       >
         <Text style={styles.primaryButtonText}>
           Pay {formatQuoteMoney(quote.buyerTotalCents, quote.currency)}

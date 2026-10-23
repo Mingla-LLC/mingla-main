@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-09-11T00:00:00Z",
-    "registered_tool_count": 133,
-    "capability_count": 145,
+    "registered_tool_count": 136,
+    "capability_count": 148,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 132,
+      "registered_unverified": 135,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -2228,6 +2228,90 @@
       ],
       "confidence": "high",
       "verified_at": "2026-08-21"
+    },
+    {
+      "id": "ari.discounts.list",
+      "domain": "marketing",
+      "outcome": "List a brand's discounts by lifecycle state",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3872" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/discounts.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const listDiscounts"
+        }]
+      },
+      "ari_tool": "list_discounts",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "62d6f35f2451329b9f2842fbe8005434ffda6cff",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered read-only discount listing"
+      }],
+      "owning_issues": [3872, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-10-22"
+    },
+    {
+      "id": "ari.discounts.create",
+      "domain": "marketing",
+      "outcome": "Create a code, automatic discount, or sale price with Host-selected combination rules",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3872" },
+      "owners": {
+        "ui": ["mingla-business/src/components/discounts/DiscountEditSheet.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const createDiscount"
+        }]
+      },
+      "ari_tool": "create_discount",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "62d6f35f2451329b9f2842fbe8005434ffda6cff",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered confirmed discount creation"
+      }],
+      "owning_issues": [3872, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-10-22"
+    },
+    {
+      "id": "ari.discounts.pause",
+      "domain": "marketing",
+      "outcome": "Pause a Host discount without changing existing orders",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue_3872" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/discounts.tsx"],
+        "source": [{
+          "path": "supabase/functions/_shared/agentDomainTools.ts",
+          "symbol": "const pauseDiscount"
+        }]
+      },
+      "ari_tool": "pause_discount",
+      "status": "registered_unverified",
+      "evidence": [{
+        "tier": "regression",
+        "sha": "62d6f35f2451329b9f2842fbe8005434ffda6cff",
+        "reference": "issue_3872_agent_tools_registry.implementor.test.ts: registered confirmed versioned pause"
+      }],
+      "owning_issues": [3872, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required Business surfaces"],
+      "confidence": "high",
+      "verified_at": "2026-10-22"
     },
     {
       "id": "ari.marketing.draft_campaign",

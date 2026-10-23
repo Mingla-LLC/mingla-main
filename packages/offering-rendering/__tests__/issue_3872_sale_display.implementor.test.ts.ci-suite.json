@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3872_sale_display.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-14-offering-sale-display",
+  "profile": "deno-1.46-stripe"
+}

@@ -592,10 +592,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const quoteInput = useMemo(
     () => ({
       eventId,
-      buyer: {
-        ...contactValidation.normalized,
-        marketingOptIn: true,
-      },
+      // A quote prices the cart; it does not record account-level marketing
+      // state. The checkout submission below remains the single owner of that
+      // already-established Explorer account setting.
+      buyer: contactValidation.normalized,
       lines: quoteLines,
       eventDateId: quoteEventDateId,
       eventDateIds: quoteEventDateIds,

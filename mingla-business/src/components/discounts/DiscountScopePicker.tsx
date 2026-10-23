@@ -13,14 +13,11 @@ import type {
   DiscountScopeKind,
   DiscountTarget,
 } from "../../services/discountService";
-
-const LISTING_KINDS = [
-  ["event", "Events"],
-  ["experience", "Experiences"],
-  ["trip", "Trips"],
-  ["venue_order", "Venue food & drink"],
-  ["reservation_deposit", "Reservation deposits"],
-] as const;
+import {
+  DISCOUNT_LISTING_KIND_OPTIONS,
+  hasOrphanedDiscountTarget,
+  isDiscountPriceSelectable,
+} from "./discountUiContract";
 
 export interface DiscountScopePickerProps {
   scopeKind: DiscountScopeKind;
@@ -68,6 +65,13 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
             key={value}
             onPress={() => onScopeKindChange(value)}
             accessibilityRole="radio"
+            accessibilityLabel={
+              value === "brand"
+                ? "All eligible brand items"
+                : value === "listing_kinds"
+                  ? "Selected listing kinds"
+                  : "Selected items"
+            }
             accessibilityState={{ checked: scopeKind === value }}
             style={[
               styles.segmentButton,
@@ -95,7 +99,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
         </Text>
       ) : null}
       {scopeKind === "listing_kinds"
-        ? LISTING_KINDS.map(([kind, label]) => {
+        ? DISCOUNT_LISTING_KIND_OPTIONS.map(([kind, label]) => {
             const target: DiscountTarget = {
               targetKind: "listing_kind",
               listingKind: kind,
@@ -108,6 +112,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
                 onPress={() => toggle(target)}
                 style={styles.row}
                 accessibilityRole="checkbox"
+                accessibilityLabel={`${label} listing kind`}
                 accessibilityState={{ checked: isSelected }}
               >
                 <Text style={styles.rowMark}>{isSelected ? "✓" : "○"}</Text>
@@ -127,16 +132,17 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
             return (
               <Pressable
                 key={`${price.kind}:${price.id}`}
-                disabled={!price.discountsAllowed}
+                disabled={!isDiscountPriceSelectable(price)}
                 onPress={() => toggle(target)}
                 style={[
                   styles.row,
-                  !price.discountsAllowed && styles.rowDisabled,
+                  !isDiscountPriceSelectable(price) && styles.rowDisabled,
                 ]}
                 accessibilityRole="checkbox"
+                accessibilityLabel={`${price.itemName} in ${price.listingName}`}
                 accessibilityState={{
                   checked: isSelected,
-                  disabled: !price.discountsAllowed,
+                  disabled: !isDiscountPriceSelectable(price),
                 }}
               >
                 <Text style={styles.rowMark}>{isSelected ? "✓" : "○"}</Text>
@@ -144,7 +150,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
                   <Text style={styles.rowText}>{price.itemName}</Text>
                   <Text style={styles.rowSub}>
                     {price.listingName}
-                    {price.discountsAllowed
+                    {isDiscountPriceSelectable(price)
                       ? ""
                       : " · Discounts are off for this item"}
                   </Text>
@@ -153,7 +159,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
             );
           })
         : null}
-      {targets.some((target) => target.orphanedAt) ? (
+      {hasOrphanedDiscountTarget(targets) ? (
         <View style={styles.warning}>
           <Text style={styles.warningText}>
             Deleted item — remove it before saving.

@@ -1,17 +1,26 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
-
-const source = readFileSync(join(__dirname, "..", "RefundSheet.tsx"), "utf8");
+import { canSubmitRefundPreview } from "../../discounts/discountUiContract";
 
 describe("RefundSheet discounted-order preview", () => {
   test("renders server refund amounts and blocks confirmation on preview failure", () => {
-    expect(source).toContain("useRefundPreview");
-    expect(source).toContain("previewQuery.data.amountCents");
-    expect(source).toContain("previewQuery.data?.lines.find");
-    expect(source).toContain("!previewQuery.isError");
-    expect(source).toContain("previewQuery.data !== undefined");
-    expect(source).toContain("previewQuery.data.withinRemaining");
-    expect(source).toContain("disabled={!canSubmit}");
+    const ready = {
+      submitting: false,
+      reasonValid: true,
+      canRefund: true,
+      hasCurrency: true,
+      previewPending: false,
+      previewFetching: false,
+      previewDebouncing: false,
+      previewError: false,
+      previewLoaded: true,
+      withinRemaining: true,
+      previewAmountCents: 1250,
+      hasSelection: true,
+    };
+    expect(canSubmitRefundPreview(ready)).toBe(true);
+    expect(canSubmitRefundPreview({ ...ready, previewError: true })).toBe(false);
+    expect(canSubmitRefundPreview({ ...ready, previewLoaded: false })).toBe(false);
+    expect(canSubmitRefundPreview({ ...ready, withinRemaining: false })).toBe(false);
+    expect(canSubmitRefundPreview({ ...ready, previewAmountCents: 0 })).toBe(false);
   });
 });

@@ -422,6 +422,10 @@ jobs:
               # re-emits public readers whose current privacy and private-link
               # identities exist only in migrations this filtered lane skips.
               *20271216023872_issue_3872_r1_public_display.sql) continue ;;
+              # #3872 host discount operations — SKIPPED because its RPCs and
+              # grants target discount tables/functions created only by the
+              # three #3872 migrations this filtered lane omits above.
+              *20271216043872_issue_3872_r1_host_operations.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

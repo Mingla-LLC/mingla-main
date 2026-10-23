@@ -275,7 +275,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   // Keep the canonical handset-country evidence explicit before any provider
   // call; every free and paid persistence arm carries this same value.
   const phoneEvidence = {
-    buyer_phone_country_iso: buyerPhoneCountryIso,
+    countryIso: buyerPhoneCountryIso,
   };
   const reservedForMs = Date.parse(reservedForUtc);
   if (Number.isNaN(reservedForMs)) {
@@ -486,7 +486,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerName,
       buyerEmail,
       buyerPhoneE164,
-      buyerPhoneCountryIso: phoneEvidence.buyer_phone_country_iso,
+      buyerPhoneCountryIso: phoneEvidence.countryIso,
       occasion,
       guestNotes,
       marketingOptIn,
@@ -801,7 +801,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerName,
       buyerEmail,
       buyerPhoneE164,
-      buyerPhoneCountryIso: phoneEvidence.buyer_phone_country_iso,
+      buyerPhoneCountryIso: phoneEvidence.countryIso,
       occasion,
       guestNotes,
       marketingOptIn,
@@ -886,7 +886,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerName,
       buyerEmail,
       buyerPhoneE164,
-      buyerPhoneCountryIso: phoneEvidence.buyer_phone_country_iso,
+      buyerPhoneCountryIso: phoneEvidence.countryIso,
       occasion,
       guestNotes,
       marketingOptIn,
@@ -1023,7 +1023,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     buyerName,
     buyerEmail,
     buyerPhoneE164,
-    buyerPhoneCountryIso: phoneEvidence.buyer_phone_country_iso,
+    buyerPhoneCountryIso: phoneEvidence.countryIso,
     occasion,
     guestNotes,
     marketingOptIn,

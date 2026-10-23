@@ -99,11 +99,11 @@ const EXPECTED_PLAN = Object.freeze({
   // became ONE locally declared batch:A gate (load-manifest.mjs [plain]),
   // exactly as the note above instructs. Read off
   // `node .github/scripts/strict-grep/issue-3449-class-a-shard-plan.mjs`.
-  // [TEST-MOD-APPROVED #3872] The discount engine single-owner gate adds its
+  // [TEST-MOD-APPROVED #3872] The four discount safety gates add their
   // self-test and plain executions. Re-derived from the live plan command.
-  executions: 1039,
-  loadsSeconds: [169.0, 169.0, 169.0],
-  counts: [342, 353, 344],
+  executions: 1045,
+  loadsSeconds: [169.2, 169.2, 169.2],
+  counts: [344, 355, 346],
 });
 
 const tempDir = (label) => fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), `issue-3449-${label}-`));

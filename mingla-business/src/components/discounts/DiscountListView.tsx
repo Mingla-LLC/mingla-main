@@ -187,6 +187,9 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
                 <Pressable
                   key={value}
                   onPress={() => setFilter(value)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${label} discounts`}
+                  accessibilityState={{ checked: filter === value }}
                   style={[styles.filter, filter === value && styles.filterOn]}
                 >
                   <Text
@@ -329,7 +332,11 @@ const DiscountRow: React.FC<{
           {row.needsAttention ? "NEEDS ATTENTION" : row.status.toUpperCase()}
         </Text>
       </View>
-      <Pressable onPress={onEdit}>
+      <Pressable
+        onPress={onEdit}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${row.name}`}
+      >
         <Text style={styles.name}>{row.name}</Text>
         <Text style={styles.value}>
           {value} · {row.scopeKind.replace("_", " ")}

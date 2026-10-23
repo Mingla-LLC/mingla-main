@@ -317,6 +317,9 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
                 <Pressable
                   key={value}
                   onPress={() => setLimitMode(value)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={label}
+                  accessibilityState={{ checked: limitMode === value }}
                   style={[
                     styles.segment,
                     limitMode === value && styles.segmentOn,
@@ -379,6 +382,9 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
                                 : [...current, day],
                             )
                           }
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={`${label} weekly schedule`}
+                          accessibilityState={{ checked: selected }}
                           style={[styles.day, selected && styles.dayOn]}
                         >
                           <Text

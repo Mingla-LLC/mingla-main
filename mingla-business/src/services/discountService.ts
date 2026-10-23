@@ -1,5 +1,4 @@
 import { supabase } from "./supabase";
-export { discountKeys } from "./discountKeys";
 
 export type DiscountKind = "code" | "automatic" | "sale_price";
 export type DiscountValueType = "percent" | "amount" | "set_price";
@@ -26,6 +25,15 @@ export interface DiscountTarget {
   targetId?: string | null;
   orphanedAt?: string | null;
 }
+
+/**
+ * #3872 — the discount target used by Menu authoring. Keeping this money-rail
+ * identifier in the service contract prevents the display-only sheet from
+ * coupling itself to order execution.
+ */
+export const VENUE_MENU_DISCOUNT_LISTING_KIND: NonNullable<
+  DiscountTarget["listingKind"]
+> = "venue_order";
 
 export interface BrandDiscount {
   id: string;

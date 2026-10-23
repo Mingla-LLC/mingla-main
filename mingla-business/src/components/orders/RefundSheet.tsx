@@ -58,6 +58,7 @@ import {
 } from "../../utils/refundPolicyPrefill";
 import { randomId } from "../../utils/randomId";
 import { useRefundPreview } from "../../hooks/useRefundPreview";
+import { canSubmitRefundPreview } from "../discounts/discountUiContract";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -222,19 +223,20 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   const { rank: currentRank } = useCurrentBrandRole(order.brandId);
   const canRefund = canPerformAction(currentRank, "REFUND_ORDER");
 
-  const canSubmit =
-    !submitting &&
-    reasonValid &&
-    canRefund &&
-    moneyCurrency !== null &&
-    !previewQuery.isPending &&
-    !previewQuery.isFetching &&
-    !previewQuery.isDebouncing &&
-    !previewQuery.isError &&
-    previewQuery.data !== undefined &&
-    previewQuery.data.withinRemaining &&
-    previewAmountCents > 0 &&
-    (mode === "full" ? fullHasAmount : partialHasSelection);
+  const canSubmit = canSubmitRefundPreview({
+    submitting,
+    reasonValid,
+    canRefund,
+    hasCurrency: moneyCurrency !== null,
+    previewPending: previewQuery.isPending,
+    previewFetching: previewQuery.isFetching,
+    previewDebouncing: previewQuery.isDebouncing,
+    previewError: previewQuery.isError,
+    previewLoaded: previewQuery.data !== undefined,
+    withinRemaining: previewQuery.data?.withinRemaining === true,
+    previewAmountCents,
+    hasSelection: mode === "full" ? fullHasAmount : partialHasSelection,
+  });
 
   const handleStepperChange = useCallback(
     (ticketTypeId: string, delta: number, max: number): void => {

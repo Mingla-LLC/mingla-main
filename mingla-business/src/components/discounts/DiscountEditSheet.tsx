@@ -23,7 +23,6 @@ import { discountKeys } from "../../services/discountKeys";
 import type {
   BrandDiscount,
   BrandPriceRow,
-  DiscountCombinesWith,
   DiscountDraft,
   DiscountKind,
   DiscountValueType,
@@ -32,6 +31,12 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { DiscountScopePicker } from "./DiscountScopePicker";
+import {
+  canCreateDiscountKind,
+  DISCOUNT_COMBINATION_LABELS,
+  DISCOUNT_KIND_OPTIONS,
+  isDiscountDraftValid,
+} from "./discountUiContract";
 
 const loadDiscountService = () => import("../../services/discountService");
 
@@ -105,12 +110,6 @@ const fromDiscount = (row: BrandDiscount): DiscountDraft => ({
   targets: row.targets,
 });
 
-const CHOICE_LABEL: Record<DiscountCombinesWith, string> = {
-  none: "Nothing else",
-  automatic_only: "Automatic discounts",
-  any: "Any eligible discount",
-};
-
 export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   visible,
   brandId,
@@ -146,20 +145,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
     setDirty(true);
     setError(null);
   };
-  const kindAllowed = draft.kind === "code" || rank >= 30;
-  const valid =
-    draft.name.trim().length > 0 &&
-    kindAllowed &&
-    (draft.kind !== "code" ||
-      /^[A-Z0-9]{4,16}$/.test(
-        (draft.code ?? "").replace(/[\s-]/g, "").toUpperCase(),
-      )) &&
-    (draft.valueType === "percent"
-      ? (draft.valueBps ?? 0) > 0 && (draft.valueBps ?? 0) <= 10000
-      : (draft.valueMinor ?? 0) > 0) &&
-    (draft.scopeKind === "brand" || draft.targets.length > 0) &&
-    (!draft.endsAt ||
-      new Date(draft.endsAt).getTime() > new Date(draft.startsAt).getTime());
+  const valid = isDiscountDraftValid(draft, rank);
 
   const previewQuery = useQuery({
     queryKey: discountKeys.preview(brandId, draft),
@@ -218,7 +204,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   });
 
   const changeKind = (kind: DiscountKind): void => {
-    if (kind !== "code" && rank < 30) return;
+    if (!canCreateDiscountKind(rank, kind)) return;
     setDraft((current) => ({
       ...current,
       kind,
@@ -266,14 +252,15 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
         >
           <Text style={styles.label}>Type</Text>
           <View style={styles.segment}>
-            {(["code", "automatic", "sale_price"] as const).map((kind) => {
-              const disabled = kind !== "code" && rank < 30;
+            {DISCOUNT_KIND_OPTIONS.map(({ kind, label }) => {
+              const disabled = !canCreateDiscountKind(rank, kind);
               return (
                 <Pressable
                   key={kind}
                   disabled={disabled}
                   onPress={() => changeKind(kind)}
                   accessibilityRole="radio"
+                  accessibilityLabel={`${label} discount`}
                   accessibilityState={{
                     checked: draft.kind === kind,
                     disabled,
@@ -290,11 +277,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
                       draft.kind === kind && styles.segmentTextSelected,
                     ]}
                   >
-                    {kind === "code"
-                      ? "Code"
-                      : kind === "automatic"
-                        ? "Automatic"
-                        : "Sale price"}
+                    {label}
                   </Text>
                 </Pressable>
               );
@@ -334,6 +317,10 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
                       set("valueBps", type === "percent" ? 1000 : null);
                       set("valueMinor", type === "amount" ? 1000 : null);
                     }}
+                    accessibilityRole="radio"
+                    accessibilityLabel={
+                      type === "percent" ? "Percent off" : "Amount off"
+                    }
                     style={[
                       styles.segmentButton,
                       draft.valueType === type && styles.segmentSelected,
@@ -393,12 +380,15 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
               onPress={() => set("combinesWith", choice)}
               style={styles.radioRow}
               accessibilityRole="radio"
+              accessibilityLabel={DISCOUNT_COMBINATION_LABELS[choice]}
               accessibilityState={{ checked: draft.combinesWith === choice }}
             >
               <Text style={styles.radioMark}>
                 {draft.combinesWith === choice ? "●" : "○"}
               </Text>
-              <Text style={styles.radioText}>{CHOICE_LABEL[choice]}</Text>
+              <Text style={styles.radioText}>
+                {DISCOUNT_COMBINATION_LABELS[choice]}
+              </Text>
             </Pressable>
           ))}
 

@@ -72,6 +72,10 @@ import { deriveCardStatus } from "../../../app/(tabs)/hub/eventCardStatus";
 import { useAuth } from "../../context/AuthContext";
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { isFeatureEnabled } from "../../config/featureFlags";
+import {
+  canShowDiscountsOperation,
+  DISCOUNTS_OPERATION_COPY,
+} from "../discounts/discountUiContract";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -529,12 +533,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           if (brand !== null) onPricingDefaults(brand.id);
         },
       },
-      ...(discountsEnabled && onDiscounts !== undefined ? [{
+      ...(canShowDiscountsOperation(currentRank, discountsEnabled, onDiscounts) ? [{
         icon: "tag" as const,
-        label: "Discounts",
-        sub: "Codes, automatic discounts and sale prices",
+        label: DISCOUNTS_OPERATION_COPY.label,
+        sub: DISCOUNTS_OPERATION_COPY.sub,
         onPress: () => {
-          if (brand !== null) onDiscounts(brand.id);
+          if (brand !== null) onDiscounts?.(brand.id);
         },
       }] : []),
       {
