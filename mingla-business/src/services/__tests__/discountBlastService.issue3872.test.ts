@@ -8,6 +8,8 @@ const mockEnsureAudience = jest.fn();
 const mockCreateDraft = jest.fn();
 const mockCaptureEvent = jest.fn();
 const mockMaybeSingle = jest.fn();
+const mockBrandIs = jest.fn(() => ({ maybeSingle: mockMaybeSingle }));
+const mockBrandEq = jest.fn(() => ({ is: mockBrandIs }));
 
 jest.mock("../discountService", () => ({
   fetchBrandDiscountById: (...args: unknown[]) => mockFetchDiscount(...args),
@@ -24,7 +26,7 @@ jest.mock("../supabase", () => ({
   supabase: {
     from: jest.fn(() => ({
       select: jest.fn(() => ({
-        eq: jest.fn(() => ({ maybeSingle: mockMaybeSingle })),
+        eq: mockBrandEq,
       })),
     })),
   },
@@ -89,6 +91,8 @@ describe("#3872 discount Blast hand-off", () => {
         discountId: "discount-id",
       }),
     ).resolves.toBe("draft-id");
+    expect(mockBrandEq).toHaveBeenCalledWith("id", "brand-id");
+    expect(mockBrandIs).toHaveBeenCalledWith("deleted_at", null);
     expect(mockEnsureAudience).toHaveBeenCalledWith({
       account_id: "account-id",
       brand_id: "brand-id",

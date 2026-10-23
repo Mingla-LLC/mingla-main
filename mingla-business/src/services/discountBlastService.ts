@@ -57,6 +57,7 @@ export async function createDiscountBlastDraft(input: {
       .from("brands")
       .select("slug")
       .eq("id", input.brandId)
+      .is("deleted_at", null)
       .maybeSingle(),
   ]);
   if (discount === null)
