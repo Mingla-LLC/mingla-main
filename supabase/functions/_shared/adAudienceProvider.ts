@@ -140,7 +140,8 @@ export function buildMetaAudienceRequest(
     path: `act_${accountId}/customaudiences`,
     body: {
       name: required(input.name, "audience_name_missing"),
-      subtype: "WEBSITE",
+      pixel_id: pixelId,
+      prefill: true,
       retention_days: input.definition.windowDays,
       rule: JSON.stringify(rule),
       description: "Mingla automatic paid-social audience · issue #3697",
