@@ -250,7 +250,7 @@ async function assertNoAnalyticsInitialization(page: Page): Promise<void> {
 async function assertFreshConsentOwnership(page: Page): Promise<void> {
   const consent = page.getByLabel("Cookie consent");
   const reject = page.getByRole("button", {
-    name: "Reject cookies and analytics",
+    name: "Opt out of ad tracking",
   });
   await expect(consent).toHaveCount(1);
   await expect(reject).toHaveCount(1);
@@ -297,7 +297,7 @@ for (const topology of ["business-preview", "buyer-host"] as const) {
     await assertNoAnalyticsInitialization(page);
 
     await page
-      .getByRole("button", { name: "Reject cookies and analytics" })
+      .getByRole("button", { name: "Opt out of ad tracking" })
       .click();
     await expect(page.getByLabel("Cookie consent")).toHaveCount(0);
     await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
