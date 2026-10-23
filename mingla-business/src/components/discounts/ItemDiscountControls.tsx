@@ -23,7 +23,6 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
-import { discountKeys } from "../../services/discountKeys";
 import type {
   BrandDiscount,
   BrandPriceRow,
@@ -37,6 +36,11 @@ import {
 import { Button } from "../ui/Button";
 
 const loadDiscountService = () => import("../../services/discountService");
+const DISCOUNT_QUERY_ROOT = "brand-discounts";
+const discountListKey = (brandId: string, state: "live" | "scheduled") =>
+  [DISCOUNT_QUERY_ROOT, "list", brandId, state] as const;
+const discountPricesKey = (brandId: string) =>
+  [DISCOUNT_QUERY_ROOT, "prices", brandId] as const;
 
 const DAYS = [
   [1, "M"],
@@ -100,7 +104,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
   const code = normalizeCurrency(currency);
   const prices = useQuery(
     {
-      queryKey: discountKeys.prices(brandId),
+      queryKey: discountPricesKey(brandId),
       queryFn: async () =>
         (await loadDiscountService()).fetchBrandPrices(brandId),
       enabled: hasQueryClient,
@@ -109,7 +113,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
   );
   const live = useQuery(
     {
-      queryKey: discountKeys.list(brandId, "live"),
+      queryKey: discountListKey(brandId, "live"),
       queryFn: async () =>
         (await loadDiscountService()).fetchBrandDiscounts(brandId, "live"),
       enabled: hasQueryClient,
@@ -118,7 +122,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
   );
   const scheduled = useQuery(
     {
-      queryKey: discountKeys.list(brandId, "scheduled"),
+      queryKey: discountListKey(brandId, "scheduled"),
       queryFn: async () =>
         (await loadDiscountService()).fetchBrandDiscounts(brandId, "scheduled"),
       enabled: hasQueryClient,
@@ -169,7 +173,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
   }, [code, existingSale, priceRow]);
 
   const refresh = async (): Promise<void> => {
-    await client.invalidateQueries({ queryKey: discountKeys.all });
+    await client.invalidateQueries({ queryKey: [DISCOUNT_QUERY_ROOT] });
   };
   const allowMutation = useMutation(
     {

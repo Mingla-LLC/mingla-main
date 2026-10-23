@@ -14,8 +14,14 @@ Deno.test("staff reply requires a persisted next-update promise", () => {
 
 Deno.test("the promise gate rejects missing or expired promises without blocking a requester adding context", () => {
   const gate = source.indexOf("if (senderIsStaff && (!Number.isFinite(nextUpdateMs) || nextUpdateMs <= Date.now()))");
-  const requester = source.indexOf("const isRequester = ticket.requester_user_id === user.id");
-  assert(requester >= 0 && gate > requester);
+  // [TEST-MOD-APPROVED #3988] Brand-visible tickets intentionally extend the
+  // requester role to active brand members. Bind the gate ordering to the
+  // direct-or-brand union instead of the retired direct-only declaration.
+  const directRequester = source.indexOf("const isDirectRequester = ticket.requester_user_id === user.id");
+  const requester = source.indexOf("const isRequester = isDirectRequester || isBrandRequester");
+  assert(directRequester >= 0 && requester > directRequester && gate > requester);
+  assertStringIncludes(source, 'if (ticket.audience === "brand" && ticket.brand_id)');
+  assertStringIncludes(source, "isBrandRequester = membership !== null");
   assertStringIncludes(source, "nextUpdateMs <= Date.now()");
   assert(!/isRequester\s*&&\s*!Number\.isFinite/.test(source));
 });

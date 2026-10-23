@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "admin-ad-audiences",
+  "verify_jwt": false,
+  "gateway_reason": "Daily audience sync authenticates the service-role bearer in code; list and refresh independently require an active admin JWT.",
+  "env": {
+    "required_top_level": [],
+    "optional_top_level": [],
+    "migration_fallback_top_level": [],
+    "required_bundle_fields": {}
+  }
+}

@@ -646,6 +646,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             : {};
         const result = await createTicketCheckout({
           eventId,
+          brandId: event?.brandId ?? brand?.id,
           ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
           buyer,
           lines,
@@ -847,6 +848,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     cartResult,
     ticketLinkToken,
     checkoutAttemptIdFor,
+    brand?.id,
+    event?.brandId,
     recordResult,
     router,
   ]);

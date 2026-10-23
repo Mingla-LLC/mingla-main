@@ -58,7 +58,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
-import { canShowTicketTierDiscountControls } from "../discounts/discountUiContract";
+import { canShowTicketTierDiscountControls } from "../discounts/ticketTierDiscountContract";
 
 const TicketLinksSheet = React.lazy(() =>
   import("../guests/TicketLinksSheet").then((module) => ({
@@ -375,7 +375,11 @@ interface TicketSheetTouched {
   capacity: boolean;
 }
 
-const UNTOUCHED: TicketSheetTouched = { name: false, price: false, capacity: false };
+const UNTOUCHED: TicketSheetTouched = {
+  name: false,
+  price: false,
+  capacity: false,
+};
 
 /** issue #3350 — one reason Save is disabled; `revealed` = shown as an error. */
 interface SaveBlocker {
@@ -722,9 +726,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     saveBlockers.push({ message, revealed });
   };
   if (name.trim().length === 0) block("Give this ticket a name.", touched.name);
-  if (priceInvalid) block("Enter a valid price, or mark it free.", touched.price);
+  if (priceInvalid)
+    block("Enter a valid price, or mark it free.", touched.price);
   if (capacityInvalid) {
-    block("Enter a capacity above zero, or mark it unlimited.", touched.capacity);
+    block(
+      "Enter a capacity above zero, or mark it unlimited.",
+      touched.capacity,
+    );
   }
   if (capacityBelowSold) {
     block(
@@ -831,7 +839,12 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       // iOS: track temp value; commit on Done.
       if (selected !== undefined) setSalePickerTemp(selected);
     },
-    [salePickerMode, saleAndroidStep, saleAndroidDatePart, commitSalePickerValue],
+    [
+      salePickerMode,
+      saleAndroidStep,
+      saleAndroidDatePart,
+      commitSalePickerValue,
+    ],
   );
 
   const handleCloseSalePicker = useCallback((): void => {
@@ -1183,7 +1196,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   onBlur={() => setTouched((t) => ({ ...t, capacity: true }))}
                   style={styles.textInput}
                   accessibilityLabel={
-                    capacityPerNight ? "Ticket capacity per night" : "Ticket capacity"
+                    capacityPerNight
+                      ? "Ticket capacity per night"
+                      : "Ticket capacity"
                   }
                 />
               </View>
@@ -1226,7 +1241,10 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             </Pressable>
           </View>
 
-          {privateLinksEnabled && initial !== null && visibility === "hidden" && eventId !== null ? (
+          {privateLinksEnabled &&
+          initial !== null &&
+          visibility === "hidden" &&
+          eventId !== null ? (
             <Pressable
               onPress={() => setPrivateLinksVisible(true)}
               accessibilityRole="button"
@@ -1235,7 +1253,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             >
               <View style={styles.pickerTextWrap}>
                 <Text style={styles.fieldLabel}>Private links</Text>
-                <Text style={styles.helperHint}>Create, copy, reset or revoke access to this hidden ticket.</Text>
+                <Text style={styles.helperHint}>
+                  Create, copy, reset or revoke access to this hidden ticket.
+                </Text>
               </View>
               <Icon name="chevR" size={16} color={textTokens.tertiary} />
             </Pressable>

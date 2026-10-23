@@ -19,6 +19,7 @@ import {
 import { readBundleHideRemainingCount } from "@mingla/offering-rendering/remainingCountVisibility";
 
 import { supabase } from "./supabase";
+import type { PublicTierPricing } from "./publicTierPricingService";
 // issue #2160 — the shared occurrence shape. The direct `event_dates` READ in
 // that module is deleted; only the TYPE survives, because it is the contract
 // the day chooser renders.
@@ -435,7 +436,6 @@ export type PublicBrandRecord = Brand;
 export type PublicEventRecord = LiveEvent & {
   terminalSource: EventTerminalSource;
   displaySalePriceCents?: number | null;
-  displaySaleEndsAt?: string | null;
 };
 
 /** issue #2160 — the organiser's per-event multi-day pricing choice. */
@@ -836,7 +836,7 @@ const publicBrandCore = (
     displayName,
     slug,
     role: "owner" as const,
-    stats: { events, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+    stats: { events, rev: 0, rev7d: 0, attendees: 0 },
     currentLiveEvent: null,
     bio,
     tagline,
@@ -1356,7 +1356,6 @@ export const publicEventViewRowToEvent = (
     // ORCH-1006 Slice 3 — server-computed all-in lowest-tier price (cents).
     displayPriceCents: row.display_price_cents ?? null,
     displaySalePriceCents: row.display_sale_price_cents ?? null,
-    displaySaleEndsAt: row.display_sale_ends_at ?? null,
     displayCurrency: row.pricing_currency ?? null,
     tickets,
     visibility: asVisibility(row.visibility),
@@ -1534,45 +1533,17 @@ export const fetchCanonicalEventBodyFields = async (
   };
 };
 
-export interface PublicTierPricing {
-  allInCents: number | null;
-  saleBaseCents: number | null;
-  saleAllInCents: number | null;
-  saleEndsAt: string | null;
-  saleName: string | null;
-  saleRemaining: number | null;
-}
-
+export type { PublicTierPricing } from "./publicTierPricingService";
 export const fetchTierPricingCents = async (
   eventId: string,
 ): Promise<Map<string, PublicTierPricing>> => {
-  const map = new Map<string, PublicTierPricing>();
   const { data, error } = await supabase.rpc("pg_public_event_tier_pricing", {
     p_event_id: eventId,
   });
-  if (error !== null || !Array.isArray(data)) return map;
-  for (const row of data as Array<{
-    ticket_type_id?: string;
-    all_in_cents?: number;
-    sale_base_cents?: number | null;
-    sale_all_in_cents?: number | null;
-    sale_ends_at?: string | null;
-    sale_name?: string | null;
-    sale_remaining?: number | null;
-  }>) {
-    if (row?.ticket_type_id != null) {
-      map.set(row.ticket_type_id, {
-        allInCents:
-          typeof row.all_in_cents === "number" ? row.all_in_cents : null,
-        saleBaseCents: row.sale_base_cents ?? null,
-        saleAllInCents: row.sale_all_in_cents ?? null,
-        saleEndsAt: row.sale_ends_at ?? null,
-        saleName: row.sale_name ?? null,
-        saleRemaining: row.sale_remaining ?? null,
-      });
-    }
-  }
-  return map;
+  if (error !== null || !Array.isArray(data)) return new Map();
+  return import("./publicTierPricingService").then((module) =>
+    module.mapPublicTierPricingRows(data),
+  );
 };
 
 export const fetchTierAllInCents = async (
@@ -2353,45 +2324,13 @@ export const fetchPublicBrandEvents = async (
     ({ row, paidOnline }) => !paidOnline || readyBrandIds.has(row.brand_id),
   );
 
-  const saleResult = await supabase.rpc("pg_public_event_display_prices", {
-    p_event_ids: visible
-      .filter(({ row }) => row.event_type === "event")
-      .map(({ row }) => row.id),
-  });
-  if (saleResult?.error) throw saleResult.error;
-  const saleByEventId = new Map<
-    string,
-    {
-      display_price_cents: number | null;
-      display_sale_price_cents: number | null;
-      display_sale_ends_at: string | null;
-    }
-  >(
-    (
-      (saleResult?.data ?? []) as Array<{
-        event_id: string;
-        display_price_cents: number | null;
-        display_sale_price_cents: number | null;
-        display_sale_ends_at: string | null;
-      }>
-    ).map((price) => [price.event_id, price]),
+  const pricedRows = await import("./publicEventDisplayPricesService").then(
+    (module) => module.addPublicEventDisplayPrices(visible),
   );
 
-  return visible.map(({ row, tickets, terminalSource }) => {
-    const sale = saleByEventId.get(row.id);
-    return publicEventViewRowToEvent(
-      sale === undefined
-        ? row
-        : {
-            ...row,
-            display_price_cents: sale.display_price_cents,
-            display_sale_price_cents: sale.display_sale_price_cents,
-            display_sale_ends_at: sale.display_sale_ends_at,
-          },
-      tickets,
-      terminalSource,
-    );
-  });
+  return pricedRows.map(({ row, tickets, terminalSource }) =>
+    publicEventViewRowToEvent(row, tickets, terminalSource),
+  );
 };
 
 // ORCH-0963 + META-ORCH-0972 — anon-callable bulk public-trips by brand.

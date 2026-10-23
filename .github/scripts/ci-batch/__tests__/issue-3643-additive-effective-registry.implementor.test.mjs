@@ -158,16 +158,15 @@ test("a synthetic additive suite passes the full production loader, validator, r
   assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 241);
   assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 241);
   assert.equal(views.patchedBootstrap.legacyOrigins.length, 201);
-  // [TEST-MOD-APPROVED #3643] Effective totals now derive from the sealed
-  // projection plus this exact local descriptor, so future descriptors do not
-  // require another count edit.
-  assert.equal(manifest.suites.length, views.patchedBootstrap.suites.length + 1);
+  // [TEST-MOD-APPROVED #3682] Effective totals derive from the sealed
+  // projection plus every trusted local descriptor, including this fixture.
+  const localSuites = manifest.suites.filter((suite) => suite.localDescriptor);
+  const localCommands = localSuites.reduce((sum, suite) => sum + suite.steps.length, 0);
+  assert.equal(manifest.suites.length, views.patchedBootstrap.suites.length + localSuites.length);
   assert.equal(
     manifest.commandCapabilities.commands.length,
-    views.patchedBootstrap.commandCapabilities.commands.length + 1,
+    views.patchedBootstrap.commandCapabilities.commands.length + localCommands,
   );
-  assert.equal(manifest.suites.at(-1).id, LOCAL_ID);
-  assert.equal(manifest.commandCapabilities.commands.at(-1).id, LOCAL_COMMAND_ID);
   assert.equal(manifest.suites.filter((suite) => suite.id === LOCAL_ID).length, 1);
   assert.equal(manifest.commandCapabilities.commands.filter((command) => command.id === LOCAL_COMMAND_ID).length, 1);
 
@@ -224,12 +223,14 @@ test("generic governance and Jest reachability consume the synthetic additive su
   assert.deepEqual(governed.errors, []);
   const governedViews = trustedRegistryViews(governed.manifest);
   assert.ok(governedViews);
-  // [TEST-MOD-APPROVED #3643] The generic-consumer assertion follows the same
-  // sealed-projection-plus-fixture authority instead of a mutable effective total.
-  assert.equal(governed.manifest.suites.length, governedViews.patchedBootstrap.suites.length + 1);
+  // [TEST-MOD-APPROVED #3682] The generic consumer follows the same sealed
+  // projection plus all trusted local descriptors, not one assumed fixture.
+  const governedLocalSuites = governed.manifest.suites.filter((suite) => suite.localDescriptor);
+  const governedLocalCommands = governedLocalSuites.reduce((sum, suite) => sum + suite.steps.length, 0);
+  assert.equal(governed.manifest.suites.length, governedViews.patchedBootstrap.suites.length + governedLocalSuites.length);
   assert.equal(
     governed.manifest.commandCapabilities.commands.length,
-    governedViews.patchedBootstrap.commandCapabilities.commands.length + 1,
+    governedViews.patchedBootstrap.commandCapabilities.commands.length + governedLocalCommands,
   );
   assert.equal(governed.manifest.suites.filter((suite) => suite.id === LOCAL_ID).length, 1);
 
@@ -383,7 +384,12 @@ test("untrusted additions and weakened bootstrap ratchets fail the production va
   assert.ok(validateRegistry(changedPrimaryVector, { root: ROOT }).some((error) => /effective primary lane/.test(error)));
 
   const removedBootstrapCommand = loadEffectiveManifest({ root: ROOT });
-  removedBootstrapCommand.commandCapabilities.commands.pop();
+  const removedBootstrapViews = trustedRegistryViews(removedBootstrapCommand);
+  assert.ok(removedBootstrapViews);
+  const bootstrapCommandId = removedBootstrapViews.patchedBootstrap.commandCapabilities.commands.at(-1).id;
+  const bootstrapCommandIndex = removedBootstrapCommand.commandCapabilities.commands.findIndex((command) => command.id === bootstrapCommandId);
+  assert.notEqual(bootstrapCommandIndex, -1);
+  removedBootstrapCommand.commandCapabilities.commands.splice(bootstrapCommandIndex, 1);
   assert.ok(validateRegistry(removedBootstrapCommand, { root: ROOT }).some((error) => /patched bootstrap exactly|command prefixes/.test(error)));
 
   const missingCapability = structuredClone(bootstrap);

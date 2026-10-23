@@ -17,7 +17,7 @@ import {
   DISCOUNT_LISTING_KIND_OPTIONS,
   hasOrphanedDiscountTarget,
   isDiscountPriceSelectable,
-} from "./discountUiContract";
+} from "./discountEditorContract";
 
 export interface DiscountScopePickerProps {
   scopeKind: DiscountScopeKind;

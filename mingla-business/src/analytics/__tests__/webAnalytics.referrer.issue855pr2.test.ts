@@ -75,8 +75,10 @@ function loadHarness(locationSearch = "", referrer = ""): Harness {
     init?: RequestInit,
   ) => {
     fetchCalls.push({ url: String(url), body: String((init ?? {}).body ?? "") });
-    clickSeq += 1;
-    const clickId = `srv-click-${clickSeq}`;
+    const isTouch = String(url).includes("/attribution-capture") &&
+      String((init ?? {}).body ?? "").includes('\"kind\":\"touch\"');
+    if (isTouch) clickSeq += 1;
+    const clickId = isTouch ? `srv-click-${clickSeq}` : null;
     return Promise.resolve({
       ok: true,
       json: () => Promise.resolve({ ok: true, click_id: clickId }),

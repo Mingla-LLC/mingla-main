@@ -73,6 +73,10 @@ import {
   type ThemePalette,
 } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
+import {
+  PresentedByFollowerCount,
+  type FollowerCountLabels,
+} from "./PresentedByFollowerCount";
 // ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
 import { taxonomyLabel } from "./taxonomyLabels";
 import {
@@ -106,7 +110,6 @@ import {
   eventAcquisitionNoticeCopy,
   type EventAcquisitionState,
 } from "./eventAcquisitionLifecycle";
-import { saleAvailabilityCopy } from "./saleAvailabilityCopy";
 
 import { normalizeCityCountry } from "./normalizeCityCountry";
 // issue #2468 — the ONE privacy gate + label composer for this card. The maps
@@ -128,7 +131,10 @@ import { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 // #3284 — section 9: the shared refund ladder + the three-state read it is gated on.
 // #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
 // import ./OfferingRefundLadder statically here.
-import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
+import {
+  LazyOfferingRefundLadder as OfferingRefundLadder,
+  LazySaleAvailabilityText,
+} from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
 
 // Re-export the pure totals so a single import surface stays one place.
@@ -314,6 +320,10 @@ export interface EventOfferingBodyProps {
    * identity-only (host preview / no follow callback).
    */
   presentedByFollow?: React.ReactNode;
+  /** #3682 — server count for the Presented-by card; unavailable stays hidden. */
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
   /** issue #2468 — carries the stored coordinate, not just the text label.
    *  issue #2508 — plus the app the guest picked (undefined ⇒ nothing asked). */
   onOpenMaps?: (target: MapsOpenTarget, app?: MapsAppId) => void;
@@ -412,6 +422,9 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   onProceedToCart,
   onOpenBrand,
   presentedByFollow,
+  presentedByFollowerCount,
+  presentedByFollowerCountLoading = false,
+  presentedByFollowerCountLabels,
   onOpenMaps,
   onCopyAddress,
   staticMapUrl = null,
@@ -769,6 +782,13 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               >
                 {brand?.displayName ?? "Brand"}
               </Text>
+              <PresentedByFollowerCount
+                count={presentedByFollowerCount}
+                loading={presentedByFollowerCountLoading}
+                labels={presentedByFollowerCountLabels}
+                palette={palette}
+                testID="event-presented-by-follower-count"
+              />
             </View>
             {presentedByFollow === undefined && onOpenBrand !== undefined ? (
               <Text style={[styles.brandCta, { color: palette.accent }]}>
@@ -1386,11 +1406,6 @@ const TicketStepperRow: React.FC<{
   const canDecrement = quantity > 0;
 
   const capacityLabel = ticketAvailabilityCaption(ticket, hideRemainingCount);
-  const saleAvailability =
-    listPriceLabel === null
-      ? null
-      : saleAvailabilityCopy(ticket.saleRemaining, ticket.saleEndsAt);
-
   return (
     <View
       style={[
@@ -1417,11 +1432,12 @@ const TicketStepperRow: React.FC<{
         <Text style={[styles.tierCap, surface.tertiaryText]}>
           {stateWord ?? capacityLabel}
         </Text>
-        {saleAvailability !== null ? (
-          <Text style={[styles.saleAvailability, { color: palette.accent }]}>
-            {saleAvailability}
-          </Text>
-        ) : null}
+        <LazySaleAvailabilityText
+          active={listPriceLabel !== null}
+          remaining={ticket.saleRemaining}
+          endsAt={ticket.saleEndsAt}
+          style={[styles.saleAvailability, { color: palette.accent }]}
+        />
       </View>
 
       <View style={styles.stepperRight}>

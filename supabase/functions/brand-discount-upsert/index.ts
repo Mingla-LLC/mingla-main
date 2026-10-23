@@ -57,16 +57,19 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 export function createDiscountUpsertHandler(deps: DiscountUpsertDeps) {
   return async (req: Request): Promise<Response> => {
-    if (req.method === "OPTIONS")
+    if (req.method === "OPTIONS") {
       return new Response("ok", { headers: ticketCorsHeaders });
-    if (req.method !== "POST")
+    }
+    if (req.method !== "POST") {
       return json(
         { error: "method_not_allowed", detail: "method_not_allowed" },
         405,
       );
+    }
     const actor = await deps.actorId(req);
-    if (!actor)
+    if (!actor) {
       return json({ error: "unauthorized", detail: "unauthorized" }, 401);
+    }
 
     let body: unknown;
     try {

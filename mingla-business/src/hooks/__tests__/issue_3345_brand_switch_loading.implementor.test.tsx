@@ -344,6 +344,11 @@ jest.mock("../../components/brand/BrandDeleteSheet", () => ({ BrandDeleteSheet: 
 jest.mock("../../components/brand/BrandSwitcherSheet", () => ({ BrandSwitcherSheet: () => null }));
 jest.mock("../../components/home/BusinessTodoToggle", () => ({ BusinessTodoToggle: () => null }));
 jest.mock("../../components/home/AnalyticsHomeTile", () => ({ AnalyticsHomeTile: () => null }));
+// [TEST-MOD-APPROVED #3682] Harness registration only — the follower tile is
+// another Home leaf, outside this suite's current-brand loading-state contract.
+jest.mock("../../components/home/FollowersHomeTile", () => ({
+  FollowersHomeTile: () => null,
+}));
 jest.mock("../../components/home/HomeAdsSection", () => ({ HomeAdsSection: () => null }));
 jest.mock("../../components/home/LiveOfferingCard", () => ({ LiveOfferingCard: () => null }));
 jest.mock("../../components/home/RecentRow", () => ({ RecentRow: () => null }));

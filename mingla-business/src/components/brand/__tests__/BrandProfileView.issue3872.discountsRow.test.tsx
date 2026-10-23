@@ -2,7 +2,7 @@ import { describe, expect, jest, test } from "@jest/globals";
 import {
   canShowDiscountsOperation,
   DISCOUNTS_OPERATION_COPY,
-} from "../../discounts/discountUiContract";
+} from "../../discounts/discountOperationContract";
 
 describe("BrandProfileView discounts entry", () => {
   test("stays absent below rank 20, on access failure, and when the flag is off", () => {

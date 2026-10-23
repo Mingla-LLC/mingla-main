@@ -77,6 +77,7 @@ import {
   setStepState,
   templatesCreativeKind,
 } from "../lib/adBuilder/housePlanPath";
+import { stageMetricView } from "../lib/adStageCampaignView";
 
 /** #3697: the platforms, video-ness and next action of one recovery item. */
 function recoveryPlanFacts(item) {
@@ -1334,7 +1335,27 @@ export function CampaignsPage({ embedded = false }) {
                         {adSet.optimization_goal}
                       </span>
                     )}
+                    {adSet.stage && <Badge variant="brand">{stageMetricView(adSet).label}</Badge>}
                   </div>
+                  {adSet.stage && (() => {
+                    const metrics = stageMetricView(adSet);
+                    const money = (cents) => metrics.currency
+                      ? formatCampaignMoney(metrics.currency, cents)
+                      : "—";
+                    return (
+                      <div className="grid grid-cols-2 gap-2 rounded-lg bg-[var(--gray-50)] p-2 text-xs md:grid-cols-4">
+                        <div><span className="block text-[var(--color-text-tertiary)]">Spend</span><b>{money(metrics.spendCents)}</b></div>
+                        <div><span className="block text-[var(--color-text-tertiary)]">Results</span><b>{metrics.results.toLocaleString()}</b></div>
+                        <div><span className="block text-[var(--color-text-tertiary)]">Cost / sale</span><b>{metrics.costPerResultCents == null ? "—" : money(metrics.costPerResultCents)}</b></div>
+                        <div><span className="block text-[var(--color-text-tertiary)]">Frequency</span><b>{metrics.frequency.toFixed(2)}</b></div>
+                        {metrics.audienceTooSmallCodes.length > 0 && (
+                          <p className="col-span-full text-[var(--color-warning-700)]">
+                            Audience too small: {metrics.audienceTooSmallCodes.join(", ")}. Its budget belongs in prospecting.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {(adSet.ads ?? []).map((ad) => {
                     const cards = mapReviewDetail({
                       platform: detail.platform,

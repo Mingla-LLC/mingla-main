@@ -673,7 +673,7 @@ export function PeoplePage(): React.ReactElement {
               style={isWideDesktop ? styles.groupsColumnWide : styles.compactColumn}
             >
               {circleFollowers.kind!=="featureLoading"&&circleFollowers.kind!=="featureOff"?<>
-                <CircleReachBlock ring="follower" openerRef={followerCircleOpenerRef} query={circleFollowers} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"follower",dependencyState:"ready"});setCircleOpen("follower")}}/>
+                <CircleReachBlock ring="follower" openerRef={followerCircleOpenerRef} query={circleFollowers} brandId={brand?.id ?? null} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"follower",dependencyState:"ready"});setCircleOpen("follower")}}/>
                 <CircleReachBlock ring="extended" openerRef={extendedCircleOpenerRef} query={circleExtended} width={width} onSeeAll={()=>{capturePeople("people_circle_sheet_opened",{surface:"circle_sheet",circleRing:"extended",dependencyState:"ready"});setCircleOpen("extended")}}/>
               </>:null}
               <PeopleBlock

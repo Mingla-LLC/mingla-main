@@ -4,56 +4,85 @@ const BUSINESS = 'http://127.0.0.1:43172'
 const MARKETING = 'http://127.0.0.1:43171'
 const CONSENT_KEY = 'mingla_consent_v1'
 
-const FORBIDDEN_REQUEST = /posthog|us\.i\.posthog\.com|us-assets\.i\.posthog\.com|googletagmanager\.com|google-analytics\.com|doubleclick|connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com|attribution-capture/i
-const FORBIDDEN_STORAGE = /^(ph_|_ga|_gcl|_fbp|_ttp|_scid|rdt_|mingla_ad_click_v1)/i
+const ANALYTICS_REQUEST = /posthog|us\.i\.posthog\.com|us-assets\.i\.posthog\.com|googletagmanager\.com|google-analytics\.com|doubleclick/i
+const AD_REQUEST = /connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com|attribution-capture/i
+const STRIPE_MODE_REQUEST = /\/functions\/v1\/stripe-mode(?:[/?#]|$)/
+const ANALYTICS_STORAGE = /^(ph_|_ga|_gcl)/i
+const AD_STORAGE = /^(_fbp|_fbc|_ttp|_scid|rdt_|mingla_ad_click_v1)/i
 
-async function observe(page: Page): Promise<string[]> {
-  const forbidden: string[] = []
+interface TrackingRequests {
+  analytics: string[]
+  ads: string[]
+}
+
+async function observe(page: Page): Promise<TrackingRequests> {
+  const requests: TrackingRequests = { analytics: [], ads: [] }
   await page.route('**/*', async (route) => {
     const url = route.request().url()
-    if (FORBIDDEN_REQUEST.test(url)) {
-      forbidden.push(url)
+    // [TEST-MOD-APPROVED #3988] This analytics oracle must not inherit the
+    // live backend's Stripe mode. CI exports a pk_test_ fixture; a successful
+    // live stripe-mode response makes the unrelated boot handshake replace
+    // the consent UI with the fatal boundary. The adversarial #2771 oracle
+    // already aborts this same transport, which is fail-soft by contract.
+    if (STRIPE_MODE_REQUEST.test(url)) {
+      await route.abort()
+      return
+    }
+    if (ANALYTICS_REQUEST.test(url) || AD_REQUEST.test(url)) {
+      if (ANALYTICS_REQUEST.test(url)) requests.analytics.push(url)
+      if (AD_REQUEST.test(url)) requests.ads.push(url)
       await route.abort()
       return
     }
     await route.continue()
   })
-  return forbidden
+  return requests
 }
 
-async function analyticsStorage(context: BrowserContext, page: Page): Promise<string[]> {
+async function trackingStorage(
+  context: BrowserContext,
+  page: Page,
+  pattern: RegExp,
+): Promise<string[]> {
   const cookies = (await context.cookies()).map((cookie) => cookie.name)
   const storage = await page.evaluate(() => [
     ...Object.keys(window.localStorage),
     ...Object.keys(window.sessionStorage),
   ])
-  return [...cookies, ...storage].filter((key) => FORBIDDEN_STORAGE.test(key))
+  return [...cookies, ...storage].filter((key) => pattern.test(key))
 }
 
-async function vendorScripts(page: Page): Promise<string[]> {
+async function trackingScripts(page: Page, pattern: RegExp): Promise<string[]> {
   return page.locator('script[src]').evaluateAll((nodes, pattern) => {
     const forbidden = new RegExp(pattern, 'i')
     return nodes
       .map((node) => (node as HTMLScriptElement).src)
       .filter((src) => forbidden.test(src))
-  }, FORBIDDEN_REQUEST.source)
+  }, pattern.source)
 }
 
 test.describe('#2771 actual network and storage boundary', () => {
   for (const surface of [
-    { name: 'Business/Buyer', url: BUSINESS, accept: 'Accept cookies and analytics', reject: 'Reject cookies and analytics', waitsForNetworkIdle: false },
-    { name: 'Marketing', url: MARKETING, accept: 'Accept all', reject: 'Reject', waitsForNetworkIdle: true },
+    { name: 'Business/Buyer', url: BUSINESS, accept: 'OK', reject: 'Opt out of ad tracking', arrivalAds: true, waitsForNetworkIdle: false },
+    { name: 'Marketing', url: MARKETING, accept: 'Accept all', reject: 'Reject', arrivalAds: false, waitsForNetworkIdle: true },
   ]) {
-    test(`${surface.name}: pending stays dark`, async ({ browser }) => {
+    test(`${surface.name}: arrival policy preserves the analytics boundary`, async ({ browser }) => {
       const pendingContext = await browser.newContext()
       const pendingPage = await pendingContext.newPage()
       const pendingRequests = await observe(pendingPage)
       await pendingPage.goto(surface.url, { waitUntil: 'domcontentloaded' })
       if (surface.waitsForNetworkIdle) await pendingPage.waitForLoadState('networkidle')
       await expect(pendingPage.getByRole('button', { name: surface.reject, exact: true })).toBeVisible()
-      expect(pendingRequests).toEqual([])
-      expect(await vendorScripts(pendingPage)).toEqual([])
-      expect(await analyticsStorage(pendingContext, pendingPage)).toEqual([])
+      expect(pendingRequests.analytics).toEqual([])
+      expect(await trackingScripts(pendingPage, ANALYTICS_REQUEST)).toEqual([])
+      expect(await trackingStorage(pendingContext, pendingPage, ANALYTICS_STORAGE)).toEqual([])
+      if (surface.arrivalAds) {
+        await expect.poll(() => pendingRequests.ads.length).toBeGreaterThan(0)
+      } else {
+        expect(pendingRequests.ads).toEqual([])
+        expect(await trackingScripts(pendingPage, AD_REQUEST)).toEqual([])
+        expect(await trackingStorage(pendingContext, pendingPage, AD_STORAGE)).toEqual([])
+      }
       await pendingContext.close()
     })
 
@@ -63,14 +92,19 @@ test.describe('#2771 actual network and storage boundary', () => {
       const rejectRequests = await observe(rejectPage)
       await rejectPage.goto(surface.url, { waitUntil: 'domcontentloaded' })
       if (surface.waitsForNetworkIdle) await rejectPage.waitForLoadState('networkidle')
+      if (surface.arrivalAds) await expect.poll(() => rejectRequests.ads.length).toBeGreaterThan(0)
+      const arrivalRequestCount = rejectRequests.ads.length
       const rejectButton = rejectPage.getByRole('button', { name: surface.reject, exact: true })
       await expect(rejectButton).toBeVisible()
       await rejectButton.dispatchEvent('click')
       await expect.poll(() => rejectPage.evaluate((key) => window.localStorage.getItem(key), CONSENT_KEY)).toContain('denied')
       await rejectPage.reload({ waitUntil: 'domcontentloaded' })
-      expect(rejectRequests).toEqual([])
-      expect(await vendorScripts(rejectPage)).toEqual([])
-      expect(await analyticsStorage(rejectContext, rejectPage)).toEqual([])
+      await rejectPage.waitForTimeout(500)
+      expect(rejectRequests.analytics).toEqual([])
+      expect(rejectRequests.ads).toHaveLength(arrivalRequestCount)
+      expect(await trackingScripts(rejectPage, ANALYTICS_REQUEST)).toEqual([])
+      expect(await trackingStorage(rejectContext, rejectPage, ANALYTICS_STORAGE)).toEqual([])
+      expect(await trackingStorage(rejectContext, rejectPage, AD_STORAGE)).toEqual([])
       await rejectContext.close()
     })
 
@@ -83,7 +117,7 @@ test.describe('#2771 actual network and storage boundary', () => {
       const acceptButton = acceptPage.getByRole('button', { name: surface.accept, exact: true })
       await expect(acceptButton).toBeVisible()
       await acceptButton.dispatchEvent('click')
-      await expect.poll(() => acceptedRequests.length).toBeGreaterThan(0)
+      await expect.poll(() => acceptedRequests.analytics.length).toBeGreaterThan(0)
       const stored = await acceptPage.evaluate((key) => window.localStorage.getItem(key), CONSENT_KEY)
       expect(stored).toContain('granted')
       await acceptContext.close()
@@ -103,9 +137,11 @@ test.describe('#2771 actual network and storage boundary', () => {
     const forbidden = await observe(page)
     await page.goto(`${MARKETING}/links`, { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('dialog', { name: 'Cookie consent' })).toHaveCount(0)
-    expect(forbidden).toEqual([])
-    expect(await vendorScripts(page)).toEqual([])
-    expect(await analyticsStorage(context, page)).toEqual([])
+    expect(forbidden).toEqual({ analytics: [], ads: [] })
+    expect(await trackingScripts(page, ANALYTICS_REQUEST)).toEqual([])
+    expect(await trackingScripts(page, AD_REQUEST)).toEqual([])
+    expect(await trackingStorage(context, page, ANALYTICS_STORAGE)).toEqual([])
+    expect(await trackingStorage(context, page, AD_STORAGE)).toEqual([])
     await context.close()
   })
 })

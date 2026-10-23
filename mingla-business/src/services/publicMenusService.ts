@@ -45,13 +45,6 @@ export interface MenuItemPublicRow {
   service_days?: number[] | null;
 }
 
-interface MenuSaleRow {
-  menu_item_id: string;
-  sale_price_cents: number | null;
-  sale_ends_at: string | null;
-  sale_name: string | null;
-}
-
 const PUBLIC_MENU_SELECT =
   "id, menu_id, brand_id, brand_slug, venue_id, venue_slug, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order, allows_notes, service_window_start, service_window_end, service_days";
 
@@ -102,17 +95,12 @@ export const fetchPublicMenuBundle = async (
     .order("item_sort_order", { ascending: true });
   if (error !== null) throw error;
   const venueId = ((data ?? [])[0] as MenuItemPublicRow | undefined)?.venue_id;
-  const saleResult = typeof venueId === "string"
-    ? await supabase.rpc("pg_public_menu_item_sales", { p_venue_id: venueId })
-    : { data: [], error: null };
-  const salesByItemId = new Map<string, MenuSaleRow>(
-    saleResult.error === null && Array.isArray(saleResult.data)
-      ? (saleResult.data as MenuSaleRow[]).map((sale) => [
-        sale.menu_item_id,
-        sale,
-      ])
-      : [],
-  );
+  const salesByItemId =
+    typeof venueId === "string"
+      ? await import("./publicMenuSalesService").then((module) =>
+          module.fetchPublicMenuSales(venueId),
+        )
+      : new Map();
 
   const groups: PublicMenuGroup[] = [];
   const windows: Record<string, PublicMenuWindow> = {};

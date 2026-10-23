@@ -13,8 +13,8 @@
 // Invariant I-ADS-FIT-ONE-MATRIX (declared in supabase/functions/_shared/__tests__/adCreativeFit.issue3040.test.ts)
 import type { Platform } from "./adChannelCore.ts";
 import {
-  type CreativeFitRow,
   creativeFitFacts,
+  type CreativeFitRow,
   summarizeCreativeFit,
 } from "./adCreativeFit.ts";
 import {
@@ -46,7 +46,7 @@ export const IN_FLIGHT_AD_JOB_STATUSES = [
 
 /** The creative columns the library, the fit and the gates read. */
 export const LIBRARY_CREATIVE_COLUMNS =
-  "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,width,height,has_audio,mime_type,byte_size,ai_generated,variants,brand_id,source,source_brand_id,source_job_id,source_job_ref,rendition_height,created_by,archived_at,archived_by,purged_at,created_at,updated_at";
+  "id,name,kind,status,source_url,poster_url,duration_seconds,aspect_ratio,width,height,has_audio,mime_type,byte_size,ai_generated,variants,brand_id,source,source_brand_id,source_job_id,source_job_ref,rendition_height,stage_tags,concept_tag,hook_tag,event_id,licence_reference,date_locked_until,created_by,archived_at,archived_by,purged_at,created_at,updated_at";
 export const FIT_CREATIVE_COLUMNS =
   "id,kind,status,purged_at,mime_type,width,height,aspect_ratio,duration_seconds,has_audio,byte_size,poster_url,variants";
 
@@ -59,6 +59,7 @@ export type LibraryFilters = {
   /** "house" = Mingla uploads; "host" = everything a host or Ari made. */
   source: "house" | "host" | null;
   q: string | null;
+  brandId: string | null;
   before: { created_at: string; id: string } | null;
 };
 
@@ -96,6 +97,15 @@ export function parseLibraryFilters(
     }
     before = { created_at: new Date(createdAt).toISOString(), id };
   }
+  const brandId = body.brand_id === undefined || body.brand_id === null ||
+      body.brand_id === ""
+    ? null
+    : typeof body.brand_id === "string" && UUID_RE.test(body.brand_id)
+    ? body.brand_id
+    : undefined;
+  if (brandId === undefined) {
+    return { ok: false, detail: "brand_id_invalid" };
+  }
   return {
     ok: true,
     filters: {
@@ -103,6 +113,7 @@ export function parseLibraryFilters(
       kind,
       source,
       q,
+      brandId,
       before,
     } as LibraryFilters,
   };
@@ -124,6 +135,7 @@ export function applyLibraryFilters(query: any, filters: LibraryFilters): any {
   if (filters.source === "house") next = next.eq("source", "admin_upload");
   if (filters.source === "host") next = next.neq("source", "admin_upload");
   if (filters.q) next = next.ilike("name", namePattern(filters.q));
+  if (filters.brandId) next = next.eq("brand_id", filters.brandId);
   if (filters.before) {
     const { created_at, id } = filters.before;
     next = next.or(
@@ -283,7 +295,9 @@ export function pendingLibraryItems(
       fileName: typeof job.source_file_name === "string"
         ? job.source_file_name
         : null,
-      sourceBytes: typeof job.source_bytes === "number" ? job.source_bytes : null,
+      sourceBytes: typeof job.source_bytes === "number"
+        ? job.source_bytes
+        : null,
       sourceDurationMs: typeof job.source_duration_ms === "number"
         ? job.source_duration_ms
         : null,
@@ -319,16 +333,37 @@ export function decorateLibraryRows(
   return projected.map((row) => {
     const source = rawById.get(String(row.id)) ?? {};
     const archived = source.status === "archived";
-    const brandId = typeof source.brand_id === "string" ? source.brand_id : null;
+    const brandId = typeof source.brand_id === "string"
+      ? source.brand_id
+      : null;
     return {
       ...row,
       width: typeof source.width === "number" ? source.width : null,
       height: typeof source.height === "number" ? source.height : null,
-      has_audio: typeof source.has_audio === "boolean" ? source.has_audio : null,
-      // The processed MP4 the card preview plays (muted, with controls).
-      playback_url: source.kind === "video" && typeof source.source_url === "string"
-        ? source.source_url
+      has_audio: typeof source.has_audio === "boolean"
+        ? source.has_audio
         : null,
+      stage_tags: Array.isArray(source.stage_tags)
+        ? source.stage_tags.filter((value): value is string =>
+          typeof value === "string"
+        )
+        : [],
+      concept_tag: typeof source.concept_tag === "string"
+        ? source.concept_tag
+        : null,
+      hook_tag: typeof source.hook_tag === "string" ? source.hook_tag : null,
+      event_id: typeof source.event_id === "string" ? source.event_id : null,
+      licence_reference: typeof source.licence_reference === "string"
+        ? source.licence_reference
+        : null,
+      date_locked_until: typeof source.date_locked_until === "string"
+        ? source.date_locked_until
+        : null,
+      // The processed MP4 the card preview plays (muted, with controls).
+      playback_url:
+        source.kind === "video" && typeof source.source_url === "string"
+          ? source.source_url
+          : null,
       brand_name: brandId ? names.brands.get(brandId) ?? null : null,
       created_by_name: typeof source.created_by === "string"
         ? displayName(names.profiles.get(source.created_by))
@@ -467,7 +502,10 @@ export async function handleCreativeLifecycleAction(
   if (action === "creative_purge" && body.confirm_phrase !== "DELETE") {
     return {
       status: 400,
-      body: { error: "validation_error", detail: "confirm_phrase_must_be_DELETE" },
+      body: {
+        error: "validation_error",
+        detail: "confirm_phrase_must_be_DELETE",
+      },
     };
   }
 
@@ -479,17 +517,25 @@ export async function handleCreativeLifecycleAction(
     );
     if (blockerError) return lifecycleRpcFailure(blockerError);
     const blockers = Array.isArray(blockerData)
-      ? blockerData.filter((value): value is string => typeof value === "string")
+      ? blockerData.filter((value): value is string =>
+        typeof value === "string"
+      )
       : null;
     if (blockers === null) {
       // An unreadable answer is never treated as "nothing references it".
       return {
         status: 502,
-        body: { error: "creative_lifecycle_failed", detail: "blockers_unreadable" },
+        body: {
+          error: "creative_lifecycle_failed",
+          detail: "blockers_unreadable",
+        },
       };
     }
     if (action === "creative_purge_check") {
-      return { status: 200, body: { ok: true, blockers, checked_at: checkedAt } };
+      return {
+        status: 200,
+        body: { ok: true, blockers, checked_at: checkedAt },
+      };
     }
     if (blockers.length > 0) {
       return { status: 409, body: { error: "creative_in_use", blockers } };
@@ -511,11 +557,16 @@ export async function handleCreativeLifecycleAction(
         // Something started using it after the menu was opened.
         const raced = message.split("ad_creative_purge_blocked:")[1]?.split(",")
           .map((value: string) => value.trim()).filter(Boolean) ?? [];
-        return { status: 409, body: { error: "creative_in_use", blockers: raced } };
+        return {
+          status: 409,
+          body: { error: "creative_in_use", blockers: raced },
+        };
       }
       return lifecycleRpcFailure(recordError);
     }
-    tombstone = (Array.isArray(recorded) ? recorded[0] : recorded) as Row | null;
+    tombstone = (Array.isArray(recorded) ? recorded[0] : recorded) as
+      | Row
+      | null;
   } else if (action === "creative_purge_check") {
     return {
       status: 200,
@@ -547,7 +598,11 @@ export async function handleCreativeLifecycleAction(
   if (outcome.outcome === "destroyed" || outcome.outcome === "no_asset") {
     return {
       status: 200,
-      body: { ok: true, creative: { id: creativeId, purged_at: purgedAt }, media_deleted: true },
+      body: {
+        ok: true,
+        creative: { id: creativeId, purged_at: purgedAt },
+        media_deleted: true,
+      },
     };
   }
   console.error("[ad-plan] creative purge: media not destroyed yet", {

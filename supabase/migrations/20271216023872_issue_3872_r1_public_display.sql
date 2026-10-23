@@ -503,16 +503,25 @@ BEGIN
       'SELECT public.issue_3872_enrich_rsvp_payload(payload) FROM issue_3872_original;',v_body)
   );
 
-  v_def:=pg_get_functiondef('public.pg_ticket_link_resolve(text)'::regprocedure);
+  SELECT pg_get_functiondef('public.pg_ticket_link_resolve(text)'::regprocedure),p.prosrc
+    INTO v_def,v_body FROM pg_proc p
+   WHERE p.oid='public.pg_ticket_link_resolve(text)'::regprocedure;
   v_old:=E'        ''saleStartAt'', tt.sale_start_at, ''saleEndAt'', tt.sale_end_at\n      ) END,';
   v_new:=E'        ''saleStartAt'', tt.sale_start_at, ''saleEndAt'', tt.sale_end_at\n'
     '      ) || COALESCE(public.issue_3872_ticket_sale_json(tt.id),''{}''::jsonb) END,';
-  IF (length(v_def)-length(replace(v_def,v_old,'')))/length(v_old)<>1 THEN
+  IF (length(v_body)-length(replace(v_body,v_old,'')))/length(v_old)<>1 THEN
     RAISE EXCEPTION 'issue_3872_ticket_link_transform_drift';
   END IF;
-  EXECUTE replace(v_def,v_old,v_new);
+  v_body:=replace(v_body,v_old,v_new);
+  EXECUTE format(
+    'CREATE OR REPLACE FUNCTION public.pg_ticket_link_resolve(p_token_hash text) '
+    'RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER '
+    'SET search_path=public,pg_temp AS %L',v_body
+  );
 
-  v_def:=pg_get_functiondef('public.pg_experience_booking_quote(uuid,uuid,integer,integer)'::regprocedure);
+  SELECT pg_get_functiondef('public.pg_experience_booking_quote(uuid,uuid,integer,integer)'::regprocedure),p.prosrc
+    INTO v_def,v_body FROM pg_proc p
+   WHERE p.oid='public.pg_experience_booking_quote(uuid,uuid,integer,integer)'::regprocedure;
   v_old:=E'    ''unitPriceCents'', v_unit\n  );';
   v_new:=E'    ''unitPriceCents'', v_unit\n  ) || COALESCE((\n'
     '    SELECT jsonb_build_object(\n'
@@ -526,10 +535,16 @@ BEGIN
     '      ''saleEndsAt'',s.sale_ends_at\n'
     '    ) FROM public.issue_3872_display_sale_unit(v_tt.id,now()) s\n'
     '  ),jsonb_build_object(''saleUnitPriceCents'',NULL,''saleUnitAllInCents'',NULL,''saleEndsAt'',NULL));';
-  IF (length(v_def)-length(replace(v_def,v_old,'')))/length(v_old)<>1 THEN
+  IF (length(v_body)-length(replace(v_body,v_old,'')))/length(v_old)<>1 THEN
     RAISE EXCEPTION 'issue_3872_experience_quote_transform_drift';
   END IF;
-  EXECUTE replace(v_def,v_old,v_new);
+  v_body:=replace(v_body,v_old,v_new);
+  EXECUTE format(
+    'CREATE OR REPLACE FUNCTION public.pg_experience_booking_quote('
+    'p_event_id uuid,p_ticket_type_id uuid,p_party integer DEFAULT 1,p_blocks integer DEFAULT 1) '
+    'RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER '
+    'SET search_path=public,pg_temp AS %L',v_body
+  );
 END;
 $install$;
 

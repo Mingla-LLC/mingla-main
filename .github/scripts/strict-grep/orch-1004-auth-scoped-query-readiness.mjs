@@ -174,6 +174,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #3645 — the payout-screen RPC is finance_manager/auth.uid()-scoped and
   // must not cache a pre-auth denial as an empty host ledger.
   "useBrandPayoutScreen.ts",
+  // #3682 — Host follower summary reads auth.uid() and brand rank.
+  "useBrandFollowerSummary.ts",
   // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
   // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
   "useBrandConversionRollup.ts",
@@ -281,6 +283,7 @@ const AUTH_SCOPED_HOOK_FILES = [
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
 //    depend on them. Each entry carries the reason it is anon-safe.
 const PUBLIC_HOOK_ALLOWLIST = [
+  ["useBrandFollowerCount.ts", "anon-readable aggregate follower count RPC (#3682)"],
   ["usePublicEvents.ts", "anon-readable events via security-definer public views (buyer-web feed)"],
   ["usePublicTripBySlug.ts", "anon-readable published trips via trip-sidecar anon RLS (buyer-web)"],
   ["usePublicTripById.ts", "anon-readable published trips by id (buyer-web)"],

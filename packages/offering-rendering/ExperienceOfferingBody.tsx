@@ -83,10 +83,13 @@ import {
   Sparkles,
   Users,
 } from "./LucideIcons";
+import {
+  PresentedByFollowerCount,
+  type FollowerCountLabels,
+} from "./PresentedByFollowerCount";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
-import { saleAvailabilityCopy } from "./saleAvailabilityCopy";
 
 /**
  * #1708 — every row independently optional, and every VALUE pre-formatted by the
@@ -127,7 +130,10 @@ import {
 // #3284 — section 10: the shared refund ladder.
 // #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
 // import ./OfferingRefundLadder statically here.
-import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
+import {
+  LazyOfferingRefundLadder as OfferingRefundLadder,
+  LazySaleAvailabilityText,
+} from "./LazyOfferingRefundLadder";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -243,6 +249,11 @@ export interface ExperienceOfferingBodyProps {
   theme: ResolvedTheme;
   callbacks: ExperienceOfferingCallbacks;
   variant: "phone" | "desktop";
+  presentedByFollow?: React.ReactNode;
+  /** #3682 — server count for the Presented-by card; unavailable stays hidden. */
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
   /**
    * Per-stop start-time → display label. The surface owns the device-locale 12h/24h
    * resolution (kept out of the pure package). undefined → no per-stop time pill.
@@ -307,6 +318,12 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   theme,
   callbacks,
   variant,
+  // Explicit defaults keep these #3682 props typed even in the repository's
+  // known shared-package React-resolution gap (tracked by the delta gate).
+  presentedByFollow = undefined as React.ReactNode | undefined,
+  presentedByFollowerCount = undefined as number | null | undefined,
+  presentedByFollowerCountLoading = false,
+  presentedByFollowerCountLabels = undefined as FollowerCountLabels | undefined,
   formatStopTime,
   availabilityBlock = null,
   stateBanner = null,
@@ -356,14 +373,6 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   const { label: priceLabel, isFree } = experiencePriceLabel(data);
   const listPriceLabel =
     data.ticket === null ? null : experienceOptionListPriceLabel(data.ticket);
-  const saleAvailability =
-    data.ticket === null || listPriceLabel === null
-      ? null
-      : saleAvailabilityCopy(
-          data.ticket.saleRemaining,
-          data.ticket.saleEndsAt,
-          data.timezone,
-        );
   // #3284 — section 10 gating (design part 1 §3.10). PAID uses the SAME rule as
   // experiencePriceLabel: a missing ticket or a free / zero-priced ticket is not
   // paid. Closed (ended or cancelled) and unknown render nothing.
@@ -502,71 +511,88 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
 
       {/* (5) Presented By. */}
       <View style={styles.section} testID="experience-body-presented-by">
-        <Pressable
-          onPress={callbacks.onViewBrand}
-          disabled={callbacks.onViewBrand === undefined}
-          accessibilityRole={
-            callbacks.onViewBrand !== undefined ? "button" : undefined
-          }
-          accessibilityLabel={`View ${brand.name}`}
-          style={[styles.brandRow, surface.card]}
-        >
-          <View
-            style={[
-              styles.brandTile,
-              brand.coverMediaUrl === null
-                ? { backgroundColor: palette.accent }
-                : null,
-            ]}
+        <View style={[styles.brandCard, surface.card]}>
+          <Pressable
+            onPress={callbacks.onViewBrand}
+            disabled={callbacks.onViewBrand === undefined}
+            accessibilityRole={
+              callbacks.onViewBrand !== undefined ? "button" : undefined
+            }
+            accessibilityLabel={`View ${brand.name}`}
+            style={styles.brandRow}
           >
-            {brand.coverMediaUrl !== null ? (
-              <EventCoverMedia
-                mediaUrl={brand.coverMediaUrl}
-                mediaType={brand.coverMediaType}
-                hue={brand.coverHue ?? undefined}
-                label=""
-                radius={999}
-                autoplay
-                playbackActive
-                muted
-                loop
-                height="100%"
-                width="100%"
-              />
-            ) : (
-              <View style={styles.brandInitialWrap}>
+            <View
+              style={[
+                styles.brandTile,
+                brand.coverMediaUrl === null
+                  ? { backgroundColor: palette.accent }
+                  : null,
+              ]}
+            >
+              {brand.coverMediaUrl !== null ? (
+                <EventCoverMedia
+                  mediaUrl={brand.coverMediaUrl}
+                  mediaType={brand.coverMediaType}
+                  hue={brand.coverHue ?? undefined}
+                  label=""
+                  radius={999}
+                  autoplay
+                  playbackActive
+                  muted
+                  loop
+                  height="100%"
+                  width="100%"
+                />
+              ) : (
+                <View style={styles.brandInitialWrap}>
+                  <Text
+                    style={[
+                      styles.brandInitial,
+                      { color: palette.accentText, fontFamily: boldFamily },
+                    ]}
+                  >
+                    {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.brandTextCol}>
+              <Text style={[styles.brandKicker, surface.tertiaryText]}>
+                Presented by
+              </Text>
+              <View style={styles.brandNameRow}>
                 <Text
                   style={[
-                    styles.brandInitial,
-                    { color: palette.accentText, fontFamily: boldFamily },
+                    styles.brandName,
+                    surface.primaryText,
+                    { fontFamily: boldFamily },
                   ]}
                 >
-                  {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  {brand.name}
                 </Text>
+                {brand.verified ? (
+                  <BadgeCheck size={15} color={palette.accent} />
+                ) : null}
               </View>
-            )}
-          </View>
-          <View style={styles.brandTextCol}>
-            <Text style={[styles.brandKicker, surface.tertiaryText]}>
-              Presented by
-            </Text>
-            <View style={styles.brandNameRow}>
-              <Text
-                style={[
-                  styles.brandName,
-                  surface.primaryText,
-                  { fontFamily: boldFamily },
-                ]}
-              >
-                {brand.name}
-              </Text>
-              {brand.verified ? (
-                <BadgeCheck size={15} color={palette.accent} />
-              ) : null}
+              <PresentedByFollowerCount
+                count={presentedByFollowerCount}
+                loading={presentedByFollowerCountLoading}
+                labels={presentedByFollowerCountLabels}
+                palette={palette}
+                testID="experience-presented-by-follower-count"
+              />
             </View>
-          </View>
-          <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
-        </Pressable>
+            {presentedByFollow === undefined &&
+            callbacks.onViewBrand !== undefined ? (
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
+            ) : null}
+          </Pressable>
+          {presentedByFollow !== undefined ? (
+            <View style={styles.brandFollowSlot}>{presentedByFollow}</View>
+          ) : null}
+        </View>
       </View>
 
       {/* (6) Adaptive availability banner (ORCH-1186 Fix 1) — computed in-body from
@@ -817,11 +843,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               </Text>
             </View>
           </View>
-          {saleAvailability !== null ? (
-            <Text style={[styles.saleAvailability, { color: palette.accent }]}>
-              {saleAvailability}
-            </Text>
-          ) : null}
+          <LazySaleAvailabilityText
+            active={listPriceLabel !== null}
+            remaining={data.ticket?.saleRemaining}
+            endsAt={data.ticket?.saleEndsAt}
+            timezone={data.timezone}
+            style={[styles.saleAvailability, { color: palette.accent }]}
+          />
           {experienceOfferingOptions(data).length > 1 ? (
             <View
               style={styles.optionsList}
@@ -981,13 +1009,17 @@ const styles = StyleSheet.create({
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // ---- brand ----
+  brandCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  brandFollowSlot: { marginTop: 12 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
   },
   brandTile: {
     width: 42,

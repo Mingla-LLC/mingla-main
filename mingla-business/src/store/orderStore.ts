@@ -139,6 +139,8 @@ export interface OrderTicketDayRecord {
    * fixtures from before #3313 carry none.
    */
   ticketTypeId?: string | null;
+  /** issue #3281 — number of people this pass admits; absent on legacy cache rows. */
+  admitsCount?: number | null;
   /** `event_dates.id`s this pass admits. EMPTY means "not day-scoped". */
   eventDateIds: string[];
   status: string;

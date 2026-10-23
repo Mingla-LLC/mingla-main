@@ -25,6 +25,99 @@
 import { supabase } from "../lib/supabase";
 import { escapeLike } from "../lib/formatters";
 
+export function followerNumber(value) {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+}
+
+export function mergeFollowerSortedBrandRows(brandRows, orderedStats) {
+  const brandById = Object.fromEntries(brandRows.map((row) => [row.id, row]));
+  return orderedStats.flatMap((stats) => {
+    const brand = brandById[stats.brandId];
+    if (!brand) return [];
+    return [
+      {
+        ...brand,
+        follower_count: followerNumber(stats.followerCount),
+        new_this_week: followerNumber(stats.newThisWeek),
+      },
+    ];
+  });
+}
+
+export function parseFollowerSortPage(value) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !Array.isArray(value.rows) ||
+    followerNumber(value.total) === null
+  ) {
+    throw new Error("Follower sort response was malformed.");
+  }
+  const seen = new Set();
+  const rows = value.rows.map((row) => {
+    const followerCount = followerNumber(row?.followerCount);
+    const newThisWeek = followerNumber(row?.newThisWeek);
+    if (
+      !row ||
+      typeof row !== "object" ||
+      Array.isArray(row) ||
+      Object.keys(row).sort().join("|") !== "brandId|followerCount|newThisWeek" ||
+      typeof row.brandId !== "string" ||
+      row.brandId.length === 0 ||
+      seen.has(row.brandId) ||
+      (row.followerCount != null && followerCount === null) ||
+      (row.newThisWeek != null && newThisWeek === null)
+    ) {
+      throw new Error("Follower sort response was malformed.");
+    }
+    seen.add(row.brandId);
+    return {
+      brandId: row.brandId,
+      followerCount,
+      newThisWeek,
+    };
+  });
+  return { rows, total: followerNumber(value.total) };
+}
+
+export function parseFollowerStatsRows(value, expectedBrandIds) {
+  if (!Array.isArray(value)) {
+    throw new Error("Follower stats response was malformed.");
+  }
+  const expected = new Set(expectedBrandIds);
+  const seen = new Set();
+  const rows = value.map((row) => {
+    const followerCount = followerNumber(row?.follower_count);
+    const newThisWeek = followerNumber(row?.new_this_week);
+    if (
+      !row ||
+      typeof row !== "object" ||
+      Array.isArray(row) ||
+      Object.keys(row).sort().join("|") !== "brand_id|follower_count|new_this_week" ||
+      typeof row.brand_id !== "string" ||
+      !expected.has(row.brand_id) ||
+      seen.has(row.brand_id) ||
+      followerCount === null ||
+      newThisWeek === null
+    ) {
+      throw new Error("Follower stats response was malformed.");
+    }
+    seen.add(row.brand_id);
+    return {
+      brand_id: row.brand_id,
+      follower_count: followerCount,
+      new_this_week: newThisWeek,
+    };
+  });
+  if (seen.size !== expected.size) {
+    throw new Error("Follower stats response was malformed.");
+  }
+  return rows;
+}
+
 // ── Unified Person (RPC) ──────────────────────────────────────────────────────
 
 /**
@@ -100,6 +193,52 @@ const BRAND_LIST_COLS =
  * business_name via one in()-read. Returns { rows, total }; throws on error.
  */
 export async function listBrands({ search, sortKey, sortDir, filters = {}, page = 0, pageSize = 25 }) {
+  if (sortKey === "follower_count") {
+    const { data: followerPage, error: followerError } = await supabase.rpc(
+      "admin_list_brands_by_followers",
+      {
+        p_search: search?.trim() || null,
+        p_claim_status: filters.claim_status || null,
+        p_status: filters.status || null,
+        p_payment_provider: filters.payment_provider || null,
+        p_ascending: sortDir === "asc",
+        p_offset: page * pageSize,
+        p_limit: pageSize,
+      },
+    );
+    if (followerError) {
+      throw new Error(followerError.message || "Failed to sort brands by followers.");
+    }
+
+    const parsedFollowerPage = parseFollowerSortPage(followerPage);
+    const orderedStats = parsedFollowerPage.rows;
+    const orderedIds = orderedStats
+      .map((row) => row?.brandId)
+      .filter((id) => typeof id === "string");
+    let brandRows = [];
+    if (orderedIds.length > 0) {
+      const { data, error } = await supabase
+        .from("brands")
+        .select(BRAND_LIST_COLS)
+        .in("id", orderedIds);
+      if (error) throw new Error(error.message || "Failed to load brands.");
+      brandRows = data || [];
+    }
+    const rows = mergeFollowerSortedBrandRows(brandRows, orderedStats);
+    const ownerNameById = await resolveAccountNames(
+      rows.map((row) => row.account_id).filter(Boolean),
+    );
+    return {
+      rows: rows.map((row) => ({
+        ...row,
+        owner_business_name: row.account_id
+          ? ownerNameById[row.account_id] || null
+          : null,
+      })),
+      total: parsedFollowerPage.total,
+    };
+  }
+
   let query = supabase.from("brands").select(BRAND_LIST_COLS, { count: "exact" });
 
   if (search) {
@@ -122,6 +261,28 @@ export async function listBrands({ search, sortKey, sortDir, filters = {}, page 
   if (error) throw new Error(error.message || "Failed to load brands.");
 
   const rows = data || [];
+  const liveIds = rows.filter((row) => !row.deleted_at).map((row) => row.id);
+  let followerStatsById = {};
+  let followerStatsFailed = false;
+  if (liveIds.length > 0) {
+    const { data: followerStats, error: followerError } = await supabase.rpc(
+      "admin_brand_follower_stats",
+      { p_brand_ids: liveIds },
+    );
+    if (followerError) {
+      followerStatsFailed = true;
+      logDegrade("admin_brand_follower_stats", followerError);
+    } else {
+      try {
+        followerStatsById = Object.fromEntries(
+          parseFollowerStatsRows(followerStats, liveIds).map((stats) => [stats.brand_id, stats]),
+        );
+      } catch (parseError) {
+        followerStatsFailed = true;
+        logDegrade("admin_brand_follower_stats", parseError);
+      }
+    }
+  }
   const ownerNameById = await resolveAccountNames(
     rows.map((r) => r.account_id).filter(Boolean),
   );
@@ -129,6 +290,16 @@ export async function listBrands({ search, sortKey, sortDir, filters = {}, page 
     rows: rows.map((r) => ({
       ...r,
       owner_business_name: r.account_id ? ownerNameById[r.account_id] || null : null,
+      follower_count: r.deleted_at
+        ? null
+        : followerStatsFailed
+          ? undefined
+          : followerStatsById[r.id].follower_count,
+      new_this_week: r.deleted_at
+        ? null
+        : followerStatsFailed
+          ? undefined
+          : followerStatsById[r.id].new_this_week,
     })),
     total: count ?? 0,
   };

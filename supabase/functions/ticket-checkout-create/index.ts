@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { fireBuyerPurchaseConfirmationPush } from "../_shared/businessNotifyTriggers.ts";
@@ -290,10 +289,12 @@ const enrollWaitlistOffer = async (
     .select("id, created_at")
     .maybeSingle();
 
-  let waitlistEntryId: string | null =
-    typeof wlInserted?.id === "string" ? wlInserted.id : null;
-  let createdAt: string | null =
-    typeof wlInserted?.created_at === "string" ? wlInserted.created_at : null;
+  let waitlistEntryId: string | null = typeof wlInserted?.id === "string"
+    ? wlInserted.id
+    : null;
+  let createdAt: string | null = typeof wlInserted?.created_at === "string"
+    ? wlInserted.created_at
+    : null;
 
   if (wlErr?.code === "23505" || (!wlInserted && wlErr === null)) {
     let q = client
@@ -372,16 +373,16 @@ const recordCheckoutRefusal = async (
     // never an exception at all.
     const outcome = await Promise.race([
       client.rpc("issue_2579_record_checkout_refusal", {
-      p_event_id: input.eventId.length > 0 ? input.eventId : null,
-      p_ticket_type_id: input.ticketTypeId,
-      // RAW. The RPC owns the allowlist; see the note above.
-      p_raise_token: input.message ?? null,
-      p_quantity_requested: input.quantity,
-      p_surface: input.surface,
-      // FULL E.164 in; the RPC stores the dial code only. Extraction lives
-      // there because the migration's probe runs in CI and a new edge test
-      // file would run in no lane.
-      p_buyer_phone_e164: input.phoneE164,
+        p_event_id: input.eventId.length > 0 ? input.eventId : null,
+        p_ticket_type_id: input.ticketTypeId,
+        // RAW. The RPC owns the allowlist; see the note above.
+        p_raise_token: input.message ?? null,
+        p_quantity_requested: input.quantity,
+        p_surface: input.surface,
+        // FULL E.164 in; the RPC stores the dial code only. Extraction lives
+        // there because the migration's probe runs in CI and a new edge test
+        // file would run in no lane.
+        p_buyer_phone_e164: input.phoneE164,
         p_buyer_email: input.email,
       }),
       new Promise<undefined>((resolve) => {
@@ -1041,7 +1042,9 @@ export const createTicketCheckoutCreateHandler = (
     let partySize: number | null = null;
     if (typeof partySizeRaw === "number" && Number.isFinite(partySizeRaw)) {
       partySize = Math.trunc(partySizeRaw);
-    } else if (typeof partySizeRaw === "string" && partySizeRaw.trim().length > 0) {
+    } else if (
+      typeof partySizeRaw === "string" && partySizeRaw.trim().length > 0
+    ) {
       const n = Number.parseInt(partySizeRaw.trim(), 10);
       if (!Number.isFinite(n)) {
         return refuse({ error: "booked_party_invalid" }, 422);
@@ -1113,7 +1116,9 @@ export const createTicketCheckoutCreateHandler = (
     //
     // Default is unchanged: an event with no policy row, or mode
     // 'unrestricted', returns `allowed_unrestricted` and this block is a no-op.
-    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;
+    let accessDecision: Awaited<
+      ReturnType<typeof ticketCheckoutAccessDecision>
+    >;
     try {
       accessDecision = await ticketCheckoutAccessDecision(supabase, {
         eventId,
@@ -1225,8 +1230,7 @@ export const createTicketCheckoutCreateHandler = (
           500,
         );
       }
-      const allDaysPass =
-        passRow !== null &&
+      const allDaysPass = passRow !== null &&
         typeof passRow === "object" &&
         (passRow as { is_multi_date?: unknown }).is_multi_date === true &&
         (passRow as { is_recurring?: unknown }).is_recurring !== true &&
@@ -1255,7 +1259,9 @@ export const createTicketCheckoutCreateHandler = (
         }>;
         const upcoming = rows
           .map((r) => r.id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0);
+          .filter((id): id is string =>
+            typeof id === "string" && id.length > 0
+          );
         if (upcoming.length === 0) {
           return refuse({ error: "occurrence_not_available" }, 422);
         }
@@ -1319,7 +1325,9 @@ export const createTicketCheckoutCreateHandler = (
           500,
         );
       }
-      const rows = (occRows ?? []) as Array<{ id: string; end_at: string | null }>;
+      const rows = (occRows ?? []) as Array<
+        { id: string; end_at: string | null }
+      >;
       if (rows.length !== eventDateIds.length) {
         // At least one id is not an occurrence of THIS event (or was deleted).
         return refuse({ error: "occurrence_not_found" }, 422);
@@ -1438,10 +1446,9 @@ export const createTicketCheckoutCreateHandler = (
         .select("capacity_scope, is_recurring, recurrence_rules")
         .eq("id", eventId)
         .maybeSingle();
-      const scope =
-        scopeRow && typeof scopeRow === "object"
-          ? (scopeRow as { capacity_scope?: unknown }).capacity_scope
-          : null;
+      const scope = scopeRow && typeof scopeRow === "object"
+        ? (scopeRow as { capacity_scope?: unknown }).capacity_scope
+        : null;
       if (
         orderedEventDateIds.length === 0 &&
         (scope === "per_day" || scope === "per_start")
@@ -1449,16 +1456,13 @@ export const createTicketCheckoutCreateHandler = (
         orderedEventDateIds.push(eventDateId);
         anchorEventDateId = eventDateId;
       }
-      const rules =
-        scopeRow && typeof scopeRow === "object"
-          ? (scopeRow as { recurrence_rules?: unknown }).recurrence_rules
-          : null;
-      const isRecurring =
-        scopeRow && typeof scopeRow === "object"
-          ? (scopeRow as { is_recurring?: unknown }).is_recurring === true
-          : false;
-      const openDaily =
-        isRecurring &&
+      const rules = scopeRow && typeof scopeRow === "object"
+        ? (scopeRow as { recurrence_rules?: unknown }).recurrence_rules
+        : null;
+      const isRecurring = scopeRow && typeof scopeRow === "object"
+        ? (scopeRow as { is_recurring?: unknown }).is_recurring === true
+        : false;
+      const openDaily = isRecurring &&
         rules !== null &&
         typeof rules === "object" &&
         !Array.isArray(rules) &&
@@ -1526,9 +1530,12 @@ export const createTicketCheckoutCreateHandler = (
           );
         }
         if (attempt.error !== null) {
-          console.warn("[ticket-checkout-create] discount limiter failed open", {
-            error: attempt.error,
-          });
+          console.warn(
+            "[ticket-checkout-create] discount limiter failed open",
+            {
+              error: attempt.error,
+            },
+          );
         }
       } catch (error) {
         console.warn("[ticket-checkout-create] discount limiter failed open", {
@@ -1551,14 +1558,20 @@ export const createTicketCheckoutCreateHandler = (
           p_record_failure: true,
         });
         if (recorded.error !== null) {
-          console.warn("[ticket-checkout-create] discount limiter record failed", {
-            error: recorded.error,
-          });
+          console.warn(
+            "[ticket-checkout-create] discount limiter record failed",
+            {
+              error: recorded.error,
+            },
+          );
         }
       } catch (error) {
-        console.warn("[ticket-checkout-create] discount limiter record failed", {
-          error,
-        });
+        console.warn(
+          "[ticket-checkout-create] discount limiter record failed",
+          {
+            error,
+          },
+        );
       }
     };
 
@@ -1615,8 +1628,9 @@ export const createTicketCheckoutCreateHandler = (
         vat_rate_bps: number | null;
       };
       const provider = resolveProviderRouting(pricing);
-      const currency = (pricing.pricing_currency ?? String(quote.currency ?? ""))
-        .trim().toUpperCase();
+      const currency =
+        (pricing.pricing_currency ?? String(quote.currency ?? ""))
+          .trim().toUpperCase();
       if (currency.length === 0) throw new Error("pricing_currency_missing");
       const switches: PricingSwitches = {
         pass_tax: pricing.pass_tax,
@@ -1670,7 +1684,9 @@ export const createTicketCheckoutCreateHandler = (
             { status: "active" },
             { stripeAccount: pricing.stripe_account_id },
           );
-          if (Array.isArray(registrations?.data) && registrations.data.length > 0) {
+          if (
+            Array.isArray(registrations?.data) && registrations.data.length > 0
+          ) {
             const behavior = taxBehaviorForRegion(region);
             // @ts-ignore -- Stripe Tax is supplied by the runtime SDK.
             const calculation = await stripe.tax.calculations.create(
@@ -1701,7 +1717,9 @@ export const createTicketCheckoutCreateHandler = (
             calculationId = String(calculation.id ?? "") || null;
           }
         } catch (error) {
-          console.warn("[ticket-checkout-create] quote tax degraded", { error });
+          console.warn("[ticket-checkout-create] quote tax degraded", {
+            error,
+          });
           taxCents = 0;
           buyerTotalCents = subtotal.buyerSubtotalCents;
           calculationId = null;
@@ -1774,10 +1792,9 @@ export const createTicketCheckoutCreateHandler = (
     // Trip-only effect; single-event flow unchanged (no event-side intake forms).
     let canonicalIntakeFormData: unknown[] = [];
     const intakeBody = Array.isArray(body.intake_form_data)
-        ? (body.intake_form_data as Array<Record<string, unknown>>)
-        : [];
+      ? (body.intake_form_data as Array<Record<string, unknown>>)
+      : [];
     if (tripGateRow?.event_type === "trip") {
-
       // Pull schemas for every ticket_type_id present in the cart.
       const ticketTypeIds = Array.from(
         new Set(lines.map((line) => line.ticketTypeId)),
@@ -2097,8 +2114,8 @@ export const createTicketCheckoutCreateHandler = (
       });
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         {
-        return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
-      }
+          return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+        }
       }
       if (
         sessionError?.message?.includes(
@@ -2121,7 +2138,14 @@ export const createTicketCheckoutCreateHandler = (
         return jsonResponse({ error: "event_date_choice_required" }, 422);
       }
       if (
-        ["link_not_found", "link_revoked", "link_expired", "event_unavailable", "event_ended", "tier_unavailable"]
+        [
+          "link_not_found",
+          "link_revoked",
+          "link_expired",
+          "event_unavailable",
+          "event_ended",
+          "tier_unavailable",
+        ]
           .some((token) => sessionError?.message?.includes(token))
       ) {
         return jsonResponse({ error: "ticket_link_not_active" }, 409);
@@ -2261,7 +2285,10 @@ export const createTicketCheckoutCreateHandler = (
       }
     }
     const checkoutDiscountIds = checkoutDiscounts.map((entry) => entry.id);
-    const checkoutDiscountMetadata = checkoutDiscountIds.join(",").slice(0, 500);
+    const checkoutDiscountMetadata = checkoutDiscountIds.join(",").slice(
+      0,
+      500,
+    );
 
     if (intakeBody.length > 0) {
       const intakeUploadSessionId = resolveIntakeUploadSessionId(
@@ -2283,7 +2310,11 @@ export const createTicketCheckoutCreateHandler = (
       if (attached.error !== null || !Array.isArray(attached.data)) {
         const stale = attached.error?.message?.includes("intake_schema_stale");
         return jsonResponse(
-          { error: stale ? "intake_schema_stale" : "intake_upload_claim_invalid" },
+          {
+            error: stale
+              ? "intake_schema_stale"
+              : "intake_upload_claim_invalid",
+          },
           409,
         );
       }
@@ -2501,7 +2532,9 @@ export const createTicketCheckoutCreateHandler = (
           p_device_token_hash: queueDeviceTokenHash,
         },
       );
-      const joinMsg = typeof joinErr?.message === "string" ? joinErr.message : "";
+      const joinMsg = typeof joinErr?.message === "string"
+        ? joinErr.message
+        : "";
       const joinPastQueue = joinMsg.includes(
         "issue_2947_session_not_queued_hold",
       );
@@ -2761,7 +2794,8 @@ export const createTicketCheckoutCreateHandler = (
           : {};
       sessionUpdate.metadata = {
         ...existingMeta,
-        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ?? {}),
+        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ??
+          {}),
         event_date_id: anchorEventDateId,
         event_date_ids: orderedEventDateIds,
       };
@@ -2826,9 +2860,13 @@ export const createTicketCheckoutCreateHandler = (
       fbp: typeof body.fbp === "string" ? body.fbp : null,
       fbc: typeof body.fbc === "string" ? body.fbc : null,
       scid: typeof body.scid === "string" ? body.scid : null,
+      ttp: typeof body.ttp === "string" ? body.ttp : null,
+      trackingOptOut: body.ad_tracking_opt_out === true,
       clientIpAddress: checkoutClientIp(req),
       clientUserAgent: req.headers.get("user-agent") ??
-        (typeof body.client_user_agent === "string" ? body.client_user_agent : null),
+        (typeof body.client_user_agent === "string"
+          ? body.client_user_agent
+          : null),
     });
     scheduleCheckoutAdStart(
       fireAdCheckoutStart(supabase as never, checkoutSessionId),
@@ -3196,16 +3234,16 @@ export const createTicketCheckoutCreateHandler = (
       // = orderId.
       if (finalizedRecord.replayed !== true) {
         void fireAdConversion(supabase as never, { orderId, surface: "web" })
-        .catch(
-          (adConvErr) => {
-            console.warn(
-              "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
-              adConvErr instanceof Error
-                ? adConvErr.message
-                : String(adConvErr),
-            );
-          },
-        );
+          .catch(
+            (adConvErr) => {
+              console.warn(
+                "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
+                adConvErr instanceof Error
+                  ? adConvErr.message
+                  : String(adConvErr),
+              );
+            },
+          );
         // #3682 — free RSVP auto-follow from the persisted session buyer, not
         // the request auth uid (idempotency can reuse another session).
         void (async () => {
@@ -3755,8 +3793,8 @@ export const createTicketCheckoutCreateHandler = (
     // https://docs.stripe.com/connect/direct-charges#collect-fees
     // Integer basis-point math (no float; invariant I-PROPOSED-TAKE-RATE-BPS-INTEGER).
     // Omitted from the Stripe body when it rounds to zero (existing >0 guard kept).
-    const applicationFeeAmountCents =
-      buyerSubtotal.miglaFeeCents + buyerSubtotal.serviceFeeCents;
+    const applicationFeeAmountCents = buyerSubtotal.miglaFeeCents +
+      buyerSubtotal.serviceFeeCents;
 
     // ORCH-0843 — persist the computed fee on the session row so the refund
     // flow (refund-order) can read it back via biz_refund_order and decide
@@ -3996,7 +4034,9 @@ export const createTicketCheckoutCreateHandler = (
                       ...(checkoutListSubtotalCents > totalCents
                         ? {
                           description: `Includes ${
-                            checkoutDiscounts.map((entry) => entry.name).join(", ")
+                            checkoutDiscounts.map((entry) => entry.name).join(
+                              ", ",
+                            )
                           } (−${
                             formatMoneyCents(
                               checkoutListSubtotalCents - totalCents,
@@ -4595,7 +4635,9 @@ export const createTicketCheckoutCreateHandler = (
             ? {
               mingla_event_date_id: anchorEventDateId,
               ...(orderedEventDateIds.length > 1
-                ? { mingla_event_date_count: String(orderedEventDateIds.length) }
+                ? {
+                  mingla_event_date_count: String(orderedEventDateIds.length),
+                }
                 : {}),
             }
             : {}),

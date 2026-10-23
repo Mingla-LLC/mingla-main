@@ -10,6 +10,17 @@ jest.mock("../supabase", () => ({
 jest.mock("../appsFlyerService", () => ({ logAppsFlyerEvent: jest.fn() }));
 jest.mock("../../analytics/webAnalytics", () => ({
   getStoredClickAttribution: () => ({ clickId: null }),
+  identifyAdBuyer: jest.fn(() => Promise.resolve()),
+  // [TEST-MOD-APPROVED #3697] All buyer rails transport the same opt-out and
+  // platform-match context, even with no ad click.
+  getStoredAdMatchData: () => ({
+    fbp: "fbp-3697",
+    fbc: null,
+    scid: "scid-3697",
+    ttp: "ttp-3697",
+    clientUserAgent: "Issue3697/transport",
+    trackingOptOut: true,
+  }),
 }));
 jest.mock("../../utils/randomId", () => ({ randomId: () => "test-id" }));
 
@@ -95,7 +106,15 @@ describe("#1857 business transport country authority", () => {
     expect(invoke).toHaveBeenNthCalledWith(
       2,
       "venue-reservation-create",
-      expect.objectContaining({ body: expect.objectContaining({ buyer }) }),
+      expect.objectContaining({
+        body: expect.objectContaining({
+          buyer,
+          adMatchData: expect.objectContaining({
+            ttp: "ttp-3697",
+            trackingOptOut: true,
+          }),
+        }),
+      }),
     );
     expect(invoke).toHaveBeenNthCalledWith(
       3,
@@ -103,7 +122,13 @@ describe("#1857 business transport country authority", () => {
       expect.objectContaining({
         body: expect.objectContaining({
           action: "create_group",
-          payload: expect.objectContaining({ guest: buyer }),
+          payload: expect.objectContaining({
+            guest: buyer,
+            adMatchData: expect.objectContaining({
+              scid: "scid-3697",
+              trackingOptOut: true,
+            }),
+          }),
         }),
       }),
     );

@@ -1,0 +1,17 @@
+{
+  "first": "Bli den första som följer",
+  "count_zero": "{{formatted}} följare",
+  "count_one": "{{formatted}} följare",
+  "count_two": "{{formatted}} följare",
+  "count_few": "{{formatted}} följare",
+  "count_many": "{{formatted}} följare",
+  "count_other": "{{formatted}} följare",
+  "a11y_none": "Inga följare än",
+  "a11y_exact_zero": "{{count}} följare",
+  "a11y_exact_one": "{{count}} följare",
+  "a11y_exact_two": "{{count}} följare",
+  "a11y_exact_few": "{{count}} följare",
+  "a11y_exact_many": "{{count}} följare",
+  "a11y_exact_other": "{{count}} följare",
+  "a11y_approx": "ungefär {{formatted}} följare"
+}

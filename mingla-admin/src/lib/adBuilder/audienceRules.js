@@ -30,6 +30,33 @@ export function metaGendersFor(genderValue) {
   return null; // All → omit the field
 }
 
+/**
+ * The default plan is 70/20/10. The retargeting shortcut turns prospecting
+ * off, so the server conserves the same budget across the enabled warm stages
+ * in their 20:10 ratio (or gives it all to the only enabled warm stage).
+ */
+export function stageSplitLabels(stages = {}) {
+  const prospecting = stages.prospecting !== false;
+  const retarget = stages.retarget !== false;
+  const abandoners = stages.abandoners !== false;
+  if (prospecting) {
+    const prospectingPercent = 70 + (retarget ? 0 : 20) + (abandoners ? 0 : 10);
+    return {
+      prospecting: `${prospectingPercent}%`,
+      retarget: retarget ? "20%" : "Off",
+      abandoners: abandoners ? "10%" : "Off",
+    };
+  }
+  if (retarget && abandoners) {
+    return { prospecting: "Off", retarget: "67%", abandoners: "33%" };
+  }
+  return {
+    prospecting: "Off",
+    retarget: retarget ? "100%" : "Off",
+    abandoners: abandoners ? "100%" : "Off",
+  };
+}
+
 /** A4.f verbatim: Reddit has NO age field at all — render this passthrough note. */
 export const REDDIT_AGE_PASSTHROUGH_NOTE =
   "Reddit can't target by age at all — this campaign will reach adults of any age there. If age matters for this creative, exclude Reddit.";
@@ -42,8 +69,22 @@ export const ADVANTAGE_PLUS_AGE_EXPLANATION =
  * Validate the audience step. Returns string[] of blocking errors (each with
  * its exact inline message — SC-5).
  */
-export function validateAudience({ countries, ageMin, ageMax, advantagePlusAudience = false }) {
+export function validateAudience({
+  countries,
+  ageMin,
+  ageMax,
+  advantagePlusAudience = false,
+  stages,
+}) {
   const errors = [];
+  if (
+    stages &&
+    stages.prospecting === false &&
+    stages.retarget === false &&
+    stages.abandoners === false
+  ) {
+    errors.push("Turn on at least one audience stage.");
+  }
   if (!Array.isArray(countries) || countries.length === 0) {
     errors.push("Pick at least one country.");
   }
@@ -57,7 +98,9 @@ export function validateAudience({ countries, ageMin, ageMax, advantagePlusAudie
     errors.push("The minimum age can't be higher than the maximum.");
   }
   if (min < 13 || max > 65) {
-    errors.push("Meta's range is 13 to 65+. 65 means 65 and over — there's no band above it.");
+    errors.push(
+      "Meta's range is 13 to 65+. 65 means 65 and over — there's no band above it.",
+    );
   }
   if (advantagePlusAudience && min > 25) {
     errors.push(ADVANTAGE_PLUS_AGE_EXPLANATION);

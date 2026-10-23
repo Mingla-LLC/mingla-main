@@ -3,8 +3,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { serviceClient, ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
 import {
-  sendDiscountNotice,
   type DiscountNotice,
+  sendDiscountNotice,
 } from "../_shared/discountNotify.ts";
 
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -33,8 +33,9 @@ function parseNotice(value: unknown): DiscountNotice | null {
       "business.discount_ended",
       "business.discount_needs_attention",
     ].includes(String(value.type))
-  )
+  ) {
     return null;
+  }
   return value as unknown as DiscountNotice;
 }
 
@@ -42,10 +43,12 @@ export function createDiscountMaintenanceHandler(
   deps: DiscountMaintenanceDeps,
 ) {
   return async (req: Request): Promise<Response> => {
-    if (req.method === "OPTIONS")
+    if (req.method === "OPTIONS") {
       return new Response("ok", { headers: ticketCorsHeaders });
-    if (req.method !== "POST")
+    }
+    if (req.method !== "POST") {
       return json({ error: "method_not_allowed" }, 405);
+    }
     if (!deps.authorize(req)) return json({ error: "forbidden" }, 403);
     const sweep = await deps.rpc("issue_3872_discount_maintenance", {});
     if (sweep.error) {
@@ -54,10 +57,9 @@ export function createDiscountMaintenanceHandler(
       });
       return json({ error: "maintenance_failed" }, 500);
     }
-    const raw =
-      isObject(sweep.data) && Array.isArray(sweep.data.notify)
-        ? sweep.data.notify
-        : [];
+    const raw = isObject(sweep.data) && Array.isArray(sweep.data.notify)
+      ? sweep.data.notify
+      : [];
     let sent = 0;
     for (const value of raw) {
       const notice = parseNotice(value);

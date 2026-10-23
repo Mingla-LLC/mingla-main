@@ -46,7 +46,7 @@ import {
   readEdgeRefusal,
 } from "../services/checkoutErrorCopy";
 import { paidCheckoutErrorMessage } from "../services/ticketCheckoutService";
-import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutService";
+import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
 import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
 // ORCH-1246 (Apple 4.9) — Apple Pay sheet must show the product, not the company.
 import { buildApplePayCartItems } from "./applePayCartItems";
@@ -116,54 +116,54 @@ export type NativeCheckoutOutcome =
 
 type CheckoutCreateResponse =
   | {
-    kind: "free_completed";
-    orderId: string;
-    buyerStatusToken?: string;
-  }
+      kind: "free_completed";
+      orderId: string;
+      buyerStatusToken?: string;
+    }
   | {
-    kind: "requires_payment";
-    checkoutSessionId: string;
-    buyerStatusToken: string;
-    totalCents: number;
-    subtotalCents: number;
-    taxCents: number;
-    taxBreakdown: unknown[];
-    currency: string;
-    clientSecret: string;
-    paymentIntentId: string;
-    publishableKey: string | null;
-    // ORCH-0844 Connect direct-charge config — see consumer mirror at
-    // app-mobile/src/payments/nativeCheckoutFlow.ts for full rationale.
-    // The mobile Stripe SDK MUST be re-initialised with stripeAccountId
-    // before initPaymentSheet, otherwise the confirm step hits Stripe
-    // under the platform context and the client_secret bound to the
-    // connected account is rejected (404 → double-resolve on iOS 26).
-    // customerId + customerEphemeralKeySecret are paired-or-absent.
-    stripeAccountId: string;
-    customerId: string | null;
-    customerEphemeralKeySecret: string | null;
-  }
+      kind: "requires_payment";
+      checkoutSessionId: string;
+      buyerStatusToken: string;
+      totalCents: number;
+      subtotalCents: number;
+      taxCents: number;
+      taxBreakdown: unknown[];
+      currency: string;
+      clientSecret: string;
+      paymentIntentId: string;
+      publishableKey: string | null;
+      // ORCH-0844 Connect direct-charge config — see consumer mirror at
+      // app-mobile/src/payments/nativeCheckoutFlow.ts for full rationale.
+      // The mobile Stripe SDK MUST be re-initialised with stripeAccountId
+      // before initPaymentSheet, otherwise the confirm step hits Stripe
+      // under the platform context and the client_secret bound to the
+      // connected account is rejected (404 → double-resolve on iOS 26).
+      // customerId + customerEphemeralKeySecret are paired-or-absent.
+      stripeAccountId: string;
+      customerId: string | null;
+      customerEphemeralKeySecret: string | null;
+    }
   | {
-    kind: "requires_web_redirect";
-    checkoutSessionId: string;
-    buyerStatusToken: string;
-    hostedCheckoutUrl: string | null;
-    totalCents: number;
-    currency: string;
-  }
+      kind: "requires_web_redirect";
+      checkoutSessionId: string;
+      buyerStatusToken: string;
+      hostedCheckoutUrl: string | null;
+      totalCents: number;
+      currency: string;
+    }
   // META-ORCH-1076 [Paystack Africa] — Nigerian (NGN) brands. Mirror of the
   // app-mobile consumer arm; the in-app browser opens Paystack hosted checkout
   // and we poll the server for the finalized order.
   | {
-    kind: "requires_paystack_redirect";
-    checkoutSessionId: string;
-    buyerStatusToken: string;
-    authorizationUrl: string;
-    returnUrl: string;
-    reference: string;
-    totalCents: number;
-    currency: string;
-  };
+      kind: "requires_paystack_redirect";
+      checkoutSessionId: string;
+      buyerStatusToken: string;
+      authorizationUrl: string;
+      returnUrl: string;
+      reference: string;
+      totalCents: number;
+      currency: string;
+    };
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
 
@@ -245,7 +245,10 @@ async function pollPaystackOrder(
       }));
     } catch (err) {
       // Transport failure is NOT an answer. Keep polling within the budget.
-      console.warn("[nativeCheckoutFlow:business] checkout-status poll failed", err);
+      console.warn(
+        "[nativeCheckoutFlow:business] checkout-status poll failed",
+        err,
+      );
       data = null;
     }
     // A finalized order OUTRANKS any status string.
@@ -261,7 +264,9 @@ async function pollPaystackOrder(
     if (data?.status === "failed") {
       return { kind: "terminal", code: data.error ?? null };
     }
-    await new Promise((resolve) => setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS));
+    await new Promise((resolve) =>
+      setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS),
+    );
   }
   return { kind: "timeout" };
 }
@@ -330,9 +335,9 @@ const normalizedEventDateIds = (input: NativeCheckoutInput): string[] =>
     (id) => typeof id === "string" && id.length > 0,
   );
 
-export const useNativeCheckoutFlow = (): (
+export const useNativeCheckoutFlow = (): ((
   input: NativeCheckoutInput,
-) => Promise<NativeCheckoutOutcome> => {
+) => Promise<NativeCheckoutOutcome>) => {
   const { initPaymentSheet, presentPaymentSheet, isPaymentSheetSupported } =
     useStripePaymentSheet();
 
@@ -345,63 +350,63 @@ export const useNativeCheckoutFlow = (): (
     }
 
     // 1. Create the checkout session on the server.
-    const { data, error } = await supabase.functions.invoke<
-      CheckoutCreateResponse
-    >(
-      "ticket-checkout-create",
-      {
-        body: {
-          eventId: input.eventId,
-          surface: "native",
-          returnContract: "host_v1",
-          buyer: {
-            name: input.buyer.name,
-            email: input.buyer.email,
-            phone: input.buyer.phone,
-            marketingOptIn: input.buyer.marketingOptIn === true,
-            // ORCH-1130 Fix #2 — only forward an address if a (legacy) caller
-            // still supplies one. The server ignores it (tax is venue-sourced);
-            // the no-address create computes the same all-in total.
-            ...(input.buyer.address ? { address: input.buyer.address } : {}),
+    const { data, error } =
+      await supabase.functions.invoke<CheckoutCreateResponse>(
+        "ticket-checkout-create",
+        {
+          body: {
+            eventId: input.eventId,
+            surface: "native",
+            returnContract: "host_v1",
+            buyer: {
+              name: input.buyer.name,
+              email: input.buyer.email,
+              phone: input.buyer.phone,
+              marketingOptIn: input.buyer.marketingOptIn === true,
+              // ORCH-1130 Fix #2 — only forward an address if a (legacy) caller
+              // still supplies one. The server ignores it (tax is venue-sourced);
+              // the no-address create computes the same all-in total.
+              ...(input.buyer.address ? { address: input.buyer.address } : {}),
+            },
+            lines: input.lines,
+            ...(input.discountCode ? { discountCode: input.discountCode } : {}),
+            quoteDigest: input.quoteDigest ?? null,
+            quoteListDigest: input.quoteListDigest ?? null,
+            ...(input.taxCalculationId
+              ? { taxCalculationId: input.taxCalculationId }
+              : {}),
+            ...(input.paymentPlanChoice !== undefined
+              ? { payment_plan_choice: input.paymentPlanChoice }
+              : {}),
+            ...(input.idempotencyKey !== undefined
+              ? { idempotencyKey: input.idempotencyKey }
+              : {}),
+            // ORCH-1138 Leg 3 — chosen occurrence ONLY when present (byte-identical
+            // on null). The edge fn validates the eventDateId FK (investigation Q5).
+            ...(input.eventDateId !== undefined && input.eventDateId.length > 0
+              ? { eventDateId: input.eventDateId }
+              : {}),
+            // issue #3281 — the chosen day SET. Without it a multi-date or
+            // recurring event is refused with `event_date_choice_required`
+            // (#3313). Empty => omitted => byte-identical single-date request.
+            ...(normalizedEventDateIds(input).length > 0
+              ? { eventDateIds: normalizedEventDateIds(input) }
+              : {}),
+            ...(input.bookedStartAt !== undefined &&
+            input.bookedStartAt.length > 0
+              ? { bookedStartAt: input.bookedStartAt }
+              : {}),
+            ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
+              ? { bookedEndAt: input.bookedEndAt }
+              : {}),
+            ...(typeof input.partySize === "number" &&
+            Number.isFinite(input.partySize) &&
+            input.partySize >= 1
+              ? { partySize: Math.floor(input.partySize) }
+              : {}),
           },
-          lines: input.lines,
-          ...(input.discountCode ? { discountCode: input.discountCode } : {}),
-          quoteDigest: input.quoteDigest ?? null,
-          quoteListDigest: input.quoteListDigest ?? null,
-          ...(input.taxCalculationId
-            ? { taxCalculationId: input.taxCalculationId }
-            : {}),
-          ...(input.paymentPlanChoice !== undefined
-            ? { payment_plan_choice: input.paymentPlanChoice }
-            : {}),
-          ...(input.idempotencyKey !== undefined
-            ? { idempotencyKey: input.idempotencyKey }
-            : {}),
-          // ORCH-1138 Leg 3 — chosen occurrence ONLY when present (byte-identical
-          // on null). The edge fn validates the eventDateId FK (investigation Q5).
-          ...(input.eventDateId !== undefined && input.eventDateId.length > 0
-            ? { eventDateId: input.eventDateId }
-            : {}),
-          // issue #3281 — the chosen day SET. Without it a multi-date or
-          // recurring event is refused with `event_date_choice_required`
-          // (#3313). Empty => omitted => byte-identical single-date request.
-          ...(normalizedEventDateIds(input).length > 0
-            ? { eventDateIds: normalizedEventDateIds(input) }
-            : {}),
-          ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
-            ? { bookedStartAt: input.bookedStartAt }
-            : {}),
-          ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
-            ? { bookedEndAt: input.bookedEndAt }
-            : {}),
-          ...(typeof input.partySize === "number" &&
-          Number.isFinite(input.partySize) &&
-          input.partySize >= 1
-            ? { partySize: Math.floor(input.partySize) }
-            : {}),
         },
-      },
-    );
+      );
 
     if (error) {
       const refusal = await readEdgeRefusal(error);
@@ -443,7 +448,7 @@ export const useNativeCheckoutFlow = (): (
       //
       // initStripe REPLACES the prior SDK config (it does NOT merge), so we
       // re-pass merchantIdentifier + urlScheme. Values mirror the
-        // StripeNativeProvider mount in the payment route wrapper; if
+      // StripeNativeProvider mount in the payment route wrapper; if
       // either changes, both call sites must change together. CI gate
       // i-stripe-paymentsheet-parity.mjs verifies the agreement.
       if (data.publishableKey && data.stripeAccountId) {
@@ -474,9 +479,9 @@ export const useNativeCheckoutFlow = (): (
         // Paired-or-absent per edge function contract; absent → guest mode.
         ...(data.customerId && data.customerEphemeralKeySecret
           ? {
-            customerId: data.customerId,
-            customerEphemeralKeySecret: data.customerEphemeralKeySecret,
-          }
+              customerId: data.customerId,
+              customerEphemeralKeySecret: data.customerEphemeralKeySecret,
+            }
           : {}),
         // ORCH-0849 HOTFIX (2026-05-15): explicit applePay + googlePay
         // config blocks REQUIRED for the wallet buttons to render in
@@ -508,7 +513,8 @@ export const useNativeCheckoutFlow = (): (
       if (initResult.error) {
         return {
           outcome: "failed",
-          message: initResult.error.localizedMessage ??
+          message:
+            initResult.error.localizedMessage ??
             initResult.error.message ??
             "Couldn't open payment sheet.",
         };
@@ -517,10 +523,10 @@ export const useNativeCheckoutFlow = (): (
       // #1930: fail closed before presenting. Stripe still confirms client-side,
       // so server finalize/reversal owns any closure-after-preflight race.
       if (
-        !await preflightPaymentSheet(
+        !(await preflightPaymentSheet(
           data.checkoutSessionId,
           data.buyerStatusToken,
-        )
+        ))
       ) {
         return {
           outcome: "failed",
@@ -534,7 +540,8 @@ export const useNativeCheckoutFlow = (): (
         }
         return {
           outcome: "failed",
-          message: presentResult.error.localizedMessage ??
+          message:
+            presentResult.error.localizedMessage ??
             presentResult.error.message ??
             "Payment failed.",
         };
@@ -563,7 +570,10 @@ export const useNativeCheckoutFlow = (): (
       try {
         await WebBrowser.openBrowserAsync(data.authorizationUrl);
       } catch (err) {
-        console.warn("[nativeCheckoutFlow:business] paystack browser error", err);
+        console.warn(
+          "[nativeCheckoutFlow:business] paystack browser error",
+          err,
+        );
         // Still poll — the buyer may have paid before the browser errored.
       }
 

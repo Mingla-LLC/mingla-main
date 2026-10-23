@@ -20,7 +20,7 @@ export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,cou
 const clean = (value: unknown, max = 160): string =>
   typeof value === "string"
     ? Array.from(value.normalize("NFC").replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, "")
-      .replace(/[\u0000-\u001f\u007f]/gu, " ").replace(/\s+/gu, " ").trim()).slice(0, max).join("")
+      .replace(/[\u0000-\u001f\u007f]/gu, " ").replace(/\s+/gu, " ").trim()).slice(0, max).join("").trim()
     : "";
 
 const compact = (value: RecordLike): RecordLike =>

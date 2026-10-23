@@ -1,0 +1,17 @@
+{
+  "first": "Jẹ́ ẹni àkọ́kọ́ láti tẹ̀lé",
+  "count_zero": "olùtẹ̀lé {{formatted}}",
+  "count_one": "olùtẹ̀lé {{formatted}}",
+  "count_two": "olùtẹ̀lé {{formatted}}",
+  "count_few": "olùtẹ̀lé {{formatted}}",
+  "count_many": "olùtẹ̀lé {{formatted}}",
+  "count_other": "olùtẹ̀lé {{formatted}}",
+  "a11y_none": "Kò sí olùtẹ̀lé síbẹ̀",
+  "a11y_exact_zero": "olùtẹ̀lé {{count}}",
+  "a11y_exact_one": "olùtẹ̀lé {{count}}",
+  "a11y_exact_two": "olùtẹ̀lé {{count}}",
+  "a11y_exact_few": "olùtẹ̀lé {{count}}",
+  "a11y_exact_many": "olùtẹ̀lé {{count}}",
+  "a11y_exact_other": "olùtẹ̀lé {{count}}",
+  "a11y_approx": "ó tó olùtẹ̀lé {{formatted}}"
+}

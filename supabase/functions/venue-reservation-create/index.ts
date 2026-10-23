@@ -83,8 +83,9 @@ import { paystackReservationSplitFields } from "./ngPaystackSplit.ts";
 // checkout session (fee path, decoupled + fail-open) and fire the lead-type
 // conversion for a completed FREE RSVP (fire-and-forget, idempotent, fail-open).
 import {
+  type CheckoutAdContextInput,
   fireAdConversion,
-  persistReservationAttributionClickId,
+  persistReservationAdContext,
 } from "../_shared/adConversionFire.ts";
 // #3392 — web guest manage tokens are DERIVED from the checkout session id so
 // the confirmation email can re-derive the same token and link to the manage
@@ -154,6 +155,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         "occasion",
         "guestNotes",
         "attributionClickId",
+        "adMatchData",
         "organicJourneyToken",
         "returnContract",
         "mode",
@@ -247,6 +249,40 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       body.attributionClickId.trim()
     ? body.attributionClickId.trim()
     : null;
+  const rawAdMatch = body.adMatchData && typeof body.adMatchData === "object" &&
+      !Array.isArray(body.adMatchData)
+    ? body.adMatchData as Record<string, unknown>
+    : {};
+  if (
+    Object.keys(rawAdMatch).some((key) =>
+      ![
+        "fbp",
+        "fbc",
+        "scid",
+        "ttp",
+        "clientUserAgent",
+        "trackingOptOut",
+      ].includes(key)
+    )
+  ) {
+    return jsonResponse({ error: "ad_match_data_invalid" }, 400);
+  }
+  const matchString = (value: unknown, max: number): string | null =>
+    typeof value === "string" && value.trim()
+      ? value.trim().slice(0, max)
+      : null;
+  const adContext: CheckoutAdContextInput = {
+    clickId: attributionClickId,
+    fbp: matchString(rawAdMatch.fbp, 512),
+    fbc: matchString(rawAdMatch.fbc, 512),
+    scid: matchString(rawAdMatch.scid, 512),
+    ttp: matchString(rawAdMatch.ttp, 512),
+    trackingOptOut: rawAdMatch.trackingOptOut === true,
+    clientIpAddress:
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+    clientUserAgent: matchString(rawAdMatch.clientUserAgent, 1024) ??
+      matchString(req.headers.get("user-agent"), 1024),
+  };
   const organicJourneyToken = typeof body.organicJourneyToken === "string" &&
       body.organicJourneyToken.trim()
     ? body.organicJourneyToken.trim()
@@ -495,6 +531,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerStatusToken: guestCancelToken ?? randomBuyerStatusToken(),
       organicJourneyId,
       attributionClickId,
+      adContext,
       surface,
       depositListCents: null,
       discountCents: 0,
@@ -810,6 +847,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerStatusToken,
       organicJourneyId,
       attributionClickId,
+      adContext,
       surface,
       depositListCents: baseFeeCents,
       discountCents: baseFeeCents,
@@ -913,10 +951,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     // ISSUE-865 PR1 WP-2 — thread the ad click_id onto the session, DECOUPLED
     // from the fatal insert (a missing column / write failure never blocks the
     // reservation — mirrors the ticket P2-1 fix). Fire-and-forget, fail-open.
-    void persistReservationAttributionClickId(
+    void persistReservationAdContext(
       supabase as never,
       sessionId,
-      attributionClickId,
+      adContext,
     );
 
     const psReference = `mingla_resv_${sessionId}_${Date.now().toString(36)}`;
@@ -1053,10 +1091,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
   // ISSUE-865 PR1 WP-2 — thread the ad click_id onto the session, DECOUPLED from
   // the fatal insert (fail-open; a missing column never blocks the reservation).
-  void persistReservationAttributionClickId(
+  void persistReservationAdContext(
     supabase as never,
     sessionId,
-    attributionClickId,
+    adContext,
   );
 
   // ── WEB → hosted Stripe Checkout Session. ────────────────────────────────────
@@ -1430,6 +1468,7 @@ interface FreeReservationInput {
   buyerStatusToken: string;
   organicJourneyId: string | null;
   attributionClickId: string | null;
+  adContext: CheckoutAdContextInput;
   surface: ReserveSurface;
   depositListCents: number | null;
   discountCents: number;
@@ -1523,6 +1562,11 @@ async function completeFreeReservation(
       await input.releaseDiscountUses?.();
       return jsonResponse({ error: "reservation_session_failed" }, 500);
     }
+    void persistReservationAdContext(
+      supabase as never,
+      input.checkoutSessionId,
+      input.adContext,
+    );
   }
 
   if (reservationId) {
@@ -1531,6 +1575,7 @@ async function completeFreeReservation(
       surface: input.surface === "web" ? "web" : "ios",
       eventType: "reservation",
       clickId: input.attributionClickId,
+      adContext: input.adContext,
     }).catch((adConvErr) => {
       console.warn(
         "[venue-reservation-create] free-RSVP ad-conversion fire failed (non-fatal):",

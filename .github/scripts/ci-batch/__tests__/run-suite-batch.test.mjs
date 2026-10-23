@@ -75,14 +75,21 @@ test("R1: the expected set is derived from the manifest, and the real manifest i
 // [TEST-MOD-APPROVED #2897] The 55 established suites are unchanged; the vector
 // and the total now add the validator's single declared post-seal set rather than
 // carrying a second hand-typed number that must agree with it.
-test("#2438 primary routing freezes 55 established suites and excludes every Phase 3B suite", () => {
+// [TEST-MOD-APPROVED #3682] Issue-owned local descriptors are additive after
+// the #2438 seal. Freeze the established projection while proving every local
+// descriptor is counted once in its declared primary class.
+test("#2438 primary routing freezes 55 established suites and counts additive local descriptors", () => {
   const manifest = loadManifest(); const phase3b = new Set(manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave").map((suite) => suite.id));
   const vector = Object.fromEntries(manifest.classes.map((klass) => [klass, expectedPrimarySuites(manifest, klass).length]));
-  assert.deepEqual(vector, { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
+  const localByClass = Object.fromEntries(manifest.classes.map((klass) => [klass,
+    manifest.suites.filter((suite) => suite.localDescriptor && suite.class === klass).length]));
+  const establishedVector = Object.fromEntries(manifest.classes.map((klass) => [klass, vector[klass] - localByClass[klass]]));
+  assert.deepEqual(establishedVector, { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
     "node20-19-noinstall":1, "node20-noinstall":14 + SUITES_ADDED_SINCE_SEAL.length, "node22-noinstall":10, "ota-app-node20-19-install":1,
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 });
-  assert.equal(expectedPrimarySuites(manifest, null).length, 55 + SUITES_ADDED_SINCE_SEAL.length);
+  assert.equal(expectedPrimarySuites(manifest, null).length,
+    55 + SUITES_ADDED_SINCE_SEAL.length + Object.values(localByClass).reduce((sum, count) => sum + count, 0));
   assert.equal(expectedPrimarySuites(manifest, null).some((suite) => phase3b.has(suite.id)), false);
 });
 
@@ -204,6 +211,11 @@ test("executable suite origins obey the lifecycle-specific duplicate-provider co
       ["batched-active", "batched-historical", "shadow-active"].includes(suite.lifecycle),
       `${suite.id} has an unreviewed executable lifecycle ${suite.lifecycle}`,
     );
+    if (suite.localDescriptor) {
+      assert.equal(suite.origin, suite.localDescriptor, `${suite.id} local descriptor origin drifted`);
+      assert.ok(fs.existsSync(origin), `${suite.id} local descriptor is missing`);
+      continue;
+    }
     if (suite.lifecycle === "shadow-active") {
       const legacy = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === path.basename(suite.origin));
       assert.ok(fs.existsSync(origin), `${suite.id} removed its historical wrapper before shadow parity`);

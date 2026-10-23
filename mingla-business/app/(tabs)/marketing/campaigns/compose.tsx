@@ -367,6 +367,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // email `body`). Only used when channel === 'sms'.
   const [smsBody, setSmsBody] = useState("");
   const discountPrefillRef = useRef<string | null>(null);
+  // #3682 — Follow is useful for some campaigns but must not be forced into a
+  // concise sales text. Existing drafts without the field reopen OFF.
+  const [includeSmsFollowCta, setIncludeSmsFollowCta] = useState(false);
   // ORCH-1282 / ORCH-1289 — MMS photo attach (up to MMS_MAX_MEDIA). `mmsMedia`
   // holds each picked photo with its optimistic local preview + verified public
   // URL. `mmsMediaUrls` (derived) is the VERIFIED-URL-only array that rides the
@@ -632,6 +635,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     const code = error instanceof Error ? error.message : "BOOK_BLAST_FAILED";
     if (code.includes("PREVIEW_STALE") && isManualAudience)
       return "This group changed after preview. Refresh to get the current recipients and cost.";
+    if (code.includes("RATE_BOOK_EXPIRED"))
+      return "SMS pricing needs a fresh provider rate card before this campaign can be sent.";
+    if (code.includes("RATE_BOOK_UNAVAILABLE"))
+      return "SMS pricing is unavailable for one or more destinations. Mingla needs to refresh the provider rate card before sending.";
     if (code.includes("COST"))
       return "Provider cost could not be verified. Refresh the preview before confirming.";
     if (code.includes("MMS"))
@@ -853,6 +860,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setBody(row.channel_payload.body_html ?? "");
         } else if (row.channel_payload.kind === "sms") {
           setSmsBody(row.channel_payload.body ?? "");
+          setIncludeSmsFollowCta(
+            row.channel_payload.include_follow_cta === true,
+          );
           // ORCH-1282 / ORCH-1289 — restore a reopened MMS draft's attachments as
           // already-verified remote items (no local preview / objectUrl needed).
           setMmsMedia(
@@ -937,6 +947,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       return {
         kind: "sms",
         body: smsBody,
+        include_follow_cta: includeSmsFollowCta,
         ...(mmsMediaUrls.length > 0 ? { media_urls: mmsMediaUrls } : {}),
       };
     }
@@ -947,7 +958,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       body_text: stripHtml(body),
       embedded_events: extractEmbeddedEventIds(body),
     };
-  }, [channel, smsBody, mmsMediaUrls, subject, body]);
+  }, [channel, smsBody, includeSmsFollowCta, mmsMediaUrls, subject, body]);
 
   // Campaign name — email uses the subject; SMS uses the first ~40 chars of the
   // body (SMS has no subject line).
@@ -1011,6 +1022,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       subject,
       body,
       smsBody,
+      includeSmsFollowCta,
       mmsMediaUrls,
       embeddedEvents: extractEmbeddedEventIds(body),
       audienceId,
@@ -1854,6 +1866,13 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                     reachableSms={reach?.reachable_sms ?? null}
                     currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                     editable={!scheduleMutation.isPending}
+                    includeFollowCta={includeSmsFollowCta}
+                    brandName={brandName}
+                    brandSlug={brandSlug}
+                    onIncludeFollowCtaChange={(value) => {
+                      setIncludeSmsFollowCta(value);
+                      setIsDirty(true);
+                    }}
                     brandId={brandId}
                     media={mmsComposeItems}
                     maxMedia={MMS_MAX_MEDIA}
@@ -1954,6 +1973,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   body={smsBody}
                   brandName={brandName}
                   brandSlug={brandSlug}
+                  includeFollowCta={includeSmsFollowCta}
                   reachableSms={reach?.reachable_sms ?? null}
                   currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                   hasMedia={mmsMedia.length > 0}
@@ -2031,9 +2051,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }
           // ORCH-1281 — SMS shows a MESSAGE row (wire body) instead of SUBJECT.
           channelKind={channel === "sms" ? "sms" : "email"}
-          messagePreview={bodyWithFooter(
-            smsBlastBodyWithFollow(smsBody, brandName, brandSlug),
-          ).slice(0, 160)}
+          messagePreview={bodyWithFooter(smsBlastBodyWithFollow(smsBody, brandName, includeSmsFollowCta ? brandSlug : null)).slice(0, 160)}
           hasMedia={mmsMedia.length > 0}
           estimatedCostLabel={
             isBookAudience && bookQuote !== null
@@ -2148,6 +2166,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 body={smsBody}
                 brandName={brandName}
                 brandSlug={brandSlug}
+                includeFollowCta={includeSmsFollowCta}
                 reachableSms={reach?.reachable_sms ?? null}
                 currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                 hasMedia={mmsMedia.length > 0}

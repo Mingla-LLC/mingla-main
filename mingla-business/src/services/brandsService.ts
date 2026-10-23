@@ -21,6 +21,7 @@
  */
 
 import { supabase } from "./supabase";
+import { activeAdmissionCount } from "../utils/compOrders";
 // Issue #1835 — every error leaving this service must be a real Error.
 import { normalizeSupabaseError } from "../utils/supabaseErrorMessage";
 import {
@@ -72,6 +73,7 @@ interface OrderStatsRow {
   created_at: string | null;
   events: { brand_id: string | null } | null;
   order_line_items: { quantity: number | null }[] | null;
+  tickets: { status: string | null; admitsCount: number | null }[] | null;
 }
 
 interface BrandStatsAggregate {
@@ -716,15 +718,9 @@ export async function aggregateBrandStatsByBrandIds(
 
   const { data, error } = await supabase
     .from("orders")
-    .select(`
-      total_cents,
-      currency,
-      payment_status,
-      refunded_amount_cents,
-      created_at,
-      events!inner ( brand_id ),
-      order_line_items ( quantity )
-    `)
+    .select(
+      "total_cents,currency,payment_status,refunded_amount_cents,created_at,events!inner(brand_id),order_line_items(quantity),tickets(status,admitsCount:admits_count)",
+    )
     .in("events.brand_id", brandIds)
     .not("payment_status", "in", "(failed,cancelled,refunded)");
 
@@ -736,11 +732,13 @@ export async function aggregateBrandStatsByBrandIds(
     const bucket = result.get(brandId);
     if (bucket === undefined) continue;
 
-    const qty = (row.order_line_items ?? []).reduce(
-      (sum, line) => sum + (line.quantity ?? 0),
-      0,
+    bucket.attendees += activeAdmissionCount(
+      row.tickets,
+      (row.order_line_items ?? []).reduce(
+        (sum, line) => sum + (line.quantity ?? 0),
+        0,
+      ),
     );
-    bucket.attendees += qty;
 
     const net = (row.total_cents ?? 0) - (row.refunded_amount_cents ?? 0);
     const currency = (row.currency ?? "").trim().toUpperCase();

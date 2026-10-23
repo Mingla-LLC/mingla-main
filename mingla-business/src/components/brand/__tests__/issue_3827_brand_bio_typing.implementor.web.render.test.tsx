@@ -171,7 +171,7 @@ const BRAND = {
   displayName: "Salsa Social",
   slug: "salsa-social",
   role: "owner",
-  stats: { events: 0, followers: 0, rev: 0 },
+  stats: { events: 0, rev: 0 },
   currentLiveEvent: null,
   bio: "",
   tagline: "Social Latin dance",

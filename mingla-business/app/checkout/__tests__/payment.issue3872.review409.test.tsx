@@ -1,21 +1,63 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { ticketCheckoutReviewFromError } from "../../../src/services/ticketCheckoutReview";
 
-const root = join(__dirname, "..", "..", "..");
+const quote: TicketQuote = {
+  kind: "quote",
+  currency: "USD",
+  lines: [],
+  listSubtotalCents: 5000,
+  discountCents: 1000,
+  netSubtotalCents: 4000,
+  dueTodayNetCents: 4000,
+  dueTodayListCents: 5000,
+  installmentSchedule: null,
+  discounts: [],
+  codeOutcome: {
+    status: "applied",
+    reason: null,
+    required: null,
+    with: null,
+    replaced: [],
+  },
+  notices: [],
+  quoteDigest: "discounted-digest",
+  quoteListDigest: "list-digest",
+  feesCents: 0,
+  taxCents: 0,
+  buyerTotalCents: 4000,
+  calculationId: "calc-1",
+  subtotalCents: 4000,
+  totalCents: 4000,
+};
 
 describe("#3872 checkout review on server 409", () => {
   test.each([
-    ["event", "app/checkout/[eventId]/payment.tsx"],
-    ["experience", "app/checkout-experience/[experienceEventId]/payment.tsx"],
-    ["trip", "app/checkout-trip/[tripEventId]/payment.tsx"],
-  ])("%s checkout renders and accepts only the revised server quote", (_kind, relative) => {
-    const source = readFileSync(join(root, relative), "utf8");
-    expect(source).toContain("ticketCheckoutReviewFromError");
-    expect(source).toContain("setCheckoutReview(review)");
-    expect(source).toContain("review={checkoutReview}");
-    expect(source).toContain("const revisedQuote = checkoutReview.quote");
-    expect(source).toContain("activeQuote.quoteDigest");
-    expect(source).toContain("activeQuote.quoteListDigest");
-    expect(source).toContain("activeQuote.buyerTotalCents");
+    "discount_changed",
+    "price_changed",
+    "lines",
+    "fingerprint",
+    "discount_code_invalid",
+  ] as const)("maps %s to the revised server quote", (detail) => {
+    expect(
+      ticketCheckoutReviewFromError(
+        {
+          code: "checkout_review_required",
+          detail,
+          reviewQuote: quote,
+        },
+        5000,
+      ),
+    ).toEqual({
+      kind: "review_required",
+      detail,
+      quote,
+      previousTotalCents: 5000,
+    });
+  });
+
+  test("refuses to manufacture a review for any other error", () => {
+    expect(
+      ticketCheckoutReviewFromError({ code: "sold_out" }, 5000),
+    ).toBeNull();
   });
 });

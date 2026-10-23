@@ -1,0 +1,17 @@
+{
+  "first": "היו הראשונים לעקוב",
+  "count_zero": "{{formatted}} עוקבים",
+  "count_one": "עוקב אחד",
+  "count_two": "{{formatted}} עוקבים",
+  "count_few": "{{formatted}} עוקבים",
+  "count_many": "{{formatted}} עוקבים",
+  "count_other": "{{formatted}} עוקבים",
+  "a11y_none": "עדיין אין עוקבים",
+  "a11y_exact_zero": "{{count}} עוקבים",
+  "a11y_exact_one": "עוקב אחד",
+  "a11y_exact_two": "{{count}} עוקבים",
+  "a11y_exact_few": "{{count}} עוקבים",
+  "a11y_exact_many": "{{count}} עוקבים",
+  "a11y_exact_other": "{{count}} עוקבים",
+  "a11y_approx": "כ־{{formatted}} עוקבים"
+}

@@ -727,6 +727,14 @@ jobs:
           src/pages/__tests__/creativeLibraryFit.issue3697.test.js
           src/__tests__/issue3697_v14_creative_library.test.js
           src/__tests__/issue3697_v14_admin_ads_ia.test.js
+          src/__tests__/issue3697_ads_learn_contract.test.js
+          src/__tests__/issue3697_audience_stages_builder.test.js
+          src/__tests__/issue3697_audiences_ui.test.js
+          src/__tests__/issue3697_creative_tags_ui.test.js
+          src/__tests__/issue3697_platform_cta_picker.test.js
+          src/__tests__/issue3697_stage_campaign_rows.test.js
+          src/__tests__/issue3697_stage_creatives.test.js
+          src/__tests__/issue3697_tiktok_placement_control.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}

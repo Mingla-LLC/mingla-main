@@ -8,8 +8,8 @@ import {
 import {
   callDiscountQuoteLines,
   callReserveDiscountUses,
-  normaliseDiscountCode,
   type DiscountRpcClient,
+  normaliseDiscountCode,
 } from "../discountEngine.ts";
 
 Deno.test("normaliseDiscountCode trims, uppercases, and removes spaces and hyphens", () => {
@@ -101,13 +101,13 @@ Deno.test("RPC errors fail closed", async () => {
     },
   };
   await assertRejects(
-    () => callDiscountQuoteLines(client, {
-      brandId: "brand",
-      currency: "GBP",
-      lines: [],
-    }),
+    () =>
+      callDiscountQuoteLines(client, {
+        brandId: "brand",
+        currency: "GBP",
+        lines: [],
+      }),
     Error,
     "discount_quote_failed:boom",
   );
 });
-

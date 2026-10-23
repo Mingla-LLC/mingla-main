@@ -23,19 +23,45 @@ Deno.test("#3872 offering scarcity outranks the end time", () => {
 
 for (const [kind, file, remainingNeedle, saleNeedle] of [
   ["event", "EventOfferingBody.tsx", "ticket.saleRemaining", "saleAllIn"],
-  ["experience", "ExperienceOfferingBody.tsx", "ticket.saleRemaining", "saleAllInCents"],
-  ["trip", "TripOfferingBody.tsx", "tier.saleRemaining", "tripTierListPriceLabel(tier)"],
+  [
+    "experience",
+    "ExperienceOfferingBody.tsx",
+    "ticket?.saleRemaining",
+    "saleAllInCents",
+  ],
+  [
+    "trip",
+    "TripOfferingBody.tsx",
+    "tier.saleRemaining",
+    "tripTierListPriceLabel(tier)",
+  ],
 ] as const) {
-  Deno.test(`#3872 ${kind} renders server sale fields beside list price`, () => {
-    const source = read(file);
-    assertStringIncludes(source, "saleAvailabilityCopy");
-    assertStringIncludes(source, remainingNeedle);
-    assertStringIncludes(source, saleNeedle);
-    assert(/textDecorationLine:\s*["']line-through["']/.test(source));
-  });
+  Deno.test(
+    `#3872 ${kind} renders server sale fields beside list price`,
+    () => {
+      const source = read(file);
+      assertStringIncludes(source, "LazySaleAvailabilityText");
+      assertStringIncludes(source, remainingNeedle);
+      assertStringIncludes(source, saleNeedle);
+      assert(/textDecorationLine:\s*["']line-through["']/.test(source));
+    },
+  );
 }
 
+Deno.test(
+  "#3872 deferred sale copy still calls the single scarcity owner",
+  () => {
+    assertStringIncludes(
+      read("SaleAvailabilityText.tsx"),
+      "saleAvailabilityCopy",
+    );
+  },
+);
+
 Deno.test("#3872 experience retains the per-block basis label", () => {
-  assertStringIncludes(read("ExperienceOfferingBody.tsx"), "experiencePriceBasisLabel");
+  assertStringIncludes(
+    read("ExperienceOfferingBody.tsx"),
+    "experiencePriceBasisLabel",
+  );
   assertEquals(experiencePriceBasisLabel("block", 30), "per 30 min");
 });

@@ -41,6 +41,24 @@ const REQUIRED_KEYS: ReadonlyArray<string> = [
   "leaveSessionConfirmBody",
 ];
 
+const FOLLOWER_KEYS: ReadonlyArray<string> = [
+  "first",
+  "count_zero",
+  "count_one",
+  "count_two",
+  "count_few",
+  "count_many",
+  "count_other",
+  "a11y_none",
+  "a11y_exact_zero",
+  "a11y_exact_one",
+  "a11y_exact_two",
+  "a11y_exact_few",
+  "a11y_exact_many",
+  "a11y_exact_other",
+  "a11y_approx",
+];
+
 function resolveLocalesRoot(): string {
   const candidates = [
     "app-mobile/src/i18n/locales",
@@ -72,33 +90,41 @@ function run() {
     `Expected >=28 locales; found ${langs.length} in ${root}`
   );
 
-  const issues: Array<{ lang: string; missing: string[]; empty: string[] }> = [];
+  const issues: Array<{ lang: string; file: string; missing: string[]; empty: string[] }> = [];
 
   for (const lang of langs) {
-    const p = path.join(root, lang, "social.json");
-    if (!fs.existsSync(p)) continue; // skip locales without social.json
-    const raw = fs.readFileSync(p, "utf8");
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      throw new Error(`Invalid JSON in ${p}: ${(err as Error).message}`);
-    }
+    for (const [file, keys] of [
+      ["social.json", REQUIRED_KEYS],
+      ["followers.json", FOLLOWER_KEYS],
+    ] as const) {
+      const p = path.join(root, lang, file);
+      if (!fs.existsSync(p)) {
+        issues.push({ lang, file, missing: [...keys], empty: [] });
+        continue;
+      }
+      const raw = fs.readFileSync(p, "utf8");
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        throw new Error(`Invalid JSON in ${p}: ${(err as Error).message}`);
+      }
 
-    const missing: string[] = [];
-    const empty: string[] = [];
-    for (const key of REQUIRED_KEYS) {
-      if (!(key in parsed)) {
-        missing.push(key);
-      } else {
-        const v = parsed[key];
-        if (typeof v !== "string" || v.length === 0) {
-          empty.push(key);
+      const missing: string[] = [];
+      const empty: string[] = [];
+      for (const key of keys) {
+        if (!(key in parsed)) {
+          missing.push(key);
+        } else {
+          const v = parsed[key];
+          if (typeof v !== "string" || v.length === 0) {
+            empty.push(key);
+          }
         }
       }
-    }
-    if (missing.length || empty.length) {
-      issues.push({ lang, missing, empty });
+      if (missing.length || empty.length) {
+        issues.push({ lang, file, missing, empty });
+      }
     }
   }
 
@@ -106,7 +132,7 @@ function run() {
     const detail = issues
       .map(
         (i) =>
-          `  ${i.lang}: missing=${i.missing.length} empty=${i.empty.length} -> ${i.missing
+          `  ${i.lang}/${i.file}: missing=${i.missing.length} empty=${i.empty.length} -> ${i.missing
             .concat(i.empty.map((k) => `${k}(empty)`))
             .slice(0, 3)
             .join(",")}…`
@@ -118,7 +144,7 @@ function run() {
   }
 
   console.log(
-    `PASS T-ADV-4 META-0929 locale completeness: all ${REQUIRED_KEYS.length} keys present + non-empty across ${langs.length} locales`
+    `PASS T-ADV-4 META-0929 locale completeness: social (${REQUIRED_KEYS.length}) + followers (${FOLLOWER_KEYS.length}) present + non-empty across ${langs.length} locales`
   );
 }
 

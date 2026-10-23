@@ -1,0 +1,17 @@
+{
+  "first": "كن أول من يتابع",
+  "count_zero": "{{formatted}} متابع",
+  "count_one": "{{formatted}} متابع",
+  "count_two": "{{formatted}} متابعان",
+  "count_few": "{{formatted}} متابعين",
+  "count_many": "{{formatted}} متابعًا",
+  "count_other": "{{formatted}} متابع",
+  "a11y_none": "لا يوجد متابعون بعد",
+  "a11y_exact_zero": "{{count}} متابع",
+  "a11y_exact_one": "{{count}} متابع",
+  "a11y_exact_two": "{{count}} متابعان",
+  "a11y_exact_few": "{{count}} متابعين",
+  "a11y_exact_many": "{{count}} متابعًا",
+  "a11y_exact_other": "{{count}} متابع",
+  "a11y_approx": "حوالي {{formatted}} متابع"
+}

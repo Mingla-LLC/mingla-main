@@ -11,10 +11,8 @@ export const saleAvailabilityCopy = (
   const end = new Date(endsAt);
   if (!Number.isFinite(end.getTime())) return null;
   const options: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
+    dateStyle: "medium",
+    timeStyle: "short",
     ...(timezone ? { timeZone: timezone } : {}),
   };
   try {

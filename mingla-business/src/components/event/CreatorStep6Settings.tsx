@@ -43,7 +43,7 @@ import { ExtraGuestsField } from "../ui/ExtraGuestsField";
 import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 import { Icon } from "../ui/Icon";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
-import { doorFullPriceNotice } from "../discounts/discountUiContract";
+import { doorFullPriceNotice } from "../discounts/doorDiscountContract";
 
 import { type StepBodyProps } from "./types";
 

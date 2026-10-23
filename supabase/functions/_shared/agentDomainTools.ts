@@ -3099,7 +3099,10 @@ const listDiscounts = writeTool(
   "List a brand's live, scheduled, ended, or needs-attention discounts.",
   {
     brand_id: UUID,
-    filter: { type: "string", enum: ["live", "scheduled", "ended", "needs_attention"] },
+    filter: {
+      type: "string",
+      enum: ["live", "scheduled", "ended", "needs_attention"],
+    },
   },
   ["brand_id"],
   async (args, client, userId) => {
@@ -3122,7 +3125,10 @@ const createDiscount = writeTool(
     value_type: { type: "string", enum: ["percent", "amount", "set_price"] },
     value_bps: { type: "integer", minimum: 1, maximum: 10000 },
     value_minor: { type: "integer", minimum: 1 },
-    scope_kind: { type: "string", enum: ["brand", "listing_kinds", "listings", "items"] },
+    scope_kind: {
+      type: "string",
+      enum: ["brand", "listing_kinds", "listings", "items"],
+    },
     combines_with: { type: "string", enum: ["none", "automatic_only", "any"] },
     starts_at: { type: "string", format: "date-time" },
     ends_at: { type: "string", format: "date-time" },
@@ -3136,8 +3142,27 @@ const createDiscount = writeTool(
         type: "object",
         additionalProperties: false,
         properties: {
-          target_kind: { type: "string", enum: ["listing_kind", "event", "ticket_type", "venue_menu", "menu_item", "venue_deposit"] },
-          listing_kind: { type: "string", enum: ["event", "experience", "trip", "venue_order", "reservation_deposit"] },
+          target_kind: {
+            type: "string",
+            enum: [
+              "listing_kind",
+              "event",
+              "ticket_type",
+              "venue_menu",
+              "menu_item",
+              "venue_deposit",
+            ],
+          },
+          listing_kind: {
+            type: "string",
+            enum: [
+              "event",
+              "experience",
+              "trip",
+              "venue_order",
+              "reservation_deposit",
+            ],
+          },
           target_id: UUID,
         },
         required: ["target_kind"],
@@ -3147,14 +3172,16 @@ const createDiscount = writeTool(
   ["brand_id", "kind", "name", "value_type", "scope_kind", "targets"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    const targets = Array.isArray(args.targets) ? args.targets.map((value) => {
-      const target = value as Record<string, unknown>;
-      return {
-        targetKind: target.target_kind,
-        listingKind: target.listing_kind,
-        targetId: target.target_id,
-      };
-    }) : [];
+    const targets = Array.isArray(args.targets)
+      ? args.targets.map((value) => {
+        const target = value as Record<string, unknown>;
+        return {
+          targetKind: target.target_kind,
+          listingKind: target.listing_kind,
+          targetId: target.target_id,
+        };
+      })
+      : [];
     return await invokeFn(client, "brand-discount-upsert", {
       action: "create",
       payload: {
@@ -3184,7 +3211,11 @@ const createDiscount = writeTool(
 const pauseDiscount = writeTool(
   "pause_discount",
   "Pause a discount after the Host confirms. Existing orders keep their price.",
-  { brand_id: UUID, discount_id: UUID, version: { type: "integer", minimum: 1 } },
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
   ["brand_id", "discount_id", "version"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);

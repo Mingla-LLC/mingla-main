@@ -22,7 +22,7 @@
  * LANDING_PAGE_VIEWS), independent of the click order.
  */
 
-import { goalById } from "./goals.js";
+import { goalById, salesPlatformEligible } from "./goals.js";
 import { ALL_PLATFORMS } from "./channelPlan.js";
 
 /**
@@ -49,8 +49,9 @@ export function orderGoalIdsByPriority(goalIds) {
  * { objective, optimization_goal }) so BOTH fields come from a single source —
  * or null when no selected goal is expressible on the platform.
  */
-export function resolvePlatformObjective(goalIds, platform) {
+export function resolvePlatformObjective(goalIds, platform, signals = null) {
   for (const id of orderGoalIdsByPriority(goalIds)) {
+    if (id === "conversions" && !salesPlatformEligible(platform, signals)) continue;
     const entry = goalById(id)?.platforms?.[platform];
     if (entry) return entry;
   }
@@ -63,8 +64,8 @@ export function resolvePlatformObjective(goalIds, platform) {
  * read, so there is exactly one Meta optimization goal in play. Falls back to
  * the valid OUTCOME_TRAFFIC / LANDING_PAGE_VIEWS pair when nothing is expressible.
  */
-export function resolveMetaObjective(goalIds) {
-  const entry = resolvePlatformObjective(goalIds, "meta");
+export function resolveMetaObjective(goalIds, signals = null) {
+  const entry = resolvePlatformObjective(goalIds, "meta", signals);
   if (entry && entry.objective && entry.optimization_goal) {
     return { objective: entry.objective, optimization_goal: entry.optimization_goal };
   }
@@ -77,18 +78,22 @@ export function resolveMetaObjective(goalIds) {
  * optimization_goal come from the same entry; every other platform's native
  * objective (and Snap's optimization_goal) comes from ITS own resolved entry.
  */
-export function resolveGoalForPayload(goalIds, { snapPixelInstalled = false } = {}) {
-  const meta = resolveMetaObjective(goalIds);
+export function resolveGoalForPayload(goalIds, {
+  metaPixelHasSignal,
+  snapPurchaseEvents28d,
+  tiktokPurchaseEvents28d,
+} = {}) {
+  const hasSignalInput = metaPixelHasSignal !== undefined ||
+    snapPurchaseEvents28d !== undefined || tiktokPurchaseEvents28d !== undefined;
+  const signals = hasSignalInput
+    ? { metaPixelHasSignal, snapPurchaseEvents28d, tiktokPurchaseEvents28d }
+    : null;
+  const meta = resolveMetaObjective(goalIds, signals);
   const platforms = {};
   for (const platform of ALL_PLATFORMS) {
-    const entry = resolvePlatformObjective(goalIds, platform);
+    const entry = resolvePlatformObjective(goalIds, platform, signals);
     if (entry) {
-      platforms[platform] = platform === "snapchat" && entry.objective === "TRAFFIC"
-        ? {
-          ...entry,
-          optimization_goal: snapPixelInstalled ? "PIXEL_PAGE_VIEW" : "SWIPES",
-        }
-        : entry;
+      platforms[platform] = entry;
     }
   }
   return {

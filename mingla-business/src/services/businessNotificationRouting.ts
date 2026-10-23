@@ -88,14 +88,12 @@ export function parseBusinessDeepLink(
     }
     case "brand": {
       const brandId = rest[0];
-      const [sub, query = ""] = (rest[1] ?? "").split("?", 2);
+      const [sub, query] = rest[1]?.split("?", 2) ?? [];
       if (!brandId) return null;
       if (sub === "team") return `/brand/${brandId}/team`;
       if (sub === "listing") return `/brand/${brandId}/listing`;
       if (sub === "discounts") {
-        return query
-          ? `/brand/${brandId}/discounts?${query}`
-          : `/brand/${brandId}/discounts`;
+        return `/brand/${brandId}/discounts${query ? `?${query}` : ""}`;
       }
       // ORCH-1082 Gap 15: the KYC-stall reminder + deadline warnings emit
       // `mingla-business://brand/{id}/payments/onboard` (stripe-kyc-stall-reminder
@@ -189,11 +187,19 @@ export function resolveBusinessNavTarget(
   // 2) Type fallback.
   const eventId = (data.eventId ?? data.relatedId) as string | undefined;
   const brandId = (data.brandId ?? currentBrandId() ?? undefined) as
-    | string
-    | undefined;
+    string | undefined;
   const paymentsTarget = brandId
     ? `/brand/${brandId}/payments`
     : ACCOUNT_FALLBACK;
+
+  if (type.startsWith("business.discount_")) {
+    const discountId = (data.discountId ?? data.relatedId) as
+      string | undefined;
+    if (!brandId) return ACCOUNT_FALLBACK;
+    return discountId
+      ? `/brand/${brandId}/discounts?focus=${discountId}`
+      : `/brand/${brandId}/discounts`;
+  }
 
   switch (type) {
     case "business.order_paid":
@@ -216,18 +222,6 @@ export function resolveBusinessNavTarget(
     case "business.account_status_changed":
       return paymentsTarget;
 
-    case "business.discount_limit_80":
-    case "business.discount_ended":
-    case "business.discount_needs_attention": {
-      const discountId = (data.discountId ?? data.relatedId) as
-        | string
-        | undefined;
-      if (!brandId) return ACCOUNT_FALLBACK;
-      return discountId
-        ? `/brand/${brandId}/discounts?focus=${discountId}`
-        : `/brand/${brandId}/discounts`;
-    }
-
     case "business.claim_decision":
       return brandId ? `/brand/${brandId}/listing` : ACCOUNT_FALLBACK;
 
@@ -236,8 +230,7 @@ export function resolveBusinessNavTarget(
 
     case "business.community_announcement": {
       const announcementId = (data.announcementId ?? data.announcement_id) as
-        | string
-        | undefined;
+        string | undefined;
       return announcementId && UUID_RE.test(announcementId)
         ? `/account/support?tab=community&announcementId=${announcementId}`
         : "/account/support?tab=community";
@@ -251,12 +244,12 @@ export function resolveBusinessNavTarget(
     case "business.support_message":
     case "business.support_new_ticket": {
       const ticketId = (data.ticketId ?? data.ticket_id ?? data.relatedId) as
-        | string
-        | undefined;
+        string | undefined;
       return ticketId ? `/support/${ticketId}` : ACCOUNT_FALLBACK;
     }
     case "business.brand_group_message": {
-      const conversationId = (data.conversationId ?? data.conversation_id ??
+      const conversationId = (data.conversationId ??
+        data.conversation_id ??
         data.relatedId) as string | undefined;
       return conversationId ? `/messages/${conversationId}` : "/messages";
     }
@@ -352,7 +345,8 @@ export function processBusinessNotification(
   }
 
   if (
-    typeof data.notificationId === "string" && data.notificationId.length > 0
+    typeof data.notificationId === "string" &&
+    data.notificationId.length > 0
   ) {
     markRowClicked(data.notificationId);
   }

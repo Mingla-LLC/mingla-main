@@ -19,7 +19,6 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
-import { discountKeys } from "../../services/discountKeys";
 import type {
   BrandDiscount,
   BrandPriceRow,
@@ -36,9 +35,10 @@ import {
   DISCOUNT_COMBINATION_LABELS,
   DISCOUNT_KIND_OPTIONS,
   isDiscountDraftValid,
-} from "./discountUiContract";
+} from "./discountEditorContract";
 
 const loadDiscountService = () => import("../../services/discountService");
+const DISCOUNT_QUERY_ROOT = "brand-discounts";
 
 const isoNow = (): string => new Date().toISOString();
 const numeric = (value: string): number | null => {
@@ -148,7 +148,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   const valid = isDiscountDraftValid(draft, rank);
 
   const previewQuery = useQuery({
-    queryKey: discountKeys.preview(brandId, draft),
+    queryKey: [DISCOUNT_QUERY_ROOT, "preview", brandId, JSON.stringify(draft)],
     queryFn: async () =>
       (await loadDiscountService()).previewBrandDiscount(brandId, draft),
     enabled: visible && valid,
@@ -161,7 +161,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
         draft,
       ),
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: discountKeys.all });
+      await queryClient.invalidateQueries({ queryKey: [DISCOUNT_QUERY_ROOT] });
       captureDiscountEvent(
         discount ? "discount_updated" : "discount_created",
         discount

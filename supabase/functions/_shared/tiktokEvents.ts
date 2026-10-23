@@ -63,6 +63,8 @@ export async function sendTikTokConversion(
     email: input.hashedEmail ?? undefined, // SHA-256 hex (hashed by caller)
     phone: input.hashedPhone ?? undefined, // SHA-256 hex
     ttclid: input.externalClickId ?? undefined, // raw TikTok click id
+    external_id: input.externalId ?? undefined,
+    ttp: input.ttp ?? undefined,
     ip: input.clientIpAddress ?? undefined,
     user_agent: input.clientUserAgent ?? undefined,
   } as Record<string, unknown>);
@@ -70,6 +72,9 @@ export async function sendTikTokConversion(
   const properties = definedOnly({
     value: valueNumber(input.valueCents),
     currency: input.currency ?? undefined,
+    content_id: input.contentId ?? undefined,
+    content_type: input.contentId ? "product" : undefined,
+    brand_id: input.brandId ?? undefined,
   } as Record<string, unknown>);
 
   const event = definedOnly({

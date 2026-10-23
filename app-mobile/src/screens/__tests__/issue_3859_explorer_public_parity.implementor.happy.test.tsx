@@ -118,6 +118,9 @@ jest.mock("../../hooks/useBrandFollow", () => ({
     follow: mockFollow,
   }),
 }));
+jest.mock("../../hooks/useBrandFollowerCount", () => ({
+  useBrandFollowerCount: () => ({ data: 1204, isError: false, isPending: false }),
+}));
 jest.mock("../../hooks/useBrandOfferingSections", () => ({
   useBrandHappeningNow: () => ({ data: [] }),
   useBrandPast: () => ({ rows: [], hasMore: false, loadState: "ready" }),

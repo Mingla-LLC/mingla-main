@@ -75,7 +75,7 @@ import { isFeatureEnabled } from "../../config/featureFlags";
 import {
   canShowDiscountsOperation,
   DISCOUNTS_OPERATION_COPY,
-} from "../discounts/discountUiContract";
+} from "../discounts/discountOperationContract";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -84,6 +84,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
+import { FollowersKpiTile } from "./FollowersKpiTile";
 import { OfferingListCard } from "../offering/OfferingListCard";
 import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
@@ -161,6 +162,8 @@ export interface BrandProfileViewProps {
    * state. Parent wires this to the brand query's `refetch()`.
    */
   onRetry?: () => void;
+  /** Opens the active brand's People workspace when this profile is active. */
+  onOpenPeople?: () => void;
   /**
    * Live Stripe status wins over cached brand.stripeStatus when provided.
    * This prevents the profile banner/operations row from showing stale
@@ -274,6 +277,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   isResolving = false,
   isError = false,
   onRetry,
+  onOpenPeople,
   effectiveStripeStatus,
   onBack,
   onEdit,
@@ -938,6 +942,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 
         {/* SECTION B — Stats Strip */}
         <View style={styles.statsRow}>
+          <View style={styles.statCell}>
+            <FollowersKpiTile
+              brandId={brand.id}
+              onOpenPeople={onOpenPeople}
+            />
+          </View>
           <KpiTile label="Events" value={brand.stats.events} sub="all time" style={styles.statCell} />
           <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
           <KpiTile
@@ -1367,10 +1377,12 @@ const styles = StyleSheet.create({
   // Stats Strip ----------------------------------------------------------
   statsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   statCell: {
-    flex: 1,
+    flexBasis: "48%",
+    flexGrow: 1,
   },
 
   // Banner ---------------------------------------------------------------

@@ -2,7 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 import {
   doorFullPriceNotice,
   DOOR_FULL_PRICE_NOTICE,
-} from "../../discounts/discountUiContract";
+} from "../../discounts/doorDiscountContract";
 
 describe("CreatorStep6Settings door-price decision", () => {
   test("renders only while in-person payments are enabled", () => {

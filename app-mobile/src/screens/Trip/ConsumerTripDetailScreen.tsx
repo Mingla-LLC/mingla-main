@@ -114,6 +114,7 @@ import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { OfferingChrome } from "@mingla/offering-rendering";
 
 import { Icon } from "../../components/ui/Icon";
+import { PresentedByFollowButton } from "../../components/brand/PresentedByFollowButton";
 // ORCH-1016 REWORK-3 — import the gorhom scroll host re-export from the primitive
 // (the SOLE permitted gorhom importer, per
 // I-PROPOSED-BASE-BOTTOM-SHEET-SOLE-GORHOM-CONSUMER) and inject it as the
@@ -144,6 +145,8 @@ import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
+import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
 import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
@@ -306,6 +309,8 @@ export default function ConsumerTripDetailScreen({
     tripSlug,
     seed,
   );
+  const followerCountQuery = useBrandFollowerCount(detail?.brandId ?? null);
+  const followerCountLabels = useFollowerCountLabels();
   // ORCH-1138 [trip-page-redesign] — direct-cart state (replaces the old
   // reserveSheetVisible that mounted the duplicate ExpandedBusinessEventSheet
   // detail page). Reserve now seeds + opens TicketCartSheet directly.
@@ -1075,6 +1080,13 @@ export default function ConsumerTripDetailScreen({
   // bar/box buy-state (offeringState, computed above the early returns). The §10
   // box + the docked/floating bars all read offeringState — never diverge.
   const offeringBrand = buildConsumerTripOfferingBrand(detail);
+  const presentedByFollow = (
+    <PresentedByFollowButton
+      brandId={detail.brandId}
+      brandName={detail.brandName}
+      palette={palette}
+    />
+  );
 
   // META-ORCH-1174 device-rework #3 — derived float-pill visibility (the hooks
   // dockTopY/scrollY/viewportH + their setters are declared at the TOP of the
@@ -1209,6 +1221,14 @@ export default function ConsumerTripDetailScreen({
               brand={offeringBrand}
               palette={palette}
               theme={theme}
+              presentedByFollow={presentedByFollow}
+              presentedByFollowerCount={
+                followerCountQuery.isError ? null : followerCountQuery.data
+              }
+              presentedByFollowerCountLoading={
+                followerCountQuery.isPending && !followerCountQuery.isError
+              }
+              presentedByFollowerCountLabels={followerCountLabels}
               state={offeringState}
               callbacks={{
                 onViewBrand: () => {

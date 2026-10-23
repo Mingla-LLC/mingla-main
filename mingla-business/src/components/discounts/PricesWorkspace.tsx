@@ -10,11 +10,11 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
-import { discountKeys } from "../../services/discountKeys";
 import type { BrandPriceRow } from "../../services/discountService";
 import { Button } from "../ui/Button";
 
 const loadDiscountService = () => import("../../services/discountService");
+const DISCOUNT_QUERY_ROOT = "brand-discounts";
 
 export interface PricesWorkspaceProps {
   brandId: string;
@@ -52,7 +52,7 @@ export const PricesWorkspace: React.FC<PricesWorkspaceProps> = ({
         allowed: variables.allowed,
       });
       await queryClient.invalidateQueries({
-        queryKey: discountKeys.prices(brandId),
+        queryKey: [DISCOUNT_QUERY_ROOT, "prices", brandId],
       });
     },
   });

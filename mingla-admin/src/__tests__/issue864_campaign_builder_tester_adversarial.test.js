@@ -388,40 +388,37 @@ describe("channel plan — exclusion precedence + market gate", () => {
     );
   });
 
-  it("retargeting stays hidden while Sales admits only Meta", () => {
-    for (const goalId of ["retargeting"]) {
-      assert.equal(
-        visibleGoals().some((g) => g.id === goalId),
-        false,
-        `${goalId} card must not render`,
-      );
-      assert.deepEqual(
-        platformsForGoal(goalId),
-        [],
-        `${goalId} maps to no platform`,
-      );
-      const rows = planChannels({
-        preflightRows: ["meta", "google"].map(green),
-        goalIds: [goalId],
-        countries: ["US"],
-        totalDailyCents: 2000,
-        connections: { meta: METACONN },
-      });
-      assert.equal(
-        rows.filter((r) => r.eligible).length,
-        0,
-        `${goalId} must produce an empty channel set`,
-      );
-    }
+  it("Retargeting is visible and Sales maps all three paid-social channels", () => {
+    assert.equal(
+      visibleGoals().some((g) => g.id === "retargeting"),
+      true,
+      "retargeting card must render",
+    );
+    assert.deepEqual(
+      platformsForGoal("retargeting"),
+      ["meta", "snapchat", "tiktok"],
+    );
     assert.equal(visibleGoals().some((g) => g.id === "conversions"), true);
-    assert.deepEqual(platformsForGoal("conversions"), ["meta"]);
+    assert.deepEqual(platformsForGoal("conversions"), ["meta", "snapchat", "tiktok"]);
+    assert.deepEqual(
+      platformsForGoal("conversions", {
+        metaPixelHasSignal: false,
+        snapPurchaseEvents28d: 19,
+        tiktokPurchaseEvents28d: 20,
+      }),
+      ["tiktok"],
+    );
   });
 
-  it("disjoint goal selections fall back to the union AND flag disjoint=true", () => {
+  it("a signal-gated Sales selection falls back to the traffic union AND flags disjoint=true", () => {
     const { platforms, disjoint } = platformsForGoals([
       "traffic",
-      "retargeting",
-    ]);
+      "conversions",
+    ], {
+      metaPixelHasSignal: false,
+      snapPurchaseEvents28d: 0,
+      tiktokPurchaseEvents28d: 0,
+    });
     assert.equal(disjoint, true, "no shared channel → disjoint");
     assert.ok(
       platforms.includes("meta"),

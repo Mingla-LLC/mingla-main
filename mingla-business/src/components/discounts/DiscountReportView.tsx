@@ -9,11 +9,11 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
-import { discountKeys } from "../../services/discountKeys";
 import { exportCsvText } from "../../utils/guestCsvExport";
 import { Button } from "../ui/Button";
 
 const loadDiscountService = () => import("../../services/discountService");
+const DISCOUNT_QUERY_ROOT = "brand-discounts";
 
 export interface DiscountReportViewProps {
   brandId: string;
@@ -33,7 +33,7 @@ export const DiscountReportView: React.FC<DiscountReportViewProps> = ({
     return { from: from.toISOString(), to: to.toISOString() };
   }, []);
   const query = useQuery({
-    queryKey: discountKeys.report(brandId, range.from, range.to),
+    queryKey: [DISCOUNT_QUERY_ROOT, "report", brandId, range.from, range.to],
     queryFn: async () =>
       (await loadDiscountService()).fetchDiscountReport(
         brandId,

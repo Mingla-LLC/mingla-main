@@ -1,0 +1,17 @@
+{
+  "first": "Ka zama na farko da zai bi",
+  "count_zero": "mabiya {{formatted}}",
+  "count_one": "mabiyi {{formatted}}",
+  "count_two": "mabiya {{formatted}}",
+  "count_few": "mabiya {{formatted}}",
+  "count_many": "mabiya {{formatted}}",
+  "count_other": "mabiya {{formatted}}",
+  "a11y_none": "Babu mabiya tukuna",
+  "a11y_exact_zero": "mabiya {{count}}",
+  "a11y_exact_one": "mabiyi {{count}}",
+  "a11y_exact_two": "mabiya {{count}}",
+  "a11y_exact_few": "mabiya {{count}}",
+  "a11y_exact_many": "mabiya {{count}}",
+  "a11y_exact_other": "mabiya {{count}}",
+  "a11y_approx": "kimanin mabiya {{formatted}}"
+}

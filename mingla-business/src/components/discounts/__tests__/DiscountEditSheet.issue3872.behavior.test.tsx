@@ -5,7 +5,7 @@ import {
   DISCOUNT_COMBINATION_LABELS,
   DISCOUNT_KIND_OPTIONS,
   isDiscountDraftValid,
-} from "../discountUiContract";
+} from "../discountEditorContract";
 
 const validCode = (): DiscountDraft => ({
   brandId: "brand-1",
@@ -35,8 +35,12 @@ describe("DiscountEditSheet Host decision contract", () => {
       any: "Any eligible discount",
     });
     expect(isDiscountDraftValid(validCode(), 20)).toBe(true);
-    expect(isDiscountDraftValid({ ...validCode(), code: "BAD" }, 20)).toBe(false);
-    expect(isDiscountDraftValid({ ...validCode(), valueBps: 10001 }, 20)).toBe(false);
+    expect(isDiscountDraftValid({ ...validCode(), code: "BAD" }, 20)).toBe(
+      false,
+    );
+    expect(isDiscountDraftValid({ ...validCode(), valueBps: 10001 }, 20)).toBe(
+      false,
+    );
   });
 
   test("keeps automatic and sale-price creation behind rank 30", () => {

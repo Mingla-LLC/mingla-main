@@ -46,7 +46,6 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
-  Alert,
   ActivityIndicator,
   InteractionManager,
   Pressable,
@@ -57,7 +56,6 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
-import { FollowButton } from "@mingla/brand-rendering";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -172,8 +170,9 @@ import * as WebBrowser from "expo-web-browser";
 import { supabase } from "../../services/supabase";
 import { type ChipInResult } from "@mingla/offering-rendering";
 import { toastManager } from "../../components/ui/Toast";
-import { useBrandFollow } from "../../hooks/useBrandFollow";
-import { HapticFeedback } from "../../utils/hapticFeedback";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
+import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
+import { PresentedByFollowButton } from "../../components/brand/PresentedByFollowButton";
 import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
 // runs alongside the existing analytics; no Mixpanel call exists at this site).
@@ -400,11 +399,11 @@ export default function ConsumerEventDetailScreen({
   const canonicalSeed = canonical === null ? null : canonicalToTransientCard(canonical);
   const seed = seedProp ?? canonicalSeed ?? coldSeedQuery.data ?? null;
 
-  // #3682 — Presented-by Follow on the event body (contract A).
-  const brandFollow = useBrandFollow(
-    user?.id ?? null,
+  // #3682 — public follower count alongside the Presented-by Follow control.
+  const followerCountQuery = useBrandFollowerCount(
     seed !== null && typeof seed.brandId === "string" ? seed.brandId : null,
   );
+  const followerCountLabels = useFollowerCountLabels();
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
@@ -1593,42 +1592,10 @@ export default function ConsumerEventDetailScreen({
   // #3682 A — shared Presented-by Follow slot for ticketed + RSVP bodies.
   const presentedByFollow =
     seed !== null ? (
-      <FollowButton
+      <PresentedByFollowButton
+        brandId={seed.brandId}
         brandName={seed.brandName}
         palette={palette}
-        isFollowing={brandFollow.isFollowing}
-        followPending={brandFollow.isPending}
-        size="lg"
-        onPress={() => {
-          if (!user?.id) {
-            Alert.alert(
-              `Sign in to follow ${seed.brandName}`,
-              "Hear about new dates first.",
-            );
-            return;
-          }
-          if (brandFollow.isFollowing) {
-            Alert.alert(`Following ${seed.brandName}`, undefined, [
-              {
-                text: "Unfollow",
-                style: "destructive",
-                onPress: () => {
-                  void brandFollow.unfollow().catch(() => {
-                    /* toast owned by brand page path; keep quiet here */
-                  });
-                },
-              },
-              { text: "Cancel", style: "cancel" },
-            ]);
-            return;
-          }
-          void brandFollow
-            .follow()
-            .then(() => {
-              HapticFeedback.light();
-            })
-            .catch(() => {});
-        }}
       />
     ) : undefined;
 
@@ -1802,6 +1769,13 @@ export default function ConsumerEventDetailScreen({
                 onProceedToCart={handleProceedToCart}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
                 presentedByFollow={presentedByFollow}
+                presentedByFollowerCount={
+                  followerCountQuery.isError ? null : followerCountQuery.data
+                }
+                presentedByFollowerCountLoading={
+                  followerCountQuery.isPending && !followerCountQuery.isError
+                }
+                presentedByFollowerCountLabels={followerCountLabels}
                 onOpenMaps={openMapsForTarget}
                 onCopyAddress={copyAddressForTarget}
                 staticMapUrl={bodyStaticMapUrl}
@@ -1852,6 +1826,13 @@ export default function ConsumerEventDetailScreen({
                 onSubmit={rsvpOnSubmit}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
                 presentedByFollow={presentedByFollow}
+                presentedByFollowerCount={
+                  followerCountQuery.isError ? null : followerCountQuery.data
+                }
+                presentedByFollowerCountLoading={
+                  followerCountQuery.isPending && !followerCountQuery.isError
+                }
+                presentedByFollowerCountLabels={followerCountLabels}
                 onOpenMaps={openMapsForTarget}
                 onCopyAddress={copyAddressForTarget}
                 staticMapUrl={rsvpBodyStaticMapUrl}

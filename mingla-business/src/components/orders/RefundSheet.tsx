@@ -24,7 +24,13 @@
  * amount sent to `refund-order` are exactly what they were before.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Platform,
   Pressable,
@@ -58,17 +64,14 @@ import {
 } from "../../utils/refundPolicyPrefill";
 import { randomId } from "../../utils/randomId";
 import { useRefundPreview } from "../../hooks/useRefundPreview";
-import { canSubmitRefundPreview } from "../discounts/discountUiContract";
+import { canSubmitRefundPreview } from "../discounts/refundDiscountContract";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
-import {
-  canPerformAction,
-  gateCaptionFor,
-} from "../../utils/permissionGates";
+import { canPerformAction, gateCaptionFor } from "../../utils/permissionGates";
 
 const REASON_MIN = 10;
 const REASON_MAX = 200;
@@ -174,46 +177,54 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   // Available lines for partial refund (only those with remaining qty)
   const refundableLines = useMemo(
-    () =>
-      order.lines.filter((l) => l.quantity - l.refundedQuantity > 0),
+    () => order.lines.filter((l) => l.quantity - l.refundedQuantity > 0),
     [order.lines],
   );
 
   const previewLines = useMemo(
-    () => mode === "full"
-      ? order.lines
-          .filter((line) => line.quantity - line.refundedQuantity > 0)
-          .map((line) => ({
-            orderLineItemId: line.orderLineItemId ?? "",
-            quantity: line.quantity - line.refundedQuantity,
-          }))
-      : partialLines
-          .filter((line) => line.selectedQty > 0)
-          .map((line) => ({
-            orderLineItemId: order.lines.find(
-              (candidate) => candidate.ticketTypeId === line.ticketTypeId,
-            )?.orderLineItemId ?? "",
-            quantity: line.selectedQty,
-          })),
+    () =>
+      mode === "full"
+        ? order.lines
+            .filter((line) => line.quantity - line.refundedQuantity > 0)
+            .map((line) => ({
+              orderLineItemId: line.orderLineItemId ?? "",
+              quantity: line.quantity - line.refundedQuantity,
+            }))
+        : partialLines
+            .filter((line) => line.selectedQty > 0)
+            .map((line) => ({
+              orderLineItemId:
+                order.lines.find(
+                  (candidate) => candidate.ticketTypeId === line.ticketTypeId,
+                )?.orderLineItemId ?? "",
+              quantity: line.selectedQty,
+            })),
     [mode, order.lines, partialLines],
   );
-  const previewQuery = useRefundPreview(visible ? order.id : null, previewLines);
-  const previewAmountCents = previewQuery.data === undefined
-    ? 0
-    : mode === "full"
-      ? previewQuery.data.remainingCents
-      : previewQuery.data.amountCents;
+  const previewQuery = useRefundPreview(
+    visible ? order.id : null,
+    previewLines,
+  );
+  const previewAmountCents =
+    previewQuery.data === undefined
+      ? 0
+      : mode === "full"
+        ? previewQuery.data.remainingCents
+        : previewQuery.data.amountCents;
   const refundAmount = previewAmountCents / 100;
-  const payoutRecoveryCents = payoutImpact === undefined || payoutImpact.grossCents <= 0
-    ? null
-    : Math.min(
-        payoutImpact.hostNetCents,
-        Math.round(previewAmountCents * payoutImpact.hostNetCents / payoutImpact.grossCents),
-      );
+  const payoutRecoveryCents =
+    payoutImpact === undefined || payoutImpact.grossCents <= 0
+      ? null
+      : Math.min(
+          payoutImpact.hostNetCents,
+          Math.round(
+            (previewAmountCents * payoutImpact.hostNetCents) /
+              payoutImpact.grossCents,
+          ),
+        );
 
   const trimmedLen = reason.trim().length;
-  const reasonValid =
-    trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX;
+  const reasonValid = trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX;
 
   const partialHasSelection = mode === "partial" && previewLines.length > 0;
   const fullHasAmount = mode === "full" && previewLines.length > 0;
@@ -262,9 +273,10 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     // (the server-side UUID). For full refunds, refund remaining qty on every line.
     const lines = previewLines.map((line) => ({
       ...line,
-      amountCents: previewQuery.data?.lines.find(
-        (priced) => priced.orderLineItemId === line.orderLineItemId,
-      )?.amountCents ?? 0,
+      amountCents:
+        previewQuery.data?.lines.find(
+          (priced) => priced.orderLineItemId === line.orderLineItemId,
+        )?.amountCents ?? 0,
     }));
 
     // Defensive: if any line is missing orderLineItemId, the order pre-dates the
@@ -311,7 +323,9 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   const title =
     mode === "full"
-      ? previewQuery.isPending || previewQuery.isFetching || previewQuery.isDebouncing
+      ? previewQuery.isPending ||
+        previewQuery.isFetching ||
+        previewQuery.isDebouncing
         ? "Checking refund…"
         : `Refund ${moneyCurrency === null ? "—" : formatCurrency(refundAmount, moneyCurrency)}?`
       : `Refund partial`;
@@ -323,14 +337,18 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
         <Text
           style={[
             styles.subhead,
-            payoutRecoveryCents === null ? styles.subheadWithoutPayoutImpact : null,
+            payoutRecoveryCents === null
+              ? styles.subheadWithoutPayoutImpact
+              : null,
           ]}
         >
           Buyer will see refund on their card in 3–5 business days.
         </Text>
         {payoutRecoveryCents !== null && payoutImpact !== undefined ? (
           <Text style={styles.payoutImpact} testID="refund-sheet-payout-impact">
-            If it already paid out, we take {formatCurrency(payoutRecoveryCents, payoutImpact.currency, true)} from your next payout and show it as a line there.
+            If it already paid out, we take{" "}
+            {formatCurrency(payoutRecoveryCents, payoutImpact.currency, true)}{" "}
+            from your next payout and show it as a line there.
           </Text>
         ) : null}
 
@@ -346,7 +364,9 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Refund total</Text>
                 <Text style={styles.summaryValueBold}>
-                  {moneyCurrency === null ? "—" : formatCurrency(refundAmount, moneyCurrency)}
+                  {moneyCurrency === null
+                    ? "—"
+                    : formatCurrency(refundAmount, moneyCurrency)}
                 </Text>
               </View>
             </View>
@@ -359,8 +379,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                 const partialState = partialLines.find(
                   (p) => p.ticketTypeId === line.ticketTypeId,
                 ) ?? { ticketTypeId: line.ticketTypeId, selectedQty: 0 };
-                const maxRefundable =
-                  line.quantity - line.refundedQuantity;
+                const maxRefundable = line.quantity - line.refundedQuantity;
                 return (
                   <View key={line.ticketTypeId} style={styles.lineRow}>
                     <View style={styles.lineCol}>
@@ -368,9 +387,17 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                         {line.ticketNameAtPurchase}
                       </Text>
                       <Text style={styles.lineSubline}>
-                        {maxRefundable} remaining · Paid {moneyCurrency === null ? "—" : formatCurrency(line.unitPriceGbpAtPurchase, moneyCurrency)} each
+                        {maxRefundable} remaining · Paid{" "}
+                        {moneyCurrency === null
+                          ? "—"
+                          : formatCurrency(
+                              line.unitPriceGbpAtPurchase,
+                              moneyCurrency,
+                            )}{" "}
+                        each
                         {line.listUnitPriceGbpAtPurchase !== undefined &&
-                        line.listUnitPriceGbpAtPurchase > line.unitPriceGbpAtPurchase
+                        line.listUnitPriceGbpAtPurchase >
+                          line.unitPriceGbpAtPurchase
                           ? ` (was ${formatCurrency(line.listUnitPriceGbpAtPurchase, moneyCurrency ?? "GBP")})`
                           : ""}
                       </Text>
@@ -425,7 +452,9 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Refund total</Text>
                 <Text style={styles.summaryValueBold}>
-                  {previewQuery.isPending || previewQuery.isFetching || previewQuery.isDebouncing
+                  {previewQuery.isPending ||
+                  previewQuery.isFetching ||
+                  previewQuery.isDebouncing
                     ? "Checking…"
                     : moneyCurrency === null
                       ? "—"
@@ -500,8 +529,15 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
         <View style={styles.actions}>
           {previewQuery.isError ? (
             <View style={styles.previewError}>
-              <Text style={styles.errorCaption}>Couldn&apos;t price this refund — try again</Text>
-              <Button label="Try again" variant="secondary" size="sm" onPress={() => void previewQuery.refetch()} />
+              <Text style={styles.errorCaption}>
+                Couldn&apos;t price this refund — try again
+              </Text>
+              <Button
+                label="Try again"
+                variant="secondary"
+                size="sm"
+                onPress={() => void previewQuery.refetch()}
+              />
             </View>
           ) : null}
           {errorMessage !== null ? (
@@ -519,7 +555,9 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             variant="destructive"
             size="lg"
             fullWidth
-            loading={submitting || previewQuery.isFetching || previewQuery.isDebouncing}
+            loading={
+              submitting || previewQuery.isFetching || previewQuery.isDebouncing
+            }
             disabled={!canSubmit}
             accessibilityLabel="Send refund"
           />

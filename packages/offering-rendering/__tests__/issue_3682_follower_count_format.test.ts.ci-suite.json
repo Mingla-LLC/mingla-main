@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3682_follower_count_format.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3682-01-follower-count-format",
+  "profile": "deno-2-unit"
+}

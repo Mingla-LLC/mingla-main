@@ -1,5 +1,6 @@
 import type {
   EventTerminalSource,
+  FollowerCountLabels,
   ResolvedTheme,
   ThemeInput,
 } from "@mingla/offering-rendering";
@@ -78,7 +79,6 @@ export interface PublicBrandEvent {
   displayPriceCents?: number | null;
   /** #3872 — lowest current sale all-in price, resolved by the public RPC. */
   displaySalePriceCents?: number | null;
-  displaySaleEndsAt?: string | null;
   displayCurrency?: string | null;
   tickets: PublicBrandTicket[];
 }
@@ -258,6 +258,8 @@ export interface PublicBrandPageProps {
   // #3682 — why-caption under Follow (e.g. "Following since Oct") and count.
   followCaption?: string | null;
   followerCount?: number | null;
+  followerCountLoading?: boolean;
+  followerCountLabels?: FollowerCountLabels;
   // Issue #1365 — verified venues for the Reservations tab.
   // Absent / [] ⇒ section omitted (real-data-only).
   venues?: PublicBrandVenueSummary[];

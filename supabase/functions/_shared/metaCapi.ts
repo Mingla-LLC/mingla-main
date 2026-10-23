@@ -91,6 +91,9 @@ export async function sendMetaConversion(
   const customData = definedOnly({
     value: valueMajor(input.valueCents),
     currency: input.currency ?? undefined,
+    content_ids: input.contentId ? [input.contentId] : undefined,
+    content_type: input.contentId ? "product" : undefined,
+    brand_id: input.brandId ?? undefined,
   } as Record<string, unknown>);
 
   const event = definedOnly({

@@ -280,6 +280,36 @@ export interface AtomicCreateResult {
   reviewStatus: string | null;
 }
 
+export interface StagedAtomicAdInput {
+  creative: CreateCreativeInput;
+  ad: Omit<CreateAdInput, "externalCreativeId">;
+}
+
+export interface StagedAtomicAdSetInput {
+  /** Stable plan stage key (prospecting | retarget | abandoners). */
+  key: string;
+  adSet: CreateAdSetInput;
+  ads: StagedAtomicAdInput[];
+}
+
+export interface StagedAtomicCreateInput {
+  campaign: CreateCampaignInput;
+  stages: StagedAtomicAdSetInput[];
+}
+
+export interface StagedAtomicAdResult extends AtomicCreateResult {
+  key: string;
+}
+
+export interface StagedAtomicCreateResult {
+  externalCampaignId: string;
+  stages: Array<{
+    key: string;
+    externalAdSetId: string;
+    ads: StagedAtomicAdResult[];
+  }>;
+}
+
 export interface AtomicCreateFailure {
   step: "campaign" | "ad_set" | "creative" | "ad";
   partialExternalIds: Record<string, string>;
@@ -422,4 +452,146 @@ export async function createFullCampaignAtomic(
   } catch (cause) {
     return await fail("ad", cause);
   }
+}
+
+/**
+ * Issue #3697: one PAUSED campaign with N PAUSED stage ad sets and N creatives
+ * per stage. The provider chain is all-or-nothing from Mingla's perspective.
+ *
+ * Unlike the single-ad helper, a late failure can leave already-created ads
+ * referencing account-level creatives. Cleanup therefore deletes the campaign
+ * first (cascading its ad sets/ads), then deletes every created creative in
+ * reverse order. The aggregate creative rollback verdict is false if even one
+ * account-level creative remains. The caller persists only after success.
+ */
+export async function createStagedCampaignAtomic(
+  adapter: ChannelAdapter,
+  conn: AdConnectionRow,
+  input: StagedAtomicCreateInput,
+): Promise<StagedAtomicCreateResult> {
+  if (
+    !Array.isArray(input.stages) || input.stages.length === 0 ||
+    input.stages.some((stage) =>
+      !stage.key.trim() || !Array.isArray(stage.ads) || stage.ads.length === 0
+    )
+  ) {
+    throw new Error("staged_campaign_requires_nonempty_stages_and_ads");
+  }
+
+  const partial: Record<string, string> = {};
+  const creativeIds: string[] = [];
+  let campaignExternalId: string | null = null;
+
+  const fail = async (
+    step: AtomicCreateFailure["step"],
+    cause: unknown,
+  ): Promise<never> => {
+    let rollbackSucceeded: boolean | null = null;
+    if (campaignExternalId) {
+      if (adapter.rollbackCampaign) {
+        try {
+          await adapter.rollbackCampaign(conn, campaignExternalId);
+          rollbackSucceeded = true;
+        } catch {
+          rollbackSucceeded = false;
+        }
+      } else {
+        rollbackSucceeded = false;
+      }
+    }
+
+    let creativeRollbackSucceeded: boolean | null = creativeIds.length > 0
+      ? true
+      : null;
+    for (const creativeId of [...creativeIds].reverse()) {
+      if (!adapter.rollbackCreative) {
+        creativeRollbackSucceeded = false;
+        continue;
+      }
+      try {
+        await adapter.rollbackCreative(conn, creativeId);
+      } catch {
+        creativeRollbackSucceeded = false;
+      }
+    }
+
+    throw new AtomicCreateError({
+      step,
+      partialExternalIds: { ...partial },
+      rollbackSucceeded,
+      creativeRollbackSucceeded,
+      cause,
+    });
+  };
+
+  try {
+    const created = await adapter.createCampaign(conn, input.campaign);
+    campaignExternalId = created.externalId;
+    partial.external_campaign_id = campaignExternalId;
+  } catch (cause) {
+    return await fail("campaign", cause);
+  }
+
+  const stages: StagedAtomicCreateResult["stages"] = [];
+  for (let stageIndex = 0; stageIndex < input.stages.length; stageIndex += 1) {
+    const stage = input.stages[stageIndex];
+    let externalAdSetId: string;
+    try {
+      const created = await adapter.createAdSet(
+        conn,
+        campaignExternalId,
+        stage.adSet,
+      );
+      externalAdSetId = created.externalId;
+      partial[`external_adset_id_${stage.key}`] = externalAdSetId;
+    } catch (cause) {
+      return await fail("ad_set", cause);
+    }
+
+    const ads: StagedAtomicAdResult[] = [];
+    for (let adIndex = 0; adIndex < stage.ads.length; adIndex += 1) {
+      const item = stage.ads[adIndex];
+      let externalCreativeId: string | null = null;
+      let postId: string | null = null;
+      if (adapter.createCreative) {
+        try {
+          const created = await adapter.createCreative(conn, item.creative);
+          externalCreativeId = created.externalCreativeId ?? null;
+          postId = created.postId ?? null;
+          if (externalCreativeId) {
+            creativeIds.push(externalCreativeId);
+            partial[`external_creative_id_${stage.key}_${adIndex}`] =
+              externalCreativeId;
+          }
+          if (postId) {
+            partial[`post_id_${stage.key}_${adIndex}`] = postId;
+          }
+        } catch (cause) {
+          return await fail("creative", cause);
+        }
+      }
+
+      try {
+        const created = await adapter.createAd(conn, externalAdSetId, {
+          ...item.ad,
+          externalCreativeId: externalCreativeId ?? postId ?? "",
+        });
+        partial[`external_ad_id_${stage.key}_${adIndex}`] = created.externalId;
+        ads.push({
+          key: stage.key,
+          externalCampaignId: campaignExternalId,
+          externalAdSetId,
+          externalCreativeId,
+          postId,
+          externalAdId: created.externalId,
+          reviewStatus: created.reviewStatus,
+        });
+      } catch (cause) {
+        return await fail("ad", cause);
+      }
+    }
+    stages.push({ key: stage.key, externalAdSetId, ads });
+  }
+
+  return { externalCampaignId: campaignExternalId, stages };
 }

@@ -274,7 +274,37 @@ export function CampaignBuilderPage() {
     ageMin: DEFAULT_AGE_MIN,
     ageMax: DEFAULT_AGE_MAX,
     gender: "all",
+    stages: {
+      prospecting: true,
+      retarget: true,
+      abandoners: true,
+    },
   });
+  const handleGoalsChange = useCallback(
+    (nextGoalIds) => {
+      setGoalIds(nextGoalIds);
+      if (nextGoalIds.length === 1 && nextGoalIds[0] === "retargeting") {
+        setAudience((current) => ({
+          ...current,
+          stages: {
+            prospecting: false,
+            retarget: true,
+            abandoners: true,
+          },
+        }));
+      } else if (goalIds.includes("retargeting")) {
+        setAudience((current) => ({
+          ...current,
+          stages: {
+            prospecting: true,
+            retarget: true,
+            abandoners: true,
+          },
+        }));
+      }
+    },
+    [goalIds],
+  );
   const [budget, setBudget] = useState({
     mode: "daily",
     totalDailyCents: 0,
@@ -305,6 +335,16 @@ export function CampaignBuilderPage() {
     // Per-ratio pre-cropped variant slots (4:5 / 1:1 / 9:16 / 1.91:1) →
     // { source_url, storage_path } — probed server-side, rescues off-ratio masters.
     variants: {},
+    stageCreativeIds: {
+      prospecting: [],
+      retarget: [],
+      abandoners: [],
+    },
+    // #3697: TikTok-only is deliberately narrow and video-only. Pangle is an
+    // explicit operator choice, never a silent placement broadening.
+    tiktokPlacement: "tiktok",
+    tiktokCreativeSource: "library",
+    tiktokSparkPostIds: [],
     validation: null,
     creativeRow: null,
     aiGenerated: false,
@@ -316,13 +356,18 @@ export function CampaignBuilderPage() {
   // presentation only and is reset whenever the recorded creative identity
   // changes. The queue runs exactly one request at a time.
   const [preparationRows, setPreparationRows] = useState({});
-  const [, setPreparationRunningPlatform] =
-    useState(null);
+  const [, setPreparationRunningPlatform] = useState(null);
   const [copy, setCopy] = useState({
     primary: "",
     headline: "",
     description: "",
     cta: "BUY_TICKETS",
+    platformCtas: {
+      meta: "BUY_TICKETS",
+      snapchat: "BUY_TICKETS",
+      tiktok: "Get ticket now",
+      reddit: "Buy Tickets",
+    },
     googleHeadlines: ["", "", ""],
     googleDescriptions: ["", ""],
     keywords: [],
@@ -336,6 +381,11 @@ export function CampaignBuilderPage() {
     googleBusinessName: "",
   });
   const [specialAdCategory, setSpecialAdCategory] = useState("NONE");
+  const [stageCreativeValidation, setStageCreativeValidation] = useState({
+    ok: false,
+    reason: "Choose stage creatives.",
+    stages: {},
+  });
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
 
@@ -416,7 +466,8 @@ export function CampaignBuilderPage() {
       ) {
         setSelectedPlatforms(state.selected_platforms);
       }
-      if (Array.isArray(state.destinations)) setDestinations(state.destinations);
+      if (Array.isArray(state.destinations))
+        setDestinations(state.destinations);
       if (objectValue(state.audience)) setAudience(state.audience);
       if (objectValue(state.budget)) setBudget(state.budget);
       if (objectValue(state.creative)) {
@@ -484,9 +535,12 @@ export function CampaignBuilderPage() {
 
   useEffect(() => {
     if (
-      !draftReady || !isNewCreativeReuse || !creativePresetId ||
+      !draftReady ||
+      !isNewCreativeReuse ||
+      !creativePresetId ||
       creativePresetStartedRef.current
-    ) return;
+    )
+      return;
     creativePresetStartedRef.current = true;
     let mounted = true;
     (async () => {
@@ -498,7 +552,8 @@ export function CampaignBuilderPage() {
           variant: "error",
           title: "Creative could not be reused",
           description: String(
-            parsed?.message ?? "Choose another asset from the Creative Library.",
+            parsed?.message ??
+              "Choose another asset from the Creative Library.",
           ),
         });
         return;
@@ -507,18 +562,19 @@ export function CampaignBuilderPage() {
       // #3697 — a library video's per-channel report comes with the reuse
       // answer (server-judged from stored probe facts). Video validation by
       // media URL was retired with the #3040 lane.
-      const validated = row.kind === "video"
-        ? { data: { validation: data.validation ?? null }, error: null }
-        : await creativeUpload({
-          action: "validate",
-          kind: row.kind,
-          name: row.name,
-          source_url: row.source_url,
-          storage_bucket: row.storage_bucket,
-          storage_path: row.storage_path,
-          variants: row.variants ?? {},
-          ai_generated: row.ai_generated === true,
-        });
+      const validated =
+        row.kind === "video"
+          ? { data: { validation: data.validation ?? null }, error: null }
+          : await creativeUpload({
+              action: "validate",
+              kind: row.kind,
+              name: row.name,
+              source_url: row.source_url,
+              storage_bucket: row.storage_bucket,
+              storage_path: row.storage_path,
+              variants: row.variants ?? {},
+              ai_generated: row.ai_generated === true,
+            });
       if (!mounted) return;
       if (validated.error) {
         const parsed = await parseEdgeError(validated.error);
@@ -553,18 +609,14 @@ export function CampaignBuilderPage() {
       addToast({
         variant: "success",
         title: "Creative selected from the library",
-        description: "Confirm paid-media rights for this campaign before review.",
+        description:
+          "Confirm paid-media rights for this campaign before review.",
       });
     })();
     return () => {
       mounted = false;
     };
-  }, [
-    addToast,
-    creativePresetId,
-    draftReady,
-    isNewCreativeReuse,
-  ]);
+  }, [addToast, creativePresetId, draftReady, isNewCreativeReuse]);
 
   const draftSnapshot = useMemo(
     () => ({
@@ -736,13 +788,26 @@ export function CampaignBuilderPage() {
     return () => window.removeEventListener("hashchange", applyHash);
   }, [maxVisitedIndex]);
 
+  const goalSignals = useMemo(
+    () => ({
+      metaPixelHasSignal: connections.meta?.extra?.pixel_has_signal === true,
+      snapPurchaseEvents28d:
+        preflightRows?.find((row) => row.platform === "snapchat")
+          ?.purchase_events_28d ?? null,
+      tiktokPurchaseEvents28d:
+        preflightRows?.find((row) => row.platform === "tiktok")
+          ?.purchase_events_28d ?? null,
+    }),
+    [connections.meta?.extra?.pixel_has_signal, preflightRows],
+  );
+
   // ── The channel plan (the A4.0(1) output) ──
   // ISSUE-979 Bug 1: Meta's optimization_goal comes from the SAME coherent
   // resolution the create payload uses (objectiveResolver) — one Meta goal in
   // play, so the per-category budget floor here and the create pair never
   // disagree. (Traffic wins over awareness for the two live goals, in any click
   // order — the valid OUTCOME_TRAFFIC / LINK_CLICKS pair.)
-  const metaGoal = resolveMetaObjective(goalIds).optimization_goal;
+  const metaGoal = resolveMetaObjective(goalIds, goalSignals).optimization_goal;
   // Lifetime: plan floors against the daily equivalent so channel eligibility
   // matches create-time D1 checks (not a zero daily while the total is large).
   const planningDailyCents = useMemo(() => {
@@ -769,6 +834,7 @@ export function CampaignBuilderPage() {
         allowlist: budget.allowlist,
         connections,
         metaGoal,
+        goalSignals,
       }),
     [
       preflightRows,
@@ -778,6 +844,7 @@ export function CampaignBuilderPage() {
       budget.allowlist,
       connections,
       metaGoal,
+      goalSignals,
     ],
   );
   // ── ISSUE-986: the platform picker resolves the channel set ──
@@ -827,6 +894,7 @@ export function CampaignBuilderPage() {
           allowlist: budget.allowlist,
           connections,
           metaGoal,
+          goalSignals,
         },
         selectedPlatforms,
         excluded: complianceExcluded,
@@ -838,6 +906,7 @@ export function CampaignBuilderPage() {
       budget.allowlist,
       connections,
       metaGoal,
+      goalSignals,
       selectedPlatforms,
       complianceExcluded,
     ],
@@ -910,10 +979,8 @@ export function CampaignBuilderPage() {
   // to show each channel's REAL resolved objective instead of one repeated
   // goal-label string. Never touches runCreate's own resolution.
   const resolvedGoalForDisplay = useMemo(
-    () => resolveGoalForPayload(goalIds, {
-      snapPixelInstalled: connections.snapchat?.extra?.pixel_installed === true,
-    }),
-    [goalIds, connections.snapchat?.extra?.pixel_installed],
+    () => resolveGoalForPayload(goalIds, goalSignals),
+    [goalIds, goalSignals],
   );
 
   // ── ISSUE-995 [Campaign Builder creative] Wave 3 — PROCEED-WITH-PASSING ──
@@ -928,23 +995,54 @@ export function CampaignBuilderPage() {
     () => allocations.map((a) => a.platform),
     [allocations],
   );
-  const creativePartition = useMemo(
+  const firstDestination = destinations[0] ?? null;
+  const usesTikTokSpark =
+    fundedPlatforms.includes("tiktok") &&
+    creative.tiktokCreativeSource === "spark";
+  const nonSparkFundedPlatforms = useMemo(
     () =>
-      partitionFundedCreative({
-        fundedPlatforms,
-        channels: creative.validation?.channels ?? [],
-        // ISSUE-995 REWORK: video ad create isn't wired yet (#997) — a video
-        // creative excludes every funded channel (preview-only), so nothing
-        // misleading builds.
-        kind: creative.kind,
-        preparationByPlatform: preparationRows,
-        // v1.4: creative/placement validation decides whether a channel can be
-        // planned. Native provider copies are created later, only after the
-        // exact plan is funded, reviewed and launch-confirmed.
-        requirePreparation: false,
-      }),
-    [fundedPlatforms, creative.validation, creative.kind, preparationRows],
+      fundedPlatforms.filter(
+        (platform) => !(usesTikTokSpark && platform === "tiktok"),
+      ),
+    [fundedPlatforms, usesTikTokSpark],
   );
+  const sparkOnly = usesTikTokSpark && nonSparkFundedPlatforms.length === 0;
+  const sparkDestinationSupported =
+    !usesTikTokSpark ||
+    ["event", "rsvp", "trip", "experience"].includes(
+      firstDestination?.page_type,
+    );
+  const creativePartition = useMemo(() => {
+    const libraryPartition = partitionFundedCreative({
+      fundedPlatforms: nonSparkFundedPlatforms,
+      channels: creative.validation?.channels ?? [],
+      // ISSUE-995 REWORK: video ad create isn't wired yet (#997) — a video
+      // creative excludes every funded channel (preview-only), so nothing
+      // misleading builds.
+      kind: creative.kind,
+      preparationByPlatform: preparationRows,
+      // v1.4: creative/placement validation decides whether a channel can be
+      // planned. Native provider copies are created later, only after the
+      // exact plan is funded, reviewed and launch-confirmed.
+      requirePreparation: false,
+    });
+    if (!usesTikTokSpark) return libraryPartition;
+    return {
+      buildable: fundedPlatforms.filter(
+        (platform) =>
+          platform === "tiktok" ||
+          libraryPartition.buildable.includes(platform),
+      ),
+      excluded: libraryPartition.excluded,
+    };
+  }, [
+    fundedPlatforms,
+    nonSparkFundedPlatforms,
+    usesTikTokSpark,
+    creative.validation,
+    creative.kind,
+    preparationRows,
+  ]);
 
   useEffect(() => {
     setPreparationRows({});
@@ -969,7 +1067,6 @@ export function CampaignBuilderPage() {
   // ISSUE-1002: the base name is derived from the first selected destination; on a
   // multi-destination fan-out each ad's name is suffixed with its own destination
   // title in runCreate, so the created campaigns stay distinguishable.
-  const firstDestination = destinations[0] ?? null;
   useEffect(() => {
     if (!nameTouched && firstDestination) {
       setName(
@@ -998,6 +1095,10 @@ export function CampaignBuilderPage() {
         budget,
         allocations,
         creative: creative.creativeRow?.id ?? creative.publicUrl ?? null,
+        tiktokPlacement: creative.tiktokPlacement,
+        tiktokCreativeSource: creative.tiktokCreativeSource,
+        tiktokSparkPostIds: creative.tiktokSparkPostIds,
+        stageCreativeIds: creative.stageCreativeIds,
         copy,
         specialAdCategory,
         name,
@@ -1011,6 +1112,10 @@ export function CampaignBuilderPage() {
       allocations,
       creative.creativeRow?.id,
       creative.publicUrl,
+      creative.tiktokPlacement,
+      creative.tiktokCreativeSource,
+      creative.tiktokSparkPostIds,
+      creative.stageCreativeIds,
       copy,
       specialAdCategory,
       name,
@@ -1064,6 +1169,7 @@ export function CampaignBuilderPage() {
         );
       }
       case "creative": {
+        if (!sparkDestinationSupported) return false;
         // ISSUE-995: a video creative must be RECORDED (its bytes live off-
         // client, so the library row id is the only way to reference it);
         // an image can build from its inline public URL.
@@ -1071,12 +1177,29 @@ export function CampaignBuilderPage() {
           creative.kind === "video"
             ? Boolean(creative.creativeRow)
             : Boolean(creative.publicUrl);
-        if (!hasMedia || !creative.validation || !creative.rightsConfirmed)
+        if (
+          !creative.rightsConfirmed ||
+          (!sparkOnly && (!hasMedia || !creative.validation))
+        )
           return false;
         // #3697: every plan binds a creative-library row (ad-plan refuses
         // creative_library_id_required), so an image must be recorded with
         // "Use this creative" before Next — never discovered at create.
-        if (!creative.creativeRow) return false;
+        if (!sparkOnly && !creative.creativeRow) return false;
+        if (
+          fundedPlatforms.includes("tiktok") &&
+          !usesTikTokSpark &&
+          creative.kind !== "video" &&
+          creative.tiktokPlacement !== "tiktok_pangle"
+        )
+          return false;
+        if (
+          fundedPlatforms.some((platform) =>
+            ["meta", "snapchat", "tiktok"].includes(platform),
+          ) &&
+          !stageCreativeValidation.ok
+        )
+          return false;
         // #3697 (design §9) — the Builder blocks a video that does not fit a
         // platform this campaign runs on; change platforms or pick another.
         // The server backstop is the ad-plan funding fit gate.
@@ -1089,12 +1212,14 @@ export function CampaignBuilderPage() {
         if (creativePartition.buildable.length === 0) return false;
         const funded =
           creative.kind === "video"
-            ? creativePartition.buildable
-            : allocations.map((a) => a.platform);
+            ? creativePartition.buildable.filter(
+                (platform) => platform !== "tiktok" || !usesTikTokSpark,
+              )
+            : nonSparkFundedPlatforms;
         const validation = validateCopy(copy, funded);
         return (
           funded.every((p) => (validation[p]?.hard ?? []).length === 0) &&
-          copy.primary.trim().length > 0 &&
+          (funded.length === 0 || copy.primary.trim().length > 0) &&
           specialAdCategory !== "CREDIT"
         );
       }
@@ -1123,20 +1248,43 @@ export function CampaignBuilderPage() {
       case "budget":
         return "Set a hard cap at or above the campaign budget.";
       case "creative": {
+        if (!sparkDestinationSupported) {
+          return "Spark Ads currently support event, RSVP, trip and experience pages only.";
+        }
         const hasMedia =
           creative.kind === "video"
             ? Boolean(creative.creativeRow)
             : Boolean(creative.publicUrl);
-        if (!hasMedia) {
+        if (!sparkOnly && !hasMedia) {
           return creative.kind === "video"
             ? "Add the video and record it to the library first."
             : "Upload an ad image first.";
         }
-        if (!creative.validation) return "Validate the creative first.";
+        if (!sparkOnly && !creative.validation)
+          return "Validate the creative first.";
         if (!creative.rightsConfirmed)
           return "Confirm the brand's right to use this creative in paid ads.";
-        if (!creative.creativeRow) {
+        if (!sparkOnly && !creative.creativeRow) {
           return "Press “Use this creative” to record it to the library before continuing.";
+        }
+        if (
+          fundedPlatforms.includes("tiktok") &&
+          !usesTikTokSpark &&
+          creative.kind !== "video" &&
+          creative.tiktokPlacement !== "tiktok_pangle"
+        ) {
+          return "TikTok-only needs a video. Pick a video or choose TikTok + Pangle.";
+        }
+        if (
+          fundedPlatforms.some((platform) =>
+            ["meta", "snapchat", "tiktok"].includes(platform),
+          ) &&
+          !stageCreativeValidation.ok
+        ) {
+          return (
+            stageCreativeValidation.reason ??
+            "Choose 2–4 valid creatives for every enabled stage."
+          );
         }
         if (
           creative.kind === "video" &&
@@ -1149,11 +1297,13 @@ export function CampaignBuilderPage() {
         }
         const funded =
           creative.kind === "video"
-            ? creativePartition.buildable
-            : allocations.map((allocation) => allocation.platform);
+            ? creativePartition.buildable.filter(
+                (platform) => platform !== "tiktok" || !usesTikTokSpark,
+              )
+            : nonSparkFundedPlatforms;
         const copyValidation = validateCopy(copy, funded);
         if (
-          !copy.primary.trim() ||
+          (funded.length > 0 && !copy.primary.trim()) ||
           funded.some(
             (platform) => (copyValidation[platform]?.hard ?? []).length > 0,
           )
@@ -1284,6 +1434,15 @@ export function CampaignBuilderPage() {
           time_zone: scheduleZone,
         },
         audience_intent: audienceIntent,
+        stage_selection: audience.stages ?? {
+          prospecting: true,
+          retarget: true,
+          abandoners: true,
+        },
+        stage_creative_ids: creative.stageCreativeIds,
+        ...(creative.tiktokCreativeSource === "spark"
+          ? { tiktok_spark_post_ids: creative.tiktokSparkPostIds }
+          : {}),
         creative_library_id: creative.creativeRow?.id ?? null,
         creative_url: creative.kind === "image" ? creative.publicUrl : null,
         media_rights: {
@@ -1472,12 +1631,9 @@ export function CampaignBuilderPage() {
     if (validateOnly) setValidatingShapes(true);
     else setSubmitting(true);
     const results = { ...(createResults ?? {}) };
-    const executionAllocations =
-      creative.kind === "video"
-        ? allocations.filter((row) =>
-            creativePartition.buildable.includes(row.platform),
-          )
-        : allocations;
+    const executionAllocations = allocations.filter((row) =>
+      creativePartition.buildable.includes(row.platform),
+    );
     const totalCap =
       budget.mode === "lifetime"
         ? Number(budget.totalLifetimeCents)
@@ -1494,9 +1650,7 @@ export function CampaignBuilderPage() {
     // truth) — never goalIds[0] for one field and the full array for another.
     // Each platform's pair now comes from a single goals.js entry, so the Meta
     // objective/optimization_goal pairing is always valid, in any click order.
-    const resolvedGoal = resolveGoalForPayload(goalIds, {
-      snapPixelInstalled: connections.snapchat?.extra?.pixel_installed === true,
-    });
+    const resolvedGoal = resolveGoalForPayload(goalIds, goalSignals);
     // ISSUE-995 PROCEED-WITH-PASSING: skip funded channels this creative can't
     // build (reject or unresolved needs_transcode). The backend loop is already
     // per-channel independent — we simply don't issue their create call.
@@ -1537,7 +1691,8 @@ export function CampaignBuilderPage() {
       addToast({
         variant: "error",
         title: "Lifetime is Meta-only",
-        description: "Deselect other platforms or switch to Daily before creating.",
+        description:
+          "Deselect other platforms or switch to Daily before creating.",
       });
       if (validateOnly) setValidatingShapes(false);
       else setSubmitting(false);
@@ -1598,6 +1753,9 @@ export function CampaignBuilderPage() {
           aiGenerated: creative.aiGenerated,
           creativeLibraryId: creative.creativeRow?.id ?? null,
           brandName: dest.brand_name ?? null,
+          tiktokPlacement: creative.tiktokPlacement,
+          tiktokCreativeSource: creative.tiktokCreativeSource,
+          tiktokSparkPostIds: creative.tiktokSparkPostIds,
         },
         copy,
         specialAdCategory,
@@ -1617,7 +1775,8 @@ export function CampaignBuilderPage() {
     const markStep = (id, state, detail = null) => {
       if (!steps) return;
       steps = setStepState(steps, id, state, detail);
-      runningStepId = state === "running" ? id : runningStepId === id ? null : runningStepId;
+      runningStepId =
+        state === "running" ? id : runningStepId === id ? null : runningStepId;
       setCreateSteps(steps);
     };
     const failCreate = (title, message) => {
@@ -1629,7 +1788,9 @@ export function CampaignBuilderPage() {
     const preparePlatforms = preparationPlatformsFor({
       platforms:
         creative.kind === "video"
-          ? executionAllocations.map((row) => row.platform)
+          ? executionAllocations
+              .map((row) => row.platform)
+              .filter((platform) => platform !== "tiktok" || !usesTikTokSpark)
           : executionAllocations
               .map((row) => row.platform)
               .filter((platform) => !creativeExcluded.has(platform)),
@@ -1643,7 +1804,7 @@ export function CampaignBuilderPage() {
             .filter((platform) => !creativeExcluded.has(platform)),
           isVideo: creative.kind === "video",
           isImage: creative.kind === "image",
-        }),
+        }).filter((step) => !(usesTikTokSpark && step.id === "prepare:tiktok")),
       );
       setCreateSteps(steps);
       setCreateError(null);
@@ -1791,7 +1952,9 @@ export function CampaignBuilderPage() {
                 markStep(
                   `prepare:${platform}`,
                   row?.state === "ready" ? "done" : "running",
-                  row?.state === "ready" ? null : `Provider state: ${row?.state ?? "pending"}`,
+                  row?.state === "ready"
+                    ? null
+                    : `Provider state: ${row?.state ?? "pending"}`,
                 );
                 setPreparationRunningPlatform(platform);
                 setPreparationRows((current) => ({
@@ -1842,14 +2005,16 @@ export function CampaignBuilderPage() {
           payload.plan_version_id = immutablePlan.plan_version_id;
           payload.plan_hash = immutablePlan.plan_hash;
         }
-        if (validateOnly && creative.kind === "video") {
+        if (
+          validateOnly &&
+          creative.kind === "video" &&
+          !(usesTikTokSpark && platform === "tiktok")
+        ) {
           results[resultKey] = {
             ...meta,
             validated: true,
             validated_layers: ["canonical_video_bytes", "placement_matrix"],
-            skipped_layers: [
-              "provider_native_shape_requires_confirmed_plan",
-            ],
+            skipped_layers: ["provider_native_shape_requires_confirmed_plan"],
           };
           setCreateResults({ ...results });
           continue;
@@ -1911,7 +2076,11 @@ export function CampaignBuilderPage() {
             };
           } else if (outcome.outcome === "created") {
             results[resultKey] = { ...meta, campaign: outcome.campaign };
-            markStep(`create:${platform}`, "done", "Paused. Nothing is spending.");
+            markStep(
+              `create:${platform}`,
+              "done",
+              "Paused. Nothing is spending.",
+            );
             if (certificationMode) {
               await loadCertificationCell().catch(() => null);
             }
@@ -1960,30 +2129,30 @@ export function CampaignBuilderPage() {
 
   const summary = buildLaunchSummary({
     channelRows: plannedRows,
-    allocations:
-      creative.kind === "video"
-        ? allocations.filter((a) =>
-            creativePartition.buildable.includes(a.platform),
-          )
-        : allocations,
+    allocations: allocations.filter((a) =>
+      creativePartition.buildable.includes(a.platform),
+    ),
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
     destinations: destinations.map((d) => ({
       title: d.title,
       dest_url: d.dest_url,
     })),
-    creative: (
-      creative.kind === "video" ? creative.creativeRow : creative.publicUrl
-    )
+    creative: sparkOnly
       ? {
-          kind: creative.kind,
-          name: creative.name,
-          width: creative.validation?.probe?.width,
-          height: creative.validation?.probe?.height,
+          kind: "video",
+          name: `@usemingla Spark posts (${(creative.tiktokSparkPostIds ?? []).length})`,
         }
-      : null,
+      : (creative.kind === "video" ? creative.creativeRow : creative.publicUrl)
+        ? {
+            kind: creative.kind,
+            name: creative.name,
+            width: creative.validation?.probe?.width,
+            height: creative.validation?.probe?.height,
+          }
+        : null,
     copyCheck: (() => {
-      const funded = allocations.map((a) => a.platform);
+      const funded = nonSparkFundedPlatforms;
       const validation = validateCopy(copy, funded);
       const copyHardBlocks = funded.reduce(
         (n, p) => n + (validation[p]?.hard ?? []).length,
@@ -2145,9 +2314,10 @@ export function CampaignBuilderPage() {
                 </h2>
                 <StepGoal
                   goalIds={goalIds}
-                  onGoalsChange={setGoalIds}
-                  metaPixelHasSignal={connections.meta?.extra?.pixel_has_signal === true}
-                  snapPixelInstalled={connections.snapchat?.extra?.pixel_installed === true}
+                  onGoalsChange={handleGoalsChange}
+                  metaPixelHasSignal={goalSignals.metaPixelHasSignal}
+                  snapPurchaseEvents28d={goalSignals.snapPurchaseEvents28d}
+                  tiktokPurchaseEvents28d={goalSignals.tiktokPurchaseEvents28d}
                 />
               </section>
               <section
@@ -2210,6 +2380,8 @@ export function CampaignBuilderPage() {
                 creativeExcluded={creativePartition.excluded}
                 creativeBuildable={creativePartition.buildable}
                 onChangePlatforms={() => jumpToStepId("promote")}
+                audienceStages={audience.stages}
+                onStageCreativeValidationChange={setStageCreativeValidation}
               />
               <section className="border-t border-[var(--gray-100)] pt-6">
                 <StepCopy
@@ -2219,6 +2391,7 @@ export function CampaignBuilderPage() {
                   /* ISSUE-1282: the Google-video (Demand Gen) bespoke long-headline +
                      business-name fields render ONLY when the creative is a video. */
                   isVideo={creative.kind === "video"}
+                  tiktokSpark={usesTikTokSpark}
                 />
               </section>
               <section className="border-t border-[var(--gray-100)] pt-6">

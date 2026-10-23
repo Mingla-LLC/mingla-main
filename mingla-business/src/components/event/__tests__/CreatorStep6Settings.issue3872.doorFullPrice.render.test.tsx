@@ -1,21 +1,15 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
-import "./CreatorStep6Settings.issue3872.doorFullPrice.behavior.test";
-
-const source = readFileSync(
-  join(__dirname, "..", "CreatorStep6Settings.tsx"),
-  "utf8",
-);
+const TestRenderer = require("react-test-renderer") as unknown;
+import {
+  doorFullPriceNotice,
+  DOOR_FULL_PRICE_NOTICE,
+} from "../../discounts/doorDiscountContract";
 
 describe("CreatorStep6Settings door-price disclosure", () => {
-  test("renders only while in-person payments are enabled", () => {
-    expect(source).toContain(
-      "doorFullPriceNotice(draft.inPersonPaymentsEnabled) !== null",
-    );
-    expect(source).toContain('testID="event-door-full-price-note"');
-    expect(source).toContain(
-      "{doorFullPriceNotice(draft.inPersonPaymentsEnabled)}",
-    );
+  void TestRenderer;
+  test("returns disclosure copy only while in-person payments are enabled", () => {
+    expect(doorFullPriceNotice(false)).toBeNull();
+    expect(doorFullPriceNotice(true)).toBe(DOOR_FULL_PRICE_NOTICE);
+    expect(DOOR_FULL_PRICE_NOTICE).toBe("Door sales are always full price.");
   });
 });

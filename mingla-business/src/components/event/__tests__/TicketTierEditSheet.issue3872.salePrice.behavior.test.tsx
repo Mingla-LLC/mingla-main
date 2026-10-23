@@ -1,5 +1,5 @@
 import { describe, expect, test } from "@jest/globals";
-import { canShowTicketTierDiscountControls } from "../../discounts/discountUiContract";
+import { canShowTicketTierDiscountControls } from "../../discounts/ticketTierDiscountContract";
 
 describe("TicketTierEditSheet sale-control decision", () => {
   test("only renders server-backed controls for a persisted editable paid tier", () => {

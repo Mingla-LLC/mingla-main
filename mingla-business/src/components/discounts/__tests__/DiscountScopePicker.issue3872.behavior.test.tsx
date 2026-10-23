@@ -4,7 +4,7 @@ import {
   DISCOUNT_LISTING_KIND_OPTIONS,
   hasOrphanedDiscountTarget,
   isDiscountPriceSelectable,
-} from "../discountUiContract";
+} from "../discountEditorContract";
 
 const price = (discountsAllowed: boolean): BrandPriceRow => ({
   kind: "menu_item",

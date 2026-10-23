@@ -522,11 +522,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // help-content package and its lockfile link for the in-app Guides catalogue.
 // [TEST-MOD-APPROVED #3040] Re-banked after adding the reviewed local
 // `@mingla/video-upload` package (pure JS web TUS lane) and its lockfile link.
+// [TEST-MOD-APPROVED #3872] Re-banked after the mandated final R1 dependency
+// updates in the touched Explorer and Host package trees.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "8cfe7600ed5370cf9518337df3890acf21e9352432f2cbc90aac919283a1a77b",
-  "app-mobile/package-lock.json": "27314a161ae6aa67603e670fb0bd8ea567002a5526628c15b35e39163e22a534",
-  "mingla-business/package.json": "617aaa7d6e38ff735a40e67fb88aa5f1eb48d9f7670f89159b2f9a77bd3d9be1",
-  "mingla-business/package-lock.json": "b425fc7c550e478cbd683e9eb4ea85cc5bcdb3d796476ab2ebaf8da016cd74cd",
+  "app-mobile/package.json": "e575e2c64ca3691ba08665963def8acd57997ca6fc25c8e87bb190a63f4af5f8",
+  "app-mobile/package-lock.json": "f3975bb10baef4a9dd4800d080b4e26c7ec86d696e769f394ea117d75f77820c",
+  "mingla-business/package.json": "c63171766be37e6869347fa3d2d1042652a69b18fad450f6f0f81dd45e94f094",
+  "mingla-business/package-lock.json": "25fc918356ef047c552fec7d3dbe6868917728061320ab89f155b1bd81561612",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

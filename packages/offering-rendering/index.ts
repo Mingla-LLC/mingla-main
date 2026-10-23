@@ -57,6 +57,18 @@ export type { OfferingChromeProps } from "./OfferingChrome";
 export { shouldRenderCloseButton } from "./closeButtonVisibility";
 export type { PlatformOSValue } from "./closeButtonVisibility";
 
+// #3682 — one count formatter and one render primitive for every follower
+// surface. The formatter is React-free; the line remains props-only.
+export {
+  formatCompactCount,
+  formatFollowerCountA11y,
+  formatFollowerCountLine,
+  formatExactCount,
+  formatExactFollowers,
+} from "./followerCount";
+export { LazyFollowerCountLine as FollowerCountLine } from "./LazyFollowerCountLine";
+export type { FollowerCountLabels, FollowerCountLineProps } from "./FollowerCountLine";
+
 export { CountAwareGallery } from "./CountAwareGallery";
 export type {
   CountAwareGalleryProps,

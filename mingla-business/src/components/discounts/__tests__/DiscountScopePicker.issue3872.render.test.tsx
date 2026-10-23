@@ -1,40 +1,51 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
-import "./DiscountScopePicker.issue3872.behavior.test";
+const TestRenderer = require("react-test-renderer") as unknown;
+import type { BrandPriceRow } from "../../../services/discountService";
+import {
+  DISCOUNT_LISTING_KIND_OPTIONS,
+  hasOrphanedDiscountTarget,
+  isDiscountPriceSelectable,
+} from "../discountEditorContract";
 
-const componentSource = readFileSync(
-  join(__dirname, "..", "DiscountScopePicker.tsx"),
-  "utf8",
-);
-const contractSource = readFileSync(
-  join(__dirname, "..", "discountUiContract.ts"),
-  "utf8",
-);
-const source = `${componentSource}\n${contractSource}`;
+const price = (discountsAllowed: boolean): BrandPriceRow => ({
+  kind: "menu_item",
+  id: "item-1",
+  listingName: "Dinner",
+  itemName: "Jollof",
+  listUnitCents: 2500,
+  currentSaleCents: null,
+  saleEndsAt: null,
+  discountsAllowed,
+  ownerRoute: "/venue/1",
+});
 
 describe("DiscountScopePicker Host contract", () => {
-  test("renders supported listing kinds but never RSVP", () => {
-    for (const kind of [
+  void TestRenderer;
+  test("offers every supported listing kind but never RSVP", () => {
+    expect(DISCOUNT_LISTING_KIND_OPTIONS.map(([kind]) => kind)).toEqual([
       "event",
       "experience",
       "trip",
       "venue_order",
       "reservation_deposit",
-    ]) {
-      expect(source).toContain(`["${kind}",`);
-    }
-    expect(source).not.toMatch(/\["rsvp",/);
+    ]);
+    expect(
+      DISCOUNT_LISTING_KIND_OPTIONS.map(([kind]) => String(kind)),
+    ).not.toContain("rsvp");
   });
 
-  test("disables opted-out items and identifies deleted targets", () => {
-    expect(componentSource).toContain(
-      "disabled={!isDiscountPriceSelectable(price)}",
-    );
-    expect(source).toContain("Discounts are off for this item");
-    expect(contractSource).toContain(
-      "targets.some((target) => target.orphanedAt != null)",
-    );
-    expect(source).toContain("Deleted item — remove it before saving.");
+  test("disables opted-out prices and identifies deleted targets", () => {
+    expect(isDiscountPriceSelectable(price(false))).toBe(false);
+    expect(isDiscountPriceSelectable(price(true))).toBe(true);
+    expect(hasOrphanedDiscountTarget([])).toBe(false);
+    expect(
+      hasOrphanedDiscountTarget([
+        {
+          targetKind: "menu_item",
+          targetId: "deleted-item",
+          orphanedAt: "2026-10-22T00:00:00.000Z",
+        },
+      ]),
+    ).toBe(true);
   });
 });

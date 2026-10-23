@@ -192,8 +192,10 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
                   </View>
                   <View style={styles.rowBottom}>
                     <Text style={styles.rowMeta} numberOfLines={1}>
-                      Updated{" "}
-                      {new Date(ticket.last_message_at).toLocaleDateString()}
+                      {ticket.audience === "brand" ? "Shared with your brand · " : ""}
+                      {ticket.next_update_at
+                        ? `Next update ${new Date(ticket.next_update_at).toLocaleString()}`
+                        : `Updated ${new Date(ticket.last_message_at).toLocaleDateString()}`}
                     </Text>
                     <Icon name="chevR" size={16} color={textTokens.tertiary} />
                   </View>

@@ -178,7 +178,11 @@ test('C9 Business retains the full binding state machine and exact portrait prev
     read('mingla-business/src/components/ui/ShareModalContent.tsx');
   for (const state of ['prepared', 'failed', 'busy', 'copied', 'showQr', 'posterFailed']) assert.ok(source.includes(state), state);
   assert.match(source, /prepared\?\.media\?\.posterUrl/);
-  assert.match(source, /QRCode value=\{prepared\.url\}/);
+  // [TEST-MOD-APPROVED #3988] The effective share target is either the fully
+  // prepared preview or the validated canonical fallback. QR must bind to that
+  // same target so a transient preview failure does not recreate the broken,
+  // empty share sheet while still never inventing a URL.
+  assert.match(source, /QRCode value=\{shareTarget\.url\}/);
   assert.match(source, /Couldn't prepare this share/);
   assert.doesNotMatch(source, /shareAsync\(/);
 });

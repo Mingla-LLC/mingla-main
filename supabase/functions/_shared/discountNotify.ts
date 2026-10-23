@@ -32,21 +32,19 @@ export function discountNoticeCopy(notice: DiscountNotice): {
     };
   }
   if (notice.type === "business.discount_ended") {
-    const reason =
-      notice.reason === "count"
-        ? "it sold its limit"
-        : notice.reason === "uses"
-          ? "all uses are taken"
-          : "its end date passed";
+    const reason = notice.reason === "count"
+      ? "it sold its limit"
+      : notice.reason === "uses"
+      ? "all uses are taken"
+      : "its end date passed";
     return {
       title: "Discount ended",
       body: `${notice.name} has ended (${reason}).`,
     };
   }
-  const reason =
-    notice.reason === "currency_mismatch"
-      ? "no longer matches your currency"
-      : "lost an item it applied to";
+  const reason = notice.reason === "currency_mismatch"
+    ? "no longer matches your currency"
+    : "lost an item it applied to";
   return {
     title: "A discount needs attention",
     body: `${notice.name} ${reason}. Open Discounts to fix it.`,
@@ -68,6 +66,7 @@ export async function sendDiscountNotice(
     relatedId: notice.discountId,
     relatedType: "discount",
     idempotencyKey: `discount:${notice.discountId}:${notice.type}`,
-    deepLink: `mingla-business://brand/${notice.brandId}/discounts?focus=${notice.discountId}`,
+    deepLink:
+      `mingla-business://brand/${notice.brandId}/discounts?focus=${notice.discountId}`,
   });
 }

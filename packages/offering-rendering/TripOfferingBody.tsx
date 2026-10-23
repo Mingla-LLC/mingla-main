@@ -62,7 +62,10 @@ import { DayByDay } from "./DayByDay";
 // experience pages too). Imported under its trip name so this body is unchanged.
 // #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
 // import ./OfferingRefundLadder statically here.
-import { LazyOfferingRefundLadder as TripRefundLadder } from "./LazyOfferingRefundLadder";
+import {
+  LazyOfferingRefundLadder as TripRefundLadder,
+  LazySaleAvailabilityText,
+} from "./LazyOfferingRefundLadder";
 import { TripPaymentChoice } from "./TripPaymentChoice";
 import { TripCountdownPill } from "./TripCountdownPill";
 import {
@@ -74,6 +77,10 @@ import {
   Plus,
   Users,
 } from "./LucideIcons";
+import {
+  PresentedByFollowerCount,
+  type FollowerCountLabels,
+} from "./PresentedByFollowerCount";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
@@ -91,7 +98,6 @@ import {
   type TripOfferingState,
   type TripPaymentPlanChoice,
 } from "./useTripOfferingState";
-import { saleAvailabilityCopy } from "./saleAvailabilityCopy";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -111,6 +117,11 @@ export interface TripOfferingBodyProps {
   state: TripOfferingState;
   callbacks: TripOfferingCallbacks;
   variant: "phone" | "desktop";
+  presentedByFollow?: React.ReactNode;
+  /** #3682 — server count for the Presented-by card; unavailable stays hidden. */
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
   /**
    * The live pay-full/pay-over-time toggle value (the surface owns the useState).
    * Leg A back-compat: drives a SINGLE-package trip's toggle. Multi-package trips
@@ -169,6 +180,10 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   state,
   callbacks,
   variant,
+  presentedByFollow = undefined as React.ReactNode | undefined,
+  presentedByFollowerCount = undefined as number | null | undefined,
+  presentedByFollowerCountLoading = false,
+  presentedByFollowerCountLabels = undefined as FollowerCountLabels | undefined,
   paymentPlanChoice,
   onPaymentPlanChoiceChange,
   quantities,
@@ -416,75 +431,88 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
 
       {/* (5) Presented By. */}
       <View style={styles.section} testID="trip-body-presented-by">
-        <Pressable
-          onPress={callbacks.onViewBrand}
-          disabled={callbacks.onViewBrand === undefined}
-          accessibilityRole={
-            callbacks.onViewBrand !== undefined ? "button" : undefined
-          }
-          accessibilityLabel={`View ${brand.name}`}
-          style={[styles.brandRow, surface.card]}
-        >
-          <View
-            style={[
-              styles.brandTile,
-              brand.coverMediaUrl === null
-                ? { backgroundColor: palette.accent }
-                : null,
-            ]}
+        <View style={[styles.brandCard, surface.card]}>
+          <Pressable
+            onPress={callbacks.onViewBrand}
+            disabled={callbacks.onViewBrand === undefined}
+            accessibilityRole={
+              callbacks.onViewBrand !== undefined ? "button" : undefined
+            }
+            accessibilityLabel={`View ${brand.name}`}
+            style={styles.brandRow}
           >
-            {brand.coverMediaUrl !== null ? (
-              <EventCoverMedia
-                mediaUrl={brand.coverMediaUrl}
-                mediaType={brand.coverMediaType}
-                hue={brand.coverHue ?? undefined}
-                label=""
-                radius={999}
-                autoplay
-                playbackActive
-                muted
-                loop
-                height="100%"
-                width="100%"
-              />
-            ) : (
-              <View style={styles.brandInitialWrap}>
+            <View
+              style={[
+                styles.brandTile,
+                brand.coverMediaUrl === null
+                  ? { backgroundColor: palette.accent }
+                  : null,
+              ]}
+            >
+              {brand.coverMediaUrl !== null ? (
+                <EventCoverMedia
+                  mediaUrl={brand.coverMediaUrl}
+                  mediaType={brand.coverMediaType}
+                  hue={brand.coverHue ?? undefined}
+                  label=""
+                  radius={999}
+                  autoplay
+                  playbackActive
+                  muted
+                  loop
+                  height="100%"
+                  width="100%"
+                />
+              ) : (
+                <View style={styles.brandInitialWrap}>
+                  <Text
+                    style={[
+                      styles.brandInitial,
+                      { color: palette.accentText, fontFamily: boldFamily },
+                    ]}
+                  >
+                    {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.brandTextCol}>
+              <Text style={[styles.brandKicker, surface.tertiaryText]}>
+                Presented by
+              </Text>
+              <View style={styles.brandNameRow}>
                 <Text
                   style={[
-                    styles.brandInitial,
-                    { color: palette.accentText, fontFamily: boldFamily },
+                    styles.brandName,
+                    surface.primaryText,
+                    { fontFamily: boldFamily },
                   ]}
                 >
-                  {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  {brand.name}
                 </Text>
+                {brand.verified ? (
+                  <BadgeCheck size={15} color={palette.accent} />
+                ) : null}
               </View>
-            )}
-          </View>
-          <View style={styles.brandTextCol}>
-            <Text style={[styles.brandKicker, surface.tertiaryText]}>
-              Presented by
-            </Text>
-            <View style={styles.brandNameRow}>
-              <Text
-                style={[
-                  styles.brandName,
-                  surface.primaryText,
-                  { fontFamily: boldFamily },
-                ]}
-              >
-                {brand.name}
-              </Text>
-              {brand.verified ? (
-                <BadgeCheck size={15} color={palette.accent} />
-              ) : null}
+              <PresentedByFollowerCount
+                count={presentedByFollowerCount}
+                loading={presentedByFollowerCountLoading}
+                labels={presentedByFollowerCountLabels}
+                palette={palette}
+                testID="trip-presented-by-follower-count"
+              />
             </View>
-          </View>
-          {callbacks.onViewBrand !== undefined ? (
-            <Text style={[styles.brandCta, { color: palette.accent }]}>
-              View
-            </Text>
+            {presentedByFollow === undefined &&
+            callbacks.onViewBrand !== undefined ? (
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
+            ) : null}
+          </Pressable>
+          {presentedByFollow !== undefined ? (
+            <View style={styles.brandFollowSlot}>{presentedByFollow}</View>
           ) : null}
-        </Pressable>
+        </View>
       </View>
 
       {/* (6) About — collapsible, FOLDED here per Seth (after Presented-By). */}
@@ -850,10 +878,7 @@ const TripPackageRow: React.FC<{
         : tier.ticketsRemaining <= 5
           ? `${tier.ticketsRemaining} left`
           : `${tier.ticketsRemaining} available`;
-  const saleAvailability =
-    tripTierListPriceLabel(tier) === null
-      ? null
-      : saleAvailabilityCopy(tier.saleRemaining, tier.saleEndsAt);
+  const listPriceLabel = tripTierListPriceLabel(tier);
 
   const hasPlan =
     tier.installmentSchedule !== null && tier.installmentSchedule !== undefined;
@@ -900,17 +925,16 @@ const TripPackageRow: React.FC<{
           <Text style={[styles.pkgCap, surface.tertiaryText]}>
             {remainingLabel}
           </Text>
-          {saleAvailability !== null ? (
-            <Text
-              style={[styles.pkgSaleAvailability, { color: palette.accent }]}
-            >
-              {saleAvailability}
-            </Text>
-          ) : null}
+          <LazySaleAvailabilityText
+            active={listPriceLabel !== null}
+            remaining={tier.saleRemaining}
+            endsAt={tier.saleEndsAt}
+            style={[styles.pkgSaleAvailability, { color: palette.accent }]}
+          />
         </View>
 
         <View style={styles.pkgRight}>
-          {tripTierListPriceLabel(tier) !== null ? (
+          {listPriceLabel !== null ? (
             <Text
               style={[
                 styles.pkgListPrice,
@@ -918,7 +942,7 @@ const TripPackageRow: React.FC<{
                 styles.moneyText,
               ]}
             >
-              {tripTierListPriceLabel(tier)}
+              {listPriceLabel}
             </Text>
           ) : null}
           <Text
@@ -1098,13 +1122,17 @@ const styles = StyleSheet.create({
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // ---- brand ----
+  brandCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  brandFollowSlot: { marginTop: 12 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
   },
   brandTile: {
     width: 42,

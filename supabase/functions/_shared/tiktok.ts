@@ -68,8 +68,8 @@
 
 import {
   AdApiError,
-  AdNotConnectedError,
   type AdConnectionRow,
+  AdNotConnectedError,
   type AdvertiserStatus,
   type AuthedClient,
   centsToPlatformBudget,
@@ -95,7 +95,9 @@ export type TikTokLane = "consumer" | "business";
  * names simply fail-close until seeded.
  */
 function laneEnvName(base: string, lane: TikTokLane): string {
-  return lane === "business" ? base.replace(/^TIKTOK_/, "TIKTOK_MINGLABIZ_") : base;
+  return lane === "business"
+    ? base.replace(/^TIKTOK_/, "TIKTOK_MINGLABIZ_")
+    : base;
 }
 
 export function tiktokDefaultTokenEnvVar(lane: TikTokLane): string {
@@ -111,7 +113,8 @@ export function resolveTikTokToken(
   conn?: Pick<AdConnectionRow, "token_env_var"> | null,
   lane: TikTokLane = "consumer",
 ): string {
-  const envVarName = (conn?.token_env_var ?? tiktokDefaultTokenEnvVar(lane)).trim() ||
+  const envVarName =
+    (conn?.token_env_var ?? tiktokDefaultTokenEnvVar(lane)).trim() ||
     tiktokDefaultTokenEnvVar(lane);
   const value = Deno.env.get(envVarName);
   if (!value || value.trim().length === 0) {
@@ -141,8 +144,9 @@ export function resolveTikTokClient(
 ): TikTokClient {
   const effectiveLane: TikTokLane = conn?.lane ?? lane ?? "consumer";
   const token = resolveTikTokToken(conn ?? null, effectiveLane);
-  const envAdvertiserId = (Deno.env.get(laneEnvName("TIKTOK_ADVERTISER_ID", effectiveLane)) ?? "")
-    .trim();
+  const envAdvertiserId =
+    (Deno.env.get(laneEnvName("TIKTOK_ADVERTISER_ID", effectiveLane)) ?? "")
+      .trim();
   let connAdvertiserId = (conn?.external_account_id ?? "").trim();
   // QA WP7 F-1 (P1, runtime-proven): a failed pre-secrets connect persists the
   // 'unconfigured' SENTINEL into external_account_id (the column is NOT NULL),
@@ -153,7 +157,9 @@ export function resolveTikTokClient(
   // bug CLASS: the WP6 reddit lane carries the identical fix idiom. Deleting
   // the guard line below is the fails-on-revert target of the rework F-1 test.
   if (!NUMERIC_ID_REGEX.test(connAdvertiserId)) connAdvertiserId = "";
-  if (envAdvertiserId && connAdvertiserId && envAdvertiserId !== connAdvertiserId) {
+  if (
+    envAdvertiserId && connAdvertiserId && envAdvertiserId !== connAdvertiserId
+  ) {
     throw new AdApiError({
       platform: "tiktok",
       code: "advertiser_mismatch",
@@ -170,9 +176,12 @@ export function resolveTikTokClient(
     platform: "tiktok",
     token,
     advertiserId,
-    apiVersion: (Deno.env.get("TIKTOK_API_VERSION") ?? TIKTOK_DEFAULT_API_VERSION).trim() ||
+    apiVersion:
+      (Deno.env.get("TIKTOK_API_VERSION") ?? TIKTOK_DEFAULT_API_VERSION)
+        .trim() ||
       TIKTOK_DEFAULT_API_VERSION,
-    apiBase: (Deno.env.get("TIKTOK_GRAPH_BASE") ?? TIKTOK_DEFAULT_API_BASE).trim() ||
+    apiBase:
+      (Deno.env.get("TIKTOK_GRAPH_BASE") ?? TIKTOK_DEFAULT_API_BASE).trim() ||
       TIKTOK_DEFAULT_API_BASE,
   };
 }
@@ -195,7 +204,9 @@ export function normalizeTikTokError(payload: unknown): NormalizedTikTokError {
     message: typeof record.message === "string" && record.message
       ? record.message
       : "TikTok API error",
-    request_id: typeof record.request_id === "string" ? record.request_id : null,
+    request_id: typeof record.request_id === "string"
+      ? record.request_id
+      : null,
   };
 }
 
@@ -210,11 +221,15 @@ export async function tiktokApi(
   method: "GET" | "POST",
   path: string,
   params?: Record<string, unknown>,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
 ): Promise<Record<string, unknown>> {
   const timeoutMs = opts.timeoutMs ?? 15_000;
-  const scrub = (text: string): string => text.split(client.token).join("[redacted]");
-  let url = `${client.apiBase}/open_api/${client.apiVersion}/${path.replace(/^\//, "")}`;
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const scrub = (text: string): string =>
+    text.split(client.token).join("[redacted]");
+  let url = `${client.apiBase}/open_api/${client.apiVersion}/${
+    path.replace(/^\//, "")
+  }`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -242,7 +257,7 @@ export async function tiktokApi(
 
   let response: Response;
   try {
-    response = await fetch(url, init);
+    response = await fetchImpl(url, init);
   } catch (err) {
     clearTimeout(timer);
     const detail = err instanceof Error ? err.message : String(err);
@@ -275,6 +290,101 @@ export async function tiktokApi(
   return (payload.data ?? {}) as Record<string, unknown>;
 }
 
+export type TikTokSparkPost = {
+  itemId: string;
+  itemType: "VIDEO" | "CAROUSEL";
+  text: string;
+  status: string | null;
+  posterUrl: string | null;
+  previewUrl: string | null;
+  durationSeconds: number | null;
+};
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+/**
+ * Normalize TikTok's /identity/video/get/ answer without exposing the raw
+ * provider payload to Admin. This is the single-account Spark Pull path for
+ * the linked @usemingla TT_USER identity.
+ */
+export function tiktokSparkPostsFromResponse(
+  data: Record<string, unknown>,
+): { posts: TikTokSparkPost[]; cursor: string | null; hasMore: boolean } {
+  const rows = Array.isArray(data.video_list) ? data.video_list : [];
+  const posts = rows.flatMap((value) => {
+    const row = objectRecord(value);
+    const itemId = typeof row.item_id === "string" ? row.item_id.trim() : "";
+    const itemType = row.item_type === "CAROUSEL" ? "CAROUSEL" : "VIDEO";
+    if (!/^\d{10,30}$/.test(itemId)) return [];
+    const video = objectRecord(row.video_info);
+    const duration = Number(video.duration);
+    return [
+      {
+        itemId,
+        itemType,
+        text: typeof row.text === "string" ? row.text : "",
+        status: typeof row.status === "string" ? row.status : null,
+        posterUrl: typeof video.poster_url === "string"
+          ? video.poster_url
+          : null,
+        previewUrl: typeof video.preview_url === "string"
+          ? video.preview_url
+          : typeof video.url === "string"
+          ? video.url
+          : null,
+        durationSeconds: Number.isFinite(duration) && duration >= 0
+          ? duration
+          : null,
+      } satisfies TikTokSparkPost,
+    ];
+  });
+  return {
+    posts,
+    cursor: typeof data.cursor === "string" && data.cursor ? data.cursor : null,
+    hasMore: data.has_more === true,
+  };
+}
+
+export async function tiktokFetchSparkPosts(
+  client: TikTokClient,
+  input: { identityId: string; cursor?: string; count?: number },
+  opts: { fetchImpl?: typeof fetch } = {},
+): Promise<
+  { posts: TikTokSparkPost[]; cursor: string | null; hasMore: boolean }
+> {
+  const data = await tiktokApi(client, "GET", "identity/video/get/", {
+    advertiser_id: client.advertiserId,
+    identity_id: input.identityId,
+    identity_type: "TT_USER",
+    item_type: "VIDEO",
+    count: Math.min(20, Math.max(1, input.count ?? 20)),
+    ...(input.cursor ? { cursor: input.cursor } : {}),
+  }, opts);
+  return tiktokSparkPostsFromResponse(data);
+}
+
+/** Exact ownership/readiness re-check for the reviewed post ids at create. */
+export async function tiktokFetchSparkPostInfo(
+  client: TikTokClient,
+  input: { identityId: string; itemIds: string[] },
+  opts: { fetchImpl?: typeof fetch } = {},
+): Promise<TikTokSparkPost[]> {
+  const data = await tiktokApi(client, "GET", "identity/video/info/", {
+    advertiser_id: client.advertiserId,
+    identity_id: input.identityId,
+    identity_type: "TT_USER",
+    item_type: "VIDEO",
+    item_ids: input.itemIds,
+  }, opts);
+  return tiktokSparkPostsFromResponse({
+    video_list: Array.isArray(data.video_details) ? data.video_details : [],
+  }).posts;
+}
+
 // ── Validation result shape (mirrors google.ts GoogleValidation) ──────────────
 
 export type TikTokValidation =
@@ -283,7 +393,11 @@ export type TikTokValidation =
 
 function throwValidation(check: TikTokValidation): void {
   if (!check.ok) {
-    throw new AdApiError({ platform: "tiktok", code: check.detail, message: check.message });
+    throw new AdApiError({
+      platform: "tiktok",
+      code: check.detail,
+      message: check.message,
+    });
   }
 }
 
@@ -400,9 +514,16 @@ export function validateTikTokAdText(text: unknown): TikTokValidation {
 }
 
 /** campaign_name / adgroup_name / ad_name: required, ≤512 weighted, no emoji. */
-export function validateTikTokName(name: unknown, field: string): TikTokValidation {
+export function validateTikTokName(
+  name: unknown,
+  field: string,
+): TikTokValidation {
   if (typeof name !== "string" || !name.trim()) {
-    return { ok: false, detail: "name_required", message: `${field} is required.` };
+    return {
+      ok: false,
+      detail: "name_required",
+      message: `${field} is required.`,
+    };
   }
   if (containsEmoji(name)) {
     return {
@@ -483,8 +604,12 @@ export function parseTikTokScheduleTime(value: string): number | null {
 /** Formats a Date as the UTC+0 "YYYY-MM-DD HH:MM:SS" TikTok schedule string. */
 export function formatTikTokScheduleTime(date: Date): string {
   const pad = (n: number): string => String(n).padStart(2, "0");
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
-    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${
+    pad(date.getUTCDate())
+  } ` +
+    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${
+      pad(date.getUTCSeconds())
+    }`;
 }
 
 export interface TikTokScheduleInput {
@@ -496,7 +621,10 @@ export interface TikTokScheduleInput {
   nowMs?: number;
 }
 
-export const TIKTOK_SCHEDULE_TYPES = ["SCHEDULE_FROM_NOW", "SCHEDULE_START_END"] as const;
+export const TIKTOK_SCHEDULE_TYPES = [
+  "SCHEDULE_FROM_NOW",
+  "SCHEDULE_START_END",
+] as const;
 
 /**
  * The UTC+0 + bounds contract (AC-16): start is a valid UTC+0 string, ≤12h in
@@ -504,13 +632,18 @@ export const TIKTOK_SCHEDULE_TYPES = ["SCHEDULE_FROM_NOW", "SCHEDULE_START_END"]
  * and ≤2038-01-01; dayparting, if present, is exactly 336 chars of 0/1
  * (48 half-hours × 7 days; char 1 = Mon 00:01–00:30).
  */
-export function validateTikTokSchedule(input: TikTokScheduleInput): TikTokValidation {
-  if (!(TIKTOK_SCHEDULE_TYPES as readonly string[]).includes(input.scheduleType)) {
+export function validateTikTokSchedule(
+  input: TikTokScheduleInput,
+): TikTokValidation {
+  if (
+    !(TIKTOK_SCHEDULE_TYPES as readonly string[]).includes(input.scheduleType)
+  ) {
     return {
       ok: false,
       detail: "schedule_type_invalid",
-      message:
-        `schedule_type "${input.scheduleType}" is invalid — valid: ${TIKTOK_SCHEDULE_TYPES.join(" | ")}.`,
+      message: `schedule_type "${input.scheduleType}" is invalid — valid: ${
+        TIKTOK_SCHEDULE_TYPES.join(" | ")
+      }.`,
     };
   }
   const nowMs = input.nowMs ?? Date.now();
@@ -527,15 +660,19 @@ export function validateTikTokSchedule(input: TikTokScheduleInput): TikTokValida
     return {
       ok: false,
       detail: "schedule_start_too_old",
-      message: "schedule_start_time is more than 12 hours in the past (TikTok bound).",
+      message:
+        "schedule_start_time is more than 12 hours in the past (TikTok bound).",
     };
   }
-  const maxStartMs = parseTikTokScheduleTime(TIKTOK_SCHEDULE_MAX_START) as number;
+  const maxStartMs = parseTikTokScheduleTime(
+    TIKTOK_SCHEDULE_MAX_START,
+  ) as number;
   if (startMs > maxStartMs) {
     return {
       ok: false,
       detail: "schedule_start_out_of_bounds",
-      message: `schedule_start_time must be no later than ${TIKTOK_SCHEDULE_MAX_START} UTC (TikTok bound).`,
+      message:
+        `schedule_start_time must be no later than ${TIKTOK_SCHEDULE_MAX_START} UTC (TikTok bound).`,
     };
   }
   const end = input.scheduleEndTime ?? null;
@@ -543,7 +680,8 @@ export function validateTikTokSchedule(input: TikTokScheduleInput): TikTokValida
     return {
       ok: false,
       detail: "schedule_end_required",
-      message: "schedule_end_time is required for SCHEDULE_START_END (and for any lifetime budget).",
+      message:
+        "schedule_end_time is required for SCHEDULE_START_END (and for any lifetime budget).",
     };
   }
   if (end) {
@@ -552,7 +690,8 @@ export function validateTikTokSchedule(input: TikTokScheduleInput): TikTokValida
       return {
         ok: false,
         detail: "schedule_end_invalid",
-        message: `schedule_end_time "${end}" is not a valid UTC+0 "YYYY-MM-DD HH:MM:SS" string.`,
+        message:
+          `schedule_end_time "${end}" is not a valid UTC+0 "YYYY-MM-DD HH:MM:SS" string.`,
       };
     }
     if (endMs <= startMs) {
@@ -567,11 +706,15 @@ export function validateTikTokSchedule(input: TikTokScheduleInput): TikTokValida
       return {
         ok: false,
         detail: "schedule_end_out_of_bounds",
-        message: `schedule_end_time must be no later than ${TIKTOK_SCHEDULE_MAX_END} UTC (TikTok bound).`,
+        message:
+          `schedule_end_time must be no later than ${TIKTOK_SCHEDULE_MAX_END} UTC (TikTok bound).`,
       };
     }
   }
-  if (input.dayparting !== undefined && input.dayparting !== null && input.dayparting !== "") {
+  if (
+    input.dayparting !== undefined && input.dayparting !== null &&
+    input.dayparting !== ""
+  ) {
     if (!DAYPARTING_REGEX.test(input.dayparting)) {
       return {
         ok: false,
@@ -668,15 +811,22 @@ export interface TikTokBudgetUpdateInput {
  * adjustments not more often than every 2 days. Decreases are cadence-bound
  * but not percentage-bound (the published caps are on increases).
  */
-export function validateTikTokBudgetUpdate(input: TikTokBudgetUpdateInput): TikTokValidation {
+export function validateTikTokBudgetUpdate(
+  input: TikTokBudgetUpdateInput,
+): TikTokValidation {
   if (!Number.isFinite(input.newBudgetDollars) || input.newBudgetDollars <= 0) {
-    return { ok: false, detail: "budget_invalid", message: "New budget must be positive." };
+    return {
+      ok: false,
+      detail: "budget_invalid",
+      message: "New budget must be positive.",
+    };
   }
   if (input.lastBudgetChangeAt) {
     const lastMs = Date.parse(input.lastBudgetChangeAt);
     const nowMs = input.nowMs ?? Date.now();
     if (
-      !Number.isNaN(lastMs) && nowMs - lastMs < TIKTOK_BUDGET_ADJUSTMENT_MIN_INTERVAL_MS
+      !Number.isNaN(lastMs) &&
+      nowMs - lastMs < TIKTOK_BUDGET_ADJUSTMENT_MIN_INTERVAL_MS
     ) {
       return {
         ok: false,
@@ -687,7 +837,8 @@ export function validateTikTokBudgetUpdate(input: TikTokBudgetUpdateInput): TikT
     }
   }
   if (
-    Number.isFinite(input.currentBudgetDollars) && input.currentBudgetDollars > 0 &&
+    Number.isFinite(input.currentBudgetDollars) &&
+    input.currentBudgetDollars > 0 &&
     input.newBudgetDollars > input.currentBudgetDollars
   ) {
     const pct = (input.newBudgetDollars - input.currentBudgetDollars) /
@@ -699,9 +850,11 @@ export function validateTikTokBudgetUpdate(input: TikTokBudgetUpdateInput): TikT
       return {
         ok: false,
         detail: "budget_increase_too_large",
-        message: `Budget increase of ${Math.round(pct * 100)}% exceeds TikTok's ${
-          Math.round(cap * 100)
-        }% per-adjustment cap (${input.learning === true ? "learning phase" : "post-learning"}).`,
+        message: `Budget increase of ${
+          Math.round(pct * 100)
+        }% exceeds TikTok's ${Math.round(cap * 100)}% per-adjustment cap (${
+          input.learning === true ? "learning phase" : "post-learning"
+        }).`,
       };
     }
   }
@@ -746,6 +899,7 @@ export const TIKTOK_OPTIMIZATION_GOALS = [
   "TRAFFIC_LANDING_PAGE_VIEW",
   "DESTINATION_VISIT",
   "PREFERRED_LEAD",
+  "CONVERT",
 ] as const;
 
 export const TIKTOK_BILLING_EVENTS = ["CPC", "CPM", "OCPM", "CPV"] as const;
@@ -753,7 +907,11 @@ export const TIKTOK_BILLING_EVENTS = ["CPC", "CPM", "OCPM", "CPV"] as const;
 export const TIKTOK_BID_TYPES = ["BID_TYPE_NO_BID", "BID_TYPE_CUSTOM"] as const;
 export const TIKTOK_DEFAULT_BID_TYPE = "BID_TYPE_NO_BID";
 /** billing events under which BID_TYPE_CUSTOM requires bid_price. */
-export const TIKTOK_BID_PRICE_BILLING_EVENTS: readonly string[] = ["CPC", "CPM", "CPV"];
+export const TIKTOK_BID_PRICE_BILLING_EVENTS: readonly string[] = [
+  "CPC",
+  "CPM",
+  "CPV",
+];
 
 export function validateTikTokObjective(objective: unknown): TikTokValidation {
   if (
@@ -763,7 +921,9 @@ export function validateTikTokObjective(objective: unknown): TikTokValidation {
     return {
       ok: false,
       detail: "objective_invalid",
-      message: `objective_type "${String(objective)}" is invalid — the adapter owns the enum (the MCP declares a bare string): ${
+      message: `objective_type "${
+        String(objective)
+      }" is invalid — the adapter owns the enum (the MCP declares a bare string): ${
         TIKTOK_OBJECTIVES.join(" | ")
       }.`,
     };
@@ -823,7 +983,35 @@ export const TIKTOK_GAB_COUNTRIES: readonly string[] = [
   "JP",
 ];
 export const TIKTOK_DEFAULT_PLACEMENT_TYPE = "PLACEMENT_TYPE_NORMAL";
-export const TIKTOK_DEFAULT_PLACEMENTS: readonly string[] = ["PLACEMENT_TIKTOK"];
+export const TIKTOK_DEFAULT_PLACEMENTS: readonly string[] = [
+  "PLACEMENT_TIKTOK",
+];
+
+export type TikTokPlacementSelection = "tiktok" | "tiktok_pangle";
+
+/**
+ * #3697: TikTok-only delivery is video-only. An image is allowed only when
+ * Pangle is explicitly included; the default never silently broadens.
+ */
+export function tiktokPlacementsForCreative(
+  selection: unknown,
+  creativeKind: "image" | "video",
+): string[] {
+  const normalized: TikTokPlacementSelection = selection === "tiktok_pangle"
+    ? "tiktok_pangle"
+    : "tiktok";
+  if (creativeKind === "image" && normalized === "tiktok") {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "tiktok_video_required",
+      message:
+        "TikTok placement needs a video creative. Select TikTok + Pangle to use an image.",
+    });
+  }
+  return normalized === "tiktok_pangle"
+    ? ["PLACEMENT_TIKTOK", "PLACEMENT_PANGLE"]
+    : ["PLACEMENT_TIKTOK"];
+}
 
 /**
  * GR-68: TOPBUZZ/HELO are deprecated (400s); PLACEMENT_GLOBAL_APP_BUNDLE does
@@ -839,7 +1027,8 @@ export function validateTikTokPlacements(
     return {
       ok: false,
       detail: "placements_required",
-      message: "placements is required when placement_type is PLACEMENT_TYPE_NORMAL.",
+      message:
+        "placements is required when placement_type is PLACEMENT_TYPE_NORMAL.",
     };
   }
   for (const placement of placements) {
@@ -854,7 +1043,9 @@ export function validateTikTokPlacements(
       return {
         ok: false,
         detail: "placement_invalid",
-        message: `Unknown placement "${placement}" — valid: ${TIKTOK_PLACEMENTS.join(" | ")}.`,
+        message: `Unknown placement "${placement}" — valid: ${
+          TIKTOK_PLACEMENTS.join(" | ")
+        }.`,
       };
     }
   }
@@ -888,12 +1079,15 @@ export function validateTikTokPlacements(
 export const TIKTOK_MAX_LOCATION_IDS = 3_000;
 const NUMERIC_ID_REGEX = /^\d+$/;
 
-export function validateTikTokLocationIds(locationIds: unknown): TikTokValidation {
+export function validateTikTokLocationIds(
+  locationIds: unknown,
+): TikTokValidation {
   if (!Array.isArray(locationIds) || locationIds.length === 0) {
     return {
       ok: false,
       detail: "location_ids_required",
-      message: "location_ids is required (numeric TikTok location ids — never ISO codes).",
+      message:
+        "location_ids is required (numeric TikTok location ids — never ISO codes).",
     };
   }
   const seen = new Set<string>();
@@ -903,14 +1097,17 @@ export function validateTikTokLocationIds(locationIds: unknown): TikTokValidatio
         ok: false,
         detail: "location_ids_not_numeric",
         message:
-          `location_ids must be numeric TikTok ids (e.g. US 6252001); got "${String(id)}" — ISO country codes are NOT accepted (T-5).`,
+          `location_ids must be numeric TikTok ids (e.g. US 6252001); got "${
+            String(id)
+          }" — ISO country codes are NOT accepted (T-5).`,
       };
     }
     if (seen.has(id)) {
       return {
         ok: false,
         detail: "location_ids_overlap",
-        message: `location_id ${id} appears more than once — overlapping locations are not allowed.`,
+        message:
+          `location_id ${id} appears more than once — overlapping locations are not allowed.`,
       };
     }
     seen.add(id);
@@ -919,7 +1116,8 @@ export function validateTikTokLocationIds(locationIds: unknown): TikTokValidatio
     return {
       ok: false,
       detail: "location_ids_too_many",
-      message: `location_ids exceeds TikTok's ${TIKTOK_MAX_LOCATION_IDS} cap (combined with zipcode_ids).`,
+      message:
+        `location_ids exceeds TikTok's ${TIKTOK_MAX_LOCATION_IDS} cap (combined with zipcode_ids).`,
     };
   }
   return { ok: true };
@@ -937,19 +1135,22 @@ export interface TikTokRegion {
 /** Tolerant parser over the tool/region data payload (region_info/regions/list). */
 export function parseTikTokRegions(payload: unknown): TikTokRegion[] {
   const record = (payload ?? {}) as Record<string, unknown>;
-  const raw = (Array.isArray(record.region_info)
-    ? record.region_info
-    : Array.isArray(record.regions)
-    ? record.regions
-    : Array.isArray(record.list)
-    ? record.list
-    : []) as Record<string, unknown>[];
+  const raw =
+    (Array.isArray(record.region_info)
+      ? record.region_info
+      : Array.isArray(record.regions)
+      ? record.regions
+      : Array.isArray(record.list)
+      ? record.list
+      : []) as Record<string, unknown>[];
   const regions: TikTokRegion[] = [];
   for (const entry of raw) {
     // QA WP7 F-3: honor the tolerant-parser contract — a null / non-object
     // element in a malformed live payload is SKIPPED, never a raw TypeError
     // (which would surface as a wrong-shaped 500 instead of a normalized error).
-    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
     const idRaw = entry.location_id ?? entry.region_id ?? entry.id;
     const locationId = typeof idRaw === "string"
       ? idRaw
@@ -961,7 +1162,9 @@ export function parseTikTokRegions(payload: unknown): TikTokRegion[] {
       : typeof entry.country_code === "string"
       ? entry.country_code
       : "";
-    if (!locationId || !NUMERIC_ID_REGEX.test(locationId) || !regionCode) continue;
+    if (!locationId || !NUMERIC_ID_REGEX.test(locationId) || !regionCode) {
+      continue;
+    }
     regions.push({
       locationId,
       regionCode: regionCode.toUpperCase(),
@@ -974,7 +1177,12 @@ export function parseTikTokRegions(payload: unknown): TikTokRegion[] {
 
 export type TikTokGeoResolution =
   | { ok: true; locationIds: string[]; resolved: Record<string, string> }
-  | { ok: false; detail: "geo_unavailable"; missing: string[]; message: string };
+  | {
+    ok: false;
+    detail: "geo_unavailable";
+    missing: string[];
+    message: string;
+  };
 
 /**
  * Pure country → location_id picker over live tool/region data. When a
@@ -996,7 +1204,8 @@ export function pickTikTokLocationIdsForCountries(
     const match = regions.find(
       (region) =>
         region.regionCode === wanted &&
-        (region.level === null || region.level.toUpperCase().includes("COUNTRY")),
+        (region.level === null ||
+          region.level.toUpperCase().includes("COUNTRY")),
     ) ?? regions.find((region) => region.regionCode === wanted);
     if (match) resolved[wanted] = match.locationId;
     else missing.push(wanted);
@@ -1041,9 +1250,15 @@ export async function resolveTikTokGeo(
 ): Promise<string[]> {
   const client = resolveTikTokClient(conn);
   const regions = await tiktokFetchRegions(client, { objective });
-  const picked = pickTikTokLocationIdsForCountries(regions, countryCodes, { objective });
+  const picked = pickTikTokLocationIdsForCountries(regions, countryCodes, {
+    objective,
+  });
   if (!picked.ok) {
-    throw new AdApiError({ platform: "tiktok", code: picked.detail, message: picked.message });
+    throw new AdApiError({
+      platform: "tiktok",
+      code: picked.detail,
+      message: picked.message,
+    });
   }
   const check = validateTikTokLocationIds(picked.locationIds);
   throwValidation(check);
@@ -1104,7 +1319,11 @@ export function filterTikTokCityRegions(
 // warning, never a silent widen.
 
 /** City-like geo levels surfaced for a "city" search (never COUNTRY/PROVINCE/ZIP_CODE). */
-export const TIKTOK_CITY_GEO_TYPES: readonly string[] = ["CITY", "DISTRICT", "DMA"];
+export const TIKTOK_CITY_GEO_TYPES: readonly string[] = [
+  "CITY",
+  "DISTRICT",
+  "DMA",
+];
 
 export interface TikTokLocationTag {
   geoId: string;
@@ -1121,16 +1340,21 @@ export interface TikTokLocationTag {
  * null / non-object / ISP entries are SKIPPED (never a raw TypeError — mirrors
  * parseTikTokRegions' tolerant-parser contract).
  */
-export function parseTikTokTargetingSearch(payload: unknown): TikTokLocationTag[] {
+export function parseTikTokTargetingSearch(
+  payload: unknown,
+): TikTokLocationTag[] {
   const record = (payload ?? {}) as Record<string, unknown>;
-  const raw = (Array.isArray(record.targeting_tag_list)
-    ? record.targeting_tag_list
-    : Array.isArray(record.list)
-    ? record.list
-    : []) as Record<string, unknown>[];
+  const raw =
+    (Array.isArray(record.targeting_tag_list)
+      ? record.targeting_tag_list
+      : Array.isArray(record.list)
+      ? record.list
+      : []) as Record<string, unknown>[];
   const tags: TikTokLocationTag[] = [];
   for (const entry of raw) {
-    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
     const geo = entry.geo;
     if (geo === null || typeof geo !== "object" || Array.isArray(geo)) continue;
     const geoRec = geo as Record<string, unknown>;
@@ -1146,11 +1370,19 @@ export function parseTikTokTargetingSearch(payload: unknown): TikTokLocationTag[
     const statusInfo = (entry.status_info ?? {}) as Record<string, unknown>;
     tags.push({
       geoId,
-      geoType: typeof geoRec.geo_type === "string" ? geoRec.geo_type.toUpperCase() : "",
-      regionCode: typeof geoRec.region_code === "string" ? geoRec.region_code.toUpperCase() : "",
-      description: typeof geoRec.description === "string" ? geoRec.description : null,
+      geoType: typeof geoRec.geo_type === "string"
+        ? geoRec.geo_type.toUpperCase()
+        : "",
+      regionCode: typeof geoRec.region_code === "string"
+        ? geoRec.region_code.toUpperCase()
+        : "",
+      description: typeof geoRec.description === "string"
+        ? geoRec.description
+        : null,
       name,
-      status: typeof statusInfo.status === "string" ? statusInfo.status.toUpperCase() : null,
+      status: typeof statusInfo.status === "string"
+        ? statusInfo.status.toUpperCase()
+        : null,
     });
   }
   return tags;
@@ -1236,14 +1468,25 @@ export async function tiktokSearchCityLocations(
     search_type: "FUZZY_SEARCH",
     keywords: [opts.q],
     geo_types: TIKTOK_CITY_GEO_TYPES,
-    ...(opts.country ? { region_codes: [opts.country.trim().toUpperCase()] } : {}),
+    ...(opts.country
+      ? { region_codes: [opts.country.trim().toUpperCase()] }
+      : {}),
   };
   if (!["REACH", "VIDEO_VIEWS", "ENGAGEMENT"].includes(objective)) {
     params.promotion_type = opts.promotionType ?? "WEBSITE";
   }
-  const data = await tiktokApi(client, "POST", "tool/targeting/search/", params);
+  const data = await tiktokApi(
+    client,
+    "POST",
+    "tool/targeting/search/",
+    params,
+  );
   const tags = parseTikTokTargetingSearch(data);
-  return pickTikTokCityMatches(tags, { country: opts.country, q: opts.q, limit: opts.limit });
+  return pickTikTokCityMatches(tags, {
+    country: opts.country,
+    q: opts.q,
+    limit: opts.limit,
+  });
 }
 
 export interface TikTokInterestCategory {
@@ -1253,27 +1496,44 @@ export interface TikTokInterestCategory {
 }
 
 /** Tolerant parser over a tool/interest_category payload (flat, one level). */
-export function parseTikTokInterestCategories(payload: unknown): TikTokInterestCategory[] {
-  const record = ((payload as { data?: unknown })?.data ?? payload ?? {}) as Record<string, unknown>;
-  const raw = (Array.isArray(record.interest_categories)
-    ? record.interest_categories
-    : Array.isArray(record.list)
-    ? record.list
-    : Array.isArray(record.categories)
-    ? record.categories
-    : []) as Record<string, unknown>[];
+export function parseTikTokInterestCategories(
+  payload: unknown,
+): TikTokInterestCategory[] {
+  const record =
+    ((payload as { data?: unknown })?.data ?? payload ?? {}) as Record<
+      string,
+      unknown
+    >;
+  const raw =
+    (Array.isArray(record.interest_categories)
+      ? record.interest_categories
+      : Array.isArray(record.list)
+      ? record.list
+      : Array.isArray(record.categories)
+      ? record.categories
+      : []) as Record<string, unknown>[];
   const out: TikTokInterestCategory[] = [];
   for (const entry of raw) {
-    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
     const idRaw = entry.interest_category_id ?? entry.id;
-    const id = typeof idRaw === "string" ? idRaw : typeof idRaw === "number" ? String(idRaw) : "";
+    const id = typeof idRaw === "string"
+      ? idRaw
+      : typeof idRaw === "number"
+      ? String(idRaw)
+      : "";
     const name = typeof entry.interest_category_name === "string"
       ? entry.interest_category_name
       : typeof entry.name === "string"
       ? entry.name
       : "";
     if (!id || !name) continue;
-    out.push({ id, name, level: typeof entry.level === "number" ? entry.level : null });
+    out.push({
+      id,
+      name,
+      level: typeof entry.level === "number" ? entry.level : null,
+    });
   }
   return out;
 }
@@ -1301,7 +1561,9 @@ export function filterTikTokInterestCategories(
 ): TikTokInterestCategory[] {
   const q = (opts.q ?? "").trim().toLowerCase();
   const limit = opts.limit ?? 15;
-  const matched = categories.filter((c) => q.length === 0 || c.name.toLowerCase().includes(q));
+  const matched = categories.filter((c) =>
+    q.length === 0 || c.name.toLowerCase().includes(q)
+  );
   matched.sort((a, b) => {
     const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
     const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
@@ -1322,7 +1584,11 @@ export function normalizeTikTokInterestCategoryIds(ids: unknown): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of ids) {
-    const id = typeof raw === "string" ? raw.trim() : typeof raw === "number" ? String(raw) : "";
+    const id = typeof raw === "string"
+      ? raw.trim()
+      : typeof raw === "number"
+      ? String(raw)
+      : "";
     if (!id || !NUMERIC_ID_REGEX.test(id) || seen.has(id)) continue;
     seen.add(id);
     out.push(id);
@@ -1341,7 +1607,10 @@ export const TIKTOK_AGE_GROUPS = [
   { key: "AGE_55_100", min: 55, max: 100 },
 ] as const;
 
-export function tiktokAgeGroupsForRange(ageMin?: number, ageMax?: number): string[] {
+export function tiktokAgeGroupsForRange(
+  ageMin?: number,
+  ageMax?: number,
+): string[] {
   const min = typeof ageMin === "number" ? ageMin : 18; // AGE_13_17 is restricted in US/UK/EEA/CA — never defaulted in
   const max = typeof ageMax === "number" ? ageMax : 100;
   return TIKTOK_AGE_GROUPS
@@ -1368,7 +1637,8 @@ export function validateTikTokLandingPageUrl(url: unknown): TikTokValidation {
     return {
       ok: false,
       detail: "landing_page_url_invalid",
-      message: "landing_page_url must be an https URL (the canonical public page).",
+      message:
+        "landing_page_url must be an https URL (the canonical public page).",
     };
   }
   let host = "";
@@ -1383,7 +1653,9 @@ export function validateTikTokLandingPageUrl(url: unknown): TikTokValidation {
   }
   const blocked = TIKTOK_BLOCKED_LANDING_HOSTS.some(
     (candidate) =>
-      candidate.startsWith(".") ? host.endsWith(candidate) || host === candidate.slice(1) : host === candidate,
+      candidate.startsWith(".")
+        ? host.endsWith(candidate) || host === candidate.slice(1)
+        : host === candidate,
   );
   if (blocked) {
     return {
@@ -1438,7 +1710,8 @@ export function validateTikTokUtmParams(params: unknown): TikTokValidation {
     return {
       ok: false,
       detail: "utm_params_too_many",
-      message: `utm_params carries ${params.length} entries — TikTok's cap is ${TIKTOK_MAX_UTM_PARAMS}.`,
+      message:
+        `utm_params carries ${params.length} entries — TikTok's cap is ${TIKTOK_MAX_UTM_PARAMS}.`,
     };
   }
   for (const entry of params) {
@@ -1449,31 +1722,36 @@ export function validateTikTokUtmParams(params: unknown): TikTokValidation {
       return {
         ok: false,
         detail: "utm_params_invalid",
-        message: "Each utm_params entry needs a non-empty string key and a string value.",
+        message:
+          "Each utm_params entry needs a non-empty string key and a string value.",
       };
     }
     // Case-sensitivity trap: "UTM_Source" is a CUSTOM key, not the standard one.
     if (
-      !TIKTOK_UTM_STANDARD_KEYS.includes(key) && key.length > TIKTOK_UTM_KEY_MAX_CHARS
+      !TIKTOK_UTM_STANDARD_KEYS.includes(key) &&
+      key.length > TIKTOK_UTM_KEY_MAX_CHARS
     ) {
       return {
         ok: false,
         detail: "utm_params_key_too_long",
-        message: `utm_params key "${key.slice(0, 40)}…" exceeds ${TIKTOK_UTM_KEY_MAX_CHARS} chars.`,
+        message: `utm_params key "${
+          key.slice(0, 40)
+        }…" exceeds ${TIKTOK_UTM_KEY_MAX_CHARS} chars.`,
       };
     }
     if (value.length > TIKTOK_UTM_VALUE_MAX_CHARS) {
       return {
         ok: false,
         detail: "utm_params_value_too_long",
-        message: `utm_params value for "${key}" exceeds ${TIKTOK_UTM_VALUE_MAX_CHARS} chars.`,
+        message:
+          `utm_params value for "${key}" exceeds ${TIKTOK_UTM_VALUE_MAX_CHARS} chars.`,
       };
     }
   }
   return { ok: true };
 }
 
-// ── Identity gate (A1.1(f)/T-6, PROOF T-P5/T-P6 — TT_USER ONLY in v1) ─────────
+// ── Identity gate (A1.1(f)/T-6, PROOF T-P5/T-P6 — @usemingla TT_USER only) ───
 
 export const TIKTOK_IDENTITY_TYPES = [
   "CUSTOMIZED_USER",
@@ -1486,10 +1764,10 @@ export const TIKTOK_IDENTITY_TYPES = [
  * HARD-FAIL before any TikTok call. Our advertiser was created 2026-04-12
  * (create_time 1776026274) — AFTER TikTok's 2026-01-15 cutoff: new accounts
  * cannot create non-Spark ads with Custom Identities on TikTok placements.
- * Legal options are exactly two — TT_USER (@usemingla, AVAILABLE) or
- * AUTH_CODE (Spark). TT_USER is the only viable non-Spark path — a
- * CONSTRAINT, not a preference. Spark (AUTH_CODE/BC_AUTH_TT) is a documented
- * fast-follow (GR-50), not v1.
+ * @usemingla's linked TT_USER identity is the only identity this product uses.
+ * It supports uploaded-video delivery and Spark Pull from @usemingla's own
+ * organic posts. Creator/host AUTH_CODE and BC_AUTH_TT workflows stay outside
+ * the current product scope.
  */
 export function assertTikTokIdentityAllowed(identityType: string): void {
   if (identityType === "TT_USER") return;
@@ -1535,7 +1813,8 @@ export function buildTikTokCampaignBody(
 ): Record<string, unknown> {
   throwValidation(validateTikTokName(spec.name, "campaign_name"));
   throwValidation(validateTikTokObjective(spec.objective));
-  const isCbo = typeof spec.dailyBudgetCents === "number" && spec.dailyBudgetCents > 0;
+  const isCbo = typeof spec.dailyBudgetCents === "number" &&
+    spec.dailyBudgetCents > 0;
   const body: Record<string, unknown> = {
     advertiser_id: advertiserId,
     campaign_name: spec.name,
@@ -1549,8 +1828,13 @@ export function buildTikTokCampaignBody(
   if (isCbo) {
     // CBO — budget on the campaign; THE one cents→dollars conversion (A1.0-1);
     // the $50/day floor runs AFTER conversion, in dollars.
-    const dollars = centsToPlatformBudget("tiktok", spec.dailyBudgetCents as number);
-    throwValidation(validateTikTokBudgetFloor({ level: "campaign", mode: "daily", dollars }));
+    const dollars = centsToPlatformBudget(
+      "tiktok",
+      spec.dailyBudgetCents as number,
+    );
+    throwValidation(
+      validateTikTokBudgetFloor({ level: "campaign", mode: "daily", dollars }),
+    );
     body.budget_optimize_on = true;
     body.budget_mode = "BUDGET_MODE_DAY";
     body.budget = dollars;
@@ -1582,6 +1866,10 @@ export interface TikTokAdGroupSpec {
   ageGroups?: string[];
   /** ISSUE-989 — resolved numeric interest_category_ids (tool/interest_category). */
   interestCategoryIds?: string[];
+  /** #3697: provider ids resolved only from ad_audiences. */
+  audienceIds?: string[];
+  /** #3697: event-buyer audience ids that must be excluded. */
+  excludedAudienceIds?: string[];
   gender?: string;
   scheduleType?: string;
   /** UTC+0 "YYYY-MM-DD HH:MM:SS" (T-1). Defaults to now for SCHEDULE_FROM_NOW. */
@@ -1594,14 +1882,20 @@ export interface TikTokAdGroupSpec {
   /** ISO country codes for the GAB geo-lock gate (informational; ids stay numeric). */
   countryCodes?: string[];
   requestId?: string;
-  /** Native app-acquisition destination. Both fields are required together. */
-  promotionType?: "APP_IOS" | "APP_ANDROID";
+  /** Website-conversion fields; all four travel together for WEB_CONVERSIONS. */
+  pixelId?: string;
+  optimizationEvent?: string;
+  promotionType?: "WEBSITE" | "APP_IOS" | "APP_ANDROID";
   appId?: string;
   /** Injectable clock for tests. */
   nowMs?: number;
 }
 
-export const TIKTOK_GENDERS = ["GENDER_FEMALE", "GENDER_MALE", "GENDER_UNLIMITED"] as const;
+export const TIKTOK_GENDERS = [
+  "GENDER_FEMALE",
+  "GENDER_MALE",
+  "GENDER_UNLIMITED",
+] as const;
 
 export function buildTikTokAdGroupBody(
   advertiserId: string,
@@ -1609,16 +1903,23 @@ export function buildTikTokAdGroupBody(
   spec: TikTokAdGroupSpec,
 ): Record<string, unknown> {
   throwValidation(validateTikTokName(spec.name, "adgroup_name"));
-  if (!(TIKTOK_OPTIMIZATION_GOALS as readonly string[]).includes(spec.optimizationGoal)) {
+  if (
+    !(TIKTOK_OPTIMIZATION_GOALS as readonly string[]).includes(
+      spec.optimizationGoal,
+    )
+  ) {
     throw new AdApiError({
       platform: "tiktok",
       code: "optimization_goal_invalid",
-      message: `optimization_goal "${spec.optimizationGoal}" is invalid — valid: ${
-        TIKTOK_OPTIMIZATION_GOALS.join(" | ")
-      }.`,
+      message:
+        `optimization_goal "${spec.optimizationGoal}" is invalid — valid: ${
+          TIKTOK_OPTIMIZATION_GOALS.join(" | ")
+        }.`,
     });
   }
-  if (!(TIKTOK_BILLING_EVENTS as readonly string[]).includes(spec.billingEvent)) {
+  if (
+    !(TIKTOK_BILLING_EVENTS as readonly string[]).includes(spec.billingEvent)
+  ) {
     throw new AdApiError({
       platform: "tiktok",
       code: "billing_event_invalid",
@@ -1646,7 +1947,8 @@ export function buildTikTokAdGroupBody(
     throw new AdApiError({
       platform: "tiktok",
       code: "schedule_type_invalid",
-      message: "A lifetime budget (BUDGET_MODE_TOTAL) forces schedule_type=SCHEDULE_START_END.",
+      message:
+        "A lifetime budget (BUDGET_MODE_TOTAL) forces schedule_type=SCHEDULE_START_END.",
     });
   }
   const scheduleStartTime = spec.scheduleStartTime ??
@@ -1672,16 +1974,40 @@ export function buildTikTokAdGroupBody(
     location_ids: spec.locationIds,
     schedule_type: scheduleType,
     schedule_start_time: scheduleStartTime,
-    ...(spec.scheduleEndTime ? { schedule_end_time: spec.scheduleEndTime } : {}),
+    ...(spec.scheduleEndTime
+      ? { schedule_end_time: spec.scheduleEndTime }
+      : {}),
     ...(spec.dayparting ? { dayparting: spec.dayparting } : {}),
     // A1.0-4: DISABLE at every level (fails-on-revert protected).
     operation_status: "DISABLE",
+    ...(spec.pixelId ? { pixel_id: spec.pixelId } : {}),
+    ...(spec.optimizationEvent
+      ? { optimization_event: spec.optimizationEvent }
+      : {}),
+    ...(spec.promotionType ? { promotion_type: spec.promotionType } : {}),
   };
-  const appPromotion = spec.promotionType !== undefined || spec.appId !== undefined;
+  const webConversion = spec.promotionType === "WEBSITE" ||
+    spec.pixelId !== undefined || spec.optimizationEvent !== undefined;
+  if (webConversion) {
+    if (
+      spec.promotionType !== "WEBSITE" || !spec.pixelId ||
+      spec.optimizationGoal !== "CONVERT" || !spec.optimizationEvent
+    ) {
+      throw new AdApiError({
+        platform: "tiktok",
+        code: "web_conversion_config_invalid",
+        message:
+          "TikTok website conversions require promotion_type=WEBSITE, optimization_goal=CONVERT, pixel_id, and optimization_event together.",
+      });
+    }
+  }
+  const appPromotion = spec.promotionType === "APP_IOS" ||
+    spec.promotionType === "APP_ANDROID" || spec.appId !== undefined;
   if (appPromotion) {
     if (
       spec.optimizationGoal !== "INSTALL" ||
-      (spec.promotionType !== "APP_IOS" && spec.promotionType !== "APP_ANDROID") ||
+      (spec.promotionType !== "APP_IOS" &&
+        spec.promotionType !== "APP_ANDROID") ||
       typeof spec.appId !== "string" || !/^\d{6,32}$/.test(spec.appId.trim())
     ) {
       throw new AdApiError({
@@ -1694,18 +2020,46 @@ export function buildTikTokAdGroupBody(
     body.promotion_type = spec.promotionType;
     body.app_id = spec.appId.trim();
   }
-  if (spec.ageGroups && spec.ageGroups.length > 0) body.age_groups = spec.ageGroups;
+  if (spec.ageGroups && spec.ageGroups.length > 0) {
+    body.age_groups = spec.ageGroups;
+  }
   // ISSUE-989: interest_category_ids (numeric ids from tool/interest_category);
   // omitted entirely when none are picked so broad targeting is unchanged.
   if (spec.interestCategoryIds && spec.interestCategoryIds.length > 0) {
     body.interest_category_ids = spec.interestCategoryIds;
+  }
+  const audienceIds = [
+    ...new Set(
+      (spec.audienceIds ?? []).map((id) => String(id).trim()).filter(Boolean),
+    ),
+  ];
+  const excludedAudienceIds = [
+    ...new Set(
+      (spec.excludedAudienceIds ?? []).map((id) => String(id).trim()).filter(
+        Boolean,
+      ),
+    ),
+  ];
+  if (audienceIds.some((id) => excludedAudienceIds.includes(id))) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "audience_include_exclude_overlap",
+      message:
+        "A TikTok audience cannot be included and excluded in the same ad group.",
+    });
+  }
+  if (audienceIds.length > 0) body.audience_ids = audienceIds;
+  if (excludedAudienceIds.length > 0) {
+    body.excluded_audience_ids = excludedAudienceIds;
   }
   if (spec.gender) {
     if (!(TIKTOK_GENDERS as readonly string[]).includes(spec.gender)) {
       throw new AdApiError({
         platform: "tiktok",
         code: "gender_invalid",
-        message: `gender "${spec.gender}" is invalid — valid: ${TIKTOK_GENDERS.join(" | ")}.`,
+        message: `gender "${spec.gender}" is invalid — valid: ${
+          TIKTOK_GENDERS.join(" | ")
+        }.`,
       });
     }
     body.gender = spec.gender;
@@ -1719,7 +2073,8 @@ export function buildTikTokAdGroupBody(
       throw new AdApiError({
         platform: "tiktok",
         code: "budget_required",
-        message: "An ABO ad group requires budget_cents (the campaign is BUDGET_MODE_INFINITE).",
+        message:
+          "An ABO ad group requires budget_cents (the campaign is BUDGET_MODE_INFINITE).",
       });
     }
     // THE one cents→dollars conversion (A1.0-1); floors AFTER conversion.
@@ -1727,7 +2082,8 @@ export function buildTikTokAdGroupBody(
     let scheduledDays: number | undefined;
     if (budgetMode === "lifetime") {
       const startMs = parseTikTokScheduleTime(scheduleStartTime) as number;
-      const endMs = parseTikTokScheduleTime(spec.scheduleEndTime ?? "") ?? startMs;
+      const endMs = parseTikTokScheduleTime(spec.scheduleEndTime ?? "") ??
+        startMs;
       scheduledDays = tiktokScheduledDays(startMs, endMs);
     }
     throwValidation(validateTikTokBudgetFloor({
@@ -1736,7 +2092,9 @@ export function buildTikTokAdGroupBody(
       dollars: adGroupBudgetDollars,
       scheduledDays,
     }));
-    body.budget_mode = budgetMode === "lifetime" ? "BUDGET_MODE_TOTAL" : "BUDGET_MODE_DAY";
+    body.budget_mode = budgetMode === "lifetime"
+      ? "BUDGET_MODE_TOTAL"
+      : "BUDGET_MODE_DAY";
     body.budget = adGroupBudgetDollars;
   }
 
@@ -1757,14 +2115,20 @@ export function buildTikTokAdGroupBody(
       throw new AdApiError({
         platform: "tiktok",
         code: "bid_type_invalid",
-        message: `bid_type "${effectiveBidType}" is invalid — the adapter owns the enum: ${
-          TIKTOK_BID_TYPES.join(" | ")
-        }.`,
+        message:
+          `bid_type "${effectiveBidType}" is invalid — the adapter owns the enum: ${
+            TIKTOK_BID_TYPES.join(" | ")
+          }.`,
       });
     }
     if (effectiveBidType === "BID_TYPE_CUSTOM") {
-      const needsBidPrice = TIKTOK_BID_PRICE_BILLING_EVENTS.includes(spec.billingEvent);
-      if (needsBidPrice && (typeof spec.bidPriceCents !== "number" || spec.bidPriceCents <= 0)) {
+      const needsBidPrice = TIKTOK_BID_PRICE_BILLING_EVENTS.includes(
+        spec.billingEvent,
+      );
+      if (
+        needsBidPrice &&
+        (typeof spec.bidPriceCents !== "number" || spec.bidPriceCents <= 0)
+      ) {
         throw new AdApiError({
           platform: "tiktok",
           code: "bid_price_required",
@@ -1774,12 +2138,15 @@ export function buildTikTokAdGroupBody(
       }
       if (typeof spec.bidPriceCents === "number" && spec.bidPriceCents > 0) {
         const bidDollars = centsToPlatformBudget("tiktok", spec.bidPriceCents);
-        const campaignBudgetDollars = typeof spec.campaignBudgetCents === "number" &&
+        const campaignBudgetDollars =
+          typeof spec.campaignBudgetCents === "number" &&
             spec.campaignBudgetCents > 0
-          ? centsToPlatformBudget("tiktok", spec.campaignBudgetCents)
-          : null;
+            ? centsToPlatformBudget("tiktok", spec.campaignBudgetCents)
+            : null;
         // bid_price must be LOWER than BOTH the campaign and ad-group budgets.
-        if (adGroupBudgetDollars !== null && bidDollars >= adGroupBudgetDollars) {
+        if (
+          adGroupBudgetDollars !== null && bidDollars >= adGroupBudgetDollars
+        ) {
           throw new AdApiError({
             platform: "tiktok",
             code: "bid_price_exceeds_budget",
@@ -1787,7 +2154,9 @@ export function buildTikTokAdGroupBody(
               `bid_price $${bidDollars} must be LOWER than the ad-group budget $${adGroupBudgetDollars} (T-2).`,
           });
         }
-        if (campaignBudgetDollars !== null && bidDollars >= campaignBudgetDollars) {
+        if (
+          campaignBudgetDollars !== null && bidDollars >= campaignBudgetDollars
+        ) {
           throw new AdApiError({
             platform: "tiktok",
             code: "bid_price_exceeds_budget",
@@ -1817,6 +2186,8 @@ export interface TikTokAdSpec {
   imageIds: string[];
   /** SINGLE_VIDEO only (#997 C): the prepared ad video_id (external_ref_extra.video_id). */
   videoId?: string;
+  /** Spark Pull: an existing organic post owned by linked @usemingla TT_USER. */
+  tiktokItemId?: string;
   adText: string;
   /** TikTok CTAs are bare display strings (TIKTOK_CTA_MAP) — default "Learn more". */
   callToAction?: string;
@@ -1836,13 +2207,49 @@ export function buildTikTokAdBody(
     throw new AdApiError({
       platform: "tiktok",
       code: "identity_required",
-      message: "identity_id is required for ad_create — no identity, no ad (tiktok.md §7.6).",
+      message:
+        "identity_id is required for ad_create — no identity, no ad (tiktok.md §7.6).",
     });
   }
   throwValidation(validateTikTokName(spec.adName, "ad_name"));
-  throwValidation(validateTikTokAdText(spec.adText));
   throwValidation(validateTikTokLandingPageUrl(spec.landingPageUrl));
   throwValidation(validateTikTokUtmParams(spec.utmParams));
+
+  const tiktokItemId = typeof spec.tiktokItemId === "string"
+    ? spec.tiktokItemId.trim()
+    : "";
+  if (tiktokItemId) {
+    if (!/^\d{10,30}$/.test(tiktokItemId)) {
+      throw new AdApiError({
+        platform: "tiktok",
+        code: "tiktok_item_id_invalid",
+        message:
+          "tiktok_item_id must be an existing @usemingla TikTok post ID.",
+      });
+    }
+    const creative: Record<string, unknown> = {
+      ad_name: spec.adName,
+      identity_type: spec.identityType,
+      identity_id: spec.identityId,
+      tiktok_item_id: tiktokItemId,
+      call_to_action: spec.callToAction ?? TIKTOK_CTA_MAP.default,
+      landing_page_url: spec.landingPageUrl,
+      operation_status: "DISABLE",
+    };
+    if (spec.utmParams && spec.utmParams.length > 0) {
+      creative.utm_params = spec.utmParams.map((p) => ({
+        key: p.key,
+        value: p.value,
+      }));
+    }
+    return {
+      advertiser_id: advertiserId,
+      adgroup_id: adgroupExternalId,
+      creatives: [creative],
+    };
+  }
+
+  throwValidation(validateTikTokAdText(spec.adText));
 
   // ISSUE-997 C: SINGLE_VIDEO joins SINGLE_IMAGE. Everything else (SINGLE_CAROUSEL,
   // etc.) still hard-fails ad_format_unsupported_v1 (fails-on-revert protected).
@@ -1857,7 +2264,10 @@ export function buildTikTokAdBody(
   }
   // Both formats carry exactly ONE image_id: SINGLE_IMAGE the ad image, SINGLE_VIDEO
   // the video COVER (external_ref_extra.cover_image_id captured at prepare — #997 C).
-  if (!Array.isArray(spec.imageIds) || spec.imageIds.length !== 1 || !spec.imageIds[0]) {
+  if (
+    !Array.isArray(spec.imageIds) || spec.imageIds.length !== 1 ||
+    !spec.imageIds[0]
+  ) {
     throw new AdApiError({
       platform: "tiktok",
       code: "image_ids_invalid",
@@ -1895,7 +2305,10 @@ export function buildTikTokAdBody(
     operation_status: "DISABLE",
   };
   if (spec.utmParams && spec.utmParams.length > 0) {
-    creative.utm_params = spec.utmParams.map((p) => ({ key: p.key, value: p.value }));
+    creative.utm_params = spec.utmParams.map((p) => ({
+      key: p.key,
+      value: p.value,
+    }));
   }
   return {
     advertiser_id: advertiserId,
@@ -1911,7 +2324,10 @@ export function buildTikTokAdBody(
  * derive from the URL basename + a timestamp suffix (GR-58; file_name_check
  * is the API-side pre-check, skipped here in favor of the always-unique name).
  */
-export function tiktokUniqueFileName(imageUrl: string, nowMs = Date.now()): string {
+export function tiktokUniqueFileName(
+  imageUrl: string,
+  nowMs = Date.now(),
+): string {
   let base = "mingla-ad-image";
   try {
     const segments = new URL(imageUrl).pathname.split("/").filter(Boolean);
@@ -1957,7 +2373,8 @@ export async function tiktokUploadImage(
     throw new AdApiError({
       platform: "tiktok",
       code: "upload_no_image_id",
-      message: "file/image/ad/upload returned OK but no image_id — refusing to build an ad on it.",
+      message:
+        "file/image/ad/upload returned OK but no image_id — refusing to build an ad on it.",
     });
   }
   return {
@@ -1975,7 +2392,9 @@ export async function tiktokUploadImage(
  * launch/pause path can ever delete (interface-level rule, mirrors Google's
  * REMOVED-never).
  */
-export function tiktokStatusForAdvertiserStatus(status: AdvertiserStatus): "ENABLE" | "DISABLE" {
+export function tiktokStatusForAdvertiserStatus(
+  status: AdvertiserStatus,
+): "ENABLE" | "DISABLE" {
   switch (status) {
     case "ACTIVE":
       return "ENABLE";
@@ -1986,15 +2405,18 @@ export function tiktokStatusForAdvertiserStatus(status: AdvertiserStatus): "ENAB
       throw new AdApiError({
         platform: "tiktok",
         code: "invalid_status",
-        message:
-          `Refusing to write status "${String(never)}" — the TikTok status writer emits ONLY ENABLE|DISABLE (DELETE is rollback-only).`,
+        message: `Refusing to write status "${
+          String(never)
+        }" — the TikTok status writer emits ONLY ENABLE|DISABLE (DELETE is rollback-only).`,
       });
     }
   }
 }
 
 /** TikTok operation_status → engine status (CHECK: PAUSED|ACTIVE|ARCHIVED|DELETED). */
-export function engineStatusFromTikTok(operationStatus: unknown): string | null {
+export function engineStatusFromTikTok(
+  operationStatus: unknown,
+): string | null {
   switch (operationStatus) {
     case "ENABLE":
       return "ACTIVE";
@@ -2027,8 +2449,13 @@ export const TIKTOK_WARNING_SECONDARY_STATUSES: readonly string[] = [
   "NOT_APPROVED",
 ];
 
-export function normalizeTikTokSecondaryStatus(secondaryStatus: string): string {
-  return secondaryStatus.replace(/^(CAMPAIGN_STATUS_|ADGROUP_STATUS_|AD_STATUS_)/, "");
+export function normalizeTikTokSecondaryStatus(
+  secondaryStatus: string,
+): string {
+  return secondaryStatus.replace(
+    /^(CAMPAIGN_STATUS_|ADGROUP_STATUS_|AD_STATUS_)/,
+    "",
+  );
 }
 
 /**
@@ -2036,15 +2463,23 @@ export function normalizeTikTokSecondaryStatus(secondaryStatus: string): string 
  * when delivery is healthy. Launch stays HTTP 200 — the delivery block is
  * TikTok's state, not our error, and it is NEVER silently clamped (A1.0-1).
  */
-export function tiktokLaunchWarning(secondaryStatus: string | null): string | null {
+export function tiktokLaunchWarning(
+  secondaryStatus: string | null,
+): string | null {
   if (!secondaryStatus) return null;
   const normalized = normalizeTikTokSecondaryStatus(secondaryStatus);
   if (!TIKTOK_WARNING_SECONDARY_STATUSES.includes(normalized)) return null;
-  if (normalized === "BALANCE_EXCEED" || normalized === "NO_BUDGET" || normalized === "BUDGET_EXCEED") {
+  if (
+    normalized === "BALANCE_EXCEED" || normalized === "NO_BUDGET" ||
+    normalized === "BUDGET_EXCEED"
+  ) {
     return `Launched, but delivery is blocked upstream: ${secondaryStatus}. ` +
       "Add funds in TikTok Ads Manager (Advanced Payment Portfolio) — the Marketing API balance field cannot see prepaid funds, so the UI is the source of truth (T-P3).";
   }
-  if (normalized === "AUDIT_DENY" || normalized === "ADVERTISER_AUDIT_DENY" || normalized === "NOT_APPROVED") {
+  if (
+    normalized === "AUDIT_DENY" || normalized === "ADVERTISER_AUDIT_DENY" ||
+    normalized === "NOT_APPROVED"
+  ) {
     return `Launched, but delivery is blocked upstream: ${secondaryStatus}. ` +
       "The ad (or advertiser) failed TikTok review — check the rejection detail in TikTok Ads Manager and appeal or edit the creative.";
   }
@@ -2073,8 +2508,12 @@ export async function tiktokFetchAdvertiser(
   const data = await tiktokApi(client, "GET", "advertiser/info/", {
     advertiser_ids: [client.advertiserId],
   });
-  const list = Array.isArray(data.list) ? data.list as Record<string, unknown>[] : [];
-  const row = list.find((r) => String(r.advertiser_id ?? "") === client.advertiserId) ?? list[0];
+  const list = Array.isArray(data.list)
+    ? data.list as Record<string, unknown>[]
+    : [];
+  const row =
+    list.find((r) => String(r.advertiser_id ?? "") === client.advertiserId) ??
+      list[0];
   if (!row) {
     throw new AdApiError({
       platform: "tiktok",
@@ -2084,14 +2523,20 @@ export async function tiktokFetchAdvertiser(
     });
   }
   const num = (v: unknown): number | null =>
-    typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : null;
+    typeof v === "number"
+      ? v
+      : typeof v === "string" && v.trim() !== ""
+      ? Number(v)
+      : null;
   return {
     advertiserId: String(row.advertiser_id ?? client.advertiserId),
     name: typeof row.name === "string" ? row.name : null,
     company: typeof row.company === "string" ? row.company : null,
     currency: typeof row.currency === "string" ? row.currency : null,
     timezone: typeof row.timezone === "string" ? row.timezone : null,
-    displayTimezone: typeof row.display_timezone === "string" ? row.display_timezone : null,
+    displayTimezone: typeof row.display_timezone === "string"
+      ? row.display_timezone
+      : null,
     status: typeof row.status === "string" ? row.status : null,
     balance: num(row.balance),
     ownerBcId: typeof row.owner_bc_id === "string"
@@ -2130,13 +2575,20 @@ export async function tiktokFetchIdentities(
     ? data.list as Record<string, unknown>[]
     : [];
   return list
-    .filter((row) => typeof row.identity_id === "string" && typeof row.identity_type === "string")
+    .filter((row) =>
+      typeof row.identity_id === "string" &&
+      typeof row.identity_type === "string"
+    )
     .map((row) => ({
       identityId: row.identity_id as string,
       identityType: row.identity_type as string,
       username: typeof row.username === "string" ? row.username : null,
-      displayName: typeof row.display_name === "string" ? row.display_name : null,
-      availableStatus: typeof row.available_status === "string" ? row.available_status : null,
+      displayName: typeof row.display_name === "string"
+        ? row.display_name
+        : null,
+      availableStatus: typeof row.available_status === "string"
+        ? row.available_status
+        : null,
     }));
 }
 
@@ -2146,7 +2598,8 @@ export async function tiktokFetchIdentity(
 ): Promise<TikTokIdentitySnapshot | null> {
   const identities = await tiktokFetchIdentities(client);
   const ttUsers = identities.filter((row) => row.identityType === "TT_USER");
-  return ttUsers.find((row) => row.availableStatus === "AVAILABLE") ?? ttUsers[0] ?? null;
+  return ttUsers.find((row) => row.availableStatus === "AVAILABLE") ??
+    ttUsers[0] ?? null;
 }
 
 export interface TikTokPixelSnapshot {
@@ -2157,8 +2610,70 @@ export interface TikTokPixelSnapshot {
   eventsCount: number;
 }
 
+export interface TikTokPurchaseSignalSnapshot {
+  purchaseEvents28d: number;
+  startDate: string;
+  endDate: string;
+}
+
+const normalizeTikTokEventName = (value: unknown): string =>
+  typeof value === "string" ? value.replace(/[\s_-]+/g, "").toLowerCase() : "";
+
+const TIKTOK_PURCHASE_EVENT_NAMES = new Set([
+  "completepayment",
+]);
+
+/**
+ * Tolerant parser for TikTok's generic-object SDK response. Arrays represent
+ * distinct rows/days and are summed; sibling object branches use the maximum
+ * so a response that carries both a series and an aggregate cannot double
+ * count the same purchases.
+ */
+export function parseTikTokPurchaseEvents(payload: unknown): number {
+  if (Array.isArray(payload)) {
+    return payload.reduce(
+      (sum, item) => sum + parseTikTokPurchaseEvents(item),
+      0,
+    );
+  }
+  if (!payload || typeof payload !== "object") return 0;
+
+  const row = payload as Record<string, unknown>;
+  const eventName = row.event ?? row.event_name ?? row.event_type ?? row.name;
+  if (TIKTOK_PURCHASE_EVENT_NAMES.has(normalizeTikTokEventName(eventName))) {
+    for (
+      const key of [
+        "event_count",
+        "events_count",
+        "count",
+        "total_events",
+        "total",
+      ]
+    ) {
+      const value = Number(row[key]);
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+  }
+
+  const candidates: number[] = [];
+  for (const [key, value] of Object.entries(row)) {
+    if (TIKTOK_PURCHASE_EVENT_NAMES.has(normalizeTikTokEventName(key))) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric >= 0) candidates.push(numeric);
+      else candidates.push(parseTikTokPurchaseEvents(value));
+      continue;
+    }
+    if (value && typeof value === "object") {
+      candidates.push(parseTikTokPurchaseEvents(value));
+    }
+  }
+  return candidates.length > 0 ? Math.max(...candidates) : 0;
+}
+
 /** pixel/list — informational for #865; traffic campaigns never use it. */
-export async function tiktokFetchPixels(client: TikTokClient): Promise<TikTokPixelSnapshot[]> {
+export async function tiktokFetchPixels(
+  client: TikTokClient,
+): Promise<TikTokPixelSnapshot[]> {
   const data = await tiktokApi(client, "GET", "pixel/list/", {
     advertiser_id: client.advertiserId,
   });
@@ -2168,13 +2683,40 @@ export async function tiktokFetchPixels(client: TikTokClient): Promise<TikTokPix
     ? data.list as Record<string, unknown>[]
     : [];
   return list
-    .filter((row) => typeof row.pixel_id === "string" || typeof row.pixel_id === "number")
+    .filter((row) =>
+      typeof row.pixel_id === "string" || typeof row.pixel_id === "number"
+    )
     .map((row) => ({
       pixelId: String(row.pixel_id),
       pixelName: typeof row.pixel_name === "string" ? row.pixel_name : null,
-      activityStatus: typeof row.activity_status === "string" ? row.activity_status : null,
+      activityStatus: typeof row.activity_status === "string"
+        ? row.activity_status
+        : null,
       eventsCount: Array.isArray(row.events) ? row.events.length : 0,
     }));
+}
+
+/** Live CompletePayment count for the 28-day Sales eligibility gate. */
+export async function tiktokFetchPurchaseSignal28d(
+  client: TikTokClient,
+  pixelId: string,
+  nowMs = Date.now(),
+  fetchImpl: typeof fetch = fetch,
+): Promise<TikTokPurchaseSignalSnapshot> {
+  const formatDate = (value: number): string =>
+    new Date(value).toISOString().slice(0, 10);
+  const endDate = formatDate(nowMs);
+  const startDate = formatDate(nowMs - 27 * 24 * 60 * 60 * 1000);
+  const data = await tiktokApi(client, "GET", "pixel/event/stats/", {
+    advertiser_id: client.advertiserId,
+    pixel_ids: [pixelId],
+    date_range: { start_date: startDate, end_date: endDate },
+  }, { fetchImpl });
+  return {
+    purchaseEvents28d: parseTikTokPurchaseEvents(data),
+    startDate,
+    endDate,
+  };
 }
 
 // ── The adapter ───────────────────────────────────────────────────────────────
@@ -2184,12 +2726,16 @@ function assertNumericExternalId(level: EntityLevel, externalId: string): void {
     throw new AdApiError({
       platform: "tiktok",
       code: "invalid_external_id",
-      message: `TikTok ${level} ids are numeric snowflakes; got "${externalId}".`,
+      message:
+        `TikTok ${level} ids are numeric snowflakes; got "${externalId}".`,
     });
   }
 }
 
-const STATUS_UPDATE_PATHS: Record<EntityLevel, { path: string; idsKey: string }> = {
+const STATUS_UPDATE_PATHS: Record<
+  EntityLevel,
+  { path: string; idsKey: string }
+> = {
   campaign: { path: "campaign/status/update/", idsKey: "campaign_ids" },
   ad_set: { path: "adgroup/status/update/", idsKey: "adgroup_ids" },
   ad: { path: "ad/status/update/", idsKey: "ad_ids" },
@@ -2212,13 +2758,16 @@ async function tiktokReadEntity(
     advertiser_id: client.advertiserId,
     filtering: { [idsKey]: [externalId] },
   });
-  const list = Array.isArray(data.list) ? data.list as Record<string, unknown>[] : [];
+  const list = Array.isArray(data.list)
+    ? data.list as Record<string, unknown>[]
+    : [];
   const row = list[0];
   if (!row) {
     throw new AdApiError({
       platform: "tiktok",
       code: "entity_not_found",
-      message: `TikTok ${level} ${externalId} was not found on advertiser ${client.advertiserId}.`,
+      message:
+        `TikTok ${level} ${externalId} was not found on advertiser ${client.advertiserId}.`,
     });
   }
   return row;
@@ -2233,6 +2782,8 @@ export interface TikTokAdGroupTargetingInput {
   location_ids?: string[];
   /** ISSUE-989 — numeric interest_category_ids from tool/interest_category. */
   interest_category_ids?: string[];
+  audience_ids?: string[];
+  excluded_audience_ids?: string[];
   age_groups?: string[];
   age_min?: number;
   age_max?: number;
@@ -2251,12 +2802,16 @@ export interface TikTokAdGroupTargetingInput {
   pacing?: string;
   country_codes?: string[];
   request_id?: string;
+  pixel_id?: string;
+  optimization_event?: string;
   /** Provider-native app acquisition identity; both fields are required together. */
-  promotion_type?: "APP_IOS" | "APP_ANDROID";
+  promotion_type?: "WEBSITE" | "APP_IOS" | "APP_ANDROID";
   app_id?: string;
 }
 
-function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSpec {
+function adGroupSpecFromInterfaceInput(
+  input: CreateAdSetInput,
+): TikTokAdGroupSpec {
   const t = (input.targeting ?? {}) as TikTokAdGroupTargetingInput;
   const ageGroups = t.age_groups ??
     (t.age_min !== undefined || t.age_max !== undefined
@@ -2274,6 +2829,8 @@ function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSp
     bidPriceCents: t.bid_price_cents,
     locationIds: t.location_ids ?? [],
     interestCategoryIds: t.interest_category_ids,
+    audienceIds: t.audience_ids,
+    excludedAudienceIds: t.excluded_audience_ids,
     ageGroups,
     gender: t.gender,
     scheduleType: t.schedule_type,
@@ -2285,6 +2842,8 @@ function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSp
     pacing: t.pacing,
     countryCodes: t.country_codes,
     requestId: t.request_id,
+    pixelId: t.pixel_id,
+    optimizationEvent: t.optimization_event,
     promotionType: t.promotion_type,
     appId: t.app_id,
   };
@@ -2302,6 +2861,8 @@ export interface TikTokCreateAdExtensions {
   adFormat?: string;
   /** SINGLE_VIDEO only (#997 C): the prepared ad video_id. */
   videoId?: string;
+  /** Spark Pull post selected from the linked @usemingla TT_USER identity. */
+  tiktokItemId?: string;
 }
 
 export const tiktokAdapter: ChannelAdapter = {
@@ -2332,7 +2893,8 @@ export const tiktokAdapter: ChannelAdapter = {
       throw new AdApiError({
         platform: "tiktok",
         code: "create_no_id",
-        message: "campaign/create returned code 0 but no campaign_id — refusing to persist.",
+        message:
+          "campaign/create returned code 0 but no campaign_id — refusing to persist.",
       });
     }
     return { externalId, status: "PAUSED" };
@@ -2356,7 +2918,8 @@ export const tiktokAdapter: ChannelAdapter = {
       throw new AdApiError({
         platform: "tiktok",
         code: "create_no_id",
-        message: "adgroup/create returned code 0 but no adgroup_id — refusing to persist.",
+        message:
+          "adgroup/create returned code 0 but no adgroup_id — refusing to persist.",
       });
     }
     return { externalId };
@@ -2379,18 +2942,24 @@ export const tiktokAdapter: ChannelAdapter = {
     const extensions = input as CreateAdInput & TikTokCreateAdExtensions;
     const connExtra = (conn.extra ?? {}) as Record<string, unknown>;
     const identityType = extensions.identityType ??
-      (typeof connExtra.identity_type === "string" ? connExtra.identity_type : "TT_USER");
+      (typeof connExtra.identity_type === "string"
+        ? connExtra.identity_type
+        : "TT_USER");
     const identityId = extensions.identityId ??
       (typeof connExtra.identity_id === "string" ? connExtra.identity_id : "");
+    const sparkPull = typeof extensions.tiktokItemId === "string" &&
+      extensions.tiktokItemId.trim() !== "";
     if (
-      typeof extensions.adText !== "string" || !Array.isArray(extensions.imageIds) ||
-      typeof extensions.landingPageUrl !== "string"
+      typeof extensions.landingPageUrl !== "string" ||
+      (!sparkPull &&
+        (typeof extensions.adText !== "string" ||
+          !Array.isArray(extensions.imageIds)))
     ) {
       throw new AdApiError({
         platform: "tiktok",
         code: "tiktok_ad_input_incomplete",
         message:
-          "TikTok ad create needs the inline creative fields (adText, imageIds, landingPageUrl — TikTokCreateAdExtensions); the creative has no standalone object on TikTok.",
+          "TikTok ad create needs either a reviewed @usemingla Spark post or the inline creative fields (adText, imageIds, landingPageUrl).",
       });
     }
     const body = buildTikTokAdBody(client.advertiserId, adSetExternalId, {
@@ -2398,9 +2967,10 @@ export const tiktokAdapter: ChannelAdapter = {
       identityType,
       identityId,
       adFormat: extensions.adFormat,
-      imageIds: extensions.imageIds,
+      imageIds: extensions.imageIds ?? [],
       videoId: extensions.videoId,
-      adText: extensions.adText,
+      tiktokItemId: extensions.tiktokItemId,
+      adText: extensions.adText ?? "",
       callToAction: extensions.callToAction,
       landingPageUrl: extensions.landingPageUrl,
       utmParams: extensions.utmParams,
@@ -2417,7 +2987,8 @@ export const tiktokAdapter: ChannelAdapter = {
       throw new AdApiError({
         platform: "tiktok",
         code: "create_no_id",
-        message: "ad/create returned code 0 but no ad_ids — refusing to persist.",
+        message:
+          "ad/create returned code 0 but no ad_ids — refusing to persist.",
       });
     }
     return { externalId, reviewStatus: null };
@@ -2437,7 +3008,9 @@ export const tiktokAdapter: ChannelAdapter = {
   getStatus: async (conn, level, externalId) => {
     const client = resolveTikTokClient(conn); // fail-close first
     const row = await tiktokReadEntity(client, level, externalId);
-    const secondary = typeof row.secondary_status === "string" ? row.secondary_status : null;
+    const secondary = typeof row.secondary_status === "string"
+      ? row.secondary_status
+      : null;
     return {
       // Two-status rule: operation_status (advertiser-set) normalizes into the
       // engine vocabulary; the raw secondary/delivery status rides alongside —
@@ -2460,7 +3033,8 @@ export const tiktokAdapter: ChannelAdapter = {
       throw new AdApiError({
         platform: "tiktok",
         code: "unsupported_level",
-        message: "TikTok budgets live on the campaign (CBO) or ad group — never the ad.",
+        message:
+          "TikTok budgets live on the campaign (CBO) or ad group — never the ad.",
       });
     }
     const client = resolveTikTokClient(conn); // fail-close first
@@ -2478,8 +3052,13 @@ export const tiktokAdapter: ChannelAdapter = {
     // engine-owned; when unknown the conservative 30% cap applies.
     const row = await tiktokReadEntity(client, level, externalId);
     const currentBudget = typeof row.budget === "number" ? row.budget : null;
-    const budgetMode = typeof row.budget_mode === "string" ? row.budget_mode : null;
-    if (budgetMode === "BUDGET_MODE_INFINITE" || currentBudget === null || currentBudget <= 0) {
+    const budgetMode = typeof row.budget_mode === "string"
+      ? row.budget_mode
+      : null;
+    if (
+      budgetMode === "BUDGET_MODE_INFINITE" || currentBudget === null ||
+      currentBudget <= 0
+    ) {
       throw new AdApiError({
         platform: "tiktok",
         code: "budget_not_editable",
@@ -2494,13 +3073,35 @@ export const tiktokAdapter: ChannelAdapter = {
       learning: opts?.learning ?? false,
       lastBudgetChangeAt: opts?.lastBudgetChangeAt ?? null,
     }));
-    const updatePath = level === "campaign" ? "campaign/update/" : "adgroup/update/";
+    const updatePath = level === "campaign"
+      ? "campaign/update/"
+      : "adgroup/update/";
     const idKey = level === "campaign" ? "campaign_id" : "adgroup_id";
     await tiktokApi(client, "POST", updatePath, {
       advertiser_id: client.advertiserId,
       [idKey]: externalId,
       budget: dollars,
     });
+  },
+
+  getBudget: async (conn, level, externalId) => {
+    const client = resolveTikTokClient(conn);
+    assertNumericExternalId(level, externalId);
+    const row = await tiktokReadEntity(client, level, externalId);
+    const dollars = Number(row.budget);
+    const cents = Math.round(dollars * 100);
+    if (
+      !Number.isFinite(dollars) || dollars <= 0 ||
+      !Number.isSafeInteger(cents) || Math.abs(cents / 100 - dollars) > 0.000001
+    ) {
+      throw new AdApiError({
+        platform: "tiktok",
+        code: "budget_readback_invalid",
+        message:
+          "TikTok did not return an exact positive budget after the update.",
+      });
+    }
+    return { cents, field: "budget" };
   },
 
   /**
@@ -2517,7 +3118,6 @@ export const tiktokAdapter: ChannelAdapter = {
       operation_status: "DELETE",
     });
   },
-
   // rollbackCreative is deliberately ABSENT: the creative is inline in
   // ad/create (no account-level residue can exist — QA P2-5 does not apply).
 };

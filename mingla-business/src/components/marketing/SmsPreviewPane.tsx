@@ -41,8 +41,10 @@ export interface SmsPreviewPaneProps {
   /** Raw smsBody as typed (no footer — appended here via bodyWithFooter). */
   body: string;
   brandName: string | null;
-  /** #3682 — when set, preview appends the same Follow URL line as send. */
+  /** Public brand slug used only when includeFollowCta is true. */
   brandSlug?: string | null;
+  /** #3682 — SMS Follow is opt-in; false/missing preserves author copy. */
+  includeFollowCta?: boolean;
   /** For the count line; may be null. */
   reachableSms: number | null;
   /** Brand default currency — reserved for a future cost line (SPEC §3.3). */
@@ -83,15 +85,15 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   body,
   brandName,
   brandSlug = null,
+  includeFollowCta = false,
   reachableSms,
   hasMedia = false,
   mediaUris = [],
 }) => {
-  // Compose Follow (when slug known) then STOP footer — same order as edge
-  // `smsBlastBodyWithFollow` + `composeSmsBody`. Keep `bodyWithFooter(body)` as
-  // a named intermediate so #1556 ADV-7's ORCH-1281/1289 source contract still
-  // sees the footer owner; Follow is folded into `body` first.
-  const bodyForWire = smsBlastBodyWithFollow(body, brandName, brandSlug);
+  // Compose optional Follow then the required STOP footer — same order as edge
+  // quote/dispatch. Keep `bodyWithFooter(body)` as a named intermediate so
+  // #1556 ADV-7's ORCH-1281/1289 source contract still sees the footer owner.
+  const bodyForWire = smsBlastBodyWithFollow(body, brandName, includeFollowCta ? brandSlug : null);
   const wire = bodyWithFooter(bodyForWire);
   const isEmpty = body.trim().length === 0 && !hasMedia;
   const showCount = body.trim().length > 0 || hasMedia;

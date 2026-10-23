@@ -61,7 +61,7 @@ import {
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
-import { YoureInFollowCard } from "../../../src/components/checkout/YoureInFollowCard";
+import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
 import {
   TicketConfirmVerdictHero,
   type TicketConfirmEnding,
@@ -114,6 +114,7 @@ function CheckoutConfirmScreenInner({
   const publicEventQuery = usePublicEventById(eventId);
   const event = publicEventQuery.data?.event ?? null;
   const brand = publicEventQuery.data?.brand ?? null;
+  const purchaseBrandId = event?.brandId ?? brand?.id ?? null;
   const {
     lines,
     buyer,
@@ -466,7 +467,7 @@ function CheckoutConfirmScreenInner({
   // Web-only: captureWeb/gaEvent are no-ops on native.
   const purchaseFiredFor = useRef<string | null>(null);
   useEffect(() => {
-    if (result === null) return;
+    if (result === null || eventId === null || purchaseBrandId === null) return;
     if (purchaseFiredFor.current === result.orderId) return;
     purchaseFiredFor.current = result.orderId;
     captureWeb("web_purchase_completed", {
@@ -486,13 +487,18 @@ function CheckoutConfirmScreenInner({
     // attribution-capture conversion record, both keyed on the SHARED event_id
     // (= result.orderId) so the server CAPI (WP-B) dedups the exact pair (SC-15).
     // No-op until consent; NO email/phone leaves the browser; never blocks render.
-    fireAdPurchase(result.orderId, { value: result.total, currency: result.currency });
+    fireAdPurchase(result.orderId, {
+      value: result.total,
+      currency: result.currency,
+      contentId: eventId,
+      brandId: purchaseBrandId,
+    });
     postAttributionConversion({
       eventId: result.orderId,
       valueCents: Math.round(result.total * 100),
       currency: result.currency,
     });
-  }, [result]);
+  }, [eventId, purchaseBrandId, result]);
 
   // ----- Defensive: result missing → bounce to /checkout/{eventId} -----
   // Skip the bounce on web while either (a) the ?cs= resume hasn't run yet,

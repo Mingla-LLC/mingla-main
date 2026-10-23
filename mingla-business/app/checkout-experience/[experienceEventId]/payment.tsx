@@ -50,11 +50,11 @@ import {
   createTicketCheckout,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
-  ticketCheckoutReviewFromError,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
 // fired before purchase_completed. No-op on web / when key absent / opted out.
@@ -74,7 +74,20 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
+
+const formatQuoteMoney = (minor: number, currency: string): string => {
+  try {
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(minor / 100),
+      currency,
+    );
+  } catch {
+    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
+  }
+};
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
@@ -352,6 +365,7 @@ function CheckoutExperiencePaymentScreenContent({
           }
           const checkout = await createTicketCheckout({
             eventId: experienceEventId,
+            brandId: experience?.brandId,
             buyer,
             lines,
             discountCode,
@@ -410,10 +424,14 @@ function CheckoutExperiencePaymentScreenContent({
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
         } catch (error) {
           setProcessing(false);
-          const review = ticketCheckoutReviewFromError(
-            error,
-            activeQuote.buyerTotalCents,
-          );
+          const review =
+            await import("../../../src/services/ticketCheckoutReview").then(
+              (module) =>
+                module.ticketCheckoutReviewFromError(
+                  error,
+                  activeQuote.buyerTotalCents,
+                ),
+            );
           if (review !== null) {
             setCheckoutReview(review);
             setPaymentError(null);
@@ -585,6 +603,8 @@ function CheckoutExperiencePaymentScreenContent({
       bookedEndAt,
       partySize,
       experienceEventId,
+      experience?.brandId,
+      experience?.title,
       lines,
       nativeCheckout,
       processing,

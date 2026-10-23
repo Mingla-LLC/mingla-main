@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "ad-conversion-retry",
+  "verify_jwt": false,
+  "gateway_reason": "The scheduled conversion retry authenticates the service-role bearer in the function before reading events or contacting providers.",
+  "env": {
+    "required_top_level": [],
+    "optional_top_level": [],
+    "migration_fallback_top_level": [],
+    "required_bundle_fields": {}
+  }
+}

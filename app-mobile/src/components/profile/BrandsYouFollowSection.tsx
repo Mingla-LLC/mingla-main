@@ -12,8 +12,14 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import {
+  formatCompactCount,
+  formatFollowerCountA11y,
+} from "@mingla/offering-rendering";
 
 import { colors, fontWeights } from "../../constants/designSystem";
+import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
+import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import { brandFollowKeys } from "../../hooks/useBrandFollow";
 import { useAppStore } from "../../store/appStore";
 import {
@@ -88,7 +94,11 @@ export const BrandsYouFollowSection: React.FC = () => {
     staleTime: 30_000,
   });
 
-  const rows = listQuery.data ?? [];
+  const rows = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  const followerCountsQuery = useBrandFollowerCounts(
+    rows.map((row) => row.brandId),
+  );
+  const followerCountLabels = useFollowerCountLabels();
   const top = useMemo(() => rows.slice(0, 3), [rows]);
   const showSeeAll = rows.length > 3;
 
@@ -170,13 +180,28 @@ export const BrandsYouFollowSection: React.FC = () => {
           : channels
             ? `${why} · ${channels}`
             : why;
+        const followerCount = followerCountsQuery.data?.[row.brandId];
+        const compact =
+          typeof followerCount === "number" && followerCount >= 1
+            ? formatCompactCount(followerCount)
+            : null;
+        const countLine =
+          compact !== null && followerCount !== undefined
+            ? followerCountLabels.line(followerCount, compact)
+            : null;
+        const countA11y =
+          compact !== null && followerCount !== undefined
+            ? followerCountLabels.a11y(followerCount, compact) ??
+              formatFollowerCountA11y(followerCount)
+            : null;
+        const visibleReason = countLine ? `${countLine} · ${reason}` : reason;
         return (
           <Pressable
             key={row.brandId}
             style={styles.row}
             onPress={() => openBrand(row)}
             accessibilityRole="button"
-            accessibilityLabel={`${row.brandName}. ${reason}.`}
+            accessibilityLabel={`${row.brandName}. ${countA11y ? `${countA11y}. ` : ""}${reason}.`}
             testID={`brands-you-follow-row-${row.brandId}`}
           >
             <View style={styles.logo}>
@@ -191,6 +216,7 @@ export const BrandsYouFollowSection: React.FC = () => {
               <Text style={styles.reason} numberOfLines={2}>
                 {muted ? (
                   <>
+                    {countLine ? `${countLine} · ` : null}
                     <Ionicons
                       name="notifications-off-outline"
                       size={13}
@@ -199,7 +225,7 @@ export const BrandsYouFollowSection: React.FC = () => {
                     {why}
                   </>
                 ) : (
-                  reason
+                  visibleReason
                 )}
               </Text>
             </View>

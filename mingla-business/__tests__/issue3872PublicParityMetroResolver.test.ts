@@ -1,24 +1,34 @@
-import fs from "node:fs";
 import path from "node:path";
 
-const repoRoot = path.resolve(__dirname, "..", "..");
+type MetroResolution = { filePath: string; type: string };
+type MetroConfig = {
+  resolver: {
+    resolveRequest: (
+      context: unknown,
+      moduleName: string,
+      platform: string,
+    ) => MetroResolution;
+  };
+};
+
+const metro = require("../metro.config.js") as MetroConfig;
 
 describe("issue #3872 public pricing Metro resolver", () => {
-  it("maps both public parity subpath forms to the shared workspace source", () => {
-    const metro = fs.readFileSync(
-      path.join(repoRoot, "mingla-business", "metro.config.js"),
-      "utf8",
-    );
-
-    expect(metro).toMatch(
-      /moduleName === "@mingla\/offering-rendering\/publicParityContract"/,
-    );
-    expect(metro).toMatch(
-      /moduleName === "\.\/packages\/offering-rendering\/publicParityContract"/,
-    );
-    expect(metro).toMatch(
-      /WORKSPACE_ROOT,[\s\S]*"packages",[\s\S]*"offering-rendering",[\s\S]*"publicParityContract\.ts"/,
-    );
-    expect(metro).toMatch(/type: "sourceFile"/);
+  it.each([
+    "@mingla/offering-rendering/publicParityContract",
+    "./packages/offering-rendering/publicParityContract",
+  ])("resolves %s to the shared workspace source", (moduleName) => {
+    const result = metro.resolver.resolveRequest({}, moduleName, "web");
+    expect(result).toEqual({
+      filePath: path.resolve(
+        __dirname,
+        "..",
+        "..",
+        "packages",
+        "offering-rendering",
+        "publicParityContract.ts",
+      ),
+      type: "sourceFile",
+    });
   });
 });

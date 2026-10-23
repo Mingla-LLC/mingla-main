@@ -72,7 +72,6 @@ import {
   createTicketCheckout,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
-  ticketCheckoutReviewFromError,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
@@ -101,7 +100,6 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -109,6 +107,17 @@ import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
 // retains full-page redirect via window.location.assign; no return-URL
 // interception needed on web because Stripe's success_url/cancel_url
 // navigate the browser directly.
+
+const formatQuoteMoney = (minor: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "USD",
+    }).format(minor / 100);
+  } catch {
+    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
+  }
+};
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
@@ -434,6 +443,7 @@ function CheckoutPaymentScreenContent({
               : {};
           const checkout = await createTicketCheckout({
             eventId,
+            brandId: event?.brandId ?? brand?.id,
             ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
             buyer,
             lines,
@@ -524,10 +534,14 @@ function CheckoutPaymentScreenContent({
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
         } catch (error) {
           setProcessing(false);
-          const review = ticketCheckoutReviewFromError(
-            error,
-            activeQuote.buyerTotalCents,
-          );
+          const review =
+            await import("../../../src/services/ticketCheckoutReview").then(
+              (module) =>
+                module.ticketCheckoutReviewFromError(
+                  error,
+                  activeQuote.buyerTotalCents,
+                ),
+            );
           if (review !== null) {
             setCheckoutReview(review);
             setPaymentError(null);
@@ -718,6 +732,7 @@ function CheckoutPaymentScreenContent({
       buyer,
       discountCode,
       checkoutAttemptIdFor,
+      brand?.id,
       event,
       eventId,
       // issue #2135 — the chosen occurrence is read inside this handler.

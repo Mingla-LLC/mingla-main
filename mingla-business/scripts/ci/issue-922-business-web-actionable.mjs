@@ -119,7 +119,7 @@ function validateOwnerPins() {
   for (const copy of ["You're invited", "Sign in to accept this invitation. We'll bring you right back.", 'label="Sign in"']) {
     invariant(files["app/accept-brand-invitation.tsx"].includes(copy), `invitation owner drift: ${copy}`);
   }
-  for (const pin of ["Cookies &amp; analytics", "Accept all", "Reject cookies and analytics", "Manage analytics preferences", "https://usemingla.com/privacy-policy"]) {
+  for (const pin of ["Ad privacy", "OK", "Opt out of ad tracking", "Privacy policy", "https://usemingla.com/privacy-policy"]) {
     invariant(files["src/analytics/ConsentBanner.web.tsx"].includes(pin), `consent owner drift: ${pin}`);
   }
   const analytics = files["src/analytics/webAnalytics.web.ts"];

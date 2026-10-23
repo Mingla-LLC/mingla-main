@@ -168,6 +168,23 @@ export function snapchatCampaignStatsPath(
   }/stats?${query.toString()}`;
 }
 
+/** Relative path for one ad squad's daily spend, result, reach and frequency. */
+export function snapchatAdSquadStatsPath(
+  externalAdSquadId: string,
+  window: SnapchatStatsWindow,
+): string {
+  const query = new URLSearchParams({
+    granularity: "DAY",
+    fields:
+      "impressions,reach,frequency,swipes,spend,conversion_purchases,conversion_page_views",
+    start_time: window.start_time,
+    end_time: window.end_time,
+  });
+  return `adsquads/${
+    encodeURIComponent(externalAdSquadId)
+  }/stats?${query.toString()}`;
+}
+
 /**
  * Account timezone, read once per ad account per sync run (cache supplied by
  * the caller). Any failure reading it resolves to null → UTC fallback; the
@@ -219,6 +236,38 @@ export async function fetchSnapchatCampaignStats(
         subcode: err.subcode,
         traceId: err.traceId,
         message: `snapchat_stats_fetch_failed (${
+          codes || "unknown"
+        }; tz=${window.timeZone}): ${err.message}`,
+      });
+    }
+    throw err;
+  }
+}
+
+/** Fetch one ad squad's per-day metrics using the same account-timezone guard. */
+export async function fetchSnapchatAdSquadStats(
+  client: SnapchatClient,
+  externalAdSquadId: string,
+  opts: { now?: Date; timeZoneCache?: Map<string, string | null> } = {},
+): Promise<Record<string, unknown>> {
+  const timeZone = await resolveSnapchatAccountTimeZone(
+    client,
+    opts.timeZoneCache,
+  );
+  const window = snapchatStatsWindow(timeZone, opts.now ?? new Date());
+  const path = snapchatAdSquadStatsPath(externalAdSquadId, window);
+  try {
+    return await snapchatApi(client, "GET", path);
+  } catch (err) {
+    if (err instanceof AdApiError) {
+      const codes = [err.code, err.subcode ? `error_code=${err.subcode}` : null]
+        .filter(Boolean).join(" ");
+      throw new AdApiError({
+        platform: "snapchat",
+        code: err.code,
+        subcode: err.subcode,
+        traceId: err.traceId,
+        message: `snapchat_adsquad_stats_fetch_failed (${
           codes || "unknown"
         }; tz=${window.timeZone}): ${err.message}`,
       });

@@ -15,7 +15,7 @@
  *        it NEVER contains an email or phone field (SC-8/SC-9).
  *   (B3) captureAdClickIds forwards click-id + UTM ONLY (no PII) and does NOT
  *        fire when the URL carries no ad signal (byte-identical no-op).
- *   (B4) fireAdViewContent / fireAdPageView are NO-OPS pre-consent (SC-8).
+ *   (B4) arrival mode fires ViewContent once and opt-out is the stop gate.
  *
  * Hermetic: fake window/document + a captured global fetch. No network, no real
  * pixel scripts, no real charge.
@@ -117,24 +117,49 @@ test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct
   await wa.grantConsent(); // bootstraps all four
   expect(wa.adPixelsReady()).toBe(true);
 
-  wa.fireAdPurchase(ORDER_ID, { value: 35, currency: "GBP" });
+  wa.fireAdPurchase(ORDER_ID, {
+    value: 35,
+    currency: "GBP",
+    contentId: "event-865",
+    brandId: "brand-865",
+  });
 
   // Meta — fbq('track','Purchase', props, { eventID }).
   const fbq = win.fbq as unknown as { queue: unknown[][] };
   const metaCall = fbq.queue.find((a) => a[0] === "track" && a[1] === "Purchase");
   expect(metaCall).toBeDefined();
+  expect(metaCall?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_ids: ["event-865"],
+    brand_id: "brand-865",
+  });
   expect(metaCall?.[3]).toEqual({ eventID: ORDER_ID });
 
   // TikTok — ttq.track('CompletePayment', props, { event_id }); track defers onto _q.
   const ttq = win.ttq as unknown as { _q: unknown[][] };
   const ttCall = (ttq._q ?? []).find((a) => a[0] === "track" && a[1] === "CompletePayment");
   expect(ttCall).toBeDefined();
+  expect(ttCall?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_id: "event-865",
+    brand_id: "brand-865",
+  });
   expect(ttCall?.[3]).toEqual({ event_id: ORDER_ID });
 
   // Snap — snaptr('track','PURCHASE', { ... client_dedup_id }); queues args.
   const snaptr = win.snaptr as unknown as { queue: unknown[][] };
   const snCall = snaptr.queue.find((a) => a[0] === "track" && a[1] === "PURCHASE");
   expect(snCall).toBeDefined();
+  expect(snCall?.[2]).toMatchObject({
+    price: 35,
+    currency: "GBP",
+    item_ids: ["event-865"],
+    brand_id: "brand-865",
+  });
   expect((snCall?.[2] as Record<string, unknown>).client_dedup_id).toBe(ORDER_ID);
   expect((snCall?.[2] as Record<string, unknown>).transaction_id).toBe(ORDER_ID);
 
@@ -143,6 +168,55 @@ test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct
   const rdCall = rdt.callQueue.find((a) => a[0] === "track" && a[1] === "Purchase");
   expect(rdCall).toBeDefined();
   expect((rdCall?.[2] as Record<string, unknown>).conversion_id).toBe(ORDER_ID);
+});
+
+// [TEST-MOD-APPROVED #3697] Browser checkout-start parity on all three paid
+// social providers, including the shared dedup id and event-scoped identity.
+test("#3697 InitiateCheckout carries the same complete product identity on all paid-social pixels", async () => {
+  const { wa, win } = loadHarness(ALL_PIXELS);
+  await wa.initWebAnalytics();
+  wa.fireAdInitiateCheckout("checkout-3697", {
+    value: 35,
+    currency: "GBP",
+    contentId: "event-3697",
+    brandId: "brand-3697",
+  });
+
+  const meta = (win.fbq as unknown as { queue: unknown[][] }).queue.find(
+    (args) => args[0] === "track" && args[1] === "InitiateCheckout",
+  );
+  expect(meta?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_ids: ["event-3697"],
+    brand_id: "brand-3697",
+  });
+  expect(meta?.[3]).toEqual({ eventID: "checkout-3697" });
+
+  const tiktok = (win.ttq as unknown as { _q: unknown[][] })._q.find(
+    (args) => args[0] === "track" && args[1] === "InitiateCheckout",
+  );
+  expect(tiktok?.[2]).toMatchObject({
+    value: 35,
+    currency: "GBP",
+    content_type: "product",
+    content_id: "event-3697",
+    brand_id: "brand-3697",
+  });
+  expect(tiktok?.[3]).toEqual({ event_id: "checkout-3697" });
+
+  const snap = (win.snaptr as unknown as { queue: unknown[][] }).queue.find(
+    (args) => args[0] === "track" && args[1] === "START_CHECKOUT",
+  );
+  expect(snap?.[2]).toMatchObject({
+    price: 35,
+    currency: "GBP",
+    item_ids: ["event-3697"],
+    brand_id: "brand-3697",
+    transaction_id: "checkout-3697",
+    client_dedup_id: "checkout-3697",
+  });
 });
 
 // ═══ B2 — browser conversion POST retired (trusted server path only) ═════════
@@ -164,8 +238,10 @@ test("B2 postAttributionConversion is a no-op — never posts conversion or PII"
 // ═══ B3 — click capture forwards click-id + UTM only; no-op with no ad signal ═
 // [TEST-MOD-APPROVED #3697] pre-consent first-party touch is allowed for ad signals.
 test("B3 captureAdClickIds forwards click-id/UTM only (no PII) and no-ops with no ad signal", async () => {
-  // (a) With an fbclid + utm, pre-consent first-party touch is allowed (#3697).
+  // (a) In an opt-in region, an fbclid + utm may be captured first-party but
+  // remains pending until the visitor grants server sharing (#3697).
   const withSignal = loadHarness(ALL_PIXELS, "?fbclid=ABC123&utm_source=meta&utm_campaign=summer");
+  withSignal.win.__minglaAdPixelConsentMode = "opt_in";
   await withSignal.wa.initWebAnalytics();
   withSignal.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   await new Promise((r) => setTimeout(r, 10));
@@ -203,17 +279,65 @@ test("B3 captureAdClickIds forwards click-id/UTM only (no PII) and no-ops with n
   expect(noSignal.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
 });
 
-// ═══ B4 — ViewContent / PageView are NO-OPS pre-consent (SC-8) ════════════════
-test("B4 fireAdViewContent / fireAdPageView do NOTHING before consent (SC-8)", async () => {
+// ═══ B4 — default arrival mode + once-only ViewContent ════════════════════════
+// [TEST-MOD-APPROVED #3697] Seth replaced pre-consent no-op with arrival mode.
+test("B4 arrival mode fires ViewContent once before a choice", async () => {
   const { wa, win } = loadHarness(ALL_PIXELS);
   await wa.initWebAnalytics();
-  // pre-consent: no pixels bootstrapped.
-  expect(wa.adPixelsReady()).toBe(false);
-  expect(() => wa.fireAdViewContent({ value: 10, currency: "GBP", contentId: "x" })).not.toThrow();
+  expect(wa.adPixelsReady()).toBe(true);
+  expect(() => wa.fireAdViewContent({
+    value: 10,
+    currency: "GBP",
+    contentId: "x",
+    brandId: "brand-x",
+    eventId: "view-x",
+  })).not.toThrow();
+  wa.fireAdViewContent({
+    value: 10,
+    currency: "GBP",
+    contentId: "x",
+    brandId: "brand-x",
+    eventId: "view-x-again",
+  });
   expect(() => wa.fireAdPageView()).not.toThrow();
-  // No pixel globals exist, so nothing could have fired.
-  expect(win.fbq).toBeUndefined();
-  expect(win.ttq).toBeUndefined();
-  expect(win.snaptr).toBeUndefined();
-  expect(win.rdt).toBeUndefined();
+  const fbq = win.fbq as unknown as { queue: unknown[][] };
+  expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "ViewContent")).toHaveLength(1);
+  expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "PageView")).toHaveLength(1);
+  (win.location as { href: string }).href = "https://usemingla.com/e/brand/next-event";
+  wa.fireAdPageView();
+  expect(fbq.queue.filter((args) => args[0] === "track" && args[1] === "PageView")).toHaveLength(2);
+  expect(win.ttq).toBeDefined();
+  expect(win.snaptr).toBeDefined();
+  expect(win.rdt).toBeDefined();
+});
+
+// [TEST-MOD-APPROVED #3697] Product events must never degrade into anonymous
+// value-only signals: those cannot build the event-scoped audiences in §4.
+test("#3697 incomplete product identity emits no browser commerce event", async () => {
+  const { wa, win } = loadHarness(ALL_PIXELS);
+  await wa.initWebAnalytics();
+
+  wa.fireAdViewContent({
+    value: 10,
+    currency: "GBP",
+    contentId: "event-1",
+  });
+  wa.fireAdInitiateCheckout("checkout-1", {
+    value: 10,
+    currency: "GBP",
+    brandId: "brand-1",
+  });
+  wa.fireAdPurchase("order-1", {
+    value: 10,
+    currency: "GBP",
+    contentId: "event-1",
+  });
+
+  const fbq = win.fbq as unknown as { queue: unknown[][] };
+  expect(
+    fbq.queue.filter((args) =>
+      args[0] === "track" &&
+      ["ViewContent", "InitiateCheckout", "Purchase"].includes(String(args[1]))
+    ),
+  ).toHaveLength(0);
 });

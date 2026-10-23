@@ -115,7 +115,7 @@ import { Toast } from "../ui/Toast";
 
 import { ChangeSummaryModal } from "./ChangeSummaryModal";
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
-import { CreatorStep2When } from "./CreatorStep2When";
+import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";

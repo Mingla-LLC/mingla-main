@@ -493,14 +493,6 @@
         "RESEND_API_KEY"
       ]
     },
-    "brand-discount-upsert": {
-      "migration_fallback_top_level": [],
-      "optional_top_level": [],
-      "required_bundle_fields": {},
-      "required_top_level": [
-        "app.qr_token_pepper"
-      ]
-    },
     "brand-follow-action": {
       "migration_fallback_top_level": [],
       "optional_top_level": [
@@ -860,14 +852,6 @@
       "required_top_level": [
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT"
-      ]
-    },
-    "discount-maintenance-sweep": {
-      "migration_fallback_top_level": [],
-      "optional_top_level": [],
-      "required_bundle_fields": {},
-      "required_top_level": [
-        "app.qr_token_pepper"
       ]
     },
     "discover-cards": {

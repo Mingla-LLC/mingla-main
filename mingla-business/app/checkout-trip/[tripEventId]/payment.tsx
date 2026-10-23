@@ -63,11 +63,11 @@ import {
   createTicketCheckout,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
-  ticketCheckoutReviewFromError,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
 // fired before purchase_completed. No-op on web / when key absent / opted out.
@@ -89,7 +89,6 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
 import { tripFunnelTotalSteps, tripPaymentStepIndex } from "./tripFunnelSteps";
 // issue #3351 [free trip intake loop] — the flattener and the presence probe
 // both live in the step-order owner now, so the trip route holds exactly one
@@ -100,6 +99,20 @@ import {
   tripIntakeState,
   type TripIntakeState,
 } from "./tripCheckoutStepOrder";
+
+const formatQuoteMoney = (minor: number, currency: string): string => {
+  try {
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      }).format(minor / 100),
+      currency,
+    );
+  } catch {
+    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
+  }
+};
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
@@ -414,6 +427,7 @@ function CheckoutTripPaymentScreenContent({
           // biz_ticket_checkout_create_session branches on v_event.event_type='trip'.
           const checkout = await createTicketCheckout({
             eventId: tripEventId,
+            brandId: trip?.brandId,
             buyer,
             lines,
             discountCode,
@@ -476,10 +490,14 @@ function CheckoutTripPaymentScreenContent({
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
         } catch (error) {
           setProcessing(false);
-          const review = ticketCheckoutReviewFromError(
-            error,
-            activeQuote.buyerTotalCents,
-          );
+          const review =
+            await import("../../../src/services/ticketCheckoutReview").then(
+              (module) =>
+                module.ticketCheckoutReviewFromError(
+                  error,
+                  activeQuote.buyerTotalCents,
+                ),
+            );
           if (review !== null) {
             setCheckoutReview(review);
             setPaymentError(null);

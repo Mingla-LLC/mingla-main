@@ -29,6 +29,15 @@ import { buildCreativeLibrary } from "../_shared/adCreativeLibrary.ts";
 import { withHostCreativeFit } from "../_shared/adCreativeFit.ts";
 import { adCreativeOwnershipError } from "../_shared/adCreativeOwnership.ts";
 import {
+  normalizeCreativeTagUpdate,
+  resolveCreativeTagBrand,
+} from "../_shared/adCreativeTags.ts";
+import {
+  stageCreativeIds,
+  validateStageCreativeRows,
+} from "../_shared/adStageCreativeSelection.ts";
+import { tiktokSparkSelection } from "../_shared/adTikTokSpark.ts";
+import {
   applyLibraryFilters,
   creativeFitGateFailure,
   creativeSelectionError,
@@ -44,13 +53,16 @@ import {
   pendingLibraryItems,
   storedCreativeValidation,
 } from "../_shared/adCreativeLifecycle.ts";
-import { destroyIfUnreferenced, type ReapDeps } from "../_shared/coverVideoReap.ts";
+import {
+  destroyIfUnreferenced,
+  type ReapDeps,
+} from "../_shared/coverVideoReap.ts";
 import { PLATFORMS } from "../_shared/adChannelCore.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 import {
   deletionOrder,
-  type ProviderObjectProbe,
   probeMetaObjects,
+  type ProviderObjectProbe,
   RECONCILE_DELETE_PHRASE,
   reconcileDecision,
   reconcileEvidence,
@@ -511,7 +523,10 @@ async function fundingFitGate(
     error: "creative_does_not_fit",
     platform: failure.platform,
     reasons: failure.reasons,
-    misfits: failure.misfits.map(({ platform, needs }) => ({ platform, needs })),
+    misfits: failure.misfits.map(({ platform, needs }) => ({
+      platform,
+      needs,
+    })),
   }, 422);
 }
 
@@ -1199,6 +1214,78 @@ export async function handleAdPlan(
     });
   }
 
+  if (action === "creative_update_tags") {
+    if (!(await isActiveAdmin(db, actor))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const creativeId = typeof body.creative_id === "string"
+      ? body.creative_id
+      : "";
+    if (!UUID_RE.test(creativeId)) {
+      return json(
+        { error: "validation_error", detail: "creative_id_invalid" },
+        400,
+      );
+    }
+    const normalizedTags = normalizeCreativeTagUpdate(body);
+    if (!normalizedTags.ok) {
+      return json(
+        { error: "validation_error", detail: normalizedTags.detail },
+        400,
+      );
+    }
+    let resolvedBrandId: string | null = null;
+    if (normalizedTags.patch.event_id) {
+      const [{ data: event, error: eventError }, {
+        data: creative,
+        error: creativeError,
+      }] = await Promise.all([
+        db.from("events").select("brand_id").eq(
+          "id",
+          normalizedTags.patch.event_id,
+        ).maybeSingle(),
+        db.from("ad_creatives").select("id,brand_id").eq("id", creativeId)
+          .is("purged_at", null).maybeSingle(),
+      ]);
+      if (eventError) return databaseFailure(eventError);
+      if (creativeError) return databaseFailure(creativeError);
+      if (!creative) return json({ error: "creative_not_found" }, 404);
+      const brandResolution = resolveCreativeTagBrand(
+        creative.brand_id,
+        event?.brand_id,
+      );
+      if (!brandResolution.ok) {
+        return json({ error: brandResolution.detail }, 409);
+      }
+      resolvedBrandId = brandResolution.brandId;
+    }
+    let updateQuery = db.from("ad_creatives").update({
+      ...normalizedTags.patch,
+      ...(resolvedBrandId ? { brand_id: resolvedBrandId } : {}),
+      updated_at: new Date().toISOString(),
+    }).eq("id", creativeId).is("purged_at", null);
+    if (resolvedBrandId) {
+      updateQuery = updateQuery.or(
+        `brand_id.is.null,brand_id.eq.${resolvedBrandId}`,
+      );
+    }
+    const { data, error } = await updateQuery.select(
+      "id,brand_id,stage_tags,concept_tag,hook_tag,event_id,licence_reference,date_locked_until,updated_at",
+    ).maybeSingle();
+    if (error) return databaseFailure(error);
+    if (!data) {
+      return json(
+        {
+          error: resolvedBrandId
+            ? "creative_brand_conflict"
+            : "creative_not_found",
+        },
+        resolvedBrandId ? 409 : 404,
+      );
+    }
+    return json({ ok: true, creative: data });
+  }
+
   if (action === "creative_reuse") {
     if (!(await isActiveAdmin(db, actor))) {
       return json({ error: "forbidden" }, 403);
@@ -1241,7 +1328,8 @@ export async function handleAdPlan(
       : [];
     const reusable: Record<string, unknown> = { ...creative };
     delete reusable.purged_at;
-    reusable.source_job_id = creative.source_job_id ?? creative.source_job_ref ??
+    reusable.source_job_id = creative.source_job_id ??
+      creative.source_job_ref ??
       null;
     return json({
       ok: true,
@@ -1565,49 +1653,61 @@ export async function handleAdPlan(
     if (!(await canAccessPlan(db, actor, plan, "plan"))) {
       return json({ error: "forbidden" }, 403);
     }
+    const spark = tiktokSparkSelection(canonicalInput);
+    if (!spark.ok) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: spark.detail,
+      }, 422);
+    }
+    const sparkOnly = spark.present &&
+      requested.every((allocation) => allocation.platform === "tiktok");
     const creativeId = typeof canonicalInput.creative_library_id === "string"
       ? canonicalInput.creative_library_id
       : "";
-    if (!UUID_RE.test(creativeId)) {
+    if (!sparkOnly && !UUID_RE.test(creativeId)) {
       return json({
         error: "plan_preflight_failed",
         detail: "creative_library_id_required",
       }, 422);
     }
-    const { data: creative, error: creativeError } = await db
-      .from("ad_creatives")
-      .select("id,brand_id,status,source,source_brand_id,purged_at")
-      .eq("id", creativeId)
-      .maybeSingle();
-    if (creativeError) return databaseFailure(creativeError);
-    // #3697 (C-13) — an archived creative stays usable for a plan whose
-    // current version already carries it; a new selection refuses it.
-    let carriedOver = false;
-    if (creative?.status === "archived" && plan.current_version_id) {
-      const current = await loadVersion(db, plan.current_version_id);
-      carriedOver = current?.canonical_plan?.creative_library_id === creativeId;
-    }
-    const selectionError = creativeSelectionError(creative, {
-      frozen: carriedOver,
-    });
-    if (selectionError || !creative) {
-      return json({
-        error: "plan_preflight_failed",
-        detail: selectionError?.error ?? "creative_not_reusable",
-      }, 422);
-    }
-    const ownershipError = adCreativeOwnershipError({
-      ownerKind: plan.owner_kind,
-      planBrandId: plan.brand_id,
-      creativeBrandId: creative.brand_id,
-      creativeSource: creative.source,
-      creativeSourceBrandId: creative.source_brand_id,
-    });
-    if (ownershipError) {
-      return json(
-        { error: "plan_preflight_failed", detail: ownershipError },
-        422,
-      );
+    if (!sparkOnly) {
+      const { data: creative, error: creativeError } = await db
+        .from("ad_creatives")
+        .select("id,brand_id,status,source,source_brand_id,purged_at")
+        .eq("id", creativeId)
+        .maybeSingle();
+      if (creativeError) return databaseFailure(creativeError);
+      // #3697 (C-13) — an archived creative stays usable for a plan whose
+      // current version already carries it; a new selection refuses it.
+      let carriedOver = false;
+      if (creative?.status === "archived" && plan.current_version_id) {
+        const current = await loadVersion(db, plan.current_version_id);
+        carriedOver = current?.canonical_plan?.creative_library_id ===
+          creativeId;
+      }
+      const selectionError = creativeSelectionError(creative, {
+        frozen: carriedOver,
+      });
+      if (selectionError || !creative) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: selectionError?.error ?? "creative_not_reusable",
+        }, 422);
+      }
+      const ownershipError = adCreativeOwnershipError({
+        ownerKind: plan.owner_kind,
+        planBrandId: plan.brand_id,
+        creativeBrandId: creative.brand_id,
+        creativeSource: creative.source,
+        creativeSourceBrandId: creative.source_brand_id,
+      });
+      if (ownershipError) {
+        return json(
+          { error: "plan_preflight_failed", detail: ownershipError },
+          422,
+        );
+      }
     }
     const normalized = await normalizedAllocations(db, plan, requested);
     if (!normalized.ok) {
@@ -1687,6 +1787,47 @@ export async function handleAdPlan(
       resolvedDestination.ready = true;
       resolvedDestination.code = null;
       resolvedDestination.certification_mode = true;
+    }
+    const paidSocialPlatforms = platforms.filter((platform) =>
+      platform === "meta" || platform === "snapchat" || platform === "tiktok"
+    );
+    if (plan.client_kind === "admin" && paidSocialPlatforms.length > 0) {
+      const parsedStageCreatives = stageCreativeIds(
+        canonicalInput.stage_creative_ids,
+      );
+      if (!parsedStageCreatives.ok) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: parsedStageCreatives.detail,
+        }, 422);
+      }
+      const { data: stageCreativeRows, error: stageCreativeError } =
+        parsedStageCreatives.allIds.length > 0
+          ? await db.from("ad_creatives").select(
+            "id,brand_id,status,purged_at,aspect_ratio,variants,has_audio",
+          ).in("id", parsedStageCreatives.allIds)
+          : { data: [], error: null };
+      if (stageCreativeError) return databaseFailure(stageCreativeError);
+      const stageSelection = asRecord(canonicalInput.stage_selection) ?? {};
+      const stageValidation = validateStageCreativeRows({
+        ids: parsedStageCreatives.byStage,
+        rows: stageCreativeRows ?? [],
+        enabledStages: {
+          prospecting: stageSelection.prospecting !== false,
+          retarget: stageSelection.retarget !== false,
+          abandoners: stageSelection.abandoners !== false,
+        },
+        platforms,
+        brandId: typeof resolvedDestination.brand_id === "string"
+          ? resolvedDestination.brand_id
+          : null,
+      });
+      if (!stageValidation.ok) {
+        return json({
+          error: "plan_preflight_failed",
+          detail: stageValidation.detail,
+        }, 422);
+      }
     }
     canonical.destination = destination;
     canonical.measurement = buildAdMeasurementManifest(resolvedDestination);
@@ -1934,16 +2075,18 @@ export async function handleAdPlan(
     const deleted: Array<Record<string, unknown>> = [];
     if (deleteFirst) {
       for (const probe of deletionOrder(probes)) {
-        const allocation = (facts.allocations ?? []).find((row: Record<string, unknown>) =>
-          row.platform === probe.platform
-        );
+        const allocation = (facts.allocations ?? []).find((
+          row: Record<string, unknown>,
+        ) => row.platform === probe.platform);
         const { data: connection } = allocation
           ? await db.from("ad_connections").select("*")
             .eq("id", String(allocation.connection_id)).maybeSingle()
           : { data: null };
         let outcome = "deleted";
         try {
-          if (!connection) throw new Error(`${probe.platform}_connection_missing`);
+          if (!connection) {
+            throw new Error(`${probe.platform}_connection_missing`);
+          }
           await provider.remove(connection as AdConnectionRow, probe);
         } catch (error) {
           outcome = (error instanceof Error ? error.message : String(error))

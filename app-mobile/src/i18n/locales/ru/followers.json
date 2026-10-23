@@ -1,0 +1,17 @@
+{
+  "first": "Подпишитесь первым",
+  "count_zero": "{{formatted}} подписчиков",
+  "count_one": "{{formatted}} подписчик",
+  "count_two": "{{formatted}} подписчика",
+  "count_few": "{{formatted}} подписчика",
+  "count_many": "{{formatted}} подписчиков",
+  "count_other": "{{formatted}} подписчиков",
+  "a11y_none": "Подписчиков пока нет",
+  "a11y_exact_zero": "{{count}} подписчиков",
+  "a11y_exact_one": "{{count}} подписчик",
+  "a11y_exact_two": "{{count}} подписчика",
+  "a11y_exact_few": "{{count}} подписчика",
+  "a11y_exact_many": "{{count}} подписчиков",
+  "a11y_exact_other": "{{count}} подписчиков",
+  "a11y_approx": "около {{formatted}} подписчиков"
+}

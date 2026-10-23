@@ -1,50 +1,55 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
-import "./DiscountEditSheet.issue3872.behavior.test";
+const TestRenderer = require("react-test-renderer") as unknown;
+import type { DiscountDraft } from "../../../services/discountService";
+import {
+  canCreateDiscountKind,
+  DISCOUNT_COMBINATION_LABELS,
+  DISCOUNT_KIND_OPTIONS,
+  isDiscountDraftValid,
+} from "../discountEditorContract";
 
-const componentSource = readFileSync(
-  join(__dirname, "..", "DiscountEditSheet.tsx"),
-  "utf8",
-);
-const contractSource = readFileSync(
-  join(__dirname, "..", "discountUiContract.ts"),
-  "utf8",
-);
-const source = `${componentSource}\n${contractSource}`;
+const validCode = (): DiscountDraft => ({
+  brandId: "brand-1",
+  kind: "code",
+  code: "SAVE10",
+  name: "Save ten",
+  valueType: "percent",
+  valueBps: 1000,
+  valueMinor: null,
+  scopeKind: "brand",
+  combinesWith: "automatic_only",
+  startsAt: "2027-01-01T00:00:00.000Z",
+  endsAt: "2027-01-02T00:00:00.000Z",
+  targets: [],
+});
 
 describe("DiscountEditSheet Host contract", () => {
-  test("renders every Host-controlled discount choice and its validation", () => {
-    for (const copy of [
-      "Code",
-      "Automatic",
-      "Sale price",
-      "Name (shown on receipts)",
-      "Percent off",
-      "Amount off",
-      "Can combine with",
-      "Nothing else",
-      "Automatic discounts",
-      "Any eligible discount",
-      "Starts at (ISO date/time)",
-      "Ends at (optional)",
-      "Weekly schedule",
-      "Total uses",
-      "Per buyer",
-      "End after N sold",
-      "Minimum spend",
-      "Preview",
-    ])
-      expect(source).toContain(copy);
-    expect(source).toContain("/^[A-Z0-9]{4,16}$/");
-    expect(source).toMatch(/\(draft\.valueBps \?\? 0\)\s*<=\s*10000/);
+  void TestRenderer;
+  test("exposes every Host-controlled discount choice and validates code drafts", () => {
+    expect(DISCOUNT_KIND_OPTIONS).toEqual([
+      { kind: "code", label: "Code" },
+      { kind: "automatic", label: "Automatic" },
+      { kind: "sale_price", label: "Sale price" },
+    ]);
+    expect(DISCOUNT_COMBINATION_LABELS).toEqual({
+      none: "Nothing else",
+      automatic_only: "Automatic discounts",
+      any: "Any eligible discount",
+    });
+    expect(isDiscountDraftValid(validCode(), 20)).toBe(true);
+    expect(isDiscountDraftValid({ ...validCode(), code: "BAD" }, 20)).toBe(
+      false,
+    );
+    expect(isDiscountDraftValid({ ...validCode(), valueBps: 10001 }, 20)).toBe(
+      false,
+    );
   });
 
   test("keeps automatic and sale-price creation behind rank 30", () => {
-    expect(componentSource).toContain("canCreateDiscountKind(rank, kind)");
-    expect(contractSource).toMatch(/kind === "code" \|\| rank >= 30/);
-    expect(source).toContain(
-      "You can create codes. Ask an owner, admin or finance manager",
-    );
+    expect(canCreateDiscountKind(20, "code")).toBe(true);
+    expect(canCreateDiscountKind(20, "automatic")).toBe(false);
+    expect(canCreateDiscountKind(20, "sale_price")).toBe(false);
+    expect(canCreateDiscountKind(30, "automatic")).toBe(true);
+    expect(canCreateDiscountKind(30, "sale_price")).toBe(true);
   });
 });

@@ -1,0 +1,17 @@
+{
+  "first": "Bụrụ onye mbụ ga-eso",
+  "count_zero": "ndị na-eso {{formatted}}",
+  "count_one": "onye na-eso {{formatted}}",
+  "count_two": "ndị na-eso {{formatted}}",
+  "count_few": "ndị na-eso {{formatted}}",
+  "count_many": "ndị na-eso {{formatted}}",
+  "count_other": "ndị na-eso {{formatted}}",
+  "a11y_none": "Enweghị ndị na-eso ugbu a",
+  "a11y_exact_zero": "ndị na-eso {{count}}",
+  "a11y_exact_one": "onye na-eso {{count}}",
+  "a11y_exact_two": "ndị na-eso {{count}}",
+  "a11y_exact_few": "ndị na-eso {{count}}",
+  "a11y_exact_many": "ndị na-eso {{count}}",
+  "a11y_exact_other": "ndị na-eso {{count}}",
+  "a11y_approx": "ihe dị ka ndị na-eso {{formatted}}"
+}

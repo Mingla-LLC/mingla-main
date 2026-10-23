@@ -49,7 +49,6 @@ import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { formatCurrency, normalizeCurrency } from "../../utils/currency";
 import type { MenuItem } from "../../services/menusService";
-import { VENUE_MENU_DISCOUNT_LISTING_KIND } from "../../services/discountService";
 import type { Brand } from "../../types/brand";
 import { LazyPayoutCountryInlinePrompt } from "../brand/LazyPayoutCountryInlinePrompt";
 import {
@@ -60,6 +59,7 @@ import {
   menuPriceNeedsCurrency,
 } from "./menuMoneyDraft";
 import { MenuTextCounter } from "./MenuTextCounter";
+import { VENUE_MENU_DISCOUNT_LISTING_KIND } from "../discounts/discountListingKinds";
 import {
   menuTextFieldIds,
   validateMenuText,
@@ -461,13 +461,7 @@ export function MenuItemSheet({
     }
     onClearSaveFailure?.();
     onClose();
-  }, [
-    itemDirty,
-    onClearSaveFailure,
-    onClose,
-    optionsDirty,
-    optionsSaving,
-  ]);
+  }, [itemDirty, onClearSaveFailure, onClose, optionsDirty, optionsSaving]);
 
   const handleLeaveDiscard = useCallback((): void => {
     setLeaveOpen(false);
@@ -829,9 +823,7 @@ export function MenuItemSheet({
           visible
           onClose={() => setLeaveOpen(false)}
           onConfirm={handleLeaveDiscard}
-          title={
-            isEdit ? "Save your item changes?" : "Save this new item?"
-          }
+          title={isEdit ? "Save your item changes?" : "Save this new item?"}
           description={
             isEdit
               ? "You changed this dish. If you leave without saving, those changes are gone."

@@ -26,15 +26,6 @@ export interface DiscountTarget {
   orphanedAt?: string | null;
 }
 
-/**
- * #3872 — the discount target used by Menu authoring. Keeping this money-rail
- * identifier in the service contract prevents the display-only sheet from
- * coupling itself to order execution.
- */
-export const VENUE_MENU_DISCOUNT_LISTING_KIND: NonNullable<
-  DiscountTarget["listingKind"]
-> = "venue_order";
-
 export interface BrandDiscount {
   id: string;
   brandId: string;

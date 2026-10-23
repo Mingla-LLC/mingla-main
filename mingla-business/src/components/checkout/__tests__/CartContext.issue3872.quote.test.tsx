@@ -1,24 +1,102 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import React from "react";
+import type {
+  TicketCheckoutReview,
+  TicketQuote,
+} from "@mingla/offering-rendering/discountQuote";
+import { CartProvider, type CartContextValue, useCart } from "../CartContext";
 
-const source = readFileSync(join(__dirname, "..", "CartContext.tsx"), "utf8");
+interface RenderTree {
+  unmount: () => void;
+}
+const TestRenderer = require("react-test-renderer") as {
+  create: (element: React.ReactElement) => RenderTree;
+  act: (callback: () => void | Promise<void>) => void;
+};
+const act = TestRenderer.act;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let latestCart: CartContextValue | null = null;
+
+const Probe = () => {
+  latestCart = useCart();
+  return null;
+};
+
+const quote: TicketQuote = {
+  kind: "quote",
+  currency: "USD",
+  lines: [],
+  listSubtotalCents: 5000,
+  discountCents: 1000,
+  netSubtotalCents: 4000,
+  dueTodayNetCents: 4000,
+  dueTodayListCents: 5000,
+  installmentSchedule: null,
+  discounts: [],
+  codeOutcome: {
+    status: "applied",
+    reason: null,
+    required: null,
+    with: null,
+    replaced: [],
+  },
+  notices: [],
+  quoteDigest: "discounted-digest",
+  quoteListDigest: "list-digest",
+  feesCents: 0,
+  taxCents: 0,
+  buyerTotalCents: 4000,
+  calculationId: "calc-1",
+  subtotalCents: 4000,
+  totalCents: 4000,
+};
+
+const review: TicketCheckoutReview = {
+  kind: "review_required",
+  detail: "discount_changed",
+  quote,
+  previousTotalCents: 5000,
+};
 
 describe("#3872 CartContext server quote authority", () => {
-  test("stores the code, quote, quote status, and review without owning discount math", () => {
-    expect(source).toContain('type: "SET_DISCOUNT_CODE"');
-    expect(source).toContain('type: "SET_QUOTE_STATE"');
-    expect(source).toContain('type: "SET_CHECKOUT_REVIEW"');
-    expect(source).toContain("quote: action.quote");
-    expect(source).toContain("checkoutReview: action.review");
-    expect(source).not.toMatch(/useCartTotals/);
-    expect(source).not.toMatch(/discount(?:Cents|Minor)\s*[+\-*\/]/);
-  });
+  test("normalizes codes, stores server quotes and reviews, then clears them", async () => {
+    let tree!: RenderTree;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <CartProvider>
+          <Probe />
+        </CartProvider>,
+      );
+    });
 
-  test("reset removes every quote-derived value from the in-memory cart", () => {
-    expect(source).toContain("discountCode: null");
-    expect(source).toContain("quote: null");
-    expect(source).toContain('quoteStatus: "idle"');
-    expect(source).toContain("quoteErrorCode: null");
-    expect(source).toContain("checkoutReview: null");
+    await act(async () =>
+      latestCart!.setLineQuantity({
+        ticketTypeId: "tier-1",
+        ticketName: "General admission",
+        unitPrice: 5000,
+        currency: "USD",
+        isFree: false,
+        quantity: 1,
+      }),
+    );
+    await act(async () => latestCart!.setDiscountCode(" save-10 "));
+    expect(latestCart!.discountCode).toBe("SAVE10");
+    expect(latestCart!.quoteStatus).toBe("loading");
+    expect(latestCart!.quote).toBeNull();
+
+    await act(async () => latestCart!.setQuoteState(quote, "ready"));
+    await act(async () => latestCart!.setCheckoutReview(review));
+    expect(latestCart!.quote).toBe(quote);
+    expect(latestCart!.quoteStatus).toBe("ready");
+    expect(latestCart!.checkoutReview).toBe(review);
+
+    await act(async () => latestCart!.reset());
+    expect(latestCart!.discountCode).toBeNull();
+    expect(latestCart!.quote).toBeNull();
+    expect(latestCart!.quoteStatus).toBe("idle");
+    expect(latestCart!.quoteErrorCode).toBeNull();
+    expect(latestCart!.checkoutReview).toBeNull();
+
+    await act(async () => tree.unmount());
   });
 });

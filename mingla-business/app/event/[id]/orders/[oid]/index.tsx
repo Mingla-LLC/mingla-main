@@ -45,7 +45,6 @@ import { isCompOrder } from "../../../../../src/utils/compOrders";
 import { useCurrentBrandRole } from "../../../../../src/hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../../../../src/utils/permissionGates";
 import { canViewBrandPayments } from "../../../../../src/utils/brandPaymentsPermission";
-import { discountKeys } from "../../../../../src/services/discountKeys";
 
 import { Button } from "../../../../../src/components/ui/Button";
 import { EmptyState } from "../../../../../src/components/ui/EmptyState";
@@ -274,7 +273,12 @@ export default function OrderDetailRoute(): React.ReactElement {
   const callerRank = paymentRole.rank;
   const canRefund = canPerformAction(callerRank, "REFUND_ORDER");
   const discountLinesQuery = useQuery({
-    queryKey: discountKeys.orderLines("ticket", order?.id ?? "disabled"),
+    queryKey: [
+      "brand-discounts",
+      "order-lines",
+      "ticket",
+      order?.id ?? "disabled",
+    ],
     enabled: order !== null && callerRank >= 30,
     queryFn: async () => {
       if (order === null) throw new Error("order_missing");

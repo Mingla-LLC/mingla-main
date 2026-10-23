@@ -18,7 +18,6 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { captureDiscountEvent } from "../../analytics/discountAnalytics";
-import { discountKeys } from "../../services/discountKeys";
 import type {
   BrandDiscount,
   BrandPriceRow,
@@ -28,6 +27,11 @@ import { Button } from "../ui/Button";
 import { PricesWorkspace } from "./PricesWorkspace";
 
 const loadDiscountService = () => import("../../services/discountService");
+const DISCOUNT_QUERY_ROOT = "brand-discounts";
+const discountListKey = (brandId: string, filter: DiscountFilter) =>
+  [DISCOUNT_QUERY_ROOT, "list", brandId, filter] as const;
+const discountPricesKey = (brandId: string) =>
+  [DISCOUNT_QUERY_ROOT, "prices", brandId] as const;
 
 const LazyEditSheet = React.lazy(async () => {
   const mod = await import("./DiscountEditSheet");
@@ -69,12 +73,12 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
   const [preset, setPreset] = useState<BrandPriceRow | null>(null);
   const [saved, setSaved] = useState(false);
   const list = useQuery({
-    queryKey: discountKeys.list(brandId, filter),
+    queryKey: discountListKey(brandId, filter),
     queryFn: async () =>
       (await loadDiscountService()).fetchBrandDiscounts(brandId, filter),
   });
   const prices = useQuery({
-    queryKey: discountKeys.prices(brandId),
+    queryKey: discountPricesKey(brandId),
     queryFn: async () =>
       (await loadDiscountService()).fetchBrandPrices(brandId),
   });
@@ -94,7 +98,7 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
         }),
       ),
     onSuccess: async (_saved, variables) => {
-      await client.invalidateQueries({ queryKey: discountKeys.all });
+      await client.invalidateQueries({ queryKey: [DISCOUNT_QUERY_ROOT] });
       captureDiscountEvent("discount_updated", { action: variables.op });
       setSaved(true);
     },

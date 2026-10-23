@@ -58,7 +58,7 @@ test("#2882 case 2: a diff that invalidates nothing selects zero and does not th
   // Zero is an EVENT, not a silence: the line still prints, still carries its
   // denominator, and says in words that nothing was invalidated.
   const line = renderRoutingLine("business-node20-4", routed(["README.md"]), selection);
-  assert.match(line, /selected=0 of 85/);
+  assert.match(line, new RegExp(`selected=0 of ${manifest.suites.length}`));
   assert.match(line, /no registered suite is invalidated by this diff/);
 });
 

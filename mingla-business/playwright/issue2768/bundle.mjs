@@ -121,7 +121,7 @@ for (const marker of [
   "orch-1255-public-venue",
   "issue-2729-reserve-cta",
   "Cookie consent",
-  "Reject cookies and analytics",
+  "Opt out of ad tracking",
   "mingla_consent_v1",
 ]) {
   if (!bundle.includes(marker)) {

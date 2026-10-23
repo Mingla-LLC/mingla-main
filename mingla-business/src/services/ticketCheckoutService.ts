@@ -21,17 +21,14 @@ import {
   fireAdInitiateCheckout,
   getStoredAdMatchData,
   getStoredClickAttribution,
+  identifyAdBuyer,
 } from "../analytics/webAnalytics";
 import {
   isCheckoutAttemptId,
   normalizeCheckoutV2Lines,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
-import type {
-  CheckoutReviewDetail,
-  TicketCheckoutReview,
-  TicketQuote,
-} from "@mingla/offering-rendering/discountQuote";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 
 type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
   paymentPlanChoice?: CartLine["paymentPlanChoice"];
@@ -39,6 +36,8 @@ type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
 
 export interface TicketCheckoutCreateInput {
   eventId: string;
+  /** #3697 browser-only conversion matching; never forwarded as authority. */
+  brandId?: string;
   buyer: BuyerDetails;
   lines: TicketCheckoutCreateLine[];
   /** issue #3827 — bearer proof for hidden private-ticket tiers. */
@@ -805,32 +804,6 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   return PAID_CHECKOUT_FAILED_MESSAGE;
 };
 
-const REVIEW_DETAILS = new Set<CheckoutReviewDetail>([
-  "discount_changed",
-  "price_changed",
-  "lines",
-  "fingerprint",
-  "discount_code_invalid",
-]);
-
-/** Convert the one server 409 shape into the shared blocking review model. */
-export const ticketCheckoutReviewFromError = (
-  error: unknown,
-  previousTotalCents: number | null,
-): TicketCheckoutReview | null => {
-  const candidate = error as Partial<TicketCheckoutInvokeError> | null;
-  if (candidate?.code !== "checkout_review_required") return null;
-  const detail = REVIEW_DETAILS.has(candidate.detail as CheckoutReviewDetail)
-    ? (candidate.detail as CheckoutReviewDetail)
-    : "price_changed";
-  return {
-    kind: "review_required",
-    detail,
-    quote: candidate.reviewQuote ?? null,
-    previousTotalCents,
-  };
-};
-
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,
 ): Promise<TicketCheckoutCreateResult> => {
@@ -872,6 +845,12 @@ export const createTicketCheckout = async (
   };
   const clickId = getStoredClickAttribution().clickId;
   const matchData = getStoredAdMatchData();
+  // #3697: TikTok matching receives only browser-hashed values. This remains
+  // fire-and-forget so an ad blocker or Web Crypto failure cannot delay pay.
+  void identifyAdBuyer?.({
+    email: input.buyer.email,
+    phone: input.buyer.phone,
+  })?.catch(() => undefined);
   const site = await import("../analytics/siteAttribution")
     .then((module) => module.default?.())
     .catch(() => undefined);
@@ -957,6 +936,10 @@ export const createTicketCheckout = async (
       ...(matchData.fbp !== null ? { fbp: matchData.fbp } : {}),
       ...(matchData.fbc !== null ? { fbc: matchData.fbc } : {}),
       ...(matchData.scid !== null ? { scid: matchData.scid } : {}),
+      ...(typeof matchData.ttp === "string" ? { ttp: matchData.ttp } : {}),
+      ...(matchData.trackingOptOut === true
+        ? { ad_tracking_opt_out: true }
+        : {}),
       ...(matchData.clientUserAgent !== null
         ? { client_user_agent: matchData.clientUserAgent }
         : {}),
@@ -1006,6 +989,8 @@ export const createTicketCheckout = async (
           ? checkoutResult.totalCents / 100
           : undefined,
       currency: checkoutResult.currency,
+      contentId: input.eventId,
+      brandId: input.brandId,
     });
   }
   return result;

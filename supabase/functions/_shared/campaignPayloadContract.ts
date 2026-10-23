@@ -87,6 +87,12 @@ export function campaignPayloadIssues(payload: unknown): string[] {
       if (!nonEmptyString(payload.body)) {
         issues.push("SMS campaigns need a message body in `body`.");
       }
+      if (
+        Object.hasOwn(payload, "include_follow_cta") &&
+        typeof payload.include_follow_cta !== "boolean"
+      ) {
+        issues.push("SMS `include_follow_cta` must be true or false.");
+      }
       break;
     }
     default:
