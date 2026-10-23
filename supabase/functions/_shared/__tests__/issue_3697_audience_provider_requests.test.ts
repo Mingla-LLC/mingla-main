@@ -34,7 +34,9 @@ Deno.test("#3697 Meta request scopes the event and excludes its buyers", () => {
     definition,
   });
   assertEquals(request.path, "act_123/customaudiences");
-  assertEquals(request.body?.subtype, "WEBSITE");
+  assertEquals(request.body?.pixel_id, base.pixelId);
+  assertEquals(request.body?.prefill, true);
+  assertEquals("subtype" in (request.body ?? {}), false);
   const rule = JSON.parse(String(request.body?.rule));
   assertEquals(
     rule.inclusions.rules[0].filter.filters,
