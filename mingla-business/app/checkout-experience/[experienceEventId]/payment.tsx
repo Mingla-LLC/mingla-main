@@ -398,6 +398,7 @@ function CheckoutExperiencePaymentScreenContent({
         }
         const checkout = await createTicketCheckout({
           eventId: experienceEventId,
+          brandId: experience?.brandId,
           buyer,
           lines,
           surface,
@@ -605,6 +606,8 @@ function CheckoutExperiencePaymentScreenContent({
     bookedEndAt,
     partySize,
     experienceEventId,
+    experience?.brandId,
+    experience?.title,
     lines,
     nativeCheckout,
     previewCalculationId,

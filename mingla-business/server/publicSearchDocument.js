@@ -1,6 +1,11 @@
 const { requestRpcJson, SUPABASE_URL } = require("./supabaseRpc");
 const { browserRuntimeScript } = require("./publicSearchBrowserRuntime");
 const {
+  publicAdPrivacyMarkup,
+  publicAdPrivacyStyle,
+  publicAdRuntimeScript,
+} = require("./publicAdRuntime");
+const {
   shareAnalyticsKindFor,
   shareAnalyticsScript,
   shareAttributionFromRequestUrl,
@@ -14,7 +19,7 @@ const ROUTE_SEGMENT = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 const ENTITY_KINDS = new Set(["event", "trip", "experience", "brand", "venue"]);
 const INDEXABLE_STATE = "search_ready";
 const VISIBLE_NOINDEX_STATES = new Set(["public_noindex", "stale", "expired_archived"]);
-const ATTRIBUTION_KEYS = /^(?:utm_(?:source|medium|campaign|content|term)|gclid|gbraid|wbraid|fbclid|msclkid|af_[a-z0-9_]+|site_attribution)$/;
+const ATTRIBUTION_KEYS = /^(?:utm_(?:source|medium|campaign|content|term)|mc_id|campaign_id|adset_id|ad_squad_id|ad_id|gclid|gbraid|wbraid|fbclid|ttclid|sccid|rdt_cid|msclkid|af_[a-z0-9_]+|site_attribution)$/i;
 
 const escapeHtml = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (character) => ({
@@ -270,7 +275,14 @@ const detailRows = (facts) => {
   return rows;
 };
 
-const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery = "", shareAttribution = null }) => {
+const renderVisibleDocument = ({
+  facts,
+  state,
+  canonicalPath,
+  attributionQuery = "",
+  shareAttribution = null,
+  adPixelConsentMode = "on_arrival",
+}) => {
   const canonicalUrl = `${PUBLIC_HOST_ORIGIN}${canonicalPath}`;
   // #3187 — present only when the page was opened from a share. Without it the
   // document is byte-identical to the unattributed render.
@@ -294,6 +306,7 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script>${publicAdRuntimeScript({ facts, consentMode: adPixelConsentMode })}</script>
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description)}" />
   <meta name="robots" content="${indexable ? "index,follow,max-image-preview:large" : "noindex,follow"}" />
@@ -311,6 +324,7 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
   ${structuredData ? `<script type="application/ld+json">${escapeJsonForHtml(structuredData)}</script>` : ""}
   <style id="mingla-public-document-style">
     :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080706;color:#fff8f1}
+    ${publicAdPrivacyStyle()}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% 5%,rgba(244,124,32,.2),transparent 30rem),#080706;color:#fff8f1}
     a{color:inherit}.shell{max-width:1120px;margin:0 auto;padding:24px clamp(18px,4vw,56px) 64px}.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;font-weight:900;letter-spacing:.02em}.brand-logo{display:block;width:auto;height:42px;max-width:170px;object-fit:contain}.hero{display:grid;gap:clamp(28px,5vw,64px);align-items:center;min-height:calc(100vh - 100px);padding:52px 0}.hero.has-image{grid-template-columns:minmax(0,1fr) minmax(280px,.78fr)}.eyebrow{color:#ff9a4d;font-size:.82rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.status{display:inline-flex;margin:18px 0 0;padding:8px 12px;border:1px solid rgba(255,154,77,.42);border-radius:999px;color:#ffd5b2}.status[role="status"]{border-color:#f2b84b;color:#ffe0a0}.hero h1{margin:14px 0 18px;font-size:clamp(2.8rem,7vw,6.8rem);line-height:.92;letter-spacing:-.05em}.summary{max-width:720px;margin:0;color:#e5d5c7;font-size:clamp(1.08rem,2vw,1.35rem);line-height:1.58}.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:30px 0}.fact{padding:16px;border:1px solid rgba(255,255,255,.13);border-radius:16px;background:rgba(255,255,255,.05)}.fact dt{color:#c9b8aa;font-size:.78rem;text-transform:uppercase;letter-spacing:.1em}.fact dd{margin:7px 0 0;font-weight:750}.actions{display:flex;flex-wrap:wrap;gap:12px}.cta,.share{display:inline-flex;min-height:52px;align-items:center;justify-content:center;padding:0 24px;border-radius:999px;font:inherit;font-weight:900}.cta{background:#f47c20;color:#090807;text-decoration:none}.share{border:1px solid rgba(255,255,255,.24);background:transparent;color:#fff8f1;cursor:pointer}.share:disabled{cursor:wait;opacity:.7}.share:focus-visible,.cta:focus-visible,.brand:focus-visible,.share-fallback input:focus-visible{outline:3px solid #fff;outline-offset:4px}.share-feedback{min-height:1.5rem;margin:12px 0 0;color:#ffe0a0}.share-fallback{max-width:680px;margin:12px 0 0;padding:14px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.05)}.share-fallback p{margin:0 0 8px;color:#e5d5c7}.share-fallback input{width:100%;padding:10px;border:1px solid rgba(255,255,255,.24);border-radius:9px;background:#15120f;color:#fff8f1;font:inherit;user-select:all}.runtime-status{min-height:1.3rem;margin:16px 0 0;color:#f2b84b}.cover{width:100%;max-height:72vh;aspect-ratio:4/5;border-radius:30px;object-fit:cover;border:1px solid rgba(255,255,255,.14);box-shadow:0 28px 80px rgba(0,0,0,.45)}.trust{border-top:1px solid rgba(255,255,255,.12);padding-top:24px;color:#a99a8f;font-size:.9rem}@media(max-width:780px){.hero.has-image{grid-template-columns:1fr}.hero{min-height:auto;padding-top:64px}.cover{aspect-ratio:16/10;order:-1}}
   </style>
@@ -332,8 +346,9 @@ const renderVisibleDocument = ({ facts, state, canonicalPath, attributionQuery =
       </div>
       ${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(text(facts.imageAlt, `${text(facts.title)} cover image`))}" />` : ""}
     </article>
-    <footer class="trust">Public facts supplied by ${escapeHtml(text(facts.brandName, "the host"))} and served from Mingla’s authoritative Host domain.</footer>
+    <footer class="trust">Public facts supplied by ${escapeHtml(text(facts.brandName, "the host"))} and served from Mingla’s authoritative Host domain. <button type="button" class="mingla-ad-privacy-choice" data-mingla-ad-privacy-choice>Ad privacy choices</button></footer>
   </main></div>
+  ${publicAdPrivacyMarkup()}
   <script>${browserRuntimeScript(canonicalUrl)}</script>
 ${shareScript}</body>
 </html>`;
@@ -517,9 +532,27 @@ const handlePublicSearchDocument = async ({ req, res, kind, slugs }) => {
     return;
   }
 
+  const rawCountry = firstQueryValue(
+    req?.headers?.["x-vercel-ip-country"] || req?.headers?.["cf-ipcountry"],
+  );
+  const country = typeof rawCountry === "string" && /^[A-Za-z]{2}$/.test(rawCountry.trim())
+    ? rawCountry.trim().toUpperCase()
+    : null;
   let resolution;
+  let adPixelConsentMode = "on_arrival";
   try {
-    resolution = normalizeResolution(await requestRpcJson("resolve_public_search_document", { p_path: canonicalPath }));
+    const configPromise = country === null
+      ? Promise.resolve({ ad_pixel_consent_mode: "on_arrival" })
+      : requestRpcJson("ad_pixel_public_config", { p_country_code: country })
+        .catch(() => ({ ad_pixel_consent_mode: "on_arrival" }));
+    const [resolved, config] = await Promise.all([
+      requestRpcJson("resolve_public_search_document", { p_path: canonicalPath }),
+      configPromise,
+    ]);
+    resolution = normalizeResolution(resolved);
+    adPixelConsentMode = config?.ad_pixel_consent_mode === "opt_in"
+      ? "opt_in"
+      : "on_arrival";
   } catch {
     send(req, res, 503, "dependency_failure", renderStatePage({ status: 503, heading: "Temporarily unavailable", message: "Mingla could not verify this page right now. Please try again shortly." }), { "retry-after": "60" });
     return;
@@ -559,7 +592,14 @@ const handlePublicSearchDocument = async ({ req, res, kind, slugs }) => {
     send(req, res, 503, "dependency_failure", renderStatePage({ status: 503, heading: "Temporarily unavailable", message: "Mingla could not safely verify this page right now." }), { "retry-after": "60" });
     return;
   }
-  send(req, res, 200, resolution.state, renderVisibleDocument({ facts, state: resolution.state, canonicalPath, attributionQuery, shareAttribution }));
+  send(req, res, 200, resolution.state, renderVisibleDocument({
+    facts,
+    state: resolution.state,
+    canonicalPath,
+    attributionQuery,
+    shareAttribution,
+    adPixelConsentMode,
+  }));
 };
 
 const buildRedirectTarget = (path) => {

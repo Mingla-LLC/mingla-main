@@ -90,6 +90,7 @@ import {
   captureBuyerWebPublicPageViewed,
   resolveBuyerWebPublicLifecycle,
 } from "../../../src/analytics/publicParityWebAdapter";
+import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
 import { useBrandFollowerCount } from "../../../src/hooks/useBrandFollowerCount";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
@@ -219,6 +220,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
   // Web-only (no-op on native). toward #3697: also capture first-party ad clicks.
   const viewFiredRef = useRef<boolean>(false);
   const parityViewFiredRef = useRef<boolean>(false);
+  const adViewContentFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -233,12 +235,41 @@ export default function PublicExperienceRoute(): React.ReactElement {
       entitySlug: typeof experienceSlug === "string" ? experienceSlug : null,
     });
     fireAdPageView();
-    fireAdViewContent();
   }, [brandSlug, experienceSlug]);
 
   useEffect(() => {
     const payload = query.data;
-    if (parityViewFiredRef.current || payload === null || payload === undefined) {
+    if (
+      adViewContentFiredRef.current ||
+      payload === null ||
+      payload === undefined
+    ) {
+      return;
+    }
+    const tickets =
+      payload.experience.options ??
+      (payload.experience.ticket ? [payload.experience.ticket] : []);
+    const currency = tickets.find((ticket) => ticket.currency)?.currency;
+    const viewContent = buildAdViewContentPayload({
+      contentId: payload.experience.id,
+      brandId: payload.experience.brandId,
+      currency,
+      valuesMajor: tickets
+        .filter((ticket) => ticket.currency === currency)
+        .map((ticket) => ticket.priceAllInGbp ?? ticket.priceCents / 100),
+    });
+    if (viewContent === null) return;
+    adViewContentFiredRef.current = true;
+    fireAdViewContent(viewContent);
+  }, [query.data]);
+
+  useEffect(() => {
+    const payload = query.data;
+    if (
+      parityViewFiredRef.current ||
+      payload === null ||
+      payload === undefined
+    ) {
       return;
     }
     parityViewFiredRef.current = true;

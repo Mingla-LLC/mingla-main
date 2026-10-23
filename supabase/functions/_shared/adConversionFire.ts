@@ -56,12 +56,15 @@ export interface ConversionSendInput {
   eventName: string; // per-channel event name (Meta 'Purchase', TikTok 'CompletePayment', …)
   valueCents: number | null;
   currency: string | null;
+  contentId?: string | null;
+  brandId?: string | null;
   eventSourceUrl: string | null;
   hashedEmail: string | null; // SHA-256 hex
   hashedPhone: string | null; // SHA-256 hex
   fbc: string | null; // UNHASHED (Meta only)
   fbp: string | null; // UNHASHED (Meta only)
-  externalId?: string | null; // SHA-256 buyer user id (Meta external_id)
+  externalId?: string | null; // SHA-256 buyer user id (all three ad platforms)
+  ttp?: string | null; // UNHASHED TikTok _ttp cookie
   scCookie1?: string | null; // UNHASHED Snap _scid cookie
   externalClickId: string | null; // raw fbclid / ttclid / sccid / rdt_cid
   clientIpAddress: string | null;
@@ -115,6 +118,8 @@ export interface FireAdConversionInput {
   eventType?: EventType; // default 'purchase' (order); reservations auto-tier (below)
   eventSourceUrl?: string | null;
   testEventCode?: string | null;
+  /** Browser match and opt-out state when a durable checkout row is absent. */
+  adContext?: CheckoutAdContextInput | null;
   /**
    * ISSUE-865 PR1 WP-2 — the first-party ad click_id, passed inline by a caller
    * that already holds it (the FREE-RSVP reservation-create path has no checkout
@@ -248,6 +253,8 @@ export interface CheckoutAdContextInput {
   fbp: string | null;
   fbc: string | null;
   scid: string | null;
+  ttp: string | null;
+  trackingOptOut: boolean;
   clientIpAddress: string | null;
   clientUserAgent: string | null;
 }
@@ -270,12 +277,17 @@ export async function persistCheckoutAdContext(
         fbp: bounded(input.fbp, 512),
         fbc: bounded(input.fbc, 512),
         scid: bounded(input.scid, 512),
+        ttp: bounded(input.ttp, 512),
+        ad_tracking_opt_out: input.trackingOptOut === true,
         client_ip: bounded(input.clientIpAddress, 128),
         client_user_agent: bounded(input.clientUserAgent, 1024),
       })
       .eq("id", checkoutSessionId);
     if (error) {
-      console.warn("[adConversionFire] checkout ad context persist skipped (non-fatal):", error.message);
+      console.warn(
+        "[adConversionFire] checkout ad context persist skipped (non-fatal):",
+        error.message,
+      );
     }
   } catch (err) {
     console.warn(
@@ -318,6 +330,44 @@ export async function persistReservationAttributionClickId(
   }
 }
 
+/** Reservation twin of persistCheckoutAdContext; always fail-open. */
+export async function persistReservationAdContext(
+  supabase: SupabaseClient,
+  reservationSessionId: string,
+  input: CheckoutAdContextInput,
+): Promise<void> {
+  const bounded = (value: string | null, max: number): string | null =>
+    typeof value === "string" && value.trim()
+      ? value.trim().slice(0, max)
+      : null;
+  try {
+    const { error } = await supabase
+      .from("reservation_checkout_sessions")
+      .update({
+        attribution_click_id: bounded(input.clickId, 512),
+        fbp: bounded(input.fbp, 512),
+        fbc: bounded(input.fbc, 512),
+        scid: bounded(input.scid, 512),
+        ttp: bounded(input.ttp, 512),
+        ad_tracking_opt_out: input.trackingOptOut === true,
+        client_ip: bounded(input.clientIpAddress, 128),
+        client_user_agent: bounded(input.clientUserAgent, 1024),
+      })
+      .eq("id", reservationSessionId);
+    if (error) {
+      console.warn(
+        "[adConversionFire] reservation ad context persist skipped (non-fatal):",
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[adConversionFire] reservation ad context persist threw (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 // ── Internal resolution shapes ────────────────────────────────────────────────
 
 interface ConversionContext {
@@ -337,6 +387,8 @@ interface ConversionContext {
   fbp: string | null;
   fbc: string | null;
   scid: string | null;
+  ttp: string | null;
+  trackingOptOut: boolean;
   clientIpAddress: string | null;
   clientUserAgent: string | null;
 }
@@ -401,9 +453,10 @@ async function resolveOrderContext(
   let clickId: string | null = null;
   const { data: sess } = await supabase
     .from("ticket_checkout_sessions")
-    .select("attribution_click_id,buyer_user_id,fbp,fbc,scid,client_ip,client_user_agent")
+    .select(
+      "attribution_click_id,buyer_user_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent",
+    )
     .eq("order_id", orderId)
-    .not("attribution_click_id", "is", null)
     .maybeSingle();
   const sessRow = (sess ?? {}) as Record<string, unknown>;
   clickId = typeof sessRow.attribution_click_id === "string"
@@ -444,7 +497,11 @@ async function resolveOrderContext(
     fbp: typeof sessRow.fbp === "string" ? sessRow.fbp : null,
     fbc: typeof sessRow.fbc === "string" ? sessRow.fbc : null,
     scid: typeof sessRow.scid === "string" ? sessRow.scid : null,
-    clientIpAddress: typeof sessRow.client_ip === "string" ? sessRow.client_ip : null,
+    ttp: typeof sessRow.ttp === "string" ? sessRow.ttp : null,
+    trackingOptOut: sessRow.ad_tracking_opt_out === true,
+    clientIpAddress: typeof sessRow.client_ip === "string"
+      ? sessRow.client_ip
+      : null,
     clientUserAgent: typeof sessRow.client_user_agent === "string"
       ? sessRow.client_user_agent
       : null,
@@ -485,25 +542,32 @@ async function resolveReservationContext(
   // only the value'd Purchase carries the fee amount.
   const valueCents = eventType === "purchase" ? feeCents : 0;
 
-  // ISSUE-865 PR1 WP-2 — resolve the threaded click_id: the caller's inline
-  // override (the free path holds it) first, else the reservation checkout
-  // session (the fee path threaded it at create). Best-effort, fail-open.
-  let clickId: string | null =
-    typeof input.clickId === "string" && input.clickId ? input.clickId : null;
-  if (!clickId) {
-    try {
-      const { data: sess } = await supabase
-        .from("reservation_checkout_sessions")
-        .select("attribution_click_id")
-        .eq("reservation_id", reservationId)
-        .not("attribution_click_id", "is", null)
-        .maybeSingle();
-      clickId = (sess as { attribution_click_id?: string } | null)
-        ?.attribution_click_id ?? null;
-    } catch {
-      clickId = null;
-    }
+  // #3697: read the session even without a click so an organic browser opt-out
+  // still suppresses server sharing. Inline context covers the free path before
+  // its session is visible to this fire-and-forget call.
+  let session: Record<string, unknown> = {};
+  try {
+    const { data: sess } = await supabase
+      .from("reservation_checkout_sessions")
+      .select(
+        "attribution_click_id,consumer_user_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent",
+      )
+      .eq("reservation_id", reservationId)
+      .maybeSingle();
+    session = (sess ?? {}) as Record<string, unknown>;
+  } catch {
+    session = {};
   }
+  const supplied = input.adContext ?? null;
+  const clickId = typeof input.clickId === "string" && input.clickId
+    ? input.clickId
+    : supplied?.clickId ??
+      (typeof session.attribution_click_id === "string"
+        ? session.attribution_click_id
+        : null);
+  const consumerUserId = typeof session.consumer_user_id === "string"
+    ? session.consumer_user_id
+    : null;
 
   return {
     eventId: reservationId,
@@ -518,12 +582,23 @@ async function resolveReservationContext(
     stayGroupId: null,
     clickId,
     eventSourceUrl: input.eventSourceUrl ?? null,
-    externalId: null,
-    fbp: null,
-    fbc: null,
-    scid: null,
-    clientIpAddress: null,
-    clientUserAgent: null,
+    externalId: consumerUserId ? await sha256Hex(consumerUserId) : null,
+    fbp: supplied?.fbp ??
+      (typeof session.fbp === "string" ? session.fbp : null),
+    fbc: supplied?.fbc ??
+      (typeof session.fbc === "string" ? session.fbc : null),
+    scid: supplied?.scid ??
+      (typeof session.scid === "string" ? session.scid : null),
+    ttp: supplied?.ttp ??
+      (typeof session.ttp === "string" ? session.ttp : null),
+    trackingOptOut: supplied?.trackingOptOut === true ||
+      session.ad_tracking_opt_out === true,
+    clientIpAddress: supplied?.clientIpAddress ??
+      (typeof session.client_ip === "string" ? session.client_ip : null),
+    clientUserAgent: supplied?.clientUserAgent ??
+      (typeof session.client_user_agent === "string"
+        ? session.client_user_agent
+        : null),
   };
 }
 
@@ -535,7 +610,7 @@ async function resolveStayContext(
   const { data: group, error } = await supabase
     .from("stay_reservation_groups")
     .select(
-      "id,brand_id,venue_id,currency_code,total_minor,guest_snapshot,attribution_click_id,state",
+      "id,brand_id,venue_id,user_id,currency_code,total_minor,guest_snapshot,attribution_click_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent,state",
     )
     .eq("id", stayGroupId)
     .maybeSingle();
@@ -580,12 +655,18 @@ async function resolveStayContext(
       ? row.attribution_click_id
       : null,
     eventSourceUrl: input.eventSourceUrl ?? null,
-    externalId: null,
-    fbp: null,
-    fbc: null,
-    scid: null,
-    clientIpAddress: null,
-    clientUserAgent: null,
+    externalId: typeof row.user_id === "string"
+      ? await sha256Hex(row.user_id)
+      : null,
+    fbp: typeof row.fbp === "string" ? row.fbp : null,
+    fbc: typeof row.fbc === "string" ? row.fbc : null,
+    scid: typeof row.scid === "string" ? row.scid : null,
+    ttp: typeof row.ttp === "string" ? row.ttp : null,
+    trackingOptOut: row.ad_tracking_opt_out === true,
+    clientIpAddress: typeof row.client_ip === "string" ? row.client_ip : null,
+    clientUserAgent: typeof row.client_user_agent === "string"
+      ? row.client_user_agent
+      : null,
   };
 }
 
@@ -734,8 +815,10 @@ async function resolveSenderConnection(
 }
 
 /**
- * Server checkout-start pair for Meta + Snap. The checkout session id is the
- * shared browser/server dedup id. The helper is fail-open and claims once.
+ * Server checkout-start fanout for Meta + TikTok + Snap. The checkout session
+ * id is the shared browser/server dedup id. Rejected/opted-out sessions are
+ * terminal; pending touch consent stays unclaimed so the retry lane can
+ * evaluate the latest consent within 24 hours.
  */
 export async function fireAdCheckoutStart(
   supabase: SupabaseClient,
@@ -746,33 +829,63 @@ export async function fireAdCheckoutStart(
     const { data: session, error } = await supabase
       .from("ticket_checkout_sessions")
       .select(
-        "id,total_cents,buyer_total_cents,currency,buyer_user_id,attribution_click_id,fbp,fbc,scid,client_ip,client_user_agent,ad_checkout_start_sent_at",
+        "id,event_id,brand_id,total_cents,buyer_total_cents,currency,buyer_user_id,attribution_click_id,fbp,fbc,scid,ttp,ad_tracking_opt_out,client_ip,client_user_agent,ad_checkout_start_sent_at",
       )
       .eq("id", checkoutSessionId)
       .maybeSingle();
     if (error || !session) {
-      return { ok: false, eventId: checkoutSessionId, reason: "context_unresolved" };
+      return {
+        ok: false,
+        eventId: checkoutSessionId,
+        reason: "context_unresolved",
+      };
     }
     const row = session as Record<string, unknown>;
     if (row.ad_checkout_start_sent_at) {
-      return { ok: true, eventId: checkoutSessionId, deduped: true, results: [] };
+      return {
+        ok: true,
+        eventId: checkoutSessionId,
+        deduped: true,
+        results: [],
+      };
     }
     const touch = await resolveTouch(
       supabase,
-      typeof row.attribution_click_id === "string" ? row.attribution_click_id : null,
+      typeof row.attribution_click_id === "string"
+        ? row.attribution_click_id
+        : null,
     );
-    if (!touch.consentAllowsShare) {
+    const channels: Channel[] = ["meta", "tiktok", "snap"];
+    const trackingOptOut = row.ad_tracking_opt_out === true;
+    if (!touch.consentAllowsShare || trackingOptOut) {
+      const terminal = trackingOptOut || touch.consentState === "rejected";
+      const reason = trackingOptOut
+        ? "tracking_opt_out"
+        : terminal
+        ? "consent_rejected"
+        : "consent_pending_retryable";
+      const results: SenderResult[] = channels.map((channel) => ({
+        channel,
+        status: "skipped",
+        reason,
+      }));
+      if (terminal) {
+        await supabase.from("ticket_checkout_sessions").update({
+          ad_checkout_start_sent_at: new Date().toISOString(),
+          ad_checkout_start_provider_response: Object.fromEntries(
+            results.map((result) => [result.channel, {
+              status: result.status,
+              reason: result.reason ?? null,
+              http: null,
+            }]),
+          ),
+        }).eq("id", checkoutSessionId).is("ad_checkout_start_sent_at", null);
+      }
       return {
         ok: true,
         eventId: checkoutSessionId,
         deduped: false,
-        results: (["meta", "snap"] as Channel[]).map((channel) => ({
-          channel,
-          status: "skipped",
-          reason: touch.consentState === "rejected"
-            ? "consent_rejected"
-            : "consent_pending_retryable",
-        })),
+        results,
       };
     }
     const { data: claimed } = await supabase
@@ -783,7 +896,12 @@ export async function fireAdCheckoutStart(
       .select("id")
       .maybeSingle();
     if (!claimed) {
-      return { ok: true, eventId: checkoutSessionId, deduped: true, results: [] };
+      return {
+        ok: true,
+        eventId: checkoutSessionId,
+        deduped: true,
+        results: [],
+      };
     }
 
     const now = deps.now ?? (() => Date.now());
@@ -800,14 +918,19 @@ export async function fireAdCheckoutStart(
       : typeof row.total_cents === "number"
       ? row.total_cents
       : null;
-    const channels: Channel[] = ["meta", "snap"];
     const results = await Promise.all(channels.map(async (channel) => {
-      const connection = await resolveSenderConnection(supabase, channel, "consumer");
+      const connection = await resolveSenderConnection(
+        supabase,
+        channel,
+        "consumer",
+      );
       const sendInput: ConversionSendInput = {
         eventId: checkoutSessionId,
-        eventName: channel === "meta" ? "InitiateCheckout" : "START_CHECKOUT",
+        eventName: channel === "snap" ? "START_CHECKOUT" : "InitiateCheckout",
         valueCents,
         currency: typeof row.currency === "string" ? row.currency : null,
+        contentId: typeof row.event_id === "string" ? row.event_id : null,
+        brandId: typeof row.brand_id === "string" ? row.brand_id : null,
         eventSourceUrl: null,
         hashedEmail: null,
         hashedPhone: null,
@@ -815,14 +938,21 @@ export async function fireAdCheckoutStart(
           ? (typeof row.fbc === "string" ? row.fbc : touch.fbc)
           : null,
         fbp: channel === "meta" && typeof row.fbp === "string" ? row.fbp : null,
-        externalId: channel === "meta" ? buyerExternalId : null,
-        scCookie1: channel === "snap" && typeof row.scid === "string" ? row.scid : null,
+        externalId: buyerExternalId,
+        ttp: channel === "tiktok" && typeof row.ttp === "string"
+          ? row.ttp
+          : null,
+        scCookie1: channel === "snap" && typeof row.scid === "string"
+          ? row.scid
+          : null,
         externalClickId: (channel === "snap"
             ? touch.network === "snapchat"
             : touch.network === channel)
           ? touch.externalClickId
           : null,
-        clientIpAddress: typeof row.client_ip === "string" ? row.client_ip : null,
+        clientIpAddress: typeof row.client_ip === "string"
+          ? row.client_ip
+          : null,
         clientUserAgent: typeof row.client_user_agent === "string"
           ? row.client_user_agent
           : null,
@@ -834,7 +964,15 @@ export async function fireAdCheckoutStart(
         senderDeps,
       );
     }));
+    const retryableFailure = results.some((result) =>
+      result.status === "failed"
+    );
     await supabase.from("ticket_checkout_sessions").update({
+      // A failed lane clears the claim so the scheduled retry can re-evaluate
+      // latest consent and dedup safely with this same checkout-session id.
+      ad_checkout_start_sent_at: retryableFailure
+        ? null
+        : new Date().toISOString(),
       ad_checkout_start_provider_response: Object.fromEntries(
         results.map((result) => [result.channel, {
           status: result.status,
@@ -940,7 +1078,8 @@ export async function fireAdConversion(
 
     // 3. Resolve the attributed touch (click_id → campaign/connection/fbc).
     const touch = await resolveTouch(supabase, ctx.clickId);
-    const shareWithPlatforms = touch.consentAllowsShare;
+    const shareWithPlatforms = touch.consentAllowsShare &&
+      !ctx.trackingOptOut;
 
     // 4. Ensure the ad_conversions row exists (idempotent insert, service-role).
     // toward #3697 Wave 0d: this is the trusted writer — browser/anon cannot.
@@ -1006,7 +1145,8 @@ export async function fireAdConversion(
     // Reject → terminal skipped (never share). Pending → leave channel statuses
     // pending so a later Accept + webhook redelivery can still fan out.
     if (!shareWithPlatforms) {
-      const rejected = touch.consentState === "rejected";
+      const rejected = touch.consentState === "rejected" ||
+        ctx.trackingOptOut;
       const results: SenderResult[] = (
         ["meta", "tiktok", "snap", "reddit", "google"] as Channel[]
       ).map((channel) => ({
@@ -1060,12 +1200,15 @@ export async function fireAdConversion(
         eventName: channelEventName(channel, ctx.eventType),
         valueCents: ctx.valueCents,
         currency: ctx.currency,
+        contentId: ctx.minglaEventId,
+        brandId: ctx.brandId,
         eventSourceUrl: ctx.eventSourceUrl,
         hashedEmail: ctx.hashedEmail,
         hashedPhone: ctx.hashedPhone,
         fbc: channel === "meta" ? (ctx.fbc ?? touch.fbc) : null,
         fbp: channel === "meta" ? ctx.fbp : null,
-        externalId: channel === "meta" ? ctx.externalId : null,
+        externalId: ctx.externalId,
+        ttp: channel === "tiktok" ? ctx.ttp : null,
         scCookie1: channel === "snap" ? ctx.scid : null,
         externalClickId: (channel === "snap"
             ? touch.network === "snapchat"

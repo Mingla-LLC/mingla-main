@@ -22,7 +22,6 @@ import {
   captureAdClickIds,
   captureWeb,
   fireAdPageView,
-  fireAdViewContent,
 } from "../../../src/analytics/webAnalytics";
 import {
   captureBuyerWebPublicPageViewed,
@@ -82,7 +81,7 @@ export default function PublicBrandRoute(): React.ReactElement {
       brand_slug: typeof brandSlug === "string" ? brandSlug : null,
       slug: typeof brandSlug === "string" ? brandSlug : null,
     });
-    // ISSUE-865 WP-C — ad click-id capture + consent-gated PageView/ViewContent
+    // ISSUE-865 WP-C — ad click-id capture + consent-gated PageView
     // (web-only, no-op until consent, fail-open).
     captureAdClickIds({
       pageType: "brand",
@@ -90,7 +89,6 @@ export default function PublicBrandRoute(): React.ReactElement {
       entitySlug: null,
     });
     fireAdPageView();
-    fireAdViewContent();
   }, [brandSlug]);
 
   useEffect(() => {

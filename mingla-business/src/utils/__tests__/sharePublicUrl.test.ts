@@ -204,17 +204,18 @@ describe("sharePublicUrl helpers", () => {
   });
 
   test("ShareModal guards copy/share with pending state and preserves copy toasts", () => {
-    // [TEST-MOD-APPROVED #1719] Share and Copy now intentionally share one busy
-    // lock in the redesigned two-action sheet. The old independent provider-grid
-    // states no longer exist; pin the common lock and prepared short URL instead.
+    // [TEST-MOD-APPROVED #3988] Share and Copy share one busy lock, while the
+    // common target can be either the prepared share or the validated canonical
+    // fallback produced after a retryable preview failure.
     const source = repoFile("src/components/ui/ShareModal.tsx") +
       repoFile("src/components/ui/ShareModalContent.tsx");
     expect(source).toContain("const [busy, setBusy]");
-    expect(source).toContain("if (!prepared || busy) return;");
+    expect(source).toContain("if (!shareTarget || busy || !shareReady) return;");
+    expect(source).toContain("if (!shareTarget || busy) return;");
     expect(source).toContain("setBusy(true)");
     expect(source).toContain("setBusy(false)");
-    expect(source).toContain("disabled={!prepared || busy}");
-    expect(source).toContain("await copyPublicUrl(prepared.url);");
+    expect(source).toContain("disabled={!shareTarget || busy}");
+    expect(source).toContain("await copyPublicUrl(shareTarget.url);");
     expect(source).toContain("Couldn't copy the link. Please try again.");
     expect(source).not.toContain("Tap Share via to copy on iOS / Android.");
   });

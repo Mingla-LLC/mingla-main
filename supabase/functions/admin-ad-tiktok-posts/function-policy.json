@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "admin-ad-tiktok-posts",
+  "verify_jwt": true,
+  "gateway_reason": "Active-admin read-only proxy for organic posts on the linked @usemingla TikTok identity.",
+  "env": {
+    "required_top_level": [],
+    "optional_top_level": [],
+    "migration_fallback_top_level": [],
+    "required_bundle_fields": {}
+  }
+}

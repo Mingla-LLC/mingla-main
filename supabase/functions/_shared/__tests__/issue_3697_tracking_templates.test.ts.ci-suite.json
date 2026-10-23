@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_tracking_templates.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-tracking-templates",
+  "profile": "deno-2-unit"
+}

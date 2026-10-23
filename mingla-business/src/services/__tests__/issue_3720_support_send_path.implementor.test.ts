@@ -36,10 +36,12 @@ describe("#3720 support send path (implementor)", () => {
   });
 
   test("sendSupportMessage invokes support-send with trimmed content", async () => {
+    // [TEST-MOD-APPROVED #3988] The service now tells the edge function this is
+    // the requester path so brand-facing replies cannot impersonate staff.
     invokeMock.mockResolvedValue({ data: { ok: true }, error: null });
     await sendSupportMessage("ticket-1", "  hello team  ");
     expect(invokeMock).toHaveBeenCalledWith("support-send", {
-      body: { ticketId: "ticket-1", content: "hello team" },
+      body: { ticketId: "ticket-1", content: "hello team", actorMode: "requester" },
     });
   });
 

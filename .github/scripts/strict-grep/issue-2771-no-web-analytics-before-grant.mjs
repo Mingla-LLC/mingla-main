@@ -52,6 +52,11 @@ function requiresGrant(body, readyPattern = null) {
   return consent && (readyPattern === null || readyPattern.test(prefix))
 }
 
+function requiresAdTracking(body) {
+  const prefix = body.slice(0, 320)
+  return /adTrackingAllowed\(\)/.test(prefix) && /adPixelsBootstrapped/.test(prefix)
+}
+
 export function evaluateSources(input) {
   const errors = []
   const business = stripComments(input.business)
@@ -81,12 +86,14 @@ export function evaluateSources(input) {
   if (!requiresGrant(functionBody(business, 'gaEvent'), /window\.gtag/)) {
     errors.push('Business gaEvent must require grant and ready gtag')
   }
-  // Vendor pixel fires stay grant-only.
+  // [TEST-MOD-APPROVED #3697] Ad pixels are arrival-on by default, while a
+  // remembered opt-out or a region configured as opt_in keeps every fire dark.
   for (const name of [
     'fireAdPageView', 'fireAdViewContent', 'fireAdPurchase', 'fireAdReservation',
+    'fireAdInitiateCheckout', 'identifyAdBuyer',
   ]) {
-    if (!requiresGrant(functionBody(business, name))) {
-      errors.push(`Business ${name} must explicitly require grant`)
+    if (!requiresAdTracking(functionBody(business, name))) {
+      errors.push(`Business ${name} must require allowed, bootstrapped ad tracking`)
     }
   }
   // [TEST-MOD-APPROVED #3697] first-party ad touch may run before Accept; Reject
@@ -149,7 +156,8 @@ function runSelfTest() {
   const clean = readSources()
   const cases = [
     ['Business eager SDK', { business: clean.business.replace('import type { CaptureResult, PostHog }', 'import posthog') }],
-    ['Business init loses grant', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() !== "granted") return;\n  await ensureGrantedAnalyticsBoot();', 'await ensureGrantedAnalyticsBoot();') }],
+    ['Business private boot loses grant', { business: clean.business.replace('if (readStoredConsent() !== "granted") return;', '') }],
+    ['Business pixel fire loses opt-out gate', { business: clean.business.replace('if (!adTrackingAllowed() || !adPixelsBootstrapped) return;', '') }],
     // [TEST-MOD-APPROVED #3697] first-party capture gates on Reject, not grant.
     ['Attribution loses Reject gate', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() === "denied") return;', 'if (!hasWindow()) return;') }],
     ['Marketing eager SDK', { marketingProvider: clean.marketingProvider.replace("import type { PostHog } from 'posthog-js'", "import posthog from 'posthog-js'") }],

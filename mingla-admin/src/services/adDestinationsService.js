@@ -84,6 +84,22 @@ export async function listAdvertisablePages({
   };
 }
 
+/** Resolve the selected public destination to its authoritative brand/event ids. */
+export async function resolveAdvertisablePage(destination) {
+  if (!destination || !destination.page_type) return null;
+  const { data, error } = await supabase.rpc("ad_destination_resolve", {
+    p_page_type: destination.page_type,
+    p_brand_slug: destination.brand_slug ?? "",
+    p_entity_slug:
+      destination.page_type === "brand" ? null : destination.slug ?? null,
+  });
+  if (error) throw new Error(`Destination identity failed: ${error.message}`);
+  if (!data?.ok) {
+    throw new Error(String(data?.code ?? "Destination identity unavailable"));
+  }
+  return data;
+}
+
 /**
  * Issue #3697 v1.4 — registry-owned native app destinations. Readiness is
  * resolved server-side for the exact currently selected providers; the client

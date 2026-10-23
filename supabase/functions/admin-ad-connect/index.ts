@@ -109,6 +109,7 @@ import {
   tiktokFetchAdvertiser,
   tiktokFetchIdentity,
   tiktokFetchPixels,
+  tiktokFetchPurchaseSignal28d,
   type TikTokPixelSnapshot,
 } from "../_shared/tiktok.ts";
 import {
@@ -120,6 +121,7 @@ import {
   snapchatFetchFundingSources,
   snapchatFetchPixelSignal,
   snapchatFetchPixels,
+  snapchatFetchPurchaseSignal28d,
   type SnapchatFundingSnapshot,
   type SnapchatPixelSnapshot,
 } from "../_shared/snapchat.ts";
@@ -323,12 +325,20 @@ serve(async (req: Request): Promise<Response> => {
       }
       const pixel = pixels.find((p) => p.status === "ACTIVE") ?? pixels[0] ?? null;
       let pixelSignal = { hasSignal: false, totalEvents: 0 };
+      let purchaseEvents28d: number | null = null;
       if (pixel?.id) {
         try {
           pixelSignal = await snapchatFetchPixelSignal(client, pixel.id);
         } catch {
           // Fail closed: an unreadable stats response is not a detected pixel.
           pixelSignal = { hasSignal: false, totalEvents: 0 };
+        }
+        try {
+          purchaseEvents28d = (await snapchatFetchPurchaseSignal28d(client, pixel.id))
+            .purchaseEvents28d;
+        } catch {
+          // Fail closed for Sales without making a healthy traffic connection invalid.
+          purchaseEvents28d = null;
         }
       }
 
@@ -370,6 +380,8 @@ serve(async (req: Request): Promise<Response> => {
           // copy a stale flag from the prior row.
           pixel_installed: pixelSignal.hasSignal,
           pixel_total_events_7d: pixelSignal.totalEvents,
+          purchase_events_28d: purchaseEvents28d,
+          purchase_signal_checked_at: new Date().toISOString(),
           funding_source_id: activeFunding.id,
           funding_daily_spend_limit_micro: activeFunding.dailySpendLimitMicro,
           last_error: null,
@@ -738,6 +750,16 @@ serve(async (req: Request): Promise<Response> => {
         pixels = [];
       }
       const pixel = pixels[0] ?? null;
+      let purchaseEvents28d: number | null = null;
+      if (pixel) {
+        try {
+          purchaseEvents28d = (await tiktokFetchPurchaseSignal28d(client, pixel.pixelId))
+            .purchaseEvents28d;
+        } catch {
+          // Sales remains fail-closed while traffic can continue to use LPV.
+          purchaseEvents28d = null;
+        }
+      }
 
       const priorExtra = (existing?.extra ?? {}) as Record<string, unknown>;
       const row = {
@@ -761,6 +783,8 @@ serve(async (req: Request): Promise<Response> => {
           pixel_id: pixel?.pixelId ?? null,
           pixel_activity_status: pixel?.activityStatus ?? null,
           pixel_events_count: pixel?.eventsCount ?? 0,
+          purchase_events_28d: purchaseEvents28d,
+          purchase_signal_checked_at: new Date().toISOString(),
           // The API balance is BLIND to the Advanced Payment Portfolio (T-P3)
           // — recorded verbatim; the Ads Manager UI is the funding source of truth.
           api_balance: advertiser.balance,

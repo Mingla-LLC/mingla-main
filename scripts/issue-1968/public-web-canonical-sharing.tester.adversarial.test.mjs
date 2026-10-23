@@ -40,6 +40,13 @@ const publicSearchWithResolution = (resolution) => evaluateCommonJs(
     if (specifier === "./publicSearchBrowserRuntime") {
       return { browserRuntimeScript: () => "" };
     }
+    if (specifier === "./publicAdRuntime") {
+      return {
+        publicAdPrivacyMarkup: () => "",
+        publicAdPrivacyStyle: () => "",
+        publicAdRuntimeScript: () => "",
+      };
+    }
     if (specifier === "./publicSharePageAnalytics") {
       return requireFromRepo("./publicSharePageAnalytics.js");
     }

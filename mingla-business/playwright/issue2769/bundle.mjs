@@ -47,7 +47,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 
 await Metro.runBuild(config, { entry: path.join(here, "entry.tsx"), platform: "web", minify: false, dev: true, out: outputBundle, sourceMap: false });
 const bundle = readFileSync(outputBundle, "utf8");
-for (const marker of ["orch-1255-public-venue", "issue-2769-consent-manage", "PUBLIC_VENUE_CONSENT_SAFE_DESKTOP_MIN_WIDTH"]) {
+for (const marker of ["orch-1255-public-venue", "issue-2769-consent-reject", "PUBLIC_VENUE_CONSENT_SAFE_DESKTOP_MIN_WIDTH"]) {
   if (!bundle.includes(marker)) throw new Error(`issue #2769 real-source marker missing: ${marker}`);
 }
 writeFileSync(path.join(outputDir, "index.html"), readFileSync(path.join(here, "index.html"), "utf8"));

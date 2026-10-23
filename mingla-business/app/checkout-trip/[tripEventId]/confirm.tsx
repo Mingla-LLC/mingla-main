@@ -128,6 +128,7 @@ function CheckoutTripConfirmScreenInner({
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
   const tripBrand = publicTripQuery.data?.brand ?? null;
+  const purchaseBrandId = trip?.brandId ?? tripBrand?.id ?? null;
   const {
     lines,
     buyer,
@@ -395,7 +396,7 @@ function CheckoutTripConfirmScreenInner({
   // ----- META-ORCH-1187 LEG 2 — web purchase conversion (trip) -----
   const purchaseFiredFor = useRef<string | null>(null);
   useEffect(() => {
-    if (result === null) return;
+    if (result === null || tripEventId === null || purchaseBrandId === null) return;
     if (purchaseFiredFor.current === result.orderId) return;
     purchaseFiredFor.current = result.orderId;
     captureWeb("web_purchase_completed", {
@@ -414,13 +415,18 @@ function CheckoutTripConfirmScreenInner({
     // ISSUE-865 WP-C — DEDUP fire (browser Purchase pixel + early conversion
     // record), keyed on the SHARED event_id (= result.orderId) so the server
     // CAPI (WP-B) dedups. No-op until consent; no PII egress; never blocks render.
-    fireAdPurchase(result.orderId, { value: result.total, currency: result.currency });
+    fireAdPurchase(result.orderId, {
+      value: result.total,
+      currency: result.currency,
+      contentId: tripEventId,
+      brandId: purchaseBrandId,
+    });
     postAttributionConversion({
       eventId: result.orderId,
       valueCents: Math.round(result.total * 100),
       currency: result.currency,
     });
-  }, [result]);
+  }, [purchaseBrandId, result, tripEventId]);
 
   // ----- Defensive bounce -----
   useEffect(() => {

@@ -147,7 +147,7 @@ export async function recordAppReadinessEvent(event) {
 // and the spend-sync rows (spend vs cap). All are admin-RLS reads.
 export const CAMPAIGN_LIST_SELECT = [
   "*",
-  "ad_sets(*, ads(*))",
+  "ad_sets(*, ads(*), ad_stage_metrics_daily(*))",
   "plan_version:ad_plan_versions(schedule_time_zone:canonical_plan->schedule->>time_zone)",
   "connection:ad_connections(external_account_id,platform)",
   "ad_spend_daily(spend_cents,currency,synced_at)",
@@ -177,6 +177,27 @@ export async function loadAdsOperationsOverview() {
   return supabase.rpc("ad_admin_operations_overview");
 }
 
+/** #3697 — server-owned provider audiences; ids never come from the browser. */
+export async function listAdAudiences(filters = {}) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "list", ...filters },
+  });
+}
+
+/** Refresh provider sizes/rules without allowing a caller-supplied provider id. */
+export async function refreshAdAudiences(filters = {}) {
+  return invokeWithRefresh("admin-ad-audiences", {
+    body: { action: "refresh", ...filters },
+  });
+}
+
+/** Read-only list of organic posts on the linked @usemingla TT_USER identity. */
+export async function listTikTokSparkPosts({ cursor } = {}) {
+  return invokeWithRefresh("admin-ad-tiktok-posts", {
+    body: { ...(cursor ? { cursor } : {}) },
+  });
+}
+
 /**
  * Creative Library inventory for the unified Admin Ads surface.
  * #3697: optional `{ status: 'active'|'archived', kind, source: 'house'|'host',
@@ -185,12 +206,30 @@ export async function loadAdsOperationsOverview() {
  */
 export async function listAdCreatives(filters = {}) {
   const body = { action: "creative_library" };
-  for (const key of ["status", "kind", "source", "q", "before"]) {
-    if (filters[key] !== undefined && filters[key] !== null && filters[key] !== "") {
+  for (const key of ["status", "kind", "source", "q", "before", "brand_id"]) {
+    if (
+      filters[key] !== undefined &&
+      filters[key] !== null &&
+      filters[key] !== ""
+    ) {
       body[key] = filters[key];
     }
   }
   return adPlanAction(body);
+}
+
+/** #3697 Creative Library campaign-stage and licence metadata. */
+export async function updateAdCreativeTags(creativeId, tags) {
+  return adPlanAction({
+    action: "creative_update_tags",
+    creative_id: creativeId,
+    stage_tags: tags.stageTags ?? [],
+    concept_tag: tags.conceptTag || null,
+    hook_tag: tags.hookTag || null,
+    event_id: tags.eventId || null,
+    licence_reference: tags.licenceReference || null,
+    date_locked_until: tags.dateLockedUntil || null,
+  });
 }
 
 /**
@@ -213,12 +252,18 @@ export async function archiveCreative(creativeId) {
 
 /** #3697 — make an archived creative available for new campaigns again. */
 export async function unarchiveCreative(creativeId) {
-  return adPlanAction({ action: "creative_unarchive", creative_id: creativeId });
+  return adPlanAction({
+    action: "creative_unarchive",
+    creative_id: creativeId,
+  });
 }
 
 /** #3697 — everything that stops a permanent delete (empty = allowed). */
 export async function checkCreativePurge(creativeId) {
-  return adPlanAction({ action: "creative_purge_check", creative_id: creativeId });
+  return adPlanAction({
+    action: "creative_purge_check",
+    creative_id: creativeId,
+  });
 }
 
 /**
@@ -374,7 +419,9 @@ async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
   // image plan that failed at create runs the image step before creating.
   const creativeKind = templatesCreativeKind(templates);
   const preparePlatforms = preparationPlatformsFor({
-    platforms: (aggregate.provider_allocations ?? []).map((row) => row.platform),
+    platforms: (aggregate.provider_allocations ?? []).map(
+      (row) => row.platform,
+    ),
     kind: creativeKind,
   });
   if (preparePlatforms.length > 0) {
@@ -385,21 +432,27 @@ async function resumeAdminAdPlanSteps(planId, { begin, finish, step }) {
       );
     }
     try {
-      for (const platform of preparePlatforms) step(`prepare:${platform}`, "pending");
+      for (const platform of preparePlatforms)
+        step(`prepare:${platform}`, "pending");
       await prepareBoundVideoCreative({
         creativeLibraryId,
         platforms: preparePlatforms,
         noun: creativeKind,
         // #3697: the frozen plan's lane, never a hard-coded one — a business
         // lane plan prepares against its business-lane connection.
-        lane: version.canonical_plan?.lane === "business" ? "business" : "consumer",
+        lane:
+          version.canonical_plan?.lane === "business" ? "business" : "consumer",
         planVersionId: version.id,
         planHash: version.plan_hash,
         onProgress: (platform, row) => {
           if (row?.state === "ready") finish(`prepare:${platform}`);
           else {
             begin(`prepare:${platform}`);
-            step(`prepare:${platform}`, "running", `Provider state: ${row?.state ?? "pending"}`);
+            step(
+              `prepare:${platform}`,
+              "running",
+              `Provider state: ${row?.state ?? "pending"}`,
+            );
           }
         },
       });
@@ -527,7 +580,8 @@ export async function campaignAction(campaignId, action, extras = {}) {
     if (Number.isSafeInteger(extras.daily_budget_cents)) {
       body.daily_budget_cents = extras.daily_budget_cents;
     }
-    if (Number.isSafeInteger(extras.cap_cents)) body.cap_cents = extras.cap_cents;
+    if (Number.isSafeInteger(extras.cap_cents))
+      body.cap_cents = extras.cap_cents;
   }
   return invokeWithRefresh("admin-ad-campaign-action", { body });
 }
@@ -555,7 +609,7 @@ export async function getConnection(platform, lane = "consumer") {
 export async function getCampaignDetail(campaignId) {
   return supabase
     .from("ad_campaigns")
-    .select("*, ad_sets(*, ads(*))")
+    .select("*, ad_sets(*, ads(*), ad_stage_metrics_daily(*))")
     .eq("id", campaignId)
     .maybeSingle();
 }
@@ -686,11 +740,13 @@ export async function prepareBoundVideoCreative({
         plan_hash: planHash,
       });
       if (result.error) {
-        const parsed = result.parsedError ?? await parseEdgeError(result.error);
+        const parsed =
+          result.parsedError ?? (await parseEdgeError(result.error));
         throw videoPreparationError(
           platform,
           String(
-            parsed?.body?.detail ?? parsed?.message ??
+            parsed?.body?.detail ??
+              parsed?.message ??
               `The provider could not prepare this ${noun}.`,
           ),
         );

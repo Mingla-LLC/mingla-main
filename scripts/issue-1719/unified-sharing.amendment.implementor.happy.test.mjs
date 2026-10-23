@@ -134,7 +134,6 @@ test('A-H6 public endpoint status/cache semantics never turn renderer faults int
 test('A-H7 Consumer and Business gate only native Share while Copy/internal work remain independent', () => {
   for (const source of [consumer, business]) {
     assert.match(source, /checkContentShareReadiness/);
-    assert.match(source, /prepared\.media === null \|\| readiness === 'ready'/);
     assert.match(source, /Preparing preview…/);
     assert.match(source, /Checking preview…/);
     assert.match(source, /Preview is still preparing\./);
@@ -143,6 +142,11 @@ test('A-H7 Consumer and Business gate only native Share while Copy/internal work
     assert.match(source, /This share is no longer available\./);
     assert.match(source, /readinessRow:\{minHeight:44/);
   }
+  assert.match(consumer, /prepared\.media === null \|\| readiness === 'ready'/);
+  // [TEST-MOD-APPROVED #3988] A canonical fallback has no generated preview
+  // to await. It is immediately share-ready after a retryable preparation
+  // failure, while prepared media keeps the original readiness gate.
+  assert.match(business, /fallback \|\| prepared\?\.media === null \|\| readiness === 'ready'/);
   assert.match(consumer, /disabled=\{!shareReady \|\| sending\}/);
   assert.match(consumer, /disabled=\{!prepared \|\| sending\}[\s\S]*copyLink/);
   assert.match(consumer, /No one available in Mingla yet/);

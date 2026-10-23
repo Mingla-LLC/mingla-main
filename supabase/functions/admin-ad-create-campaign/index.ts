@@ -69,6 +69,7 @@ import {
   type CreateCampaignInput,
   type CreateCreativeInput,
   createFullCampaignAtomic,
+  createStagedCampaignAtomic,
   getAdapter,
   isLane,
   isMetaGoalValidForObjective,
@@ -79,6 +80,23 @@ import {
   REDDIT_CTA_MAP,
   TIKTOK_CTA_MAP,
 } from "../_shared/adChannel.ts";
+import type {
+  AdAudienceRow,
+  AdStage,
+  PaidSocialPlatform,
+} from "../_shared/adAudienceStages.ts";
+import {
+  buildPaidSocialStageRuntime,
+  type PaidSocialStageRuntime,
+} from "../_shared/adStageRuntime.ts";
+import {
+  stageCreativeIds,
+  validateStageCreativeRows,
+} from "../_shared/adStageCreativeSelection.ts";
+import {
+  assertTikTokSparkPostsOwned,
+  tiktokSparkSelection,
+} from "../_shared/adTikTokSpark.ts";
 import { providerExecutionTargeting } from "../_shared/adTargetingCompiler.ts";
 import {
   applySpecialAdCategoryRestrictions,
@@ -115,12 +133,17 @@ import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import {
   assertTikTokIdentityAllowed,
   normalizeTikTokInterestCategoryIds,
+  resolveTikTokClient,
   resolveTikTokGeo,
   TIKTOK_BILLING_EVENTS,
   TIKTOK_GENDERS,
   TIKTOK_OPTIMIZATION_GOALS,
   TIKTOK_PIXEL_GATED_OBJECTIVES,
   type TikTokCreateAdExtensions,
+  tiktokFetchPurchaseSignal28d,
+  tiktokFetchSparkPostInfo,
+  tiktokFetchSparkPosts,
+  tiktokPlacementsForCreative,
   tiktokUploadImage,
   validateTikTokAdText,
   validateTikTokBudgetFloor,
@@ -142,6 +165,7 @@ import {
 } from "../_shared/reddit.ts";
 import {
   buildSnapchatReviewDetail,
+  resolveSnapchatClient,
   SNAPCHAT_BID_STRATEGIES,
   SNAPCHAT_CIRCLE_UNITS,
   SNAPCHAT_DEFAULT_BID_STRATEGY,
@@ -155,6 +179,8 @@ import {
   type SnapchatCreateCampaignExtensions,
   type SnapchatCreateCreativeExtensions,
   snapchatDemographicsWithDefault,
+  snapchatFetchPixelSignal,
+  snapchatFetchPurchaseSignal28d,
   validateSnapchatBrandName,
   validateSnapchatCta,
   validateSnapchatDemographics,
@@ -178,6 +204,9 @@ import {
 import type { Platform } from "../_shared/adChannelCore.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 import {
+  compatibleMetaValidateReference,
+} from "../_shared/metaValidateReference.ts";
+import {
   boundPlanCampaignCurrency,
   boundPlanMoney,
   type BoundPlanOwnership,
@@ -186,6 +215,7 @@ import {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const PURCHASE_SIGNAL_MIN_28D = 20;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -566,6 +596,259 @@ function documentComplianceDrop(platform: string, compliance: unknown): void {
   );
 }
 
+type PaidSocialStagePreparation = {
+  runtime: PaidSocialStageRuntime;
+  creativeRows: Record<string, unknown>[];
+};
+
+/**
+ * The reviewed plan and server-owned audience table are the only authorities
+ * for staged creation. Browser-supplied audience or creative ids never enter
+ * this path.
+ */
+async function preparePaidSocialStages(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  input: {
+    platform: PaidSocialPlatform;
+    canonicalPlan: Record<string, unknown> | null;
+    market: string;
+    brandId: string | null;
+    eventId: string | null;
+    totalBudgetCents: number;
+    baseAdSet: Parameters<typeof buildPaidSocialStageRuntime>[0]["baseAdSet"];
+    budgetMode: "daily" | "lifetime";
+  },
+): Promise<PaidSocialStagePreparation> {
+  if (!input.canonicalPlan) throw new Error("stage_plan_version_required");
+  if (!/^[A-Z]{2}$/.test(input.market)) {
+    throw new Error("paid_social_single_market_required");
+  }
+  if (!input.brandId || !input.eventId) {
+    throw new Error("event_stage_identity_required");
+  }
+  const { data: audiences, error: audienceError } = await db
+    .from("ad_audiences")
+    .select(
+      "id,platform,code,scope,market,brand_id,event_id,platform_audience_id,approx_size,status",
+    )
+    .eq("platform", input.platform)
+    .eq("market", input.market);
+  if (audienceError) throw audienceError;
+  const runtime = buildPaidSocialStageRuntime({
+    platform: input.platform,
+    canonicalPlan: input.canonicalPlan,
+    audiences: (audiences ?? []) as AdAudienceRow[],
+    market: input.market,
+    brandId: input.brandId,
+    eventId: input.eventId,
+    totalBudgetCents: input.totalBudgetCents,
+    baseAdSet: input.baseAdSet,
+    budgetMode: input.budgetMode,
+  });
+  if (runtime.creativeSource === "tiktok_spark") {
+    return { runtime, creativeRows: [] };
+  }
+  const selected = stageCreativeIds(input.canonicalPlan.stage_creative_ids);
+  if (!selected.ok) throw new Error(selected.detail);
+  const neededIds = [
+    ...new Set(
+      runtime.adSets.flatMap((stage) => selected.byStage[stage.stage]),
+    ),
+  ];
+  const { data: creativeRows, error: creativeError } = await db
+    .from("ad_creatives")
+    .select(
+      "id,brand_id,kind,name,status,purged_at,content_hash,source_url,poster_url,aspect_ratio,variants,duration_seconds,has_audio,ai_generated",
+    )
+    .in("id", neededIds);
+  if (creativeError) throw creativeError;
+  const enabledStages = Object.fromEntries(
+    runtime.plan.stages.map((stage) => [stage.stage, stage.enabled]),
+  ) as Partial<Record<AdStage, boolean>>;
+  const valid = validateStageCreativeRows({
+    ids: selected.byStage,
+    rows: creativeRows ?? [],
+    enabledStages,
+    platforms: [input.platform],
+    brandId: input.brandId,
+  });
+  if (!valid.ok) throw new Error(valid.detail);
+  return { runtime, creativeRows: creativeRows ?? [] };
+}
+
+async function persistStageSnapshots(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  planVersionId: string,
+  platform: PaidSocialPlatform,
+  runtime: PaidSocialStageRuntime,
+): Promise<{ message: string } | null> {
+  const rows = runtime.snapshotRows.map((row) => ({
+    plan_version_id: planVersionId,
+    platform,
+    ...row,
+  }));
+  const { error } = await db.from("ad_plan_stage_snapshots").upsert(rows, {
+    onConflict: "plan_version_id,platform,stage",
+  });
+  return error;
+}
+
+type PaidSocialCreativeMedia = {
+  creativeId: string;
+  kind: "image" | "video";
+  aiGenerated: boolean;
+  imageUrl: string | null;
+  metaPlacementAssets: MetaPlacementAssets | null;
+  snapMediaId: string | null;
+  tiktokImageId: string | null;
+  tiktokVideoId: string | null;
+};
+
+function creativeRowMap(rows: Record<string, unknown>[]) {
+  return new Map(rows.map((row) => [String(row.id), row]));
+}
+
+async function resolvePaidSocialCreativeMedia(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  input: {
+    platform: PaidSocialPlatform;
+    connection: AdConnectionRow;
+    lane: "consumer" | "business";
+    creativeRows: Record<string, unknown>[];
+    creativeIds: string[];
+    tiktokPlacement?: unknown;
+  },
+): Promise<Map<string, PaidSocialCreativeMedia>> {
+  const byId = creativeRowMap(input.creativeRows);
+  const ids = [...new Set(input.creativeIds)];
+  const needsRefs = input.platform !== "meta" ||
+    ids.some((id) => byId.get(id)?.kind === "video");
+  const { data: refs, error: refError } = needsRefs
+    ? await db.from("ad_creative_platform_refs")
+      .select(
+        "creative_id,external_kind,external_ref,external_ref_extra,status,content_hash",
+      )
+      .in("creative_id", ids)
+      .eq("platform", input.platform)
+      .eq("lane", input.lane)
+      .eq("external_account_id", input.connection.external_account_id)
+      .eq("status", "ready")
+    : { data: [], error: null };
+  if (refError) throw refError;
+  const result = new Map<string, PaidSocialCreativeMedia>();
+  for (const creativeId of ids) {
+    const row = byId.get(creativeId);
+    const kind = row?.kind === "video" ? "video" : "image";
+    if (!row) throw new Error(`stage_creative_not_found:${creativeId}`);
+    const contentHash = String(row.content_hash ?? "");
+    const ref = (refs ?? []).find((item: Record<string, unknown>) =>
+      item.creative_id === creativeId && item.external_kind === kind &&
+      item.content_hash === contentHash
+    ) as Record<string, unknown> | undefined;
+    const media: PaidSocialCreativeMedia = {
+      creativeId,
+      kind,
+      aiGenerated: row.ai_generated === true,
+      imageUrl: typeof row.source_url === "string" ? row.source_url : null,
+      metaPlacementAssets: null,
+      snapMediaId: null,
+      tiktokImageId: null,
+      tiktokVideoId: null,
+    };
+
+    if (input.platform === "meta") {
+      const extra = objectRecord(ref?.external_ref_extra) ?? {};
+      const videoId = kind === "video" && typeof ref?.external_ref === "string"
+        ? ref.external_ref
+        : null;
+      const thumbnail = typeof extra.thumbnail_image_hash === "string"
+        ? extra.thumbnail_image_hash
+        : null;
+      if (kind === "video" && (!videoId || !thumbnail)) {
+        throw new Error(`stage_creative_not_prepared:${creativeId}`);
+      }
+      const assets: Partial<MetaPlacementAssets> = {};
+      const variants = objectRecord(row.variants) ?? {};
+      const masterRatio = classifyRatio(Number(row.aspect_ratio), [
+        "1:1",
+        "4:5",
+        "9:16",
+      ]) as MetaPlacementRatio | null;
+      for (const ratio of ["1:1", "4:5", "9:16"] as const) {
+        const variant = objectRecord(variants[ratio]);
+        const variantUrl = typeof variant?.source_url === "string"
+          ? variant.source_url.trim()
+          : "";
+        if (variantUrl) {
+          assets[ratio] = { kind: "image", imageUrl: variantUrl };
+        } else if (masterRatio === ratio && kind === "video") {
+          assets[ratio] = {
+            kind: "video",
+            videoId: videoId as string,
+            thumbnailImageHash: thumbnail as string,
+          };
+        } else if (
+          masterRatio === ratio && typeof row.source_url === "string" &&
+          row.source_url.trim()
+        ) {
+          assets[ratio] = { kind: "image", imageUrl: row.source_url.trim() };
+        }
+      }
+      if (
+        (["1:1", "4:5", "9:16"] as MetaPlacementRatio[]).some((ratio) =>
+          !assets[ratio]
+        )
+      ) {
+        throw new Error(`stage_creative_meta_coverage:${creativeId}`);
+      }
+      media.metaPlacementAssets = assets as MetaPlacementAssets;
+    } else if (input.platform === "snapchat") {
+      if (!ref || typeof ref.external_ref !== "string" || !ref.external_ref) {
+        throw new Error(`stage_creative_not_prepared:${creativeId}`);
+      }
+      if (kind === "video" && typeof row.duration_seconds === "number") {
+        const duration = validateSnapchatVideoDuration(row.duration_seconds);
+        if (!duration.ok) throw new Error(duration.detail);
+      }
+      media.snapMediaId = ref.external_ref;
+    } else {
+      tiktokPlacementsForCreative(input.tiktokPlacement, kind);
+      if (!ref) throw new Error(`stage_creative_not_prepared:${creativeId}`);
+      const extra = objectRecord(ref.external_ref_extra) ?? {};
+      if (kind === "video") {
+        const videoId = typeof extra.video_id === "string"
+          ? extra.video_id
+          : "";
+        const coverId = typeof extra.cover_image_id === "string"
+          ? extra.cover_image_id
+          : "";
+        if (!videoId || !coverId) {
+          throw new Error(`stage_creative_ref_incomplete:${creativeId}`);
+        }
+        if (typeof row.duration_seconds === "number") {
+          const duration = validateTikTokVideoDuration(row.duration_seconds);
+          if (!duration.ok) throw new Error(duration.detail);
+        }
+        media.tiktokVideoId = videoId;
+        media.tiktokImageId = coverId;
+      } else {
+        const imageId = typeof extra.image_id === "string"
+          ? extra.image_id
+          : "";
+        if (!imageId) {
+          throw new Error(`stage_creative_ref_incomplete:${creativeId}`);
+        }
+        media.tiktokImageId = imageId;
+      }
+    }
+    result.set(creativeId, media);
+  }
+  return result;
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -888,6 +1171,7 @@ serve(async (req: Request): Promise<Response> => {
   let providerAmountCents = amountCents as number;
   let frozenExecutionTargeting: Record<string, unknown> | null = null;
   let boundPlanVersionId: string | null = null;
+  let boundCanonicalPlan: Record<string, unknown> | null = null;
   // #3697 (C-13) — the creative the verified frozen plan version carries.
   let frozenCreativeLibraryId: string | null = null;
   let boundPlanHash: string | null = null;
@@ -1054,6 +1338,7 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     const canonicalPlan = version.canonical_plan as Record<string, unknown>;
+    boundCanonicalPlan = canonicalPlan;
     frozenCreativeLibraryId =
       typeof canonicalPlan.creative_library_id === "string"
         ? canonicalPlan.creative_library_id
@@ -2363,7 +2648,7 @@ serve(async (req: Request): Promise<Response> => {
       }, 422);
     }
 
-    // A1.1(6) (OD-4 REVERSED): SWIPES default until #865's pixel fires.
+    // #3697: default to a real loaded page, never the shallow SWIPES proxy.
     const optimizationGoalS = typeof body.optimization_goal === "string"
       ? body.optimization_goal
       : SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL;
@@ -2575,6 +2860,22 @@ serve(async (req: Request): Promise<Response> => {
         ),
       ].filter(Boolean)
       : [];
+    const snapSegmentIncludeIdsS = Array.isArray(targetingS.segment_include_ids)
+      ? [
+        ...new Set(
+          targetingS.segment_include_ids.map((id) => String(id).trim()),
+        ),
+      ]
+        .filter(Boolean)
+      : [];
+    const snapSegmentExcludeIdsS = Array.isArray(targetingS.segment_exclude_ids)
+      ? [
+        ...new Set(
+          targetingS.segment_exclude_ids.map((id) => String(id).trim()),
+        ),
+      ]
+        .filter(Boolean)
+      : [];
 
     const creativeS = (body.creative ?? {}) as Record<string, unknown>;
     // ISSUE-979 Bug 3: the global compliance intent reaches Snapchat's create
@@ -2666,27 +2967,59 @@ serve(async (req: Request): Promise<Response> => {
       }, 424);
     }
 
-    // A1.1(6)/AC-S-13: pixel-measured goals are gated on the #865 signal; a
-    // permitted pixel goal must carry pixel_id on the squad.
-    let pixelIdS: string | null = null;
+    // #3697: every ad squad carries the connected pixel for measurement.
+    // Pixel-measured optimisation remains gated on the live signal below.
+    const pixelIdS =
+      typeof sconnExtra.pixel_id === "string" && sconnExtra.pixel_id.trim()
+        ? sconnExtra.pixel_id.trim()
+        : null;
+    if (!pixelIdS) {
+      return json({
+        error: "snapchat_pixel_missing",
+        detail:
+          "The Snapchat connection carries no pixel_id. Reconnect Snapchat before creating an ad squad.",
+      }, 424);
+    }
     if (SNAPCHAT_PIXEL_GATED_GOALS.includes(optimizationGoalS)) {
-      if (sconnExtra.pixel_installed !== true) {
+      try {
+        const snapClient = await resolveSnapchatClient(
+          sconn,
+          lane as "consumer" | "business",
+        );
+        if (optimizationGoalS === "PIXEL_PURCHASE") {
+          const signal = await snapchatFetchPurchaseSignal28d(
+            snapClient,
+            pixelIdS,
+          );
+          if (signal.purchaseEvents28d < PURCHASE_SIGNAL_MIN_28D) {
+            return json({
+              error: "purchase_signal_below_minimum",
+              detail:
+                `Snapchat Sales requires at least ${PURCHASE_SIGNAL_MIN_28D} PURCHASE events in the last 28 days; the live pixel count is ${signal.purchaseEvents28d}.`,
+              purchase_events_28d: signal.purchaseEvents28d,
+              required_purchase_events_28d: PURCHASE_SIGNAL_MIN_28D,
+            }, 422);
+          }
+        } else {
+          const signal = await snapchatFetchPixelSignal(snapClient, pixelIdS);
+          if (!signal.hasSignal) {
+            return json({
+              error: "pixel_goal_unavailable",
+              detail:
+                `${optimizationGoalS} requires a live Snap pixel signal. The current seven-day count is 0; no SWIPES fallback is allowed.`,
+            }, 422);
+          }
+        }
+      } catch (err) {
+        const detail = err instanceof AdApiError
+          ? err.toJSON()
+          : err instanceof Error
+          ? err.message
+          : String(err);
         return json({
-          error: "pixel_goal_unavailable",
-          detail:
-            `${optimizationGoalS} is pixel-measured and the Snap pixel sends no events yet (#865 owns the install) — optimizing to an event we don't send means no/erratic delivery (GR-21). Use SWIPES until the pixel fires.`,
-        }, 422);
-      }
-      pixelIdS =
-        typeof sconnExtra.pixel_id === "string" && sconnExtra.pixel_id.trim()
-          ? sconnExtra.pixel_id.trim()
-          : null;
-      if (!pixelIdS) {
-        return json({
-          error: "pixel_goal_unavailable",
-          detail:
-            "The connection carries no pixel_id — a pixel-measured goal requires pixel_id on the ad squad (A1.1(6)). Reconnect to capture it.",
-        }, 422);
+          error: "pixel_signal_unavailable",
+          detail,
+        }, 503);
       }
     }
 
@@ -2719,7 +3052,7 @@ serve(async (req: Request): Promise<Response> => {
     const destVenueIdS = resolvedDestinationS.venue_id;
     const snapTrackedDestUrlS = `${destUrlS}${
       destUrlS.includes("?") ? "&" : "?"
-    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSquad.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}`;
+    }utm_source=snapchat&utm_medium=paid_social&utm_campaign={{campaign.id}}&ad_squad_id={{adSet.id}}&ad_id={{ad.id}}&mc_id={{campaign.id}}&utm_content={{ad.id}}&campaign_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
     const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
@@ -2895,6 +3228,12 @@ serve(async (req: Request): Promise<Response> => {
         // ISSUE-992 (3a): geocoded circles → circle geos; SCLS interest ids.
         ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
         ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
+        ...(snapSegmentIncludeIdsS.length > 0
+          ? { segment_include_ids: snapSegmentIncludeIdsS }
+          : {}),
+        ...(snapSegmentExcludeIdsS.length > 0
+          ? { segment_exclude_ids: snapSegmentExcludeIdsS }
+          : {}),
         budget_mode: "daily",
         bid_strategy: bidStrategyS,
         ...(typeof bidCentsS === "number" ? { bid_cents: bidCentsS } : {}),
@@ -2921,34 +3260,179 @@ serve(async (req: Request): Promise<Response> => {
         creativeType: "WEB_VIEW", // S-2: the map derives type REMOTE_WEBPAGE from this
       };
 
+    let snapStages: PaidSocialStagePreparation | null = null;
+    let snapStageMedia = new Map<string, PaidSocialCreativeMedia>();
+    if (destEventIdS) {
+      if (countryCodesS.length !== 1 || !/^[A-Z]{2}$/.test(countryCodesS[0])) {
+        return json({
+          error: "validation_error",
+          detail: "paid_social_single_market_required",
+          message: "Create one paid-social campaign per country.",
+        }, 422);
+      }
+      const stageBrandIdS = await resolveBrandIdForSlug(supabase, brandSlugS);
+      try {
+        snapStages = await preparePaidSocialStages(supabase, {
+          platform: "snapchat",
+          canonicalPlan: boundCanonicalPlan,
+          market: countryCodesS[0],
+          brandId: stageBrandIdS,
+          eventId: destEventIdS,
+          totalBudgetCents: providerAmountCents,
+          baseAdSet: {
+            namePrefix: name,
+            optimizationGoal: optimizationGoalS,
+            billingEvent: "IMPRESSION",
+            targeting: adSetInputS.targeting,
+          },
+          budgetMode: "daily",
+        });
+        const belowFloorS = snapStages.runtime.adSets.find((stage) =>
+          stage.budgetCents * 10_000 < SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO
+        );
+        if (belowFloorS) {
+          return json({
+            error: "stage_budget_below_platform_minimum",
+            detail: `${belowFloorS.stage}:${belowFloorS.budgetCents}`,
+            message:
+              `${belowFloorS.stage} is below Snapchat's minimum ad-squad budget.`,
+          }, 422);
+        }
+        snapStageMedia = await resolvePaidSocialCreativeMedia(supabase, {
+          platform: "snapchat",
+          connection: sconn,
+          lane,
+          creativeRows: snapStages.creativeRows,
+          creativeIds: snapStages.runtime.adSets.flatMap((stage) =>
+            snapStages!.runtime.creativeIds[stage.stage]
+          ),
+        });
+      } catch (error) {
+        return json({
+          error: "stage_preflight_failed",
+          detail: error instanceof Error ? error.message : String(error),
+        }, 422);
+      }
+    }
+
     try {
-      const created = await createFullCampaignAtomic(adapterS, sconn, {
-        campaign: campaignInputS,
-        adSet: adSetInputS,
-        creative: creativeInputS,
-        ad: adInputS,
-      });
+      let externalCampaignIdS: string;
+      let createdUnitsS: Array<{
+        stage: AdStage | null;
+        audienceCodes: string[];
+        audienceSizes: Record<string, number | null>;
+        budgetCents: number | null;
+        adSetInput: CreateAdSetInput;
+        externalAdSetId: string;
+        ads: Array<{
+          creativeId: string | null;
+          name: string;
+          externalCreativeId: string | null;
+          externalAdId: string;
+          reviewStatus: string | null;
+        }>;
+      }>;
+      if (snapStages) {
+        const stagedS = await createStagedCampaignAtomic(adapterS, sconn, {
+          campaign: {
+            name: campaignInputS.name,
+            objective: campaignInputS.objective,
+            ...(campaignInputS.bidStrategy
+              ? { bidStrategy: campaignInputS.bidStrategy }
+              : {}),
+          },
+          stages: snapStages.runtime.adSets.map((stage) => ({
+            key: stage.stage,
+            adSet: stage.adSet,
+            ads: snapStages!.runtime.creativeIds[stage.stage].map(
+              (creativeId, index) => {
+                const media = snapStageMedia.get(creativeId);
+                if (!media?.snapMediaId) {
+                  throw new Error(`stage_creative_media_missing:${creativeId}`);
+                }
+                const adName = `${name} — ${stage.stage} — ${index + 1}`;
+                return {
+                  creative: {
+                    ...creativeInputS,
+                    topSnapMediaId: media.snapMediaId,
+                    adName,
+                  },
+                  ad: { ...adInputS, name: adName },
+                };
+              },
+            ),
+          })),
+        });
+        externalCampaignIdS = stagedS.externalCampaignId;
+        createdUnitsS = stagedS.stages.map((stageResult) => {
+          const stage = snapStages!.runtime.adSets.find((row) =>
+            row.stage === stageResult.key
+          )!;
+          const creativeIds = snapStages!.runtime.creativeIds[stage.stage];
+          return {
+            stage: stage.stage,
+            audienceCodes: stage.audienceCodes,
+            audienceSizes: stage.audienceSizes,
+            budgetCents: stage.budgetCents,
+            adSetInput: stage.adSet,
+            externalAdSetId: stageResult.externalAdSetId,
+            ads: stageResult.ads.map((ad, index) => ({
+              creativeId: creativeIds[index] ?? null,
+              name: `${name} — ${stage.stage} — ${index + 1}`,
+              externalCreativeId: ad.externalCreativeId,
+              externalAdId: ad.externalAdId,
+              reviewStatus: ad.reviewStatus,
+            })),
+          };
+        });
+      } else {
+        const created = await createFullCampaignAtomic(adapterS, sconn, {
+          campaign: campaignInputS,
+          adSet: adSetInputS,
+          creative: creativeInputS,
+          ad: adInputS,
+        });
+        externalCampaignIdS = created.externalCampaignId;
+        createdUnitsS = [{
+          stage: null,
+          audienceCodes: [],
+          audienceSizes: {},
+          budgetCents: budgetLevelS === "adset" ? amountCents as number : null,
+          adSetInput: adSetInputS,
+          externalAdSetId: created.externalAdSetId,
+          ads: [{
+            creativeId: creativeLibraryRowIdS,
+            name: adInputS.name,
+            externalCreativeId: created.externalCreativeId,
+            externalAdId: created.externalAdId,
+            reviewStatus: created.reviewStatus,
+          }],
+        }];
+      }
 
       // Read back BOTH review vocabularies + delivery state (best-effort;
       // the GR-38 sync cron repairs/refreshes them).
       let deliveryStatusS: string | null = null;
-      let adReviewStatusS: string | null = created.reviewStatus;
+      const firstCreatedAdS = createdUnitsS[0]?.ads[0];
+      let adReviewStatusS: string | null = firstCreatedAdS?.reviewStatus ??
+        null;
       let reviewDetailS: Record<string, unknown> | null = null;
       try {
         const campaignStatus = await adapterS.getStatus(
           sconn,
           "campaign",
-          created.externalCampaignId,
+          externalCampaignIdS,
         );
         deliveryStatusS = campaignStatus.effectiveStatus;
       } catch {
         deliveryStatusS = null;
       }
       try {
+        if (!firstCreatedAdS) throw new Error("created_ad_missing");
         const adStatus = await adapterS.getStatus(
           sconn,
           "ad",
-          created.externalAdId,
+          firstCreatedAdS.externalAdId,
         );
         adReviewStatusS = adStatus.effectiveStatus ?? adReviewStatusS;
         reviewDetailS = buildSnapchatReviewDetail({
@@ -2963,7 +3447,7 @@ serve(async (req: Request): Promise<Response> => {
         pageType: pageTypeS,
         brandSlug: brandSlugS,
         entitySlug: entitySlugS || null,
-        externalCampaignId: created.externalCampaignId,
+        externalCampaignId: externalCampaignIdS,
         adName: `${name} — ad`,
         platform: "snapchat",
       });
@@ -2990,11 +3474,11 @@ serve(async (req: Request): Promise<Response> => {
         .insert({
           connection_id: sconn.id,
           platform: "snapchat",
-          external_campaign_id: created.externalCampaignId,
+          external_campaign_id: externalCampaignIdS,
           name,
           objective: objectiveS, // the objective_v2_type value (S-1)
           status: "PAUSED",
-          daily_budget_cents: budgetLevelS === "campaign"
+          daily_budget_cents: !snapStages && budgetLevelS === "campaign"
             ? dailyBudgetForPersist
             : null,
           delivery_status: deliveryStatusS,
@@ -3016,49 +3500,69 @@ serve(async (req: Request): Promise<Response> => {
         .select("*")
         .single();
 
-      let adSetRowS: Record<string, unknown> | null = null;
-      let adRowS: Record<string, unknown> | null = null;
-      let persistErrS = campaignErrS;
+      let adSetRowsS: Record<string, unknown>[] = [];
+      let adRowsS: Record<string, unknown>[] = [];
+      let persistErrS: { message: string } | null = campaignErrS;
+      if (!persistErrS && campaignRowS && snapStages && boundPlanVersionId) {
+        persistErrS = await persistStageSnapshots(
+          supabase,
+          boundPlanVersionId,
+          "snapchat",
+          snapStages.runtime,
+        );
+      }
       if (!persistErrS && campaignRowS) {
         const { data, error } = await supabase
           .from("ad_sets")
-          .insert({
+          .insert(createdUnitsS.map((unit) => ({
             campaign_id: campaignRowS.id,
-            external_adset_id: created.externalAdSetId,
-            name: `${name} — ad squad`,
-            targeting: targetingRecordS,
-            budget_cents: budgetLevelS === "adset" ? amountCents : null,
+            external_adset_id: unit.externalAdSetId,
+            name: unit.adSetInput.name,
+            targeting: unit.adSetInput.targeting,
+            budget_cents: unit.budgetCents,
             optimization_goal: optimizationGoalS,
             billing_event: "IMPRESSION",
             bid_strategy: bidStrategyS,
             status: "PAUSED",
-          })
-          .select("*")
-          .single();
-        adSetRowS = data;
+            ...(unit.stage
+              ? {
+                stage: unit.stage,
+                audience_codes: unit.audienceCodes,
+                audience_sizes: unit.audienceSizes,
+              }
+              : {}),
+          })))
+          .select("*");
+        adSetRowsS = data ?? [];
         persistErrS = error;
       }
-      if (!persistErrS && adSetRowS) {
+      if (!persistErrS && adSetRowsS.length === createdUnitsS.length) {
+        const localSetByExternalS = new Map(
+          adSetRowsS.map((row) => [String(row.external_adset_id), row]),
+        );
+        const insertsS = createdUnitsS.flatMap((unit) => {
+          const local = localSetByExternalS.get(unit.externalAdSetId);
+          if (!local) return [];
+          return unit.ads.map((ad) => ({
+            ad_set_id: local.id,
+            external_ad_id: ad.externalAdId,
+            external_creative_id: ad.externalCreativeId,
+            ...(ad.creativeId ? { creative_id: ad.creativeId } : {}),
+            name: ad.name,
+            status: "PAUSED",
+            review_status: ad.reviewStatus ?? adReviewStatusS,
+            review_detail: reviewDetailS,
+          }));
+        });
         const { data, error } = await supabase
           .from("ads")
-          .insert({
-            ad_set_id: adSetRowS.id,
-            external_ad_id: created.externalAdId,
-            external_creative_id: created.externalCreativeId,
-            ...(creativeLibraryRowIdS
-              ? { creative_id: creativeLibraryRowIdS }
-              : {}),
-            name: `${name} — ad`,
-            status: "PAUSED",
-            // GR-38: the AD vocabulary (PENDING|APPROVED|REJECTED); the creative
-            // vocabulary + reasons + delivery_status live in review_detail.
-            review_status: adReviewStatusS,
-            review_detail: reviewDetailS,
-          })
-          .select("*")
-          .single();
-        adRowS = data;
+          .insert(insertsS)
+          .select("*");
+        adRowsS = data ?? [];
         persistErrS = error;
+      }
+      if (!persistErrS && adSetRowsS.length !== createdUnitsS.length) {
+        persistErrS = new Error("stage_ad_set_persist_count_mismatch");
       }
 
       if (persistErrS) {
@@ -3071,21 +3575,29 @@ serve(async (req: Request): Promise<Response> => {
             campaignRowS.id,
           );
         }
-        let creativeRollbackOkS: boolean | null = null;
-        if (created.externalCreativeId && adapterS.rollbackCreative) {
-          try {
-            await adapterS.rollbackCreative(sconn, created.externalCreativeId);
-            creativeRollbackOkS = true;
-          } catch {
-            creativeRollbackOkS = false; // residue — id recorded below
+        const accountCreativeIdsS = createdUnitsS.flatMap((unit) =>
+          unit.ads.map((ad) => ad.externalCreativeId).filter((
+            id,
+          ): id is string => Boolean(id))
+        );
+        let creativeRollbackOkS: boolean | null = accountCreativeIdsS.length > 0
+          ? true
+          : null;
+        for (const creativeId of [...accountCreativeIdsS].reverse()) {
+          if (!adapterS.rollbackCreative) {
+            creativeRollbackOkS = false;
+            continue;
           }
-        } else if (created.externalCreativeId) {
-          creativeRollbackOkS = false;
+          try {
+            await adapterS.rollbackCreative(sconn, creativeId);
+          } catch {
+            creativeRollbackOkS = false;
+          }
         }
         let rollbackOkS = false;
         try {
           if (adapterS.rollbackCampaign) {
-            await adapterS.rollbackCampaign(sconn, created.externalCampaignId);
+            await adapterS.rollbackCampaign(sconn, externalCampaignIdS);
             rollbackOkS = true;
           }
         } catch {
@@ -3102,10 +3614,14 @@ serve(async (req: Request): Promise<Response> => {
           to_status: null,
           external_ids: planBoundFailureIds(
             {
-              external_campaign_id: created.externalCampaignId,
-              external_adset_id: created.externalAdSetId,
-              external_creative_id: created.externalCreativeId,
-              external_ad_id: created.externalAdId,
+              external_campaign_id: externalCampaignIdS,
+              external_adset_ids: createdUnitsS.map((unit) =>
+                unit.externalAdSetId
+              ),
+              external_creative_ids: accountCreativeIdsS,
+              external_ad_ids: createdUnitsS.flatMap((unit) =>
+                unit.ads.map((ad) => ad.externalAdId)
+              ),
               // GR-48: the media id is tracked for reconciliation too (library
               // media is a durable #866 asset — recorded, never deleted here).
               external_media_id: topSnapMediaIdS,
@@ -3116,7 +3632,7 @@ serve(async (req: Request): Promise<Response> => {
           provider_response: {
             db_error: persistErrS.message,
             ...(creativeRollbackOkS === false
-              ? { creative_residue_id: created.externalCreativeId }
+              ? { creative_residue_ids: accountCreativeIdsS }
               : {}),
           },
         });
@@ -3139,16 +3655,29 @@ serve(async (req: Request): Promise<Response> => {
         from_status: null,
         to_status: "PAUSED",
         external_ids: {
-          external_campaign_id: created.externalCampaignId,
-          external_adset_id: created.externalAdSetId,
-          external_creative_id: created.externalCreativeId,
-          external_ad_id: created.externalAdId,
-          external_media_id: topSnapMediaIdS,
+          external_campaign_id: externalCampaignIdS,
+          external_adset_ids: createdUnitsS.map((unit) => unit.externalAdSetId),
+          external_creative_ids: createdUnitsS.flatMap((unit) =>
+            unit.ads.map((ad) => ad.externalCreativeId).filter(Boolean)
+          ),
+          external_ad_ids: createdUnitsS.flatMap((unit) =>
+            unit.ads.map((ad) => ad.externalAdId)
+          ),
+          external_media_ids: snapStages
+            ? [...snapStageMedia.values()].map((media) => media.snapMediaId)
+              .filter(Boolean)
+            : [topSnapMediaIdS],
         },
         provider_response: null,
       });
 
-      return json({ campaign: campaignRowS, ad_set: adSetRowS, ad: adRowS });
+      return json({
+        campaign: campaignRowS,
+        ad_set: adSetRowsS[0] ?? null,
+        ad: adRowsS[0] ?? null,
+        ad_sets: adSetRowsS,
+        ads: adRowsS,
+      });
     } catch (err) {
       if (err instanceof AdNotConnectedError) {
         // A1.2-8 defense-in-depth: the adapter re-checks the profile config.
@@ -3241,6 +3770,14 @@ serve(async (req: Request): Promise<Response> => {
         ? body.request_id.trim()
         : null;
     const validateOnlyT = body.validate_only === true;
+    const sparkSelectionT = tiktokSparkSelection(boundCanonicalPlan ?? body);
+    if (!sparkSelectionT.ok) {
+      return json({
+        error: "validation_error",
+        detail: sparkSelectionT.detail,
+      }, 422);
+    }
+    const usesTikTokSparkT = sparkSelectionT.present;
 
     // (1) Pure input validation — all 400/422s BEFORE any provider call.
     const nameCheckT = validateTikTokName(name, "campaign_name");
@@ -3261,19 +3798,11 @@ serve(async (req: Request): Promise<Response> => {
         detail: objectiveCheckT.message,
       }, 422);
     }
-    // A1.0-6: no conversion optimization until #865 — the pixel has ZERO
-    // events (T-P4); optimizing to an event we don't send means no delivery.
-    if (TIKTOK_PIXEL_GATED_OBJECTIVES.includes(objectiveT)) {
-      return json({
-        error: "pixel_goal_unavailable",
-        detail:
-          `${objectiveT} is pixel-measured and the TikTok pixel sends no events yet (#865 owns the install — T-P4). Use TRAFFIC until the pixel fires.`,
-      }, 422);
-    }
-
     const optimizationGoalT = typeof body.optimization_goal === "string"
       ? body.optimization_goal
-      : "TRAFFIC_LANDING_PAGE_VIEW"; // A1.0-6 default
+      : objectiveT === "WEB_CONVERSIONS"
+      ? "CONVERT"
+      : "TRAFFIC_LANDING_PAGE_VIEW";
     if (
       !(TIKTOK_OPTIMIZATION_GOALS as readonly string[]).includes(
         optimizationGoalT,
@@ -3288,6 +3817,8 @@ serve(async (req: Request): Promise<Response> => {
     }
     const billingEventT = typeof body.billing_event === "string"
       ? body.billing_event
+      : objectiveT === "WEB_CONVERSIONS"
+      ? "OCPM"
       : "CPC";
     if (!(TIKTOK_BILLING_EVENTS as readonly string[]).includes(billingEventT)) {
       return json({
@@ -3341,17 +3872,42 @@ serve(async (req: Request): Promise<Response> => {
     // branches. Everything else (PAUSED, targeting, persist) is byte-identical to
     // the image path.
     const creativeKindT = creativeT.kind === "video" ? "video" : "image";
+    if (
+      usesTikTokSparkT && body.tiktok_placement !== undefined &&
+      body.tiktok_placement !== "tiktok"
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_requires_tiktok_placement",
+      }, 422);
+    }
+    let placementsT: string[];
+    try {
+      placementsT = tiktokPlacementsForCreative(
+        usesTikTokSparkT ? "tiktok" : body.tiktok_placement,
+        usesTikTokSparkT ? "video" : creativeKindT,
+      );
+    } catch (err) {
+      if (err instanceof AdApiError) {
+        return json({ error: err.code, detail: err.message }, 422);
+      }
+      throw err;
+    }
     // ISSUE-979 Bug 3: the global compliance intent reaches TikTok's create path
     // now. TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable,
     // T-P6) and it has no special-ad-category field — documented + observable,
     // never silently dropped.
     documentComplianceDrop("tiktok", body.compliance);
-    const adTextT = typeof creativeT.ad_text === "string"
+    const adTextT = usesTikTokSparkT
+      ? ""
+      : typeof creativeT.ad_text === "string"
       ? creativeT.ad_text.trim()
       : typeof creativeT.message === "string"
       ? creativeT.message.trim()
       : "";
-    const adTextCheckT = validateTikTokAdText(adTextT);
+    const adTextCheckT = usesTikTokSparkT
+      ? { ok: true as const }
+      : validateTikTokAdText(adTextT);
     if (!adTextCheckT.ok) {
       // AC-14: >100 weighted chars / emoji rejected edge-side, pre-call.
       return json(
@@ -3440,6 +3996,15 @@ serve(async (req: Request): Promise<Response> => {
         detail: "destination_brand_slug_required",
       }, 400);
     }
+    if (
+      usesTikTokSparkT &&
+      !["event", "rsvp", "trip", "experience"].includes(pageTypeT)
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_destination_unsupported",
+      }, 422);
+    }
 
     // CTA: TikTok CTAs are bare display strings (never a shared normalizer —
     // GR-29); reservation-traffic defaults from the per-platform map.
@@ -3461,6 +4026,55 @@ serve(async (req: Request): Promise<Response> => {
     }
     const tconn = tconnRow as unknown as AdConnectionRow;
     const tconnExtra = (tconn.extra ?? {}) as Record<string, unknown>;
+    const pixelIdT = typeof tconnExtra.pixel_id === "string"
+      ? tconnExtra.pixel_id.trim()
+      : "";
+
+    // #3697: WEB_CONVERSIONS is unlocked only by a live provider count of at
+    // least 20 CompletePayment events in 28 days. PRODUCT_SALES remains out of
+    // scope; never let the broader enum bypass the website-sales contract.
+    if (objectiveT === "PRODUCT_SALES") {
+      return json({
+        error: "objective_unavailable",
+        detail:
+          "TikTok Product Sales is not supported by Mingla's website-sales campaign path.",
+      }, 422);
+    }
+    if (TIKTOK_PIXEL_GATED_OBJECTIVES.includes(objectiveT)) {
+      if (!pixelIdT) {
+        return json({
+          error: "tiktok_pixel_missing",
+          detail:
+            "The TikTok connection carries no pixel_id. Reconnect TikTok before using Sales.",
+        }, 424);
+      }
+      try {
+        const tiktokClient = resolveTikTokClient(
+          tconn,
+          lane as "consumer" | "business",
+        );
+        const signal = await tiktokFetchPurchaseSignal28d(
+          tiktokClient,
+          pixelIdT,
+        );
+        if (signal.purchaseEvents28d < PURCHASE_SIGNAL_MIN_28D) {
+          return json({
+            error: "purchase_signal_below_minimum",
+            detail:
+              `TikTok Sales requires at least ${PURCHASE_SIGNAL_MIN_28D} CompletePayment events in the last 28 days; the live pixel count is ${signal.purchaseEvents28d}.`,
+            purchase_events_28d: signal.purchaseEvents28d,
+            required_purchase_events_28d: PURCHASE_SIGNAL_MIN_28D,
+          }, 422);
+        }
+      } catch (err) {
+        const detail = err instanceof AdApiError
+          ? err.toJSON()
+          : err instanceof Error
+          ? err.message
+          : String(err);
+        return json({ error: "pixel_signal_unavailable", detail }, 503);
+      }
+    }
 
     // (3) Identity fail-close BEFORE any create (T-6/AC-12): the adapter only
     // asserts identity at the AD step — post-campaign, mid-chain. Gate here so
@@ -3525,6 +4139,12 @@ serve(async (req: Request): Promise<Response> => {
         detail: landingCheckT.message,
       }, 422);
     }
+    if (usesTikTokSparkT && !destEventIdT) {
+      return json({
+        error: "validation_error",
+        detail: "tiktok_spark_event_identity_required",
+      }, 422);
+    }
 
     // (5) Media resolve — for VIDEO (#997 C): a #866 library ref that
     // admin-ad-creative-prepare (tiktok) promoted to READY, carrying BOTH
@@ -3547,7 +4167,7 @@ serve(async (req: Request): Promise<Response> => {
       ? creativeT.image_url.trim()
       : "";
     let creativeLibraryRowIdT: string | null = null;
-    if (creativeKindT === "video") {
+    if (!usesTikTokSparkT && creativeKindT === "video") {
       // ISSUE-997 C: video create is a pure READY-ref consumer — create NEVER
       // uploads provider media inline (mirror Snap creative_not_uploaded contract).
       if (!creativeLibraryIdT) {
@@ -3632,7 +4252,7 @@ serve(async (req: Request): Promise<Response> => {
       videoIdT = preparedVideoIdT;
       imageIdT = coverImageIdT; // the cover rides in image_ids:[cover] for SINGLE_VIDEO
       creativeLibraryRowIdT = String(libCreativeVT.id);
-    } else if (!imageIdT && creativeLibraryIdT) {
+    } else if (!usesTikTokSparkT && !imageIdT && creativeLibraryIdT) {
       const { data: libCreativeT } = await supabase
         .from("ad_creatives")
         .select("id, kind, content_hash")
@@ -3688,7 +4308,7 @@ serve(async (req: Request): Promise<Response> => {
       imageIdT = refImageIdT;
       creativeLibraryRowIdT = String(libCreativeT.id);
     }
-    if (!imageIdT && !imageUrlT) {
+    if (!usesTikTokSparkT && !imageIdT && !imageUrlT) {
       return json({
         error: "validation_error",
         detail:
@@ -3743,9 +4363,123 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
+      const baseTargetingT: Record<string, unknown> = {
+        location_ids: locationIdsT,
+        ...(interestCategoryIdsT.length > 0
+          ? { interest_category_ids: interestCategoryIdsT }
+          : {}),
+        ...(Array.isArray(targetingT.audience_ids)
+          ? { audience_ids: targetingT.audience_ids }
+          : {}),
+        ...(Array.isArray(targetingT.excluded_audience_ids)
+          ? { excluded_audience_ids: targetingT.excluded_audience_ids }
+          : {}),
+        ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
+        ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
+        ...(genderT ? { gender: genderT } : {}),
+        placement_type: "PLACEMENT_TYPE_NORMAL",
+        placements: placementsT,
+        budget_mode: "daily",
+        campaign_budget_optimize_on: false,
+        ...(bidTypeT ? { bid_type: bidTypeT } : {}),
+        ...(typeof bidPriceCentsT === "number"
+          ? { bid_price_cents: bidPriceCentsT }
+          : {}),
+        ...(requestIdT ? { request_id: requestIdT } : {}),
+        ...(objectiveT === "WEB_CONVERSIONS"
+          ? {
+            promotion_type: "WEBSITE",
+            pixel_id: pixelIdT,
+            optimization_event: "SHOPPING",
+          }
+          : {}),
+      };
+
+      let tiktokStages: PaidSocialStagePreparation | null = null;
+      let tiktokStageMedia = new Map<string, PaidSocialCreativeMedia>();
+      let tiktokSparkPostIds: string[] = [];
+      if (destEventIdT) {
+        if (
+          countryCodesT.length !== 1 ||
+          !/^[A-Z]{2}$/.test(countryCodesT[0])
+        ) {
+          return json({
+            error: "validation_error",
+            detail: "paid_social_single_market_required",
+            message: "Create one paid-social campaign per country.",
+          }, 422);
+        }
+        const stageBrandIdT = await resolveBrandIdForSlug(supabase, brandSlugT);
+        try {
+          tiktokStages = await preparePaidSocialStages(supabase, {
+            platform: "tiktok",
+            canonicalPlan: boundCanonicalPlan,
+            market: countryCodesT[0],
+            brandId: stageBrandIdT,
+            eventId: destEventIdT,
+            totalBudgetCents: providerAmountCents,
+            baseAdSet: {
+              namePrefix: name,
+              optimizationGoal: optimizationGoalT,
+              billingEvent: billingEventT,
+              targeting: baseTargetingT,
+            },
+            budgetMode: "daily",
+          });
+          const belowFloorT = tiktokStages.runtime.adSets.find((stage) =>
+            !validateTikTokBudgetFloor({
+              level: "ad_group",
+              mode: "daily",
+              dollars: centsToPlatformBudget("tiktok", stage.budgetCents),
+            }).ok
+          );
+          if (belowFloorT) {
+            return json({
+              error: "stage_budget_below_platform_minimum",
+              detail: `${belowFloorT.stage}:${belowFloorT.budgetCents}`,
+              message:
+                `${belowFloorT.stage} is below TikTok's minimum ad-group budget.`,
+            }, 422);
+          }
+          if (tiktokStages.runtime.creativeSource === "tiktok_spark") {
+            tiktokSparkPostIds = [
+              ...new Set(
+                tiktokStages.runtime.adSets.flatMap((stage) =>
+                  tiktokStages!.runtime.creativeIds[stage.stage]
+                ),
+              ),
+            ];
+            const providerPosts = await tiktokFetchSparkPostInfo(
+              resolveTikTokClient(tconn),
+              { identityId: identityIdT, itemIds: tiktokSparkPostIds },
+            );
+            assertTikTokSparkPostsOwned(
+              tiktokSparkPostIds,
+              providerPosts.map((post) => post.itemId),
+            );
+          } else {
+            tiktokStageMedia = await resolvePaidSocialCreativeMedia(supabase, {
+              platform: "tiktok",
+              connection: tconn,
+              lane,
+              creativeRows: tiktokStages.creativeRows,
+              creativeIds: tiktokStages.runtime.adSets.flatMap((stage) =>
+                tiktokStages!.runtime.creativeIds[stage.stage]
+              ),
+              tiktokPlacement: body.tiktok_placement,
+            });
+          }
+        } catch (error) {
+          return json({
+            error: "stage_preflight_failed",
+            detail: error instanceof Error ? error.message : String(error),
+          }, 422);
+        }
+      }
+
       // (7) Image upload when the create-time URL path is used (GR-58:
       // UPLOAD_BY_URL, unique per-advertiser file name, both ids captured).
-      if (!imageIdT) {
+      if (!tiktokStages && !imageIdT) {
         const uploaded = await tiktokUploadImage(tconn, imageUrlT);
         imageIdT = uploaded.imageId;
       }
@@ -3770,25 +4504,13 @@ serve(async (req: Request): Promise<Response> => {
           ? { budgetCents: providerAmountCents }
           : {}),
         targeting: {
-          location_ids: locationIdsT,
-          ...(interestCategoryIdsT.length > 0
-            ? { interest_category_ids: interestCategoryIdsT }
-            : {}),
-          ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
-          ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
-          ...(genderT ? { gender: genderT } : {}),
-          budget_mode: "daily",
+          ...baseTargetingT,
           // A1.1(b): bid_type REQUIRED under CBO — the builder defaults
           // BID_TYPE_NO_BID; campaign-level bid_type is deprecated in v1.3.
           campaign_budget_optimize_on: budgetLevelT === "campaign",
           ...(budgetLevelT === "campaign"
             ? { campaign_budget_cents: providerAmountCents }
             : {}),
-          ...(bidTypeT ? { bid_type: bidTypeT } : {}),
-          ...(typeof bidPriceCentsT === "number"
-            ? { bid_price_cents: bidPriceCentsT }
-            : {}),
-          ...(requestIdT ? { request_id: requestIdT } : {}),
           // schedule_start_time defaults to NOW in UTC+0 inside the builder
           // (A1.1(a): TikTok schedule strings are UTC+0, never advertiser-tz).
         },
@@ -3805,6 +4527,7 @@ serve(async (req: Request): Promise<Response> => {
           // SINGLE_IMAGE: the ad image. SINGLE_VIDEO (#997 C): the video cover +
           // the prepared video_id (both from external_ref_extra at prepare).
           adFormat: adFormatT,
+          ...(usesTikTokSparkT ? { adFormat: "SINGLE_VIDEO" as const } : {}),
           imageIds: [imageIdT],
           ...(videoIdT ? { videoId: videoIdT } : {}),
           // A1.0-5: the canonical page is the ad-visible URL; attribution rides
@@ -3818,15 +4541,128 @@ serve(async (req: Request): Promise<Response> => {
             { key: "utm_medium", value: "paid" },
             { key: "utm_campaign", value: "__CAMPAIGN_ID__" },
             { key: "utm_content", value: "__CID__" },
+            { key: "mc_id", value: "__CAMPAIGN_ID__" },
+            { key: "campaign_id", value: "__CAMPAIGN_ID__" },
+            { key: "adset_id", value: "__AID__" },
+            { key: "ad_id", value: "__CID__" },
           ],
         };
 
-      const createdT = await createFullCampaignAtomic(adapterT, tconn, {
-        campaign: campaignInputT,
-        adSet: adSetInputT,
-        creative: creativeInputT,
-        ad: adInputT,
-      });
+      let externalCampaignIdT: string;
+      let createdUnitsT: Array<{
+        stage: AdStage | null;
+        audienceCodes: string[];
+        audienceSizes: Record<string, number | null>;
+        budgetCents: number | null;
+        adSetInput: CreateAdSetInput;
+        externalAdSetId: string;
+        ads: Array<{
+          creativeId: string | null;
+          externalCreativeId: string | null;
+          name: string;
+          externalAdId: string;
+          reviewStatus: string | null;
+          imageId: string | null;
+          videoId: string | null;
+        }>;
+      }>;
+      if (tiktokStages) {
+        const stagedT = await createStagedCampaignAtomic(adapterT, tconn, {
+          campaign: { name, objective: objectiveT },
+          stages: tiktokStages.runtime.adSets.map((stage) => ({
+            key: stage.stage,
+            adSet: stage.adSet,
+            ads: tiktokStages!.runtime.creativeIds[stage.stage].map(
+              (creativeId, index) => {
+                const spark = tiktokStages!.runtime.creativeSource ===
+                  "tiktok_spark";
+                const media = tiktokStageMedia.get(creativeId);
+                if (!spark && !media?.tiktokImageId) {
+                  throw new Error(`stage_creative_media_missing:${creativeId}`);
+                }
+                const adName = `${name} — ${stage.stage} — ${index + 1}`;
+                return {
+                  creative: creativeInputT,
+                  ad: {
+                    ...adInputT,
+                    name: adName,
+                    ...(spark ? { tiktokItemId: creativeId, imageIds: [] } : {
+                      adFormat: media!.kind === "video"
+                        ? "SINGLE_VIDEO"
+                        : "SINGLE_IMAGE",
+                      imageIds: [media!.tiktokImageId!],
+                      ...(media!.tiktokVideoId
+                        ? { videoId: media!.tiktokVideoId }
+                        : {}),
+                    }),
+                  },
+                };
+              },
+            ),
+          })),
+        });
+        externalCampaignIdT = stagedT.externalCampaignId;
+        createdUnitsT = stagedT.stages.map((stageResult) => {
+          const stage = tiktokStages!.runtime.adSets.find((row) =>
+            row.stage === stageResult.key
+          )!;
+          const creativeIds = tiktokStages!.runtime.creativeIds[stage.stage];
+          return {
+            stage: stage.stage,
+            audienceCodes: stage.audienceCodes,
+            audienceSizes: stage.audienceSizes,
+            budgetCents: stage.budgetCents,
+            adSetInput: stage.adSet,
+            externalAdSetId: stageResult.externalAdSetId,
+            ads: stageResult.ads.map((ad, index) => {
+              const creativeId = creativeIds[index] ?? null;
+              const media = creativeId
+                ? tiktokStageMedia.get(creativeId)
+                : null;
+              return {
+                creativeId: tiktokStages!.runtime.creativeSource ===
+                    "tiktok_spark"
+                  ? null
+                  : creativeId,
+                externalCreativeId:
+                  tiktokStages!.runtime.creativeSource === "tiktok_spark"
+                    ? creativeId
+                    : null,
+                name: `${name} — ${stage.stage} — ${index + 1}`,
+                externalAdId: ad.externalAdId,
+                reviewStatus: ad.reviewStatus,
+                imageId: media?.tiktokImageId ?? null,
+                videoId: media?.tiktokVideoId ?? null,
+              };
+            }),
+          };
+        });
+      } else {
+        const createdT = await createFullCampaignAtomic(adapterT, tconn, {
+          campaign: campaignInputT,
+          adSet: adSetInputT,
+          creative: creativeInputT,
+          ad: adInputT,
+        });
+        externalCampaignIdT = createdT.externalCampaignId;
+        createdUnitsT = [{
+          stage: null,
+          audienceCodes: [],
+          audienceSizes: {},
+          budgetCents: budgetLevelT === "adset" ? amountCents as number : null,
+          adSetInput: adSetInputT,
+          externalAdSetId: createdT.externalAdSetId,
+          ads: [{
+            creativeId: creativeLibraryRowIdT,
+            externalCreativeId: null,
+            name: adInputT.name,
+            externalAdId: createdT.externalAdId,
+            reviewStatus: createdT.reviewStatus,
+            imageId: imageIdT,
+            videoId: videoIdT || null,
+          }],
+        }];
+      }
 
       // Best-effort delivery read-back (the two-status rule: the SECONDARY
       // status is the real state; the GR-38 sync cron repairs/refreshes).
@@ -3835,7 +4671,7 @@ serve(async (req: Request): Promise<Response> => {
         const statusT = await adapterT.getStatus(
           tconn,
           "campaign",
-          createdT.externalCampaignId,
+          externalCampaignIdT,
         );
         deliveryStatusT = statusT.effectiveStatus;
       } catch {
@@ -3846,7 +4682,7 @@ serve(async (req: Request): Promise<Response> => {
         pageType: pageTypeT,
         brandSlug: brandSlugT,
         entitySlug: entitySlugT || null,
-        externalCampaignId: createdT.externalCampaignId,
+        externalCampaignId: externalCampaignIdT,
         adName: `${name} — ad`,
         platform: "tiktok",
       });
@@ -3876,11 +4712,11 @@ serve(async (req: Request): Promise<Response> => {
         .insert({
           connection_id: tconn.id,
           platform: "tiktok",
-          external_campaign_id: createdT.externalCampaignId,
+          external_campaign_id: externalCampaignIdT,
           name,
           objective: objectiveT,
           status: "PAUSED",
-          daily_budget_cents: budgetLevelT === "campaign"
+          daily_budget_cents: !tiktokStages && budgetLevelT === "campaign"
             ? dailyBudgetForPersist
             : null,
           delivery_status: deliveryStatusT,
@@ -3902,46 +4738,68 @@ serve(async (req: Request): Promise<Response> => {
         .select("*")
         .single();
 
-      let adSetRowT: Record<string, unknown> | null = null;
-      let adRowT: Record<string, unknown> | null = null;
-      let persistErrT = campaignErrT;
+      let adSetRowsT: Record<string, unknown>[] = [];
+      let adRowsT: Record<string, unknown>[] = [];
+      let persistErrT: { message: string } | null = campaignErrT;
+      if (!persistErrT && campaignRowT && tiktokStages && boundPlanVersionId) {
+        persistErrT = await persistStageSnapshots(
+          supabase,
+          boundPlanVersionId,
+          "tiktok",
+          tiktokStages.runtime,
+        );
+      }
       if (!persistErrT && campaignRowT) {
         const { data, error } = await supabase
           .from("ad_sets")
-          .insert({
+          .insert(createdUnitsT.map((unit) => ({
             campaign_id: campaignRowT.id,
-            external_adset_id: createdT.externalAdSetId,
-            name: `${name} — ad group`,
-            targeting: targetingRecordT,
-            budget_cents: budgetLevelT === "adset" ? amountCents : null,
+            external_adset_id: unit.externalAdSetId,
+            name: unit.adSetInput.name,
+            targeting: unit.adSetInput.targeting,
+            budget_cents: unit.budgetCents,
             optimization_goal: optimizationGoalT,
             billing_event: billingEventT,
             ...(bidTypeT ? { bid_strategy: bidTypeT } : {}),
             status: "PAUSED",
-          })
-          .select("*")
-          .single();
-        adSetRowT = data;
+            ...(unit.stage
+              ? {
+                stage: unit.stage,
+                audience_codes: unit.audienceCodes,
+                audience_sizes: unit.audienceSizes,
+              }
+              : {}),
+          })))
+          .select("*");
+        adSetRowsT = data ?? [];
         persistErrT = error;
       }
-      if (!persistErrT && adSetRowT) {
+      if (!persistErrT && adSetRowsT.length === createdUnitsT.length) {
+        const localSetByExternalT = new Map(
+          adSetRowsT.map((row) => [String(row.external_adset_id), row]),
+        );
+        const insertsT = createdUnitsT.flatMap((unit) => {
+          const local = localSetByExternalT.get(unit.externalAdSetId);
+          if (!local) return [];
+          return unit.ads.map((ad) => ({
+            ad_set_id: local.id,
+            external_ad_id: ad.externalAdId,
+            external_creative_id: ad.externalCreativeId,
+            ...(ad.creativeId ? { creative_id: ad.creativeId } : {}),
+            name: ad.name,
+            status: "PAUSED",
+            review_status: ad.reviewStatus,
+          }));
+        });
         const { data, error } = await supabase
           .from("ads")
-          .insert({
-            ad_set_id: adSetRowT.id,
-            external_ad_id: createdT.externalAdId,
-            external_creative_id: null, // TikTok creatives are inline — no standalone object
-            ...(creativeLibraryRowIdT
-              ? { creative_id: creativeLibraryRowIdT }
-              : {}),
-            name: `${name} — ad`,
-            status: "PAUSED",
-            review_status: createdT.reviewStatus, // null — sync ingests review states (fast-follow)
-          })
-          .select("*")
-          .single();
-        adRowT = data;
+          .insert(insertsT)
+          .select("*");
+        adRowsT = data ?? [];
         persistErrT = error;
+      }
+      if (!persistErrT && adSetRowsT.length !== createdUnitsT.length) {
+        persistErrT = new Error("stage_ad_set_persist_count_mismatch");
       }
 
       if (persistErrT) {
@@ -3957,7 +4815,7 @@ serve(async (req: Request): Promise<Response> => {
         let rollbackOkT = false;
         try {
           if (adapterT.rollbackCampaign) {
-            await adapterT.rollbackCampaign(tconn, createdT.externalCampaignId);
+            await adapterT.rollbackCampaign(tconn, externalCampaignIdT);
             rollbackOkT = true;
           }
         } catch {
@@ -3972,10 +4830,19 @@ serve(async (req: Request): Promise<Response> => {
           to_status: null,
           external_ids: planBoundFailureIds(
             {
-              external_campaign_id: createdT.externalCampaignId,
-              external_adset_id: createdT.externalAdSetId,
-              external_ad_id: createdT.externalAdId,
-              external_image_id: imageIdT, // Asset-Library media is durable — recorded, never deleted here
+              external_campaign_id: externalCampaignIdT,
+              external_adset_ids: createdUnitsT.map((unit) =>
+                unit.externalAdSetId
+              ),
+              external_ad_ids: createdUnitsT.flatMap((unit) =>
+                unit.ads.map((ad) => ad.externalAdId)
+              ),
+              external_image_ids: createdUnitsT.flatMap((unit) =>
+                unit.ads.map((ad) => ad.imageId).filter(Boolean)
+              ),
+              external_video_ids: createdUnitsT.flatMap((unit) =>
+                unit.ads.map((ad) => ad.videoId).filter(Boolean)
+              ),
             },
             boundPlanVersionId,
             boundPlanHash,
@@ -4001,16 +4868,28 @@ serve(async (req: Request): Promise<Response> => {
         from_status: null,
         to_status: "PAUSED",
         external_ids: {
-          external_campaign_id: createdT.externalCampaignId,
-          external_adset_id: createdT.externalAdSetId,
-          external_ad_id: createdT.externalAdId,
-          external_image_id: imageIdT, // SINGLE_VIDEO: this is the cover image_id
-          ...(videoIdT ? { external_video_id: videoIdT } : {}),
+          external_campaign_id: externalCampaignIdT,
+          external_adset_ids: createdUnitsT.map((unit) => unit.externalAdSetId),
+          external_ad_ids: createdUnitsT.flatMap((unit) =>
+            unit.ads.map((ad) => ad.externalAdId)
+          ),
+          external_image_ids: createdUnitsT.flatMap((unit) =>
+            unit.ads.map((ad) => ad.imageId).filter(Boolean)
+          ),
+          external_video_ids: createdUnitsT.flatMap((unit) =>
+            unit.ads.map((ad) => ad.videoId).filter(Boolean)
+          ),
         },
         provider_response: null,
       });
 
-      return json({ campaign: campaignRowT, ad_set: adSetRowT, ad: adRowT });
+      return json({
+        campaign: campaignRowT,
+        ad_set: adSetRowsT[0] ?? null,
+        ad: adRowsT[0] ?? null,
+        ad_sets: adSetRowsT,
+        ads: adRowsT,
+      });
     } catch (err) {
       if (err instanceof AdNotConnectedError) {
         return json({ error: "tiktok_not_connected" }, 424);
@@ -5114,9 +5993,11 @@ serve(async (req: Request): Promise<Response> => {
   // ── VALIDATE-ONLY passthrough: zero objects created, zero DB writes. ─────────
   // QA P2-2: the ad-set layer is validated too (this is exactly where P1-1
   // hid), and the response NAMES which layers were validated. Meta's ad-set
-  // validate-only requires a campaign_id, so the ad set is validated against
-  // the connection's most recent persisted campaign; with none yet, the layer
-  // is reported as skipped with the reason — never silently.
+  // validate-only requires a campaign_id. A CBO lowest-cost campaign rejects an
+  // ad set whose goal differs from its existing ad sets, so use only a persisted
+  // campaign whose ad sets all share this request's goal. With none, report an
+  // explicit non-failure skip — never turn an unrelated campaign into a false
+  // validation failure.
   if (validateOnly) {
     const validatedLayers: string[] = [];
     const skippedLayers: { layer: string; reason: string }[] = [];
@@ -5124,17 +6005,22 @@ serve(async (req: Request): Promise<Response> => {
       await adapter.createCampaign(connection, campaignInput);
       validatedLayers.push("campaign");
 
-      const { data: referenceCampaign } = await supabase
-        .from("ad_campaigns")
-        .select("external_campaign_id")
-        .eq("connection_id", connection.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (referenceCampaign?.external_campaign_id) {
+      const { data: referenceCampaigns, error: referenceCampaignError } =
+        await supabase
+          .from("ad_campaigns")
+          .select("external_campaign_id,ad_sets(optimization_goal)")
+          .eq("connection_id", connection.id)
+          .eq("platform", "meta")
+          .order("created_at", { ascending: false });
+      if (referenceCampaignError) throw referenceCampaignError;
+      const referenceCampaignId = compatibleMetaValidateReference(
+        referenceCampaigns ?? [],
+        optimizationGoal,
+      );
+      if (referenceCampaignId) {
         await adapter.createAdSet(
           connection,
-          String(referenceCampaign.external_campaign_id),
+          referenceCampaignId,
           { ...adSetInput, validateOnly: true },
         );
         validatedLayers.push("ad_set");
@@ -5142,7 +6028,7 @@ serve(async (req: Request): Promise<Response> => {
         skippedLayers.push({
           layer: "ad_set",
           reason:
-            "no_reference_campaign — Meta ad-set validation needs a campaign_id; the first real create exercises this layer live (client-side goal/matrix/floor checks already passed).",
+            "no_reference_campaign_for_goal — Meta ad-set validation needs a campaign whose existing ad sets share the requested optimization goal; the first real create exercises this layer live (client-side goal/matrix/floor checks already passed).",
         });
       }
 
@@ -5177,14 +6063,174 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  let metaStages: PaidSocialStagePreparation | null = null;
+  let metaStageMedia = new Map<string, PaidSocialCreativeMedia>();
+  if (destEventId) {
+    const marketCodes = (countries as string[]).map((country) =>
+      country.trim().toUpperCase()
+    );
+    if (marketCodes.length !== 1 || !/^[A-Z]{2}$/.test(marketCodes[0])) {
+      return json({
+        error: "validation_error",
+        detail: "paid_social_single_market_required",
+        message: "Create one paid-social campaign per country.",
+      }, 422);
+    }
+    const stageBrandId = await resolveBrandIdForSlug(supabase, brandSlug);
+    try {
+      metaStages = await preparePaidSocialStages(supabase, {
+        platform: "meta",
+        canonicalPlan: boundCanonicalPlan,
+        market: marketCodes[0],
+        brandId: stageBrandId,
+        eventId: destEventId,
+        totalBudgetCents: providerAmountCents,
+        baseAdSet: {
+          namePrefix: name,
+          optimizationGoal,
+          billingEvent,
+          targeting,
+          ...(adSetInput.promotedObject
+            ? { promotedObject: adSetInput.promotedObject }
+            : {}),
+          ...(schedule.starts_at ? { startTime: schedule.starts_at } : {}),
+          ...(schedule.ends_at ? { endTime: schedule.ends_at } : {}),
+        },
+        budgetMode: budgetType,
+      });
+      const minimumPerStage = budgetType === "lifetime"
+        ? floorCents * (schedule.days as number)
+        : floorCents;
+      const belowFloor = metaStages.runtime.adSets.find((stage) =>
+        stage.budgetCents < minimumPerStage
+      );
+      if (belowFloor) {
+        return json({
+          error: "stage_budget_below_platform_minimum",
+          detail:
+            `${belowFloor.stage}:${belowFloor.budgetCents}:${minimumPerStage}`,
+          message:
+            `${belowFloor.stage} has ${belowFloor.budgetCents}¢ but Meta requires at least ${minimumPerStage}¢ at the ad-set level.`,
+        }, 422);
+      }
+      metaStageMedia = await resolvePaidSocialCreativeMedia(supabase, {
+        platform: "meta",
+        connection,
+        lane,
+        creativeRows: metaStages.creativeRows,
+        creativeIds: metaStages.runtime.adSets.flatMap((stage) =>
+          metaStages!.runtime.creativeIds[stage.stage]
+        ),
+      });
+    } catch (error) {
+      return json({
+        error: "stage_preflight_failed",
+        detail: error instanceof Error ? error.message : String(error),
+      }, 422);
+    }
+  }
+
   // ── The atomic create (§4.4b — no orphans; everything PAUSED). ───────────────
   try {
-    const created = await createFullCampaignAtomic(adapter, connection, {
-      campaign: campaignInput,
-      adSet: adSetInput,
-      creative: creativeInput,
-      ad: adInput,
-    });
+    let externalCampaignId: string;
+    let createdUnits: Array<{
+      stage: AdStage | null;
+      audienceCodes: string[];
+      audienceSizes: Record<string, number | null>;
+      budgetCents: number | null;
+      adSetInput: CreateAdSetInput;
+      externalAdSetId: string;
+      ads: Array<{
+        creativeId: string | null;
+        name: string;
+        externalCreativeId: string | null;
+        externalAdId: string;
+        reviewStatus: string | null;
+      }>;
+    }>;
+    if (metaStages) {
+      const aboCampaign: CreateCampaignInput = {
+        name: campaignInput.name,
+        objective: campaignInput.objective,
+        bidStrategy: campaignInput.bidStrategy,
+        specialAdCategories: campaignInput.specialAdCategories,
+        specialAdCategoryCountry: campaignInput.specialAdCategoryCountry,
+      };
+      const staged = await createStagedCampaignAtomic(adapter, connection, {
+        campaign: aboCampaign,
+        stages: metaStages.runtime.adSets.map((stage) => ({
+          key: stage.stage,
+          adSet: stage.adSet,
+          ads: metaStages!.runtime.creativeIds[stage.stage].map(
+            (creativeId, index) => {
+              const media = metaStageMedia.get(creativeId);
+              if (!media?.metaPlacementAssets) {
+                throw new Error(`stage_creative_media_missing:${creativeId}`);
+              }
+              const adName = `${name} — ${stage.stage} — ${index + 1}`;
+              return {
+                creative: {
+                  ...creativeInput,
+                  imageUrl: undefined,
+                  imageHash: undefined,
+                  videoId: undefined,
+                  videoThumbnailImageHash: undefined,
+                  metaPlacementAssets: media.metaPlacementAssets,
+                  aiGenerated: media.aiGenerated,
+                  adName,
+                },
+                ad: { ...adInput, name: adName },
+              };
+            },
+          ),
+        })),
+      });
+      externalCampaignId = staged.externalCampaignId;
+      createdUnits = staged.stages.map((stageResult) => {
+        const stage = metaStages!.runtime.adSets.find((row) =>
+          row.stage === stageResult.key
+        )!;
+        const creativeIds = metaStages!.runtime.creativeIds[stage.stage];
+        return {
+          stage: stage.stage,
+          audienceCodes: stage.audienceCodes,
+          audienceSizes: stage.audienceSizes,
+          budgetCents: stage.budgetCents,
+          adSetInput: stage.adSet,
+          externalAdSetId: stageResult.externalAdSetId,
+          ads: stageResult.ads.map((ad, index) => ({
+            creativeId: creativeIds[index] ?? null,
+            name: `${name} — ${stage.stage} — ${index + 1}`,
+            externalCreativeId: ad.externalCreativeId,
+            externalAdId: ad.externalAdId,
+            reviewStatus: ad.reviewStatus,
+          })),
+        };
+      });
+    } else {
+      const created = await createFullCampaignAtomic(adapter, connection, {
+        campaign: campaignInput,
+        adSet: adSetInput,
+        creative: creativeInput,
+        ad: adInput,
+      });
+      externalCampaignId = created.externalCampaignId;
+      createdUnits = [{
+        stage: null,
+        audienceCodes: [],
+        audienceSizes: {},
+        budgetCents: null,
+        adSetInput,
+        externalAdSetId: created.externalAdSetId,
+        ads: [{
+          creativeId: metaCreativeLibraryRowId,
+          name: adInput.name,
+          externalCreativeId: created.externalCreativeId,
+          externalAdId: created.externalAdId,
+          reviewStatus: created.reviewStatus,
+        }],
+      }];
+    }
 
     // Read back delivery status (effective_status).
     let deliveryStatus: string | null = null;
@@ -5192,7 +6238,7 @@ serve(async (req: Request): Promise<Response> => {
       const status = await adapter.getStatus(
         connection,
         "campaign",
-        created.externalCampaignId,
+        externalCampaignId,
       );
       deliveryStatus = status.effectiveStatus;
     } catch {
@@ -5203,7 +6249,7 @@ serve(async (req: Request): Promise<Response> => {
       pageType,
       brandSlug,
       entitySlug: entitySlug || null,
-      externalCampaignId: created.externalCampaignId,
+      externalCampaignId,
       adName: `${name} — ad`,
       platform,
     });
@@ -5222,11 +6268,13 @@ serve(async (req: Request): Promise<Response> => {
       .insert({
         connection_id: connection.id,
         platform,
-        external_campaign_id: created.externalCampaignId,
+        external_campaign_id: externalCampaignId,
         name,
         objective,
         status: "PAUSED",
-        daily_budget_cents: dailyBudgetForPersist,
+        // Staged paid social is ABO: the reviewed 70/20/10 money lives on
+        // ad sets, never silently duplicated at campaign level.
+        daily_budget_cents: metaStages ? null : dailyBudgetForPersist,
         delivery_status: deliveryStatus,
         status_synced_at: new Date().toISOString(),
         targeting,
@@ -5245,48 +6293,70 @@ serve(async (req: Request): Promise<Response> => {
       .select("*")
       .single();
 
-    let adSetRow: Record<string, unknown> | null = null;
-    let adRow: Record<string, unknown> | null = null;
-    let persistError = campaignInsertError;
+    let adSetRows: Record<string, unknown>[] = [];
+    let adRows: Record<string, unknown>[] = [];
+    let persistError: { message: string } | null = campaignInsertError;
 
+    if (!persistError && campaignRow && metaStages && boundPlanVersionId) {
+      persistError = await persistStageSnapshots(
+        supabase,
+        boundPlanVersionId,
+        "meta",
+        metaStages.runtime,
+      );
+    }
     if (!persistError && campaignRow) {
       const { data, error } = await supabase
         .from("ad_sets")
-        .insert({
+        .insert(createdUnits.map((unit) => ({
           campaign_id: campaignRow.id,
-          external_adset_id: created.externalAdSetId,
-          name: adSetInput.name,
-          targeting,
-          budget_cents: null, // CBO — budget lives on the campaign
+          external_adset_id: unit.externalAdSetId,
+          name: unit.adSetInput.name,
+          targeting: unit.adSetInput.targeting,
+          budget_cents: unit.budgetCents,
           optimization_goal: optimizationGoal,
           billing_event: billingEvent,
           status: "PAUSED",
           schedule_start_at: schedule.starts_at,
           schedule_end_at: schedule.ends_at,
-        })
-        .select("*")
-        .single();
-      adSetRow = data;
+          ...(unit.stage
+            ? {
+              stage: unit.stage,
+              audience_codes: unit.audienceCodes,
+              audience_sizes: unit.audienceSizes,
+            }
+            : {}),
+        })))
+        .select("*");
+      adSetRows = data ?? [];
       persistError = error;
     }
-    if (!persistError && adSetRow) {
+    if (!persistError && adSetRows.length === createdUnits.length) {
+      const localSetByExternal = new Map(
+        adSetRows.map((row) => [String(row.external_adset_id), row]),
+      );
+      const inserts = createdUnits.flatMap((unit) => {
+        const local = localSetByExternal.get(unit.externalAdSetId);
+        if (!local) return [];
+        return unit.ads.map((ad) => ({
+          ad_set_id: local.id,
+          external_ad_id: ad.externalAdId,
+          external_creative_id: ad.externalCreativeId,
+          ...(ad.creativeId ? { creative_id: ad.creativeId } : {}),
+          name: ad.name,
+          status: "PAUSED",
+          review_status: ad.reviewStatus,
+        }));
+      });
       const { data, error } = await supabase
         .from("ads")
-        .insert({
-          ad_set_id: adSetRow.id,
-          external_ad_id: created.externalAdId,
-          external_creative_id: created.externalCreativeId,
-          ...(metaCreativeLibraryRowId
-            ? { creative_id: metaCreativeLibraryRowId }
-            : {}),
-          name: adInput.name,
-          status: "PAUSED",
-          review_status: created.reviewStatus,
-        })
-        .select("*")
-        .single();
-      adRow = data;
+        .insert(inserts)
+        .select("*");
+      adRows = data ?? [];
       persistError = error;
+    }
+    if (!persistError && adSetRows.length !== createdUnits.length) {
+      persistError = new Error("stage_ad_set_persist_count_mismatch");
     }
 
     if (persistError) {
@@ -5304,26 +6374,31 @@ serve(async (req: Request): Promise<Response> => {
         if (adapter.rollbackCampaign) {
           await adapter.rollbackCampaign(
             connection,
-            created.externalCampaignId,
+            externalCampaignId,
           );
           rollbackOk = true;
         }
       } catch {
         rollbackOk = false;
       }
-      let creativeRollbackOk: boolean | null = null;
-      if (created.externalCreativeId && adapter.rollbackCreative) {
-        try {
-          await adapter.rollbackCreative(
-            connection,
-            created.externalCreativeId,
-          );
-          creativeRollbackOk = true;
-        } catch {
-          creativeRollbackOk = false; // residue — id recorded below
+      const accountCreativeIds = createdUnits.flatMap((unit) =>
+        unit.ads.map((ad) => ad.externalCreativeId).filter((id): id is string =>
+          Boolean(id)
+        )
+      );
+      let creativeRollbackOk: boolean | null = accountCreativeIds.length > 0
+        ? true
+        : null;
+      for (const creativeId of [...accountCreativeIds].reverse()) {
+        if (!adapter.rollbackCreative) {
+          creativeRollbackOk = false;
+          continue;
         }
-      } else if (created.externalCreativeId) {
-        creativeRollbackOk = false;
+        try {
+          await adapter.rollbackCreative(connection, creativeId);
+        } catch {
+          creativeRollbackOk = false;
+        }
       }
       await supabase.from("ad_status_events").insert({
         campaign_id: null,
@@ -5336,10 +6411,14 @@ serve(async (req: Request): Promise<Response> => {
         to_status: null,
         external_ids: planBoundFailureIds(
           {
-            external_campaign_id: created.externalCampaignId,
-            external_adset_id: created.externalAdSetId,
-            external_creative_id: created.externalCreativeId,
-            external_ad_id: created.externalAdId,
+            external_campaign_id: externalCampaignId,
+            external_adset_ids: createdUnits.map((unit) =>
+              unit.externalAdSetId
+            ),
+            external_creative_ids: accountCreativeIds,
+            external_ad_ids: createdUnits.flatMap((unit) =>
+              unit.ads.map((ad) => ad.externalAdId)
+            ),
           },
           boundPlanVersionId,
           boundPlanHash,
@@ -5350,7 +6429,7 @@ serve(async (req: Request): Promise<Response> => {
           // the inert creative residue, so reconciliation is not a guess.
           campaign_rolled_back: rollbackOk,
           ...(creativeRollbackOk === false
-            ? { creative_residue_id: created.externalCreativeId }
+            ? { creative_residue_ids: accountCreativeIds }
             : {}),
         },
       });
@@ -5373,15 +6452,25 @@ serve(async (req: Request): Promise<Response> => {
       from_status: null,
       to_status: "PAUSED",
       external_ids: {
-        external_campaign_id: created.externalCampaignId,
-        external_adset_id: created.externalAdSetId,
-        external_creative_id: created.externalCreativeId,
-        external_ad_id: created.externalAdId,
+        external_campaign_id: externalCampaignId,
+        external_adset_ids: createdUnits.map((unit) => unit.externalAdSetId),
+        external_creative_ids: createdUnits.flatMap((unit) =>
+          unit.ads.map((ad) => ad.externalCreativeId).filter(Boolean)
+        ),
+        external_ad_ids: createdUnits.flatMap((unit) =>
+          unit.ads.map((ad) => ad.externalAdId)
+        ),
       },
       provider_response: null,
     });
 
-    return json({ campaign: campaignRow, ad_set: adSetRow, ad: adRow });
+    return json({
+      campaign: campaignRow,
+      ad_set: adSetRows[0] ?? null,
+      ad: adRows[0] ?? null,
+      ad_sets: adSetRows,
+      ads: adRows,
+    });
   } catch (err) {
     if (err instanceof AdNotConnectedError) {
       return json({ error: `${platform}_not_connected` }, 424);

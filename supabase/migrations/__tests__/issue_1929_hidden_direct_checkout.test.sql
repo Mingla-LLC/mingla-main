@@ -90,9 +90,9 @@ BEGIN
     RAISE EXCEPTION 'bundle invalid/ambiguous/unknown identity did not fail closed';
   END IF;
 
-  -- Tier projection: #3827 made hidden ticket tiers private-link-only. The
-  -- direct event bundle keeps visible + disabled online tiers, while hidden,
-  -- deleted and offline tiers do not appear.
+  -- Tier projection: #3827 made hidden tiers private-link-only. The public
+  -- direct-event bundle still includes disabled visible tiers so it can render
+  -- an honest unavailable state; hidden, deleted and offline tiers stay out.
   v_event := v_ids[1];
   UPDATE public.events
      SET location_geo = point(3.3792, 6.5244),

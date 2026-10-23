@@ -69,6 +69,19 @@ export async function createInternalSupportThread(input) {
   return unwrap(result, "Couldn't create the staff ticket");
 }
 
+export async function createBrandVisibleSupportTicket(input) {
+  const result = await supabase.rpc("issue_3988_create_brand_support_ticket", {
+    p_client_request_id: input.clientRequestId,
+    p_subject: input.subject,
+    p_details: input.details,
+    p_brand_id: input.brandId,
+    p_priority: input.priority,
+    p_next_update_at: input.nextUpdateAt,
+    p_next_update_note: input.nextUpdateNote,
+  });
+  return unwrap(result, "Couldn't create the brand-visible support ticket");
+}
+
 export async function setSupportNextUpdate(input) {
   const result = await supabase.rpc("issue_3720_set_next_update", {
     p_source_kind: input.sourceKind,

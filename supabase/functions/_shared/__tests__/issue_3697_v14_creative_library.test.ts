@@ -26,6 +26,12 @@ Deno.test("#3697 Creative Library reports usage, rights, fit and worst provider 
       source: "admin_upload",
       // #3040 rework (P1-3) — and by the absence of an owning-brand snapshot.
       source_brand_id: null,
+      stage_tags: ["prospecting", "retarget"],
+      concept_tag: "Night out",
+      hook_tag: "Doors open",
+      event_id: "77777777-7777-4777-8777-777777777777",
+      licence_reference: "Host release 2026-10-01",
+      date_locked_until: "2026-11-01T00:00:00.000Z",
       variants: {
         "4:5": {
           source_url: "https://media.example/portrait.jpg",
@@ -86,6 +92,12 @@ Deno.test("#3697 Creative Library reports usage, rights, fit and worst provider 
   assertEquals(rows.length, 1);
   assertEquals(rows[0].version_label, "v3");
   assertEquals(rows[0].house_reuse_allowed, true);
+  assertEquals(rows[0].stage_tags, ["prospecting", "retarget"]);
+  assertEquals(rows[0].concept_tag, "Night out");
+  assertEquals(rows[0].hook_tag, "Doors open");
+  assertEquals(rows[0].event_id, "77777777-7777-4777-8777-777777777777");
+  assertEquals(rows[0].licence_reference, "Host release 2026-10-01");
+  assertEquals(rows[0].date_locked_until, "2026-11-01T00:00:00.000Z");
   assertEquals(rows[0].rights, {
     state: "confirmed",
     basis: "authorized_by_brand",

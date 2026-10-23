@@ -63,14 +63,17 @@ describe("#1996 Business desktop share regression", () => {
   });
 
   test("browser transports are loaded before Copy or Share receives a click", () => {
+    // [TEST-MOD-APPROVED #3988] The browser transport now accepts the common
+    // prepared-or-canonical fallback target, so a retryable preview failure
+    // cannot strand Copy, Share, or QR.
     const content = businessFile("src/components/ui/ShareModalContent.tsx");
 
     expect(content).toContain(
       "import { copyPublicUrl, sharePublicUrl } from '../../utils/sharePublicUrl';",
     );
     expect(content).not.toContain("await import('../../utils/sharePublicUrl')");
-    expect(content).toContain("await copyPublicUrl(prepared.url)");
-    expect(content).toContain("await sharePublicUrl({ title: prepared.title");
+    expect(content).toContain("await copyPublicUrl(shareTarget.url)");
+    expect(content).toContain("await sharePublicUrl(shareTarget)");
   });
 
   test("public readiness permits credential-free cross-origin reads and remains uncached", () => {
