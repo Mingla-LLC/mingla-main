@@ -1,11 +1,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
+import "./DiscountEditSheet.issue3872.behavior.test";
 
-const source = readFileSync(
+const componentSource = readFileSync(
   join(__dirname, "..", "DiscountEditSheet.tsx"),
   "utf8",
 );
+const contractSource = readFileSync(
+  join(__dirname, "..", "discountUiContract.ts"),
+  "utf8",
+);
+const source = `${componentSource}\n${contractSource}`;
 
 describe("DiscountEditSheet Host contract", () => {
   test("renders every Host-controlled discount choice and its validation", () => {
@@ -35,12 +41,8 @@ describe("DiscountEditSheet Host contract", () => {
   });
 
   test("keeps automatic and sale-price creation behind rank 30", () => {
-    expect(source).toMatch(
-      /const disabled\s*=\s*kind\s*!==\s*"code"\s*&&\s*rank\s*<\s*30/,
-    );
-    expect(source).toMatch(
-      /if \(kind\s*!==\s*"code"\s*&&\s*rank\s*<\s*30\) return/,
-    );
+    expect(componentSource).toContain("canCreateDiscountKind(rank, kind)");
+    expect(contractSource).toMatch(/kind === "code" \|\| rank >= 30/);
     expect(source).toContain(
       "You can create codes. Ask an owner, admin or finance manager",
     );

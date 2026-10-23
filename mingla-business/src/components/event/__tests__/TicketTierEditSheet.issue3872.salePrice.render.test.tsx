@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "@jest/globals";
+import "./TicketTierEditSheet.issue3872.salePrice.behavior.test";
 
 const source = readFileSync(
   join(__dirname, "..", "TicketTierEditSheet.tsx"),
@@ -9,9 +10,13 @@ const source = readFileSync(
 
 describe("TicketTierEditSheet sale controls", () => {
   test("only renders server-backed controls for a persisted editable paid tier", () => {
-    expect(source).toMatch(
-      /initial !== null\s*&&\s*privateLinksEnabled\s*&&\s*eventId !== null\s*&&\s*brandId !== undefined\s*&&\s*canEditPrice\s*&&\s*!isFree/,
-    );
+    expect(source).toContain("canShowTicketTierDiscountControls({");
+    expect(source).toContain("hasPersistedTier: initial !== null");
+    expect(source).toContain("privateLinksEnabled");
+    expect(source).toContain("hasEventId: eventId !== null");
+    expect(source).toContain("hasBrandId: brandId !== undefined");
+    expect(source).toContain("canEditPrice");
+    expect(source).toContain("isFree");
     expect(source).toContain(
       "<Text style={styles.sectionHeader}>Sale price</Text>",
     );
