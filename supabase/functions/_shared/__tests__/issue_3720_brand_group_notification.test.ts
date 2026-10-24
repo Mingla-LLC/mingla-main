@@ -15,6 +15,8 @@ Deno.test("#3720 Brand group push renders the actual sender and Brand", () => {
   assertEquals(rendered.email.subject, "Simone in Acme Social");
 });
 
+// [TEST-MOD-APPROVED #3988] The existing notification contract now proves the
+// explicit mention variant while retaining the original ordinary-message case.
 Deno.test("#3988 direct Brand group mention is explicit in the notification", () => {
   const rendered = renderCategoryMessage("business.brand_group_message", {
     sender_name: "Simone",
