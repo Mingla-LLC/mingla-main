@@ -325,6 +325,9 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     workflow: "deploy-functions.yml",
     referenceFiles: Object.freeze([
       "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+      // #4084's supersession suite also consumes this retained provider to pin
+      // the guarded input, permissions and post-deploy attestation wiring.
+      "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
     ]),
   }),
   Object.freeze({
