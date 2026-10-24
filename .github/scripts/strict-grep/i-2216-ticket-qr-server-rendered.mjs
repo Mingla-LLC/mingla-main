@@ -22,7 +22,14 @@ const PRODUCERS = [
 const RSVP_FETCH = "supabase/functions/rsvp-pass-fetch/index.ts";
 const RSVP_SUBMIT = "supabase/functions/public-submit-rsvp/index.ts";
 const DISPATCH = "supabase/functions/ticket-confirmation-dispatch/index.ts";
-const EMAIL_ROOT = "supabase/functions/_shared/email";
+const ACTIVE_MESSAGE_FILES = [
+  "supabase/functions/_shared/orderConfirmationMessage.ts",
+  "supabase/functions/_shared/rsvpPassMessage.ts",
+  "supabase/functions/_shared/waitlistSpotMessage.ts",
+  "supabase/functions/_shared/email/purchaseBody.ts",
+  "supabase/functions/_shared/email/purchaseCopy.ts",
+  "supabase/functions/_shared/sms/buyerSms.ts",
+];
 const BUSINESS_ROOTS = [
   "mingla-business/app",
   "mingla-business/src/components/checkout",
@@ -62,7 +69,13 @@ const sourceFilesUnder = (root) => {
 };
 
 export function check(files, violations) {
-  for (const path of [...PRODUCERS, RSVP_FETCH, RSVP_SUBMIT, DISPATCH]) {
+  for (const path of [
+    ...PRODUCERS,
+    RSVP_FETCH,
+    RSVP_SUBMIT,
+    DISPATCH,
+    ...ACTIVE_MESSAGE_FILES,
+  ]) {
     if (files[path] == null)
       violations.push({ file: path, msg: "Scoped source is missing." });
   }
@@ -108,9 +121,7 @@ export function check(files, violations) {
     });
   }
 
-  for (const path of Object.keys(files).filter((item) =>
-    item.startsWith(`${EMAIL_ROOT}/`),
-  )) {
+  for (const path of ACTIVE_MESSAGE_FILES) {
     const source = stripComments(files[path] ?? "");
     if (/QR in attached PDF/i.test(source)) {
       violations.push({
@@ -131,6 +142,26 @@ export function check(files, violations) {
 
   const dispatch =
     files[DISPATCH] == null ? "" : stripComments(files[DISPATCH]);
+  if (
+    !/renderEmailBody\s*=\s*\([^)]*\)\s*=>\s*\{[\s\S]{0,700}?renderTransactionalEmail\(\s*\{\s*variant:\s*["']purchase_message["']/.test(
+      dispatch,
+    )
+  ) {
+    violations.push({
+      file: DISPATCH,
+      msg: "Buyer ticket confirmation email must render through purchase_message.",
+    });
+  }
+  if (
+    /renderTransactionalEmail\(\s*\{\s*variant:\s*["']ticket_confirmation_(?:free|paid)["']/.test(
+      dispatch,
+    )
+  ) {
+    violations.push({
+      file: DISPATCH,
+      msg: "Legacy ticket_confirmation variants cannot be used for active email delivery.",
+    });
+  }
   if (
     /const\s+attachments[^=]*=\s*\[\s*\{/.test(dispatch) ||
     /attachments\.push\(\s*\{(?![\s\S]{0,160}icsFilename)/.test(dispatch)
@@ -207,8 +238,13 @@ if (process.argv.includes("--self-test")) {
     [RSVP_SUBMIT]:
       "return { credentials: userId !== null && passEligible ? passEntities.map(toCredential) : [] };",
     [DISPATCH]:
-      "const attachments = []; if (calendarLinks) attachments.push({ filename: calendarLinks.icsFilename, content: calendarLinks.icsContent });",
-    [`${EMAIL_ROOT}/ticketBody.ts`]: "const body = renderClaimButton();",
+      'renderEmailBody = () => { return renderTransactionalEmail({ variant: "purchase_message" }); }; const attachments = []; if (calendarLinks) attachments.push({ filename: calendarLinks.icsFilename, content: calendarLinks.icsContent });',
+    ...Object.fromEntries(
+      ACTIVE_MESSAGE_FILES.map((path) => [
+        path,
+        "const body = renderClaimButton();",
+      ]),
+    ),
     "mingla-business/src/components/event/FoundationRsvpPreview.tsx":
       '<RsvpOfferingBody passPresentation="claim" />',
     "mingla-business/src/components/checkout/DownloadMinglaCta.tsx":
@@ -233,7 +269,17 @@ if (process.argv.includes("--self-test")) {
     ],
     [
       "email QR badge",
-      { [`${EMAIL_ROOT}/copy.ts`]: 'const badge = "QR in attached PDF";' },
+      {
+        "supabase/functions/_shared/email/purchaseCopy.ts":
+          'const badge = "QR in attached PDF";',
+      },
+    ],
+    [
+      "legacy delivery variant",
+      {
+        [DISPATCH]:
+          'renderEmailBody = () => { return renderTransactionalEmail({ variant: "ticket_confirmation_free" }); }; const attachments = [];',
+      },
     ],
     [
       "PDF attachment",
@@ -280,7 +326,10 @@ if (process.argv.includes("--self-test")) {
     failures.forEach((failure) => console.error(`  - ${failure}`));
     process.exit(1);
   }
-  console.log("I-4063-NO-TICKET-QR-OFF-EXPLORER self-test PASS (10/10 cases).");
+  const cases = bad.length + 1;
+  console.log(
+    `I-4063-NO-TICKET-QR-OFF-EXPLORER self-test PASS (${cases}/${cases} cases).`,
+  );
   process.exit(0);
 }
 
@@ -289,7 +338,7 @@ const paths = new Set([
   RSVP_FETCH,
   RSVP_SUBMIT,
   DISPATCH,
-  ...sourceFilesUnder(EMAIL_ROOT),
+  ...ACTIVE_MESSAGE_FILES,
   ...BUSINESS_ROOTS.flatMap(sourceFilesUnder),
 ]);
 const files = Object.fromEntries(
