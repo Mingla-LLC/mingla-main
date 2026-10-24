@@ -128,3 +128,52 @@ export function formatEventDateLine(
     return startDate.toISOString();
   }
 }
+
+/**
+ * #3281 PR6 — one primary date line plus optional second line for override
+ * title/place. Used by confirmation email, PDF, and ICS summaries.
+ */
+export function formatChosenOccurrenceLines(day: {
+  start_at: string | null;
+  end_at?: string | null;
+  timezone?: string | null;
+  override_title?: string | null;
+  override_location?: string | null;
+}): { primary: string; secondary: string | null } {
+  const primary = formatEventDateLine(
+    day.start_at,
+    day.end_at ?? null,
+    day.timezone ?? null,
+  );
+  const title = (day.override_title ?? "").trim();
+  const place = (day.override_location ?? "").trim();
+  if (title.length === 0 && place.length === 0) {
+    return { primary, secondary: null };
+  }
+  if (title.length > 0 && place.length > 0) {
+    return { primary, secondary: `${title} · ${place}` };
+  }
+  return { primary, secondary: title.length > 0 ? title : place };
+}
+
+/** Cap for ICS / email date lists (spec: 60 VEVENTs). */
+export const CHOSEN_DATE_LIST_CAP = 60;
+
+export function formatChosenOccurrenceList(
+  days: ReadonlyArray<{
+    start_at: string | null;
+    end_at?: string | null;
+    timezone?: string | null;
+    override_title?: string | null;
+    override_location?: string | null;
+  }>,
+): string[] {
+  const lines: string[] = [];
+  for (const day of days.slice(0, CHOSEN_DATE_LIST_CAP)) {
+    const { primary, secondary } = formatChosenOccurrenceLines(day);
+    if (!primary) continue;
+    lines.push(primary);
+    if (secondary) lines.push(secondary);
+  }
+  return lines;
+}

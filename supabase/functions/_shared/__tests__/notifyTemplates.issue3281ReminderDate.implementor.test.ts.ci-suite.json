@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/notifyTemplates.issue3281ReminderDate.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "notify-templates-issue-3281-reminder-date",
+  "profile": "deno-1.46-stripe"
+}

@@ -40,6 +40,10 @@ export interface ChosenOccurrence {
   start_at: string | null;
   end_at: string | null;
   timezone: string | null;
+  /** #3281 PR6 — host per-date title/place overrides (null when unset). */
+  override_title?: string | null;
+  override_location?: string | null;
+  id?: string | null;
 }
 
 interface PostgrestLikeResult<T> {
@@ -76,7 +80,9 @@ export async function ticketDaysForOrder(
 ): Promise<ChosenOccurrence[] | null> {
   const { data: ticketRows, error: ticketErr } = (await supabase
     .from("tickets")
-    .select("ticket_event_dates ( event_dates ( start_at, end_at, timezone ) )")
+    .select(
+      "ticket_event_dates ( event_dates ( id, start_at, end_at, timezone, override_title, override_location ) )",
+    )
     .eq("order_id", orderId)) as PostgrestLikeResult<
       Array<
         {
@@ -96,6 +102,7 @@ export async function ticketDaysForOrder(
   }
   if (!Array.isArray(ticketRows)) return null;
   const days: ChosenOccurrence[] = [];
+  const seen = new Set<string>();
   for (
     const row of ticketRows as unknown as Array<{
       ticket_event_dates?:
@@ -105,9 +112,16 @@ export async function ticketDaysForOrder(
   ) {
     for (const link of row.ticket_event_dates ?? []) {
       const day = link.event_dates ?? null;
-      if (day !== null && typeof day.start_at === "string") days.push(day);
+      if (day === null || typeof day.start_at !== "string") continue;
+      const key = typeof day.id === "string" && day.id.length > 0
+        ? day.id
+        : `${day.start_at}|${day.end_at ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      days.push(day);
     }
   }
+  days.sort((a, b) => String(a.start_at).localeCompare(String(b.start_at)));
   return days;
 }
 
@@ -178,7 +192,9 @@ export async function resolveChosenOccurrence(
     if (orderEventDateId !== null && orderEventDateId.length > 0) {
       const { data: occ, error: occErr } = (await supabase
         .from("event_dates")
-        .select("start_at, end_at, timezone")
+        .select(
+          "id, start_at, end_at, timezone, override_title, override_location",
+        )
         .eq("id", orderEventDateId)
         .eq("event_id", eventId)
         .maybeSingle()) as PostgrestLikeResult<ChosenOccurrence>;

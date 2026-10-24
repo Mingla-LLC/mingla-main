@@ -43,6 +43,8 @@ export interface TicketPdfInput {
     timezone: string;
     locationText: string | null;
     brandName: string;
+    /** #3281 PR6 — multi-date list; when set, drawn instead of a single range. */
+    dateLines?: string[];
   };
   order: { shortId: string };
   tickets: Array<{
@@ -119,13 +121,18 @@ export async function buildTicketPdf(
   // "AM/PM" that WinAnsi cannot encode (the live drawText crash). This is the one
   // drawText arg NOT routed through `truncate` (which already sanitizes), so it
   // must be sanitized here.
-  const dateLine = sanitizeForWinAnsi(
-    formatEventDateLine(
-      input.event.startAtIso,
-      input.event.endAtIso,
-      input.event.timezone,
-    ),
-  );
+  const multiDateLines = (input.event.dateLines ?? [])
+    .filter((line) => typeof line === "string" && line.trim().length > 0)
+    .map((line) => sanitizeForWinAnsi(line));
+  const dateLine = multiDateLines.length > 0
+    ? null
+    : sanitizeForWinAnsi(
+      formatEventDateLine(
+        input.event.startAtIso,
+        input.event.endAtIso,
+        input.event.timezone,
+      ),
+    );
 
   // Try to embed the wordmark. Failures fall back to the text "Mingla".
   let logoImage: Awaited<ReturnType<typeof pdf.embedPng>> | null = null;
@@ -189,7 +196,19 @@ export async function buildTicketPdf(
       color: rgb(0.06, 0.07, 0.09),
     });
     cursorY -= 28;
-    if (dateLine) {
+    if (multiDateLines.length > 0) {
+      for (const line of multiDateLines.slice(0, 24)) {
+        page.drawText(truncate(line, 80), {
+          x: 32,
+          y: cursorY,
+          size: 11,
+          font: fontRegular,
+          color: rgb(0.36, 0.38, 0.45),
+        });
+        cursorY -= 16;
+      }
+      cursorY -= 2;
+    } else if (dateLine) {
       page.drawText(dateLine, {
         x: 32,
         y: cursorY,
