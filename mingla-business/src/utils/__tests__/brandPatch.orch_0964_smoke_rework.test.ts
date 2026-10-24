@@ -10,7 +10,7 @@ const baseBrand = (theme: Brand["theme"]): Brand => ({
   address: null,
   coverHue: 25,
   role: "owner",
-  stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+  stats: { events: 0, rev: 0, rev7d: 0, attendees: 0 },
   currentLiveEvent: null,
   theme,
 });

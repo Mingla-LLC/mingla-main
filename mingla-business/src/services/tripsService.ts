@@ -250,6 +250,11 @@ export interface TripPricingTier {
    * draft loads (`mapTripPricingTier`) leave it unset → base fallback.
    */
   priceAllInGbp?: number | null;
+  salePriceGbp?: number | null;
+  saleAllInGbp?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
 }
 
 /**

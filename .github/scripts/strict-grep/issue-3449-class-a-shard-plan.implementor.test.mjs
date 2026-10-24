@@ -95,13 +95,15 @@ const costs = () => loadShardCosts(path.join(HERE, "class-a-shard-costs.json"));
  * the purity test at the bottom of this file for why.
  */
 const EXPECTED_PLAN = Object.freeze({
-  // issue #3643 re-derived these after the self-registering manifest loader
-  // became ONE locally declared batch:A gate (load-manifest.mjs [plain]),
-  // exactly as the note above instructs. Read off
+  // issue #3682 re-derived these after its additive follower-count gate became
+  // two locally declared batch:A executions (self-test and plain), exactly as
+  // the note above instructs. Read off
   // `node .github/scripts/strict-grep/issue-3449-class-a-shard-plan.mjs`.
-  executions: 1037,
-  loadsSeconds: [168.9, 169.0, 168.9],
-  counts: [341, 353, 343],
+  // [TEST-MOD-APPROVED #3872] Re-derived after merging the discount gates
+  // with the exact-main catalog additions using the live plan command.
+  executions: 1047,
+  loadsSeconds: [169.3, 169.3, 169.2],
+  counts: [345, 356, 346],
 });
 
 const tempDir = (label) => fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), `issue-3449-${label}-`));

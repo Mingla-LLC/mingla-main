@@ -1,0 +1,17 @@
+{
+  "first": "Hãy là người đầu tiên theo dõi",
+  "count_zero": "{{formatted}} người theo dõi",
+  "count_one": "{{formatted}} người theo dõi",
+  "count_two": "{{formatted}} người theo dõi",
+  "count_few": "{{formatted}} người theo dõi",
+  "count_many": "{{formatted}} người theo dõi",
+  "count_other": "{{formatted}} người theo dõi",
+  "a11y_none": "Chưa có người theo dõi",
+  "a11y_exact_zero": "{{count}} người theo dõi",
+  "a11y_exact_one": "{{count}} người theo dõi",
+  "a11y_exact_two": "{{count}} người theo dõi",
+  "a11y_exact_few": "{{count}} người theo dõi",
+  "a11y_exact_many": "{{count}} người theo dõi",
+  "a11y_exact_other": "{{count}} người theo dõi",
+  "a11y_approx": "khoảng {{formatted}} người theo dõi"
+}

@@ -70,6 +70,9 @@ ari.venue.get_listing_status
 ari.venue.list_claim_feedback
 ari.venue.ops
 ari.venue.send_sms
+ari.discounts.list
+ari.discounts.create
+ari.discounts.pause
 ari.marketing.draft_campaign
 ari.marketing.schedule_campaign
 ari.marketing.send_now

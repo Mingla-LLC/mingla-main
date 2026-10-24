@@ -82,7 +82,8 @@ export function loadCertificationInputs() {
 
 export function buildCertificationPlan(ledger, owners) {
   if (
-    !Array.isArray(ledger.capabilities) || ledger.capabilities.length !== 145
+    !Array.isArray(ledger.capabilities) ||
+    ledger.capabilities.length !== 148
   ) {
     throw new Error(
       `ledger_capability_count:${ledger.capabilities?.length ?? "missing"}`,
@@ -105,8 +106,8 @@ export function buildCertificationPlan(ledger, owners) {
     const dependencyIssues = Array.isArray(owner.dependency_issues)
       ? [...owner.dependency_issues]
       : Number.isInteger(owner.dependency_issue)
-      ? [owner.dependency_issue]
-      : [];
+        ? [owner.dependency_issue]
+        : [];
     return {
       capability_id: capability.id,
       domain: capability.domain,
@@ -137,8 +138,9 @@ function requireValue(condition, code, failures) {
 }
 
 function isHex(value, length) {
-  return typeof value === "string" &&
-    new RegExp(`^[0-9a-f]{${length}}$`).test(value);
+  return (
+    typeof value === "string" && new RegExp(`^[0-9a-f]{${length}}$`).test(value)
+  );
 }
 
 function hasAll(actual, required) {
@@ -147,8 +149,11 @@ function hasAll(actual, required) {
 }
 
 function sameMembers(actual, required) {
-  return Array.isArray(actual) && actual.length === required.length &&
-    hasAll(actual, required);
+  return (
+    Array.isArray(actual) &&
+    actual.length === required.length &&
+    hasAll(actual, required)
+  );
 }
 
 function valueTypeMatches(value, expected) {
@@ -167,8 +172,8 @@ export function validatePublishedSchema(value, schema, path = "$") {
   const expectedTypes = Array.isArray(schema.type)
     ? schema.type
     : schema.type
-    ? [schema.type]
-    : [];
+      ? [schema.type]
+      : [];
   if (
     expectedTypes.length &&
     !expectedTypes.some((type) => valueTypeMatches(value, type))
@@ -179,8 +184,10 @@ export function validatePublishedSchema(value, schema, path = "$") {
     failures.push(`schema:${path}:const`);
   }
   if (
-    schema.enum && !schema.enum.some((candidate) => Object.is(candidate, value))
-  ) failures.push(`schema:${path}:enum`);
+    schema.enum &&
+    !schema.enum.some((candidate) => Object.is(candidate, value))
+  )
+    failures.push(`schema:${path}:enum`);
   if (typeof value === "string") {
     if (schema.minLength !== undefined && value.length < schema.minLength) {
       failures.push(`schema:${path}:minLength`);
@@ -193,8 +200,9 @@ export function validatePublishedSchema(value, schema, path = "$") {
     }
     if (
       schema.format === "uuid" &&
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-        .test(value)
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        value,
+      )
     ) {
       failures.push(`schema:${path}:format:uuid`);
     }
@@ -209,12 +217,13 @@ export function validatePublishedSchema(value, schema, path = "$") {
     if (
       schema.uniqueItems &&
       new Set(value.map((item) => JSON.stringify(item))).size !== value.length
-    ) failures.push(`schema:${path}:uniqueItems`);
+    )
+      failures.push(`schema:${path}:uniqueItems`);
     if (schema.items) {
       value.forEach((item, index) =>
         failures.push(
           ...validatePublishedSchema(item, schema.items, `${path}[${index}]`),
-        )
+        ),
       );
     }
   }
@@ -305,18 +314,18 @@ export function inspectNativeArtifactManifest(
     if (keys.join("|") !== "artifact_id|device|runtime_version|surface") {
       failures.push(`native_artifact_shape:${item?.surface ?? "unknown"}`);
     }
-    for (
-      const [field, maxBytes] of [
-        ["artifact_id", 256],
-        ["runtime_version", 128],
-        ["device", 256],
-      ]
-    ) {
+    for (const [field, maxBytes] of [
+      ["artifact_id", 256],
+      ["runtime_version", 128],
+      ["device", 256],
+    ]) {
       const value = item?.[field];
       if (
-        typeof value !== "string" || value.trim().length === 0 ||
+        typeof value !== "string" ||
+        value.trim().length === 0 ||
         Buffer.byteLength(value, "utf8") > maxBytes
-      ) failures.push(`native_artifact_${field}:${item?.surface ?? "unknown"}`);
+      )
+        failures.push(`native_artifact_${field}:${item?.surface ?? "unknown"}`);
     }
     if (bySurface.has(item?.surface)) {
       failures.push(`native_artifact_duplicate:${item?.surface}`);
@@ -325,13 +334,14 @@ export function inspectNativeArtifactManifest(
   }
   for (const surface of REQUIRED_NATIVE_SURFACES) {
     if (!bySurface.has(surface)) failures.push(`native_artifact:${surface}`);
-    const releaseArtifact = releaseArtifacts.find((item) =>
-      item?.artifact_type === surface
+    const releaseArtifact = releaseArtifacts.find(
+      (item) => item?.artifact_type === surface,
     );
     if (
       !releaseArtifact ||
       bySurface.get(surface)?.artifact_id !== releaseArtifact.artifact_id
-    ) failures.push(`native_artifact_release_correlation:${surface}`);
+    )
+      failures.push(`native_artifact_release_correlation:${surface}`);
   }
   return { failures, bySurface };
 }
@@ -369,24 +379,22 @@ export function capabilityEvidenceDigest(runId, row) {
   const scenarioDigests = [...(row.scenario_evidence ?? [])]
     .sort((a, b) =>
       [a.surface, a.artifact_type, a.scenario, a.role_case]
-        .join("|").localeCompare(
+        .join("|")
+        .localeCompare(
           [b.surface, b.artifact_type, b.scenario, b.role_case].join("|"),
-        )
+        ),
     )
     .map((record) => record.evidence_digest);
-  return canonicalCertificationDigest(
-    "capability-evidence",
-    [
-      runId,
-      row.capability_id,
-      row.status,
-      ...[...(row.surfaces ?? [])].sort(),
-      ...[...(row.scenarios ?? [])].sort(),
-      row.canonical_readback,
-      row.tenant_role_matrix,
-      ...scenarioDigests,
-    ],
-  );
+  return canonicalCertificationDigest("capability-evidence", [
+    runId,
+    row.capability_id,
+    row.status,
+    ...[...(row.surfaces ?? [])].sort(),
+    ...[...(row.scenarios ?? [])].sort(),
+    row.canonical_readback,
+    row.tenant_role_matrix,
+    ...scenarioDigests,
+  ]);
 }
 
 export function certificationSetDigests(evidence) {
@@ -394,10 +402,16 @@ export function certificationSetDigests(evidence) {
     .flatMap((row) => row.scenario_evidence ?? [])
     .sort((a, b) =>
       [a.capability_id, a.surface, a.artifact_type, a.scenario, a.role_case]
-        .join("|").localeCompare(
-          [b.capability_id, b.surface, b.artifact_type, b.scenario, b.role_case]
-            .join("|"),
-        )
+        .join("|")
+        .localeCompare(
+          [
+            b.capability_id,
+            b.surface,
+            b.artifact_type,
+            b.scenario,
+            b.role_case,
+          ].join("|"),
+        ),
     )
     .map((record) => record.evidence_digest);
   const artifactSet = [...(evidence.run?.release_artifacts ?? [])]
@@ -408,7 +422,7 @@ export function certificationSetDigests(evidence) {
         artifact.artifact_id,
         artifact.release_sha,
         artifact.sha256,
-      ])
+      ]),
     );
   const capabilitySet = [...(evidence.capabilities ?? [])]
     .sort((a, b) => a.capability_id.localeCompare(b.capability_id))
@@ -421,7 +435,7 @@ export function certificationSetDigests(evidence) {
         artifact.artifact_id,
         artifact.runtime_version,
         artifact.device,
-      ])
+      ]),
     );
   const cleanupSet = [
     evidence.cleanup?.verified_zero_residue ?? null,
@@ -506,8 +520,8 @@ export function validateCertificationEvidence(
   const plan = buildCertificationPlan(ledger, owners);
   const schema = readJson(SCHEMA_PATH);
   failures.push(...validatePublishedSchema(evidence, schema));
-  const attestationSecret = options.attestationSecret ??
-    process.env.ARI_CERTIFICATION_ATTESTATION_KEY;
+  const attestationSecret =
+    options.attestationSecret ?? process.env.ARI_CERTIFICATION_ATTESTATION_KEY;
   if (typeof attestationSecret !== "string" || attestationSecret.length < 32) {
     failures.push("server_attestation_key_required");
   } else if (evidence?.run?.server_attestation) {
@@ -516,20 +530,18 @@ export function validateCertificationEvidence(
       evidence.run.server_attestation.key_id,
       attestationSecret,
     );
-    for (
-      const field of [
-        "algorithm",
-        "canonicalization",
-        "key_id",
-        "evidence_set_digest",
-        "artifact_set_digest",
-        "capability_set_digest",
-        "native_artifact_set_digest",
-        "cleanup_digest",
-        "rollback_digest",
-        "run_manifest_digest",
-      ]
-    ) {
+    for (const field of [
+      "algorithm",
+      "canonicalization",
+      "key_id",
+      "evidence_set_digest",
+      "artifact_set_digest",
+      "capability_set_digest",
+      "native_artifact_set_digest",
+      "cleanup_digest",
+      "rollback_digest",
+      "run_manifest_digest",
+    ]) {
       requireValue(
         evidence.run.server_attestation[field] === expected[field],
         `server_attestation:${field}`,
@@ -602,8 +614,8 @@ export function validateCertificationEvidence(
     failures,
   );
   for (const artifactType of requiredArtifactTypes) {
-    const matches = releaseArtifacts.filter((item) =>
-      item?.artifact_type === artifactType
+    const matches = releaseArtifacts.filter(
+      (item) => item?.artifact_type === artifactType,
     );
     requireValue(
       matches.length === 1,
@@ -641,7 +653,7 @@ export function validateCertificationEvidence(
     ? evidence.capabilities
     : [];
   requireValue(
-    rows.length === 145,
+    rows.length === 148,
     `evidence_capability_count:${rows.length}`,
     failures,
   );
@@ -659,11 +671,12 @@ export function validateCertificationEvidence(
       failures.push(`missing_evidence:${planned.capability_id}`);
       continue;
     }
-    const statusAllowed = planned.current_status === "guided_handoff"
-      ? row.status === "guided_handoff"
-      : planned.current_status === "unsupported"
-      ? row.status === "unsupported"
-      : row.status === "verified";
+    const statusAllowed =
+      planned.current_status === "guided_handoff"
+        ? row.status === "guided_handoff"
+        : planned.current_status === "unsupported"
+          ? row.status === "unsupported"
+          : row.status === "verified";
     requireValue(
       statusAllowed,
       `status_laundering:${planned.capability_id}:${planned.current_status}->${row.status}`,
@@ -702,8 +715,7 @@ export function validateCertificationEvidence(
       : [];
     const scenarioKeys = new Set();
     for (const record of scenarioEvidence) {
-      const key =
-        `${record.scenario}|${record.surface}|${record.artifact_type}|${record.tenant_case}|${record.role_case}`;
+      const key = `${record.scenario}|${record.surface}|${record.artifact_type}|${record.tenant_case}|${record.role_case}`;
       if (scenarioKeys.has(key)) {
         failures.push(
           `duplicate_scenario_evidence:${planned.capability_id}:${key}`,
@@ -729,9 +741,10 @@ export function validateCertificationEvidence(
         `scenario_digest:${planned.capability_id}:${key}`,
         failures,
       );
-      const artifact = releaseArtifacts.find((candidate) =>
-        candidate.artifact_type === record.artifact_type &&
-        candidate.artifact_id === record.artifact_id
+      const artifact = releaseArtifacts.find(
+        (candidate) =>
+          candidate.artifact_type === record.artifact_type &&
+          candidate.artifact_id === record.artifact_id,
       );
       requireValue(
         Boolean(artifact),
@@ -749,15 +762,15 @@ export function validateCertificationEvidence(
     }
     for (const scenario of planned.required_scenarios) {
       for (const surface of planned.required_surfaces) {
-        const artifactTypes = surface === "business_ios"
-          ? ["business_ios_simulator", "business_ios_physical"]
-          : surface === "business_android"
-          ? ["business_android"]
-          : ["business_web"];
+        const artifactTypes =
+          surface === "business_ios"
+            ? ["business_ios_simulator", "business_ios_physical"]
+            : surface === "business_android"
+              ? ["business_android"]
+              : ["business_web"];
         for (const roleCase of CERT_ROLE_CASES) {
-          const tenantCase = roleCase === "outsider"
-            ? "outsider_tenant"
-            : "owner_tenant";
+          const tenantCase =
+            roleCase === "outsider" ? "outsider_tenant" : "owner_tenant";
           for (const artifactType of artifactTypes) {
             requireValue(
               scenarioKeys.has(
@@ -772,8 +785,9 @@ export function validateCertificationEvidence(
     }
     if (row.status === "verified") {
       requireValue(
-        scenarioEvidence.every((record) =>
-          record.canonical_readback_reference === row.canonical_readback
+        scenarioEvidence.every(
+          (record) =>
+            record.canonical_readback_reference === row.canonical_readback,
         ),
         `canonical_readback_binding:${planned.capability_id}`,
         failures,
@@ -851,7 +865,8 @@ function usage() {
 }
 
 if (
-  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const { ledger, owners } = loadCertificationInputs();
   const [mode, value] = process.argv.slice(2);

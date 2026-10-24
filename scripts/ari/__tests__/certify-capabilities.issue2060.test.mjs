@@ -184,11 +184,12 @@ function passingEvidence(plan) {
   return evidence;
 }
 
-test("#2060 plan covers the current exact 145-row ledger with one cache/readback owner", () => {
+// [TEST-MOD-APPROVED #3872] R1 adds the three governed Host-discount tools.
+test("#2060 plan covers the current exact 148-row ledger with one cache/readback owner", () => {
   const { ledger, owners } = loadCertificationInputs();
   const plan = buildCertificationPlan(ledger, owners);
-  assert.equal(plan.capability_count, 145);
-  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 145);
+  assert.equal(plan.capability_count, 148);
+  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 148);
   assert.equal(
     plan.rows.every((row) =>
       row.cache_owner_id && row.canonical_readback_owner
@@ -240,7 +241,7 @@ test("#2060 rejects missing rows, SHA mismatch surfaces, dirty cleanup, and stra
       "requirements_digest",
       "release_artifact_sha:agent_chat_bundle",
       "native_artifact:business_android",
-      "evidence_capability_count:144",
+      "evidence_capability_count:147",
       "cleanup_zero_residue",
       "rollback_no_stranded_operations",
     ]

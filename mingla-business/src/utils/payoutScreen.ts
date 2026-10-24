@@ -16,6 +16,7 @@ export interface PayoutSaleDTO {
   sourceType: "order" | "rsvp_contribution" | "venue_reservation";
   sourceId: string;
   grossCents: number;
+  discountCents?: number;
   refundedCents: number;
   disputedCents: number;
   minglaFeeCents: number;
@@ -34,6 +35,7 @@ export interface PayoutScreenReleaseDTO {
   dueAt: string;
   releasedAt: string | null;
   grossCents: number;
+  discountCents?: number;
   refundedCents: number;
   disputedCents: number;
   minglaFeeCents: number;
@@ -158,6 +160,7 @@ export function parseBrandPayoutScreen(raw: unknown): BrandPayoutScreenDTO | nul
         sourceType: sourceType as PayoutSaleDTO["sourceType"],
         sourceId,
         grossCents: cents(sale.gross_cents),
+        discountCents: cents(sale.discount_cents),
         refundedCents: cents(sale.refunded_cents),
         disputedCents: cents(sale.disputed_cents),
         minglaFeeCents: cents(sale.mingla_fee_cents),
@@ -176,6 +179,7 @@ export function parseBrandPayoutScreen(raw: unknown): BrandPayoutScreenDTO | nul
       dueAt,
       releasedAt: stringOrNull(row.released_at),
       grossCents: cents(row.gross_cents),
+      discountCents: cents(row.discount_cents),
       refundedCents: cents(row.refunded_cents),
       disputedCents: cents(row.disputed_cents),
       minglaFeeCents: cents(row.mingla_fee_cents),

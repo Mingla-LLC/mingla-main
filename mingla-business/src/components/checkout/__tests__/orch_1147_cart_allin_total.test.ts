@@ -1,16 +1,16 @@
 // ORCH-1147 [cart does not reflect the TRUE price of a trip/event/experience]
 // — implementor happy-path regression test (Step 0.5).
 //
-// Covers SPEC §7 T-1 (useCartTotals all-in math) + T-2 (the event payment
+// Covers SPEC §7 T-1 (useCartQuoteTotals all-in math) + T-2 (the event payment
 // headline binds to the server fee-grossed all-in, NOT the bare base subtotal),
 // plus T-4 (absorb-all → no fees/tax delta) and T-5 (free tier).
 //
-// Runs under the default node/ts-jest config (no RTL). `useCartTotals` is a thin
+// Runs under the default node/ts-jest config (no RTL). `useCartQuoteTotals` is a thin
 // `useMemo` over `useContext(CartCtx)`; we make React's `useMemo` eager and feed
 // `useContext` a stub cart, so the hook's PURE reduce math is exercised
 // deterministically without a device or a React renderer.
 //
-// FAILS-ON-REVERT (proven by line-deletion, not comment-out): if `useCartTotals`
+// FAILS-ON-REVERT (proven by line-deletion, not comment-out): if `useCartQuoteTotals`
 // reverts to a base-only total (drops `allInTotal`/`feesTaxCents`), T-1/T-4
 // fail; if the payment headline rebinds to the base subtotal, T-2 fails.
 // I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (DRAFT).
@@ -18,22 +18,29 @@
 import { describe, expect, jest, test } from "@jest/globals";
 
 import type { CartLine } from "../CartContext";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
+import { ticketQuoteFromLines } from "./ticketQuoteFixture";
 
 // --- Make React hooks eager + inject a stub cart -------------------------
 // `useMemo(factory)` -> factory(); `useContext(ctx)` -> the injected cart value.
 let stubLines: CartLine[] = [];
+let stubQuote: TicketQuote | null = null;
 jest.mock("react", () => {
   const actual = jest.requireActual<typeof import("react")>("react");
   return {
     ...actual,
     useMemo: (factory: () => unknown): unknown => factory(),
-    useContext: (): unknown => ({ lines: stubLines }),
+    useContext: (): unknown => ({
+      lines: stubLines,
+      quote: stubQuote,
+      quoteStatus: "ready",
+    }),
   };
 });
 
 // Imported AFTER the mock so the hook picks up the eager React shims.
 // eslint-disable-next-line import/first
-import { useCartTotals } from "../CartContext";
+import { useCartQuoteTotals } from "../CartContext";
 
 const line = (over: Partial<CartLine>): CartLine => ({
   ticketTypeId: over.ticketTypeId ?? "tt_1",
@@ -46,12 +53,13 @@ const line = (over: Partial<CartLine>): CartLine => ({
   isFree: over.isFree ?? false,
 });
 
-const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartTotals> => {
+const totalsFor = (lines: CartLine[]): ReturnType<typeof useCartQuoteTotals> => {
   stubLines = lines;
-  return useCartTotals();
+  stubQuote = ticketQuoteFromLines(lines);
+  return useCartQuoteTotals();
 };
 
-describe("ORCH-1147 — useCartTotals reflects the server fee-grossed all-in", () => {
+describe("ORCH-1147 — useCartQuoteTotals reflects the server fee-grossed all-in", () => {
   test("T-1: a pass-fee line yields allInTotal ≠ subtotal + a fees/tax delta", () => {
     // base £50, server all-in £52.25 (Mingla + service fee passed), qty 1.
     const totals = totalsFor([
@@ -176,7 +184,7 @@ describe("ORCH-1147 — payment headline source (T-2 / T-3)", () => {
 //
 //   (1) MAPPING MATH — replicate the real mappers' pure pass-through:
 //         source.priceAllInGbp -> stub.priceAllInGbp -> seed.unitPriceAllIn
-//       then feed useCartTotals and assert allInTotal == Σ all-in × qty and
+//       then feed useCartQuoteTotals and assert allInTotal == Σ all-in × qty and
 //       feesTaxCents > 0 (Total > base).
 //   (2) SOURCE-TEXT FAILS-ON-REVERT — read the ACTUAL source files and assert
 //       the six fix lines exist (the field on each interface, the populate in
@@ -237,10 +245,10 @@ describe("ORCH-1147 AMENDMENT — TRIP source → cart Total (T-7a)", () => {
     expect(tripService).toMatch(/priceAllInGbp\?:\s*number\s*\|\s*null/);
   });
   test("T-7a source: getPublicTripById populates priceAllInGbp from the single owner", () => {
-    expect(publicEvents).toMatch(/export const fetchTierAllInCents\b/);
-    expect(publicEvents).toMatch(/fetchTierAllInCents\(tripEventId\)/);
+    expect(publicEvents).toMatch(/export const fetchTierPricingCents\b/);
+    expect(publicEvents).toMatch(/fetchTierPricingCents\(tripEventId\)/);
     expect(publicEvents).toMatch(
-      /priceAllInGbp:\s*\(\(\)\s*=>\s*\{[\s\S]*?allInById\.get\(t\.ticket_type_id\)/,
+      /priceAllInGbp:\s*\(\(\)\s*=>\s*\{[\s\S]*?pricingById\.get\(t\.ticket_type_id\)/,
     );
   });
   test("T-7a source: tierToTicketStub passes priceAllInGbp through", () => {
@@ -280,9 +288,9 @@ describe("ORCH-1147 AMENDMENT — EXPERIENCE source → cart Total (T-7b)", () =
   test("T-7b source: PublicExperienceTicket carries priceAllInGbp + reuses the single owner", () => {
     expect(expService).toMatch(/priceAllInGbp\?:\s*number\s*\|\s*null/);
     expect(expService).toMatch(
-      /import\s*\{\s*fetchTierAllInCents\s*\}\s*from\s*"\.\/publicEventsService"/,
+      /import\s*\{[\s\S]*?fetchTierPricingCents[\s\S]*?\}\s*from\s*"\.\/publicEventsService"/,
     );
-    expect(expService).toMatch(/fetchTierAllInCents\(eventId\)/);
+    expect(expService).toMatch(/fetchTierPricingCents\(eventId\)/);
     // mapExperience sets priceAllInGbp from the threaded all-in map.
     expect(expService).toMatch(/priceAllInGbp:[\s\S]*?allInCents\s*\/\s*100/);
   });

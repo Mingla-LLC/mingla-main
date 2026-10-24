@@ -33,6 +33,7 @@ import {
   providerManagerUrl,
   relativeTimeLabel,
 } from "../../lib/adCampaignRow";
+import { campaignStageViews } from "../../lib/adStageCampaignView";
 
 const TOUCH = "min-h-11";
 
@@ -71,6 +72,19 @@ export function CampaignRow({
     campaign.owner_kind === "mingla"
       ? `${platformLabel} · Mingla house account`
       : `${platformLabel} · ${campaign.owner_label ?? "Host brand"}`;
+  const stageViews = campaignStageViews(campaign);
+  const formatStageMoney = (currency, cents) => {
+    if (!currency) return "—";
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+      }).format(cents / 100);
+    } catch {
+      return `${currency} ${(cents / 100).toFixed(2)}`;
+    }
+  };
+  const formatStageNumber = (value) => new Intl.NumberFormat().format(value);
 
   return (
     <div
@@ -266,6 +280,40 @@ export function CampaignRow({
           <div className="font-semibold text-sm">{synced ?? "—"}</div>
         </div>
       </div>
+      {selected && stageViews.length > 0 && (
+        <div className="space-y-2 border-t border-[var(--gray-100)] pt-3" aria-label="Campaign stages">
+          <div className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+            Stages
+          </div>
+          <div className="grid gap-2 lg:grid-cols-3">
+            {stageViews.map((stage) => (
+              <div key={stage.stage} className="rounded-lg border border-[var(--gray-200)] p-2.5 text-xs">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="font-semibold">{stage.label}</span>
+                  {!stage.hasMetrics && <Badge variant="default">Waiting for sync</Badge>}
+                </div>
+                <dl className="grid grid-cols-2 gap-x-3 gap-y-1">
+                  <dt className="text-[var(--color-text-tertiary)]">Spend</dt>
+                  <dd className="text-right font-medium">{formatStageMoney(stage.currency, stage.spendCents)}</dd>
+                  <dt className="text-[var(--color-text-tertiary)]">Results</dt>
+                  <dd className="text-right font-medium">{formatStageNumber(stage.results)}</dd>
+                  <dt className="text-[var(--color-text-tertiary)]">Cost / sale</dt>
+                  <dd className="text-right font-medium">
+                    {stage.costPerResultCents == null ? "—" : formatStageMoney(stage.currency, stage.costPerResultCents)}
+                  </dd>
+                  <dt className="text-[var(--color-text-tertiary)]">Frequency</dt>
+                  <dd className="text-right font-medium">{stage.frequency.toFixed(2)}</dd>
+                </dl>
+                {stage.audienceTooSmallCodes.length > 0 && (
+                  <p className="mt-2 text-[var(--color-warning-700)]">
+                    Too small: {stage.audienceTooSmallCodes.join(", ")}. Budget folds into prospecting.
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

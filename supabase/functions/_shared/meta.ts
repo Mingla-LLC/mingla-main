@@ -539,7 +539,7 @@ export function applySpecialAdCategoryRestrictions(
 
 /** A4.g url_tags UTM template — without it PostHog/GA are blind to paid traffic. */
 export const META_URL_TAGS =
-  "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}&mc_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}";
+  "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}&mc_id={{campaign.id}}&adset_id={{adset.id}}&ad_id={{ad.id}}&campaign_id={{campaign.id}}";
 
 /** §4.4b default bid strategy — the only value WP1 accepts (cap strategies need bid_amount). */
 export const META_DEFAULT_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";
@@ -1211,6 +1211,23 @@ export const metaAdapter: ChannelAdapter = {
     await metaGraph(client, "POST", externalId, {
       daily_budget: centsToPlatformBudget("meta", cents),
     });
+  },
+
+  getBudget: async (conn, _level, externalId) => {
+    const client = resolveMetaClient(conn);
+    const payload = await metaGraph(client, "GET", externalId, {
+      fields: "daily_budget",
+    });
+    const cents = Number(payload.daily_budget);
+    if (!Number.isSafeInteger(cents) || cents <= 0) {
+      throw new AdApiError({
+        platform: "meta",
+        code: "budget_readback_invalid",
+        message:
+          "Meta did not return an exact positive daily_budget after the update.",
+      });
+    }
+    return { cents, field: "daily_budget" };
   },
 
   // §4.4b compensating cleanup: DELETE /{campaign_id} — live-proven to cascade

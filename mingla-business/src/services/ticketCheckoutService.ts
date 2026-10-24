@@ -9,7 +9,11 @@ import {
   httpStatusOf,
   readEdgeRefusal,
 } from "./checkoutErrorCopy";
-import type { BuyerDetails, CartLine, OrderResult } from "../components/checkout/CartContext";
+import type {
+  BuyerDetails,
+  CartLine,
+  OrderResult,
+} from "../components/checkout/CartContext";
 // ISSUE-865 WP-C — thread the first-party ad click_id (captured on the public
 // page) into checkout-create so the post-finalize conversion send can link the
 // order to its campaign. Web-only source (native returns null → field omitted).
@@ -17,12 +21,14 @@ import {
   fireAdInitiateCheckout,
   getStoredAdMatchData,
   getStoredClickAttribution,
+  identifyAdBuyer,
 } from "../analytics/webAnalytics";
 import {
   isCheckoutAttemptId,
   normalizeCheckoutV2Lines,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 
 type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
   paymentPlanChoice?: CartLine["paymentPlanChoice"];
@@ -30,6 +36,8 @@ type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
 
 export interface TicketCheckoutCreateInput {
   eventId: string;
+  /** #3697 browser-only conversion matching; never forwarded as authority. */
+  brandId?: string;
   buyer: BuyerDetails;
   lines: TicketCheckoutCreateLine[];
   /** issue #3827 — bearer proof for hidden private-ticket tiers. */
@@ -122,6 +130,12 @@ export interface TicketCheckoutCreateInput {
   queueContract?: "queue_v1";
   /** 256-bit hex; required when queueContract is sent. */
   queueDeviceToken?: string;
+  /** #3872 — normalized buyer-entered code; omitted means automatic pricing only. */
+  discountCode?: string | null;
+  /** #3872 — quote accepted by the buyer immediately before create. */
+  quoteDigest?: string;
+  /** #3872 — list-only digest used to classify a create-time 409. */
+  quoteListDigest?: string;
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -284,7 +298,9 @@ export interface TicketCheckoutConfirmResult {
   error?: string | null;
 }
 
-export const FINALIZATION_BACKOFF_MS = [1000, 1500, 2000, 3000, 4000, 5000] as const;
+export const FINALIZATION_BACKOFF_MS = [
+  1000, 1500, 2000, 3000, 4000, 5000,
+] as const;
 
 const centsFromMajor = (value: number): number => Math.round(value * 100);
 
@@ -313,7 +329,7 @@ export const ticketCheckoutAccessError = (
     typeof error === "string"
       ? error
       : typeof (error as { message?: unknown })?.message === "string"
-        ? ((error as { message: string }).message)
+        ? (error as { message: string }).message
         : "";
   for (const token of TICKET_CHECKOUT_ACCESS_ERRORS) {
     if (message.includes(token)) return token;
@@ -476,6 +492,8 @@ export interface TicketCheckoutInvokeError extends Error {
    * constant and nothing else.
    */
   detail: string | null;
+  /** #3872 — fresh quote on checkout_review_required; absent otherwise. */
+  reviewQuote?: TicketQuote | null;
 }
 
 /**
@@ -562,17 +580,19 @@ const invokeWithRetry = async (
 ): Promise<{ data: unknown; error: unknown }> => {
   try {
     return await withTimeout(
-      supabase.functions.invoke(functionName, { body }) as Promise<
-        { data: unknown; error: unknown }
-      >,
+      supabase.functions.invoke(functionName, { body }) as Promise<{
+        data: unknown;
+        error: unknown;
+      }>,
     );
   } catch (transportError) {
     if (!isWorthRetrying(transportError)) throw transportError;
     await sleep(CHECKOUT_RETRY_DELAY_MS);
     return await withTimeout(
-      supabase.functions.invoke(functionName, { body }) as Promise<
-        { data: unknown; error: unknown }
-      >,
+      supabase.functions.invoke(functionName, { body }) as Promise<{
+        data: unknown;
+        error: unknown;
+      }>,
     );
   }
 };
@@ -609,9 +629,9 @@ const invokeOrThrow = async <T>(
     ({ data, error } = retrying
       ? await invokeWithRetry(functionName, body)
       : ((await supabase.functions.invoke(functionName, { body })) as {
-        data: unknown;
-        error: unknown;
-      }));
+          data: unknown;
+          error: unknown;
+        }));
   } catch (transportError) {
     // Both attempts failed to reach the server. Surface it in the shape the
     // mappers already understand: no status, no token — "we do not know".
@@ -619,7 +639,12 @@ const invokeOrThrow = async <T>(
   }
   // issue #2511 — a 5xx comes back as a HANDLED error, not a throw, so the
   // retry decision has to be made here too, not only in the catch above.
-  if (retrying && error !== null && error !== undefined && isWorthRetrying(error)) {
+  if (
+    retrying &&
+    error !== null &&
+    error !== undefined &&
+    isWorthRetrying(error)
+  ) {
     await sleep(CHECKOUT_RETRY_DELAY_MS);
     ({ data, error } = await invokeWithRetry(functionName, body));
   }
@@ -644,10 +669,18 @@ const invokeOrThrow = async <T>(
     // `checkout_session_failed`, and a sold-out sale and a broken RPC read
     // identically to the guest.
     failure.detail = refusal.detail;
+    if (refusal.code === "checkout_review_required") {
+      failure.reviewQuote = (refusal.quote ?? null) as TicketQuote | null;
+    }
     throw failure;
   }
   return data as T;
 };
+
+/** Internal transport reused by the deferred quote chunk. */
+export const invokeTicketCheckoutRequest = <T>(
+  body: Record<string, unknown>,
+): Promise<T> => invokeOrThrow<T>("ticket-checkout-create", body);
 
 /**
  * issue #2188 — the guest-facing copy for a PAID checkout that did not hand off.
@@ -758,9 +791,10 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   // wait rather than retry immediately is the right instruction.
   if (status === 409) return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
   // Copy this module already owns must pass through unchanged.
-  const message = typeof (error as { message?: unknown })?.message === "string"
-    ? (error as { message: string }).message
-    : "";
+  const message =
+    typeof (error as { message?: unknown })?.message === "string"
+      ? (error as { message: string }).message
+      : "";
   if (
     message === PAID_CHECKOUT_NO_HANDOFF_MESSAGE ||
     message === PAID_CHECKOUT_FAILED_MESSAGE
@@ -773,8 +807,8 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,
 ): Promise<TicketCheckoutCreateResult> => {
-  const isCheckoutV2 = input.checkoutContractVersion ===
-    TICKET_CHECKOUT_CONTRACT_VERSION;
+  const isCheckoutV2 =
+    input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION;
   if (isCheckoutV2 && !isCheckoutAttemptId(input.checkoutAttemptId)) {
     throw new Error("checkout_attempt_invalid");
   }
@@ -797,10 +831,12 @@ export const createTicketCheckout = async (
     throw new Error("checkout_lines_invalid");
   }
   const v2PlanChoices = parsedV2Lines?.ok
-    ? new Map(parsedV2Lines.lines.map((line) => [
-      line.ticketTypeId,
-      line.paymentPlanChoice,
-    ]))
+    ? new Map(
+        parsedV2Lines.lines.map((line) => [
+          line.ticketTypeId,
+          line.paymentPlanChoice,
+        ]),
+      )
     : null;
   const explicitV2PlanChoice = (ticketTypeId: string) => {
     const choice = v2PlanChoices?.get(ticketTypeId);
@@ -809,114 +845,138 @@ export const createTicketCheckout = async (
   };
   const clickId = getStoredClickAttribution().clickId;
   const matchData = getStoredAdMatchData();
+  // #3697: TikTok matching receives only browser-hashed values. This remains
+  // fire-and-forget so an ad blocker or Web Crypto failure cannot delay pay.
+  void identifyAdBuyer?.({
+    email: input.buyer.email,
+    phone: input.buyer.phone,
+  })?.catch(() => undefined);
   const site = await import("../analytics/siteAttribution")
     .then((module) => module.default?.())
     .catch(() => undefined);
-  const result = await invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
-    eventId: input.eventId,
-    ...(input.ticketLinkToken !== undefined
-      ? { ticketLinkToken: input.ticketLinkToken }
-      : {}),
-    returnContract: "host_v1",
-    ...(isCheckoutV2
-      ? {
-        checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
-        checkoutAttemptId: input.checkoutAttemptId,
-        purchaseTermsAccepted: true,
-      }
-      : {}),
-    buyer: input.buyer,
-    lines: input.lines.map((line) => ({
-      ticketTypeId: line.ticketTypeId,
-      quantity: line.quantity,
-      expectedUnitPriceCents: centsFromMajor(line.unitPrice),
-      ...(isCheckoutV2
-        ? { paymentPlanChoice: explicitV2PlanChoice(line.ticketTypeId) }
+  const result = await invokeOrThrow<TicketCheckoutCreateResult>(
+    "ticket-checkout-create",
+    {
+      eventId: input.eventId,
+      ...(input.ticketLinkToken !== undefined
+        ? { ticketLinkToken: input.ticketLinkToken }
         : {}),
-    })),
-    // ORCH-0790: omit surface when undefined so the edge function applies its
-    // own "native" default — older mobile builds never send this field.
-    ...(input.surface !== undefined ? { surface: input.surface } : {}),
-    ...(!isCheckoutV2 && input.paymentPlanChoice !== undefined
-      ? { payment_plan_choice: input.paymentPlanChoice }
-      : {}),
-    // ORCH-0880 [Tr5 Traveler Intake Forms]: forward per-tier intake answers
-    // when present. Edge function gates required-question completeness +
-    // schema-version freshness per Phase 2 ticket-checkout-create §164-256.
-    // Omit when empty so non-intake flows preserve byte-identical request shape.
-    ...(input.intakeFormData !== undefined && input.intakeFormData.length > 0
-      ? {
-        intake_form_data: input.intakeFormData,
-        intake_upload_session_id: input.intakeUploadSessionId,
-      }
-      : {}),
-    // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when present so the
-    // single/no-date checkout request stays byte-identical to today. The edge fn
-    // already accepts `eventDateId` (investigation Q5); never sent on the null path.
-    ...(input.eventDateId !== undefined && input.eventDateId.length > 0
-      ? { eventDateId: input.eventDateId }
-      : {}),
-    // issue #2160 — forward the chosen day SET only when non-empty, so an empty
-    // set produces a request body byte-identical to today. The edge fn
-    // validates the set, derives the payout anchor server-side and passes it to
-    // the RPC, which owns the pricing mode and the multiplier.
-    ...(input.eventDateIds !== undefined && input.eventDateIds.length > 0
-      ? { eventDateIds: [...input.eventDateIds] }
-      : {}),
-    ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
-      ? { bookedStartAt: input.bookedStartAt }
-      : {}),
-    ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
-      ? { bookedEndAt: input.bookedEndAt }
-      : {}),
-    ...(typeof input.partySize === "number" &&
-    Number.isFinite(input.partySize) &&
-    input.partySize >= 1
-      ? { partySize: Math.floor(input.partySize) }
-      : {}),
-    // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
-    // the request stays byte-identical for non-ad traffic. The edge fn persists
-    // it on ticket_checkout_sessions.attribution_click_id (WP-B threading).
-    ...(clickId !== null
-      ? { attribution_click_id: clickId }
-      : {}),
-    ...(matchData.fbp !== null ? { fbp: matchData.fbp } : {}),
-    ...(matchData.fbc !== null ? { fbc: matchData.fbc } : {}),
-    ...(matchData.scid !== null ? { scid: matchData.scid } : {}),
-    ...(matchData.clientUserAgent !== null
-      ? { client_user_agent: matchData.clientUserAgent }
-      : {}),
-    // #2830 — the public-site token is opaque, short-lived and web-only. It is
-    // never treated as buyer authority; checkout binds its digest to the
-    // resulting order after the existing money/idempotency decisions succeed.
-    ...site,
-    // issue #2150 — forward the guest's own buyer status token ONLY when the
-    // browser holds one, so a first submit and every paid request stay
-    // byte-identical. It is the possession proof that lets an anonymous guest
-    // be handed their EXISTING free order back instead of a duplicate.
-    ...(input.buyerStatusToken !== undefined && input.buyerStatusToken.length > 0
-      ? { buyerStatusToken: input.buyerStatusToken }
-      : {}),
-    // #2879 / #2947 slice 3 — waiting-room opt-in. Omitted when absent so
-    // legacy / native callers stay byte-identical (quiet path).
-    ...(input.queueContract === "queue_v1" &&
-        typeof input.queueDeviceToken === "string" &&
-        input.queueDeviceToken.length > 0
-      ? {
-        queueContract: "queue_v1" as const,
-        queueDeviceToken: input.queueDeviceToken,
-      }
-      : {}),
-  }, {
-    // issue #2511 item 7 — THE ONLY CALL THAT OPTS IN.
-    //
-    // Safe here and ONLY here: the edge function derives the idempotency key
-    // from this body alone, so an identical repeat returns the same reservation
-    // instead of minting a second. Status, confirm and dispatch deliberately do
-    // NOT opt in — confirm in particular carries ORCH-0852 contracts about how a
-    // 502 must propagate, and retrying it would change the paid finalize path.
-    retryOnTransportFailure: true,
-  });
+      returnContract: "host_v1",
+      ...(isCheckoutV2
+        ? {
+            checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
+            checkoutAttemptId: input.checkoutAttemptId,
+            purchaseTermsAccepted: true,
+          }
+        : {}),
+      buyer: input.buyer,
+      ...(typeof input.discountCode === "string" &&
+      input.discountCode.length > 0
+        ? { discountCode: input.discountCode }
+        : {}),
+      ...(typeof input.quoteDigest === "string" && input.quoteDigest.length > 0
+        ? { quoteDigest: input.quoteDigest }
+        : {}),
+      ...(typeof input.quoteListDigest === "string" &&
+      input.quoteListDigest.length > 0
+        ? { quoteListDigest: input.quoteListDigest }
+        : {}),
+      lines: input.lines.map((line) => ({
+        ticketTypeId: line.ticketTypeId,
+        quantity: line.quantity,
+        expectedUnitPriceCents: centsFromMajor(line.unitPrice),
+        ...(isCheckoutV2
+          ? { paymentPlanChoice: explicitV2PlanChoice(line.ticketTypeId) }
+          : {}),
+      })),
+      // ORCH-0790: omit surface when undefined so the edge function applies its
+      // own "native" default — older mobile builds never send this field.
+      ...(input.surface !== undefined ? { surface: input.surface } : {}),
+      ...(!isCheckoutV2 && input.paymentPlanChoice !== undefined
+        ? { payment_plan_choice: input.paymentPlanChoice }
+        : {}),
+      // ORCH-0880 [Tr5 Traveler Intake Forms]: forward per-tier intake answers
+      // when present. Edge function gates required-question completeness +
+      // schema-version freshness per Phase 2 ticket-checkout-create §164-256.
+      // Omit when empty so non-intake flows preserve byte-identical request shape.
+      ...(input.intakeFormData !== undefined && input.intakeFormData.length > 0
+        ? {
+            intake_form_data: input.intakeFormData,
+            intake_upload_session_id: input.intakeUploadSessionId,
+          }
+        : {}),
+      // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when present so the
+      // single/no-date checkout request stays byte-identical to today. The edge fn
+      // already accepts `eventDateId` (investigation Q5); never sent on the null path.
+      ...(input.eventDateId !== undefined && input.eventDateId.length > 0
+        ? { eventDateId: input.eventDateId }
+        : {}),
+      // issue #2160 — forward the chosen day SET only when non-empty, so an empty
+      // set produces a request body byte-identical to today. The edge fn
+      // validates the set, derives the payout anchor server-side and passes it to
+      // the RPC, which owns the pricing mode and the multiplier.
+      ...(input.eventDateIds !== undefined && input.eventDateIds.length > 0
+        ? { eventDateIds: [...input.eventDateIds] }
+        : {}),
+      ...(input.bookedStartAt !== undefined && input.bookedStartAt.length > 0
+        ? { bookedStartAt: input.bookedStartAt }
+        : {}),
+      ...(input.bookedEndAt !== undefined && input.bookedEndAt.length > 0
+        ? { bookedEndAt: input.bookedEndAt }
+        : {}),
+      ...(typeof input.partySize === "number" &&
+      Number.isFinite(input.partySize) &&
+      input.partySize >= 1
+        ? { partySize: Math.floor(input.partySize) }
+        : {}),
+      // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
+      // the request stays byte-identical for non-ad traffic. The edge fn persists
+      // it on ticket_checkout_sessions.attribution_click_id (WP-B threading).
+      ...(clickId !== null ? { attribution_click_id: clickId } : {}),
+      ...(matchData.fbp !== null ? { fbp: matchData.fbp } : {}),
+      ...(matchData.fbc !== null ? { fbc: matchData.fbc } : {}),
+      ...(matchData.scid !== null ? { scid: matchData.scid } : {}),
+      ...(typeof matchData.ttp === "string" ? { ttp: matchData.ttp } : {}),
+      ...(matchData.trackingOptOut === true
+        ? { ad_tracking_opt_out: true }
+        : {}),
+      ...(matchData.clientUserAgent !== null
+        ? { client_user_agent: matchData.clientUserAgent }
+        : {}),
+      // #2830 — the public-site token is opaque, short-lived and web-only. It is
+      // never treated as buyer authority; checkout binds its digest to the
+      // resulting order after the existing money/idempotency decisions succeed.
+      ...site,
+      // issue #2150 — forward the guest's own buyer status token ONLY when the
+      // browser holds one, so a first submit and every paid request stay
+      // byte-identical. It is the possession proof that lets an anonymous guest
+      // be handed their EXISTING free order back instead of a duplicate.
+      ...(input.buyerStatusToken !== undefined &&
+      input.buyerStatusToken.length > 0
+        ? { buyerStatusToken: input.buyerStatusToken }
+        : {}),
+      // #2879 / #2947 slice 3 — waiting-room opt-in. Omitted when absent so
+      // legacy / native callers stay byte-identical (quiet path).
+      ...(input.queueContract === "queue_v1" &&
+      typeof input.queueDeviceToken === "string" &&
+      input.queueDeviceToken.length > 0
+        ? {
+            queueContract: "queue_v1" as const,
+            queueDeviceToken: input.queueDeviceToken,
+          }
+        : {}),
+    },
+    {
+      // issue #2511 item 7 — THE ONLY CALL THAT OPTS IN.
+      //
+      // Safe here and ONLY here: the edge function derives the idempotency key
+      // from this body alone, so an identical repeat returns the same reservation
+      // instead of minting a second. Status, confirm and dispatch deliberately do
+      // NOT opt in — confirm in particular carries ORCH-0852 contracts about how a
+      // 502 must propagate, and retrying it would change the paid finalize path.
+      retryOnTransportFailure: true,
+    },
+  );
   const checkoutResult = result as TicketCheckoutCreateResult & {
     checkoutSessionId?: string;
     totalCents?: number;
@@ -924,10 +984,13 @@ export const createTicketCheckout = async (
   };
   if (checkoutResult.checkoutSessionId) {
     fireAdInitiateCheckout(checkoutResult.checkoutSessionId, {
-      value: typeof checkoutResult.totalCents === "number"
-        ? checkoutResult.totalCents / 100
-        : undefined,
+      value:
+        typeof checkoutResult.totalCents === "number"
+          ? checkoutResult.totalCents / 100
+          : undefined,
       currency: checkoutResult.currency,
+      contentId: input.eventId,
+      brandId: input.brandId,
     });
   }
   return result;
@@ -942,7 +1005,7 @@ export const getTicketCheckoutStatus = async (
     checkoutSessionId,
     buyerStatusToken,
     ...(typeof opts?.queueDeviceToken === "string" &&
-        opts.queueDeviceToken.length > 0
+    opts.queueDeviceToken.length > 0
       ? { queueDeviceToken: opts.queueDeviceToken }
       : {}),
   });
@@ -1084,7 +1147,9 @@ export const TICKETS_STILL_CONFIRMING_MESSAGE =
 export const TICKET_CONFIRM_BUDGET_MS = 60_000;
 
 /** Wait between confirm attempts; the last value repeats until the budget ends. */
-export const TICKET_CONFIRM_BACKOFF_MS = [1000, 2000, 3000, 5000, 8000] as const;
+export const TICKET_CONFIRM_BACKOFF_MS = [
+  1000, 2000, 3000, 5000, 8000,
+] as const;
 
 /** Return-leg tokens that carry their own, more specific copy (#2198). */
 const PAYSTACK_RETURN_FAILURE_CODES: ReadonlySet<string> = new Set([
@@ -1261,22 +1326,31 @@ export const awaitTicketConfirmation = async (
         remainingMs,
       );
       if (answer === CONFIRM_DEADLINE) {
-        return isCancelled() ? { kind: "cancelled" } : { kind: "still_confirming" };
+        return isCancelled()
+          ? { kind: "cancelled" }
+          : { kind: "still_confirming" };
       }
-      classification = classifyTicketConfirmAnswer({ kind: "result", result: answer });
+      classification = classifyTicketConfirmAnswer({
+        kind: "result",
+        result: answer,
+      });
     } catch (error) {
       classification = classifyTicketConfirmAnswer({ kind: "error", error });
     }
     if (isCancelled()) return { kind: "cancelled" };
 
-    if (classification.kind === "unanswerable") return { kind: "still_confirming" };
+    if (classification.kind === "unanswerable")
+      return { kind: "still_confirming" };
     if (classification.kind !== "pending") return classification;
 
     if (!announcedWaiting) {
       announcedWaiting = true;
       input.onWaiting?.();
     }
-    const delayMs = Math.max(1, backoff[Math.min(attempt, backoff.length - 1)] ?? 1);
+    const delayMs = Math.max(
+      1,
+      backoff[Math.min(attempt, backoff.length - 1)] ?? 1,
+    );
     if (elapsed() + delayMs >= budgetMs) return { kind: "still_confirming" };
     await waitFor(delayMs);
     waitedMs += delayMs;

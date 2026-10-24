@@ -410,6 +410,9 @@ interface CampaignRow {
     // adapter appends it). short_url_token is reserved; SMS links use the
     // existing /m/{tracking_id} Mingla redirect (Sub-B §6.7).
     body?: string;
+    // #3682 — SMS Follow is optional. Missing/false preserves the author's
+    // concise body; true appends the shared Follow line before STOP.
+    include_follow_cta?: boolean;
     // ORCH-1282 — MMS media (publicly-fetchable brand_covers URLs). US/Twilio
     // only; NG/Termii drops it (SMS-only). Passenger on the existing send — does
     // NOT alter disposition or the ORCH-1270 dedupe.
@@ -572,14 +575,14 @@ export async function handleMarketingSendRequest(
     }
     if (requestedQuotedAt === null) {
       const refreshed = await safeBookQuote(candidates.data, followBrand);
-      if (refreshed === null) {
-        return jsonResponse({ error: "BOOK_BLAST_COST_UNAVAILABLE" }, 503);
+      if (refreshed.quote === null) {
+        return jsonResponse({ error: refreshed.error }, 503);
       }
       const withAllowance = await attachBookAllowance(
         supabase,
         actor.user.id,
         candidates.data,
-        refreshed,
+        refreshed.quote,
       );
       if (!withAllowance.ok) {
         return jsonResponse({ error: withAllowance.error }, 503);
@@ -600,7 +603,7 @@ export async function handleMarketingSendRequest(
       return jsonResponse({
         error: (error instanceof Error && error.message.includes("mms"))
           ? "BOOK_BLAST_MMS_NOT_SUPPORTED"
-          : "BOOK_BLAST_COST_UNAVAILABLE",
+          : marketingBookQuoteErrorCode(error),
       }, error instanceof Error && error.message.includes("mms") ? 409 : 503);
     }
     if (isPreviewPeopleAction) {
@@ -779,6 +782,16 @@ async function resolveFollowBrandForQuote(
   db: any,
   candidates: unknown,
 ): Promise<{ name: string; slug: string } | null> {
+  const candidateEnvelope = candidates as {
+    channel?: unknown;
+    content?: { include_follow_cta?: unknown } | null;
+  } | null;
+  if (
+    candidateEnvelope?.channel !== "sms" ||
+    candidateEnvelope.content?.include_follow_cta !== true
+  ) {
+    return null;
+  }
   const brandId = (candidates as { brandId?: unknown } | null)?.brandId;
   if (typeof brandId !== "string" || brandId.length === 0) return null;
   const { data, error } = await db
@@ -808,14 +821,32 @@ async function safeBookQuote(
   followBrand: { name: string; slug: string } | null = null,
 ) {
   try {
-    return publicMarketingBookQuote(
-      await buildMarketingBookQuote(candidates as never, new Date(), {
-        followBrand,
-      }),
-    );
-  } catch {
-    return null;
+    return {
+      quote: publicMarketingBookQuote(
+        await buildMarketingBookQuote(candidates as never, new Date(), {
+          followBrand,
+        }),
+      ),
+      error: null,
+    };
+  } catch (error) {
+    return { quote: null, error: marketingBookQuoteErrorCode(error) };
   }
+}
+
+/** Public-safe reason without rate values, contacts, or message content. */
+export function marketingBookQuoteErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("sms_rate_book_expired")) {
+    return "BOOK_BLAST_RATE_BOOK_EXPIRED";
+  }
+  if (
+    message.includes("sms_rate_book_") ||
+    message.includes("sms_rate_unavailable")
+  ) {
+    return "BOOK_BLAST_RATE_BOOK_UNAVAILABLE";
+  }
+  return "BOOK_BLAST_COST_UNAVAILABLE";
 }
 
 async function attachBookAllowance(
@@ -2037,8 +2068,12 @@ async function sendSms(
 
   const rawBodyBase = (campaign.channel_payload.body ?? "").trim();
   if (rawBodyBase.length === 0) throw new Error("sms_body_empty");
-  // #3682 Wave 2.3 — every SMS blast carries a Follow URL line (same owner as Book quote).
-  const rawBody = smsBlastBodyWithFollow(rawBodyBase, brandName, brandSlugSms);
+  // #3682 — Follow is opt-in; quote, preview, and dispatch use the same flag.
+  const rawBody = smsBlastBodyWithFollow(
+    rawBodyBase,
+    brandName,
+    campaign.channel_payload.include_follow_cta === true ? brandSlugSms : null,
+  );
   const isOfferingAudience = audience.query_definition.kind ===
     "offering_send_group";
   if (rawBody.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {

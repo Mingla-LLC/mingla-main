@@ -796,7 +796,10 @@ Deno.test("A1.1(6): a pixel-gated goal without pixel_id throws pixel_goal_unavai
     budgetCents: 500,
     pixelId: "af5f8fc4-1ef6-41e7-81c5-042b7be7df38",
   });
-  assert(!("pixel_id" in swipes), "SWIPES never carries pixel_id");
+  // [TEST-MOD-APPROVED #3697] The airtight contract supersedes the old
+  // optimisation-only attachment: measurement now carries the pixel on every
+  // squad, even when SWIPES remains the fallback goal.
+  assertEquals(swipes.pixel_id, "af5f8fc4-1ef6-41e7-81c5-042b7be7df38");
 });
 
 // ── Mint cache + fail-close (AC-S-8 / RT-1) ───────────────────────────────────

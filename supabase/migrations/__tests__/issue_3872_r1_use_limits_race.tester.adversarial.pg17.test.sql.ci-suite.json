@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3872_r1_use_limits_race.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3872-05-use-limits-race",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

@@ -12,8 +12,14 @@ import {
 } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  formatCompactCount,
+  formatFollowerCountA11y,
+} from "@mingla/offering-rendering";
 
 import { brandFollowKeys } from "../../hooks/useBrandFollow";
+import { useBrandFollowerCounts } from "../../hooks/useBrandFollowerCount";
+import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import {
   brandFollowIsMuted,
   brandFollowsService,
@@ -48,7 +54,11 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
     enabled: visible && !!userId,
   });
 
-  const rows = listQuery.data ?? [];
+  const rows = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+  const followerCountsQuery = useBrandFollowerCounts(
+    rows.map((row) => row.brandId),
+  );
+  const followerCountLabels = useFollowerCountLabels();
   const mutedCount = rows.filter((r) => brandFollowIsMuted(r.mutedUntil)).length;
   const emailsStopped = rows.filter(
     (r) => !brandFollowIsMuted(r.mutedUntil) && !r.channels.email,
@@ -233,6 +243,27 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
           {!listQuery.isError
             ? filtered.map((row) => {
                 const muted = brandFollowIsMuted(row.mutedUntil);
+                const reason = muted
+                  ? formatMuted(row.mutedUntil)
+                  : !row.channels.email
+                    ? "Emails stopped"
+                    : `Following since ${new Date(
+                        row.createdAt,
+                      ).toLocaleDateString(undefined, { month: "short" })}`;
+                const followerCount = followerCountsQuery.data?.[row.brandId];
+                const compact =
+                  typeof followerCount === "number" && followerCount >= 1
+                    ? formatCompactCount(followerCount)
+                    : null;
+                const countLine =
+                  compact !== null && followerCount !== undefined
+                    ? followerCountLabels.line(followerCount, compact)
+                    : null;
+                const countA11y =
+                  compact !== null && followerCount !== undefined
+                    ? followerCountLabels.a11y(followerCount, compact) ??
+                      formatFollowerCountA11y(followerCount)
+                    : null;
                 return (
                   <View
                     key={row.brandId}
@@ -249,16 +280,12 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
                         <Text style={styles.cardName} numberOfLines={1}>
                           {row.brandName}
                         </Text>
-                        <Text style={styles.cardCaption} numberOfLines={1}>
-                          {muted
-                            ? formatMuted(row.mutedUntil)
-                            : !row.channels.email
-                              ? "Emails stopped"
-                              : `Following since ${new Date(
-                                  row.createdAt,
-                                ).toLocaleDateString(undefined, {
-                                  month: "short",
-                                })}`}
+                        <Text
+                          style={styles.cardCaption}
+                          numberOfLines={1}
+                          accessibilityLabel={`${row.brandName}. ${countA11y ? `${countA11y}. ` : ""}${reason}.`}
+                        >
+                          {countLine ? `${countLine} · ${reason}` : reason}
                         </Text>
                       </View>
                       {muted ? (

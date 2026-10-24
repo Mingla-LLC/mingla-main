@@ -95,13 +95,11 @@ describe("ORCH-1192 business app_opened + checkout_started call sites", () => {
         const sq = squish(raw);
         // Capture present with the right id/type/value/currency/surface props.
         const captureRe = new RegExp(
-          `postHogService\\.capture\\(\\s*"checkout_started",\\s*\\{\\s*event_id:\\s*${idVar},\\s*offering_type:\\s*"${offering}",[\\s\\S]*?currency:\\s*totals\\.currency,\\s*surface:\\s*"business_app",?\\s*\\}\\s*\\)`,
+          `postHogService\\.capture\\(\\s*"checkout_started",\\s*\\{\\s*event_id:\\s*${idVar},\\s*offering_type:\\s*"${offering}",[\\s\\S]*?currency:\\s*activeQuote\\.currency,\\s*surface:\\s*"business_app",?\\s*\\}\\s*\\)`,
         );
         expect(sq).toMatch(captureRe);
-        // value is conditional on the server all-in preview being present.
-        expect(sq).toMatch(
-          /allInPreviewCents\s*!==\s*null\s*\?\s*\{\s*value:\s*allInPreviewCents\s*\/\s*100\s*\}\s*:\s*\{\s*\}/,
-        );
+        // Value is the accepted server quote, never a client recomputation.
+        expect(sq).toMatch(/value:\s*activeQuote\.buyerTotalCents\s*\/\s*100/);
 
         // Ordering: checkout_started must precede the success purchase_completed.
         const startedIdx = raw.indexOf('postHogService.capture("checkout_started"');

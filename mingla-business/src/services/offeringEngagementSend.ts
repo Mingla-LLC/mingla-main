@@ -30,13 +30,34 @@ export async function sendOfferingEngagement(
   checkoutSessionId: string | null,
 ): Promise<void> {
   try {
+    const earlyWindow = window as Window & {
+      __minglaEarlyEngagementCapture?: {
+        scope: OfferingEngagementScope;
+        eventId: string;
+        completed: Promise<boolean>;
+      };
+    };
+    const early = earlyWindow.__minglaEarlyEngagementCapture;
+    let captureEventId: string | null = null;
+    if (
+      eventType === "page_view" &&
+      early?.scope.brandId === scope.brandId &&
+      early?.scope.entityType === scope.entityType &&
+      early?.scope.entityId === scope.entityId
+    ) {
+      delete earlyWindow.__minglaEarlyEngagementCapture;
+      if (await early.completed) return;
+      // The keepalive request failed. Reuse its event id so a late success and
+      // this hydrated fallback still collapse to one first-party visit.
+      captureEventId = early.eventId;
+    }
     const pageUrl = window.location.href;
     const referrer = document.referrer.trim();
     const { error } = await supabase.functions.invoke(
       "offering-engagement-capture",
       {
         body: {
-          eventId: eventId(),
+          eventId: captureEventId ?? eventId(),
           brandId: scope.brandId,
           entityType: scope.entityType,
           entityId: scope.entityId,

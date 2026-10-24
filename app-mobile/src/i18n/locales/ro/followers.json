@@ -1,0 +1,17 @@
+{
+  "first": "Fii prima persoană care urmărește",
+  "count_zero": "{{formatted}} urmăritori",
+  "count_one": "{{formatted}} urmăritor",
+  "count_two": "{{formatted}} urmăritori",
+  "count_few": "{{formatted}} urmăritori",
+  "count_many": "{{formatted}} de urmăritori",
+  "count_other": "{{formatted}} de urmăritori",
+  "a11y_none": "Încă nu există urmăritori",
+  "a11y_exact_zero": "{{count}} urmăritori",
+  "a11y_exact_one": "{{count}} urmăritor",
+  "a11y_exact_two": "{{count}} urmăritori",
+  "a11y_exact_few": "{{count}} urmăritori",
+  "a11y_exact_many": "{{count}} de urmăritori",
+  "a11y_exact_other": "{{count}} de urmăritori",
+  "a11y_approx": "aproximativ {{formatted}} urmăritori"
+}

@@ -64,6 +64,7 @@ module.exports = {
   // #3284 — the RN-free refund-terms reader (readRefundPolicyState and its
   // parser/constant), re-exported REAL like every pure helper above. ADDITION only.
   ...real("offeringRefundPolicy"),
+  ...real("followerCount"),
 
   // ---- Stubbed RN visual components (never rendered under node/ts-jest) -----
   ParallaxCoverShell: Stub,
@@ -92,6 +93,7 @@ module.exports = {
   RsvpMomentumDecision: Stub,
   RsvpOfferingBody: Stub,
   RsvpSuccessPopup: Stub,
+  FollowerCountLine: Stub,
   TripCountdownPill: Stub,
   TripOfferingBody: Stub,
   TripPaymentChoice: Stub,

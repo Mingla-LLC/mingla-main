@@ -72,6 +72,10 @@ export interface OrderLineRecord {
   ticketNameAtPurchase: string;
   /** FROZEN at purchase. NEVER mutated. */
   unitPriceGbpAtPurchase: number;
+  /** Original list unit before a discount; absent on legacy orders. */
+  listUnitPriceGbpAtPurchase?: number;
+  /** Discount allocated to this line in minor units. */
+  discountCents?: number;
   /** Currency-neutral alias for new ORCH-0769 records. */
   unitPriceAtPurchase?: number;
   /** FROZEN at purchase. NEVER mutated. */
@@ -135,6 +139,8 @@ export interface OrderTicketDayRecord {
    * fixtures from before #3313 carry none.
    */
   ticketTypeId?: string | null;
+  /** issue #3281 — number of people this pass admits; absent on legacy cache rows. */
+  admitsCount?: number | null;
   /** `event_dates.id`s this pass admits. EMPTY means "not day-scoped". */
   eventDateIds: string[];
   status: string;
@@ -195,6 +201,13 @@ export interface OrderRecord {
   refundedAmountCents?: number;
   /** Total order amount in minor units. ORCH-0796 — needed for net-to-organiser. */
   totalCents?: number;
+  /** #3872 server money identity; optional on legacy and local fixtures. */
+  listSubtotalCents?: number;
+  netSubtotalCents?: number;
+  discountCents?: number;
+  buyerFeesCents?: number;
+  taxCents?: number;
+  buyerTotalCents?: number;
   /**
    * Mingla-intended platform fee at charge creation (cents). Pre-webhook
    * fallback for `stripeApplicationFeeAmountCents`. ORCH-0796.

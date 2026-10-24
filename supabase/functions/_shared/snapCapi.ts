@@ -36,6 +36,38 @@ function definedOnly<T extends Record<string, unknown>>(obj: T): T {
   return obj;
 }
 
+function snapBodyFailure(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const root = payload as Record<string, unknown>;
+  const requestStatus = typeof root.request_status === "string"
+    ? root.request_status.toUpperCase()
+    : null;
+  if (requestStatus && requestStatus !== "SUCCESS") {
+    return `request_status_${requestStatus.toLowerCase()}`;
+  }
+  const pending: unknown[] = [root];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (Array.isArray(value)) {
+      pending.push(...value);
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (key === "sub_request_status" && typeof nested === "string" && nested.toUpperCase() !== "SUCCESS") {
+        return `sub_request_status_${nested.toLowerCase()}`;
+      }
+      if (key === "error" || key === "errors") {
+        if (nested != null && (!Array.isArray(nested) || nested.length > 0)) {
+          return "event_error";
+        }
+      }
+      if (nested && typeof nested === "object") pending.push(nested);
+    }
+  }
+  return null;
+}
+
 export async function sendSnapConversion(
   input: ConversionSendInput,
   conn: SenderConnection,
@@ -60,6 +92,7 @@ export async function sendSnapConversion(
     ph: input.hashedPhone ? [input.hashedPhone] : undefined,
     sc_click_id: input.externalClickId ?? undefined, // raw Snap click id (sccid)
     sc_cookie1: input.scCookie1 ?? undefined,
+    external_id: input.externalId ?? undefined,
     client_ip_address: input.clientIpAddress ?? undefined,
     client_user_agent: input.clientUserAgent ?? undefined,
   } as Record<string, unknown>);
@@ -67,6 +100,9 @@ export async function sendSnapConversion(
   const customData = definedOnly({
     value: valueNumber(input.valueCents),
     currency: input.currency ?? undefined,
+    item_ids: input.contentId ? [input.contentId] : undefined,
+    content_type: input.contentId ? "product" : undefined,
+    brand_id: input.brandId ?? undefined,
   } as Record<string, unknown>);
 
   const event = definedOnly({
@@ -94,6 +130,16 @@ export async function sendSnapConversion(
       signal: controller.signal,
     });
     if (res.status >= 200 && res.status < 300) {
+      try {
+        const parsed = await res.json();
+        const failure = snapBodyFailure(parsed);
+        if (failure) {
+          return { channel: "snap", status: "failed", reason: failure, httpStatus: res.status };
+        }
+      } catch {
+        // Snap occasionally returns an empty/non-JSON 2xx; HTTP success remains
+        // authoritative when there is no provider body to inspect.
+      }
       return { channel: "snap", status: "sent", httpStatus: res.status };
     }
     return { channel: "snap", status: "failed", reason: `http_${res.status}`, httpStatus: res.status };

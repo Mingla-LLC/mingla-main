@@ -32,8 +32,10 @@ test("#3859 real Explorer cart owns recap, Change, and missing-only contact edit
 
 test("#3859 contact edits are booking-local and preserve cart authority", () => {
   assert.doesNotMatch(cartSource, /setProfile|updateProfile|profiles["']?\)\.update/);
-  assert.match(cartSource, /lines: lines/);
-  assert.match(cartSource, /totalCents: pricing\.allInCents/);
+  assert.match(cartSource, /lines: quoteLines/);
+  assert.match(cartSource, /totalCents: acceptedQuote\.buyerTotalCents/);
+  assert.match(cartSource, /quoteDigest: acceptedQuote\.quoteDigest/);
+  assert.match(cartSource, /quoteListDigest: acceptedQuote\.quoteListDigest/);
   assert.match(cartSource, /intakeFormData/);
   assert.match(cartSource, /paymentPlanChoice:/);
 });

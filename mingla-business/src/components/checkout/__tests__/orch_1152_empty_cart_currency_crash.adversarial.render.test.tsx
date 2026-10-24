@@ -3,7 +3,7 @@
 //
 // THE SHIPPED CRASH was on the EMPTY/initial cart: entering any of the three
 // business checkout selection screens mounts with an EMPTY cart, so the REAL
-// `useCartTotals()` returns `currency === ""`, and ORCH-1147R2's unconditional
+// `useCartQuoteTotals()` returns `currency === ""`, and ORCH-1147R2's unconditional
 // top-level `const headlineAllIn = formatCurrency(totals.allInTotal,
 // totals.currency)` fed "" into `new Intl.NumberFormat({ currency: "" })` →
 // `RangeError: Currency is invalid` → the screen crashed on mount before any
@@ -49,9 +49,10 @@ import { render, screen, act } from "@testing-library/react-native";
 import {
   CartProvider,
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../CartContext";
 import { formatCurrency } from "../../../utils/currency";
+import { ticketQuoteFromLines } from "./ticketQuoteFixture";
 
 // --- the bottom-bar JSX from the three checkout index.tsx screens, using the
 // ORIGINAL pre-ORCH-1152 UNCONDITIONAL headline shape
@@ -62,10 +63,10 @@ import { formatCurrency } from "../../../utils/currency";
 // invalid` from render() on the empty cart — the precise shipped failure. With
 // the fix in place, Layer 1 alone makes this unguarded shape safe (defense in
 // depth: the screens ALSO carry the Layer-2 `isEmpty ? "GBP"` guard, but Layer 1
-// is what protects this original shape). Drives the REAL useCartTotals so the
+// is what protects this original shape). Drives the REAL useCartQuoteTotals so the
 // empty-cart `currency === ""` path is exercised end-to-end, not faked.
 const BottomBar: React.FC = () => {
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
   const headlineAllIn = formatCurrency(totals.allInTotal, totals.currency);
   const showFeesTaxLine =
     !totals.isEmpty && !totals.isFree && totals.hasFeesTaxDelta;
@@ -127,7 +128,7 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
 
     // populate: GBP pass-fee line → headline becomes the all-in
     act(() => {
-      cartApi?.setLineQuantity({
+      const line = {
         ticketTypeId: "tt_1",
         ticketName: "General",
         unitPrice: 65,
@@ -135,7 +136,10 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
         currency: "GBP",
         isFree: false,
         quantity: 1,
-      });
+        paymentPlanChoice: "full" as const,
+      };
+      cartApi?.setLineQuantity(line);
+      cartApi?.setQuoteState(ticketQuoteFromLines([line]), "ready");
     });
     expect(screen.getByTestId("bar-value").props.children).toBe("£67.93");
 
@@ -162,7 +166,7 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
   it("a NON-GBP (USD) cart emptied back out still renders '—' (fallback is currency-independent)", () => {
     renderEmpty();
     act(() => {
-      cartApi?.setLineQuantity({
+      const line = {
         ticketTypeId: "tt_usd",
         ticketName: "GA",
         unitPrice: 50,
@@ -170,7 +174,10 @@ describe("ORCH-1152 RENDER (adversarial) — empty checkout cart mounts without 
         currency: "USD",
         isFree: false,
         quantity: 1,
-      });
+        paymentPlanChoice: "full" as const,
+      };
+      cartApi?.setLineQuantity(line);
+      cartApi?.setQuoteState(ticketQuoteFromLines([line]), "ready");
     });
     // populated USD cart renders the USD all-in (proves it's a real non-GBP path)
     expect(screen.getByTestId("bar-value").props.children).toBe("$52.25");

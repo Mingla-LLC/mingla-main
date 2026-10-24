@@ -401,6 +401,8 @@ export interface CreateAdSetInput {
   targeting: Record<string, unknown>;
   /** Provider-native promoted object (currently Meta app acquisition). */
   promotedObject?: Record<string, unknown>;
+  /** Provider-native impression cap, only when that goal supports it. */
+  frequencyCap?: { impressions: number; days: number };
   validateOnly?: boolean;
 }
 
@@ -512,6 +514,17 @@ export interface ChannelAdapter {
     externalId: string,
     cents: number,
   ): Promise<void>;
+
+  /**
+   * Read the provider-owned budget after a mutation. Ads budget amendments
+   * are not complete until the platform returns the exact amount we wrote.
+   * Adapters that do not support governed budget changes may omit this hook.
+   */
+  getBudget?(
+    conn: AdConnectionRow,
+    level: Exclude<EntityLevel, "ad">,
+    externalId: string,
+  ): Promise<{ cents: number; field: string }>;
 
   /**
    * §4.4b compensating-cleanup hook (optional — Google's atomic mutate never

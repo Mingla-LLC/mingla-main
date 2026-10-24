@@ -75,6 +75,10 @@ import {
   type ThemePalette,
 } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
+import {
+  PresentedByFollowerCount,
+  type FollowerCountLabels,
+} from "./PresentedByFollowerCount";
 // ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
 import { taxonomyLabel } from "./taxonomyLabels";
 import { resolveRsvpCta, type RsvpCtaState } from "./offeringCta";
@@ -332,6 +336,10 @@ export interface RsvpOfferingBodyProps {
    * import cycle. Absent ⇒ identity-only card (today).
    */
   presentedByFollow?: React.ReactNode;
+  /** #3682 — server count for the Presented-by card; unavailable stays hidden. */
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
   /** issue #2468 — carries the stored coordinate, not just the text label.
    *  issue #2508 — plus the app the guest picked (undefined ⇒ nothing asked). */
   onOpenMaps?: (target: MapsOpenTarget, app?: MapsAppId) => void;
@@ -1396,7 +1404,12 @@ export const useRsvpOfferingState = (
       ? (
         // The injected field exposes no ref; this wrapper is what a blocked
         // decision tap scrolls to (and, on web, focuses the input inside).
-        <View {...(inline ? { ref: primaryPhoneRef } : {})} collapsable={false}>
+        <View
+          {...(inline
+            ? { ref: primaryPhoneRef as React.RefObject<View | null> }
+            : {})}
+          collapsable={false}
+        >
         {renderPhoneField({
           countryCode: phoneCountry,
           rawValue: phoneRawValue,
@@ -2052,6 +2065,9 @@ export const RsvpOfferingBody: React.FC<
     config,
     onOpenBrand,
     presentedByFollow,
+    presentedByFollowerCount,
+    presentedByFollowerCountLoading = false,
+    presentedByFollowerCountLabels,
     onOpenMaps,
     onCopyAddress,
     staticMapUrl = null,
@@ -2337,6 +2353,13 @@ export const RsvpOfferingBody: React.FC<
               >
                 {brand?.displayName ?? "Brand"}
               </Text>
+              <PresentedByFollowerCount
+                count={presentedByFollowerCount}
+                loading={presentedByFollowerCountLoading}
+                labels={presentedByFollowerCountLabels}
+                palette={palette}
+                testID="rsvp-presented-by-follower-count"
+              />
             </View>
             {presentedByFollow === undefined && onOpenBrand !== undefined ? (
               <Text style={[styles.brandCta, { color: palette.accent }]}>

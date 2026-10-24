@@ -1226,6 +1226,127 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'discount-codes',
+    episode: 21,
+    title: 'Create and share a discount code',
+    blurb:
+      'Create a code in Mingla Host, choose exactly where it works and how it combines, then share it or check its results.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Sell tickets', 'Run a venue', 'Market to customers'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-22',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Open your brand’s Discounts page',
+        body:
+          'In Mingla Host, open your brand, then Discounts. Choose Create discount and keep Code selected.',
+      },
+      {
+        title: 'Name it and enter the code',
+        body:
+          'The name appears on receipts. The code is what buyers type. Mingla removes spaces and hyphens and uses capital letters.',
+      },
+      {
+        title: 'Choose the value and where it works',
+        body:
+          'Pick percent off or amount off. Apply it to the whole brand, listing types, selected listings or individual items. Disabled or unavailable rows cannot be selected.',
+      },
+      {
+        title: 'Choose every rule that fits your offer',
+        body:
+          'You choose whether it combines with nothing, automatic discounts only or any eligible discount. You can also set start and end times, total uses, uses per buyer and a minimum spend.',
+      },
+      {
+        title: 'Check the preview, then create it',
+        body:
+          'The preview shows eligible prices. Create the discount when it looks right. From the Discounts list you can pause, edit or end it, share it in a Blast, and open Results.',
+      },
+    ],
+  },
+  {
+    slug: 'sale-prices-and-automatic-discounts',
+    episode: 22,
+    title: 'Set sale prices and automatic discounts',
+    blurb:
+      'Lower a public price for a time, or give eligible buyers an automatic deal, without changing the original list price.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Sell tickets', 'Run a venue'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-22',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Choose a sale price or an automatic discount',
+        body:
+          'Open Brand → Discounts. Create an Automatic discount from the Discounts tab, or open Prices and select one ticket, menu item or reservation deposit to start a sale.',
+      },
+      {
+        title: 'Keep the list price as the reference',
+        body:
+          'A sale price must be above zero and lower than the list price. Mingla keeps the list price unchanged and shows buyers the confirmed sale from the server.',
+      },
+      {
+        title: 'Choose when it ends',
+        body:
+          'You can choose an end date. Ticket sales can end after a number sold, and menu-item sales can repeat on selected weekdays and local times.',
+      },
+      {
+        title: 'Choose what it can combine with',
+        body:
+          'All permitted combination choices stay visible: nothing else, automatic discounts, or any eligible discount. Sale prices and automatic discounts default to the broad choice, but you stay in control.',
+      },
+      {
+        title: 'Remember the door-price rule',
+        body:
+          'Online buyers can receive an eligible sale or automatic discount. Door Sales always charge the ticket’s list price.',
+      },
+    ],
+  },
+  {
+    slug: 'allow-discounts-switch',
+    episode: 23,
+    title: 'Use the Allow discounts switch',
+    blurb:
+      'Decide which events, tickets, menu items and reservation deposits can receive a discount.',
+    duration: '0:00',
+    durationIso: 'PT0S',
+    chapter: 'selling',
+    intents: ['Sell tickets', 'Run a venue'],
+    surfaces: ['Web', 'iOS', 'Android'],
+    bambooEntryId: null,
+    uploadedAt: '2026-10-22',
+    hasCaptions: false,
+    steps: [
+      {
+        title: 'Find the switch where you set the price',
+        body:
+          'Use Brand → Discounts → Prices for a full list, or open a published ticket, saved menu item, paid reservation deposit or published event and find Allow discounts there.',
+      },
+      {
+        title: 'Turn it off when that price must stay fixed',
+        body:
+          'Off means codes, automatic discounts and sale prices cannot lower that item at checkout. The original list price is unchanged.',
+      },
+      {
+        title: 'Turn it on when the item may join eligible deals',
+        body:
+          'On lets the server consider that item for discounts. The buyer still receives only deals whose dates, limits, scope and combination rules all match.',
+      },
+      {
+        title: 'Use event and item controls together',
+        body:
+          'An event can allow discounts while a particular ticket does not. You choose at both levels. Door Sales remain full price regardless of these online settings.',
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>

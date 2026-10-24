@@ -54,13 +54,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -71,7 +65,6 @@ import {
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
-import { formatCurrency } from "../../../src/utils/currency";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
 import {
@@ -81,6 +74,7 @@ import {
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
+import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import { queueContractOptInFields } from "../../../src/services/queueDeviceToken";
 import { mixpanelService } from "../../../src/services/mixpanelService";
@@ -99,14 +93,13 @@ import { Toast } from "../../../src/components/ui/Toast";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import {
   readCheckoutResumePayload,
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { supabase } from "../../../src/services/supabase";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -115,8 +108,29 @@ import { supabase } from "../../../src/services/supabase";
 // interception needed on web because Stripe's success_url/cancel_url
 // navigate the browser directly.
 
+const formatQuoteMoney = (minor: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency || "USD",
+    }).format(minor / 100);
+  } catch {
+    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
+  }
+};
+
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),
+);
+const TicketCheckoutReviewPanel = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketCheckoutReviewPanel }),
+  ),
+);
+const TicketQuoteSummary = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketQuoteSummary }),
+  ),
 );
 
 export default function CheckoutPaymentScreen(): React.ReactElement {
@@ -140,7 +154,10 @@ function CheckoutPaymentScreenContent({
 }: CheckoutPaymentScreenContentProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ eventId: string; ticketLink?: string }>();
+  const params = useLocalSearchParams<{
+    eventId: string;
+    ticketLink?: string;
+  }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
   const ticketLinkToken =
     typeof params.ticketLink === "string" && params.ticketLink.length > 0
@@ -164,13 +181,20 @@ function CheckoutPaymentScreenContent({
   const {
     lines,
     buyer,
+    discountCode,
+    quote,
+    quoteStatus,
+    checkoutReview,
+    setQuoteState,
+    setCheckoutReview,
     setLineQuantity,
     setBuyer,
     eventDateId,
     eventDateIds,
     checkoutAttemptIdFor,
+    resetCheckoutAttempt,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   // ORCH-0789/0790 REWORK: on web, the buyer may be returning from a
   // Stripe Checkout cancel. Cart context is in-memory and was wiped by
@@ -196,20 +220,6 @@ function CheckoutPaymentScreenContent({
   // app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx.
   const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  // ORCH-1130 Fix #2 — the vestigial CartTaxPreview billing-address form +
-  // "Calculate tax" Pay-gate are REMOVED (MINGLA-WIDE all-in / WYSIWYP: the
-  // buyer never types an address; tax is venue-sourced server-side). Instead
-  // we silently fetch the server-computed all-in total (incl. tax) via a
-  // NO-ADDRESS mode:"preview" create on mount, purely to DISPLAY the all-in
-  // upfront and to forward the tax calculationId into the charge. Pay is
-  // NEVER blocked on this — if the preview hasn't resolved, the base Total
-  // shows and the no-address create still charges the server-computed all-in.
-  const [allInPreviewCents, setAllInPreviewCents] = useState<number | null>(
-    null,
-  );
-  const [previewCalculationId, setPreviewCalculationId] = useState<
-    string | null
-  >(null);
 
   // ----- issue #2188 [paid-checkout-redirect]: one create per checkout -----
   //
@@ -222,9 +232,10 @@ function CheckoutPaymentScreenContent({
   // chosen day and the fingerprint moves, the held URL stops matching, and a
   // fresh create runs — which is correct, because that is a different purchase
   // with a different server-side idempotency key.
-  const providerHandoffRef = useRef<
-    { fingerprint: string; handoff: TicketCheckoutProviderHandoff } | null
-  >(null);
+  const providerHandoffRef = useRef<{
+    fingerprint: string;
+    handoff: TicketCheckoutProviderHandoff;
+  } | null>(null);
   const cartFingerprint = JSON.stringify({
     eventId,
     ticketLinkToken,
@@ -340,69 +351,6 @@ function CheckoutPaymentScreenContent({
   // src/wrappers/SmartScrollView instead of reinstating a listener.
   const scrollViewRef = useRef<ScrollView | null>(null);
 
-  // ----- ORCH-1130 Fix #2: silent no-address all-in preview (native) -----
-  // Fetches the server-computed venue-sourced all-in (incl. tax) so the
-  // order-summary box shows the all-in upfront (WYSIWYP) without a buyer
-  // address form. Web shows the all-in on Stripe's hosted page, so it skips
-  // this. Non-blocking: any failure leaves the base Total + a no-address
-  // create (which still charges the all-in). Re-runs when the cart changes.
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-    if (eventId === null) return;
-    if (lines.length === 0) return;
-    if (buyer.name.trim().length < 2 || buyer.email.trim().length === 0) return;
-    let cancelled = false;
-    void (async () => {
-      const { data, error } = await supabase.functions.invoke<{
-        calculationId: string | null;
-        totalCents: number;
-      }>("ticket-checkout-create", {
-        body: {
-          eventId,
-          ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
-          surface: "native",
-          mode: "preview",
-          buyer: {
-            name: buyer.name,
-            email: buyer.email,
-            phone: buyer.phone,
-            marketingOptIn: buyer.marketingOptIn === true,
-          },
-          lines: lines.map((l) => ({
-            ticketTypeId: l.ticketTypeId,
-            quantity: l.quantity,
-          })),
-          // issue #3281 — the chosen day SET. A multi-date / recurring event
-          // refuses a no-day preview (`event_date_choice_required`), and a
-          // `per_day` event prices by the number of days. Empty => omitted.
-          ...(eventDateIds.length > 0 ? { eventDateIds: [...eventDateIds] } : {}),
-        },
-      });
-      if (cancelled) return;
-      if (error || !data) {
-        // Non-fatal — Pay is not gated on the preview; the base Total shows
-        // and the no-address create still charges the server-computed all-in.
-        setAllInPreviewCents(null);
-        setPreviewCalculationId(null);
-        return;
-      }
-      setAllInPreviewCents(data.totalCents);
-      setPreviewCalculationId(data.calculationId);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    eventId,
-    lines,
-    buyer.name,
-    buyer.email,
-    buyer.phone,
-    buyer.marketingOptIn,
-    eventDateIds,
-    ticketLinkToken,
-  ]);
-
   // ----- Handlers -------------------------------------------------
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -412,48 +360,216 @@ function CheckoutPaymentScreenContent({
     }
   }, [router, eventId]);
 
-  const handlePay = useCallback(async (): Promise<void> => {
-    if (processing) return;
-    if (eventId === null) return;
-    // ORCH-1192 — fire `checkout_started` ONCE per attempt, at the top of
-    // handlePay (the `processing` early-return above guards re-render/double-tap
-    // double-fire), BEFORE either the web hosted-redirect or the native
-    // PaymentSheet opens and BEFORE the purchase_completed success capture on
-    // /confirm. Free orders never reach this screen (J-C2 → /confirm), so this
-    // is paid-only; value reflects the server-computed all-in preview when
-    // available. capture() no-ops on web (native postHogService is a web no-op)
-    // and when opted out / key absent.
-    postHogService.capture("checkout_started", {
-      event_id: eventId,
-      offering_type: "event",
-      ...(allInPreviewCents !== null ? { value: allInPreviewCents / 100 } : {}),
-      currency: totals.currency,
-      surface: "business_app",
-    });
-    // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
-    // with the server-computed all-in (incl. tax, venue-sourced). The buyer
-    // never types an address.
+  const handlePay = useCallback(
+    async (acceptedQuote?: TicketQuote): Promise<void> => {
+      if (processing) return;
+      if (eventId === null) return;
+      const activeQuote = acceptedQuote ?? quote;
+      if (
+        activeQuote === null ||
+        (acceptedQuote === undefined && quoteStatus !== "ready")
+      )
+        return;
+      // ORCH-1192 — fire `checkout_started` ONCE per attempt, at the top of
+      // handlePay (the `processing` early-return above guards re-render/double-tap
+      // double-fire), BEFORE either the web hosted-redirect or the native
+      // PaymentSheet opens and BEFORE the purchase_completed success capture on
+      // /confirm. Free orders never reach this screen (J-C2 → /confirm), so this
+      // is paid-only; value reflects the server-computed all-in preview when
+      // available. capture() no-ops on web (native postHogService is a web no-op)
+      // and when opted out / key absent.
+      postHogService.capture("checkout_started", {
+        event_id: eventId,
+        offering_type: "event",
+        value: activeQuote.buyerTotalCents / 100,
+        currency: activeQuote.currency,
+        surface: "business_app",
+      });
+      // ORCH-1130 Fix #2 — no "Calculate tax" gate. Pay is available immediately
+      // with the server-computed all-in (incl. tax, venue-sourced). The buyer
+      // never types an address.
 
-    // ORCH-0849: two distinct code paths, retained from ORCH-0839-B for web
-    // (Platform.OS === "web"; mingla-business has a web build for the
-    // public buyer route) but pivoted on native (iOS + Android) from
-    // hosted Stripe Checkout to native PaymentSheet, parity with consumer.
-    //
-    //   - web: createTicketCheckout({surface:"web"}) → requires_web_redirect
-    //     → window.location.assign(hostedCheckoutUrl). Full-page redirect.
-    //     Web has no native Stripe SDK; PaymentSheet doesn't render in a
-    //     browser. Hosted Checkout remains the right surface there.
-    //
-    //   - native (iOS + Android): useNativeCheckoutFlow() → invokes
-    //     ticket-checkout-create with surface:"native" → requires_payment →
-    //     initStripe per-PI + initPaymentSheet + presentPaymentSheet. Same
-    //     pattern as consumer (app-mobile/src/payments/nativeCheckoutFlow.ts).
-    //     ORCH-0844 fixes (initStripe per-PI with stripeAccountId, Customer
-    //     + ephemeralKey, withTimeout removal) are inherited verbatim.
+      // ORCH-0849: two distinct code paths, retained from ORCH-0839-B for web
+      // (Platform.OS === "web"; mingla-business has a web build for the
+      // public buyer route) but pivoted on native (iOS + Android) from
+      // hosted Stripe Checkout to native PaymentSheet, parity with consumer.
+      //
+      //   - web: createTicketCheckout({surface:"web"}) → requires_web_redirect
+      //     → window.location.assign(hostedCheckoutUrl). Full-page redirect.
+      //     Web has no native Stripe SDK; PaymentSheet doesn't render in a
+      //     browser. Hosted Checkout remains the right surface there.
+      //
+      //   - native (iOS + Android): useNativeCheckoutFlow() → invokes
+      //     ticket-checkout-create with surface:"native" → requires_payment →
+      //     initStripe per-PI + initPaymentSheet + presentPaymentSheet. Same
+      //     pattern as consumer (app-mobile/src/payments/nativeCheckoutFlow.ts).
+      //     ORCH-0844 fixes (initStripe per-PI with stripeAccountId, Customer
+      //     + ephemeralKey, withTimeout removal) are inherited verbatim.
 
-    if (Platform.OS === "web") {
-      // ---------- WEB PATH ----------
-      const surface: "web" = "web";
+      if (Platform.OS === "web") {
+        // ---------- WEB PATH ----------
+        const surface: "web" = "web";
+        try {
+          setProcessing(true);
+          setPaymentError(null);
+          mixpanelService.track("ticket_checkout_pay_started", {
+            surface,
+            eventId,
+          });
+          // issue #2188 — ONE create per checkout, structurally.
+          //
+          // If this cart has already been handed a provider page, follow THAT
+          // instead of asking the server for a second checkout. The server
+          // refuses a duplicate create with 409 and it is right to: a second
+          // create for a cart with a live provider attempt is never what the
+          // guest wants. Re-following the URL we were already given is.
+          const held = providerHandoffRef.current;
+          if (held !== null && held.fingerprint === cartFingerprint) {
+            if (assignLocation(held.handoff.redirectUrl)) return;
+            setProcessing(false);
+            setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+            return;
+          }
+          // #2879 / #2947 slice 3 — web only, single-tier. Multi-tier quiet path;
+          // native must not opt in (SPEC Q3).
+          const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
+          const queueOptIn =
+            (surface === "web" || surface === "mobile-web") &&
+            distinctTiers.size === 1 &&
+            ticketLinkToken === null
+              ? queueContractOptInFields(lines[0]?.ticketTypeId, {
+                  enabled: true,
+                })
+              : {};
+          const checkout = await createTicketCheckout({
+            eventId,
+            brandId: event?.brandId ?? brand?.id,
+            ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
+            buyer,
+            lines,
+            discountCode,
+            quoteDigest: activeQuote.quoteDigest,
+            quoteListDigest: activeQuote.quoteListDigest,
+            surface,
+            checkoutContractVersion: 2,
+            checkoutAttemptId: checkoutAttemptIdFor({
+              eventId,
+              surface,
+              ticketLinkToken,
+            }),
+            // issue #2135 — forward the chosen occurrence ONLY when present. The
+            // service already omits the field for an empty value, so a single-date
+            // request is byte-identical; `orders.event_date_id` (#1188) persists it.
+            ...(eventDateId !== null ? { eventDateId } : {}),
+            // issue #2160 — forward the chosen day SET. Empty => byte-identical
+            // request. The server derives the payout anchor and applies the
+            // event's pricing mode; the client never nominates either.
+            ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
+            ...queueOptIn,
+          });
+          if (checkout.kind === "queued") {
+            const storage = (
+              globalThis as unknown as { sessionStorage?: Storage }
+            ).sessionStorage;
+            writeCheckoutResumePayload(storage, eventId, {
+              checkoutSessionId: checkout.checkoutSessionId,
+              buyerStatusToken: checkout.buyerStatusToken,
+              lines,
+              buyer,
+              ...(eventDateIds.length > 0
+                ? { eventDateIds: [...eventDateIds] }
+                : {}),
+            });
+            router.replace(
+              `/checkout/${eventId}/queue?ahead=${checkout.aheadOfYou}&wait=${checkout.estimatedWaitSeconds}&gettingOne=${checkout.gettingOne ? "1" : "0"}` as never,
+            );
+            return;
+          }
+          if (checkout.kind === "waitlist_offered") {
+            router.replace(
+              `/checkout/${eventId}/waitlist?position=${checkout.positionInWaitlist}` as never,
+            );
+            return;
+          }
+          // issue #2188 — provider-neutral. Stripe brands answer with
+          // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
+          // the resolver owns that distinction so this screen never re-learns it.
+          // A null answer means there is genuinely nowhere to send the guest —
+          // surface it, never retry (a retry is the duplicate create that the
+          // server correctly 409s).
+          const handoff = ticketCheckoutProviderHandoff(checkout);
+          if (handoff === null) {
+            throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+          }
+          setCheckoutSessionId(handoff.checkoutSessionId);
+          // Remember it BEFORE navigating: if the redirect cannot run, the next
+          // Pay tap re-follows this URL rather than creating a second checkout.
+          providerHandoffRef.current = {
+            fingerprint: cartFingerprint,
+            handoff,
+          };
+
+          // sessionStorage persist BEFORE redirect so a provider-side cancel
+          // returns the buyer to a populated /payment screen and a success
+          // returns to /confirm with the order summary intact.
+          const storage = (
+            globalThis as unknown as { sessionStorage?: Storage }
+          ).sessionStorage;
+          writeCheckoutResumePayload(storage, eventId, {
+            checkoutSessionId: handoff.checkoutSessionId,
+            buyerStatusToken: handoff.buyerStatusToken,
+            lines,
+            buyer,
+            // issue #2338 — carry the chosen day SET across the provider
+            // redirect. The reload that brings the guest back to /confirm wipes
+            // the cart, and without this the order summary on the PAID web leg
+            // has no days to name even though the order has two.
+            ...(eventDateIds.length > 0
+              ? { eventDateIds: [...eventDateIds] }
+              : {}),
+          });
+          if (assignLocation(handoff.redirectUrl)) return;
+          // Sandbox / test environments where location.assign is unavailable.
+          setProcessing(false);
+          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+        } catch (error) {
+          setProcessing(false);
+          const review =
+            await import("../../../src/services/ticketCheckoutReview").then(
+              (module) =>
+                module.ticketCheckoutReviewFromError(
+                  error,
+                  activeQuote.buyerTotalCents,
+                ),
+            );
+          if (review !== null) {
+            setCheckoutReview(review);
+            setPaymentError(null);
+            return;
+          }
+          // issue #2188 — NEVER render the raw thrown string. supabase-js reports
+          // every handled refusal as "Edge Function returned a non-2xx status
+          // code"; the mapper is total and turns each bounded case into a
+          // sentence that also says whether money moved.
+          const message = paidCheckoutErrorMessage(error);
+          setPaymentError(message);
+          mixpanelService.track("ticket_checkout_failed", {
+            surface,
+            eventId,
+            reason: "thrown_error",
+            message,
+          });
+        }
+        return;
+      }
+
+      // ---------- NATIVE PATH (ORCH-0849 native PaymentSheet) ----------
+      // ORCH-1130 Fix #2 — no buyer address; tax is venue-sourced server-side.
+      // Forward the silently-fetched no-address preview calculationId when
+      // available (lets the charge reuse the previewed Stripe Tax calculation);
+      // otherwise the no-address create recomputes the same venue-sourced all-in.
+      const surface: "native" = "native";
+
       try {
         setProcessing(true);
         setPaymentError(null);
@@ -461,118 +577,142 @@ function CheckoutPaymentScreenContent({
           surface,
           eventId,
         });
-        // issue #2188 — ONE create per checkout, structurally.
-        //
-        // If this cart has already been handed a provider page, follow THAT
-        // instead of asking the server for a second checkout. The server
-        // refuses a duplicate create with 409 and it is right to: a second
-        // create for a cart with a live provider attempt is never what the
-        // guest wants. Re-following the URL we were already given is.
-        const held = providerHandoffRef.current;
-        if (held !== null && held.fingerprint === cartFingerprint) {
-          if (assignLocation(held.handoff.redirectUrl)) return;
-          setProcessing(false);
-          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-          return;
-        }
-        // #2879 / #2947 slice 3 — web only, single-tier. Multi-tier quiet path;
-        // native must not opt in (SPEC Q3).
-        const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
-        const queueOptIn =
-          (surface === "web" || surface === "mobile-web") &&
-            distinctTiers.size === 1 && ticketLinkToken === null
-            ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
-            : {};
-        const checkout = await createTicketCheckout({
+
+        const outcome = await nativeCheckout({
           eventId,
-          ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
-          buyer,
           lines,
-          surface,
-          checkoutContractVersion: 2,
-          checkoutAttemptId: checkoutAttemptIdFor({
-            eventId,
-            surface,
-            ticketLinkToken,
-          }),
-          // issue #2135 — forward the chosen occurrence ONLY when present. The
-          // service already omits the field for an empty value, so a single-date
-          // request is byte-identical; `orders.event_date_id` (#1188) persists it.
+          discountCode,
+          quoteDigest: activeQuote.quoteDigest,
+          quoteListDigest: activeQuote.quoteListDigest,
+          buyer: {
+            name: buyer.name,
+            email: buyer.email,
+            phone: buyer.phone,
+            marketingOptIn: buyer.marketingOptIn === true,
+          },
+          // ORCH-1246 (Apple 4.9) — event title so the Apple Pay sheet line item
+          // shows the product, not the company. Fallback "Ticket" if event unloaded.
+          displayTitle: event?.name ?? undefined,
+          // issue #2135 — the chosen occurrence, forwarded ONLY when present.
+          // `useNativeCheckoutFlow` already accepts and omits it the same way, so
+          // a single-date native charge is byte-identical.
           ...(eventDateId !== null ? { eventDateId } : {}),
           // issue #2160 — forward the chosen day SET. Empty => byte-identical
           // request. The server derives the payout anchor and applies the
           // event's pricing mode; the client never nominates either.
           ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
-          ...queueOptIn,
         });
-        if (checkout.kind === "queued") {
-          const storage =
-            (globalThis as unknown as { sessionStorage?: Storage })
-              .sessionStorage;
-          writeCheckoutResumePayload(storage, eventId, {
-            checkoutSessionId: checkout.checkoutSessionId,
-            buyerStatusToken: checkout.buyerStatusToken,
-            lines,
-            buyer,
-            ...(eventDateIds.length > 0
-              ? { eventDateIds: [...eventDateIds] }
-              : {}),
-          });
-          router.replace(
-            `/checkout/${eventId}/queue?ahead=${checkout.aheadOfYou}&wait=${checkout.estimatedWaitSeconds}&gettingOne=${checkout.gettingOne ? "1" : "0"}` as never,
-          );
-          return;
-        }
-        if (checkout.kind === "waitlist_offered") {
-          router.replace(
-            `/checkout/${eventId}/waitlist?position=${checkout.positionInWaitlist}` as never,
-          );
-          return;
-        }
-        // issue #2188 — provider-neutral. Stripe brands answer with
-        // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
-        // the resolver owns that distinction so this screen never re-learns it.
-        // A null answer means there is genuinely nowhere to send the guest —
-        // surface it, never retry (a retry is the duplicate create that the
-        // server correctly 409s).
-        const handoff = ticketCheckoutProviderHandoff(checkout);
-        if (handoff === null) {
-          throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
-        }
-        setCheckoutSessionId(handoff.checkoutSessionId);
-        // Remember it BEFORE navigating: if the redirect cannot run, the next
-        // Pay tap re-follows this URL rather than creating a second checkout.
-        providerHandoffRef.current = { fingerprint: cartFingerprint, handoff };
 
-        // sessionStorage persist BEFORE redirect so a provider-side cancel
-        // returns the buyer to a populated /payment screen and a success
-        // returns to /confirm with the order summary intact.
-        const storage = (globalThis as unknown as { sessionStorage?: Storage })
-          .sessionStorage;
-        writeCheckoutResumePayload(storage, eventId, {
-          checkoutSessionId: handoff.checkoutSessionId,
-          buyerStatusToken: handoff.buyerStatusToken,
-          lines,
-          buyer,
-          // issue #2338 — carry the chosen day SET across the provider
-          // redirect. The reload that brings the guest back to /confirm wipes
-          // the cart, and without this the order summary on the PAID web leg
-          // has no days to name even though the order has two.
-          ...(eventDateIds.length > 0
-            ? { eventDateIds: [...eventDateIds] }
-            : {}),
+        mixpanelService.track("ticket_checkout_sheet_opened", {
+          surface,
+          eventId,
+          outcome: outcome.outcome,
         });
-        if (assignLocation(handoff.redirectUrl)) return;
-        // Sandbox / test environments where location.assign is unavailable.
-        setProcessing(false);
-        setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+
+        if (outcome.outcome === "canceled") {
+          mixpanelService.track("ticket_checkout_cancelled", {
+            surface,
+            eventId,
+          });
+          setProcessing(false);
+          return;
+        }
+
+        if (outcome.outcome === "failed") {
+          if (outcome.review !== undefined) {
+            setCheckoutReview({
+              ...outcome.review,
+              previousTotalCents: activeQuote.buyerTotalCents,
+            });
+            setPaymentError(null);
+            setProcessing(false);
+            return;
+          }
+          mixpanelService.track("ticket_checkout_failed", {
+            surface,
+            eventId,
+            reason: "native_checkout_failed",
+            message: outcome.message,
+          });
+          setProcessing(false);
+          setPaymentError(outcome.message);
+          return;
+        }
+
+        // ORCH-0852 — outcome.outcome === "succeeded". Fire-and-forget pattern
+        // mirroring consumer at app-mobile/src/components/expandedCard/
+        // ExpandedBusinessEventSheet.tsx:264-286. We:
+        //   1. Call confirmTicketCheckout SYNCHRONOUSLY (server verifies the
+        //      Stripe PI directly + invokes idempotent finalize RPC) with a
+        //      3-second CLIENT-SIDE timeout so the UI is never blocked on
+        //      a slow server. Order is guaranteed to exist server-side after
+        //      this — even if our await times out, the RPC ran.
+        //   2. Show a success toast.
+        //   3. router.replace to the event public page after a brief delay
+        //      so the buyer sees the confirmation copy.
+        // The webhook backup remains in flight; if the sync confirm threw or
+        // timed out, the webhook will still create/finalize the order and
+        // the buyer's tickets list refetch / Realtime subscription resolves it.
+        // There is no stranded post-payment dead-end any more.
+        const sessionId = outcome.orderId;
+        setCheckoutSessionId(sessionId);
+        try {
+          await Promise.race([
+            confirmTicketCheckout(sessionId, ""),
+            new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("client_confirm_timeout")),
+                3000,
+              ),
+            ),
+          ]);
+        } catch (confirmErr) {
+          // Non-fatal — webhook backup will finalize. Log for observability.
+          console.warn(
+            "[checkout-payment] synchronous confirm failed or timed out; relying on webhook backup",
+            confirmErr,
+          );
+          mixpanelService.track("ticket_checkout_sync_confirm_failed", {
+            surface,
+            eventId,
+            checkoutSessionId: sessionId,
+            reason:
+              confirmErr instanceof Error ? confirmErr.message : "unknown",
+          });
+        }
+
+        mixpanelService.track("ticket_checkout_succeeded", {
+          surface,
+          eventId,
+          checkoutSessionId: sessionId,
+        });
+
+        setSuccessToast(true);
+
+        // Brief delay so the buyer sees the toast before the screen unmounts
+        // via router.replace. 1.2s mirrors the consumer pattern's perceived
+        // confirmation window. Event slugs come from the public event query
+        // (already fetched above). On the off-chance event is null (race
+        // with the publicEventQuery), fall back to /(tabs)/home — same
+        // pattern as handleBackToEvent in confirm.tsx.
+        setTimeout(() => {
+          if (event !== null) {
+            router.replace(
+              eventPublicPath({
+                brandSlug: event.brandSlug,
+                eventSlug: event.eventSlug,
+              }) as never,
+            );
+          } else {
+            router.replace("/(tabs)/home" as never);
+          }
+        }, 1200);
       } catch (error) {
         setProcessing(false);
-        // issue #2188 — NEVER render the raw thrown string. supabase-js reports
-        // every handled refusal as "Edge Function returned a non-2xx status
-        // code"; the mapper is total and turns each bounded case into a
-        // sentence that also says whether money moved.
-        const message = paidCheckoutErrorMessage(error);
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Payment could not be completed. Please try again.";
         setPaymentError(message);
         mixpanelService.track("ticket_checkout_failed", {
           surface,
@@ -580,207 +720,39 @@ function CheckoutPaymentScreenContent({
           reason: "thrown_error",
           message,
         });
-      }
-      return;
-    }
-
-    // ---------- NATIVE PATH (ORCH-0849 native PaymentSheet) ----------
-    // ORCH-1130 Fix #2 — no buyer address; tax is venue-sourced server-side.
-    // Forward the silently-fetched no-address preview calculationId when
-    // available (lets the charge reuse the previewed Stripe Tax calculation);
-    // otherwise the no-address create recomputes the same venue-sourced all-in.
-    const surface: "native" = "native";
-
-    try {
-      setProcessing(true);
-      setPaymentError(null);
-      mixpanelService.track("ticket_checkout_pay_started", {
-        surface,
-        eventId,
-      });
-
-      const outcome = await nativeCheckout({
-        eventId,
-        lines,
-        buyer: {
-          name: buyer.name,
-          email: buyer.email,
-          phone: buyer.phone,
-          marketingOptIn: buyer.marketingOptIn === true,
-        },
-        // ORCH-1246 (Apple 4.9) — event title so the Apple Pay sheet line item
-        // shows the product, not the company. Fallback "Ticket" if event unloaded.
-        displayTitle: event?.name ?? undefined,
-        ...(previewCalculationId
-          ? { taxCalculationId: previewCalculationId }
-          : {}),
-        // issue #2135 — the chosen occurrence, forwarded ONLY when present.
-        // `useNativeCheckoutFlow` already accepts and omits it the same way, so
-        // a single-date native charge is byte-identical.
-        ...(eventDateId !== null ? { eventDateId } : {}),
-        // issue #2160 — forward the chosen day SET. Empty => byte-identical
-        // request. The server derives the payout anchor and applies the
-        // event's pricing mode; the client never nominates either.
-        ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
-      });
-
-      mixpanelService.track("ticket_checkout_sheet_opened", {
-        surface,
-        eventId,
-        outcome: outcome.outcome,
-      });
-
-      if (outcome.outcome === "canceled") {
-        mixpanelService.track("ticket_checkout_cancelled", {
-          surface,
-          eventId,
-        });
+      } finally {
         setProcessing(false);
-        return;
       }
+    },
+    [
+      // issue #2188 — the redirect follower + the cart identity the held
+      // provider hand-off is keyed by are both read inside this handler.
+      assignLocation,
+      cartFingerprint,
+      buyer,
+      discountCode,
+      checkoutAttemptIdFor,
+      brand?.id,
+      event,
+      eventId,
+      // issue #2135 — the chosen occurrence is read inside this handler.
+      eventDateId,
+      eventDateIds,
+      lines,
+      nativeCheckout,
+      processing,
+      quote,
+      quoteStatus,
+      setCheckoutReview,
+      router,
+      ticketLinkToken,
+    ],
+  );
 
-      if (outcome.outcome === "failed") {
-        mixpanelService.track("ticket_checkout_failed", {
-          surface,
-          eventId,
-          reason: "native_checkout_failed",
-          message: outcome.message,
-        });
-        setProcessing(false);
-        setPaymentError(outcome.message);
-        return;
-      }
-
-      // ORCH-0852 — outcome.outcome === "succeeded". Fire-and-forget pattern
-      // mirroring consumer at app-mobile/src/components/expandedCard/
-      // ExpandedBusinessEventSheet.tsx:264-286. We:
-      //   1. Call confirmTicketCheckout SYNCHRONOUSLY (server verifies the
-      //      Stripe PI directly + invokes idempotent finalize RPC) with a
-      //      3-second CLIENT-SIDE timeout so the UI is never blocked on
-      //      a slow server. Order is guaranteed to exist server-side after
-      //      this — even if our await times out, the RPC ran.
-      //   2. Show a success toast.
-      //   3. router.replace to the event public page after a brief delay
-      //      so the buyer sees the confirmation copy.
-      // The webhook backup remains in flight; if the sync confirm threw or
-      // timed out, the webhook will still create/finalize the order and
-      // the buyer's tickets list refetch / Realtime subscription resolves it.
-      // There is no stranded post-payment dead-end any more.
-      const sessionId = outcome.orderId;
-      setCheckoutSessionId(sessionId);
-      try {
-        await Promise.race([
-          confirmTicketCheckout(sessionId, ""),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("client_confirm_timeout")), 3000)
-          ),
-        ]);
-      } catch (confirmErr) {
-        // Non-fatal — webhook backup will finalize. Log for observability.
-        console.warn(
-          "[checkout-payment] synchronous confirm failed or timed out; relying on webhook backup",
-          confirmErr,
-        );
-        mixpanelService.track("ticket_checkout_sync_confirm_failed", {
-          surface,
-          eventId,
-          checkoutSessionId: sessionId,
-          reason: confirmErr instanceof Error ? confirmErr.message : "unknown",
-        });
-      }
-
-      mixpanelService.track("ticket_checkout_succeeded", {
-        surface,
-        eventId,
-        checkoutSessionId: sessionId,
-      });
-
-      setSuccessToast(true);
-
-      // Brief delay so the buyer sees the toast before the screen unmounts
-      // via router.replace. 1.2s mirrors the consumer pattern's perceived
-      // confirmation window. Event slugs come from the public event query
-      // (already fetched above). On the off-chance event is null (race
-      // with the publicEventQuery), fall back to /(tabs)/home — same
-      // pattern as handleBackToEvent in confirm.tsx.
-      setTimeout(() => {
-        if (event !== null) {
-          router.replace(
-            eventPublicPath({
-              brandSlug: event.brandSlug,
-              eventSlug: event.eventSlug,
-            }) as never,
-          );
-        } else {
-          router.replace("/(tabs)/home" as never);
-        }
-      }, 1200);
-    } catch (error) {
-      setProcessing(false);
-      const message = error instanceof Error
-        ? error.message
-        : "Payment could not be completed. Please try again.";
-      setPaymentError(message);
-      mixpanelService.track("ticket_checkout_failed", {
-        surface,
-        eventId,
-        reason: "thrown_error",
-        message,
-      });
-    } finally {
-      setProcessing(false);
-    }
-  }, [
-    allInPreviewCents,
-    // issue #2188 — the redirect follower + the cart identity the held
-    // provider hand-off is keyed by are both read inside this handler.
-    assignLocation,
-    cartFingerprint,
-    buyer,
-    checkoutAttemptIdFor,
-    event,
-    eventId,
-    // issue #2135 — the chosen occurrence is read inside this handler.
-    eventDateId,
-    eventDateIds,
-    lines,
-    nativeCheckout,
-    previewCalculationId,
-    processing,
-    router,
-    ticketLinkToken,
-    totals.currency,
-  ]);
-
-  // ORCH-1147 — the headline Total is sourced from the server fee-grossed
-  // all-in (totals.allInTotal, from priceAllInGbp/pg_public_event_tier_allin),
-  // NOT the bare base subtotal. Web shows it synchronously; native shows it
-  // synchronously and UPGRADES to the tax-inclusive preview once the silent
-  // no-address preview resolves (>= floor guard prevents a stale/lower preview
-  // from regressing the headline). The client owns ZERO fee/tax math — it sums
-  // the server per-tier all-in and subtracts the base.
-  // I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (DRAFT).
-  //
-  // OQ-2 exclusive-tax CAVEAT (documented, NOT fixed here): priceAllInGbp folds
-  // FEES but EXCLUDES tax, so in exclusive-tax regions (US pass_tax=true) the
-  // web/native floor understates by the tax. Today's blast radius is ZERO (all
-  // charges-enabled brands are inclusive-tax GB/EU/CH where all_in == buyer_total).
-  // Closing it requires routing display off the buyer-detail-gated preview — a
-  // larger follow-on (ORCH-1147 OQ-2).
-  const baseTotalCents = Math.round(totals.subtotal * 100);
-  const allInFloorCents = Math.round(totals.allInTotal * 100);
-  const headlineCents =
-    Platform.OS !== "web" &&
-    allInPreviewCents !== null &&
-    allInPreviewCents >= allInFloorCents
-      ? allInPreviewCents
-      : allInFloorCents;
-  // ORCH-1147 — single combined "Fees & tax" line (NEVER split service-fee +
-  // VAT, per feedback_cart_combined_fees_tax_line). On native with a tax-
-  // inclusive preview this correctly folds tax; on web/floor it is the fee delta.
-  const feesTaxLineCents = Math.max(0, headlineCents - baseTotalCents);
-  const showFeesTaxLine = feesTaxLineCents > 0;
-  const displayAllIn = formatCurrency(headlineCents, totals.currency, true);
+  const displayAllIn =
+    quote === null
+      ? "Updating…"
+      : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
 
   // Render an empty shell while defensive guards redirect.
   if (
@@ -798,6 +770,38 @@ function CheckoutPaymentScreenContent({
           title="Payment"
           onBack={handleBack}
         />
+      </View>
+    );
+  }
+
+  if (checkoutReview !== null) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={2}
+          totalSteps={3}
+          title="Review changes"
+          onBack={handleBack}
+        />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <TicketCheckoutReviewPanel
+            surface="web_event"
+            review={checkoutReview}
+            accepting={processing}
+            onBack={handleBack}
+            onAccept={() => {
+              const revisedQuote = checkoutReview.quote;
+              if (revisedQuote === null) return;
+              setQuoteState(revisedQuote, "ready");
+              setCheckoutReview(null);
+              resetCheckoutAttempt();
+              void handlePay(revisedQuote);
+            }}
+          />
+        </ScrollView>
       </View>
     );
   }
@@ -828,37 +832,7 @@ function CheckoutPaymentScreenContent({
           style={styles.summary}
         >
           <Text style={styles.summaryLabel}>ORDER SUMMARY</Text>
-          {lines.map((l) => (
-            <View key={l.ticketTypeId} style={styles.summaryLine}>
-              <Text style={styles.summaryQty}>{l.quantity}×</Text>
-              <Text style={styles.summaryName} numberOfLines={1}>
-                {l.ticketName}
-              </Text>
-              <Text style={styles.summaryTotal}>
-                {l.isFree
-                  ? "Free"
-                  : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-              </Text>
-            </View>
-          ))}
-          <View style={styles.summaryDivider} />
-          {/* ORCH-1147 — single combined "Fees & tax" line (all-in − base);
-              rendered only when there's a real delta (absorb-all brands show
-              nothing, unchanged). NEVER split service-fee + VAT. */}
-          {showFeesTaxLine ? (
-            <View style={styles.summaryFeesTaxRow}>
-              <Text style={styles.summaryFeesTaxLabel}>Fees &amp; tax</Text>
-              <Text style={styles.summaryFeesTaxValue}>
-                {formatCurrency(feesTaxLineCents, totals.currency, true)}
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.summaryTotalRow}>
-            <Text style={styles.summaryTotalLabel}>Total</Text>
-            <Text style={styles.summaryTotalValue}>
-              {displayAllIn}
-            </Text>
-          </View>
+          {quote !== null ? <TicketQuoteSummary quote={quote} compact /> : null}
         </GlassCard>
 
         {/* ORCH-1130 Fix #2 — the CartTaxPreview billing-address + "Calculate
@@ -873,27 +847,24 @@ function CheckoutPaymentScreenContent({
               guest was being told they were going to Stripe. Naming the
               provider here would be wrong for whichever half it isn't. */}
           <Text style={styles.paymentCopy}>
-            You’ll be taken to our secure payment page to complete your purchase.
+            You’ll be taken to our secure payment page to complete your
+            purchase.
           </Text>
-          {checkoutSessionId !== null
-            ? (
-              <Text style={styles.paymentMeta}>
-                Session {checkoutSessionId.slice(0, 8)}
-              </Text>
-            )
-            : null}
+          {checkoutSessionId !== null ? (
+            <Text style={styles.paymentMeta}>
+              Session {checkoutSessionId.slice(0, 8)}
+            </Text>
+          ) : null}
         </GlassCard>
 
-        {
-          /* ORCH-0852: the prior post-payment blocking GlassCard was removed.
+        {/* ORCH-0852: the prior post-payment blocking GlassCard was removed.
             PaymentSheet success no longer parks the buyer on this screen;
             the success toast + auto-navigate happen inside handlePay so
-            this surface stays minimal. */
-        }
+            this surface stays minimal. */}
 
-        {paymentError !== null
-          ? <Text style={styles.errorText}>{paymentError}</Text>
-          : null}
+        {paymentError !== null ? (
+          <Text style={styles.errorText}>{paymentError}</Text>
+        ) : null}
       </ScrollView>
 
       {/* Sticky bottom bar */}
@@ -905,13 +876,11 @@ function CheckoutPaymentScreenContent({
       >
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>
-            {displayAllIn}
-          </Text>
+          <Text style={styles.totalValue}>{displayAllIn}</Text>
         </View>
         <Button
           label={`Pay ${displayAllIn}`}
-          onPress={handlePay}
+          onPress={() => void handlePay()}
           variant="primary"
           accentColor={ctaAccent}
           size="lg"
@@ -919,17 +888,15 @@ function CheckoutPaymentScreenContent({
           loading={processing}
           // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
           // immediately (only blocked while a charge is in flight).
-          disabled={processing}
+          disabled={processing || quoteStatus !== "ready" || quote === null}
           accessibilityLabel={`Pay ${displayAllIn} with card`}
         />
       </View>
 
-      {
-        /* Toast — top-anchored absolute wrapper (Cycle 8a lesson per
+      {/* Toast — top-anchored absolute wrapper (Cycle 8a lesson per
           feedback_toast_needs_absolute_wrap.md). ORCH-0852: success toast
           fires on PaymentSheet success before navigation; decline toast
-          retained from ORCH-0839-B for parity even though dormant. */
-      }
+          retained from ORCH-0839-B for parity even though dormant. */}
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
           visible={declineToast}

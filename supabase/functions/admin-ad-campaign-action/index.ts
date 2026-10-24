@@ -52,6 +52,7 @@ import {
 } from "../_shared/adSpendSync.ts";
 import { redditLaunchWarning } from "../_shared/reddit.ts";
 import { snapchatLaunchWarning } from "../_shared/snapchat.ts";
+import { providerLaunchReadback } from "../_shared/adLaunchReadback.ts";
 import { tiktokLaunchWarning } from "../_shared/tiktok.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -245,11 +246,16 @@ async function runPlannedAction(input: {
       }
       let effectiveStatus: string | null = null;
       try {
-        const status = await adapter.getStatus(
-          connectionRow as AdConnectionRow,
-          "campaign",
-          row.external_campaign_id,
-        );
+        const status = await providerLaunchReadback({
+          platform: String(row.platform),
+          action,
+          read: () =>
+            adapter.getStatus(
+              connectionRow as AdConnectionRow,
+              "campaign",
+              row.external_campaign_id,
+            ),
+        });
         effectiveStatus = status.effectiveStatus;
       } catch {
         effectiveStatus = null;
@@ -893,11 +899,16 @@ serve(async (req: Request): Promise<Response> => {
     // Read back delivery state.
     let effectiveStatus: string | null = null;
     try {
-      const status = await adapter.getStatus(
-        connection,
-        "campaign",
-        campaign.external_campaign_id,
-      );
+      const status = await providerLaunchReadback({
+        platform: campaign.platform,
+        action: providerAction,
+        read: () =>
+          adapter.getStatus(
+            connection,
+            "campaign",
+            campaign.external_campaign_id,
+          ),
+      });
       effectiveStatus = status.effectiveStatus;
     } catch {
       effectiveStatus = null; // best-effort; sync repairs it

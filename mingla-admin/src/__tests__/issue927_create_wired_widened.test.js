@@ -11,14 +11,13 @@
 //      mislabeling class is dead).
 //   3. TikTok payload: native objective (goals.js map), consistent
 //      (optimization_goal, billing_event) pair, ad_text = primary copy,
-//      gender mapping, NO call_to_action (the SERVER owns per-platform CTA
-//      maps — GR-29).
+//      gender mapping, and the provider-native CTA selected by the builder.
 //   4. Reddit payload: headline = primary (copyRules lints primary AS the
 //      Reddit headline), NO age keys (unrepresentable on Reddit — R-8),
-//      NO call_to_action.
+//      and its provider-native CTA.
 //   5. Snapchat payload: objective/optimization_goal from the goal map
-//      (SWIPES default — A1.1(6)), the #866 library id rides along,
-//      brand_name conditional.
+//      (pixel page views by default under #3697), the #866 library id rides
+//      along, provider-native CTA, brand_name conditional.
 //   6. Meta + Google payloads are UNCHANGED by the new state keys (no
 //      leakage of creativeLibraryId/brandName/platforms).
 //   7. The market gates fire in the DEFAULT plan: NG excludes Reddit
@@ -91,7 +90,7 @@ describe("ISSUE-927 — CREATE_WIRED widened", () => {
 });
 
 describe("ISSUE-927 — TikTok payload branch", () => {
-  it("carries the native objective + the consistent goal/billing pair; ad_text = primary; NO client CTA", () => {
+  it("carries the native objective + the consistent goal/billing pair; ad_text = primary; native CTA", () => {
     const p = buildCreatePayload("tiktok", baseState);
     assert.equal(p.objective, "TRAFFIC");
     assert.equal(p.optimization_goal, "TRAFFIC_LANDING_PAGE_VIEW");
@@ -99,7 +98,7 @@ describe("ISSUE-927 — TikTok payload branch", () => {
     assert.equal(p.creative.ad_text, "Friday Live at Velvet Lounge");
     assert.equal(p.creative.image_url, "https://cdn.example/creative.jpg");
     assert.equal(p.creative.creative_library_id, "11111111-2222-4333-8444-555555555555");
-    assert.equal("call_to_action" in p.creative, false, "the SERVER owns the TikTok CTA map (GR-29)");
+    assert.equal(p.creative.call_to_action, "Get ticket now");
     assert.deepEqual(p.budget, { type: "daily", amount_cents: 2000 });
     assert.equal(p.targeting.age_min, 21);
     assert.equal(p.targeting.age_max, 45);
@@ -136,11 +135,11 @@ describe("ISSUE-927 — TikTok payload branch", () => {
 });
 
 describe("ISSUE-927 — Reddit payload branch", () => {
-  it("headline = the primary copy (copyRules lints primary AS the Reddit headline); NO age keys; NO client CTA", () => {
+  it("headline = the primary copy (copyRules lints primary AS the Reddit headline); NO age keys; native CTA", () => {
     const p = buildCreatePayload("reddit", baseState);
     assert.equal(p.creative.headline, "Friday Live at Velvet Lounge");
     assert.equal(p.creative.image_url, "https://cdn.example/creative.jpg");
-    assert.equal("call_to_action" in p.creative, false, "the SERVER owns the Title-Case CTA map (GR-29)");
+    assert.equal(p.creative.call_to_action, "Buy Tickets");
     // R-8: age is unrepresentable on Reddit — the payload must not smuggle it.
     const flat = JSON.stringify(p);
     assert.ok(!flat.includes("age_min") && !flat.includes("age_max"), "no age keys anywhere in a Reddit payload");
@@ -150,14 +149,14 @@ describe("ISSUE-927 — Reddit payload branch", () => {
 });
 
 describe("ISSUE-927 — Snapchat payload branch", () => {
-  it("objective/optimization_goal come from the goal map (SWIPES default — A1.1(6)); the #866 library id rides", () => {
+  it("objective/optimization_goal come from the goal map (pixel page views under #3697); the #866 library id rides", () => {
     const p = buildCreatePayload("snapchat", baseState);
     assert.equal(p.objective, "TRAFFIC");
-    assert.equal(p.optimization_goal, "SWIPES");
+    assert.equal(p.optimization_goal, "PIXEL_PAGE_VIEW");
     assert.equal(p.creative.creative_library_id, "11111111-2222-4333-8444-555555555555");
     assert.equal(p.creative.brand_name, "Velvet Lounge");
     assert.equal(p.creative.headline, "Friday Live");
-    assert.equal("call_to_action" in p.creative, false, "the SERVER defaults the S-3 CTA");
+    assert.equal(p.creative.call_to_action, "BUY_TICKETS");
   });
 
   it("brand_name and creative_library_id are conditional — absent keys, not nulls", () => {

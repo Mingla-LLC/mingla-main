@@ -223,6 +223,7 @@ const TIKTOK_GOAL_DEFAULTS = {
     billing_event: "CPC",
   },
   REACH: { optimization_goal: "REACH", billing_event: "CPM" },
+  WEB_CONVERSIONS: { optimization_goal: "CONVERT", billing_event: "OCPM" },
 };
 
 /**
@@ -354,6 +355,16 @@ export function buildCreatePayload(platform, state) {
       lane,
       request_id: requestId,
       name,
+      // #3697: Pangle is opt-in. The server independently refuses an image on
+      // TikTok-only, so a stale or forged client cannot broaden placement.
+      tiktok_placement:
+        creative.tiktokCreativeSource !== "spark" &&
+        creative.tiktokPlacement === "tiktok_pangle"
+          ? "tiktok_pangle"
+          : "tiktok",
+      ...(creative.tiktokCreativeSource === "spark"
+        ? { tiktok_spark_post_ids: creative.tiktokSparkPostIds ?? [] }
+        : {}),
       objective,
       optimization_goal: goalDefaults.optimization_goal,
       billing_event: goalDefaults.billing_event,
@@ -384,9 +395,14 @@ export function buildCreatePayload(platform, state) {
       },
       ...destinationFields,
       creative: videoRef
-        ? { ad_text: copy.primary, ...videoRef }
+        ? {
+            ad_text: copy.primary,
+            call_to_action: copy.platformCtas?.tiktok ?? "Get ticket now",
+            ...videoRef,
+          }
         : {
             ad_text: copy.primary,
+            call_to_action: copy.platformCtas?.tiktok ?? "Get ticket now",
             image_url: creative.imageUrl,
             ...(creative.creativeLibraryId
               ? { creative_library_id: creative.creativeLibraryId }
@@ -434,9 +450,14 @@ export function buildCreatePayload(platform, state) {
       },
       ...destinationFields,
       creative: videoRef
-        ? { headline: copy.primary, ...videoRef }
+        ? {
+            headline: copy.primary,
+            call_to_action: copy.platformCtas?.reddit ?? "Buy Tickets",
+            ...videoRef,
+          }
         : {
             headline: copy.primary,
+            call_to_action: copy.platformCtas?.reddit ?? "Buy Tickets",
             image_url: creative.imageUrl,
           },
       // Bug 3: global compliance intent reaches Reddit's create path. Reddit has
@@ -460,7 +481,7 @@ export function buildCreatePayload(platform, state) {
       name,
       objective: goal.platforms?.snapchat?.objective ?? "TRAFFIC",
       optimization_goal:
-        goal.platforms?.snapchat?.optimization_goal ?? "SWIPES",
+        goal.platforms?.snapchat?.optimization_goal ?? "PIXEL_PAGE_VIEW",
       ...budgetPayloadFromState(budget),
       // ISSUE-989: age/gender via demographics (STRINGS — GR-39). Absent →
       // server default [{min_age:"18"}].
@@ -493,6 +514,7 @@ export function buildCreatePayload(platform, state) {
       ...destinationFields,
       creative: {
         headline: copy.headline || copy.primary,
+        call_to_action: copy.platformCtas?.snapchat ?? "BUY_TICKETS",
         ...(creative.brandName ? { brand_name: creative.brandName } : {}),
         ...(creative.creativeLibraryId
           ? { creative_library_id: creative.creativeLibraryId }
@@ -649,7 +671,7 @@ export function buildCreatePayload(platform, state) {
               ? { creative_library_id: creative.creativeLibraryId }
               : {}),
           }),
-      call_to_action_type: copy.cta || "LEARN_MORE",
+      call_to_action_type: copy.platformCtas?.meta ?? copy.cta ?? "LEARN_MORE",
       ai_generated: creative.aiGenerated === true,
     },
     special_ad_categories: categories,

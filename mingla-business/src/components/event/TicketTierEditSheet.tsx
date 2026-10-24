@@ -43,7 +43,7 @@ import { useEventWaitlist } from "../../hooks/useEventWaitlist";
 import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { saleWindowCaution } from "../../utils/saleWindowCaution";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency, minorFromMajor } from "../../utils/currency";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // #2664 — Android has no `datetime` picker mode; the sale window has to step
 // date -> time and combine. See the module header for the crash mechanism.
@@ -58,10 +58,17 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
+import { canShowTicketTierDiscountControls } from "../discounts/ticketTierDiscountContract";
 
 const TicketLinksSheet = React.lazy(() =>
   import("../guests/TicketLinksSheet").then((module) => ({
     default: module.TicketLinksSheet,
+  })),
+);
+
+const ItemDiscountControls = React.lazy(() =>
+  import("../discounts/ItemDiscountControls").then((module) => ({
+    default: module.ItemDiscountControls,
   })),
 );
 
@@ -368,7 +375,11 @@ interface TicketSheetTouched {
   capacity: boolean;
 }
 
-const UNTOUCHED: TicketSheetTouched = { name: false, price: false, capacity: false };
+const UNTOUCHED: TicketSheetTouched = {
+  name: false,
+  price: false,
+  capacity: false,
+};
 
 /** issue #3350 — one reason Save is disabled; `revealed` = shown as an error. */
 interface SaveBlocker {
@@ -414,6 +425,8 @@ export interface TicketTierEditSheetProps {
   canEditPrice?: boolean;
   /** ISO 4217 event/brand currency used for price copy in the sheet. */
   eventCurrency?: string;
+  /** Brand owning this published tier; required by the server discount writer. */
+  brandId?: string;
   /** Supabase events.id for planner waitlist reads on saved tiers. */
   eventId?: string | null;
   /**
@@ -485,6 +498,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   eventEndsAtIso = null,
   canEditPrice = true,
   eventCurrency,
+  brandId,
   eventId = null,
   renderUnderPrice,
   newTicketPreset = null,
@@ -712,9 +726,13 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     saveBlockers.push({ message, revealed });
   };
   if (name.trim().length === 0) block("Give this ticket a name.", touched.name);
-  if (priceInvalid) block("Enter a valid price, or mark it free.", touched.price);
+  if (priceInvalid)
+    block("Enter a valid price, or mark it free.", touched.price);
   if (capacityInvalid) {
-    block("Enter a capacity above zero, or mark it unlimited.", touched.capacity);
+    block(
+      "Enter a capacity above zero, or mark it unlimited.",
+      touched.capacity,
+    );
   }
   if (capacityBelowSold) {
     block(
@@ -821,7 +839,12 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       // iOS: track temp value; commit on Done.
       if (selected !== undefined) setSalePickerTemp(selected);
     },
-    [salePickerMode, saleAndroidStep, saleAndroidDatePart, commitSalePickerValue],
+    [
+      salePickerMode,
+      saleAndroidStep,
+      saleAndroidDatePart,
+      commitSalePickerValue,
+    ],
   );
 
   const handleCloseSalePicker = useCallback((): void => {
@@ -1098,6 +1121,36 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             </View>
           ) : null}
 
+          {canShowTicketTierDiscountControls({
+            hasPersistedTier: initial !== null,
+            privateLinksEnabled,
+            hasEventId: eventId !== null,
+            hasBrandId: brandId !== undefined,
+            canEditPrice,
+            isFree,
+          }) ? (
+            <React.Suspense fallback={null}>
+              <Text style={styles.sectionHeader}>Sale price</Text>
+              <ItemDiscountControls
+                brandId={brandId!}
+                itemId={initial!.id}
+                itemKind="ticket_type"
+                listingKind="event"
+                itemLabel={initial!.name}
+                currency={priceCurrency}
+                listUnitCents={
+                  initial!.priceGbp == null
+                    ? null
+                    : minorFromMajor(initial!.priceGbp, priceCurrency ?? "GBP")
+                }
+                allowLabel="Allow discounts"
+                saleLabel="Offer a sale price"
+                countLimit
+                testID="ticket-tier-discount-controls"
+              />
+            </React.Suspense>
+          ) : null}
+
           {/* Unlimited toggle — ORCH-0704 v2: locked when sales exist */}
           <View
             pointerEvents={isPriceLocked ? "none" : "auto"}
@@ -1143,7 +1196,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   onBlur={() => setTouched((t) => ({ ...t, capacity: true }))}
                   style={styles.textInput}
                   accessibilityLabel={
-                    capacityPerNight ? "Ticket capacity per night" : "Ticket capacity"
+                    capacityPerNight
+                      ? "Ticket capacity per night"
+                      : "Ticket capacity"
                   }
                 />
               </View>
@@ -1186,7 +1241,10 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             </Pressable>
           </View>
 
-          {privateLinksEnabled && initial !== null && visibility === "hidden" && eventId !== null ? (
+          {privateLinksEnabled &&
+          initial !== null &&
+          visibility === "hidden" &&
+          eventId !== null ? (
             <Pressable
               onPress={() => setPrivateLinksVisible(true)}
               accessibilityRole="button"
@@ -1195,7 +1253,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             >
               <View style={styles.pickerTextWrap}>
                 <Text style={styles.fieldLabel}>Private links</Text>
-                <Text style={styles.helperHint}>Create, copy, reset or revoke access to this hidden ticket.</Text>
+                <Text style={styles.helperHint}>
+                  Create, copy, reset or revoke access to this hidden ticket.
+                </Text>
               </View>
               <Icon name="chevR" size={16} color={textTokens.tertiary} />
             </Pressable>

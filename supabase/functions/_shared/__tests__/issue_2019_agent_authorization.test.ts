@@ -31,21 +31,21 @@ const tool = (name: string) => {
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
   // #1973/#1985 denominator without changing inherited authorization semantics.
-// [TEST-MOD-APPROVED #1975+#1978+#1979] Stay authoring (+3), venue listing
-// reads (+3), and venue manage tools (+3); 71 + 9 = 80.
-// [TEST-MOD-APPROVED #1979] Registry pin 77→80 after additive #1978 rebase.
-// [TEST-MOD-APPROVED #424] Guest-binding fixture uses set_rsvp_guest_status
-// (set_rsvp_guest_status may carry rsvp_id for #1984/#2593 containment).
-// [TEST-MOD-APPROVED #1971] Four trip graph tools (manage_trip_days /
-// _inclusions / _tiers / _traveler_intake) plus the finance-gated aggregate
-// // get_trip_order_money are additive declarations; 85 - 1 set_guest_approval + 2 RSVP writes = 86.
-// [TEST-MOD-APPROVED #1984] get_event_order_reconciliation; 87→90. The four
-// invalidated assertions are exactly the four census counts below
-// (AGENT_TOOLS.length, the unique-name set size, AGENT_TOOL_AUTHORIZATION key
-// count, and the mapped ledger-row count). No role translation, ordering,
-// resource binding or denial assertion changes.
-// [TEST-MOD-APPROVED #1976] Three partner/payments reads; 87→90.
-// [TEST-MOD-APPROVED #1981] charge_installment_now + send_installment_reminder; 90→92.
+  // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay authoring (+3), venue listing
+  // reads (+3), and venue manage tools (+3); 71 + 9 = 80.
+  // [TEST-MOD-APPROVED #1979] Registry pin 77→80 after additive #1978 rebase.
+  // [TEST-MOD-APPROVED #424] Guest-binding fixture uses set_rsvp_guest_status
+  // (set_rsvp_guest_status may carry rsvp_id for #1984/#2593 containment).
+  // [TEST-MOD-APPROVED #1971] Four trip graph tools (manage_trip_days /
+  // _inclusions / _tiers / _traveler_intake) plus the finance-gated aggregate
+  // // get_trip_order_money are additive declarations; 85 - 1 set_guest_approval + 2 RSVP writes = 86.
+  // [TEST-MOD-APPROVED #1984] get_event_order_reconciliation; 87→90. The four
+  // invalidated assertions are exactly the four census counts below
+  // (AGENT_TOOLS.length, the unique-name set size, AGENT_TOOL_AUTHORIZATION key
+  // count, and the mapped ledger-row count). No role translation, ordering,
+  // resource binding or denial assertion changes.
+  // [TEST-MOD-APPROVED #1976] Three partner/payments reads; 87→90.
+  // [TEST-MOD-APPROVED #1981] charge_installment_now + send_installment_reminder; 90→92.
   // [TEST-MOD-APPROVED #2830] Twelve Website declarations extend the exact
   // current registry/authorization/ledger census (108→120). All remain
   // caller-bound at marketing-manager rank through the existing brand resource
@@ -56,13 +56,17 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #1982] revoke_brand_invitation; 125→126.
   // [TEST-MOD-APPROVED #1984] get_listing_conversion + get_reservation_metrics; 126→128.
   // [TEST-MOD-APPROVED #3697] Host Ads plan/approve/pause/end/report; 128→133.
+  // [TEST-MOD-APPROVED #3872] Discount list/create/pause; 133→136.
   assert(
-    AGENT_TOOLS.length === 133,
-    `expected 133 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 136,
+    `expected 136 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 133, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 133,
+    new Set(AGENT_TOOLS.map((t) => t.name)).size === 136,
+    "duplicate tool",
+  );
+  assert(
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 136,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -119,7 +123,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // [TEST-MOD-APPROVED #1982] 125→126 with revoke_brand_invitation.
   // [TEST-MOD-APPROVED #1984] 126→128 with get_listing_conversion + get_reservation_metrics.
   // [TEST-MOD-APPROVED #3697] 128→133 with Host Ads propose/approve/pause/end/report.
-  assert(rows.length === 133, `expected 133 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #3872] 133→136 with discount list/create/pause.
+  assert(rows.length === 136, `expected 136 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

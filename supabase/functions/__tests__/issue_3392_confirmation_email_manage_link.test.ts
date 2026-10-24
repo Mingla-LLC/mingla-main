@@ -426,7 +426,11 @@ Deno.test("E8 wiring: create derives for both web paths; dispatch trusts only th
   // FREE path: derived from the credential row's id, then written under it.
   assertStringIncludes(create, "const freeCheckoutSessionId = crypto.randomUUID();");
   assertStringIncludes(create, "? await issueWebManageToken(freeCheckoutSessionId)");
-  assertStringIncludes(create, "id: freeCheckoutSessionId,");
+  assertStringIncludes(
+    create,
+    "return await completeFreeReservation(supabase, {\n      checkoutSessionId: freeCheckoutSessionId,",
+  );
+  assertStringIncludes(create, "id: input.checkoutSessionId,");
   // PAID path: the web bst (also the guest token) is derived from the session id.
   assertStringIncludes(create, "const checkoutSessionId = crypto.randomUUID();");
   assertStringIncludes(create, "? await issueWebManageToken(checkoutSessionId)");

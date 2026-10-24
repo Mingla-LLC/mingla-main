@@ -150,6 +150,25 @@ const REACT_NATIVE_REANIMATED_WEB_STUB = path.join(
 const originalResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // The package root is mapped through extraNodeModules, but Metro does not
+  // reliably preserve that mapping for a lazy subpath import. Keep this pure
+  // validator in its own deferred chunk instead of pulling the package index
+  // into every public-page boot.
+  if (
+    moduleName === "@mingla/offering-rendering/publicParityContract" ||
+    moduleName === "./packages/offering-rendering/publicParityContract"
+  ) {
+    return {
+      filePath: path.join(
+        WORKSPACE_ROOT,
+        "packages",
+        "offering-rendering",
+        "publicParityContract.ts",
+      ),
+      type: "sourceFile",
+    };
+  }
+
   // Stripe embedded components are a web-only Connect surface opened via
   // Expo WebBrowser. Expo Router still evaluates route modules while building
   // the Android graph, so keep the DOM SDK out of native startup entirely.

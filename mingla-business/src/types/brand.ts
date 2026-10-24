@@ -118,7 +118,6 @@ export interface BrandEventStub {
 
 export interface BrandStats {
   events: number;
-  followers: number;
   /** Lifetime GMV in the brand's default currency (sum of net order totals). */
   rev: number;
   /** Last-7-day GMV in the brand's default currency. ORCH-0816. */

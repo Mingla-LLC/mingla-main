@@ -95,10 +95,16 @@ export interface TicketStub {
   /**
    * ORCH-1006 — server-computed all-in (tax/fee-inclusive) major-unit price for
    * this tier (WYSIWYP). Populated on public read paths from
-   * pg_public_event_tier_allin; undefined/null on authoring stubs → renderers
+   * pg_public_event_tier_pricing; undefined/null on authoring stubs → renderers
    * fall back to priceGbp. NEVER recompute fees in TS.
    */
   priceAllInGbp?: number | null;
+  /** #3872 display-sale fields are all server-owned and optional for back-compat. */
+  salePriceGbp?: number | null;
+  saleAllInGbp?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
+  saleRemaining?: number | null;
   /** ISO 4217 event/ticket currency. Undefined means inherit the event. */
   currency?: string;
   /**

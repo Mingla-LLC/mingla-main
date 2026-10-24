@@ -32,7 +32,7 @@ const SURFACES = [
 ];
 
 const RPC_RE = /\.rpc\(\s*["']pg_direct_event_checkout_bundle["']/;
-const LEGACY_CONSUMER_READ_RE = /\.rpc\(\s*["'](?:pg_public_event_by_slug|pg_public_event_tier_allin|pg_public_ticket_types_remaining)["']|\.from\(\s*["'](?:business_public_events_view|ticket_types)["']/;
+const LEGACY_CONSUMER_READ_RE = /\.rpc\(\s*["'](?:pg_public_event_by_slug|pg_public_event_tier_pricing|pg_public_ticket_types_remaining)["']|\.from\(\s*["'](?:business_public_events_view|ticket_types)["']/;
 
 const ownedRegion = (src, startNeedle, endNeedle) => {
   const start = src.indexOf(startNeedle);

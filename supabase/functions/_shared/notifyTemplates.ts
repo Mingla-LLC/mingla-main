@@ -208,6 +208,26 @@ export function renderCategoryMessage(
       };
     }
     case "business.support_new_ticket": {
+      if (payload.audience === "brand") {
+        const subject = communityMarkdownToPlainText(payload.subject);
+        const updateKind = str(payload.update_kind);
+        const status = str(payload.status).replaceAll("_", " ");
+        const publicBody = updateKind === "owned"
+          ? "Mingla Support has taken ownership of your brand’s case."
+          : updateKind === "status"
+          ? `Your brand’s support case is now ${status || "updated"}.`
+          : updateKind === "next_update"
+          ? "The next-update promise on your brand’s support case changed."
+          : "Mingla Support opened and took ownership of a case for your brand.";
+        return {
+          push: { title: updateKind === "opened" ? "Support case opened" : "Support case updated", body: publicBody },
+          email: {
+            subject: updateKind === "opened" ? "Mingla Support opened and took ownership of a case for your brand" : "Your Mingla support case was updated",
+            body: subject ? `${publicBody}\n\nSubject: ${subject}` : publicBody,
+          },
+          sms: `Mingla: ${publicBody}`,
+        };
+      }
       const publicBody = "A new support ticket needs attention.";
       const subject = communityMarkdownToPlainText(payload.subject);
       return {

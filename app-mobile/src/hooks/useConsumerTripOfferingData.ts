@@ -44,6 +44,11 @@ function toRefundPolicyShape(
  */
 export interface ConsumerTripTierEnrichment {
   allInCents: number | null;
+  salePriceCents: number | null;
+  saleAllInCents: number | null;
+  saleEndsAt: string | null;
+  saleName: string | null;
+  saleRemaining: number | null;
   description: string | null;
 }
 
@@ -109,6 +114,11 @@ export function buildConsumerTripOfferingData(
         // source the cart uses. Free → null ("Free"); miss → null → base fallback.
         priceAllInCents:
           t.isFree || t.priceCents === 0 ? null : (enrich?.allInCents ?? null),
+        salePriceCents: enrich?.salePriceCents ?? null,
+        saleAllInCents: enrich?.saleAllInCents ?? null,
+        saleEndsAt: enrich?.saleEndsAt ?? null,
+        saleName: enrich?.saleName ?? null,
+        saleRemaining: enrich?.saleRemaining ?? null,
         description: enrich?.description ?? null,
         currency: t.currency,
         isFree: t.isFree,
@@ -134,7 +144,7 @@ export function buildConsumerTripOfferingBrand(
   detail: ConsumerTripDetail,
 ): TripOfferingBrand {
   return {
-    id: detail.tripId,
+    id: detail.brandId,
     slug: detail.brandSlug,
     name: detail.brandName,
     bio: null,

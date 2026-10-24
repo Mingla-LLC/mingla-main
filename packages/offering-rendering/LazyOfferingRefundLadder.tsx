@@ -23,28 +23,41 @@
  * tries again. This file adds no copy.
  */
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 
+import type { FollowerCountLineProps } from "./FollowerCountLine";
 import type { OfferingRefundLadderProps } from "./OfferingRefundLadder";
+import type { SaleAvailabilityTextProps } from "./SaleAvailabilityText";
 
 type OfferingRefundLadderModule = typeof import("./OfferingRefundLadder");
 
 let loadedLadder: OfferingRefundLadderModule | undefined;
 let pendingLadder: Promise<OfferingRefundLadderModule> | undefined;
 
+const DeferredFollowerCountLine = React.lazy(async () => {
+  const module = await import("./FollowerCountLine");
+  return { default: module.FollowerCountLine };
+});
+
+const DeferredSaleAvailabilityText = React.lazy(async () => {
+  const module = await import("./SaleAvailabilityText");
+  return { default: module.SaleAvailabilityText };
+});
+
 /** Load the ladder chunk once. A failed load is forgotten, so the next call retries. */
-export const loadOfferingRefundLadder = (): Promise<OfferingRefundLadderModule> => {
-  if (loadedLadder !== undefined) return Promise.resolve(loadedLadder);
-  pendingLadder ??= import("./OfferingRefundLadder").then(
-    (module) => (loadedLadder = module),
-    (error: unknown) => {
-      pendingLadder = undefined;
-      throw error;
-    },
-  );
-  return pendingLadder;
-};
+export const loadOfferingRefundLadder =
+  (): Promise<OfferingRefundLadderModule> => {
+    if (loadedLadder !== undefined) return Promise.resolve(loadedLadder);
+    pendingLadder ??= import("./OfferingRefundLadder").then(
+      (module) => (loadedLadder = module),
+      (error: unknown) => {
+        pendingLadder = undefined;
+        throw error;
+      },
+    );
+    return pendingLadder;
+  };
 
 /**
  * The height OfferingRefundLadder takes for these props, from its own styles:
@@ -61,7 +74,8 @@ export function reservedLadderHeight({
 }: OfferingRefundLadderProps): number {
   const isTrip = offeringType === "trip";
   const tiers = policy?.tiers ?? [];
-  const final = !isTrip && tiers.length > 0 && tiers.every((t) => t.refund_pct === 0);
+  const final =
+    !isTrip && tiers.length > 0 && tiers.every((t) => t.refund_pct === 0);
   const disclosure = !isTrip && policy === null && isPaid;
   const deadline = isTrip && Number.isFinite(Date.parse(bookingDeadline ?? ""));
   if (policy === null && !deadline && !disclosure) return 0;
@@ -102,3 +116,21 @@ export const LazyOfferingRefundLadder = (props: OfferingRefundLadderProps) => {
   const height = failed ? 0 : reservedLadderHeight(props);
   return height > 0 ? <View style={{ height }} /> : null;
 };
+
+/** Keep secondary social proof out of the eager public-page payload. */
+export function LazyFollowerCountLine(props: FollowerCountLineProps) {
+  return (
+    <React.Suspense fallback={null}>
+      <DeferredFollowerCountLine {...props} />
+    </React.Suspense>
+  );
+}
+
+/** Keep secondary sale urgency copy out of the eager public-page payload. */
+export function LazySaleAvailabilityText(props: SaleAvailabilityTextProps) {
+  return (
+    <React.Suspense fallback={null}>
+      <DeferredSaleAvailabilityText {...props} />
+    </React.Suspense>
+  );
+}

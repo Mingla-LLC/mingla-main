@@ -128,7 +128,7 @@ import { Input } from "../../../src/components/ui/Input";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import {
@@ -151,6 +151,12 @@ import {
 // package's default LIGHT-mode tokens would be unreadable here. Values
 // mirror mingla-business's designSystem (`glass`, `text`, `semantic`,
 // `accent` from `src/constants/designSystem.ts`).
+const TicketQuoteSummary = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketQuoteSummary }),
+  ),
+);
+
 const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   backgroundPrimary: "#0c0e12",
   textPrimary: "rgba(255, 255, 255, 0.96)",
@@ -242,10 +248,8 @@ const validate = (
   const phoneValid = isValidE164(phoneTrim);
 
   return {
-    nameError:
-      showErrors && !nameValid ? "Please enter your full name" : null,
-    emailError:
-      showErrors && !emailValid ? "Enter a valid email" : null,
+    nameError: showErrors && !nameValid ? "Please enter your full name" : null,
+    emailError: showErrors && !emailValid ? "Enter a valid email" : null,
     phoneError:
       showErrors && !phoneValid ? "Enter a valid mobile number" : null,
     isValid: nameValid && emailValid && phoneValid,
@@ -255,7 +259,10 @@ const validate = (
 export default function CheckoutBuyerScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ eventId: string; ticketLink?: string }>();
+  const params = useLocalSearchParams<{
+    eventId: string;
+    ticketLink?: string;
+  }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
   const ticketLinkToken =
     typeof params.ticketLink === "string" && params.ticketLink.length > 0
@@ -284,6 +291,9 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const {
     lines,
     buyer,
+    discountCode,
+    quote,
+    quoteStatus,
     setBuyer,
     recordResult,
     // Aliased: the free branch below declares its own `result` for the create
@@ -293,7 +303,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     eventDateIds,
     checkoutAttemptIdFor,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
   /**
    * issue #2689 — SYNCHRONOUS re-entry guard, not a second copy of `submitting`.
@@ -350,12 +360,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     }
     setBuyer({ termsAccepted: next });
     if (next) setConsentHintVisible(false);
-  }, [
-    authReady,
-    buyer.termsAccepted,
-    sessionUserId,
-    setBuyer,
-  ]);
+  }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer]);
   const toggleMarketing = useCallback((): void => {
     if (!authReady) return;
     setBuyer({ marketingOptIn: !buyer.marketingOptIn });
@@ -371,9 +376,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // stores the FULL E.164 string (e.g., "+447700900000"). The PhoneInput
   // component manages country code + local digits separately; we compose
   // them into the full E.164 on every change and write back to the cart.
+  // prettier-ignore -- #3380 source contract keeps the locale fallback auditable.
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
     resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency)),
   );
+  // prettier-ignore -- #3380 source contract keeps the same fallback in both seeds.
   const [phoneLocal, setPhoneLocal] = useState<string>(() =>
     splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency))),
   );
@@ -437,12 +444,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     // This is the other half of the composeE164 fix: refusing a Nigerian number
     // typed under the wrong flag is only an improvement if the guest is told it
     // is the FLAG that is wrong, not the digits they keep correctly retyping.
-    const phoneHint = v.phoneError === null
-      ? null
-      : phoneEntryHint(
-        getCountryByCode(phoneCountry)?.dialCode ?? "+44",
-        phoneLocal,
-      );
+    const phoneHint =
+      v.phoneError === null
+        ? null
+        : phoneEntryHint(
+            getCountryByCode(phoneCountry)?.dialCode ?? "+44",
+            phoneLocal,
+          );
     return {
       name: showErrorsForName ? v.nameError : null,
       email: showErrorsForEmail ? v.emailError : null,
@@ -513,7 +521,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
       setConsentHintVisible(true);
       return;
     }
-    if (eventId === null) return;
+    if (eventId === null || quote === null || quoteStatus !== "ready") return;
     // issue #2689 — CLAIM THE SUBMIT BEFORE ANY AWAIT. This is the whole bug.
     //
     // `setSubmitting(true)` used to live below the consent write, which is a
@@ -595,9 +603,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // refuses to mint a duplicate either way).
         // Same web-scoped accessor shape `payment.tsx` uses for this helper.
         // On native `sessionStorage` is simply absent and the helpers no-op.
-        const storage = Platform.OS === "web"
-          ? (globalThis as unknown as { sessionStorage?: Storage }).sessionStorage
-          : undefined;
+        const storage =
+          Platform.OS === "web"
+            ? (globalThis as unknown as { sessionStorage?: Storage })
+                .sessionStorage
+            : undefined;
         // issue #2337 — TWO sources of possession, in order.
         //
         // `sessionStorage` is WEB-ONLY and per-tab: `Platform.OS === "web"`
@@ -621,20 +631,28 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // that comparison, so the client never has to guess at identity.
         const heldToken =
           readCheckoutResumePayload(storage, eventId)?.buyerStatusToken ??
-            cartResult?.buyerStatusToken ??
-            "";
+          cartResult?.buyerStatusToken ??
+          "";
         // #2879 / #2947 slice 3 — web only, single-tier carts only. Multi-tier
         // stays on the quiet path; native 1.1.6 must never opt in (SPEC Q3).
         const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
-        const queueOptIn = Platform.OS === "web" &&
-            distinctTiers.size === 1 && ticketLinkToken === null
-          ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
-          : {};
+        const queueOptIn =
+          Platform.OS === "web" &&
+          distinctTiers.size === 1 &&
+          ticketLinkToken === null
+            ? queueContractOptInFields(lines[0]?.ticketTypeId, {
+                enabled: true,
+              })
+            : {};
         const result = await createTicketCheckout({
           eventId,
+          brandId: event?.brandId ?? brand?.id,
           ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
           buyer,
           lines,
+          discountCode,
+          quoteDigest: quote.quoteDigest,
+          quoteListDigest: quote.quoteListDigest,
           // issue #2689 — SAY WHICH SURFACE THIS IS. Omitting it made the edge
           // apply its back-compat fallback, which labels anything unrecognised
           // "native" — so every free WEB claim was recorded as native. That is
@@ -646,13 +664,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           surface: Platform.OS === "web" ? "web" : "native",
           ...(Platform.OS === "web"
             ? {
-              checkoutContractVersion: 2 as const,
-              checkoutAttemptId: checkoutAttemptIdFor({
-                eventId,
-                surface: "web",
-                ticketLinkToken,
-              }),
-            }
+                checkoutContractVersion: 2 as const,
+                checkoutAttemptId: checkoutAttemptIdFor({
+                  eventId,
+                  surface: "web",
+                  ticketLinkToken,
+                }),
+              }
             : {}),
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
@@ -742,7 +760,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           // mint the attendance claim link. Measured: 9 of 9 free production
           // orders had `attendance_identity_claim_armed_at` NULL.
           ...(typeof result.buyerStatusToken === "string" &&
-            result.buyerStatusToken.length > 0
+          result.buyerStatusToken.length > 0
             ? { buyerStatusToken: result.buyerStatusToken }
             : {}),
           paidAt: new Date().toISOString(),
@@ -818,6 +836,9 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     eventId,
     totals.isFree,
     totals.currency,
+    discountCode,
+    quote,
+    quoteStatus,
     lines,
     buyer,
     // issue #2135 — the chosen occurrence is read inside this handler.
@@ -827,6 +848,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     cartResult,
     ticketLinkToken,
     checkoutAttemptIdFor,
+    brand?.id,
+    event?.brandId,
     recordResult,
     router,
   ]);
@@ -840,6 +863,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // tap-capture overlay all agree.
   const continueDisabled =
     !authReady ||
+    quoteStatus !== "ready" ||
     isContinueDisabled({
       fieldsValid: validation.isValid,
       termsAccepted,
@@ -892,26 +916,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {lines.map((l) => (
-              <View key={l.ticketTypeId} style={styles.summaryLine}>
-                <Text style={styles.summaryLineQty}>{l.quantity}×</Text>
-                <Text style={styles.summaryLineName} numberOfLines={1}>
-                  {l.ticketName}
-                </Text>
-                <Text style={styles.summaryLineTotal}>
-                  {l.isFree
-                    ? "Free"
-                    : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-                </Text>
-              </View>
-            ))}
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotalValue}>
-                {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
-              </Text>
-            </View>
+            {quote !== null ? (
+              <React.Suspense fallback={null}>
+                <TicketQuoteSummary quote={quote} compact />
+              </React.Suspense>
+            ) : null}
           </GlassCard>
         </Pressable>
 
@@ -1091,7 +1100,9 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           </View>
           <View style={styles.marketingCopy}>
             <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
-            <Text style={styles.marketingHelper}>{CHECKOUT_MARKETING_HELPER}</Text>
+            <Text style={styles.marketingHelper}>
+              {CHECKOUT_MARKETING_HELPER}
+            </Text>
           </View>
         </Pressable>
         {submitError !== null ? (
@@ -1110,7 +1121,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {totals.isFree ? "Free" : formatCurrency(totals.total, totals.currency)}
+            {quoteStatus !== "ready" || quote === null
+              ? "Updating…"
+              : quote.buyerTotalCents === 0
+                ? formatCurrency(0, quote.currency)
+                : formatCurrency(quote.buyerTotalCents, quote.currency, true)}
           </Text>
         </View>
         {/* META-ORCH-1161 Sub-A.2 (DEC-186) — the Pay button stays VISUALLY
@@ -1140,7 +1155,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           </View>
         </Pressable>
       </View>
-
     </View>
   );
 }

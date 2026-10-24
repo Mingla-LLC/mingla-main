@@ -45,6 +45,15 @@ export type ProviderTargetingRefs = {
   >;
   /** normalized interest name -> provider-native id/category. */
   interestIds?: Record<string, string>;
+  /**
+   * Provider audience ids loaded server-side from public.ad_audiences.
+   * These fields are deliberately refs, not browser audience intent: callers
+   * cannot smuggle an arbitrary Custom Audience / Segment id into a plan.
+   */
+  includeAudienceIds?: string[];
+  excludeAudienceIds?: string[];
+  /** Prospecting only. Meta may treat the literal targeting as suggestions. */
+  advantageAudience?: boolean;
 };
 
 export type TargetingCompileResult = {
@@ -266,6 +275,10 @@ function compiledInterests(
   return { ids, missing };
 }
 
+function cleanAudienceIds(value: string[] | undefined): string[] {
+  return [...new Set((value ?? []).map((id) => id.trim()).filter(Boolean))];
+}
+
 function coordinatesForCity(
   city: AudienceCity,
   refs: ProviderTargetingRefs,
@@ -320,6 +333,8 @@ export function compileProviderTargeting(
   const compiled: Record<string, unknown> = {};
   const cities = intent.cities ?? [];
   const interests = intent.interests ?? [];
+  const includeAudienceIds = cleanAudienceIds(refs.includeAudienceIds);
+  const excludeAudienceIds = cleanAudienceIds(refs.excludeAudienceIds);
 
   if (platform === "meta") {
     compiled.geo_locations = { countries: intent.countries };
@@ -363,6 +378,21 @@ export function compileProviderTargeting(
         }];
       }
     }
+    if (includeAudienceIds.length) {
+      compiled.custom_audiences = includeAudienceIds.map((id) => ({ id }));
+    }
+    if (excludeAudienceIds.length) {
+      compiled.excluded_custom_audiences = excludeAudienceIds.map((id) => ({
+        id,
+      }));
+    }
+    // The Meta adapter already defaults ordinary targeting to literal
+    // (advantage_audience: 0). Emit an override only for the prospecting stage
+    // where #3697 explicitly turns Advantage+ suggestions on; keeping the
+    // default absent preserves frozen pre-stage execution snapshots.
+    if (refs.advantageAudience === true) {
+      compiled.targeting_automation = { advantage_audience: 1 };
+    }
   } else if (platform === "tiktok") {
     const locations = compiledLocations(cities, refs);
     if (cities.length && locations.missing.length) {
@@ -397,6 +427,10 @@ export function compileProviderTargeting(
           }.`,
         );
       } else compiled.interest_category_ids = resolved.ids;
+    }
+    if (includeAudienceIds.length) compiled.audience_ids = includeAudienceIds;
+    if (excludeAudienceIds.length) {
+      compiled.excluded_audience_ids = excludeAudienceIds;
     }
   } else if (platform === "snapchat") {
     compiled.country_codes = intent.countries;
@@ -435,6 +469,12 @@ export function compileProviderTargeting(
           }.`,
         );
       } else compiled.interest_category_ids = resolved.ids;
+    }
+    if (includeAudienceIds.length) {
+      compiled.segment_include_ids = includeAudienceIds;
+    }
+    if (excludeAudienceIds.length) {
+      compiled.segment_exclude_ids = excludeAudienceIds;
     }
   } else if (platform === "google") {
     const locations = compiledLocations(cities, refs);
@@ -584,6 +624,15 @@ export function providerExecutionTargeting(
       ...(Array.isArray(firstFlexible.interests)
         ? { interests: firstFlexible.interests }
         : {}),
+      ...(Array.isArray(compiled.custom_audiences)
+        ? { custom_audiences: compiled.custom_audiences }
+        : {}),
+      ...(Array.isArray(compiled.excluded_custom_audiences)
+        ? { excluded_custom_audiences: compiled.excluded_custom_audiences }
+        : {}),
+      ...(asRecord(compiled.targeting_automation)
+        ? { targeting_automation: compiled.targeting_automation }
+        : {}),
     };
   }
 
@@ -600,6 +649,12 @@ export function providerExecutionTargeting(
       ...(ageMax !== undefined ? { age_max: ageMax } : {}),
       ...(typeof compiled.gender === "string"
         ? { gender: compiled.gender }
+        : {}),
+      ...(Array.isArray(compiled.audience_ids)
+        ? { audience_ids: compiled.audience_ids }
+        : {}),
+      ...(Array.isArray(compiled.excluded_audience_ids)
+        ? { excluded_audience_ids: compiled.excluded_audience_ids }
         : {}),
     };
   }
@@ -625,6 +680,12 @@ export function providerExecutionTargeting(
         : {}),
       ...(Array.isArray(compiled.interest_category_ids)
         ? { interests: compiled.interest_category_ids }
+        : {}),
+      ...(Array.isArray(compiled.segment_include_ids)
+        ? { segment_include_ids: compiled.segment_include_ids }
+        : {}),
+      ...(Array.isArray(compiled.segment_exclude_ids)
+        ? { segment_exclude_ids: compiled.segment_exclude_ids }
         : {}),
     };
   }

@@ -17,21 +17,39 @@
  */
 
 import React from "react";
-import { Stack } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 
 import { CartProvider } from "../../../src/components/checkout/CartContext";
+
+const TicketQuoteController = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteController").then(
+    (module) => ({ default: module.TicketQuoteController }),
+  ),
+);
+
+const firstParam = (value: string | string[] | undefined): string =>
+  Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+
+const CheckoutStack = (): React.ReactElement => {
+  const params = useLocalSearchParams<{
+    eventId?: string | string[];
+    ticketLink?: string | string[];
+  }>();
+  return (
+    <React.Suspense fallback={null}>
+      <TicketQuoteController
+        eventId={firstParam(params.eventId)}
+        ticketLinkToken={firstParam(params.ticketLink) || null}
+      />
+      <Stack screenOptions={{ headerShown: false }} />
+    </React.Suspense>
+  );
+};
 
 export default function CheckoutLayout(): React.ReactElement {
   return (
     <CartProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          // iOS: native swipe-back enabled by default. Confirmation
-          // screen (J-C5) blocks it explicitly via usePreventRemove
-          // in Cycle 8b. J-C1 / J-C2 / J-C3 keep default behaviour.
-        }}
-      />
+      <CheckoutStack />
     </CartProvider>
   );
 }

@@ -50,6 +50,7 @@ import {
   type ChipInResult,
   type RsvpPhoneFieldRenderer,
   type ThemePalette,
+  type FollowerCountLabels,
 } from "@mingla/offering-rendering";
 // Deep imports: pure modules, reachable without the mocked barrel in jest.
 import {
@@ -149,6 +150,9 @@ export interface FoundationRsvpPreviewProps {
   onRecoveryRetry?: (() => void) | null;
   /** #3682 — Presented-by Follow slot (adapter-owned FollowButton). */
   presentedByFollow?: React.ReactNode;
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
 }
 
 export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (props) => {
@@ -187,6 +191,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onRsvpResolved,
     onRecoveryRetry,
     presentedByFollow,
+    presentedByFollowerCount,
+    presentedByFollowerCountLoading = false,
+    presentedByFollowerCountLabels,
   } = props;
   const { isDesktop } = useResponsiveLayout();
   const acquisitionClosed =
@@ -402,6 +409,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           // (PARITY with FoundationEventPreview's hideTicketBox).
           hideDecisionBox={isDesktop || acquisitionClosed}
           presentedByFollow={presentedByFollow}
+          presentedByFollowerCount={presentedByFollowerCount}
+          presentedByFollowerCountLoading={presentedByFollowerCountLoading}
+          presentedByFollowerCountLabels={presentedByFollowerCountLabels}
           testID="orch-1163-rsvp-body"
         />
       </ParallaxCoverShell>

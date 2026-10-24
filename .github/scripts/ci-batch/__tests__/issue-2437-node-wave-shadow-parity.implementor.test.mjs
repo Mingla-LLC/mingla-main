@@ -381,6 +381,9 @@ test("terminal lifecycle rejects restored wrappers and leaves no parity markers"
 test("canonical validation rejects terminal omission, restored wrapper, setup drift, and trust drift", () => {
   const value = manifest();
   Object.assign(value, loadEffectiveManifest());
+  const effectiveForTrust = loadEffectiveManifest();
+  Object.defineProperties(value, Object.fromEntries(Object.getOwnPropertySymbols(effectiveForTrust)
+    .map((symbol) => [symbol, Object.getOwnPropertyDescriptor(effectiveForTrust, symbol)])));
   const workflowSource = fs.readFileSync(WORKFLOW_PATH, "utf8");
   const discovery = { root: ROOT, liveOrigins: discoverLiveOrigins(ROOT), workflowProviders: discoverWorkflowProviders(ROOT), matrixSource: workflowSource };
   assert.deepEqual(validateRegistry(value, discovery), []);
@@ -400,6 +403,9 @@ test("canonical validation rejects terminal omission, restored wrapper, setup dr
 test("job startup uses supported pre-matrix contexts and dispatch is isolated to #2300", () => {
   const value = manifest();
   Object.assign(value, loadEffectiveManifest());
+  const effectiveForTrust = loadEffectiveManifest();
+  Object.defineProperties(value, Object.fromEntries(Object.getOwnPropertySymbols(effectiveForTrust)
+    .map((symbol) => [symbol, Object.getOwnPropertyDescriptor(effectiveForTrust, symbol)])));
   const workflowSource = fs.readFileSync(WORKFLOW_PATH, "utf8");
   const topology = inspectBatchWorkflow(workflowSource);
   assert.equal(topology.jobIf, "github.event_name != 'workflow_dispatch'");

@@ -155,6 +155,17 @@ export function buildExperienceOfferingData(
             name: t.name,
             priceCents: t.priceCents,
             priceAllInCents: allInCents,
+            salePriceCents:
+              typeof t.salePriceGbp === "number"
+                ? Math.round(t.salePriceGbp * 100)
+                : null,
+            saleAllInCents:
+              typeof t.saleAllInGbp === "number"
+                ? Math.round(t.saleAllInGbp * 100)
+                : null,
+            saleEndsAt: t.saleEndsAt ?? null,
+            saleName: t.saleName ?? null,
+            saleRemaining: t.saleRemaining ?? null,
             currency: t.currency,
             isFree: t.isFree,
             isUnlimited: t.isUnlimited,
@@ -183,6 +194,17 @@ export function buildExperienceOfferingData(
               name: opt.name,
               priceCents: opt.priceCents,
               priceAllInCents: optAllIn,
+              salePriceCents:
+                typeof opt.salePriceGbp === "number"
+                  ? Math.round(opt.salePriceGbp * 100)
+                  : null,
+              saleAllInCents:
+                typeof opt.saleAllInGbp === "number"
+                  ? Math.round(opt.saleAllInGbp * 100)
+                  : null,
+              saleEndsAt: opt.saleEndsAt ?? null,
+              saleName: opt.saleName ?? null,
+              saleRemaining: opt.saleRemaining ?? null,
               currency: opt.currency,
               isFree: opt.isFree,
               isUnlimited: opt.isUnlimited,

@@ -253,11 +253,13 @@ describe("#3187 executed transports — what lands in the paste", () => {
     const { adapter } = loadExplorerAdapter(created());
     const explorer = await adapter.prepareContentShare("brand", { brandSlug: "lanternroom" });
     expect(explorer.url).toBe(CANONICAL_V1);
-    // Both sheets copy, QR-encode and share exactly `prepared.url`.
+    // [TEST-MOD-APPROVED #3988] Business now promotes either a prepared share
+    // or its canonical fallback into one shareTarget; Explorer still uses its
+    // prepared target. Both paths preserve the exact canonical URL.
     const sheet = read("mingla-business/src/components/ui/ShareModalContent.tsx");
-    expect(sheet).toContain("await copyPublicUrl(prepared.url)");
-    expect(sheet).toContain("<QRCode value={prepared.url}");
-    expect(sheet).toContain("url: prepared.url, description: prepared.shareMessage");
+    expect(sheet).toContain("await copyPublicUrl(shareTarget.url)");
+    expect(sheet).toContain("<QRCode value={shareTarget.url}");
+    expect(sheet).toContain("await sharePublicUrl(shareTarget)");
     expect(read("app-mobile/src/components/share/UnifiedShareProvider.tsx")).toContain("Clipboard.setString(prepared.url)");
   });
 

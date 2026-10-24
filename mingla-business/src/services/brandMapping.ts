@@ -150,7 +150,6 @@ export type BrandTableInsert = {
 
 export const EMPTY_BRAND_STATS: BrandStats = {
   events: 0,
-  followers: 0,
   rev: 0,
   rev7d: 0,
   attendees: 0,

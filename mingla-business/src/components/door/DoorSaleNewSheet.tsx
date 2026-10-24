@@ -68,6 +68,7 @@ import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
+import { doorTierUnitPrice } from "./doorListPrice";
 
 // ---- Constants ------------------------------------------------------
 
@@ -214,7 +215,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
           if (existing === undefined) return prev;
           return prev.filter((l) => l.ticketTypeId !== tier.id);
         }
-        const unit = tier.isFree ? 0 : (tier.priceGbp ?? 0);
+        const unit = doorTierUnitPrice(tier);
         if (existing === undefined) {
           return [
             ...prev,

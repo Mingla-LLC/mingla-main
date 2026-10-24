@@ -1,4 +1,4 @@
-export const PRIVACY_EFFECTIVE_DATE = 'August 27, 2026'
+export const PRIVACY_EFFECTIVE_DATE = 'October 22, 2026'
 
 export const PRIVACY_SECTIONS = [
   {
@@ -93,7 +93,7 @@ export const PRIVACY_SECTIONS = [
   {
     title: '5. How We Share Your Information',
     paragraphs: [
-      'We do not sell your personal information. We do not share your personal information with third parties for their independent advertising or marketing purposes. We share information only with service providers we engage to operate the Mingla Service, where required by law, or in connection with a business transfer, each as described below.',
+      'We do not sell your personal information. We share information only with service providers we engage to operate, measure, and improve the Mingla Service and our advertising, where required by law, or in connection with a business transfer, each as described below.',
     ],
   },
   {
@@ -119,16 +119,26 @@ export const PRIVACY_SECTIONS = [
       'RevenueCat — subscription state management for Mingla Plus (entitlement tracking, trial management, receipt validation)',
       'Stripe — payment processing for Mingla Plus subscriptions. Stripe handles all credit card data directly; Mingla never receives or stores your full card number or CVC. Stripe is integrated with RevenueCat for subscription processing',
       'Expo — application build, over-the-air update, and runtime infrastructure',
+      'Meta — the Meta Pixel and Conversions API for advertising measurement',
+      'Snap — the Snap Pixel and Conversions API for advertising measurement',
+      'TikTok — the TikTok Pixel and Events API for advertising measurement',
     ],
   },
   {
-    title: '5.2 Legal Requirements',
+    title: '5.2 Advertising measurement and choices',
+    paragraphs: [
+      'On Mingla buyer web pages, we use the Meta Pixel and Conversions API, the Snap Pixel and Conversions API, and the TikTok Pixel and Events API. We may share hashed email and phone numbers, page and purchase events, and device and browser data with these providers. We use this information to measure and improve our ads and to show people relevant events.',
+      'These advertising pixels load when a page opens unless you have opted out. You can opt out using the banner or the “Ad privacy choices” link in the page footer. Your choice is remembered in that browser. Opting out stops the advertising pixels and suppresses server-side conversion sharing for that browser.',
+    ],
+  },
+  {
+    title: '5.3 Legal Requirements',
     paragraphs: [
       'We may disclose your information if we are required to do so by law, court order, subpoena, or other governmental authority, or if disclosure is necessary to protect the rights, property, or safety of Mingla, our users, or the public, or to detect, prevent, or investigate fraud, security incidents, or violations of our Terms of Service.',
     ],
   },
   {
-    title: '5.3 Business Transfers',
+    title: '5.4 Business Transfers',
     paragraphs: [
       'If Mingla is involved in a merger, acquisition, financing, reorganization, bankruptcy, or sale of all or a portion of its assets, your information may be transferred or sold as part of that transaction. We will notify you of any change in ownership or material change in the use of your personal information, and you will have an opportunity to opt out of the new use before your information becomes subject to a different privacy policy.',
     ],

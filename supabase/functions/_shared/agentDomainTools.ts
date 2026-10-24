@@ -3091,6 +3091,146 @@ const draftCampaign = writeTool(
   },
 );
 
+// #3872 — Ari uses the same Host discount control plane as the manual UI.
+// Proposals never calculate checkout money; the server engine remains the only
+// authority and the edge writer binds the operation to the caller's JWT.
+const listDiscounts = writeTool(
+  "list_discounts",
+  "List a brand's live, scheduled, ended, or needs-attention discounts.",
+  {
+    brand_id: UUID,
+    filter: {
+      type: "string",
+      enum: ["live", "scheduled", "ended", "needs_attention"],
+    },
+  },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await callRpc(client, "brand_discounts_list", {
+      p_brand_id: args.brand_id,
+      p_filter: args.filter ?? "live",
+    });
+  },
+);
+
+const createDiscount = writeTool(
+  "create_discount",
+  "Propose a Host discount. Marketing managers can create codes; automatic discounts and sale prices require finance manager or above.",
+  {
+    brand_id: UUID,
+    kind: { type: "string", enum: ["code", "automatic", "sale_price"] },
+    code: { type: "string", minLength: 1, maxLength: 40 },
+    name: STR,
+    value_type: { type: "string", enum: ["percent", "amount", "set_price"] },
+    value_bps: { type: "integer", minimum: 1, maximum: 10000 },
+    value_minor: { type: "integer", minimum: 1 },
+    scope_kind: {
+      type: "string",
+      enum: ["brand", "listing_kinds", "listings", "items"],
+    },
+    combines_with: { type: "string", enum: ["none", "automatic_only", "any"] },
+    starts_at: { type: "string", format: "date-time" },
+    ends_at: { type: "string", format: "date-time" },
+    ends_after_count: { type: "integer", minimum: 1 },
+    max_total_uses: { type: "integer", minimum: 1 },
+    max_uses_per_buyer: { type: "integer", minimum: 1 },
+    min_subtotal_minor: { type: "integer", minimum: 1 },
+    targets: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          target_kind: {
+            type: "string",
+            enum: [
+              "listing_kind",
+              "event",
+              "ticket_type",
+              "venue_menu",
+              "menu_item",
+              "venue_deposit",
+            ],
+          },
+          listing_kind: {
+            type: "string",
+            enum: [
+              "event",
+              "experience",
+              "trip",
+              "venue_order",
+              "reservation_deposit",
+            ],
+          },
+          target_id: UUID,
+        },
+        required: ["target_kind"],
+      },
+    },
+  },
+  ["brand_id", "kind", "name", "value_type", "scope_kind", "targets"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    const targets = Array.isArray(args.targets)
+      ? args.targets.map((value) => {
+        const target = value as Record<string, unknown>;
+        return {
+          targetKind: target.target_kind,
+          listingKind: target.listing_kind,
+          targetId: target.target_id,
+        };
+      })
+      : [];
+    return await invokeFn(client, "brand-discount-upsert", {
+      action: "create",
+      payload: {
+        brandId: args.brand_id,
+        kind: args.kind,
+        code: args.code,
+        name: args.name,
+        valueType: args.value_type,
+        valueBps: args.value_bps,
+        valueMinor: args.value_minor,
+        scopeKind: args.scope_kind,
+        combinesWith: args.combines_with,
+        startsAt: args.starts_at ?? new Date().toISOString(),
+        endsAt: args.ends_at,
+        endsAfterCount: args.ends_after_count,
+        maxTotalUses: args.max_total_uses,
+        maxUsesPerBuyer: args.max_uses_per_buyer,
+        minSubtotalMinor: args.min_subtotal_minor,
+        status: "active",
+        source: "ari",
+        targets,
+      },
+    });
+  },
+);
+
+const pauseDiscount = writeTool(
+  "pause_discount",
+  "Pause a discount after the Host confirms. Existing orders keep their price.",
+  {
+    brand_id: UUID,
+    discount_id: UUID,
+    version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "discount_id", "version"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    return await invokeFn(client, "brand-discount-upsert", {
+      action: "pause",
+      payload: {
+        id: args.discount_id,
+        brandId: args.brand_id,
+        version: args.version,
+        source: "ari",
+      },
+    });
+  },
+);
+
 const scheduleCampaign = writeTool(
   "schedule_campaign",
   "Schedule a draft campaign for later send.",
@@ -7407,6 +7547,9 @@ const BUSINESS_NOTIFICATION_TYPES = [
   "business.payout_waiting_for_bank",
   "business.payouts_paused",
   "business.payouts_resumed",
+  "business.discount_limit_80",
+  "business.discount_ended",
+  "business.discount_needs_attention",
   "business.account_status_changed",
   "business.new_review",
   "business.claim_decision",
@@ -8086,6 +8229,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   manageVenueMenu,
   manageVenueWaitlist,
   draftCampaign,
+  listDiscounts,
+  createDiscount,
+  pauseDiscount,
   updateCampaignDraft,
   deleteCampaignDraft,
   scheduleCampaign,
@@ -8147,6 +8293,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
 ];
 
 export const DOMAIN_READ_ONLY = new Set<string>([
+  "list_discounts",
   "quote_stay",
   "get_payout_status",
   "get_partner_status",

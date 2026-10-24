@@ -411,6 +411,21 @@ jobs:
               *20271105012947_issue_2947_queue_monitor.sql) continue ;;
               *20271106002947_issue_2947_admin_queue_health.sql) continue ;;
               *20271109003281_issue_3281_booked_start.sql) continue ;;
+              # #3872 discount schema — SKIPPED because its use lifecycle reads
+              # consumed_at, defined only by checkout history this phase omits.
+              *20271216003872_issue_3872_r1_discount_schema.sql) continue ;;
+              # #3872 ticket discounts — SKIPPED because this re-emits checkout
+              # functions whose current base and private-link identities exist only
+              # in migrations this filtered lane intentionally skips.
+              *20271216013872_issue_3872_r1_ticket_checkout.sql) continue ;;
+              # #3872 public discount display — SKIPPED because this migration
+              # re-emits public readers whose current privacy and private-link
+              # identities exist only in migrations this filtered lane skips.
+              *20271216023872_issue_3872_r1_public_display.sql) continue ;;
+              # #3872 host discount operations — SKIPPED because its RPCs and
+              # grants target discount tables/functions created only by the
+              # three #3872 migrations this filtered lane omits above.
+              *20271216043872_issue_3872_r1_host_operations.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3682_presented_by_count.render.test.tsx",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3682-03-presented-by-count",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

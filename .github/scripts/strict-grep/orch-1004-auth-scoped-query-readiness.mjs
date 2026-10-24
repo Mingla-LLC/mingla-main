@@ -174,6 +174,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #3645 — the payout-screen RPC is finance_manager/auth.uid()-scoped and
   // must not cache a pre-auth denial as an empty host ledger.
   "useBrandPayoutScreen.ts",
+  // #3682 — Host follower summary reads auth.uid() and brand rank.
+  "useBrandFollowerSummary.ts",
   // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
   // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
   "useBrandConversionRollup.ts",
@@ -272,11 +274,16 @@ const AUTH_SCOPED_HOOK_FILES = [
   // early read returns no row and would read as "no phone", so it folds
   // isAuthReady into enabled. Signed-out viewers never run it.
   "useOwnProfilePhoneOnFile.ts",
+  // #3872 — refund_preview reads the organiser's own order/refund authority
+  // through an auth.uid()-scoped RPC. A pre-auth read must not be cached as a
+  // missing or zero refund preview.
+  "useRefundPreview.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
 //    depend on them. Each entry carries the reason it is anon-safe.
 const PUBLIC_HOOK_ALLOWLIST = [
+  ["useBrandFollowerCount.ts", "anon-readable aggregate follower count RPC (#3682)"],
   ["usePublicEvents.ts", "anon-readable events via security-definer public views (buyer-web feed)"],
   ["usePublicTripBySlug.ts", "anon-readable published trips via trip-sidecar anon RLS (buyer-web)"],
   ["usePublicTripById.ts", "anon-readable published trips by id (buyer-web)"],
@@ -284,7 +291,8 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["useIntakeSchema.ts", "trip_intake_schemas has trip_intake_schemas_anon_select for published trips; the buyer checkout-trip intake pages read it anonymously (dual-use)"],
   // ── ORCH-1202 — newly-discovered genuinely-public/anon-safe hooks.
   ["useBrandStripeCountries.ts", "static 34-country list; no auth context, no auth.uid()-scoped read (anon-safe UI helper)"],
-  ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_allin SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147)"],
+  ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_pricing SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147/#3872)"],
+  ["useTicketQuote.ts", "ticket-checkout-create quote mode is the anonymous buyer checkout pricing read; it is explicitly self-authorizing and must remain available before sign-in (#3872)"],
   ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
   ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],

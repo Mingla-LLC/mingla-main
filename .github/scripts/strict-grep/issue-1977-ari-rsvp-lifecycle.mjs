@@ -18,10 +18,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listLane } from "../ci-discovery/load-plan.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 
 const files = {
-  migration: "supabase/migrations/20270530001977_issue_1977_ari_rsvp_guest_contribution.sql",
+  migration:
+    "supabase/migrations/20270530001977_issue_1977_ari_rsvp_guest_contribution.sql",
   tools: "supabase/functions/_shared/agentDomainTools.ts",
   auth: "supabase/functions/_shared/agentToolAuthorization.ts",
   prompt: "supabase/functions/_shared/agentSystemPrompt.ts",
@@ -32,9 +36,12 @@ const files = {
   approvals: "mingla-business/src/services/rsvpApprovals.ts",
   roster: "mingla-business/src/services/guestRosterService.ts",
   refunds: "mingla-business/src/services/sourceRefundService.ts",
-  pgTest: "supabase/migrations/__tests__/issue_1977_ari_rsvp_guest_contribution.test.sql",
-  receiptTest: "supabase/migrations/__tests__/issue_1977_ari_rsvp_receipt.implementor.test.sql",
-  denoTest: "supabase/functions/_shared/__tests__/issue_1977_ari_rsvp_lifecycle.test.ts",
+  pgTest:
+    "supabase/migrations/__tests__/issue_1977_ari_rsvp_guest_contribution.test.sql",
+  receiptTest:
+    "supabase/migrations/__tests__/issue_1977_ari_rsvp_receipt.implementor.test.sql",
+  denoTest:
+    "supabase/functions/_shared/__tests__/issue_1977_ari_rsvp_lifecycle.test.ts",
   workflow: ".github/workflows/supabase-migrations-and-stripe-deno.yml",
   ledger: "docs/contracts/ari-capability-ledger.json",
 };
@@ -46,7 +53,10 @@ function stripComments(source) {
 }
 
 function effectiveSuites() {
-  return { migrations: listLane("migrations"), "stripe-deno": listLane("stripe-deno") };
+  return {
+    migrations: listLane("migrations"),
+    "stripe-deno": listLane("stripe-deno"),
+  };
 }
 
 export function audit(base, plans = effectiveSuites()) {
@@ -77,19 +87,17 @@ export function audit(base, plans = effectiveSuites()) {
   read("pgTest");
   read("denoTest");
 
-  for (
-    const fn of [
-      "business_create_rsvp_draft_graph",
-      "business_update_rsvp_graph",
-      "business_publish_rsvp_graph",
-      "business_discard_rsvp_draft",
-      "business_list_rsvp_roster",
-      "business_set_rsvp_guest_status",
-      "business_list_rsvp_contributions",
-      "biz_prepare_rsvp_contribution_refund",
-      "ari_execute_rsvp_operation",
-    ]
-  ) {
+  for (const fn of [
+    "business_create_rsvp_draft_graph",
+    "business_update_rsvp_graph",
+    "business_publish_rsvp_graph",
+    "business_discard_rsvp_draft",
+    "business_list_rsvp_roster",
+    "business_set_rsvp_guest_status",
+    "business_list_rsvp_contributions",
+    "biz_prepare_rsvp_contribution_refund",
+    "ari_execute_rsvp_operation",
+  ]) {
     if (!migration.includes(`FUNCTION public.${fn}`)) {
       failures.push(`canonical migration is missing ${fn}`);
     }
@@ -101,7 +109,9 @@ export function audit(base, plans = effectiveSuites()) {
     !migration.includes("rsvp_idempotency_hash_mismatch") ||
     !migration.includes("pg_advisory_xact_lock")
   ) {
-    failures.push("shared Ari receipt and Business replay authority are incomplete");
+    failures.push(
+      "shared Ari receipt and Business replay authority are incomplete",
+    );
   }
 
   if (
@@ -125,8 +135,9 @@ export function audit(base, plans = effectiveSuites()) {
   }
 
   if (
-    /GRANT EXECUTE ON FUNCTION public\.(?:business_|biz_prepare_rsvp_contribution_refund)[^;]+ TO (?:PUBLIC|anon)/
-      .test(migration)
+    /GRANT EXECUTE ON FUNCTION public\.(?:business_|biz_prepare_rsvp_contribution_refund)[^;]+ TO (?:PUBLIC|anon)/.test(
+      migration,
+    )
   ) {
     failures.push("organizer RSVP RPC gained public/anon execute");
   }
@@ -136,27 +147,33 @@ export function audit(base, plans = effectiveSuites()) {
     !migration.includes("ari.rsvp.contribution_settings") ||
     !migration.includes("evidence_mode = 'write'")
   ) {
-    failures.push("contribution_settings write promote / 120-row assert is incomplete");
+    failures.push(
+      "contribution_settings write promote / 120-row assert is incomplete",
+    );
   }
 
   if (
-    migration.includes("CREATE OR REPLACE FUNCTION public.ari_cert_begin_run") ||
-    migration.includes("CREATE OR REPLACE FUNCTION public.ari_cert_finalize_run")
+    migration.includes(
+      "CREATE OR REPLACE FUNCTION public.ari_cert_begin_run",
+    ) ||
+    migration.includes(
+      "CREATE OR REPLACE FUNCTION public.ari_cert_finalize_run",
+    )
   ) {
-    failures.push("#1977 must not rewrite ari_cert_begin_run / ari_cert_finalize_run");
+    failures.push(
+      "#1977 must not rewrite ari_cert_begin_run / ari_cert_finalize_run",
+    );
   }
 
-  for (
-    const name of [
-      "create_rsvp",
-      "update_rsvp",
-      "publish_rsvp",
-      "update_rsvp_contribution_settings",
-      "set_rsvp_guest_status",
-      "list_guest_roster",
-      "refund_rsvp_contribution",
-    ]
-  ) {
+  for (const name of [
+    "create_rsvp",
+    "update_rsvp",
+    "publish_rsvp",
+    "update_rsvp_contribution_settings",
+    "set_rsvp_guest_status",
+    "list_guest_roster",
+    "refund_rsvp_contribution",
+  ]) {
     if (!tools.includes(`"${name}"`) || !prompt.includes(name)) {
       failures.push(`${name} is not registered and advertised`);
     }
@@ -167,29 +184,30 @@ export function audit(base, plans = effectiveSuites()) {
   }
 
   if (
-    /refundRsvpContribution[\s\S]{0,1200}(?:refund-order|order_id|amount_cents)/
-      .test(tools)
+    /refundRsvpContribution[\s\S]{0,1200}(?:refund-order|order_id|amount_cents)/.test(
+      tools,
+    )
   ) {
     failures.push("order-shaped contribution refund returned");
   }
 
   if (
-    !auth.includes('refund_rsvp_contribution: role("finance_manager", "event")') ||
+    !auth.includes(
+      'refund_rsvp_contribution: role("finance_manager", "event")',
+    ) ||
     !auth.includes('set_rsvp_guest_status: role("event_manager", "event")') ||
     !auth.includes('update_rsvp: role("event_manager", "event")')
   ) {
     failures.push("delegated RSVP authorization drifted");
   }
 
-  for (
-    const name of [
-      "create_rsvp",
-      "update_rsvp",
-      "publish_rsvp",
-      "update_rsvp_contribution_settings",
-      "set_rsvp_guest_status",
-    ]
-  ) {
+  for (const name of [
+    "create_rsvp",
+    "update_rsvp",
+    "publish_rsvp",
+    "update_rsvp_contribution_settings",
+    "set_rsvp_guest_status",
+  ]) {
     if (!confirm.includes(`"${name}"`)) {
       failures.push(`agent-confirm-action lost receipt-backed ${name}`);
     }
@@ -215,7 +233,9 @@ export function audit(base, plans = effectiveSuites()) {
     !events.includes('rpc("business_publish_rsvp_graph"') &&
     !events.includes('rpc("business_update_rsvp_graph"')
   ) {
-    failures.push("Business publish/live edit bypasses the canonical RSVP graph");
+    failures.push(
+      "Business publish/live edit bypasses the canonical RSVP graph",
+    );
   }
 
   for (const source of [approvals, roster]) {
@@ -224,10 +244,7 @@ export function audit(base, plans = effectiveSuites()) {
     }
   }
 
-  if (
-    !refunds.includes("eventId") ||
-    !refunds.includes("contributionId")
-  ) {
+  if (!refunds.includes("eventId") || !refunds.includes("contributionId")) {
     failures.push("Business contribution refund is not event-bound");
   }
 
@@ -236,18 +253,27 @@ export function audit(base, plans = effectiveSuites()) {
     !receiptTest.includes("idempotency_conflict") ||
     !receiptTest.includes("operation_binding_mismatch")
   ) {
-    failures.push("implementor receipt proof no longer covers exact replay/conflict");
+    failures.push(
+      "implementor receipt proof no longer covers exact replay/conflict",
+    );
   }
 
   if (!workflow.includes("issue-1977-ari-rsvp-lifecycle.mjs")) {
-    failures.push("#1977 specialized gate is not wired into the shared supabase lane");
+    failures.push(
+      "#1977 specialized gate is not wired into the shared supabase lane",
+    );
   }
   for (const [lane, suitePath, profile] of [
     ["migrations", files.pgTest, "psql-pg17-post-replay"],
     ["stripe-deno", files.denoTest, "deno-1.46-stripe"],
   ]) {
-    const matches = (plans[lane] ?? []).filter((row) => row.path === suitePath && row.profile === profile);
-    if (matches.length !== 1) failures.push(`#1977 effective plan lost exact ${lane}/${profile} row for ${suitePath}`);
+    const matches = (plans[lane] ?? []).filter(
+      (row) => row.path === suitePath && row.profile === profile,
+    );
+    if (matches.length !== 1)
+      failures.push(
+        `#1977 effective plan lost exact ${lane}/${profile} row for ${suitePath}`,
+      );
   }
 
   try {
@@ -260,14 +286,17 @@ export function audit(base, plans = effectiveSuites()) {
     // [TEST-MOD-APPROVED #1980] Draft mutate + growth report read; 120→123.
     // [TEST-MOD-APPROVED #1981] Refund preview + trip installments reads; 123→125.
     // [TEST-MOD-APPROVED #1982] revoke_brand_invitation; 125→126.
-    // [TEST-MOD-APPROVED #3697] Host Ads propose/approve/pause/end/report; 128→133.
-    if (parsed.audit?.registered_tool_count !== 133) {
-      failures.push("ledger audit registered_tool_count is not 133");
+    // [TEST-MOD-APPROVED #3872] R1 Discounts list/create/pause; 133→136.
+    if (parsed.audit?.registered_tool_count !== 136) {
+      failures.push("ledger audit registered_tool_count is not 136");
     }
-    if (mapped.length !== 133 || new Set(mapped).size !== 133) {
-      failures.push("ledger mapped tool census is not 133 unique tools");
+    if (mapped.length !== 136 || new Set(mapped).size !== 136) {
+      failures.push("ledger mapped tool census is not 136 unique tools");
     }
-    if (!mapped.includes("update_rsvp") || !mapped.includes("update_rsvp_contribution_settings")) {
+    if (
+      !mapped.includes("update_rsvp") ||
+      !mapped.includes("update_rsvp_contribution_settings")
+    ) {
       failures.push("ledger lost the #1977 RSVP write mappings");
     }
     if (mapped.includes("set_guest_approval")) {
@@ -290,15 +319,23 @@ function selfTest() {
       fs.copyFileSync(path.join(root, relative), target);
     }
     const clean = audit(tmp, plans);
-    if (clean.length) throw new Error(`clean fixture failed: ${clean.join("; ")}`);
+    if (clean.length)
+      throw new Error(`clean fixture failed: ${clean.join("; ")}`);
 
     const migration = path.join(tmp, files.migration);
     const cleanMigration = fs.readFileSync(migration, "utf8");
     fs.writeFileSync(
       migration,
-      cleanMigration.replace("PERFORM public.enqueue_rsvp_pass(v_id,NULL)", "PERFORM 1"),
+      cleanMigration.replace(
+        "PERFORM public.enqueue_rsvp_pass(v_id,NULL)",
+        "PERFORM 1",
+      ),
     );
-    if (!audit(tmp, plans).some((failure) => failure.includes("guest effect owner"))) {
+    if (
+      !audit(tmp, plans).some((failure) =>
+        failure.includes("guest effect owner"),
+      )
+    ) {
       throw new Error("true mutation: pass enqueue deletion was not detected");
     }
     fs.writeFileSync(migration, cleanMigration);
@@ -307,10 +344,17 @@ function selfTest() {
     const cleanDrafts = fs.readFileSync(drafts, "utf8");
     fs.writeFileSync(
       drafts,
-      cleanDrafts.replace('rpc("business_create_rsvp_draft_graph"', 'from("events").insert'),
+      cleanDrafts.replace(
+        'rpc("business_create_rsvp_draft_graph"',
+        'from("events").insert',
+      ),
     );
-    if (!audit(tmp, plans).some((failure) => failure.includes("drafts bypass"))) {
-      throw new Error("true mutation: direct RSVP draft write was not detected");
+    if (
+      !audit(tmp, plans).some((failure) => failure.includes("drafts bypass"))
+    ) {
+      throw new Error(
+        "true mutation: direct RSVP draft write was not detected",
+      );
     }
     fs.writeFileSync(drafts, cleanDrafts);
 
@@ -320,8 +364,14 @@ function selfTest() {
       toolsPath,
       cleanTools.replace('"set_rsvp_guest_status"', '"set_guest_approval"'),
     );
-    if (!audit(tmp, plans).some((failure) => failure.includes("duplicate guest approval"))) {
-      throw new Error("true mutation: set_guest_approval return was not detected");
+    if (
+      !audit(tmp, plans).some((failure) =>
+        failure.includes("duplicate guest approval"),
+      )
+    ) {
+      throw new Error(
+        "true mutation: set_guest_approval return was not detected",
+      );
     }
     fs.writeFileSync(toolsPath, cleanTools);
 
@@ -329,20 +379,42 @@ function selfTest() {
     const cleanWorkflow = fs.readFileSync(workflow, "utf8");
     fs.writeFileSync(
       workflow,
-      cleanWorkflow.replaceAll("issue-1977-ari-rsvp-lifecycle.mjs", "issue-1977-missing.mjs"),
+      cleanWorkflow.replaceAll(
+        "issue-1977-ari-rsvp-lifecycle.mjs",
+        "issue-1977-missing.mjs",
+      ),
     );
-    if (!audit(tmp, plans).some((failure) => failure.includes("specialized gate"))) {
+    if (
+      !audit(tmp, plans).some((failure) => failure.includes("specialized gate"))
+    ) {
       throw new Error("true mutation: workflow unwire was not detected");
     }
 
     for (const [label, mutate] of [
       ["delete", (rows) => rows.filter((row) => row.path !== files.pgTest)],
-      ["duplicate", (rows) => [...rows, rows.find((row) => row.path === files.pgTest)]],
-      ["wrong-profile", (rows) => rows.map((row) => row.path === files.pgTest ? { ...row, profile: "deno-1.46-stripe" } : row)],
+      [
+        "duplicate",
+        (rows) => [...rows, rows.find((row) => row.path === files.pgTest)],
+      ],
+      [
+        "wrong-profile",
+        (rows) =>
+          rows.map((row) =>
+            row.path === files.pgTest
+              ? { ...row, profile: "deno-1.46-stripe" }
+              : row,
+          ),
+      ],
     ]) {
       const broken = { ...plans, migrations: mutate(plans.migrations) };
-      if (!audit(tmp, broken).some((failure) => failure.includes("effective plan"))) {
-        throw new Error(`true mutation: effective-plan ${label} was not detected`);
+      if (
+        !audit(tmp, broken).some((failure) =>
+          failure.includes("effective plan"),
+        )
+      ) {
+        throw new Error(
+          `true mutation: effective-plan ${label} was not detected`,
+        );
       }
     }
 
@@ -357,7 +429,7 @@ else {
   const failures = audit(root);
   if (failures.length) {
     failures.forEach((failure) =>
-      console.error(`[issue-1977-ari-rsvp-lifecycle] FAIL: ${failure}`)
+      console.error(`[issue-1977-ari-rsvp-lifecycle] FAIL: ${failure}`),
     );
     process.exit(1);
   }

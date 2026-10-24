@@ -83,6 +83,7 @@ import {
 import { experienceSeatsLabel } from "@mingla/offering-rendering/experienceR3";
 
 import { Icon } from "../../components/ui/Icon";
+import { PresentedByFollowButton } from "../../components/brand/PresentedByFollowButton";
 import {
   BaseBottomSheet,
   BottomSheetScrollView,
@@ -120,6 +121,8 @@ import {
 // (ConsumerEventReserveBar) is retired from the experience screen.
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
+import { useFollowerCountLabels } from "../../hooks/useFollowerCountLabels";
 import { useEventTheme } from "../../hooks/useEventTheme";
 import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
@@ -440,6 +443,10 @@ export default function ConsumerExperienceDetailScreen({
     seed?.eventSlug ?? null,
   );
   const freshDetail = freshDetailQuery.detail;
+  const followerCountQuery = useBrandFollowerCount(
+    freshDetail?.brandId ?? seed?.brandId ?? null,
+  );
+  const followerCountLabels = useFollowerCountLabels();
 
   // ORCH-1138 rework (§4.C.5) — the seed's anon-safe brandTheme (COMMS-0009) is
   // the SYNCHRONOUS fallback so the page renders themed immediately and never
@@ -711,6 +718,10 @@ export default function ConsumerExperienceDetailScreen({
           accountId: user.id,
           eventId: seed.eventId,
           lines: payload.lines,
+          discountCode: payload.discountCode,
+          quoteDigest: payload.quoteDigest,
+          quoteListDigest: payload.quoteListDigest,
+          acceptedTotalCents: payload.totalCents,
           buyer: {
             ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
@@ -784,7 +795,7 @@ export default function ConsumerExperienceDetailScreen({
       } else if (result.outcome === "pending") {
         // The server has not finalized an order yet; the durable recovery
         // panel owns the state and prevents another provider attempt.
-      } else if (result.outcome === "canceled") {
+      } else if (result.outcome === "canceled" || result.outcome === "review") {
         // Silent: user dismissed PaymentSheet.
       } else {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -869,6 +880,7 @@ export default function ConsumerExperienceDetailScreen({
         setCheckoutTerminalOutcome(result);
       } else if (
         result.outcome === "pending" ||
+        result.outcome === "review" ||
         (result.outcome === "failed" && result.retryable !== undefined) ||
         (result.outcome === "canceled" && result.retryable === true)
       ) {
@@ -1101,6 +1113,17 @@ export default function ConsumerExperienceDetailScreen({
             name: sellableTicket.name,
             priceCents: sellablePriceCents,
             priceAllInCents: sellableTicket.isFree ? null : sellableAllInCents,
+            salePriceCents:
+              typeof sellableTicket.salePriceGbp === "number"
+                ? Math.round(sellableTicket.salePriceGbp * 100)
+                : null,
+            saleAllInCents:
+              typeof sellableTicket.saleAllInGbp === "number"
+                ? Math.round(sellableTicket.saleAllInGbp * 100)
+                : null,
+            saleEndsAt: sellableTicket.saleEndsAt ?? null,
+            saleName: sellableTicket.saleName ?? null,
+            saleRemaining: sellableTicket.saleRemaining ?? null,
             currency: sellableTicket.currency ?? seed.currency,
             isFree: sellableTicket.isFree || sellablePriceCents === 0,
             isUnlimited: sellableTicket.isUnlimited === true,
@@ -1138,6 +1161,11 @@ export default function ConsumerExperienceDetailScreen({
       name: opt.name,
       priceCents: opt.priceCents,
       priceAllInCents: opt.priceAllInCents,
+      salePriceCents: opt.salePriceCents ?? null,
+      saleAllInCents: opt.saleAllInCents ?? null,
+      saleEndsAt: opt.saleEndsAt ?? null,
+      saleName: opt.saleName ?? null,
+      saleRemaining: opt.saleRemaining ?? null,
       currency: opt.currency,
       isFree: opt.isFree,
       isUnlimited: opt.isUnlimited,
@@ -1157,6 +1185,11 @@ export default function ConsumerExperienceDetailScreen({
         name: freshDetail.ticket.name,
         priceCents: freshDetail.ticket.priceCents,
         priceAllInCents: freshDetail.ticket.priceAllInCents,
+        salePriceCents: freshDetail.ticket.salePriceCents ?? null,
+        saleAllInCents: freshDetail.ticket.saleAllInCents ?? null,
+        saleEndsAt: freshDetail.ticket.saleEndsAt ?? null,
+        saleName: freshDetail.ticket.saleName ?? null,
+        saleRemaining: freshDetail.ticket.saleRemaining ?? null,
         currency: freshDetail.ticket.currency,
         isFree: freshDetail.ticket.isFree,
         isUnlimited: freshDetail.ticket.isUnlimited,
@@ -1236,6 +1269,13 @@ export default function ConsumerExperienceDetailScreen({
     }
   }
   const offeringBrand = buildExperienceOfferingBrandFromSeed(seed);
+  const presentedByFollow = (
+    <PresentedByFollowButton
+      brandId={offeringBrand.id}
+      brandName={offeringBrand.name}
+      palette={palette}
+    />
+  );
 
   // State banner driven by the resolved CTA (one owner — resolveOfferingCta).
   const stateBanner =
@@ -1395,6 +1435,14 @@ export default function ConsumerExperienceDetailScreen({
               brand={offeringBrand}
               palette={palette}
               theme={theme}
+              presentedByFollow={presentedByFollow}
+              presentedByFollowerCount={
+                followerCountQuery.isError ? null : followerCountQuery.data
+              }
+              presentedByFollowerCountLoading={
+                followerCountQuery.isPending && !followerCountQuery.isError
+              }
+              presentedByFollowerCountLabels={followerCountLabels}
               callbacks={{ onReserve: beginBooking, onViewBrand: handleViewBrand }}
               variant="phone"
               formatStopTime={(iso: string | null) => formatStartTime(iso)}
@@ -1499,6 +1547,10 @@ export default function ConsumerExperienceDetailScreen({
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
         terminalOutcome={checkoutTerminalOutcome}
+        quoteEventDateId={selectedEventDateId}
+        quoteBookedStartAt={selectedBookedStartAt}
+        quoteBookedEndAt={selectedBookedEndAt}
+        quotePartySize={selectedPartySize}
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onTerminalRetry={() => setCheckoutTerminalOutcome(null)}

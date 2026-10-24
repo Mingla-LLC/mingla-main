@@ -202,14 +202,18 @@ for (const choice of ["granted", "denied"] as const) {
     const requests = await stubExpoScripts(page);
     await page.goto(invite);
     await expect(page.getByLabel("Cookie consent")).toBeVisible();
-    await page.getByRole("button", { name: "Manage analytics preferences" }).click();
-    await expect(page.getByText("Analytics help us improve Mingla")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
+    // #3697 intentionally replaces the retired opt-in analytics controls with
+    // the exact on-arrival ad-privacy notice and its persistent opt-out.
+    await expect(page.getByText("Ad privacy", { exact: true })).toBeVisible();
+    await expect(page.getByText(
+      "We use cookies and advertising tools from Meta, Snapchat and TikTok to measure and improve our ads.",
+    )).toBeVisible();
+    await expect(page.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
       "href",
       "https://usemingla.com/privacy-policy",
     );
     await page.getByRole("button", {
-      name: choice === "granted" ? "Accept cookies and analytics" : "Reject cookies and analytics",
+      name: choice === "granted" ? "OK" : "Opt out of ad tracking",
     }).click();
     await expect(page.getByLabel("Cookie consent")).toHaveCount(0);
     await expect(page.locator("#issue922-app-mounted")).toBeVisible();
@@ -235,7 +239,7 @@ test("a readable store that rejects consent writes keeps the choice for multiple
       throw new Error("quota rejected the consent write");
     };
   });
-  await page.getByRole("button", { name: "Accept cookies and analytics" }).click();
+  await page.getByRole("button", { name: "OK" }).click();
   await expect(page.locator("#issue922-app-mounted")).toBeVisible();
   const state = await page.evaluate(() => ({
     stored: window.localStorage.getItem("mingla_consent_v1"),

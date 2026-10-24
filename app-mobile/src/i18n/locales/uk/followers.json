@@ -1,0 +1,17 @@
+{
+  "first": "Підпишіться першими",
+  "count_zero": "{{formatted}} підписників",
+  "count_one": "{{formatted}} підписник",
+  "count_two": "{{formatted}} підписники",
+  "count_few": "{{formatted}} підписники",
+  "count_many": "{{formatted}} підписників",
+  "count_other": "{{formatted}} підписника",
+  "a11y_none": "Підписників ще немає",
+  "a11y_exact_zero": "{{count}} підписників",
+  "a11y_exact_one": "{{count}} підписник",
+  "a11y_exact_two": "{{count}} підписники",
+  "a11y_exact_few": "{{count}} підписники",
+  "a11y_exact_many": "{{count}} підписників",
+  "a11y_exact_other": "{{count}} підписника",
+  "a11y_approx": "близько {{formatted}} підписників"
+}

@@ -67,6 +67,7 @@ export interface QuantityRowTicket {
    * quiet "incl. VAT & fees" line. Falls back to priceGbp when absent/null.
    */
   priceAllInGbp?: number | null;
+  saleAllInGbp?: number | null;
   /** ISO 4217 code. Falls back to caller-supplied default. issue #1014: may
    *  be null on a NULL-currency (free-only) event — such tickets are always
    *  0-priced, so the "Free" branch renders before any currency formatting. */
@@ -270,7 +271,8 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   // issue #1014: the free branch triggers on price === 0 OR isFree so a
   // 0-priced ticket on a NULL-currency event NEVER reaches the formatter with
   // a fabricated fallback code (free renders before any currency formatting).
-  const effectivePrice = ticket.priceAllInGbp ?? ticket.priceGbp ?? 0;
+  const effectivePrice =
+    ticket.saleAllInGbp ?? ticket.priceAllInGbp ?? ticket.priceGbp ?? 0;
   // issue #962 — a priced tier with NO established currency (ticket.currency null
   // AND fallbackCurrency null, e.g. a pre-bank brand) renders "—" and NEVER calls
   // formatCurrency with a fabricated code. Free tiers still render "Free" before

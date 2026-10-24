@@ -64,14 +64,29 @@ import {
   View,
 } from "react-native";
 
-import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
+import {
+  boldFontFamily,
+  offeringSurfaceStyles,
+  type ThemePalette,
+} from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
 import { priceDecimals, priceFallbackDecimals } from "./priceDecimals";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { StopSpine } from "./StopSpine";
-import { BadgeCheck, Calendar, Clock, MapPin, Sparkles, Users } from "./LucideIcons";
+import {
+  BadgeCheck,
+  Calendar,
+  Clock,
+  MapPin,
+  Sparkles,
+  Users,
+} from "./LucideIcons";
+import {
+  PresentedByFollowerCount,
+  type FollowerCountLabels,
+} from "./PresentedByFollowerCount";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
@@ -115,7 +130,10 @@ import {
 // #3284 — section 10: the shared refund ladder.
 // #3284 [bundle budget] — the ladder loads in its own chunk (ORCH-1083); never
 // import ./OfferingRefundLadder statically here.
-import { LazyOfferingRefundLadder as OfferingRefundLadder } from "./LazyOfferingRefundLadder";
+import {
+  LazyOfferingRefundLadder as OfferingRefundLadder,
+  LazySaleAvailabilityText,
+} from "./LazyOfferingRefundLadder";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
@@ -173,14 +191,17 @@ export function experienceAvailabilityBanner(
  * (orch-1153-no-bare-base). Free / no-ticket fall through.
  */
 /** Format one option's all-in money + unit label (shared by headline + list). */
-export function experienceOptionPriceLabel(
-  t: ExperienceOfferingTicket,
-): { label: string; isFree: boolean } {
+export function experienceOptionPriceLabel(t: ExperienceOfferingTicket): {
+  label: string;
+  isFree: boolean;
+} {
   if (t.isFree || t.priceCents === 0) return { label: "Free", isFree: true };
   const cents =
-    typeof t.priceAllInCents === "number" && t.priceAllInCents > 0
-      ? t.priceAllInCents
-      : t.priceCents;
+    typeof t.saleAllInCents === "number" && t.saleAllInCents > 0
+      ? t.saleAllInCents
+      : typeof t.priceAllInCents === "number" && t.priceAllInCents > 0
+        ? t.priceAllInCents
+        : t.priceCents;
   const basisLabel = experiencePriceBasisLabel(t.priceBasis, t.blockMinutes);
   try {
     const money = withCurrencyGlyph(
@@ -200,9 +221,22 @@ export function experienceOptionPriceLabel(
   }
 }
 
-export function experiencePriceLabel(
-  data: ExperienceOfferingData,
-): { label: string; isFree: boolean } {
+export function experienceOptionListPriceLabel(
+  t: ExperienceOfferingTicket,
+): string | null {
+  if (t.saleAllInCents == null) return null;
+  const listCents = t.priceAllInCents ?? t.priceCents;
+  if (listCents <= t.saleAllInCents) return null;
+  return experienceOptionPriceLabel({
+    ...t,
+    saleAllInCents: null,
+  }).label;
+}
+
+export function experiencePriceLabel(data: ExperienceOfferingData): {
+  label: string;
+  isFree: boolean;
+} {
   const t = data.ticket;
   if (t === null) return { label: "Pricing TBD", isFree: false };
   return experienceOptionPriceLabel(t);
@@ -215,6 +249,11 @@ export interface ExperienceOfferingBodyProps {
   theme: ResolvedTheme;
   callbacks: ExperienceOfferingCallbacks;
   variant: "phone" | "desktop";
+  presentedByFollow?: React.ReactNode;
+  /** #3682 — server count for the Presented-by card; unavailable stays hidden. */
+  presentedByFollowerCount?: number | null;
+  presentedByFollowerCountLoading?: boolean;
+  presentedByFollowerCountLabels?: FollowerCountLabels;
   /**
    * Per-stop start-time → display label. The surface owns the device-locale 12h/24h
    * resolution (kept out of the pure package). undefined → no per-stop time pill.
@@ -279,6 +318,12 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   theme,
   callbacks,
   variant,
+  // Explicit defaults keep these #3682 props typed even in the repository's
+  // known shared-package React-resolution gap (tracked by the delta gate).
+  presentedByFollow = undefined as React.ReactNode | undefined,
+  presentedByFollowerCount = undefined as number | null | undefined,
+  presentedByFollowerCountLoading = false,
+  presentedByFollowerCountLabels = undefined as FollowerCountLabels | undefined,
   formatStopTime,
   availabilityBlock = null,
   stateBanner = null,
@@ -326,6 +371,8 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
 
   const vibeLabels = experienceVibeLabels(data.intents);
   const { label: priceLabel, isFree } = experiencePriceLabel(data);
+  const listPriceLabel =
+    data.ticket === null ? null : experienceOptionListPriceLabel(data.ticket);
   // #3284 — section 10 gating (design part 1 §3.10). PAID uses the SAME rule as
   // experiencePriceLabel: a missing ticket or a free / zero-priced ticket is not
   // paid. Closed (ended or cancelled) and unknown render nothing.
@@ -334,12 +381,14 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   const refundState = data.refundPolicyState;
   const refundReadStatus = refundState?.status ?? "unknown";
   const experienceIsPaid =
-    data.ticket !== null && !(data.ticket.isFree || data.ticket.priceCents === 0);
+    data.ticket !== null &&
+    !(data.ticket.isFree || data.ticket.priceCents === 0);
   const showRefundTerms =
     data.offeringClosed !== true &&
     experienceIsPaid &&
     (refundReadStatus === "set" || refundReadStatus === "none");
-  const refundPolicy = refundState?.status === "set" ? refundState.policy : null;
+  const refundPolicy =
+    refundState?.status === "set" ? refundState.policy : null;
   // ORCH-1186 Fix 1 — the ONE adaptive availability banner (computed in-body so
   // consumer + business/web render identical copy; closes the consumer gap).
   const availability = experienceAvailabilityBanner(data);
@@ -368,7 +417,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               {stopEyebrow}
             </Text>
           ) : null}
-          <Text style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.title,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             {data.title}
           </Text>
         </View>
@@ -382,12 +437,22 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       {data.cityCountry !== null || data.seatsLabel !== null ? (
         <View style={styles.metaRow} testID="experience-body-meta">
           {data.cityCountry !== null ? (
-            <MetaChip palette={palette} surface={surface} font={boldFamily} icon="location">
+            <MetaChip
+              palette={palette}
+              surface={surface}
+              font={boldFamily}
+              icon="location"
+            >
               {data.cityCountry}
             </MetaChip>
           ) : null}
           {data.seatsLabel !== null ? (
-            <MetaChip palette={palette} surface={surface} font={boldFamily} icon="users">
+            <MetaChip
+              palette={palette}
+              surface={surface}
+              font={boldFamily}
+              icon="users"
+            >
               {data.seatsLabel}
             </MetaChip>
           ) : null}
@@ -402,7 +467,10 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
               key={label}
               style={[
                 styles.vibeChip,
-                { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+                {
+                  backgroundColor: palette.accentWash,
+                  borderColor: palette.panelBorder,
+                },
               ]}
             >
               <Sparkles size={13} color={palette.accent} />
@@ -443,59 +511,88 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
 
       {/* (5) Presented By. */}
       <View style={styles.section} testID="experience-body-presented-by">
-        <Pressable
-          onPress={callbacks.onViewBrand}
-          disabled={callbacks.onViewBrand === undefined}
-          accessibilityRole={callbacks.onViewBrand !== undefined ? "button" : undefined}
-          accessibilityLabel={`View ${brand.name}`}
-          style={[styles.brandRow, surface.card]}
-        >
-          <View
-            style={[
-              styles.brandTile,
-              brand.coverMediaUrl === null ? { backgroundColor: palette.accent } : null,
-            ]}
+        <View style={[styles.brandCard, surface.card]}>
+          <Pressable
+            onPress={callbacks.onViewBrand}
+            disabled={callbacks.onViewBrand === undefined}
+            accessibilityRole={
+              callbacks.onViewBrand !== undefined ? "button" : undefined
+            }
+            accessibilityLabel={`View ${brand.name}`}
+            style={styles.brandRow}
           >
-            {brand.coverMediaUrl !== null ? (
-              <EventCoverMedia
-                mediaUrl={brand.coverMediaUrl}
-                mediaType={brand.coverMediaType}
-                hue={brand.coverHue ?? undefined}
-                label=""
-                radius={999}
-                autoplay
-                playbackActive
-                muted
-                loop
-                height="100%"
-                width="100%"
-              />
-            ) : (
-              <View style={styles.brandInitialWrap}>
+            <View
+              style={[
+                styles.brandTile,
+                brand.coverMediaUrl === null
+                  ? { backgroundColor: palette.accent }
+                  : null,
+              ]}
+            >
+              {brand.coverMediaUrl !== null ? (
+                <EventCoverMedia
+                  mediaUrl={brand.coverMediaUrl}
+                  mediaType={brand.coverMediaType}
+                  hue={brand.coverHue ?? undefined}
+                  label=""
+                  radius={999}
+                  autoplay
+                  playbackActive
+                  muted
+                  loop
+                  height="100%"
+                  width="100%"
+                />
+              ) : (
+                <View style={styles.brandInitialWrap}>
+                  <Text
+                    style={[
+                      styles.brandInitial,
+                      { color: palette.accentText, fontFamily: boldFamily },
+                    ]}
+                  >
+                    {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.brandTextCol}>
+              <Text style={[styles.brandKicker, surface.tertiaryText]}>
+                Presented by
+              </Text>
+              <View style={styles.brandNameRow}>
                 <Text
                   style={[
-                    styles.brandInitial,
-                    { color: palette.accentText, fontFamily: boldFamily },
+                    styles.brandName,
+                    surface.primaryText,
+                    { fontFamily: boldFamily },
                   ]}
                 >
-                  {(brand.name.trim()[0] ?? "•").toUpperCase()}
+                  {brand.name}
                 </Text>
+                {brand.verified ? (
+                  <BadgeCheck size={15} color={palette.accent} />
+                ) : null}
               </View>
-            )}
-          </View>
-          <View style={styles.brandTextCol}>
-            <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
-            <View style={styles.brandNameRow}>
-              <Text
-                style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
-              >
-                {brand.name}
-              </Text>
-              {brand.verified ? <BadgeCheck size={15} color={palette.accent} /> : null}
+              <PresentedByFollowerCount
+                count={presentedByFollowerCount}
+                loading={presentedByFollowerCountLoading}
+                labels={presentedByFollowerCountLabels}
+                palette={palette}
+                testID="experience-presented-by-follower-count"
+              />
             </View>
-          </View>
-          <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
-        </Pressable>
+            {presentedByFollow === undefined &&
+            callbacks.onViewBrand !== undefined ? (
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
+            ) : null}
+          </Pressable>
+          {presentedByFollow !== undefined ? (
+            <View style={styles.brandFollowSlot}>{presentedByFollow}</View>
+          ) : null}
+        </View>
       </View>
 
       {/* (6) Adaptive availability banner (ORCH-1186 Fix 1) — computed in-body from
@@ -508,19 +605,31 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         <View
           style={[
             styles.availability,
-            { backgroundColor: palette.accentWash, borderColor: palette.panelBorder },
+            {
+              backgroundColor: palette.accentWash,
+              borderColor: palette.panelBorder,
+            },
           ]}
           testID="experience-body-availability"
         >
           <Clock size={18} color={palette.accent} />
           <View style={styles.availabilityTextCol}>
             <Text
-              style={[styles.availabilityWhen, surface.primaryText, { fontFamily: boldFamily }]}
+              style={[
+                styles.availabilityWhen,
+                surface.primaryText,
+                { fontFamily: boldFamily },
+              ]}
             >
               {availability.primary}
             </Text>
             {availability.sub !== null ? (
-              <Text style={[styles.availabilitySub, { color: palette.tertiaryText }]}>
+              <Text
+                style={[
+                  styles.availabilitySub,
+                  { color: palette.tertiaryText },
+                ]}
+              >
                 {availability.sub}
               </Text>
             ) : null}
@@ -538,27 +647,46 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         Every row is `rule 9` gated independently — see `RightNowFacts`. A
         surface that can honestly supply one row and not another supplies one row.
       */}
-      {rightNow && (rightNow.weather || rightNow.travel || rightNow.busyness) ? (
+      {rightNow &&
+      (rightNow.weather || rightNow.travel || rightNow.busyness) ? (
         <View style={styles.section} testID="experience-body-right-now">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             Right now
           </Text>
           {rightNow.weather ? (
             <View style={styles.rightNowRow}>
-              <Text style={[styles.rightNowLabel, surface.secondaryText]}>Weather</Text>
-              <Text style={[styles.rightNowValue, surface.primaryText]}>{rightNow.weather}</Text>
+              <Text style={[styles.rightNowLabel, surface.secondaryText]}>
+                Weather
+              </Text>
+              <Text style={[styles.rightNowValue, surface.primaryText]}>
+                {rightNow.weather}
+              </Text>
             </View>
           ) : null}
           {rightNow.travel ? (
             <View style={styles.rightNowRow}>
-              <Text style={[styles.rightNowLabel, surface.secondaryText]}>Travel</Text>
-              <Text style={[styles.rightNowValue, surface.primaryText]}>{rightNow.travel}</Text>
+              <Text style={[styles.rightNowLabel, surface.secondaryText]}>
+                Travel
+              </Text>
+              <Text style={[styles.rightNowValue, surface.primaryText]}>
+                {rightNow.travel}
+              </Text>
             </View>
           ) : null}
           {rightNow.busyness ? (
             <View style={styles.rightNowRow}>
-              <Text style={[styles.rightNowLabel, surface.secondaryText]}>Busyness</Text>
-              <Text style={[styles.rightNowValue, surface.primaryText]}>{rightNow.busyness}</Text>
+              <Text style={[styles.rightNowLabel, surface.secondaryText]}>
+                Busyness
+              </Text>
+              <Text style={[styles.rightNowValue, surface.primaryText]}>
+                {rightNow.busyness}
+              </Text>
             </View>
           ) : null}
           {rightNow.estimated ? (
@@ -572,7 +700,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       {/* (7) About — collapsible (rule 9: only when present). */}
       {aboutText.length > 0 ? (
         <View style={styles.section} testID="experience-body-about">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             About this experience
           </Text>
           <Text
@@ -603,7 +737,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
           the "(8) The itinerary" comment is the section-order gate anchor. */}
       {data.stops.length > 0 ? (
         <View style={styles.section} testID="experience-body-itinerary">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             {stopCount === 1 ? "What you'll do" : "The itinerary"}
           </Text>
           <StopSpine
@@ -620,10 +760,22 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       {/* (9) Where you'll start — stop-1 map (only when lat/lng present, rule 9). */}
       {mapStop !== undefined && mapUrl !== null ? (
         <View style={styles.section} testID="experience-body-map">
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             Where you&rsquo;ll start
           </Text>
-          <View style={[styles.mapBlock, surface.card, { height: isDesktop ? 300 : 180 }]}>
+          <View
+            style={[
+              styles.mapBlock,
+              surface.card,
+              { height: isDesktop ? 300 : 180 },
+            ]}
+          >
             <Image
               source={{ uri: mapUrl }}
               style={styles.mapImage}
@@ -632,8 +784,12 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             />
             <MapPin size={26} color={palette.accent} />
             {mapStop.placeName !== null ? (
-              <View style={[styles.mapCapPill, { backgroundColor: palette.page }]}>
-                <Text style={[styles.mapCap, surface.primaryText]}>{mapStop.placeName}</Text>
+              <View
+                style={[styles.mapCapPill, { backgroundColor: palette.page }]}
+              >
+                <Text style={[styles.mapCap, surface.primaryText]}>
+                  {mapStop.placeName}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -662,7 +818,10 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       {/* (11) Price card — ONE combined all-in price (phone inline; desktop in panel).
           issue #3281 R2: when options.length > 1, list each option with its unit. */}
       {!isDesktop && data.ticket !== null ? (
-        <View style={[styles.pricingCard, surface.card]} testID="experience-body-price-card">
+        <View
+          style={[styles.pricingCard, surface.card]}
+          testID="experience-body-price-card"
+        >
           <View style={styles.pricingHeadline}>
             <Text style={[styles.pricingLabel, surface.secondaryText]}>
               {isFree
@@ -673,31 +832,62 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                   ? "From"
                   : "Price"}
             </Text>
-            <Text style={[styles.pricingPrice, surface.primaryText]}>
-              {priceLabel}
-            </Text>
+            <View style={styles.pricingMoneyPair}>
+              {listPriceLabel !== null ? (
+                <Text style={[styles.pricingListPrice, surface.tertiaryText]}>
+                  {listPriceLabel}
+                </Text>
+              ) : null}
+              <Text style={[styles.pricingPrice, surface.primaryText]}>
+                {priceLabel}
+              </Text>
+            </View>
           </View>
+          <LazySaleAvailabilityText
+            active={listPriceLabel !== null}
+            remaining={data.ticket?.saleRemaining}
+            endsAt={data.ticket?.saleEndsAt}
+            timezone={data.timezone}
+            style={[styles.saleAvailability, { color: palette.accent }]}
+          />
           {experienceOfferingOptions(data).length > 1 ? (
             <View
               style={styles.optionsList}
               testID="experience-body-price-options"
             >
-              {experienceOfferingOptions<ExperienceOfferingTicket>(data).map((opt) => {
-                const { label: optLabel } = experienceOptionPriceLabel(opt);
-                return (
-                  <View key={opt.ticketTypeId} style={styles.optionRow}>
-                    <Text
-                      style={[styles.optionName, surface.primaryText]}
-                      numberOfLines={1}
-                    >
-                      {opt.name}
-                    </Text>
-                    <Text style={[styles.optionPrice, surface.secondaryText]}>
-                      {optLabel}
-                    </Text>
-                  </View>
-                );
-              })}
+              {experienceOfferingOptions<ExperienceOfferingTicket>(data).map(
+                (opt) => {
+                  const { label: optLabel } = experienceOptionPriceLabel(opt);
+                  const optListLabel = experienceOptionListPriceLabel(opt);
+                  return (
+                    <View key={opt.ticketTypeId} style={styles.optionRow}>
+                      <Text
+                        style={[styles.optionName, surface.primaryText]}
+                        numberOfLines={1}
+                      >
+                        {opt.name}
+                      </Text>
+                      <View style={styles.optionMoneyPair}>
+                        {optListLabel !== null ? (
+                          <Text
+                            style={[
+                              styles.optionListPrice,
+                              surface.tertiaryText,
+                            ]}
+                          >
+                            {optListLabel}
+                          </Text>
+                        ) : null}
+                        <Text
+                          style={[styles.optionPrice, surface.secondaryText]}
+                        >
+                          {optLabel}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                },
+              )}
             </View>
           ) : null}
         </View>
@@ -734,7 +924,11 @@ const MetaChip: React.FC<{
     <View style={[styles.metaChip, surface.card]}>
       <Glyph size={15} color={palette.accent} />
       <Text
-        style={[styles.metaChipText, surface.secondaryText, { fontFamily: font }]}
+        style={[
+          styles.metaChipText,
+          surface.secondaryText,
+          { fontFamily: font },
+        ]}
         numberOfLines={1}
       >
         {children}
@@ -746,7 +940,12 @@ const MetaChip: React.FC<{
 const styles = StyleSheet.create({
   // #1708 — Right now. Label/value rows in the body's existing register; no new
   // colour, no accent, no icon badge. It is a fact list, not a feature.
-  rightNowRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 7 },
+  rightNowRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: 7,
+  },
   rightNowLabel: { flex: 0, width: 84, fontSize: 13, lineHeight: 19 },
   rightNowValue: { flex: 1, fontSize: 14, fontWeight: "500", lineHeight: 19 },
   rightNowEstimated: { fontSize: 12.5, lineHeight: 18, marginTop: 4 },
@@ -800,18 +999,27 @@ const styles = StyleSheet.create({
   availabilitySub: { fontSize: 12, marginTop: 2 },
   // ---- sections ----
   section: { marginTop: 24 },
-  secTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 12 },
+  secTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
   about: { fontSize: 16, lineHeight: 23 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
   // ---- brand ----
+  brandCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  brandFollowSlot: { marginTop: 12 },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
   },
   brandTile: {
     width: 42,
@@ -829,7 +1037,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: "uppercase",
   },
-  brandNameRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 1 },
+  brandNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 1,
+  },
   brandName: { fontSize: 15, fontWeight: "800" },
   brandCta: { marginLeft: "auto", fontSize: 12, fontWeight: "800" },
   // ---- map ----
@@ -864,6 +1077,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   pricingLabel: { fontSize: 13 },
+  pricingMoneyPair: { alignItems: "flex-end", gap: 2 },
+  pricingListPrice: { fontSize: 13, textDecorationLine: "line-through" },
+  saleAvailability: { fontSize: 12, fontWeight: "700", marginTop: 4 },
   // #3859 — system font guarantees currency-glyph coverage; host faces remain
   // on identity and headings, never on money where a fallback glyph can collide.
   pricingPrice: {
@@ -879,7 +1095,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   optionName: { flex: 1, fontSize: 14, fontWeight: "700" },
-  optionPrice: { fontSize: 13, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  optionMoneyPair: { alignItems: "flex-end", gap: 2 },
+  optionListPrice: { fontSize: 11, textDecorationLine: "line-through" },
+  optionPrice: {
+    fontSize: 13,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
   reassure: { fontSize: 12, marginTop: 20, lineHeight: 17 },
 });
 

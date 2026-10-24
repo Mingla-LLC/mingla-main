@@ -8,8 +8,26 @@
 // same primitives in later legs (the page-specific booking/ticket/summary panel
 // is passed in as `stickyPanel` / children).
 
-export { DirectionCIdentityOverlay, ParallaxCoverShell } from "./ParallaxCoverShell";
+export {
+  DirectionCIdentityOverlay,
+  ParallaxCoverShell,
+} from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
+
+// #3872 — response types + final buyer copy for server-owned discount quotes.
+// Deliberately dependency-free so web and native consume one contract without
+// importing any pricing engine.
+export type {
+  CheckoutReviewDetail,
+  DiscountCodeReason,
+  DiscountReasonCopyInput,
+  TicketCheckoutReview,
+  TicketQuote,
+  TicketQuoteCodeOutcome,
+  TicketQuoteDiscount,
+  TicketQuoteLine,
+  TicketQuoteNotice,
+} from "./discountQuote";
 
 // issue #868 [cover-gallery] — the beneath-cover ordered card row over the full
 // [cover] ++ gallery hero sequence (card 0 = cover). Injected by ParallaxCoverShell.
@@ -38,6 +56,18 @@ export type { OfferingChromeProps } from "./OfferingChrome";
 // ORCH-1159 — RN-free close-button visibility predicate (single owner).
 export { shouldRenderCloseButton } from "./closeButtonVisibility";
 export type { PlatformOSValue } from "./closeButtonVisibility";
+
+// #3682 — one count formatter and one render primitive for every follower
+// surface. The formatter is React-free; the line remains props-only.
+export {
+  formatCompactCount,
+  formatFollowerCountA11y,
+  formatFollowerCountLine,
+  formatExactCount,
+  formatExactFollowers,
+} from "./followerCount";
+export { LazyFollowerCountLine as FollowerCountLine } from "./LazyFollowerCountLine";
+export type { FollowerCountLabels, FollowerCountLineProps } from "./FollowerCountLine";
 
 export { CountAwareGallery } from "./CountAwareGallery";
 export type {
@@ -232,7 +262,10 @@ export {
   experienceOptionPriceLabel,
   experienceAvailabilityBanner,
 } from "./ExperienceOfferingBody";
-export type { ExperienceOfferingBodyProps, RightNowFacts } from "./ExperienceOfferingBody";
+export type {
+  ExperienceOfferingBodyProps,
+  RightNowFacts,
+} from "./ExperienceOfferingBody";
 export {
   StopSpine,
   stopLabelForIndex,
@@ -384,10 +417,7 @@ export type {
   ReserveSplitCtas,
 } from "./tripOfferingTypes";
 
-export {
-  useResponsiveLayout,
-  DESKTOP_BREAKPOINT,
-} from "./useResponsiveLayout";
+export { useResponsiveLayout, DESKTOP_BREAKPOINT } from "./useResponsiveLayout";
 export type { ResponsiveLayout } from "./useResponsiveLayout";
 
 // ===========================================================================
@@ -509,7 +539,10 @@ export type {
 // base. getPublicMapboxToken stays exported (sourced from ./mapboxToken) for
 // backward-compat with existing import paths — it is no longer used by the static
 // map itself.
-export { buildStaticMapUrl, getSupabaseFunctionsBaseUrl } from "./mapboxStaticImage";
+export {
+  buildStaticMapUrl,
+  getSupabaseFunctionsBaseUrl,
+} from "./mapboxStaticImage";
 export { getPublicMapboxToken } from "./mapboxToken";
 export type { StaticMapParams } from "./mapboxStaticImage";
 // issue #2468 — THE ONE "open in maps" deep-link builder. Sibling of the static

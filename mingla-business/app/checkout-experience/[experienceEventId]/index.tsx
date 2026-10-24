@@ -43,7 +43,7 @@ import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
@@ -51,6 +51,12 @@ import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // experience checkout too (the event checkout already does; trips/experiences
 // didn't, undercounting started checkouts). Web-only (native no-op via .web split).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+
+const CheckoutDiscountCodeField = React.lazy(() =>
+  import("../../../src/components/checkout/DiscountCodeField").then(
+    (module) => ({ default: module.CheckoutDiscountCodeField }),
+  ),
+);
 
 const ticketToStub = (ticket: PublicExperienceTicket): TicketStub => ({
   id: ticket.ticketTypeId,
@@ -111,7 +117,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
       ? params.eventDateId
       : null;
   const seedQuantity = (() => {
-    const n = typeof params.quantity === "string" ? Number(params.quantity) : NaN;
+    const n =
+      typeof params.quantity === "string" ? Number(params.quantity) : NaN;
     return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
   })();
   const seedBookedStartAt =
@@ -123,7 +130,8 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
       ? params.bookedEndAt
       : null;
   const seedPartySize = (() => {
-    const n = typeof params.partySize === "string" ? Number(params.partySize) : NaN;
+    const n =
+      typeof params.partySize === "string" ? Number(params.partySize) : NaN;
     return Number.isFinite(n) && n >= 1 ? Math.floor(n) : null;
   })();
   const seedTicketTypeId =
@@ -137,13 +145,14 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
 
   const {
     lines,
+    quoteStatus,
     setLineQuantity,
     setEventDateId,
     setBookedStartAt,
     setBookedEndAt,
     setPartySize,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   // META-ORCH-1187 P2 — fire `web_checkout_started` once the buyer lands on the
   // experience cart and the experience event id resolves (begin of the web
@@ -168,7 +177,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
   // renders only on a real pass-fee delta (never split service-fee + VAT;
   // feedback_cart_combined_fees_tax_line). I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
   // ORCH-1152 — guard the empty cart: on mount the cart is empty and
-  // useCartTotals() returns currency "", which crashed formatCurrency
+  // useCartQuoteTotals() returns currency "", which crashed formatCurrency
   // (RangeError: Currency is invalid). Pass a safe code on the empty cart so the
   // computation never feeds "" into Intl. headlineAllIn is only DISPLAYED when
   // !isEmpty anyway. (formatCurrency is ALSO hardened against blank codes —
@@ -432,6 +441,15 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
+        <React.Suspense fallback={null}>
+          <CheckoutDiscountCodeField
+            surface="web_experience"
+            disabled={totals.isEmpty}
+            saleNameByLineRef={{
+              [stub.id]: ticket.saleName ?? "sale",
+            }}
+          />
+        </React.Suspense>
         {showFeesTaxLine ? (
           <View style={styles.feesTaxRow}>
             <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
@@ -443,11 +461,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>Total</Text>
           <Text style={styles.subtotalValue}>
-            {totals.isEmpty
-              ? "—"
-              : totals.isFree
-                ? "Free"
-                : headlineAllIn}
+            {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
           </Text>
         </View>
         <Button
@@ -456,13 +470,15 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
           variant="primary"
           size="lg"
           fullWidth
-          disabled={totals.isEmpty}
+          disabled={totals.isEmpty || quoteStatus !== "ready"}
           accessibilityLabel={
             totals.isEmpty
               ? "Add your spot above"
-              : totals.isFree
-                ? "Reserve free spot"
-                : `Continue to buyer details, total ${headlineAllIn}`
+              : quoteStatus !== "ready"
+                ? "Waiting for your latest total"
+                : totals.isFree
+                  ? "Reserve free spot"
+                  : `Continue to buyer details, total ${headlineAllIn}`
           }
         />
       </View>

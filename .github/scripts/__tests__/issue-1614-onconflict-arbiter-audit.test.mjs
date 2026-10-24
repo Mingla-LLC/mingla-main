@@ -130,9 +130,12 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // `sourceRefundNotifications` already uses; census +1 for the new call
   // site only (94).
   //
+  // [TEST-MOD-APPROVED #3697] staged-plan snapshots and daily stage metrics
+  // upsert on their matching migration-backed unique arbiters; census +2 (96).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 94);
+  assert.equal(sites.length, 96);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&
@@ -148,6 +151,20 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
     sites.some((site) =>
       site.table === "ad_spend_daily" &&
       site.columns.join(",") === "campaign_id,platform,spend_date"
+    ),
+    true,
+  );
+  assert.equal(
+    sites.some((site) =>
+      site.table === "ad_plan_stage_snapshots" &&
+      site.columns.join(",") === "plan_version_id,platform,stage"
+    ),
+    true,
+  );
+  assert.equal(
+    sites.some((site) =>
+      site.table === "ad_stage_metrics_daily" &&
+      site.columns.join(",") === "ad_set_id,metric_date"
     ),
     true,
   );

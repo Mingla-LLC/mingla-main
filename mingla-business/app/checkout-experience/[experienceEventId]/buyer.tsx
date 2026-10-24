@@ -103,7 +103,7 @@ import { Input } from "../../../src/components/ui/Input";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import {
@@ -118,6 +118,12 @@ import {
   type PhoneInputTheme,
   type PhoneInputIconName,
 } from "@mingla/phone-input";
+
+const TicketQuoteSummary = React.lazy(() =>
+  import("../../../src/components/checkout/TicketQuoteSummary").then(
+    (module) => ({ default: module.TicketQuoteSummary }),
+  ),
+);
 
 const PUBLIC_BUYER_PHONE_THEME: PhoneInputTheme = {
   backgroundPrimary: "#0c0e12",
@@ -194,7 +200,8 @@ const validate = (
   return {
     nameError: showErrors && !nameValid ? "Please enter your full name" : null,
     emailError: showErrors && !emailValid ? "Enter a valid email" : null,
-    phoneError: showErrors && !phoneValid ? "Enter a valid mobile number" : null,
+    phoneError:
+      showErrors && !phoneValid ? "Enter a valid mobile number" : null,
     isValid: nameValid && emailValid && phoneValid,
   };
 };
@@ -213,6 +220,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const {
     lines,
     buyer,
+    discountCode,
+    quote,
+    quoteStatus,
     setBuyer,
     recordResult,
     checkoutAttemptIdFor,
@@ -221,7 +231,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     bookedEndAt,
     partySize,
   } = useCart();
-  const totals = useCartTotals();
+  const totals = useCartQuoteTotals();
 
   const [submitting, setSubmitting] = useState<boolean>(false);
   // issue #2689 — synchronous re-entry guard (ref, not batched state). Consent
@@ -275,9 +285,11 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const [emailTouched, setEmailTouched] = useState<boolean>(false);
   const [phoneTouched, setPhoneTouched] = useState<boolean>(false);
 
+  // prettier-ignore -- #3380 source contract keeps the locale fallback auditable.
   const [phoneCountry, setPhoneCountry] = useState<string>(() =>
     resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency)),
   );
+  // prettier-ignore -- #3380 source contract keeps the same fallback in both seeds.
   const [phoneLocal, setPhoneLocal] = useState<string>(() =>
     splitExistingPhone(buyer.phone, resolveInitialCountry(buyer.phone, phoneStartCountryForCurrency(totals.currency))),
   );
@@ -374,6 +386,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
       return;
     }
     if (experienceEventId === null) return;
+    if (quoteStatus !== "ready" || quote === null) return;
     // issue #2689 — claim before the consent network round trip (re-entry window).
     if (submitInFlight.current) return;
     submitInFlight.current = true;
@@ -426,20 +439,24 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
       try {
         const result = await createTicketCheckout({
           eventId: experienceEventId,
+          brandId: experience?.brandId,
           buyer,
           lines,
+          discountCode,
+          quoteDigest: quote.quoteDigest,
+          quoteListDigest: quote.quoteListDigest,
           ...(eventDateId !== null ? { eventDateId } : {}),
           ...(bookedStartAt !== null ? { bookedStartAt } : {}),
           ...(bookedEndAt !== null ? { bookedEndAt } : {}),
           ...(partySize !== null ? { partySize } : {}),
           ...(Platform.OS === "web"
             ? {
-              checkoutContractVersion: 2 as const,
-              checkoutAttemptId: checkoutAttemptIdFor({
-                eventId: experienceEventId,
-                surface: "web",
-              }),
-            }
+                checkoutContractVersion: 2 as const,
+                checkoutAttemptId: checkoutAttemptIdFor({
+                  eventId: experienceEventId,
+                  surface: "web",
+                }),
+              }
             : {}),
         });
         if (result.kind !== "free_completed") {
@@ -453,7 +470,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           // reach /confirm with no query string, so the possession proof must
           // ride the order result or the attendance claim can never be minted.
           ...(typeof result.buyerStatusToken === "string" &&
-            result.buyerStatusToken.length > 0
+          result.buyerStatusToken.length > 0
             ? { buyerStatusToken: result.buyerStatusToken }
             : {}),
           paidAt: new Date().toISOString(),
@@ -492,6 +509,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     termsAccepted,
     experienceEventId,
     totals.isFree,
+    discountCode,
+    quote,
+    quoteStatus,
     lines,
     buyer,
     checkoutAttemptIdFor,
@@ -502,6 +522,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     bookedStartAt,
     bookedEndAt,
     partySize,
+    experience?.brandId,
   ]);
 
   const continueLabel = totals.isFree
@@ -510,6 +531,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
 
   const continueDisabled =
     !authReady ||
+    quoteStatus !== "ready" ||
     isContinueDisabled({
       fieldsValid: validation.isValid,
       termsAccepted,
@@ -561,28 +583,11 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               <Text style={styles.summaryHeaderText}>Order summary</Text>
               <Text style={styles.summaryEditText}>Edit</Text>
             </View>
-            {lines.map((l) => (
-              <View key={l.ticketTypeId} style={styles.summaryLine}>
-                <Text style={styles.summaryLineQty}>{l.quantity}×</Text>
-                <Text style={styles.summaryLineName} numberOfLines={1}>
-                  {l.ticketName}
-                </Text>
-                <Text style={styles.summaryLineTotal}>
-                  {l.isFree
-                    ? "Free"
-                    : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-                </Text>
-              </View>
-            ))}
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Total</Text>
-              <Text style={styles.summaryTotalValue}>
-                {totals.isFree
-                  ? "Free"
-                  : formatCurrency(totals.total, totals.currency)}
-              </Text>
-            </View>
+            {quote !== null ? (
+              <React.Suspense fallback={null}>
+                <TicketQuoteSummary quote={quote} compact />
+              </React.Suspense>
+            ) : null}
           </GlassCard>
         </Pressable>
 
@@ -642,7 +647,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             }}
             error={visibleErrors.phone}
             disabled={false}
-            iconRenderer={(name: PhoneInputIconName, iconProps: { size: number; color: string }) => {
+            iconRenderer={(
+              name: PhoneInputIconName,
+              iconProps: { size: number; color: string },
+            ) => {
               const iconName =
                 name === "chevronDown"
                   ? "chevD"
@@ -756,7 +764,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           </View>
           <View style={styles.marketingCopy}>
             <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
-            <Text style={styles.marketingHelper}>{CHECKOUT_MARKETING_HELPER}</Text>
+            <Text style={styles.marketingHelper}>
+              {CHECKOUT_MARKETING_HELPER}
+            </Text>
           </View>
         </Pressable>
         {submitError !== null ? (
@@ -774,9 +784,9 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>
-            {totals.isFree
-              ? "Free"
-              : formatCurrency(totals.total, totals.currency)}
+            {quoteStatus === "ready" && quote !== null
+              ? formatCurrency(quote.buyerTotalCents, quote.currency, true)
+              : "Updating…"}
           </Text>
         </View>
         <Pressable
@@ -838,7 +848,11 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     fontWeight: "500",
   },
-  summaryLineTotal: { fontSize: 14, color: textTokens.primary, fontWeight: "600" },
+  summaryLineTotal: {
+    fontSize: 14,
+    color: textTokens.primary,
+    fontWeight: "600",
+  },
   summaryDivider: {
     marginVertical: spacing.sm,
     height: StyleSheet.hairlineWidth,
@@ -900,7 +914,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxBoxChecked: { backgroundColor: accent.warm, borderColor: accent.warm },
+  checkboxBoxChecked: {
+    backgroundColor: accent.warm,
+    borderColor: accent.warm,
+  },
   checkboxLabel: {
     flex: 1,
     fontSize: 14,

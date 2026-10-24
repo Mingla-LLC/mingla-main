@@ -16,6 +16,9 @@
 
 import { supabase } from "./supabase";
 
+const SUPPORT_TICKET_FIELDS =
+  "id,subject,status,priority,conversation_id,brand_id,audience,created_at,last_message_at,resolved_at,next_update_at,next_update_note";
+
 /** A support ticket as the requester sees it (their own rows only, via RLS). */
 export interface SupportTicket {
   id: string;
@@ -26,9 +29,13 @@ export interface SupportTicket {
   priority: string;
   conversation_id: string;
   brand_id: string | null;
+  /** requester = private to its creator; brand = shared with active brand members. */
+  audience?: "requester" | "brand";
   created_at: string;
   last_message_at: string;
   resolved_at: string | null;
+  next_update_at?: string | null;
+  next_update_note?: string | null;
 }
 
 /**
@@ -39,9 +46,7 @@ export interface SupportTicket {
 export async function listOwnSupportTickets(): Promise<SupportTicket[]> {
   const { data, error } = await supabase
     .from("support_tickets")
-    .select(
-      "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
-    )
+    .select(SUPPORT_TICKET_FIELDS)
     .order("last_message_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as SupportTicket[];
@@ -58,9 +63,7 @@ export async function getOwnSupportTicket(
 ): Promise<SupportTicket | null> {
   const { data, error } = await supabase
     .from("support_tickets")
-    .select(
-      "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
-    )
+    .select(SUPPORT_TICKET_FIELDS)
     .eq("id", ticketId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -115,7 +118,7 @@ export async function sendSupportMessage(
     throw new Error("Write a message before sending.");
   }
   const { data, error } = await supabase.functions.invoke("support-send", {
-    body: { ticketId, content: trimmed },
+    body: { ticketId, content: trimmed, actorMode: "requester" },
   });
   if (error) {
     throw new Error(error.message || "Couldn't send your message. Try again.");

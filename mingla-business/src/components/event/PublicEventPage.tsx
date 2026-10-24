@@ -42,6 +42,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as OfferingRendering from "@mingla/offering-rendering";
+import type { FollowButtonProps } from "@mingla/brand-rendering/FollowButton";
 
 import {
   PublicEventPage as SharedPublicEventPage,
@@ -149,9 +150,9 @@ import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
 // Deep import — do NOT pull the brand-rendering barrel (PublicBrandPage + lucide)
 // into the public event chunk; that shared the Brand page into eager `__common`
 // (+~48KB) via Metro hoist (#3682 / ORCH-1083).
-import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
+import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 
@@ -162,6 +163,10 @@ const FollowByEmailSheet = React.lazy(() =>
     default: m.FollowByEmailSheet,
   })),
 );
+const FollowButton = React.lazy<React.FC<FollowButtonProps>>(async () => {
+  const module = await import("@mingla/brand-rendering/FollowButton");
+  return { default: module.FollowButton };
+});
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
 import {
@@ -504,6 +509,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const online = useBuyerWebOnline();
   // #3682 Wave 2.3 — Presented-by Follow on buyer-web event / RSVP pages.
   const brandFollow = useBrandFollow(user?.id ?? null, brand?.id ?? null);
+  const followerCountQuery = useBrandFollowerCount(brand?.id ?? null);
   const [followUnfollowOpen, setFollowUnfollowOpen] = useState(false);
   const [followSignInOpen, setFollowSignInOpen] = useState(false);
   const [followByEmailOpen, setFollowByEmailOpen] = useState(false);
@@ -870,36 +876,38 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // #3682 A — Presented-by Follow sibling (C7: Following opens menu, not unfollow).
   const presentedByFollow =
     brand !== null && brand !== undefined ? (
-      <FollowButton
-        brandName={brand.displayName}
-        palette={palette}
-        isFollowing={brandFollow.isFollowing}
-        followPending={brandFollow.isPending || followEmailPending}
-        state={
-          followEmailPending && !brandFollow.isFollowing
-            ? "pending"
-            : undefined
-        }
-        size="lg"
-        onPress={() => {
-          if (!user?.id) {
-            if (Platform.OS === "web") {
-              setFollowByEmailOpen(true);
+      <React.Suspense fallback={null}>
+        <FollowButton
+          brandName={brand.displayName}
+          palette={palette}
+          isFollowing={brandFollow.isFollowing}
+          followPending={brandFollow.isPending || followEmailPending}
+          state={
+            followEmailPending && !brandFollow.isFollowing
+              ? "pending"
+              : undefined
+          }
+          size="lg"
+          onPress={() => {
+            if (!user?.id) {
+              if (Platform.OS === "web") {
+                setFollowByEmailOpen(true);
+                return;
+              }
+              setFollowSignInOpen(true);
               return;
             }
-            setFollowSignInOpen(true);
-            return;
-          }
-          if (brandFollow.isFollowing) {
-            setFollowUnfollowOpen(true);
-            return;
-          }
-          void brandFollow.follow().catch(() => {
-            showToast("Couldn't follow. Try again.");
-          });
-        }}
-        testID="public-event-presented-by-follow"
-      />
+            if (brandFollow.isFollowing) {
+              setFollowUnfollowOpen(true);
+              return;
+            }
+            void brandFollow.follow().catch(() => {
+              showToast("Couldn't follow. Try again.");
+            });
+          }}
+          testID="public-event-presented-by-follow"
+        />
+      </React.Suspense>
     ) : undefined;
 
   // ORCH-1138 — the page-level variant (cancelled / password-gate keep the shared
@@ -1739,6 +1747,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}
+          presentedByFollowerCount={
+            followerCountQuery.isError ? null : (followerCountQuery.data ?? null)
+          }
+          presentedByFollowerCountLoading={
+            followerCountQuery.isPending && !followerCountQuery.isError
+          }
           onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
@@ -1971,6 +1985,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           viewerRole={viewerRole}
           callbacks={callbacks}
           theme={resolvedTheme}
+          brandFollowerCount={
+            followerCountQuery.isError ? null : (followerCountQuery.data ?? null)
+          }
+          brandFollowerCountLoading={
+            followerCountQuery.isPending && !followerCountQuery.isError
+          }
         />
       ) : (
         <FoundationEventPreview
@@ -1991,6 +2011,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             router.push(`/b/${slug}` as never);
           }}
           presentedByFollow={presentedByFollow}
+          presentedByFollowerCount={
+            followerCountQuery.isError ? null : (followerCountQuery.data ?? null)
+          }
+          presentedByFollowerCountLoading={
+            followerCountQuery.isPending && !followerCountQuery.isError
+          }
           onOpenMaps={handleOpenMaps}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}

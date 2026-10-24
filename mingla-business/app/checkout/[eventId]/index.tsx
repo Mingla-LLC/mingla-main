@@ -16,7 +16,14 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 230 + 283) for home-indicator clearance; the top status-bar overlap with back arrow / "Get tickets" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 18-CHECKOUT-INDEX.png).
 
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -52,7 +59,7 @@ import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 
 import {
   useCart,
-  useCartTotals,
+  useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
@@ -65,6 +72,12 @@ import { resolveEventCheckoutLifecycleGate } from "../../../src/utils/eventLifec
 import { eventAcquisitionNoticeCopy } from "@mingla/offering-rendering";
 // META-ORCH-1187 LEG 2 — buyer-web funnel capture (web-only; native no-op).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+
+const CheckoutDiscountCodeField = React.lazy(() =>
+  import("../../../src/components/checkout/DiscountCodeField").then(
+    (module) => ({ default: module.CheckoutDiscountCodeField }),
+  ),
+);
 
 const sortByDisplayOrder = (a: TicketStub, b: TicketStub): number =>
   a.displayOrder - b.displayOrder;
@@ -183,8 +196,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         }) ?? undefined)
       : undefined;
 
-  const { lines, setLineQuantity, setEventDateId, setEventDateIds } = useCart();
-  const totals = useCartTotals();
+  const {
+    lines,
+    quoteStatus,
+    setLineQuantity,
+    setEventDateId,
+    setEventDateIds,
+  } = useCart();
+  const totals = useCartQuoteTotals();
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
 
   // issue #2135 — seed the chosen occurrence into the cart (the SAME pattern the
@@ -285,9 +304,12 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     const seedMap = decodeCartSeed(seedParam);
     seededRef.current = true; // mark even on empty seed so re-renders don't re-seed.
     if (Object.keys(seedMap).length === 0) return;
-    const seedTickets = ticketLinkToken === null
-      ? ev.tickets
-      : (ticketLink.ticket === null ? [] : [ticketLink.ticket]);
+    const seedTickets =
+      ticketLinkToken === null
+        ? ev.tickets
+        : ticketLink.ticket === null
+          ? []
+          : [ticketLink.ticket];
     if (ticketLinkToken !== null && ticketLink.loading) return;
     for (const ticket of seedTickets) {
       const qty = seedMap[ticket.id];
@@ -303,7 +325,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         quantity: qty,
       });
     }
-  }, [publicEventQuery.data, seedParam, setLineQuantity, ticketLink.loading, ticketLink.ticket, ticketLinkToken]);
+  }, [
+    publicEventQuery.data,
+    seedParam,
+    setLineQuantity,
+    ticketLink.loading,
+    ticketLink.ticket,
+    ticketLinkToken,
+  ]);
 
   // ORCH-1147R2 — the selection bottom bar leads with the server fee-grossed
   // all-in (totals.allInTotal), NOT the bare base subtotal (totals.total), so
@@ -311,7 +340,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   // renders only on a real pass-fee delta (never split service-fee + VAT;
   // feedback_cart_combined_fees_tax_line). I-PROPOSED-1147R2-SELECTION-SHOWS-ALLIN.
   // ORCH-1152 — guard the empty cart: on mount the cart is empty and
-  // useCartTotals() returns currency "", which crashed formatCurrency
+  // useCartQuoteTotals() returns currency "", which crashed formatCurrency
   // (RangeError: Currency is invalid). Pass a safe code on the empty cart so the
   // computation never feeds "" into Intl. headlineAllIn is only DISPLAYED when
   // !isEmpty anyway. (formatCurrency is ALSO hardened against blank codes —
@@ -342,14 +371,19 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 
   const handleContinue = useCallback((): void => {
     if (eventId === null || totals.isEmpty) return;
-    const tokenParam = ticketLinkToken === null
-      ? ""
-      : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`;
+    const tokenParam =
+      ticketLinkToken === null
+        ? ""
+        : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`;
     router.push(`/checkout/${eventId}/buyer${tokenParam}` as never);
   }, [router, eventId, ticketLinkToken, totals.isEmpty]);
 
   // ----- Event-not-found / past / cancelled empty state -----
-  if (publicEventQuery.isLoading || publicEventQuery.isFetching || ticketLink.loading) {
+  if (
+    publicEventQuery.isLoading ||
+    publicEventQuery.isFetching ||
+    ticketLink.loading
+  ) {
     return (
       <View style={styles.host}>
         <CheckoutHeader
@@ -407,9 +441,12 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     );
   }
 
-  const visibleTickets = ticketLinkToken === null
-    ? event.tickets.filter(isVisibleForBuyer).slice().sort(sortByDisplayOrder)
-    : (ticketLink.ticket === null ? [] : [ticketLink.ticket]);
+  const visibleTickets =
+    ticketLinkToken === null
+      ? event.tickets.filter(isVisibleForBuyer).slice().sort(sortByDisplayOrder)
+      : ticketLink.ticket === null
+        ? []
+        : [ticketLink.ticket];
 
   const checkoutLifecycle = resolveEventCheckoutLifecycleGate(
     event,
@@ -499,6 +536,9 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   }
 
   const continueLabel = totals.isFree ? "Reserve free ticket" : "Continue";
+  const saleNameByLineRef = Object.fromEntries(
+    visibleTickets.map((ticket) => [ticket.id, ticket.saleName ?? "sale"]),
+  );
 
   return (
     <View style={styles.host}>
@@ -568,8 +608,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                   // (priceAllInGbp, from pg_public_event_tier_allin) as the
                   // headline-Total basis; fall back to base when the tier has
                   // no all-in (free / RPC miss — never fabricate).
-                  unitPriceAllIn:
-                    ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
+                  unitPriceAllIn: ticket.priceAllInGbp ?? ticket.priceGbp ?? 0,
                   currency: ticket.currency ?? event.currency ?? "GBP",
                   isFree: ticket.isFree,
                   quantity: next,
@@ -587,6 +626,13 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           { paddingBottom: insets.bottom + spacing.md },
         ]}
       >
+        <React.Suspense fallback={null}>
+          <CheckoutDiscountCodeField
+            surface="web_event"
+            disabled={totals.isEmpty}
+            saleNameByLineRef={saleNameByLineRef}
+          />
+        </React.Suspense>
         {showFeesTaxLine ? (
           <View style={styles.feesTaxRow}>
             <Text style={styles.feesTaxLabel}>Fees &amp; tax</Text>
@@ -598,11 +644,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>Total</Text>
           <Text style={styles.subtotalValue}>
-            {totals.isEmpty
-              ? "—"
-              : totals.isFree
-                ? "Free"
-                : headlineAllIn}
+            {totals.isEmpty ? "—" : totals.isFree ? "Free" : headlineAllIn}
           </Text>
         </View>
         <Button
@@ -612,13 +654,15 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           accentColor={ctaAccent}
           size="lg"
           fullWidth
-          disabled={totals.isEmpty}
+          disabled={totals.isEmpty || quoteStatus !== "ready"}
           accessibilityLabel={
             totals.isEmpty
               ? "Add tickets above"
-              : totals.isFree
-                ? "Reserve free ticket"
-                : `Continue to buyer details, total ${headlineAllIn}`
+              : quoteStatus !== "ready"
+                ? "Waiting for your latest total"
+                : totals.isFree
+                  ? "Reserve free ticket"
+                  : `Continue to buyer details, total ${headlineAllIn}`
           }
         />
       </View>

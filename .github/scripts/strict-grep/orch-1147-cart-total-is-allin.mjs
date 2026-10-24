@@ -5,9 +5,9 @@
  *
  * Invariant I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN (DRAFT): the three
  * mingla-business checkout payment screens (event / trip / experience) MUST
- * source the headline Total (`displayAllIn`) from the server fee-grossed all-in
- * (`totals.allInTotal` → `allInFloorCents`, optionally refined by
- * `allInPreviewCents`), and MUST NOT bind the headline directly to the bare
+ * source the headline Total (`displayAllIn`) from the accepted server quote
+ * (`quote.buyerTotalCents` + `quote.currency`), and MUST NOT bind the headline
+ * directly to the bare
  * base subtotal (`totals.total` / `totals.subtotal`). The base subtotal stays
  * the per-line "Tickets" recap basis only.
  *
@@ -15,7 +15,7 @@
  * bare ticket subtotal and omitted the passed Mingla/service fee (and tax).
  *
  * The gate fails if any payment.tsx:
- *   (a) does NOT reference `totals.allInTotal` (the server all-in basis), OR
+ *   (a) does NOT format `quote.buyerTotalCents` with `quote.currency`, OR
  *   (b) defines `displayAllIn` directly from the bare base
  *       (`displayAllIn = formatCurrency(... totals.total ...)` /
  *        `... totals.subtotal ...`) without the all-in floor path.
@@ -50,10 +50,16 @@ const evaluate = (rel, rawCode) => {
   const code = stripComments(rawCode);
   const fileFailures = [];
 
-  // (a) the all-in basis must be referenced.
-  if (!/\btotals\.allInTotal\b/.test(code)) {
+  // [TEST-MOD-APPROVED #3872] The quote endpoint now owns the accepted all-in
+  // amount and its currency. Pin that paired server result instead of the old
+  // local CartContext preview floor.
+  if (
+    !/formatQuoteMoney\(\s*quote\.buyerTotalCents\s*,\s*quote\.currency\s*\)/.test(
+      code,
+    )
+  ) {
     fileFailures.push(
-      `${rel}: headline Total must read the server fee-grossed all-in (totals.allInTotal). The bare base subtotal omits the passed Mingla/service fee. I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN.`,
+      `${rel}: headline Total must format the accepted server quote (quote.buyerTotalCents + quote.currency). The bare base subtotal omits discounts and passed fees. I-PROPOSED-1147-CART-TOTAL-IS-SERVER-ALLIN.`,
     );
   }
 
@@ -73,9 +79,9 @@ const evaluate = (rel, rawCode) => {
 
 if (SELF_TEST) {
   const GOOD = `
-    const allInFloorCents = Math.round(totals.allInTotal * 100);
-    const headlineCents = allInFloorCents;
-    const displayAllIn = formatCurrency(headlineCents, totals.currency, true);
+    const displayAllIn = quote === null
+      ? "Updating…"
+      : formatQuoteMoney(quote.buyerTotalCents, quote.currency);
   `;
   const BAD_BASE = `
     const displayTotalCents = totals.total;

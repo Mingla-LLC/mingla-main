@@ -431,6 +431,7 @@ export function VenueOrderPadSheet({
   }, [sentSessionId, openTab, handleClose]);
 
   const totalCents = preview.data?.totalCents ?? null;
+  const nothingToCharge = totalCents === 0;
   // #3645 — never invent £ when the preview and cart lines have no currency
   // (a brand that has not chosen a payout country). formatCurrency falls back
   // to GBP via normalizeCurrency; hide the amount instead.
@@ -876,6 +877,51 @@ export function VenueOrderPadSheet({
                   </View>
                 )
                 : null}
+              {preview.data !== undefined && preview.data.discountCents > 0 ? (
+                <>
+                  <View style={styles.moneyRow}>
+                    <Text style={styles.moneyLabel}>Items</Text>
+                    <View style={styles.discountAmounts}>
+                      <Text style={styles.listPrice}>
+                        {previewCurrency === null
+                          ? "—"
+                          : formatCurrency(
+                              preview.data.listSubtotalCents,
+                              previewCurrency,
+                              true,
+                            )}
+                      </Text>
+                      <Text style={styles.moneyValue}>
+                        {previewCurrency === null
+                          ? "—"
+                          : formatCurrency(
+                              preview.data.subtotalCents,
+                              previewCurrency,
+                              true,
+                            )}
+                      </Text>
+                    </View>
+                  </View>
+                  {preview.data.discounts.map((discount) => (
+                    <View
+                      key={discount.id}
+                      style={styles.moneyRow}
+                      testID={`venue-order-pad-discount-${discount.id}`}
+                    >
+                      <Text style={styles.discountLabel}>{discount.name}</Text>
+                      <Text style={styles.discountValue}>
+                        {previewCurrency === null
+                          ? "—"
+                          : `−${formatCurrency(
+                              discount.amountCents,
+                              previewCurrency,
+                              true,
+                            )}`}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              ) : null}
               <View style={styles.moneyRow}>
                 <Text style={styles.moneyLabel}>
                   {cartItemCount(lines)} item{cartItemCount(lines) === 1 ? "" : "s"}
@@ -888,6 +934,11 @@ export function VenueOrderPadSheet({
                     : formatCurrency(totalCents, previewCurrency, true)}
                 </Text>
               </View>
+              {nothingToCharge ? (
+                <Text style={styles.freeOrder} testID="venue-order-pad-free-order">
+                  Nothing to charge — mark as paid
+                </Text>
+              ) : null}
               {readiness.blocker !== null ? (
                 <Text style={styles.blocker} testID="venue-order-pad-blocker">
                   {readiness.blocker}
@@ -1015,7 +1066,17 @@ export function VenueOrderPadSheet({
               </View>
             ) : (
               <>
-                {ORDER_PAD_SETTLEMENT_OPTIONS.map((option) => (
+                {nothingToCharge ? (
+                  <Text
+                    style={styles.freeOrder}
+                    testID="venue-order-pad-free-settlement"
+                  >
+                    Nothing to charge — mark as paid
+                  </Text>
+                ) : null}
+                {ORDER_PAD_SETTLEMENT_OPTIONS.filter((option) =>
+                  !nothingToCharge || option.method === "venue_collected"
+                ).map((option) => (
                   <Pressable
                     key={option.method}
                     onPress={() => handleSettle(option.method)}
@@ -1305,6 +1366,31 @@ const styles = StyleSheet.create({
   moneyValue: {
     ...typography.body,
     color: textTokens.primary,
+    fontWeight: "700",
+  },
+  discountAmounts: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  listPrice: {
+    ...typography.bodySm,
+    color: textTokens.tertiary,
+    textDecorationLine: "line-through",
+  },
+  discountLabel: {
+    ...typography.bodySm,
+    color: semantic.success,
+    fontWeight: "700",
+  },
+  discountValue: {
+    ...typography.bodySm,
+    color: semantic.success,
+    fontWeight: "700",
+  },
+  freeOrder: {
+    ...typography.bodySm,
+    color: semantic.success,
     fontWeight: "700",
   },
   blocker: {

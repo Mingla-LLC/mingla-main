@@ -206,6 +206,7 @@ export function buildCreativeLibrary(input: CreativeLibraryInput) {
 
     return {
       id: creativeId,
+      brand_id: text(creative.brand_id),
       name: text(creative.name) ?? "Untitled creative",
       kind: text(creative.kind) ?? "unknown",
       status: text(creative.status) ?? "unknown",
@@ -214,6 +215,16 @@ export function buildCreativeLibrary(input: CreativeLibraryInput) {
       aspect_ratio: creative.aspect_ratio ?? null,
       duration_seconds: creative.duration_seconds ?? null,
       ai_generated: creative.ai_generated === true,
+      stage_tags: Array.isArray(creative.stage_tags)
+        ? creative.stage_tags.filter((value) =>
+          typeof value === "string"
+        )
+        : [],
+      concept_tag: text(creative.concept_tag),
+      hook_tag: text(creative.hook_tag),
+      event_id: text(creative.event_id),
+      licence_reference: text(creative.licence_reference),
+      date_locked_until: text(creative.date_locked_until),
       source_summary: sourceSummary(creative),
       // Legal hold: Host-owned media stays visible for operations, but cannot
       // be selected into a Mingla house plan until Terms approval exists.
@@ -221,7 +232,8 @@ export function buildCreativeLibrary(input: CreativeLibraryInput) {
       // a brand that happens to be missing.
       house_reuse_allowed: isHouseReusable(creative),
       source: text(creative.source),
-      source_job_id: text(creative.source_job_ref) ?? text(creative.source_job_id),
+      source_job_id: text(creative.source_job_ref) ??
+        text(creative.source_job_id),
       rendition_height: typeof creative.rendition_height === "number"
         ? creative.rendition_height
         : null,

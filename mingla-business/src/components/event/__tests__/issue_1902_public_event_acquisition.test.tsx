@@ -165,6 +165,7 @@ test("equality-ended ticket and RSVP renders exact notice and no acquisition sub
         ticketQuantities={{}}
         onChangeTicketQuantity={() => undefined}
         onProceedToCart={() => undefined}
+        refundPolicyState={{ status: "unknown" }}
       />,
     );
   });
@@ -332,6 +333,7 @@ test("ended ticket history keeps attendee proof read-only without inventory or g
         ticketQuantities={{}}
         onChangeTicketQuantity={() => undefined}
         onProceedToCart={() => undefined}
+        refundPolicyState={{ status: "unknown" }}
         socialProof={{
           eventId: "e",
           entityType: "event",

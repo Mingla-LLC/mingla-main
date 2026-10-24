@@ -6,6 +6,7 @@ import {
 } from "../lib/secureStoreSafe";
 import { supabase } from "../services/supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
+import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
 
 export const NATIVE_CHECKOUT_PENDING_TITLE = "Confirming payment";
 export const NATIVE_CHECKOUT_PENDING_BODY =
@@ -45,6 +46,10 @@ export type NativeCheckoutOutcome =
       recovered?: boolean;
     }
   | { outcome: "canceled"; recovered?: boolean; retryable?: boolean }
+  | {
+      outcome: "review";
+      review: TicketCheckoutReview;
+    }
   | {
       outcome: "failed";
       message: string;

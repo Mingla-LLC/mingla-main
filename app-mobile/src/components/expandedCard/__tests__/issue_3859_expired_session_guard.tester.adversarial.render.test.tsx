@@ -27,7 +27,16 @@ describe("issue #3859 — adversarial auth/contact hydration", () => {
     expect(renderedText(renderer)).not.toContain("Stale Person");
     expect(renderedText(renderer)).not.toContain("stale@example.test");
     expect(renderedText(renderer)).not.toContain("+15555550999");
-    expect(renderer.root.findAllByType("TextInput" as never)).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Full name for this booking",
+      }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Email for this booking",
+      }),
+    ).toHaveLength(0);
     expect(renderer.root.findAllByType("PhoneInput" as never)).toHaveLength(0);
     expect(onCheckout).not.toHaveBeenCalled();
 
@@ -40,7 +49,16 @@ describe("issue #3859 — adversarial auth/contact hydration", () => {
     });
     updateTicketCart(renderer, partialAccount);
 
-    expect(renderer.root.findAllByType("TextInput" as never)).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Full name for this booking",
+      }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Email for this booking",
+      }),
+    ).toHaveLength(0);
     expect(renderer.root.findAllByType("PhoneInput" as never)).toHaveLength(1);
     expect(renderedText(renderer)).not.toContain("Full name");
     expect(renderedText(renderer)).not.toContain("Email");
@@ -62,7 +80,16 @@ describe("issue #3859 — adversarial auth/contact hydration", () => {
     });
     updateTicketCart(renderer, completeAccount);
 
-    expect(renderer.root.findAllByType("TextInput" as never)).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Full name for this booking",
+      }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAllByProps({
+        accessibilityLabel: "Email for this booking",
+      }),
+    ).toHaveLength(0);
     expect(renderer.root.findAllByType("PhoneInput" as never)).toHaveLength(0);
     expect(renderedText(renderer)).toEqual(
       expect.arrayContaining([

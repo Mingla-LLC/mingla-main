@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/brand-rendering/__tests__/issue_3872_venue_review_discount.test.tsx",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-15-venue-review-discounts",
+  "profile": "deno-1.46-stripe"
+}

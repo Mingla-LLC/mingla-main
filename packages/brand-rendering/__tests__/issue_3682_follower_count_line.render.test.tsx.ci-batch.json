@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#3682",
+  "suite": {
+    "id": "issue-3682-follower-count-render",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "packages/brand-rendering/**",
+      "packages/offering-rendering/**",
+      "mingla-business/jest.issue679.cfg.cjs"
+    ],
+    "steps": [
+      {
+        "name": "Follower count line RN-web render",
+        "cwd": "mingla-business",
+        "run": "npx jest --config ../packages/brand-rendering/__tests__/jest.issue3682.follower-count.cjs --runInBand",
+        "commandId": "assert:issue-3682-follower-count-render:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config ../packages/brand-rendering/__tests__/jest.issue3682.follower-count.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#3682",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "packages/brand-rendering/__tests__/issue_3682_follower_count_line.render.test.tsx",
+      "packages/brand-rendering/__tests__/jest.issue3682.follower-count.cjs"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.issue679.cfg.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 73,
+      "p95": 73,
+      "evidence": "Local targeted run 2026-10-22"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 180
+  }
+}

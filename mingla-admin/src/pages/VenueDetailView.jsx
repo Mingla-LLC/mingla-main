@@ -375,7 +375,8 @@ export function VenueDetailView({ venueId, onBack }) {
   }, [venueId]);
 
   useEffect(() => {
-    load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   const v = data?.venue || {};

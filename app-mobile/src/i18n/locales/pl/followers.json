@@ -1,0 +1,17 @@
+{
+  "first": "Zaobserwuj jako pierwsza osoba",
+  "count_zero": "{{formatted}} obserwujących",
+  "count_one": "{{formatted}} obserwujący",
+  "count_two": "{{formatted}} obserwujących",
+  "count_few": "{{formatted}} obserwujących",
+  "count_many": "{{formatted}} obserwujących",
+  "count_other": "{{formatted}} obserwujących",
+  "a11y_none": "Brak obserwujących",
+  "a11y_exact_zero": "{{count}} obserwujących",
+  "a11y_exact_one": "{{count}} obserwujący",
+  "a11y_exact_two": "{{count}} obserwujących",
+  "a11y_exact_few": "{{count}} obserwujących",
+  "a11y_exact_many": "{{count}} obserwujących",
+  "a11y_exact_other": "{{count}} obserwujących",
+  "a11y_approx": "około {{formatted}} obserwujących"
+}

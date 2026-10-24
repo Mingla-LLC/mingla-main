@@ -183,16 +183,12 @@ const bizCheckout = [
 for (const { rel, id, offering } of bizCheckout) {
   const raw = read(rel);
   const captureRe = new RegExp(
-    `postHogService\\.capture\\(\\s*"checkout_started",\\s*\\{\\s*event_id:\\s*${id},\\s*offering_type:\\s*"${offering}",[\\s\\S]*?currency:\\s*totals\\.currency,\\s*surface:\\s*"business_app",?\\s*\\}\\s*\\)`,
+    `postHogService\\.capture\\(\\s*"checkout_started",\\s*\\{\\s*event_id:\\s*${id},\\s*offering_type:\\s*"${offering}",\\s*value:\\s*activeQuote\\.buyerTotalCents\\s*\\/\\s*100,\\s*currency:\\s*activeQuote\\.currency,\\s*surface:\\s*"business_app",?\\s*\\}\\s*\\)`,
   );
   need(rel, raw, captureRe, `checkout_started offering_type:${offering}`);
-  // value is conditional on the server all-in preview being present.
-  need(
-    rel,
-    raw,
-    /allInPreviewCents\s*!==\s*null\s*\?\s*\{\s*value:\s*allInPreviewCents\s*\/\s*100\s*\}\s*:\s*\{\s*\}/,
-    "conditional value off allInPreviewCents",
-  );
+  // [TEST-MOD-APPROVED #3872] handlePay cannot proceed without an accepted
+  // quote, so value/currency now come from that same server-owned object rather
+  // than the retired nullable local preview.
   // Fires at the top of handlePay — before the first ticket_checkout_pay_started.
   order(
     rel,

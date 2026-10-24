@@ -98,35 +98,57 @@ const META_EXTRA = {
   EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon",
 };
 
-test("CONSENT GATE — fireAdReservation is a NO-OP before grantConsent (SC-8 / RT-3)", async () => {
+test("ARRIVAL MODE — fireAdReservation is available before the banner choice", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
-  expect(wa.adPixelsReady()).toBe(false);
-  expect(() => wa.fireAdReservation("resv-1", { value: 0, currency: "GBP" })).not.toThrow();
-  expect(getFbq()).toBeUndefined();
+  expect(wa.adPixelsReady()).toBe(true);
+  expect(() => wa.fireAdReservation("resv-1", {
+    value: 0,
+    currency: "GBP",
+    contentId: "event-1",
+    brandId: "brand-1",
+  })).not.toThrow();
+  expect(getFbq()).toBeDefined();
 });
 
 test("grantConsent → fireAdReservation fires Meta 'CompleteRegistration' with the shared eventID (not 'Purchase')", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
   await wa.grantConsent();
-  wa.fireAdReservation("resv-xyz");
+  wa.fireAdReservation("resv-xyz", {
+    value: 0,
+    currency: "GBP",
+    contentId: "event-xyz",
+    brandId: "brand-xyz",
+  });
 
   const fbq = getFbq();
   expect(fbq).toBeDefined();
   const queued = ((fbq as unknown as { queue?: unknown[][] }).queue ?? []) as unknown[][];
   const schedule = queued.find((a) => a[0] === "track" && a[1] === "CompleteRegistration");
   expect(schedule).toBeDefined();
+  expect(schedule?.[2]).toMatchObject({
+    value: 0,
+    currency: "GBP",
+    content_type: "product",
+    content_ids: ["event-xyz"],
+    brand_id: "brand-xyz",
+  });
   expect(schedule?.[3]).toEqual({ eventID: "resv-xyz" }); // == server CAPI event_id
   // It is NEVER a value'd Purchase (the two-tier boundary).
   expect(queued.find((a) => a[0] === "track" && a[1] === "Purchase")).toBeUndefined();
 });
 
-test("free RSVP with no value — 'CompleteRegistration' still fires (£0 sign-up), no throw", async () => {
+test("free RSVP with zero value — 'CompleteRegistration' still fires (£0 sign-up), no throw", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
   await wa.grantConsent();
-  expect(() => wa.fireAdReservation("resv-free")).not.toThrow();
+  expect(() => wa.fireAdReservation("resv-free", {
+    value: 0,
+    currency: "GBP",
+    contentId: "event-free",
+    brandId: "brand-free",
+  })).not.toThrow();
   const queued = ((getFbq() as unknown as { queue?: unknown[][] }).queue ?? []) as unknown[][];
   expect(queued.some((a) => a[0] === "track" && a[1] === "CompleteRegistration")).toBe(true);
 });

@@ -182,6 +182,20 @@ jest.mock("../../../hooks/useAppLayout", () => ({
   BOTTOM_NAV_CONTENT_HEIGHT: 72,
 }));
 
+// #3872 moved checkout totals behind the live quote hook. These #3859 session
+// tests exercise auth/contact state only, so keep the money rail inert and
+// avoid importing the native Supabase/app-version stack into this render unit.
+jest.mock("../../../hooks/useTicketQuote", () => ({
+  useTicketQuote: () => ({
+    query: { data: null, isFetching: false, isError: false },
+    isDebouncing: false,
+  }),
+}));
+
+jest.mock("../../../services/postHogService", () => ({
+  postHogService: { capture: jest.fn() },
+}));
+
 jest.mock("../../../services/consentService", () => ({
   recordConsent: jest.fn(() => Promise.resolve({ ok: true, inserted: 1, deduped: 0 })),
 }));

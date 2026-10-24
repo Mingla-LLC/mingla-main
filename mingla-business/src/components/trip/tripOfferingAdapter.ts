@@ -144,6 +144,17 @@ export function buildTripOfferingData(
             : typeof allInCents === "number"
               ? allInCents
               : null,
+        salePriceCents:
+          typeof t.salePriceGbp === "number"
+            ? Math.round(t.salePriceGbp * 100)
+            : null,
+        saleAllInCents:
+          typeof t.saleAllInGbp === "number"
+            ? Math.round(t.saleAllInGbp * 100)
+            : null,
+        saleEndsAt: t.saleEndsAt ?? null,
+        saleName: t.saleName ?? null,
+        saleRemaining: t.saleRemaining ?? null,
         description: t.description ?? null,
         currency: t.currency,
         isFree: t.priceCents === 0,

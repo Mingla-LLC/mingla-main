@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ArrowRight, ExternalLink, FileText } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
@@ -19,6 +19,7 @@ import {
   MOVE_BLOCK_COPY,
   TEXT_FIELDS,
   clockTime,
+  channelsUsed,
   contactRuleView,
   displayName,
   editsToSend,
@@ -29,6 +30,7 @@ import {
   loadErrorWords,
   nextStage,
   normalizeTyped,
+  relativeTime,
   saveLine,
   stageDef,
   stageNeedsSignedAgreement,
@@ -152,6 +154,10 @@ export function RecordDrawer({
 
   const current = detail.id === recordId ? detail : { status: "loading", data: null, message: "" };
   const record = listRecord || current.data?.record || null;
+  const usedChannels = useMemo(
+    () => channelsUsed(current.data?.activity, config?.channels),
+    [current.data?.activity, config?.channels],
+  );
   const draftCount = useRecordDraftCount(record?.id || null);
   const locked = !online;
 
@@ -838,12 +844,24 @@ export function RecordDrawer({
             onOpenRecord={onOpenCard}
           />
           <ContactRuleField record={record} disabled={locked} onSave={saveExtra} />
-          <Field label="Channel" htmlFor={fid("channel")} error={fieldError("channel")}>
+          <Field label="Preferred channel" htmlFor={fid("channel")} error={fieldError("channel")}>
             <Select {...selectProps("channel")} placeholder="None yet" options={opt(config.channels)} />
           </Field>
           <Field label="Source" htmlFor={fid("source")} error={fieldError("source")}>
             <Select {...selectProps("source")} placeholder="None yet" options={opt(config.sources)} />
           </Field>
+          <div className="sm:col-span-2" aria-label="Channels used">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Channels used</span>
+            {usedChannels.length ? (
+              <div className="flex flex-wrap gap-2">
+                {usedChannels.map((channel) => (
+                  <span key={channel.id} title={`First used ${new Date(channel.firstUsedAt).toLocaleString()} · Last used ${new Date(channel.lastUsedAt).toLocaleString()}`} className="rounded-full border border-[var(--gray-200)] bg-[var(--gray-50)] px-2.5 py-1 text-xs text-[var(--color-text-secondary)]">
+                    <b className="text-[var(--color-text-primary)]">{channel.label}</b> · last used {relativeTime(channel.lastUsedAt)}{channel.count > 1 ? ` · ${channel.count} touches` : ""}
+                  </span>
+                ))}
+              </div>
+            ) : <p className="text-xs text-[var(--color-text-tertiary)]">No contact logged yet.</p>}
+          </div>
           <Field label="Next action" htmlFor={fid("next_action")} error={fieldError("next_action")}>
             <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
           </Field>

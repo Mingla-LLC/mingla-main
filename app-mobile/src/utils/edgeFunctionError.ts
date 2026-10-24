@@ -81,17 +81,21 @@ export async function extractFunctionError(
 export async function extractFunctionErrorFields(
   error: unknown,
   fallback: string,
-): Promise<{ token: string; detail: string | null }> {
+): Promise<{
+  token: string
+  detail: string | null
+  body: Record<string, unknown> | null
+}> {
   try {
     const err = error as Record<string, unknown> | null | undefined
-    if (!err) return { token: fallback, detail: null }
+    if (!err) return { token: fallback, detail: null, body: null }
 
     const ctx = err.context
     if (ctx && typeof (ctx as Response).text === 'function') {
       try {
         const raw = await (ctx as Response).text()
         try {
-          const body = JSON.parse(raw) as {
+          const body = JSON.parse(raw) as Record<string, unknown> & {
             error?: unknown
             detail?: unknown
             message?: unknown
@@ -101,15 +105,15 @@ export async function extractFunctionErrorFields(
               ? body.detail
               : null
           if (typeof body.error === 'string' && body.error.length > 0) {
-            return { token: body.error, detail }
+            return { token: body.error, detail, body }
           }
           if (typeof body.message === 'string' && body.message.length > 0) {
-            return { token: body.message, detail }
+            return { token: body.message, detail, body }
           }
-          if (detail !== null) return { token: fallback, detail }
+          if (detail !== null) return { token: fallback, detail, body }
         } catch {
           if (raw && raw.length > 0 && raw.length < 200 && !raw.startsWith('<!')) {
-            return { token: raw, detail: null }
+            return { token: raw, detail: null, body: null }
           }
         }
       } catch {
@@ -118,8 +122,8 @@ export async function extractFunctionErrorFields(
     }
 
     const token = await extractFunctionError(error, fallback)
-    return { token, detail: null }
+    return { token, detail: null, body: null }
   } catch {
-    return { token: fallback, detail: null }
+    return { token: fallback, detail: null, body: null }
   }
 }

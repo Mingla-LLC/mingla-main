@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // I-LOCALES-LAZY-LOAD — ORCH-0675 Wave 1 RC-2 protection.
 //
-// Only the 'en' locale (23 namespaces) may be statically imported in
+// Only the 'en' locale (25 namespaces) may be statically imported in
 // src/i18n/index.ts. All other 28 languages MUST be loaded via dynamic
 // import() in the localeLoaders map.
 //
@@ -33,8 +33,10 @@ export function check(read) {
     failures.push(`I-LOCALES-LAZY-LOAD violation: ${nonEn} non-en static locale import(s) in ${TARGET}.`);
     for (const l of staticImports.filter((x) => !/\/en\//.test(x)).slice(0, 10)) failures.push(`  ${l.trim()}`);
   }
-  if (enImports.length !== 23) {
-    failures.push(`I-LOCALES-LAZY-LOAD violation: en has ${enImports.length} static imports (expected exactly 23 namespaces).`);
+  // [TEST-MOD-APPROVED #3872] Discounts is the twenty-fifth registered locale
+  // namespace; all non-English copies remain behind their lazy loaders.
+  if (enImports.length !== 25) {
+    failures.push(`I-LOCALES-LAZY-LOAD violation: en has ${enImports.length} static imports (expected exactly 25 namespaces).`);
   }
   const loaderCount = lines.filter((l) => /^[ \t]+[a-z]{2,3}: async \(\) =>/.test(l)).length;
   if (loaderCount < 28) {
@@ -58,15 +60,15 @@ function selfTest() {
     const f = check(read);
     cases.push({ name, ok: (f.length > 0) === shouldFail, f });
   };
-  const en23 = Array.from({ length: 23 }, (_, i) => `import ns${i} from './locales/en/ns${i}.json';`).join("\n");
+  const en25 = Array.from({ length: 25 }, (_, i) => `import ns${i} from './locales/en/ns${i}.json';`).join("\n");
   const loaders28 = Array.from({ length: 28 }, (_, i) => {
     const code = String.fromCharCode(97 + (i % 26)) + String.fromCharCode(97 + ((i + 1) % 26));
     return `  ${code}: async () => import('./locales/x'),`;
   }).join("\n");
-  t("23 en + 28 loaders passes", () => `${en23}\n${loaders28}`, false);
-  t("a non-en static import fails", () => `${en23}\nimport fr from './locales/fr/common.json';\n${loaders28}`, true);
-  t("22 en imports fails", () => `${en23.split("\n").slice(0, 22).join("\n")}\n${loaders28}`, true);
-  t("only 27 loaders fails", () => `${en23}\n${loaders28.split("\n").slice(0, 27).join("\n")}`, true);
+  t("25 en + 28 loaders passes", () => `${en25}\n${loaders28}`, false);
+  t("a non-en static import fails", () => `${en25}\nimport fr from './locales/fr/common.json';\n${loaders28}`, true);
+  t("24 en imports fails", () => `${en25.split("\n").slice(0, 24).join("\n")}\n${loaders28}`, true);
+  t("only 27 loaders fails", () => `${en25}\n${loaders28.split("\n").slice(0, 27).join("\n")}`, true);
   t("missing file fails", () => null, true);
   let bad = 0;
   for (const c of cases) { console.log(`${c.ok ? "ok  " : "FAIL"}  ${c.name}`); if (!c.ok) { bad++; console.log(JSON.stringify(c.f)); } }

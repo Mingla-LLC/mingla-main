@@ -67,6 +67,7 @@ import {
 } from "./offeringCta";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
 import { EventCoverMedia } from "./EventCoverMedia";
+import { PresentedByFollowerCount } from "./PresentedByFollowerCount";
 // ORCH-1138 A1 — createThemePalette + the ThemePalette type + the color-math
 // helpers + resolveOfferingSurface were EXTRACTED VERBATIM into ./themePalette
 // (behavior-neutral) so all four public offering pages share one theming engine.
@@ -183,7 +184,7 @@ const formatTicketPrice = (
   if (ticket.isFree) return "Free";
   // ORCH-1006: show the server-computed all-in price; fall back to base. Never
   // recompute fees here — priceAllInGbp is compute_all_in_cents output / 100.
-  const price = ticket.priceAllInGbp ?? ticket.priceGbp;
+  const price = ticket.saleAllInGbp ?? ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return "—";
   // issue #1014 — 0-priced renders "Free" even without the isFree flag
   // (NULL-currency events only carry 0-priced tickets).
@@ -212,6 +213,9 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   brand,
   viewerRole,
   callbacks,
+  brandFollowerCount = undefined as number | null | undefined,
+  brandFollowerCountLoading = false,
+  brandFollowerCountLabels = undefined as PublicEventPageProps["brandFollowerCountLabels"],
   useDirectionCIdentity = false,
   hideFloatingChrome = false,
   theme,
@@ -249,6 +253,9 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           brand={brand}
           variant={variant === "password-gate" ? "published" : variant}
           callbacks={callbacks}
+          brandFollowerCount={brandFollowerCount}
+          brandFollowerCountLoading={brandFollowerCountLoading}
+          brandFollowerCountLabels={brandFollowerCountLabels}
           theme={resolvedTheme}
           useDirectionCIdentity={useDirectionCIdentity}
           ScrollComponent={ScrollComponent}
@@ -314,6 +321,9 @@ interface PublishedBodyProps {
   brand: PublicEventPageProps["brand"];
   variant: "published" | "pre-sale" | "sold-out" | "past";
   callbacks: PublicEventPageProps["callbacks"];
+  brandFollowerCount: PublicEventPageProps["brandFollowerCount"];
+  brandFollowerCountLoading: boolean;
+  brandFollowerCountLabels: PublicEventPageProps["brandFollowerCountLabels"];
   theme: ResolvedTheme;
   useDirectionCIdentity: boolean;
   // META-ORCH-0991 (sheet rework — Bug 2): the scroll host (RN ScrollView by
@@ -329,6 +339,9 @@ const PublishedBody = ({
   brand,
   variant,
   callbacks,
+  brandFollowerCount,
+  brandFollowerCountLoading,
+  brandFollowerCountLabels,
   theme,
   useDirectionCIdentity,
   ScrollComponent,
@@ -694,6 +707,13 @@ const PublishedBody = ({
               <Text style={[styles.brandName, { color: palette.primaryText }]}>
                 {brand?.displayName ?? "Brand"}
               </Text>
+              <PresentedByFollowerCount
+                count={brandFollowerCount}
+                loading={brandFollowerCountLoading}
+                labels={brandFollowerCountLabels}
+                palette={palette}
+                testID="legacy-event-presented-by-follower-count"
+              />
             </View>
             {callbacks.onOpenBrand !== undefined ? (
               <Text style={[styles.brandCta, { color: palette.accent }]}>

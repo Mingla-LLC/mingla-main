@@ -126,7 +126,7 @@ import type { TurnoutInputSource } from "../../utils/turnoutInput";
  */
 
 import { CreatorStep1Basics } from "../event/CreatorStep1Basics";
-import { CreatorStep2When } from "../event/CreatorStep2When";
+import { CreatorStep2When } from "../event/LazyCreatorStep2When";
 import { CreatorStep3Where } from "../event/CreatorStep3Where";
 import { CreatorStep4Cover } from "../event/CreatorStep4Cover";
 import { PublishErrorsSheet } from "../event/PublishErrorsSheet";

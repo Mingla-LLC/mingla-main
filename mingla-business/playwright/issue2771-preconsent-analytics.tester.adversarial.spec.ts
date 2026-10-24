@@ -7,8 +7,10 @@ const MARKETING = 'http://127.0.0.1:43171'
 const CONSENT_KEY = 'mingla_consent_v1'
 const SIGNALS = '?gclid=test-gclid&fbclid=test-fbclid&utm_source=test-source&utm_campaign=test-campaign'
 
-const FORBIDDEN_REQUEST = /posthog|us\.i\.posthog\.com|us-assets\.i\.posthog\.com|googletagmanager\.com|google-analytics\.com|doubleclick|connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com|attribution-capture/i
-const FORBIDDEN_STORAGE = /^(ph_|_ga|_gcl|_fbp|_ttp|_scid|rdt_|mingla_ad_click_v1)/i
+const ANALYTICS_REQUEST = /posthog|us\.i\.posthog\.com|us-assets\.i\.posthog\.com|googletagmanager\.com|google-analytics\.com|doubleclick/i
+const AD_REQUEST = /connect\.facebook\.net|analytics\.tiktok\.com|sc-static\.net|redditstatic\.com|attribution-capture/i
+const ANALYTICS_STORAGE = /^(ph_|_ga|_gcl)/i
+const AD_STORAGE = /^(_fbp|_fbc|_ttp|_scid|rdt_|mingla_ad_click_v1)/i
 
 type ConsentSeed = 'fresh' | 'malformed' | 'denied' | 'granted' | 'unreadable'
 
@@ -26,10 +28,15 @@ async function installOracle(page: Page): Promise<RequestOracle> {
       await route.abort()
       return
     }
-    if (FORBIDDEN_REQUEST.test(request.url())) {
-      oracle.urls.push(request.url())
-      oracle.bodies.push(request.postData() ?? '')
-      oracle.consentAtRequest.push(await page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY))
+    if (ANALYTICS_REQUEST.test(request.url()) || AD_REQUEST.test(request.url())) {
+      // Reserve one shared index before awaiting page state. Arrival ad and
+      // grant-gated analytics requests can overlap, so separate push calls can
+      // otherwise pair a URL with another request's consent snapshot.
+      const index = oracle.urls.push(request.url()) - 1
+      oracle.bodies[index] = request.postData() ?? ''
+      oracle.consentAtRequest[index] = await page.evaluate((key) => {
+        try { return localStorage.getItem(key) } catch { return null }
+      }, CONSENT_KEY)
       await route.abort()
       return
     }
@@ -67,25 +74,33 @@ async function newSeededPage(
   return { context, page, oracle }
 }
 
-async function forbiddenStorage(context: BrowserContext, page: Page): Promise<string[]> {
+function requestIndexes(oracle: RequestOracle, pattern: RegExp): number[] {
+  return oracle.urls.flatMap((url, index) => pattern.test(url) ? [index] : [])
+}
+
+async function forbiddenStorage(
+  context: BrowserContext,
+  page: Page,
+  pattern: RegExp,
+): Promise<string[]> {
   const cookies = (await context.cookies(page.url())).map(({ name }) => name)
   const storage = await page.evaluate(() => [
     ...Object.keys(localStorage),
     ...Object.keys(sessionStorage),
   ])
-  return [...cookies, ...storage].filter((key) => FORBIDDEN_STORAGE.test(key))
+  return [...cookies, ...storage].filter((key) => pattern.test(key))
 }
 
-async function forbiddenScripts(page: Page): Promise<string[]> {
+async function forbiddenScripts(page: Page, pattern: RegExp): Promise<string[]> {
   return page.locator('script[src]').evaluateAll((nodes, source) => {
     const pattern = new RegExp(source, 'i')
     return nodes
       .map((node) => (node as HTMLScriptElement).src)
       .filter((url) => pattern.test(url))
-  }, FORBIDDEN_REQUEST.source)
+  }, pattern.source)
 }
 
-async function assertDark(
+async function assertAnalyticsDark(
   context: BrowserContext,
   page: Page,
   oracle: RequestOracle,
@@ -93,17 +108,30 @@ async function assertDark(
   // Give both React roots enough time to hydrate and run their mount effects;
   // a pre-consent loader regression otherwise hides behind a too-early oracle.
   await page.waitForTimeout(1_500)
-  expect(oracle.urls, 'analytics/attribution network must remain dark').toEqual([])
-  expect(await forbiddenScripts(page), 'vendor scripts must remain absent').toEqual([])
-  expect(await forbiddenStorage(context, page), 'analytics/attribution storage must remain absent').toEqual([])
+  expect(requestIndexes(oracle, ANALYTICS_REQUEST), 'PostHog/GA network must remain dark').toEqual([])
+  expect(await forbiddenScripts(page, ANALYTICS_REQUEST), 'analytics scripts must remain absent').toEqual([])
+  expect(await forbiddenStorage(context, page, ANALYTICS_STORAGE), 'analytics storage must remain absent').toEqual([])
   expect(await page.evaluate(() => ({
     dataLayer: 'dataLayer' in window,
     gtag: 'gtag' in window,
+  }))).toEqual({ dataLayer: false, gtag: false })
+}
+
+async function assertFullyDark(
+  context: BrowserContext,
+  page: Page,
+  oracle: RequestOracle,
+): Promise<void> {
+  await assertAnalyticsDark(context, page, oracle)
+  expect(requestIndexes(oracle, AD_REQUEST), 'ad network and attribution must remain dark').toEqual([])
+  expect(await forbiddenScripts(page, AD_REQUEST), 'ad scripts must remain absent').toEqual([])
+  expect(await forbiddenStorage(context, page, AD_STORAGE), 'ad storage must remain absent').toEqual([])
+  expect(await page.evaluate(() => ({
     fbq: 'fbq' in window,
     ttq: 'ttq' in window,
     snaptr: 'snaptr' in window,
     rdt: 'rdt' in window,
-  }))).toEqual({ dataLayer: false, gtag: false, fbq: false, ttq: false, snaptr: false, rdt: false })
+  }))).toEqual({ fbq: false, ttq: false, snaptr: false, rdt: false })
 }
 
 async function dataLayerCommands(page: Page): Promise<unknown[][]> {
@@ -132,7 +160,7 @@ function pageviewOccurrences(bodies: string[]): number {
 }
 
 test.describe('#2771 independent browser privacy boundary', () => {
-  test('Business and Marketing malformed or unreadable consent stay fully dark, including attribution signals', async ({ browser }) => {
+  test('Malformed or unreadable consent preserves each surface policy', async ({ browser }) => {
     for (const [name, url, shape] of [
       ['Business', BUSINESS, 'business'],
       ['Marketing', MARKETING, 'marketing'],
@@ -140,7 +168,12 @@ test.describe('#2771 independent browser privacy boundary', () => {
       for (const seed of ['malformed', 'unreadable'] as const) {
         const { context, page, oracle } = await newSeededPage(browser, seed, shape)
         await page.goto(`${url}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
-        await assertDark(context, page, oracle)
+        if (name === 'Business') {
+          await assertAnalyticsDark(context, page, oracle)
+          await expect.poll(() => requestIndexes(oracle, AD_REQUEST).length).toBeGreaterThan(0)
+        } else {
+          await assertFullyDark(context, page, oracle)
+        }
         await context.close()
         test.info().annotations.push({ type: 'coverage', description: `${name} ${seed}` })
       }
@@ -153,7 +186,7 @@ test.describe('#2771 independent browser privacy boundary', () => {
       await page.goto(`${MARKETING}/links${SIGNALS}`, { waitUntil: 'domcontentloaded' })
       await expect(page.getByRole('dialog', { name: 'Cookie consent' })).toHaveCount(0)
       if (seed !== 'granted') {
-        await assertDark(context, page, oracle)
+        await assertFullyDark(context, page, oracle)
       } else {
         await expect.poll(() => oracle.urls.length).toBeGreaterThan(0)
         const commands = await dataLayerCommands(page)
@@ -177,14 +210,15 @@ test.describe('#2771 independent browser privacy boundary', () => {
     const isolated = await context.newPage()
     const isolatedOracle = await installOracle(isolated)
     await isolated.goto(`${BUSINESS_ALIAS}/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
-    await expect(isolated.getByRole('button', { name: 'Accept cookies and analytics', exact: true })).toBeVisible()
+    await expect(isolated.getByRole('button', { name: 'OK', exact: true })).toBeVisible()
     expect(await isolated.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toBeNull()
-    await assertDark(context, isolated, isolatedOracle)
+    await assertAnalyticsDark(context, isolated, isolatedOracle)
+    await expect.poll(() => requestIndexes(isolatedOracle, AD_REQUEST).length).toBeGreaterThan(0)
     await context.close()
   })
 
   for (const surface of [
-    { name: 'Business', url: BUSINESS, accept: 'Accept cookies and analytics' },
+    { name: 'Business', url: BUSINESS, accept: 'OK' },
     { name: 'Marketing', url: MARKETING, accept: 'Accept all' },
   ]) {
     test(`${surface.name} concurrent grants produce one boot, one pageview, and one consent event`, async ({ browser }) => {
@@ -213,12 +247,21 @@ test.describe('#2771 independent browser privacy boundary', () => {
       await expect.poll(async () =>
         commandCount(await dataLayerCommands(page), 'event', 'consent_granted'),
       ).toBe(1)
-      expect(oracle.consentAtRequest.every((value) => value?.includes('granted'))).toBe(true)
+      const analyticsIndexes = requestIndexes(oracle, ANALYTICS_REQUEST)
+      expect(analyticsIndexes.length).toBeGreaterThan(0)
+      await expect.poll(() => analyticsIndexes.every((index) =>
+        oracle.consentAtRequest[index] !== undefined,
+      )).toBe(true)
+      expect(analyticsIndexes.flatMap((index) =>
+        oracle.consentAtRequest[index]?.includes('granted')
+          ? []
+          : [{ url: oracle.urls[index], consent: oracle.consentAtRequest[index] }],
+      ), 'analytics requests must observe the persisted grant').toEqual([])
       const commands = await dataLayerCommands(page)
       expect(commandCount(commands, 'config', 'G-ISSUE2771')).toBeLessThanOrEqual(1)
       expect(commandCount(commands, 'event', 'consent_granted')).toBe(1)
       expect(pageviewOccurrences(oracle.bodies)).toBeLessThanOrEqual(1)
-      expect((await forbiddenScripts(page)).filter((url) => /googletagmanager/.test(url))).toHaveLength(1)
+      expect((await forbiddenScripts(page, ANALYTICS_REQUEST)).filter((url) => /googletagmanager/.test(url))).toHaveLength(1)
       await context.close()
     })
   }
@@ -238,12 +281,17 @@ test.describe('#2771 independent browser privacy boundary', () => {
       }).toBe(true)
       const { context, page, oracle } = await newSeededPage(browser, 'fresh', 'business')
       await page.goto(`http://127.0.0.1:42769/${SIGNALS}`, { waitUntil: 'domcontentloaded' })
-      await page.getByRole('button', { name: 'Reject cookies and analytics', exact: true }).click()
+      await page.getByRole('button', { name: 'Opt out of ad tracking', exact: true }).click()
+      await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toContain('denied')
+      const trackingCountAfterOptOut = oracle.urls.length
       const reserve = page.getByRole('button', { name: 'Reserve a table', exact: true })
       await expect(reserve).toBeVisible()
       await reserve.click()
       await expect(page.getByTestId('issue-2769-sheet')).toBeVisible()
-      await assertDark(context, page, oracle)
+      await assertAnalyticsDark(context, page, oracle)
+      expect(oracle.urls).toHaveLength(trackingCountAfterOptOut)
+      expect(await forbiddenScripts(page, AD_REQUEST)).toEqual([])
+      expect(await forbiddenStorage(context, page, AD_STORAGE)).toEqual([])
       await context.close()
     } finally {
       server.kill('SIGTERM')

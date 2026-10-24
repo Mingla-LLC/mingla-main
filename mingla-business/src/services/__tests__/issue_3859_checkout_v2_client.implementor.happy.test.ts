@@ -2,19 +2,24 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const invoke = jest.fn();
+const mockFireAdInitiateCheckout = jest.fn();
 
 jest.mock("../supabase", () => ({
   supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
 }));
 jest.mock("../../analytics/webAnalytics", () => ({
-  fireAdInitiateCheckout: jest.fn(),
-  // [TEST-MOD-APPROVED #3697] Keep this checkout-v2 contract fixture focused
-  // on line choices while the new optional browser match fields are absent.
+  fireAdInitiateCheckout: (...args: unknown[]) =>
+    mockFireAdInitiateCheckout(...args),
+  identifyAdBuyer: jest.fn(() => Promise.resolve()),
+  // [TEST-MOD-APPROVED #3697] The v2 wire carries the opt-out latch even when
+  // there is no attribution touch, plus TikTok's first-party match cookie.
   getStoredAdMatchData: () => ({
     fbp: null,
     fbc: null,
     scid: null,
+    ttp: "ttp-3697",
     clientUserAgent: null,
+    trackingOptOut: true,
   }),
   getStoredClickAttribution: () => ({ clickId: null }),
 }));
@@ -22,6 +27,7 @@ jest.mock("../../analytics/webAnalytics", () => ({
 import { createTicketCheckout } from "../ticketCheckoutService";
 
 const EVENT_ID = "11111111-1111-4111-8111-111111111111";
+const BRAND_ID = "44444444-4444-4444-8444-444444444444";
 const STANDARD = "22222222-2222-4222-8222-222222222222";
 const VIP = "33333333-3333-4333-8333-333333333333";
 const ATTEMPT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -55,8 +61,16 @@ const lines = [
 
 beforeEach(() => {
   invoke.mockReset();
+  mockFireAdInitiateCheckout.mockReset();
   invoke.mockResolvedValue({
-    data: { kind: "free_completed", orderId: "order", tickets: [] },
+    data: {
+      kind: "free_completed",
+      orderId: "order",
+      checkoutSessionId: "checkout-3697",
+      totalCents: 50000,
+      currency: "USD",
+      tickets: [],
+    },
     error: null,
   });
 });
@@ -64,6 +78,7 @@ beforeEach(() => {
 test("#3859 web v2 sends mixed line choices and no checkout-wide scalar", async () => {
   await createTicketCheckout({
     eventId: EVENT_ID,
+    brandId: BRAND_ID,
     buyer,
     lines,
     surface: "web",
@@ -73,10 +88,19 @@ test("#3859 web v2 sends mixed line choices and no checkout-wide scalar", async 
   const body = invoke.mock.calls[0][1].body;
   expect(body.checkoutContractVersion).toBe(2);
   expect(body.checkoutAttemptId).toBe(ATTEMPT);
+  expect(body.ttp).toBe("ttp-3697");
+  expect(body.ad_tracking_opt_out).toBe(true);
   expect(body.purchaseTermsAccepted).toBe(true);
   expect(body.lines.map((line: { paymentPlanChoice: string }) =>
     line.paymentPlanChoice)).toEqual(["installments", "full"]);
   expect(body).not.toHaveProperty("payment_plan_choice");
+  expect(body).not.toHaveProperty("brandId");
+  expect(mockFireAdInitiateCheckout).toHaveBeenCalledWith("checkout-3697", {
+    value: 500,
+    currency: "USD",
+    contentId: EVENT_ID,
+    brandId: BRAND_ID,
+  });
 });
 
 test("#3859 v2 refuses missing purchase terms before transport", async () => {
@@ -116,7 +140,7 @@ test("#3859 legacy lines may omit a choice but v2 refuses them before transport"
   expect(invoke).not.toHaveBeenCalled();
 });
 
-test("#3859 Business-native preview and create remain explicitly paired on v1", () => {
+test("#3872 Business quote and create remain paired by server digests", () => {
   const source = readFileSync(
     join(
       __dirname,
@@ -130,8 +154,6 @@ test("#3859 Business-native preview and create remain explicitly paired on v1", 
     ),
     "utf8",
   );
-  const previewStart = source.indexOf('mode: "preview"');
-  const previewEnd = source.indexOf("// ----- Handlers -----", previewStart);
   const nativeCreateStart = source.indexOf(
     "const outcome = await nativeCheckout({",
   );
@@ -147,31 +169,30 @@ test("#3859 Business-native preview and create remain explicitly paired on v1", 
     webCreateStart,
   );
 
-  expect(previewStart).toBeGreaterThan(-1);
-  expect(previewEnd).toBeGreaterThan(previewStart);
   expect(nativeCreateStart).toBeGreaterThan(-1);
   expect(nativeCreateEnd).toBeGreaterThan(nativeCreateStart);
   expect(webCreateStart).toBeGreaterThan(-1);
   expect(webCreateEnd).toBeGreaterThan(webCreateStart);
 
-  const preview = source.slice(previewStart, previewEnd);
   const nativeCreate = source.slice(nativeCreateStart, nativeCreateEnd);
   const webCreate = source.slice(webCreateStart, webCreateEnd);
 
-  expect(preview.length).toBeGreaterThan(40);
   expect(nativeCreate.length).toBeGreaterThan(40);
   expect(webCreate.length).toBeGreaterThan(40);
 
-  expect(preview).not.toContain("checkoutContractVersion");
   expect(nativeCreate).not.toContain("checkoutContractVersion");
   expect(nativeCreate).toContain("paymentPlanChoice");
+  expect(nativeCreate).toContain("quoteDigest: activeQuote.quoteDigest");
+  expect(nativeCreate).toContain("quoteListDigest: activeQuote.quoteListDigest");
   expect(webCreate).toContain("checkoutContractVersion: 2");
   expect(webCreate).toContain("checkoutAttemptId");
+  expect(webCreate).toContain("quoteDigest: activeQuote.quoteDigest");
+  expect(webCreate).toContain("quoteListDigest: activeQuote.quoteListDigest");
   expect(webCreate).not.toContain("paymentPlanChoice:");
   expect(source).toContain("planLines.map(({ line, tier, schedule })");
   expect(source).toContain(
     "setLinePaymentPlanChoice(line.ticketTypeId, choice)",
   );
   expect(source).not.toContain("setLinePaymentPlanChoices");
-  expect(source).toContain("formatCurrency(dueTodayCents, totals.currency, true)");
+  expect(source).toContain("formatQuoteMoney(dueTodayCents");
 });

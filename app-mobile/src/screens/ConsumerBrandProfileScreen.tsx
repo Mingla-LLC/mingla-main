@@ -24,6 +24,8 @@ import {
   usePublicBrandVenues,
 } from "../hooks/useBrandBySlug";
 import { brandFollowKeys, useBrandFollow } from "../hooks/useBrandFollow";
+import { useBrandFollowerCount } from "../hooks/useBrandFollowerCount";
+import { useFollowerCountLabels } from "../hooks/useFollowerCountLabels";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useBrandHappeningNow,
@@ -58,6 +60,10 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     user?.id ?? null,
     query.data?.brand?.id ?? null,
   );
+  const followerCountQuery = useBrandFollowerCount(
+    query.data?.brand?.id ?? null,
+  );
+  const followerCountLabels = useFollowerCountLabels();
   const queryClient = useQueryClient();
   const [followingMenuOpen, setFollowingMenuOpen] = useState(false);
   const [manageChannelsOpen, setManageChannelsOpen] = useState(false);
@@ -234,6 +240,13 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         pastHasMore={pastFeed.hasMore}
         pastLoadState={pastFeed.loadState}
         menu={detail.menu}
+        followerCount={
+          followerCountQuery.isError ? null : followerCountQuery.data
+        }
+        followerCountLoading={
+          followerCountQuery.isPending && !followerCountQuery.isError
+        }
+        followerCountLabels={followerCountLabels}
         isFollowing={brandFollow.isFollowing}
         followPending={brandFollow.isPending}
         followState={

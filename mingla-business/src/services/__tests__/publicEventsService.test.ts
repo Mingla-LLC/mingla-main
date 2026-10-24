@@ -305,7 +305,7 @@ describe("public brand lookup", () => {
       photo: "https://cdn.example.com/brand.png",
       bio: "Tiny parties, big feelings.",
       displayAttendeeCount: false,
-      stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+      stats: { events: 0, rev: 0, rev7d: 0, attendees: 0 },
     });
     expect(detail?.brand.links).toEqual({
       instagram: "@brand3",
@@ -452,7 +452,7 @@ describe("public brand view mapper", () => {
         custom: [{ label: "Menu", url: "https://brand.example.com/menu" }],
       },
       displayAttendeeCount: false,
-      stats: { events: 4, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+      stats: { events: 4, rev: 0, rev7d: 0, attendees: 0 },
     });
   });
 });

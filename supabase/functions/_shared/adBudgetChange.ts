@@ -52,6 +52,8 @@ export type BudgetChangePlan =
 /** Providers whose daily budget Mingla can push today. */
 export const DAILY_BUDGET_PUSH_PLATFORMS: ReadonlySet<Platform> = new Set([
   "meta",
+  "snapchat",
+  "tiktok",
 ]);
 
 const positive = (value: unknown): number | null => {

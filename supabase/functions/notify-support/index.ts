@@ -89,7 +89,7 @@ serve(async (req) => {
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: ticket, error: tErr } = await admin
       .from("support_tickets")
-      .select("id, subject, requester_user_id, assigned_staff_id, brand_id")
+      .select("id, subject, requester_user_id, assigned_staff_id, brand_id, audience")
       .eq("id", ticketId)
       .maybeSingle();
     if (tErr) return json({ error: tErr.message }, 500);
@@ -100,8 +100,16 @@ serve(async (req) => {
     const type = "business.support_message";
 
     if (body?.senderIsStaff === true) {
-      // staff reply → notify the requester.
-      if (ticket.requester_user_id) {
+      // A brand-visible case belongs to the active team, not the staff creator.
+      if (ticket.audience === "brand" && ticket.brand_id) {
+        const { data: members } = await admin
+          .from("brand_team_members")
+          .select("user_id")
+          .eq("brand_id", ticket.brand_id)
+          .not("accepted_at", "is", null)
+          .is("removed_at", null);
+        for (const member of members ?? []) if (member.user_id) recipients.add(member.user_id as string);
+      } else if (ticket.requester_user_id) {
         recipients.add(ticket.requester_user_id as string);
       }
     } else {
@@ -157,8 +165,9 @@ serve(async (req) => {
           data: { ticketId },
           relatedId: ticketId,
           relatedType: "support_ticket",
-          // collapse re-deliveries per recipient per ticket-event.
-          idempotencyKey: `${type}:${ticketId}:${userId}`,
+          // Collapse retries of this message without suppressing later replies
+          // on the same ticket. The ticket id supports older internal callers.
+          idempotencyKey: `${type}:${body?.messageId ?? ticketId}:${userId}`,
           deepLink: deepLink(ticketId),
         });
         dispatched += 1;

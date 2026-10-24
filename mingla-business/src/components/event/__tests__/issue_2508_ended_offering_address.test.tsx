@@ -182,6 +182,7 @@ const mountEndedPage = async (
           onProceedToCart={onProceedToCart}
           onOpenMaps={() => undefined}
           onCopyAddress={() => undefined}
+          refundPolicyState={{ status: "unknown" }}
         />
       </>,
     );

@@ -114,6 +114,31 @@ const COLUMNS = [
     ),
   },
   {
+    key: "follower_count",
+    label: "Followers",
+    sortable: true,
+    render: (val, row) =>
+      typeof val === "number" ? (
+        <div className="text-right tabular-nums">
+          <span className="font-medium text-[var(--color-text-primary)] block">
+            {val.toLocaleString("en-GB")}
+          </span>
+          {typeof row.new_this_week === "number" && row.new_this_week > 0 ? (
+            <span className="text-xs text-[var(--color-text-muted)] block">
+              +{row.new_this_week.toLocaleString("en-GB")} wk
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <span
+          className="text-[var(--color-text-muted)]"
+          title={row.deleted_at ? undefined : "Couldn't load"}
+        >
+          —
+        </span>
+      ),
+  },
+  {
     key: "claim_status",
     label: "Claim",
     render: (val) => (val ? <Badge variant={CLAIM_VARIANT[val] || "default"}>{val}</Badge> : <span className="text-[var(--color-text-muted)]">—</span>),
@@ -216,6 +241,7 @@ const CSV = {
   columns: [
     { key: "id", label: "ID" },
     { key: "name", label: "Name" },
+    { key: "follower_count", label: "Followers" },
     { key: "slug", label: "Slug" },
     { key: "claim_status", label: "Claim status" },
     { key: "city", label: "City" },

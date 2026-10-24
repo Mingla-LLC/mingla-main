@@ -1,0 +1,17 @@
+{
+  "first": "Folge als erste Person",
+  "count_zero": "{{formatted}} Follower",
+  "count_one": "{{formatted}} Follower",
+  "count_two": "{{formatted}} Follower",
+  "count_few": "{{formatted}} Follower",
+  "count_many": "{{formatted}} Follower",
+  "count_other": "{{formatted}} Follower",
+  "a11y_none": "Noch keine Follower",
+  "a11y_exact_zero": "{{count}} Follower",
+  "a11y_exact_one": "{{count}} Follower",
+  "a11y_exact_two": "{{count}} Follower",
+  "a11y_exact_few": "{{count}} Follower",
+  "a11y_exact_many": "{{count}} Follower",
+  "a11y_exact_other": "{{count}} Follower",
+  "a11y_approx": "etwa {{formatted}} Follower"
+}

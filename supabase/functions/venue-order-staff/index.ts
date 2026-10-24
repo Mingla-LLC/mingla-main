@@ -72,11 +72,19 @@ import {
   type PricingSwitches,
 } from "../_shared/allInPricingEngine.ts";
 import {
+  callDiscountQuoteLines,
+  callReleaseDiscountUses,
+  callReserveDiscountUses,
+} from "../_shared/discountEngine.ts";
+import {
+  applyVenueDiscountQuote,
   computeVenueOrderMoney,
   priceCart,
   type RequestedLine,
-  venueOrderErrorCopy,
+  venueDiscountEngineLines,
+  venueDiscountSnapshot,
   type VenueOrderErrorCode,
+  venueOrderErrorCopy,
   venueOrderErrorStatus,
 } from "../_shared/venueOrderPricing.ts";
 import {
@@ -84,6 +92,7 @@ import {
   findReplayableVenueOrder,
   insertVenueOrderRow,
   loadMenuSnapshot,
+  loadVenueTimezone,
   markVenueOrderFailed,
   mergedVenueOrderMetadata,
   resolveOrderContext,
@@ -102,7 +111,8 @@ import {
   resolveBuyerPhone,
 } from "../_shared/buyerPhone.ts";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
 
 /**
@@ -219,15 +229,19 @@ async function handleStaffCreate(
   body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
+  if ("discountCode" in body) {
+    return jsonResponse({ error: "discount_code_not_accepted" }, 400);
+  }
   const spotCode = typeof body.spotCode === "string" && body.spotCode.trim()
     ? body.spotCode.trim()
     : null;
   const venueId = typeof body.venueId === "string" && UUID_RE.test(body.venueId)
     ? body.venueId
     : null;
-  const sessionId = typeof body.sessionId === "string" && UUID_RE.test(body.sessionId)
-    ? body.sessionId
-    : null;
+  const sessionId =
+    typeof body.sessionId === "string" && UUID_RE.test(body.sessionId)
+      ? body.sessionId
+      : null;
   const buyer = (body.buyer ?? {}) as Record<string, unknown>;
   const buyerName = typeof buyer.name === "string" ? buyer.name.trim() : "";
   const idempotencyKey = typeof body.idempotencyKey === "string" &&
@@ -238,7 +252,9 @@ async function handleStaffCreate(
   const rawLines = Array.isArray(body.lines) ? body.lines : [];
   const requested: RequestedLine[] = [];
   for (const raw of rawLines as Array<Record<string, unknown>>) {
-    const menuItemId = typeof raw?.menuItemId === "string" ? raw.menuItemId : "";
+    const menuItemId = typeof raw?.menuItemId === "string"
+      ? raw.menuItemId
+      : "";
     if (!UUID_RE.test(menuItemId)) return fail("order_total_invalid");
     requested.push({
       menuItemId,
@@ -287,18 +303,41 @@ async function handleStaffCreate(
   });
   if (!cart.ok) {
     const f = cart.failure;
-    if (f.code === "item_not_orderable") return fail("item_not_orderable", { item: f.item });
+    if (f.code === "item_not_orderable") {
+      return fail("item_not_orderable", { item: f.item });
+    }
     if (f.code === "modifier_selection_invalid") {
       return fail("modifier_selection_invalid", { group: f.group });
     }
     return fail(f.code);
   }
 
+  const discountEngineLines = venueDiscountEngineLines({
+    lines: cart.lines,
+    itemsById: menu.itemsById,
+    venueId: ctx.servingVenueId,
+    timezone: await loadVenueTimezone(supabase, ctx.servingVenueId),
+  });
+  let discountQuote;
+  try {
+    discountQuote = await callDiscountQuoteLines(supabase, {
+      brandId: ctx.brandId,
+      currency: cart.currency,
+      lines: discountEngineLines,
+      code: null,
+      buyer: {},
+    });
+  } catch (error) {
+    console.error("[venue-order-staff] discount quote failed", error);
+    return fail("order_total_invalid");
+  }
+  let discountedCart = applyVenueDiscountQuote(cart.lines, discountQuote);
+
   // The venue's service charge still applies to a staff-taken order — it is the
   // venue's revenue either way. Mingla's fees are ZERO until settle picks a
   // method, because at this moment Mingla has taken nothing.
   const serviceChargeCents = Math.round(
-    (cart.subtotalCents * ctx.settings.service_charge_bps) / 10000,
+    (discountedCart.netSubtotalCents * ctx.settings.service_charge_bps) / 10000,
   );
 
   if (previewOnly) {
@@ -309,15 +348,23 @@ async function handleStaffCreate(
     return jsonResponse({
       kind: "staff_order_preview",
       currency: cart.currency,
-      subtotalCents: cart.subtotalCents,
+      listSubtotalCents: discountedCart.listSubtotalCents,
+      discountCents: discountedCart.discountCents,
+      subtotalCents: discountedCart.netSubtotalCents,
       serviceChargeBps: ctx.settings.service_charge_bps,
       serviceChargeCents,
       serviceChargeLabel: ctx.settings.service_charge_label,
-      totalCents: cart.subtotalCents + serviceChargeCents,
+      totalCents: discountedCart.netSubtotalCents + serviceChargeCents,
       spotLabel: ctx.spotLabel,
       venueName: ctx.venueName,
       staffTabsEnabled: ctx.settings.staff_tabs_enabled === true,
-      lines: cart.lines.map((line) => ({
+      discounts: discountQuote.applied.map((entry) => ({
+        id: entry.discountId,
+        kind: entry.kind,
+        name: entry.name,
+        amountCents: entry.amountMinor,
+      })),
+      lines: discountedCart.lines.map((line) => ({
         lineNo: line.lineNo,
         menuItemId: line.menuItemId,
         name: line.itemNameAtOrder,
@@ -325,6 +372,8 @@ async function handleStaffCreate(
         unitPriceCents: line.unitPriceCents,
         modifiersTotalCents: line.modifiersTotalCents,
         lineTotalCents: line.lineTotalCents,
+        discountCents: line.discountCents,
+        netLineTotalCents: line.netLineCents,
         modifiers: line.modifiers.map((m) => m.modifierNameAtOrder),
         notes: line.notes,
       })),
@@ -370,6 +419,48 @@ async function handleStaffCreate(
     }
   }
 
+  const orderId = crypto.randomUUID();
+  let discountUsesReserved = false;
+  const releaseDiscountUses = async (): Promise<void> => {
+    if (!discountUsesReserved) return;
+    try {
+      await callReleaseDiscountUses(supabase, "venue_order", orderId);
+    } catch (error) {
+      console.error("[venue-order-staff] discount release failed", error);
+    }
+  };
+  if (discountedCart.discountCents > 0) {
+    try {
+      const reserved = await callReserveDiscountUses(supabase, {
+        kind: "venue_order",
+        refId: orderId,
+        brandId: ctx.brandId,
+        currency: cart.currency,
+        lines: discountEngineLines,
+        code: null,
+        buyer: {},
+        expectedDigest: discountQuote.digest,
+        expiresAt: new Date().toISOString(),
+        consume: true,
+        channel: "staff",
+      });
+      if (!reserved.ok) {
+        return jsonResponse({
+          error: "checkout_review_required",
+          detail: reserved.quote.listDigest === discountQuote.listDigest
+            ? "discount_changed"
+            : "price_changed",
+        }, 409);
+      }
+      discountUsesReserved = true;
+      discountQuote = reserved.quote;
+      discountedCart = applyVenueDiscountQuote(cart.lines, discountQuote);
+    } catch (error) {
+      console.error("[venue-order-staff] discount reserve failed", error);
+      return fail("internal_error");
+    }
+  }
+
   let effectiveSessionId = sessionId;
   if (effectiveSessionId === null) {
     const { data: created, error } = await supabase
@@ -382,7 +473,10 @@ async function handleStaffCreate(
       })
       .select("id")
       .single();
-    if (error || !created) return fail("internal_error");
+    if (error || !created) {
+      await releaseDiscountUses();
+      return fail("internal_error");
+    }
     effectiveSessionId = String((created as Record<string, unknown>).id);
   }
 
@@ -392,7 +486,10 @@ async function handleStaffCreate(
       "pg_venue_order_next_pickup_code",
       { p_venue_id: ctx.servingVenueId },
     );
-    if (error || typeof code !== "string") return fail("internal_error");
+    if (error || typeof code !== "string") {
+      await releaseDiscountUses();
+      return fail("internal_error");
+    }
     pickupCode = code;
   }
 
@@ -412,7 +509,10 @@ async function handleStaffCreate(
     // Unsettled: no provider has been called and Mingla holds nothing.
     money_path: "venue_collected",
     currency: cart.currency,
-    subtotal_cents: cart.subtotalCents,
+    subtotal_cents: discountedCart.netSubtotalCents,
+    list_subtotal_cents: discountedCart.listSubtotalCents,
+    discount_cents: discountedCart.discountCents,
+    discount_snapshot: venueDiscountSnapshot(discountQuote, cart.currency),
     service_charge_bps: ctx.settings.service_charge_bps,
     service_charge_cents: serviceChargeCents,
     tip_cents: 0,
@@ -423,19 +523,25 @@ async function handleStaffCreate(
     pass_mingla_fee: false,
     pass_service_fee: false,
     pass_tax: false,
-    buyer_subtotal_cents: cart.subtotalCents + serviceChargeCents,
+    buyer_subtotal_cents: discountedCart.netSubtotalCents + serviceChargeCents,
     tax_amount_cents: 0,
-    total_cents: cart.subtotalCents + serviceChargeCents,
+    total_cents: discountedCart.netSubtotalCents + serviceChargeCents,
     payment_status: "pending",
-    idempotency_key: idempotencyKey ?? `venue_order_staff:${crypto.randomUUID()}`,
+    idempotency_key: idempotencyKey ??
+      `venue_order_staff:${crypto.randomUUID()}`,
     metadata: { unsettled_staff_order: true },
   };
 
-  let orderId: string;
   try {
-    orderId = await insertVenueOrderRow(supabase, orderRow, cart.lines);
+    await insertVenueOrderRow(
+      supabase,
+      orderRow,
+      discountedCart.lines,
+      orderId,
+    );
   } catch (err) {
     console.error("[venue-order-staff] create failed", err);
+    await releaseDiscountUses();
     return fail("order_total_invalid");
   }
   return jsonResponse({
@@ -444,7 +550,9 @@ async function handleStaffCreate(
     sessionId: effectiveSessionId,
     pickupCode,
     currency: cart.currency,
-    subtotalCents: cart.subtotalCents,
+    listSubtotalCents: discountedCart.listSubtotalCents,
+    discountCents: discountedCart.discountCents,
+    subtotalCents: discountedCart.netSubtotalCents,
     serviceChargeCents,
     totalCents: orderRow.total_cents,
   });
@@ -458,12 +566,16 @@ async function handleSettle(
   body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
+  if ("discountCode" in body) {
+    return jsonResponse({ error: "discount_code_not_accepted" }, 400);
+  }
   const orderId = typeof body.orderId === "string" && UUID_RE.test(body.orderId)
     ? body.orderId
     : null;
-  const method = body.method === "bill_to_phone" || body.method === "venue_collected"
-    ? body.method
-    : null;
+  const method =
+    body.method === "bill_to_phone" || body.method === "venue_collected"
+      ? body.method
+      : null;
   if (orderId === null || method === null) return fail("invalid_json");
 
   const { data: order, error } = await supabase
@@ -570,7 +682,9 @@ async function billToPhone(
   // 'paid' on a Mingla path, and venue_orders_paid_needs_contact makes a paid
   // Mingla order WITHOUT all three literally unwritable.
   if (buyerName.length < 2) return fail("buyer_name_required");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) return fail("buyer_email_invalid");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+    return fail("buyer_email_invalid");
+  }
   if (buyerPhone === null) {
     return phone.message === null
       ? fail("buyer_phone_required")
@@ -588,7 +702,9 @@ async function billToPhone(
   // Issue #3380 — a pad from before the country picker sends bare national
   // digits. "Ten digits are American" is only believable at a North American
   // venue; anywhere else it billed a stranger's US number, so refuse it.
-  if (phone.legacyNanpGuess && !legacyNanpGuessAllowed(pricing.payment_country)) {
+  if (
+    phone.legacyNanpGuess && !legacyNanpGuessAllowed(pricing.payment_country)
+  ) {
     return failPhone(LEGACY_NANP_REFUSAL);
   }
   const settlementCurrency = typeof pricing.pricing_currency === "string"
@@ -628,23 +744,29 @@ async function billToPhone(
       (pricing.take_rate_source as "brand_override" | "platform_default") ??
         "platform_default",
     serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
-    vatRateBps: pricing.vat_rate_bps === null ? 0 : Number(pricing.vat_rate_bps),
+    vatRateBps: pricing.vat_rate_bps === null
+      ? 0
+      : Number(pricing.vat_rate_bps),
   });
   if (money.totalCents <= 0) return fail("order_total_invalid");
 
   const stripeAccountId = typeof pricing.stripe_account_id === "string"
     ? pricing.stripe_account_id
     : null;
-  const paystackSubaccount = typeof pricing.paystack_subaccount_code === "string"
-    ? pricing.paystack_subaccount_code
-    : null;
+  const paystackSubaccount =
+    typeof pricing.paystack_subaccount_code === "string"
+      ? pricing.paystack_subaccount_code
+      : null;
   const { data: cutoverRow } = await supabase
-    .from("brands").select("payout_hold_cutover_at").eq("id", input.brandId).maybeSingle();
+    .from("brands").select("payout_hold_cutover_at").eq("id", input.brandId)
+    .maybeSingle();
   const isCutover =
     ((cutoverRow as { payout_hold_cutover_at?: string | null } | null)
       ?.payout_hold_cutover_at ?? null) !== null;
   if (routing.provider === "paystack") {
-    if (!isCutover && !paystackSubaccount) return fail("stripe_account_not_ready");
+    if (!isCutover && !paystackSubaccount) {
+      return fail("stripe_account_not_ready");
+    }
   } else if (!stripeAccountId || pricing.stripe_charges_enabled !== true) {
     return fail("stripe_account_not_ready");
   }
@@ -697,7 +819,9 @@ async function billToPhone(
 
   if (routing.provider === "paystack") {
     const reference = venueOrderPaystackReference(input.orderId);
-    await supabase.from("venue_orders").update({ paystack_reference: reference })
+    await supabase.from("venue_orders").update({
+      paystack_reference: reference,
+    })
       .eq("id", input.orderId);
     try {
       const init = await paystackInitializeTransaction({
@@ -707,9 +831,7 @@ async function billToPhone(
         reference,
         callbackUrl: `${PRODUCTION_BUSINESS_WEB_ORIGIN}/o/venue/${
           encodeURIComponent(input.orderId)
-        }?bst=${
-          encodeURIComponent(buyerStatusToken)
-        }`,
+        }?bst=${encodeURIComponent(buyerStatusToken)}`,
         channels: paystackChannelsForCountry("NG"),
         metadata: {
           mingla_venue_order_id: input.orderId,
@@ -731,7 +853,11 @@ async function billToPhone(
         currency: "NGN",
       });
     } catch (err) {
-      await markVenueOrderFailed(supabase, input.orderId, String((err as Error)?.message ?? err));
+      await markVenueOrderFailed(
+        supabase,
+        input.orderId,
+        String((err as Error)?.message ?? err),
+      );
       return fail("internal_error");
     }
   }
@@ -749,8 +875,8 @@ async function billToPhone(
       },
     };
     // #3645 flat 4.5%: application fee = take-rate + platform service fee.
-    const applicationFeeAmountCents =
-      money.minglaFeeCents + money.platformServiceFeeCents;
+    const applicationFeeAmountCents = money.minglaFeeCents +
+      money.platformServiceFeeCents;
     if (applicationFeeAmountCents > 0) {
       piBody.application_fee_amount = applicationFeeAmountCents;
     }
@@ -788,16 +914,23 @@ async function handleTabOpen(
   req: Request,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const sessionId = typeof body.sessionId === "string" && UUID_RE.test(body.sessionId)
-    ? body.sessionId
-    : null;
+  if ("discountCode" in body) {
+    return jsonResponse({ error: "discount_code_not_accepted" }, 400);
+  }
+  const sessionId =
+    typeof body.sessionId === "string" && UUID_RE.test(body.sessionId)
+      ? body.sessionId
+      : null;
   if (sessionId === null) return fail("invalid_json");
   const asUser = userClient(req);
   const { data, error } = await asUser.rpc("biz_venue_tab_open", {
     p_session_id: sessionId,
   });
   if (error) return mapTabRpcError(error.message);
-  return jsonResponse({ kind: "tab_opened", ...(data as Record<string, unknown>) });
+  return jsonResponse({
+    kind: "tab_opened",
+    ...(data as Record<string, unknown>),
+  });
 }
 
 async function handleTabClose(
@@ -806,9 +939,13 @@ async function handleTabClose(
   body: Record<string, unknown>,
   userId: string,
 ): Promise<Response> {
-  const sessionId = typeof body.sessionId === "string" && UUID_RE.test(body.sessionId)
-    ? body.sessionId
-    : null;
+  if ("discountCode" in body) {
+    return jsonResponse({ error: "discount_code_not_accepted" }, 400);
+  }
+  const sessionId =
+    typeof body.sessionId === "string" && UUID_RE.test(body.sessionId)
+      ? body.sessionId
+      : null;
   const method = body.settlementMethod === "bill_to_phone" ||
       body.settlementMethod === "venue_collected"
     ? body.settlementMethod
@@ -845,14 +982,19 @@ async function handleTabClose(
 
   let pickupCode: string | null = null;
   if (session.qr_spot_id === null) {
-    const { data: code } = await supabase.rpc("pg_venue_order_next_pickup_code", {
-      p_venue_id: String(session.venue_id),
-    });
+    const { data: code } = await supabase.rpc(
+      "pg_venue_order_next_pickup_code",
+      {
+        p_venue_id: String(session.venue_id),
+      },
+    );
     pickupCode = typeof code === "string" ? code : null;
   }
   const buyer = (body.buyer ?? {}) as Record<string, unknown>;
   const buyerName = typeof buyer.name === "string" ? buyer.name.trim() : "";
-  if (pickupCode !== null && buyerName.length < 2) return fail("buyer_name_required");
+  if (pickupCode !== null && buyerName.length < 2) {
+    return fail("buyer_name_required");
+  }
 
   // The settlement order is a PAYMENT INSTRUMENT, not a sale: it carries no
   // lines, and `tab_settlement` marks it so a revenue rollup counts the CHILD
@@ -871,6 +1013,9 @@ async function handleTabClose(
       money_path: "venue_collected",
       currency: String(session.currency),
       subtotal_cents: subtotal,
+      list_subtotal_cents: null,
+      discount_cents: 0,
+      discount_snapshot: null,
       service_charge_bps: 0,
       service_charge_cents: serviceCharge,
       tip_cents: tip,
@@ -903,7 +1048,10 @@ async function handleTabClose(
       idempotencyKey: `venue_tab_settlement:${sessionId}`,
     });
     if (!existing) {
-      console.error("[venue-order-staff] settlement order insert failed", insertError);
+      console.error(
+        "[venue-order-staff] settlement order insert failed",
+        insertError,
+      );
       return fail("internal_error");
     }
     settlementOrderId = String(existing.id);
@@ -928,14 +1076,22 @@ function mapTabRpcError(message: string): Response {
   if (message.includes("not_authorized")) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
-  if (message.includes("staff_tabs_disabled")) return fail("staff_tabs_disabled");
+  if (message.includes("staff_tabs_disabled")) {
+    return fail("staff_tabs_disabled");
+  }
   if (message.includes("tab_not_open")) return fail("tab_not_open");
   // Issue #1792 — a bill already out on the guest's phone is its own answer,
   // not "that order has moved on": the venue has to finish it or let it lapse
   // before taking cash, and the copy has to say which.
-  if (message.includes("tab_bill_already_sent")) return fail("tab_bill_already_sent");
-  if (message.includes("tab_has_mingla_orders")) return fail("transition_not_allowed");
-  if (message.includes("invalid_settlement_method")) return fail("invalid_json");
+  if (message.includes("tab_bill_already_sent")) {
+    return fail("tab_bill_already_sent");
+  }
+  if (message.includes("tab_has_mingla_orders")) {
+    return fail("transition_not_allowed");
+  }
+  if (message.includes("invalid_settlement_method")) {
+    return fail("invalid_json");
+  }
   if (message.includes("session_not_found")) {
     return jsonResponse({ error: "not_found" }, 404);
   }
@@ -966,9 +1122,15 @@ function mapQueueRpcError(message: string): Response {
   if (message.includes("not_authorized")) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
-  if (message.includes("transition_not_allowed")) return fail("transition_not_allowed");
-  if (message.includes("refund_window_closed")) return fail("refund_window_closed");
-  if (message.includes("venue_not_orderable")) return fail("venue_not_orderable");
+  if (message.includes("transition_not_allowed")) {
+    return fail("transition_not_allowed");
+  }
+  if (message.includes("refund_window_closed")) {
+    return fail("refund_window_closed");
+  }
+  if (message.includes("venue_not_orderable")) {
+    return fail("venue_not_orderable");
+  }
   // Issue #1846 C-1 — the two refusals that stop a double refund. Both are
   // states a second manager can genuinely walk into a second later, so they
   // get the honest sentence rather than "Something went wrong": an operator
@@ -977,7 +1139,8 @@ function mapQueueRpcError(message: string): Response {
   if (message.includes("already_refunded")) {
     return jsonResponse({
       error: "already_refunded",
-      message: "This order has already been refunded — the guest has their money.",
+      message:
+        "This order has already been refunded — the guest has their money.",
     }, 409);
   }
   if (message.includes("no_refund_requested")) {
@@ -1022,7 +1185,9 @@ async function handleTransition(
     ? body.orderId
     : null;
   const to = typeof body.to === "string" ? body.to : "";
-  const reason = typeof body.reason === "string" ? body.reason.slice(0, 280) : null;
+  const reason = typeof body.reason === "string"
+    ? body.reason.slice(0, 280)
+    : null;
   if (orderId === null) return jsonResponse({ error: "not_found" }, 404);
   if (!(TRANSITION_TARGETS as readonly string[]).includes(to)) {
     return fail("transition_not_allowed");
@@ -1035,7 +1200,10 @@ async function handleTransition(
     p_reason: reason,
   });
   if (error) return mapQueueRpcError(error.message);
-  return jsonResponse({ kind: "transitioned", ...(data as Record<string, unknown>) });
+  return jsonResponse({
+    kind: "transitioned",
+    ...(data as Record<string, unknown>),
+  });
 }
 
 /**
@@ -1064,7 +1232,10 @@ async function handleRefundDecision(
     p_note: note,
   });
   if (error) return mapQueueRpcError(error.message);
-  return jsonResponse({ kind: "refund_decided", ...(data as Record<string, unknown>) });
+  return jsonResponse({
+    kind: "refund_decided",
+    ...(data as Record<string, unknown>),
+  });
 }
 
 /**
@@ -1076,12 +1247,17 @@ async function handleItemAvailability(
   req: Request,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const menuItemId = typeof body.menuItemId === "string" && UUID_RE.test(body.menuItemId)
-    ? body.menuItemId
+  const menuItemId =
+    typeof body.menuItemId === "string" && UUID_RE.test(body.menuItemId)
+      ? body.menuItemId
+      : null;
+  const isAvailable = typeof body.isAvailable === "boolean"
+    ? body.isAvailable
     : null;
-  const isAvailable = typeof body.isAvailable === "boolean" ? body.isAvailable : null;
   if (menuItemId === null) return jsonResponse({ error: "not_found" }, 404);
-  if (isAvailable === null) return jsonResponse({ error: "invalid_request" }, 400);
+  if (isAvailable === null) {
+    return jsonResponse({ error: "invalid_request" }, 400);
+  }
 
   const asUser = userClient(req);
   const { data, error } = await asUser
@@ -1124,7 +1300,10 @@ async function handlePause(
     p_paused: paused,
   });
   if (error) return mapQueueRpcError(error.message);
-  return jsonResponse({ kind: "pause_set", ...(data as Record<string, unknown>) });
+  return jsonResponse({
+    kind: "pause_set",
+    ...(data as Record<string, unknown>),
+  });
 }
 
 /**
@@ -1151,5 +1330,8 @@ async function handleSetOrderingEnabled(
     p_enabled: enabled,
   });
   if (error) return mapQueueRpcError(error.message);
-  return jsonResponse({ kind: "ordering_enabled_set", ...(data as Record<string, unknown>) });
+  return jsonResponse({
+    kind: "ordering_enabled_set",
+    ...(data as Record<string, unknown>),
+  });
 }

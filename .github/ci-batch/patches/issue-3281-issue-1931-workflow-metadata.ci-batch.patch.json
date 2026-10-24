@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "d254d77692242a491396e9301490e295095ad188b125d6b5057e93d8edbef8eb",
-      "value": "d6214830a591ceeaeea8e0f475fea0462cb8f2087a8d30e5a6fe96f69c255cf9"
+      "value": "098d126cd5190fca27119b4daa03e696cab33a7b1cda428332aafe88b4f8d0d8"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment, and its link cover and dates and orders foreign-key migrations, which alter or reference those private-link tables."
+  "reason": "Issue #3281 extends the private-event replay skip list (Round 2 checkout units/repair, #2947/#3281 booked-start re-emissions, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment, and its link cover and dates and orders foreign-key migrations, which alter or reference those private-link tables. #3872 adds its exact host-operations migration because that migration depends on discount objects omitted by the filtered lane."
 }

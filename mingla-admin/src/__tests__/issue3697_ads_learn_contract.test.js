@@ -5,7 +5,11 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { goalById } from "../lib/adBuilder/goals.js";
+import {
+  goalById,
+  platformsForGoals,
+  purchaseSignalEligible,
+} from "../lib/adBuilder/goals.js";
 import { resolveGoalForPayload } from "../lib/adBuilder/objectiveResolver.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -19,14 +23,14 @@ test("#3697 1.1 Meta traffic defaults to landing-page views, never link clicks",
   });
 });
 
-test("#3697 1.2 Snap uses pixel-backed page views or SWIPES with honest copy", () => {
-  assert.equal(resolveGoalForPayload(["traffic"]).platforms.snapchat.optimization_goal, "SWIPES");
+test("#3697 1.2 Snap traffic always uses pixel-backed page views, never SWIPES", () => {
+  assert.equal(resolveGoalForPayload(["traffic"]).platforms.snapchat.optimization_goal, "PIXEL_PAGE_VIEW");
   assert.equal(
-    resolveGoalForPayload(["traffic"], { snapPixelInstalled: true }).platforms.snapchat.optimization_goal,
+    resolveGoalForPayload(["traffic"], { snapPurchaseEvents28d: 0 }).platforms.snapchat.optimization_goal,
     "PIXEL_PAGE_VIEW",
   );
   assert.match(read("supabase/functions/_shared/snapchat.ts"), /"PIXEL_PAGE_VIEW"/);
-  assert.match(read("mingla-admin/src/components/campaign-builder/StepGoal.jsx"), /Snap pixel not detected/);
+  assert.doesNotMatch(read("mingla-admin/src/lib/adBuilder/goals.js"), /optimization_goal: "SWIPES"/);
 });
 
 test("#3697 1.3 Meta excludes only Audience Network from publisher platforms", () => {
@@ -48,14 +52,32 @@ test("#3697 2.1 Meta Sales carries PURCHASE promoted_object", () => {
   assert.match(source, /promotedObject:[\s\S]*?pixel_id: metaDatasetId[\s\S]*?custom_event_type: "PURCHASE"/);
 });
 
-test("#3697 2.2 Sales goal is Meta-only and pixel-signal disabled", () => {
+test("#3697 2.2 Sales spans all three paid-social platforms with live gates", () => {
   const sales = goalById("conversions");
   assert.equal(sales.label, "Sales (ticket purchases)");
   assert.deepEqual(sales.platforms.meta, {
     objective: "OUTCOME_SALES",
     optimization_goal: "OFFSITE_CONVERSIONS",
   });
+  assert.deepEqual(sales.platforms.snapchat, {
+    objective: "SALES",
+    optimization_goal: "PIXEL_PURCHASE",
+  });
+  assert.deepEqual(sales.platforms.tiktok, {
+    objective: "WEB_CONVERSIONS",
+    optimization_goal: "CONVERT",
+  });
   assert.equal(sales.requiresMetaPixelSignal, true);
+  assert.equal(purchaseSignalEligible(19), false);
+  assert.equal(purchaseSignalEligible(20), true);
+  assert.deepEqual(
+    platformsForGoals(["conversions"], {
+      metaPixelHasSignal: false,
+      snapPurchaseEvents28d: 19,
+      tiktokPurchaseEvents28d: 20,
+    }).platforms,
+    ["tiktok"],
+  );
   assert.match(read("mingla-admin/src/components/campaign-builder/StepGoal.jsx"), /disabled=\{disabled\}/);
 });
 
@@ -86,12 +108,12 @@ test("#3697 3.2 server events send external_id, sc_cookie1 and click id", () => 
 });
 
 test("#3697 3.3 InitiateCheckout browser and server share checkout session id", () => {
-  const web = read("mingla-business/src/analytics/webAnalytics.web.ts");
+  const web = read("mingla-business/src/analytics/adPixelRuntime.web.ts");
   const server = read("supabase/functions/_shared/adConversionFire.ts");
   assert.match(web, /"InitiateCheckout"[\s\S]*?eventID: eventId/);
   assert.match(web, /"START_CHECKOUT"[\s\S]*?client_dedup_id: eventId/);
   assert.match(server, /eventId: checkoutSessionId/);
-  assert.match(server, /"InitiateCheckout" : "START_CHECKOUT"/);
+  assert.match(server, /channel === "snap" \? "START_CHECKOUT" : "InitiateCheckout"/);
 });
 
 test("#3697 3.4 pending-consent ad visitors remain first-party-only", () => {
@@ -109,7 +131,7 @@ test("#3697 4.1 click ids live in localStorage for exactly seven days", () => {
 
 test("#3697 4.2 Snap landing macros are complete", () => {
   const create = read("supabase/functions/admin-ad-create-campaign/index.ts");
-  assert.match(create, /utm_source=snapchat&utm_medium=paid_social&utm_campaign=\{\{campaign\.id\}\}&ad_squad_id=\{\{adSquad\.id\}\}&ad_id=\{\{ad\.id\}\}&mc_id=\{\{campaign\.id\}\}/);
+  assert.match(create, /utm_source=snapchat&utm_medium=paid_social&utm_campaign=\{\{campaign\.id\}\}&ad_squad_id=\{\{adSet\.id\}\}&ad_id=\{\{ad\.id\}\}&mc_id=\{\{campaign\.id\}\}/);
 });
 
 test("#3697 4.3 Meta URL tags include ad-set and ad ids", () => {

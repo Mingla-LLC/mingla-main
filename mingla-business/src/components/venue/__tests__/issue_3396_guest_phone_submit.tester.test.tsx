@@ -13,7 +13,24 @@ jest.mock("../../../hooks/usePublicVenueAvailability", () => ({ usePublicVenueAv
   data: [{ slotStartUtc: "2026-09-20T19:00:00.000Z", slotLocalLabel: "8:00 PM", isFull: false }],
   isLoading: false, isFetching: false, isError: false, refetch: () => undefined,
 }) }));
-jest.mock("../../../services/venueGuestReservationService", () => ({ createGuestVenueReservation: (input: unknown) => mockCreate(input) }));
+jest.mock("../../../services/venueGuestReservationService", () => ({
+  GuestReservationReviewError: class GuestReservationReviewError extends Error {},
+  previewGuestVenueReservation: async () => ({
+    kind: "preview",
+    depositListCents: 0,
+    discountCents: 0,
+    depositNetCents: 0,
+    feesAndTaxCents: 0,
+    totalCents: 0,
+    currency: "NGN",
+    discounts: [],
+    codeOutcome: { status: "none", reason: null, required: null, with: null, replaced: [] },
+    notices: [],
+    quoteDigest: "legacy-test-preview",
+    requiresPayment: false,
+  }),
+  createGuestVenueReservation: (input: unknown) => mockCreate(input),
+}));
 jest.mock("../../../services/venueOrganicCaptureService", () => ({ captureVenueOrganicEvent: () => Promise.resolve(), getVenueOrganicJourneyToken: () => null }));
 jest.mock("../../../../../packages/phone-input/CountryPickerModal", () => ({ CountryPickerModal: () => null, CountryPickerOverlay: () => null }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));

@@ -58,6 +58,52 @@ const I3281_BLOCK = [
 ].join("\n");
 const I3281_NAME = "pg_experience_slot_availability(";
 
+// #3872 R1 — fourth binding amendment. Exactly THREE intended-public display
+// readers and their three justification comments, inserted directly after the
+// legacy tier all-in reader. The pinned #2986 count header remains untouched.
+const I3872_ANCHOR = "pg_public_event_tier_allin(p_event_id uuid)";
+const I3872_SIGNATURES = [
+  "pg_public_event_tier_pricing(p_event_id uuid)",
+  "pg_public_event_display_prices(p_event_ids uuid[])",
+  "pg_public_menu_item_sales(p_venue_id uuid)",
+];
+const I3872_BLOCK = [
+  "# #3872 R1: public event tiers with server-owned list, all-in and current sale prices; only already-public tier facts, bounded to one event.",
+  I3872_SIGNATURES[0],
+  "# #3872 R1: bounded batch of public event display prices for cards and links; rejects more than 100 ids and returns no authoring or buyer data.",
+  I3872_SIGNATURES[1],
+  "# #3872 R1: current sale overlays for one public venue menu; returns item ids and price facts only, with no order or buyer data.",
+  I3872_SIGNATURES[2],
+].join("\n");
+const I3872_NAME = "pg_public_event_tier_pricing(";
+
+// #3697 — fourth binding amendment. Exactly ONE intended-public reader returns
+// the non-sensitive pixel consent mode for one country and defaults to
+// on_arrival. It exposes neither the region inventory nor any credential.
+const I3697_OLD_HEADER = "# Signature count: 196 (intended-public 27, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
+const I3697_NEW_HEADER = "# Signature count: 197 (intended-public 28, internally-gated 108, predicate/read-helper 58, PostGIS 3).";
+const I3697_ANCHOR = "# === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===";
+const I3697_SIGNATURE = "ad_pixel_public_config(p_country_code text)";
+const I3697_BLOCK = [
+  "# #3697: one non-sensitive country-mode scalar; exposes no country inventory and defaults on_arrival.",
+  I3697_SIGNATURE,
+].join("\n");
+const I3697_NAME = "ad_pixel_public_config(";
+
+// #3682 — fifth binding amendment. The two aggregate-only count readers sit
+// directly after the #3281 public slot reader. The frozen #2986 count header is
+// deliberately unchanged.
+const I3682_ANCHOR = I3281_SIGNATURE;
+const I3682_SIGNATURES = [
+  "get_brand_follower_count(p_brand_id uuid)",
+  "get_brand_follower_counts(p_brand_ids uuid[])",
+];
+const I3682_BLOCK = [
+  "# #3682: aggregate-only brand follower counts for public brand and offering pages; one bigint or (brand_id, follower_count) rows for live brands, never a user id; batch capped at 100 ids.",
+  ...I3682_SIGNATURES,
+].join("\n");
+const I3682_NAMES = ["get_brand_follower_count(", "get_brand_follower_counts("];
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -100,8 +146,70 @@ const expectedAfter3281 = (base) => {
   return base.replace(`${I3281_ANCHOR}\n`, `${I3281_ANCHOR}\n${I3281_BLOCK}\n`);
 };
 
+// #3872 — applied on top of #3281. A settled base must retain the exact block
+// byte-for-byte; partial, moved, or lookalike additions fail closed.
+const expectedAfter3872 = (base) => {
+  if (
+    I3872_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I3872_ANCHOR}\n${I3872_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (base.includes(I3872_NAME) || base.includes("# #3872 R1:")) {
+    throw new Error("base contains a partial or lookalike #3872 R1 reader set");
+  }
+  if (countExactLine(base, I3872_ANCHOR) !== 1) {
+    throw new Error("base #3872 R1 insertion anchor is absent or duplicated");
+  }
+  return base.replace(`${I3872_ANCHOR}\n`, `${I3872_ANCHOR}\n${I3872_BLOCK}\n`);
+};
+
+const expectedAfter3697 = (base) => {
+  if (
+    countExactLine(base, I3697_SIGNATURE) === 1 &&
+    base.includes(`${I3697_ANCHOR}\n${I3697_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (base.includes(I3697_NAME) || base.includes("# #3697:")) {
+    throw new Error("base contains a partial or lookalike #3697 reader");
+  }
+  if (countExactLine(base, I3697_OLD_HEADER) !== 1) {
+    throw new Error("base #3697 count-header anchor is absent or duplicated");
+  }
+  if (countExactLine(base, I3697_ANCHOR) !== 1) {
+    throw new Error("base #3697 insertion anchor is absent or duplicated");
+  }
+  return base
+    .replace(I3697_OLD_HEADER, I3697_NEW_HEADER)
+    .replace(`${I3697_ANCHOR}\n`, `${I3697_ANCHOR}\n${I3697_BLOCK}\n`);
+};
+
+const expectedAfter3682 = (base) => {
+  if (
+    I3682_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I3682_ANCHOR}\n${I3682_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (
+    I3682_NAMES.some((name) => base.includes(name)) ||
+    base.includes("# #3682: aggregate-only brand follower counts")
+  ) {
+    throw new Error("base contains a partial or lookalike #3682 follower-count reader set");
+  }
+  if (countExactLine(base, I3682_ANCHOR) !== 1) {
+    throw new Error("base #3682 insertion anchor is absent or duplicated");
+  }
+  return base.replace(`${I3682_ANCHOR}\n`, `${I3682_ANCHOR}\n${I3682_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter3281(expectedAfter3426(expectedAfter2986(base)));
+  expectedAfter3872(
+    expectedAfter3682(
+      expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
+    ),
+  );
 
 export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   const failures = [];
@@ -113,10 +221,17 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader plus the exact #3281 R3 slot reader",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, and #3872 R1 display readers",
     );
   }
-  for (const signature of [...SIGNATURES, I3426_SIGNATURE, I3281_SIGNATURE]) {
+  for (const signature of [
+    ...SIGNATURES,
+    I3426_SIGNATURE,
+    I3281_SIGNATURE,
+    I3697_SIGNATURE,
+    ...I3682_SIGNATURES,
+    ...I3872_SIGNATURES,
+  ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
   if (countExactLine(workflow, LIVE_GATE_LINE) !== 1) failures.push("the live ORCH-1392 anon-definer gate was removed, duplicated, or bypassed");
@@ -138,9 +253,10 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
 const fixtureBase = () => [
   "# fixture",
   OLD_HEADER,
-  "# === INTENDED-PUBLIC READS ===",
+  I3697_ANCHOR,
   I3426_ANCHOR,
   ANCHOR,
+  I3872_ANCHOR,
   I3281_ANCHOR,
   "place_discovery_range_for_viewer(p_place_pool_id uuid)",
   "",
@@ -194,16 +310,43 @@ const runSelfTest = () => {
     ["#3281 lookalike overload", `${head}pg_experience_slot_availability(p_event_id uuid)\n`, workflow, false],
     ["#3281 moved away from its anchor", head.replace(`${I3281_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3281_BLOCK}\n`), workflow, false],
     ["#3281 plus a forged neighbour", head.replace(`${I3281_BLOCK}\n`, `${I3281_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    // #3872 R1 — the fourth amendment is exactly three readers and three comments.
+    ["#3872 reader set missing", head.replace(`${I3872_BLOCK}\n`, ""), workflow, false],
+    ["#3872 comment missing", head.replace(`${I3872_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#3872 comment substituted", head.replace("# #3872 R1: public event tiers", "# #3872 R1: approved somehow"), workflow, false],
+    ["#3872 signature changed", head.replace(I3872_SIGNATURES[0], "pg_public_event_tier_pricing(p_event uuid)"), workflow, false],
+    ["#3872 lookalike overload", `${head}pg_public_event_tier_pricing(p_event_id uuid, p_debug boolean)\n`, workflow, false],
+    ["#3872 moved away from its anchor", head.replace(`${I3872_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3872_BLOCK}\n`), workflow, false],
+    ["#3872 plus a forged neighbour", head.replace(`${I3872_BLOCK}\n`, `${I3872_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    // #3697 — the fourth amendment is exactly one reader, one comment and the
+    // matching count correction.
+    ["#3697 reader missing", head.replace(`${I3697_BLOCK}\n`, ""), workflow, false],
+    ["#3697 comment missing", head.replace(`${I3697_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#3697 comment substituted", head.replace("# #3697: one non-sensitive country-mode scalar", "# #3697: approved somehow"), workflow, false],
+    ["#3697 signature changed", head.replace(I3697_SIGNATURE, "ad_pixel_public_config(country_code text)"), workflow, false],
+    ["#3697 lookalike overload", `${head}ad_pixel_public_config(p_country_code text, p_debug boolean)\n`, workflow, false],
+    ["#3697 moved away from its anchor", head.replace(`${I3697_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3697_BLOCK}\n`), workflow, false],
+    ["#3697 plus a forged neighbour", head.replace(`${I3697_BLOCK}\n`, `${I3697_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#3697 count not corrected", head.replace(I3697_NEW_HEADER, I3697_OLD_HEADER), workflow, false],
+    // #3682 — the fifth amendment is exactly two aggregate-only readers and
+    // their one product-decision comment.
+    ["#3682 block missing", head.replace(`${I3682_BLOCK}\n`, ""), workflow, false],
+    ["#3682 comment missing", head.replace(`${I3682_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#3682 comment substituted", head.replace("# #3682: aggregate-only brand follower counts", "# #3682: approved somehow"), workflow, false],
+    ["#3682 signature changed", head.replace(I3682_SIGNATURES[0], "get_brand_follower_count(brand_id uuid)"), workflow, false],
+    ["#3682 lookalike overload", `${head}get_brand_follower_count(p_brand_id uuid, p_debug boolean)\n`, workflow, false],
+    ["#3682 moved away from its anchor", head.replace(`${I3682_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3682_BLOCK}\n`), workflow, false],
+    ["#3682 plus a forged neighbour", head.replace(`${I3682_BLOCK}\n`, `${I3682_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
   ];
   for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all three amendments, the ONLY accepted head is that
+  // Once a base carries all six amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
-    throw new Error("self-test settled base with all three amendments failed");
+    throw new Error("self-test settled base with all six amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n`, workflow }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -220,7 +363,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + frozen #2117 live gate PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + frozen #2117 live gate PASS\n",
   );
 };
 

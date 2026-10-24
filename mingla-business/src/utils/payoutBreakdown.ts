@@ -66,6 +66,8 @@ export interface BrandPayoutReleaseDTO {
   releasableAt: string;
   releasedAt: string | null;
   grossCents: number;
+  /** Informational only: gross already reflects these Host-funded discounts. */
+  discountCents?: number;
   refundedCents: number;
   disputedCents: number;
   minglaFeeCents: number;
@@ -268,6 +270,16 @@ export const buildPayoutWaterfall = (
   legs: readonly PayoutTransferLegDTO[] = [],
 ): PayoutWaterfall => {
   const lines: WaterfallLine[] = [];
+
+  if ((release.discountCents ?? 0) > 0) {
+    lines.push({
+      key: "discounts_given",
+      label: "Discounts you gave",
+      valueCents: release.discountCents ?? 0,
+      sign: "−",
+      tone: "secondary",
+    });
+  }
 
   // Gross — always rendered.
   lines.push({

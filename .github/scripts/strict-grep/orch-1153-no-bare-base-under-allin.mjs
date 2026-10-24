@@ -5,7 +5,7 @@
  *
  * The public experience page (/exp/[brandSlug]/[experienceSlug].tsx) and the
  * ExperienceCheckoutFlow recap MUST display the SERVER all-in (priceAllInGbp via
- * the fetchTierAllInCents → pg_public_event_tier_allin chain), never the bare
+ * the fetchTierAllInCents → pg_public_event_tier_pricing chain), never the bare
  * base ticket.priceCents, under the "All-in, taxes included" caption. ORCH-1147
  * fixed the cart; ORCH-1153 fixes the page one surface upstream (the WYSIWYP
  * breach — the buyer saw the price jump up at the cart).

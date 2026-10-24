@@ -115,7 +115,7 @@ import { Toast } from "../ui/Toast";
 
 import { ChangeSummaryModal } from "./ChangeSummaryModal";
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
-import { CreatorStep2When } from "./CreatorStep2When";
+import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
@@ -1789,7 +1789,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             />
           );
         case "settings":
-          return <CreatorStep6SettingsLazy {...stepBodyProps} />;
+          return (
+            <CreatorStep6SettingsLazy
+              {...stepBodyProps}
+              publishedEventId={liveEvent.serverEventId ?? undefined}
+            />
+          );
         case "rsvp-setup":
           // ORCH-1172 — mount the SAME Step-5 host-control body the create RSVP
           // wizard uses. Cross-field logic (capacity→waitlist, private→discover-

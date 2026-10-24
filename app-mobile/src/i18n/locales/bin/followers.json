@@ -1,0 +1,17 @@
+{
+  "first": "Do ọkpá nọ gha rriẹ",
+  "count_zero": "evbẹ́ ne rriẹ {{formatted}}",
+  "count_one": "ọkpá ne rriẹ {{formatted}}",
+  "count_two": "evbẹ́ ne rriẹ {{formatted}}",
+  "count_few": "evbẹ́ ne rriẹ {{formatted}}",
+  "count_many": "evbẹ́ ne rriẹ {{formatted}}",
+  "count_other": "evbẹ́ ne rriẹ {{formatted}}",
+  "a11y_none": "Evbẹ́ ne rriẹ ghọ́lọ́dia",
+  "a11y_exact_zero": "evbẹ́ ne rriẹ {{count}}",
+  "a11y_exact_one": "ọkpá ne rriẹ {{count}}",
+  "a11y_exact_two": "evbẹ́ ne rriẹ {{count}}",
+  "a11y_exact_few": "evbẹ́ ne rriẹ {{count}}",
+  "a11y_exact_many": "evbẹ́ ne rriẹ {{count}}",
+  "a11y_exact_other": "evbẹ́ ne rriẹ {{count}}",
+  "a11y_approx": "ọ́ sẹ̀ {{formatted}} evbẹ́ ne rriẹ"
+}

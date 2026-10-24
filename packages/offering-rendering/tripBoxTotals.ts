@@ -24,6 +24,8 @@ export interface TripTierLike {
   priceCents: number;
   /** Server all-in (pg_public_event_tier_allin). null/undefined → fall back to priceCents. */
   priceAllInCents?: number | null;
+  /** Current server-owned sale all-in. When present it is the displayed unit. */
+  saleAllInCents?: number | null;
   isFree: boolean;
   isUnlimited: boolean;
   /** Remaining capacity; null when unlimited/unknown. */
@@ -123,7 +125,9 @@ export const clampTripTierQuantity = (
 export const tripTierUnitAllInCents = (tier: TripTierLike): number => {
   if (tier.isFree) return 0;
   const price =
-    typeof tier.priceAllInCents === "number" && Number.isFinite(tier.priceAllInCents)
+    typeof tier.saleAllInCents === "number" && Number.isFinite(tier.saleAllInCents)
+      ? tier.saleAllInCents
+      : typeof tier.priceAllInCents === "number" && Number.isFinite(tier.priceAllInCents)
       ? tier.priceAllInCents
       : tier.priceCents;
   return typeof price === "number" && Number.isFinite(price) ? price : 0;

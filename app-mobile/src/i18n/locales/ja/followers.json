@@ -1,0 +1,17 @@
+{
+  "first": "最初のフォロワーになりましょう",
+  "count_zero": "フォロワー{{formatted}}人",
+  "count_one": "フォロワー{{formatted}}人",
+  "count_two": "フォロワー{{formatted}}人",
+  "count_few": "フォロワー{{formatted}}人",
+  "count_many": "フォロワー{{formatted}}人",
+  "count_other": "フォロワー{{formatted}}人",
+  "a11y_none": "フォロワーはまだいません",
+  "a11y_exact_zero": "フォロワー{{count}}人",
+  "a11y_exact_one": "フォロワー{{count}}人",
+  "a11y_exact_two": "フォロワー{{count}}人",
+  "a11y_exact_few": "フォロワー{{count}}人",
+  "a11y_exact_many": "フォロワー{{count}}人",
+  "a11y_exact_other": "フォロワー{{count}}人",
+  "a11y_approx": "約{{formatted}}人のフォロワー"
+}

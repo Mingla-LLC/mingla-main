@@ -23,7 +23,10 @@ jest.mock("../../../../../app-mobile/src/services/supabase", () => ({
 jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: (...args: any[]) => mockInvoke(...args) } },
 }));
-jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }), { virtual: true });
+jest.mock("@tanstack/react-query", () => ({
+  ...jest.requireActual<Record<string, unknown>>("@tanstack/react-query"),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidate }),
+}), { virtual: true });
 jest.mock("@mingla/payments-native", () => ({ useStripePaymentSheet: () => ({ initPaymentSheet: mockInit, presentPaymentSheet: mockPresent, isPaymentSheetSupported: true }) }), { virtual: true });
 jest.mock("@stripe/stripe-react-native", () => ({ initStripe: jest.fn() }), { virtual: true });
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: (...args: any[]) => mockOpen(...args) }), { virtual: true });
@@ -62,19 +65,41 @@ const Renderer = require("react-test-renderer");
 const text = (tree: any) => tree.root.findAll((n: any) => n.type === "Text").map((n: any) => n.children.filter((c: any) => typeof c === "string").join("")).join("\n");
 const one = (tree: any, label: string) => tree.root.findAll((n: any) => typeof n.type === "string" && n.props.accessibilityLabel === label)[0];
 const press = async (node: any) => { await Renderer.act(async () => { await node.props.onPress(); }); };
+const preview = {
+  data: {
+    kind: "preview",
+    depositListCents: 0,
+    discountCents: 0,
+    depositNetCents: 0,
+    feesAndTaxCents: 0,
+    totalCents: 0,
+    currency: "USD",
+    discounts: [],
+    codeOutcome: { status: "none", reason: null, required: null, with: null, replaced: [] },
+    notices: [],
+    quoteDigest: "test-preview",
+    requiresPayment: false,
+  },
+  error: null,
+};
+const refusal = { data: null, error: {
+  message: "Edge Function returned a non-2xx status code",
+  context: { status: 409, text: async () => JSON.stringify({ error: "deposit_amount_unconfigured" }) },
+} };
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockInvoke.mockResolvedValue({ data: null, error: {
-    message: "Edge Function returned a non-2xx status code",
-    context: { status: 409, text: async () => JSON.stringify({ error: "deposit_amount_unconfigured" }) },
-  } });
+  mockInvoke.mockImplementation(async (_name: string, options: { body: Record<string, unknown> }) =>
+    options.body.mode === "preview" ? preview : refusal,
+  );
 });
 
 async function nativeReady() {
   let tree: any;
+  const { QueryClient, QueryClientProvider } = require("@tanstack/react-query");
+  const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
   await Renderer.act(async () => {
-    tree = Renderer.create(<VenueReserveSheet visible onClose={mockClose} venueId="venue-3387" brandId="brand-3387" venueName="Test venue" currency="USD" onReserved={mockReserved} onReservationFailed={mockFailure} />);
+    tree = Renderer.create(<QueryClientProvider client={queryClient}><VenueReserveSheet visible onClose={mockClose} venueId="venue-3387" brandId="brand-3387" venueName="Test venue" currency="USD" onReserved={mockReserved} onReservationFailed={mockFailure} /></QueryClientProvider>);
   });
   await press(one(tree, "See times"));
   await Renderer.act(async () => tree.root.findByType("SlotPicker").props.onSelect(mockSlot));
@@ -86,7 +111,7 @@ test("Explorer: actual form→hook→service must show useful deposit advice, no
   try {
     await press(one(tree, "Confirm reservation"));
     expect(mockInvoke).toHaveBeenCalledWith("venue-reservation-create", expect.objectContaining({ body: expect.objectContaining({ surface: "native", venueId: "venue-3387", partySize: 2 }) }));
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke.mock.calls.filter((call: any[]) => call[1].body.mode !== "preview")).toHaveLength(1);
     expect(mockInit).not.toHaveBeenCalled();
     expect(mockPresent).not.toHaveBeenCalled();
     expect(mockOpen).not.toHaveBeenCalled();
@@ -98,7 +123,11 @@ test("Explorer: actual form→hook→service must show useful deposit advice, no
 });
 
 test("Explorer positive control: the same real chain handles a free success", async () => {
-  mockInvoke.mockResolvedValue({ data: { kind: "free_completed", reservationId: "reservation-3387" }, error: null });
+  mockInvoke.mockImplementation(async (_name: string, options: { body: Record<string, unknown> }) =>
+    options.body.mode === "preview"
+      ? preview
+      : { data: { kind: "free_completed", reservationId: "reservation-3387" }, error: null },
+  );
   const tree = await nativeReady();
   try {
     await press(one(tree, "Confirm reservation"));
@@ -124,7 +153,7 @@ test("Buyer web: same refusal through actual form and service already shows usef
     const submit = tree.root.findAll((n: any) => n.type === "Button" && n.props.label === "Confirm reservation")[0];
     expect(submit).toBeDefined();
     await press(submit);
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke.mock.calls.filter((call: any[]) => call[1].body.mode !== "preview")).toHaveLength(1);
     expect(mockInvoke).toHaveBeenCalledWith("venue-reservation-create", expect.objectContaining({ body: expect.objectContaining({ surface: "web", venueId: "venue-3387", partySize: 2 }) }));
     expect(text(tree)).toContain(DEPOSIT_UNCONFIGURED_COPY);
     expect(text(tree)).not.toContain("deposit_amount_unconfigured");

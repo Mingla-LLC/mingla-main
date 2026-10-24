@@ -88,7 +88,7 @@ import {
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
-import { CreatorStep2When } from "../event/CreatorStep2When";
+import { CreatorStep2When } from "../event/LazyCreatorStep2When";
 import { ExperienceCoverStep } from "./ExperienceCoverStep";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";

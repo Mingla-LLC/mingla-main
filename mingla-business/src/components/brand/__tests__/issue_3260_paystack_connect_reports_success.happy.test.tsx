@@ -46,7 +46,7 @@ const PRE_CONNECT_BRAND: Brand = {
   coverHue: 25,
   accountId: "account-3260",
   role: "owner",
-  stats: { events: 0, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+  stats: { events: 0, rev: 0, rev7d: 0, attendees: 0 },
   currentLiveEvent: null,
   countryCode: "NG",
   paymentProvider: "paystack",

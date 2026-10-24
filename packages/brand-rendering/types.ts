@@ -1,5 +1,6 @@
 import type {
   EventTerminalSource,
+  FollowerCountLabels,
   ResolvedTheme,
   ThemeInput,
 } from "@mingla/offering-rendering";
@@ -76,6 +77,8 @@ export interface PublicBrandEvent {
   // there is no priced tier → the "From" mini-card label falls back to the
   // min-of-tickets base price. Optional for back-compat with older payloads.
   displayPriceCents?: number | null;
+  /** #3872 — lowest current sale all-in price, resolved by the public RPC. */
+  displaySalePriceCents?: number | null;
   displayCurrency?: string | null;
   tickets: PublicBrandTicket[];
 }
@@ -185,6 +188,10 @@ export interface PublicMenuItem {
   name: string;
   description: string | null;
   priceCents: number | null;
+  /** #3872 — current automatic sale, resolved server-side in venue time. */
+  salePriceCents?: number | null;
+  saleEndsAt?: string | null;
+  saleName?: string | null;
   currency: string;
   // Issue #1789 (SPEC #1788 P-14) appended these to `public_menus_view`; #1793
   // is the first surface to read them. OPTIONAL on purpose: a client running
@@ -251,6 +258,8 @@ export interface PublicBrandPageProps {
   // #3682 — why-caption under Follow (e.g. "Following since Oct") and count.
   followCaption?: string | null;
   followerCount?: number | null;
+  followerCountLoading?: boolean;
+  followerCountLabels?: FollowerCountLabels;
   // Issue #1365 — verified venues for the Reservations tab.
   // Absent / [] ⇒ section omitted (real-data-only).
   venues?: PublicBrandVenueSummary[];

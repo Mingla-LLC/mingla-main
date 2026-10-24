@@ -123,16 +123,22 @@ describe("#2230 ticket sheet placement, pricing, validation, and accessibility",
     expect(SHEET).not.toContain(">Your days<");
   });
 
-  it("multiplies displayed/payload cents by selected days without changing line quantities", () => {
-    expect(SHEET).toContain("const pricing = (():");
-    expect(SHEET).not.toMatch(
-      /const pricing = useMemo<[\s\S]{0,1800}selectedEventDateIds/,
+  it("quotes the selected days on the server and submits the accepted quote without changing line quantities", () => {
+    expect(SHEET).toMatch(
+      /const quoteEventDateIds = useMemo\([\s\S]{0,500}\.filter\(\(day\)[\s\S]{0,220}selectedEventDateIds\.includes\(day\.id\)[\s\S]{0,180}\.map\(\(day\) => day\.id\)/,
     );
-    expect(SHEET).toContain('multiDaySelection?.pricingMode === "per_day"');
-    expect(SHEET).toContain("allInCents *= dayMultiplier");
-    expect(SHEET).toContain("baseCents *= dayMultiplier");
-    expect(SHEET).toMatch(/lines:\s*lines[\s\S]{0,180}quantity: l\.quantity/);
-    expect(SHEET).toContain("totalCents: pricing.allInCents");
+    expect(SHEET).toMatch(
+      /const quoteInput = useMemo\([\s\S]{0,500}lines:\s*quoteLines,[\s\S]{0,300}eventDateIds:\s*quoteEventDateIds/,
+    );
+    expect(SHEET).toMatch(
+      /const checkoutPayloadFor[\s\S]{0,900}lines:\s*quoteLines,[\s\S]{0,300}totalCents:\s*acceptedQuote\.buyerTotalCents/,
+    );
+    expect(SHEET).toContain("quoteDigest: acceptedQuote.quoteDigest");
+    expect(SHEET).toContain("quoteListDigest: acceptedQuote.quoteListDigest");
+    expect(SHEET).toMatch(
+      /quoteEventDateIds\.length > 0[\s\S]{0,100}eventDateIds:\s*quoteEventDateIds/,
+    );
+    expect(SHEET).not.toContain("allInCents *= dayMultiplier");
   });
 
   it("keeps the missing-day CTA actionable for validation while checkout remains blocked", () => {

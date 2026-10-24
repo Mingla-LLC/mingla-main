@@ -42,7 +42,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
-import { FollowButton as SharedFollowButton } from "./FollowButton";
+import { SharedFollowButton } from "./SharedFollowButton";
 import {
   AtSign,
   CalendarCheck,
@@ -57,6 +57,7 @@ import {
 } from "lucide-react-native";
 import {
   EventCoverMedia,
+  FollowerCountLine,
   MINGLA_DEFAULT_THEME,
   createThemePalette,
   offeringSurfaceStyles,
@@ -64,8 +65,10 @@ import {
   resolveEventAcquisitionState,
   resolveTheme,
   type ResolvedTheme,
+  type FollowerCountLabels,
   type ThemePalette,
 } from "@mingla/offering-rendering";
+
 import {
   ParallaxCoverShell,
   useResponsiveLayout,
@@ -310,6 +313,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   isFollowing = false,
   followCaption = null,
   followerCount = null,
+  followerCountLoading = false,
+  followerCountLabels,
   followPending = false,
   followState = undefined,
   venues = [],
@@ -796,6 +801,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             followState={followState}
             followCaption={followCaption}
             followerCount={followerCount}
+            followerCountLoading={followerCountLoading}
+            followerCountLabels={followerCountLabels}
             onToggleFollow={callbacks.onToggleFollow}
             onFollowingMenu={callbacks.onFollowingMenu}
           />
@@ -841,7 +848,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           followPending={followPending}
           followState={followState}
           followCaption={followCaption}
-          followerCount={followerCount}
+          followerCount={followerCount} followerCountLoading={followerCountLoading} followerCountLabels={followerCountLabels}
           onToggleFollow={callbacks.onToggleFollow}
           onFollowingMenu={callbacks.onFollowingMenu}
           desktop
@@ -860,13 +867,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             Share
           </Text>
         </Pressable>
-        {showFeaturedTeaser ? (
-          <View style={styles.deskNextWrap}>
-            <Text
-              style={[styles.deskNextLabel, { color: palette.tertiaryText }]}
-            >
-              Next up
-            </Text>
+            {showFeaturedTeaser ? (
+              <View style={styles.deskNextWrap}>
+                <Text style={[styles.deskNextLabel, { color: palette.tertiaryText }]}>Next up</Text>
             <NextOfferingTeaser
               item={upcoming[0]}
               theme={resolvedTheme}
@@ -1075,6 +1078,8 @@ type BrandFollowControlProps = {
   followState?: import("./followTokens").FollowVisualState;
   followCaption?: string | null;
   followerCount?: number | null;
+  followerCountLoading?: boolean;
+  followerCountLabels?: FollowerCountLabels;
   onToggleFollow?: () => void;
   onFollowingMenu?: () => void;
   desktop?: boolean;
@@ -1087,6 +1092,8 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
   followState,
   followCaption,
   followerCount,
+  followerCountLoading = false,
+  followerCountLabels,
   onToggleFollow,
   onFollowingMenu,
   desktop,
@@ -1094,24 +1101,15 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
   // orch-strict-grep / issue 679 gate — keep the exact predicate the gates pin.
   if (onToggleFollow === undefined) return null;
   const active = isFollowing === true && followState !== "pending";
-  const countLine =
-    typeof followerCount === "number"
-      ? followerCount === 0
-        ? "Be the first to follow"
-        : followerCount === 1
-          ? "1 follower"
-          : followerCount >= 1000
-            ? `${(followerCount / 1000).toFixed(followerCount >= 10000 ? 0 : 1).replace(/\.0$/, "")}k followers`
-            : `${followerCount} followers`
-      : null;
   const caption =
     followCaption !== undefined && followCaption !== null && followCaption.length > 0
       ? followCaption
       : null;
-  const why =
-    caption !== null && countLine !== null
-      ? `${caption} · ${countLine}`
-      : caption ?? countLine;
+  const countAvailable =
+    typeof followerCount === "number" &&
+    Number.isFinite(followerCount) &&
+    Number.isInteger(followerCount) &&
+    followerCount >= 0;
   return (
     <View style={desktop ? styles.followWrapDesk : styles.followWrapPhone}>
       <SharedFollowButton
@@ -1130,13 +1128,26 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
         }}
         style={desktop ? styles.followBtnDesk : styles.followBtnPhone}
       />
-      {why !== null ? (
+      {caption !== null && (followerCountLoading || !countAvailable) ? (
         <Text
           style={[styles.followCaption, { color: palette.secondaryText }]}
           numberOfLines={2}
         >
-          {why}
+          {caption}
         </Text>
+      ) : null}
+      {followerCountLoading || countAvailable ? (
+        <View style={[styles.followCountLine, desktop && styles.followCountLineDesk]}>
+          <FollowerCountLine
+            count={followerCount}
+            loading={followerCountLoading}
+            labels={followerCountLabels}
+            palette={palette}
+            prefix={followerCountLoading ? undefined : (caption ?? undefined)}
+            testID="brand-follower-count"
+            variant="caption"
+          />
+        </View>
       ) : null}
     </View>
   );
@@ -1320,7 +1331,7 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
   onFocusEvent,
 }: EventMiniCardProps) => {
   const isRsvp = event.eventType === "rsvp";
-  const price = isRsvp
+  const listPrice = isRsvp
     ? null
     : minPriceLabel(
         event.tickets,
@@ -1328,6 +1339,17 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
         event.displayPriceCents,
         event.displayCurrency,
       );
+  const salePrice =
+    !isRsvp &&
+    typeof event.displaySalePriceCents === "number" &&
+    event.displaySalePriceCents > 0 &&
+    event.displaySalePriceCents < (event.displayPriceCents ?? Number.MAX_SAFE_INTEGER)
+      ? `From ${formatCurrencyRound(
+          event.displaySalePriceCents / 100,
+          event.displayCurrency ?? event.currency ?? "USD",
+        )}`
+      : null;
+  const price = salePrice ?? listPrice;
   const action = isRsvp ? "View RSVP" : "View tickets";
   const TypeIcon = isRsvp ? CalendarCheck : Ticket;
   return (
@@ -1386,9 +1408,19 @@ const EventMiniCard: React.FC<EventMiniCardProps> = ({
           </Text>
         ) : null}
         {price !== null ? (
-          <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
-            {price}
-          </Text>
+          <View style={styles.oCardPriceRow}>
+            <Text style={[styles.oCardPrice, { color: palette.primaryText }]}>
+              {price}
+            </Text>
+            {salePrice !== null && listPrice !== null ? (
+              <Text
+                style={[styles.oCardListPrice, { color: palette.tertiaryText }]}
+                accessibilityLabel={`Regular price ${listPrice}`}
+              >
+                {listPrice}
+              </Text>
+            ) : null}
+          </View>
         ) : null}
         <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
           <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
@@ -2636,6 +2668,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 4,
   },
+  oCardPriceRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  oCardListPrice: {
+    fontSize: 13,
+    textDecorationLine: "line-through",
+  },
   buyPill: {
     alignItems: "center",
     justifyContent: "center",
@@ -2838,6 +2880,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "500",
+  },
+  followCountLine: {
+    marginTop: 8,
+  },
+  followCountLineDesk: {
+    alignItems: "center",
   },
   deskShareLabel: {
     fontSize: 14,

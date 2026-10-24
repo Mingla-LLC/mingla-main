@@ -72,6 +72,10 @@ import { deriveCardStatus } from "../../../app/(tabs)/hub/eventCardStatus";
 import { useAuth } from "../../context/AuthContext";
 import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { isFeatureEnabled } from "../../config/featureFlags";
+import {
+  canShowDiscountsOperation,
+  DISCOUNTS_OPERATION_COPY,
+} from "../discounts/discountOperationContract";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -80,6 +84,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
+import { FollowersKpiTile } from "./FollowersKpiTile";
 import { OfferingListCard } from "../offering/OfferingListCard";
 import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
@@ -157,6 +162,8 @@ export interface BrandProfileViewProps {
    * state. Parent wires this to the brand query's `refetch()`.
    */
   onRetry?: () => void;
+  /** Opens the active brand's People workspace when this profile is active. */
+  onOpenPeople?: () => void;
   /**
    * Live Stripe status wins over cached brand.stripeStatus when provided.
    * This prevents the profile banner/operations row from showing stale
@@ -195,6 +202,8 @@ export interface BrandProfileViewProps {
   onPayments: (brandId: string) => void;
   /** ORCH-1006 — opens the brand-level all-in pricing defaults screen. */
   onPricingDefaults: (brandId: string) => void;
+  /** Issue #3872 — opens the pilot-gated Discounts workspace. */
+  onDiscounts?: (brandId: string) => void;
   /**
    * Called when user taps the "Finance reports" Operations row.
    * Receives the brand id. NEW in J-A12 — final navigation prop in
@@ -268,6 +277,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   isResolving = false,
   isError = false,
   onRetry,
+  onOpenPeople,
   effectiveStripeStatus,
   onBack,
   onEdit,
@@ -275,6 +285,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onStripe,
   onPayments,
   onPricingDefaults,
+  onDiscounts,
   onReports,
   onAuditLog,
   onWebsite,
@@ -424,6 +435,20 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // before this hook (preserves ORCH-0710 hook ordering).
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canViewAuditLog = canPerformAction(currentRank, "VIEW_AUDIT_LOG");
+  const [discountsEnabled, setDiscountsEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (brand === null || currentRank < 20 || onDiscounts === undefined) {
+      setDiscountsEnabled(false);
+      return () => { active = false; };
+    }
+    setDiscountsEnabled(false);
+    void import("../../services/discountService")
+      .then(({ fetchDiscountAccess }) => fetchDiscountAccess(brand.id))
+      .then((enabled) => { if (active) setDiscountsEnabled(enabled); })
+      .catch(() => { if (active) setDiscountsEnabled(false); });
+    return () => { active = false; };
+  }, [brand,currentRank,onDiscounts]);
   const canCheckWebsiteAvailability = isFeatureEnabled("sites") &&
     canPerformAction(currentRank, "WEBSITE_WORKSPACE");
   const [websiteContext, setWebsiteContext] = useState<string | null>(null);
@@ -512,6 +537,14 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           if (brand !== null) onPricingDefaults(brand.id);
         },
       },
+      ...(canShowDiscountsOperation(currentRank, discountsEnabled, onDiscounts) ? [{
+        icon: "tag" as const,
+        label: DISCOUNTS_OPERATION_COPY.label,
+        sub: DISCOUNTS_OPERATION_COPY.sub,
+        onPress: () => {
+          if (brand !== null) onDiscounts?.(brand.id);
+        },
+      }] : []),
       {
         icon: "users",
         label: "Team & permissions",
@@ -572,6 +605,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     onAds,
     onPayments,
     onPricingDefaults,
+    onDiscounts,
+    discountsEnabled,
     onReports,
     onAuditLog,
     canViewAuditLog,
@@ -907,6 +942,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
 
         {/* SECTION B — Stats Strip */}
         <View style={styles.statsRow}>
+          <View style={styles.statCell}>
+            <FollowersKpiTile
+              brandId={brand.id}
+              onOpenPeople={onOpenPeople}
+            />
+          </View>
           <KpiTile label="Events" value={brand.stats.events} sub="all time" style={styles.statCell} />
           <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
           <KpiTile
@@ -1336,10 +1377,12 @@ const styles = StyleSheet.create({
   // Stats Strip ----------------------------------------------------------
   statsRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
   statCell: {
-    flex: 1,
+    flexBasis: "48%",
+    flexGrow: 1,
   },
 
   // Banner ---------------------------------------------------------------

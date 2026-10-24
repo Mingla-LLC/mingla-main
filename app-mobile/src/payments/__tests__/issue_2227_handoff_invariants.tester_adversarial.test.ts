@@ -221,6 +221,15 @@ describe("#2227 adversarial — every live server token at the buyer boundary", 
       for (const status of [400, 401, 403, 409, 422, 426, 500]) {
         mockInvoke.mockResolvedValue(httpError(status, { error: token }));
         const result = await run(inputFor(`${nextEvent()}-${token}`));
+        if (token === "checkout_review_required" && status === 409) {
+          if (result.outcome !== "review") {
+            failures.push(`${token}@${status} outcome=${result.outcome}`);
+          }
+          if (JSON.stringify(result).includes(token)) {
+            failures.push(`${token}@${status} LEAKED`);
+          }
+          continue;
+        }
         if (result.outcome !== "failed") {
           failures.push(`${token}@${status} outcome=${result.outcome}`);
           continue;
