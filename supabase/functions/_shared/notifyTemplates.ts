@@ -121,10 +121,12 @@ function fmtDate(
   const d = new Date(iso);
   if (isNaN(d.getTime())) return { date: "", time: "" };
   const date = d.toLocaleDateString("en-US", {
+    timeZone: "UTC",
     month: "short",
     day: "numeric",
   });
   const time = d.toLocaleTimeString("en-US", {
+    timeZone: "UTC",
     hour: "numeric",
     minute: "2-digit",
   });
