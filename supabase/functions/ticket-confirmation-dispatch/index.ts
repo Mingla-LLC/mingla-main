@@ -40,7 +40,11 @@ import {
 } from "../_shared/email/index.ts";
 import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 // issue #2347 — the ONE chosen-day resolver, shared with ticket-pdf-fetch.
-import { resolveChosenOccurrence } from "../_shared/chosenOccurrence.ts";
+import {
+  resolveChosenOccurrence,
+  ticketDaysForOrder,
+} from "../_shared/chosenOccurrence.ts";
+import { formatChosenOccurrenceList } from "../_shared/email/dateLine.ts";
 // issue #2347 — ONE storage-path authority, shared with ticket-pdf-fetch, so
 // the two writers can never disagree about where an order's PDF lives.
 import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
@@ -58,7 +62,10 @@ import {
 import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
-import { buildCalendarLinks } from "../_shared/email/calendar.ts";
+import {
+  buildCalendarLinks,
+  buildMultiDateCalendarLinks,
+} from "../_shared/email/calendar.ts";
 // ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
 import { renderInstallmentDunningEmail } from "../_shared/email/installmentDunningEmail.ts";
@@ -1221,6 +1228,15 @@ export const handler = async (req: Request): Promise<Response> => {
     (order as unknown as { booked_start_at?: string | null }).booked_start_at ??
       null,
   );
+  // #3281 PR6 — list each admitted day (with override title/place) when 2+.
+  const chosenDays = await ticketDaysForOrder(
+    supabase,
+    orderId,
+    "[ticket-confirmation-dispatch]",
+  );
+  const chosenDateLines = chosenDays !== null && chosenDays.length >= 2
+    ? formatChosenOccurrenceList(chosenDays)
+    : [];
 
   const contextBase = buildRenderContext({
     order,
@@ -1248,6 +1264,15 @@ export const handler = async (req: Request): Promise<Response> => {
       }
       | null,
   });
+  if (chosenDateLines.length > 0) {
+    contextBase.bodyInput = {
+      ...contextBase.bodyInput,
+      event: {
+        ...contextBase.bodyInput.event,
+        dateLines: chosenDateLines,
+      },
+    };
+  }
   const bodyWithFollow = await attachTicketFollowBlock(
     supabase,
     contextBase.bodyInput,
@@ -1481,6 +1506,7 @@ export const handler = async (req: Request): Promise<Response> => {
         timezone: context.bodyInput.event.timezone,
         locationText: context.bodyInput.event.locationText,
         brandName: context.bodyInput.brand.name,
+        dateLines: context.bodyInput.event.dateLines,
       },
       order: { shortId: context.bodyInput.order.shortId },
       tickets: context.ticketsForPdf,
@@ -1641,7 +1667,7 @@ export const handler = async (req: Request): Promise<Response> => {
             filename: renderedPdf.filename,
             content: renderedPdf.contentBase64,
           }];
-          const calendarLinks = buildCalendarLinks({
+          const calendarFallback = {
             title: context.bodyInput.event.title,
             startAtIso: context.bodyInput.event.startAt,
             // ORCH-0877 — pass real master end_at instead of fabricating a
@@ -1651,7 +1677,24 @@ export const handler = async (req: Request): Promise<Response> => {
             isOnline: context.bodyInput.event.isOnline,
             description:
               `${context.bodyInput.event.title} — hosted by ${context.bodyInput.brand.name}. Order #${context.bodyInput.order.shortId}.`,
-          });
+          };
+          // #3281 PR6 — one VEVENT per admitted date when the order covers 2+.
+          const calendarLinks = chosenDays !== null && chosenDays.length >= 2
+            ? buildMultiDateCalendarLinks(
+              chosenDays.map((day) => ({
+                title: (day.override_title ?? "").trim().length > 0
+                  ? String(day.override_title)
+                  : context.bodyInput.event.title,
+                startAtIso: day.start_at,
+                endAtIso: day.end_at,
+                locationText: (day.override_location ?? "").trim().length > 0
+                  ? String(day.override_location)
+                  : context.bodyInput.event.locationText,
+                description: calendarFallback.description,
+              })),
+              calendarFallback,
+            )
+            : buildCalendarLinks(calendarFallback);
           if (calendarLinks) {
             attachments.push({
               filename: calendarLinks.icsFilename,

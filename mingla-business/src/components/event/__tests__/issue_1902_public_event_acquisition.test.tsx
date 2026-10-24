@@ -362,3 +362,9 @@ test("ended ticket history keeps attendee proof read-only without inventory or g
   expect(tree.root.findAllByProps({ testID: "orch-1167-ticket-box" })).toHaveLength(0);
   expect(onSeeWhosGoing).not.toHaveBeenCalled();
 });
+
+test("an existing anonymous RSVP gets a state-neutral recovery message", () => {
+  expect(rsvpErrorMessageForCode("rsvp_already_exists")).toBe(
+    "You've already RSVP'd with this email. Check that inbox for your RSVP.",
+  );
+});
