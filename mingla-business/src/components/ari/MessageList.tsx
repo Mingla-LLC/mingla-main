@@ -19,7 +19,6 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 
 import {
-  ariPalette,
   ariThread,
   glass,
   radius,
@@ -30,6 +29,10 @@ import {
 
 /** #3355 — inverted-list tolerance (px) for "still at newest". */
 const NEWEST_PIN_TOLERANCE_PX = 48;
+/** Matches `ariPalette.userBubble` / accent.warm — avoid requiring ariPalette in
+ *  suites that mock a partial designSystem (issue_1985). */
+const NEW_REPLY_FILL = "#eb7825";
+const NEW_REPLY_ON_FILL = "#0F1115";
 import { AgentMessage } from "../../services/agentChatService";
 import { AriSentAttachments } from "./AriAttachmentCards";
 import { ChatBubble } from "./ChatBubble";
@@ -105,6 +108,11 @@ export interface MessageListProps {
   onEditTurn?: (clientTurnId: string) => void;
   onDiscardTurn?: (clientTurnId: string) => void;
   surface?: "main" | "website";
+  /**
+   * #3355 — when the host switches conversations, pin/unseen state must reset
+   * so a cached history thread does not inherit another chat's scroll mode.
+   */
+  conversationId?: string | null;
 }
 
 /**
@@ -161,6 +169,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onEditTurn,
   onDiscardTurn,
   surface = "main",
+  conversationId = null,
 }) => {
   const listRef = useRef<FlatList<ListItem>>(null);
 
@@ -300,11 +309,18 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   // #3355 settled thread — pin only while the host is at the newest row (or
   // just sent). Reading history must not be stolen by thinking / reveal / card
-  // growth; one "New reply ↓" control scrolls once and restores pin.
+  // growth; one viewport-anchored "New reply ↓" scrolls once and restores pin.
   const pinnedRef = useRef(true);
   const [pinnedToNewest, setPinnedToNewest] = useState(true);
   const [hasUnseenTail, setHasUnseenTail] = useState(false);
   const scrollGenerationRef = useRef(0);
+  const lastTailKeyRef = useRef<string | null>(null);
+  const lastUserMessageIdRef = useRef<string | null>(null);
+
+  const newestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const newestId = newestMessage?.id ?? null;
+  const newestRole = newestMessage?.role ?? null;
+  const pendingId = pendingAction?.pending_action_id ?? null;
 
   const scrollToNewestOnce = useCallback((animated: boolean) => {
     // Coalesce: a single tail update must not enqueue a second animated scroll.
@@ -324,10 +340,31 @@ export const MessageList: React.FC<MessageListProps> = ({
     scrollToNewestOnce(true);
   }, [scrollToNewestOnce]);
 
+  // Conversation switch — open at newest; cancel any queued scroll from the
+  // previous thread.
+  useEffect(() => {
+    pinnedRef.current = true;
+    setPinnedToNewest(true);
+    setHasUnseenTail(false);
+    lastTailKeyRef.current = null;
+    lastUserMessageIdRef.current = null;
+    scrollGenerationRef.current += 1;
+  }, [conversationId]);
+
   useEffect(() => {
     if (items.length === 0) return;
-    const newestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-    const userJustSent = newestMessage?.role === "user";
+    const tailKey = `${newestId ?? "none"}:${pendingId ?? "none"}`;
+    const userJustSent =
+      newestRole === "user" &&
+      typeof newestId === "string" &&
+      newestId !== lastUserMessageIdRef.current;
+    if (newestRole === "user" && typeof newestId === "string") {
+      lastUserMessageIdRef.current = newestId;
+    }
+    const previousTail = lastTailKeyRef.current;
+    const tailChanged = previousTail !== null && previousTail !== tailKey;
+    lastTailKeyRef.current = tailKey;
+
     if (userJustSent) {
       pinnedRef.current = true;
       setPinnedToNewest(true);
@@ -335,6 +372,12 @@ export const MessageList: React.FC<MessageListProps> = ({
       scrollToNewestOnce(true);
       return;
     }
+    // First paint for this conversation (or first messages after reset).
+    if (previousTail === null) {
+      if (pinnedRef.current) scrollToNewestOnce(false);
+      return;
+    }
+    if (!tailChanged) return;
     if (pinnedRef.current) {
       setHasUnseenTail(false);
       scrollToNewestOnce(true);
@@ -343,48 +386,20 @@ export const MessageList: React.FC<MessageListProps> = ({
     setHasUnseenTail(true);
     // Intentionally omit isThinking: thinking / reveal / card growth must not
     // animate to offset 0 while the host is reading history (#3355).
-  }, [items.length, pendingAction?.pending_action_id, messages, scrollToNewestOnce]);
+  }, [
+    items.length,
+    newestId,
+    newestRole,
+    pendingId,
+    scrollToNewestOnce,
+  ]);
 
+  // #1841 — orch-strict-grep-allow orch-0892 — no keyboard-aware virtualised
+  // container exists: the library ships KeyboardAwareScrollView only, and a
+  // chat thread must stay a FlatList. The composer's keyboard handling lives in
+  // AriChatScreen; the residual in-row edit field is tracked by #1873.
   return (
-    /*
-     * #1841 [keyboard-guard-blind-spots] — the ONE new allowlist entry this
-     * issue was authorised to grant, and the reason is a MISSING DESTINATION,
-     * not a deferral.
-     *
-     * What was tried first, per the review gate's instruction: on a chat surface
-     * the keyboard concern belongs to the composer, and it does here — the
-     * composer lift lives in AriChatScreen and now runs on a
-     * react-native-keyboard-controller-backed hook rather than bespoke
-     * Keyboard.addListener plumbing. What remains is a field INSIDE a
-     * virtualised row: ToolProposalCard renders an editable-args TextInput
-     * (ToolProposalCard.tsx) as a chat row, which is what puts an input in this
-     * FlatList's span.
-     *
-     * There is no container to migrate to. react-native-keyboard-controller
-     * exports exactly one keyboard-aware container, KeyboardAwareScrollView;
-     * there is no KeyboardAware FlatList or SectionList, and a virtualised chat
-     * list must not become a ScrollView.
-     *
-     * #2649 UPDATE — this block used to end by citing inversion as an open risk
-     * ("changes real behaviour on a live tab"). That objection is RESOLVED, not
-     * outstanding. #2649 measured exactly which behaviour it changes: the
-     * ORCH-1101 speaker-grouping rhythm, because `ItemSeparatorComponent` gets
-     * only the item preceding the gap in DATA order, whose meaning flips when
-     * the list inverts. That is repaired in this same file by stamping
-     * `gapAbove` during the grouping pass, and it is pinned behaviourally by
-     * the #2649 suites (rendered separator heights, not source text). The list
-     * is now inverted because a top-anchored thread loses its newest message
-     * the moment the composer grows — 300.33pt below the fold on iPhone 16.
-     *
-     * What has NOT changed is this gate's verdict: the container is still a
-     * bare FlatList whose span renders the proposal card's TextInput, so the
-     * marker below stays and EXPECTED_ALLOWLISTED_FILES is untouched.
-     *
-     * Follow-up: #1873 (move the proposal card's edit affordance into the Sheet
-     * primitive, which owns its own KeyboardAwareScrollView). Delete this marker
-     * and its EXPECTED_ALLOWLISTED_FILES registration when that lands.
-     */
-    // orch-strict-grep-allow orch-0892 — no keyboard-aware virtualised container exists: the library ships KeyboardAwareScrollView only, and a chat thread must stay a FlatList. The composer's keyboard handling lives in AriChatScreen; the residual in-row edit field is tracked by #1873.
+    <View style={styles.listShell}>
     <FlatList
       ref={listRef}
       // #2649 — bottom-anchored by construction. `inverted` paints data[0] at
@@ -428,22 +443,6 @@ export const MessageList: React.FC<MessageListProps> = ({
         }
         if (atNewest) setHasUnseenTail(false);
       }}
-      // Inverted FlatList: Header paints at the visual BOTTOM (above composer).
-      ListHeaderComponent={
-        hasUnseenTail && !pinnedToNewest ? (
-          <View style={styles.newReplyWrap}>
-            <Pressable
-              onPress={jumpToNewest}
-              accessibilityRole="button"
-              accessibilityLabel="New reply"
-              hitSlop={8}
-              style={styles.newReplyButton}
-            >
-              <Text style={styles.newReplyLabel}>New reply ↓</Text>
-            </Pressable>
-          </View>
-        ) : null
-      }
       renderItem={({ item }) => {
         if (item.kind === "thinking") {
           return <View>{renderThinking?.()}</View>;
@@ -609,6 +608,20 @@ export const MessageList: React.FC<MessageListProps> = ({
         );
       }}
     />
+    {hasUnseenTail && !pinnedToNewest ? (
+      <View style={styles.newReplyOverlay} pointerEvents="box-none">
+        <Pressable
+          onPress={jumpToNewest}
+          accessibilityRole="button"
+          accessibilityLabel="New reply"
+          hitSlop={8}
+          style={styles.newReplyButton}
+        >
+          <Text style={styles.newReplyLabel}>New reply ↓</Text>
+        </Pressable>
+      </View>
+    ) : null}
+    </View>
   );
 };
 
@@ -812,9 +825,18 @@ function renderToolResult(
 }
 
 const styles = StyleSheet.create({
-  newReplyWrap: {
+  listShell: {
+    flex: 1,
+    position: "relative",
+  },
+  // Viewport-anchored (not ListHeader) so history reading still sees it (#3355).
+  newReplyOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: spacing.sm,
     alignItems: "center",
-    paddingVertical: spacing.sm,
+    zIndex: 2,
   },
   newReplyButton: {
     minHeight: 44,
@@ -822,14 +844,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
-    backgroundColor: ariPalette.userBubble,
+    backgroundColor: NEW_REPLY_FILL,
     alignItems: "center",
     justifyContent: "center",
   },
   newReplyLabel: {
     fontSize: 14,
     lineHeight: 18,
-    color: ariThread.onUserBubble,
+    color: NEW_REPLY_ON_FILL,
     fontWeight: "600",
   },
   content: {

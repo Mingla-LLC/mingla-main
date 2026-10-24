@@ -10,13 +10,15 @@ const messageListSrc = fs.readFileSync(
   path.join(__dirname, "../MessageList.tsx"),
   "utf8",
 );
+const screenSrc = fs.readFileSync(
+  path.join(__dirname, "../../../screens/ari/AriChatScreen.tsx"),
+  "utf8",
+);
 
 describe("#3355 settled Ari thread scroll", () => {
   test("auto-scroll effect does not depend on isThinking", () => {
-    // Thinking / reveal / card growth must not re-animate to offset 0.
-    expect(messageListSrc).toMatch(
-      /\[items\.length,\s*pendingAction\?\.pending_action_id/,
-    );
+    expect(messageListSrc).toMatch(/newestId/);
+    expect(messageListSrc).toMatch(/pendingId/);
     expect(messageListSrc).not.toMatch(
       /\[items\.length,\s*pendingAction\?\.pending_action_id,\s*isThinking\]/,
     );
@@ -27,16 +29,18 @@ describe("#3355 settled Ari thread scroll", () => {
     expect(messageListSrc).toMatch(/generation !== scrollGenerationRef\.current/);
   });
 
-  test("history mode exposes New reply control", () => {
+  test("history mode exposes viewport-anchored New reply control", () => {
     expect(messageListSrc).toMatch(/New reply ↓/);
     expect(messageListSrc).toMatch(/hasUnseenTail/);
     expect(messageListSrc).toMatch(/jumpToNewest/);
-    expect(messageListSrc).toMatch(/NEWEST_PIN_TOLERANCE_PX/);
+    expect(messageListSrc).toMatch(/newReplyOverlay/);
+    expect(messageListSrc).not.toMatch(/ListHeaderComponent=\{/);
   });
 
-  test("pin restores only when host was at newest or just sent", () => {
-    expect(messageListSrc).toMatch(/userJustSent/);
-    expect(messageListSrc).toMatch(/pinnedRef\.current/);
-    expect(messageListSrc).toMatch(/role === ["']user["']/);
+  test("pin tracks stable tail identity and conversation switches", () => {
+    expect(messageListSrc).toMatch(/lastTailKeyRef/);
+    expect(messageListSrc).toMatch(/lastUserMessageIdRef/);
+    expect(messageListSrc).toMatch(/conversationId/);
+    expect(screenSrc).toMatch(/conversationId=\{chat\.conversationId\}/);
   });
 });

@@ -39,7 +39,10 @@ export function splitSemanticChunks(text: string): Chunk[] {
   return chunks.length ? chunks : [{ kind: "paragraph", text }];
 }
 
-const ChunkInline: React.FC<{ text: string; textStyle: object }> = ({ text, textStyle }) => {
+const ChunkInline: React.FC<{ text: string; textStyle: object | object[] }> = ({
+  text,
+  textStyle,
+}) => {
   const runs = parseInlineRuns(text);
   if (runs.length === 1 && runs[0].kind === "plain") {
     return <Text selectable style={textStyle}>{runs[0].text}</Text>;
@@ -65,13 +68,12 @@ const ChunkInline: React.FC<{ text: string; textStyle: object }> = ({ text, text
 const ChunkBody: React.FC<{ chunk: Chunk; textStyle: object }> = ({ chunk, textStyle }) => {
   if (chunk.kind === "section_label") {
     return (
-      <Text
-        selectable
-        accessibilityRole="header"
-        style={[textStyle, { fontWeight: "600", color: textTokens.secondary }]}
-      >
-        {chunk.text}
-      </Text>
+      <View accessibilityRole="header">
+        <ChunkInline
+          text={chunk.text}
+          textStyle={[textStyle, { fontWeight: "600", color: textTokens.secondary }]}
+        />
+      </View>
     );
   }
   if (chunk.kind === "bullet") {

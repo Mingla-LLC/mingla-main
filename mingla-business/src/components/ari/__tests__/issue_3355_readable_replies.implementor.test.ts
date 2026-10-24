@@ -62,8 +62,27 @@ describe("#3355 readable Ari replies", () => {
 
   test("malformed markup falls back to clean plain text", () => {
     const spoken = toAccessibleText("Oops **unclosed and ###hashes `ticks");
-    expect(spoken).not.toMatch(/[*#`]/);
+    expect(spoken).not.toMatch(/`/);
+    expect(spoken).not.toMatch(/\*\*/);
     expect(ariTextLeaksMarkdown("Oops **unclosed and ###hashes `ticks")).toBe(false);
+  });
+
+  test("literal email underscores and URL fragments survive", () => {
+    const spoken = toAccessibleText(
+      "Email jane_doe@example.com or open https://usemingla.com/#pricing",
+    );
+    expect(spoken).toContain("jane_doe@example.com");
+    expect(spoken).toContain("#pricing");
+    expect(ariTextLeaksMarkdown(spoken)).toBe(false);
+  });
+
+  test("heading bodies keep inline emphasis for the renderer", () => {
+    expect(toSegments("### **Budget**")).toEqual([
+      { kind: "section_label", text: "**Budget**" },
+    ]);
+    expect(parseInlineRuns("**Budget**")).toEqual([
+      { kind: "strong", text: "Budget" },
+    ]);
   });
 
   test("#3429 bullet split still holds", () => {

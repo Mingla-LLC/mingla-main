@@ -30,9 +30,17 @@ const HEADING_LINE = /^\s{0,3}#{1,6}\s+(.*)$/;
 const HR_LINE = /^\s*(?:[-_*]){3,}\s*$/;
 const FENCE_LINE = /^\s*```/;
 
-/** Strip leftover fence/rule/emphasis delimiters that never became structure. */
-export function stripRawMarkdownDelimiters(raw: string): string {
-  return raw
+/**
+ * Strip Markdown *formatting* delimiters. Does not delete literal `#` / `_`
+ * inside URLs, emails, or identifiers (only line-leading ATX headings and
+ * paired emphasis/code markers).
+ */
+export function stripRawMarkdownDelimiters(
+  raw: string,
+  options: { trim?: boolean } = {},
+): string {
+  const trim = options.trim !== false;
+  let out = raw
     .replace(/```[\s\S]*?```/g, (block) =>
       block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "").trim()
     )
@@ -45,11 +53,12 @@ export function stripRawMarkdownDelimiters(raw: string): string {
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s*(?:[-_*]){3,}\s*$/gm, "")
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
-    // Any remaining Markdown punctuation must not reach the screen or SR.
-    .replace(/[`*_#]+/g, "")
+    // Unpaired emphasis/code fence markers only — never blanket-delete `#`/`_`.
+    .replace(/\*\*/g, "")
+    .replace(/`/g, "")
     .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/\n{3,}/g, "\n\n");
+  return trim ? out.trim() : out;
 }
 
 /**
@@ -59,7 +68,8 @@ export function stripRawMarkdownDelimiters(raw: string): string {
 export function parseInlineRuns(raw: string): AriInlineRun[] {
   if (!raw) return [{ kind: "plain", text: "" }];
   const runs: AriInlineRun[] = [];
-  const re = /(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*\n]+)\*|`([^`]+)`|__([^_]+)__|_([^_\n]+)_)/g;
+  const re =
+    /(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*\n]+)\*|`([^`]+)`|__([^_]+)__|_([^_\n]+)_)/g;
   let last = 0;
   let match: RegExpExecArray | null;
   while ((match = re.exec(raw)) !== null) {
@@ -85,20 +95,18 @@ export function parseInlineRuns(raw: string): AriInlineRun[] {
     runs.push({ kind: "plain", text: raw.slice(last) });
   }
   if (runs.length === 0) return [{ kind: "plain", text: raw }];
-  // If any leftover raw markers remain in plain runs, strip them.
+  // Clean leftover markers in plain runs without trimming flanking spaces —
+  // those spaces are the gap beside **bold** / *em* spans.
   return runs.map((run) =>
     run.kind === "plain"
-      ? { kind: "plain", text: stripRawMarkdownDelimiters(run.text) }
+      ? { kind: "plain", text: stripRawMarkdownDelimiters(run.text, { trim: false }) }
       : run
   );
 }
 
 function cleanLineBody(line: string): string {
-  // Keep ** for parseInlineRuns; strip only structural leftovers.
-  return line
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
-    .trim();
+  // Keep `**` / `` ` `` for parseInlineRuns; only unwrap markdown links.
+  return line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1").trim();
 }
 
 /** Split already-parsed model text into typed Ari segments. */
@@ -138,7 +146,9 @@ export function toSegments(raw: string): Segment[] {
           out.push({
             kind: "numbered",
             text: body,
-            n: Number.isFinite(n) && n > 0 ? n : out.filter((s) => s.kind === "numbered").length + 1,
+            n: Number.isFinite(n) && n > 0
+              ? n
+              : out.filter((s) => s.kind === "numbered").length + 1,
           });
         }
         continue;
@@ -155,14 +165,13 @@ export function toSegments(raw: string): Segment[] {
     flushProse();
   }
 
-  // Final pass: if any segment still carries only delimiter noise, drop it.
   return out.filter((seg) => {
     const spoken = stripRawMarkdownDelimiters(seg.text);
     return spoken.length > 0;
   });
 }
 
-/** Spoken form — no list markers, hashes, asterisks, or backticks. */
+/** Spoken form — no list markers or emphasis delimiters. */
 export function toAccessibleText(raw: string): string {
   return toSegments(raw)
     .map((segment) => {
@@ -176,15 +185,16 @@ export function toAccessibleText(raw: string): string {
 }
 
 /**
- * True when rendered text would still expose raw Markdown punctuation.
- * Used by corpus regressions (#3355).
+ * True when rendered/spoken text would still expose Markdown *formatting*
+ * tokens. Literal `#` in a URL fragment or `_` in an email must not trip this.
  */
 export function ariTextLeaksMarkdown(raw: string): boolean {
   const spoken = toAccessibleText(raw);
-  // Visible hash/asterisk/backtick markers must be gone from spoken form.
-  if (/[#*`]/.test(spoken)) return true;
-  if (/\*\*[^*]/.test(spoken) || /__[^_]/.test(spoken)) return true;
-  // Segmenter must not leave leading markdown list markers in spoken text.
+  if (/```/.test(spoken)) return true;
+  if (/`/.test(spoken)) return true;
+  if (/\*\*/.test(spoken)) return true;
+  if (/(^|\n)\s*#{1,6}\s/.test(spoken)) return true;
   if (/(^|\n)\s*[-*•]\s/.test(spoken)) return true;
+  if (/(^|[^\w*])\*[^*\n]+\*(?!\*)/.test(spoken)) return true;
   return false;
 }

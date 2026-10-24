@@ -65,7 +65,10 @@ export {
   toSegments,
 } from "./ariBubbleSegments";
 
-const InlineRuns: React.FC<{ text: string; style: object }> = ({ text, style }) => {
+const InlineRuns: React.FC<{ text: string; style: object | object[] }> = ({
+  text,
+  style,
+}) => {
   const runs = parseInlineRuns(text);
   const onlyPlain =
     runs.length === 1 && runs[0].kind === "plain";
@@ -109,13 +112,12 @@ const SegmentView: React.FC<{
 }> = ({ seg, style, topGap }) => {
   if (seg.kind === "section_label") {
     return (
-      <Text
-        selectable
+      <View
         accessibilityRole="header"
-        style={[style, styles.sectionLabel, { marginTop: topGap }]}
+        style={{ marginTop: topGap }}
       >
-        {seg.text}
-      </Text>
+        <InlineRuns text={seg.text} style={[style, styles.sectionLabel]} />
+      </View>
     );
   }
   if (seg.kind === "bullet") {
