@@ -146,14 +146,11 @@ function copyFor(
   }
 }
 
-/** #871 — may this pass also carry the "connect attendance" link?
+/** #871 + #4063 — may this pass also carry the "connect attendance" link?
  *
- * Its own decision, deliberately narrower than the pass: the link is only
- * redeemable through `claim_attendance_internal_v2`, which admits public,
- * undeleted, scheduled/live events only and returns `ineligible` for anything
- * else. An unlisted RSVP's approved guest therefore gets the pass WITHOUT this
- * link, instead of a promise ("see who's going") that ends in "This attendance
- * link can't be used". Widening the pass must never widen this.
+ * Visibility controls discovery, not ownership. The pass helper still decides
+ * which RSVP messages may be sent; once one is eligible, the primary guest may
+ * receive the contact-gated claim link regardless of public/unlisted status.
  */
 function attendanceClaimStillEligible(
   event: {
@@ -165,8 +162,7 @@ function attendanceClaimStillEligible(
   brand: { deleted_at: string | null } | null | undefined,
 ): boolean {
   return !!event && event.deleted_at === null && brand?.deleted_at === null &&
-    event.visibility === "public" && event.event_type === "rsvp" &&
-    ["scheduled", "live"].includes(event.status);
+    event.event_type === "rsvp" && ["scheduled", "live"].includes(event.status);
 }
 
 /** null = the pass must not be sent. Otherwise the pass goes out, and

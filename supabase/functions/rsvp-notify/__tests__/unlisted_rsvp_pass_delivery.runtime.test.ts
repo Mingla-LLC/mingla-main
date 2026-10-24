@@ -11,14 +11,13 @@
 //     pass with its secure recovery link;
 //   - private RSVPs, and guests who are not approved or not going: nothing is
 //     sent, the delivery is parked `rsvp_not_eligible`, no token is written;
-//   - the #871 "connect attendance" link goes ONLY to the primary guest of a
-//     PUBLIC RSVP. claim_attendance_internal_v2 rejects anything else, so an
-//     unlisted RSVP's pass must not carry it.
+//   - the #871 "connect attendance" link goes only to the primary guest, for
+//     either public or unlisted RSVPs. Visibility controls discovery, not claim.
 //   - the event read is bound to the RSVP's own event.
 //
 // fails-on-revert:
 //   - pass helper back to public-only        -> hidden cases send nothing, R-01 reds
-//   - attendance link back on every primary  -> hidden primary carries it, R-01 reds
+//   - attendance link back to public-only    -> hidden primary loses it, R-01 reds
 //   - private admitted                       -> R-01 private rows red
 //   - approval / going check dropped         -> R-02 reds
 //
@@ -248,9 +247,11 @@ const seen: Observed = {
   rejected: [],
 };
 
+// [TEST-MOD-APPROVED #4063] The visibility matrix now proves that public and
+// unlisted primary guests both receive the contact-gated claim link.
 Deno.test({
   name:
-    "R-01 visibility x role x channel: pass for public + unlisted, attendance link for public primary only, nothing for private",
+    "R-01 visibility x role x channel: pass and primary claim for public + unlisted, nothing for private",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -283,11 +284,11 @@ Deno.test({
               outgoing.includes(PASS_URL),
               `${label}: the secure pass link must be in the message`,
             );
-            const expectClaim = visibility === "public" && role === "primary";
+            const expectClaim = visibility !== "private" && role === "primary";
             same(
               outgoing.includes(CLAIM_URL),
               expectClaim,
-              `${label}: attendance link present only for a public RSVP's primary guest`,
+              `${label}: attendance link present only for an eligible RSVP's primary guest`,
             );
             same(seen.tokenWrites.length, 1, `${label}: one recovery token write`);
             same(

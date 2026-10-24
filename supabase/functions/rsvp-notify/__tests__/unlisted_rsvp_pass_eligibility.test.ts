@@ -81,7 +81,9 @@ Deno.test("P-04 everything else is unchanged: deleted, deleted brand, not RSVP, 
   }
 });
 
-Deno.test("P-06 the pass asks the helper; the #871 attendance link keeps its own public-only gate", async () => {
+// [TEST-MOD-APPROVED #4063] Visibility is no longer an ownership predicate;
+// the existing pass eligibility boundary remains unchanged.
+Deno.test("P-06 the pass owns send eligibility while attendance ignores visibility", async () => {
   const worker = await Deno.readTextFile(
     new URL("../index.ts", import.meta.url),
   );
@@ -115,15 +117,11 @@ Deno.test("P-06 the pass asks the helper; the #871 attendance link keeps its own
     ),
     "the attendance link decision must be made separately, on the same event row",
   );
-  // #871: the attendance link is redeemable only through
-  // claim_attendance_internal_v2, which admits public events only. Widening the
-  // pass must not widen it. (Behaviour: unlisted_rsvp_pass_delivery.runtime R-01.)
   const attendance = body("function attendanceClaimStillEligible(");
   assert(
-    attendance.includes('event.visibility === "public"') &&
-      !attendance.includes("rsvpPassEventEligible") &&
-      !attendance.includes('"hidden"'),
-    "the attendance link gate must stay exactly public-only",
+    !attendance.includes("event.visibility") &&
+      !attendance.includes("rsvpPassEventEligible"),
+    "the attendance claim decision must not read discovery visibility",
   );
   const link = body("async function recoveryLinkFor(");
   assert(
