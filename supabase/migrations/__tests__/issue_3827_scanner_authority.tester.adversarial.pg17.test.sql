@@ -115,6 +115,16 @@ BEGIN
     'A7 an event manager of another brand cannot scan'
   );
   PERFORM pg_temp.t3827_scan_assert(
+    NOT public.issue_3827_can_door_scan(v_event, v_finance)
+    AND NOT public.issue_3827_can_door_scan(v_event, v_marketing)
+    AND NOT public.issue_3827_can_door_scan(v_event, v_unaccepted)
+    AND NOT public.issue_3827_can_door_scan(v_event, v_removed_brand)
+    AND NOT public.issue_3827_can_door_scan(v_event, v_disabled_event)
+    AND NOT public.issue_3827_can_door_scan(v_event, v_removed_event)
+    AND NOT public.issue_3827_can_door_scan(v_event, v_foreign_manager),
+    'A8 manual-admit authorization rejects every unauthorized scanner path'
+  );
+  PERFORM pg_temp.t3827_scan_assert(
     NOT EXISTS (
       SELECT 1 FROM public.scan_events
        WHERE event_id = v_event

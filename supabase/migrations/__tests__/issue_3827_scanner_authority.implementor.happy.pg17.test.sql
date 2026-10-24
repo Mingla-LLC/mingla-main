@@ -32,6 +32,7 @@ DECLARE
   v_issue jsonb;
   v_order uuid;
   v_qrs text[];
+  v_manual_ticket uuid;
   v_result jsonb;
   v_pepper constant text := 'i3827-scanner-pepper-0123456789abcdef';
 BEGIN
@@ -79,7 +80,8 @@ BEGIN
       jsonb_build_object('index', 0, 'name', 'Owner Guest'),
       jsonb_build_object('index', 1, 'name', 'Manager Guest'),
       jsonb_build_object('index', 2, 'name', 'Event Scanner Guest'),
-      jsonb_build_object('index', 3, 'name', 'Brand Scanner Guest')
+      jsonb_build_object('index', 3, 'name', 'Brand Scanner Guest'),
+      jsonb_build_object('index', 4, 'name', 'Manual Admit Guest')
     ), NULL, gen_random_uuid(), v_pepper
   );
 
@@ -87,7 +89,16 @@ BEGIN
     INTO v_qrs
     FROM public.tickets t
     JOIN public.orders o ON o.id = t.order_id
-   WHERE o.event_id = v_event AND o.source = 'comp';
+   WHERE o.event_id = v_event
+     AND o.source = 'comp'
+     AND o.buyer_name <> 'Manual Admit Guest';
+
+  SELECT t.id INTO v_manual_ticket
+    FROM public.tickets t
+    JOIN public.orders o ON o.id = t.order_id
+   WHERE o.event_id = v_event
+     AND o.source = 'comp'
+     AND o.buyer_name = 'Manual Admit Guest';
 
   -- Simulate the production drift: the current owner and a manager added
   -- after event creation have no event_scanners projection.
@@ -113,6 +124,23 @@ BEGIN
   PERFORM pg_temp.i3827_scan_assert(
     NOT EXISTS (SELECT 1 FROM public.scan_events WHERE event_id = v_event),
     'H0 malformed QR writes no scan audit row'
+  );
+
+  v_result := public.biz_ticket_admit_by_id(
+    v_owner, v_event, v_manual_ticket, v_pepper
+  );
+  PERFORM pg_temp.i3827_scan_assert(
+    v_result ->> 'result' = 'success',
+    'H0b current brand owner manually admits without an event_scanners row'
+  );
+  PERFORM pg_temp.i3827_scan_assert(
+    EXISTS (
+      SELECT 1 FROM public.scan_events
+       WHERE ticket_id = v_manual_ticket
+         AND scan_result = 'success'
+         AND metadata ->> 'source' = 'manual-admit'
+    ),
+    'H0b manual admit records the shared scan with manual source metadata'
   );
 
   v_result := public.biz_ticket_scan(v_event, v_qrs[1], v_owner, v_pepper);
@@ -145,8 +173,8 @@ BEGIN
 
   PERFORM pg_temp.i3827_scan_assert(
     (SELECT count(*) FROM public.scan_events
-      WHERE event_id = v_event AND scan_result = 'success') = 4,
-    'each authorized path writes one successful scan audit row'
+      WHERE event_id = v_event AND scan_result = 'success') = 5,
+    'each authorized path and manual admit write one successful scan audit row'
   );
 END
 $happy$;
