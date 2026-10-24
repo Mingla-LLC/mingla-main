@@ -1,4 +1,5 @@
 import {
+  keepViewerObjectUrlIfActive,
   rememberViewerObjectUrl,
   revokeViewerObjectUrls,
   revokeViewerObjectUrlsOutsideWindow,
@@ -41,5 +42,22 @@ describe("#3988 authenticated web blob lifecycle", () => {
     revokeViewerObjectUrls(urls, revoker);
     expect(urls.size).toBe(0);
     expect(new Set(revokeObjectURL.mock.calls.map(([url]) => url))).toEqual(new Set(["blob:0", "blob:1", "blob:2", "blob:3"]));
+  });
+
+  it("revokes a late fetch immediately when its item left the active window", () => {
+    const urls = new Map<string, string>();
+    const revokeObjectURL = jest.fn();
+
+    expect(keepViewerObjectUrlIfActive(
+      urls,
+      new Set(["4", "5", "6"]),
+      "0",
+      "blob:late-100mb",
+      { revokeObjectURL },
+    )).toBe(false);
+
+    expect(urls.size).toBe(0);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:late-100mb");
   });
 });

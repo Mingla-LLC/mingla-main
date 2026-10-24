@@ -262,7 +262,13 @@ export async function openThumbnail(
     current?.width !== media.width ||
     current?.height !== media.height ||
     current?.durationMs !== media.durationMs;
-  if (setterAllowed && (current?.thumbState === "pending" || metadataChanged)) {
+  // A ready response is terminal progress and must never be hidden behind the
+  // pending-state throttle. The throttle only limits repeated pending writes;
+  // otherwise a thumbnail fetched during the 60-second window can stream to
+  // the caller while every gallery query remains stuck on pending metadata.
+  const shouldPersistMetadata = nextThumbState === "ready" ||
+    (setterAllowed && (current?.thumbState === "pending" || metadataChanged));
+  if (shouldPersistMetadata) {
     const updated = await admin.rpc("issue_3988_set_brand_group_file_media", {
       p_file_id: fileId,
       p_width: media.width,

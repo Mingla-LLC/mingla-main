@@ -25,17 +25,39 @@ export function rememberViewerObjectUrl(
   objectUrls.set(fileId, objectUrl);
 }
 
+export function keepViewerObjectUrlIfActive(
+  objectUrls: Map<string, string>,
+  activeFileIds: ReadonlySet<string>,
+  fileId: string,
+  objectUrl: string,
+  revoker: ObjectUrlRevoker,
+): boolean {
+  if (!activeFileIds.has(fileId)) {
+    revoker.revokeObjectURL(objectUrl);
+    return false;
+  }
+  rememberViewerObjectUrl(objectUrls, fileId, objectUrl, revoker);
+  return true;
+}
+
+function viewerWindowFileIds(
+  items: readonly Pick<BrandGroupMediaRow, "fileId">[],
+  activeIndex: number,
+): Set<string> {
+  return new Set(
+    items
+      .slice(Math.max(0, activeIndex - 1), activeIndex + 2)
+      .map((item) => item.fileId),
+  );
+}
+
 export function revokeViewerObjectUrlsOutsideWindow(
   objectUrls: Map<string, string>,
   items: readonly Pick<BrandGroupMediaRow, "fileId">[],
   activeIndex: number,
   revoker: ObjectUrlRevoker,
 ): void {
-  const keep = new Set(
-    items
-      .slice(Math.max(0, activeIndex - 1), activeIndex + 2)
-      .map((item) => item.fileId),
-  );
+  const keep = viewerWindowFileIds(items, activeIndex);
   for (const [fileId, url] of objectUrls) {
     if (keep.has(fileId)) continue;
     objectUrls.delete(fileId);
@@ -89,6 +111,7 @@ export function BrandGroupFilePreviewModal({
   const activeFileId = file?.id ?? initialFileId;
   const initialIndex = Math.max(0, viewerItems.findIndex((item) => item.fileId === activeFileId));
   const objectUrls = useRef<Map<string, string>>(new Map());
+  const activeWindowFileIds = useRef<Set<string>>(viewerWindowFileIds(viewerItems, initialIndex));
 
   const revokeAll = useCallback(() => {
     if (typeof URL === "undefined") return;
@@ -96,6 +119,7 @@ export function BrandGroupFilePreviewModal({
   }, []);
 
   const retainActiveWindow = useCallback((activeIndex: number) => {
+    activeWindowFileIds.current = viewerWindowFileIds(viewerItems, activeIndex);
     if (typeof URL === "undefined") return;
     revokeViewerObjectUrlsOutsideWindow(objectUrls.current, viewerItems, activeIndex, URL);
   }, [viewerItems]);
@@ -108,6 +132,11 @@ export function BrandGroupFilePreviewModal({
   const requestFor = useCallback(async (fileId: string, onProgress?: (progress: ViewerProgress) => void): Promise<ViewerRequest> => {
     const existing = objectUrls.current.get(fileId);
     if (existing) {
+      if (!activeWindowFileIds.current.has(fileId)) {
+        objectUrls.current.delete(fileId);
+        URL.revokeObjectURL(existing);
+        throw new Error("This file is no longer active.");
+      }
       objectUrls.current.delete(fileId);
       objectUrls.current.set(fileId, existing);
       return { uri: existing, headers: {} };
@@ -136,7 +165,9 @@ export function BrandGroupFilePreviewModal({
       blob = await response.blob();
     }
     const objectUrl = URL.createObjectURL(blob);
-    rememberViewerObjectUrl(objectUrls.current, fileId, objectUrl, URL);
+    if (!keepViewerObjectUrlIfActive(objectUrls.current, activeWindowFileIds.current, fileId, objectUrl, URL)) {
+      throw new Error("This file is no longer active.");
+    }
     return { uri: objectUrl, headers: {} };
   }, []);
 

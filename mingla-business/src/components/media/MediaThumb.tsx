@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -10,8 +11,10 @@ import { glass, text as textTokens } from "../../constants/designSystem";
 import { requestThumbnailForState, thumbnailResolutionPlan } from "./thumbnailResolution";
 
 const MAX_WEB_THUMB_OBJECT_URLS = 120;
+const WEB_THUMB_TTL_MS = 24 * 60 * 60 * 1_000;
 interface WebThumbEntry {
   url: string;
+  expiresAt: number;
   listeners: Set<(source: { uri: string } | null) => void>;
 }
 const webThumbCache = new Map<string, WebThumbEntry>();
@@ -20,11 +23,29 @@ const webThumbInflight = new Map<string, Promise<string>>();
 function retainWebThumb(fileId: string, listener: (source: { uri: string } | null) => void): (() => void) | null {
   const existing = webThumbCache.get(fileId);
   if (!existing) return null;
+  if (existing.expiresAt <= Date.now()) {
+    webThumbCache.delete(fileId);
+    URL.revokeObjectURL(existing.url);
+    for (const notify of existing.listeners) notify(null);
+    return null;
+  }
   webThumbCache.delete(fileId);
   webThumbCache.set(fileId, existing);
   existing.listeners.add(listener);
   listener({ uri: existing.url });
-  return () => existing.listeners.delete(listener);
+  return () => {
+    existing.listeners.delete(listener);
+    if (existing.listeners.size > 0 || webThumbCache.get(fileId) !== existing) return;
+    webThumbCache.delete(fileId);
+    URL.revokeObjectURL(existing.url);
+  };
+}
+
+function revokeUnusedWebThumb(fileId: string): void {
+  const entry = webThumbCache.get(fileId);
+  if (!entry || entry.listeners.size > 0) return;
+  webThumbCache.delete(fileId);
+  URL.revokeObjectURL(entry.url);
 }
 
 async function loadWebThumb(fileId: string, uri: string, headers: Record<string, string>): Promise<string> {
@@ -42,7 +63,11 @@ async function loadWebThumb(fileId: string, uri: string, headers: Record<string,
       URL.revokeObjectURL(oldest[1].url);
       for (const notify of oldest[1].listeners) notify(null);
     }
-    webThumbCache.set(fileId, { url: objectUrl, listeners: new Set() });
+    webThumbCache.set(fileId, {
+      url: objectUrl,
+      expiresAt: Date.now() + WEB_THUMB_TTL_MS,
+      listeners: new Set(),
+    });
     return objectUrl;
   }).finally(() => webThumbInflight.delete(fileId));
   webThumbInflight.set(fileId, request);
@@ -51,15 +76,14 @@ async function loadWebThumb(fileId: string, uri: string, headers: Record<string,
 
 export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMediaRow; style?: StyleProp<ViewStyle>; bubble?: boolean }): React.ReactElement {
   const { t } = useTranslation("brandGroupMedia");
+  const queryClient = useQueryClient();
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> } | null>(null);
   const [retryToken, setRetryToken] = useState(0);
-  const [loadFailed, setLoadFailed] = useState(false);
   const { shouldRequest, retryDelayMs } = thumbnailResolutionPlan(item.thumbState);
   useEffect(() => {
     let active = true;
     let releaseWebThumb: (() => void) | null = null;
     setSource(null);
-    setLoadFailed(false);
     if (!shouldRequest) return undefined;
     void requestThumbnailForState(item.thumbState, () => thumbnailRequest(item.fileId)).then(async (authorized) => {
       if (!authorized) return null;
@@ -71,13 +95,15 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
       releaseWebThumb = retainWebThumb(item.fileId, setSource);
       if (releaseWebThumb) return null;
       await loadWebThumb(item.fileId, authorized.uri, authorized.headers);
-      if (!active) return null;
+      if (!active) {
+        queueMicrotask(() => revokeUnusedWebThumb(item.fileId));
+        return null;
+      }
       releaseWebThumb = retainWebThumb(item.fileId, setSource);
       return null;
     }).then((next) => { if (active && next) setSource(next); }).catch(() => {
       if (active) {
         setSource(null);
-        setLoadFailed(true);
       }
     });
     return () => {
@@ -86,14 +112,17 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
     };
   }, [item.fileId, item.thumbState, retryToken, shouldRequest]);
   useEffect(() => {
-    if (!loadFailed || retryDelayMs === null) return undefined;
-    const timer = setTimeout(() => setRetryToken((value) => value + 1), retryDelayMs);
+    if (retryDelayMs === null) return undefined;
+    const timer = setTimeout(() => {
+      setRetryToken((value) => value + 1);
+      void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia"] });
+    }, retryDelayMs);
     return () => clearTimeout(timer);
-  }, [loadFailed, retryDelayMs]);
+  }, [queryClient, retryDelayMs]);
   const duration = item.kind === "video" ? formatMediaDuration(item.durationMs) : null;
   return (
     <View style={[styles.root, style]}>
-      {source ? <Image source={source} contentFit="cover" cachePolicy="disk" onError={() => setLoadFailed(true)} style={StyleSheet.absoluteFill} /> : (
+      {source ? <Image source={Platform.OS === "web" ? source : { ...source, cacheKey: `bgthumb:${item.fileId}` }} contentFit="cover" cachePolicy="disk" onError={() => setSource(null)} style={StyleSheet.absoluteFill} /> : (
         <View style={styles.placeholder}>
           <Icon name={item.kind === "video" ? "play" : item.kind === "image" ? "eye" : "notebook"} size={24} color={textTokens.tertiary} />
           {item.thumbState === "pending" ? <Text style={styles.preparing} numberOfLines={2}>{t("media.preparing")}</Text> : null}

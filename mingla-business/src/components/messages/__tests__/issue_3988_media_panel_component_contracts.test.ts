@@ -17,7 +17,7 @@ describe("#3988 media panel and chat component matrix", () => {
   });
 
   it("renders media bubbles and carries show-in-chat focus across routes", () => {
-    expect(chat).toContain("<MediaThumb item={mediaItem} bubble");
+    expect(chat).toContain("<BrandGroupMediaBubble item={mediaItem}");
     expect(chat).toContain("requestedFocusMessageId");
     expect(chat).toContain("onShowInChat={(messageId) => void showInChat(messageId)}");
     expect(mediaRoute).toContain("focusMessageId: messageId");

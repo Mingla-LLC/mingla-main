@@ -199,6 +199,63 @@ Deno.test("#3988 pending Drive thumbnails stay pending while ready thumbnails st
   assertEquals(setterStates, ["pending", "ready"]);
 });
 
+Deno.test("#3988 ready metadata bypasses the pending write throttle", async () => {
+  const setterCalls: Record<string, unknown>[] = [];
+  const admin = {
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      if (name === "issue_3720_authorize_brand_group_file") {
+        return {
+          data: { provider_file_id: "provider-file", mime_type: "video/mp4" },
+          error: null,
+        };
+      }
+      if (name === "issue_3988_file_thumb_state") {
+        return {
+          data: {
+            thumbState: "pending",
+            thumbCheckedAt: new Date().toISOString(),
+            width: null,
+            height: null,
+            durationMs: null,
+          },
+          error: null,
+        };
+      }
+      if (name === "issue_3988_set_brand_group_file_media") {
+        setterCalls.push(args);
+        return { data: null, error: null };
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
+  };
+  const drive = {
+    mediaInfo: async () => ({
+      hasThumbnail: true,
+      thumbnailLink: "https://drive.google.com/thumb=s220",
+      width: 1920,
+      height: 1080,
+      durationMs: 42_000,
+    }),
+    thumbnail: async () => new Response("jpeg", { status: 200 }),
+  } as unknown as GoogleDriveClient;
+
+  const response = await openThumbnail(
+    admin as never,
+    drive,
+    "39880000-0000-4000-b800-000000000001",
+    "39880000-0000-4000-b900-000000000001",
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(setterCalls, [{
+    p_file_id: "39880000-0000-4000-b900-000000000001",
+    p_width: 1920,
+    p_height: 1080,
+    p_duration_ms: 42_000,
+    p_thumb_state: "ready",
+  }]);
+});
+
 Deno.test("#3988 finalize succeeds when Drive media metadata is not ready", async () => {
   const rpcCalls: string[] = [];
   const bytes = new Uint8Array([

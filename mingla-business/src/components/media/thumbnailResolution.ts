@@ -1,7 +1,8 @@
 export type ThumbnailState = "pending" | "ready" | "none";
 
-// The edge metadata writer is rate-limited to one refresh per minute. Retrying
-// sooner would only add authorized Drive traffic without advancing the state.
+// Pending metadata is polled once per minute. The edge endpoint always persists
+// a ready result immediately, even inside that interval, so the next list/meta
+// refetch can replace the pending row with its final dimensions and duration.
 export const PENDING_THUMBNAIL_RETRY_MS = 60_000;
 
 export interface ThumbnailResolutionPlan {

@@ -19,7 +19,7 @@ import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupS
 import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
 import { BrandGroupMediaPanel } from "../../src/components/messages/BrandGroupMediaPanel";
-import { MediaThumb } from "../../src/components/media/MediaThumb";
+import { BrandGroupMediaBubble } from "../../src/components/messages/BrandGroupMediaBubble";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
@@ -345,7 +345,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
                       onPress={() => setPreviewFileId(message.file_id)}
                       style={isMedia ? styles.mediaBubble : styles.fileCard}
                     >
-                      {isMedia && mediaItem ? <><MediaThumb item={mediaItem} bubble style={styles.mediaBubbleThumb} /><Text style={[styles.mediaBubbleFooter, mine && styles.messageTextMine]} numberOfLines={1}>{message.file_name} · {formatFileSize(message.file_size, (key, variables) => t(key, variables))}</Text></> : <><View style={styles.fileCardIcon}><Icon name="notebook" size={20} color={mine ? "#101216" : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
+                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={styles.fileCardIcon}><Icon name="notebook" size={20} color={mine ? "#101216" : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
                   ) : <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.content}</Text>}
                   <Text style={styles.time}>{new Date(message.created_at).toLocaleString()}</Text>
