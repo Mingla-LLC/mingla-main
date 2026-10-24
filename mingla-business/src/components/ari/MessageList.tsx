@@ -373,8 +373,10 @@ export const MessageList: React.FC<MessageListProps> = ({
       return;
     }
     // First paint for this conversation (or first messages after reset).
+    // #2649 — still offset 0 with animated:true; never scrollToEnd on an
+    // inverted list (that would jump to the oldest row).
     if (previousTail === null) {
-      if (pinnedRef.current) scrollToNewestOnce(false);
+      if (pinnedRef.current) scrollToNewestOnce(true);
       return;
     }
     if (!tailChanged) return;
@@ -394,11 +396,9 @@ export const MessageList: React.FC<MessageListProps> = ({
     scrollToNewestOnce,
   ]);
 
-  // #1841 — orch-strict-grep-allow orch-0892 — no keyboard-aware virtualised
-  // container exists: the library ships KeyboardAwareScrollView only, and a
-  // chat thread must stay a FlatList. The composer's keyboard handling lives in
-  // AriChatScreen; the residual in-row edit field is tracked by #1873.
+  // #1841 — residual in-row edit field tracked by #1873.
   return (
+    // orch-strict-grep-allow orch-0892 — no keyboard-aware virtualised container exists: chat thread must stay FlatList; composer keyboard lives in AriChatScreen.
     <View style={styles.listShell}>
     <FlatList
       ref={listRef}
