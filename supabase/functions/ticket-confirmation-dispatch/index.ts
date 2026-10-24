@@ -96,6 +96,8 @@ import { guestListPartyLine } from "../_shared/email/partyLine.ts";
 import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
 import { buildOrderConfirmationMessage } from "../_shared/orderConfirmationMessage.ts";
 import { formatDateRange, formatMessageTime } from "../_shared/messageTime.ts";
+import { resolveBuyerLink } from "../_shared/messageLinks.ts";
+import { buildWaitlistSpotMessage } from "../_shared/waitlistSpotMessage.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
 const BUYER_DOWNLOAD_URL = "https://usemingla.com/download";
@@ -475,7 +477,9 @@ async function deliverWaitlistSpotOpenNotification(
 
   const { data: eventRaw, error: eventError } = await supabase
     .from("events")
-    .select("id,title,brands!inner(id,name,contact_email)")
+    .select(
+      "id,title,location_text,timezone,brands!inner(id,name,contact_email)",
+    )
     .eq("id", eventId)
     .maybeSingle();
   if (eventError !== null || eventRaw === null) {
@@ -501,6 +505,8 @@ async function deliverWaitlistSpotOpenNotification(
 
   const event = eventRaw as unknown as {
     title: string | null;
+    location_text: string | null;
+    timezone: string | null;
     brands: { name: string | null; contact_email: string | null };
   };
   const ticketType = ticketTypeRaw as unknown as { name: string | null };
@@ -510,15 +516,63 @@ async function deliverWaitlistSpotOpenNotification(
     )
   }`;
 
+  const { data: eventDateRaw } = await supabase
+    .from("event_dates")
+    .select("start_at,timezone,is_master")
+    .eq("event_id", eventId)
+    .order("is_master", { ascending: false })
+    .order("start_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const eventDate = eventDateRaw as {
+    start_at?: string | null;
+    timezone?: string | null;
+  } | null;
+  const timezone = eventDate?.timezone ?? event.timezone;
+  const eventTime = eventDate?.start_at
+    ? formatMessageTime(eventDate.start_at, timezone)
+    : null;
+  const expiryTime = formatMessageTime(inviteExpiresAt, timezone);
+  const expiryLabel = expiryTime === null
+    ? null
+    : expiryTime.dayWord === "today" || expiryTime.dayWord === "tonight"
+    ? expiryTime.time
+    : `${expiryTime.date.split(" ")[0]} ${expiryTime.time}`;
+  const waitlistMessageInput = eventTime !== null && expiryTime !== null &&
+      expiryLabel !== null
+    ? {
+      title: event.title ?? "your event",
+      brandName: event.brands.name ?? "Mingla",
+      ticketTypeName: ticketType.name ?? "ticket",
+      quantity: qtyRequested,
+      date: eventTime.date,
+      time: eventTime.time,
+      when: `${eventTime.date}, ${eventTime.time}`,
+      place: event.location_text,
+      expiry: expiryLabel,
+      zoneLabel: expiryTime.zoneLabel,
+      checkoutUrl: claimUrl,
+    }
+    : null;
+  const unifiedMessage = waitlistMessageInput === null
+    ? null
+    : buildWaitlistSpotMessage({ ...waitlistMessageInput, smsLink: null });
+
   if (notification.channel === "email") {
-    const email = renderWaitlistSpotOpenEmail({
-      brand: { name: event.brands.name ?? "Mingla" },
-      event: { title: event.title ?? "your event" },
-      ticketType: { name: ticketType.name ?? "ticket" },
-      qtyRequested,
-      expiresAt: inviteExpiresAt,
-      claimUrl,
-    });
+    const email = unifiedMessage === null
+      ? renderWaitlistSpotOpenEmail({
+        brand: { name: event.brands.name ?? "Mingla" },
+        event: { title: event.title ?? "your event" },
+        ticketType: { name: ticketType.name ?? "ticket" },
+        qtyRequested,
+        expiresAt: inviteExpiresAt,
+        claimUrl,
+      })
+      : renderTransactionalEmail({
+        variant: "purchase_message",
+        recipient: { name: null, email: notification.recipient },
+        body: unifiedMessage.body,
+      });
     assertNotResendSandbox(EMAIL_SENDERS.tickets);
     const sent = await sendResendEmailWithAttachment({
       from: formatSenderHeader(EMAIL_SENDERS.tickets),
@@ -543,6 +597,24 @@ async function deliverWaitlistSpotOpenNotification(
   }
 
   if (notification.channel === "sms") {
+    const buyerLink = waitlistMessageInput === null
+      ? null
+      : await resolveBuyerLink(supabase, {
+        kind: "waitlist_offer",
+        sourceId: waitlistEntryId,
+        targetUrl: claimUrl,
+        expiresAt: inviteExpiresAt,
+      });
+    const smsMessage = waitlistMessageInput === null
+      ? renderWaitlistSpotOpenSms({
+        eventTitle: event.title ?? "your event",
+        ticketTypeName: ticketType.name ?? "ticket",
+        claimUrl,
+      })
+      : buildWaitlistSpotMessage({
+        ...waitlistMessageInput,
+        smsLink: buyerLink?.isShort === true ? buyerLink.display : null,
+      }).sms;
     // #1541 §4.0 — the ONE call shape. countryCode, messagingServiceSid,
     // messageType, stopFooterOwnLine, mediaUrls and beforeProviderIo are all
     // OMITTED deliberately: this path has no authoritative country label (per
@@ -552,11 +624,7 @@ async function deliverWaitlistSpotOpenNotification(
     const result = await smsAdapter.send({
       to: notification.recipient,
       brandName: event.brands.name ?? "Mingla",
-      message: renderWaitlistSpotOpenSms({
-        eventTitle: event.title ?? "your event",
-        ticketTypeName: ticketType.name ?? "ticket",
-        claimUrl,
-      }),
+      message: smsMessage,
     });
 
     // #2218 — a Nigerian `generic` send inside the 20:00–08:00 WAT operator
