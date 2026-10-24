@@ -129,6 +129,59 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.submit_event_rsvp_with_delivery(
+  p_event_id uuid,
+  p_user_id uuid,
+  p_guest_name text,
+  p_guest_email text,
+  p_guest_phone text,
+  p_rsvp_status text,
+  p_plus_count integer DEFAULT 0,
+  p_guests jsonb DEFAULT '[]'::jsonb,
+  p_qr_token_pepper text DEFAULT NULL,
+  p_guest_phone_country_iso text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_result jsonb;
+  v_rsvp_id uuid;
+BEGIN
+  v_result := public.submit_event_rsvp(
+    p_event_id,
+    p_user_id,
+    p_guest_name,
+    p_guest_email,
+    p_guest_phone,
+    p_rsvp_status,
+    p_plus_count,
+    p_guests,
+    p_qr_token_pepper,
+    p_guest_phone_country_iso
+  );
+  v_rsvp_id := nullif(v_result->>'rsvpId','')::uuid;
+  IF v_rsvp_id IS NOT NULL THEN
+    IF v_result->>'status' = 'going'
+       AND v_result->>'approvalStatus' = 'approved' THEN
+      -- An approved attendee gets the pass, not a duplicate acknowledgement.
+      PERFORM public.enqueue_rsvp_pass(v_rsvp_id, p_qr_token_pepper);
+    ELSE
+      PERFORM public.enqueue_rsvp_acknowledgement(v_rsvp_id);
+    END IF;
+  END IF;
+  RETURN v_result;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.submit_event_rsvp_with_delivery(
+  uuid,uuid,text,text,text,text,integer,jsonb,text,text
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.submit_event_rsvp_with_delivery(
+  uuid,uuid,text,text,text,text,integer,jsonb,text,text
+) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.orch_1161_reservation_notify_outbox()
 RETURNS trigger
 LANGUAGE plpgsql
