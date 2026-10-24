@@ -54,7 +54,6 @@ const completedEnvelope = (
         ticketId: "50000000-0000-4000-8000-00000000e13a",
         ticketTypeId: "20000000-0000-4000-8000-00000000e137",
         ticketName: "Free entry",
-        qrPayload: "mgl_free_2136_qr",
         status: "valid",
       },
     ],

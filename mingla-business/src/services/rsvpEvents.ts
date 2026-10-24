@@ -21,19 +21,22 @@ import {
   type PublishedBusinessEvent,
   type PublishRpcResponse,
 } from "./businessEvents";
-import {
-  type RsvpUpdatePayload,
-} from "../utils/serverDraftEventMapper";
+import { type RsvpUpdatePayload } from "../utils/serverDraftEventMapper";
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import type { DraftEvent } from "../store/draftEventStore";
 
 const createRsvpRequestId = (): string => {
-  const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (typeof maybeCrypto?.randomUUID === "function") return maybeCrypto.randomUUID();
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
-    const random = Math.floor(Math.random() * 16);
-    return (character === "x" ? random : (random & 0x3) | 0x8).toString(16);
-  });
+  const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } })
+    .crypto;
+  if (typeof maybeCrypto?.randomUUID === "function")
+    return maybeCrypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+    /[xy]/g,
+    (character) => {
+      const random = Math.floor(Math.random() * 16);
+      return (character === "x" ? random : (random & 0x3) | 0x8).toString(16);
+    },
+  );
 };
 
 export const publishRsvpDraft = async (
@@ -48,7 +51,8 @@ export const publishRsvpDraft = async (
   const { data, error } = await supabase.rpc("business_publish_rsvp_graph", {
     p_event_id: draft.id,
     p_client_request_id: createRsvpRequestId(),
-    ...(invites?.selectionRevision !== null && invites?.selectionRevision !== undefined
+    ...(invites?.selectionRevision !== null &&
+    invites?.selectionRevision !== undefined
       ? {
           p_invite_selection_revision: invites.selectionRevision,
           p_invite_selection_confirmed: invites.confirmed,
@@ -163,26 +167,31 @@ export interface SubmitPublicRsvpResult {
   rsvpId: string;
   /** ORCH-1163 §I — the signed mingla:v1:rsvp: QR (going only; null otherwise). */
   confirmationToken: string | null;
-  acknowledgement: "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
+  acknowledgement:
+    "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
   credentials: import("@mingla/offering-rendering").RsvpPassCredential[];
   anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
+  claim: { shortUrl: string | null; code: string | null } | null;
 }
 
 export const submitPublicRsvp = async (
   input: SubmitPublicRsvpInput,
 ): Promise<SubmitPublicRsvpResult> => {
-  const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
-    body: {
-      eventId: input.eventId,
-      rsvpStatus: input.rsvpStatus,
-      guestName: input.guestName,
-      guestEmail: input.guestEmail,
-      guestPhone: input.guestPhone,
-      guestPhoneCountryIso: input.guestPhoneCountryIso,
-      plusCount: input.plusCount ?? 0,
-      guests: input.guests ?? [],
+  const { data, error } = await supabase.functions.invoke(
+    "public-submit-rsvp",
+    {
+      body: {
+        eventId: input.eventId,
+        rsvpStatus: input.rsvpStatus,
+        guestName: input.guestName,
+        guestEmail: input.guestEmail,
+        guestPhone: input.guestPhone,
+        guestPhoneCountryIso: input.guestPhoneCountryIso,
+        plusCount: input.plusCount ?? 0,
+        guests: input.guests ?? [],
+      },
     },
-  });
+  );
   // supabase.functions.invoke surfaces a non-2xx as a FunctionsHttpError whose
   // context.body carries the { error } code — bubble the code so the UI can
   // show the right inline message (rsvp_contact_required / rsvp_full / …).
@@ -198,18 +207,31 @@ export const submitPublicRsvp = async (
     acknowledgement?: SubmitPublicRsvpResult["acknowledgement"];
     credentials?: import("@mingla/offering-rendering").RsvpPassCredential[];
     anonymousRecovery?: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
+    claim?: { shortUrl?: string | null; code?: string | null } | null;
   };
   return {
     status: res.status ?? input.rsvpStatus,
     approvalStatus: res.approvalStatus ?? "approved",
     rsvpId: res.rsvpId ?? "",
     confirmationToken: res.confirmationToken ?? null,
-    acknowledgement: res.acknowledgement ??
-      (res.approvalStatus === "pending" ? "pending_approval" :
-        (res.status === "waitlisted" || res.status === "maybe" || res.status === "not_going")
-          ? res.status : "accepted"),
+    acknowledgement:
+      res.acknowledgement ??
+      (res.approvalStatus === "pending"
+        ? "pending_approval"
+        : res.status === "waitlisted" ||
+            res.status === "maybe" ||
+            res.status === "not_going"
+          ? res.status
+          : "accepted"),
     credentials: res.credentials ?? [],
     anonymousRecovery: res.anonymousRecovery ?? [],
+    claim:
+      res.claim === null || res.claim === undefined
+        ? null
+        : {
+            shortUrl: res.claim.shortUrl ?? null,
+            code: res.claim.code ?? null,
+          },
   };
 };
 
@@ -266,24 +288,29 @@ export type SubmitRsvpContributionResult =
 export const submitRsvpContribution = async (
   input: SubmitRsvpContributionInput,
 ): Promise<SubmitRsvpContributionResult> => {
-  const { data, error } = await supabase.functions.invoke("rsvp-contribution-create", {
-    body: {
-      eventId: input.eventId,
-      amountCents: input.amountCents,
-      rsvpId: input.rsvpId ?? null,
-      guestName: input.guestName,
-      guestEmail: input.guestEmail,
-      surface: input.surface,
-      returnContract: "host_v1",
-      callerIdempotencyKey: input.callerIdempotencyKey,
+  const { data, error } = await supabase.functions.invoke(
+    "rsvp-contribution-create",
+    {
+      body: {
+        eventId: input.eventId,
+        amountCents: input.amountCents,
+        rsvpId: input.rsvpId ?? null,
+        guestName: input.guestName,
+        guestEmail: input.guestEmail,
+        surface: input.surface,
+        returnContract: "host_v1",
+        callerIdempotencyKey: input.callerIdempotencyKey,
+      },
     },
-  });
+  );
   // Bubble the edge fn's { error } code (amount_below_min / brand_cannot_collect /
   // amount_invalid / …) so the panel maps it to the right gift-framed copy.
   if (error !== null) {
     throw new Error(parseRsvpErrorCode(error as RsvpInvokeError));
   }
-  const res = (data ?? {}) as Partial<SubmitRsvpContributionResult> & { kind?: string };
+  const res = (data ?? {}) as Partial<SubmitRsvpContributionResult> & {
+    kind?: string;
+  };
   if (
     res.kind !== "requires_native_payment" &&
     res.kind !== "requires_web_redirect" &&

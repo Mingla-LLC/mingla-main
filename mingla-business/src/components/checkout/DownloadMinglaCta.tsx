@@ -176,6 +176,8 @@ export interface BuyerClaimCardProps {
   analyticsSurface: string;
   /** Needed only for the no-claim fallback destination. */
   fallbackEntity: GuestFunnelEntity;
+  waitingOverride?: string;
+  signInOverride?: string;
 }
 
 type ScanState =
@@ -257,6 +259,8 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
   variant = "auto",
   analyticsSurface,
   fallbackEntity,
+  waitingOverride,
+  signInOverride,
 }) => {
   const { device, display } = useBuyerClaimPlatform(variant);
   const reducedMotion = useReducedMotionOnWeb();
@@ -265,12 +269,15 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
   const viewedVariants = useRef(new Set<string>());
   const cleanEmail = nonBlank(email);
   const cleanLast4 = nonBlank(phoneLast4);
-  const signIn = buyerSignInCopy({
-    emailMasked: cleanEmail,
-    phoneLast4: cleanLast4,
-  });
+  const signIn =
+    signInOverride ??
+    buyerSignInCopy({
+      emailMasked: cleanEmail,
+      phoneLast4: cleanLast4,
+    });
   const displayForCopy = display === "desktop" ? "desktop" : "phone";
-  const waiting = BUYER_CLAIM_COPY.waiting[kind][displayForCopy];
+  const waiting =
+    waitingOverride ?? BUYER_CLAIM_COPY.waiting[kind][displayForCopy];
   const handoffMint = handoff?.mint ?? null;
 
   useEffect(() => {

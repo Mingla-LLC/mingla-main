@@ -76,6 +76,8 @@ describe("ORCH-0875 cancelTripBookingService error mapping", () => {
       mode: "preview",
       orderId: ORDER_ID,
       eventId: "ev-1",
+      brandSlug: "wander-co",
+      tripSlug: "alpine-week",
       quotedAt: "2026-05-18T12:00:00.000Z",
       tripStart: "2026-08-16T00:00:00.000Z",
       daysRemaining: 90,
@@ -103,6 +105,8 @@ describe("ORCH-0875 cancelTripBookingService error mapping", () => {
       tierPct: 100,
       refundTotalCents: 100000,
       currency: "GBP",
+      brandSlug: "wander-co",
+      tripSlug: "alpine-week",
     });
     expect(preview.perPaymentRefund).toHaveLength(1);
     expect(preview.perPaymentRefund[0].sourcePi).toBe("pi_test_1");

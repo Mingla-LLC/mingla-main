@@ -211,6 +211,7 @@ const CORE_SEARCH_READY_ROUTES = Object.values(CORE_PAGES)
   })) satisfies readonly SearchReadyRouteContract[]
 
 const PUBLIC_NOINDEX_FAMILIES = [
+  ['/c', 'claim-link-family'],
   ['/orders', 'orders-family'],
   ['/chat', 'chat-family'],
   ['/board', 'board-family'],

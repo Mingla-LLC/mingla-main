@@ -95,7 +95,6 @@ describe("ORCH-0852 — bulletproof confirm contract", () => {
             ticketId: "ticket-1",
             ticketTypeId: "type-1",
             ticketName: "General Admission",
-            qrPayload: "qr-payload-1",
             status: "valid",
           },
         ],

@@ -94,6 +94,7 @@ import {
   PURCHASE_TERMS_LABEL_TERMS,
   PURCHASE_TERMS_URL,
 } from "../../../src/constants/consentDisclosure";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { supabase } from "../../../src/services/supabase";
 
 import { Button } from "../../../src/components/ui/Button";
@@ -590,13 +591,29 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             </View>
             {quote !== null ? (
               <React.Suspense fallback={null}>
-                <TicketQuoteSummary quote={quote} compact />
+                <TicketQuoteSummary
+                  quote={quote}
+                  compact
+                  totalLabel={BUYER_CLAIM_COPY.confirmTotalLabel}
+                  totalValue={
+                    totals.isFree
+                      ? BUYER_CLAIM_COPY.receipt.free
+                      : formatCurrency(totals.allInTotal, totals.currency, true)
+                  }
+                />
               </React.Suspense>
             ) : null}
           </GlassCard>
         </Pressable>
 
-        <Text style={styles.sectionLabel}>Buyer details</Text>
+        {Platform.OS !== "web" && sessionUserId !== null ? (
+          <Text
+            style={styles.buyerContext}
+            testID="business-buyer-recipient-note"
+          >
+            {BUYER_CLAIM_COPY.bizCheckout.forSomeoneElse}
+          </Text>
+        ) : null}
 
         <View style={styles.fieldWrap}>
           <View style={styles.fieldLabelRow}>
@@ -685,6 +702,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
             theme={PUBLIC_BUYER_PHONE_THEME}
           />
         </View>
+
+        <Text style={styles.promise} testID="checkout-claim-promise">
+          {BUYER_CLAIM_COPY.checkoutPromise.booking}
+        </Text>
 
         <Pressable
           onPress={toggleTerms}
@@ -787,11 +808,15 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         ]}
       >
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalLabel}>
+            {BUYER_CLAIM_COPY.confirmTotalLabel}
+          </Text>
           <Text style={styles.totalValue}>
-            {quoteStatus === "ready" && quote !== null
-              ? formatCurrency(quote.buyerTotalCents, quote.currency, true)
-              : "Updating…"}
+            {quoteStatus !== "ready"
+              ? "Updating…"
+              : totals.isFree
+                ? BUYER_CLAIM_COPY.receipt.free
+                : formatCurrency(totals.allInTotal, totals.currency, true)}
           </Text>
         </View>
         <Pressable
@@ -887,6 +912,19 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   fieldWrap: { marginBottom: spacing.md },
+  buyerContext: {
+    marginBottom: spacing.md,
+    fontSize: 13,
+    lineHeight: 19,
+    color: textTokens.secondary,
+  },
+  promise: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    fontSize: 13,
+    lineHeight: 19,
+    color: textTokens.secondary,
+  },
   fieldLabelRow: {
     flexDirection: "row",
     alignItems: "baseline",

@@ -30,6 +30,8 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -61,6 +63,7 @@ import type {
   CancelTripBookingResult,
 } from "../../../src/services/cancelTripBookingService";
 import { RefundPreviewBody } from "../../../src/components/trip/RefundPreviewBody";
+import { tripPublicPath } from "../../../src/constants/publicUrls";
 
 function makeIdempotencyKey(orderId: string): string {
   return `tr4_buyer_cancel_${orderId.slice(0, 8)}_${Date.now()}`;
@@ -83,13 +86,24 @@ export default function CancelBookingScreen(): React.ReactElement {
     useState<CancelTripBookingResult | null>(null);
 
   const handleClose = useCallback(() => {
-    // Tap X → back. router.back() if possible; else navigate to root.
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/");
+    const preview = previewQuery.data;
+    if (preview?.brandSlug && preview.tripSlug) {
+      router.replace(
+        tripPublicPath({
+          brandSlug: preview.brandSlug,
+          tripSlug: preview.tripSlug,
+        }) as never,
+      );
+      return;
     }
-  }, [router]);
+
+    const fallbackUrl = "https://usemingla.com";
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.location.assign(fallbackUrl);
+      return;
+    }
+    void Linking.openURL(fallbackUrl);
+  }, [previewQuery.data, router]);
 
   const handleConfirm = useCallback(async () => {
     if (!orderId || !token) return;
