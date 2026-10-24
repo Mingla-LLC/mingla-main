@@ -118,7 +118,7 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
       void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia"] });
     }, retryDelayMs);
     return () => clearTimeout(timer);
-  }, [queryClient, retryDelayMs]);
+  }, [queryClient, retryDelayMs, retryToken]);
   const duration = item.kind === "video" ? formatMediaDuration(item.durationMs) : null;
   return (
     <View style={[styles.root, style]}>

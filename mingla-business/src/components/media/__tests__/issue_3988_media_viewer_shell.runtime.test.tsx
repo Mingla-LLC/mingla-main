@@ -6,7 +6,7 @@ const mockPlatform = { OS: "web" };
 const mockWindow = { width: 1280, height: 800, fontScale: 2, scale: 2 };
 const mockInsets = { top: 31, bottom: 27, left: 0, right: 0 };
 let mockReduceMotion = true;
-let mockKeyHandler: ((event: { key: string; preventDefault: () => void }) => void) | null = null;
+const mockKeyHandlers = new Set<(event: { key: string; preventDefault: () => void }) => void>();
 
 jest.mock("react-native", () => {
   const base = jest.requireActual("react-native");
@@ -19,7 +19,6 @@ jest.mock("react-native", () => {
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => mockInsets }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true }) }));
 jest.mock("../../../hooks/useReducedMotionNative", () => ({ useReducedMotionNative: () => mockReduceMotion }));
-jest.mock("../../ui/escapeLayerStack", () => ({ useEscapeLayer: () => () => true }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
@@ -30,6 +29,8 @@ const TestRenderer = require("react-test-renderer") as {
 const { MediaViewerShell } = require("../MediaViewerShell") as {
   MediaViewerShell: React.ComponentType<Record<string, unknown>>;
 };
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { resetEscapeLayersForTest } = require("../../ui/escapeLayerStack") as { resetEscapeLayersForTest: () => void };
 
 interface Node {
   type: unknown;
@@ -51,17 +52,18 @@ describe("#3988 MediaViewerShell rendered geometry and close behavior", () => {
   beforeEach(() => {
     mockPlatform.OS = "web";
     mockReduceMotion = true;
-    mockKeyHandler = null;
+    mockKeyHandlers.clear();
+    resetEscapeLayersForTest();
     const opener = { focus: jest.fn() };
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: {
         activeElement: opener,
-        addEventListener: (name: string, handler: typeof mockKeyHandler) => {
-          if (name === "keydown") mockKeyHandler = handler;
+        addEventListener: (name: string, handler: (event: { key: string; preventDefault: () => void }) => void) => {
+          if (name === "keydown") mockKeyHandlers.add(handler);
         },
-        removeEventListener: (name: string, handler: typeof mockKeyHandler) => {
-          if (name === "keydown" && mockKeyHandler === handler) mockKeyHandler = null;
+        removeEventListener: (name: string, handler: (event: { key: string; preventDefault: () => void }) => void) => {
+          if (name === "keydown") mockKeyHandlers.delete(handler);
         },
       },
     });
@@ -102,7 +104,7 @@ describe("#3988 MediaViewerShell rendered geometry and close behavior", () => {
     expect(flatten(bottomBar.props.style)).toMatchObject({ paddingBottom: 27 });
 
     const preventDefault = jest.fn();
-    mockKeyHandler?.({ key: "Escape", preventDefault });
+    for (const handler of mockKeyHandlers) handler({ key: "Escape", preventDefault });
     expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
     await TestRenderer.act(async () => renderer.unmount());
@@ -122,6 +124,33 @@ describe("#3988 MediaViewerShell rendered geometry and close behavior", () => {
     expect(modal.props.animationType).toBe("fade");
     await TestRenderer.act(async () => (modal.props.onRequestClose as () => void)());
     expect(onClose).toHaveBeenCalledTimes(1);
+    await TestRenderer.act(async () => renderer.unmount());
+  });
+
+  it("sends Escape only to the top of two stacked viewer shells", async () => {
+    const closeBottom = jest.fn();
+    const closeTop = jest.fn();
+    let renderer!: Renderer;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(
+        <>
+          <MediaViewerShell visible onClose={closeBottom}>bottom</MediaViewerShell>
+          <MediaViewerShell visible onClose={closeTop}>top</MediaViewerShell>
+        </>,
+      );
+    });
+
+    const preventTop = jest.fn();
+    for (const handler of [...mockKeyHandlers]) handler({ key: "Escape", preventDefault: preventTop });
+    expect(closeTop).toHaveBeenCalledTimes(1);
+    expect(closeBottom).not.toHaveBeenCalled();
+
+    await TestRenderer.act(async () => {
+      renderer.update(<MediaViewerShell visible onClose={closeBottom}>bottom</MediaViewerShell>);
+    });
+    const preventBottom = jest.fn();
+    for (const handler of [...mockKeyHandlers]) handler({ key: "Escape", preventDefault: preventBottom });
+    expect(closeBottom).toHaveBeenCalledTimes(1);
     await TestRenderer.act(async () => renderer.unmount());
   });
 });

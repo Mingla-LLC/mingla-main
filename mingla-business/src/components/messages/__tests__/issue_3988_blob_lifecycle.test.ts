@@ -1,4 +1,5 @@
 import {
+  deactivateViewerObjectUrls,
   keepViewerObjectUrlIfActive,
   rememberViewerObjectUrl,
   revokeViewerObjectUrls,
@@ -59,5 +60,27 @@ describe("#3988 authenticated web blob lifecycle", () => {
     expect(urls.size).toBe(0);
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:late-100mb");
+  });
+
+  it("clears the active window on close so an in-flight fetch cannot reinsert its blob", () => {
+    const urls = new Map([["0", "blob:existing"]]);
+    const activeFileIds = new Set(["0", "1"]);
+    const revokeObjectURL = jest.fn();
+    const revoker = { revokeObjectURL };
+
+    deactivateViewerObjectUrls(urls, activeFileIds, revoker);
+
+    expect(activeFileIds.size).toBe(0);
+    expect(urls.size).toBe(0);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:existing");
+    expect(keepViewerObjectUrlIfActive(
+      urls,
+      activeFileIds,
+      "0",
+      "blob:late-after-close",
+      revoker,
+    )).toBe(false);
+    expect(urls.size).toBe(0);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:late-after-close");
   });
 });

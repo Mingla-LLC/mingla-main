@@ -106,8 +106,36 @@ describe("#3988 MediaThumb runtime cache and pending resolution", () => {
 
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["brandGroupMedia"] });
     expect(mockThumbnailRequest).toHaveBeenCalledTimes(2);
+
+    await TestRenderer.act(async () => {
+      jest.advanceTimersByTime(60_000);
+      await Promise.resolve();
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledTimes(2);
+    expect(mockThumbnailRequest).toHaveBeenCalledTimes(3);
     await TestRenderer.act(async () => renderer!.unmount());
     jest.useRealTimers();
+  });
+
+  it("renders a 65-second video duration while its poster metadata is pending", async () => {
+    jest.useFakeTimers();
+    let renderer: Renderer | null = null;
+    mockThumbnailRequest.mockReturnValueOnce(new Promise(() => undefined));
+    try {
+      await TestRenderer.act(async () => {
+        renderer = TestRenderer.create(<MediaThumb item={{ ...item("video-a", "pending"), name: "clip.mp4", mime: "video/mp4", kind: "video", durationMs: 65_000 }} />);
+        await Promise.resolve();
+      });
+
+      expect(renderer!.root.findAll((node) => node.type === "Text" && node.props.children === "media.preparing")).toHaveLength(1);
+      expect(renderer!.root.findAll((node) => node.type === "Text" && node.props.children === "1:05")).toHaveLength(1);
+      await TestRenderer.act(async () => renderer!.unmount());
+      renderer = null;
+    } finally {
+      if (renderer) await TestRenderer.act(async () => renderer!.unmount());
+      jest.useRealTimers();
+    }
   });
 
   it("revokes a web object URL immediately when the thumb unmounts", async () => {

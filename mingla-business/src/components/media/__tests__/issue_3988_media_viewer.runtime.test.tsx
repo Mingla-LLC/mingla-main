@@ -38,7 +38,14 @@ jest.mock("react-native", () => {
   };
 });
 jest.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, unknown>) => {
+      if (key === "viewer.meta") return `${values?.index}/${values?.total}:${values?.sender}`;
+      if (key === "viewer.page_a11y") return `${values?.index}/${values?.total}:${values?.name}`;
+      return key;
+    },
+    i18n: { language: "en" },
+  }),
 }));
 jest.mock("react-native-gesture-handler", () => ({
   Gesture: {
@@ -239,6 +246,26 @@ describe("#3988 MediaViewer rendered interaction matrix", () => {
 
     await TestRenderer.act(async () => mockGestureEnd?.({ translationY: 20, velocityY: 0 }));
     expect(mockWithSpring).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => renderer.unmount());
+  });
+
+  it("keeps native item order and updates the counter after a horizontal page swipe", async () => {
+    const onActiveIndexChange = jest.fn();
+    const items = [video("one"), video("two"), video("three")];
+    const { renderer } = await mountViewer({ items, onActiveIndexChange });
+    const [pager] = renderer.root.findAll((node) => node.type === "FlatListProbe" && node.props.pagingEnabled === true);
+    expect((pager.props.data as { fileId: string }[]).map((entry) => entry.fileId)).toEqual(["one", "two", "three"]);
+
+    await TestRenderer.act(async () => {
+      (pager.props.onMomentumScrollEnd as (event: unknown) => void)({ nativeEvent: { contentOffset: { x: 300 } } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(renderer.root.findAll((node) => node.type === "Text" && node.props.children === "two.mp4")).toHaveLength(1);
+    expect(renderer.root.findAll((node) => node.type === "Text" && node.props.children === "2/3:Seth")).toHaveLength(1);
+    expect(renderer.root.findAll((node) => node.type === "VideoViewProbe")).toHaveLength(1);
+    expect(onActiveIndexChange).toHaveBeenLastCalledWith(1);
     await TestRenderer.act(async () => renderer.unmount());
   });
 

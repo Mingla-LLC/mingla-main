@@ -135,6 +135,7 @@ describe("#3988 BrandGroupMediaPanel rendered states and paging", () => {
 
     setQuery(mockMediaQuery);
     const emptyRenderer = await mount();
+    expect(emptyRenderer.root.findAll((node) => node.type === "Text" && node.props.children === "Launch team · media.count_photos_videos:0 · media.count_files:0")).toHaveLength(1);
     expect(emptyRenderer.root.findAll((node) => node.type === "Text" && node.props.children === "media.empty_media_title")).toHaveLength(1);
     expect(emptyRenderer.root.findAll((node) => node.type === "Text" && node.props.children === "media.empty_body")).toHaveLength(1);
     await TestRenderer.act(async () => emptyRenderer.unmount());
@@ -160,6 +161,25 @@ describe("#3988 BrandGroupMediaPanel rendered states and paging", () => {
     await TestRenderer.act(async () => renderer.unmount());
   });
 
+  it("sorts two month sections newest first and does not fetch without a next cursor", async () => {
+    const fetchNextPage = jest.fn();
+    const september = { ...row, fileId: "file-september", createdAt: "2026-09-05T12:00:00.000Z" };
+    const octoberVideo = { ...row, fileId: "file-october", name: "recap.mp4", mime: "video/mp4", kind: "video", durationMs: 65_000, createdAt: "2026-10-05T12:00:00.000Z" };
+    setQuery(mockMediaQuery, {
+      data: { pages: [{ rows: [september, octoberVideo], totals: { media: 2, files: 0 }, nextCursor: null }] },
+      hasNextPage: false,
+      fetchNextPage,
+    });
+    const renderer = await mount();
+    const [sectionList] = renderer.root.findAll((node) => node.type === "SectionListProbe");
+    const sectionTitles = (sectionList.props.sections as { title: string }[]).map((section) => section.title);
+    expect(sectionTitles).toEqual(["October 2026", "September 2026"]);
+    expect((sectionList.props.sections as { data: unknown[][] }[])[0].data[0]).toEqual([octoberVideo]);
+    await TestRenderer.act(async () => (sectionList.props.onEndReached as () => void)());
+    expect(fetchNextPage).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => renderer.unmount());
+  });
+
   it("renders a loading skeleton and switches to the files list at runtime", async () => {
     setQuery(mockMediaQuery, { isLoading: true });
     setQuery(mockFileQuery, {
@@ -173,6 +193,8 @@ describe("#3988 BrandGroupMediaPanel rendered states and paging", () => {
     await TestRenderer.act(async () => (tabs[1].props.onPress as () => void)());
     expect(renderer.root.findAll((node) => node.type === "FlatListProbe")).toHaveLength(1);
     expect(renderer.root.findAll((node) => node.type === "Pressable" && node.props.accessibilityLabel === "brief.pdf")).toHaveLength(1);
+    const [fileName] = renderer.root.findAll((node) => node.type === "Text" && node.props.children === "brief.pdf");
+    expect(fileName.props.ellipsizeMode).toBe("middle");
     await TestRenderer.act(async () => renderer.unmount());
   });
 });

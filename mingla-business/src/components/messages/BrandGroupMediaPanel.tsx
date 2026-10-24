@@ -47,8 +47,8 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
   const fileRows = useMemo(() => fileQuery.data?.pages.flatMap((page) => page.rows) ?? [], [fileQuery.data]);
   const rows = kind === "media" ? mediaRows : fileRows;
   const totals = mediaQuery.data?.pages[0]?.totals ?? fileQuery.data?.pages[0]?.totals ?? { media: 0, files: 0 };
-  const photosCopy = totals.media > 0 ? t("media.count_photos_videos", { count: totals.media }) : "";
-  const filesCopy = totals.files > 0 ? t("media.count_files", { count: totals.files }) : "";
+  const photosCopy = t("media.count_photos_videos", { count: totals.media });
+  const filesCopy = t("media.count_files", { count: totals.files });
   const subtitle = compact
     ? [photosCopy, filesCopy].filter(Boolean).join(" · ")
     : [groupName, photosCopy, filesCopy].filter(Boolean).join(" · ");
@@ -112,7 +112,7 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
     <FlatList
       data={fileRows}
       keyExtractor={(item) => item.fileId}
-      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={() => setViewerFileId(item.fileId)} style={styles.fileRow}><View style={styles.fileIcon}><Text style={styles.extension}>{item.name.split(".").pop()?.slice(0, 4).toUpperCase() || "FILE"}</Text></View><View style={styles.fileCopy}><Text style={styles.fileName} numberOfLines={1}>{item.name}</Text><Text style={styles.fileMeta} numberOfLines={1}>{t("media.file_row_meta", { size: formatFileSize(item.sizeBytes, (key, variables) => t(key, variables)), sender: item.senderDisplayName, date: new Intl.DateTimeFormat(i18n.language, { month: "short", day: "numeric" }).format(new Date(item.createdAt)) })}</Text></View></Pressable>}
+      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={() => setViewerFileId(item.fileId)} style={styles.fileRow}><View style={styles.fileIcon}><Text style={styles.extension}>{item.name.split(".").pop()?.slice(0, 4).toUpperCase() || "FILE"}</Text></View><View style={styles.fileCopy}><Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">{item.name}</Text><Text style={styles.fileMeta} numberOfLines={1}>{t("media.file_row_meta", { size: formatFileSize(item.sizeBytes, (key, variables) => t(key, variables)), sender: item.senderDisplayName, date: new Intl.DateTimeFormat(i18n.language, { month: "short", day: "numeric" }).format(new Date(item.createdAt)) })}</Text></View></Pressable>}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
       refreshControl={Platform.OS === "web" ? undefined : <RefreshControl refreshing={activeQuery.isRefetching} onRefresh={refresh} tintColor={accent.warm} />}

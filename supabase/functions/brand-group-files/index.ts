@@ -262,11 +262,11 @@ export async function openThumbnail(
     current?.width !== media.width ||
     current?.height !== media.height ||
     current?.durationMs !== media.durationMs;
-  // A ready response is terminal progress and must never be hidden behind the
-  // pending-state throttle. The throttle only limits repeated pending writes;
-  // otherwise a thumbnail fetched during the 60-second window can stream to
-  // the caller while every gallery query remains stuck on pending metadata.
-  const shouldPersistMetadata = nextThumbState === "ready" ||
+  // A pending-to-ready transition is terminal progress and must not leave the
+  // gallery stuck. Already-ready rows still honor the 60-second setter limit,
+  // including requests whose Drive response is unchanged.
+  const shouldPersistMetadata =
+    (current?.thumbState === "pending" && nextThumbState === "ready") ||
     (setterAllowed && (current?.thumbState === "pending" || metadataChanged));
   if (shouldPersistMetadata) {
     const updated = await admin.rpc("issue_3988_set_brand_group_file_media", {

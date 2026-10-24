@@ -276,7 +276,9 @@ function RootLayoutInner(): React.ReactElement {
   const pathname = usePathname();
   useEffect(() => {
     if (loading || !user?.id) return;
-    void syncBusinessMediaLanguage(user.id);
+    let current = true;
+    void syncBusinessMediaLanguage(user.id, () => current);
+    return () => { current = false; };
   }, [loading, user?.id]);
   useEffect(() => {
     if (Platform.OS !== "web") return;

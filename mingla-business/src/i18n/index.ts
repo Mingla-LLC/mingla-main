@@ -77,6 +77,7 @@ function deviceLanguage(): BusinessMediaLanguage {
   return normalizedLanguage(browserLanguage) ?? resolveBusinessMediaLanguage(null, intlLanguage);
 }
 
+// eslint-disable-next-line import/no-named-as-default-member
 void i18n.use(initReactI18next).init({
   resources,
   lng: deviceLanguage(),
@@ -92,7 +93,10 @@ void i18n.use(initReactI18next).init({
 });
 
 /** Auth-gated profile preference wins over the boot-time browser/device locale. */
-export async function syncBusinessMediaLanguage(userId: string): Promise<void> {
+export async function syncBusinessMediaLanguage(
+  userId: string,
+  isCurrentUser: () => boolean = () => true,
+): Promise<void> {
   const { supabase } = await import("../services/supabase");
   const { data, error } = await supabase
     .from("profiles")
@@ -101,11 +105,11 @@ export async function syncBusinessMediaLanguage(userId: string): Promise<void> {
     .maybeSingle();
   if (error) {
     console.warn("[i18n] preferred language read failed", error.message);
-    return;
   }
-  const preferred = (data as { preferred_language?: unknown } | null)?.preferred_language;
+  const preferred = error ? null : (data as { preferred_language?: unknown } | null)?.preferred_language;
   const nextLanguage = resolveBusinessMediaLanguage(preferred, deviceLanguage());
-  if (nextLanguage !== i18n.language) await i18n.changeLanguage(nextLanguage);
+  // eslint-disable-next-line import/no-named-as-default-member
+  if (isCurrentUser() && nextLanguage !== i18n.language) await i18n.changeLanguage(nextLanguage);
 }
 
 export default i18n;

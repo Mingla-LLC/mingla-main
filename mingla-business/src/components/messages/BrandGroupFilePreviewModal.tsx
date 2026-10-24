@@ -73,6 +73,15 @@ export function revokeViewerObjectUrls(objectUrls: Map<string, string>, revoker:
   objectUrls.clear();
 }
 
+export function deactivateViewerObjectUrls(
+  objectUrls: Map<string, string>,
+  activeFileIds: Set<string>,
+  revoker: ObjectUrlRevoker,
+): void {
+  activeFileIds.clear();
+  revokeViewerObjectUrls(objectUrls, revoker);
+}
+
 interface Props {
   /** Legacy single-file adapter retained for existing guide/file contract tests. */
   file?: PreviewFile | null;
@@ -113,9 +122,12 @@ export function BrandGroupFilePreviewModal({
   const objectUrls = useRef<Map<string, string>>(new Map());
   const activeWindowFileIds = useRef<Set<string>>(viewerWindowFileIds(viewerItems, initialIndex));
 
-  const revokeAll = useCallback(() => {
-    if (typeof URL === "undefined") return;
-    revokeViewerObjectUrls(objectUrls.current, URL);
+  const deactivateAndRevokeAll = useCallback(() => {
+    if (typeof URL === "undefined") {
+      activeWindowFileIds.current.clear();
+      return;
+    }
+    deactivateViewerObjectUrls(objectUrls.current, activeWindowFileIds.current, URL);
   }, []);
 
   const retainActiveWindow = useCallback((activeIndex: number) => {
@@ -124,10 +136,10 @@ export function BrandGroupFilePreviewModal({
     revokeViewerObjectUrlsOutsideWindow(objectUrls.current, viewerItems, activeIndex, URL);
   }, [viewerItems]);
 
-  useEffect(() => revokeAll, [revokeAll]);
+  useEffect(() => deactivateAndRevokeAll, [deactivateAndRevokeAll]);
   useEffect(() => {
-    if (!activeFileId) revokeAll();
-  }, [activeFileId, revokeAll]);
+    if (!activeFileId) deactivateAndRevokeAll();
+  }, [activeFileId, deactivateAndRevokeAll]);
 
   const requestFor = useCallback(async (fileId: string, onProgress?: (progress: ViewerProgress) => void): Promise<ViewerRequest> => {
     const existing = objectUrls.current.get(fileId);
@@ -179,7 +191,7 @@ export function BrandGroupFilePreviewModal({
       requestFor={requestFor}
       onActiveIndexChange={retainActiveWindow}
       onShowInChat={onShowInChat}
-      onClose={() => { revokeAll(); onClose(); }}
+      onClose={() => { deactivateAndRevokeAll(); onClose(); }}
     />
   );
 }
