@@ -55,11 +55,12 @@ export async function listBrandGroups(): Promise<{
 
 export async function listBrandGroupMessages(
   conversationId: string,
+  before: string | null = null,
 ): Promise<{ messages: BrandGroupMessage[]; error: string | null }> {
   const { data, error } = await supabase.rpc("issue_3720_list_brand_group_messages", {
     p_conversation_id: conversationId,
     p_limit: 120,
-    p_before: null,
+    p_before: before,
   });
   return {
     messages: ((data ?? []) as BrandGroupMessage[]).slice().reverse(),

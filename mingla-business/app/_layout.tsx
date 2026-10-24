@@ -127,6 +127,7 @@ import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 // ORCH-1246 (Apple 2.1) — gate the ATT request on foreground-active state.
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
+import { syncBusinessMediaLanguage } from "../src/i18n";
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -273,6 +274,10 @@ function RootLayoutInner(): React.ReactElement {
   // React #185 + the sign-out white screen). Read unconditionally before any
   // deferred return (Rules-of-Hooks; preserves the ORCH-1098 all-hooks-run fix).
   const pathname = usePathname();
+  useEffect(() => {
+    if (loading || !user?.id) return;
+    void syncBusinessMediaLanguage(user.id);
+  }, [loading, user?.id]);
   useEffect(() => {
     if (Platform.OS !== "web") return;
     void initWebAnalytics().then(() => {

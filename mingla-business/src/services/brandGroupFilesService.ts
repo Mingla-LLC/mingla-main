@@ -164,3 +164,12 @@ export async function brandGroupFilePreviewRequest(fileId: string): Promise<{ ur
     headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey },
   };
 }
+
+/** #3988 — authorized Drive-generated poster request. The Drive id never reaches the client. */
+export async function brandGroupFileThumbnailRequest(fileId: string): Promise<{ uri: string; headers: Record<string, string> }> {
+  const request = await brandGroupFilePreviewRequest(fileId);
+  return {
+    ...request,
+    uri: `${request.uri}&variant=thumb`,
+  };
+}

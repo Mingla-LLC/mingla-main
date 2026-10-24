@@ -20,6 +20,14 @@ export interface DriveFile {
   appProperties?: Record<string, string>;
 }
 
+export interface DriveMediaInfo {
+  hasThumbnail: boolean;
+  thumbnailLink: string | null;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+}
+
 export interface DriveBinding {
   hostFolderId: string;
   mediaPacketFolderId: string;
@@ -403,6 +411,56 @@ export class GoogleDriveClient {
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
       { headers: { Authorization: `Bearer ${token}`, ...(range ? { Range: range } : {}) } },
     );
+  }
+
+  async mediaInfo(fileId: string): Promise<DriveMediaInfo> {
+    const params = new URLSearchParams({
+      supportsAllDrives: "true",
+      fields:
+        "hasThumbnail,thumbnailLink,imageMediaMetadata(width,height),videoMediaMetadata(width,height,durationMillis)",
+    });
+    const response = await this.request(
+      `/drive/v3/files/${encodeURIComponent(fileId)}?${params.toString()}`,
+    );
+    const body = await response.json() as {
+      hasThumbnail?: unknown;
+      thumbnailLink?: unknown;
+      imageMediaMetadata?: { width?: unknown; height?: unknown };
+      videoMediaMetadata?: { width?: unknown; height?: unknown; durationMillis?: unknown };
+    };
+    const image = body.imageMediaMetadata;
+    const video = body.videoMediaMetadata;
+    const positiveInteger = (value: unknown): number | null => {
+      const parsed = typeof value === "number" ? value : Number(value);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    };
+    const nonNegativeInteger = (value: unknown): number | null => {
+      const parsed = typeof value === "number" ? value : Number(value);
+      return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+    };
+    return {
+      hasThumbnail: body.hasThumbnail === true,
+      thumbnailLink: typeof body.thumbnailLink === "string" && body.thumbnailLink.length > 0
+        ? body.thumbnailLink
+        : null,
+      width: positiveInteger(video?.width) ?? positiveInteger(image?.width),
+      height: positiveInteger(video?.height) ?? positiveInteger(image?.height),
+      durationMs: nonNegativeInteger(video?.durationMillis),
+    };
+  }
+
+  async thumbnail(link: string, sizePx = 480): Promise<Response> {
+    const target = new URL(link);
+    const normalizedSize = Number.isInteger(sizePx) && sizePx > 0 ? sizePx : 480;
+    if (/=s\d+$/.test(target.href)) {
+      target.href = target.href.replace(/=s\d+$/, `=s${normalizedSize}`);
+    } else {
+      target.href = `${target.href}=s${normalizedSize}`;
+    }
+    const token = await this.token();
+    return await this.fetcher(target, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
   }
 
   async listFolderFiles(folderId: string): Promise<DriveFile[]> {

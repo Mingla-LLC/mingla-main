@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -8,13 +8,18 @@ import {
   Text,
   TextInput,
   View,
+  type LayoutChangeEvent,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 
 import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupSignalModal";
 import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
+import { BrandGroupMediaPanel } from "../../src/components/messages/BrandGroupMediaPanel";
+import { MediaThumb } from "../../src/components/media/MediaThumb";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
@@ -29,6 +34,8 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
+import { useBrandGroupFileMeta } from "../../src/hooks/useBrandGroupMedia";
+import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
 import { ScrollView } from "../../src/wrappers/SmartScrollView";
 import {
@@ -38,6 +45,8 @@ import {
   type BrandGroupMessage,
 } from "../../src/services/brandGroupsService";
 import { supabase } from "../../src/services/supabase";
+import type { BrandGroupMediaRow } from "../../src/services/brandGroupMediaService";
+import { formatFileSize, formatMediaDuration } from "../../src/utils/formatMediaDuration";
 
 function first(value: string | string[] | undefined): string | null {
   const item = Array.isArray(value) ? value[0] : value;
@@ -45,11 +54,15 @@ function first(value: string | string[] | undefined): string | null {
 }
 
 export default function BrandGroupThreadRoute(): React.ReactElement {
-  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[] }>();
+  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[] }>();
   const conversationId = first(params.conversationId);
   const requestedMode = first(params.mode);
+  const requestedFocusMessageId = first(params.focusMessageId);
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { t } = useTranslation("brandGroupMedia");
+  const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const staff = useSupportStaff();
   const { groups, refresh: refreshGroups, setMuted } = useBrandGroups();
@@ -74,7 +87,35 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const [signalSourceId, setSignalSourceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [filePickerVisible, setFilePickerVisible] = useState(false);
-  const [previewFile, setPreviewFile] = useState<{ id: string; name: string; mime: string; size: number | null } | null>(null);
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+  const [mediaPanelOpen, setMediaPanelOpen] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+  const messageOffsets = useRef<Map<string, number>>(new Map());
+  const handledFocusMessageId = useRef<string | null>(null);
+  const fileIds = useMemo(() => messages.flatMap((message) => message.file_id ? [message.file_id] : []), [messages]);
+  const fileMetaQuery = useBrandGroupFileMeta(conversationId, fileIds);
+  const mediaMeta = useMemo(() => new Map((fileMetaQuery.data ?? []).map((item) => [item.fileId, item])), [fileMetaQuery.data]);
+  const viewerItems = useMemo<BrandGroupMediaRow[]>(() => messages.flatMap((message) => {
+    if (!message.file_id || !message.file_name || !message.file_mime) return [];
+    const meta = mediaMeta.get(message.file_id);
+    return [{
+      fileId: message.file_id,
+      messageId: message.id,
+      name: message.file_name,
+      mime: message.file_mime,
+      sizeBytes: message.file_size ?? 0,
+      createdAt: message.created_at,
+      senderDisplayName: message.sender_display_name,
+      senderRole: message.sender_role ?? "brand",
+      kind: (message.file_mime.startsWith("video/") ? "video" : message.file_mime.startsWith("image/") ? "image" : "file") as BrandGroupMediaRow["kind"],
+      durationMs: meta?.durationMs ?? null,
+      width: meta?.width ?? null,
+      height: meta?.height ?? null,
+      thumbState: meta?.thumbState ?? (message.file_mime.startsWith("video/") || message.file_mime.startsWith("image/") ? "pending" : "none"),
+    }];
+  }).reverse(), [mediaMeta, messages]);
+  const viewerItemMap = useMemo(() => new Map(viewerItems.map((item) => [item.fileId, item])), [viewerItems]);
 
   useEffect(() => {
     if (!group) return;
@@ -114,11 +155,51 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
-        () => void refresh(),
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "list", conversationId] });
+          void queryClient.invalidateQueries({ queryKey: ["brandGroupMedia", "meta", conversationId] });
+          void refresh();
+        },
       )
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [conversationId, refresh]);
+  }, [conversationId, queryClient, refresh]);
+
+  const openMedia = useCallback(() => {
+    if (!conversationId) return;
+    if (isWideDesktop) setMediaPanelOpen((value) => !value);
+    else router.push({ pathname: "/messages/media/[conversationId]", params: { conversationId } });
+  }, [conversationId, isWideDesktop, router]);
+
+  const showInChat = useCallback(async (messageId: string): Promise<void> => {
+    let merged = messages;
+    for (let page = 0; page < 10 && !merged.some((message) => message.id === messageId); page += 1) {
+      const before = merged[0]?.created_at ?? null;
+      if (!before || !conversationId) break;
+      const older = await listBrandGroupMessages(conversationId, before);
+      if (older.error || older.messages.length === 0) break;
+      const byId = new Map([...older.messages, ...merged].map((message) => [message.id, message]));
+      merged = [...byId.values()].sort((left, right) => left.created_at.localeCompare(right.created_at));
+    }
+    if (!merged.some((message) => message.id === messageId)) {
+      setToast({ visible: true, message: t("viewer.show_in_chat_missing") });
+      return;
+    }
+    if (merged !== messages) setMessages(merged);
+    setMediaPanelOpen(false);
+    setHighlightedMessageId(messageId);
+    setTimeout(() => {
+      const y = messageOffsets.current.get(messageId);
+      if (typeof y === "number") scrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.md), animated: true });
+    }, 0);
+    setTimeout(() => setHighlightedMessageId((value) => value === messageId ? null : value), 2_000);
+  }, [conversationId, messages, t]);
+
+  useEffect(() => {
+    if (loading || !requestedFocusMessageId || handledFocusMessageId.current === requestedFocusMessageId) return;
+    handledFocusMessageId.current = requestedFocusMessageId;
+    void showInChat(requestedFocusMessageId);
+  }, [loading, requestedFocusMessageId, showInChat]);
 
   const selectedMessages = useMemo(
     () => messages.filter((message) => selectedIds.includes(message.id)),
@@ -179,6 +260,17 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           <Text style={styles.title} numberOfLines={1}>{group?.brand_name || "Brand group"}</Text>
           <Text style={styles.subtitle} numberOfLines={1}>{group ? `${group.member_count} brand teammates · Mingla Support can help here` : "Official Brand group"}</Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("chat.media_a11y")}
+          accessibilityState={{ expanded: isWideDesktop ? mediaPanelOpen : undefined }}
+          hitSlop={5}
+          onPress={openMedia}
+          style={[styles.mediaButton, mediaPanelOpen && styles.mediaButtonActive]}
+        >
+          <Icon name="grid" size={16} color={textTokens.primary} />
+          <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>
+        </Pressable>
         <View style={styles.muteControl}>
           <Text style={styles.muteLabel}>Mute notifications</Text>
           <Switch
@@ -195,7 +287,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
 
       {group?.muted ? (
         <View style={styles.mutedNote}>
-          <Text style={styles.mutedNoteText}>Muted: you'll still see unread badges, but no push alerts for this group.</Text>
+          <Text style={styles.mutedNoteText}>Muted: you&apos;ll still see unread badges, but no push alerts for this group.</Text>
         </View>
       ) : null}
 
@@ -213,6 +305,8 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
 
       {notice ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setNotice(null)} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable> : null}
 
+      <View style={styles.workspace}>
+      <View style={styles.threadColumn}>
       {loading ? (
         <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
       ) : error ? (
@@ -221,17 +315,23 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           <Button label="Retry" variant="secondary" onPress={() => void refresh()} />
         </View>
       ) : (
-        <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} style={styles.messages} contentContainerStyle={styles.messagesContent} showsVerticalScrollIndicator={false}>
           {messages.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
           ) : messages.map((message) => {
             const mine = message.sender_id === user?.id;
             const selected = selectedIds.includes(message.id);
             const supportIdentity = message.sender_role === "Mingla Support";
+            const mediaItem = message.file_id ? viewerItemMap.get(message.file_id) : undefined;
+            const isMedia = mediaItem?.kind === "image" || mediaItem?.kind === "video";
             return (
-              <View key={message.id} style={[styles.messageWrap, mine ? styles.messageWrapMine : styles.messageWrapOther]}>
+              <View
+                key={message.id}
+                onLayout={(event: LayoutChangeEvent) => messageOffsets.current.set(message.id, event.nativeEvent.layout.y)}
+                style={[styles.messageWrap, mine ? styles.messageWrapMine : styles.messageWrapOther]}
+              >
                 {!mine ? <Text style={styles.sender}>{message.sender_display_name}{supportIdentity ? " · Mingla Support" : ""}</Text> : null}
-                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther, selected && styles.bubbleSelected]}>
+                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther, selected && styles.bubbleSelected, highlightedMessageId === message.id && styles.bubbleHighlighted]}>
                   {message.reply_content ? (
                     <View style={styles.quote}>
                       <Text style={styles.quoteName}>{message.reply_sender_display_name || "Message"}</Text>
@@ -241,15 +341,11 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
                   {message.file_id && message.file_name && message.file_mime ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Open ${message.file_name}`}
-                      onPress={() => setPreviewFile({ id: message.file_id!, name: message.file_name!, mime: message.file_mime!, size: message.file_size })}
-                      style={styles.fileCard}
+                      accessibilityLabel={isMedia ? t(mediaItem?.kind === "video" ? "chat.video_bubble_a11y" : "chat.photo_bubble_a11y", { name: message.file_name, duration: formatMediaDuration(mediaItem?.durationMs) ?? "" }) : `Open ${message.file_name}`}
+                      onPress={() => setPreviewFileId(message.file_id)}
+                      style={isMedia ? styles.mediaBubble : styles.fileCard}
                     >
-                      <View style={styles.fileCardIcon}><Icon name={message.message_type === "video" ? "play" : message.message_type === "image" ? "eye" : "notebook"} size={20} color={mine ? "#101216" : accent.warm} /></View>
-                      <View style={styles.fileCardCopy}>
-                        <Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text>
-                        <Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{message.file_size ? `${(message.file_size / 1024 / 1024).toFixed(1)} MB` : "Secure shared file"} · Tap to preview</Text>
-                      </View>
+                      {isMedia && mediaItem ? <><MediaThumb item={mediaItem} bubble style={styles.mediaBubbleThumb} /><Text style={[styles.mediaBubbleFooter, mine && styles.messageTextMine]} numberOfLines={1}>{message.file_name} · {formatFileSize(message.file_size, (key, variables) => t(key, variables))}</Text></> : <><View style={styles.fileCardIcon}><Icon name="notebook" size={20} color={mine ? "#101216" : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
                   ) : <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.content}</Text>}
                   <Text style={styles.time}>{new Date(message.created_at).toLocaleString()}</Text>
@@ -296,6 +392,9 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           <Button label="Send" leadingIcon="send" loading={sending} disabled={!composer.trim() || sending} onPress={() => void send()} />
         </View>
       </View>
+      </View>
+      {isWideDesktop && mediaPanelOpen && conversationId ? <BrandGroupMediaPanel compact conversationId={conversationId} groupName={group?.brand_name ?? "Brand group"} onShowInChat={(messageId) => void showInChat(messageId)} /> : null}
+      </View>
 
       <BrandGroupSignalModal
         visible={signalSourceId !== null}
@@ -318,7 +417,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           onUploaded={refresh}
         />
       ) : null}
-      <BrandGroupFilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+      <BrandGroupFilePreviewModal items={viewerItems} initialFileId={previewFileId} onShowInChat={(messageId) => void showInChat(messageId)} onClose={() => setPreviewFileId(null)} />
       <Toast
         visible={toast.visible}
         kind="error"
@@ -336,6 +435,9 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, minWidth: 0 },
   title: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
   subtitle: { color: textTokens.tertiary, fontSize: 12, marginTop: 2 },
+  mediaButton: { minHeight: 34, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 17, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.08)" },
+  mediaButtonActive: { borderColor: "rgba(235,120,37,0.7)", shadowColor: accent.warm, shadowOpacity: 0.35, shadowRadius: 10 },
+  mediaButtonText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
   muteControl: { minHeight: 44, alignItems: "flex-end", justifyContent: "center", gap: 2 },
   muteLabel: { color: textTokens.secondary, fontSize: 11, fontWeight: "700" },
   mutedNote: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: "rgba(235,120,37,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(235,120,37,0.25)" },
@@ -348,6 +450,8 @@ const styles = StyleSheet.create({
   actorChoiceTextActive: { color: accent.warm, fontWeight: "700" },
   notice: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: "rgba(235,120,37,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(235,120,37,0.25)" },
   noticeText: { color: textTokens.secondary, fontSize: 12, textAlign: "center" },
+  workspace: { flex: 1, flexDirection: "row" },
+  threadColumn: { flex: 1, minWidth: 0 },
   state: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.lg },
   stateText: { color: textTokens.secondary, textAlign: "center", lineHeight: 20 },
   messages: { flex: 1 },
@@ -361,6 +465,7 @@ const styles = StyleSheet.create({
   bubbleMine: { backgroundColor: accent.warm, borderColor: accent.warm },
   bubbleOther: { backgroundColor: glass.tint.profileElevated, borderColor: glass.border.profileElevated },
   bubbleSelected: { borderColor: "#b995ff", borderWidth: 2 },
+  bubbleHighlighted: { borderColor: accent.warm, borderWidth: 2, shadowColor: accent.warm, shadowOpacity: 0.45, shadowRadius: 8 },
   quote: { paddingLeft: spacing.sm, borderLeftWidth: 2, borderLeftColor: "rgba(255,255,255,0.55)", gap: 2 },
   quoteName: { color: "rgba(255,255,255,0.85)", fontSize: 11, fontWeight: "700" },
   quoteText: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
@@ -372,6 +477,9 @@ const styles = StyleSheet.create({
   fileName: { color: textTokens.primary, fontSize: 14, lineHeight: 18, fontWeight: "800" },
   fileMeta: { color: textTokens.tertiary, fontSize: 10, marginTop: 3 },
   fileMetaMine: { color: "rgba(16,18,22,0.65)" },
+  mediaBubble: { width: 190, borderRadius: radius.lg, overflow: "hidden" },
+  mediaBubbleThumb: { width: 190, height: 150 },
+  mediaBubbleFooter: { color: textTokens.primary, fontSize: 11, paddingHorizontal: 10, paddingVertical: 7 },
   time: { color: textTokens.tertiary, fontSize: 10 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, paddingHorizontal: spacing.sm },
   actionsMine: { justifyContent: "flex-end" },

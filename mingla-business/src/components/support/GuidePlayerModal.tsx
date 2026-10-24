@@ -9,7 +9,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,9 +16,11 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
+import { MediaViewerShell } from "../media/MediaViewerShell";
 import { parseGuideCaptions, type GuideCaptionCue } from "./guideCaptions";
 
 const CAPTION_ORIGIN = "https://usemingla.com";
@@ -29,6 +30,7 @@ function progressKey(userId: string, slug: string): string {
 }
 
 function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userId: string; onClose: () => void }): React.ReactElement {
+  const { t } = useTranslation("brandGroupMedia");
   const insets = useSafeAreaInsets();
   const [cues, setCues] = useState<GuideCaptionCue[]>([]);
   const [captionOn, setCaptionOn] = useState(true);
@@ -89,7 +91,7 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
   return (
     <View style={[styles.screen, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close guide" onPress={onClose} style={styles.iconButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_guide_a11y")} onPress={onClose} style={styles.iconButton}>
           <Icon name="close" size={20} color={textTokens.primary} />
         </Pressable>
         <View style={styles.headerCopy}>
@@ -155,10 +157,11 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
 }
 
 export function GuidePlayerModal({ guide, userId, onClose }: { guide: HelpVideoRecord | null; userId: string; onClose: () => void }): React.ReactElement {
+  const { t } = useTranslation("brandGroupMedia");
   return (
-    <Modal visible={guide !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <MediaViewerShell visible={guide !== null} onClose={onClose} closeAccessibilityLabel={t("viewer.close_guide_a11y")} contentOnly testID="guide-player-modal">
       {guide ? <GuidePlayer key={guide.slug} guide={guide} userId={userId} onClose={onClose} /> : null}
-    </Modal>
+    </MediaViewerShell>
   );
 }
 
