@@ -317,6 +317,9 @@ export function parseVenueOrderStatus(
   const totals = (data.totals ?? {}) as Record<string, unknown>;
   return {
     orderId: String(data.orderId ?? fallbackOrderId),
+    buyerName: typeof data.buyerName === "string" ? data.buyerName : "",
+    brandSlug: typeof data.brandSlug === "string" ? data.brandSlug : null,
+    venueSlug: typeof data.venueSlug === "string" ? data.venueSlug : null,
     paymentStatus: String(data.paymentStatus ?? "pending"),
     fulfillmentStatus: String(
       data.fulfillmentStatus ?? "placed",

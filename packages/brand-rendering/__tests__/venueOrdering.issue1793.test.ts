@@ -71,8 +71,13 @@ const config = (over: Partial<VenueOrderingConfig> = {}): VenueOrderingConfig =>
   ...over,
 });
 
+// [TEST-MOD-APPROVED #4063] The status payload now carries the buyer/menu
+// identity needed by the anonymous receipt exit and ready-state name copy.
 const live = (over: Partial<VenueOrderLiveStatus> = {}): VenueOrderLiveStatus => ({
   orderId: "order-1",
+  buyerName: "Ada",
+  brandSlug: "the-brand",
+  venueSlug: "the-venue",
   paymentStatus: "paid",
   fulfillmentStatus: "ready",
   acknowledgedAt: null,

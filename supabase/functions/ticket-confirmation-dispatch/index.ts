@@ -56,9 +56,7 @@ import {
   brandFollowActionPublicUrl,
   signBrandFollowToken,
 } from "../_shared/brandFollowTokens.ts";
-import {
-  PRODUCTION_BUSINESS_WEB_ORIGIN,
-} from "../_shared/businessWebOrigin.ts";
+import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
@@ -165,9 +163,10 @@ class ProviderSendError extends Error {
 // is still owed to the buyer). Both call sites raise it identically so the
 // single catch below writes one honest row: `deferred`, holding until
 // `next_attempt_at`, attempt_count untouched.
-function deferredSmsError(
-  result: { error?: string; retryAfter?: string },
-): ProviderSendError {
+function deferredSmsError(result: {
+  error?: string;
+  retryAfter?: string;
+}): ProviderSendError {
   return new ProviderSendError({
     retryable: true,
     detail: `sms_deferred:${result.error ?? "ng_operator_embargo"}`,
@@ -292,7 +291,8 @@ function publicBuyerBaseUrl(): string {
   // BUSINESS_WEB_ORIGIN is the canonical origin secret and the old
   // MINGLA_BUSINESS_WEB_URL name is a fallback so its deletion is safely
   // decoupled (same digest, audited).
-  const raw = Deno.env.get("PUBLIC_BUYER_BASE_URL") ??
+  const raw =
+    Deno.env.get("PUBLIC_BUYER_BASE_URL") ??
     Deno.env.get("BUSINESS_WEB_ORIGIN") ??
     Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
     "https://host.usemingla.com";
@@ -304,11 +304,14 @@ async function markNotificationTerminal(
   notificationId: string,
   lastError: string,
 ): Promise<void> {
-  await supabase.from("ticket_order_notifications").update({
-    status: "failed_terminal",
-    last_error: lastError,
-    updated_at: new Date().toISOString(),
-  }).eq("id", notificationId);
+  await supabase
+    .from("ticket_order_notifications")
+    .update({
+      status: "failed_terminal",
+      last_error: lastError,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", notificationId);
 }
 
 // ===========================================================================
@@ -432,8 +435,10 @@ async function releaseWaitlistEntryToPool(
   }
   const row = rows[0];
   if (
-    row.status !== "waiting" || row.invited_at !== null ||
-    row.notified_at !== null || row.notification_id !== null
+    row.status !== "waiting" ||
+    row.invited_at !== null ||
+    row.notified_at !== null ||
+    row.notification_id !== null
   ) {
     throw new ProviderSendError({
       retryable: true,
@@ -448,19 +453,20 @@ async function deliverWaitlistSpotOpenNotification(
   notification: NotificationRow,
 ): Promise<"sent" | "failed_terminal" | "skipped"> {
   const payload = notification.payload ?? {};
-  const waitlistEntryId = typeof payload.waitlist_entry_id === "string"
-    ? payload.waitlist_entry_id
-    : "";
+  const waitlistEntryId =
+    typeof payload.waitlist_entry_id === "string"
+      ? payload.waitlist_entry_id
+      : "";
   const eventId = typeof payload.event_id === "string" ? payload.event_id : "";
-  const ticketTypeId = typeof payload.ticket_type_id === "string"
-    ? payload.ticket_type_id
-    : "";
+  const ticketTypeId =
+    typeof payload.ticket_type_id === "string" ? payload.ticket_type_id : "";
   const qtyRequested = Number.isInteger(payload.qty_requested)
     ? Number(payload.qty_requested)
     : 1;
-  const inviteExpiresAt = typeof payload.invite_expires_at === "string"
-    ? payload.invite_expires_at
-    : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const inviteExpiresAt =
+    typeof payload.invite_expires_at === "string"
+      ? payload.invite_expires_at
+      : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   if (!waitlistEntryId || !eventId || !ticketTypeId) {
     await markNotificationTerminal(
@@ -502,9 +508,9 @@ async function deliverWaitlistSpotOpenNotification(
     brands: { name: string | null };
   };
   const ticketType = ticketTypeRaw as unknown as { name: string | null };
-  const claimUrl = `${publicBuyerBaseUrl()}/checkout/${eventId}?wl=${
-    encodeURIComponent(waitlistEntryId)
-  }`;
+  const claimUrl = `${publicBuyerBaseUrl()}/checkout/${eventId}?wl=${encodeURIComponent(
+    waitlistEntryId,
+  )}`;
 
   if (notification.channel === "email") {
     const email = renderWaitlistSpotOpenEmail({
@@ -524,13 +530,16 @@ async function deliverWaitlistSpotOpenNotification(
       text: email.text,
       attachments: [],
     });
-    await supabase.from("ticket_order_notifications").update({
-      status: "sent",
-      provider: "resend",
-      provider_message_id: sent.id,
-      sent_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", notification.id);
+    await supabase
+      .from("ticket_order_notifications")
+      .update({
+        status: "sent",
+        provider: "resend",
+        provider_message_id: sent.id,
+        sent_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", notification.id);
     return "sent";
   }
 
@@ -580,33 +589,42 @@ async function deliverWaitlistSpotOpenNotification(
         waitlistEntryId,
         notification.id,
       );
-      await supabase.from("ticket_order_notifications").update({
-        status: "skipped",
-        provider: providerForLedger(notification.recipient),
-        provider_message_id: null,
-        last_error: `sms_market_dark:${
-          result.error ?? "provider_kill_switch_off"
-        }`,
-        updated_at: nowIso,
-      }).eq("id", notification.id);
+      await supabase
+        .from("ticket_order_notifications")
+        .update({
+          status: "skipped",
+          provider: providerForLedger(notification.recipient),
+          provider_message_id: null,
+          last_error: `sms_market_dark:${
+            result.error ?? "provider_kill_switch_off"
+          }`,
+          updated_at: nowIso,
+        })
+        .eq("id", notification.id);
       return "skipped";
     }
 
-    await supabase.from("ticket_order_notifications").update({
-      status: "sent",
-      provider: providerForLedger(notification.recipient),
-      provider_message_id: result.providerMessageId,
-      sent_at: nowIso,
-      updated_at: nowIso,
-    }).eq("id", notification.id);
+    await supabase
+      .from("ticket_order_notifications")
+      .update({
+        status: "sent",
+        provider: providerForLedger(notification.recipient),
+        provider_message_id: result.providerMessageId,
+        sent_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("id", notification.id);
     return "sent";
   }
 
-  await supabase.from("ticket_order_notifications").update({
-    status: "skipped",
-    last_error: "channel_not_supported_for_template",
-    updated_at: new Date().toISOString(),
-  }).eq("id", notification.id);
+  await supabase
+    .from("ticket_order_notifications")
+    .update({
+      status: "skipped",
+      last_error: "channel_not_supported_for_template",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", notification.id);
   return "skipped";
 }
 
@@ -636,11 +654,13 @@ async function handleWaitlistNotificationDispatch(
     );
     return jsonResponse({
       notificationId,
-      outcomes: [{
-        channel: notification.channel,
-        status: "failed_terminal",
-        templateKey: String(rawPayload.template_key),
-      }],
+      outcomes: [
+        {
+          channel: notification.channel,
+          status: "failed_terminal",
+          templateKey: String(rawPayload.template_key),
+        },
+      ],
     });
   }
 
@@ -660,27 +680,30 @@ async function handleWaitlistNotificationDispatch(
     );
     return jsonResponse({
       notificationId,
-      outcomes: [{
-        channel: notification.channel,
-        status,
-        templateKey: "waitlist_spot_open",
-      }],
+      outcomes: [
+        {
+          channel: notification.channel,
+          status,
+          templateKey: "waitlist_spot_open",
+        },
+      ],
     });
   } catch (err) {
     // #2218 — same rule as the per-order loop: a timed operator refusal is a
     // HOLD, not a spent attempt. See the essay on the catch clause there.
-    const deferredUntil = err instanceof ProviderSendError
-      ? err.nextAttemptAt
-      : null;
+    const deferredUntil =
+      err instanceof ProviderSendError ? err.nextAttemptAt : null;
     if (deferredUntil !== null) {
       const { error: deferErr } = await supabase
-        .from("ticket_order_notifications").update({
+        .from("ticket_order_notifications")
+        .update({
           status: "deferred",
           last_error: err instanceof Error ? err.message : String(err),
           next_attempt_at: deferredUntil,
           attempt_count: Number(notification.attempt_count ?? 0),
           updated_at: new Date().toISOString(),
-        }).eq("id", notification.id);
+        })
+        .eq("id", notification.id);
       if (deferErr !== null) {
         // Same deploy-order safety net as the per-order loop — see the essay
         // there. A rejected `deferred` write strands the row at `sending`,
@@ -690,49 +713,60 @@ async function handleWaitlistNotificationDispatch(
             event: "ticket_notification_defer_write_rejected",
             notificationId: notification.id,
             detail: deferErr.message,
-            note:
-              "#2218 apply migration 20270421002218 before deploying this function",
+            note: "#2218 apply migration 20270421002218 before deploying this function",
           }),
         );
-        await supabase.from("ticket_order_notifications").update({
-          status: "failed_retryable",
-          last_error: err instanceof Error ? err.message : String(err),
-          attempt_count: Number(notification.attempt_count ?? 0),
-          updated_at: new Date().toISOString(),
-        }).eq("id", notification.id);
+        await supabase
+          .from("ticket_order_notifications")
+          .update({
+            status: "failed_retryable",
+            last_error: err instanceof Error ? err.message : String(err),
+            attempt_count: Number(notification.attempt_count ?? 0),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", notification.id);
         return jsonResponse({
           notificationId,
-          outcomes: [{
-            channel: notification.channel,
-            status: "failed_retryable",
-            templateKey: "waitlist_spot_open",
-          }],
+          outcomes: [
+            {
+              channel: notification.channel,
+              status: "failed_retryable",
+              templateKey: "waitlist_spot_open",
+            },
+          ],
         });
       }
       return jsonResponse({
         notificationId,
-        outcomes: [{
-          channel: notification.channel,
-          status: "deferred",
-          templateKey: "waitlist_spot_open",
-        }],
+        outcomes: [
+          {
+            channel: notification.channel,
+            status: "deferred",
+            templateKey: "waitlist_spot_open",
+          },
+        ],
       });
     }
     const attemptCount = Number(notification.attempt_count ?? 0) + 1;
     const retryable = err instanceof ProviderSendError ? err.retryable : true;
     const terminal = !retryable || attemptCount >= 3;
-    await supabase.from("ticket_order_notifications").update({
-      status: terminal ? "failed_terminal" : "failed_retryable",
-      last_error: err instanceof Error ? err.message : String(err),
-      updated_at: new Date().toISOString(),
-    }).eq("id", notification.id);
+    await supabase
+      .from("ticket_order_notifications")
+      .update({
+        status: terminal ? "failed_terminal" : "failed_retryable",
+        last_error: err instanceof Error ? err.message : String(err),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", notification.id);
     return jsonResponse({
       notificationId,
-      outcomes: [{
-        channel: notification.channel,
-        status: terminal ? "failed_terminal" : "failed_retryable",
-        templateKey: "waitlist_spot_open",
-      }],
+      outcomes: [
+        {
+          channel: notification.channel,
+          status: terminal ? "failed_terminal" : "failed_retryable",
+          templateKey: "waitlist_spot_open",
+        },
+      ],
     });
   }
 }
@@ -780,9 +814,10 @@ function buildRenderContext(args: {
     (masterDate?.timezone && masterDate.timezone.length > 0
       ? masterDate.timezone
       : order.events.timezone) ?? "UTC";
-  const variant: TicketBodyInput["variant"] = order.payment_method === "free"
-    ? "ticket_confirmation_free"
-    : "ticket_confirmation_paid";
+  const variant: TicketBodyInput["variant"] =
+    order.payment_method === "free"
+      ? "ticket_confirmation_free"
+      : "ticket_confirmation_paid";
 
   const bodyInput: TicketBodyInput = {
     variant,
@@ -859,9 +894,8 @@ async function attachTicketFollowBlock(
     origin: PRODUCTION_BUSINESS_WEB_ORIGIN,
     slug: brandSlug,
   });
-  const userId = typeof order.buyer_user_id === "string"
-    ? order.buyer_user_id.trim()
-    : "";
+  const userId =
+    typeof order.buyer_user_id === "string" ? order.buyer_user_id.trim() : "";
 
   if (userId.length > 0 && typeof brandId === "string" && brandId.length > 0) {
     try {
@@ -934,7 +968,8 @@ async function fetchInstallmentEmailContext(
 ): Promise<InstallmentEmailOrderJoin | null> {
   const { data, error } = await supabase
     .from("orders")
-    .select(`
+    .select(
+      `
       id,
       buyer_name,
       buyer_email,
@@ -948,7 +983,8 @@ async function fetchInstallmentEmailContext(
         brand_id,
         brands!inner ( name, contact_email )
       )
-    `)
+    `,
+    )
     .eq("id", orderId)
     .maybeSingle();
   if (error || data === null) return null;
@@ -960,16 +996,16 @@ async function handleInstallmentDunning(
   orderId: string,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const installmentId = typeof body.installmentId === "string"
-    ? body.installmentId
-    : "";
+  const installmentId =
+    typeof body.installmentId === "string" ? body.installmentId : "";
   if (installmentId === "") {
     return jsonResponse({ error: "installment_id_required" }, 400);
   }
   const ordinal = Number(body.installmentOrdinal ?? 0);
-  const failureReason = typeof body.failureReason === "string"
-    ? body.failureReason
-    : "payment_failed_no_detail";
+  const failureReason =
+    typeof body.failureReason === "string"
+      ? body.failureReason
+      : "payment_failed_no_detail";
 
   const order = await fetchInstallmentEmailContext(supabase, orderId);
   if (order === null) return jsonResponse({ error: "order_not_found" }, 404);
@@ -1097,9 +1133,8 @@ export const handler = async (req: Request): Promise<Response> => {
 
   const body = await req.json().catch(() => ({}));
   const supabase = serviceClient();
-  const notificationId = typeof body.notificationId === "string"
-    ? body.notificationId
-    : "";
+  const notificationId =
+    typeof body.notificationId === "string" ? body.notificationId : "";
   if (notificationId) {
     return await handleWaitlistNotificationDispatch(supabase, notificationId);
   }
@@ -1131,15 +1166,13 @@ export const handler = async (req: Request): Promise<Response> => {
     // Defensive: unknown kind. Surface as 400 so the caller's logs make the
     // misroute obvious — silent fall-through to legacy would render a ticket
     // confirmation email for a webhook that meant something else entirely.
-    return jsonResponse(
-      { error: "unknown_kind", kind },
-      400,
-    );
+    return jsonResponse({ error: "unknown_kind", kind }, 400);
   }
 
   const { data: orderRaw, error: orderError } = await supabase
     .from("orders")
-    .select(`
+    .select(
+      `
       id,
       event_id,
       buyer_name,
@@ -1168,7 +1201,8 @@ export const handler = async (req: Request): Promise<Response> => {
         theme,
         brands!inner ( id, name, profile_photo_url, contact_email, slug )
       )
-    `)
+    `,
+    )
     .eq("id", orderId)
     .maybeSingle();
   if (orderError || !orderRaw) {
@@ -1234,9 +1268,10 @@ export const handler = async (req: Request): Promise<Response> => {
     orderId,
     "[ticket-confirmation-dispatch]",
   );
-  const chosenDateLines = chosenDays !== null && chosenDays.length >= 2
-    ? formatChosenOccurrenceList(chosenDays)
-    : [];
+  const chosenDateLines =
+    chosenDays !== null && chosenDays.length >= 2
+      ? formatChosenOccurrenceList(chosenDays)
+      : [];
 
   const contextBase = buildRenderContext({
     order,
@@ -1254,15 +1289,13 @@ export const handler = async (req: Request): Promise<Response> => {
     // issue #2162 — the CHOSEN day wins; master is the documented fallback and
     // nothing else. `buildRenderContext` is unchanged: it still receives one
     // occurrence-shaped object, it is simply the right one now.
-    masterDate: (chosenDate ?? masterDate ?? null) as
-      | {
-        start_at: string | null;
-        // ORCH-0877 — end_at carried through to email body (already selected
-        // at line 541; type narrowed here so buildRenderContext compiles).
-        end_at: string | null;
-        timezone: string | null;
-      }
-      | null,
+    masterDate: (chosenDate ?? masterDate ?? null) as {
+      start_at: string | null;
+      // ORCH-0877 — end_at carried through to email body (already selected
+      // at line 541; type narrowed here so buildRenderContext compiles).
+      end_at: string | null;
+      timezone: string | null;
+    } | null,
   });
   if (chosenDateLines.length > 0) {
     contextBase.bodyInput = {
@@ -1293,10 +1326,10 @@ export const handler = async (req: Request): Promise<Response> => {
   const smsBody = isTrip
     ? `Mingla: you're booked on ${eventTitle}. Order ${shortId(order.id)}.`
     : isExperience
-    ? `Mingla: you're reserved for ${eventTitle}. Order ${shortId(order.id)}.`
-    : `Mingla: your ${ticketCount} ticket${
-      ticketCount === 1 ? "" : "s"
-    } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
+      ? `Mingla: you're reserved for ${eventTitle}. Order ${shortId(order.id)}.`
+      : `Mingla: your ${ticketCount} ticket${
+          ticketCount === 1 ? "" : "s"
+        } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
 
   // Render email + PDF once per dispatch; reused across email ledger rows.
   let renderedEmail: ReturnType<typeof renderTransactionalEmail> | null = null;
@@ -1326,9 +1359,9 @@ export const handler = async (req: Request): Promise<Response> => {
    * already rendered successfully.
    */
   let renderEmailBody:
-    | ((appCtaClaimUrl: string | null) => ReturnType<
-      typeof renderTransactionalEmail
-    >)
+    | ((
+        appCtaClaimUrl: string | null,
+      ) => ReturnType<typeof renderTransactionalEmail>)
     | null = null;
 
   try {
@@ -1359,14 +1392,14 @@ export const handler = async (req: Request): Promise<Response> => {
         kind: "included" | "excluded";
         item: string;
       }>;
-      const themeBT = ((order.events.theme as Record<string, unknown> | null)
-        ?.business_trip as
-          | Record<string, unknown>
-          | undefined) ?? {};
+      const themeBT =
+        ((order.events.theme as Record<string, unknown> | null)
+          ?.business_trip as Record<string, unknown> | undefined) ?? {};
       // #3524 A8 — keep the exact direct-call shape on one line.
       // #3682 Wave 2.4 — follow is a first-class input on the trip template
       // (inside the 600px shell), not a post-</body> splice.
-      renderEmailBody = (appCtaClaimUrl) => renderTripConfirmationEmail({
+      renderEmailBody = (appCtaClaimUrl) =>
+        renderTripConfirmationEmail({
           appCtaClaimUrl,
           privateGuestList: context.bodyInput.event.privateGuestList,
           follow: context.bodyInput.follow,
@@ -1376,9 +1409,8 @@ export const handler = async (req: Request): Promise<Response> => {
           },
           trip: {
             title: context.bodyInput.event.title,
-            startAtIso: typeof themeBT.startAt === "string"
-              ? themeBT.startAt
-              : null,
+            startAtIso:
+              typeof themeBT.startAt === "string" ? themeBT.startAt : null,
             endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
             destinationText:
               typeof themeBT.destinationLocationText === "string"
@@ -1428,9 +1460,9 @@ export const handler = async (req: Request): Promise<Response> => {
         const theme = (order.events as { theme?: unknown }).theme;
         const hideUntil = Boolean(
           theme &&
-            typeof theme === "object" &&
-            (theme as { business_event?: { hideAddressUntilTicket?: unknown } })
-                .business_event?.hideAddressUntilTicket === true,
+          typeof theme === "object" &&
+          (theme as { business_event?: { hideAddressUntilTicket?: unknown } })
+            .business_event?.hideAddressUntilTicket === true,
         );
         const first = expStops[0] ?? null;
         if (hideUntil) {
@@ -1450,7 +1482,8 @@ export const handler = async (req: Request): Promise<Response> => {
         }
       }
       // #3524 A8 — keep the exact direct-call shape on one line.
-      renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({
+      renderEmailBody = (appCtaClaimUrl) =>
+        renderExperienceConfirmationEmail({
           appCtaClaimUrl,
           privateGuestList: context.bodyInput.event.privateGuestList,
           follow: context.bodyInput.follow,
@@ -1483,15 +1516,16 @@ export const handler = async (req: Request): Promise<Response> => {
           },
         });
     } else {
-      renderEmailBody = (appCtaClaimUrl) => renderTransactionalEmail({
-        variant: context.bodyInput.variant,
-        recipient: {
-          name: order.buyer_name,
-          email: order.buyer_email ?? "",
-        },
-        body: context.bodyInput,
-        appCtaClaimUrl,
-      });
+      renderEmailBody = (appCtaClaimUrl) =>
+        renderTransactionalEmail({
+          variant: context.bodyInput.variant,
+          recipient: {
+            name: order.buyer_name,
+            email: order.buyer_email ?? "",
+          },
+          body: context.bodyInput,
+          appCtaClaimUrl,
+        });
     }
     // The download-page arm: what an order with no claim URL really sends, and
     // what proves the render works before the send loop is entered.
@@ -1533,9 +1567,8 @@ export const handler = async (req: Request): Promise<Response> => {
   // makes this safe under Resend retry (same bytes, same path).
   if (renderedPdf) {
     try {
-      const pdfBytes = Uint8Array.from(
-        atob(renderedPdf.contentBase64),
-        (c) => c.charCodeAt(0),
+      const pdfBytes = Uint8Array.from(atob(renderedPdf.contentBase64), (c) =>
+        c.charCodeAt(0),
       );
       // issue #2347 — versioned path. This renderer has been day-correct
       // since #2162; the version exists so `ticket-pdf-fetch` can tell a
@@ -1567,9 +1600,8 @@ export const handler = async (req: Request): Promise<Response> => {
         }
       }
     } catch (uploadErr) {
-      const message = uploadErr instanceof Error
-        ? uploadErr.message
-        : String(uploadErr);
+      const message =
+        uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
       console.warn(
         `[ticket-confirmation-dispatch] storage upload threw for order=${order.id}: ${message}`,
       );
@@ -1626,15 +1658,18 @@ export const handler = async (req: Request): Promise<Response> => {
     cardLast4: null,
   };
 
-  const outcomes: Array<
-    { channel: string; status: string; templateKey: string }
-  > = [];
+  const outcomes: Array<{
+    channel: string;
+    status: string;
+    templateKey: string;
+  }> = [];
   for (const notification of notifications ?? []) {
     // ORCH-0788 I-PROPOSED-BA: COALESCE template_key with legacy default.
     const rawPayload = (notification.payload ?? {}) as Record<string, unknown>;
-    const templateKey = typeof rawPayload.template_key === "string"
-      ? rawPayload.template_key
-      : "buyer_ticket_confirmation";
+    const templateKey =
+      typeof rawPayload.template_key === "string"
+        ? rawPayload.template_key
+        : "buyer_ticket_confirmation";
 
     await supabase
       .from("ticket_order_notifications")
@@ -1663,10 +1698,10 @@ export const handler = async (req: Request): Promise<Response> => {
               status: 0,
             });
           }
-          const attachments: Array<{ filename: string; content: string }> = [{
-            filename: renderedPdf.filename,
-            content: renderedPdf.contentBase64,
-          }];
+          // #4063 — email carries only the calendar attachment. Ticket
+          // credentials stay behind signed-in Explorer ownership checks; the
+          // rendered PDF remains private for the authenticated fetch route.
+          const attachments: Array<{ filename: string; content: string }> = [];
           const calendarFallback = {
             title: context.bodyInput.event.title,
             startAtIso: context.bodyInput.event.startAt,
@@ -1675,26 +1710,28 @@ export const handler = async (req: Request): Promise<Response> => {
             endAtIso: context.bodyInput.event.endAt,
             locationText: context.bodyInput.event.locationText,
             isOnline: context.bodyInput.event.isOnline,
-            description:
-              `${context.bodyInput.event.title} — hosted by ${context.bodyInput.brand.name}. Order #${context.bodyInput.order.shortId}.`,
+            description: `${context.bodyInput.event.title} — hosted by ${context.bodyInput.brand.name}. Order #${context.bodyInput.order.shortId}.`,
           };
           // #3281 PR6 — one VEVENT per admitted date when the order covers 2+.
-          const calendarLinks = chosenDays !== null && chosenDays.length >= 2
-            ? buildMultiDateCalendarLinks(
-              chosenDays.map((day) => ({
-                title: (day.override_title ?? "").trim().length > 0
-                  ? String(day.override_title)
-                  : context.bodyInput.event.title,
-                startAtIso: day.start_at,
-                endAtIso: day.end_at,
-                locationText: (day.override_location ?? "").trim().length > 0
-                  ? String(day.override_location)
-                  : context.bodyInput.event.locationText,
-                description: calendarFallback.description,
-              })),
-              calendarFallback,
-            )
-            : buildCalendarLinks(calendarFallback);
+          const calendarLinks =
+            chosenDays !== null && chosenDays.length >= 2
+              ? buildMultiDateCalendarLinks(
+                  chosenDays.map((day) => ({
+                    title:
+                      (day.override_title ?? "").trim().length > 0
+                        ? String(day.override_title)
+                        : context.bodyInput.event.title,
+                    startAtIso: day.start_at,
+                    endAtIso: day.end_at,
+                    locationText:
+                      (day.override_location ?? "").trim().length > 0
+                        ? String(day.override_location)
+                        : context.bodyInput.event.locationText,
+                    description: calendarFallback.description,
+                  })),
+                  calendarFallback,
+                )
+              : buildCalendarLinks(calendarFallback);
           if (calendarLinks) {
             attachments.push({
               filename: calendarLinks.icsFilename,
@@ -1734,8 +1771,10 @@ export const handler = async (req: Request): Promise<Response> => {
             );
             if (issuanceError) throw new Error("attendance_claim_issue_failed");
             if (
-              typeof issuance === "object" && issuance !== null &&
-              "result" in issuance && issuance.result === "issued"
+              typeof issuance === "object" &&
+              issuance !== null &&
+              "result" in issuance &&
+              issuance.result === "issued"
             ) {
               attendanceWebClaimUrl = attendanceClaimUrls({
                 kind: "order",
@@ -1777,13 +1816,16 @@ export const handler = async (req: Request): Promise<Response> => {
             text: emailToSend.text,
             attachments,
           });
-          await supabase.from("ticket_order_notifications").update({
-            status: "sent",
-            provider: "resend",
-            provider_message_id: sent.id,
-            sent_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }).eq("id", notification.id);
+          await supabase
+            .from("ticket_order_notifications")
+            .update({
+              status: "sent",
+              provider: "resend",
+              provider_message_id: sent.id,
+              sent_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", notification.id);
         } else {
           // #1541 §4.0 — the ONE call shape (see the waitlist branch for why
           // every optional field is deliberately omitted). The buyer's TICKET
@@ -1818,22 +1860,28 @@ export const handler = async (req: Request): Promise<Response> => {
           if (result.status === "skipped") {
             // An honest skip, with ZERO provider HTTP. `sent_at` is left
             // untouched — nothing was sent.
-            await supabase.from("ticket_order_notifications").update({
-              status: "skipped",
-              provider: providerForLedger(notification.recipient),
-              provider_message_id: null,
-              last_error: result.error ?? "provider_kill_switch_off",
-              updated_at: nowIso,
-            }).eq("id", notification.id);
+            await supabase
+              .from("ticket_order_notifications")
+              .update({
+                status: "skipped",
+                provider: providerForLedger(notification.recipient),
+                provider_message_id: null,
+                last_error: result.error ?? "provider_kill_switch_off",
+                updated_at: nowIso,
+              })
+              .eq("id", notification.id);
             outcomeStatus = "skipped";
           } else {
-            await supabase.from("ticket_order_notifications").update({
-              status: "sent",
-              provider: providerForLedger(notification.recipient),
-              provider_message_id: result.providerMessageId,
-              sent_at: nowIso,
-              updated_at: nowIso,
-            }).eq("id", notification.id);
+            await supabase
+              .from("ticket_order_notifications")
+              .update({
+                status: "sent",
+                provider: providerForLedger(notification.recipient),
+                provider_message_id: result.providerMessageId,
+                sent_at: nowIso,
+                updated_at: nowIso,
+              })
+              .eq("id", notification.id);
           }
         }
         outcomes.push({
@@ -1845,11 +1893,14 @@ export const handler = async (req: Request): Promise<Response> => {
         // ORCH-0788 §5: refund email via generic_notification adapter.
         // Email-only per SPEC §10.1 (CF-1 SMS deferred).
         if (notification.channel !== "email") {
-          await supabase.from("ticket_order_notifications").update({
-            status: "skipped",
-            last_error: "channel_not_supported_for_template",
-            updated_at: new Date().toISOString(),
-          }).eq("id", notification.id);
+          await supabase
+            .from("ticket_order_notifications")
+            .update({
+              status: "skipped",
+              last_error: "channel_not_supported_for_template",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", notification.id);
           outcomes.push({
             channel: notification.channel,
             status: "skipped",
@@ -1876,13 +1927,16 @@ export const handler = async (req: Request): Promise<Response> => {
           text: refundEmail.text,
           attachments: [], // ORCH-0788 §5.3 — no PDF, no calendar
         });
-        await supabase.from("ticket_order_notifications").update({
-          status: "sent",
-          provider: "resend",
-          provider_message_id: sent.id,
-          sent_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", notification.id);
+        await supabase
+          .from("ticket_order_notifications")
+          .update({
+            status: "sent",
+            provider: "resend",
+            provider_message_id: sent.id,
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", notification.id);
         outcomes.push({
           channel: notification.channel,
           status: "sent",
@@ -1891,11 +1945,14 @@ export const handler = async (req: Request): Promise<Response> => {
       } else if (templateKey === "buyer_order_cancelled") {
         // ORCH-0788 §5: cancel email via generic_notification adapter.
         if (notification.channel !== "email") {
-          await supabase.from("ticket_order_notifications").update({
-            status: "skipped",
-            last_error: "channel_not_supported_for_template",
-            updated_at: new Date().toISOString(),
-          }).eq("id", notification.id);
+          await supabase
+            .from("ticket_order_notifications")
+            .update({
+              status: "skipped",
+              last_error: "channel_not_supported_for_template",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", notification.id);
           outcomes.push({
             channel: notification.channel,
             status: "skipped",
@@ -1922,13 +1979,16 @@ export const handler = async (req: Request): Promise<Response> => {
           text: cancelEmail.text,
           attachments: [],
         });
-        await supabase.from("ticket_order_notifications").update({
-          status: "sent",
-          provider: "resend",
-          provider_message_id: sent.id,
-          sent_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", notification.id);
+        await supabase
+          .from("ticket_order_notifications")
+          .update({
+            status: "sent",
+            provider: "resend",
+            provider_message_id: sent.id,
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", notification.id);
         outcomes.push({
           channel: notification.channel,
           status: "sent",
@@ -1944,11 +2004,14 @@ export const handler = async (req: Request): Promise<Response> => {
         // notifications row per affected order which this dispatcher then
         // delivers via the standard ORCH-0788 retry-cron loop.
         if (notification.channel !== "email") {
-          await supabase.from("ticket_order_notifications").update({
-            status: "skipped",
-            last_error: "channel_not_supported_for_template",
-            updated_at: new Date().toISOString(),
-          }).eq("id", notification.id);
+          await supabase
+            .from("ticket_order_notifications")
+            .update({
+              status: "skipped",
+              last_error: "channel_not_supported_for_template",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", notification.id);
           outcomes.push({
             channel: notification.channel,
             status: "skipped",
@@ -1975,13 +2038,16 @@ export const handler = async (req: Request): Promise<Response> => {
           text: reAnswerEmail.text,
           attachments: [],
         });
-        await supabase.from("ticket_order_notifications").update({
-          status: "sent",
-          provider: "resend",
-          provider_message_id: sent.id,
-          sent_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", notification.id);
+        await supabase
+          .from("ticket_order_notifications")
+          .update({
+            status: "sent",
+            provider: "resend",
+            provider_message_id: sent.id,
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", notification.id);
         outcomes.push({
           channel: notification.channel,
           status: "sent",
@@ -1998,11 +2064,14 @@ export const handler = async (req: Request): Promise<Response> => {
         // failed_terminal immediately so the row surfaces visibly via the
         // brand-team SELECT RLS policy instead of silently rendering the
         // wrong template. No retry attempts consumed.
-        await supabase.from("ticket_order_notifications").update({
-          status: "failed_terminal",
-          last_error: `unknown_template_key:${templateKey}`,
-          updated_at: new Date().toISOString(),
-        }).eq("id", notification.id);
+        await supabase
+          .from("ticket_order_notifications")
+          .update({
+            status: "failed_terminal",
+            last_error: `unknown_template_key:${templateKey}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", notification.id);
         outcomes.push({
           channel: notification.channel,
           status: "failed_terminal",
@@ -2019,12 +2088,12 @@ export const handler = async (req: Request): Promise<Response> => {
       // 06:14 WAT having never once been offered to the network. The row
       // records WHEN it becomes attemptable; notification-retry-sweeper honours
       // that instant instead of its own ~6-minute ladder.
-      const deferredUntil = err instanceof ProviderSendError
-        ? err.nextAttemptAt
-        : null;
+      const deferredUntil =
+        err instanceof ProviderSendError ? err.nextAttemptAt : null;
       if (deferredUntil !== null) {
         const { error: deferErr } = await supabase
-          .from("ticket_order_notifications").update({
+          .from("ticket_order_notifications")
+          .update({
             status: "deferred",
             last_error: err instanceof Error ? err.message : String(err),
             next_attempt_at: deferredUntil,
@@ -2033,7 +2102,8 @@ export const handler = async (req: Request): Promise<Response> => {
             // embargo would burn the whole ladder without one provider call.
             attempt_count: Number(notification.attempt_count ?? 0),
             updated_at: new Date().toISOString(),
-          }).eq("id", notification.id);
+          })
+          .eq("id", notification.id);
         if (deferErr !== null) {
           // DEPLOY-ORDER SAFETY NET, and it is not hypothetical. `deferred` is
           // only a legal status once migration 20270421002218 has widened the
@@ -2049,16 +2119,18 @@ export const handler = async (req: Request): Promise<Response> => {
               event: "ticket_notification_defer_write_rejected",
               notificationId: notification.id,
               detail: deferErr.message,
-              note:
-                "#2218 apply migration 20270421002218 before deploying this function",
+              note: "#2218 apply migration 20270421002218 before deploying this function",
             }),
           );
-          await supabase.from("ticket_order_notifications").update({
-            status: "failed_retryable",
-            last_error: err instanceof Error ? err.message : String(err),
-            attempt_count: Number(notification.attempt_count ?? 0),
-            updated_at: new Date().toISOString(),
-          }).eq("id", notification.id);
+          await supabase
+            .from("ticket_order_notifications")
+            .update({
+              status: "failed_retryable",
+              last_error: err instanceof Error ? err.message : String(err),
+              attempt_count: Number(notification.attempt_count ?? 0),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", notification.id);
           outcomes.push({
             channel: notification.channel,
             status: "failed_retryable",
@@ -2076,11 +2148,14 @@ export const handler = async (req: Request): Promise<Response> => {
       const attemptCount = Number(notification.attempt_count ?? 0) + 1;
       const retryable = err instanceof ProviderSendError ? err.retryable : true;
       const terminal = !retryable || attemptCount >= 3;
-      await supabase.from("ticket_order_notifications").update({
-        status: terminal ? "failed_terminal" : "failed_retryable",
-        last_error: err instanceof Error ? err.message : String(err),
-        updated_at: new Date().toISOString(),
-      }).eq("id", notification.id);
+      await supabase
+        .from("ticket_order_notifications")
+        .update({
+          status: terminal ? "failed_terminal" : "failed_retryable",
+          last_error: err instanceof Error ? err.message : String(err),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", notification.id);
       outcomes.push({
         channel: notification.channel,
         status: terminal ? "failed_terminal" : "failed_retryable",
@@ -2141,14 +2216,21 @@ export const handler = async (req: Request): Promise<Response> => {
       }),
     );
   } else {
-    await supabase.from("orders").update({
-      notification_status: failed
-        ? (sent ? "partial" : "failed")
-        : deferred
-        ? "pending"
-        : (sent ? "sent" : "not_required"),
-      updated_at: new Date().toISOString(),
-    }).eq("id", orderId);
+    await supabase
+      .from("orders")
+      .update({
+        notification_status: failed
+          ? sent
+            ? "partial"
+            : "failed"
+          : deferred
+            ? "pending"
+            : sent
+              ? "sent"
+              : "not_required",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId);
   }
 
   // EMAIL_SENDERS reference kept live so dead-code elimination can't drop it.

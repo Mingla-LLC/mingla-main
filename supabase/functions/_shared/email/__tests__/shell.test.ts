@@ -61,6 +61,7 @@ function ticketFixture(): RenderInput {
   };
 }
 
+// [TEST-MOD-APPROVED #4063] Public email no longer carries ticket credentials.
 Deno.test("paid ticket render: shell wraps body with logo, footer, total", () => {
   const result = renderTransactionalEmail(ticketFixture());
   assertEquals(result.from.address, "tickets@usemingla.com");
@@ -75,7 +76,9 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   // in both header and footer (two <img> tags pointing at the same URL).
   const logoMatches = result.html.match(/mingla-wordmark-email\.png/g) ?? [];
   assert(logoMatches.length >= 2);
-  assertStringIncludes(result.html, "QR in attached PDF");
+  assertStringIncludes(result.html, "Get your tickets in Mingla");
+  assertFalse(result.html.includes("QR in attached PDF"));
+  assertFalse(result.text.includes("attached as a PDF"));
   assert(!result.html.includes("dating app"));
   assert(result.subject.startsWith("Your Mingla tickets"));
 });

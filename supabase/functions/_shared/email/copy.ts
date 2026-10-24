@@ -9,31 +9,33 @@ export interface TicketCopy {
   subjectFor(eventTitle: string): string;
   heading: string;
   intro: string;
-  attachmentBadge: string;
+  deliveryBadge: string;
 }
 
 const FREE: TicketCopy = {
-  preheader: "You're in. Your Mingla tickets are attached.",
+  preheader: "You're in. Your tickets are waiting in the Mingla app.",
   subjectFor: (title) => `You're in — ${title}`,
   heading: "You're in.",
-  intro: "No payment needed. Your tickets are attached as a PDF — save it to your phone or print it out.",
-  attachmentBadge: "QR in attached PDF",
+  intro: "No payment needed. Your tickets are waiting in the Mingla app.",
+  deliveryBadge: "Get your tickets in Mingla",
 };
 
 const PAID: TicketCopy = {
-  preheader: "You're confirmed. Your Mingla tickets are attached.",
+  preheader: "You're confirmed. Your tickets are waiting in the Mingla app.",
   subjectFor: (title) => `Your Mingla tickets — ${title}`,
   heading: "You're confirmed.",
-  intro: "Thanks for your purchase. Your tickets are attached as a PDF — save it to your phone or print it out.",
-  attachmentBadge: "QR in attached PDF",
+  intro:
+    "Thanks for your purchase. Your tickets are waiting in the Mingla app.",
+  deliveryBadge: "Get your tickets in Mingla",
 };
 
 const PENDING: TicketCopy = {
   preheader: "Payment is processing — tickets will arrive shortly.",
   subjectFor: (title) => `We're processing your tickets — ${title}`,
   heading: "We're processing your order.",
-  intro: "Payment is going through. Your tickets will be issued and emailed within a few minutes.",
-  attachmentBadge: "QR in attached PDF",
+  intro:
+    "Payment is going through. Your tickets will be issued and emailed within a few minutes.",
+  deliveryBadge: "Tickets arrive in Mingla after payment",
 };
 
 export function ticketCopyFor(variant: EmailVariant): TicketCopy {

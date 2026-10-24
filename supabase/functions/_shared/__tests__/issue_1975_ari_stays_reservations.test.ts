@@ -241,6 +241,7 @@ function venueReservationArgs(
     venue_id: VENUE,
     reserved_for: "2026-09-01T19:30:00.000Z",
     party_size: 4,
+    guest_phone_e164: "+14155550123",
     ...extra,
   };
 }
@@ -319,6 +320,22 @@ Deno.test("#2592 B4 create_venue_reservation refuses a non-E.164 guest phone", a
         { operationId: OPERATION },
       ),
     ToolError,
+  );
+  assertEquals(captured.fn, undefined);
+});
+
+Deno.test("#4063 create_venue_reservation requires the guest mobile before its RPC", async () => {
+  const { client, captured } = captureRpcClient();
+  await assertRejects(
+    () =>
+      domainTool("create_venue_reservation").executor(
+        venueReservationArgs({ guest_phone_e164: undefined }),
+        client as never,
+        "user",
+        { operationId: OPERATION },
+      ),
+    ToolError,
+    "guest_phone_e164 is required",
   );
   assertEquals(captured.fn, undefined);
 });

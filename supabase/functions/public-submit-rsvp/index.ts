@@ -23,11 +23,8 @@ import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
 // ORCH-1203 GAP-C1 — surface a missing-pepper misconfig immediately. REUSE the
 // shared ops-alert helper (the same one ORCH-0956 disputes + ORCH-1201 health use).
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
-import {
-  deriveRsvpRecoveryToken,
-  rsvpRecoveryUrl,
-  sha256Hex,
-} from "../_shared/rsvpPass.ts";
+import { deriveRsvpRecoveryToken, sha256Hex } from "../_shared/rsvpPass.ts";
+import { mintClaimLink } from "../_shared/claimLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,8 +108,8 @@ serve(async (req: Request): Promise<Response> => {
     return json(500, { error: "server_misconfigured" });
   }
 
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "unknown";
   if (rateLimited(ip)) {
     return json(429, { error: "rate_limited" });
   }
@@ -123,17 +120,31 @@ serve(async (req: Request): Promise<Response> => {
   } catch {
     return json(400, { error: "invalid_json" });
   }
-  if (!body || typeof body !== "object" || Array.isArray(body) ||
-      Object.keys(body).some((key) => ![
-        "eventId", "guestName", "guestEmail", "guestPhone",
-        "guestPhoneCountryIso", "rsvpStatus", "plusCount", "guests",
-      ].includes(key))) {
+  if (
+    !body || typeof body !== "object" || Array.isArray(body) ||
+    Object.keys(body).some((key) =>
+      ![
+        "eventId",
+        "guestName",
+        "guestEmail",
+        "guestPhone",
+        "guestPhoneCountryIso",
+        "rsvpStatus",
+        "plusCount",
+        "guests",
+      ].includes(key)
+    )
+  ) {
     return json(400, { error: "rsvp_payload_invalid" });
   }
 
   const eventId = typeof body.eventId === "string" ? body.eventId.trim() : "";
   const rsvpStatus = body.rsvpStatus;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      eventId,
+    )
+  ) {
     return json(400, { error: "event_id_required" });
   }
   // ORCH-1150 R2 D-10: 'maybe' is an accepted RSVP status (cap-neutral, auto-
@@ -171,13 +182,18 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  let guestName =
-    typeof body.guestName === "string" ? body.guestName.trim() : "";
-  let guestEmail =
-    typeof body.guestEmail === "string" ? body.guestEmail.trim() : "";
-  let rawPhone =
-    typeof body.guestPhone === "string" ? body.guestPhone.trim() : "";
-  if (guestName.length > 120 || guestEmail.length > 254 || rawPhone.length > 40) {
+  let guestName = typeof body.guestName === "string"
+    ? body.guestName.trim()
+    : "";
+  let guestEmail = typeof body.guestEmail === "string"
+    ? body.guestEmail.trim()
+    : "";
+  let rawPhone = typeof body.guestPhone === "string"
+    ? body.guestPhone.trim()
+    : "";
+  if (
+    guestName.length > 120 || guestEmail.length > 254 || rawPhone.length > 40
+  ) {
     return json(400, { error: "rsvp_payload_invalid" });
   }
 
@@ -239,25 +255,35 @@ serve(async (req: Request): Promise<Response> => {
   // name/email/phone (same EMAIL_RE / normalizePhone gates as the primary).
   // The RPC re-validates server-side; this is the friendly 400 contract.
   const rawGuests = Array.isArray(body.guests) ? body.guests : [];
-  let normalizedGuests: Array<{ name: string; email: string; phone: string; phoneCountryIso: string | null }> =
-    [];
+  let normalizedGuests: Array<
+    {
+      name: string;
+      email: string;
+      phone: string;
+      phoneCountryIso: string | null;
+    }
+  > = [];
   if (rsvpStatus === "going" || rsvpStatus === "maybe") {
     if (plusCount > 0) {
       if (rawGuests.length !== plusCount) {
         return json(400, { error: "rsvp_guest_count_mismatch" });
       }
       for (const g of rawGuests) {
-        if (!g || typeof g !== "object" || Array.isArray(g) ||
-            Object.keys(g).some((key) =>
-              !["name", "email", "phone", "phoneCountryIso"].includes(key)
-            )) {
+        if (
+          !g || typeof g !== "object" || Array.isArray(g) ||
+          Object.keys(g).some((key) =>
+            !["name", "email", "phone", "phoneCountryIso"].includes(key)
+          )
+        ) {
           return json(400, { error: "rsvp_guest_keys_invalid" });
         }
         const gName = typeof g?.name === "string" ? g.name.trim() : "";
         const gEmail = typeof g?.email === "string" ? g.email.trim() : "";
         const gRawPhone = typeof g?.phone === "string" ? g.phone.trim() : "";
         const gPhoneCountryIso = optionalCountryIso(g?.phoneCountryIso);
-        if (gName.length > 120 || gEmail.length > 254 || gRawPhone.length > 40) {
+        if (
+          gName.length > 120 || gEmail.length > 254 || gRawPhone.length > 40
+        ) {
           return json(400, { error: "rsvp_guest_payload_invalid" });
         }
         if (
@@ -388,7 +414,9 @@ serve(async (req: Request): Promise<Response> => {
         return json(409, { error: "rsvp_already_exists" });
     }
     const code = error.message ?? "";
-    if (code.includes("rsvp_not_open")) return json(404, { error: "rsvp_not_open" });
+    if (code.includes("rsvp_not_open")) {
+      return json(404, { error: "rsvp_not_open" });
+    }
     if (code.includes("rsvp_full")) return json(409, { error: "rsvp_full" });
     if (code.includes("rsvp_already_exists")) {
       console.warn(
@@ -427,13 +455,17 @@ serve(async (req: Request): Promise<Response> => {
     confirmationToken?: string | null;
   };
 
-  const passEligible = result.status === "going" && result.approvalStatus === "approved";
+  const passEligible = result.status === "going" &&
+    result.approvalStatus === "approved";
 
   // Only admitted entities are provisioned or exposed. Approval/promotion
   // workers provision recovery later from the same canonical entity rows.
   const passEntities = passEligible && typeof result.rsvpId === "string"
     ? await provisionPassEntities(admin, result.rsvpId, qrPepper)
     : [];
+  const claim = passEligible && typeof result.rsvpId === "string"
+    ? await mintClaimLink(admin, "rsvp", result.rsvpId)
+    : null;
 
   if (typeof result.rsvpId === "string") {
     // Drain the acknowledgement rows as well as pass rows. Delivery remains
@@ -449,7 +481,10 @@ serve(async (req: Request): Promise<Response> => {
         });
       }
     } catch (err) {
-      console.warn("[public-submit-rsvp] RSVP delivery drain failed (non-fatal)", String(err));
+      console.warn(
+        "[public-submit-rsvp] RSVP delivery drain failed (non-fatal)",
+        String(err),
+      );
     }
   }
 
@@ -458,7 +493,16 @@ serve(async (req: Request): Promise<Response> => {
     status: result.status ?? rsvpStatus,
     approvalStatus: result.approvalStatus ?? "approved",
     capacityFull: result.capacityFull ?? false,
-    confirmationToken: passEligible ? result.confirmationToken ?? null : null,
+    // Issue #4063: anonymous browser callers receive a pointer, never a pass
+    // credential. Signed-in owners retain the legacy fields until Explorer's
+    // native consumer moves to the unified claim contract.
+    confirmationToken: userId !== null && passEligible
+      ? result.confirmationToken ?? null
+      : null,
+    claim: {
+      shortUrl: claim?.url ?? null,
+      code: claim?.code ?? null,
+    },
     acknowledgement: result.approvalStatus === "pending"
       ? "pending_approval"
       : result.status === "waitlisted"
@@ -468,25 +512,16 @@ serve(async (req: Request): Promise<Response> => {
       : result.status === "not_going"
       ? "not_going"
       : "accepted",
-    credentials: passEligible
+    credentials: userId !== null && passEligible
       ? passEntities.map((entity) => ({
-            entityType: entity.role,
-            entityId: entity.entityId,
-            displayName: entity.displayName,
-            qrCode: entity.qrCode,
-            pdfFetchRef: entity.entityId,
-          }))
+        entityType: entity.role,
+        entityId: entity.entityId,
+        displayName: entity.displayName,
+        qrCode: entity.qrCode,
+        pdfFetchRef: entity.entityId,
+      }))
       : [],
-    anonymousRecovery: userId === null && passEligible
-      ? passEntities.map((entity) => ({
-          entityType: entity.role,
-          entityId: entity.entityId,
-          recoveryToken: entity.recoveryToken,
-          recoveryUrl: entity.recoveryToken
-            ? rsvpRecoveryUrl(entity.role, entity.entityId, entity.recoveryToken)
-            : null,
-        }))
-      : [],
+    anonymousRecovery: [],
   });
 });
 
@@ -525,15 +560,20 @@ async function provisionPassEntities(
     .eq("rsvp_id", rsvpId).order("created_at", { ascending: true });
   const rows = [
     {
-      entityId: String(primaryRaw.id), guestId: null,
-      role: "primary" as const, displayName: String(primaryRaw.guest_name ?? "Guest"),
+      entityId: String(primaryRaw.id),
+      guestId: null,
+      role: "primary" as const,
+      displayName: String(primaryRaw.guest_name ?? "Guest"),
       qrCode: primaryRaw.qr_code as string | null,
       createdAt: primaryRaw.pass_recovery_token_created_at as string | null,
       table: "event_rsvps",
     },
     ...((guestsRaw ?? []) as Array<Record<string, unknown>>).map((g) => ({
-      entityId: String(g.id), guestId: String(g.id), role: "guest" as const,
-      displayName: String(g.name ?? "Guest"), qrCode: g.qr_code as string | null,
+      entityId: String(g.id),
+      guestId: String(g.id),
+      role: "guest" as const,
+      displayName: String(g.name ?? "Guest"),
+      qrCode: g.qr_code as string | null,
       createdAt: g.pass_recovery_token_created_at as string | null,
       table: "event_rsvp_guests",
     })),
@@ -547,7 +587,9 @@ async function provisionPassEntities(
     if (pepper) {
       const createdAt = row.createdAt ?? new Date().toISOString();
       recoveryToken = await deriveRsvpRecoveryToken({
-        entityId: row.entityId, createdAtIso: createdAt, pepper,
+        entityId: row.entityId,
+        createdAtIso: createdAt,
+        pepper,
       });
       const recoveryHash = await sha256Hex(recoveryToken);
       const { error } = await admin.from(row.table).update({
@@ -555,13 +597,20 @@ async function provisionPassEntities(
         pass_recovery_token_created_at: createdAt,
       }).eq("id", row.entityId);
       if (error) {
-        console.warn("[public-submit-rsvp] recovery hash persistence failed", error.message);
+        console.warn(
+          "[public-submit-rsvp] recovery hash persistence failed",
+          error.message,
+        );
         recoveryToken = null;
       }
     }
     output.push({
-      entityId: row.entityId, guestId: row.guestId, role: row.role,
-      displayName: row.displayName, qrCode: row.qrCode, recoveryToken,
+      entityId: row.entityId,
+      guestId: row.guestId,
+      role: row.role,
+      displayName: row.displayName,
+      qrCode: row.qrCode,
+      recoveryToken,
     });
   }
   return output;
@@ -620,10 +669,9 @@ async function dispatchRsvpPasses(
     ev.timezone,
   );
   const venueLine = ev.location_text;
-  const deepLink =
-    brandSlug && ev.slug
-      ? `https://usemingla.com/e/${brandSlug}/${ev.slug}`
-      : "https://usemingla.com";
+  const deepLink = brandSlug && ev.slug
+    ? `https://usemingla.com/e/${brandSlug}/${ev.slug}`
+    : "https://usemingla.com";
 
   const { data: guests } = await admin
     .from("event_rsvp_guests")
@@ -655,13 +703,15 @@ async function dispatchRsvpPasses(
     matchedUserId: null,
     role: "primary",
   });
-  for (const g of (guests ?? []) as Array<{
-    id: string;
-    name: string | null;
-    email: string | null;
-    qr_code: string | null;
-    matched_user_id: string | null;
-  }>) {
+  for (
+    const g of (guests ?? []) as Array<{
+      id: string;
+      name: string | null;
+      email: string | null;
+      qr_code: string | null;
+      matched_user_id: string | null;
+    }>
+  ) {
     recipients.push({
       guestId: g.id,
       recipientEmail: g.email,
@@ -713,7 +763,10 @@ async function dispatchRsvpPasses(
     // queued/sent. Skip silently (idempotent).
     if (insErr) {
       if (!String(insErr.message ?? "").toLowerCase().includes("duplicate")) {
-        console.warn("[public-submit-rsvp] rsvp_pass enqueue failed", insErr.message);
+        console.warn(
+          "[public-submit-rsvp] rsvp_pass enqueue failed",
+          insErr.message,
+        );
       }
       continue;
     }
@@ -726,14 +779,20 @@ async function dispatchRsvpPasses(
       });
     } catch (invokeErr) {
       // The row stays 'pending' for a future retry sweep; non-fatal here.
-      console.warn("[public-submit-rsvp] rsvp-notify invoke failed", String(invokeErr));
+      console.warn(
+        "[public-submit-rsvp] rsvp-notify invoke failed",
+        String(invokeErr),
+      );
     }
   }
 }
 
 // Minimal, fabrication-free date line for the pass payload. Real ISO only;
 // returns null when the host gave no master start (Constitution #9).
-function formatDateLine(startAtIso: string | null, timezone: string | null): string | null {
+function formatDateLine(
+  startAtIso: string | null,
+  timezone: string | null,
+): string | null {
   if (!startAtIso) return null;
   try {
     const d = new Date(startAtIso);
