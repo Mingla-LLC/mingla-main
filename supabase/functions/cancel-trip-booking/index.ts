@@ -963,6 +963,7 @@ serve(async (req: Request): Promise<Response> => {
       })),
       reason: reasonRaw.length > 0 ? reasonRaw : null,
       refundIssued: computedRefundTotalCents > 0,
+      refund_record_id: refundId,
     };
 
     // buyer_order_cancelled (the cancellation email)
