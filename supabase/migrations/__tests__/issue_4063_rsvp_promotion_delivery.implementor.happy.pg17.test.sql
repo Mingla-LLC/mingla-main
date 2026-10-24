@@ -1,5 +1,5 @@
 -- #4063 Wave 2 — RSVP capacity promotions send only after approval.
--- MINGLA-INVARIANT: I-4063-RSVP-PROMOTION-AFTER-APPROVAL | issue #4063 | With messages_v2 enabled, auto promotions enqueue the canonical pass and manual promotions remain silent until host approval.
+-- MINGLA-INVARIANT: I-4063-RSVP-PROMOTION-AFTER-APPROVAL | issue #4063 | With messages_v2 enabled, auto promotions keep the promotion notice and manual promotions remain silent until host approval.
 \set ON_ERROR_STOP on
 
 CREATE OR REPLACE FUNCTION pg_temp.i4063_promotion_assert(
@@ -135,15 +135,15 @@ BEGIN
     SELECT 1
       FROM public.rsvp_notifications
      WHERE rsvp_id = v_auto_waitlisted
-       AND template_key = 'rsvp_pass'
-       AND idempotency_key = 'rsvp_pass:' || v_auto_waitlisted::text || ':primary'
-  ), 'auto promotion must enqueue the canonical pass immediately');
+       AND template_key = 'rsvp_waitlist_promoted'
+       AND idempotency_key LIKE 'rsvp_promote:' || v_auto_waitlisted::text || ':%'
+  ), 'auto promotion must keep the established promotion notice');
   PERFORM pg_temp.i4063_promotion_assert(NOT EXISTS (
     SELECT 1
       FROM public.rsvp_notifications
      WHERE rsvp_id = v_auto_waitlisted
-       AND template_key = 'rsvp_waitlist_promoted'
-  ), 'auto promotion must not also enqueue the legacy promotion notice');
+       AND template_key = 'rsvp_pass'
+  ), 'auto promotion must not create a second pass notification');
 END
 $test$;
 ROLLBACK;

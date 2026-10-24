@@ -693,14 +693,11 @@ BEGIN
       v_free := v_free - (1 + v_entry.plus_count);
     END IF;
 
-    IF v_v2 THEN
-      IF v_approval_mode <> 'manual' THEN
-        -- The shared routine is fail-safe when no pepper is available: it
-        -- sends an existing pass or leaves QR-less recipients to the backfill.
-        PERFORM public.enqueue_rsvp_pass(v_entry.id, NULL);
-      END IF;
-    ELSIF v_has_queue THEN
-      -- Preserve the exact legacy template, payload and key while switched off.
+    IF v_has_queue
+       AND (NOT v_v2 OR v_approval_mode <> 'manual') THEN
+      -- Auto promotions keep the established promotion template. The v2
+      -- renderer turns it into the on-the-list message; only manual/pending
+      -- promotions become silent after the switch is enabled.
       INSERT INTO public.rsvp_notifications
         (event_id, rsvp_id, channel, recipient, status, template_key, payload,
          idempotency_key, attempt_count)
@@ -719,7 +716,7 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.fn_rsvp_drain_on_capacity_freed() IS
-  '#1150/#4063: deterministic RSVP capacity drain. messages_v2 sends the canonical pass only after auto approval and keeps manual promotions silent until host approval; switch-off preserves the legacy promotion notice.';
+  '#1150/#4063: deterministic RSVP capacity drain. messages_v2 keeps auto promotion notices and makes manual promotions silent until host approval; switch-off preserves the legacy notice for both modes.';
 
 REVOKE ALL ON FUNCTION public.fn_rsvp_drain_on_capacity_freed()
   FROM PUBLIC, anon, authenticated;
@@ -1025,7 +1022,7 @@ SELECT cron.schedule(
 -- MINGLA-INVARIANT: I-4063-RECEIPT-NEVER-BLOCKS-PAYMENT | issue #4063 | Food-receipt enqueue failures are warning-only and cannot roll back a venue payment write.
 -- MINGLA-INVARIANT: I-4063-REMINDERS-ONE-PER-BOUGHT-DATE | issue #4063 | Reminder windows run every five minutes, select only still-valid purchased dates, and remain idempotent per order, occurrence and lead bucket.
 -- MINGLA-INVARIANT: I-4063-WAITLIST-ONE-ROW-PER-CONTACT | issue #4063 | With messages_v2 enabled, waitlist invitations enqueue independent email and normalized SMS rows while invalid phones remain silent.
--- MINGLA-INVARIANT: I-4063-RSVP-PROMOTION-AFTER-APPROVAL | issue #4063 | With messages_v2 enabled, auto promotions enqueue the canonical pass and manual promotions remain silent until host approval.
+-- MINGLA-INVARIANT: I-4063-RSVP-PROMOTION-AFTER-APPROVAL | issue #4063 | With messages_v2 enabled, auto promotions keep the promotion notice and manual promotions remain silent until host approval.
 
 DO $exit_check$
 DECLARE
@@ -1062,8 +1059,7 @@ BEGIN
     'public.fn_rsvp_drain_on_capacity_freed()'::regprocedure
   ) INTO v_definition;
   IF v_definition NOT LIKE '%issue_4063_switch_on%'
-     OR v_definition NOT LIKE '%enqueue_rsvp_pass(v_entry.id, NULL)%'
-     OR v_definition NOT LIKE '%v_approval_mode <> ''manual''%'
+     OR v_definition NOT LIKE '%NOT v_v2 OR v_approval_mode <> ''manual''%'
      OR v_definition NOT LIKE '%rsvp_waitlist_promoted%' THEN
     RAISE EXCEPTION 'issue_4063_exit_check_rsvp_promotion_definition_incomplete';
   END IF;
