@@ -1,6 +1,6 @@
 // META-ORCH-1161 Sub-C "b" — notify-reminders.
 //
-// SPEC §7.3: a pg_cron schedule (~every 15 min) POSTs here. We call the
+// #4063: a pg_cron schedule (every 5 min) POSTs here. We call the
 // pg_notify_reminders_enqueue() RPC once per lead bucket (24h + 2h). The RPC does
 // the atomic windowed select → INSERT into notification_outbox (idempotent per
 // {category}:{entityId}:{leadBucket}); the existing 1-min outbox drain then
@@ -10,7 +10,8 @@
 // Lead times are ENV-configurable (defaults 24h + 2h per §7.3 / §12 Q1 RESOLVED):
 //   REMINDER_LEAD_24H_HOURS  (default 24)
 //   REMINDER_LEAD_2H_HOURS   (default 2)
-//   REMINDER_WINDOW_MINUTES  (default 30 → ±15 min tolerance for a 15-min cron)
+// The RPC's third argument is retained only for compatibility/logging; the SQL
+// owns the fixed -7/+3 minute window paired with the five-minute cron.
 //
 // verify_jwt=false (config.toml): invoked by pg_cron with the service-role bearer.
 
@@ -19,7 +20,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 function json(body: object, status = 200): Response {
@@ -37,7 +39,9 @@ function envInt(name: string, fallback: number): number {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -51,12 +55,16 @@ serve(async (req) => {
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
 
   const lead24h = envInt("REMINDER_LEAD_24H_HOURS", 24);
   const lead2h = envInt("REMINDER_LEAD_2H_HOURS", 2);
-  const windowMinutes = envInt("REMINDER_WINDOW_MINUTES", 30);
+  const windowMinutes = 10;
 
   // One enqueue pass per lead bucket. Each is independently idempotent (the outbox
   // UNIQUE on idempotency_key), so a failure of one bucket never blocks the other.
@@ -77,7 +85,10 @@ serve(async (req) => {
     if (error) {
       hadError = true;
       results[bucket] = `error: ${error.message}`;
-      console.error(`[notify-reminders] enqueue ${bucket} failed:`, error.message);
+      console.error(
+        `[notify-reminders] enqueue ${bucket} failed:`,
+        error.message,
+      );
     } else {
       results[bucket] = typeof data === "number" ? data : 0;
     }
@@ -85,5 +96,8 @@ serve(async (req) => {
 
   // Surface partial failure (no silent failure) but never throw — the cron should
   // keep running and retry next tick; idempotency makes retries safe.
-  return json({ ok: !hadError, enqueued: results, windowMinutes }, hadError ? 207 : 200);
+  return json(
+    { ok: !hadError, enqueued: results, windowMinutes },
+    hadError ? 207 : 200,
+  );
 });
