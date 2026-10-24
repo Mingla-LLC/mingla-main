@@ -73,6 +73,12 @@ import {
   handleStayStripePaymentEvent,
   isStayStripePaymentEvent,
 } from "./stayPaymentWebhook.ts";
+import {
+  handlePayeeStripeDisputeLoss,
+  handlePayeeStripeRefund,
+  handlePayeeStripeTransferReversed,
+  syncPayeeStripeAccount,
+} from "./payeeLedger.ts";
 // Issue #1790 (SPEC #1788 P-28) — venue menu orders, discriminated by the
 // `metadata.mingla_venue_order_id` marker Mingla sets at create. Checked before
 // the ticket finalize path so the two money paths never cross; the ticket path
@@ -93,6 +99,7 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   "payout.paid",
   "payout.failed",
   "payout.canceled",
+  "transfer.reversed",
   "charge.refund.updated",
   // ORCH-0787: subscribe to the modern Stripe refund event family for full coverage
   // beyond the legacy charge.refund.updated event. STRIPE_API_VERSION '2026-04-22.dahlia'
@@ -2028,6 +2035,14 @@ export async function routeStripeEvent(
             : String(partnerSyncErr),
         );
       }
+      try {
+        await syncPayeeStripeAccount(supabase, event.data.object);
+      } catch (payeeSyncErr) {
+        console.error(
+          "[stripe-webhook] payee account sync failed (non-fatal)",
+          payeeSyncErr instanceof Error ? payeeSyncErr.message : String(payeeSyncErr),
+        );
+      }
       break;
     case "account.application.deauthorized":
       brandId = await handleDeauthorized(supabase, event);
@@ -2058,12 +2073,27 @@ export async function routeStripeEvent(
     case "payout.canceled":
       brandId = await handlePayout(supabase, event);
       break;
+    case "transfer.reversed":
+      await handlePayeeStripeTransferReversed(supabase, event.data.object);
+      break;
     // ORCH-0787: unified refund event family
     case "charge.refund.updated":
     case "charge.refunded":
     case "refund.created":
     case "refund.updated":
       brandId = await handleRefundEvent(supabase, event);
+      if (event.type !== "charge.refunded") {
+        try {
+          await handlePayeeStripeRefund(supabase, stripe, event.data.object);
+        } catch (payeeReversalErr) {
+          console.error(
+            "[stripe-webhook] payee reversal (refund) failed after refund commit",
+            payeeReversalErr instanceof Error
+              ? payeeReversalErr.message
+              : String(payeeReversalErr),
+          );
+        }
+      }
       // ORCH-1054: refund → reverse partner split (TransferReversal if
       // already transferred; mark reversed_pending otherwise). Only
       // charge.refunded carries the application_fee on the charge object;
@@ -2206,6 +2236,20 @@ export async function routeStripeEvent(
         const stayBrandId = await handleStayStripeDispute(supabase, event);
         brandId = await handleChargeDispute(supabase, event);
         if (stayBrandId) brandId = stayBrandId;
+      }
+      try {
+        await handlePayeeStripeDisputeLoss(
+          supabase,
+          stripe,
+          event.data.object,
+        );
+      } catch (payeeReversalErr) {
+        console.error(
+          "[stripe-webhook] payee reversal (dispute) failed after dispute commit",
+          payeeReversalErr instanceof Error
+            ? payeeReversalErr.message
+            : String(payeeReversalErr),
+        );
       }
       // ORCH-1054: dispute → reverse partner split (TransferReversal if
       // already transferred; mark reversed_pending otherwise). Only fire

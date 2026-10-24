@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/payeeLedger.issue3872.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3872-r2-11-payee-ledger-webhooks",
+  "profile": "deno-1.46-stripe"
+}

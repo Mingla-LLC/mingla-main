@@ -4,7 +4,8 @@
 // each an independent EntityListView over its own admin_* read-RPC. The disputes
 // tab surfaces an evidence-due countdown and opens a dispute detail (linked order
 // + collapsible raw event). Every list renders a clean empty state on the live
-// (mostly-0-row) data. READ-ONLY: no dispute-resolve / refund action (Wave-2, §9).
+// (mostly-0-row) data. Money movement stays read-only; the Payees tab permits
+// only audited referral-risk hold and clear decisions.
 
 import { useState, useEffect, useCallback } from "react";
 import { Landmark } from "lucide-react";
@@ -15,8 +16,8 @@ import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
-import { listRefunds, listDisputes, getDispute, listPaystackDisputes, listPayouts, getPayoutSummary, listRevenueLog, listOrganiserPayoutDebts } from "../services/adminMoneyService";
-import { annotateDispute } from "../services/adminMoneyActService";
+import { listRefunds, listDisputes, getDispute, listPaystackDisputes, listPayouts, getPayoutSummary, listRevenueLog, listOrganiserPayoutDebts, listPayeeLedger } from "../services/adminMoneyService";
+import { annotateDispute, setReferralMemberPayoutHold } from "../services/adminMoneyActService";
 import { PaystackDisputeDetail } from "../components/money/PaystackDisputeDetail";
 import { deadlineCountdown } from "../lib/paystackDisputeEvidence";
 import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
@@ -266,11 +267,92 @@ const DEBT_CSV = {
   filename: "organiser-debts",
 };
 
+function payeeColumns(onHoldChange) {
+  return [
+    {
+      key: "display_name",
+      label: "Payee",
+      render: (value, row) => (
+        <div className="min-w-40">
+          <p className="font-medium text-[var(--color-text-primary)]">{value || "Unnamed payee"}</p>
+          <p className="text-xs text-[var(--color-text-tertiary)]">{row.email_norm || "No email"}</p>
+        </div>
+      ),
+    },
+    { key: "brand_name", label: "Brand", render: brandCell },
+    { key: "rail", label: "Rail", render: (v) => <Badge variant="default">{v || "—"}</Badge> },
+    { key: "gross_minor", label: "Gross reward", render: (v, row) => formatMoney(v, row.currency) },
+    { key: "mingla_fee_minor", label: "Mingla fee", render: (v, row) => formatMoney(v, row.currency) },
+    { key: "net_minor", label: "Payee reward", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
+    {
+      key: "provider_fee_minor",
+      label: "Provider fee · payee",
+      render: (v, row) => Number(v || 0) > 0 ? formatMoney(v, row.currency) : "—",
+    },
+    { key: "remaining_net_minor", label: "Unpaid", render: (v, row) => formatMoney(v, row.currency) },
+    {
+      key: "open_debt_minor",
+      label: "Open recovery",
+      render: (v, row) => Number(v || 0) > 0
+        ? <span className="font-medium text-[var(--color-error-700)]">{formatMoney(v, row.currency)}</span>
+        : "—",
+    },
+    {
+      key: "status",
+      label: "Status",
+      render: (v, row) => (
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant={v === "paid" ? "success" : v === "reversed" ? "default" : "warning"} dot>
+            {(v || "—").replaceAll("_", " ")}
+          </Badge>
+          {row.payout_status ? <span className="text-xs text-[var(--color-text-tertiary)]">Payout: {row.payout_status.replaceAll("_", " ")}</span> : null}
+        </div>
+      ),
+    },
+    {
+      key: "stripe_status",
+      label: "Payout account",
+      render: (_v, row) => {
+        const status = row.rail === "paystack" ? row.paystack_status : row.stripe_status;
+        return <Badge variant={["active", "verified"].includes(status) ? "success" : "warning"} dot>{(status || "not connected").replaceAll("_", " ")}</Badge>;
+      },
+    },
+    {
+      key: "risk_held",
+      label: "Risk control",
+      render: (held, row) => (
+        <div className="flex min-w-36 flex-col items-start gap-1.5">
+          <Badge variant={held ? "error" : "success"} dot>{held ? "Held" : "Clear"}</Badge>
+          {held && row.risk_reason ? <span className="max-w-48 text-xs text-[var(--color-text-tertiary)]">{row.risk_reason}</span> : null}
+          <Button size="sm" variant={held ? "secondary" : "danger"} onClick={() => onHoldChange(row)}>
+            {held ? "Clear hold" : "Hold payouts"}
+          </Button>
+        </div>
+      ),
+    },
+  ];
+}
+
+const PAYEE_CSV = {
+  columns: [
+    { key: "display_name", label: "Payee" }, { key: "email_norm", label: "Email" },
+    { key: "brand_name", label: "Brand" }, { key: "rail", label: "Rail" },
+    { key: "currency", label: "Currency" }, { key: "gross_minor", label: "Gross reward minor" },
+    { key: "mingla_fee_minor", label: "Mingla fee minor" }, { key: "net_minor", label: "Payee reward minor" },
+    { key: "provider_fee_minor", label: "Provider fee paid by payee minor" },
+    { key: "remaining_net_minor", label: "Unpaid minor" }, { key: "open_debt_minor", label: "Open recovery minor" },
+    { key: "status", label: "Share status" }, { key: "payout_status", label: "Payout status" },
+    { key: "risk_held", label: "Risk held" }, { key: "risk_reason", label: "Risk reason" },
+  ],
+  filename: "payee-ledger",
+};
+
 const TABS = [
   { id: "refunds", label: "Refunds" },
   { id: "disputes", label: "Disputes" },
   { id: "paystack_disputes", label: "Paystack disputes" },
   { id: "payouts", label: "Payouts" },
+  { id: "payees", label: "Payees" },
   { id: "debts", label: "Organiser debts" },
   { id: "revenue", label: "Platform revenue" },
   { id: "stay", label: "Stay reconciliation" },
@@ -387,6 +469,8 @@ export function BusinessMoneyLedgerPage() {
   const [markReviewed, setMarkReviewed] = useState(false);
   const [payoutSummary, setPayoutSummary] = useState(null);
   const [selectedPayout, setSelectedPayout] = useState(null);
+  const [selectedPayee, setSelectedPayee] = useState(null);
+  const [payeeRefreshKey, setPayeeRefreshKey] = useState(0);
 
   useEffect(() => {
     if (activeTab !== "payouts") return;
@@ -483,6 +567,22 @@ export function BusinessMoneyLedgerPage() {
     }
     loadDispute(disputeId);
   }, [disputeId, note, markReviewed, loadDispute]);
+
+  const runPayeeHoldChange = useCallback(async ({ reason }) => {
+    if (!selectedPayee) throw new Error("Choose a payee first.");
+    const { error: err } = await setReferralMemberPayoutHold({
+      member_id: selectedPayee.member_id,
+      hold: !selectedPayee.risk_held,
+      reason,
+    });
+    if (err) {
+      const msg = err.message || "";
+      if (msg.includes("not_authorized")) throw new Error("Admin access required.");
+      if (msg.includes("reason_required")) throw new Error("A reason is required.");
+      throw new Error(msg || "Couldn't update this payee hold.");
+    }
+    setPayeeRefreshKey((value) => value + 1);
+  }, [selectedPayee]);
 
   // ── Paystack dispute detail (evidence workflow) ─────────────────────────────
   if (paystackDisputeId) {
@@ -629,6 +729,33 @@ export function BusinessMoneyLedgerPage() {
         emptyIcon={Landmark}
       />
     );
+  } else if (activeTab === "payees") {
+    listView = (
+      <EntityListView
+        key={`payees-${payeeRefreshKey}`}
+        title="Referral payees"
+        columns={payeeColumns(setSelectedPayee)}
+        fetchPage={listPayeeLedger}
+        searchPlaceholder="Search payee, brand, order or share id"
+        filters={[
+          { key: "status", label: "Status", options: [
+            { value: "held", label: "Risk held" },
+            { value: "held_until_event", label: "Held until event" },
+            { value: "releasable", label: "Ready" },
+            { value: "accumulating", label: "Below payout floor" },
+            { value: "paid", label: "Paid" },
+            { value: "reversed", label: "Reversed" },
+          ] },
+          { key: "rail", label: "Rail", options: [
+            { value: "stripe", label: "Stripe" },
+            { value: "paystack", label: "Paystack" },
+          ] },
+        ]}
+        csv={PAYEE_CSV}
+        emptyMessage="No referral payee ledger entries yet."
+        emptyIcon={Landmark}
+      />
+    );
   } else if (activeTab === "debts") {
     listView = (
       <EntityListView
@@ -663,9 +790,11 @@ export function BusinessMoneyLedgerPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title={activeTab === "payouts" ? "Money ledger · Payouts" : "Money ledger"}
+        title={activeTab === "payouts" ? "Money ledger · Payouts" : activeTab === "payees" ? "Money ledger · Payees" : "Money ledger"}
         description={activeTab === "payouts"
           ? "Every sale's payout from the release ledger, across Stripe and Paystack. Each sale is due about 24 hours after payment."
+          : activeTab === "payees"
+          ? "Referral rewards, recoveries, payout readiness and risk holds. Provider transfer fees come out of the payee's reward; they are not charged to the buyer or host."
           : "Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand."}
         tabs={<Tabs tabs={TABS} activeTab={activeTab} onChange={changeTab} />}
       />
@@ -682,6 +811,18 @@ export function BusinessMoneyLedgerPage() {
 
       {listView}
       <PayoutDetailDrawer payout={selectedPayout} onClose={() => setSelectedPayout(null)} />
+      <HighRiskActionModal
+        open={!!selectedPayee}
+        onClose={() => setSelectedPayee(null)}
+        title={selectedPayee?.risk_held ? "Clear payee payout hold" : "Hold payee payouts"}
+        description={selectedPayee?.risk_held
+          ? `Allow future payouts for ${selectedPayee?.display_name || selectedPayee?.email_norm || "this payee"}. Existing ledger history remains unchanged.`
+          : `Stop future payouts for ${selectedPayee?.display_name || selectedPayee?.email_norm || "this payee"}. Earned rewards stay recorded and no money moves now.`}
+        confirmLabel={selectedPayee?.risk_held ? "Clear hold" : "Hold payouts"}
+        destructive={!selectedPayee?.risk_held}
+        onConfirm={runPayeeHoldChange}
+        successMessage={selectedPayee?.risk_held ? "Payee payout hold cleared." : "Payee payouts held."}
+      />
     </div>
   );
 }

@@ -382,10 +382,11 @@ insert into public.payee_share_reversals(share_id,refund_ref,amount_minor)
 values('38720000-0000-4000-9700-000000000001','re_test_partial',250);
 
 insert into public.payee_payouts
-  (id,payee_user_id,rail,currency,amount_minor,idempotency_key,status,attempt)
+  (id,payee_user_id,rail,currency,amount_minor,gross_share_minor,
+   debt_withheld_minor,provider_fee_minor,idempotency_key,status,attempt)
 values
   ('38720000-0000-4000-9750-000000000001','38720000-0000-4000-9000-000000000002',
-   'stripe','USD',700,'payee_share:test:1','in_transit',1);
+   'stripe','USD',700,700,0,0,'payee_share:test:1','in_transit',1);
 insert into public.payee_debts
   (payee_user_id,origin_share_id,rail,currency,amount_minor,reason)
 values

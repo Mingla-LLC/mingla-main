@@ -169,6 +169,19 @@ export async function listRevenueLog({ search, page = 0, pageSize = 25 }) {
   return { rows: data?.rows ?? [], total: data?.total ?? 0 };
 }
 
+/** #3872 R2 — referral-payee share, payout, debt and risk-hold ledger. */
+export async function listPayeeLedger({ search, filters = {}, page = 0, pageSize = 25 }) {
+  const { data, error } = await supabase.rpc("admin_list_payee_ledger", {
+    p_search: search || null,
+    p_status_filter: filters.status || null,
+    p_rail_filter: filters.rail || null,
+    p_limit: pageSize,
+    p_offset: page * pageSize,
+  });
+  if (error) throw new Error(error.message || "Failed to load payee ledger.");
+  return { rows: data?.rows ?? [], total: data?.total ?? 0 };
+}
+
 // ── Organiser payout debts + per-brand payout console (#3645 PR9) ─────────────
 
 /**
