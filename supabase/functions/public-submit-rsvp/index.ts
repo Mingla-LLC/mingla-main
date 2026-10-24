@@ -375,10 +375,33 @@ serve(async (req: Request): Promise<Response> => {
           }),
         );
         return json(409, { error: "rsvp_date_unavailable" });
+      case "P4063":
+        console.warn(
+          "[public-submit-rsvp] RSVP rejected",
+          JSON.stringify({
+            event_id: eventId,
+            reason: "rsvp_already_exists",
+            authenticated: false,
+            server_timestamp: new Date().toISOString(),
+          }),
+        );
+        return json(409, { error: "rsvp_already_exists" });
     }
     const code = error.message ?? "";
     if (code.includes("rsvp_not_open")) return json(404, { error: "rsvp_not_open" });
     if (code.includes("rsvp_full")) return json(409, { error: "rsvp_full" });
+    if (code.includes("rsvp_already_exists")) {
+      console.warn(
+        "[public-submit-rsvp] RSVP rejected",
+        JSON.stringify({
+          event_id: eventId,
+          reason: "rsvp_already_exists",
+          authenticated: false,
+          server_timestamp: new Date().toISOString(),
+        }),
+      );
+      return json(409, { error: "rsvp_already_exists" });
+    }
     if (code.includes("rsvp_contact_required")) {
       return json(400, { error: "rsvp_contact_required" });
     }

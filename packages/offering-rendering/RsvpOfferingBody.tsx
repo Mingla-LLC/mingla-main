@@ -132,6 +132,8 @@ export const rsvpErrorMessageForCode = (code: string): string => {
     return "This event has ended. RSVPs are closed.";
   if (code === "rsvp_date_unavailable")
     return "RSVPs are unavailable right now. Try again later.";
+  if (code.includes("rsvp_already_exists"))
+    return "You've already RSVP'd with this email. Check that inbox for your RSVP.";
   if (code.includes("rsvp_full")) return "This event just filled up.";
   if (code.includes("rsvp_not_open")) return "RSVPs are closed for this event.";
   if (code.includes("rsvp_guest_count_mismatch"))
