@@ -42,5 +42,7 @@ describe("#3355 settled Ari thread scroll", () => {
     expect(messageListSrc).toMatch(/lastUserMessageIdRef/);
     expect(messageListSrc).toMatch(/conversationId/);
     expect(screenSrc).toMatch(/conversationId=\{chat\.conversationId\}/);
+    // One pending card = one logical tail (pending lands before the tool row).
+    expect(messageListSrc).toMatch(/pending:\$\{pendingId\}/);
   });
 });

@@ -353,7 +353,13 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   useEffect(() => {
     if (items.length === 0) return;
-    const tailKey = `${newestId ?? "none"}:${pendingId ?? "none"}`;
+    // Logical tail: a pending proposal is one card. `useAgentChat` sets
+    // pendingAction before the canonical tool-call row lands, so keying on
+    // newestId+pendingId would fire two animated scrolls for one proposal.
+    const tailKey =
+      typeof pendingId === "string" && pendingId.length > 0
+        ? `pending:${pendingId}`
+        : `msg:${newestId ?? "none"}`;
     const userJustSent =
       newestRole === "user" &&
       typeof newestId === "string" &&

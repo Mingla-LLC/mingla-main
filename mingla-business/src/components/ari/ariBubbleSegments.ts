@@ -30,29 +30,65 @@ const HEADING_LINE = /^\s{0,3}#{1,6}\s+(.*)$/;
 const HR_LINE = /^\s*(?:[-_*]){3,}\s*$/;
 const FENCE_LINE = /^\s*```/;
 
+/** Markdown link → keep label and destination in the plain-text fallback. */
+function unwrapMarkdownLinks(raw: string): string {
+  return raw.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label: string, href: string) => {
+    const text = String(label).trim();
+    const url = String(href).trim();
+    if (!url) return text;
+    if (!text) return url;
+    if (text === url) return text;
+    return `${text} (${url})`;
+  });
+}
+
+/**
+ * Word-aware single `_…_` / `*…*` — never treat `_` inside emails/identifiers
+ * as emphasis (e.g. `jane_doe_sales@example.com`).
+ */
+function stripWordAwareEmphasis(raw: string, marker: "*" | "_"): string {
+  const esc = marker === "*" ? "\\*" : "_";
+  const re = new RegExp(
+    `(^|[^\\w${esc}])${esc}([^${esc}\\n]+)${esc}(?!${esc})(?!\\w)`,
+    "g",
+  );
+  return raw.replace(re, "$1$2");
+}
+
+/** Flatten nested markdown left inside a strong/em payload (keep code as text). */
+function flattenInlinePayload(text: string): string {
+  let out = text.replace(/`([^`]+)`/g, "$1");
+  out = out.replace(/\*\*\*([^*]+)\*\*\*/g, "$1");
+  out = out.replace(/\*\*([^*]+)\*\*/g, "$1");
+  out = out.replace(/__(.+?)__/g, "$1");
+  out = stripWordAwareEmphasis(out, "*");
+  out = stripWordAwareEmphasis(out, "_");
+  return out.replace(/\*\*/g, "").replace(/`/g, "");
+}
+
 /**
  * Strip Markdown *formatting* delimiters. Does not delete literal `#` / `_`
  * inside URLs, emails, or identifiers (only line-leading ATX headings and
- * paired emphasis/code markers).
+ * paired emphasis/code markers with word-aware boundaries).
  */
 export function stripRawMarkdownDelimiters(
   raw: string,
   options: { trim?: boolean } = {},
 ): string {
   const trim = options.trim !== false;
-  let out = raw
+  let out = unwrapMarkdownLinks(raw)
     .replace(/```[\s\S]*?```/g, (block) =>
       block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "").trim()
     )
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\*\*\*([^*]+)\*\*\*/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, "$1$2")
-    .replace(/__(.+?)__/g, "$1")
-    .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1$2")
+    .replace(/__(.+?)__/g, "$1");
+  out = stripWordAwareEmphasis(out, "*");
+  out = stripWordAwareEmphasis(out, "_");
+  out = out
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s*(?:[-_*]){3,}\s*$/gm, "")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
     // Unpaired emphasis/code fence markers only — never blanket-delete `#`/`_`.
     .replace(/\*\*/g, "")
     .replace(/`/g, "")
@@ -68,27 +104,42 @@ export function stripRawMarkdownDelimiters(
 export function parseInlineRuns(raw: string): AriInlineRun[] {
   if (!raw) return [{ kind: "plain", text: "" }];
   const runs: AriInlineRun[] = [];
+  // Prefer fenced code, then ***, **, __, then word-aware * and _.
   const re =
-    /(\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\*([^*\n]+)\*|`([^`]+)`|__([^_]+)__|_([^_\n]+)_)/g;
+    /(`([^`]+)`|\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|__([^_]+)__|(^|[^*\w])\*([^*\n]+)\*(?!\*)|(^|[^_\w])_([^_\n]+)_(?!_))/g;
   let last = 0;
   let match: RegExpExecArray | null;
   while ((match = re.exec(raw)) !== null) {
-    if (match.index > last) {
-      runs.push({ kind: "plain", text: raw.slice(last, match.index) });
-    }
+    let kind: AriInlineRun["kind"] | null = null;
+    let text = "";
+    let prefix = "";
     if (match[2] !== undefined) {
-      runs.push({ kind: "strong", text: match[2] });
+      kind = "code";
+      text = match[2];
     } else if (match[3] !== undefined) {
-      runs.push({ kind: "strong", text: match[3] });
+      kind = "strong";
+      text = flattenInlinePayload(match[3]);
     } else if (match[4] !== undefined) {
-      runs.push({ kind: "em", text: match[4] });
+      kind = "strong";
+      text = flattenInlinePayload(match[4]);
     } else if (match[5] !== undefined) {
-      runs.push({ kind: "code", text: match[5] });
-    } else if (match[6] !== undefined) {
-      runs.push({ kind: "strong", text: match[6] });
+      kind = "strong";
+      text = flattenInlinePayload(match[5]);
     } else if (match[7] !== undefined) {
-      runs.push({ kind: "em", text: match[7] });
+      prefix = match[6] ?? "";
+      kind = "em";
+      text = flattenInlinePayload(match[7]);
+    } else if (match[9] !== undefined) {
+      prefix = match[8] ?? "";
+      kind = "em";
+      text = flattenInlinePayload(match[9]);
     }
+    if (kind === null) continue;
+    const contentStart = match.index + prefix.length;
+    if (contentStart > last) {
+      runs.push({ kind: "plain", text: raw.slice(last, contentStart) });
+    }
+    runs.push({ kind, text });
     last = match.index + match[0].length;
   }
   if (last < raw.length) {
@@ -100,13 +151,15 @@ export function parseInlineRuns(raw: string): AriInlineRun[] {
   return runs.map((run) =>
     run.kind === "plain"
       ? { kind: "plain", text: stripRawMarkdownDelimiters(run.text, { trim: false }) }
-      : run
+      : run.kind === "code"
+        ? run
+        : { ...run, text: flattenInlinePayload(run.text) }
   );
 }
 
 function cleanLineBody(line: string): string {
-  // Keep `**` / `` ` `` for parseInlineRuns; only unwrap markdown links.
-  return line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1").trim();
+  // Keep `**` / `` ` `` for parseInlineRuns; unwrap links with destination kept.
+  return unwrapMarkdownLinks(line).trim();
 }
 
 /** Split already-parsed model text into typed Ari segments. */

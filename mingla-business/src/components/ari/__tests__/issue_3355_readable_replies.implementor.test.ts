@@ -76,6 +76,34 @@ describe("#3355 readable Ari replies", () => {
     expect(ariTextLeaksMarkdown(spoken)).toBe(false);
   });
 
+  test("paired underscores inside emails are not emphasis", () => {
+    const spoken = toAccessibleText(
+      "Reach jane_doe_sales@example.com and also bob_ops@example.com today",
+    );
+    expect(spoken).toContain("jane_doe_sales@example.com");
+    expect(spoken).toContain("bob_ops@example.com");
+    expect(ariTextLeaksMarkdown(spoken)).toBe(false);
+  });
+
+  test("nested code inside strong does not leak backticks", () => {
+    const runs = parseInlineRuns("**Type `LAUNCH` to confirm**");
+    expect(runs).toEqual([{ kind: "strong", text: "Type LAUNCH to confirm" }]);
+    const spoken = toAccessibleText("**Type `LAUNCH` to confirm**");
+    expect(spoken).toBe("Type LAUNCH to confirm");
+    expect(spoken).not.toMatch(/`/);
+  });
+
+  test("markdown links keep the destination in spoken and segment text", () => {
+    const raw = "Open [your site](https://usemingla.com/lantern)";
+    expect(toSegments(raw)).toEqual([
+      {
+        kind: "paragraph",
+        text: "Open your site (https://usemingla.com/lantern)",
+      },
+    ]);
+    expect(toAccessibleText(raw)).toContain("https://usemingla.com/lantern");
+  });
+
   test("heading bodies keep inline emphasis for the renderer", () => {
     expect(toSegments("### **Budget**")).toEqual([
       { kind: "section_label", text: "**Budget**" },
