@@ -296,8 +296,11 @@ Deno.test("P-13 SOURCE PIN — there is exactly ONE chosen-day resolver, and bot
   // And the ONE implementation really reads the day ledger. #2162's C-6 pins
   // `ticket_event_dates` against the dispatch handler, where the string now
   // survives only in a comment — so the load-bearing pin lives here.
+  // #3281 widened the nested event_dates projection (id + override_*); keep
+  // the pin on the ticket_event_dates join and the start/end/timezone fields
+  // (prior frozen column-list pin was wrong after that widen).
   assert(
-    /\.select\("ticket_event_dates \( event_dates \( start_at, end_at, timezone \) \)"\)/
+    /\.select\(\s*"ticket_event_dates \( event_dates \( [^"]*\bstart_at\b[^"]*\bend_at\b[^"]*\btimezone\b[^"]*\)\s*\)"\s*,?\s*\)/
       .test(RESOLVER_SRC),
     "the resolver must consult the days the order's passes actually admit",
   );
