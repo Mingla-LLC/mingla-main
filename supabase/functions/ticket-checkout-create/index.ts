@@ -91,6 +91,7 @@ import {
   withDiscounts,
 } from "../_shared/orderMoneyTruth.ts";
 import { normaliseDiscountCode } from "../_shared/discountEngine.ts";
+import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
 // issue #2216 — a free reservation lands the guest on the SAME confirmation
 // carousel a paid one does, so it owes the guest the SAME rendered pass.
 import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
@@ -2725,6 +2726,18 @@ export const createTicketCheckoutCreateHandler = (
         );
         return jsonResponse(checkoutUnavailableResponse(), 409);
       }
+      const replayedConfirmation = await buildBuyerConfirmationPayload(
+        supabase,
+        {
+          orderId: replayedOrderId,
+          eventId: String(session.eventId ?? eventId),
+          currency: String(session.currency ?? ""),
+          logPrefix: "[ticket-checkout-create replay]",
+        },
+      );
+      if (replayedConfirmation === null) {
+        return jsonResponse({ error: "order_payload_failed" }, 500);
+      }
       return jsonResponse({
         kind: "free_completed",
         orderId: replayedOrderId,
@@ -2734,7 +2747,7 @@ export const createTicketCheckoutCreateHandler = (
         totalCents: Number(session.totalCents ?? 0),
         currency: String(session.currency ?? ""),
         notificationStatus: "queued",
-        tickets: replayedTickets,
+        ...replayedConfirmation,
         buyerPhoneE164,
         // Echoed, never re-minted: the caller proved possession WITH this
         // token, so returning it keeps their status polling working. A
@@ -3150,6 +3163,15 @@ export const createTicketCheckoutCreateHandler = (
           409,
         );
       }
+      const freeConfirmation = await buildBuyerConfirmationPayload(supabase, {
+        orderId,
+        eventId: String(finalizedRecord.eventId ?? eventId),
+        currency: String(finalizedRecord.currency ?? session.currency ?? ""),
+        logPrefix: "[ticket-checkout-create free]",
+      });
+      if (freeConfirmation === null) {
+        return jsonResponse({ error: "order_payload_failed" }, 500);
+      }
       // issue #2694 — NOT ON A REPLAY. The order, its tickets, its two
       // `ticket_order_notifications` rows and its ad conversion were all created
       // by the FIRST submit. Re-dispatching would send the guest a second
@@ -3278,7 +3300,7 @@ export const createTicketCheckoutCreateHandler = (
         notificationStatus: String(
           finalizedRecord.notificationStatus ?? "queued",
         ),
-        tickets: freeTickets,
+        ...freeConfirmation,
         buyerPhoneE164,
         // issue #2694 — ON A REPLAY, ECHO WHAT THEY PROVED WITH.
         //

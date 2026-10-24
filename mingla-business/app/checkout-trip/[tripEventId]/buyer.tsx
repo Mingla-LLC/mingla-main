@@ -573,6 +573,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         currency: result.currency,
         paymentStatus: result.paymentStatus,
         notificationStatus: result.notificationStatus,
+        buyerContact: result.buyerContact,
+        receipt: result.receipt,
+        claim: result.claim,
+        attachedToAccount: result.attachedToAccount,
+        boughtForSomeoneElse: result.boughtForSomeoneElse,
         tickets: result.tickets,
       });
       router.replace(`/checkout-trip/${tripEventId}/confirm` as never);

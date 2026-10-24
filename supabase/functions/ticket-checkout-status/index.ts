@@ -6,7 +6,7 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
-import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
+import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
 import {
   checkoutUnavailableResponse,
   ticketCheckoutPreflight,
@@ -206,42 +206,15 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
     });
   }
 
-  const { data: tickets, error: ticketError } = await supabase
-    .from("tickets")
-    .select(`
-      id,
-      ticket_type_id,
-      qr_code,
-      status,
-      ticket_types(name)
-    `)
-    .eq("order_id", orderId)
-    .order("created_at", { ascending: true });
-  if (ticketError) {
-    logError("ticket-checkout-status ticket lookup failed", ticketError, {
-      fn: "ticket-checkout-status",
-      orderId,
-    });
-    return jsonResponse({
-      error: "ticket_lookup_failed",
-      detail: ticketError.message,
-    }, 500);
+  const confirmation = await buildBuyerConfirmationPayload(supabase, {
+    orderId,
+    eventId: String(session.event_id),
+    currency: String(session.currency ?? "GBP"),
+    logPrefix: "[ticket-checkout-status]",
+  });
+  if (confirmation === null) {
+    return jsonResponse({ error: "order_payload_failed" }, 500);
   }
-
-  // ORCH-0804 — pull Stripe Tax amount from the orders row. Defaults to 0
-  // when missing (free order, door sale, brand not registered in buyer
-  // jurisdiction, or the race where checkout.session.completed arrived
-  // before payment_intent.succeeded finalized the row).
-  const { data: orderRow } = await supabase
-    .from("orders")
-    .select("tax_amount_cents, booked_start_at")
-    .eq("id", orderId)
-    .maybeSingle();
-  const taxAmountCents = Number(orderRow?.tax_amount_cents ?? 0);
-  const bookedRaw = (orderRow as { booked_start_at?: string | null } | null)
-    ?.booked_start_at;
-  const bookedStartAt =
-    typeof bookedRaw === "string" && bookedRaw.length > 0 ? bookedRaw : null;
 
   return jsonResponse({
     checkoutSessionId,
@@ -252,23 +225,7 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       paymentStatus: "paid",
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
-      taxAmountCents,
-      // issue #3281 — confirm reload has no resume payload; surface the saved start.
-      bookedStartAt,
-      // issue #2216 — ONE owner for "ticket → ticket + rendered QR" across
-      // create/confirm/status (`_shared/ticketQrImage.ts`). A single ticket
-      // that fails to render degrades to the carousel placeholder AND emits a
-      // structured error line, instead of silently answering with a blank.
-      tickets: await attachQrImageDataUrls(
-        (tickets ?? []).map((ticket: Record<string, unknown>) => ({
-          ticketId: String(ticket.id ?? ""),
-          ticketTypeId: ticket.ticket_type_id,
-          ticketName: (ticket.ticket_types as { name?: string } | null)?.name ??
-            "Ticket",
-          qrPayload: String(ticket.qr_code ?? ""),
-          status: ticket.status,
-        })),
-      ),
+      ...confirmation,
       notificationStatus: "queued",
     },
   });

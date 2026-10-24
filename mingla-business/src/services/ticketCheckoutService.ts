@@ -184,6 +184,12 @@ export interface TicketCheckoutFreeCompleted {
    * booking after the resume payload is cleared.
    */
   bookedStartAt?: string | null;
+  /** #4063 — status-token-gated confirmation payload; no client-side receipt math. */
+  buyerContact?: OrderResult["buyerContact"];
+  receipt?: OrderResult["receipt"];
+  claim?: OrderResult["claim"];
+  attachedToAccount?: OrderResult["attachedToAccount"];
+  boughtForSomeoneElse?: OrderResult["boughtForSomeoneElse"];
   tickets: OrderResult["tickets"];
   notificationStatus: OrderResult["notificationStatus"];
 }

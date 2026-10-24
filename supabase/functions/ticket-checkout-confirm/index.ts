@@ -56,7 +56,10 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
-import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
+import {
+  buildBuyerConfirmationPayload,
+  type BuyerConfirmationPayload,
+} from "../_shared/buyerConfirmationPayload.ts";
 import {
   isEvidenceHoldCandidate,
   releaseTicketEvidenceHold,
@@ -81,14 +84,6 @@ interface ConfirmRequest {
 }
 
 type FinalizeStatus = "paid" | "pending" | "failed" | "expired";
-
-interface TicketRow {
-  id: string;
-  ticket_type_id: string;
-  qr_code: string;
-  status: string;
-  ticket_types: { name?: string } | null;
-}
 
 type StripePaymentIntentLike = {
   id?: string;
@@ -173,50 +168,31 @@ async function fetchOrderPayload(
     totalCents: number;
     hostNetCents: number | null;
     currency: string;
-    taxAmountCents: number;
-    /** issue #3281 — guest-chosen experience start; null when unset. */
-    bookedStartAt: string | null;
-    tickets: Array<{
-      ticketId: string;
-      ticketTypeId: string;
-      ticketName: string;
-      qrPayload: string;
-      /** ORCH-0932 — server-rendered PNG data URI; carousel uses this on web. */
-      qrImageDataUrl: string;
-      status: string;
-    }>;
+    taxAmountCents: BuyerConfirmationPayload["taxAmountCents"];
+    bookedStartAt: BuyerConfirmationPayload["bookedStartAt"];
+    buyerContact: BuyerConfirmationPayload["buyerContact"];
+    receipt: BuyerConfirmationPayload["receipt"];
+    claim: BuyerConfirmationPayload["claim"];
+    attachedToAccount: BuyerConfirmationPayload["attachedToAccount"];
+    boughtForSomeoneElse: BuyerConfirmationPayload["boughtForSomeoneElse"];
+    tickets: BuyerConfirmationPayload["tickets"];
     notificationStatus: "queued";
   } | null
 > {
-  const { data: tickets, error: ticketError } = await supabase
-    .from("tickets")
-    .select(`
-      id,
-      ticket_type_id,
-      qr_code,
-      status,
-      ticket_types(name)
-    `)
-    .eq("order_id", session.order_id)
-    .order("created_at", { ascending: true });
-  if (ticketError) {
-    console.error(
-      "[ticket-checkout-confirm] ticket lookup failed",
-      ticketError.message,
-    );
-    return null;
-  }
-
   const { data: orderRow } = await supabase
     .from("orders")
-    .select("tax_amount_cents, booked_start_at, pricing_breakdown, stripe_application_fee_amount_cents")
+    .select(
+      "tax_amount_cents, booked_start_at, pricing_breakdown, stripe_application_fee_amount_cents",
+    )
     .eq("id", session.order_id)
     .maybeSingle();
-  const taxAmountCents = Number(orderRow?.tax_amount_cents ?? 0);
-  const bookedRaw = (orderRow as { booked_start_at?: string | null } | null)
-    ?.booked_start_at;
-  const bookedStartAt =
-    typeof bookedRaw === "string" && bookedRaw.length > 0 ? bookedRaw : null;
+  const confirmation = await buildBuyerConfirmationPayload(supabase, {
+    orderId: session.order_id,
+    eventId: session.event_id,
+    currency: String(session.currency ?? "USD"),
+    logPrefix: "[ticket-checkout-confirm]",
+  });
+  if (confirmation === null) return null;
 
   return {
     orderId: session.order_id,
@@ -230,25 +206,7 @@ async function fetchOrderPayload(
       orderRow?.stripe_application_fee_amount_cents,
     ),
     currency: String(session.currency ?? "USD").trim(),
-    taxAmountCents,
-    bookedStartAt,
-    // issue #2216 — ONE owner for "ticket → ticket + rendered QR" across
-    // create/confirm/status (`_shared/ticketQrImage.ts`). A single ticket that
-    // fails to render degrades to the carousel placeholder AND emits a
-    // structured error line; it no longer takes the whole paid order down, and
-    // it can no longer be silently blank.
-    tickets: await attachQrImageDataUrls(
-      (tickets ?? []).map((ticket) => {
-        const row = ticket as unknown as TicketRow;
-        return {
-          ticketId: row.id,
-          ticketTypeId: row.ticket_type_id,
-          ticketName: row.ticket_types?.name ?? "Ticket",
-          qrPayload: row.qr_code,
-          status: row.status,
-        };
-      }),
-    ),
+    ...confirmation,
     notificationStatus: "queued",
   };
 }

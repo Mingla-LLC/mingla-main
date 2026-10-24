@@ -9,8 +9,6 @@
  *   - Paid order → native PaymentSheet success → server status → replace
  *   - Free order → /buyer "Reserve free spot" → server order/ticket creation
  *
- * Native back is BLOCKED — buyer must use explicit "Back to trip" CTA.
- *
  * Inherits ORCH-0852 web sync-confirm + Realtime fallback verbatim from
  * event-side confirm.tsx. The `confirmTicketCheckout` service + Realtime
  * subscription are event_type-agnostic.
@@ -23,20 +21,19 @@
  * Per SPEC_ORCH-0876_V2_FULL_PARITY §8.4 + SC-3.7.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
 // web — buyer-web capture is a separate leg).
 import { postHogService } from "../../../src/services/postHogService";
-import { useAttendanceClaimArm } from "../../../src/hooks/useAttendanceClaimArm";
 
 import {
   radius as radiusTokens,
@@ -44,21 +41,18 @@ import {
   spacing,
   text as textTokens,
 } from "../../../src/constants/designSystem";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
-import { formatCurrency } from "../../../src/utils/currency";
 
-import { Button } from "../../../src/components/ui/Button";
-import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { useCart } from "../../../src/components/checkout/CartContext";
+import { BuyerCheckoutReceipt } from "../../../src/components/checkout/BuyerCheckoutReceipt";
 import {
   clearCheckoutResumePayload,
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
-import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
-import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
-import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
+import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
   TicketConfirmVerdictHero,
   type TicketConfirmEnding,
@@ -67,6 +61,7 @@ import {
   awaitTicketConfirmation,
   confirmTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
+import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -75,29 +70,6 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
-import { phMaskProps } from "../../../src/analytics/phMask";
-
-
-const formatTripDateLine = (
-  startAtIso: string | null,
-  endAtIso: string | null,
-): string => {
-  if (startAtIso === null) return "";
-  try {
-    const fmt = new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-    const start = fmt.format(new Date(startAtIso));
-    if (endAtIso !== null) {
-      const end = fmt.format(new Date(endAtIso));
-      return `${start} – ${end}`;
-    }
-    return start;
-  } catch {
-    return "";
-  }
-};
 
 export default function CheckoutTripConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -120,7 +92,6 @@ function CheckoutTripConfirmScreenInner({
 }): React.ReactElement | null {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const navigation = useNavigation();
   const params = useLocalSearchParams<{ tripEventId: string }>();
   const tripEventId =
     typeof params.tripEventId === "string" ? params.tripEventId : null;
@@ -129,14 +100,8 @@ function CheckoutTripConfirmScreenInner({
   const trip = publicTripQuery.data?.trip ?? null;
   const tripBrand = publicTripQuery.data?.brand ?? null;
   const purchaseBrandId = trip?.brandId ?? tripBrand?.id ?? null;
-  const {
-    lines,
-    buyer,
-    result,
-    recordResult,
-    setLineQuantity,
-    setBuyer,
-  } = useCart();
+  const { lines, buyer, result, recordResult, setLineQuantity, setBuyer } =
+    useCart();
 
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
   // issue #2198 — surface parity with the event-side confirm screen. A trip
@@ -147,66 +112,12 @@ function CheckoutTripConfirmScreenInner({
   // Surface parity with the event-side screen: an expired checkout, a refused
   // sale whose payment is unsettled, or a spent 60 s confirmation budget.
   // Decided by `awaitTicketConfirmation` alone; this screen only renders it.
-  const [confirmEnding, setConfirmEnding] = useState<TicketConfirmEnding | null>(null);
+  const [confirmEnding, setConfirmEnding] =
+    useState<TicketConfirmEnding | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
-  // ── issue #2323 ── The attendance claim is minted from the ORDER, never
-  // from the arrival path. `useAttendanceClaimArm` is the ONE owner across all
-  // three confirmation screens; the two ad-hoc call sites that used to live
-  // inside the paid `?cs=` sync-confirm effect and inside `onOrderReady` are
-  // GONE. Both hung off the paid Stripe return leg, so a FREE reservation —
-  // which reaches this screen through `router.replace('…/confirm')` with no
-  // query string at all — never armed. Measured on production 2026-08-19:
-  // free_completed orders 9, armed 0; and zero `attendance-claim-link`
-  // requests observed on the deployed screen while a free order was rendered.
-  const attendanceClaim = useAttendanceClaimArm(result, tripEventId);
-  const retryAttendanceClaim = attendanceClaim.retry;
-  const exitingViaCtaRef = useRef<boolean>(false);
-
-  // ----- Native back guard -----
-  useEffect(() => {
-    const sub = navigation.addListener(
-      "beforeRemove" as never,
-      ((e: { preventDefault: () => void }) => {
-        if (exitingViaCtaRef.current) return;
-        e.preventDefault();
-      }) as never,
-    );
-    return (): void => {
-      sub();
-    };
-  }, [navigation]);
-
-  // ----- Web browser-back guard -----
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    if (!isClient) return;
-    const win = (globalThis as unknown as {
-      window?: {
-        addEventListener?: (
-          type: string,
-          listener: (e: BeforeUnloadEvent) => void,
-        ) => void;
-        removeEventListener?: (
-          type: string,
-          listener: (e: BeforeUnloadEvent) => void,
-        ) => void;
-        history?: { pushState?: (state: unknown, title: string, url?: string) => void };
-      };
-    }).window;
-    if (win === undefined) return;
-    win.history?.pushState?.(null, "", "");
-    const handler = (): void => {
-      if (exitingViaCtaRef.current) return;
-      win.history?.pushState?.(null, "", "");
-    };
-    win.addEventListener?.("popstate", handler as unknown as (e: BeforeUnloadEvent) => void);
-    return (): void => {
-      win.removeEventListener?.("popstate", handler as unknown as (e: BeforeUnloadEvent) => void);
-    };
-  }, [isClient]);
 
   // ----- ORCH-0852 web sync-confirm + Realtime fallback -----
   useEffect(() => {
@@ -214,10 +125,10 @@ function CheckoutTripConfirmScreenInner({
     if (!isClient) return;
     if (tripEventId === null) return;
     if (result !== null) return;
-    const win = (globalThis as unknown as {
+    const win = globalThis as unknown as {
       sessionStorage?: Storage;
       location?: { search?: string };
-    });
+    };
     const search = win.location?.search ?? "";
     if (!/[?&]cs=/.test(search)) return;
     let payload = readCheckoutResumePayload(win.sessionStorage, tripEventId);
@@ -316,6 +227,11 @@ function CheckoutTripConfirmScreenInner({
           taxAmountCents: taxCents,
           paymentStatus: order.paymentStatus,
           notificationStatus: order.notificationStatus,
+          buyerContact: order.buyerContact,
+          receipt: order.receipt,
+          claim: order.claim,
+          attachedToAccount: order.attachedToAccount,
+          boughtForSomeoneElse: order.boughtForSomeoneElse,
           tickets: order.tickets,
         });
         // META-ORCH-1187 — purchase conversion (SC-6). value in major units.
@@ -356,8 +272,12 @@ function CheckoutTripConfirmScreenInner({
 
   // ----- Realtime safety net -----
   useOrderRealtimeSubscription({
-    checkoutSessionId: realtimePending ? pendingSession?.checkoutSessionId ?? null : null,
-    buyerStatusToken: realtimePending ? pendingSession?.buyerStatusToken ?? null : null,
+    checkoutSessionId: realtimePending
+      ? (pendingSession?.checkoutSessionId ?? null)
+      : null,
+    buyerStatusToken: realtimePending
+      ? (pendingSession?.buyerStatusToken ?? null)
+      : null,
     onOrderReady: (order) => {
       const taxCents = Number(order.taxAmountCents ?? 0);
       recordResult({
@@ -378,10 +298,15 @@ function CheckoutTripConfirmScreenInner({
         taxAmountCents: taxCents,
         paymentStatus: order.paymentStatus,
         notificationStatus: order.notificationStatus,
+        buyerContact: order.buyerContact,
+        receipt: order.receipt,
+        claim: order.claim,
+        attachedToAccount: order.attachedToAccount,
+        boughtForSomeoneElse: order.boughtForSomeoneElse,
         tickets: order.tickets,
       });
       if (Platform.OS === "web" && tripEventId !== null) {
-        const win = (globalThis as unknown as { sessionStorage?: Storage });
+        const win = globalThis as unknown as { sessionStorage?: Storage };
         clearCheckoutResumePayload(win.sessionStorage, tripEventId);
       }
       if (pendingSession !== null) {
@@ -396,7 +321,8 @@ function CheckoutTripConfirmScreenInner({
   // ----- META-ORCH-1187 LEG 2 — web purchase conversion (trip) -----
   const purchaseFiredFor = useRef<string | null>(null);
   useEffect(() => {
-    if (result === null || tripEventId === null || purchaseBrandId === null) return;
+    if (result === null || tripEventId === null || purchaseBrandId === null)
+      return;
     if (purchaseFiredFor.current === result.orderId) return;
     purchaseFiredFor.current = result.orderId;
     captureWeb("web_purchase_completed", {
@@ -434,10 +360,10 @@ function CheckoutTripConfirmScreenInner({
     if (result !== null) return;
     if (Platform.OS === "web") {
       if (!isClient) return;
-      const win = (globalThis as unknown as {
+      const win = globalThis as unknown as {
         location?: { search?: string };
         sessionStorage?: Storage;
-      });
+      };
       const search = win.location?.search ?? "";
       // ORCH-0928 v2 (2026-05-23) — recognise the query-string recovery
       // path (`?cs=…&csi=…&bst=…`) so the bounce doesn't race ahead of the
@@ -446,7 +372,8 @@ function CheckoutTripConfirmScreenInner({
       // forensic harness 2026-05-23 confirmed: search became empty, hash
       // captured the full `?cs=…` portion). Query string is robust against
       // the reformatting.
-      const hasQueryRecovery = /[?&]csi=[^&]+/.test(search) && /[?&]bst=[^&]+/.test(search);
+      const hasQueryRecovery =
+        /[?&]csi=[^&]+/.test(search) && /[?&]bst=[^&]+/.test(search);
       if (
         /[?&]cs=/.test(search) &&
         (readCheckoutResumePayload(win.sessionStorage, tripEventId) !== null ||
@@ -461,11 +388,18 @@ function CheckoutTripConfirmScreenInner({
       if (confirmEnding !== null) return;
     }
     router.replace(`/checkout-trip/${tripEventId}` as never);
-  }, [result, tripEventId, router, realtimePending, isClient, terminalFailure, confirmEnding]);
+  }, [
+    result,
+    tripEventId,
+    router,
+    realtimePending,
+    isClient,
+    terminalFailure,
+    confirmEnding,
+  ]);
 
   // ----- Handlers -----
   const handleBackToTrip = useCallback((): void => {
-    exitingViaCtaRef.current = true;
     if (trip !== null && trip.brandSlug !== null) {
       router.replace(
         tripPublicPath({
@@ -478,18 +412,14 @@ function CheckoutTripConfirmScreenInner({
     router.replace("/(tabs)/home" as never);
   }, [router, trip]);
 
-  // ----- Memos -----
-  const carouselTickets = useMemo(() => {
-    if (result === null) return [];
-    return result.tickets.map((ticket) => ({
-      ticketId: ticket.ticketId,
-      ticketName: ticket.ticketName,
-      qrPayload: ticket.qrPayload,
-      qrImageDataUrl: ticket.qrImageDataUrl,
-    }));
-  }, [result]);
-
-  const totalTickets = carouselTickets.length;
+  const claimCode = result?.claim?.code ?? null;
+  const claimHandoff = useMemo(
+    () =>
+      claimCode !== null && claimCode.trim().length > 0
+        ? { mint: () => mintClaimLinkHandoff(claimCode) }
+        : null,
+    [claimCode],
+  );
 
   if (result === null) {
     // issue #2198 — a verified terminal outcome outranks the calm spinner.
@@ -520,14 +450,16 @@ function CheckoutTripConfirmScreenInner({
       );
     }
     if (Platform.OS === "web") {
-      const win = (globalThis as unknown as { location?: { search?: string } });
+      const win = globalThis as unknown as { location?: { search?: string } };
       const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
       if (hasCs) {
         // ORCH-0911: render from first paint on ?cs= arrival, independent
         // of trip/realtimePending state. ORCH-0852 auto-resolution remains.
         return (
           <View style={styles.host}>
-            <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+            <View
+              style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}
+            >
               <View style={styles.checkBadge}>
                 <Icon name="check" size={36} color={textTokens.primary} />
               </View>
@@ -559,12 +491,6 @@ function CheckoutTripConfirmScreenInner({
     );
   }
 
-  const dateLine = formatTripDateLine(
-    trip.businessTrip.startAt,
-    trip.businessTrip.endAt,
-  );
-
-
   return (
     <View style={styles.host}>
       <ScrollView
@@ -573,106 +499,43 @@ function CheckoutTripConfirmScreenInner({
           styles.scrollContent,
           {
             paddingTop: insets.top + spacing.xl,
-            paddingBottom: insets.bottom + 120,
+            paddingBottom: insets.bottom + spacing.xl,
           },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero — checkmark + heading + email line */}
         <View style={styles.hero}>
           <View style={styles.checkBadge}>
             <Icon name="check" size={36} color={textTokens.primary} />
           </View>
-          <Text style={styles.heroTitle}>You&apos;re in</Text>
-          {/* META-ORCH-1187 §4.H — mask buyer PII in session replay. */}
-          <Text style={styles.heroEmail} numberOfLines={2} {...phMaskProps()}>
-            Sent to {buyer.email} and {buyer.phone}.
-          </Text>
+          <Text style={styles.heroTitle}>{BUYER_CLAIM_COPY.youreIn}</Text>
         </View>
 
-        {/* Order summary */}
-        <GlassCard
-          variant="base"
-          radius="lg"
-          padding={spacing.md}
-          style={styles.summary}
-        >
-          <View style={styles.summaryHeader}>
-            <Text style={styles.summaryEventName} numberOfLines={2}>
-              {trip.title.trim().length > 0 ? trip.title : "Untitled trip"}
-            </Text>
-            <Text style={styles.summaryEventSubline} numberOfLines={1}>
-              {dateLine}
-              {trip.businessTrip.destinationLocationText !== null
-                ? `${dateLine.length > 0 ? " · " : ""}${trip.businessTrip.destinationLocationText}`
-                : ""}
-            </Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          {lines.map((l) => (
-            <View key={l.ticketTypeId} style={styles.summaryLine}>
-              <Text style={styles.summaryQty}>{l.quantity}×</Text>
-              <Text style={styles.summaryName} numberOfLines={1}>
-                {l.ticketName}
-              </Text>
-              <Text style={styles.summaryTotal}>
-                {l.isFree ? "Free" : formatCurrency(l.unitPrice * l.quantity, l.currency)}
-              </Text>
-            </View>
-          ))}
-          <View style={styles.summaryDivider} />
-          {typeof result.tax === "number" && result.tax > 0 ? (
-            <View style={styles.summaryTotalRow}>
-              <Text style={styles.summaryTotalLabel}>Tax</Text>
-              <Text style={styles.summaryTotalValue}>
-                {formatCurrency(result.tax, result.currency)}
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.summaryTotalRow}>
-            <Text style={styles.summaryTotalLabel}>Total</Text>
-            <Text style={styles.summaryTotalValue}>
-              {result.total === 0 ? "Free" : formatCurrency(result.total, result.currency)}
-            </Text>
-          </View>
-          <Text style={styles.orderId} accessibilityLabel={`Order ${result.orderId}`}>
-            Order {result.orderId}
-          </Text>
-        </GlassCard>
-
-        {/* QR carousel mounts after hydration; the carousel itself owns sizing. */}
-        <GlassCard
-          variant="base"
-          radius="lg"
-          padding={spacing.md}
-          style={styles.qrCard}
-        >
-          {isClient && totalTickets > 0 ? (
-            <TicketQrCarousel
-              orderId={result.orderId}
-              tickets={carouselTickets}
-            />
-          ) : null}
-        </GlassCard>
-        {/* #3682 Wave 2.4 / contract c — follow status + Undo (parity with event). */}
-        <YoureInFollowCard
-          brandId={trip.brandId ?? tripBrand?.id ?? null}
-          brandName={tripBrand?.name ?? "this brand"}
-          brandSlug={trip.brandSlug ?? tripBrand?.slug ?? null}
+        <BuyerClaimCard
+          kind="booking"
+          email={result.buyerContact?.email ?? null}
+          phoneLast4={result.buyerContact?.phoneLast4 ?? null}
+          shortUrl={result.claim?.shortUrl ?? null}
+          handoff={claimHandoff}
+          textSent={
+            result.buyerContact?.phoneLast4 !== null &&
+            result.buyerContact?.phoneLast4 !== undefined &&
+            result.notificationStatus !== "failed"
+          }
+          analyticsSurface="checkout_confirm_trip"
+          fallbackEntity={{
+            entityType: "trip",
+            brandSlug: trip.brandSlug ?? "",
+            entitySlug: trip.slug,
+          }}
         />
-        {/* #2217 — the standalone guest-list card is DELETED and its
-            attendance-claim authority folded into the ONE app card below, which
-            now carries ONE device-aware button instead of the two-store pair. */}
-        <DownloadMinglaCta
-          eventName={trip.title.trim().length > 0 ? trip.title : "your trip"}
-          eventType="trip"
-          brandSlug={trip.brandSlug ?? ""}
-          entitySlug={trip.slug}
-          claimPhase={attendanceClaim.phase}
-          claimAppUrl={attendanceClaim.phase === "ready" && attendanceClaim.link
-            ? attendanceClaim.link.appClaimUrl
-            : null}
-          onRetryClaim={retryAttendanceClaim}
+        <BuyerCheckoutReceipt
+          eventName={
+            trip.title.trim().length > 0 ? trip.title : "Untitled trip"
+          }
+          brandName={tripBrand?.name ?? null}
+          orderId={result.orderId}
+          receipt={result.receipt}
         />
 
         {/* Tr4 [ORCH-0875 Refund Tiers + Booking Deadline] integration point:
@@ -680,23 +543,6 @@ function CheckoutTripConfirmScreenInner({
             (post v2 CLOSE per F-16). Phase 2b leaves this surface bare for
             the integration. */}
       </ScrollView>
-
-      {/* Sticky bottom CTA */}
-      <View
-        style={[
-          styles.bottomBar,
-          { paddingBottom: insets.bottom + spacing.md },
-        ]}
-      >
-        <Button
-          label="Back to trip"
-          onPress={handleBackToTrip}
-          variant="primary"
-          size="lg"
-          fullWidth
-          accessibilityLabel="Back to trip page"
-        />
-      </View>
     </View>
   );
 }

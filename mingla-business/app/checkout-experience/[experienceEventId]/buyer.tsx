@@ -480,6 +480,11 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           currency: result.currency,
           paymentStatus: result.paymentStatus,
           notificationStatus: result.notificationStatus,
+          buyerContact: result.buyerContact,
+          receipt: result.receipt,
+          claim: result.claim,
+          attachedToAccount: result.attachedToAccount,
+          boughtForSomeoneElse: result.boughtForSomeoneElse,
           tickets: result.tickets,
         });
         router.replace(
