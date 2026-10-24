@@ -1,6 +1,13 @@
 import React from "react";
 import { Linking, Platform, StyleSheet } from "react-native";
-import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  jest,
+  test,
+} from "@jest/globals";
 
 interface RenderNode {
   props: Record<string, unknown> & {
@@ -28,6 +35,11 @@ jest.mock("../../ui/Icon", () => ({
   __esModule: true,
   Icon: (props: Record<string, unknown>) =>
     require("react").createElement("MockIcon", props),
+}));
+// [TEST-MOD-APPROVED #4063] BuyerClaimCard analytics are a sibling export in
+// this module; the legacy #2241 CTA harness keeps analytics outside scope.
+jest.mock("../../../services/postHogService", () => ({
+  postHogService: { capture: jest.fn() },
 }));
 
 import {
@@ -80,7 +92,11 @@ const installSurface = (
   };
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
-    value: { userAgent: "Mingla desktop test", platform: "", maxTouchPoints: 0 },
+    value: {
+      userAgent: "Mingla desktop test",
+      platform: "",
+      maxTouchPoints: 0,
+    },
   });
 };
 
@@ -103,12 +119,13 @@ const mount = (
     );
   });
   const tree = renderer as unknown as RenderTree;
-  const primary = tree.root.findAll((node) =>
-    node.props.testID === "confirm-app-cta-primary"
+  const primary = tree.root.findAll(
+    (node) => node.props.testID === "confirm-app-cta-primary",
   )[0] as RenderNode;
-  const text = tree.root.findAll(() => true, { deep: true })
+  const text = tree.root
+    .findAll(() => true, { deep: true })
     .map((node) =>
-      typeof node.props.children === "string" ? node.props.children : ""
+      typeof node.props.children === "string" ? node.props.children : "",
     )
     .join(" ");
   return { renderer: tree, primary, text };
@@ -142,13 +159,15 @@ describe("#2241 primary action stays present on every Host surface and phase", (
         expect(mounted.primary).toBeDefined();
         expect(mounted.primary.props.accessibilityRole).toBe("link");
         expect(typeof mounted.primary.props.onPress).toBe("function");
-        const navigationsBefore = os === "web"
-          ? opens.length + assignments.length
-          : jest.mocked(Linking.openURL).mock.calls.length;
+        const navigationsBefore =
+          os === "web"
+            ? opens.length + assignments.length
+            : jest.mocked(Linking.openURL).mock.calls.length;
         act(() => mounted.primary.props.onPress?.());
-        const navigationsAfter = os === "web"
-          ? opens.length + assignments.length
-          : jest.mocked(Linking.openURL).mock.calls.length;
+        const navigationsAfter =
+          os === "web"
+            ? opens.length + assignments.length
+            : jest.mocked(Linking.openURL).mock.calls.length;
         expect(navigationsAfter).toBe(navigationsBefore + 1);
         unmount(mounted.renderer);
       }
@@ -163,8 +182,8 @@ describe("#2241 retry split and unavailable semantics", () => {
     const error = mount("error", () => {
       retries += 1;
     });
-    const retry = error.renderer.root.findAll((node) =>
-      node.props.testID === "confirm-app-cta-retry"
+    const retry = error.renderer.root.findAll(
+      (node) => node.props.testID === "confirm-app-cta-retry",
     );
     expect(retry.length).toBeGreaterThan(0);
     retry[0]?.props.onPress?.();
@@ -173,9 +192,11 @@ describe("#2241 retry split and unavailable semantics", () => {
 
     for (const phase of ["unavailable", "terminal", "rate"] as const) {
       const terminal = mount(phase);
-      expect(terminal.renderer.root.findAll((node) =>
-        node.props.testID === "confirm-app-cta-retry"
-      )).toHaveLength(0);
+      expect(
+        terminal.renderer.root.findAll(
+          (node) => node.props.testID === "confirm-app-cta-retry",
+        ),
+      ).toHaveLength(0);
       unmount(terminal.renderer);
     }
   });
@@ -183,8 +204,8 @@ describe("#2241 retry split and unavailable semantics", () => {
   test("configuration outage is a polite semantic status with exact approved copy", () => {
     installSurface("web");
     const mounted = mount("unavailable");
-    const status = mounted.renderer.root.findAll((node) =>
-      node.props.role === "status"
+    const status = mounted.renderer.root.findAll(
+      (node) => node.props.role === "status",
     );
     expect(status.length).toBeGreaterThan(0);
     expect(status[0]?.props.accessibilityLiveRegion).toBe("polite");
@@ -199,10 +220,15 @@ describe("#2241 approved CTA visual interaction contract", () => {
   test("full-width warm CTA uses external-link glyph and resolved interaction styles", () => {
     installSurface("web", false);
     const mounted = mount("idle");
-    const style = mounted.primary.props.style as (
-      state: { pressed: boolean; hovered?: boolean; focused?: boolean },
-    ) => unknown;
-    const base = StyleSheet.flatten(style({ pressed: false })) as Record<string, unknown>;
+    const style = mounted.primary.props.style as (state: {
+      pressed: boolean;
+      hovered?: boolean;
+      focused?: boolean;
+    }) => unknown;
+    const base = StyleSheet.flatten(style({ pressed: false })) as Record<
+      string,
+      unknown
+    >;
     const hovered = StyleSheet.flatten(
       style({ pressed: false, hovered: true }),
     ) as Record<string, unknown>;
@@ -218,8 +244,8 @@ describe("#2241 approved CTA visual interaction contract", () => {
     expect(hovered.opacity).toBe(0.94);
     expect(pressed.opacity).toBe(0.88);
     expect(focused.outlineWidth).toBe(2);
-    const external = mounted.renderer.root.findAll((node) =>
-      node.props.name === "externalLink" && node.props.size === 18
+    const external = mounted.renderer.root.findAll(
+      (node) => node.props.name === "externalLink" && node.props.size === 18,
     );
     expect(external.length).toBeGreaterThan(0);
     unmount(mounted.renderer);
@@ -228,9 +254,9 @@ describe("#2241 approved CTA visual interaction contract", () => {
   test("reduced motion resolves the transition duration to zero", () => {
     installSurface("web", true);
     const mounted = mount("idle");
-    const style = mounted.primary.props.style as (
-      state: { pressed: boolean },
-    ) => unknown;
+    const style = mounted.primary.props.style as (state: {
+      pressed: boolean;
+    }) => unknown;
     expect(
       (StyleSheet.flatten(style({ pressed: false })) as Record<string, unknown>)
         .transitionDuration,

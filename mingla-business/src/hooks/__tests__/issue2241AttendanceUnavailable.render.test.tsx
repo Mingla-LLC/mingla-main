@@ -16,7 +16,9 @@ const TestRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => RenderTree;
   act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
-const act = TestRenderer.act as (callback: () => Promise<void>) => Promise<void>;
+const act = TestRenderer.act as (
+  callback: () => Promise<void>,
+) => Promise<void>;
 
 const mockInvoke = jest.fn();
 
@@ -31,6 +33,11 @@ jest.mock("../../services/supabase", () => ({
 jest.mock("../../components/ui/Icon", () => ({
   __esModule: true,
   Icon: () => null,
+}));
+// [TEST-MOD-APPROVED #4063] BuyerClaimCard analytics are a sibling export in
+// this module; the legacy #2241 outage harness keeps analytics outside scope.
+jest.mock("../../services/postHogService", () => ({
+  postHogService: { capture: jest.fn() },
 }));
 
 import { DownloadMinglaCta } from "../../components/checkout/DownloadMinglaCta";
@@ -81,16 +88,17 @@ describe("#2241 real 503 → service → hook → CTA", () => {
       await Promise.resolve();
     });
     const root = (renderer as unknown as RenderTree).root;
-    const primary = root.findAll((node) =>
-      node.props.testID === "confirm-app-cta-primary"
+    const primary = root.findAll(
+      (node) => node.props.testID === "confirm-app-cta-primary",
     );
-    const retry = root.findAll((node) =>
-      node.props.testID === "confirm-app-cta-retry"
+    const retry = root.findAll(
+      (node) => node.props.testID === "confirm-app-cta-retry",
     );
     const status = root.findAll((node) => node.props.role === "status");
-    const text = root.findAll(() => true, { deep: true })
+    const text = root
+      .findAll(() => true, { deep: true })
       .map((node) =>
-        typeof node.props.children === "string" ? node.props.children : ""
+        typeof node.props.children === "string" ? node.props.children : "",
       )
       .join(" ");
 

@@ -61,7 +61,11 @@ import { Platform } from "react-native";
  */
 interface RenderNode {
   type: unknown;
-  props: Record<string, unknown> & { testID?: string; onPress?: () => void; children?: unknown };
+  props: Record<string, unknown> & {
+    testID?: string;
+    onPress?: () => void;
+    children?: unknown;
+  };
   children: unknown[];
   findAll: (
     predicate: (node: RenderNode) => boolean,
@@ -79,14 +83,21 @@ const TestRenderer = require("react-test-renderer") as {
 };
 const act = TestRenderer.act as (cb: () => void | Promise<void>) => void;
 
-
 jest.mock("../../ui/Icon", () => ({
   __esModule: true,
   Icon: () => null,
 }));
+// [TEST-MOD-APPROVED #4063] BuyerClaimCard analytics are a sibling export in
+// this module; the legacy #2326 gesture harness keeps analytics outside scope.
+jest.mock("../../../services/postHogService", () => ({
+  postHogService: { capture: jest.fn() },
+}));
 
 import { DownloadMinglaCta } from "../DownloadMinglaCta";
-import { APP_STORE_URL, DOWNLOAD_PAGE_URL } from "../../../constants/storeLinks";
+import {
+  APP_STORE_URL,
+  DOWNLOAD_PAGE_URL,
+} from "../../../constants/storeLinks";
 
 // BUYER-WEB is the surface this card is served on, and the ONLY one #2326
 // reproduces on. Under the react-native jest preset `Platform.OS` is "ios",
@@ -116,7 +127,9 @@ const CLAIM_APP_URL =
 
 type OpenCall = { url: string; args: number; features: unknown };
 
-const installFakeWindow = (opts: { popupBlocked?: boolean } = {}): {
+const installFakeWindow = (
+  opts: { popupBlocked?: boolean } = {},
+): {
   opens: OpenCall[];
   assigns: string[];
   hrefs: string[];
@@ -141,7 +154,11 @@ const installFakeWindow = (opts: { popupBlocked?: boolean } = {}): {
   };
   const w = {
     open: (...args: unknown[]): unknown => {
-      opens.push({ url: String(args[0]), args: args.length, features: args[2] });
+      opens.push({
+        url: String(args[0]),
+        args: args.length,
+        features: args[2],
+      });
       return opts.popupBlocked === true ? null : fakeWin;
     },
     location,
@@ -176,7 +193,11 @@ const installFakeWindow = (opts: { popupBlocked?: boolean } = {}): {
  * from the BROWSER, not from `Platform.OS` (#2217). Default to a UA no rule
  * matches so the store target is the desktop download page.
  */
-const setUserAgent = (ua: string, platformName = "", maxTouchPoints = 0): void => {
+const setUserAgent = (
+  ua: string,
+  platformName = "",
+  maxTouchPoints = 0,
+): void => {
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: { userAgent: ua, platform: platformName, maxTouchPoints },
@@ -203,11 +224,15 @@ const mountCta = (props: {
   });
   const r = renderer as unknown as RenderTree;
   const primary = r.root.findAll(
-    (n: RenderNode) => n.props != null && n.props.testID === "confirm-app-cta-primary",
+    (n: RenderNode) =>
+      n.props != null && n.props.testID === "confirm-app-cta-primary",
   )[0] as RenderNode;
   const collect = (node: RenderNode): string =>
-    node.findAll(() => true, { deep: true })
-      .map((n: RenderNode) => (typeof n.props?.children === "string" ? n.props.children : ""))
+    node
+      .findAll(() => true, { deep: true })
+      .map((n: RenderNode) =>
+        typeof n.props?.children === "string" ? n.props.children : "",
+      )
       .join(" ");
   return {
     // Called BARE — no act(), no await. The whole point is that the navigation
@@ -325,7 +350,11 @@ describe("#2326 — iOS-web never navigates to an unhandled custom scheme", () =
   // Chrome on a real Galaxy A72 silently ignores it and the 1200 ms fallback
   // carries the same tap to the store, so the deep link is attempted there.
   test("an iPhone goes straight to the App Store even when a claim link exists", () => {
-    setUserAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15", "iPhone", 5);
+    setUserAgent(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15",
+      "iPhone",
+      5,
+    );
     const fake = installFakeWindow();
     {
       const cta = mountCta({ claimPhase: "ready", claimAppUrl: CLAIM_APP_URL });
@@ -338,7 +367,11 @@ describe("#2326 — iOS-web never navigates to an unhandled custom scheme", () =
   });
 
   test("an Android phone still gets the deep link first", () => {
-    setUserAgent("Mozilla/5.0 (Linux; Android 14; SM-A725F) AppleWebKit/537.36 Chrome/151.0.0.0 Mobile", "Linux armv8l", 5);
+    setUserAgent(
+      "Mozilla/5.0 (Linux; Android 14; SM-A725F) AppleWebKit/537.36 Chrome/151.0.0.0 Mobile",
+      "Linux armv8l",
+      5,
+    );
     const fake = installFakeWindow();
     {
       const cta = mountCta({ claimPhase: "ready", claimAppUrl: CLAIM_APP_URL });
@@ -364,7 +397,14 @@ describe("#2326 — the card does not promise a link that is not coming", () => 
   });
 
   test("the button is present in every phase — the claim is never a gate", () => {
-    for (const phase of ["idle", "loading", "ready", "error", "terminal", "rate"] as const) {
+    for (const phase of [
+      "idle",
+      "loading",
+      "ready",
+      "error",
+      "terminal",
+      "rate",
+    ] as const) {
       const cta = mountCta({ claimPhase: phase, claimAppUrl: null });
       expect(cta.text).toContain("Open in Mingla");
       cta.unmount();
