@@ -34,9 +34,11 @@ function isRenderableImage(
 function renderHero(input: TicketBodyInput): string {
   const { event } = input;
   if (isRenderableImage(event.coverMediaUrl, event.coverMediaType)) {
-    return `<img src="${escapeHtml(event.coverMediaUrl!)}" alt="${escapeHtml(
-      event.title,
-    )}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border-radius:12px;border:0;outline:none;text-decoration:none;" />`;
+    return `<img src="${escapeHtml(event.coverMediaUrl!)}" alt="${
+      escapeHtml(
+        event.title,
+      )
+    }" width="600" style="display:block;width:100%;max-width:600px;height:auto;border-radius:12px;border:0;outline:none;text-decoration:none;" />`;
   }
   // Branded fallback — orange-tinted block + event title centred. No <img> tag,
   // no <video> tag, no broken-image marker.
@@ -44,9 +46,11 @@ function renderHero(input: TicketBodyInput): string {
     <tr>
       <td align="center" style="padding:48px 24px;border:1px solid ${BRAND_BORDER};border-radius:12px;">
         <p style="margin:0;font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:${BRAND_ORANGE};font-weight:700;">Mingla event</p>
-        <p style="margin:12px 0 0 0;font-size:22px;font-weight:700;color:${BRAND_INK};">${escapeHtml(
-          input.event.title,
-        )}</p>
+        <p style="margin:12px 0 0 0;font-size:22px;font-weight:700;color:${BRAND_INK};">${
+    escapeHtml(
+      input.event.title,
+    )
+  }</p>
       </td>
     </tr>
   </table>`;
@@ -57,9 +61,11 @@ function renderLocationLine(event: TicketBodyInput["event"]): string {
     return `<p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">Online event</p>`;
   }
   if (event.locationText && event.locationText.trim().length > 0) {
-    return `<p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">${escapeHtml(
-      event.locationText,
-    )}</p>`;
+    return `<p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">${
+      escapeHtml(
+        event.locationText,
+      )
+    }</p>`;
   }
   return `<p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};font-style:italic;">Location revealed after confirmation</p>`;
 }
@@ -67,8 +73,8 @@ function renderLocationLine(event: TicketBodyInput["event"]): string {
 function renderDateLine(event: TicketBodyInput["event"]): string {
   const multi = Array.isArray(event.dateLines)
     ? event.dateLines.filter(
-        (line) => typeof line === "string" && line.trim().length > 0,
-      )
+      (line) => typeof line === "string" && line.trim().length > 0,
+    )
     : [];
   if (multi.length > 0) {
     return multi
@@ -76,7 +82,9 @@ function renderDateLine(event: TicketBodyInput["event"]): string {
         (line, index) =>
           `<p style="margin:${
             index === 0 ? "6px" : "2px"
-          } 0 0 0;font-size:14px;color:${BRAND_MUTED};">${escapeHtml(line)}</p>`,
+          } 0 0 0;font-size:14px;color:${BRAND_MUTED};">${
+            escapeHtml(line)
+          }</p>`,
       )
       .join("");
   }
@@ -86,9 +94,11 @@ function renderDateLine(event: TicketBodyInput["event"]): string {
     event.timezone,
   );
   if (!dateLine) return "";
-  return `<p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">${escapeHtml(
-    dateLine,
-  )}</p>`;
+  return `<p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">${
+    escapeHtml(
+      dateLine,
+    )
+  }</p>`;
 }
 
 function renderLineItems(order: TicketBodyInput["order"]): string {
@@ -98,15 +108,21 @@ function renderLineItems(order: TicketBodyInput["order"]): string {
       const unit = formatMoneyOrFree(item.unitPriceCents, order.currency);
       const lineTotal = formatMoneyOrFree(item.totalCents, order.currency);
       return `<tr>
-      <td style="padding:10px 0;font-size:14px;color:${BRAND_INK};border-bottom:1px solid ${BRAND_BORDER};">${escapeHtml(
-        qtyName,
-      )}</td>
-      <td align="right" style="padding:10px 0;font-size:14px;color:${BRAND_MUTED};border-bottom:1px solid ${BRAND_BORDER};">${escapeHtml(
-        unit,
-      )}</td>
-      <td align="right" style="padding:10px 0;font-size:14px;color:${BRAND_INK};border-bottom:1px solid ${BRAND_BORDER};font-weight:600;">${escapeHtml(
-        lineTotal,
-      )}</td>
+      <td style="padding:10px 0;font-size:14px;color:${BRAND_INK};border-bottom:1px solid ${BRAND_BORDER};">${
+        escapeHtml(
+          qtyName,
+        )
+      }</td>
+      <td align="right" style="padding:10px 0;font-size:14px;color:${BRAND_MUTED};border-bottom:1px solid ${BRAND_BORDER};">${
+        escapeHtml(
+          unit,
+        )
+      }</td>
+      <td align="right" style="padding:10px 0;font-size:14px;color:${BRAND_INK};border-bottom:1px solid ${BRAND_BORDER};font-weight:600;">${
+        escapeHtml(
+          lineTotal,
+        )
+      }</td>
     </tr>`;
     })
     .join("");
@@ -118,26 +134,28 @@ function renderLineItems(order: TicketBodyInput["order"]): string {
   // appears as its own line item, stays itemized. Pre-deploy orders with no
   // VAT computed simply omit the note (never "Includes £0.00 VAT").
   const taxAmountCents = Number(order.taxAmountCents ?? 0);
-  const totalLabel =
-    order.totalCents > 0
-      ? formatMoneyFromCents(order.totalCents, order.currency)
-      : "Free";
-  const vatNoteRow =
-    taxAmountCents > 0
-      ? `<tr>
-      <td colspan="3" style="padding:4px 0 0 0;font-size:13px;color:${BRAND_MUTED};">Includes ${escapeHtml(
+  const totalLabel = order.totalCents > 0
+    ? formatMoneyFromCents(order.totalCents, order.currency)
+    : "Free";
+  const vatNoteRow = taxAmountCents > 0
+    ? `<tr>
+      <td colspan="3" style="padding:4px 0 0 0;font-size:13px;color:${BRAND_MUTED};">Includes ${
+      escapeHtml(
         formatMoneyFromCents(taxAmountCents, order.currency),
-      )} VAT</td>
+      )
+    } VAT</td>
     </tr>`
-      : "";
+    : "";
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;border-top:1px solid ${BRAND_BORDER};">
     ${rows}
     <tr>
       <td style="padding:14px 0 0 0;font-size:15px;color:${BRAND_INK};font-weight:700;">Total</td>
       <td></td>
-      <td align="right" style="padding:14px 0 0 0;font-size:15px;color:${BRAND_INK};font-weight:700;">${escapeHtml(
-        totalLabel,
-      )}</td>
+      <td align="right" style="padding:14px 0 0 0;font-size:15px;color:${BRAND_INK};font-weight:700;">${
+    escapeHtml(
+      totalLabel,
+    )
+  }</td>
     </tr>
     ${vatNoteRow}
   </table>`;
@@ -152,12 +170,16 @@ function renderTicketBlock(
     .map((t) => {
       return `<tr>
       <td style="padding:12px 16px;border:1px solid ${BRAND_BORDER};border-radius:10px;">
-        <p style="margin:0;font-size:14px;font-weight:600;color:${BRAND_INK};">${escapeHtml(
+        <p style="margin:0;font-size:14px;font-weight:600;color:${BRAND_INK};">${
+        escapeHtml(
           t.ticketName,
-        )}</p>
-        <p style="margin:4px 0 0 0;font-size:12px;color:${BRAND_ORANGE};font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">${escapeHtml(
+        )
+      }</p>
+        <p style="margin:4px 0 0 0;font-size:12px;color:${BRAND_ORANGE};font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">${
+        escapeHtml(
           badge,
-        )}</p>
+        )
+      }</p>
       </td>
     </tr>
     <tr><td style="height:8px;line-height:8px;font-size:0;">&nbsp;</td></tr>`;
@@ -169,6 +191,7 @@ function renderTicketBlock(
 }
 
 function renderCalendarSection(input: TicketBodyInput): string {
+  const legacyFree = input.variant === "ticket_confirmation_free";
   const links = buildCalendarLinks({
     title: input.event.title,
     startAtIso: input.event.startAt,
@@ -177,7 +200,10 @@ function renderCalendarSection(input: TicketBodyInput): string {
     endAtIso: input.event.endAt,
     locationText: input.event.locationText,
     isOnline: input.event.isOnline,
-    description: `${input.event.title} — hosted by ${input.brand.name}. Order #${input.order.shortId}. Tickets are in the Mingla app.`,
+    description: legacyFree
+      ? `${input.event.title} — hosted by ${input.brand.name}. Order #${input.order.shortId}. Tickets attached to your confirmation email.`
+      : `${input.event.title} — hosted by ${input.brand.name}. Order #${input.order.shortId}. Tickets are in the Mingla app.`,
+    legacyRandomUid: legacyFree,
   });
   if (!links) return "";
   return renderCalendarBlockHtml(links);
@@ -226,38 +252,53 @@ export function renderTicketBody(
     input.event.timezone,
   );
   const heroHtml = renderHero(input);
-  const orderShortLineHtml = `<p style="margin:24px 0 0 0;font-size:12px;color:${BRAND_MUTED};letter-spacing:0.04em;">Order #${escapeHtml(
-    input.order.shortId,
-  )}</p>`;
+  const orderShortLineHtml =
+    `<p style="margin:24px 0 0 0;font-size:12px;color:${BRAND_MUTED};letter-spacing:0.04em;">Order #${
+      escapeHtml(
+        input.order.shortId,
+      )
+    }</p>`;
   const greeting = input.order.buyerName
-    ? `<p style="margin:0 0 8px 0;font-size:14px;color:${BRAND_MUTED};">Hi ${escapeHtml(
+    ? `<p style="margin:0 0 8px 0;font-size:14px;color:${BRAND_MUTED};">Hi ${
+      escapeHtml(
         input.order.buyerName,
-      )},</p>`
+      )
+    },</p>`
     : "";
   // issue #3827 — the guest-list party line. Empty string when unset, so the
   // email is byte-identical for every other order.
   const partyLineHtml = input.order.partyLine
-    ? `<p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_INK};font-weight:600;">${escapeHtml(
+    ? `<p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(
         input.order.partyLine,
-      )}</p>`
+      )
+    }</p>`
     : "";
   const body = `${heroHtml}
     <div style="margin-top:24px;">
       ${greeting}
-      <h1 style="margin:0;font-size:24px;line-height:1.25;color:${BRAND_INK};font-weight:700;">${escapeHtml(
-        copy.heading,
-      )}</h1>
-      <p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_MUTED};">${escapeHtml(
-        copy.intro,
-      )}</p>${partyLineHtml}
+      <h1 style="margin:0;font-size:24px;line-height:1.25;color:${BRAND_INK};font-weight:700;">${
+    escapeHtml(
+      copy.heading,
+    )
+  }</h1>
+      <p style="margin:8px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_MUTED};">${
+    escapeHtml(
+      copy.intro,
+    )
+  }</p>${partyLineHtml}
     </div>
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid ${BRAND_BORDER};">
-      <h2 style="margin:0;font-size:18px;color:${BRAND_INK};font-weight:700;">${escapeHtml(
-        input.event.title,
-      )}</h2>
-      <p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">Hosted by ${escapeHtml(
-        input.brand.name,
-      )}</p>
+      <h2 style="margin:0;font-size:18px;color:${BRAND_INK};font-weight:700;">${
+    escapeHtml(
+      input.event.title,
+    )
+  }</h2>
+      <p style="margin:6px 0 0 0;font-size:14px;color:${BRAND_MUTED};">Hosted by ${
+    escapeHtml(
+      input.brand.name,
+    )
+  }</p>
       ${renderDateLine(input.event)}
       ${renderLocationLine(input.event)}
     </div>
@@ -266,30 +307,30 @@ export function renderTicketBody(
     ${orderShortLineHtml}
     ${renderCalendarSection(input)}
     ${
-      input.follow
-        ? renderTicketFollowBlockHtml({
-            brandName: input.brand.name,
-            unfollowUrl: input.follow.unfollowUrl,
-            followUrl: input.follow.followUrl,
-            reason: input.follow.reason,
-          })
-        : ""
-    }
+    input.follow
+      ? renderTicketFollowBlockHtml({
+        brandName: input.brand.name,
+        unfollowUrl: input.follow.unfollowUrl,
+        followUrl: input.follow.followUrl,
+        reason: input.follow.reason,
+      })
+      : ""
+  }
     ${renderDownloadAppCta(input.event.privateGuestList, appCtaClaimUrl)}`;
 
-  const totalText =
-    input.order.totalCents > 0
-      ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
-      : "Free";
+  const totalText = input.order.totalCents > 0
+    ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
+    : "Free";
   // ORCH-1006 Surface 7 (§7.2): inclusive-VAT note, mirroring the HTML body —
   // the VAT is inside the Total, restated as a note, not added on top.
-  const vatNoteText =
-    Number(input.order.taxAmountCents ?? 0) > 0
-      ? `Includes ${formatMoneyFromCents(
-          Number(input.order.taxAmountCents ?? 0),
-          input.order.currency,
-        )} VAT`
-      : null;
+  const vatNoteText = Number(input.order.taxAmountCents ?? 0) > 0
+    ? `Includes ${
+      formatMoneyFromCents(
+        Number(input.order.taxAmountCents ?? 0),
+        input.order.currency,
+      )
+    } VAT`
+    : null;
   const textLines = [
     copy.heading,
     ...(input.order.partyLine ? [input.order.partyLine] : []),
@@ -301,10 +342,12 @@ export function renderTicketBody(
     "",
     ...input.order.lineItems.map(
       (li) =>
-        `${li.quantity}× ${li.ticketName} — ${formatMoneyOrFree(
-          li.totalCents,
-          input.order.currency,
-        )}`,
+        `${li.quantity}× ${li.ticketName} — ${
+          formatMoneyOrFree(
+            li.totalCents,
+            input.order.currency,
+          )
+        }`,
     ),
     `Total: ${totalText}`,
     vatNoteText,
@@ -312,14 +355,14 @@ export function renderTicketBody(
     `Order #${input.order.shortId}`,
     ...(input.follow
       ? [
-          "",
-          ...ticketFollowTextLines({
-            brandName: input.brand.name,
-            unfollowUrl: input.follow.unfollowUrl,
-            followUrl: input.follow.followUrl,
-            reason: input.follow.reason,
-          }),
-        ]
+        "",
+        ...ticketFollowTextLines({
+          brandName: input.brand.name,
+          unfollowUrl: input.follow.unfollowUrl,
+          followUrl: input.follow.followUrl,
+          reason: input.follow.reason,
+        }),
+      ]
       : []),
     // #2240 — the SAME working link the HTML body carries, from the same
     // resolver and the same `appCtaClaimUrl`, so the two bodies cannot diverge.
@@ -328,7 +371,9 @@ export function renderTicketBody(
       appCtaClaimUrl,
     ),
     "",
-    "Your tickets are waiting in the Mingla app.",
+    input.variant === "ticket_confirmation_free"
+      ? "Your tickets are attached as a PDF — each one has a unique QR code for entry."
+      : "Your tickets are waiting in the Mingla app.",
   ].filter((line) => line !== null && line !== undefined);
 
   return {
@@ -349,19 +394,23 @@ export function renderAttendanceClaimAvailableEmail(input: {
   const title = escapeHtml(input.eventTitle);
   const claimUrl = escapeHtml(input.claimUrl);
   const passBlock = input.rsvpPassUrl
-    ? `<p style="margin:16px 0 0"><a href="${escapeHtml(input.rsvpPassUrl)}">Open your RSVP pass</a></p>`
+    ? `<p style="margin:16px 0 0"><a href="${
+      escapeHtml(input.rsvpPassUrl)
+    }">Open your RSVP pass</a></p>`
     : "";
   const passText = input.rsvpPassUrl
     ? `\n\nOpen your RSVP pass: ${input.rsvpPassUrl}`
     : "";
   return {
     subject: `Connect your attendance for ${input.eventTitle}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111827">
+    html:
+      `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111827">
       <h1 style="font-size:24px">Connect your attendance</h1>
       <p>Your place at <strong>${title}</strong> is confirmed. Connect it to your Mingla account to see who’s going.</p>
       <p style="margin:24px 0"><a href="${claimUrl}" style="display:inline-block;padding:14px 20px;background:#eb7825;color:#111827;border-radius:12px;text-decoration:none;font-weight:700">Connect attendance</a></p>
       ${passBlock}
     </div>`,
-    text: `Your place at ${input.eventTitle} is confirmed. Connect it to your Mingla account to see who’s going: ${input.claimUrl}${passText}`,
+    text:
+      `Your place at ${input.eventTitle} is confirmed. Connect it to your Mingla account to see who’s going: ${input.claimUrl}${passText}`,
   };
 }

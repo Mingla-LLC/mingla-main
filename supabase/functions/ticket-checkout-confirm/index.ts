@@ -58,6 +58,7 @@ import {
 } from "../_shared/ticketCheckout.ts";
 import {
   buildBuyerConfirmationPayload,
+  type BuyerConfirmationOrderRow,
   type BuyerConfirmationPayload,
 } from "../_shared/buyerConfirmationPayload.ts";
 import {
@@ -183,11 +184,10 @@ async function fetchOrderPayload(
     notificationStatus: "queued";
   } | null
 > {
+  // deno-fmt-ignore -- #3281's append-only source contract audits this select literally.
   const { data: orderRow } = await supabase
     .from("orders")
-    .select(
-      "tax_amount_cents, booked_start_at, pricing_breakdown, stripe_application_fee_amount_cents",
-    )
+    .select("tax_amount_cents, booked_start_at, buyer_email, buyer_phone_e164, buyer_user_id, purchased_by_user_id, total_cents, buyer_fees_cents, tax_cents, buyer_total_cents, event_date_id, pricing_breakdown, stripe_application_fee_amount_cents")
     .eq("id", session.order_id)
     .maybeSingle();
   const confirmation = await buildBuyerConfirmationPayload(supabase, {
@@ -195,6 +195,7 @@ async function fetchOrderPayload(
     eventId: session.event_id,
     currency: String(session.currency ?? "USD"),
     logPrefix: "[ticket-checkout-confirm]",
+    order: (orderRow ?? undefined) as BuyerConfirmationOrderRow | undefined,
   });
   if (confirmation === null) return null;
 

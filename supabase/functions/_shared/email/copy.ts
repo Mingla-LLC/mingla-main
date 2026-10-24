@@ -13,11 +13,14 @@ export interface TicketCopy {
 }
 
 const FREE: TicketCopy = {
-  preheader: "You're in. Your tickets are waiting in the Mingla app.",
+  // Legacy free-ticket rows keep their frozen pre-#4063 bytes. New free
+  // confirmations render through purchase_message instead.
+  preheader: "You're in. Your Mingla tickets are attached.",
   subjectFor: (title) => `You're in — ${title}`,
   heading: "You're in.",
-  intro: "No payment needed. Your tickets are waiting in the Mingla app.",
-  deliveryBadge: "Get your tickets in Mingla",
+  intro:
+    "No payment needed. Your tickets are attached as a PDF — save it to your phone or print it out.",
+  deliveryBadge: "QR in attached PDF",
 };
 
 const PAID: TicketCopy = {

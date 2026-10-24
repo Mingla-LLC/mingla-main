@@ -49,7 +49,7 @@ export interface BuyerConfirmationClient {
   ): PromiseLike<{ data: unknown; error: { message?: string } | null }>;
 }
 
-interface OrderRow {
+export interface BuyerConfirmationOrderRow {
   buyer_email: string | null;
   buyer_phone_e164: string | null;
   buyer_user_id: string | null;
@@ -187,18 +187,22 @@ export async function buildBuyerConfirmationPayload(
     eventId: string;
     currency: string;
     logPrefix: string;
+    order?: BuyerConfirmationOrderRow;
   },
 ): Promise<BuyerConfirmationPayload | null> {
   const { orderId, eventId, currency, logPrefix } = input;
+  const orderLookup = input.order === undefined
+    ? client
+      .from("orders")
+      .select(
+        "buyer_email, buyer_phone_e164, buyer_user_id, purchased_by_user_id, total_cents, tax_amount_cents, buyer_fees_cents, tax_cents, buyer_total_cents, event_date_id, booked_start_at",
+      )
+      .eq("id", orderId)
+      .maybeSingle()
+    : Promise.resolve({ data: input.order, error: null });
   const [orderResult, ticketResult, lineResult, discountResult] = await Promise
     .all([
-      client
-        .from("orders")
-        .select(
-          "buyer_email, buyer_phone_e164, buyer_user_id, purchased_by_user_id, total_cents, tax_amount_cents, buyer_fees_cents, tax_cents, buyer_total_cents, event_date_id, booked_start_at",
-        )
-        .eq("id", orderId)
-        .maybeSingle(),
+      orderLookup,
       client
         .from("tickets")
         .select("id, ticket_type_id, status, ticket_types(name)")
@@ -218,7 +222,7 @@ export async function buildBuyerConfirmationPayload(
         .eq("order_id", orderId)
         .order("applied_seq", { ascending: true }),
     ]) as [
-      QueryResult<OrderRow>,
+      QueryResult<BuyerConfirmationOrderRow>,
       QueryResult<TicketRow[]>,
       QueryResult<LineRow[]>,
       QueryResult<DiscountRow[]>,

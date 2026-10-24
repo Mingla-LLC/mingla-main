@@ -26,6 +26,8 @@ interface CalendarEventInput {
   description: string;
   /** Stable RFC-5545 identifier. Callers with a durable entity must provide it. */
   uid?: string;
+  /** Byte-compatible replay for legacy free-ticket bodies queued before #4063. */
+  legacyRandomUid?: boolean;
 }
 
 /** #3281 PR6 — one calendar row per chosen date (override title/place). */
@@ -142,11 +144,15 @@ export function buildCalendarLinks(
   const outlookUrl =
     `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams.toString()}`;
 
-  const uid = calendarUid(input.uid, {
-    title: input.title,
-    startAtIso: input.startAtIso,
-    locationText: input.locationText,
-  });
+  const uid = input.legacyRandomUid === true
+    ? `mingla-${start.getTime().toString(36)}-${
+      Math.floor(Math.random() * 1e9).toString(36)
+    }@usemingla.com`
+    : calendarUid(input.uid, {
+      title: input.title,
+      startAtIso: input.startAtIso,
+      locationText: input.locationText,
+    });
   const dtstamp = formatUtcCompact(new Date());
   const icsLines = [
     "BEGIN:VCALENDAR",
@@ -156,7 +162,7 @@ export function buildCalendarLinks(
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
     `UID:${uid}`,
-    "SEQUENCE:0",
+    ...(input.legacyRandomUid === true ? [] : ["SEQUENCE:0"]),
     `DTSTAMP:${dtstamp}`,
     `DTSTART:${startCompact}`,
     // ORCH-0877 — DTEND only when end is real. RFC 5545 permits

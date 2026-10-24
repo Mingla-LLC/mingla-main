@@ -1311,8 +1311,9 @@ export const handler = async (req: Request): Promise<Response> => {
       },
     };
   }
-  // #4063 — purchase messages deliberately have no Follow/Unfollow block.
-  // The unified body owns the single CTA and the Explorer app owns details.
+  // #4063 supersedes #3682's attachTicketFollowBlock / signBrandFollowToken
+  // purchase-email wiring. The unified body owns the single CTA and the
+  // Explorer app owns details; brand follow state remains app-managed.
   const context: RenderContext = contextBase;
 
   const ticketCount = context.bodyInput.order.tickets.length;
@@ -1385,16 +1386,14 @@ export const handler = async (req: Request): Promise<Response> => {
       }
     }
 
-    if (typeof startAt !== "string") {
-      throw new Error("buyer_confirmation_start_missing");
-    }
-    const messageTime = formatMessageTime(
-      startAt,
-      context.bodyInput.event.timezone,
-    );
-    if (messageTime === null) {
-      throw new Error("buyer_confirmation_start_invalid");
-    }
+    const messageTime = typeof startAt === "string"
+      ? formatMessageTime(startAt, context.bodyInput.event.timezone)
+      : null;
+    // Legacy and draft events can predate a materialised occurrence. That
+    // must not hold a paid buyer's delivery hostage, so say what is known
+    // instead of failing the email and SMS legs.
+    const messageDate = messageTime?.date ?? "Date TBD";
+    const messageClock = messageTime?.time ?? "Time TBD";
     const messageKind = isTrip
       ? "trip" as const
       : isExperience
@@ -1430,11 +1429,13 @@ export const handler = async (req: Request): Promise<Response> => {
           1,
         ),
         buttonUrl,
-        date: messageTime.date,
-        time: messageTime.time,
-        when: isTrip || (chosenDays !== null && chosenDays.length >= 2)
+        date: messageDate,
+        time: messageClock,
+        when: typeof startAt !== "string"
+          ? "Date TBD"
+          : isTrip || (chosenDays !== null && chosenDays.length >= 2)
           ? formatDateRange(startAt, endAt, context.bodyInput.event.timezone)
-          : `${messageTime.date}, ${messageTime.time}`,
+          : `${messageDate}, ${messageClock}`,
         place,
         detailLines: partyLine === null ? undefined : [partyLine],
         hostAddedGuest,
@@ -2194,12 +2195,10 @@ export const handler = async (req: Request): Promise<Response> => {
       .from("orders")
       .update({
         notification_status: failed
-          ? sent ? "partial" : "failed"
+          ? (sent ? "partial" : "failed")
           : deferred
           ? "pending"
-          : sent
-          ? "sent"
-          : "not_required",
+          : (sent ? "sent" : "not_required"),
         updated_at: new Date().toISOString(),
       })
       .eq("id", orderId);

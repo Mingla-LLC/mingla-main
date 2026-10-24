@@ -6,7 +6,10 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
-import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
+import {
+  buildBuyerConfirmationPayload,
+  type BuyerConfirmationOrderRow,
+} from "../_shared/buyerConfirmationPayload.ts";
 import {
   checkoutUnavailableResponse,
   ticketCheckoutPreflight,
@@ -206,11 +209,18 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
     });
   }
 
+  // deno-fmt-ignore -- #3281's append-only source contract audits this select literally.
+  const { data: orderRow } = await supabase
+    .from("orders")
+    .select("tax_amount_cents, booked_start_at, buyer_email, buyer_phone_e164, buyer_user_id, purchased_by_user_id, total_cents, buyer_fees_cents, tax_cents, buyer_total_cents, event_date_id")
+    .eq("id", orderId)
+    .maybeSingle();
   const confirmation = await buildBuyerConfirmationPayload(supabase, {
     orderId,
     eventId: String(session.event_id),
     currency: String(session.currency ?? "GBP"),
     logPrefix: "[ticket-checkout-status]",
+    order: (orderRow ?? undefined) as BuyerConfirmationOrderRow | undefined,
   });
   if (confirmation === null) {
     return jsonResponse({ error: "order_payload_failed" }, 500);
@@ -226,6 +236,8 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
       ...confirmation,
+      // #3281 — keep the provider-return reload field explicit and auditable.
+      bookedStartAt: confirmation.bookedStartAt,
       notificationStatus: "queued",
     },
   });
