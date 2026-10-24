@@ -27,6 +27,12 @@ export interface TicketBodyInput {
     endAt: string | null;
     timezone: string;
     /**
+     * #3281 PR6 — when the order admits 2+ dates, each primary/secondary line
+     * is listed instead of collapsing to a single range. Omit/empty = legacy
+     * single `formatEventDateLine(startAt, endAt)`.
+     */
+    dateLines?: string[];
+    /**
      * #3827 Q-A3 — the host turned on a private guest list
      * (`theme.business_event.settings.privateGuestList`). The confirmation CTA
      * then drops "who's going", because the app hides the going box. Omitted =
