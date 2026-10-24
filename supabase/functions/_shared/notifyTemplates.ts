@@ -650,6 +650,32 @@ export function renderCategoryMessage(
       };
     }
 
+    case "buyer_venue_order_receipt": {
+      const venue = str(payload.venue_name, brand || "the venue");
+      const link = str(
+        payload.message_link_display ?? payload.message_link_url,
+        "usemingla.com/download",
+      );
+      const claimed = payload.message_link_claimed === true ||
+        payload.claimed === true;
+      return {
+        push: {
+          title: `Receipt from ${venue}`,
+          body: "Your food-order receipt is in Mingla.",
+        },
+        email: {
+          subject: `Your ${venue} receipt`,
+          body: "Your food-order receipt is in the Mingla app.",
+        },
+        sms: renderBuyerSms("S17", {
+          venue,
+          link,
+          noun: "receipt",
+          claimed,
+        }),
+      };
+    }
+
     case "buyer_event_reminder": {
       const context = issue4063BuyerContext(payload);
       if (context !== null) {

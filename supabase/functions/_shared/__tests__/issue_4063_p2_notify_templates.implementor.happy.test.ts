@@ -52,6 +52,28 @@ Deno.test("#4063 venue confirmations choose host copy and claimed booking tail",
   assertStringIncludes(rendered.email.subject, "7:30 PM");
 });
 
+Deno.test("#4063 food receipts use the dedicated SMS contract and claimed tail", () => {
+  const unclaimed = renderCategoryMessage("buyer_venue_order_receipt", {
+    venue_name: "Kitchen",
+    message_link_display: LINK,
+    message_link_claimed: false,
+  });
+  assertEquals(
+    unclaimed.sms,
+    `Mingla: Thanks for ordering at Kitchen. Your receipt is in the Mingla app. Get it using this number: ${LINK}`,
+  );
+
+  const claimed = renderCategoryMessage("buyer_venue_order_receipt", {
+    venue_name: "Kitchen",
+    message_link_display: LINK,
+    message_link_claimed: true,
+  });
+  assertEquals(
+    claimed.sms,
+    `Mingla: Thanks for ordering at Kitchen. Your receipt is in the Mingla app. Your receipt: ${LINK}`,
+  );
+});
+
 Deno.test("#4063 queued legacy rows keep their previous renderer byte-for-byte", () => {
   const rendered = renderCategoryMessage("buyer_reservation_confirmed", {
     brand_name: "Lantern & Vine",
