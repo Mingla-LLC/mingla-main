@@ -1,9 +1,4 @@
-/**
- * I-BRAND-GROUP-MEDIA-ALL-LOCALES (#3988): every Host gallery/viewer string
- * ships in all 29 locales, preserves its interpolation contract, and carries
- * every CLDR plural category the runtime can select. English fallback is not
- * an acceptable launch state for this namespace.
- */
+// MINGLA-INVARIANT: I-BRAND-GROUP-MEDIA-ALL-LOCALES | issue #3988 | Every Host gallery and viewer string ships in all 29 locales with matching interpolation and CLDR plural contracts; English fallback is not an acceptable launch state.
 import fs from "node:fs";
 import path from "node:path";
 
