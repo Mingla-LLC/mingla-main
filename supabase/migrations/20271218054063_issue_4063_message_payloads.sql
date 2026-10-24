@@ -92,6 +92,12 @@ BEGIN
     ));
   END IF;
 
+  -- Keep the pre-#4063 payload byte-for-byte compatible until the reviewed
+  -- message bundle is live and the release switch is deliberately enabled.
+  IF NOT public.issue_4063_switch_on('messages_v2') THEN
+    RETURN NEW;
+  END IF;
+
   SELECT jsonb_strip_nulls(jsonb_build_object(
     'eventId', event.id,
     'eventName', event.title,

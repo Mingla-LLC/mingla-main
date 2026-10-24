@@ -264,6 +264,8 @@ SET search_path = public, pg_temp
 AS $function$
 BEGIN
   IF TG_OP = 'INSERT' AND NEW.buyer_user_id IS NOT NULL
+     AND (btrim(coalesce(NEW.buyer_email, '')) <> ''
+       OR coalesce(NEW.buyer_phone_e164, '') ~ '^\+[1-9][0-9]{1,14}$')
      AND NOT public.account_owns_contact(
        NEW.buyer_user_id, NEW.buyer_email, NEW.buyer_phone_e164
      ) THEN
@@ -272,6 +274,8 @@ BEGIN
   ELSIF TG_OP = 'UPDATE'
      AND NEW.buyer_user_id IS NOT NULL
      AND NEW.buyer_user_id IS DISTINCT FROM OLD.buyer_user_id
+     AND (btrim(coalesce(NEW.buyer_email, '')) <> ''
+       OR coalesce(NEW.buyer_phone_e164, '') ~ '^\+[1-9][0-9]{1,14}$')
      AND NOT public.account_owns_contact(
        NEW.buyer_user_id, NEW.buyer_email, NEW.buyer_phone_e164
      ) THEN
@@ -458,6 +462,8 @@ AS $function$
 BEGIN
   IF TG_OP = 'INSERT' AND NEW.created_via = 'consumer'
      AND NEW.consumer_user_id IS NOT NULL
+     AND (btrim(coalesce(NEW.guest_email, '')) <> ''
+       OR coalesce(NEW.guest_phone_e164, '') ~ '^\+[1-9][0-9]{1,14}$')
      AND NOT public.account_owns_contact(
        NEW.consumer_user_id, NEW.guest_email, NEW.guest_phone_e164
      ) THEN
@@ -466,6 +472,8 @@ BEGIN
   ELSIF TG_OP = 'UPDATE'
      AND NEW.consumer_user_id IS NOT NULL
      AND NEW.consumer_user_id IS DISTINCT FROM OLD.consumer_user_id
+     AND (btrim(coalesce(NEW.guest_email, '')) <> ''
+       OR coalesce(NEW.guest_phone_e164, '') ~ '^\+[1-9][0-9]{1,14}$')
      AND NOT public.account_owns_contact(
        NEW.consumer_user_id, NEW.guest_email, NEW.guest_phone_e164
      ) THEN
@@ -491,6 +499,8 @@ SET search_path = public, pg_temp
 AS $function$
 BEGIN
   IF TG_OP = 'INSERT' AND NEW.user_id IS NOT NULL
+     AND (btrim(coalesce(NEW.guest_snapshot->>'email', '')) <> ''
+       OR coalesce(NEW.guest_snapshot->>'phone', '') ~ '^\+[1-9][0-9]{1,14}$')
      AND NOT public.account_owns_contact(
        NEW.user_id, NEW.guest_snapshot->>'email', NEW.guest_snapshot->>'phone'
      ) THEN
@@ -499,6 +509,8 @@ BEGIN
   ELSIF TG_OP = 'UPDATE'
      AND NEW.user_id IS NOT NULL
      AND NEW.user_id IS DISTINCT FROM OLD.user_id
+     AND (btrim(coalesce(NEW.guest_snapshot->>'email', '')) <> ''
+       OR coalesce(NEW.guest_snapshot->>'phone', '') ~ '^\+[1-9][0-9]{1,14}$')
      AND NOT public.account_owns_contact(
        NEW.user_id, NEW.guest_snapshot->>'email', NEW.guest_snapshot->>'phone'
      ) THEN
