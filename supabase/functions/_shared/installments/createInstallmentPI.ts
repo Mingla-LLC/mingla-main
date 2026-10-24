@@ -11,6 +11,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
+import { applicationFeeWithReferralShare } from "../attribution.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -30,6 +31,7 @@ export type InstallmentRow = {
   order_id: string;
   ordinal: number;
   amount_cents: number;
+  referral_share_minor?: number;
   currency: string;
   due_at: string;
   status: string;
@@ -145,7 +147,7 @@ async function loadInstallmentContext(
 } | { error: string }> {
   const { data: installment } = await supabase
     .from("order_installments")
-    .select("id, order_id, ordinal, amount_cents, currency, due_at, status, retry_count, stripe_payment_intent_id")
+    .select("id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id")
     .eq("id", installmentId)
     .maybeSingle();
   if (installment === null) return { error: "installment_not_found" };
@@ -285,8 +287,24 @@ export async function createInstallmentPI(
   }
 
   const stripe = stripeTicketCheckout();
-  const applicationFeeAmountCents = Math.round(
+  const minglaApplicationFeeAmountCents = Math.round(
     installment.amount_cents * MINGLA_APPLICATION_FEE_RATE,
+  );
+  const referralShareMinor = Number(installment.referral_share_minor ?? 0);
+  if (
+    !Number.isSafeInteger(referralShareMinor) || referralShareMinor < 0 ||
+    referralShareMinor > installment.amount_cents
+  ) {
+    return {
+      ok: false,
+      error: "referral_installment_share_invalid",
+      outcome: "skipped",
+      reason: "referral_installment_share_invalid",
+    };
+  }
+  const applicationFeeAmountCents = applicationFeeWithReferralShare(
+    minglaApplicationFeeAmountCents,
+    { shareMinor: referralShareMinor },
   );
   const idempotencyKey = `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
 

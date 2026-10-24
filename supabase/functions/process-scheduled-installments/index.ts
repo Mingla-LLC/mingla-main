@@ -106,7 +106,7 @@ serve(async (req: Request) => {
   const { data: dueRows, error: dueError } = await supabase
     .from("order_installments")
     .select(`
-      id, order_id, ordinal, amount_cents, currency, due_at, status,
+      id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status,
       retry_count, stripe_payment_intent_id,
       orders!inner(
         cancelled_at,
@@ -131,7 +131,7 @@ serve(async (req: Request) => {
   const { data: retryRows, error: retryError } = await supabase
     .from("order_installments")
     .select(`
-      id, order_id, ordinal, amount_cents, currency, due_at, status,
+      id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status,
       retry_count, stripe_payment_intent_id,
       orders!inner(
         cancelled_at,
@@ -170,6 +170,7 @@ serve(async (req: Request) => {
         order_id: String(r.order_id),
         ordinal: Number(r.ordinal),
         amount_cents: Number(r.amount_cents),
+        referral_share_minor: Number(r.referral_share_minor ?? 0),
         currency: String(r.currency),
         due_at: String(r.due_at),
         status: String(r.status),
