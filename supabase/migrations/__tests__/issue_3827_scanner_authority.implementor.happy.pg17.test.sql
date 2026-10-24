@@ -101,6 +101,20 @@ BEGIN
     'fixture has no projected scanner row for owner or manager'
   );
 
+  v_result := public.biz_ticket_scan(
+    v_event, 'issue-3827-intentionally-invalid-qr', v_owner, v_pepper
+  );
+  PERFORM pg_temp.i3827_scan_assert(
+    v_result ->> 'result' = 'not_found'
+      AND v_result -> 'ticketId' = 'null'::jsonb
+      AND v_result -> 'orderId' = 'null'::jsonb,
+    'H0 authorized manager gets not_found JSON for a malformed QR'
+  );
+  PERFORM pg_temp.i3827_scan_assert(
+    NOT EXISTS (SELECT 1 FROM public.scan_events WHERE event_id = v_event),
+    'H0 malformed QR writes no scan audit row'
+  );
+
   v_result := public.biz_ticket_scan(v_event, v_qrs[1], v_owner, v_pepper);
   PERFORM pg_temp.i3827_scan_assert(
     v_result ->> 'result' = 'success',
