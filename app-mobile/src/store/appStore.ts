@@ -248,6 +248,7 @@ interface AppState {
     import('../types/discoverFeed').DiscoverKind,
     import('../types/discoverFeed').DiscoverFiltersV2
   >>;
+  discoverPendingWatchCity: string | null;
 
   // Actions
   setAuth: (user: User | null) => void;
@@ -283,6 +284,7 @@ interface AppState {
   setDiscoverActiveTab: (tab: 'events' | 'trips' | 'stays') => void;
   setDiscoverSelectedKind: (kind: import('../types/discoverFeed').DiscoverKind | null) => void;
   setDiscoverFiltersByKind: (filters: AppState['discoverFiltersByKind']) => void;
+  setDiscoverPendingWatchCity: (cityKey: string | null) => void;
 
   // Utilities
   clearUserData: () => void;
@@ -333,6 +335,7 @@ export const useAppStore = create<AppState>()(
       discoverActiveTab: 'events',
       discoverSelectedKind: null,
       discoverFiltersByKind: {},
+      discoverPendingWatchCity: null,
 
       // Auth actions
       setAuth: (user) => {
@@ -418,6 +421,7 @@ export const useAppStore = create<AppState>()(
       setDiscoverActiveTab: (discoverActiveTab) => set({ discoverActiveTab }),
       setDiscoverSelectedKind: (discoverSelectedKind) => set({ discoverSelectedKind }),
       setDiscoverFiltersByKind: (discoverFiltersByKind) => set({ discoverFiltersByKind }),
+      setDiscoverPendingWatchCity: (discoverPendingWatchCity) => set({ discoverPendingWatchCity }),
 
       // Deck metadata action. History reset is explicitly paired by callers
       // with the dedicated deckSessionHistoryStore.
@@ -465,6 +469,7 @@ export const useAppStore = create<AppState>()(
           discoverActiveTab: 'events',
           discoverSelectedKind: null,
           discoverFiltersByKind: {},
+          discoverPendingWatchCity: null,
         });
       },
     })),  // end of state definition + devLoggerMiddleware

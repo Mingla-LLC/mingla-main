@@ -18,6 +18,12 @@ const EXPERIENCE_EDGES: Record<string, number[]> = {
 };
 const SYMBOL: Record<string, string> = { GBP: "£", USD: "$", EUR: "€", NGN: "₦", CAD: "C$", GHS: "₵", KES: "KSh" };
 
+/** Internal SQL hand-off. The edge remains the only owner of band edges. */
+export function discoverPriceBandCatalog(kind: "events" | "experiences"): Record<string, number[]> {
+  const source = kind === "experiences" ? EXPERIENCE_EDGES : EVENT_EDGES;
+  return Object.fromEntries(Object.entries(source).map(([currency, edges]) => [currency, [...edges]]));
+}
+
 export function discoverPriceBands(kind: string, currencyRaw: string): DiscoverPriceBandSpec | null {
   const currency = currencyRaw.toUpperCase();
   const edgesMinor = (kind === "experiences" ? EXPERIENCE_EDGES : EVENT_EDGES)[currency];

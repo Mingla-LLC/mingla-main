@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { discoverCurrency } from "../discoverCurrency.ts";
 import { discoverPriceBands } from "../discoverPriceBands.ts";
+import { discoverPriceBandCatalog } from "../discoverPriceBands.ts";
 import { DISCOVER_CITY_WATCH_COPY, discoverCityWatchCopy } from "../discoverCityWatchCopy.ts";
 import { isDiscoverV2Request } from "../../discover-merged-events/_v2_types.ts";
 import { buildDiscoverV2Key } from "../../discover-merged-events/_v2_key.ts";
@@ -18,6 +19,8 @@ Deno.test("#4073 publishes currency-specific price bands without fabricating an 
   assertEquals(discoverPriceBands("events", "GBP")?.edgesMinor, [2_000, 4_000]);
   assertEquals(discoverPriceBands("experiences", "NGN")?.edgesMinor, [2_000_000, 5_000_000]);
   assertEquals(discoverPriceBands("events", "JPY"), null);
+  assertEquals(discoverPriceBandCatalog("events").GBP, [2_000, 4_000]);
+  assertEquals(discoverPriceBandCatalog("experiences").NGN, [2_000_000, 5_000_000]);
 });
 
 Deno.test("#4073 cache keys normalize filter order and bind contract inputs", () => {
@@ -48,4 +51,40 @@ Deno.test("#4073 city-watch copy covers all 29 locales with byte-exact placehold
   }
   assertEquals(discoverCityWatchCopy("unknown", "Accra").pushTitle, "Accra has plans now");
   assertEquals(discoverCityWatchCopy("fr", "Paris").pushTitle.includes("Paris"), true);
+});
+
+Deno.test("#4073 Ticketmaster pooling has durable L2 SWR, exact daily budget, and bounded fanout", async () => {
+  const source = await Deno.readTextFile(new URL("../../discover-merged-events/_v2_tm_pool.ts", import.meta.url));
+  assert(source.includes('const FRESH_MS = 6 * 60 * 60 * 1_000'));
+  assert(source.includes('const STALE_MS = 24 * 60 * 60 * 1_000'));
+  assert(source.includes('const TOTAL_DEADLINE_MS = 4_000'));
+  assert(source.includes('const CALL_TIMEOUT_MS = 2_500'));
+  assert(source.includes('const MAX_PAGES = 5'));
+  assert(source.includes('const PAGE_SIZE = 200'));
+  assert(source.includes('Promise.allSettled(pair.map'));
+  assert(source.includes('discover_merged_events_cache'));
+  assert(source.includes('contract: "tm_pool_v1"'));
+  assert(source.includes('EdgeRuntime?: { waitUntil?'));
+  assert(source.includes('discover_v2_claim_tm_budget'));
+  assert(source.includes('discover_v2_tm_budget_available'));
+  assert(source.includes('error: "tm_budget_exhausted"'));
+});
+
+Deno.test("#4073 server owns canonical eligibility, exact facets, horizon, price and nearest-city rules", async () => {
+  const migration = await Deno.readTextFile(new URL("../../../migrations/20271218004073_issue_4073_discover_feed_v2.sql", import.meta.url));
+  assert(migration.includes('CREATE OR REPLACE FUNCTION public.discover_v2_event_base'));
+  assert(migration.includes('FROM public.discover_v2_event_base('));
+  assert(migration.includes("ed.is_master IS TRUE"));
+  assert(migration.includes("ed.end_at >= p_lower_bound"));
+  assert(migration.includes("issue_1931_event_ordinary_read_blocked"));
+  assert(migration.includes("pg_brand_can_collect"));
+  assert(migration.includes("'tm_horizon_120'"));
+  assert(migration.includes("discover_v2_price_matches"));
+  assert(migration.includes("experience_stops"));
+  assert(migration.includes("departure_country_code::text,b.country_code"));
+  assert(migration.includes("discover_v2_stay_room_available"));
+  assert(migration.includes("discover_v2_option_count"));
+  assert(migration.includes("discover_v2_nearest_city"));
+  assert(migration.includes("distance_km<=500"));
+  assert(migration.includes("discover_v2_facets_exact"));
 });

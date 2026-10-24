@@ -1,12 +1,15 @@
 import { PARTY_TYPE_SLUGS, VIBE_TAG_SLUGS, MUSIC_GENRE_SLUGS, isSubsetOf } from "../_shared/eventTaxonomy.ts";
 import { resolveTmClassification } from "../_shared/ticketmasterClassifications.ts";
 import { discoverCurrency } from "../_shared/discoverCurrency.ts";
-import { discoverPriceBands, type DiscoverPriceBandSpec } from "../_shared/discoverPriceBands.ts";
+import { discoverPriceBandCatalog, discoverPriceBands, type DiscoverPriceBandSpec } from "../_shared/discoverPriceBands.ts";
 import { buildDiscoverV2Key } from "./_v2_key.ts";
 import { DISCOVER_KINDS, type DiscoverV2Request } from "./_v2_types.ts";
 import { resolveTicketmasterPool, type TicketmasterPool } from "./_v2_tm_pool.ts";
 
-type RpcClient = { rpc: (name: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string } | null }> };
+type RpcClient = {
+  rpc: (name: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+  from: (table: string) => any;
+};
 type ErrorResponse = (body: unknown, status?: number, extra?: Record<string, string>) => Response;
 
 const ALLOWED_FILTERS: Record<string, readonly string[]> = {
@@ -103,6 +106,70 @@ function filterTm(pool: TicketmasterPool, request: DiscoverV2Request, timezone: 
   });
 }
 
+const EVENT_GROUP_KEY: Record<string, string> = {
+  when: "when", price: "price", partyType: "partyTypes", vibe: "vibeTags", music: "musicGenres",
+};
+
+function requestWithEventOption(request: DiscoverV2Request, groupId: string, optionId: string): DiscoverV2Request {
+  if (request.filters.kind !== "events") return request;
+  const key = EVENT_GROUP_KEY[groupId];
+  if (!key) return request;
+  const f = { ...request.filters.f } as Record<string, unknown>;
+  delete f[key];
+  f[key] = groupId === "when" ? optionId : [optionId];
+  return { ...request, filters: { kind: "events", f } as DiscoverV2Request["filters"] };
+}
+
+function tmFacetCandidates(pool: TicketmasterPool, bands: DiscoverPriceBandSpec | null): Record<string, string[]> {
+  const prices = new Set<string>();
+  for (const item of pool.items) {
+    const option = priceOption(item);
+    if (option) prices.add(option);
+  }
+  if (bands) for (let index = 1; index <= bands.edgesMinor.length + 1; index += 1) prices.add(`band_${index}`);
+  return {
+    when: ["tomorrow", "weekend"],
+    price: [...prices],
+    music: [...MUSIC_GENRE_SLUGS],
+  };
+}
+
+function mergeTmFacetCounts(
+  rawGroups: unknown,
+  pool: TicketmasterPool,
+  request: DiscoverV2Request,
+  timezone: string,
+  bands: DiscoverPriceBandSpec | null,
+): unknown[] {
+  if (request.filters.kind !== "events") return Array.isArray(rawGroups) ? rawGroups : [];
+  const groups = (Array.isArray(rawGroups) ? rawGroups : []).map((group) => ({ ...(group as Record<string, unknown>) }));
+  const candidates = tmFacetCandidates(pool, bands);
+  for (const [groupId, ids] of Object.entries(candidates)) {
+    let group = groups.find((candidate) => candidate.id === groupId);
+    const options = new Map<string, Record<string, unknown>>(
+      (Array.isArray(group?.options) ? group.options : []).map((option) => {
+        const row = option as Record<string, unknown>;
+        return [String(row.id), { ...row }];
+      }),
+    );
+    for (const id of ids) {
+      const baselineRequest = { ...request, filters: { kind: "events", f: {} } as DiscoverV2Request["filters"] };
+      const possible = filterTm(pool, requestWithEventOption(baselineRequest, groupId, id), timezone).length;
+      if (possible === 0 && !options.has(id)) continue;
+      const tmCount = filterTm(pool, requestWithEventOption(request, groupId, id), timezone).length;
+      const current = options.get(id) ?? { id, count: 0 };
+      options.set(id, { ...current, count: Number(current.count ?? 0) + tmCount });
+    }
+    if (options.size === 0) continue;
+    if (!group) {
+      group = { id: groupId, multi: groupId !== "when", options: [] };
+      groups.push(group);
+    }
+    group.options = [...options.values()];
+  }
+  return groups;
+}
+
 function encodeCursor(value: { m: number; t: number; k: string }): string {
   return btoa(JSON.stringify({ v: 2, ...value })).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
@@ -136,9 +203,16 @@ export async function handleDiscoverV2(request: DiscoverV2Request, client: RpcCl
   const generation = generationError ? `unavailable:${crypto.randomUUID()}` : String(generationData ?? "0");
   const key = buildDiscoverV2Key(request, generation, timezone, currency);
   const window = request.filters.kind === "events" ? await tmWindow(client, timezone) : null;
-  const tmPool = window ? await resolveTicketmasterPool({ anchor: request.anchor, localStartEndDateTime: window, timezone }) : { items: [], capped: false, partial: false, error: null, fromCache: false };
+  const tmPool = window ? await resolveTicketmasterPool(client, { anchor: request.anchor, localStartEndDateTime: window, timezone }) : { items: [], capped: false, partial: false, error: null, fromCache: false };
   const selectedTm = filterTm(tmPool, request, timezone);
-  const shared = { p_city_names: cityNames, p_lat: request.anchor.lat, p_lng: request.anchor.lng, p_radius_km: request.anchor.radiusKm, p_tz: timezone, p_kind: request.filters.kind, p_filters: request.filters.f };
+  const sqlFilters = {
+    ...request.filters.f,
+    _countryCode: request.anchor.countryCode?.toUpperCase() ?? null,
+    _priceCatalog: request.filters.kind === "events" || request.filters.kind === "experiences"
+      ? { [request.filters.kind]: discoverPriceBandCatalog(request.filters.kind) }
+      : {},
+  };
+  const shared = { p_city_names: cityNames, p_lat: request.anchor.lat, p_lng: request.anchor.lng, p_radius_km: request.anchor.radiusKm, p_tz: timezone, p_kind: request.filters.kind, p_filters: sqlFilters };
 
   if (request.op === "facets") {
     const { data, error } = await client.rpc("discover_v2_facets", { ...shared, p_currency: currency });
@@ -150,7 +224,8 @@ export async function handleDiscoverV2(request: DiscoverV2Request, client: RpcCl
     kinds.events = { total: eventTotal, available: eventTotal > 0 };
     const selected = (result.selected ?? {}) as Record<string, unknown>;
     const minglaTotal = Number(selected.minglaTotal ?? selected.total ?? 0);
-    return jsonError({ ...result, contract: 2, city: { key: result.cityKey ?? "", tz: timezone, tzSource: context.tzSource === "supply" ? "supply" : "device", currency, label: request.anchor.name }, kinds, selected: { ...selected, kind: request.filters.kind, minglaTotal, total: minglaTotal + tmTotal, tm: request.filters.kind === "events" ? { included: true, total: tmTotal, capped: tmPool.capped, error: tmPool.error } : null }, priceBands: bands, generatedAt: new Date().toISOString() });
+    const groups = mergeTmFacetCounts(result.groups, tmPool, request, timezone, bands);
+    return jsonError({ ...result, contract: 2, city: { key: result.cityKey ?? "", tz: timezone, tzSource: context.tzSource === "supply" ? "supply" : "device", currency, label: request.anchor.name }, kinds, selected: { ...selected, kind: request.filters.kind, minglaTotal, total: minglaTotal + tmTotal, tm: request.filters.kind === "events" ? { included: true, total: tmTotal, capped: tmPool.capped, error: tmPool.error } : null }, groups, priceBands: bands, generatedAt: new Date().toISOString() });
   }
 
   const cursor = decodeCursor(request.cursor, key);

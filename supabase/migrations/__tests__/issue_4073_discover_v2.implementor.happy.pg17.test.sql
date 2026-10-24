@@ -1,0 +1,151 @@
+-- Issue #4073 — one-page Discover server contract, PostgreSQL 17 proof.
+-- MINGLA-INVARIANT: I-4073-DISCOVER-ELIGIBILITY | issue #4073 | V1 and V2 event discovery share one eligibility reader; all v2 card/facet counts use server-owned per-kind eligibility, calendar, price, radius and availability rules.
+\set ON_ERROR_STOP on
+BEGIN;
+
+CREATE FUNCTION pg_temp.t4073_assert(p_ok boolean,p_message text)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  IF p_ok IS NOT TRUE THEN RAISE EXCEPTION '#4073 discover v2 FAIL: %',p_message; END IF;
+END
+$$;
+
+DO $$
+DECLARE
+  v_v1 text:=pg_get_functiondef('public.pg_discover_business_events(text[],timestamptz,timestamptz,text[],text[],text[],integer,integer,float8,float8,float8)'::regprocedure);
+  v_base text:=pg_get_functiondef('public.discover_v2_event_base(text[],timestamptz,timestamptz,text[],text[],text[],float8,float8,float8)'::regprocedure);
+  v_items text:=pg_get_functiondef('public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer)'::regprocedure);
+  v_facets text:=pg_get_functiondef('public.discover_v2_facets_exact(text[],float8,float8,float8,text,text,jsonb,text)'::regprocedure);
+  v_price text:=pg_get_functiondef('public.discover_v2_price_option(text,text,text,integer,boolean,jsonb)'::regprocedure);
+  v_context text:=pg_get_functiondef('public.discover_v2_city_context(text[],float8,float8,float8,text)'::regprocedure);
+  v_nearest text:=pg_get_functiondef('public.discover_v2_nearest_city(float8,float8)'::regprocedure);
+BEGIN
+  PERFORM pg_temp.t4073_assert(v_v1 LIKE '%discover_v2_event_base%',
+    'v1 delegates to the canonical event eligibility reader');
+  PERFORM pg_temp.t4073_assert(v_base LIKE '%ed.is_master IS TRUE%'
+    AND v_base LIKE '%ed.end_at >= p_lower_bound%'
+    AND v_base LIKE '%issue_1931_event_ordinary_read_blocked%'
+    AND v_base LIKE '%pg_brand_can_collect%'
+    AND v_base LIKE '%business_event%format%online%',
+    'canonical event base retains master-date, privacy, paid-supply and online-carveout guards');
+  PERFORM pg_temp.t4073_assert(v_items LIKE '%tm_horizon_120%'
+    AND v_items LIKE '%experience_stops%'
+    AND v_items LIKE '%departure_country_code%country_code%'
+    AND v_items LIKE '%discover_v2_stay_room_available%'
+    AND v_items LIKE '%discover_v2_price_matches%',
+    'v2 items owns event horizon plus experience, trip, stay and price eligibility');
+  PERFORM pg_temp.t4073_assert(v_facets LIKE '%discover_v2_option_count%'
+    AND v_facets LIKE '%v_base%'
+    AND v_facets LIKE '%discover_v2_nearest_city%',
+    'facet options and counts use exclude-own-group eligibility and nearest-city fallback');
+  PERFORM pg_temp.t4073_assert(v_price LIKE '%p_catalog%p_kind%upper(p_currency)%',
+    'price bands are selected by item currency from the edge-owned catalog');
+  PERFORM pg_temp.t4073_assert(v_context LIKE '%timezone_choice%item_count DESC%nearest_km ASC%'
+    AND v_context LIKE '%stay_settings%timezone%'
+    AND v_context LIKE '%tzSource%',
+    'city timezone is the eligible-supply majority with nearest-item tie break and explicit source');
+  PERFORM pg_temp.t4073_assert(v_nearest LIKE '%distance_km<=500%'
+    AND v_nearest LIKE '%concat_ws%' AND v_nearest LIKE '%country_code%',
+    'nearest-city fallback is bounded and returns country-qualified labels');
+END
+$$;
+
+-- Execute every kind through the final reader on an empty city. This is a
+-- runtime compilation guard for the SQL embedded in the PL/pgSQL branches,
+-- including the canonical SETOF-json event alias and first-stop geography.
+DO $$
+DECLARE
+  v_kind text;
+  v_page jsonb;
+BEGIN
+  FOREACH v_kind IN ARRAY ARRAY['events','experiences','trips','stays'] LOOP
+    v_page:=public.discover_v2_items(
+      v_kind,ARRAY['#4073-no-such-city'],0,0,
+      public.discover_v2_radius_km(v_kind),'UTC','{}'::jsonb,0,10);
+    PERFORM pg_temp.t4073_assert(v_page->'items'='[]'::jsonb AND (v_page->>'total')::integer=0,
+      v_kind||' empty-city reader compiles and returns the canonical empty page');
+  END LOOP;
+END
+$$;
+SELECT pg_temp.t4073_assert(
+  public.discover_v2_city_context(ARRAY['#4073-no-such-city'],0,0,50,'America/New_York')
+    @> '{"tz":"America/New_York","tzSource":"device","majorityCurrency":null}'::jsonb,
+  'city context falls back to the validated device timezone when eligible supply is absent');
+
+-- Calendar windows are city-local, half-open, and the no-filter event horizon
+-- is bounded to 120 days rather than becoming an unbounded feed.
+SELECT pg_temp.t4073_assert(
+  lower(public.discover_v2_window('weekend','America/New_York','2026-10-22 16:00:00+00'))
+    AT TIME ZONE 'America/New_York'='2026-10-23 18:00:00'::timestamp,
+  'Thursday resolves to Friday 18:00 in the city timezone');
+SELECT pg_temp.t4073_assert(
+  upper(public.discover_v2_window('weekend','America/New_York','2026-10-24 16:00:00+00'))
+    AT TIME ZONE 'America/New_York'='2026-10-26 00:00:00'::timestamp,
+  'an in-progress Saturday weekend ends at Monday city midnight');
+SELECT pg_temp.t4073_assert(
+  upper(public.discover_v2_window('tm_horizon_120','UTC','2026-10-24 12:00:00+00'))
+    - lower(public.discover_v2_window('tm_horizon_120','UTC','2026-10-24 12:00:00+00'))=interval '120 days',
+  'the default event horizon is exactly 120 days');
+SELECT pg_temp.t4073_assert(
+  upper(public.discover_v2_window('weekend','Europe/London','2027-03-27 20:00:00+00'))
+    AT TIME ZONE 'Europe/London'='2027-03-29 00:00:00'::timestamp,
+  'the spring DST weekend still ends at Monday city midnight');
+
+-- Price classification is server-side, currency-specific, half-open at the
+-- edge, and retains the free RSVP/ticket distinctions used by the UI.
+SELECT pg_temp.t4073_assert(
+  public.discover_v2_price_option('events','event','GBP',1999,false,
+    '{"events":{"GBP":[2000,4000]}}'::jsonb)='band_1'
+  AND public.discover_v2_price_option('events','event','GBP',2000,false,
+    '{"events":{"GBP":[2000,4000]}}'::jsonb)='band_2'
+  AND public.discover_v2_price_option('events','rsvp','GBP',NULL,false,
+    '{"events":{"GBP":[2000,4000]}}'::jsonb)='free_rsvp'
+  AND public.discover_v2_price_option('events','event','GBP',0,true,
+    '{"events":{"GBP":[2000,4000]}}'::jsonb)='free_ticket',
+  'price options use half-open per-currency bands and canonical free labels');
+SELECT pg_temp.t4073_assert(
+  public.discover_v2_price_matches('events','event','GBP',2000,false,
+    '{"price":["band_2"],"_priceCatalog":{"events":{"GBP":[2000,4000]}}}'::jsonb)
+  AND NOT public.discover_v2_price_matches('events','event','GBP',1999,false,
+    '{"price":["band_2"],"_priceCatalog":{"events":{"GBP":[2000,4000]}}}'::jsonb),
+  'the SQL reader applies price selections rather than post-filtering client rows');
+SELECT pg_temp.t4073_assert(
+  public.discover_v2_radius_km('events')=50 AND public.discover_v2_radius_km('stays')=100,
+  'kind radii stay server-owned');
+SELECT pg_temp.t4073_assert(public.discover_v2_nearest_city(0,0) IS NULL,
+  'nearest city is null when no eligible inventory exists within 500 km');
+
+-- A single durable row and FOR UPDATE claim implement the exact org-wide daily
+-- call budget. This transaction rolls the fixture back.
+SELECT pg_temp.t4073_assert(public.discover_v2_tm_budget_available('2099-12-29',2),
+  'an absent budget row has capacity');
+SELECT pg_temp.t4073_assert(public.discover_v2_claim_tm_budget('2099-12-29',2),
+  'first Ticketmaster call is admitted');
+SELECT pg_temp.t4073_assert(public.discover_v2_claim_tm_budget('2099-12-29',2),
+  'second Ticketmaster call is admitted');
+SELECT pg_temp.t4073_assert(NOT public.discover_v2_claim_tm_budget('2099-12-29',2),
+  'the exact daily limit rejects the next call');
+SELECT pg_temp.t4073_assert(NOT public.discover_v2_tm_budget_available('2099-12-29',2),
+  'SWR can disclose exhaustion while serving stale L2 data');
+
+SELECT pg_temp.t4073_assert(
+  has_function_privilege('service_role','public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer)','EXECUTE'),
+  'v2 data reader is service-role only');
+SELECT pg_temp.t4073_assert(
+  has_function_privilege('service_role','public.discover_v2_claim_tm_budget(date,integer)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.discover_v2_claim_tm_budget(date,integer)','EXECUTE'),
+  'durable budget authority is service-role only');
+SELECT pg_temp.t4073_assert(
+  (SELECT prosecdef AND proowner='postgres'::regrole
+     FROM pg_proc WHERE oid='public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer)'::regprocedure),
+  'v2 reader is postgres-owned SECURITY DEFINER');
+SELECT pg_temp.t4073_assert(
+  EXISTS(SELECT 1 FROM public.issue_2489_gate_carriers
+    WHERE object_name='discover_v2_items' AND object_kind='function')
+  AND EXISTS(SELECT 1 FROM public.issue_2489_gate_carriers
+    WHERE object_name='discover_v2_event_base' AND object_kind='function'),
+  'privacy gate carriers include the canonical and v2 readers');
+
+ROLLBACK;
