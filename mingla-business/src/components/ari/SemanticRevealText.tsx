@@ -13,7 +13,12 @@ import Animated, {
 
 import { ariThread, text as textTokens } from "../../constants/designSystem";
 import { captureAriRevealOutcome } from "../../services/ariPolishAnalytics";
-import { type AriBubbleSegment, toAccessibleText, toSegments } from "./ariBubbleSegments";
+import {
+  type AriBubbleSegment,
+  parseInlineRuns,
+  toAccessibleText,
+  toSegments,
+} from "./ariBubbleSegments";
 
 export interface SemanticRevealTextProps {
   text: string;
@@ -34,16 +39,65 @@ export function splitSemanticChunks(text: string): Chunk[] {
   return chunks.length ? chunks : [{ kind: "paragraph", text }];
 }
 
-const ChunkBody: React.FC<{ chunk: Chunk; textStyle: object }> = ({ chunk, textStyle }) => (
-  chunk.kind === "bullet" ? (
-    <View style={styles.listRow}>
-      <Text style={[textStyle, styles.bulletGlyph]}>•</Text>
-      <Text selectable style={[textStyle, styles.listText]}>{chunk.text}</Text>
-    </View>
-  ) : (
-    <Text selectable style={textStyle}>{chunk.text}</Text>
-  )
-);
+const ChunkInline: React.FC<{ text: string; textStyle: object | object[] }> = ({
+  text,
+  textStyle,
+}) => {
+  const runs = parseInlineRuns(text);
+  if (runs.length === 1 && runs[0].kind === "plain") {
+    return <Text selectable style={textStyle}>{runs[0].text}</Text>;
+  }
+  return (
+    <Text selectable style={textStyle}>
+      {runs.map((run, i) => {
+        if (run.kind === "strong") {
+          return <Text key={i} style={[textStyle, { fontWeight: "700" }]}>{run.text}</Text>;
+        }
+        if (run.kind === "em") {
+          return <Text key={i} style={[textStyle, { fontStyle: "italic" }]}>{run.text}</Text>;
+        }
+        if (run.kind === "code") {
+          return <Text key={i} style={textStyle}>{run.text}</Text>;
+        }
+        return <Text key={i}>{run.text}</Text>;
+      })}
+    </Text>
+  );
+};
+
+const ChunkBody: React.FC<{ chunk: Chunk; textStyle: object }> = ({ chunk, textStyle }) => {
+  if (chunk.kind === "section_label") {
+    return (
+      <View accessibilityRole="header">
+        <ChunkInline
+          text={chunk.text}
+          textStyle={[textStyle, { fontWeight: "600", color: textTokens.secondary }]}
+        />
+      </View>
+    );
+  }
+  if (chunk.kind === "bullet") {
+    return (
+      <View style={styles.listRow}>
+        <Text style={[textStyle, styles.bulletGlyph]}>•</Text>
+        <View style={styles.listText}>
+          <ChunkInline text={chunk.text} textStyle={textStyle} />
+        </View>
+      </View>
+    );
+  }
+  if (chunk.kind === "numbered") {
+    return (
+      <View style={styles.listRow}>
+        <Text style={[textStyle, styles.numberGlyph]}>{chunk.n ?? 1}.</Text>
+        <View style={styles.listText}>
+          <ChunkInline text={chunk.text} textStyle={textStyle} />
+        </View>
+      </View>
+    );
+  }
+  return <ChunkInline text={chunk.text} textStyle={textStyle} />;
+};
 
 function revealDelay(index: number, count: number): number {
   const total = semanticRevealDuration(count);
@@ -209,6 +263,7 @@ const styles = StyleSheet.create({
   listRow: { flexDirection: "row" },
   // Identical to ChatBubble's hanging bullet so reveal and settled rows match.
   bulletGlyph: { color: textTokens.tertiary, width: 6, marginRight: 6 },
+  numberGlyph: { color: textTokens.tertiary, width: 18, marginRight: 6 },
   listText: { flex: 1 },
 });
 

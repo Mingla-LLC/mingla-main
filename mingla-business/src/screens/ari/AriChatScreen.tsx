@@ -796,6 +796,7 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
           </>
         ) : (
           <MessageList
+            conversationId={chat.conversationId}
             messages={chat.messages}
             pendingAction={chat.pendingAction}
             isExecuting={confirm.isExecuting}

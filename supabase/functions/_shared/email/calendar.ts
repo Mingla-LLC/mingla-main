@@ -15,6 +15,7 @@
 // #9 violation flagged in the ORCH-0877 investigation.
 
 import { escapeHtml } from "./escape.ts";
+import { CHOSEN_DATE_LIST_CAP } from "./dateLine.ts";
 
 interface CalendarEventInput {
   title: string;
@@ -23,6 +24,15 @@ interface CalendarEventInput {
   locationText: string | null;
   isOnline: boolean;
   description: string;
+}
+
+/** #3281 PR6 — one calendar row per chosen date (override title/place). */
+export interface CalendarDateInput {
+  title: string;
+  startAtIso: string | null;
+  endAtIso?: string | null;
+  locationText: string | null;
+  description?: string;
 }
 
 export interface CalendarLinks {
@@ -136,6 +146,95 @@ export function buildCalendarLinks(
   return {
     googleUrl,
     outlookUrl,
+    icsContent,
+    icsFilename: "mingla-event.ics",
+  };
+}
+
+/**
+ * #3281 PR6 — ICS with one VEVENT per date (cap 60). Google/Outlook deep links
+ * still point at the first date (web compose is single-event); Apple uses the
+ * multi-event .ics attachment.
+ */
+export function buildMultiDateCalendarLinks(
+  dates: readonly CalendarDateInput[],
+  fallback: CalendarEventInput,
+): CalendarLinks | null {
+  const capped = dates
+    .filter((d) => typeof d.startAtIso === "string" && d.startAtIso.length > 0)
+    .slice(0, CHOSEN_DATE_LIST_CAP);
+  if (capped.length <= 1) {
+    const only = capped[0];
+    return buildCalendarLinks(
+      only
+        ? {
+          title: only.title,
+          startAtIso: only.startAtIso,
+          endAtIso: only.endAtIso ?? null,
+          locationText: only.locationText,
+          isOnline: fallback.isOnline,
+          description: only.description ?? fallback.description,
+        }
+        : fallback,
+    );
+  }
+
+  const firstLinks = buildCalendarLinks({
+    title: capped[0].title,
+    startAtIso: capped[0].startAtIso,
+    endAtIso: capped[0].endAtIso ?? null,
+    locationText: capped[0].locationText,
+    isOnline: fallback.isOnline,
+    description: capped[0].description ?? fallback.description,
+  });
+  if (!firstLinks) return null;
+
+  const dtstamp = formatUtcCompact(new Date());
+  const vevents: string[] = [];
+  for (const [index, day] of capped.entries()) {
+    const start = new Date(day.startAtIso!);
+    if (Number.isNaN(start.getTime())) continue;
+    const endIso = day.endAtIso ?? null;
+    const end = endIso ? new Date(endIso) : null;
+    const endValid = end !== null && !Number.isNaN(end.getTime());
+    const startCompact = formatUtcCompact(start);
+    const location = fallback.isOnline
+      ? "Online event"
+      : (day.locationText ?? "");
+    const uid = `mingla-${start.getTime().toString(36)}-${index}-${
+      Math.floor(Math.random() * 1e9).toString(36)
+    }@usemingla.com`;
+    vevents.push(
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${dtstamp}`,
+      `DTSTART:${startCompact}`,
+      ...(endValid ? [`DTEND:${formatUtcCompact(end!)}`] : []),
+      foldIcsLine(`SUMMARY:${icsEscape(day.title)}`),
+      foldIcsLine(
+        `DESCRIPTION:${icsEscape(day.description ?? fallback.description)}`,
+      ),
+      foldIcsLine(`LOCATION:${icsEscape(location)}`),
+      "STATUS:CONFIRMED",
+      "TRANSP:OPAQUE",
+      "END:VEVENT",
+    );
+  }
+  if (vevents.length === 0) return firstLinks;
+
+  const icsContent = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Mingla//Tickets//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    ...vevents,
+    "END:VCALENDAR",
+  ].join("\r\n") + "\r\n";
+
+  return {
+    googleUrl: firstLinks.googleUrl,
+    outlookUrl: firstLinks.outlookUrl,
     icsContent,
     icsFilename: "mingla-event.ics",
   };
