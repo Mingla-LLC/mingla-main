@@ -36,6 +36,7 @@ describe("#3988 media viewer component matrix", () => {
 
   it("wires authenticated browser download, iOS share and Android save", () => {
     expect(viewer).toContain('document.createElement("a")');
+    expect(viewer).toContain("SHARE-NON-CONTENT:file-export");
     expect(viewer).toContain("Share.share");
     expect(viewer).toContain("StorageAccessFramework.requestDirectoryPermissionsAsync");
     expect(preview).toContain("brandGroupFilePreviewRequest(fileId)");

@@ -189,6 +189,7 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
       const downloaded = await FileSystem.downloadAsync(request.uri, cacheUri, { headers: request.headers });
       downloadedUri = downloaded.uri;
       if (Platform.OS === "ios") {
+        // SHARE-NON-CONTENT:file-export
         await Share.share({ url: downloaded.uri });
       } else {
         const permission = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();

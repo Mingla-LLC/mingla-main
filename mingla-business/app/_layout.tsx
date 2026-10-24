@@ -275,17 +275,17 @@ function RootLayoutInner(): React.ReactElement {
   // deferred return (Rules-of-Hooks; preserves the ORCH-1098 all-hooks-run fix).
   const pathname = usePathname();
   useEffect(() => {
-    if (loading || !user?.id) return;
-    let current = true;
-    void syncBusinessMediaLanguage(user.id, () => current);
-    return () => { current = false; };
-  }, [loading, user?.id]);
-  useEffect(() => {
     if (Platform.OS !== "web") return;
     void initWebAnalytics().then(() => {
       captureHostPublicSearchPageView(pathname);
     });
   }, [pathname]);
+  useEffect(() => {
+    if (loading || !user?.id) return;
+    let current = true;
+    void syncBusinessMediaLanguage(user.id, () => current);
+    return () => { current = false; };
+  }, [loading, user?.id]);
   const currentBrandId = useCurrentBrandId();
   useEffect(() => {
     const nextUserId = user?.id ?? null;
