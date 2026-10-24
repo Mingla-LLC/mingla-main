@@ -1,11 +1,13 @@
 // ORCH-0785 — Public types for the shared transactional email module.
 
 import type { SenderIdentity } from "./senders.ts";
+import type { PurchaseBodyInput } from "./purchaseBody.ts";
 
 export type EmailVariant =
   | "ticket_confirmation_paid"
   | "ticket_confirmation_free"
   | "ticket_confirmation_pending"
+  | "purchase_message"
   | "generic_notification"
   | "admin_compose";
 
@@ -101,7 +103,10 @@ export type EmailContentBlock =
   }
   | { id?: string; type: "divider" };
 
-export type EmailBodyInput = TicketBodyInput | GenericBodyInput;
+export type EmailBodyInput =
+  | TicketBodyInput
+  | GenericBodyInput
+  | PurchaseBodyInput;
 
 export interface RenderInput {
   variant: EmailVariant;
