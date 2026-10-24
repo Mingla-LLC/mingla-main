@@ -1,8 +1,6 @@
 -- issue #3827 — keep manual name-based Admit on the same current-authority
 -- gate as QR scanning.
 --
--- MINGLA-INVARIANT: I-3827-MANUAL-ADMIT-CURRENT-AUTHORITY | issue #3827 | manual door search/admit and QR scan accept the same explicit scanners and current event_manager-or-higher brand authority.
-
 CREATE OR REPLACE FUNCTION public.issue_3827_can_door_scan(
   p_event_id uuid,
   p_user_id uuid

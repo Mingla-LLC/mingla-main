@@ -5,8 +5,6 @@
 -- projection that is only created with the event. Keep explicit scanner grants,
 -- but authorize current event_manager-or-higher brand authority directly.
 --
--- MINGLA-INVARIANT: I-3827-SCANNER-CURRENT-AUTHORITY | issue #3827 | current event_manager-or-higher brand authority can scan every event of that brand without an event_scanners projection; explicit event and accepted brand scanner grants remain valid.
-
 CREATE OR REPLACE FUNCTION public.biz_ticket_scan(
   p_event_id uuid,
   p_qr_payload text,

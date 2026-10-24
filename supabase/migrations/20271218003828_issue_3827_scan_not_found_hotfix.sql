@@ -5,8 +5,6 @@
 -- dereferences it and raises 55000 instead of returning result=not_found. Seed
 -- the response fields with typed NULLs before parsing the payload.
 --
--- MINGLA-INVARIANT: I-3827-SCANNER-CURRENT-AUTHORITY | issue #3827 | current event_manager-or-higher brand authority can scan every event of that brand without an event_scanners projection; explicit event and accepted brand scanner grants remain valid.
-
 CREATE OR REPLACE FUNCTION public.biz_ticket_scan(
   p_event_id uuid,
   p_qr_payload text,

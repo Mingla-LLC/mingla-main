@@ -2,6 +2,7 @@
 -- Runs the real post-replay biz_ticket_scan function.
 --
 -- MINGLA-INVARIANT: I-3827-SCANNER-CURRENT-AUTHORITY | issue #3827 | current event_manager-or-higher brand authority can scan every event of that brand without an event_scanners projection; explicit event and accepted brand scanner grants remain valid.
+-- MINGLA-INVARIANT: I-3827-MANUAL-ADMIT-CURRENT-AUTHORITY | issue #3827 | manual door search/admit and QR scan accept the same explicit scanners and current event_manager-or-higher brand authority.
 --
 -- Fails on revert: remove the effective-rank branch from biz_ticket_scan and
 -- H1/H2 fail with scanner_not_authorized.
