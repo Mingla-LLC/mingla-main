@@ -26,7 +26,7 @@ import {
 } from "./_memory-cache.ts";
 import { DiscoverOverloadedError, resolveDiscoverEntry } from "./_resolve-entry.ts";
 import { serveDiscoverBytes } from "./_response-bytes.ts";
-import { isDiscoverV2Request } from "./_v2_types.ts";
+import { isDiscoverV2Envelope, isDiscoverV2Request, validateDiscoverV2Request } from "./_v2_types.ts";
 import { handleDiscoverV2 } from "./_v2_handler.ts";
 
 const corsHeaders = {
@@ -96,7 +96,11 @@ serve(async (req: Request): Promise<Response> => {
     return jsonError({ error: "invalid_json" }, 400);
   }
 
-  if (isDiscoverV2Request(rawBody)) {
+  if (isDiscoverV2Envelope(rawBody)) {
+    const validationError = validateDiscoverV2Request(rawBody);
+    if (validationError || !isDiscoverV2Request(rawBody)) {
+      return jsonError({ error: validationError ?? "invalid_request" }, 400);
+    }
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     if (!supabaseUrl || !serviceKey) return jsonError({ error: "supabase_env_missing" }, 500);

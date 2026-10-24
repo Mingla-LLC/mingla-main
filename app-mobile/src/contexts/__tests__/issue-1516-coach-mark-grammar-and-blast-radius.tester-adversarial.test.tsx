@@ -86,6 +86,7 @@ function appMobileRoot() {
 const ROOT = appMobileRoot();
 const CONTEXT_PATH = path.join(ROOT, 'src/contexts/CoachMarkContext.tsx');
 const STEPS_PATH = path.join(ROOT, 'src/constants/coachMarkSteps.ts');
+const SKIP_STATE_PATH = path.join(ROOT, 'src/contexts/coachMarkSkipState.ts');
 const APP_INDEX_PATH = path.join(ROOT, 'app/index.tsx');
 const MIGRATION_PATH = path.join(
   ROOT, '..', 'supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql',
@@ -287,12 +288,14 @@ function makeHarness(opts) {
   const sb = makeSupabase(rows, fetchPlan);
   const navigations = [];
   const userBox = { id: userId };
+  const skipStateModule = loadModule(SKIP_STATE_PATH, {});
   const ctxModule = loadModule(CONTEXT_PATH, {
     react: rt.React,
     'react-native': {
       __esModule: true,
       Dimensions: { get: () => ({ width: 390, height: 844 }) },
       Platform: { OS: 'ios' },
+      BackHandler: { addEventListener: () => ({ remove() {} }) },
     },
     'react-native-safe-area-context': {
       __esModule: true,
@@ -301,6 +304,7 @@ function makeHarness(opts) {
     '../store/appStore': { __esModule: true, useAppStore: () => ({ user: userBox.id ? { id: userBox.id } : null }) },
     '../services/supabase': { __esModule: true, supabase: sb.supabase },
     '../constants/coachMarkSteps': stepsModule,
+    './coachMarkSkipState': skipStateModule,
     '../services/mixpanelService': {
       __esModule: true,
       mixpanelService: {

@@ -22,12 +22,12 @@ DECLARE
 BEGIN
   PERFORM pg_temp.t4073_assert(v_v1 LIKE '%discover_v2_event_base%',
     'v1 delegates to the canonical event eligibility reader');
-  PERFORM pg_temp.t4073_assert(v_base LIKE '%ed.is_master IS TRUE%'
-    AND v_base LIKE '%ed.end_at >= p_lower_bound%'
+  PERFORM pg_temp.t4073_assert(v_base LIKE '%master_ed.is_master IS TRUE%'
+    AND v_base LIKE '%occurrence.end_at>=p_lower_bound%'
     AND v_base LIKE '%issue_1931_event_ordinary_read_blocked%'
     AND v_base LIKE '%pg_brand_can_collect%'
     AND v_base LIKE '%business_event%format%online%',
-    'canonical event base retains master-date, privacy, paid-supply and online-carveout guards');
+    'canonical event base requires a master identity but selects the next visible recurrence with privacy, paid-supply and online-carveout guards');
   PERFORM pg_temp.t4073_assert(v_items LIKE '%tm_horizon_120%'
     AND v_items LIKE '%experience_stops%'
     AND v_items LIKE '%departure_country_code%country_code%'
@@ -47,6 +47,33 @@ BEGIN
   PERFORM pg_temp.t4073_assert(v_nearest LIKE '%distance_km<=500%'
     AND v_nearest LIKE '%concat_ws%' AND v_nearest LIKE '%country_code%',
     'nearest-city fallback is bounded and returns country-qualified labels');
+END
+$$;
+
+-- D8: the durable master may be historical while a visible recurrence remains.
+-- The canonical reader and v2 ordering must use that next occurrence instead
+-- of dropping the whole event at the ended-master gate.
+DO $$
+DECLARE
+  v_owner uuid:=gen_random_uuid(); v_brand uuid:=gen_random_uuid(); v_event uuid:=gen_random_uuid();
+  v_page jsonb; v_item jsonb;
+BEGIN
+  INSERT INTO auth.users(id,email) VALUES(v_owner,'i4073-recurrence-'||v_owner||'@example.test');
+  INSERT INTO public.creator_accounts(id,created_at,updated_at) VALUES(v_owner,now(),now());
+  INSERT INTO public.brands(id,account_id,name,slug,default_currency,created_at,updated_at)
+    VALUES(v_brand,v_owner,'I4073 recurrence','i4073-recurrence-'||v_brand,'USD',now(),now());
+  INSERT INTO public.events(id,brand_id,title,slug,event_type,status,visibility,timezone,currency,city,published_at,created_at,updated_at)
+    VALUES(v_event,v_brand,'Future recurrence','i4073-future-'||v_event,'event','scheduled','public','UTC','USD','#4073 Future City',now(),now(),now());
+  INSERT INTO public.event_dates(id,event_id,start_at,end_at,timezone,is_master) VALUES
+    (gen_random_uuid(),v_event,now()-interval '3 days',now()-interval '2 days','UTC',true),
+    (gen_random_uuid(),v_event,now()+interval '2 days',now()+interval '2 days 2 hours','UTC',false);
+  INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,quantity_total,is_unlimited,min_purchase_qty,max_purchase_qty,available_online,available_in_person,display_order,is_hidden,is_disabled)
+    VALUES(v_event,'Free',0,'USD',true,20,false,1,4,true,true,0,false,false);
+
+  v_page:=public.discover_v2_items('events',ARRAY['#4073 Future City'],0,0,50,'UTC','{}'::jsonb,0,10);
+  SELECT value INTO v_item FROM jsonb_array_elements(v_page->'items') WHERE value->>'id'=v_event::text;
+  PERFORM pg_temp.t4073_assert(v_item IS NOT NULL,'future recurrence survives an ended master');
+  PERFORM pg_temp.t4073_assert((v_item->>'startsAtUtc')::timestamptz>now(),'v2 emits and orders by the future recurrence');
 END
 $$;
 
@@ -134,6 +161,15 @@ SELECT pg_temp.t4073_assert(
   AND NOT has_function_privilege('authenticated','public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,integer,integer)','EXECUTE'),
   'v2 data reader is service-role only');
 SELECT pg_temp.t4073_assert(
+  has_function_privilege('service_role','public.discover_v2_from_price_minor(uuid)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.discover_v2_from_price_minor(uuid)','EXECUTE')
+  AND NOT has_function_privilege('authenticated','public.discover_v2_from_price_minor(uuid)','EXECUTE')
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_proc p, LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) acl
+    WHERE p.oid='public.discover_v2_from_price_minor(uuid)'::regprocedure
+      AND acl.grantee=0 AND acl.privilege_type='EXECUTE'),
+  'security-definer from-price authority is service-role only');
+SELECT pg_temp.t4073_assert(
   has_function_privilege('service_role','public.discover_v2_claim_tm_budget(date,integer)','EXECUTE')
   AND NOT has_function_privilege('anon','public.discover_v2_claim_tm_budget(date,integer)','EXECUTE'),
   'durable budget authority is service-role only');
@@ -147,5 +183,9 @@ SELECT pg_temp.t4073_assert(
   AND EXISTS(SELECT 1 FROM public.issue_2489_gate_carriers
     WHERE object_name='discover_v2_event_base' AND object_kind='function'),
   'privacy gate carriers include the canonical and v2 readers');
+
+SELECT pg_temp.t4073_assert(
+  public.discover_v2_url_encode_component('100% fun&games=now/yes?|GB')='100%25%20fun%26games%3Dnow%2Fyes%3F%7CGB',
+  'city-watch URL component encoder covers percent and reserved characters');
 
 ROLLBACK;

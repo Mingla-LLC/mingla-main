@@ -1,4 +1,4 @@
-import type { DiscoverFiltersV2, DiscoverFacetGroup } from "../../types/discoverFeed";
+import type { DiscoverFiltersV2, DiscoverFacetGroup, DiscoverFacetsResponse } from "../../types/discoverFeed";
 
 const FIELD_BY_GROUP: Record<DiscoverFacetGroup["id"], string> = {
   when: "when",
@@ -20,6 +20,12 @@ export function discoverFilterSelectionCount(filters: DiscoverFiltersV2): number
     if (Array.isArray(value)) return count + value.length;
     return value == null ? count : count + 1;
   }, 0);
+}
+
+export function discoverCountIsCapped(
+  tm: DiscoverFacetsResponse["selected"]["tm"],
+): boolean {
+  return tm?.included === true && tm.capped === true;
 }
 export function selectedDiscoverFilterLabels(
   filters: DiscoverFiltersV2,

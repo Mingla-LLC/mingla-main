@@ -113,7 +113,7 @@ export interface DiscoverFacetsResponse {
     kind: DiscoverKind;
     total: number;
     minglaTotal: number;
-    tm: { included: boolean; total: number; capped: boolean; error: string | null } | null;
+    tm: { included: boolean; total: number; capped: boolean; poolCoverageEnd: string | null; error: string | null } | null;
   };
   groups: DiscoverFacetGroup[];
   priceBands: DiscoverPriceBands | null;

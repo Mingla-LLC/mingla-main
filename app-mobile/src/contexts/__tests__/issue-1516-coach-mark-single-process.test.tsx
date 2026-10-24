@@ -68,6 +68,7 @@ function appMobileRoot() {
 const ROOT = appMobileRoot();
 const CONTEXT_PATH = path.join(ROOT, 'src/contexts/CoachMarkContext.tsx');
 const STEPS_PATH = path.join(ROOT, 'src/constants/coachMarkSteps.ts');
+const SKIP_STATE_PATH = path.join(ROOT, 'src/contexts/coachMarkSkipState.ts');
 
 const USER_ID = '45316d80-cc00-49c9-9d69-882338dc016c';
 
@@ -301,6 +302,7 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
   const sb = makeSupabase(initialStep, fetchPlan);
   const navigations = [];
   const stepsModule = sharedRealSteps || loadModule(STEPS_PATH, {});
+  const skipStateModule = loadModule(SKIP_STATE_PATH, {});
 
   const ctxModule = loadModule(CONTEXT_PATH, {
     react: rt.React,
@@ -308,6 +310,7 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
       __esModule: true,
       Dimensions: { get: () => ({ width: 390, height: 844 }) },
       Platform: { OS: 'ios' },
+      BackHandler: { addEventListener: () => ({ remove() {} }) },
     },
     'react-native-safe-area-context': {
       __esModule: true,
@@ -316,6 +319,7 @@ function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
     '../store/appStore': { __esModule: true, useAppStore: () => ({ user: { id: USER_ID } }) },
     '../services/supabase': { __esModule: true, supabase: sb.supabase },
     '../constants/coachMarkSteps': stepsModule,
+    './coachMarkSkipState': skipStateModule,
     '../services/mixpanelService': {
       __esModule: true,
       mixpanelService: {

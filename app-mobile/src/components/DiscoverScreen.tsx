@@ -14,9 +14,10 @@ import ExpandedCardModal from "./ExpandedCardModal";
 import { toastManager } from "./ui/Toast";
 import type { DiscoverPillRowHandle } from "./discover/DiscoverPillRow";
 import { FilterDropdown } from "./discover/FilterDropdown";
-import { discoverFilterSelectionCount, selectedDiscoverFilterLabels } from "./discover/discoverFilterState";
+import { discoverCountIsCapped, discoverFilterSelectionCount, selectedDiscoverFilterLabels } from "./discover/discoverFilterState";
 import { useCoachMark } from "../hooks/useCoachMark";
 import { useCoachMarkContext } from "../contexts/CoachMarkContext";
+import { shouldSkipDiscoverPillCoachStep } from "../contexts/coachMarkSkipState";
 import { useDiscoverCityWatch } from "../hooks/useDiscoverCityWatch";
 import { useDiscoverFacets } from "../hooks/useDiscoverFacets";
 import { useDiscoverFeed } from "../hooks/useDiscoverFeed";
@@ -188,10 +189,16 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }, [coachPills.isActive]);
 
   useEffect(() => {
-    if (coachPills.isActive && !facets.isLoading && visibleKinds.length < 2) {
+    if (shouldSkipDiscoverPillCoachStep({
+      active: coachPills.isActive,
+      loading: facets.isLoading,
+      error: Boolean(facets.error),
+      hasData: Boolean(facets.data),
+      visibleKindCount: visibleKinds.length,
+    })) {
       skipCoachStep(4);
     }
-  }, [coachPills.isActive, facets.isLoading, skipCoachStep, visibleKinds.length]);
+  }, [coachPills.isActive, facets.data, facets.error, facets.isLoading, skipCoachStep, visibleKinds.length]);
 
   useEffect(() => {
     if (visibleKinds.length < 2 || visibleKinds.length === DISCOVER_KIND_ORDER.length) {
@@ -217,7 +224,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const total = facets.data?.selected.total ?? 0;
   const countLabel = visibleKinds.length === 0
     ? t("count.nothing", "Nothing yet")
-    : facets.data?.selected.tm?.capped
+    : discoverCountIsCapped(facets.data?.selected.tm ?? null)
       ? t("count.capped", { count: total, defaultValue: `${total}+` })
       : t(`count.${selectedKind}`, { count: total, defaultValue: `${total}` });
   const kindLabels: Record<DiscoverKind, string> = { events: t("pill.events", "Events"), experiences: t("pill.experiences", "Experiences"), trips: t("pill.trips", "Trips"), stays: t("pill.stays", "Stays") };

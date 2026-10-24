@@ -5,6 +5,13 @@ import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
 import { COACH_STEPS, COACH_STEP_COUNT, CoachStep } from '../constants/coachMarkSteps';
 import { mixpanelService } from '../services/mixpanelService';
+import {
+  coachProgressFor,
+  nextUnskippedCoachStep,
+  previousUnskippedCoachStep,
+  readSkippedCoachSteps,
+  rememberSkippedCoachStep,
+} from './coachMarkSkipState';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -164,7 +171,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [scrollLockActive, setScrollLockActive] = useState(false);
   const [skippedStepIds, setSkippedStepIds] = useState<ReadonlySet<number>>(
-    () => new Set(),
+    () => readSkippedCoachSteps(user?.id),
   );
   const [stepCopyOverrides, setStepCopyOverrides] = useState<ReadonlyMap<number, CoachStepCopyOverride>>(
     () => new Map(),
@@ -190,6 +197,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
   const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
+
+  useEffect(() => {
+    if (user?.id) setSkippedStepIds(readSkippedCoachSteps(user.id));
+  }, [user?.id]);
 
   // ── Fetch step from DB on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -282,6 +293,16 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     };
     write(1);
   }, []);
+
+  // A provider remount can finish before the async write that advanced past a
+  // runtime-skipped step. The module-scoped skip set is the session authority:
+  // immediately renumber progress and repair the durable DB pointer.
+  useEffect(() => {
+    if (!skippedStepIds.has(currentStep)) return;
+    const next = nextUnskippedCoachStep(currentStep, COACH_STEP_COUNT, skippedStepIds);
+    setCurrentStep(next);
+    persistStep(next);
+  }, [currentStep, persistStep, skippedStepIds]);
 
   // ── Start tour after delay if step is 0 ─────────────────────────────────
   useEffect(() => {
@@ -590,8 +611,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       });
     }
 
-    let newStep = currentStep + 1;
-    while (newStep <= COACH_STEP_COUNT && skippedStepIds.has(newStep)) newStep += 1;
+    const newStep = nextUnskippedCoachStep(currentStep, COACH_STEP_COUNT, skippedStepIds);
 
     if (newStep > COACH_STEP_COUNT) {
       setOverlayVisible(false);
@@ -614,12 +634,12 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   // ── Previous step ───────────────────────────────────────────────────────
   const prevStep = useCallback((): void => {
     if (currentStep <= 1) return;
-    let previous = currentStep - 1;
-    while (previous > 1 && skippedStepIds.has(previous)) previous -= 1;
+    const previous = previousUnskippedCoachStep(currentStep, skippedStepIds);
     navigateAndTransition(previous, 'back');
   }, [currentStep, navigateAndTransition, skippedStepIds]);
 
   const skipStep = useCallback((stepId: number): void => {
+    const nextSkipped = rememberSkippedCoachStep(userIdRef.current, stepId);
     setSkippedStepIds((previous) => {
       if (previous.has(stepId)) return previous;
       const next = new Set(previous);
@@ -627,11 +647,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       return next;
     });
     if (currentStep === stepId) {
-      let next = stepId + 1;
-      while (next <= COACH_STEP_COUNT && skippedStepIds.has(next)) next += 1;
+      const next = nextUnskippedCoachStep(stepId, COACH_STEP_COUNT, nextSkipped);
       navigateAndTransition(next, 'forward');
     }
-  }, [currentStep, navigateAndTransition, skippedStepIds]);
+  }, [currentStep, navigateAndTransition]);
 
   const setStepCopyOverride = useCallback((stepId: number, override: CoachStepCopyOverride | null): void => {
     setStepCopyOverrides((previous) => {
@@ -683,10 +702,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const currentStepCopyOverride = isCoachActive
     ? stepCopyOverrides.get(currentStep) ?? null
     : null;
-  const coachProgress = useMemo(() => ({
-    current: COACH_STEPS.filter((step) => step.id <= currentStep && !skippedStepIds.has(step.id)).length,
-    total: COACH_STEP_COUNT - skippedStepIds.size,
-  }), [currentStep, skippedStepIds]);
+  const coachProgress = useMemo(
+    () => coachProgressFor(currentStep, COACH_STEPS.map((step) => step.id), skippedStepIds),
+    [currentStep, skippedStepIds],
+  );
 
   // ORCH-0679 Wave 2A: useMemo on value (I-PROVIDER-VALUE-MEMOIZED) — context
   // value identity is stable across renders when no underlying state/refs change.

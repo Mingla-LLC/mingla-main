@@ -1,3 +1,5 @@
+import { localWallClockToUtcInstant } from "../_shared/timezone.ts";
+
 interface TicketmasterPoolEvent {
   id: string;
   eventName: string;
@@ -5,6 +7,7 @@ interface TicketmasterPoolEvent {
   image: string;
   localDate: string;
   localTime: string | null;
+  dateTimeUTC: string | null;
   genre: string | null;
   genreId: string | null;
   subGenreId: string | null;
@@ -18,6 +21,8 @@ interface TicketmasterPoolEvent {
 
 export interface TicketmasterPool {
   items: TicketmasterPoolEvent[];
+  /** Start instant of the final date-sorted item retained in the pool. */
+  poolCoverageEnd: string | null;
   capped: boolean;
   partial: boolean;
   error: string | null;
@@ -44,6 +49,45 @@ const PAGE_SIZE = 200;
 const DAILY_LIMIT = 2_500;
 const cache = new Map<string, { pool: TicketmasterPool; at: number }>();
 const builds = new Map<string, Promise<TicketmasterPool>>();
+
+export function ticketmasterPoolMetadata(
+  items: readonly TicketmasterPoolEvent[],
+  totalElements: number,
+  partial: boolean,
+  timezone = "UTC",
+): Pick<TicketmasterPool, "capped" | "poolCoverageEnd"> {
+  const last = items.at(-1);
+  let poolCoverageEnd = last?.dateTimeUTC ?? null;
+  if (!poolCoverageEnd && last?.localDate) {
+    try {
+      poolCoverageEnd = localWallClockToUtcInstant(
+        `${last.localDate}T${last.localTime ?? "00:00:00"}`,
+        timezone,
+      );
+    } catch {
+      // A malformed upstream date must not make the complete pool unreadable.
+      // Without a trustworthy coverage instant, capped windows stay conservative.
+      poolCoverageEnd = null;
+    }
+  }
+  return {
+    // A partial build is also incomplete even when TM's reported total happens
+    // to equal the rows received before a failed page.
+    capped: partial || totalElements > items.length,
+    poolCoverageEnd,
+  };
+}
+
+export function ticketmasterWindowIsCapped(
+  pool: Pick<TicketmasterPool, "capped" | "poolCoverageEnd">,
+  windowEndUtc: string,
+): boolean {
+  if (!pool.capped) return false;
+  if (!pool.poolCoverageEnd) return true;
+  const coverage = Date.parse(pool.poolCoverageEnd);
+  const end = Date.parse(windowEndUtc);
+  return !Number.isFinite(coverage) || !Number.isFinite(end) || end > coverage;
+}
 
 function localDay(timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -127,7 +171,13 @@ async function buildPool(client: TicketmasterPoolStore, request: PoolRequest): P
     if (Date.now() >= deadline) { partial = true; break; }
   }
   const deduped = [...new Map(items.map((item) => [item.id, item])).values()].slice(0, 1_000);
-  return { items: deduped, capped: partial || first.total > deduped.length, partial, error: poolError, fromCache: false };
+  return {
+    items: deduped,
+    ...ticketmasterPoolMetadata(deduped, first.total, partial, request.timezone),
+    partial,
+    error: poolError,
+    fromCache: false,
+  };
 }
 
 async function readL2(client: TicketmasterPoolStore, key: string): Promise<{ pool: TicketmasterPool; at: number } | null> {
@@ -192,6 +242,11 @@ export async function resolveTicketmasterPool(client: TicketmasterPoolStore, req
   try {
     return await refreshPool(client, request, key);
   } catch (error) {
-    return { items: [], capped: false, partial: true, error: error instanceof Error ? error.message : "tm_unavailable", fromCache: false };
+    return { items: [], poolCoverageEnd: null, capped: false, partial: true, error: error instanceof Error ? error.message : "tm_unavailable", fromCache: false };
   }
+}
+
+export function resetTicketmasterPoolForTests(): void {
+  cache.clear();
+  builds.clear();
 }

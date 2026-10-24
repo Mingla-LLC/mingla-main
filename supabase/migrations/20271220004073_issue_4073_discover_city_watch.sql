@@ -24,6 +24,27 @@ REVOKE ALL ON TABLE public.discover_city_watch FROM PUBLIC,anon,authenticated;
 GRANT SELECT,DELETE ON TABLE public.discover_city_watch TO authenticated;
 GRANT ALL ON TABLE public.discover_city_watch TO service_role;
 
+CREATE OR REPLACE FUNCTION public.discover_v2_url_encode_component(p_value text)
+RETURNS text LANGUAGE plpgsql IMMUTABLE SET search_path=''
+AS $function$
+DECLARE v_bytes bytea:=pg_catalog.convert_to(COALESCE(p_value,''),'UTF8'); v_out text:=''; v_byte integer; v_index integer;
+BEGIN
+  FOR v_index IN 0..pg_catalog.length(v_bytes)-1 LOOP
+    v_byte:=pg_catalog.get_byte(v_bytes,v_index);
+    IF (v_byte BETWEEN 48 AND 57) OR (v_byte BETWEEN 65 AND 90) OR (v_byte BETWEEN 97 AND 122)
+      OR v_byte IN (45,46,95,126) THEN
+      v_out:=v_out||pg_catalog.chr(v_byte);
+    ELSE
+      v_out:=v_out||'%'||pg_catalog.upper(pg_catalog.lpad(pg_catalog.to_hex(v_byte),2,'0'));
+    END IF;
+  END LOOP;
+  RETURN v_out;
+END;
+$function$;
+ALTER FUNCTION public.discover_v2_url_encode_component(text) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.discover_v2_url_encode_component(text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.discover_v2_url_encode_component(text) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.discover_city_watch_subscribe(p_name text,p_state_code text,p_country_code text,p_lat float8,p_lng float8,p_label text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=''
 AS $function$
@@ -64,7 +85,7 @@ BEGIN
     IF v_total>0 THEN
       FOR v_watch IN SELECT w.*,COALESCE(p.preferred_language,'en') lang FROM public.discover_city_watch w LEFT JOIN public.profiles p ON p.id=w.user_id WHERE w.city_key=v_city.city_key AND w.notified_at IS NULL FOR UPDATE OF w SKIP LOCKED LOOP
         INSERT INTO public.notification_outbox(category_key,user_id,brand_id,country_code,payload,idempotency_key,status)
-        VALUES('discover_city_plans_live',v_watch.user_id,NULL,v_watch.country_code,jsonb_build_object('city_label',v_watch.city_label,'city_key',v_watch.city_key,'lang',v_watch.lang,'deep_link','mingla://discover?watchCity='||replace(v_watch.city_key,' ','%20')),'discover_city_plans_live:'||v_watch.id::text,'pending')
+        VALUES('discover_city_plans_live',v_watch.user_id,NULL,v_watch.country_code,jsonb_build_object('city_label',v_watch.city_label,'city_key',v_watch.city_key,'lang',v_watch.lang,'deep_link','mingla://discover?watchCity='||public.discover_v2_url_encode_component(v_watch.city_key)),'discover_city_plans_live:'||v_watch.id::text,'pending')
         ON CONFLICT(idempotency_key) DO NOTHING;
         UPDATE public.discover_city_watch SET notified_at=now() WHERE id=v_watch.id AND notified_at IS NULL;
         v_enqueued:=v_enqueued+1;

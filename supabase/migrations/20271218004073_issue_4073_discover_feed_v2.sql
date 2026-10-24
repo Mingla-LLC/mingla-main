@@ -463,9 +463,15 @@ AS $function$
   )
   FROM public.events e
   JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
-  JOIN public.event_dates ed ON ed.event_id=e.id
-    AND ed.is_master IS TRUE
-    AND ed.end_at >= p_lower_bound
+  JOIN public.event_dates master_ed ON master_ed.event_id=e.id
+    AND master_ed.is_master IS TRUE
+  JOIN LATERAL (
+    SELECT occurrence.start_at,occurrence.end_at,occurrence.timezone
+    FROM public.event_dates occurrence
+    WHERE occurrence.event_id=e.id AND occurrence.end_at>=p_lower_bound
+      AND (p_upper_start IS NULL OR occurrence.start_at<=p_upper_start)
+    ORDER BY occurrence.start_at,occurrence.id LIMIT 1
+  ) ed ON true
   WHERE e.deleted_at IS NULL
     AND e.visibility='public'
     AND (e.event_type='event' OR (e.event_type='rsvp' AND e.rsvp_discoverable=true))
@@ -481,7 +487,6 @@ AS $function$
       OR (e.is_online IS TRUE AND lower(btrim(COALESCE(e.theme->'business_event'->>'format',''),
         E' \t\n\r\f\v'||chr(160)))='online')
     )
-    AND (p_upper_start IS NULL OR ed.start_at <= p_upper_start)
     AND (p_party_types IS NULL OR cardinality(p_party_types)=0 OR e.party_types && p_party_types)
     AND (p_vibe_tags IS NULL OR cardinality(p_vibe_tags)=0 OR e.vibe_tags && p_vibe_tags)
     AND (p_music_genres IS NULL OR cardinality(p_music_genres)=0 OR e.music_genres && p_music_genres)
@@ -910,6 +915,7 @@ ALTER FUNCTION public.discover_v2_nearest_city(float8,float8) OWNER TO postgres;
 ALTER FUNCTION public.discover_v2_claim_tm_budget(date,integer) OWNER TO postgres;
 ALTER FUNCTION public.discover_v2_tm_budget_available(date,integer) OWNER TO postgres;
 ALTER FUNCTION public.discover_v2_facets_exact(text[],float8,float8,float8,text,text,jsonb,text) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.discover_v2_from_price_minor(uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.discover_v2_event_base(text[],timestamptz,timestamptz,text[],text[],text[],float8,float8,float8) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.discover_v2_stay_room_available(uuid,date,date,integer) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.discover_v2_city_context(text[],float8,float8,float8,text) FROM PUBLIC,anon,authenticated;
@@ -921,6 +927,7 @@ REVOKE ALL ON FUNCTION public.discover_v2_claim_tm_budget(date,integer) FROM PUB
 REVOKE ALL ON FUNCTION public.discover_v2_tm_budget_available(date,integer) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.discover_v2_facets_exact(text[],float8,float8,float8,text,text,jsonb,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.discover_v2_event_base(text[],timestamptz,timestamptz,text[],text[],text[],float8,float8,float8) TO service_role;
+GRANT EXECUTE ON FUNCTION public.discover_v2_from_price_minor(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.discover_v2_stay_room_available(uuid,date,date,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.discover_v2_city_context(text[],float8,float8,float8,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.discover_v2_items(text,text[],float8,float8,float8,text,jsonb,int,int) TO service_role;

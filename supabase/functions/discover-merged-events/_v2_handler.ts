@@ -1,10 +1,10 @@
-import { PARTY_TYPE_SLUGS, VIBE_TAG_SLUGS, MUSIC_GENRE_SLUGS, isSubsetOf } from "../_shared/eventTaxonomy.ts";
+import { PARTY_TYPE_SLUGS, VIBE_TAG_SLUGS, MUSIC_GENRE_SLUGS, isSubsetOf, mapMinglaMusicGenresToTmSlugs } from "../_shared/eventTaxonomy.ts";
 import { resolveTmClassification } from "../_shared/ticketmasterClassifications.ts";
 import { discoverCurrency } from "../_shared/discoverCurrency.ts";
 import { discoverPriceBandCatalog, discoverPriceBands, type DiscoverPriceBandSpec } from "../_shared/discoverPriceBands.ts";
 import { buildDiscoverV2Key } from "./_v2_key.ts";
 import { DISCOVER_KINDS, type DiscoverV2Request } from "./_v2_types.ts";
-import { resolveTicketmasterPool, type TicketmasterPool } from "./_v2_tm_pool.ts";
+import { resolveTicketmasterPool, ticketmasterWindowIsCapped, type TicketmasterPool } from "./_v2_tm_pool.ts";
 
 type RpcClient = {
   rpc: (name: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string } | null }>;
@@ -48,11 +48,13 @@ function localWall(iso: string, timezone: string): string {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
-async function tmWindow(client: RpcClient, timezone: string): Promise<string | null> {
-  const { data, error } = await client.rpc("discover_v2_window", { p_when: "tm_horizon_120", p_tz: timezone, p_now: new Date().toISOString() });
+interface TmWindow { localStartEndDateTime: string; endUtc: string }
+
+async function tmWindow(client: RpcClient, timezone: string, when: string): Promise<TmWindow | null> {
+  const { data, error } = await client.rpc("discover_v2_window", { p_when: when, p_tz: timezone, p_now: new Date().toISOString() });
   if (error) return null;
   const range = rangeBounds(data);
-  return range ? `${localWall(range.start, timezone)},${localWall(range.end, timezone)}` : null;
+  return range ? { localStartEndDateTime: `${localWall(range.start, timezone)},${localWall(range.end, timezone)}`, endUtc: range.end } : null;
 }
 
 function priceOption(item: TicketmasterPool["items"][number]): string | null {
@@ -65,11 +67,11 @@ function priceOption(item: TicketmasterPool["items"][number]): string | null {
   return `band_${index === -1 ? bands.edgesMinor.length + 1 : index + 1}`;
 }
 
-function localDateParts(timezone: string, date = new Date()): { iso: string; isoWeekday: number } {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }).formatToParts(date);
+function localDateParts(timezone: string, date = new Date()): { iso: string; isoWeekday: number; time: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(date);
   const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].indexOf(read("weekday")) + 1;
-  return { iso: `${read("year")}-${read("month")}-${read("day")}`, isoWeekday: weekday };
+  return { iso: `${read("year")}-${read("month")}-${read("day")}`, isoWeekday: weekday, time: `${read("hour")}:${read("minute")}:${read("second")}` };
 }
 
 function addUtcDays(iso: string, days: number): string {
@@ -78,28 +80,39 @@ function addUtcDays(iso: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function tmDateMatches(localDate: string, when: "tomorrow" | "weekend" | undefined, timezone: string): boolean {
+export function tmDateMatches(
+  localDate: string,
+  localTime: string | null,
+  when: "tomorrow" | "weekend" | undefined,
+  timezone: string,
+  now = new Date(),
+): boolean {
   if (!when) return true;
-  const today = localDateParts(timezone);
+  const today = localDateParts(timezone, now);
   if (when === "tomorrow") return localDate === addUtcDays(today.iso, 1);
-  const fridayOffset = today.isoWeekday === 6 || today.isoWeekday === 7 ? 0 : (5 - today.isoWeekday + 7) % 7;
-  const start = addUtcDays(today.iso, fridayOffset);
-  const end = addUtcDays(start, today.isoWeekday === 6 ? 2 : today.isoWeekday === 7 ? 1 : 3);
-  return localDate >= start && localDate < end;
+  const fridayOffset = today.isoWeekday === 6 ? -1 : today.isoWeekday === 7 ? -2 : (5 - today.isoWeekday + 7) % 7;
+  const friday = addUtcDays(today.iso, fridayOffset);
+  const weekendStarted = today.isoWeekday > 5 || (today.isoWeekday === 5 && today.time >= "18:00:00");
+  const start = weekendStarted ? `${today.iso}T${today.time}` : `${friday}T18:00:00`;
+  const end = `${addUtcDays(friday, 3)}T00:00:00`;
+  const eventStart = `${localDate}T${localTime ?? "00:00:00"}`;
+  return eventStart >= start && eventStart < end;
 }
 
-function filterTm(pool: TicketmasterPool, request: DiscoverV2Request, timezone: string): TicketmasterPool["items"] {
+export function filterTm(pool: TicketmasterPool, request: DiscoverV2Request, timezone: string, now = new Date()): TicketmasterPool["items"] {
   if (request.filters.kind !== "events") return [];
   const filters = request.filters.f;
   if ((filters.partyTypes?.length ?? 0) > 0 || (filters.vibeTags?.length ?? 0) > 0) return [];
   let allowedGenreIds: Set<string> | null = null;
   if ((filters.musicGenres?.length ?? 0) > 0) {
-    const resolved = resolveTmClassification("music", filters.musicGenres ?? []);
+    const mapped = mapMinglaMusicGenresToTmSlugs(filters.musicGenres ?? []);
+    if (mapped.tmMappable.length === 0) return [];
+    const resolved = resolveTmClassification("music", mapped.tmMappable);
     allowedGenreIds = new Set([...resolved.genreIds, ...resolved.subGenreIds]);
     if (allowedGenreIds.size === 0) return [];
   }
   return pool.items.filter((item) => {
-    if (!tmDateMatches(item.localDate, filters.when, timezone)) return false;
+    if (!tmDateMatches(item.localDate, item.localTime, filters.when, timezone, now)) return false;
     if (allowedGenreIds && !allowedGenreIds.has(item.genreId ?? "") && !allowedGenreIds.has(item.subGenreId ?? "")) return false;
     if ((filters.price?.length ?? 0) > 0 && !filters.price?.includes(priceOption(item) ?? "")) return false;
     return true;
@@ -170,11 +183,11 @@ function mergeTmFacetCounts(
   return groups;
 }
 
-function encodeCursor(value: { m: number; t: number; k: string }): string {
+export function encodeCursor(value: { m: number; t: number; k: string }): string {
   return btoa(JSON.stringify({ v: 2, ...value })).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-function decodeCursor(value: string | null | undefined, key: string): { m: number; t: number } | null {
+export function decodeCursor(value: string | null | undefined, key: string): { m: number; t: number } | null {
   if (!value) return { m: 0, t: 0 };
   try {
     const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
@@ -185,6 +198,10 @@ function decodeCursor(value: string | null | undefined, key: string): { m: numbe
 
 function tmCard(item: TicketmasterPool["items"][number]) {
   return { source: "ticketmaster", kind: "event", id: item.id, title: item.eventName, venueName: item.venueName, imageUrl: item.image, startsLocalDate: item.localDate, startsLocalTime: item.localTime, genre: item.genre, price: item.priceCurrency ? { currency: item.priceCurrency, minMajor: item.priceMin, maxMajor: item.priceMax } : null, ticketStatus: item.ticketStatus, ticketUrl: item.ticketUrl, raw: item };
+}
+
+export function shouldLoadTicketmaster(request: Pick<DiscoverV2Request, "op" | "filters">): boolean {
+  return request.op === "facets" || request.filters.kind === "events";
 }
 
 export async function handleDiscoverV2(request: DiscoverV2Request, client: RpcClient, jsonError: ErrorResponse): Promise<Response> {
@@ -202,8 +219,13 @@ export async function handleDiscoverV2(request: DiscoverV2Request, client: RpcCl
   const { data: generationData, error: generationError } = await client.rpc("issue_2009_event_discovery_generation");
   const generation = generationError ? `unavailable:${crypto.randomUUID()}` : String(generationData ?? "0");
   const key = buildDiscoverV2Key(request, generation, timezone, currency);
-  const window = request.filters.kind === "events" ? await tmWindow(client, timezone) : null;
-  const tmPool = window ? await resolveTicketmasterPool(client, { anchor: request.anchor, localStartEndDateTime: window, timezone }) : { items: [], capped: false, partial: false, error: null, fromCache: false };
+  const horizonWindow = shouldLoadTicketmaster(request) ? await tmWindow(client, timezone, "tm_horizon_120") : null;
+  const selectedWindow = request.filters.kind === "events" && request.filters.f.when
+    ? await tmWindow(client, timezone, request.filters.f.when)
+    : horizonWindow;
+  const tmPool = horizonWindow
+    ? await resolveTicketmasterPool(client, { anchor: request.anchor, localStartEndDateTime: horizonWindow.localStartEndDateTime, timezone })
+    : { items: [], poolCoverageEnd: null, capped: false, partial: false, error: null, fromCache: false };
   const selectedTm = filterTm(tmPool, request, timezone);
   const sqlFilters = {
     ...request.filters.f,
@@ -225,7 +247,10 @@ export async function handleDiscoverV2(request: DiscoverV2Request, client: RpcCl
     const selected = (result.selected ?? {}) as Record<string, unknown>;
     const minglaTotal = Number(selected.minglaTotal ?? selected.total ?? 0);
     const groups = mergeTmFacetCounts(result.groups, tmPool, request, timezone, bands);
-    return jsonError({ ...result, contract: 2, city: { key: result.cityKey ?? "", tz: timezone, tzSource: context.tzSource === "supply" ? "supply" : "device", currency, label: request.anchor.name }, kinds, selected: { ...selected, kind: request.filters.kind, minglaTotal, total: minglaTotal + tmTotal, tm: request.filters.kind === "events" ? { included: true, total: tmTotal, capped: tmPool.capped, error: tmPool.error } : null }, groups, priceBands: bands, generatedAt: new Date().toISOString() });
+    const selectedCapped = request.filters.kind === "events" && selectedWindow
+      ? ticketmasterWindowIsCapped(tmPool, selectedWindow.endUtc)
+      : false;
+    return jsonError({ ...result, contract: 2, city: { key: result.cityKey ?? "", tz: timezone, tzSource: context.tzSource === "supply" ? "supply" : "device", currency, label: request.anchor.name }, kinds, selected: { ...selected, kind: request.filters.kind, minglaTotal, total: minglaTotal + tmTotal, tm: request.filters.kind === "events" ? { included: true, total: tmTotal, capped: selectedCapped, poolCoverageEnd: tmPool.poolCoverageEnd, error: tmPool.error } : null }, groups, priceBands: bands, generatedAt: new Date().toISOString() });
   }
 
   const cursor = decodeCursor(request.cursor, key);
