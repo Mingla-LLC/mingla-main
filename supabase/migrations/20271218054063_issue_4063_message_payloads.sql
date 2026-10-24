@@ -43,6 +43,92 @@ COMMENT ON TABLE public.issue_4063_switches IS
 COMMENT ON FUNCTION public.issue_4063_switch_on(text) IS
   '#4063: fail-closed switch reader used by SECURITY DEFINER notification producers.';
 
+CREATE OR REPLACE FUNCTION public.rsvp_prepare_notification()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+  v_guest public.event_rsvp_guests%ROWTYPE;
+  v_primary public.event_rsvps%ROWTYPE;
+  v_enrich jsonb := '{}'::jsonb;
+BEGIN
+  SELECT * INTO v_primary
+    FROM public.event_rsvps
+   WHERE id = NEW.rsvp_id;
+  SELECT * INTO v_guest
+    FROM public.event_rsvp_guests
+   WHERE rsvp_id = NEW.rsvp_id
+     AND (
+       id::text = nullif(NEW.payload->>'guestId','')
+       OR qr_code = nullif(NEW.payload->>'qrCode','')
+       OR lower(email) = lower(coalesce(NEW.recipient, ''))
+     )
+   ORDER BY CASE
+     WHEN id::text = nullif(NEW.payload->>'guestId','') THEN 0
+     ELSE 1
+   END
+   LIMIT 1;
+
+  IF (NEW.payload->>'role') = 'guest' THEN
+    NEW.payload := NEW.payload || jsonb_strip_nulls(jsonb_build_object(
+      'entityId', v_guest.id,
+      'guestId', v_guest.id,
+      'recipientName', v_guest.name,
+      'recipientEmail', v_guest.email,
+      'recipientPhone', v_guest.phone,
+      'matchedUserId', v_guest.matched_user_id,
+      'recoveryCreatedAt', v_guest.pass_recovery_token_created_at
+    ));
+  ELSE
+    NEW.payload := NEW.payload || jsonb_strip_nulls(jsonb_build_object(
+      'entityId', v_primary.id,
+      'recipientName', v_primary.guest_name,
+      'recipientEmail', v_primary.guest_email,
+      'recipientPhone', v_primary.guest_phone,
+      'primaryUserId', v_primary.user_id,
+      'recoveryCreatedAt', v_primary.pass_recovery_token_created_at
+    ));
+  END IF;
+
+  SELECT jsonb_strip_nulls(jsonb_build_object(
+    'eventId', event.id,
+    'eventName', event.title,
+    'brandName', brand.name,
+    'eventStartAt', master_date.start_at,
+    'eventEndAt', master_date.end_at,
+    'eventTimezone', coalesce(master_date.timezone, event.timezone),
+    'venueLine', event.location_text,
+    'leadName', CASE
+      WHEN (NEW.payload->>'role') = 'guest' THEN v_guest.name
+      ELSE NULL
+    END,
+    'claimed', CASE
+      WHEN (NEW.payload->>'role') = 'guest'
+        THEN v_guest.matched_user_id IS NOT NULL
+      ELSE v_primary.user_id IS NOT NULL
+    END
+  ))
+    INTO v_enrich
+    FROM public.events AS event
+    JOIN public.brands AS brand ON brand.id = event.brand_id
+    LEFT JOIN LATERAL (
+      SELECT date.start_at, date.end_at, date.timezone
+        FROM public.event_dates AS date
+       WHERE date.event_id = event.id
+         AND date.is_master
+       ORDER BY date.start_at, date.id
+       LIMIT 1
+    ) AS master_date ON true
+   WHERE event.id = v_primary.event_id;
+
+  -- Existing payload keys are caller-owned and win over canonical enrichment.
+  NEW.payload := coalesce(v_enrich, '{}'::jsonb) || NEW.payload;
+  RETURN NEW;
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.orch_1161_reservation_notify_outbox()
 RETURNS trigger
 LANGUAGE plpgsql
