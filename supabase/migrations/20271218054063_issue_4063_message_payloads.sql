@@ -455,6 +455,169 @@ GRANT EXECUTE ON FUNCTION public.pg_notify_reminders_enqueue(int, text, int)
 COMMENT ON FUNCTION public.pg_notify_reminders_enqueue(int, text, int) IS
   '#4063: five-minute reminder enqueue window. p_window_minutes is deprecated and ignored; retained for caller compatibility.';
 
+CREATE OR REPLACE FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(
+  p_ticket_type_id uuid,
+  p_freed integer
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_running integer := 0;
+  v_entry record;
+  v_notification_id uuid;
+  v_email_notification_id uuid;
+  v_sms_notification_id uuid;
+  v_channel text;
+  v_recipient text;
+  v_phone text;
+  v_event_date_id uuid;
+  v_start_at timestamptz;
+  v_timezone text;
+  v_payload jsonb;
+  v_v2 boolean := public.issue_4063_switch_on('messages_v2');
+BEGIN
+  IF p_ticket_type_id IS NULL OR p_freed IS NULL OR p_freed < 1 THEN
+    RETURN 0;
+  END IF;
+
+  FOR v_entry IN
+    SELECT id, event_id, ticket_type_id, email, phone, qty_requested
+      FROM public.waitlist_entries
+     WHERE ticket_type_id = p_ticket_type_id
+       AND status = 'waiting'
+       AND notified_at IS NULL
+     ORDER BY created_at ASC, id ASC
+  LOOP
+    EXIT WHEN v_running >= p_freed;
+
+    IF NOT v_v2 THEN
+      -- Preserve the exact pre-#4063 one-row producer while the switch is off.
+      IF v_entry.email IS NOT NULL AND length(btrim(v_entry.email)) > 0 THEN
+        v_channel := 'email';
+        v_recipient := v_entry.email;
+      ELSIF v_entry.phone IS NOT NULL AND length(btrim(v_entry.phone)) > 0 THEN
+        v_channel := 'sms';
+        v_recipient := v_entry.phone;
+      ELSE
+        CONTINUE;
+      END IF;
+
+      v_notification_id := NULL;
+      INSERT INTO public.ticket_order_notifications
+        (order_id, event_id, channel, recipient, status, payload,
+         idempotency_key, attempt_count)
+      VALUES
+        (NULL, v_entry.event_id, v_channel, v_recipient, 'pending',
+         jsonb_build_object(
+           'template_key', 'waitlist_spot_open',
+           'waitlist_entry_id', v_entry.id,
+           'event_id', v_entry.event_id,
+           'ticket_type_id', v_entry.ticket_type_id,
+           'qty_requested', v_entry.qty_requested,
+           'invite_expires_at', (now() + interval '24 hours')
+         ),
+         'waitlist_invite:' || v_entry.id::text,
+         0)
+      ON CONFLICT (idempotency_key) DO NOTHING
+      RETURNING id INTO v_notification_id;
+    ELSE
+      SELECT date.id, date.start_at, COALESCE(date.timezone, event.timezone)
+        INTO v_event_date_id, v_start_at, v_timezone
+        FROM public.events AS event
+        LEFT JOIN LATERAL (
+          SELECT event_date.id, event_date.start_at, event_date.timezone
+            FROM public.event_dates AS event_date
+           WHERE event_date.event_id = event.id
+           ORDER BY event_date.is_master DESC, event_date.start_at, event_date.id
+           LIMIT 1
+        ) AS date ON true
+       WHERE event.id = v_entry.event_id;
+
+      v_payload := jsonb_strip_nulls(jsonb_build_object(
+        'template_key', 'waitlist_spot_open',
+        'waitlist_entry_id', v_entry.id,
+        'event_id', v_entry.event_id,
+        'ticket_type_id', v_entry.ticket_type_id,
+        'qty_requested', v_entry.qty_requested,
+        'invite_expires_at', (now() + interval '24 hours'),
+        'event_date_id', v_event_date_id,
+        'timezone', v_timezone,
+        'start_at', v_start_at
+      ));
+
+      v_email_notification_id := NULL;
+      v_sms_notification_id := NULL;
+      v_phone := public.mingla_e164_normalize(v_entry.phone);
+
+      IF nullif(btrim(coalesce(v_entry.email, '')), '') IS NOT NULL THEN
+        INSERT INTO public.ticket_order_notifications
+          (order_id, event_id, channel, recipient, status, payload,
+           idempotency_key, attempt_count)
+        VALUES
+          (NULL, v_entry.event_id, 'email', lower(btrim(v_entry.email)), 'pending',
+           v_payload,
+           'waitlist_invite:' || v_entry.id::text || ':email',
+           0)
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id INTO v_email_notification_id;
+
+        IF v_email_notification_id IS NULL THEN
+          SELECT notification.id INTO v_email_notification_id
+            FROM public.ticket_order_notifications AS notification
+           WHERE notification.idempotency_key =
+             'waitlist_invite:' || v_entry.id::text || ':email';
+        END IF;
+      END IF;
+
+      IF v_phone IS NOT NULL THEN
+        INSERT INTO public.ticket_order_notifications
+          (order_id, event_id, channel, recipient, status, payload,
+           idempotency_key, attempt_count)
+        VALUES
+          (NULL, v_entry.event_id, 'sms', v_phone, 'pending',
+           v_payload || jsonb_build_object('channel_hint', 'sms'),
+           'waitlist_invite:' || v_entry.id::text || ':sms',
+           0)
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id INTO v_sms_notification_id;
+
+        IF v_sms_notification_id IS NULL THEN
+          SELECT notification.id INTO v_sms_notification_id
+            FROM public.ticket_order_notifications AS notification
+           WHERE notification.idempotency_key =
+             'waitlist_invite:' || v_entry.id::text || ':sms';
+        END IF;
+      END IF;
+
+      v_notification_id := COALESCE(v_email_notification_id, v_sms_notification_id);
+    END IF;
+
+    IF v_notification_id IS NOT NULL THEN
+      UPDATE public.waitlist_entries
+         SET status = 'invited',
+             invited_at = now(),
+             notified_at = now(),
+             notification_id = v_notification_id
+       WHERE id = v_entry.id;
+      v_running := v_running + v_entry.qty_requested;
+    END IF;
+  END LOOP;
+
+  RETURN v_running;
+END;
+$function$;
+
+COMMENT ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer) IS
+  '#2947/#4063: FIFO waitlist drain. messages_v2 emits independent email and normalized SMS rows with canonical occurrence facts; switch-off preserves the original one-row producer.';
+
+REVOKE ALL ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer)
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION public.orch_1161_reservation_notify_outbox()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -753,6 +916,7 @@ SELECT cron.schedule(
 -- MINGLA-INVARIANT: I-4063-OLD-SENDERS-NEVER-SEE-NEW-ROWS | issue #4063 | New message rows are emitted only after the service-role messages_v2 switch is enabled.
 -- MINGLA-INVARIANT: I-4063-RECEIPT-NEVER-BLOCKS-PAYMENT | issue #4063 | Food-receipt enqueue failures are warning-only and cannot roll back a venue payment write.
 -- MINGLA-INVARIANT: I-4063-REMINDERS-ONE-PER-BOUGHT-DATE | issue #4063 | Reminder windows run every five minutes, select only still-valid purchased dates, and remain idempotent per order, occurrence and lead bucket.
+-- MINGLA-INVARIANT: I-4063-WAITLIST-ONE-ROW-PER-CONTACT | issue #4063 | With messages_v2 enabled, waitlist invitations enqueue independent email and normalized SMS rows while invalid phones remain silent.
 
 DO $exit_check$
 DECLARE
@@ -771,6 +935,18 @@ BEGIN
      OR v_definition NOT LIKE '%buyer_event_reminder:%booked%'
      OR v_definition NOT LIKE '%mingla_e164_country(u.contact)%' THEN
     RAISE EXCEPTION 'issue_4063_exit_check_reminder_definition_incomplete';
+  END IF;
+
+  SELECT pg_get_functiondef(
+    'public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer)'::regprocedure
+  ) INTO v_definition;
+  IF v_definition NOT LIKE '%issue_4063_switch_on%'
+     OR v_definition NOT LIKE '%mingla_e164_normalize%'
+     OR v_definition NOT LIKE '%:email%'
+     OR v_definition NOT LIKE '%:sms%'
+     OR v_definition NOT LIKE '%event_date_id%'
+     OR v_definition NOT LIKE '%start_at%' THEN
+    RAISE EXCEPTION 'issue_4063_exit_check_waitlist_definition_incomplete';
   END IF;
 
   SELECT schedule INTO v_schedule
