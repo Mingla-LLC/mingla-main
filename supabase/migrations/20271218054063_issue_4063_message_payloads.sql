@@ -96,12 +96,13 @@ BEGIN
     'eventId', event.id,
     'eventName', event.title,
     'brandName', brand.name,
+    'brandContactEmail', brand.contact_email,
     'eventStartAt', master_date.start_at,
     'eventEndAt', master_date.end_at,
     'eventTimezone', coalesce(master_date.timezone, event.timezone),
     'venueLine', event.location_text,
     'leadName', CASE
-      WHEN (NEW.payload->>'role') = 'guest' THEN v_guest.name
+      WHEN (NEW.payload->>'role') = 'guest' THEN v_primary.guest_name
       ELSE NULL
     END,
     'claimed', CASE

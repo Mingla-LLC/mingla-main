@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4063_rsvp_pass_message.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4063-rsvp-pass-message",
+  "profile": "deno-2-unit"
+}

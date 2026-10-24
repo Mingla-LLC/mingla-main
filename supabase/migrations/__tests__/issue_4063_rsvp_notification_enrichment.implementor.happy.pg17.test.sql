@@ -21,9 +21,12 @@ BEGIN
     (v_primary_user, 'issue-4063-rsvp-primary@example.test'),
     (v_guest_user, 'issue-4063-rsvp-guest@example.test');
   INSERT INTO public.creator_accounts(id) VALUES (v_owner);
-  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  INSERT INTO public.brands(
+    id, account_id, name, slug, default_currency, contact_email
+  )
   VALUES (
-    v_brand, v_owner, 'Issue 4063 RSVP Brand', 'issue-4063-rsvp-brand', 'USD'
+    v_brand, v_owner, 'Issue 4063 RSVP Brand', 'issue-4063-rsvp-brand', 'USD',
+    'host-rsvp@example.test'
   );
   INSERT INTO public.events(
     id, brand_id, created_by, title, slug, location_text, event_type,
@@ -67,6 +70,7 @@ BEGIN
   IF v_payload->>'eventId' <> v_event::text
      OR v_payload->>'eventName' <> 'Caller-owned title'
      OR v_payload->>'brandName' <> 'Issue 4063 RSVP Brand'
+     OR v_payload->>'brandContactEmail' <> 'host-rsvp@example.test'
      OR v_payload->>'eventStartAt' <> '2026-11-07T23:30:00+00:00'
      OR v_payload->>'eventEndAt' <> '2026-11-08T02:00:00+00:00'
      OR v_payload->>'eventTimezone' <> 'America/New_York'
@@ -92,7 +96,7 @@ BEGIN
    WHERE id = v_guest_notification;
   IF v_payload->>'eventName' <> 'Real RSVP Event'
      OR v_payload->>'venueLine' <> 'Caller-owned venue'
-     OR v_payload->>'leadName' <> 'Plus One Guest'
+     OR v_payload->>'leadName' <> 'Primary Guest'
      OR v_payload->>'recipientName' <> 'Plus One Guest'
      OR v_payload->>'matchedUserId' <> v_guest_user::text
      OR v_payload->>'claimed' <> 'true' THEN

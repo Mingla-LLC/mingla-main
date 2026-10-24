@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/rsvp-notify/__tests__/issue_4063_rsvp_purchase_dispatch.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4063-rsvp-purchase-dispatch",
+  "profile": "deno-2-unit"
+}
