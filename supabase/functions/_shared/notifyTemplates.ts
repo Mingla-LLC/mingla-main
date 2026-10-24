@@ -7,6 +7,12 @@
 // authored clean. The thin slice wires buyer_reservation_changed; the other
 // rendered moments are present so the v2 core can fan out the seeded categories.
 
+import { formatMessageTime, type MessageTime } from "./messageTime.ts";
+import {
+  type BuyerSmsNoun,
+  renderBuyerSms,
+} from "./sms/buyerSms.ts";
+
 export interface RenderedMessage {
   push: { title: string; body: string };
   email: { subject: string; body: string };
@@ -123,6 +129,41 @@ function fmtDate(
     minute: "2-digit",
   });
   return { date, time };
+}
+
+interface Issue4063BuyerContext {
+  link: string;
+  claimed: boolean;
+  when: MessageTime;
+}
+
+// #4063 — new producers carry listing-local time facts, and the outbox drain
+// adds the one governed buyer link immediately before dispatch. Older queued
+// rows carry neither shape, so they deliberately stay on the exact legacy
+// renderer below instead of printing an empty slot or inventing UTC.
+function issue4063BuyerContext(
+  payload: Record<string, unknown>,
+): Issue4063BuyerContext | null {
+  const instant = str(payload.reserved_for ?? payload.event_start_at);
+  const timezone = typeof payload.timezone === "string"
+    ? payload.timezone
+    : typeof payload.event_timezone === "string"
+    ? payload.event_timezone
+    : null;
+  const link = str(payload.message_link_display).trim();
+  if (!instant || !timezone || !link) return null;
+  const when = formatMessageTime(instant, timezone);
+  if (when === null || !when.tzKnown) return null;
+  return {
+    link,
+    claimed: payload.message_link_claimed === true || payload.claimed === true,
+    when,
+  };
+}
+
+function issue4063OfferingNoun(payload: Record<string, unknown>): BuyerSmsNoun {
+  const kind = str(payload.kind ?? payload.event_type).toLowerCase();
+  return kind === "trip" || kind === "experience" ? "booking" : "ticket";
 }
 
 // #3391 — the refund amount on a venue-cancelled paid booking, with the glyph
@@ -483,7 +524,33 @@ export function renderCategoryMessage(
         sms: `${message} Operation ID: ${operationId}`,
       };
     }
-    case "buyer_reservation_changed":
+    case "buyer_reservation_changed": {
+      const context = issue4063BuyerContext(payload);
+      if (context !== null) {
+        const venue = str(payload.venue_name, brand);
+        return {
+          push: {
+            title: `Booking changed: ${venue}`,
+            body:
+              `Now ${context.when.date}, ${context.when.time}, ${party} people.`,
+          },
+          email: {
+            subject:
+              `Changed: ${venue}, now ${context.when.date} at ${context.when.time}`,
+            body:
+              "Booking changed.\n\nYour booking in the app is already updated.",
+          },
+          sms: renderBuyerSms("S9B", {
+            venue,
+            date: context.when.date,
+            time: context.when.time,
+            party,
+            link: context.link,
+            noun: "booking",
+            claimed: context.claimed,
+          }),
+        };
+      }
       // COPY §3.1
       return {
         push: {
@@ -499,8 +566,39 @@ export function renderCategoryMessage(
         sms:
           `${brand}: Your reservation changed - now ${date} ${time}, party of ${party}.`,
       };
+    }
 
-    case "buyer_reservation_confirmed":
+    case "buyer_reservation_confirmed": {
+      const context = issue4063BuyerContext(payload);
+      if (context !== null) {
+        const venue = str(payload.venue_name, brand);
+        return {
+          push: {
+            title: `Booked: ${venue}`,
+            body:
+              `${context.when.date}, ${context.when.time}, ${party} people.`,
+          },
+          email: {
+            subject:
+              `Booked: ${venue}, ${context.when.date} at ${context.when.time}`,
+            body: `You're booked.\n\nYour booking ${
+              context.claimed ? "is in" : "is waiting in"
+            } the Mingla app.`,
+          },
+          sms: renderBuyerSms(
+            payload.created_via === "operator" ? "S8H" : "S8",
+            {
+              venue,
+              date: context.when.date,
+              time: context.when.time,
+              party,
+              link: context.link,
+              noun: "booking",
+              claimed: context.claimed,
+            },
+          ),
+        };
+      }
       return {
         push: {
           title: "Reservation confirmed",
@@ -513,6 +611,7 @@ export function renderCategoryMessage(
         },
         sms: `${brand}: Table for ${party} confirmed ${date} ${time}.`,
       };
+    }
 
     case "buyer_reservation_cancelled": {
       // #3391 — the venue cancelled a PAID booking and the refund row already
@@ -551,7 +650,42 @@ export function renderCategoryMessage(
       };
     }
 
-    case "buyer_event_reminder":
+    case "buyer_event_reminder": {
+      const context = issue4063BuyerContext(payload);
+      if (context !== null) {
+        const noun = issue4063OfferingNoun(payload);
+        const twoHour = leadBucket === "2h";
+        const dayWord = twoHour
+          ? context.when.dayWord === "tonight"
+            ? "Tonight"
+            : context.when.dayWord === "today"
+            ? "Today"
+            : context.when.date
+          : context.when.dayWord === "tomorrow"
+          ? "Tomorrow"
+          : context.when.date;
+        return {
+          push: {
+            title: `${dayWord}, ${context.when.time} · ${reminderHeadline}`,
+            body: `Tap for your ${noun}.`,
+          },
+          email: {
+            subject: `${dayWord}: ${reminderHeadline} at ${context.when.time}`,
+            body: `See you ${dayWord.toLowerCase()}.\n\nYour ${noun} ${
+              context.claimed ? "is in" : "is waiting in"
+            } the Mingla app.`,
+          },
+          sms: renderBuyerSms(twoHour ? "S7" : "S6", {
+            title: reminderHeadline,
+            date: context.when.date,
+            time: context.when.time,
+            dayWord: context.when.dayWord,
+            link: context.link,
+            noun,
+            claimed: context.claimed,
+          }),
+        };
+      }
       // COPY §3.3 (24h) / §3.4 (2h). #3281 PR6 names the date override when set.
       if (leadBucket === "2h") {
         return {
@@ -581,8 +715,42 @@ export function renderCategoryMessage(
         sms:
           `${brand}: ${reminderHeadline} is tomorrow at ${time}${reminderPlace}. See you there!`,
       };
+    }
 
-    case "buyer_reservation_reminder":
+    case "buyer_reservation_reminder": {
+      const context = issue4063BuyerContext(payload);
+      if (context !== null) {
+        const venue = str(payload.venue_name, brand);
+        const dayWord = context.when.dayWord === "tonight"
+          ? "Tonight"
+          : context.when.dayWord === "today"
+          ? "Today"
+          : context.when.dayWord === "tomorrow"
+          ? "Tomorrow"
+          : context.when.date;
+        return {
+          push: {
+            title: `${dayWord}, ${context.when.time} · ${venue}`,
+            body: `${party} people. Tap for your booking.`,
+          },
+          email: {
+            subject: `${dayWord}: ${venue} at ${context.when.time}`,
+            body: `See you ${dayWord.toLowerCase()}.\n\nYour booking ${
+              context.claimed ? "is in" : "is waiting in"
+            } the Mingla app.`,
+          },
+          sms: renderBuyerSms("S10V", {
+            venue,
+            date: context.when.date,
+            time: context.when.time,
+            dayWord: context.when.dayWord,
+            party,
+            link: context.link,
+            noun: "booking",
+            claimed: context.claimed,
+          }),
+        };
+      }
       // COPY §3.5 (24h) / §3.6 (2h).
       if (leadBucket === "2h") {
         return {
@@ -614,6 +782,7 @@ export function renderCategoryMessage(
         sms:
           `${brand}: Reminder - your reservation is tomorrow at ${time}, party of ${party}.`,
       };
+    }
 
     case "buyer_purchase_confirmation": {
       // COPY §3.11 — NO SMS (DEC-185). Push + email only. The email PDF/.ics
