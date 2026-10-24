@@ -723,6 +723,280 @@ REVOKE ALL ON FUNCTION public.fn_rsvp_drain_on_capacity_freed()
 GRANT EXECUTE ON FUNCTION public.fn_rsvp_drain_on_capacity_freed()
   TO service_role;
 
+CREATE OR REPLACE FUNCTION public.event_edit_notice_fanout(
+  p_limit integer DEFAULT 20
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_due record;
+  v_notice public.event_edit_notices%ROWTYPE;
+  v_event record;
+  v_allowlist_only boolean;
+  v_recipient record;
+  v_notification_id uuid;
+  v_key text;
+  v_index integer;
+  v_held integer;
+  v_recipients integer;
+  v_no_email integer;
+  v_notices integer := 0;
+  v_rows integer := 0;
+  v_v2 boolean := public.issue_4063_switch_on('messages_v2');
+BEGIN
+  v_allowlist_only := public.event_edit_notice_allowlist_only();
+
+  DELETE FROM public.event_edit_notice_pending
+   WHERE created_at < now() - interval '1 day';
+
+  FOR v_due IN
+    SELECT notice.id, notice.event_id
+      FROM public.event_edit_notices AS notice
+     WHERE notice.state = 'scheduled'
+       AND notice.send_after <= now()
+     ORDER BY notice.send_after
+     LIMIT LEAST(GREATEST(coalesce(p_limit, 20), 1), 100)
+  LOOP
+    PERFORM 1 FROM public.events AS e WHERE e.id = v_due.event_id FOR KEY SHARE;
+    PERFORM pg_advisory_xact_lock(
+      hashtext('issue_3827_event_edit_notice'),
+      hashtext(v_due.event_id::text)
+    );
+    SELECT * INTO v_notice
+      FROM public.event_edit_notices AS notice
+     WHERE notice.id = v_due.id
+       AND notice.state = 'scheduled'
+       AND notice.send_after <= now()
+       FOR UPDATE SKIP LOCKED;
+    IF NOT FOUND THEN
+      CONTINUE;
+    END IF;
+
+    SELECT event.id, event.status, event.deleted_at, event.brand_id,
+           event.event_type
+      INTO v_event
+      FROM public.events AS event
+     WHERE event.id = v_notice.event_id;
+
+    IF NOT public.event_edit_notice_brand_live(v_notice.brand_id) THEN
+      UPDATE public.event_edit_notices
+         SET state = 'held', hold_code = 'feature_off', send_after = NULL
+       WHERE id = v_notice.id;
+      IF v_event.event_type = 'rsvp' THEN
+        PERFORM public.event_edit_notice_legacy_alert(v_notice.id, rsvp.id)
+          FROM public.event_rsvps AS rsvp
+         WHERE rsvp.event_id = v_notice.event_id
+           AND rsvp.rsvp_status = 'going'
+           AND rsvp.approval_status = 'approved';
+      END IF;
+      CONTINUE;
+    END IF;
+    IF v_event.id IS NULL
+       OR v_event.status NOT IN ('scheduled', 'live')
+       OR v_event.deleted_at IS NOT NULL THEN
+      UPDATE public.event_edit_notices
+         SET state = 'held', hold_code = 'event_not_live', send_after = NULL
+       WHERE id = v_notice.id;
+      CONTINUE;
+    END IF;
+
+    v_index := 0;
+    v_held := 0;
+    FOR v_recipient IN
+      WITH buyer AS (
+        SELECT *
+          FROM public.business_event_buyer_rows(v_notice.event_id)
+      ), order_contact AS (
+        SELECT
+          'o:' || orders.id::text AS group_key,
+          lower(nullif(btrim(orders.buyer_email), '')) AS email,
+          nullif(btrim(orders.buyer_name), '') AS name,
+          CASE
+            WHEN orders.buyer_phone_e164 ~ '^\+[1-9][0-9]{1,14}$'
+              THEN orders.buyer_phone_e164
+            ELSE NULL
+          END AS phone,
+          orders.buyer_user_id IS NOT NULL AS claimed
+        FROM public.orders AS orders
+        WHERE orders.event_id = v_notice.event_id
+          AND orders.payment_status IN ('paid', 'partial_refund')
+          AND orders.cancelled_at IS NULL
+      ), by_email AS (
+        SELECT
+          lower(buyer.email) AS email,
+          (array_agg(buyer.name ORDER BY buyer.source)
+            FILTER (WHERE buyer.name IS NOT NULL))[1] AS name,
+          (array_agg(buyer.rsvp_id)
+            FILTER (WHERE buyer.rsvp_id IS NOT NULL))[1] AS rsvp_id,
+          bool_or(coalesce(order_contact.claimed, false)) AS claimed
+        FROM buyer
+        LEFT JOIN order_contact
+          ON order_contact.group_key = buyer.group_key
+        WHERE buyer.email IS NOT NULL
+        GROUP BY lower(buyer.email)
+      ), by_phone AS (
+        SELECT
+          order_contact.phone,
+          min(order_contact.name) AS name,
+          min(order_contact.email) AS gate_email,
+          bool_or(order_contact.claimed) AS claimed
+        FROM order_contact
+        WHERE order_contact.phone IS NOT NULL
+        GROUP BY order_contact.phone
+      )
+      SELECT *
+        FROM (
+          SELECT email.email, email.name, email.rsvp_id,
+                 NULL::text AS phone, NULL::boolean AS claimed,
+                 NULL::text AS kind, email.email AS gate_email,
+                 'email'::text AS delivery_kind
+            FROM by_email AS email
+           WHERE NOT v_v2
+          UNION ALL
+          SELECT NULL::text, buyer.name, buyer.rsvp_id,
+                 NULL::text, NULL::boolean, NULL::text, NULL::text,
+                 'rsvp'::text
+            FROM buyer
+           WHERE NOT v_v2
+             AND buyer.email IS NULL
+             AND buyer.rsvp_id IS NOT NULL
+          UNION ALL
+          SELECT email.email, email.name, email.rsvp_id,
+                 NULL::text, email.claimed, v_event.event_type,
+                 email.email, 'email'::text
+            FROM by_email AS email
+           WHERE v_v2
+          UNION ALL
+          SELECT NULL::text, buyer.name, buyer.rsvp_id,
+                 NULL::text, NULL::boolean, NULL::text, NULL::text,
+                 'rsvp'::text
+            FROM buyer
+           WHERE v_v2
+             AND buyer.email IS NULL
+             AND buyer.rsvp_id IS NOT NULL
+          UNION ALL
+          SELECT NULL::text, phone.name, NULL::uuid,
+                 phone.phone, phone.claimed, v_event.event_type,
+                 phone.gate_email, 'sms'::text
+            FROM by_phone AS phone
+           WHERE v_v2
+        ) AS recipient
+       ORDER BY recipient.email, recipient.rsvp_id, recipient.phone
+    LOOP
+      IF v_allowlist_only
+         AND NOT public.event_edit_notice_on_allowlist(
+           coalesce(v_recipient.email, v_recipient.gate_email)
+         ) THEN
+        v_held := v_held + 1;
+        IF v_recipient.rsvp_id IS NOT NULL THEN
+          PERFORM public.event_edit_notice_legacy_alert(
+            v_notice.id,
+            v_recipient.rsvp_id
+          );
+        END IF;
+        CONTINUE;
+      END IF;
+
+      IF v_recipient.rsvp_id IS NOT NULL AND EXISTS (
+        SELECT 1
+          FROM public.rsvp_notifications AS legacy
+         WHERE legacy.event_id = v_notice.event_id
+           AND legacy.rsvp_id = v_recipient.rsvp_id
+           AND legacy.template_key = 'rsvp_event_updated'
+           AND NOT (legacy.payload ? 'noticeId')
+           AND legacy.created_at >= v_notice.created_at - interval '1 second'
+      ) THEN
+        CONTINUE;
+      END IF;
+
+      v_notification_id := NULL;
+      IF v_recipient.rsvp_id IS NOT NULL THEN
+        v_key := 'event_edit:' || v_notice.id::text || ':'
+          || coalesce(
+            md5(v_recipient.email),
+            'rsvp:' || v_recipient.rsvp_id::text
+          );
+        INSERT INTO public.rsvp_notifications
+          (event_id, rsvp_id, channel, recipient, status, template_key,
+           payload, idempotency_key, attempt_count)
+        VALUES
+          (v_notice.event_id, v_recipient.rsvp_id, NULL, NULL, 'pending',
+           'rsvp_event_updated',
+           jsonb_build_object(
+             'template_key', 'rsvp_event_updated',
+             'rsvp_id', v_recipient.rsvp_id,
+             'event_id', v_notice.event_id,
+             'noticeId', v_notice.id
+           ),
+           v_key, 0)
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id INTO v_notification_id;
+      ELSE
+        v_key := 'event_edit:' || v_notice.id::text || ':'
+          || CASE
+            WHEN v_recipient.delivery_kind = 'sms'
+              THEN 'phone:' || md5(v_recipient.phone)
+            ELSE md5(v_recipient.email)
+          END;
+        INSERT INTO public.rsvp_notifications
+          (event_id, rsvp_id, channel, recipient, status, template_key,
+           payload, idempotency_key, attempt_count)
+        VALUES
+          (v_notice.event_id, NULL, NULL, NULL, 'pending',
+           'buyer_event_updated',
+           jsonb_strip_nulls(jsonb_build_object(
+             'template_key', 'buyer_event_updated',
+             'event_id', v_notice.event_id,
+             'noticeId', v_notice.id,
+             'recipientEmail', v_recipient.email,
+             'recipientPhone', v_recipient.phone,
+             'recipientName', v_recipient.name,
+             'claimed', v_recipient.claimed,
+             'kind', v_recipient.kind
+           )),
+           v_key, 0)
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id INTO v_notification_id;
+      END IF;
+
+      IF v_notification_id IS NOT NULL THEN
+        UPDATE public.rsvp_notification_deliveries
+           SET next_attempt_at = now() + make_interval(mins => v_index / 40)
+         WHERE notification_id = v_notification_id;
+        v_index := v_index + 1;
+        v_rows := v_rows + 1;
+      END IF;
+    END LOOP;
+
+    SELECT audience.recipients, audience.no_email
+      INTO v_recipients, v_no_email
+      FROM public.event_edit_notice_audience(v_notice.event_id) AS audience;
+    UPDATE public.event_edit_notices
+       SET state = 'fanned_out',
+           fanned_out_at = now(),
+           send_after = NULL,
+           audience_count = v_recipients + v_no_email,
+           no_email_count = v_no_email,
+           held_count = v_held,
+           tested_at_fanout = v_allowlist_only
+     WHERE id = v_notice.id;
+    v_notices := v_notices + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object('notices', v_notices, 'rows', v_rows);
+END;
+$function$;
+
+COMMENT ON FUNCTION public.event_edit_notice_fanout(integer) IS
+  '#3827/#4063: switch-safe edit fan-out. messages_v2 adds one phone-only buyer row per distinct paid-order handset plus claimed/kind payload facts; pilot and allowlist gates stay authoritative.';
+
+REVOKE ALL ON FUNCTION public.event_edit_notice_fanout(integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.event_edit_notice_fanout(integer)
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION public.orch_1161_reservation_notify_outbox()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1023,6 +1297,7 @@ SELECT cron.schedule(
 -- MINGLA-INVARIANT: I-4063-REMINDERS-ONE-PER-BOUGHT-DATE | issue #4063 | Reminder windows run every five minutes, select only still-valid purchased dates, and remain idempotent per order, occurrence and lead bucket.
 -- MINGLA-INVARIANT: I-4063-WAITLIST-ONE-ROW-PER-CONTACT | issue #4063 | With messages_v2 enabled, waitlist invitations enqueue independent email and normalized SMS rows while invalid phones remain silent.
 -- MINGLA-INVARIANT: I-4063-RSVP-PROMOTION-AFTER-APPROVAL | issue #4063 | With messages_v2 enabled, auto promotions keep the promotion notice and manual promotions remain silent until host approval.
+-- MINGLA-INVARIANT: I-4063-EVENT-EDIT-ONE-SMS-PER-PHONE | issue #4063 | With messages_v2 enabled, paid-order live-edit fan-out emits at most one SMS-seeding row per distinct canonical buyer phone while switch-off payloads remain unchanged.
 
 DO $exit_check$
 DECLARE
@@ -1062,6 +1337,18 @@ BEGIN
      OR v_definition NOT LIKE '%NOT v_v2 OR v_approval_mode <> ''manual''%'
      OR v_definition NOT LIKE '%rsvp_waitlist_promoted%' THEN
     RAISE EXCEPTION 'issue_4063_exit_check_rsvp_promotion_definition_incomplete';
+  END IF;
+
+  SELECT pg_get_functiondef(
+    'public.event_edit_notice_fanout(integer)'::regprocedure
+  ) INTO v_definition;
+  IF v_definition NOT LIKE '%issue_4063_switch_on%'
+     OR v_definition NOT LIKE '%buyer_phone_e164%'
+     OR v_definition NOT LIKE '%recipientPhone%'
+     OR v_definition NOT LIKE '%phone:%'
+     OR v_definition NOT LIKE '%claimed%'
+     OR v_definition NOT LIKE '%kind%' THEN
+    RAISE EXCEPTION 'issue_4063_exit_check_event_edit_fanout_incomplete';
   END IF;
 
   SELECT schedule INTO v_schedule
