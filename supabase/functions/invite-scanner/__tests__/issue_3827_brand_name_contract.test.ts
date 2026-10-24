@@ -1,6 +1,7 @@
-// issue #3827 — scanner invitations must query the canonical brands.name
-// column. Production has no brands.display_name column; selecting it turns
-// every valid invitation into a 500 before an invitation row is written.
+// issue #3827 — scanner invitations must query the canonical brands.name and
+// events.title columns. Production has neither brands.display_name nor
+// events.name; selecting either turns a valid invitation into a 500 before an
+// invitation row is written.
 
 import {
   assert,
@@ -29,6 +30,17 @@ Deno.test("issue #3827 — invite-scanner reads the canonical brand name", () =>
   );
 });
 
+Deno.test("issue #3827 — invite-scanner reads the canonical event title", () => {
+  assertStringIncludes(source, '.from("events")');
+  assertStringIncludes(source, '.select("id, title, brand_id, deleted_at")');
+  assertStringIncludes(source, "eventRow.title");
+  assert(
+    !source.includes("eventRow.name") &&
+      !source.includes('.select("id, name, brand_id, deleted_at")'),
+    "invite-scanner must not query the non-existent events.name column",
+  );
+});
+
 Deno.test("issue #3827 — the invite query agrees with the replayed brands schema", () => {
   const match = baseline.match(
     /CREATE TABLE IF NOT EXISTS "public"\."brands" \([\s\S]*?\n\);/,
@@ -37,4 +49,14 @@ Deno.test("issue #3827 — the invite query agrees with the replayed brands sche
   const columns = match[0];
   assertStringIncludes(columns, '"name" "text" NOT NULL');
   assertEquals(columns.includes('"display_name"'), false);
+});
+
+Deno.test("issue #3827 — the invite query agrees with the replayed events schema", () => {
+  const match = baseline.match(
+    /CREATE TABLE IF NOT EXISTS "public"\."events" \([\s\S]*?\n\);/,
+  );
+  assert(match, "baseline events table definition must exist");
+  const columns = match[0];
+  assertStringIncludes(columns, '"title" "text" NOT NULL');
+  assertEquals(columns.includes('"name"'), false);
 });

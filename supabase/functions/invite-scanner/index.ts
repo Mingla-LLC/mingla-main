@@ -302,7 +302,7 @@ export async function handler(req: Request): Promise<Response> {
     if (payload.scope === "event" && payload.event_id) {
       const { data: eventRow, error: eventErr } = await service
         .from("events")
-        .select("id, name, brand_id, deleted_at")
+        .select("id, title, brand_id, deleted_at")
         .eq("id", payload.event_id)
         .maybeSingle();
       if (eventErr) {
@@ -312,7 +312,7 @@ export async function handler(req: Request): Promise<Response> {
       if (!eventRow || eventRow.deleted_at || eventRow.brand_id !== payload.brand_id) {
         return json({ error: "event_not_found" }, 404);
       }
-      eventName = typeof eventRow.name === "string" ? eventRow.name : null;
+      eventName = typeof eventRow.title === "string" ? eventRow.title : null;
     }
 
     // Duplicate guard — pending invite for brand+email+scope+event already exists.
