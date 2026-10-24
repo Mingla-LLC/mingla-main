@@ -91,6 +91,14 @@ export interface BrandPriceRow {
   ownerRoute: string;
 }
 
+export interface BrandDiscountPreviewRow {
+  itemName: string;
+  listUnitMinor: number;
+  netUnitMinor: number;
+  allInListCents: number;
+  allInNetCents: number;
+}
+
 export interface DiscountReport {
   orders: number;
   revenueCents: number;
@@ -226,13 +234,22 @@ export async function fetchBrandPrices(
 export async function previewBrandDiscount(
   brandId: string,
   draft: DiscountDraft,
-): Promise<unknown[]> {
+): Promise<BrandDiscountPreviewRow[]> {
   const { data, error } = await supabase.rpc("brand_discount_preview", {
     p_brand_id: brandId,
     p_draft: draft,
   });
   if (error) throw new Error(error.message);
-  return Array.isArray(data) ? data : [];
+  return (Array.isArray(data) ? data : []).map((value) => {
+    const row = value as Record<string, unknown>;
+    return {
+      itemName: String(row.itemName ?? "Item"),
+      listUnitMinor: Number(row.listUnitMinor ?? 0),
+      netUnitMinor: Number(row.netUnitMinor ?? 0),
+      allInListCents: Number(row.allInListCents ?? 0),
+      allInNetCents: Number(row.allInNetCents ?? 0),
+    };
+  });
 }
 
 export class DiscountWriteError extends Error {

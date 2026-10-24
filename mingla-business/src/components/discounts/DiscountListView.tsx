@@ -52,6 +52,7 @@ const FILTERS: [
 export interface DiscountListViewProps {
   brandId: string;
   rank: number;
+  currencyCode: string | null;
   onOpenReport: () => void;
   onOpenRoute: (route: string) => void;
   onShareBlast: (discountId: string) => void;
@@ -60,6 +61,7 @@ export interface DiscountListViewProps {
 export const DiscountListView: React.FC<DiscountListViewProps> = ({
   brandId,
   rank,
+  currencyCode,
   onOpenReport,
   onOpenRoute,
   onShareBlast,
@@ -289,6 +291,7 @@ export const DiscountListView: React.FC<DiscountListViewProps> = ({
             visible
             brandId={brandId}
             rank={rank}
+            currencyCode={currencyCode}
             prices={priceRows}
             discount={editing}
             presetTarget={preset}
