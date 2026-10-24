@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "claim-contact",
+  "verify_jwt": true,
+  "gateway_reason": "Signed-in users prove extra claim-only contacts through bounded email or SMS challenges; all writes use service-role functions that recheck account and conflict rules.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "RESEND_NOREPLY_FROM"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": [
+      "OFFERING_INVITE_TOKEN_PEPPER",
+      "RESEND_API_KEY",
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN",
+      "TWILIO_VERIFY_SERVICE_SID",
+      "app.qr_token_pepper"
+    ]
+  }
+}
