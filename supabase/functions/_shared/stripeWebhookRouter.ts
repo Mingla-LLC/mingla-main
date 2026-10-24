@@ -31,6 +31,10 @@ import { autoFollowBrandBestEffort } from "./autoFollowBrand.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 import { recordTicketProviderTotal } from "./orderMoneyTruth.ts";
 import {
+  loadStripePaymentCard,
+  recordTicketPaymentCard,
+} from "./paymentCard.ts";
+import {
   isEvidenceHoldCandidate,
   releaseTicketEvidenceHold,
   stripePaymentIntentAmount,
@@ -1636,6 +1640,23 @@ async function handleTicketCheckoutPaymentIntent(
         providerAmount?.amountCents ?? null,
       providerTaxCents,
     });
+    if (observedChargeId && observedAccount) {
+      const card = await loadStripePaymentCard(() => {
+        const stripe = stripeTicketCheckout();
+        // orch-strict-grep-allow stripe-no-idempotency-key — read-only card-display retrieval
+        return stripe.charges.retrieve(
+          observedChargeId,
+          {},
+          { stripeAccount: observedAccount },
+        );
+      });
+      if (card) {
+        await recordTicketPaymentCard(supabase, {
+          checkoutSessionId: String(session.id),
+          card,
+        });
+      }
+    }
     if (
       isEvidenceHoldCandidate(session) && providerAmount && observedChargeId
     ) {

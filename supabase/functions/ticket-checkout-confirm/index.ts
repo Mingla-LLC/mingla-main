@@ -77,6 +77,10 @@ import { fireAdConversion } from "../_shared/adConversionFire.ts";
 // #3682 — auto-follow brand after signed-in purchase (fail-open).
 import { autoFollowBrandBestEffort } from "../_shared/autoFollowBrand.ts";
 import { classifyStripeCheckoutConfirmationStatus } from "../_shared/ticketCheckoutConfirmationStatus.ts";
+import {
+  loadStripePaymentCard,
+  recordTicketPaymentCard,
+} from "../_shared/paymentCard.ts";
 
 interface ConfirmRequest {
   checkoutSessionId: string;
@@ -514,6 +518,24 @@ serve(async (req) => {
         order: null,
         error: "checkout_unavailable",
       }, 409);
+    }
+
+    if (latestCharge) {
+      const card = await loadStripePaymentCard(() => {
+        const stripe = stripeTicketCheckout();
+        // orch-strict-grep-allow stripe-no-idempotency-key — read-only card-display retrieval
+        return stripe.charges.retrieve(
+          latestCharge,
+          {},
+          { stripeAccount: stripeAccountId },
+        );
+      });
+      if (card) {
+        await recordTicketPaymentCard(supabase, {
+          checkoutSessionId: session.id,
+          card,
+        });
+      }
     }
 
     // A checkout held only because an earlier signal lacked evidence (a

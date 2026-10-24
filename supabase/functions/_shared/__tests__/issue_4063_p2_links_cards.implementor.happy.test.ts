@@ -12,6 +12,7 @@ import {
   cardFromPaystackAuthorization,
   cardFromStripeCharge,
   formatCardDisplay,
+  loadStripePaymentCard,
   recordTicketPaymentCard,
 } from "../paymentCard.ts";
 
@@ -153,6 +154,56 @@ Deno.test("#4063 extracts only valid provider-reported card metadata", () => {
     cardFromPaystackAuthorization({ brand: "visa", last4: "4242" }, "bank"),
     null,
   );
+});
+
+Deno.test("#4063 Stripe card lookup is bounded and fail-open", async () => {
+  assertEquals(
+    await loadStripePaymentCard(
+      () =>
+        Promise.resolve({
+          payment_method_details: {
+            type: "card",
+            card: { brand: "visa", last4: "4242" },
+          },
+        }),
+      25,
+    ),
+    { brand: "visa", last4: "4242", wallet: null },
+  );
+  assertEquals(
+    await loadStripePaymentCard(
+      () => new Promise(() => {}),
+      1,
+    ),
+    null,
+  );
+  assertEquals(
+    await loadStripePaymentCard(
+      () => Promise.reject(new Error("provider unavailable")),
+      25,
+    ),
+    null,
+  );
+});
+
+// [TEST-MOD-APPROVED #4063] Keep card capture on provider-verified payment rails.
+Deno.test("#4063 wires display-safe card capture to authoritative payment paths", async () => {
+  const stripeWebhook = await Deno.readTextFile(
+    new URL("../stripeWebhookRouter.ts", import.meta.url),
+  );
+  const paystackWebhook = await Deno.readTextFile(
+    new URL("../paystackWebhookRouter.ts", import.meta.url),
+  );
+  const confirm = await Deno.readTextFile(
+    new URL("../../ticket-checkout-confirm/index.ts", import.meta.url),
+  );
+
+  assert(stripeWebhook.includes("stripe.charges.retrieve("));
+  assert(stripeWebhook.includes("recordTicketPaymentCard(supabase"));
+  assert(paystackWebhook.includes("txn?.authorization"));
+  assert(paystackWebhook.includes("cardFromPaystackAuthorization("));
+  assert(confirm.includes("stripe.charges.retrieve("));
+  assert(confirm.includes("recordTicketPaymentCard(supabase"));
 });
 
 Deno.test("#4063 formats the complete card-brand display vocabulary", () => {

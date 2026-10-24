@@ -25,6 +25,8 @@ export interface PaymentCard {
   wallet: PaymentWallet | null;
 }
 
+export const PAYMENT_CARD_LOOKUP_TIMEOUT_MS = 5_000;
+
 interface PaymentCardAdmin {
   rpc(
     name: string,
@@ -106,6 +108,29 @@ export function cardFromStripeCharge(charge: unknown): PaymentCard | null {
   const card = objectValue(details.card);
   const wallet = objectValue(card?.wallet)?.type;
   return parsedCard(card?.brand, card?.last4, wallet);
+}
+
+export async function loadStripePaymentCard(
+  retrieveCharge: () => Promise<unknown>,
+  timeoutMs = PAYMENT_CARD_LOOKUP_TIMEOUT_MS,
+): Promise<PaymentCard | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const charge = await Promise.race([
+      retrieveCharge(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("payment_card_lookup_timeout")),
+          timeoutMs,
+        );
+      }),
+    ]);
+    return cardFromStripeCharge(charge);
+  } catch {
+    return null;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 export function cardFromPaystackAuthorization(
