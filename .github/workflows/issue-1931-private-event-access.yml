@@ -426,6 +426,11 @@ jobs:
               # grants target discount tables/functions created only by the
               # three #3872 migrations this filtered lane omits above.
               *20271216043872_issue_3872_r1_host_operations.sql) continue ;;
+              # #3872 live-save correction — SKIPPED because it replaces the
+              # brand_discounts trigger and Host RPCs created only by the
+              # skipped #3872 schema and operations migrations above.
+              # Matched by EXACT filename; the unfiltered replay applies it.
+              *20271217003872_issue_3872_schedule_json_null.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

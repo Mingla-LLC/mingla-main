@@ -16,6 +16,7 @@ import type {
 import { currencyCodeOrNull, formatCurrency } from "../../utils/currency";
 import {
   DISCOUNT_LISTING_KIND_OPTIONS,
+  DISCOUNT_SCOPE_OPTIONS,
   hasOrphanedDiscountTarget,
   isDiscountPriceSelectable,
 } from "./discountEditorContract";
@@ -28,28 +29,6 @@ export interface DiscountScopePickerProps {
   onScopeKindChange: (value: DiscountScopeKind) => void;
   onTargetsChange: (value: DiscountTarget[]) => void;
 }
-
-const SCOPE_OPTIONS: readonly {
-  value: "brand" | "listing_kinds" | "items";
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "brand",
-    label: "Entire brand",
-    description: "All eligible paid items",
-  },
-  {
-    value: "listing_kinds",
-    label: "Offering types",
-    description: "Events, trips, venues and more",
-  },
-  {
-    value: "items",
-    label: "Specific items",
-    description: "Individual tickets, menu items or deposits",
-  },
-];
 
 const selected = (targets: DiscountTarget[], target: DiscountTarget): boolean =>
   targets.some(
@@ -98,7 +77,7 @@ export const DiscountScopePicker: React.FC<DiscountScopePickerProps> = ({
       <Text style={styles.label}>What it applies to</Text>
       <Text style={styles.help}>Choose one scope for this discount.</Text>
       <View style={styles.scopeCards} accessibilityRole="radiogroup">
-        {SCOPE_OPTIONS.map(({ value, label, description }) => {
+        {DISCOUNT_SCOPE_OPTIONS.map(({ value, label, description }) => {
           const isSelected = scopeKind === value;
           return (
             <Pressable

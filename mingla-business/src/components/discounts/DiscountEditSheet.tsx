@@ -30,7 +30,6 @@ import type {
   DiscountKind,
   DiscountValueType,
 } from "../../services/discountService";
-import { currencyCodeOrNull, formatCurrency } from "../../utils/currency";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -40,18 +39,14 @@ import { isoFromLocalDateTime, localDateTimeValue } from "./discountDateTime";
 import {
   canCreateDiscountKind,
   DISCOUNT_COMBINATION_LABELS,
+  DISCOUNT_KIND_DESCRIPTIONS,
   DISCOUNT_KIND_OPTIONS,
+  formatDiscountPreviewMoney,
   isDiscountDraftValid,
 } from "./discountEditorContract";
 
 const loadDiscountService = () => import("../../services/discountService");
 const DISCOUNT_QUERY_ROOT = "brand-discounts";
-
-const DISCOUNT_KIND_DESCRIPTIONS: Record<DiscountKind, string> = {
-  code: "Buyers enter a code at checkout.",
-  automatic: "The best eligible deal is applied automatically.",
-  sale_price: "Show a lower price on selected items.",
-};
 
 const isoNow = (): string => new Date().toISOString();
 const numeric = (value: string): number | null => {
@@ -247,11 +242,8 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   );
   const moneyText =
     draft.valueMinor == null ? "" : String(draft.valueMinor / 100);
-  const previewCurrency = currencyCodeOrNull(currencyCode);
   const previewMoney = (minor: number): string =>
-    previewCurrency === null
-      ? "—"
-      : formatCurrency(minor, previewCurrency, true);
+    formatDiscountPreviewMoney(minor, currencyCode);
 
   return (
     <Sheet visible={visible} onClose={requestClose} snapPoint="full">
