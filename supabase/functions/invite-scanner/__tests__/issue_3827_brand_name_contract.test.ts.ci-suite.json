@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/invite-scanner/__tests__/issue_3827_brand_name_contract.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3827-scanner-invite-brand-name",
+  "profile": "deno-2-unit"
+}

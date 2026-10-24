@@ -285,7 +285,7 @@ export async function handler(req: Request): Promise<Response> {
     // Brand lookup for the email template + 404 surface.
     const { data: brandRow, error: brandErr } = await service
       .from("brands")
-      .select("id, display_name")
+      .select("id, name")
       .eq("id", payload.brand_id)
       .is("deleted_at", null)
       .maybeSingle();
@@ -388,7 +388,7 @@ export async function handler(req: Request): Promise<Response> {
     }/accept-scanner-invitation?token=${encodeURIComponent(token)}`;
 
     const inviterDisplay = inviterEmail || "A teammate";
-    const brandDisplay = brandRow.display_name as string ?? "your brand";
+    const brandDisplay = brandRow.name as string ?? "your brand";
 
     const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
     if (!resendKey) {
