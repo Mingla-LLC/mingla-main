@@ -1,5 +1,5 @@
 -- #3988 — executable proof for access-checked Brand-group mentions.
--- MINGLA-INVARIANT: I-3988-BRAND-GROUP-MENTIONS | issue #3988 | Only active Brand-group members can be mentioned; a direct mention bypasses the thread mute but not the downstream global channel preference.
+-- MINGLA-INVARIANT: I-3988-BRAND-GROUP-MENTIONS | issue #3988 | Only accepted, non-removed Brand-group members can be mentioned; a direct mention bypasses the thread mute but not the downstream global channel preference.
 \set ON_ERROR_STOP on
 BEGIN;
 
