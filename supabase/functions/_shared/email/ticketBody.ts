@@ -70,6 +70,20 @@ function renderLocationLine(event: TicketBodyInput["event"]): string {
 }
 
 function renderDateLine(event: TicketBodyInput["event"]): string {
+  const multi = Array.isArray(event.dateLines)
+    ? event.dateLines.filter((line) =>
+      typeof line === "string" && line.trim().length > 0
+    )
+    : [];
+  if (multi.length > 0) {
+    return multi
+      .map((line, index) =>
+        `<p style="margin:${
+          index === 0 ? "6px" : "2px"
+        } 0 0 0;font-size:14px;color:${BRAND_MUTED};">${escapeHtml(line)}</p>`
+      )
+      .join("");
+  }
   const dateLine = formatEventDateLine(
     event.startAt,
     event.endAt,

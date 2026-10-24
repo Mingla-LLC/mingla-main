@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/email/__tests__/issue_3281_chosen_date_lines.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3281-chosen-date-lines-implementor",
+  "profile": "deno-1.46-stripe"
+}

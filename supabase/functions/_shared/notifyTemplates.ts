@@ -170,6 +170,13 @@ export function renderCategoryMessage(
   // Reminder lead bucket ('24h' | '2h') decides which COPY §3.3-3.6 variant renders.
   const leadBucket = str(payload.lead_bucket, "24h");
   const eventTitle = str(payload.event_title ?? payload.title, "your event");
+  // #3281 PR6 — per-date override title/place on reminders (from enqueue payload).
+  const dateTitle = str(payload.date_title);
+  const dateLocation = str(payload.date_location);
+  const reminderHeadline = dateTitle.length > 0 ? dateTitle : eventTitle;
+  const reminderPlace = dateLocation.length > 0
+    ? ` — ${dateLocation}`
+    : "";
 
   switch (categoryKey) {
     case "business.community_announcement": {
@@ -545,33 +552,34 @@ export function renderCategoryMessage(
     }
 
     case "buyer_event_reminder":
-      // COPY §3.3 (24h) / §3.4 (2h).
+      // COPY §3.3 (24h) / §3.4 (2h). #3281 PR6 names the date override when set.
       if (leadBucket === "2h") {
         return {
           push: {
-            title: `Starting soon: ${eventTitle}`,
-            body: `${brand}: starts in 2h at ${time}.`,
+            title: `Starting soon: ${reminderHeadline}`,
+            body: `${brand}: starts in 2h at ${time}${reminderPlace}.`,
           },
           email: {
-            subject: `${eventTitle} starts in 2 hours`,
-            body: `${eventTitle} starts in 2 hours at ${time}.\n\n` +
+            subject: `${reminderHeadline} starts in 2 hours`,
+            body: `${reminderHeadline} starts in 2 hours at ${time}${reminderPlace}.\n\n` +
               `See you soon! Details are in the Mingla app.`,
           },
           sms:
-            `${brand}: ${eventTitle} starts in 2 hours at ${time}. See you soon!`,
+            `${brand}: ${reminderHeadline} starts in 2 hours at ${time}${reminderPlace}. See you soon!`,
         };
       }
       return {
         push: {
-          title: `Tomorrow: ${eventTitle}`,
-          body: `${brand}: starts ${time}. See you there!`,
+          title: `Tomorrow: ${reminderHeadline}`,
+          body: `${brand}: starts ${time}${reminderPlace}. See you there!`,
         },
         email: {
-          subject: `${eventTitle} is tomorrow`,
-          body: `${eventTitle} is tomorrow at ${time}.\n\n` +
+          subject: `${reminderHeadline} is tomorrow`,
+          body: `${reminderHeadline} is tomorrow at ${time}${reminderPlace}.\n\n` +
             `See you there! Details are in the Mingla app.`,
         },
-        sms: `${brand}: ${eventTitle} is tomorrow at ${time}. See you there!`,
+        sms:
+          `${brand}: ${reminderHeadline} is tomorrow at ${time}${reminderPlace}. See you there!`,
       };
 
     case "buyer_reservation_reminder":
