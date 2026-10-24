@@ -452,8 +452,8 @@ export class GoogleDriveClient {
   async thumbnail(link: string, sizePx = 480): Promise<Response> {
     const target = new URL(link);
     const normalizedSize = Number.isInteger(sizePx) && sizePx > 0 ? sizePx : 480;
-    if (/=s\d+$/.test(target.href)) {
-      target.href = target.href.replace(/=s\d+$/, `=s${normalizedSize}`);
+    if (/=s[0-9]+$/.test(target.href)) {
+      target.href = target.href.replace(/=s[0-9]+$/, `=s${normalizedSize}`);
     } else {
       target.href = `${target.href}=s${normalizedSize}`;
     }
