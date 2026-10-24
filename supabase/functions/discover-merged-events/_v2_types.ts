@@ -1,3 +1,10 @@
+import {
+  MUSIC_GENRE_SLUGS,
+  PARTY_TYPE_SLUGS,
+  VIBE_TAG_SLUGS,
+  isSubsetOf,
+} from "../_shared/eventTaxonomy.ts";
+
 export type DiscoverKind = "events" | "experiences" | "trips" | "stays";
 
 export type DiscoverFiltersV2 =
@@ -16,6 +23,21 @@ export interface DiscoverV2Request {
   deviceTz?: string;
 }
 export const DISCOVER_KINDS = ["events", "experiences", "trips", "stays"] as const;
+const EVENT_WHEN = ["tomorrow", "weekend"] as const;
+const TRIP_WHEN = ["this_month", "next_month"] as const;
+const STAY_CHECK_IN = ["tonight", "tomorrow", "weekend"] as const;
+const EXPERIENCE_GOOD_FOR = ["adventurous", "first-date", "romantic", "group-fun"] as const;
+const EVENT_PRICE_OPTIONS = ["free_rsvp", "free_ticket", "band_1", "band_2", "band_3", "band_4"] as const;
+const EXPERIENCE_PRICE_OPTIONS = ["free", "band_1", "band_2", "band_3", "band_4"] as const;
+const STAY_PROPERTY_KINDS = [
+  "hotel", "resort", "guest_house", "lodge", "serviced_apartment", "short_stay_apartment", "other",
+] as const;
+const FILTER_FIELDS: Record<DiscoverKind, readonly string[]> = {
+  events: ["when", "price", "partyTypes", "vibeTags", "musicGenres"],
+  experiences: ["when", "goodFor", "price"],
+  trips: ["destination", "leavingFrom", "when"],
+  stays: ["checkIn", "guests", "propertyKinds"],
+};
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
@@ -25,12 +47,27 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function isOptionalEnum(value: unknown, allowed: readonly string[]): boolean {
+  return value === undefined || (typeof value === "string" && allowed.includes(value));
+}
+
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === "string";
 }
 
-function isOptionalStringArray(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.every((item) => typeof item === "string"));
+function isOptionalEnumArray(value: unknown, allowed: readonly string[]): boolean {
+  return value === undefined || (Array.isArray(value) && isSubsetOf(value, allowed));
+}
+
+function isValidTimezone(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (typeof value !== "string" || value.length === 0) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function isDiscoverV2Envelope(value: unknown): value is Record<string, unknown> & { contract: 2 } {
@@ -56,23 +93,31 @@ export function validateDiscoverV2Request(value: unknown): string | null {
   if (typeof f.kind !== "string" || !DISCOVER_KINDS.includes(f.kind as DiscoverKind)) return "invalid_kind";
   if (!f.f || typeof f.f !== "object" || Array.isArray(f.f)) return "invalid_filters";
   const values = f.f as Record<string, unknown>;
+  const extra = Object.keys(values).find((key) => !FILTER_FIELDS[f.kind as DiscoverKind].includes(key));
+  if (extra) return `invalid_filter:${extra}`;
   if (f.kind === "events" &&
-    (!isOptionalString(values.when) || !isOptionalStringArray(values.price) ||
-      !isOptionalStringArray(values.partyTypes) || !isOptionalStringArray(values.vibeTags) ||
-      !isOptionalStringArray(values.musicGenres))) return "invalid_filters";
+    (!isOptionalEnum(values.when, EVENT_WHEN) || !isOptionalEnumArray(values.price, EVENT_PRICE_OPTIONS) ||
+      !isOptionalEnumArray(values.partyTypes, PARTY_TYPE_SLUGS) || !isOptionalEnumArray(values.vibeTags, VIBE_TAG_SLUGS) ||
+      !isOptionalEnumArray(values.musicGenres, MUSIC_GENRE_SLUGS))) return "invalid_filters";
   if (f.kind === "experiences" &&
-    (!isOptionalString(values.when) || !isOptionalStringArray(values.goodFor) || !isOptionalStringArray(values.price))) return "invalid_filters";
+    (!isOptionalEnum(values.when, EVENT_WHEN) || !isOptionalEnumArray(values.goodFor, EXPERIENCE_GOOD_FOR) ||
+      !isOptionalEnumArray(values.price, EXPERIENCE_PRICE_OPTIONS))) return "invalid_filters";
   if (f.kind === "trips" &&
-    (!isOptionalString(values.destination) || !isOptionalString(values.leavingFrom) || !isOptionalString(values.when))) return "invalid_filters";
+    (!isOptionalString(values.destination) || !isOptionalString(values.leavingFrom) || !isOptionalEnum(values.when, TRIP_WHEN))) return "invalid_filters";
   if (f.kind === "stays" &&
-    (!isOptionalString(values.checkIn) ||
-      (values.guests !== undefined && !Number.isInteger(values.guests)) ||
-      !isOptionalStringArray(values.propertyKinds))) return "invalid_filters";
+    (!isOptionalEnum(values.checkIn, STAY_CHECK_IN) ||
+      (values.guests !== undefined && (!Number.isInteger(values.guests) || (values.guests as number) < 1 || (values.guests as number) > 8)) ||
+      !isOptionalEnumArray(values.propertyKinds, STAY_PROPERTY_KINDS))) return "invalid_filters";
 
   if (body.cursor !== undefined && body.cursor !== null && typeof body.cursor !== "string") return "invalid_cursor";
   if (body.size !== undefined && (!Number.isInteger(body.size) || (body.size as number) < 1 || (body.size as number) > 50)) return "invalid_page_size";
-  if (body.deviceTz !== undefined && typeof body.deviceTz !== "string") return "invalid_timezone";
+  if (!isValidTimezone(body.deviceTz)) return "invalid_timezone";
   return null;
+}
+
+export function discoverV2ValidationFailure(value: unknown): { error: string; status: 400 } | null {
+  const error = validateDiscoverV2Request(value);
+  return error ? { error, status: 400 } : null;
 }
 
 export function isDiscoverV2Request(value: unknown): value is DiscoverV2Request {

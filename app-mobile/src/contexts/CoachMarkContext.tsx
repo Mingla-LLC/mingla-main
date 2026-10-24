@@ -664,7 +664,9 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   useEffect(() => {
     if (!isFinite(currentStep) || currentStep < 1 || currentStep > COACH_STEP_COUNT) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (currentStep <= 1) return false;
+      // An active tour owns Android Back even at its first step. Returning false
+      // here delegates to React Native and can exit the app behind the overlay.
+      if (currentStep <= 1) return true;
       prevStep();
       return true;
     });

@@ -3,7 +3,7 @@ import { discoverCurrency } from "../discoverCurrency.ts";
 import { discoverPriceBands } from "../discoverPriceBands.ts";
 import { discoverPriceBandCatalog } from "../discoverPriceBands.ts";
 import { DISCOVER_CITY_WATCH_COPY, discoverCityWatchCopy } from "../discoverCityWatchCopy.ts";
-import { isDiscoverV2Request, validateDiscoverV2Request } from "../../discover-merged-events/_v2_types.ts";
+import { discoverV2ValidationFailure, isDiscoverV2Request, validateDiscoverV2Request } from "../../discover-merged-events/_v2_types.ts";
 import { buildDiscoverV2Key } from "../../discover-merged-events/_v2_key.ts";
 import { decodeCursor, encodeCursor, filterTm, shouldLoadTicketmaster, tmDateMatches } from "../../discover-merged-events/_v2_handler.ts";
 import {
@@ -57,6 +57,56 @@ Deno.test("#4073 v2 discriminator cannot capture a v1 request", () => {
   assertEquals(validateDiscoverV2Request({ ...valid, filters: { kind: "events", f: null } }), "invalid_filters");
   assertEquals(validateDiscoverV2Request({ ...valid, cursor: 42 }), "invalid_cursor");
   assert(!isDiscoverV2Request({ contract: 2, op: "delete", anchor: {}, filters: {} }));
+});
+
+Deno.test("#4073 rejects every malformed enum domain with 400 before dispatch", () => {
+  const base = {
+    contract: 2, op: "facets",
+    anchor: { name: "London", stateCode: null, countryCode: "GB", lat: 51.5, lng: -0.1, radiusKm: 50 },
+    deviceTz: "Europe/London",
+  };
+  const invalidDiscriminants = [
+    { label: "operation", request: { ...base, op: "delete", filters: { kind: "events", f: {} } } },
+    { label: "kind", request: { ...base, filters: { kind: "venues", f: {} } } },
+  ];
+  for (const { label, request } of invalidDiscriminants) {
+    const failure = discoverV2ValidationFailure(request);
+    assertEquals(failure?.status, 400, `${label} must stop at the pre-dispatch boundary`);
+    assert(!isDiscoverV2Request(request), `${label} must not reach RPC dispatch`);
+  }
+
+  const invalid = [
+    { label: "event when", filters: { kind: "events", f: { when: "tonight" } } },
+    { label: "event price", filters: { kind: "events", f: { price: ["free"] } } },
+    { label: "party type", filters: { kind: "events", f: { partyTypes: ["dinner"] } } },
+    { label: "vibe", filters: { kind: "events", f: { vibeTags: ["sleepy"] } } },
+    { label: "music", filters: { kind: "events", f: { musicGenres: ["opera-metal"] } } },
+    { label: "experience when", filters: { kind: "experiences", f: { when: "tonight" } } },
+    { label: "experience good-for", filters: { kind: "experiences", f: { goodFor: ["solo"] } } },
+    { label: "experience price", filters: { kind: "experiences", f: { price: ["free_ticket"] } } },
+    { label: "trip when", filters: { kind: "trips", f: { when: "tomorrow" } } },
+    { label: "stay check-in", filters: { kind: "stays", f: { checkIn: "this_month" } } },
+    { label: "stay property kind", filters: { kind: "stays", f: { propertyKinds: ["villa"] } } },
+    { label: "stay guests", filters: { kind: "stays", f: { guests: 9 } } },
+    { label: "extra filter", filters: { kind: "events", f: { audience: "everyone" } } },
+    { label: "timezone", filters: { kind: "events", f: {} }, deviceTz: "Mars/Olympus" },
+  ];
+  for (const { label, filters, deviceTz } of invalid) {
+    const failure = discoverV2ValidationFailure({ ...base, filters, ...(deviceTz ? { deviceTz } : {}) });
+    assertEquals(failure?.status, 400, `${label} must stop at the pre-dispatch boundary`);
+    assert(!isDiscoverV2Request({ ...base, filters, ...(deviceTz ? { deviceTz } : {}) }), `${label} must not reach RPC dispatch`);
+  }
+
+  const valid = [
+    { kind: "events", f: { when: "weekend", price: ["free_rsvp", "free_ticket", "band_4"], partyTypes: ["rave"], vibeTags: ["chill"], musicGenres: ["afrobeats"] } },
+    { kind: "experiences", f: { when: "tomorrow", goodFor: ["adventurous", "first-date", "romantic", "group-fun"], price: ["free", "band_3"] } },
+    { kind: "trips", f: { destination: "place:destination", leavingFrom: "place:departure", when: "next_month" } },
+    { kind: "stays", f: { checkIn: "tonight", guests: 8, propertyKinds: ["hotel", "resort", "guest_house", "lodge", "serviced_apartment", "short_stay_apartment", "other"] } },
+  ];
+  for (const filters of valid) {
+    assertEquals(discoverV2ValidationFailure({ ...base, filters }), null, `${filters.kind} valid controls pass`);
+    assert(isDiscoverV2Request({ ...base, filters }), `${filters.kind} valid controls reach dispatch`);
+  }
 });
 
 Deno.test("#4073 canonical Mingla music slugs filter the matching Ticketmaster classifications", () => {
