@@ -223,6 +223,8 @@ async function sendResendEmailWithAttachment(input: {
 interface OrderJoin {
   id: string;
   event_id: string;
+  event_date_id: string | null;
+  booked_start_at: string | null;
   buyer_name: string | null;
   buyer_email: string | null;
   buyer_user_id: string | null;
@@ -291,8 +293,7 @@ function publicBuyerBaseUrl(): string {
   // BUSINESS_WEB_ORIGIN is the canonical origin secret and the old
   // MINGLA_BUSINESS_WEB_URL name is a fallback so its deletion is safely
   // decoupled (same digest, audited).
-  const raw =
-    Deno.env.get("PUBLIC_BUYER_BASE_URL") ??
+  const raw = Deno.env.get("PUBLIC_BUYER_BASE_URL") ??
     Deno.env.get("BUSINESS_WEB_ORIGIN") ??
     Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
     "https://host.usemingla.com";
@@ -453,20 +454,19 @@ async function deliverWaitlistSpotOpenNotification(
   notification: NotificationRow,
 ): Promise<"sent" | "failed_terminal" | "skipped"> {
   const payload = notification.payload ?? {};
-  const waitlistEntryId =
-    typeof payload.waitlist_entry_id === "string"
-      ? payload.waitlist_entry_id
-      : "";
+  const waitlistEntryId = typeof payload.waitlist_entry_id === "string"
+    ? payload.waitlist_entry_id
+    : "";
   const eventId = typeof payload.event_id === "string" ? payload.event_id : "";
-  const ticketTypeId =
-    typeof payload.ticket_type_id === "string" ? payload.ticket_type_id : "";
+  const ticketTypeId = typeof payload.ticket_type_id === "string"
+    ? payload.ticket_type_id
+    : "";
   const qtyRequested = Number.isInteger(payload.qty_requested)
     ? Number(payload.qty_requested)
     : 1;
-  const inviteExpiresAt =
-    typeof payload.invite_expires_at === "string"
-      ? payload.invite_expires_at
-      : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const inviteExpiresAt = typeof payload.invite_expires_at === "string"
+    ? payload.invite_expires_at
+    : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   if (!waitlistEntryId || !eventId || !ticketTypeId) {
     await markNotificationTerminal(
@@ -508,9 +508,11 @@ async function deliverWaitlistSpotOpenNotification(
     brands: { name: string | null };
   };
   const ticketType = ticketTypeRaw as unknown as { name: string | null };
-  const claimUrl = `${publicBuyerBaseUrl()}/checkout/${eventId}?wl=${encodeURIComponent(
-    waitlistEntryId,
-  )}`;
+  const claimUrl = `${publicBuyerBaseUrl()}/checkout/${eventId}?wl=${
+    encodeURIComponent(
+      waitlistEntryId,
+    )
+  }`;
 
   if (notification.channel === "email") {
     const email = renderWaitlistSpotOpenEmail({
@@ -691,8 +693,9 @@ async function handleWaitlistNotificationDispatch(
   } catch (err) {
     // #2218 — same rule as the per-order loop: a timed operator refusal is a
     // HOLD, not a spent attempt. See the essay on the catch clause there.
-    const deferredUntil =
-      err instanceof ProviderSendError ? err.nextAttemptAt : null;
+    const deferredUntil = err instanceof ProviderSendError
+      ? err.nextAttemptAt
+      : null;
     if (deferredUntil !== null) {
       const { error: deferErr } = await supabase
         .from("ticket_order_notifications")
@@ -713,7 +716,8 @@ async function handleWaitlistNotificationDispatch(
             event: "ticket_notification_defer_write_rejected",
             notificationId: notification.id,
             detail: deferErr.message,
-            note: "#2218 apply migration 20270421002218 before deploying this function",
+            note:
+              "#2218 apply migration 20270421002218 before deploying this function",
           }),
         );
         await supabase
@@ -814,10 +818,9 @@ function buildRenderContext(args: {
     (masterDate?.timezone && masterDate.timezone.length > 0
       ? masterDate.timezone
       : order.events.timezone) ?? "UTC";
-  const variant: TicketBodyInput["variant"] =
-    order.payment_method === "free"
-      ? "ticket_confirmation_free"
-      : "ticket_confirmation_paid";
+  const variant: TicketBodyInput["variant"] = order.payment_method === "free"
+    ? "ticket_confirmation_free"
+    : "ticket_confirmation_paid";
 
   const bodyInput: TicketBodyInput = {
     variant,
@@ -894,8 +897,9 @@ async function attachTicketFollowBlock(
     origin: PRODUCTION_BUSINESS_WEB_ORIGIN,
     slug: brandSlug,
   });
-  const userId =
-    typeof order.buyer_user_id === "string" ? order.buyer_user_id.trim() : "";
+  const userId = typeof order.buyer_user_id === "string"
+    ? order.buyer_user_id.trim()
+    : "";
 
   if (userId.length > 0 && typeof brandId === "string" && brandId.length > 0) {
     try {
@@ -996,16 +1000,16 @@ async function handleInstallmentDunning(
   orderId: string,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const installmentId =
-    typeof body.installmentId === "string" ? body.installmentId : "";
+  const installmentId = typeof body.installmentId === "string"
+    ? body.installmentId
+    : "";
   if (installmentId === "") {
     return jsonResponse({ error: "installment_id_required" }, 400);
   }
   const ordinal = Number(body.installmentOrdinal ?? 0);
-  const failureReason =
-    typeof body.failureReason === "string"
-      ? body.failureReason
-      : "payment_failed_no_detail";
+  const failureReason = typeof body.failureReason === "string"
+    ? body.failureReason
+    : "payment_failed_no_detail";
 
   const order = await fetchInstallmentEmailContext(supabase, orderId);
   if (order === null) return jsonResponse({ error: "order_not_found" }, 404);
@@ -1133,8 +1137,9 @@ export const handler = async (req: Request): Promise<Response> => {
 
   const body = await req.json().catch(() => ({}));
   const supabase = serviceClient();
-  const notificationId =
-    typeof body.notificationId === "string" ? body.notificationId : "";
+  const notificationId = typeof body.notificationId === "string"
+    ? body.notificationId
+    : "";
   if (notificationId) {
     return await handleWaitlistNotificationDispatch(supabase, notificationId);
   }
@@ -1256,11 +1261,9 @@ export const handler = async (req: Request): Promise<Response> => {
     supabase,
     orderId,
     order.events.id,
-    (order as unknown as { event_date_id?: string | null }).event_date_id ??
-      null,
+    order.event_date_id,
     "[ticket-confirmation-dispatch]",
-    (order as unknown as { booked_start_at?: string | null }).booked_start_at ??
-      null,
+    order.booked_start_at,
   );
   // #3281 PR6 — list each admitted day (with override title/place) when 2+.
   const chosenDays = await ticketDaysForOrder(
@@ -1268,10 +1271,9 @@ export const handler = async (req: Request): Promise<Response> => {
     orderId,
     "[ticket-confirmation-dispatch]",
   );
-  const chosenDateLines =
-    chosenDays !== null && chosenDays.length >= 2
-      ? formatChosenOccurrenceList(chosenDays)
-      : [];
+  const chosenDateLines = chosenDays !== null && chosenDays.length >= 2
+    ? formatChosenOccurrenceList(chosenDays)
+    : [];
 
   const contextBase = buildRenderContext({
     order,
@@ -1326,15 +1328,16 @@ export const handler = async (req: Request): Promise<Response> => {
   const smsBody = isTrip
     ? `Mingla: you're booked on ${eventTitle}. Order ${shortId(order.id)}.`
     : isExperience
-      ? `Mingla: you're reserved for ${eventTitle}. Order ${shortId(order.id)}.`
-      : `Mingla: your ${ticketCount} ticket${
-          ticketCount === 1 ? "" : "s"
-        } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
+    ? `Mingla: you're reserved for ${eventTitle}. Order ${shortId(order.id)}.`
+    : `Mingla: your ${ticketCount} ticket${
+      ticketCount === 1 ? "" : "s"
+    } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
 
   // Render email + PDF once per dispatch; reused across email ledger rows.
   let renderedEmail: ReturnType<typeof renderTransactionalEmail> | null = null;
   let renderedPdf: Awaited<ReturnType<typeof buildTicketPdf>> | null = null;
   let renderError: { code: string; message: string } | null = null;
+  let pdfRenderError: { code: string; message: string } | null = null;
   /**
    * #3524 FOLLOW-UP — WHY THE RENDER IS A CLOSURE NOW.
    *
@@ -1360,8 +1363,8 @@ export const handler = async (req: Request): Promise<Response> => {
    */
   let renderEmailBody:
     | ((
-        appCtaClaimUrl: string | null,
-      ) => ReturnType<typeof renderTransactionalEmail>)
+      appCtaClaimUrl: string | null,
+    ) => ReturnType<typeof renderTransactionalEmail>)
     | null = null;
 
   try {
@@ -1392,9 +1395,8 @@ export const handler = async (req: Request): Promise<Response> => {
         kind: "included" | "excluded";
         item: string;
       }>;
-      const themeBT =
-        ((order.events.theme as Record<string, unknown> | null)
-          ?.business_trip as Record<string, unknown> | undefined) ?? {};
+      const themeBT = ((order.events.theme as Record<string, unknown> | null)
+        ?.business_trip as Record<string, unknown> | undefined) ?? {};
       // #3524 A8 — keep the exact direct-call shape on one line.
       // #3682 Wave 2.4 — follow is a first-class input on the trip template
       // (inside the 600px shell), not a post-</body> splice.
@@ -1409,13 +1411,13 @@ export const handler = async (req: Request): Promise<Response> => {
           },
           trip: {
             title: context.bodyInput.event.title,
-            startAtIso:
-              typeof themeBT.startAt === "string" ? themeBT.startAt : null,
+            startAtIso: typeof themeBT.startAt === "string"
+              ? themeBT.startAt
+              : null,
             endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
-            destinationText:
-              typeof themeBT.destinationLocationText === "string"
-                ? themeBT.destinationLocationText
-                : null,
+            destinationText: typeof themeBT.destinationLocationText === "string"
+              ? themeBT.destinationLocationText
+              : null,
             timezone: context.bodyInput.event.timezone,
             days: tripDays,
             inclusions: tripInclusions,
@@ -1460,9 +1462,9 @@ export const handler = async (req: Request): Promise<Response> => {
         const theme = (order.events as { theme?: unknown }).theme;
         const hideUntil = Boolean(
           theme &&
-          typeof theme === "object" &&
-          (theme as { business_event?: { hideAddressUntilTicket?: unknown } })
-            .business_event?.hideAddressUntilTicket === true,
+            typeof theme === "object" &&
+            (theme as { business_event?: { hideAddressUntilTicket?: unknown } })
+                .business_event?.hideAddressUntilTicket === true,
         );
         const first = expStops[0] ?? null;
         if (hideUntil) {
@@ -1531,6 +1533,19 @@ export const handler = async (req: Request): Promise<Response> => {
     // what proves the render works before the send loop is entered.
     renderedEmail = renderEmailBody(null);
     assertNotResendSandbox(renderedEmail.from);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    renderError = {
+      code: `email_render_input_incomplete:${message}`,
+      message,
+    };
+  }
+
+  // #4063 — the authenticated in-app PDF remains a best-effort compatibility
+  // artifact, but it is no longer attached to email and may never hold the
+  // buyer's email or SMS hostage. Keep its failure separate from renderError,
+  // which is the delivery gate below. skipNotify still receives the PDF error.
+  try {
     renderedPdf = await buildTicketPdf({
       event: {
         title: context.bodyInput.event.title,
@@ -1547,17 +1562,24 @@ export const handler = async (req: Request): Promise<Response> => {
       attendeeNameHint: order.buyer_name,
       logoUrl: MINGLA_LOGO_URL ?? undefined,
     });
-    console.log(
-      `[ticket-confirmation-dispatch] order=${context.bodyInput.order.shortId} html_bytes=${renderedEmail.html.length} pdf_bytes=${renderedPdf.byteLength}`,
-    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    renderError = {
+    pdfRenderError = {
       code: message.startsWith("ticket_pdf_")
         ? message
-        : `email_render_input_incomplete:${message}`,
+        : `ticket_pdf_render_failed:${message}`,
       message,
     };
+    console.warn(
+      `[ticket-confirmation-dispatch] ticket_pdf_render_failed order=${order.id}: ${message}`,
+    );
+  }
+  if (renderedEmail) {
+    console.log(
+      `[ticket-confirmation-dispatch] order=${context.bodyInput.order.shortId} html_bytes=${renderedEmail.html.length} pdf_bytes=${
+        renderedPdf?.byteLength ?? 0
+      }`,
+    );
   }
 
   // ORCH-0842: persist the rendered PDF to the private `ticket-pdfs` bucket
@@ -1567,8 +1589,9 @@ export const handler = async (req: Request): Promise<Response> => {
   // makes this safe under Resend retry (same bytes, same path).
   if (renderedPdf) {
     try {
-      const pdfBytes = Uint8Array.from(atob(renderedPdf.contentBase64), (c) =>
-        c.charCodeAt(0),
+      const pdfBytes = Uint8Array.from(
+        atob(renderedPdf.contentBase64),
+        (c) => c.charCodeAt(0),
       );
       // issue #2347 — versioned path. This renderer has been day-correct
       // since #2162; the version exists so `ticket-pdf-fetch` can tell a
@@ -1600,8 +1623,9 @@ export const handler = async (req: Request): Promise<Response> => {
         }
       }
     } catch (uploadErr) {
-      const message =
-        uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      const message = uploadErr instanceof Error
+        ? uploadErr.message
+        : String(uploadErr);
       console.warn(
         `[ticket-confirmation-dispatch] storage upload threw for order=${order.id}: ${message}`,
       );
@@ -1617,8 +1641,8 @@ export const handler = async (req: Request): Promise<Response> => {
     return jsonResponse({
       orderId,
       skipNotify: true,
-      pdfStored: Boolean(renderedPdf) && !renderError,
-      renderError,
+      pdfStored: Boolean(renderedPdf) && !pdfRenderError,
+      renderError: renderError ?? pdfRenderError,
     });
   }
 
@@ -1666,10 +1690,9 @@ export const handler = async (req: Request): Promise<Response> => {
   for (const notification of notifications ?? []) {
     // ORCH-0788 I-PROPOSED-BA: COALESCE template_key with legacy default.
     const rawPayload = (notification.payload ?? {}) as Record<string, unknown>;
-    const templateKey =
-      typeof rawPayload.template_key === "string"
-        ? rawPayload.template_key
-        : "buyer_ticket_confirmation";
+    const templateKey = typeof rawPayload.template_key === "string"
+      ? rawPayload.template_key
+      : "buyer_ticket_confirmation";
 
     await supabase
       .from("ticket_order_notifications")
@@ -1688,10 +1711,9 @@ export const handler = async (req: Request): Promise<Response> => {
         let outcomeStatus = "sent";
         // Legacy path — preserved exactly as ORCH-0785 baseline.
         if (notification.channel === "email") {
-          if (!renderedEmail || !renderedPdf) {
-            // Render failure surfaces as retryable. Either render input is
-            // transiently incomplete (missing event/brand row) or the PDF
-            // library hit a recoverable issue.
+          if (!renderedEmail) {
+            // Email render failure surfaces as retryable. The optional private
+            // PDF is deliberately not part of this delivery gate (#4063).
             throw new ProviderSendError({
               retryable: true,
               detail: renderError?.code ?? "email_render_unknown_failure",
@@ -1710,28 +1732,32 @@ export const handler = async (req: Request): Promise<Response> => {
             endAtIso: context.bodyInput.event.endAt,
             locationText: context.bodyInput.event.locationText,
             isOnline: context.bodyInput.event.isOnline,
-            description: `${context.bodyInput.event.title} — hosted by ${context.bodyInput.brand.name}. Order #${context.bodyInput.order.shortId}.`,
+            description:
+              `${context.bodyInput.event.title}, hosted by ${context.bodyInput.brand.name}. Order ${context.bodyInput.order.shortId}. Your ticket is in the Mingla app.`,
+            uid: `mingla-order-${order.id}-${
+              order.event_date_id ?? "main"
+            }@usemingla.com`,
           };
           // #3281 PR6 — one VEVENT per admitted date when the order covers 2+.
-          const calendarLinks =
-            chosenDays !== null && chosenDays.length >= 2
-              ? buildMultiDateCalendarLinks(
-                  chosenDays.map((day) => ({
-                    title:
-                      (day.override_title ?? "").trim().length > 0
-                        ? String(day.override_title)
-                        : context.bodyInput.event.title,
-                    startAtIso: day.start_at,
-                    endAtIso: day.end_at,
-                    locationText:
-                      (day.override_location ?? "").trim().length > 0
-                        ? String(day.override_location)
-                        : context.bodyInput.event.locationText,
-                    description: calendarFallback.description,
-                  })),
-                  calendarFallback,
-                )
-              : buildCalendarLinks(calendarFallback);
+          const calendarLinks = chosenDays !== null && chosenDays.length >= 2
+            ? buildMultiDateCalendarLinks(
+              chosenDays.map((day) => ({
+                title: (day.override_title ?? "").trim().length > 0
+                  ? String(day.override_title)
+                  : context.bodyInput.event.title,
+                startAtIso: day.start_at,
+                endAtIso: day.end_at,
+                locationText: (day.override_location ?? "").trim().length > 0
+                  ? String(day.override_location)
+                  : context.bodyInput.event.locationText,
+                description: calendarFallback.description,
+                uid: `mingla-order-${order.id}-${
+                  String(day.id ?? "main")
+                }@usemingla.com`,
+              })),
+              calendarFallback,
+            )
+            : buildCalendarLinks(calendarFallback);
           if (calendarLinks) {
             attachments.push({
               filename: calendarLinks.icsFilename,
@@ -2088,8 +2114,9 @@ export const handler = async (req: Request): Promise<Response> => {
       // 06:14 WAT having never once been offered to the network. The row
       // records WHEN it becomes attemptable; notification-retry-sweeper honours
       // that instant instead of its own ~6-minute ladder.
-      const deferredUntil =
-        err instanceof ProviderSendError ? err.nextAttemptAt : null;
+      const deferredUntil = err instanceof ProviderSendError
+        ? err.nextAttemptAt
+        : null;
       if (deferredUntil !== null) {
         const { error: deferErr } = await supabase
           .from("ticket_order_notifications")
@@ -2119,7 +2146,8 @@ export const handler = async (req: Request): Promise<Response> => {
               event: "ticket_notification_defer_write_rejected",
               notificationId: notification.id,
               detail: deferErr.message,
-              note: "#2218 apply migration 20270421002218 before deploying this function",
+              note:
+                "#2218 apply migration 20270421002218 before deploying this function",
             }),
           );
           await supabase
@@ -2220,14 +2248,12 @@ export const handler = async (req: Request): Promise<Response> => {
       .from("orders")
       .update({
         notification_status: failed
-          ? sent
-            ? "partial"
-            : "failed"
+          ? sent ? "partial" : "failed"
           : deferred
-            ? "pending"
-            : sent
-              ? "sent"
-              : "not_required",
+          ? "pending"
+          : sent
+          ? "sent"
+          : "not_required",
         updated_at: new Date().toISOString(),
       })
       .eq("id", orderId);
