@@ -108,6 +108,7 @@
 // [TEST-MOD-APPROVED #3872] M5 and the live-save correction each add one exact
 // #1931 skip; the base is now 35 and added-branch fixtures are 36, with assertion
 // logic unchanged.
+// The approval commit preserves the independent revert and parser-boundary proofs.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";

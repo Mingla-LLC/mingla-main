@@ -279,6 +279,7 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // because all three #3872 migrations it depends on are omitted there.
 // [TEST-MOD-APPROVED #3872] The live-save correction adds one exact skip to
 // #1931 because brand_discounts is intentionally absent from that lane.
+// The approval commit changes counts only; every adversarial branch stays binding.
 test("T-10 — lane inventory is exactly 4 lanes at 35/1/3/28 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);

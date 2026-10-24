@@ -1,4 +1,5 @@
 // MINGLA-INVARIANT: I-3872-HOST-EDITOR-USABLE | issue #3872 | The Host discount editor uses visible date/time pickers, clear choice cards, and a buyer-readable monetary preview rather than raw ISO or JSON fields.
+// The approved test maintenance replaces source-text pinning with executable contracts.
 import { describe, expect, test } from "@jest/globals";
 
 import { isoFromLocalDateTime, localDateTimeValue } from "../discountDateTime";
