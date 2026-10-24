@@ -117,5 +117,18 @@
     "next_step_label": "Étape suivante",
     "finish_tour_label": "Terminer la visite guidée",
     "guided_tour_label": "Visite guidée étape {{current}} sur {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Tout près de chez vous, sur une seule page",
+      "body_all": "Événements, expériences, voyages et séjours, le tout sur une seule page. Appuyez sur une pilule pour changer.",
+      "body_subset": "{{list}}, le tout sur une seule page. Appuyez sur une pilule pour changer."
+    },
+    "step5": {
+      "title": "Affinez-la",
+      "body": "Filtrez par jour, ambiance, musique, destination et plus encore. Les choix changent avec chaque pilule."
+    },
+    "list_two": "{{a}} et {{b}}",
+    "list_three": "{{a}}, {{b}} et {{c}}"
   }
 }

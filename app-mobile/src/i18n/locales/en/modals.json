@@ -117,5 +117,18 @@
     "next_step_label": "Go to next step",
     "finish_tour_label": "Finish guided tour",
     "guided_tour_label": "Guided tour step {{current}} of {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Everything near you, one page",
+      "body_all": "Events, experiences, trips and stays, all on one page. Tap a pill to switch.",
+      "body_subset": "{{list}}, all on one page. Tap a pill to switch."
+    },
+    "step5": {
+      "title": "Narrow it down",
+      "body": "Filter by day, vibe, music, destination and more. The choices change with each pill."
+    },
+    "list_two": "{{a}} and {{b}}",
+    "list_three": "{{a}}, {{b}} and {{c}}"
   }
 }

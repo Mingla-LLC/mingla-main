@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
-import { Dimensions, Platform } from 'react-native';
+import { BackHandler, Dimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { supabase } from '../services/supabase';
@@ -23,6 +23,11 @@ interface ScrollTargetOffset {
   height: number;
 }
 
+export interface CoachStepCopyOverride {
+  descriptionKey: string;
+  descriptionValues?: Record<string, string>;
+}
+
 /**
  * ORCH-1037 (SPEC §3.3): a per-scroll-step thunk that measures the actual row
  * leaf node via measureInWindow and invokes the callback with the raw window
@@ -41,6 +46,10 @@ interface CoachMarkContextType {
   currentStepConfig: CoachStep | null;
   nextStep: () => void;
   prevStep: () => void;
+  skipStep: (stepId: number) => void;
+  currentStepCopyOverride: CoachStepCopyOverride | null;
+  setStepCopyOverride: (stepId: number, override: CoachStepCopyOverride | null) => void;
+  coachProgress: { current: number; total: number };
   skipTour: () => void;
   targetMeasurements: Map<number, TargetRect>;
   registerTarget: (stepId: number, rect: TargetRect) => void;
@@ -154,6 +163,12 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [scrollLockActive, setScrollLockActive] = useState(false);
+  const [skippedStepIds, setSkippedStepIds] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
+  const [stepCopyOverrides, setStepCopyOverrides] = useState<ReadonlyMap<number, CoachStepCopyOverride>>(
+    () => new Map(),
+  );
   const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigateToTabRef = useRef(navigateToTab);
   navigateToTabRef.current = navigateToTab;
@@ -575,7 +590,8 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       });
     }
 
-    const newStep = currentStep + 1;
+    let newStep = currentStep + 1;
+    while (newStep <= COACH_STEP_COUNT && skippedStepIds.has(newStep)) newStep += 1;
 
     if (newStep > COACH_STEP_COUNT) {
       setOverlayVisible(false);
@@ -593,13 +609,48 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     }
 
     navigateAndTransition(newStep, 'forward');
-  }, [currentStep, persistStep, navigateAndTransition]);
+  }, [currentStep, persistStep, navigateAndTransition, skippedStepIds]);
 
   // ── Previous step ───────────────────────────────────────────────────────
   const prevStep = useCallback((): void => {
     if (currentStep <= 1) return;
-    navigateAndTransition(currentStep - 1, 'back');
-  }, [currentStep, navigateAndTransition]);
+    let previous = currentStep - 1;
+    while (previous > 1 && skippedStepIds.has(previous)) previous -= 1;
+    navigateAndTransition(previous, 'back');
+  }, [currentStep, navigateAndTransition, skippedStepIds]);
+
+  const skipStep = useCallback((stepId: number): void => {
+    setSkippedStepIds((previous) => {
+      if (previous.has(stepId)) return previous;
+      const next = new Set(previous);
+      next.add(stepId);
+      return next;
+    });
+    if (currentStep === stepId) {
+      let next = stepId + 1;
+      while (next <= COACH_STEP_COUNT && skippedStepIds.has(next)) next += 1;
+      navigateAndTransition(next, 'forward');
+    }
+  }, [currentStep, navigateAndTransition, skippedStepIds]);
+
+  const setStepCopyOverride = useCallback((stepId: number, override: CoachStepCopyOverride | null): void => {
+    setStepCopyOverrides((previous) => {
+      const next = new Map(previous);
+      if (override) next.set(stepId, override);
+      else next.delete(stepId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isFinite(currentStep) || currentStep < 1 || currentStep > COACH_STEP_COUNT) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (currentStep <= 1) return false;
+      prevStep();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [currentStep, prevStep]);
 
   // ── Skip tour ───────────────────────────────────────────────────────────
   const skipTour = useCallback((): void => {
@@ -629,6 +680,13 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   const currentStepConfig = isCoachActive
     ? COACH_STEPS.find((s) => s.id === currentStep) ?? null
     : null;
+  const currentStepCopyOverride = isCoachActive
+    ? stepCopyOverrides.get(currentStep) ?? null
+    : null;
+  const coachProgress = useMemo(() => ({
+    current: COACH_STEPS.filter((step) => step.id <= currentStep && !skippedStepIds.has(step.id)).length,
+    total: COACH_STEP_COUNT - skippedStepIds.size,
+  }), [currentStep, skippedStepIds]);
 
   // ORCH-0679 Wave 2A: useMemo on value (I-PROVIDER-VALUE-MEMOIZED) — context
   // value identity is stable across renders when no underlying state/refs change.
@@ -640,6 +698,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     currentStepConfig,
     nextStep,
     prevStep,
+    skipStep,
+    currentStepCopyOverride,
+    setStepCopyOverride,
+    coachProgress,
     skipTour,
     targetMeasurements,
     registerTarget,
@@ -657,6 +719,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     currentStepConfig,
     nextStep,
     prevStep,
+    skipStep,
+    currentStepCopyOverride,
+    setStepCopyOverride,
+    coachProgress,
     skipTour,
     targetMeasurements,
     registerTarget,

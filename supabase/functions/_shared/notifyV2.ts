@@ -233,6 +233,9 @@ export function providerSafePayload(
         .filter((key) => payload[key] !== undefined)
         .map((key) => [key, payload[key]]),
     );
+  if (category === "discover_city_plans_live") {
+    return pick(["city_key", "deep_link"]);
+  }
   if (category === "business.community_announcement") {
     return pick(["campaign_id", "announcement_id"]);
   }

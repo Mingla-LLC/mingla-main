@@ -1,3 +1,6 @@
+import type { DiscoverFiltersV2 } from '../types/discoverFeed';
+import { normalizeDiscoverFilters } from '../types/discoverFeed';
+
 /**
  * Centralized query key factories.
  *
@@ -18,6 +21,16 @@ export const savedCardKeys = {
   paired: (pairedUserId: string, category?: string) =>
     [...savedCardKeys.all, 'paired', pairedUserId, category || 'all'] as const,
   board: (sessionId: string) => [...savedCardKeys.all, 'board', sessionId] as const,
+};
+
+export const discoverKeys = {
+  all: ['discover'] as const,
+  facets: (anchorKey: string, filters: DiscoverFiltersV2) =>
+    [...discoverKeys.all, 'facets', anchorKey, normalizeDiscoverFilters(filters)] as const,
+  feed: (anchorKey: string, filters: DiscoverFiltersV2) =>
+    [...discoverKeys.all, 'feed', anchorKey, normalizeDiscoverFilters(filters)] as const,
+  cityWatch: (cityKey: string, userId: string) =>
+    [...discoverKeys.all, 'cityWatch', cityKey, userId] as const,
 };
 
 // META-ORCH-1161 Sub-A — consumer notification-preferences matrix.

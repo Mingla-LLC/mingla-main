@@ -26,6 +26,8 @@ import {
 } from "./_memory-cache.ts";
 import { DiscoverOverloadedError, resolveDiscoverEntry } from "./_resolve-entry.ts";
 import { serveDiscoverBytes } from "./_response-bytes.ts";
+import { isDiscoverV2Request } from "./_v2_types.ts";
+import { handleDiscoverV2 } from "./_v2_handler.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,12 +89,22 @@ serve(async (req: Request): Promise<Response> => {
     return jsonError({ error: "method_not_allowed" }, 405);
   }
 
-  let body: DiscoverMergedRequest;
+  let rawBody: unknown;
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
     return jsonError({ error: "invalid_json" }, 400);
   }
+
+  if (isDiscoverV2Request(rawBody)) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!supabaseUrl || !serviceKey) return jsonError({ error: "supabase_env_missing" }, 500);
+    const client = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+    return handleDiscoverV2(rawBody, client, jsonError);
+  }
+
+  const body = rawBody as DiscoverMergedRequest;
 
   // ── #1637 Keep-warm ping: boot the isolate without running business logic ──
   // MUST stay above the `city_required` check. This function is on the consumer

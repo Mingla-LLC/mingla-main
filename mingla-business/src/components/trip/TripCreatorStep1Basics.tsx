@@ -83,12 +83,16 @@ export interface Step1Draft {
   destinationLocationText: string | null;
   destinationLat: number | null;
   destinationLng: number | null;
+  destinationCity: string | null;
+  destinationCountryCode: string | null;
   // ORCH-1016 — DEPARTURE/origin city ("where travelers leave from"). Mirrors
   // the destination* family. Optional — never gates publish (NG-3 sparse data).
   departurePlaceId: string | null;
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
+  departureCity: string | null;
+  departureCountryCode: string | null;
   // Issue #1363 — legacy values may be "exact"; selected-address coordinates
   // are "approximate"; null means unset. Carried into
   // theme.business_trip.{departure,destination}CoordinatePrecision at publish.
@@ -227,6 +231,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         departurePlaceId: null,
         departureLat: null,
         departureLng: null,
+        departureCity: null,
+        departureCountryCode: null,
         departureCoordinatePrecision: null,
       });
       void (async () => {
@@ -250,6 +256,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           onChange({
             departureLat: approx.lat,
             departureLng: approx.lng,
+            departureCity: approx.city,
+            departureCountryCode: approx.countryCode,
             departureCoordinatePrecision: "approximate",
           });
           departureContextRef.current = {
@@ -285,6 +293,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         destinationPlaceId: null,
         destinationLat: null,
         destinationLng: null,
+        destinationCity: null,
+        destinationCountryCode: null,
         destinationCoordinatePrecision: null,
       });
       void (async () => {
@@ -308,6 +318,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           onChange({
             destinationLat: approx.lat,
             destinationLng: approx.lng,
+            destinationCity: approx.city,
+            destinationCountryCode: approx.countryCode,
             destinationCoordinatePrecision: "approximate",
           });
           destinationContextRef.current = {
@@ -616,6 +628,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departurePlaceId: null,
               departureLat: null,
               departureLng: null,
+              departureCity: null,
+              departureCountryCode: null,
               departureCoordinatePrecision: (
                 advanceLocationRequestGeneration(departureRequestGenerationRef),
                 (departureContextRef.current = {
@@ -638,6 +652,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departureLocationText: label,
               departureLat: place.location.lat,
               departureLng: place.location.lng,
+              departureCity: place.city,
+              departureCountryCode: place.countryCode,
               // Issue #1629 — real pick: read Mapbox's feature_type, do not assert.
               departureCoordinatePrecision: precisionFromPlaceDetails(place),
             });
@@ -656,6 +672,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departurePlaceId: null,
               departureLat: null,
               departureLng: null,
+              departureCity: null,
+              departureCountryCode: null,
               departureCoordinatePrecision: null,
             });
           }}
@@ -669,6 +687,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departureLocationText: null,
               departureLat: null,
               departureLng: null,
+              departureCity: null,
+              departureCountryCode: null,
               departureCoordinatePrecision: null,
             });
           }}
@@ -698,6 +718,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationPlaceId: null,
               destinationLat: null,
               destinationLng: null,
+              destinationCity: null,
+              destinationCountryCode: null,
               destinationCoordinatePrecision: (
                 advanceLocationRequestGeneration(destinationRequestGenerationRef),
                 (destinationContextRef.current = {
@@ -720,6 +742,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationLocationText: label,
               destinationLat: place.location.lat,
               destinationLng: place.location.lng,
+              destinationCity: place.city,
+              destinationCountryCode: place.countryCode,
               // Issue #1629 — real pick: read Mapbox's feature_type, do not assert.
               destinationCoordinatePrecision: precisionFromPlaceDetails(place),
             });
@@ -738,6 +762,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationPlaceId: null,
               destinationLat: null,
               destinationLng: null,
+              destinationCity: null,
+              destinationCountryCode: null,
               destinationCoordinatePrecision: null,
             });
           }}
@@ -751,6 +777,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationLocationText: null,
               destinationLat: null,
               destinationLng: null,
+              destinationCity: null,
+              destinationCountryCode: null,
               destinationCoordinatePrecision: null,
             });
           }}

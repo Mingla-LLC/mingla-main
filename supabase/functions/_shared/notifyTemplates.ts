@@ -1,4 +1,5 @@
 // META-ORCH-1161 Sub-A — per-category message templates (single source of truth).
+import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
 //
 // Copy is VERBATIM from
 // Mingla_Artifacts/design/ORCH-1161/COPY_META-ORCH-1161_CONSENT_AND_MESSAGE_TEMPLATES.md.
@@ -179,6 +180,10 @@ export function renderCategoryMessage(
     : "";
 
   switch (categoryKey) {
+    case "discover_city_plans_live": {
+      const copy=discoverCityWatchCopy(str(payload.lang,"en"),str(payload.city_label,"your city"));
+      return {push:{title:copy.pushTitle,body:copy.pushBody},email:{subject:copy.emailSubject,body:copy.emailBody},sms:""};
+    }
     case "business.community_announcement": {
       const title = communityMarkdownToPlainText(payload.title) ||
         "Mingla announcement";

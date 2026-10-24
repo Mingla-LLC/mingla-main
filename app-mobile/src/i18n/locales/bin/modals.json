@@ -117,5 +117,18 @@
     "next_step_label": "La khian",
     "finish_tour_label": "Ru itua vbe",
     "guided_tour_label": "Itua {{current}} lahian {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Emwin hia nọ deba uwe, ẹbe okpa",
+      "body_all": "Avbe akpata, emwin nọ ma, ukhun vbe ehi, hia ye ẹbe okpa. Fian ukhọ ne u ya vbe ọvbi.",
+      "body_subset": "{{list}}, hia ye ẹbe okpa. Fian ukhọ ne u ya vbe ọvbi."
+    },
+    "step5": {
+      "title": "Yẹ ẹre fuẹ",
+      "body": "Yẹ vbe ẹdẹ, ivbe, ason, ehe ne u gha ya vbe emwin ọkhọ. Iyẹ na ghe gha ye ukhọ ne u ya."
+    },
+    "list_two": "{{a}} vbe {{b}}",
+    "list_three": "{{a}}, {{b}} vbe {{c}}"
   }
 }
