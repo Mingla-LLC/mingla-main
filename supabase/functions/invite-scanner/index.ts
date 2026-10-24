@@ -285,7 +285,7 @@ export async function handler(req: Request): Promise<Response> {
     // Brand lookup for the email template + 404 surface.
     const { data: brandRow, error: brandErr } = await service
       .from("brands")
-      .select("id, display_name")
+      .select("id, name")
       .eq("id", payload.brand_id)
       .is("deleted_at", null)
       .maybeSingle();
@@ -302,7 +302,7 @@ export async function handler(req: Request): Promise<Response> {
     if (payload.scope === "event" && payload.event_id) {
       const { data: eventRow, error: eventErr } = await service
         .from("events")
-        .select("id, name, brand_id, deleted_at")
+        .select("id, title, brand_id, deleted_at")
         .eq("id", payload.event_id)
         .maybeSingle();
       if (eventErr) {
@@ -312,7 +312,7 @@ export async function handler(req: Request): Promise<Response> {
       if (!eventRow || eventRow.deleted_at || eventRow.brand_id !== payload.brand_id) {
         return json({ error: "event_not_found" }, 404);
       }
-      eventName = typeof eventRow.name === "string" ? eventRow.name : null;
+      eventName = typeof eventRow.title === "string" ? eventRow.title : null;
     }
 
     // Duplicate guard — pending invite for brand+email+scope+event already exists.
@@ -388,7 +388,7 @@ export async function handler(req: Request): Promise<Response> {
     }/accept-scanner-invitation?token=${encodeURIComponent(token)}`;
 
     const inviterDisplay = inviterEmail || "A teammate";
-    const brandDisplay = brandRow.display_name as string ?? "your brand";
+    const brandDisplay = brandRow.name as string ?? "your brand";
 
     const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
     if (!resendKey) {

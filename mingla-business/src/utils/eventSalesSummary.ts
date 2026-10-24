@@ -10,6 +10,8 @@ import {
 export interface EventSalesSummary {
   eventId: string;
   soldCount: number | null;
+  /** issue #3827 — unique server tickets with a successful first admission. */
+  scannedCount?: number | null;
   /** issue #3827 — live guest-list tickets (take a place, never sold). */
   guestListCount?: number | null;
   /** issue #3827 — sold + guest list: every place issued. */
@@ -95,6 +97,22 @@ export const getEventTicketsSold = (orders: OrderRecord[]): number =>
     );
   }, 0);
 
+/**
+ * issue #3827 — `usedAt` is written by the authoritative ticket-scan RPC on
+ * the first successful admission, including a partly consumed multi-day pass.
+ * Count unique ticket ids so a joined or duplicated order row cannot inflate
+ * the live Home metric.
+ */
+export const getEventTicketsScanned = (orders: OrderRecord[]): number => {
+  const ticketIds = new Set<string>();
+  for (const order of orders) {
+    for (const ticket of order.ticketDays ?? []) {
+      if (ticket.usedAt !== null) ticketIds.add(ticket.ticketId);
+    }
+  }
+  return ticketIds.size;
+};
+
 export const buildEventSalesSummary = ({
   eventId,
   tickets,
@@ -124,6 +142,7 @@ export const buildEventSalesSummary = ({
     return {
       eventId,
       soldCount: null,
+      scannedCount: null,
       guestListCount: null,
       issuedCount: null,
       onlineRevenue: null,
@@ -140,6 +159,7 @@ export const buildEventSalesSummary = ({
   }
   const readyOrders = orders ?? [];
   const readySoldCount = getEventTicketsSold(readyOrders);
+  const readyScannedCount = getEventTicketsScanned(readyOrders);
   const readyGuestListCount = guestListTicketCount(readyOrders);
   // issue #3827 — "12 sold · 30 guest list / 100" once anyone is on the list.
   const guestListFragment =
@@ -170,6 +190,7 @@ export const buildEventSalesSummary = ({
   return {
     eventId,
     soldCount: readySoldCount,
+    scannedCount: readyScannedCount,
     guestListCount: readyGuestListCount,
     issuedCount: readySoldCount + readyGuestListCount,
     onlineRevenue: moneySummary.onlineRevenue,

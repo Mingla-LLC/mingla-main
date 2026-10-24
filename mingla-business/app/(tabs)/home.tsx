@@ -647,6 +647,16 @@ export default function HomeTab(): React.ReactElement {
               : soldCount === null
                 ? "—"
                 : soldCount.toLocaleString("en-GB"),
+        scannedValue:
+          salesSummary?.readStatus === "error"
+            ? "Unavailable"
+            : salesSummary?.readStatus === "loading" ||
+                salesSummary?.readStatus === "disabled"
+              ? "Loading…"
+              : salesSummary?.scannedCount === null ||
+                  salesSummary?.scannedCount === undefined
+                ? "—"
+                : salesSummary.scannedCount.toLocaleString("en-GB"),
         capacityLabel: formatCapacityLabel(view),
         capacity: soldCount === null ? null : capacity,
         progress:
