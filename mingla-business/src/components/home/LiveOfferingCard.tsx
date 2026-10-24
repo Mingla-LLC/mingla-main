@@ -55,6 +55,8 @@ export interface LiveCardMetrics {
   /** Visible stale-data warning; cached metrics remain unchanged. */
   refreshErrorLabel?: string;
   checkedInValue?: string;
+  /** Server-backed successful ticket admissions for ticketed offerings. */
+  scannedValue?: string;
 }
 
 export interface LiveOfferingCardProps {
@@ -98,6 +100,13 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
   const dateLine =
     displayEvent !== null ? formatDraftDateLine(displayEvent) : "";
   const isRsvp = metrics.mode === "rsvp";
+  // Keep the former honest-empty expression as the fallback when a server
+  // read has not completed. Ticketed events now replace that fallback with
+  // the authoritative count projected from tickets.used_at.
+  const legacyHonestEmptyValue = isRsvp ? metrics.checkedInValue ?? "—" : "—";
+  const attendanceValue = isRsvp
+    ? legacyHonestEmptyValue
+    : metrics.scannedValue ?? legacyHonestEmptyValue;
   const salesAccessibility =
     metrics.soldValue === "Loading…"
       ? "Sales loading"
@@ -159,9 +168,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
           <Text style={styles.statLabel}>Capacity</Text>
         </View>
         <View style={styles.statCell}>
-          {/* ORCH-1143 — honest-empty (Constitution #9): no per-offering
-              scanned-count source exists. NEVER fabricate a number. */}
-          <Text style={styles.statValue}>{isRsvp ? metrics.checkedInValue ?? "—" : "—"}</Text>
+          <Text style={styles.statValue}>{attendanceValue}</Text>
           <Text style={styles.statLabel}>{isRsvp ? "Checked in" : "Scanned"}</Text>
         </View>
       </View>
