@@ -297,7 +297,8 @@ Deno.test("P-13 SOURCE PIN — there is exactly ONE chosen-day resolver, and bot
   // `ticket_event_dates` against the dispatch handler, where the string now
   // survives only in a comment — so the load-bearing pin lives here.
   // #3281 widened the nested event_dates projection (id + override_*); keep
-  // the pin on the ticket_event_dates join and the start/end/timezone fields.
+  // the pin on the ticket_event_dates join and the start/end/timezone fields
+  // (prior frozen column-list pin was wrong after that widen).
   assert(
     /\.select\(\s*"ticket_event_dates \( event_dates \( [^"]*\bstart_at\b[^"]*\bend_at\b[^"]*\btimezone\b[^"]*\)\s*\)"\s*,?\s*\)/
       .test(RESOLVER_SRC),
