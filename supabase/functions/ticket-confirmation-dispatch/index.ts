@@ -20,8 +20,8 @@
 // through the existing generic_notification variant using adapter
 // functions and a sender override.
 //
-// Service-role auth + ledger transition + rollup recompute behaviour
-// preserved from ORCH-0777 baseline. PDF render failure remains RETRYABLE.
+// Service-role auth + ledger transition + rollup recompute behaviour remains
+// preserved from ORCH-0777. The private in-app PDF is best effort (#4063).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
@@ -45,21 +45,11 @@ import {
   ticketDaysForOrder,
 } from "../_shared/chosenOccurrence.ts";
 import { formatChosenOccurrenceList } from "../_shared/email/dateLine.ts";
+import { eventUpdateReplyTo } from "../_shared/email/eventUpdatedEmail.ts";
 // issue #2347 — ONE storage-path authority, shared with ticket-pdf-fetch, so
 // the two writers can never disagree about where an order's PDF lives.
 import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
-// ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
-// event_type='trip' — event_type='event' path unchanged.
-import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
 import { isGuestListPrivate } from "../_shared/email/appLink.ts";
-import {
-  brandFollowActionPublicUrl,
-  signBrandFollowToken,
-} from "../_shared/brandFollowTokens.ts";
-import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
-import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
-// ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
-import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
 import {
   buildCalendarLinks,
   buildMultiDateCalendarLinks,
@@ -103,8 +93,12 @@ import {
 } from "../_shared/attendanceClaim.ts";
 import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts";
 import { guestListPartyLine } from "../_shared/email/partyLine.ts";
+import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
+import { buildOrderConfirmationMessage } from "../_shared/orderConfirmationMessage.ts";
+import { formatDateRange, formatMessageTime } from "../_shared/messageTime.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
+const BUYER_DOWNLOAD_URL = "https://usemingla.com/download";
 
 // #1541 (F-6) — `ticket_order_notifications.provider` was a hardcoded "twilio"
 // literal at both SMS write sites, so a Twilio->Termii cutover was unauditable
@@ -182,6 +176,7 @@ async function sendResendEmailWithAttachment(input: {
   html: string;
   text: string;
   attachments: Array<{ filename: string; content: string }>;
+  replyTo?: string;
 }): Promise<{ id: string | null }> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   if (!apiKey) throw new Error("resend_api_key_missing");
@@ -198,6 +193,7 @@ async function sendResendEmailWithAttachment(input: {
       html: input.html,
       text: input.text,
       attachments: input.attachments,
+      ...(input.replyTo?.trim() ? { reply_to: input.replyTo.trim() } : {}),
     }),
   });
   const json = await response.json().catch(() => ({}));
@@ -479,7 +475,7 @@ async function deliverWaitlistSpotOpenNotification(
 
   const { data: eventRaw, error: eventError } = await supabase
     .from("events")
-    .select("id,title,brands!inner(id,name)")
+    .select("id,title,brands!inner(id,name,contact_email)")
     .eq("id", eventId)
     .maybeSingle();
   if (eventError !== null || eventRaw === null) {
@@ -505,7 +501,7 @@ async function deliverWaitlistSpotOpenNotification(
 
   const event = eventRaw as unknown as {
     title: string | null;
-    brands: { name: string | null };
+    brands: { name: string | null; contact_email: string | null };
   };
   const ticketType = ticketTypeRaw as unknown as { name: string | null };
   const claimUrl = `${publicBuyerBaseUrl()}/checkout/${eventId}?wl=${
@@ -531,6 +527,7 @@ async function deliverWaitlistSpotOpenNotification(
       html: email.html,
       text: email.text,
       attachments: [],
+      replyTo: eventUpdateReplyTo(event.brands.contact_email),
     });
     await supabase
       .from("ticket_order_notifications")
@@ -881,70 +878,6 @@ function buildRenderContext(args: {
   return { bodyInput, ticketsForPdf };
 }
 
-/**
- * #3682 Wave 2.4 — mint one-tap unfollow only when the follow row already
- * exists (auto-follow is async / fire-and-forget on some finalize paths).
- * Otherwise offer a brand-page Follow CTA. Fail-open: never block dispatch.
- */
-async function attachTicketFollowBlock(
-  supabase: ReturnType<typeof serviceClient>,
-  bodyInput: TicketBodyInput,
-  order: OrderJoin,
-): Promise<TicketBodyInput> {
-  const brandId = order.events.brands.id ?? order.events.brand_id;
-  const brandSlug = order.events.brands.slug ?? null;
-  const brandPageUrl = resolveBrandPublicUrl({
-    origin: PRODUCTION_BUSINESS_WEB_ORIGIN,
-    slug: brandSlug,
-  });
-  const userId = typeof order.buyer_user_id === "string"
-    ? order.buyer_user_id.trim()
-    : "";
-
-  if (userId.length > 0 && typeof brandId === "string" && brandId.length > 0) {
-    try {
-      const { data: followRow } = await supabase
-        .from("brand_follows")
-        .select("brand_id")
-        .eq("user_id", userId)
-        .eq("brand_id", brandId)
-        .maybeSingle();
-      if (followRow !== null) {
-        const token = await signBrandFollowToken({
-          action: "unfollow",
-          brand_id: brandId,
-          user_id: userId,
-        });
-        return {
-          ...bodyInput,
-          follow: {
-            unfollowUrl: brandFollowActionPublicUrl(token),
-            followUrl: null,
-            reason: "purchase",
-          },
-        };
-      }
-    } catch (err) {
-      console.warn(
-        "[ticket-confirmation-dispatch] follow token mint failed (non-fatal)",
-        err instanceof Error ? err.message : String(err),
-      );
-    }
-  }
-
-  if (brandPageUrl !== null) {
-    return {
-      ...bodyInput,
-      follow: {
-        unfollowUrl: null,
-        followUrl: brandPageUrl,
-        reason: "purchase",
-      },
-    };
-  }
-  return bodyInput;
-}
-
 // ORCH-0869 (Tr3) Stage 1b helpers — kind-routed installment email senders.
 // Shared shape: fetch order + event + brand once, render the appropriate
 // template, send via Resend with NO attachments + NO calendar link (dunning
@@ -1066,6 +999,7 @@ async function handleInstallmentDunning(
     html: rendered.html,
     text: rendered.text,
     attachments: [],
+    replyTo: eventUpdateReplyTo(order.events.brands.contact_email),
   });
 
   return jsonResponse({
@@ -1111,6 +1045,7 @@ async function handleInstallmentPaidInFull(
     html: rendered.html,
     text: rendered.text,
     attachments: [],
+    replyTo: eventUpdateReplyTo(order.events.brands.contact_email),
   });
 
   return jsonResponse({
@@ -1308,15 +1243,9 @@ export const handler = async (req: Request): Promise<Response> => {
       },
     };
   }
-  const bodyWithFollow = await attachTicketFollowBlock(
-    supabase,
-    contextBase.bodyInput,
-    order,
-  );
-  const context: RenderContext = {
-    ...contextBase,
-    bodyInput: bodyWithFollow,
-  };
+  // #4063 — purchase messages deliberately have no Follow/Unfollow block.
+  // The unified body owns the single CTA and the Explorer app owns details.
+  const context: RenderContext = contextBase;
 
   const ticketCount = context.bodyInput.order.tickets.length;
   const eventTitle = context.bodyInput.event.title;
@@ -1325,42 +1254,18 @@ export const handler = async (req: Request): Promise<Response> => {
   const isTrip = order.events.event_type === "trip";
   // ORCH-1195 FIX 4 — experiences get an itinerary-shaped email (the stops).
   const isExperience = order.events.event_type === "experience";
-  const smsBody = isTrip
-    ? `Mingla: you're booked on ${eventTitle}. Order ${shortId(order.id)}.`
-    : isExperience
-    ? `Mingla: you're reserved for ${eventTitle}. Order ${shortId(order.id)}.`
-    : `Mingla: your ${ticketCount} ticket${
-      ticketCount === 1 ? "" : "s"
-    } for ${eventTitle} are confirmed. Order ${shortId(order.id)}.`;
+  let smsBody = "";
+  let hasShortClaimLink = false;
 
   // Render email + PDF once per dispatch; reused across email ledger rows.
   let renderedEmail: ReturnType<typeof renderTransactionalEmail> | null = null;
   let renderedPdf: Awaited<ReturnType<typeof buildTicketPdf>> | null = null;
   let renderError: { code: string; message: string } | null = null;
   let pdfRenderError: { code: string; message: string } | null = null;
-  /**
-   * #3524 FOLLOW-UP — WHY THE RENDER IS A CLOSURE NOW.
-   *
-   * The confirmation email used to carry TWO calls to action: the "Open in
-   * Mingla" button inside the body (pointing at the download page) and a second
-   * "Connect your attendance" block CONCATENATED onto the finished body below it
-   * (carrying the real per-order claim URL). The second block existed because of
-   * an ordering problem, not a design choice: the claim URL is minted further
-   * down, inside the notification loop, and by then the body was already a
-   * string.
-   *
-   * MINTING CANNOT MOVE EARLIER. Issuance is a write against
-   * `issue_order_attendance_claim_proof_v2`, and the order in which it runs
-   * relative to the checkout confirm screen's own mint is exactly what #3551
-   * fixed. So the mint stays where it is, and the BODY becomes late instead: this
-   * closure captures everything the templates need except the claim URL, and is
-   * invoked a second time once the mint has returned one.
-   *
-   * It is called eagerly with `null` right below, so a render failure still
-   * surfaces before the send loop is entered (and the PDF is still built exactly
-   * once). The second call differs only in one string, on inputs that have
-   * already rendered successfully.
-   */
+  // The legacy attendance-claim proof is minted inside the notification loop
+  // to preserve #3551's ordering. The closure lets that fallback replace the
+  // button URL without reintroducing a second CTA. The stable /c/ URL is minted
+  // before rendering and wins whenever Phase 1 is available.
   let renderEmailBody:
     | ((
       appCtaClaimUrl: string | null,
@@ -1368,169 +1273,131 @@ export const handler = async (req: Request): Promise<Response> => {
     | null = null;
 
   try {
-    // ORCH-0859 (Tr2): branch by event_type. Trip orders use trip-shaped
-    // template; event orders use the existing renderTransactionalEmail
-    // (byte-equivalent for event_type='event' — the new branch is fully
-    // gated on isTrip).
+    const confirmation = await buildBuyerConfirmationPayload(supabase, {
+      orderId: order.id,
+      eventId: order.events.id,
+      currency: order.currency,
+      logPrefix: "[ticket-confirmation-dispatch]",
+    });
+    if (confirmation === null) {
+      throw new Error("buyer_confirmation_payload_unavailable");
+    }
+
+    let startAt = confirmation.bookedStartAt ?? context.bodyInput.event.startAt;
+    let endAt = context.bodyInput.event.endAt;
+    let place = context.bodyInput.event.isOnline
+      ? "Online"
+      : context.bodyInput.event.locationText;
     if (isTrip) {
-      // Fetch trip-specific sidecar data for the email body.
-      const [tripDaysResp, tripInclusionsResp] = await Promise.all([
-        supabase
-          .from("trip_days")
-          .select("ordinal, title")
-          .eq("event_id", order.events.id)
-          .order("ordinal"),
-        supabase
-          .from("trip_inclusions")
-          .select("kind, item, ordinal")
-          .eq("event_id", order.events.id)
-          .order("kind")
-          .order("ordinal"),
-      ]);
-      const tripDays = (tripDaysResp.data ?? []) as Array<{
-        ordinal: number;
-        title: string;
-      }>;
-      const tripInclusions = (tripInclusionsResp.data ?? []) as Array<{
-        kind: "included" | "excluded";
-        item: string;
-      }>;
-      const themeBT = ((order.events.theme as Record<string, unknown> | null)
+      const trip = ((order.events.theme as Record<string, unknown> | null)
         ?.business_trip as Record<string, unknown> | undefined) ?? {};
-      // #3524 A8 — keep the exact direct-call shape on one line.
-      // #3682 Wave 2.4 — follow is a first-class input on the trip template
-      // (inside the 600px shell), not a post-</body> splice.
-      renderEmailBody = (appCtaClaimUrl) =>
-        renderTripConfirmationEmail({
-          appCtaClaimUrl,
-          privateGuestList: context.bodyInput.event.privateGuestList,
-          follow: context.bodyInput.follow,
-          recipient: {
-            name: order.buyer_name,
-            email: order.buyer_email ?? "",
-          },
-          trip: {
-            title: context.bodyInput.event.title,
-            startAtIso: typeof themeBT.startAt === "string"
-              ? themeBT.startAt
-              : null,
-            endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
-            destinationText: typeof themeBT.destinationLocationText === "string"
-              ? themeBT.destinationLocationText
-              : null,
-            timezone: context.bodyInput.event.timezone,
-            days: tripDays,
-            inclusions: tripInclusions,
-          },
-          brand: {
-            name: context.bodyInput.brand.name,
-            profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
-          },
-          order: {
-            id: context.bodyInput.order.id,
-            shortId: context.bodyInput.order.shortId,
-            totalCents: order.total_cents,
-            currency: order.currency,
-          },
-        });
+      startAt = typeof trip.startAt === "string" ? trip.startAt : startAt;
+      endAt = typeof trip.endAt === "string" ? trip.endAt : endAt;
+      place = typeof trip.destinationLocationText === "string"
+        ? trip.destinationLocationText
+        : place;
     } else if (isExperience) {
-      // ORCH-1195 FIX 4 — experiences emailed via the generic event template
-      // before this, so the itinerary/stops were missing. Fetch the stops and
-      // render the experience-shaped email (graceful no-itinerary fallback when
-      // an experience has no authored stops — e.g. an Ari no-stops experience).
       const stopsResp = await supabase
         .from("experience_stops")
-        .select("stop_order, place_name, address, start_time, price_cents")
+        .select("stop_order, place_name, address")
         .eq("event_id", order.events.id)
         .order("stop_order");
       const expStops = (stopsResp.data ?? []) as Array<{
         stop_order: number;
         place_name: string | null;
         address: string | null;
-        start_time: string | null;
-        price_cents: number | null;
       }>;
-      // issue #3281 F-D — experiences rarely set events.location_text; prefer
-      // the first stop address / place, else the hide-until-ticket copy from
-      // theme (same signal pg_public_experience_by_slug exposes).
-      let experienceVenue = context.bodyInput.event.locationText;
-      if (
-        experienceVenue === null ||
-        (typeof experienceVenue === "string" &&
-          experienceVenue.trim().length === 0)
+      const first = expStops[0] ?? null;
+      if (typeof first?.address === "string" && first.address.trim()) {
+        place = first.address.trim();
+      } else if (
+        typeof first?.place_name === "string" && first.place_name.trim()
       ) {
-        const theme = (order.events as { theme?: unknown }).theme;
-        const hideUntil = Boolean(
-          theme &&
-            typeof theme === "object" &&
-            (theme as { business_event?: { hideAddressUntilTicket?: unknown } })
-                .business_event?.hideAddressUntilTicket === true,
-        );
-        const first = expStops[0] ?? null;
-        if (hideUntil) {
-          experienceVenue = "Address shared after you book";
-        } else if (
-          first !== null &&
-          typeof first.address === "string" &&
-          first.address.trim().length > 0
-        ) {
-          experienceVenue = first.address.trim();
-        } else if (
-          first !== null &&
-          typeof first.place_name === "string" &&
-          first.place_name.trim().length > 0
-        ) {
-          experienceVenue = first.place_name.trim();
-        }
+        place = first.place_name.trim();
       }
-      // #3524 A8 — keep the exact direct-call shape on one line.
-      renderEmailBody = (appCtaClaimUrl) =>
-        renderExperienceConfirmationEmail({
-          appCtaClaimUrl,
-          privateGuestList: context.bodyInput.event.privateGuestList,
-          follow: context.bodyInput.follow,
-          recipient: {
-            name: order.buyer_name,
-            email: order.buyer_email ?? "",
-          },
-          experience: {
-            title: context.bodyInput.event.title,
-            dateIso: context.bodyInput.event.startAt,
-            timezone: context.bodyInput.event.timezone,
-            venueText: experienceVenue,
-            stops: expStops.map((s) => ({
-              stopOrder: s.stop_order,
-              placeName: s.place_name,
-              address: s.address,
-              startTime: s.start_time,
-              priceCents: s.price_cents,
-            })),
-          },
-          brand: {
-            name: context.bodyInput.brand.name,
-            profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
-          },
-          order: {
-            id: context.bodyInput.order.id,
-            shortId: context.bodyInput.order.shortId,
-            totalCents: order.total_cents,
-            currency: order.currency,
-          },
-        });
-    } else {
-      renderEmailBody = (appCtaClaimUrl) =>
-        renderTransactionalEmail({
-          variant: context.bodyInput.variant,
-          recipient: {
-            name: order.buyer_name,
-            email: order.buyer_email ?? "",
-          },
-          body: context.bodyInput,
-          appCtaClaimUrl,
-        });
     }
-    // The download-page arm: what an order with no claim URL really sends, and
-    // what proves the render works before the send loop is entered.
+
+    if (typeof startAt !== "string") {
+      throw new Error("buyer_confirmation_start_missing");
+    }
+    const messageTime = formatMessageTime(
+      startAt,
+      context.bodyInput.event.timezone,
+    );
+    if (messageTime === null) {
+      throw new Error("buyer_confirmation_start_invalid");
+    }
+    const messageKind = isTrip
+      ? "trip" as const
+      : isExperience
+      ? "experience" as const
+      : "ticket" as const;
+    const metadata = order.metadata ?? {};
+    const partyOrigin = metadata.party_origin;
+    const partyLead = typeof metadata.party_lead_name === "string"
+      ? metadata.party_lead_name.trim()
+      : "";
+    const hostAddedGuest = order.source === "comp" && partyOrigin === "host";
+    const partyLine = order.source !== "comp"
+      ? null
+      : hostAddedGuest
+      ? `${context.bodyInput.brand.name} added you to the guest list.`
+      : partyOrigin === "link" && partyLead.length > 0
+      ? `${partyLead} added you to the guest list.`
+      : null;
+    const defaultButtonUrl = confirmation.claim.shortUrl ?? BUYER_DOWNLOAD_URL;
+    hasShortClaimLink = confirmation.claim.shortUrl !== null;
+    const buildMessage = (buttonUrl: string) =>
+      buildOrderConfirmationMessage({
+        kind: messageKind,
+        title: eventTitle,
+        brandName: context.bodyInput.brand.name,
+        buyerName: order.buyer_name,
+        buyerEmail: confirmation.buyerContact.email,
+        buyerPhoneLast4: confirmation.buyerContact.phoneLast4,
+        claimed: confirmation.attachedToAccount,
+        quantity: Math.max(
+          confirmation.receipt.lines.reduce((sum, line) => sum + line.qty, 0),
+          ticketCount,
+          1,
+        ),
+        buttonUrl,
+        date: messageTime.date,
+        time: messageTime.time,
+        when: isTrip || (chosenDays !== null && chosenDays.length >= 2)
+          ? formatDateRange(startAt, endAt, context.bodyInput.event.timezone)
+          : `${messageTime.date}, ${messageTime.time}`,
+        place,
+        detailLines: partyLine === null ? undefined : [partyLine],
+        hostAddedGuest,
+        receipt: {
+          currency: confirmation.receipt.currency,
+          items: confirmation.receipt.lines.map((line) => ({
+            label: line.name,
+            quantity: line.qty,
+            amountCents: line.amountCents,
+          })),
+          discountRows: confirmation.receipt.discountLines,
+          feesAndTaxCents: confirmation.receipt.feesAndTaxCents,
+          paidCents: confirmation.receipt.paidCents,
+          orderId: order.id,
+        },
+      });
+    const initialMessage = buildMessage(defaultButtonUrl);
+    smsBody = initialMessage.sms;
+    renderEmailBody = (legacyClaimUrl) => {
+      const message = legacyClaimUrl === null
+        ? initialMessage
+        : buildMessage(legacyClaimUrl);
+      return renderTransactionalEmail({
+        variant: "purchase_message",
+        recipient: {
+          name: order.buyer_name,
+          email: order.buyer_email ?? "",
+        },
+        body: message.body,
+      });
+    };
     renderedEmail = renderEmailBody(null);
     assertNotResendSandbox(renderedEmail.from);
   } catch (err) {
@@ -1766,6 +1633,7 @@ export const handler = async (req: Request): Promise<Response> => {
           }
           let attendanceWebClaimUrl: string | null = null;
           if (
+            !hasShortClaimLink &&
             shouldIssueOrderAttendanceClaimForNotification({
               templateKey,
               channel: notification.channel,
@@ -1841,6 +1709,9 @@ export const handler = async (req: Request): Promise<Response> => {
             html: emailToSend.html,
             text: emailToSend.text,
             attachments,
+            replyTo: eventUpdateReplyTo(
+              order.events.brands.contact_email,
+            ),
           });
           await supabase
             .from("ticket_order_notifications")
@@ -1853,12 +1724,16 @@ export const handler = async (req: Request): Promise<Response> => {
             })
             .eq("id", notification.id);
         } else {
-          // #1541 §4.0 — the ONE call shape (see the waitlist branch for why
-          // every optional field is deliberately omitted). The buyer's TICKET
-          // rides the sibling EMAIL row — PDF + QR + .ics — which is
-          // structurally guaranteed by ticket_checkout_sessions.buyer_email
-          // being NOT NULL. This SMS is text-only: no link, no QR, no claim.
-          // Gating it cannot cost a paying customer their ticket.
+          if (smsBody.length === 0) {
+            throw new ProviderSendError({
+              retryable: true,
+              detail: renderError?.code ?? "sms_render_unknown_failure",
+              status: 0,
+            });
+          }
+          // #1541 §4.0 — the ONE provider call shape. #4063 gives the text the
+          // same stable, device-aware route used by the email CTA. Credentials
+          // remain exclusively behind signed-in Explorer ownership checks.
           const result = await smsAdapter.send({
             to: notification.recipient,
             brandName: context.bodyInput.brand.name,
@@ -1952,6 +1827,7 @@ export const handler = async (req: Request): Promise<Response> => {
           html: refundEmail.html,
           text: refundEmail.text,
           attachments: [], // ORCH-0788 §5.3 — no PDF, no calendar
+          replyTo: eventUpdateReplyTo(order.events.brands.contact_email),
         });
         await supabase
           .from("ticket_order_notifications")
@@ -2004,6 +1880,7 @@ export const handler = async (req: Request): Promise<Response> => {
           html: cancelEmail.html,
           text: cancelEmail.text,
           attachments: [],
+          replyTo: eventUpdateReplyTo(order.events.brands.contact_email),
         });
         await supabase
           .from("ticket_order_notifications")
@@ -2063,6 +1940,7 @@ export const handler = async (req: Request): Promise<Response> => {
           html: reAnswerEmail.html,
           text: reAnswerEmail.text,
           attachments: [],
+          replyTo: eventUpdateReplyTo(order.events.brands.contact_email),
         });
         await supabase
           .from("ticket_order_notifications")
