@@ -19,18 +19,28 @@ export function rememberViewerObjectUrl(
   fileId: string,
   objectUrl: string,
   revoker: ObjectUrlRevoker,
-  maxEntries = 3,
 ): void {
   const prior = objectUrls.get(fileId);
   if (prior && prior !== objectUrl) revoker.revokeObjectURL(prior);
-  objectUrls.delete(fileId);
-  while (objectUrls.size >= maxEntries) {
-    const oldest = objectUrls.entries().next().value as [string, string] | undefined;
-    if (!oldest) break;
-    objectUrls.delete(oldest[0]);
-    revoker.revokeObjectURL(oldest[1]);
-  }
   objectUrls.set(fileId, objectUrl);
+}
+
+export function revokeViewerObjectUrlsOutsideWindow(
+  objectUrls: Map<string, string>,
+  items: readonly Pick<BrandGroupMediaRow, "fileId">[],
+  activeIndex: number,
+  revoker: ObjectUrlRevoker,
+): void {
+  const keep = new Set(
+    items
+      .slice(Math.max(0, activeIndex - 1), activeIndex + 2)
+      .map((item) => item.fileId),
+  );
+  for (const [fileId, url] of objectUrls) {
+    if (keep.has(fileId)) continue;
+    objectUrls.delete(fileId);
+    revoker.revokeObjectURL(url);
+  }
 }
 
 export function revokeViewerObjectUrls(objectUrls: Map<string, string>, revoker: ObjectUrlRevoker): void {
@@ -85,6 +95,11 @@ export function BrandGroupFilePreviewModal({
     revokeViewerObjectUrls(objectUrls.current, URL);
   }, []);
 
+  const retainActiveWindow = useCallback((activeIndex: number) => {
+    if (typeof URL === "undefined") return;
+    revokeViewerObjectUrlsOutsideWindow(objectUrls.current, viewerItems, activeIndex, URL);
+  }, [viewerItems]);
+
   useEffect(() => revokeAll, [revokeAll]);
   useEffect(() => {
     if (!activeFileId) revokeAll();
@@ -131,6 +146,7 @@ export function BrandGroupFilePreviewModal({
       items={viewerItems}
       initialIndex={initialIndex}
       requestFor={requestFor}
+      onActiveIndexChange={retainActiveWindow}
       onShowInChat={onShowInChat}
       onClose={() => { revokeAll(); onClose(); }}
     />

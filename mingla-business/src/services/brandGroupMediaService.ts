@@ -55,19 +55,23 @@ function parseRow(value: unknown): BrandGroupMediaRow | null {
   const durationMs = nullableNumber(value.durationMs);
   const width = nullableNumber(value.width);
   const height = nullableNumber(value.height);
+  // #3720 Brand uploads intentionally have no sender-role snapshot. The
+  // conversation authorization already proves this row belongs to the Brand,
+  // so normalize that legacy-null shape at the contract boundary.
+  const senderRole = value.senderRole === null ? "brand" : value.senderRole;
   if (
     typeof value.fileId !== "string" || typeof value.messageId !== "string" ||
     typeof value.name !== "string" || typeof value.mime !== "string" ||
     typeof value.sizeBytes !== "number" || !Number.isFinite(value.sizeBytes) || value.sizeBytes < 0 ||
     typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.senderDisplayName !== "string" ||
-    typeof value.senderRole !== "string" ||
+    typeof senderRole !== "string" ||
     !["image", "video", "file"].includes(String(value.kind)) ||
     !["pending", "ready", "none"].includes(String(value.thumbState)) ||
     Number.isNaN(durationMs) || (durationMs !== null && durationMs < 0) ||
     Number.isNaN(width) || (width !== null && width <= 0) ||
     Number.isNaN(height) || (height !== null && height <= 0)
   ) return null;
-  return value as unknown as BrandGroupMediaRow;
+  return { ...value, senderRole } as unknown as BrandGroupMediaRow;
 }
 
 export function parseBrandGroupMediaPage(value: unknown): BrandGroupMediaPage {

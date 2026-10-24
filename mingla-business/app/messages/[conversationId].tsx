@@ -287,7 +287,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
 
       {group?.muted ? (
         <View style={styles.mutedNote}>
-          <Text style={styles.mutedNoteText}>Muted: you&apos;ll still see unread badges, but no push alerts for this group.</Text>
+          <Text style={styles.mutedNoteText}>{"Muted: you'll still see unread badges, but no push alerts for this group."}</Text>
         </View>
       ) : null}
 
@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1, minWidth: 0 },
   title: { color: textTokens.primary, fontSize: 18, fontWeight: "800" },
   subtitle: { color: textTokens.tertiary, fontSize: 12, marginTop: 2 },
-  mediaButton: { minHeight: 34, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 17, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.08)" },
+  mediaButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.08)" },
   mediaButtonActive: { borderColor: "rgba(235,120,37,0.7)", shadowColor: accent.warm, shadowOpacity: 0.35, shadowRadius: 10 },
   mediaButtonText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
   muteControl: { minHeight: 44, alignItems: "flex-end", justifyContent: "center", gap: 2 },

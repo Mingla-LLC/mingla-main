@@ -1,7 +1,7 @@
+import { parseBrandGroupFileMetaRows, parseBrandGroupMediaPage } from "../brandGroupMediaService";
+
 jest.mock("../supabase", () => ({ supabase: { rpc: jest.fn() } }));
 jest.mock("../brandGroupFilesService", () => ({ brandGroupFileThumbnailRequest: jest.fn() }));
-
-import { parseBrandGroupFileMetaRows, parseBrandGroupMediaPage } from "../brandGroupMediaService";
 
 const row = {
   fileId: "00000000-0000-4000-8000-000000000001",
@@ -27,6 +27,16 @@ describe("#3988 brand-group media response parsing", () => {
       rows: [row],
       nextCursor: { createdAt: row.createdAt, id: row.fileId },
     })).toMatchObject({ rows: [row], totals: { media: 1, files: 0 } });
+  });
+
+  it("normalizes the legitimate #3720 Brand-upload null sender role", () => {
+    const page = parseBrandGroupMediaPage({
+      schemaVersion: 1,
+      totals: { media: 1, files: 0 },
+      rows: [{ ...row, senderRole: null }],
+      nextCursor: null,
+    });
+    expect(page.rows[0]).toMatchObject({ fileId: row.fileId, senderRole: "brand" });
   });
 
   it.each([

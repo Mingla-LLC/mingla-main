@@ -6,6 +6,7 @@ import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useEscapeLayer } from "../ui/escapeLayerStack";
 import { calculateMediaViewerStage } from "./fitContain";
+import { mediaViewerKeyAction } from "./viewerInteraction";
 
 export interface MediaViewerStage {
   width: number;
@@ -42,7 +43,7 @@ export function MediaViewerShell({
   closeAccessibilityLabel = "Close",
 }: MediaViewerShellProps): React.ReactElement {
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const { isWideDesktop } = useResponsiveLayout();
   const reduceMotion = useReducedMotionNative();
   const isTopLayer = useEscapeLayer(visible);
@@ -55,6 +56,7 @@ export function MediaViewerShell({
     insetBottom: insets.bottom,
     wideDesktop: isWideDesktop,
     hasBottomArea,
+    fontScale,
   });
   const { width: stageWidth, height: stageHeight, bottomArea } = measuredStage;
   const stage = {
@@ -71,13 +73,19 @@ export function MediaViewerShell({
       node?.focus?.();
     }, 0);
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && isTopLayer()) {
+      const action = mediaViewerKeyAction({
+        key: event.key,
+        topLayer: isTopLayer(),
+        hasPrevious: Boolean(onPrevious),
+        hasNext: Boolean(onNext),
+      });
+      if (action === "close") {
         event.preventDefault();
         onClose();
-      } else if (event.key === "ArrowLeft" && isTopLayer() && onPrevious) {
+      } else if (action === "previous" && onPrevious) {
         event.preventDefault();
         onPrevious();
-      } else if (event.key === "ArrowRight" && isTopLayer() && onNext) {
+      } else if (action === "next" && onNext) {
         event.preventDefault();
         onNext();
       }
@@ -100,7 +108,7 @@ export function MediaViewerShell({
     >
       <View testID={testID} style={styles.scrim}>
         {contentOnly ? children as React.ReactNode : <>
-        <View style={[styles.topBar, { paddingTop: insets.top }]}>
+        <View style={[styles.topBar, { paddingTop: insets.top, minHeight: Math.max(56, measuredStage.topArea) }]}>
           <Pressable
             ref={closeRef}
             accessibilityRole="button"

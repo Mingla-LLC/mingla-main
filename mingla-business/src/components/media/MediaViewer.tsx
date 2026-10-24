@@ -2,7 +2,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -12,6 +12,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -39,6 +40,7 @@ interface MediaViewerProps {
   items: BrandGroupMediaRow[];
   initialIndex: number;
   requestFor: (fileId: string, onProgress?: (progress: ViewerProgress) => void) => Promise<ViewerRequest>;
+  onActiveIndexChange?: (index: number) => void;
   onShowInChat: (messageId: string) => void;
   onClose: () => void;
 }
@@ -68,7 +70,7 @@ function ViewerPage({ item, request, progress, stage, active }: { item: BrandGro
   return <View style={[stage.style, styles.state]}><Icon name="notebook" size={36} color={accent.warm} /><Text style={styles.itemTitle}>{item.name}</Text><Text style={styles.stateText}>{t("viewer.not_previewable")}</Text></View>;
 }
 
-export function MediaViewer({ visible, items, initialIndex, requestFor, onShowInChat, onClose }: MediaViewerProps): React.ReactElement {
+export function MediaViewer({ visible, items, initialIndex, requestFor, onActiveIndexChange, onShowInChat, onClose }: MediaViewerProps): React.ReactElement {
   const { t, i18n } = useTranslation("brandGroupMedia");
   const [index, setIndex] = useState(Math.max(0, Math.min(initialIndex, Math.max(0, items.length - 1))));
   const [requests, setRequests] = useState<Record<string, ViewerRequest>>({});
@@ -77,6 +79,8 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onShowIn
   const [deliveryFeedback, setDeliveryFeedback] = useState<"saved" | "failed" | null>(null);
   const listRef = useRef<FlatList<BrandGroupMediaRow>>(null);
   const current = items[index] ?? null;
+  const { fontScale } = useWindowDimensions();
+  const usesLargeTextLayout = fontScale >= 1.5;
   const reduceMotion = useReducedMotionNative();
   const dragY = useSharedValue(0);
 
@@ -129,6 +133,10 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onShowIn
     if (!visible || !current) return;
     void AccessibilityInfo.announceForAccessibility(t("viewer.page_a11y", { index: index + 1, total: items.length, name: current.name }));
   }, [current, index, items.length, t, visible]);
+
+  useLayoutEffect(() => {
+    if (visible && current) onActiveIndexChange?.(index);
+  }, [current, index, onActiveIndexChange, visible]);
 
   const move = useCallback((delta: number) => {
     setIndex((value) => {
@@ -222,9 +230,9 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onShowIn
   const deliverButton = <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === "web" ? t("viewer.download") : Platform.OS === "ios" ? t("viewer.share") : t("viewer.save")} onPress={() => void deliverFile()} style={Platform.OS === "web" ? styles.action : styles.circle}>{Platform.OS === "web" ? <Text style={styles.actionText}>{t("viewer.download")}</Text> : <Icon name={Platform.OS === "ios" ? "share" : "download"} size={20} color="#fff" />}</Pressable>;
   const showInChatButton = current?.messageId ? <Pressable accessibilityRole="button" onPress={() => { const id = current.messageId; onClose(); onShowInChat(id); }} style={styles.action}><Text style={styles.actionText}>{t("viewer.show_in_chat")}</Text></Pressable> : null;
   const topBar = current ? (
-    <View style={styles.topRow}>
+    <View style={[styles.topRow, usesLargeTextLayout && styles.topRowLargeText]}>
       {Platform.OS === "web" ? null : closeButton}
-      <View style={styles.topCopy}><Text style={styles.itemTitle} numberOfLines={1}>{current.name}</Text><Text style={styles.meta} numberOfLines={1}>{meta}</Text></View>
+      <View style={styles.topCopy}><Text style={styles.itemTitle} numberOfLines={usesLargeTextLayout ? 2 : 1}>{current.name}</Text><Text style={styles.meta} numberOfLines={usesLargeTextLayout ? 2 : 1}>{meta}</Text></View>
       {deliverButton}
       {showInChatButton}
       {Platform.OS === "web" ? closeButton : null}
@@ -259,20 +267,21 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onShowIn
 const styles = StyleSheet.create({
   stageLine: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 },
   page: { alignItems: "center", justifyContent: "center" },
-  topRow: { height: 56, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
+  topRow: { minHeight: 56, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 6 },
+  topRowLargeText: { minHeight: 84, paddingVertical: 10 },
   circle: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.14)" },
   topCopy: { flex: 1, minWidth: 0 },
   itemTitle: { color: "#fff", fontSize: 14, fontWeight: "800", textAlign: "center" },
   meta: { color: "rgba(255,255,255,0.6)", fontSize: 11, marginTop: 2 },
-  action: { minHeight: 36, justifyContent: "center", paddingHorizontal: 12, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.12)" },
+  action: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.12)" },
   actionText: { color: "#fff", fontSize: 13, fontWeight: "700" },
   arrow: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.12)" },
   arrowRight: { transform: [{ rotate: "180deg" }] },
-  bottom: { height: 72, alignItems: "center", gap: 4 },
+  bottom: { minHeight: 72, alignItems: "center", gap: 4, paddingBottom: 4 },
   strip: { gap: 6, paddingHorizontal: spacing.md },
-  stripItem: { width: 38, height: 38, borderRadius: 8, padding: 2, opacity: 0.55 },
+  stripItem: { width: 44, minHeight: 44, borderRadius: 8, padding: 4, opacity: 0.55 },
   stripItemActive: { borderWidth: 2, borderColor: accent.warm, opacity: 1 },
-  stripThumb: { width: 30, height: 30, borderRadius: 5 },
+  stripThumb: { width: 36, height: 36, borderRadius: 5 },
   hint: { color: "rgba(255,255,255,0.45)", fontSize: 11 },
   feedbackError: { color: "#ff9b9b" },
   state: { alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl },

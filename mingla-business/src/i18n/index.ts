@@ -64,10 +64,17 @@ function normalizedLanguage(value: unknown): BusinessMediaLanguage | null {
   return supported.has(code) ? code as BusinessMediaLanguage : null;
 }
 
+export function resolveBusinessMediaLanguage(
+  preferredLanguage: unknown,
+  environmentLanguage: unknown,
+): BusinessMediaLanguage {
+  return normalizedLanguage(preferredLanguage) ?? normalizedLanguage(environmentLanguage) ?? "en";
+}
+
 function deviceLanguage(): BusinessMediaLanguage {
   const browserLanguage = typeof navigator !== "undefined" ? navigator.language : null;
   const intlLanguage = Intl.DateTimeFormat().resolvedOptions().locale;
-  return normalizedLanguage(browserLanguage) ?? normalizedLanguage(intlLanguage) ?? "en";
+  return normalizedLanguage(browserLanguage) ?? resolveBusinessMediaLanguage(null, intlLanguage);
 }
 
 void i18n.use(initReactI18next).init({
@@ -96,8 +103,9 @@ export async function syncBusinessMediaLanguage(userId: string): Promise<void> {
     console.warn("[i18n] preferred language read failed", error.message);
     return;
   }
-  const preferred = normalizedLanguage((data as { preferred_language?: unknown } | null)?.preferred_language);
-  if (preferred && preferred !== i18n.language) await i18n.changeLanguage(preferred);
+  const preferred = (data as { preferred_language?: unknown } | null)?.preferred_language;
+  const nextLanguage = resolveBusinessMediaLanguage(preferred, deviceLanguage());
+  if (nextLanguage !== i18n.language) await i18n.changeLanguage(nextLanguage);
 }
 
 export default i18n;

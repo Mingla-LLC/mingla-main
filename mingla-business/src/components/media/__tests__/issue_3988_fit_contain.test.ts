@@ -37,4 +37,14 @@ describe("#3988 media viewer contain geometry", () => {
     expect(fitContain(null, null, 340, 520)).toEqual({ width: 340, height: 520, left: 0, top: 0 });
     expect(fitContain(100, 100, -1, 40)).toEqual({ width: 0, height: 0, left: 0, top: 20 });
   });
+
+  it("grows both control bars instead of clipping largest accessibility text", () => {
+    const regular = calculateMediaViewerStage({ viewportWidth: 393, viewportHeight: 852, insetTop: 59, insetBottom: 34, wideDesktop: false, hasBottomArea: true, fontScale: 1 });
+    const largestText = calculateMediaViewerStage({ viewportWidth: 393, viewportHeight: 852, insetTop: 59, insetBottom: 34, wideDesktop: false, hasBottomArea: true, fontScale: 2.5 });
+    expect(largestText.topArea).toBeGreaterThan(regular.topArea);
+    expect(largestText.bottomArea).toBeGreaterThan(regular.bottomArea);
+    expect(largestText.topArea).toBe(157);
+    expect(largestText.bottomArea).toBe(166);
+    expect(largestText.height).toBeGreaterThanOrEqual(0);
+  });
 });

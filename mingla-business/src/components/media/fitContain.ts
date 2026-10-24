@@ -20,10 +20,16 @@ export function calculateMediaViewerStage(input: {
   insetBottom: number;
   wideDesktop: boolean;
   hasBottomArea: boolean;
+  fontScale?: number;
 }): MediaViewerStageSize {
-  const topArea = Math.max(0, input.insetTop) + 56;
+  const fontScale = Number.isFinite(input.fontScale)
+    ? Math.max(1, Math.min(2.5, input.fontScale ?? 1))
+    : 1;
+  const topControlArea = 56 + Math.ceil((fontScale - 1) * 28);
+  const bottomControlArea = 72 + Math.ceil((fontScale - 1) * 40);
+  const topArea = Math.max(0, input.insetTop) + topControlArea;
   const bottomInset = Math.max(0, input.insetBottom);
-  const bottomArea = input.hasBottomArea ? bottomInset + 72 : bottomInset;
+  const bottomArea = input.hasBottomArea ? bottomInset + bottomControlArea : bottomInset;
   const arrowAllowance = input.wideDesktop ? 144 : 0;
   return {
     width: Math.max(0, input.viewportWidth - 32 - arrowAllowance),

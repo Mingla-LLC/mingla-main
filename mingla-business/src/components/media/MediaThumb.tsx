@@ -7,6 +7,7 @@ import { thumbnailRequest, type BrandGroupMediaRow } from "../../services/brandG
 import { formatMediaDuration } from "../../utils/formatMediaDuration";
 import { Icon } from "../ui/Icon";
 import { glass, text as textTokens } from "../../constants/designSystem";
+import { requestThumbnailForState, thumbnailResolutionPlan } from "./thumbnailResolution";
 
 const MAX_WEB_THUMB_OBJECT_URLS = 120;
 interface WebThumbEntry {
@@ -51,29 +52,48 @@ async function loadWebThumb(fileId: string, uri: string, headers: Record<string,
 export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMediaRow; style?: StyleProp<ViewStyle>; bubble?: boolean }): React.ReactElement {
   const { t } = useTranslation("brandGroupMedia");
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> } | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const { shouldRequest, retryDelayMs } = thumbnailResolutionPlan(item.thumbState);
   useEffect(() => {
     let active = true;
     let releaseWebThumb: (() => void) | null = null;
     setSource(null);
-    if (item.thumbState !== "ready") return undefined;
-    void thumbnailRequest(item.fileId).then(async (authorized) => {
-      if (Platform.OS !== "web") return authorized;
+    setLoadFailed(false);
+    if (!shouldRequest) return undefined;
+    void requestThumbnailForState(item.thumbState, () => thumbnailRequest(item.fileId)).then(async (authorized) => {
+      if (!authorized) return null;
+      if (Platform.OS !== "web") {
+        return retryToken === 0
+          ? authorized
+          : { ...authorized, uri: `${authorized.uri}&retry=${retryToken}` };
+      }
       releaseWebThumb = retainWebThumb(item.fileId, setSource);
       if (releaseWebThumb) return null;
       await loadWebThumb(item.fileId, authorized.uri, authorized.headers);
       if (!active) return null;
       releaseWebThumb = retainWebThumb(item.fileId, setSource);
       return null;
-    }).then((next) => { if (active && next) setSource(next); }).catch(() => { if (active) setSource(null); });
+    }).then((next) => { if (active && next) setSource(next); }).catch(() => {
+      if (active) {
+        setSource(null);
+        setLoadFailed(true);
+      }
+    });
     return () => {
       active = false;
       releaseWebThumb?.();
     };
-  }, [item.fileId, item.thumbState]);
+  }, [item.fileId, item.thumbState, retryToken, shouldRequest]);
+  useEffect(() => {
+    if (!loadFailed || retryDelayMs === null) return undefined;
+    const timer = setTimeout(() => setRetryToken((value) => value + 1), retryDelayMs);
+    return () => clearTimeout(timer);
+  }, [loadFailed, retryDelayMs]);
   const duration = item.kind === "video" ? formatMediaDuration(item.durationMs) : null;
   return (
     <View style={[styles.root, style]}>
-      {source ? <Image source={source} contentFit="cover" cachePolicy="disk" style={StyleSheet.absoluteFill} /> : (
+      {source ? <Image source={source} contentFit="cover" cachePolicy="disk" onError={() => setLoadFailed(true)} style={StyleSheet.absoluteFill} /> : (
         <View style={styles.placeholder}>
           <Icon name={item.kind === "video" ? "play" : item.kind === "image" ? "eye" : "notebook"} size={24} color={textTokens.tertiary} />
           {item.thumbState === "pending" ? <Text style={styles.preparing} numberOfLines={2}>{t("media.preparing")}</Text> : null}
