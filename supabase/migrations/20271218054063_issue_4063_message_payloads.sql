@@ -618,6 +618,114 @@ REVOKE ALL ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, in
 GRANT EXECUTE ON FUNCTION public.issue_2947_waitlist_drain_for_ticket_type(uuid, integer)
   TO service_role;
 
+CREATE OR REPLACE FUNCTION public.fn_rsvp_drain_on_capacity_freed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+  v_event_id uuid;
+  v_capacity integer;
+  v_approval_mode text;
+  v_event_type text;
+  v_confirmed integer;
+  v_free integer;
+  v_entry record;
+  v_has_queue boolean;
+  v_v2 boolean := public.issue_4063_switch_on('messages_v2');
+BEGIN
+  IF TG_TABLE_NAME = 'events' THEN
+    v_event_id := NEW.id;
+  ELSE
+    v_event_id := NEW.event_id;
+  END IF;
+
+  SELECT event.event_type, event.rsvp_capacity, event.rsvp_approval_mode
+    INTO v_event_type, v_capacity, v_approval_mode
+    FROM public.events AS event
+   WHERE event.id = v_event_id;
+
+  IF v_event_type IS DISTINCT FROM 'rsvp' THEN RETURN NEW; END IF;
+  IF v_capacity IS NULL THEN RETURN NEW; END IF;
+
+  SELECT coalesce(sum(1 + rsvp.plus_count), 0)
+    INTO v_confirmed
+    FROM public.event_rsvps AS rsvp
+   WHERE rsvp.event_id = v_event_id
+     AND rsvp.rsvp_status = 'going'
+     AND rsvp.approval_status = 'approved';
+
+  v_free := v_capacity - v_confirmed;
+  IF v_free <= 0 THEN RETURN NEW; END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+      FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name = 'rsvp_notifications'
+  ) INTO v_has_queue;
+
+  FOR v_entry IN
+    SELECT rsvp.id, rsvp.plus_count, rsvp.user_id
+      FROM public.event_rsvps AS rsvp
+     WHERE rsvp.event_id = v_event_id
+       AND rsvp.rsvp_status = 'waitlisted'
+     ORDER BY rsvp.waitlisted_at ASC NULLS FIRST, rsvp.created_at ASC
+  LOOP
+    EXIT WHEN v_free <= 0;
+
+    IF v_approval_mode = 'manual' THEN
+      UPDATE public.event_rsvps
+         SET rsvp_status = 'going',
+             approval_status = 'pending',
+             promoted_at = now()
+       WHERE id = v_entry.id;
+    ELSE
+      IF (1 + v_entry.plus_count) > v_free THEN
+        EXIT;
+      END IF;
+      UPDATE public.event_rsvps
+         SET rsvp_status = 'going',
+             approval_status = 'approved',
+             promoted_at = now()
+       WHERE id = v_entry.id;
+      v_free := v_free - (1 + v_entry.plus_count);
+    END IF;
+
+    IF v_v2 THEN
+      IF v_approval_mode <> 'manual' THEN
+        -- The shared routine is fail-safe when no pepper is available: it
+        -- sends an existing pass or leaves QR-less recipients to the backfill.
+        PERFORM public.enqueue_rsvp_pass(v_entry.id, NULL);
+      END IF;
+    ELSIF v_has_queue THEN
+      -- Preserve the exact legacy template, payload and key while switched off.
+      INSERT INTO public.rsvp_notifications
+        (event_id, rsvp_id, channel, recipient, status, template_key, payload,
+         idempotency_key, attempt_count)
+      VALUES
+        (v_event_id, v_entry.id, NULL, NULL, 'pending', 'rsvp_waitlist_promoted',
+         jsonb_build_object('template_key', 'rsvp_waitlist_promoted',
+                            'rsvp_id', v_entry.id, 'event_id', v_event_id),
+         'rsvp_promote:' || v_entry.id::text || ':' || extract(epoch FROM now())::bigint::text,
+         0)
+      ON CONFLICT (idempotency_key) DO NOTHING;
+    END IF;
+  END LOOP;
+
+  RETURN NEW;
+END;
+$function$;
+
+COMMENT ON FUNCTION public.fn_rsvp_drain_on_capacity_freed() IS
+  '#1150/#4063: deterministic RSVP capacity drain. messages_v2 sends the canonical pass only after auto approval and keeps manual promotions silent until host approval; switch-off preserves the legacy promotion notice.';
+
+REVOKE ALL ON FUNCTION public.fn_rsvp_drain_on_capacity_freed()
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_rsvp_drain_on_capacity_freed()
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION public.orch_1161_reservation_notify_outbox()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -917,6 +1025,7 @@ SELECT cron.schedule(
 -- MINGLA-INVARIANT: I-4063-RECEIPT-NEVER-BLOCKS-PAYMENT | issue #4063 | Food-receipt enqueue failures are warning-only and cannot roll back a venue payment write.
 -- MINGLA-INVARIANT: I-4063-REMINDERS-ONE-PER-BOUGHT-DATE | issue #4063 | Reminder windows run every five minutes, select only still-valid purchased dates, and remain idempotent per order, occurrence and lead bucket.
 -- MINGLA-INVARIANT: I-4063-WAITLIST-ONE-ROW-PER-CONTACT | issue #4063 | With messages_v2 enabled, waitlist invitations enqueue independent email and normalized SMS rows while invalid phones remain silent.
+-- MINGLA-INVARIANT: I-4063-RSVP-PROMOTION-AFTER-APPROVAL | issue #4063 | With messages_v2 enabled, auto promotions enqueue the canonical pass and manual promotions remain silent until host approval.
 
 DO $exit_check$
 DECLARE
@@ -947,6 +1056,16 @@ BEGIN
      OR v_definition NOT LIKE '%event_date_id%'
      OR v_definition NOT LIKE '%start_at%' THEN
     RAISE EXCEPTION 'issue_4063_exit_check_waitlist_definition_incomplete';
+  END IF;
+
+  SELECT pg_get_functiondef(
+    'public.fn_rsvp_drain_on_capacity_freed()'::regprocedure
+  ) INTO v_definition;
+  IF v_definition NOT LIKE '%issue_4063_switch_on%'
+     OR v_definition NOT LIKE '%enqueue_rsvp_pass(v_entry.id, NULL)%'
+     OR v_definition NOT LIKE '%v_approval_mode <> ''manual''%'
+     OR v_definition NOT LIKE '%rsvp_waitlist_promoted%' THEN
+    RAISE EXCEPTION 'issue_4063_exit_check_rsvp_promotion_definition_incomplete';
   END IF;
 
   SELECT schedule INTO v_schedule

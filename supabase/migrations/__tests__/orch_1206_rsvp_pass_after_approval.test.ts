@@ -36,7 +36,6 @@ Deno.test("C-1 — submit dispatches the pass ONLY for going AND approved", () =
   // The going gate stays too (both conditions guard dispatchRsvpPasses).
   hasIn(submit, 'result.status === "going"', "going gate retained");
 });
-
 // ───────────────────────────────────────────────────────────────────────────
 // C-2 / I-4 — single-owner SQL enqueue routine, used by approve + backfill.
 // ───────────────────────────────────────────────────────────────────────────
@@ -161,10 +160,11 @@ Deno.test("I-3 — the second `rsvp_pass_qr:` keyspace is RETIRED (merged into o
   hasNotIn(drain, "rsvp_pass_qr:%", "drain no longer filters the retired prefix");
 });
 
-Deno.test("I-3 — drain covers the canonical keyspace (template_key + pending)", () => {
-  // [FAILS-ON-REVERT KEY] — backfilled/approved passes still drain.
-  hasIn(drain, '.eq("template_key", "rsvp_pass")', "drain selects rsvp_pass rows");
-  hasIn(drain, '.eq("status", "pending")', "drain only pending (never re-invokes sent)");
+Deno.test("I-3 — backfill delegates its drain to the canonical RSVP worker", () => {
+  // [FAILS-ON-REVERT KEY] — the worker owns bounded claims across every RSVP
+  // template and retryable state; this cron must not maintain a second filter.
+  hasIn(drain, 'admin.functions.invoke(\n      "rsvp-notify"', "backfill invokes the canonical worker");
+  hasIn(drain, "{ body: {} }", "worker receives a queue-drain request");
 });
 
 // ───────────────────────────────────────────────────────────────────────────
