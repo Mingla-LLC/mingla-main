@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-3697-SOON-IS-GUIDANCE | issue #3697 | A public destination starting within 48 hours remains selectable in Admin Ads with a planning warning; hard-ineligible destinations stay disabled.
 /**
  * toward #3697 Wave 3 — Admin Ads console honesty (#3700 / #3706 / #3708 slice).
  */
@@ -12,6 +13,10 @@ import {
   budgetPayloadFromState,
   resolvePlanCurrency,
 } from "../lib/adBuilder/payload.js";
+import {
+  destinationAvailabilityGuidance,
+  isDestinationSelectable,
+} from "../lib/adBuilder/destinationAvailability.js";
 import {
   canLaunchCampaign,
   canPauseCampaign,
@@ -111,6 +116,44 @@ test("StepDestination uses listAdvertisablePages (all page types) — #3700", ()
     assert.match(src, new RegExp(`id: "${t}"`));
   }
   assert.match(src, /includeUnavailable/);
+});
+
+test("under-48-hour destinations warn without blocking Admin ad creation", () => {
+  assert.equal(isDestinationSelectable({ availability: "available" }), true);
+  assert.equal(isDestinationSelectable({ availability: "soon" }), true);
+  assert.equal(isDestinationSelectable({}), true);
+
+  for (const availability of [
+    "draft",
+    "private",
+    "ended",
+    "cancelled",
+    "not_live",
+    "unavailable",
+  ]) {
+    assert.equal(
+      isDestinationSelectable({ availability }),
+      false,
+      `${availability} must remain blocked`,
+    );
+  }
+
+  assert.match(
+    destinationAvailabilityGuidance({ availability: "soon" }),
+    /within 48 hours/i,
+  );
+  assert.equal(
+    destinationAvailabilityGuidance({ availability: "available" }),
+    null,
+  );
+
+  const src = fs.readFileSync(
+    path.join(ADMIN, "components/campaign-builder/StepDestination.jsx"),
+    "utf8",
+  );
+  assert.match(src, /disabled=\{!selectable\}/);
+  assert.match(src, /\{guidance\}/);
+  assert.doesNotMatch(src, /function isAvailable/);
 });
 
 test("Settings feature flags use flag_key / is_enabled — #3706", () => {
