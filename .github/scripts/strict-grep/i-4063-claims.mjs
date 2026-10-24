@@ -124,17 +124,12 @@ export function check(tree) {
     return violations;
   }
 
-  const migrationSource = tree.issueMigrationFiles
-    .map((relative) => tree.read(relative) ?? "")
-    .join("\n");
-  const hasVisibilityReemit = [
-    "claim_attendance_internal_v2",
-    "issue_order_attendance_claim_proof_v2",
-    "mint_attendance_claim_handoff",
-    "regexp_replace",
-    "position('e.visibility' IN v_rewritten)",
-    "EXECUTE v_rewritten",
-  ].every((token) => migrationSource.includes(token));
+  const hasVisibilityReemit = [...VISIBILITY_REEMITTED].every((name) => {
+    const fn = functions.get(name);
+    return fn !== undefined &&
+      fn.relative.endsWith("_issue_4063_claim_core.sql") &&
+      !/\bvisibility\b/i.test(fn.body);
+  });
   if (!hasVisibilityReemit) {
     violations.push(
       `${MIGRATION_DIR}: missing fail-closed visibility re-emission contract`,
@@ -153,7 +148,6 @@ export function check(tree) {
 
     if (
       CLAIM_DEFINITION.test(fn.name) &&
-      !VISIBILITY_REEMITTED.has(fn.name) &&
       /\bvisibility\b/i.test(fn.body)
     ) {
       violations.push(
@@ -296,10 +290,13 @@ function runSelfTest() {
       ]]),
     ],
     [
-      "visibility re-emission stops executing",
+      "static visibility re-emission disappears",
       new Map([[
         core,
-        coreSource.replace("EXECUTE v_rewritten;", "PERFORM v_rewritten;"),
+        coreSource.replace(
+          "CREATE OR REPLACE FUNCTION public.issue_order_attendance_claim_proof_v2",
+          "CREATE OR REPLACE FUNCTION public.issue_order_attendance_claim_proof_v2_missing",
+        ),
       ]]),
     ],
     [

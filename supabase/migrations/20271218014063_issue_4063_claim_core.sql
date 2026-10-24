@@ -910,35 +910,474 @@ GRANT EXECUTE ON FUNCTION public.claim_attendance_by_verified_identity(uuid)
   TO service_role;
 
 -- Visibility is a discovery rule, never an ownership rule. Re-emit the three
--- existing proof functions from their current definitions after removing the
--- one legacy public-only predicate. The guards make schema drift fail closed
--- instead of silently leaving one claim rail narrower than the others.
-DO $visibility_reemit$
+-- proof functions as explicit reviewed definitions with the legacy public-only
+-- predicate removed. Keeping the DDL static lets the migration/RLS gate inspect
+-- the entire statement and prevents schema drift from being hidden behind
+-- opaque EXECUTE variables.
+CREATE OR REPLACE FUNCTION public.issue_order_attendance_claim_proof_v2(p_order_id uuid, p_event_id uuid, p_digest bytea, p_generation text, p_allow_retry_rotation boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
 DECLARE
-  v_signature regprocedure;
-  v_definition text;
-  v_rewritten text;
+  v_order public.orders%ROWTYPE;
+  v_event public.events%ROWTYPE;
+  v_secondary boolean;
+  -- #3524 — read off the pre-update snapshot taken FOR UPDATE below, so it
+  -- describes the proof this call is about to replace rather than the one it is
+  -- installing.
+  v_rotating boolean := false;
 BEGIN
-  FOREACH v_signature IN ARRAY ARRAY[
-    'public.issue_order_attendance_claim_proof_v2(uuid,uuid,bytea,text,boolean)'::regprocedure,
-    'public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure,
-    'public.mint_attendance_claim_handoff(text,uuid,uuid,bytea,bytea,bytea,text)'::regprocedure
-  ] LOOP
-    SELECT pg_get_functiondef(v_signature) INTO v_definition;
-    v_rewritten := regexp_replace(
-      v_definition,
-      E'\\n[[:space:]]+AND e\\.visibility = ''public''',
-      '',
-      'g'
+  IF p_order_id IS NULL OR p_event_id IS NULL
+     OR p_digest IS NULL OR octet_length(p_digest) <> 32
+     OR p_generation NOT IN ('legacy_v1', 'governed_v2') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+
+  SELECT o.* INTO v_order FROM public.orders o
+   WHERE o.id = p_order_id AND o.event_id = p_event_id FOR UPDATE;
+  IF NOT FOUND OR v_order.buyer_user_id IS NOT NULL THEN
+    RETURN jsonb_build_object('result', 'ineligible');
+  END IF;
+
+  SELECT e.* INTO v_event FROM public.events e
+    JOIN public.brands b ON b.id = e.brand_id
+   WHERE e.id = p_event_id
+     AND e.event_type IN ('event', 'trip', 'experience')
+     AND e.deleted_at IS NULL
+     AND b.deleted_at IS NULL
+     AND e.status IN ('scheduled', 'live');
+  IF NOT FOUND OR v_order.payment_status NOT IN ('paid', 'partial_refund')
+     OR NOT EXISTS (
+       SELECT 1 FROM public.tickets t
+        WHERE t.order_id = v_order.id
+          AND t.approval_status IN ('auto', 'approved')
+          AND ((v_event.status = 'scheduled' AND t.status = 'valid')
+            OR (v_event.status = 'live' AND t.status IN ('valid', 'used')))
+     ) THEN
+    RETURN jsonb_build_object('result', 'ineligible');
+  END IF;
+
+  IF v_order.attendance_claim_token_digest IS NOT NULL
+     AND v_order.attendance_claim_token_consumed_at IS NULL
+     AND NOT p_allow_retry_rotation THEN
+    RETURN jsonb_build_object(
+      'result', 'already_issued',
+      'generation', v_order.attendance_claim_token_generation
     );
-    IF v_rewritten = v_definition
-       OR position('e.visibility' IN v_rewritten) > 0 THEN
-      RAISE EXCEPTION 'issue_4063_visibility_reemit_drift: %', v_signature;
+  END IF;
+
+  -- #3524 — THE ROTATION THIS CALL IS ABOUT TO PERFORM. Reaching here with a
+  -- live proof in the row means the caller allowed rotation, so the outgoing
+  -- digest is a link somebody already has.
+  v_rotating := v_order.attendance_claim_token_digest IS NOT NULL
+    AND v_order.attendance_claim_token_consumed_at IS NULL;
+
+  UPDATE public.orders
+     SET attendance_claim_token_digest = p_digest,
+         attendance_claim_token_generation = p_generation,
+         attendance_claim_token_created_at = now(),
+         attendance_claim_token_consumed_at = NULL,
+         -- #3524 — the `legacy_v1` arm is FIRST and unchanged: on that
+         -- generation the active proof IS the legacy proof, so the slot holds
+         -- the new digest. Otherwise, a rotation carries the OUTGOING digest
+         -- across so the link already in the guest's hands keeps verifying;
+         -- with nothing outgoing the slot is left exactly as it was.
+         attendance_claim_legacy_token_digest = CASE
+           WHEN p_generation = 'legacy_v1' THEN p_digest
+           WHEN v_rotating THEN v_order.attendance_claim_token_digest
+           ELSE attendance_claim_legacy_token_digest END,
+         attendance_claim_legacy_token_created_at = CASE
+           WHEN p_generation = 'legacy_v1' THEN now()
+           WHEN v_rotating THEN coalesce(
+             v_order.attendance_claim_token_created_at, now())
+           ELSE attendance_claim_legacy_token_created_at END
+   WHERE id = v_order.id;
+
+  IF p_generation = 'legacy_v1'
+     AND EXISTS (
+       SELECT 1 FROM public.ticket_checkout_sessions s
+        WHERE s.order_id = v_order.id
+          AND s.status IN ('paid_completed', 'free_completed')
+     )
+     AND (btrim(coalesce(v_order.buyer_email, '')) <> ''
+       OR coalesce(v_order.buyer_phone_e164, '') ~ '^\+[1-9][0-9]{1,14}$') THEN
+    v_secondary := btrim(coalesce(v_order.buyer_email, '')) = '' OR EXISTS (
+      SELECT 1 FROM public.ticket_order_notifications n
+       WHERE n.order_id = v_order.id
+         AND n.channel = 'email'
+         AND n.status = 'failed_terminal'
+    );
+    INSERT INTO public.attendance_claim_recovery_items(
+      order_id, selected_token_created_at, requires_secondary_delivery
+    ) VALUES (v_order.id, now(), v_secondary)
+    ON CONFLICT (order_id) DO UPDATE SET
+      selected_token_created_at = excluded.selected_token_created_at,
+      requires_secondary_delivery =
+        public.attendance_claim_recovery_items.requires_secondary_delivery
+          OR excluded.requires_secondary_delivery,
+      updated_at = now();
+    INSERT INTO public.attendance_claim_deliveries(
+      kind, source_id, event_id, status, next_attempt_at, last_error_code
+    ) VALUES (
+      'order_recovery_email', v_order.id, v_order.event_id,
+      CASE WHEN v_secondary THEN 'failed_terminal' ELSE 'pending' END,
+      CASE WHEN v_secondary THEN NULL ELSE now() END,
+      CASE WHEN v_secondary THEN 'historical_or_unavailable_email' ELSE NULL END
+    ) ON CONFLICT (kind, source_id) DO NOTHING;
+    UPDATE public.attendance_claim_recovery_items r
+       SET primary_delivery_id = d.id, updated_at = now()
+      FROM public.attendance_claim_deliveries d
+     WHERE r.order_id = v_order.id
+       AND d.kind = 'order_recovery_email' AND d.source_id = v_order.id;
+    IF v_secondary THEN
+      INSERT INTO public.attendance_claim_deliveries(
+        kind, source_id, event_id, status, next_attempt_at
+      ) VALUES (
+        'order_recovery_sms', v_order.id, v_order.event_id, 'pending', now()
+      ) ON CONFLICT (kind, source_id) DO NOTHING;
+      UPDATE public.attendance_claim_recovery_items r
+         SET secondary_delivery_id = d.id, updated_at = now()
+        FROM public.attendance_claim_deliveries d
+       WHERE r.order_id = v_order.id
+         AND d.kind = 'order_recovery_sms' AND d.source_id = v_order.id;
     END IF;
-    EXECUTE v_rewritten;
-  END LOOP;
+  ELSIF p_generation = 'governed_v2' THEN
+    UPDATE public.attendance_claim_recovery_items
+       SET state = 'replacement_issued',
+           replacement_issued_at = now(),
+           updated_at = now()
+     WHERE order_id = v_order.id
+       AND state IN ('selected', 'replacement_issued');
+  END IF;
+
+  RETURN jsonb_build_object('result', 'issued', 'generation', p_generation);
 END;
-$visibility_reemit$;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2(p_user_id uuid, p_kind text, p_event_id uuid, p_source_id uuid, p_current_proof_digest bytea, p_legacy_proof_digest bytea DEFAULT NULL::bytea)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_event public.events%ROWTYPE;
+  v_owner uuid;
+  v_current bytea;
+  v_legacy bytea;
+  v_generation text;
+  v_eligible boolean := false;
+  v_current_match boolean := false;
+  v_legacy_match boolean := false;
+  v_resolved text;
+  v_minted_at timestamptz;
+  v_buyer_email text;
+  v_buyer_phone text;
+  v_channel text;
+  v_masked text;
+  v_conv uuid;
+BEGIN
+  IF p_user_id IS NULL OR p_event_id IS NULL OR p_source_id IS NULL
+     OR p_current_proof_digest IS NULL
+     OR octet_length(p_current_proof_digest) <> 32
+     OR (p_legacy_proof_digest IS NOT NULL
+       AND octet_length(p_legacy_proof_digest) <> 32)
+     OR p_kind NOT IN ('rsvp', 'order') THEN
+    RAISE EXCEPTION 'invalid_claim';
+  END IF;
+
+  SELECT e.* INTO v_event
+    FROM public.events e JOIN public.brands b ON b.id = e.brand_id
+   WHERE e.id = p_event_id AND e.deleted_at IS NULL
+     AND b.deleted_at IS NULL AND e.status IN ('scheduled', 'live');
+  IF NOT FOUND THEN RETURN jsonb_build_object('result', 'ineligible'); END IF;
+  IF (p_kind = 'rsvp' AND v_event.event_type <> 'rsvp')
+     OR (p_kind = 'order'
+       AND v_event.event_type NOT IN ('event', 'trip', 'experience')) THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+
+  IF p_kind = 'rsvp' THEN
+    SELECT r.user_id,
+           CASE WHEN r.pass_recovery_token_hash ~ '^[0-9a-fA-F]{64}$'
+             THEN decode(r.pass_recovery_token_hash, 'hex') END,
+           r.rsvp_status = 'going' AND r.approval_status = 'approved',
+           r.guest_email, r.guest_phone
+      INTO v_owner, v_current, v_eligible, v_buyer_email, v_buyer_phone
+      FROM public.event_rsvps r
+     WHERE r.id = p_source_id AND r.event_id = p_event_id FOR UPDATE;
+  ELSE
+    SELECT o.buyer_user_id, o.attendance_claim_token_digest,
+           o.attendance_claim_legacy_token_digest,
+           o.attendance_claim_token_generation,
+           o.payment_status IN ('paid', 'partial_refund') AND EXISTS (
+             SELECT 1 FROM public.tickets t
+              WHERE t.order_id = o.id
+                AND t.approval_status IN ('auto', 'approved')
+                AND ((v_event.status = 'scheduled' AND t.status = 'valid')
+                  OR (v_event.status = 'live'
+                    AND t.status IN ('valid', 'used')))
+           ),
+           coalesce(o.attendance_claim_token_created_at,
+                    o.attendance_claim_legacy_token_created_at),
+           o.buyer_email, o.buyer_phone_e164
+      INTO v_owner, v_current, v_legacy, v_generation, v_eligible,
+           v_minted_at, v_buyer_email, v_buyer_phone
+      FROM public.orders o
+     WHERE o.id = p_source_id AND o.event_id = p_event_id FOR UPDATE;
+  END IF;
+
+  IF NOT FOUND THEN RETURN jsonb_build_object('result', 'invalid'); END IF;
+  IF v_owner = p_user_id THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+  IF v_owner IS NOT NULL THEN RETURN jsonb_build_object('result', 'conflict'); END IF;
+  IF p_kind = 'order' AND v_legacy IS NOT NULL
+     AND p_legacy_proof_digest IS NULL THEN
+    RETURN jsonb_build_object('result', 'secret_unavailable');
+  END IF;
+
+  v_current_match := v_current IS NOT NULL
+    AND CASE
+      -- Pre-governance orders keep their legacy proof in the active slot. Once
+      -- the governed reader is live, the Edge function supplies that proof in
+      -- the legacy argument rather than the governed/current argument.
+      WHEN p_kind = 'order' AND v_generation = 'legacy_v1' THEN
+        p_legacy_proof_digest IS NOT NULL
+          AND public.fixed_digest_equal(v_current, p_legacy_proof_digest)
+      ELSE public.fixed_digest_equal(v_current, p_current_proof_digest)
+    END;
+  v_legacy_match := v_legacy IS NOT NULL
+    AND p_legacy_proof_digest IS NOT NULL
+    AND public.fixed_digest_equal(v_legacy, p_legacy_proof_digest);
+  IF NOT v_current_match AND NOT v_legacy_match THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+
+  -- #3524 — THE EXPIRY. Order arm only. A token with no recorded mint time
+  -- cannot be aged and is not expired; every token minted by
+  -- `issue_order_attendance_claim_proof_v2` records one.
+  IF p_kind = 'order' AND v_minted_at IS NOT NULL
+     AND v_minted_at < now() - public.attendance_claim_token_ttl() THEN
+    RETURN jsonb_build_object('result', 'expired');
+  END IF;
+
+  IF NOT v_eligible THEN RETURN jsonb_build_object('result', 'ineligible'); END IF;
+
+  -- Preserve the established RSVP duplicate-owner contract before asking
+  -- whether this account owns the guest contact. A claimant who already owns
+  -- another RSVP for this event can never take this row; returning conflict
+  -- here keeps the refusal deterministic while still validating the proof,
+  -- event, source, and eligibility first.
+  IF p_kind = 'rsvp' AND EXISTS (
+    SELECT 1 FROM public.event_rsvps other
+     WHERE other.event_id = p_event_id AND other.user_id = p_user_id
+       AND other.id <> p_source_id
+  ) THEN RETURN jsonb_build_object('result', 'conflict'); END IF;
+
+  -- #4063: both order and RSVP links use the single raw-contact predicate.
+  -- A refusal returns before any owner, token, delivery, or chat write.
+  IF NOT public.account_owns_contact(
+       p_user_id, v_buyer_email, v_buyer_phone
+     ) THEN
+    IF btrim(coalesce(v_buyer_email, '')) <> '' THEN
+      v_channel := 'email';
+      v_masked := public.mask_contact_for_claim(v_buyer_email, 'email');
+    ELSIF coalesce(v_buyer_phone, '') ~ '^\+[1-9][0-9]{1,14}$' THEN
+      v_channel := 'phone';
+      v_masked := public.mask_contact_for_claim(v_buyer_phone, 'phone');
+    END IF;
+    -- Email only: a matching account address gets the actionable
+    -- contact_unproved result. Phone contacts keep identity_mismatch because a
+    -- genuine owner already passes one of the two received-code proof arms.
+    IF v_channel = 'email'
+       AND public.account_carries_email(p_user_id, v_buyer_email) THEN
+      RETURN jsonb_build_object(
+        'result', 'contact_unproved',
+        'contactMasked', v_masked,
+        'contactChannel', v_channel);
+    END IF;
+    RETURN jsonb_build_object(
+      'result', 'identity_mismatch',
+      'contactMasked', v_masked,
+      'contactChannel', v_channel);
+  END IF;
+
+  IF p_kind = 'rsvp' THEN
+    UPDATE public.event_rsvps SET user_id = p_user_id WHERE id = p_source_id;
+    RETURN jsonb_build_object('result', 'claimed', 'eventId', p_event_id);
+  END IF;
+
+  v_resolved := CASE
+    WHEN v_current_match AND v_generation = 'governed_v2'
+      THEN 'governed_token'
+    WHEN v_legacy_match THEN 'legacy_token'
+    ELSE 'legacy_token' END;
+  UPDATE public.orders
+     SET buyer_user_id = p_user_id,
+         attendance_claim_token_digest = NULL,
+         attendance_claim_token_generation = NULL,
+         attendance_claim_legacy_token_digest = NULL,
+         attendance_claim_legacy_token_created_at = NULL,
+         attendance_claim_token_consumed_at = now()
+   WHERE id = p_source_id;
+  UPDATE public.attendance_claim_recovery_items
+     SET state = 'claimed', resolved_via = v_resolved,
+         reconciled_at = now(), updated_at = now()
+   WHERE order_id = p_source_id;
+  UPDATE public.attendance_claim_deliveries
+     SET status = 'failed_terminal', next_attempt_at = NULL,
+         lease_id = NULL, lease_expires_at = NULL,
+         provider_attempt_started_at = NULL,
+         last_error_code = 'claim_resolved', updated_at = now()
+   WHERE source_id = p_source_id
+     AND kind IN ('order_recovery_email', 'order_recovery_sms')
+     AND status IN ('pending', 'processing', 'failed_retryable');
+
+  -- #3524 F-7 — the group chat is the second half of what the buyer was
+  -- promised. Reuse the SAME helper the identity rail and the paid finalize
+  -- path use, never a second writer. It returns silently when the event type
+  -- has no chat (an `experience` legitimately has none), which is why the
+  -- caller reads the membership back below instead of assuming it.
+  PERFORM public.add_buyer_to_event_chat(p_event_id, p_user_id, p_source_id, NULL);
+  UPDATE public.pending_trip_chat_claims
+     SET claimed_at = now(), claimed_by_user_id = p_user_id
+   WHERE order_id = p_source_id AND claimed_at IS NULL;
+
+  SELECT c.id INTO v_conv
+    FROM public.conversations c
+    JOIN public.conversation_participants cp
+      ON cp.conversation_id = c.id AND cp.user_id = p_user_id
+   WHERE c.event_id = p_event_id
+     AND c.linked_entity_type IN ('trip', 'event')
+   LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'result', 'claimed',
+    'eventId', p_event_id,
+    'chatJoined', v_conv IS NOT NULL,
+    'conversationId', v_conv);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.mint_attendance_claim_handoff(p_kind text, p_event_id uuid, p_source_id uuid, p_current_proof_digest bytea, p_legacy_proof_digest bytea, p_code_digest bytea, p_ip_hash text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_event public.events%ROWTYPE;
+  v_owner uuid;
+  v_current bytea;
+  v_legacy bytea;
+  v_generation text;
+  v_eligible boolean := false;
+  v_current_match boolean := false;
+  v_legacy_match boolean := false;
+  v_minted_at timestamptz;
+  v_expires timestamptz;
+BEGIN
+  IF p_event_id IS NULL OR p_source_id IS NULL
+     OR p_current_proof_digest IS NULL
+     OR octet_length(p_current_proof_digest) <> 32
+     OR (p_legacy_proof_digest IS NOT NULL
+       AND octet_length(p_legacy_proof_digest) <> 32)
+     OR p_code_digest IS NULL OR octet_length(p_code_digest) <> 32
+     OR p_kind NOT IN ('rsvp', 'order') THEN
+    RAISE EXCEPTION 'invalid_claim';
+  END IF;
+
+  -- The desktop sheet is an order-purchase surface. The rsvp arm has its own
+  -- pass-recovery product (#871/#3440) and is deliberately not minted here.
+  IF p_kind <> 'order' THEN RETURN jsonb_build_object('result', 'invalid'); END IF;
+
+  SELECT e.* INTO v_event
+    FROM public.events e JOIN public.brands b ON b.id = e.brand_id
+   WHERE e.id = p_event_id AND e.deleted_at IS NULL
+     AND b.deleted_at IS NULL AND e.status IN ('scheduled', 'live');
+  IF NOT FOUND THEN RETURN jsonb_build_object('result', 'ineligible'); END IF;
+  IF v_event.event_type NOT IN ('event', 'trip', 'experience') THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+
+  SELECT o.buyer_user_id, o.attendance_claim_token_digest,
+         o.attendance_claim_legacy_token_digest,
+         o.attendance_claim_token_generation,
+         o.payment_status IN ('paid', 'partial_refund') AND EXISTS (
+           SELECT 1 FROM public.tickets t
+            WHERE t.order_id = o.id
+              AND t.approval_status IN ('auto', 'approved')
+              AND ((v_event.status = 'scheduled' AND t.status = 'valid')
+                OR (v_event.status = 'live'
+                  AND t.status IN ('valid', 'used')))
+         ),
+         coalesce(o.attendance_claim_token_created_at,
+                  o.attendance_claim_legacy_token_created_at)
+    INTO v_owner, v_current, v_legacy, v_generation, v_eligible, v_minted_at
+    FROM public.orders o
+   WHERE o.id = p_source_id AND o.event_id = p_event_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN jsonb_build_object('result', 'invalid'); END IF;
+  IF v_owner IS NOT NULL THEN RETURN jsonb_build_object('result', 'conflict'); END IF;
+
+  v_current_match := v_current IS NOT NULL
+    AND CASE
+      WHEN v_generation = 'legacy_v1' THEN
+        p_legacy_proof_digest IS NOT NULL
+          AND public.fixed_digest_equal(v_current, p_legacy_proof_digest)
+      ELSE public.fixed_digest_equal(v_current, p_current_proof_digest)
+    END;
+  v_legacy_match := v_legacy IS NOT NULL
+    AND p_legacy_proof_digest IS NOT NULL
+    AND public.fixed_digest_equal(v_legacy, p_legacy_proof_digest);
+  IF NOT v_current_match AND NOT v_legacy_match THEN
+    RETURN jsonb_build_object('result', 'invalid');
+  END IF;
+  IF v_minted_at IS NOT NULL
+     AND v_minted_at < now() - public.attendance_claim_token_ttl() THEN
+    RETURN jsonb_build_object('result', 'expired');
+  END IF;
+  IF NOT v_eligible THEN RETURN jsonb_build_object('result', 'ineligible'); END IF;
+
+  IF NOT public.take_attendance_claim_handoff_attempt(p_source_id) THEN
+    RETURN jsonb_build_object('result', 'rate_limited');
+  END IF;
+
+  -- Opportunistic prune, bounded, mirroring begin_attendance_claim_attempt.
+  DELETE FROM public.attendance_claim_handoffs h
+   USING (
+     SELECT id FROM public.attendance_claim_handoffs
+      WHERE consumed_at < now() - interval '7 days'
+      ORDER BY consumed_at, id LIMIT 100
+   ) d
+   WHERE h.id = d.id;
+  DELETE FROM public.attendance_claim_handoffs h
+   USING (
+     SELECT id FROM public.attendance_claim_handoffs
+      WHERE expires_at < now() - interval '7 days'
+      ORDER BY expires_at, id LIMIT 100
+   ) d
+   WHERE h.id = d.id;
+
+  -- At most ONE live code per source: a guest who taps "Get a new code"
+  -- invalidates the one on the previous screen.
+  UPDATE public.attendance_claim_handoffs
+     SET consumed_at = now()
+   WHERE source_id = p_source_id AND consumed_at IS NULL;
+
+  v_expires := now() + interval '10 minutes';
+  INSERT INTO public.attendance_claim_handoffs(
+    kind, event_id, source_id, code_digest, expires_at, created_ip_hash)
+  VALUES (p_kind, p_event_id, p_source_id, p_code_digest, v_expires, p_ip_hash);
+
+  RETURN jsonb_build_object('result', 'minted', 'expiresAt', v_expires);
+EXCEPTION
+  WHEN unique_violation THEN
+    RETURN jsonb_build_object('result', 'conflict');
+END;
+$function$;
 
 COMMENT ON FUNCTION public.issue_order_attendance_claim_proof_v2(
   uuid, uuid, bytea, text, boolean) IS
