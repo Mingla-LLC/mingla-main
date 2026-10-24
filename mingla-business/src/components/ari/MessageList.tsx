@@ -14,11 +14,12 @@
  * the same single-live-at-tail rule.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 
 import {
+  ariPalette,
   ariThread,
   glass,
   radius,
@@ -26,6 +27,9 @@ import {
   spacing,
   typography,
 } from "../../constants/designSystem";
+
+/** #3355 — inverted-list tolerance (px) for "still at newest". */
+const NEWEST_PIN_TOLERANCE_PX = 48;
 import { AgentMessage } from "../../services/agentChatService";
 import { AriSentAttachments } from "./AriAttachmentCards";
 import { ChatBubble } from "./ChatBubble";
@@ -294,16 +298,52 @@ export const MessageList: React.FC<MessageListProps> = ({
     }
   }
 
+  // #3355 settled thread — pin only while the host is at the newest row (or
+  // just sent). Reading history must not be stolen by thinking / reveal / card
+  // growth; one "New reply ↓" control scrolls once and restores pin.
+  const pinnedRef = useRef(true);
+  const [pinnedToNewest, setPinnedToNewest] = useState(true);
+  const [hasUnseenTail, setHasUnseenTail] = useState(false);
+  const scrollGenerationRef = useRef(0);
+
+  const scrollToNewestOnce = useCallback((animated: boolean) => {
+    // Coalesce: a single tail update must not enqueue a second animated scroll.
+    scrollGenerationRef.current += 1;
+    const generation = scrollGenerationRef.current;
+    requestAnimationFrame(() => {
+      if (generation !== scrollGenerationRef.current) return;
+      // #2649 — newest row is offset 0 on an inverted list.
+      listRef.current?.scrollToOffset({ offset: 0, animated });
+    });
+  }, []);
+
+  const jumpToNewest = useCallback(() => {
+    pinnedRef.current = true;
+    setPinnedToNewest(true);
+    setHasUnseenTail(false);
+    scrollToNewestOnce(true);
+  }, [scrollToNewestOnce]);
+
   useEffect(() => {
     if (items.length === 0) return;
-    requestAnimationFrame(() => {
-      // #2649 — the newest row lives at offset 0 in an inverted list, so
-      // "scroll to newest" is scrollToOffset(0), not scrollToEnd (which would
-      // now run to the OLDEST message). Behaviour is otherwise unchanged: a new
-      // message still brings the thread to the newest row.
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    });
-  }, [items.length, pendingAction?.pending_action_id, isThinking]);
+    const newestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const userJustSent = newestMessage?.role === "user";
+    if (userJustSent) {
+      pinnedRef.current = true;
+      setPinnedToNewest(true);
+      setHasUnseenTail(false);
+      scrollToNewestOnce(true);
+      return;
+    }
+    if (pinnedRef.current) {
+      setHasUnseenTail(false);
+      scrollToNewestOnce(true);
+      return;
+    }
+    setHasUnseenTail(true);
+    // Intentionally omit isThinking: thinking / reveal / card growth must not
+    // animate to offset 0 while the host is reading history (#3355).
+  }, [items.length, pendingAction?.pending_action_id, messages, scrollToNewestOnce]);
 
   return (
     /*
@@ -377,6 +417,33 @@ export const MessageList: React.FC<MessageListProps> = ({
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       onScrollBeginDrag={() => setRevealSkipSignal((value) => value + 1)}
+      scrollEventThrottle={16}
+      onScroll={(event) => {
+        // Inverted list: offset 0 is the newest row (visual bottom).
+        const offset = event.nativeEvent.contentOffset.y;
+        const atNewest = offset <= NEWEST_PIN_TOLERANCE_PX;
+        if (atNewest !== pinnedRef.current) {
+          pinnedRef.current = atNewest;
+          setPinnedToNewest(atNewest);
+        }
+        if (atNewest) setHasUnseenTail(false);
+      }}
+      // Inverted FlatList: Header paints at the visual BOTTOM (above composer).
+      ListHeaderComponent={
+        hasUnseenTail && !pinnedToNewest ? (
+          <View style={styles.newReplyWrap}>
+            <Pressable
+              onPress={jumpToNewest}
+              accessibilityRole="button"
+              accessibilityLabel="New reply"
+              hitSlop={8}
+              style={styles.newReplyButton}
+            >
+              <Text style={styles.newReplyLabel}>New reply ↓</Text>
+            </Pressable>
+          </View>
+        ) : null
+      }
       renderItem={({ item }) => {
         if (item.kind === "thinking") {
           return <View>{renderThinking?.()}</View>;
@@ -745,6 +812,26 @@ function renderToolResult(
 }
 
 const styles = StyleSheet.create({
+  newReplyWrap: {
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+  },
+  newReplyButton: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: ariPalette.userBubble,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  newReplyLabel: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: ariThread.onUserBubble,
+    fontWeight: "600",
+  },
   content: {
     paddingHorizontal: spacing.md,
     // ORCH-1101: tighter top; bottom keeps scroll clearance above the composer.

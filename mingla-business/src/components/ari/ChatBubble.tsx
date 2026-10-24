@@ -28,7 +28,13 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
-import { toAccessibleText, toSegments } from "./ariBubbleSegments";
+import {
+  parseInlineRuns,
+  toAccessibleText,
+  toSegments,
+  type AriBubbleSegment,
+  type AriInlineRun,
+} from "./ariBubbleSegments";
 import { SemanticRevealText } from "./SemanticRevealText";
 
 export interface ChatBubbleProps {
@@ -51,32 +57,117 @@ export interface ChatBubbleProps {
  *  `SemanticRevealText` has to import the other (I-PROPOSED-K). Re-exported
  *  here because this is where callers have always imported it from. */
 export type { AriBubbleSegment } from "./ariBubbleSegments";
-export { toAccessibleText, toSegments } from "./ariBubbleSegments";
+export {
+  ariTextLeaksMarkdown,
+  parseInlineRuns,
+  stripRawMarkdownDelimiters,
+  toAccessibleText,
+  toSegments,
+} from "./ariBubbleSegments";
+
+const InlineRuns: React.FC<{ text: string; style: object }> = ({ text, style }) => {
+  const runs = parseInlineRuns(text);
+  const onlyPlain =
+    runs.length === 1 && runs[0].kind === "plain";
+  if (onlyPlain) {
+    return <Text selectable style={style}>{runs[0].text}</Text>;
+  }
+  return (
+    <Text selectable style={style}>
+      {runs.map((run: AriInlineRun, i) => {
+        if (run.kind === "strong") {
+          return (
+            <Text key={i} style={[style, styles.strong]}>
+              {run.text}
+            </Text>
+          );
+        }
+        if (run.kind === "em") {
+          return (
+            <Text key={i} style={[style, styles.em]}>
+              {run.text}
+            </Text>
+          );
+        }
+        if (run.kind === "code") {
+          return (
+            <Text key={i} style={[style, styles.code]}>
+              {run.text}
+            </Text>
+          );
+        }
+        return <Text key={i}>{run.text}</Text>;
+      })}
+    </Text>
+  );
+};
+
+const SegmentView: React.FC<{
+  seg: AriBubbleSegment;
+  style: object;
+  topGap: number;
+}> = ({ seg, style, topGap }) => {
+  if (seg.kind === "section_label") {
+    return (
+      <Text
+        selectable
+        accessibilityRole="header"
+        style={[style, styles.sectionLabel, { marginTop: topGap }]}
+      >
+        {seg.text}
+      </Text>
+    );
+  }
+  if (seg.kind === "bullet") {
+    return (
+      <View style={[styles.bulletRow, { marginTop: topGap }]}>
+        <Text style={[style, styles.bulletGlyph]}>•</Text>
+        <View style={styles.bulletText}>
+          <InlineRuns text={seg.text} style={style} />
+        </View>
+      </View>
+    );
+  }
+  if (seg.kind === "numbered") {
+    return (
+      <View style={[styles.bulletRow, { marginTop: topGap }]}>
+        <Text style={[style, styles.numberGlyph]}>{seg.n ?? 1}.</Text>
+        <View style={styles.bulletText}>
+          <InlineRuns text={seg.text} style={style} />
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={{ marginTop: topGap }}>
+      <InlineRuns text={seg.text} style={style} />
+    </View>
+  );
+};
 
 const BubbleText: React.FC<{ text: string; style: object }> = ({ text, style }) => {
   const segments = toSegments(text);
-  // Fast path: a single plain paragraph renders as one Text (no extra views).
-  if (segments.length === 1 && segments[0].kind === "paragraph") {
-    return <Text style={style}>{segments[0].text}</Text>;
+  // Fast path: a single plain paragraph with no inline markup.
+  if (
+    segments.length === 1 &&
+    segments[0].kind === "paragraph" &&
+    parseInlineRuns(segments[0].text).every((r) => r.kind === "plain")
+  ) {
+    return <InlineRuns text={segments[0].text} style={style} />;
+  }
+  if (segments.length === 0) {
+    return <InlineRuns text={text} style={style} />;
   }
   return (
     <View>
-      {segments.map((seg, i) => {
-        const topGap = i === 0 ? 0 : ariThread.gapGroup;
-        if (seg.kind === "bullet") {
-          return (
-            <View key={i} style={[styles.bulletRow, { marginTop: topGap }]}>
-              <Text style={[style, styles.bulletGlyph]}>•</Text>
-              <Text style={[style, styles.bulletText]}>{seg.text}</Text>
-            </View>
-          );
-        }
-        return (
-          <Text key={i} style={[style, { marginTop: topGap }]}>
-            {seg.text}
-          </Text>
-        );
-      })}
+      {segments.map((seg, i) => (
+        <SegmentView
+          key={i}
+          seg={seg}
+          style={style}
+          topGap={i === 0 ? 0 : ariThread.gapGroup}
+        />
+      ))}
     </View>
   );
 };
@@ -220,8 +311,27 @@ const styles = StyleSheet.create({
     width: 6,
     marginRight: 6,
   },
+  numberGlyph: {
+    color: textTokens.tertiary,
+    width: 18,
+    marginRight: 6,
+  },
   bulletText: {
     flex: 1,
+  },
+  sectionLabel: {
+    fontWeight: "600",
+    color: textTokens.secondary,
+    letterSpacing: 0.2,
+  },
+  strong: {
+    fontWeight: "700",
+  },
+  em: {
+    fontStyle: "italic",
+  },
+  code: {
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
 });
 
