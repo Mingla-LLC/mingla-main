@@ -125,7 +125,7 @@ test("Mute calls the new RPC optimistically and restores the prior value on erro
   );
   expect(thread).toContain("Mute notifications");
   expect(thread).toContain(
-    "Muted: you'll still see unread badges, but no push alerts for this group.",
+    "Muted: routine push alerts are off, but direct @mentions still notify you.",
   );
   expect(thread).toContain("<Toast");
   expect(thread).not.toContain("Watching");
