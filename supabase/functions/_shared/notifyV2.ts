@@ -29,13 +29,13 @@ import { notificationSafeError } from "./notificationSafeError.ts";
 import { countryFromE164 } from "./e164Country.ts";
 // #3988 — support and product alerts for Mingla teammates.
 import {
-  ISSUE_3988_ALERT_CATEGORIES,
-  ISSUE_3988_EMAIL_CATEGORIES,
+  isIssue3988AlertCategory,
   issue3988DeepLinkValid,
   issue3988EmailCta,
   issue3988ProviderSafeKeys,
   issue3988PushAllowed,
-  isIssue3988AlertCategory,
+  ISSUE_3988_ALERT_CATEGORIES,
+  ISSUE_3988_EMAIL_CATEGORIES,
 } from "./issue3988SupportAlerts.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
@@ -97,6 +97,54 @@ export interface EmailCtaInput {
   /** A paragraph appended to the email body, above the button. */
   note: string;
 }
+
+// #4063 — the only category payload fields allowed to leave Mingla for the
+// consumer push provider. Routing metadata (deepLink/type/notificationId) is
+// attached separately after this filter runs.
+const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
+  {
+    buyer_reservation_confirmed: ["reservation_id", "event_id", "venue_id"],
+    buyer_reservation_changed: ["reservation_id", "event_id", "venue_id"],
+    buyer_reservation_cancelled: [
+      "reservation_id",
+      "event_id",
+      "venue_id",
+      "refund_record_id",
+    ],
+    buyer_reservation_reminder: ["reservation_id", "event_id", "venue_id"],
+    buyer_event_reminder: ["order_id", "event_id", "event_date_id"],
+    buyer_purchase_confirmation: ["order_id", "event_id", "event_date_id"],
+    buyer_refund_issued: [
+      "order_id",
+      "event_id",
+      "reservation_id",
+      "refund_record_id",
+    ],
+    buyer_order_cancelled: ["order_id", "event_id", "refund_record_id"],
+    buyer_contribution_receipt: ["contribution_id", "event_id"],
+    buyer_event_updated: ["order_id", "event_id", "event_date_id"],
+    buyer_venue_order_receipt: ["venue_order_id", "venue_id"],
+    rsvp_acknowledgement: ["rsvp_id", "event_id", "guest_id"],
+    rsvp_pass: ["rsvp_id", "event_id", "guest_id"],
+    rsvp_event_updated: ["rsvp_id", "event_id", "guest_id"],
+    rsvp_waitlist_promoted: ["rsvp_id", "event_id", "guest_id"],
+    rsvp_approved: ["rsvp_id", "event_id", "guest_id"],
+    rsvp_denied: ["rsvp_id", "event_id", "guest_id"],
+    rsvp_removed: ["rsvp_id", "event_id", "guest_id"],
+    stay_request_received: ["stay_group_id", "venue_id"],
+    stay_request_action_needed: ["stay_group_id", "venue_id"],
+    stay_payment_required: ["stay_group_id", "venue_id"],
+    stay_request_declined: ["stay_group_id", "venue_id"],
+    stay_reservation_confirmed: ["stay_group_id", "venue_id"],
+    stay_reservation_cancelled: [
+      "stay_group_id",
+      "venue_id",
+      "refund_record_id",
+    ],
+    stay_refund_state: ["stay_group_id", "venue_id", "refund_record_id"],
+    stay_reconciliation_attention: ["stay_group_id", "venue_id"],
+    stay_reservation_reminder: ["stay_group_id", "venue_id"],
+  };
 
 // #3392 — the email body and button for a send that carries `email_cta`.
 function emailContent(
@@ -253,6 +301,21 @@ export function providerSafePayload(
   }
   if (isIssue3988AlertCategory(category)) {
     return pick(issue3988ProviderSafeKeys(category));
+  }
+  // #4063 — consumer purchase, RSVP, and Stay payloads contain the contact and
+  // message-rendering facts needed by email/SMS. None of those facts belong in
+  // a third-party push provider's data bag. The mobile app routes these pushes
+  // with the separately-added deepLink/type/notificationId fields, so only
+  // opaque entity identifiers are retained here. Keep this list explicit:
+  // newly introduced categories under these prefixes fail closed to `{}` until
+  // their provider-safe contract is reviewed.
+  const safeKeys = CONSUMER_PROVIDER_SAFE_KEYS[category];
+  if (safeKeys) return pick([...safeKeys]);
+  if (
+    category.startsWith("buyer_") || category.startsWith("rsvp_") ||
+    category.startsWith("stay_")
+  ) {
+    return {};
   }
   return payload;
 }
