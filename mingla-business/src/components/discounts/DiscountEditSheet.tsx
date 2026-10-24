@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Switch,
@@ -8,6 +9,9 @@ import {
   TextInput,
   View,
 } from "react-native";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -29,11 +33,15 @@ import type {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 import { DiscountScopePicker } from "./DiscountScopePicker";
+import { isoFromLocalDateTime, localDateTimeValue } from "./discountDateTime";
 import {
   canCreateDiscountKind,
   DISCOUNT_COMBINATION_LABELS,
+  DISCOUNT_KIND_DESCRIPTIONS,
   DISCOUNT_KIND_OPTIONS,
+  formatDiscountPreviewMoney,
   isDiscountDraftValid,
 } from "./discountEditorContract";
 
@@ -50,6 +58,7 @@ export interface DiscountEditSheetProps {
   visible: boolean;
   brandId: string;
   rank: number;
+  currencyCode: string | null;
   prices: BrandPriceRow[];
   discount?: BrandDiscount | null;
   presetTarget?: BrandPriceRow | null;
@@ -114,6 +123,7 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   visible,
   brandId,
   rank,
+  currencyCode,
   prices,
   discount,
   presetTarget,
@@ -232,6 +242,8 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
   );
   const moneyText =
     draft.valueMinor == null ? "" : String(draft.valueMinor / 100);
+  const previewMoney = (minor: number): string =>
+    formatDiscountPreviewMoney(minor, currencyCode);
 
   return (
     <Sheet visible={visible} onClose={requestClose} snapPoint="full">
@@ -251,9 +263,10 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
           keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.label}>Type</Text>
-          <View style={styles.segment}>
+          <View style={styles.kindCards} accessibilityRole="radiogroup">
             {DISCOUNT_KIND_OPTIONS.map(({ kind, label }) => {
               const disabled = !canCreateDiscountKind(rank, kind);
+              const isSelected = draft.kind === kind;
               return (
                 <Pressable
                   key={kind}
@@ -262,23 +275,28 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
                   accessibilityRole="radio"
                   accessibilityLabel={`${label} discount`}
                   accessibilityState={{
-                    checked: draft.kind === kind,
+                    checked: isSelected,
                     disabled,
                   }}
                   style={[
-                    styles.segmentButton,
-                    draft.kind === kind && styles.segmentSelected,
+                    styles.kindCard,
+                    isSelected && styles.kindCardSelected,
                     disabled && styles.disabled,
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      draft.kind === kind && styles.segmentTextSelected,
-                    ]}
+                  <View
+                    style={[styles.kindRadio, isSelected && styles.kindRadioOn]}
                   >
-                    {label}
-                  </Text>
+                    {isSelected ? (
+                      <View style={styles.kindRadioCenter} />
+                    ) : null}
+                  </View>
+                  <View style={styles.kindCopy}>
+                    <Text style={styles.kindTitle}>{label}</Text>
+                    <Text style={styles.kindDescription}>
+                      {DISCOUNT_KIND_DESCRIPTIONS[kind]}
+                    </Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -366,9 +384,15 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
             scopeKind={draft.scopeKind}
             targets={draft.targets}
             prices={prices}
+            currencyCode={currencyCode}
             onScopeKindChange={(value) => {
-              set("scopeKind", value);
-              if (value === "brand") set("targets", []);
+              setDraft((current) => ({
+                ...current,
+                scopeKind: value,
+                targets: [],
+              }));
+              setDirty(true);
+              setError(null);
             }}
             onTargetsChange={(value) => set("targets", value)}
           />
@@ -392,16 +416,28 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
             </Pressable>
           ))}
 
-          <Field
-            label="Starts at (ISO date/time)"
-            value={draft.startsAt}
-            onChange={(value) => set("startsAt", value)}
-          />
-          <Field
-            label="Ends at (optional)"
-            value={draft.endsAt ?? ""}
-            onChange={(value) => set("endsAt", value || null)}
-          />
+          <View style={styles.dateRow}>
+            <View style={styles.dateColumn}>
+              <DiscountDateTimeField
+                label="Starts at"
+                value={draft.startsAt}
+                onChange={(value) => {
+                  if (value !== null) set("startsAt", value);
+                }}
+                testID="discount-starts-at"
+              />
+            </View>
+            <View style={styles.dateColumn}>
+              <DiscountDateTimeField
+                label="Ends at"
+                optional
+                value={draft.endsAt ?? null}
+                min={draft.startsAt}
+                onChange={(value) => set("endsAt", value)}
+                testID="discount-ends-at"
+              />
+            </View>
+          </View>
           {draft.kind !== "code" ? (
             <View style={styles.switchRow}>
               <View style={styles.switchCopy}>
@@ -504,7 +540,10 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
           />
 
           <View style={styles.preview}>
-            <Text style={styles.previewTitle}>Preview</Text>
+            <Text style={styles.previewTitle}>Buyer preview</Text>
+            <Text style={styles.help}>
+              What buyers would pay today, including fees.
+            </Text>
             {previewQuery.isLoading ? (
               <Text style={styles.help}>Checking eligible prices…</Text>
             ) : previewQuery.isError ? (
@@ -522,11 +561,38 @@ export const DiscountEditSheet: React.FC<DiscountEditSheetProps> = ({
                 No ticket here can be discounted. Change what it applies to.
               </Text>
             ) : (
-              previewQuery.data?.slice(0, 3).map((row, index) => (
-                <Text key={index} style={styles.previewLine}>
-                  {JSON.stringify(row)}
-                </Text>
-              ))
+              <>
+                {previewQuery.data?.slice(0, 3).map((row, index) => {
+                  const savings = Math.max(
+                    0,
+                    row.allInListCents - row.allInNetCents,
+                  );
+                  return (
+                    <View
+                      key={`${row.itemName}:${index}`}
+                      style={styles.previewRow}
+                    >
+                      <Text style={styles.previewItem}>{row.itemName}</Text>
+                      <Text style={styles.previewPrice}>
+                        Buyer pays {previewMoney(row.allInNetCents)}
+                      </Text>
+                      <Text style={styles.previewMeta}>
+                        Was {previewMoney(row.allInListCents)} · Saves{" "}
+                        {previewMoney(savings)}
+                      </Text>
+                      <Text style={styles.previewMeta}>
+                        Before fees {previewMoney(row.netUnitMinor)}
+                      </Text>
+                    </View>
+                  );
+                })}
+                {(previewQuery.data?.length ?? 0) > 3 ? (
+                  <Text style={styles.help}>
+                    And {(previewQuery.data?.length ?? 0) - 3} more eligible
+                    items
+                  </Text>
+                ) : null}
+              </>
             )}
           </View>
           {error ? (
@@ -581,6 +647,119 @@ const Field: React.FC<{
   </View>
 );
 
+const DiscountDateTimeField: React.FC<{
+  label: string;
+  value: string | null;
+  min?: string;
+  optional?: boolean;
+  testID: string;
+  onChange: (value: string | null) => void;
+}> = ({ label, value, min, optional = false, testID, onChange }) => {
+  const [picker, setPicker] = useState<"date" | "time" | null>(null);
+  const parsed = value === null ? null : new Date(value);
+  const current =
+    parsed !== null && Number.isFinite(parsed.getTime()) ? parsed : null;
+
+  const updateNative =
+    (part: "date" | "time") =>
+    (event: DateTimePickerEvent, selected?: Date): void => {
+      if (Platform.OS === "android") setPicker(null);
+      if (event.type === "dismissed" || selected === undefined) return;
+      const next = current === null ? new Date() : new Date(current);
+      if (part === "date") {
+        next.setFullYear(
+          selected.getFullYear(),
+          selected.getMonth(),
+          selected.getDate(),
+        );
+      } else {
+        next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+      }
+      onChange(next.toISOString());
+    };
+
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>
+        {label}
+        {optional ? " (optional)" : ""}
+      </Text>
+      {Platform.OS === "web" ? (
+        <WebDateTimeInput
+          type="datetime-local"
+          value={localDateTimeValue(value)}
+          min={min === undefined ? undefined : localDateTimeValue(min)}
+          ariaLabel={`${label} date and time`}
+          testID={testID}
+          onChangeValue={(next) => onChange(isoFromLocalDateTime(next))}
+        />
+      ) : (
+        <View style={styles.nativeDateWrap}>
+          <View style={styles.nativeDateButtons}>
+            <Pressable
+              onPress={() => setPicker("date")}
+              accessibilityRole="button"
+              accessibilityLabel={`Choose ${label.toLowerCase()} date`}
+              style={styles.nativeDateButton}
+            >
+              <Text style={styles.nativeDateText}>
+                {current?.toLocaleDateString() ?? "Choose date"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setPicker("time")}
+              accessibilityRole="button"
+              accessibilityLabel={`Choose ${label.toLowerCase()} time`}
+              style={styles.nativeDateButton}
+            >
+              <Text style={styles.nativeDateText}>
+                {current?.toLocaleTimeString(undefined, {
+                  hour: "numeric",
+                  minute: "2-digit",
+                }) ?? "Choose time"}
+              </Text>
+            </Pressable>
+            {optional && value !== null ? (
+              <Pressable
+                onPress={() => onChange(null)}
+                accessibilityRole="button"
+                accessibilityLabel={`Clear ${label.toLowerCase()}`}
+                style={styles.clearDateButton}
+              >
+                <Text style={styles.clearDateText}>Clear</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {picker !== null ? (
+            <>
+              <DateTimePicker
+                value={current ?? new Date()}
+                mode={picker}
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                minimumDate={
+                  picker === "date" && min !== undefined
+                    ? new Date(min)
+                    : undefined
+                }
+                onChange={updateNative(picker)}
+                themeVariant="dark"
+              />
+              {Platform.OS === "ios" ? (
+                <Button
+                  label="Done"
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => setPicker(null)}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </View>
+      )}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   shell: { flex: 1 },
   header: {
@@ -615,6 +794,48 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     backgroundColor: glass.tint.profileBase,
   },
+  kindCards: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  kindCard: {
+    flex: 1,
+    minWidth: 180,
+    minHeight: 82,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: glass.border.control,
+    borderRadius: radius.md,
+    backgroundColor: glass.tint.profileBase,
+  },
+  kindCardSelected: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(249,115,22,0.10)",
+  },
+  kindRadio: {
+    width: 19,
+    height: 19,
+    marginTop: 1,
+    borderWidth: 2,
+    borderColor: textTokens.tertiary,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  kindRadioOn: { borderColor: accent.warm },
+  kindRadioCenter: {
+    width: 9,
+    height: 9,
+    borderRadius: radius.full,
+    backgroundColor: accent.warm,
+  },
+  kindCopy: { flex: 1, gap: 3 },
+  kindTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
+  kindDescription: {
+    color: textTokens.secondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   segment: {
     flexDirection: "row",
     padding: 3,
@@ -646,6 +867,35 @@ const styles = StyleSheet.create({
   },
   radioMark: { fontSize: 18, color: accent.warm },
   radioText: { fontSize: 14, color: textTokens.primary },
+  dateRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  dateColumn: { flex: 1, minWidth: 220 },
+  nativeDateWrap: { gap: spacing.xs },
+  nativeDateButtons: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  nativeDateButton: {
+    flexGrow: 1,
+    minHeight: 46,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderWidth: 1,
+    borderColor: glass.border.control,
+    borderRadius: radius.md,
+    backgroundColor: glass.tint.profileBase,
+  },
+  nativeDateText: {
+    color: textTokens.primary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  clearDateButton: {
+    minHeight: 46,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xs,
+  },
+  clearDateText: { color: accent.warm, fontSize: 13, fontWeight: "700" },
   switchRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   switchCopy: { flex: 1, gap: 3 },
   two: { flexDirection: "row", gap: spacing.sm },
@@ -657,11 +907,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   previewTitle: { fontWeight: "800", color: textTokens.primary },
-  previewLine: {
-    fontFamily: "monospace",
-    fontSize: 11,
-    color: textTokens.secondary,
+  previewRow: {
+    gap: 3,
+    paddingTop: spacing.sm,
+    marginTop: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: glass.border.profileBase,
   },
+  previewItem: { color: textTokens.primary, fontSize: 14, fontWeight: "700" },
+  previewPrice: { color: accent.warm, fontSize: 17, fontWeight: "800" },
+  previewMeta: { color: textTokens.secondary, fontSize: 12, lineHeight: 17 },
   error: {
     padding: spacing.sm,
     borderRadius: radius.sm,
