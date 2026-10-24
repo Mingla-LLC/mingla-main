@@ -10,6 +10,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useBrand } from "../../../src/hooks/useBrands";
 import { useAuth } from "../../../src/context/AuthContext";
 import { createDiscountBlastDraft } from "../../../src/services/discountBlastService";
 
@@ -25,6 +26,7 @@ export default function DiscountsRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { rank } = useCurrentBrandRole(brandId ?? null);
+  const { data: brand } = useBrand(brandId ?? null);
   const { user } = useAuth();
   const blastInFlightRef = React.useRef(false);
   const shareInBlast = React.useCallback(
@@ -87,6 +89,9 @@ export default function DiscountsRoute(): React.ReactElement {
           <LazyDiscountList
             brandId={brandId}
             rank={rank}
+            currencyCode={
+              brand?.pricingCurrency ?? brand?.defaultCurrency ?? null
+            }
             onOpenReport={() =>
               router.push(`/brand/${brandId}/discounts/report` as never)
             }

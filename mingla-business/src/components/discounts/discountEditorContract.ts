@@ -3,8 +3,10 @@ import type {
   DiscountCombinesWith,
   DiscountDraft,
   DiscountKind,
+  DiscountScopeKind,
   DiscountTarget,
 } from "../../services/discountService";
+import { currencyCodeOrNull, formatCurrency } from "../../utils/currency";
 
 export const DISCOUNT_COMBINATION_LABELS: Record<DiscountCombinesWith, string> =
   {
@@ -13,14 +15,52 @@ export const DISCOUNT_COMBINATION_LABELS: Record<DiscountCombinesWith, string> =
     any: "Any eligible discount",
   };
 
-export const DISCOUNT_KIND_OPTIONS: ReadonlyArray<{
+export const DISCOUNT_KIND_OPTIONS: readonly {
   kind: DiscountKind;
   label: string;
-}> = Object.freeze([
+}[] = Object.freeze([
   { kind: "code", label: "Code" },
   { kind: "automatic", label: "Automatic" },
   { kind: "sale_price", label: "Sale price" },
 ]);
+
+export const DISCOUNT_KIND_DESCRIPTIONS: Readonly<
+  Record<DiscountKind, string>
+> = Object.freeze({
+  code: "Buyers enter a code at checkout.",
+  automatic: "The best eligible deal is applied automatically.",
+  sale_price: "Show a lower price on selected items.",
+});
+
+export const DISCOUNT_SCOPE_OPTIONS: readonly {
+  value: DiscountScopeKind;
+  label: string;
+  description: string;
+}[] = Object.freeze([
+  {
+    value: "brand",
+    label: "Entire brand",
+    description: "All eligible paid items",
+  },
+  {
+    value: "listing_kinds",
+    label: "Offering types",
+    description: "Events, trips, venues and more",
+  },
+  {
+    value: "items",
+    label: "Specific items",
+    description: "Individual tickets, menu items or deposits",
+  },
+]);
+
+export const formatDiscountPreviewMoney = (
+  minor: number,
+  currencyCode: string | null,
+): string => {
+  const code = currencyCodeOrNull(currencyCode);
+  return code === null ? "—" : formatCurrency(minor, code, true);
+};
 
 export const canCreateDiscountKind = (
   rank: number,

@@ -411,18 +411,18 @@ function CreativeLibraryPanel() {
   const fileForRef = useRef(null);
   const requestRef = useRef(0);
 
-  const filter = libraryFilter(filterId);
-  const viewKey = libraryViewKey(filter.id, debouncedQuery);
+  const selectedFilter = libraryFilter(filterId);
+  const viewKey = libraryViewKey(selectedFilter.id, debouncedQuery);
 
   const load = useCallback(async ({ append = false, before = null } = {}) => {
     const request = (requestRef.current += 1);
-    const activeFilter = libraryFilter(filterId);
-    const key = libraryViewKey(activeFilter.id, debouncedQuery);
+    const filter = libraryFilter(filterId);
+    const key = libraryViewKey(filter.id, debouncedQuery);
     if (!append) setError(null);
     // #3697 — a deadline, so a request that never answers ends in an error
     // with Retry instead of "Loading creatives…" forever.
     const { data, error: loadError } = await loadWithDeadline(() =>
-      listAdCreatives(libraryRequest(activeFilter.id, debouncedQuery, before)),
+      listAdCreatives(libraryRequest(filter.id, debouncedQuery, before)),
     );
     if (request !== requestRef.current) return;
     if (loadError) {
@@ -471,10 +471,10 @@ function CreativeLibraryPanel() {
   }, [pending.length, load]);
 
   const localOps = new Set(uploads.entries.map((entry) => entry.record?.opId).filter(Boolean));
-  const serverOnly = filter.id === "all" || filter.id === "videos"
+  const serverOnly = selectedFilter.id === "all" || selectedFilter.id === "videos"
     ? pending.filter((item) => !localOps.has(item.clientOperationId))
     : [];
-  const showUploads = filter.id === "all" || filter.id === "videos";
+  const showUploads = selectedFilter.id === "all" || selectedFilter.id === "videos";
 
   const addFiles = async (files) => {
     setRefusals([]);
