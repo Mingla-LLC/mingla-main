@@ -2,13 +2,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Switch,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
+  type NativeSyntheticEvent,
+  type TextInputSelectionChangeEventData,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,8 +41,12 @@ import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { useBrandGroupFileMeta } from "../../src/hooks/useBrandGroupMedia";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
-import { ScrollView } from "../../src/wrappers/SmartScrollView";
+import { KeyboardAvoidingView } from "../../src/wrappers/SmartKeyboardAvoidingView";
+import { DONE_BAR_OCCUPIED, ScrollView } from "../../src/wrappers/SmartScrollView";
+import { liftedBottomSpacer } from "../../src/wrappers/keyboardClearance";
+import { useKeyboardHeight } from "../../src/wrappers/useKeyboardHeight";
 import {
+  listBrandGroupMentionCandidates,
   listBrandGroupMessages,
   markBrandGroupRead,
   sendBrandGroupMessage,
@@ -47,6 +55,13 @@ import {
 import { supabase } from "../../src/services/supabase";
 import type { BrandGroupMediaRow } from "../../src/services/brandGroupMediaService";
 import { formatFileSize, formatMediaDuration } from "../../src/utils/formatMediaDuration";
+import {
+  brandGroupMentionTarget,
+  insertBrandGroupMention,
+  retainedBrandGroupMentions,
+  type BrandGroupMentionCandidate,
+  type SelectedBrandGroupMention,
+} from "../../src/utils/brandGroupMentions";
 
 function first(value: string | string[] | undefined): string | null {
   const item = Array.isArray(value) ? value[0] : value;
@@ -60,6 +75,8 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const requestedFocusMessageId = first(params.focusMessageId);
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight();
   const queryClient = useQueryClient();
   const { t } = useTranslation("brandGroupMedia");
   const { isWideDesktop } = useResponsiveLayout();
@@ -76,6 +93,10 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [composer, setComposer] = useState("");
+  const [composerSelection, setComposerSelection] = useState({ start: 0, end: 0 });
+  const [mentionCandidates, setMentionCandidates] = useState<BrandGroupMentionCandidate[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const [selectedMentions, setSelectedMentions] = useState<SelectedBrandGroupMention[]>([]);
   const [sending, setSending] = useState(false);
   const [replyTo, setReplyTo] = useState<BrandGroupMessage | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -91,6 +112,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const [mediaPanelOpen, setMediaPanelOpen] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+  const composerRef = useRef<TextInput>(null);
   const messageOffsets = useRef<Map<string, number>>(new Map());
   const handledFocusMessageId = useRef<string | null>(null);
   const fileIds = useMemo(() => messages.flatMap((message) => message.file_id ? [message.file_id] : []), [messages]);
@@ -116,6 +138,34 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
     }];
   }).reverse(), [mediaMeta, messages]);
   const viewerItemMap = useMemo(() => new Map(viewerItems.map((item) => [item.fileId, item])), [viewerItems]);
+  const mentionTarget = useMemo(
+    () => brandGroupMentionTarget(composer, composerSelection.start),
+    [composer, composerSelection.start],
+  );
+
+  useEffect(() => {
+    if (!conversationId || !mentionTarget) {
+      setMentionCandidates([]);
+      setMentionLoading(false);
+      return;
+    }
+    let active = true;
+    setMentionLoading(true);
+    const timer = setTimeout(() => {
+      void listBrandGroupMentionCandidates(conversationId, mentionTarget.query)
+        .then((result) => {
+          if (!active) return;
+          setMentionCandidates(result.error ? [] : result.candidates);
+        })
+        .finally(() => {
+          if (active) setMentionLoading(false);
+        });
+    }, 120);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [conversationId, mentionTarget]);
 
   useEffect(() => {
     if (!group) return;
@@ -215,9 +265,12 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
         content: composer.trim(),
         replyToId: replyTo?.id,
         relatedMessageIds: selectedIds,
+        mentionedUserIds: selectedMentions.map((mention) => mention.userId),
         actorMode,
       });
       setComposer("");
+      setSelectedMentions([]);
+      setMentionCandidates([]);
       setReplyTo(null);
       setSelectedIds([]);
       await refresh();
@@ -250,8 +303,46 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
     setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
 
+  function updateComposer(value: string): void {
+    setComposer(value);
+    setSelectedMentions((current) => retainedBrandGroupMentions(value, current));
+  }
+
+  function updateComposerSelection(
+    event: NativeSyntheticEvent<TextInputSelectionChangeEventData>,
+  ): void {
+    setComposerSelection(event.nativeEvent.selection);
+  }
+
+  function chooseMention(candidate: BrandGroupMentionCandidate): void {
+    if (!mentionTarget) return;
+    const inserted = insertBrandGroupMention(composer, mentionTarget, candidate);
+    setComposer(inserted.value);
+    setComposerSelection({ start: inserted.caret, end: inserted.caret });
+    setSelectedMentions((current) => [
+      ...current.filter((mention) => mention.userId !== inserted.mention.userId),
+      inserted.mention,
+    ]);
+    setMentionCandidates([]);
+    requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setNativeProps({
+        selection: { start: inserted.caret, end: inserted.caret },
+      });
+    });
+  }
+
   return (
-    <SafeScreen edges={["top"]} style={styles.screen} testID="brand-group-thread">
+    <SafeScreen
+      edges={["top"]}
+      style={[
+        styles.screen,
+        Platform.OS === "web" && windowHeight > 0
+          ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
+          : null,
+      ]}
+      testID="brand-group-thread"
+    >
       <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel="Back to Messages" onPress={() => router.back()} style={styles.iconButton}>
           <Icon name="arrowL" size={18} color={textTokens.primary} />
@@ -287,7 +378,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
 
       {group?.muted ? (
         <View style={styles.mutedNote}>
-          <Text style={styles.mutedNoteText}>{"Muted: you'll still see unread badges, but no push alerts for this group."}</Text>
+          <Text style={styles.mutedNoteText}>{"Muted: routine push alerts are off, but direct @mentions still notify you."}</Text>
         </View>
       ) : null}
 
@@ -315,7 +406,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           <Button label="Retry" variant="secondary" onPress={() => void refresh()} />
         </View>
       ) : (
-        <ScrollView ref={scrollRef} style={styles.messages} contentContainerStyle={styles.messagesContent} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} style={styles.messages} contentContainerStyle={styles.messagesContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {messages.length === 0 ? (
             <View style={styles.empty}><Text style={styles.stateText}>This is the official Brand group. Start the first conversation here.</Text></View>
           ) : messages.map((message) => {
@@ -361,7 +452,18 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
         </ScrollView>
       )}
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED}>
+      <View
+        style={[
+          styles.composer,
+          {
+            paddingBottom: liftedBottomSpacer(
+              keyboardHeight > 0,
+              Math.max(insets.bottom, spacing.sm),
+            ),
+          },
+        ]}
+      >
         {replyTo ? (
           <View style={styles.composerContext}>
             <View style={styles.headerCopy}><Text style={styles.contextTitle}>Replying to {replyTo.sender_display_name}</Text><Text style={styles.contextText} numberOfLines={1}>{replyTo.content}</Text></View>
@@ -369,6 +471,34 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           </View>
         ) : null}
         {selectedMessages.length ? <Text style={styles.selectedNote}>{selectedMessages.length} related message{selectedMessages.length === 1 ? "" : "s"} selected</Text> : null}
+        {mentionTarget ? (
+          <View style={styles.mentionMenu} accessibilityLabel="Brand group mention suggestions">
+            {mentionLoading ? (
+              <View style={styles.mentionState}>
+                <ActivityIndicator size="small" color={accent.warm} />
+                <Text style={styles.mentionStateText}>Finding teammates…</Text>
+              </View>
+            ) : mentionCandidates.length ? mentionCandidates.map((candidate) => (
+              <Pressable
+                key={candidate.user_id}
+                accessibilityRole="button"
+                accessibilityLabel={`Mention ${candidate.display_name}`}
+                onPress={() => chooseMention(candidate)}
+                style={styles.mentionOption}
+              >
+                <View style={styles.mentionAvatar}>
+                  <Text style={styles.mentionAvatarText}>{candidate.display_name.trim().charAt(0).toUpperCase()}</Text>
+                </View>
+                <View style={styles.headerCopy}>
+                  <Text style={styles.mentionName}>{candidate.display_name}</Text>
+                  {candidate.username ? <Text style={styles.mentionUsername}>@{candidate.username}</Text> : null}
+                </View>
+              </Pressable>
+            )) : (
+              <Text style={styles.mentionStateText}>No teammates match “{mentionTarget.query}”.</Text>
+            )}
+          </View>
+        ) : null}
         <View style={styles.composerLine}>
           <Pressable
             accessibilityRole="button"
@@ -380,8 +510,10 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
             <Icon name="upload" size={20} color={accent.warm} />
           </Pressable>
           <TextInput
+            ref={composerRef}
             value={composer}
-            onChangeText={setComposer}
+            onChangeText={updateComposer}
+            onSelectionChange={updateComposerSelection}
             placeholder={actorMode === "support" ? "Reply as Mingla Support" : "Message your Brand group"}
             placeholderTextColor={textTokens.tertiary}
             style={styles.input}
@@ -392,6 +524,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           <Button label="Send" leadingIcon="send" loading={sending} disabled={!composer.trim() || sending} onPress={() => void send()} />
         </View>
       </View>
+      </KeyboardAvoidingView>
       </View>
       {isWideDesktop && mediaPanelOpen && conversationId ? <BrandGroupMediaPanel compact conversationId={conversationId} groupName={group?.brand_name ?? "Brand group"} onShowInChat={(messageId) => void showInChat(messageId)} /> : null}
       </View>
@@ -489,6 +622,14 @@ const styles = StyleSheet.create({
   contextTitle: { color: textTokens.primary, fontSize: 12, fontWeight: "700" },
   contextText: { color: textTokens.secondary, fontSize: 11 },
   selectedNote: { color: "#b995ff", fontSize: 12, fontWeight: "700" },
+  mentionMenu: { maxHeight: 220, overflow: "hidden", borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: "#171a20" },
+  mentionState: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.sm },
+  mentionStateText: { color: textTokens.tertiary, fontSize: 12, padding: spacing.sm },
+  mentionOption: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: glass.border.profileBase },
+  mentionAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,0.18)" },
+  mentionAvatarText: { color: accent.warm, fontSize: 13, fontWeight: "800" },
+  mentionName: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
+  mentionUsername: { color: textTokens.tertiary, fontSize: 11, marginTop: 1 },
   composerLine: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   attachButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated },
   input: { flex: 1, minHeight: 44, maxHeight: 120, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated, color: textTokens.primary },
