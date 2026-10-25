@@ -165,6 +165,8 @@ Deno.test("#2217 every new function is service-role only", () => {
 
 Deno.test("#2217 the consumer app runs the sweep once per signed-in account", () => {
   const service = read("app-mobile/src/services/attendanceClaimService.ts");
+  const sweep = read("app-mobile/src/services/claimSweep.ts");
+  const hook = read("app-mobile/src/hooks/useClaimRecheck.ts");
   const shell = read("app-mobile/app/index.tsx");
 
   assertStringIncludes(service, "claimAttendanceByVerifiedIdentity");
@@ -179,31 +181,35 @@ Deno.test("#2217 the consumer app runs the sweep once per signed-in account", ()
   // Silent by design: this fires on every sign-in, including for people who
   // never bought anything.
   //
-  // [TEST-MOD-APPROVED #3524] The pinned literal grew by one field because the
-  // sweep's return shape grew by one field: #3524 adds `claims`, the per-order
-  // chat-join detail, so the token rail and the identity rail report the same
-  // thing. The rule this line has always carried — an errored sweep returns an
-  // EMPTY result and never throws — is unchanged, and the pin is now STRICTER
-  // than before: it additionally requires the new `claims` array to be empty on
-  // the error path, so a future edit that leaked a partial claim list out of a
-  // failed invoke fails here.
-  //   before: "if (error) return { count: 0, eventIds: [] };"
-  //   after:  "if (error) return { count: 0, eventIds: [], claims: [] };"
-  // Proven by restoring the old error line in the service: this check goes red,
-  // which is what says the pin still measures the source and not itself.
-  assertStringIncludes(
-    service,
-    "if (error) return { count: 0, eventIds: [], claims: [] };",
+  // [TEST-MOD-APPROVED #4063] The identity sweep now returns the canonical
+  // purchase entries plus pagination and rate-limit state. The long-standing
+  // rule remains stricter than before: an errored sweep is still silent and
+  // exposes no partial identifiers or purchases, while a 429 remains visible
+  // only as bounded retry state.
+  const identitySweep = service.slice(
+    service.indexOf("export const claimAttendanceByVerifiedIdentity"),
   );
+  const errorReturn = identitySweep.match(/if \(error\) \{([\s\S]*?)\n  \}/)?.[1] ?? "";
+  assertStringIncludes(errorReturn, "count: 0");
+  assertStringIncludes(errorReturn, "eventIds: []");
+  assertStringIncludes(errorReturn, "claims: []");
+  assertStringIncludes(errorReturn, "claimed: []");
+  assertStringIncludes(errorReturn, "more: false");
+  assertStringIncludes(errorReturn, "rateLimited:");
+  assertStringIncludes(errorReturn, "contextStatus === 429");
 
-  assertStringIncludes(shell, "claimAttendanceByVerifiedIdentity()");
-  assertStringIncludes(shell, "identitySweptForUserRef");
+  // #4063 moves the lifecycle out of the root shell so every recheck reason
+  // shares one in-flight, paginated sweep without duplicating claim requests.
+  assertStringIncludes(sweep, "claimAttendanceByVerifiedIdentity()");
+  assertStringIncludes(hook, "sweptForUserRef");
+  assertStringIncludes(hook, 'runClaimSweep(currentUserId, "sign_in"');
+  assertStringIncludes(shell, "useClaimRecheck({");
   // Once per user id, and reset on sign-out so the next account is swept too.
   assertStringIncludes(
-    shell,
-    "if (identitySweptForUserRef.current === userId) return;",
+    hook,
+    "if (sweptForUserRef.current === currentUserId) return;",
   );
-  assertStringIncludes(shell, "identitySweptForUserRef.current = null;");
+  assertStringIncludes(hook, "sweptForUserRef.current = null;");
 });
 
 Deno.test("#2217 the confirmation screen never gates the existing guest path on the claim", () => {
