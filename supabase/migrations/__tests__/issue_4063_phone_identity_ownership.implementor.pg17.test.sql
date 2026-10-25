@@ -5,6 +5,11 @@
 \set ON_ERROR_STOP on
 BEGIN;
 
+-- [TEST-MOD-APPROVED #4063] The repository replay uses a reduced auth.users
+-- fixture while production GoTrue owns this column. Model that production
+-- authority inside this rolled-back test transaction before exercising it.
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
+
 CREATE OR REPLACE FUNCTION pg_temp.i4063_phone_assert(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
