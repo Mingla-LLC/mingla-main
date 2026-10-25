@@ -130,8 +130,15 @@ describe("#3176 Host public search measurement", () => {
     );
   });
 
-  it("keeps both analytics clients and public pageviews dark before consent", async () => {
+  // [TEST-MOD-APPROVED #2331] analytics is on unless the visitor turned it
+  // off: "dark before consent" becomes "dark after a turn-off", and the boot
+  // happens on arrival.
+  it("keeps both analytics clients and public pageviews dark after the visitor turned analytics off", async () => {
     const pending = harness();
+    pending.local.set(
+      "mingla_privacy_v2",
+      JSON.stringify({ analytics: false, ads: false, ts: 1 }),
+    );
 
     await pending.analytics.initWebAnalytics();
     pending.analytics.captureHostPublicSearchPageView(
@@ -142,13 +149,13 @@ describe("#3176 Host public search measurement", () => {
     expect(pending.posthog.capture).not.toHaveBeenCalled();
     expect(pending.scripts).toHaveLength(0);
     expect(pending.win.dataLayer).toBeUndefined();
-    expect(pending.local.size).toBe(0);
+    expect([...pending.local.keys()]).toEqual(["mingla_privacy_v2"]);
   });
 
-  it("boots only after consent with both automatic page lifecycles disabled", async () => {
+  it("boots on arrival with both automatic page lifecycles disabled", async () => {
     const accepted = harness();
 
-    await accepted.analytics.grantConsent();
+    await accepted.analytics.initWebAnalytics();
 
     expect(accepted.posthog.init).toHaveBeenCalledTimes(1);
     expect(accepted.posthog.opt_in_capturing).toHaveBeenCalledTimes(1);
@@ -172,7 +179,7 @@ describe("#3176 Host public search measurement", () => {
 
   it("emits one manual public pageview with query-free URL and origin-only referrer", async () => {
     const accepted = harness();
-    await accepted.analytics.grantConsent();
+    await accepted.analytics.initWebAnalytics();
     accepted.posthog.capture.mockClear();
 
     accepted.analytics.captureHostPublicSearchPageView(

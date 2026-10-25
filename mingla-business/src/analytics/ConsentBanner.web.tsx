@@ -19,7 +19,6 @@
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { PRIVACY_CHOICES_EVENT } from "./privacyChoices";
 import { usePrivacyState } from "./usePrivacyState.web";
@@ -207,9 +206,7 @@ export function ConsentBanner(): React.ReactElement | null {
       </div>
     ) : null;
 
-  if (!visible) {
-    return toastNode === null ? null : createPortal(toastNode, document.body);
-  }
+  if (!visible) return toastNode;
 
   const bar = (
     <section
@@ -334,11 +331,12 @@ export function ConsentBanner(): React.ReactElement | null {
     </section>
   );
 
-  return createPortal(
+  // Rendered in place: `position: fixed` resolves against the viewport (no
+  // transformed ancestor in the root stack), like ParallaxCoverShell's chrome.
+  return (
     <>
       {bar}
       {toastNode}
-    </>,
-    document.body,
+    </>
   );
 }

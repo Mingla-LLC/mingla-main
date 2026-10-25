@@ -109,11 +109,11 @@ afterEach(() => {
   jest.resetModules();
 });
 
-test("#3697: on-arrival ad signal is immediately eligible for server sharing", async () => {
+// [TEST-MOD-APPROVED #2331] No region mode: an ad signal is eligible for
+// server sharing from the first page in every country; GPC (not a region)
+// is the only signal that starts ads off.
+test("#3697/#2331: an ad signal is immediately eligible for server sharing in every country", async () => {
   const h = harness("?fbclid=ABC&mc_id=camp1");
-  (
-    h.win as { __minglaAdPixelConsentMode?: string }
-  ).__minglaAdPixelConsentMode = "on_arrival";
   h.analytics.captureAdClickIds({ pageType: "event", brandSlug: "b" });
   await new Promise((r) => setTimeout(r, 0));
   expect(h.posthog.init).not.toHaveBeenCalled();
@@ -124,33 +124,47 @@ test("#3697: on-arrival ad signal is immediately eligible for server sharing", a
   expect(h.local.get("mingla_ad_click_v1")).toContain("click-1");
 });
 
-test("#3697: opt-in region keeps the ad touch pending before approval", async () => {
+test("#2331: Global Privacy Control keeps the ad touch dark until the visitor saves ads on", async () => {
   const h = harness("?ttclid=ABC&mc_id=camp1");
-  (
-    h.win as { __minglaAdPixelConsentMode?: string }
-  ).__minglaAdPixelConsentMode = "opt_in";
+  (h.win.navigator as { globalPrivacyControl?: boolean }).globalPrivacyControl = true;
   h.analytics.captureAdClickIds({ pageType: "event", brandSlug: "b" });
   await new Promise((r) => setTimeout(r, 0));
-  expect(h.fetches).toHaveLength(1);
-  expect(h.fetches[0].body.consent_state).toBe("pending");
+  expect(h.fetches).toHaveLength(0);
+  await h.analytics.savePrivacyChoice({ analytics: true, ads: true });
+  h.analytics.captureAdClickIds({ pageType: "event", brandSlug: "b" });
+  await new Promise((r) => setTimeout(r, 0));
+  const touches = h.fetches.filter((f) => f.body.kind === "touch");
+  expect(touches).toHaveLength(1);
+  expect(touches[0].body.consent_state).toBe("granted");
 });
 
-test("#3697: consent grant tolerates a partial browser shell without location", async () => {
+test("#3697/#2331: turning analytics back on tolerates a partial browser shell without location", async () => {
   const h = harness();
   delete h.win.location;
 
-  await expect(h.analytics.grantConsent()).resolves.toBeUndefined();
+  await expect(
+    h.analytics.savePrivacyChoice({ analytics: false, ads: false }),
+  ).resolves.toBeUndefined();
+  await expect(
+    h.analytics.savePrivacyChoice({ analytics: true, ads: true }),
+  ).resolves.toBeUndefined();
 
-  expect(h.local.get("mingla_consent_v1")).toContain('"granted"');
+  expect(JSON.parse(h.local.get("mingla_privacy_v2") ?? "null")).toMatchObject({
+    analytics: true,
+    ads: true,
+  });
 });
 
-test("F-3: Reject stamps consent rejected and does not boot vendors", async () => {
+test("F-3: Turn off all stamps consent rejected and does not boot vendors", async () => {
   const h = harness("?fbclid=ABC");
   h.analytics.captureAdClickIds();
   await new Promise((r) => setTimeout(r, 0));
-  h.analytics.denyConsent();
+  await h.analytics.savePrivacyChoice({ analytics: false, ads: false });
   await new Promise((r) => setTimeout(r, 0));
-  expect(h.local.get("mingla_consent_v1")).toContain('"denied"');
+  expect(JSON.parse(h.local.get("mingla_privacy_v2") ?? "null")).toMatchObject({
+    analytics: false,
+    ads: false,
+  });
   expect(h.posthog.init).not.toHaveBeenCalled();
   const consentPosts = h.fetches.filter((f) => f.body.kind === "consent");
   expect(consentPosts.length).toBeGreaterThanOrEqual(1);

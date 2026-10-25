@@ -52,11 +52,13 @@ describe("ORCH-1187 LEG2 — webAnalytics.web.ts (PostHog + GA4, consent-gated, 
     expect(src).toMatch(/ad_personalization\s*:\s*['"]denied['"]/);
   });
 
-  it("exposes the consent + capture facade the call sites use", () => {
+  // [TEST-MOD-APPROVED #2331] one privacy save replaces grant/deny.
+  it("exposes the privacy + capture facade the call sites use", () => {
     for (const fn of [
       "initWebAnalytics",
-      "grantConsent",
-      "denyConsent",
+      "savePrivacyChoice",
+      "isAnalyticsOn",
+      "isAdsOn",
       "captureWeb",
       "gaEvent",
       "identifyWeb",
@@ -84,8 +86,9 @@ describe("ORCH-1187 LEG2 — webAnalytics.ts native stub is a pure no-op", () =>
   it("exports the same facade so the call sites compile + no-op on native", () => {
     for (const fn of [
       "initWebAnalytics",
-      "grantConsent",
-      "denyConsent",
+      "savePrivacyChoice",
+      "isAnalyticsOn",
+      "isAdsOn",
       "captureWeb",
       "gaEvent",
       "identifyWeb",

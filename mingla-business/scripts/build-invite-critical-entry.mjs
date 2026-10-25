@@ -122,6 +122,43 @@ function swapStrict(source, from, to, label) {
   return source.replace(from, () => to);
 }
 
+// The retired consent panel's private styling hooks (#922/#2769/#3697).
+const LEGACY_CONSENT_CLASS = /\.i922-(?:consent|reading-band|decision-band|actions|action-|accept|reject|privacy|manage)/;
+
+/** Drop every CSS selector (and then-empty rule) that styles the retired panel. */
+function withoutLegacyConsentCss(css) {
+  let out = "";
+  let index = 0;
+  while (index < css.length) {
+    const open = css.indexOf("{", index);
+    if (open === -1) {
+      out += css.slice(index);
+      break;
+    }
+    const prelude = css.slice(index, open);
+    let depth = 0;
+    let close = open;
+    for (; close < css.length; close += 1) {
+      if (css[close] === "{") depth += 1;
+      if (css[close] === "}") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    if (close >= css.length) fail("unbalanced critical stylesheet");
+    const body = css.slice(open + 1, close);
+    if (prelude.trim().startsWith("@")) {
+      const inner = withoutLegacyConsentCss(body);
+      if (inner.trim().length > 0) out += `${prelude}{${inner}}`;
+    } else {
+      const kept = prelude.split(",").filter((selector) => !LEGACY_CONSENT_CLASS.test(selector));
+      if (kept.length > 0) out += `${kept.join(",")}{${body}}`;
+    }
+    index = close + 1;
+  }
+  return out;
+}
+
 /**
  * #2331 — replace the copied consent panel with the slim privacy bar. The
  * shell no longer waits for a choice to be useful: OK / Save / Turn off all
@@ -129,7 +166,12 @@ function swapStrict(source, from, to, label) {
  */
 function withPrivacyBar(payload) {
   let next = payload;
-  next = swapStrict(next, "</style>", `${privacyBarCss()}</style>`, "stylesheet");
+  const styleOpen = '<style id="issue-922-critical-style">';
+  const styleStart = next.indexOf(styleOpen);
+  const styleEnd = next.indexOf("</style>", styleStart);
+  if (styleStart === -1 || styleEnd === -1) fail("#2331 privacy-bar substitution did not apply: critical stylesheet");
+  const legacyCss = next.slice(styleStart + styleOpen.length, styleEnd);
+  next = `${next.slice(0, styleStart + styleOpen.length)}${withoutLegacyConsentCss(legacyCss)}${privacyBarCss()}${next.slice(styleEnd)}`;
   next = swapStrict(
     next,
     /<section class="i922-consent[\s\S]*?<\/section>/,
