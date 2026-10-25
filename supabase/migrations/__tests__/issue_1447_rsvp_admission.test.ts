@@ -55,10 +55,13 @@ function admitsExactlyOnce(source: string): boolean {
 
 Deno.test("auto-approved anonymous primary plus two guests", () => {
   assert(
-    submit.includes(
-      'result.status === "going" && result.approvalStatus === "approved"',
-    ),
-    "credentials must be gated to going+approved",
+    submit.includes('const passEligible = result.status === "going" &&') &&
+      submit.includes('result.approvalStatus === "approved"'),
+    "pass provisioning must be gated to going+approved",
+  );
+  assert(
+    submit.includes("credentials: userId !== null && passEligible"),
+    "credentials must only be returned to signed-in owners",
   );
   assert(
     submit.includes("passEntities.map((entity)"),
@@ -153,9 +156,11 @@ Deno.test("reviewed pass presentation and representation contracts", () => {
 Deno.test("ineligible responses and historical admission evidence stay private and durable", () => {
   for (const token of [
     "const passEligible",
-    'confirmationToken: passEligible ? result.confirmationToken ?? null : null',
-    'anonymousRecovery: userId === null && passEligible',
-    'passEligible && typeof result.rsvpId === "string"',
+    "confirmationToken: userId !== null && passEligible",
+    "credentials: userId !== null && passEligible",
+    "anonymousRecovery: []",
+    "shortUrl: claim?.url ?? null",
+    "code: claim?.code ?? null",
   ]) assert(submit.includes(token), `status-safe response missing ${token}`);
   assert(
     !migration.includes("NEW.checked_in_at := NULL") &&
