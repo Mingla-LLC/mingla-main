@@ -55,7 +55,23 @@ interface ParticipationRow {
 // ORCH-0443: buildSeedFromSoloPrefs deleted. Replaced by
 // collabPreferenceSeedService.seedCollabPrefsFromSolo — single source of truth.
 
-export const useSessionManagement = () => {
+let nextSessionPillControllerInstance = 0;
+
+/**
+ * Internal controller for the route-level SessionManagementProvider.
+ *
+ * MINGLA-INVARIANT: I-3988-SESSION-PILLS-SINGLE-OWNER | issue #3988 |
+ * Explorer mounts this controller exactly once for the Home route. Consumers
+ * read the shared controller through SessionManagementContext and must never
+ * instantiate their own session_pills realtime subscription.
+ */
+export const useSessionManagementController = () => {
+  const controllerInstanceRef = useRef<number | null>(null);
+  if (controllerInstanceRef.current === null) {
+    controllerInstanceRef.current = ++nextSessionPillControllerInstance;
+  }
+  const realtimeEpochRef = useRef(0);
+
   const [sessionState, setSessionState] = useState<SessionState>(() => {
     // Try to restore session state from AsyncStorage (mobile equivalent of localStorage)
     // For now, we'll use a simple in-memory state
@@ -300,6 +316,13 @@ export const useSessionManagement = () => {
       setSessionState(prev => ({ ...prev, loading: false }));
     }
   }, [user]);
+
+  // Realtime must always call the latest loader without using its changing
+  // function identity to rebuild the channel on every auth-store refresh.
+  // Supabase channel removal is asynchronous, so a same-topic rebuild can
+  // otherwise reuse an already-subscribed channel and reject new callbacks.
+  const realtimeLoadUserSessionsRef = useRef(loadUserSessions);
+  realtimeLoadUserSessionsRef.current = loadUserSessions;
 
   // Create new collaborative session
   const createCollaborativeSession = useCallback(async (participants: string[], sessionName: string) => {
@@ -877,19 +900,24 @@ export const useSessionManagement = () => {
   // Realtime: refetch sessions when invites or participations change for this user.
   // Covers: session deleted (cascade deletes invite), invite accepted/declined externally, etc.
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
+
+    const userId = user.id;
+    const channelEpoch = ++realtimeEpochRef.current;
+    const channelName =
+      `session_pills:${userId}:${controllerInstanceRef.current}:${channelEpoch}`;
 
     const channel = supabase
-      .channel(`session_pills:${user.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'collaboration_invites',
-          filter: `invited_user_id=eq.${user.id}`,
+          filter: `invited_user_id=eq.${userId}`,
         },
-        () => { loadUserSessions(); }
+        () => { realtimeLoadUserSessionsRef.current(); }
       )
       .on(
         'postgres_changes',
@@ -897,7 +925,7 @@ export const useSessionManagement = () => {
           event: '*',
           schema: 'public',
           table: 'session_participants',
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${userId}`,
         },
         (payload) => {
           const oldRow = (payload.old ?? {}) as Record<string, unknown>;
@@ -907,15 +935,15 @@ export const useSessionManagement = () => {
             payload.eventType,
             oldRow.session_id ?? newRow.session_id,
           );
-          loadUserSessions();
+          realtimeLoadUserSessionsRef.current();
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
-  }, [user, loadUserSessions]);
+  }, [user?.id]);
 
   return {
     ...sessionState,

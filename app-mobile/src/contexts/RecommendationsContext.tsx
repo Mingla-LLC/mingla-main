@@ -10,7 +10,7 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // ORCH-0640 ch09: experiencesService DELETED; UserPreferences canonical home.
 import type { UserPreferences } from "../types/preferences";
-import { useSessionManagement } from "../hooks/useSessionManagement";
+import { useSessionManagement } from "./SessionManagementContext";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { supabase } from "../services/supabase";
 import { useCardsCache } from "./CardsCacheContext";

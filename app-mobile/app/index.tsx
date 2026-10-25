@@ -41,6 +41,7 @@ import { NavigationProvider } from "../src/contexts/NavigationContext";
 import { MobileFeaturesProvider } from "../src/components/MobileFeaturesProvider";
 import { CardsCacheProvider } from "../src/contexts/CardsCacheContext";
 import { RecommendationsProvider } from "../src/contexts/RecommendationsContext";
+import { SessionManagementProvider } from "../src/contexts/SessionManagementContext";
 import { ToastContainer } from "../src/components/ui/ToastContainer";
 import { toastManager } from "../src/components/ui/Toast";
 import { ToastProvider } from "../src/components/ToastManager";
@@ -199,7 +200,15 @@ const persistValidatedReferralCode = async (value: unknown): Promise<boolean> =>
   return true;
 };
 
+let nextCollaborationPillOwnerInstance = 0;
+
 function AppContent() {
+  const collaborationPillOwnerRef = useRef<number | null>(null);
+  if (collaborationPillOwnerRef.current === null) {
+    collaborationPillOwnerRef.current = ++nextCollaborationPillOwnerInstance;
+  }
+  const collaborationPillEpochRef = useRef(0);
+
   const state = useAppState();
   const handlers = useAppHandlers(state);
   // ORCH-0679 Wave 2.5: useAppHandlers returns a fresh object every render
@@ -1201,7 +1210,11 @@ function AppContent() {
   //   3. collaboration_invites (invited_user_id=userId) — invites received, accepted, declined
   //
   // On any event: debounce 500ms → refreshAllSessions() with generation protection.
-  // Channel: collaboration_pill_changes_${userId} — no conflict with existing channels.
+  // The owner+epoch suffix is deliberate. Supabase removes channels
+  // asynchronously and reuses an existing channel with the same topic. Auth
+  // refreshes can therefore start the replacement effect while the prior
+  // subscribed channel is still being removed. A lifecycle-scoped topic keeps
+  // that overlap crash-safe while cleanup retires the exact prior channel.
   //
   // STALE CLOSURE CONTRACT — READ BEFORE MODIFYING:
   // refreshAllSessions is intentionally NOT in the dep array. It creates a new function
@@ -1215,6 +1228,9 @@ function AppContent() {
     if (!user?.id) return;
 
     const userId = user.id;
+    const channelEpoch = ++collaborationPillEpochRef.current;
+    const channelName =
+      `collaboration_pill_changes_${userId}:${collaborationPillOwnerRef.current}:${channelEpoch}`;
 
     const triggerDebouncedRefresh = () => {
       if (realtimeRefreshDebounceRef.current) {
@@ -1229,7 +1245,7 @@ function AppContent() {
     };
 
     const channel = supabase
-      .channel(`collaboration_pill_changes_${userId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -1270,7 +1286,7 @@ function AppContent() {
         clearTimeout(realtimeRefreshDebounceRef.current);
         realtimeRefreshDebounceRef.current = null;
       }
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [user?.id]); // Re-subscribe only when userId changes (login/logout)
 
@@ -3557,4 +3573,12 @@ const styles = StyleSheet.create({
 // ambient root-level providers (StripeNativeProvider + PersistQueryClientProvider).
 // Do NOT re-add a QueryClient provider here — the strict-grep gate
 // scripts/ci/check-rq-provider-at-root-layout.sh enforces single-ownership at root.
-export default Sentry.wrap(AppContent);
+function SessionManagedAppContent() {
+  return (
+    <SessionManagementProvider>
+      <AppContent />
+    </SessionManagementProvider>
+  );
+}
+
+export default Sentry.wrap(SessionManagedAppContent);
