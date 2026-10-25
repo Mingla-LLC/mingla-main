@@ -1,6 +1,55 @@
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 
+-- MINGLA-INVARIANT: I-4063-PHONE-OWNER-FAIL-CLOSED | issue #4063 | phone onboarding refuses a number owned by another account in profiles, the verified-phone ledger, or GoTrue; incomplete ownership reads never fall through to OTP
+CREATE OR REPLACE FUNCTION public.phone_identity_owners(
+  p_phone text
+)
+RETURNS TABLE(owner_user_id uuid, owner_sources text[])
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $function$
+BEGIN
+  IF p_phone IS NULL OR p_phone !~ '^\+[1-9][0-9]{1,14}$' THEN
+    RAISE EXCEPTION 'phone_invalid' USING ERRCODE = '22023';
+  END IF;
+
+  RETURN QUERY
+  SELECT authority.user_id,
+         array_agg(authority.source ORDER BY authority.source)::text[]
+    FROM (
+      SELECT p.id AS user_id, 'profile'::text AS source
+        FROM public.profiles p
+       WHERE p.phone = p_phone
+      UNION ALL
+      SELECT v.user_id, 'verified_phone_identity'::text
+        FROM public.verified_phone_identities v
+       WHERE v.phone_e164 = p_phone
+      UNION ALL
+      SELECT u.id, 'auth_user'::text
+        FROM auth.users u
+       WHERE CASE
+         WHEN btrim(coalesce(u.phone, '')) ~ '^\+[1-9][0-9]{1,14}$'
+           THEN btrim(u.phone)
+         WHEN btrim(coalesce(u.phone, '')) ~ '^[1-9][0-9]{1,14}$'
+           THEN '+' || btrim(u.phone)
+         ELSE NULL
+       END = p_phone
+    ) AS authority
+   GROUP BY authority.user_id
+   ORDER BY authority.user_id;
+END;
+$function$;
+
+COMMENT ON FUNCTION public.phone_identity_owners(text) IS
+  '#4063: service-role-only complete phone ownership view across profiles.phone, verified_phone_identities and auth.users.phone. Edge OTP guards fail closed if this RPC cannot answer.';
+
+REVOKE ALL ON FUNCTION public.phone_identity_owners(text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.phone_identity_owners(text) TO service_role;
+
 -- #4063 Wave 5: a ticket can leave the buyer only after the recipient proves
 -- possession of the offered email address or phone number. The old QR is
 -- rotated in the same transaction that attaches the ticket to the recipient.

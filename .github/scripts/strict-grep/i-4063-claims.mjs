@@ -27,6 +27,7 @@ const PROOF_TOKEN_ALLOW = new Map([
       "account_owns_contact",
       "claim_attendance_by_verified_identity",
       "issue_4063_contact_conflict",
+      "phone_identity_owners",
       "record_verified_phone",
     ]),
   ],
