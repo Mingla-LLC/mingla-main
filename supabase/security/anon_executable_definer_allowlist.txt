@@ -263,6 +263,9 @@ pg_recurrence_is_terminated(p_rule jsonb, p_event_id uuid, p_now timestamp with 
 #  one caller-supplied event id and returns a bare boolean: no job field, no snapshot,
 #  no provider locator, no error text, and `false` uniformly for an unknown id.
 issue_1931_event_ordinary_read_blocked(p_event_id uuid)
+# #3281 PR7: schedule chip helper for business_public_events_view. One event id in;
+#  returns only nextStartAt/nextEndAt/upcomingCount/scheduleLine (no guest/PII fields).
+issue_3281_event_schedule(p_event_id uuid)
 pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid)
 pg_venue_reservable_for_place(p_place_pool_id uuid)
 query_person_hero_places_by_signal(p_user_id uuid, p_person_id uuid, p_lat double precision, p_lng double precision, p_signal_ids text[], p_exclude_place_ids uuid[], p_initial_radius_m integer, p_max_radius_m integer, p_per_signal_limit integer, p_total_limit integer)
