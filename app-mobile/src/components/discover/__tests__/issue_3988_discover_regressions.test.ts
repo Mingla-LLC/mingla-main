@@ -61,6 +61,7 @@ test("#3988 Discover is one uninterrupted two-column feed without source section
 // [TEST-MOD-APPROVED #3988] The title-only assertion shipped in #4110 dropped
 // a distinct tour stop at another venue; retain that stop while provider label
 // suffixes for the same venue still collapse.
+// The expected lists below therefore pin the canonical venue-aware contract.
 test("#3988 Discover shows one Ticketmaster card per named event at each canonical venue", () => {
   const cards = [
     { source: "ticketmaster", kind: "event", id: "tm-early", title: "Jackson Dean", venueName: "Lincoln Theatre", startsLocalDate: "2026-10-31", startsLocalTime: "20:00:00" },
