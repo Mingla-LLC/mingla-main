@@ -1,7 +1,9 @@
 -- issue #3281 PR7 — cards / share / admin schedule fields.
--- Appends next_start_at, next_end_at, upcoming_count, schedule_line to the
--- public events view and discover/admin readers via issue_3281_event_schedule.
--- No new grants (helper stays service_role; SECURITY DEFINER / view owner call it).
+-- Adds issue_3281_event_schedule helper and appends schedule keys to
+-- discover_v2_event_base + admin list/get. Does NOT rewrite
+-- business_public_events_view: CI re-applies 20270523002489 mid-chain (#3081)
+-- and CREATE OR REPLACE VIEW cannot drop appended columns. Helper is only
+-- called from SECURITY DEFINER readers (not from anon-facing views).
 
 BEGIN;
 
@@ -66,64 +68,6 @@ GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule(uuid)
 COMMENT ON FUNCTION public.issue_3281_event_schedule(uuid) IS
   'issue #3281 many-dates — next upcoming occurrence + scheduleLine for cards/bundle.';
 
--- Public view: keep #3872 body, append schedule columns (never edit 3872 in place).
-CREATE OR REPLACE VIEW public.business_public_events_view WITH (security_invoker = false) AS
-SELECT e.id,e.brand_id,b.slug AS brand_slug,b.name AS brand_name,b.description AS brand_description,
-  b.profile_photo_url AS brand_profile_photo_url,b.display_attendee_count AS brand_display_attendee_count,
-  b.address AS brand_address,b.cover_media_url AS brand_cover_media_url,b.theme_color AS brand_theme_color,
-  b.theme_font AS brand_theme_font,b.theme_animation AS brand_theme_animation,e.title,e.description,e.slug,
-  e.event_type,CASE WHEN public.issue_2489_address_withheld(e.theme) THEN NULL ELSE e.location_text END AS location_text,
-  e.online_url,e.is_online,e.is_recurring,e.is_multi_date,e.recurrence_rules,e.cover_media_url,e.cover_media_type,
-  e.visibility,e.show_on_discover,e.status,e.published_at,e.timezone,e.created_at,e.updated_at,
-  public.issue_2489_public_theme(e.theme) AS public_theme,e.theme_color_override,e.theme_font_override,
-  e.theme_animation_override,e.currency,e.cover_media_provider,e.cover_media_source_url,e.cover_media_credit,
-  e.cover_media_credit_url,e.cover_media_alt,ed.start_at AS master_start_at,ed.end_at AS master_end_at,
-  ed.timezone AS master_timezone,ed.id AS master_event_date_id,e.city,e.party_types,e.vibe_tags,e.music_genres,
-  CASE WHEN public.issue_2489_address_withheld(e.theme) THEN NULL ELSE e.location_geo END AS location_geo,
-  COALESCE(e.pass_tax,b.default_pass_tax) AS pass_tax,
-  COALESCE(e.pass_mingla_fee,b.default_pass_mingla_fee) AS pass_mingla_fee,
-  COALESCE(e.pass_service_fee,b.default_pass_service_fee) AS pass_service_fee,
-  b.pricing_region,b.pricing_currency,(e.pricing_locked_at IS NOT NULL) AS pricing_locked,
-  (SELECT d.display_price_cents
-     FROM public.pg_public_event_display_prices(ARRAY[e.id]) d
-    WHERE d.event_id=e.id) AS display_price_cents,
-  e.rsvp_discoverable,e.rsvp_capacity,e.rsvp_allow_plus_ones,e.rsvp_plus_ones_max,e.rsvp_waitlist_enabled,
-  e.rsvp_approval_mode,
-  CASE WHEN public.issue_3827_private_guest_list(e.theme) THEN NULL::integer ELSE (
-    SELECT COALESCE(sum(1+r.plus_count),0)::integer FROM public.event_rsvps r
-     WHERE r.event_id=e.id AND r.rsvp_status='going' AND r.approval_status='approved'
-  ) END AS rsvp_going_count,
-  e.city_geo,e.rsvp_contribution_enabled,e.rsvp_contribution_suggested_cents,e.rsvp_contribution_min_cents,
-  e.cover_media_gallery,
-  sched.next_start_at,
-  sched.next_end_at,
-  sched.upcoming_count,
-  sched.schedule_line
-FROM public.events e
-JOIN public.brands b ON b.id=e.brand_id
-LEFT JOIN public.event_dates ed ON ed.event_id=e.id AND ed.is_master=true
-LEFT JOIN LATERAL (
-  SELECT
-    (j->>'nextStartAt')::timestamptz AS next_start_at,
-    (j->>'nextEndAt')::timestamptz AS next_end_at,
-    COALESCE((j->>'upcomingCount')::integer, 0) AS upcoming_count,
-    j->>'scheduleLine' AS schedule_line
-  FROM (SELECT public.issue_3281_event_schedule(e.id) AS j) s
-) sched ON true
-WHERE e.deleted_at IS NULL AND b.deleted_at IS NULL AND e.visibility='public'
-  AND e.status=ANY(ARRAY['scheduled','live','ended','cancelled'])
-  AND NOT public.issue_1931_event_ordinary_read_blocked(e.id);
-
-COMMENT ON VIEW public.business_public_events_view IS
-  '#2489 — anon-readable public offering read model. location_text, location_geo and the '
-  'theme''s business_event.location.address are withheld whenever '
-  'issue_2489_address_withheld(theme) is true. city_geo is exempt by design. Do not '
-  're-emit this view without the gate, and do not re-implement the predicate inline. '
-  'issue #3827 — rsvp_going_count is NULL when the guest list is private (never 0). '
-  'issue #3281 PR7 — next_start_at / next_end_at / upcoming_count / schedule_line from '
-  'issue_3281_event_schedule (server clock). Never append columns here: CI re-applies '
-  '20270523002489 on a migrated database — add a later migration instead.';
-
 -- Discover base: append schedule keys (master_* stay the windowed next occurrence).
 CREATE OR REPLACE FUNCTION public.discover_v2_event_base(
   p_cities text[], p_lower_bound timestamptz, p_upper_start timestamptz DEFAULT NULL,
@@ -143,10 +87,19 @@ AS $function$
     'vibe_tags',to_jsonb(e.vibe_tags),'music_genres',to_jsonb(e.music_genres),'event_type',e.event_type,
     'brand_slug',b.slug,'brand_name',b.name,'brand_profile_photo_url',b.profile_photo_url,
     'master_start_at',ed.start_at,'master_end_at',ed.end_at,'master_timezone',ed.timezone,
-    'next_start_at',(sched.j->>'nextStartAt')::timestamptz,
-    'next_end_at',(sched.j->>'nextEndAt')::timestamptz,
+    -- Window-selected occurrence is the card authority (#3281 PR7 review).
+    'next_start_at',ed.start_at,
+    'next_end_at',ed.end_at,
     'upcoming_count',COALESCE((sched.j->>'upcomingCount')::integer,0),
-    'schedule_line',sched.j->>'scheduleLine',
+    'schedule_line', CASE
+      WHEN COALESCE((sched.j->>'upcomingCount')::integer,0) <= 1 THEN
+        to_char(ed.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''), 'UTC'), 'Dy DD Mon')
+      ELSE format(
+        '%s · +%s more',
+        to_char(ed.start_at AT TIME ZONE COALESCE(NULLIF(btrim(e.timezone), ''), 'UTC'), 'Dy DD Mon'),
+        GREATEST(COALESCE((sched.j->>'upcomingCount')::integer,0) - 1, 0)
+      )
+    END,
     'price_min_cents',(SELECT min(tt.price_cents) FROM public.ticket_types tt
       WHERE tt.event_id=e.id AND tt.deleted_at IS NULL AND tt.is_hidden IS NOT TRUE
         AND tt.is_disabled IS NOT TRUE AND tt.price_cents IS NOT NULL),
@@ -407,7 +360,17 @@ BEGIN
           (SELECT count(*) FROM public.event_rsvps rv WHERE rv.event_id = e.id))
         ELSE jsonb_build_object('ticket_type_count',
           (SELECT count(*) FROM public.ticket_types tt WHERE tt.event_id = e.id AND tt.deleted_at IS NULL))
-      END
+      END,
+    -- #3645: cancel-review hold visibility (must survive schedule append).
+    'cancel_refund_run_status', (
+      SELECT r.status FROM public.event_cancel_refund_runs r
+      WHERE r.event_id = e.id
+      LIMIT 1
+    ),
+    'cancel_refund_object_count', (
+      SELECT count(*)::int FROM public.event_cancel_refund_progress p
+      WHERE p.event_id = e.id
+    )
   )
   INTO v_out
   FROM public.events e

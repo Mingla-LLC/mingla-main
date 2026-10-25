@@ -1925,6 +1925,12 @@ const detailFromDirectBundle = async (
     master_start_at: asStringOrNull(payload.masterStartAt),
     master_end_at: asStringOrNull(payload.masterEndAt),
     master_timezone: asStringOrNull(payload.timezone),
+    // issue #3281 PR7 — preserve next-occurrence schedule from the bundle.
+    next_start_at: asStringOrNull(payload.nextStartAt),
+    next_end_at: asStringOrNull(payload.nextEndAt),
+    upcoming_count:
+      typeof payload.upcomingCount === "number" ? payload.upcomingCount : null,
+    schedule_line: asStringOrNull(payload.scheduleLine),
     pricing_currency: currency,
     party_types: asStringArray(payload.partyTypes),
     vibe_tags: asStringArray(payload.vibeTags),

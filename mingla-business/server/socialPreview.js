@@ -551,6 +551,12 @@ const directEventBundleToPreviewRow = (payload) => {
     master_start_at: asText(payload.masterStartAt) || null,
     master_end_at: asText(payload.masterEndAt) || null,
     master_timezone: asText(payload.timezone) || null,
+    // issue #3281 PR7 — forward next-occurrence schedule from the checkout bundle.
+    next_start_at: asText(payload.nextStartAt) || null,
+    next_end_at: asText(payload.nextEndAt) || null,
+    upcoming_count:
+      typeof payload.upcomingCount === "number" ? payload.upcomingCount : null,
+    schedule_line: asText(payload.scheduleLine) || null,
     city: asText(payload.city) || null,
     public_theme: {
       business_event: {
@@ -905,7 +911,11 @@ const buildTripOgCardProps = (row) => {
 const parseEventDateValue = (row) => {
   const date = eventDate(row);
   if (date.length === 0) return null;
-  const time = new Date(`${date}T00:00:00.000Z`).getTime();
+  // issue #3281 PR7 — full ISO instants (next_start_at) parse directly;
+  // date-only values still get midnight UTC.
+  const time = /T|\+|Z/i.test(date)
+    ? new Date(date).getTime()
+    : new Date(`${date}T00:00:00.000Z`).getTime();
   return Number.isNaN(time) ? null : time;
 };
 
