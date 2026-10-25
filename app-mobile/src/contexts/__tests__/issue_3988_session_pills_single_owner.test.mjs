@@ -30,8 +30,13 @@ test("#3988 Home owns one session controller above provider and deck consumers",
 
   assert.match(
     index,
-    /<SessionManagementProvider>\s*<AppContent\s*\/>\s*<\/SessionManagementProvider>/s,
+    /<SessionManagementProvider key=\{sessionOwnerId\}>\s*<AppContent\s*\/>\s*<\/SessionManagementProvider>/s,
     "the Home route must mount one provider around AppContent",
+  );
+  assert.match(
+    index,
+    /state\.user\?\.id \?\? "signed-out"/,
+    "the shared controller must remount when authenticated account ownership changes",
   );
   assert.match(
     index,

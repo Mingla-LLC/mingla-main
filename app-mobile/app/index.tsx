@@ -3574,8 +3574,12 @@ const styles = StyleSheet.create({
 // Do NOT re-add a QueryClient provider here — the strict-grep gate
 // scripts/ci/check-rq-provider-at-root-layout.sh enforces single-ownership at root.
 function SessionManagedAppContent() {
+  const sessionOwnerId = useAppStore(
+    (state) => state.user?.id ?? "signed-out",
+  );
+
   return (
-    <SessionManagementProvider>
+    <SessionManagementProvider key={sessionOwnerId}>
       <AppContent />
     </SessionManagementProvider>
   );

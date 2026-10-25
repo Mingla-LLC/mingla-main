@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,7 @@ import { DiscoverEmptyState } from "./discover/DiscoverEmptyState";
 import { DiscoverGridSkeleton } from "./discover/DiscoverGridSkeleton";
 import { DiscoverHeader } from "./discover/DiscoverHeader";
 import { canonicalDiscoverCardPath } from "./discover/discoverCardRoute";
+import { DISCOVER_GRID_GAP, DISCOVER_GRID_SIDE_PADDING, discoverGridCellWidth } from "./discover/discoverGridLayout";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { toastManager } from "./ui/Toast";
 import type { DiscoverPillRowHandle } from "./discover/DiscoverPillRow";
@@ -77,6 +78,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }
   const { t } = useTranslation(["discover", "common", "modals"]);
   const insets = useSafeAreaInsets();
+  const { width: viewportWidth } = useWindowDimensions();
+  const gridCellWidth = discoverGridCellWidth(viewportWidth);
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAppStore((state) => state.user);
@@ -426,7 +429,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
               const firstTicketmaster = card.source === "ticketmaster" && (index === 0 || items[index - 1]?.source !== "ticketmaster");
               return <React.Fragment key={key}>
                 {firstTicketmaster ? <View style={hasMingla ? styles.divider : styles.tmHeading}><Text style={styles.headingTitle}>{t("section.tm", "More events nearby")}</Text>{hasMingla ? <View style={styles.line} /> : null}</View> : null}
-                <View style={styles.gridCell} onLayout={(event) => { cardLayoutsRef.current.set(key, { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height, card }); evaluateViewability(); }}>
+                <View style={[styles.gridCell, { width: gridCellWidth }]} onLayout={(event) => { cardLayoutsRef.current.set(key, { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height, card }); evaluateViewability(); }}>
                   <DiscoverCard card={card} saved={savedIds.has(card.id)} onPress={() => { mixpanelService.track("discover_card_opened", { kind: card.kind }); openCard(card); }} onSave={() => { void toggleSave(card); }} />
                 </View>
               </React.Fragment>;
@@ -445,8 +448,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#101216" }, content: { flexGrow: 1 },
   headingTitle: { color: "#fff", fontSize: 13, fontWeight: "600" },
-  grid: { paddingHorizontal: 16, paddingTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  gridCell: { width: "48%" },
+  grid: { paddingHorizontal: DISCOVER_GRID_SIDE_PADDING, paddingTop: 8, flexDirection: "row", flexWrap: "wrap", gap: DISCOVER_GRID_GAP },
+  gridCell: { minWidth: 0 },
   divider: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, marginBottom: 2 }, line: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,.12)" },
   tmHeading: { width: "100%", paddingTop: 10, paddingBottom: 2 },
   more: { color: "rgba(255,255,255,.55)", textAlign: "center", paddingVertical: 18 },
