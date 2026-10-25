@@ -501,7 +501,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
 
           <Text style={getExpStyles.headline}>Your deck is ready</Text>
           <Text style={getExpStyles.subtitle}>
-            Swipe through, save what you love, skip what you don't.
+            Swipe through, save what you love, skip what you don’t.
           </Text>
 
           <Animated.View
@@ -517,7 +517,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
                 onComplete()
               }}
             >
-              <Text style={getExpStyles.ctaText}>Let's go</Text>
+              <Text style={getExpStyles.ctaText}>Let’s go</Text>
             </Pressable>
           </Animated.View>
         </Animated.View>
@@ -533,7 +533,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
 
           <Text style={getExpStyles.headline}>Something went wrong</Text>
           <Text style={getExpStyles.subtitle}>
-            We couldn't load your picks. Let's try again.
+            We couldn’t load your picks. Let’s try again.
           </Text>
 
           <View style={getExpStyles.ctaContainer}>
