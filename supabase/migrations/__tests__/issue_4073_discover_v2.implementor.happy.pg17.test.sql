@@ -62,9 +62,11 @@ DO $$
 DECLARE
   v_owner uuid:=gen_random_uuid(); v_brand uuid:=gen_random_uuid(); v_event uuid:=gen_random_uuid();
   v_ticket uuid:=gen_random_uuid(); v_sale uuid:=gen_random_uuid();
+  v_watch uuid:=gen_random_uuid(); v_scanned integer; v_outbox_country text;
   v_page jsonb; v_item jsonb;
 BEGIN
   INSERT INTO auth.users(id,email) VALUES(v_owner,'i4073-recurrence-'||v_owner||'@example.test');
+  INSERT INTO public.profiles(id,email) VALUES(v_owner,'i4073-recurrence-'||v_owner||'@example.test');
   INSERT INTO public.creator_accounts(id,created_at,updated_at) VALUES(v_owner,now(),now());
   INSERT INTO public.brands(
     id,account_id,name,slug,default_currency,paystack_subaccount_code,created_at,updated_at
@@ -98,6 +100,25 @@ BEGIN
     (v_item#>>'{price,listMinor}')::integer=2000
       AND (v_item#>>'{price,saleMinor}')::integer=1500,
     'Discover preserves the #3872 public list and sale from prices');
+
+  -- [TEST-MOD-APPROVED #4073] Behavioural country proof for the producer
+  -- classification in issue_1529_producer_catalog_audit.test.sql.
+  INSERT INTO public.discover_city_watch(
+    id,user_id,city_key,city_label,city_name,state_code,country_code,lat,lng
+  ) VALUES(
+    v_watch,v_owner,'i4073-future-city-ng','#4073 Future City','#4073 Future City',NULL,'NG',0,0
+  );
+  v_scanned:=public.issue_4073_scan_city_watches(50);
+  SELECT country_code INTO v_outbox_country
+  FROM public.notification_outbox
+  WHERE idempotency_key='discover_city_plans_live:'||v_watch::text;
+  PERFORM pg_temp.t4073_assert(v_scanned=1,
+    'city-watch scan enqueues the newly eligible city exactly once');
+  PERFORM pg_temp.t4073_assert(v_outbox_country='NG',
+    'city-watch notification copies the durable watch country code');
+  PERFORM pg_temp.t4073_assert(
+    (SELECT notified_at IS NOT NULL FROM public.discover_city_watch WHERE id=v_watch),
+    'city-watch scan atomically marks the durable watch notified');
 END
 $$;
 

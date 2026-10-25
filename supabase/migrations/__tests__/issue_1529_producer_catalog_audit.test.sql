@@ -70,7 +70,9 @@ $vacuity$;
 -- ---------------------------------------------------------------------------
 -- [TEST-MOD-APPROVED #3988] Brand-visible support adds two explicitly
 -- country-aware, push-only producers and raises the catalog floor to 18.
--- (2) RATCHET — raised 12 → 18 for #3988. The floor is the number that ACTUALLY
+-- [TEST-MOD-APPROVED #4073] City-watch delivery adds one producer that copies
+-- the normalized country stored on the durable watch, raising 18 -> 19.
+-- (2) RATCHET — raised 12 -> 18 for #3988 and 18 -> 19 for #4073. The floor is the number that ACTUALLY
 --     exists in the catalog, so a producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
 --     could have vanished unnoticed.
@@ -80,9 +82,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 18 THEN
+  IF v_count < 19 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_18_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_19_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -112,6 +114,8 @@ $ratchet$;
 --       issue_3988_notify_brand_support_progress → explicit NULL (push-only progress notice)
 --       issue_3720_admin_update_idea        → explicit NULL (no SMS channel)
 --       issue_3720_admin_question_action    → explicit NULL (no SMS channel)
+--       issue_4073_scan_city_watches        → copies the normalized country_code
+--                                             from the durable city watch
 --
 --     DRAIN-DERIVED — emits source-refund-pool rows carrying contact NULL by
 --     #1221's privacy design, so the recipient (and therefore the country) can
@@ -143,7 +147,8 @@ DECLARE
     'issue_3988_create_brand_support_ticket',
     'issue_3988_notify_brand_support_progress',
     'issue_3720_admin_update_idea',
-    'issue_3720_admin_question_action'
+    'issue_3720_admin_question_action',
+    'issue_4073_scan_city_watches'
   ];
   drain_derived text[] := ARRAY[
     'admin_request_source_refund_attention_recovery'
@@ -252,7 +257,8 @@ DECLARE
     'issue_3988_create_brand_support_ticket',
     'issue_3988_notify_brand_support_progress',
     'issue_3720_admin_update_idea',
-    'issue_3720_admin_question_action'
+    'issue_3720_admin_question_action',
+    'issue_4073_scan_city_watches'
   ];
   v_missing text;
 BEGIN

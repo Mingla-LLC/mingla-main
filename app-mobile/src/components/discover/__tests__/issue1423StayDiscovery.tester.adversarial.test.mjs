@@ -9,6 +9,7 @@ const filters = read("../StayFilterChips.tsx");
 const card = read("../StayCard.tsx");
 const service = read("../../../services/staysDiscoveryService.ts");
 const migration = read("../../../../../supabase/migrations/20270205001423_issue_1423_stay_discovery.sql");
+const feedTypes = read("../../../types/discoverFeed.ts");
 
 test("A-1423 client cannot bypass the anonymous-safe projection", () => {
   assert.doesNotMatch(service, /\.from\(\s*["'](?:brands|venue_listings|stay_)/);
@@ -32,12 +33,16 @@ test("A-1423 database negative space excludes non-public and consumed supply", (
   assert.doesNotMatch(migration, /['"]USD['"]|['"]GBP['"]/);
 });
 
-test("A-1423 does not add a coach step or disturb the Events and Trips branches", () => {
-  assert.match(discover, /if \(tabId === 'events'\) return coachEventsTab\.targetRef/);
-  assert.match(discover, /if \(tabId === 'trips'\) return coachTripsTab\.targetRef/);
-  assert.doesNotMatch(discover, /tabId === ['"]stays['"][\s\S]{0,80}targetRef/);
-  assert.match(discover, /activeTab === "events"[\s\S]*FILTER_BAR_TOP \+ FILTER_BAR_HEIGHT/);
-  assert.match(discover, /onBrowseEvents=\{\(\) => setActiveTab\("events"\)\}/);
+// [TEST-MOD-APPROVED #4073] Coach ownership is now generic to the pill row and
+// filter button; no kind, including Stays, may gain a private coach branch.
+test("A-1423 keeps Stays on the generic one-page coach and kind rails", () => {
+  assert.match(feedTypes, /DISCOVER_KIND_ORDER\s*=\s*\[\s*"events",\s*"experiences",\s*"trips",\s*"stays",?\s*\]/);
+  assert.equal([...discover.matchAll(/useCoachMark\(/g)].length, 2);
+  assert.match(discover, /const coachPills = useCoachMark\(4, 18\)/);
+  assert.match(discover, /const coachFilters = useCoachMark\(5, 18\)/);
+  assert.doesNotMatch(discover, /selectedKind\s*===\s*["']stays["'][\s\S]{0,100}targetRef/);
+  assert.match(discover, /visibleKinds\.includes\(selectedKind\)/);
+  assert.match(discover, /onKindSelect=\{switchKind\}/);
 });
 
 test("A-1423 bounds typed filters and sends no destination text to analytics", () => {
