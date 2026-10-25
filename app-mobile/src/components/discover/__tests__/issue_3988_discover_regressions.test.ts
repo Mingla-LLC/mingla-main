@@ -14,6 +14,7 @@ import {
 import { dedupeDiscoverFeedCards } from "../../../utils/discoverFeedDedupe.ts";
 
 // MINGLA-INVARIANT: I-3988-DISCOVER-NATIVE-ROUTES | issue #3988 | Every Mingla Discover card resolves to an existing canonical native public route rather than trusting feed-provided route templates.
+// MINGLA-INVARIANT: I-3988-NATIVE-PUBLIC-PAGES-NO-WEB-CHUNKS | issue #3988 | Native public offering details render shared sections synchronously from the Metro bundle without browser-style chunk resolution.
 function card(kind: "event" | "rsvp" | "experience" | "trip" | "stay", params: Record<string, string> = { slug: "night out" }) {
   return {
     source: "mingla",
@@ -122,7 +123,6 @@ test("#3988 two Discover columns plus their gap fit narrow viewports", () => {
   }
 });
 
-// MINGLA-INVARIANT: I-3988-NATIVE-PUBLIC-PAGES-NO-WEB-CHUNKS | issue #3988 | Native public offering details render shared sections synchronously from the Metro bundle without browser-style chunk resolution.
 test("#3988 native public offering pages never cross a web-style lazy chunk boundary", () => {
   const nativeBoundary = readFileSync(
     fileURLToPath(
