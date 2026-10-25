@@ -447,10 +447,13 @@ function buildLiveTripPatch(
   if (state.destinationLng !== trip.businessTrip.destinationLng) {
     bt.destinationLng = state.destinationLng;
   }
-  if (state.destinationCity !== trip.businessTrip.destinationCity) {
+  if (state.destinationCity !== (trip.businessTrip.destinationCity ?? null)) {
     bt.destinationCity = state.destinationCity;
   }
-  if (state.destinationCountryCode !== trip.businessTrip.destinationCountryCode) {
+  if (
+    state.destinationCountryCode !==
+    (trip.businessTrip.destinationCountryCode ?? null)
+  ) {
     bt.destinationCountryCode = state.destinationCountryCode;
   }
   // ORCH-1016 — departure is ADDITIVE (no refund gate; doesn't change
@@ -471,10 +474,13 @@ function buildLiveTripPatch(
   if (state.departureLng !== trip.businessTrip.departureLng) {
     bt.departureLng = state.departureLng;
   }
-  if (state.departureCity !== trip.businessTrip.departureCity) {
+  if (state.departureCity !== (trip.businessTrip.departureCity ?? null)) {
     bt.departureCity = state.departureCity;
   }
-  if (state.departureCountryCode !== trip.businessTrip.departureCountryCode) {
+  if (
+    state.departureCountryCode !==
+    (trip.businessTrip.departureCountryCode ?? null)
+  ) {
     bt.departureCountryCode = state.departureCountryCode;
   }
   // Issue #1363 — persist capture precision only when it was set this session

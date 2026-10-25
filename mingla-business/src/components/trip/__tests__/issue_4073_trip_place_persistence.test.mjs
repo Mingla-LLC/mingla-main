@@ -29,3 +29,13 @@ test("#4073 free-text edits clear stale structured place identity", () => {
     assert.match(edit, new RegExp(assignment));
   }
 });
+
+test("#4073 legacy trips do not emit phantom structured place edits", () => {
+  for (const field of fields) {
+    assert.match(
+      edit,
+      new RegExp(`state\\.${field} !==[\\s\\S]*?\\(trip\\.businessTrip\\.${field} \\?\\? null\\)`),
+      `published edit must normalize an omitted ${field} before diffing`,
+    );
+  }
+});
