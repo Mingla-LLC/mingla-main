@@ -66,8 +66,17 @@ DECLARE
 BEGIN
   INSERT INTO auth.users(id,email) VALUES(v_owner,'i4073-recurrence-'||v_owner||'@example.test');
   INSERT INTO public.creator_accounts(id,created_at,updated_at) VALUES(v_owner,now(),now());
-  INSERT INTO public.brands(id,account_id,name,slug,default_currency,created_at,updated_at)
-    VALUES(v_brand,v_owner,'I4073 recurrence','i4073-recurrence-'||v_brand,'USD',now(),now());
+  INSERT INTO public.brands(
+    id,account_id,name,slug,default_currency,paystack_subaccount_code,created_at,updated_at
+  ) VALUES(
+    v_brand,v_owner,'I4073 recurrence','i4073-recurrence-'||v_brand,'USD',
+    'ACCT_i4073_recurrence',now(),now()
+  );
+  PERFORM pg_temp.t4073_assert(public.pg_brand_can_collect(v_brand),
+    'paid-sale fixture satisfies the production collection gate');
+  UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='discounts_enabled';
+  INSERT INTO public.program_brand_rollouts(brand_id,program,phase)
+    VALUES(v_brand,'discounts','pilot');
   INSERT INTO public.events(id,brand_id,title,slug,event_type,status,visibility,timezone,currency,city,published_at,pass_mingla_fee,pass_service_fee,created_at,updated_at)
     VALUES(v_event,v_brand,'Future recurrence','i4073-future-'||v_event,'event','scheduled','public','UTC','USD','#4073 Future City',now(),false,false,now(),now());
   INSERT INTO public.event_dates(id,event_id,start_at,end_at,timezone,is_master) VALUES
