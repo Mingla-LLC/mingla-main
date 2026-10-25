@@ -848,7 +848,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                     <Text style={styles.detailValue}>
                       {moneyOrFree(
                         line.totalCents,
-                        item.currency ?? "GBP",
+                        item.currency ?? "USD",
                         t("ticket.free"),
                       )}
                     </Text>
@@ -863,7 +863,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                       −
                       {moneyOrFree(
                         order.discountCents,
-                        item.currency ?? "GBP",
+                        item.currency ?? "USD",
                         t("ticket.free"),
                       )}
                     </Text>
@@ -877,7 +877,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                     <Text style={styles.detailValue}>
                       {moneyOrFree(
                         order.buyerFeesCents + order.taxCents,
-                        item.currency ?? "GBP",
+                        item.currency ?? "USD",
                         t("ticket.free"),
                       )}
                     </Text>
@@ -889,7 +889,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                     <Text style={styles.detailValue}>
                       {moneyOrFree(
                         order.buyerTotalCents,
-                        item.currency ?? "GBP",
+                        item.currency ?? "USD",
                         t("ticket.free"),
                       )}
                     </Text>
@@ -904,7 +904,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                       −
                       {moneyOrFree(
                         order.refundedAmountCents,
-                        item.currency ?? "GBP",
+                        item.currency ?? "USD",
                         t("ticket.free"),
                       )}
                     </Text>

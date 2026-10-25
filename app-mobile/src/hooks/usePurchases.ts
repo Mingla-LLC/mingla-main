@@ -42,7 +42,7 @@ function mapReservations(
     status: reservation.status,
     partySize: reservation.party_size,
     feeCents: reservation.fee_cents ?? 0,
-    currency: reservation.fee_currency ?? "GBP",
+    currency: reservation.fee_currency ?? "USD",
     refundedAmountCents: reservation.refund?.amount_cents ?? 0,
     raw: reservation,
   }));

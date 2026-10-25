@@ -262,7 +262,7 @@ export async function fetchMyOrders(
           (ticket) => ticket.status === "valid",
         ).length,
         source: order.source,
-        currency: order.currency ?? "GBP",
+        currency: order.currency ?? "USD",
         buyerTotalCents,
         refundedAmountCents: money(order.refunded_amount_cents),
         createdAt: order.created_at,

@@ -404,7 +404,11 @@ describe("issue #3859 — Explorer native public-page parity", () => {
 
     expect(calendarService).toContain('eventSlug: event?.slug ?? ""');
     expect(calendarService).toContain("eventType: event?.event_type ?? null");
-    expect(calendarRow).toContain("`/purchases/order/${entry.orderId}");
+    // [TEST-MOD-APPROVED #4063] The destination is unchanged, but the path
+    // segment is now encoded before the optional ticket query is appended.
+    expect(calendarRow).toContain(
+      "`/purchases/order/${encodeURIComponent(entry.orderId)}${suffix}`",
+    );
     expect(calendarRow).not.toContain("TicketPdfSheet");
     expect(calendarRow).not.toContain("openBrowserAsync(entry.publicBuyerUrl)");
   });

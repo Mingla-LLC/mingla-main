@@ -357,6 +357,7 @@ function makeRuntime(initialBirthday) {
   const state = {
     data: { userBirthday: initialBirthday },
     pickerOpen: false,
+    pickerTouched: false,
     setDataCalls: 0,
   };
   const env = {
@@ -364,6 +365,10 @@ function makeRuntime(initialBirthday) {
     BIRTHDAY_PICKER_DEFAULT: DEFAULT_BIRTHDAY,
     Platform: { OS: "ios" },
     setShowDatePicker: (v) => { state.pickerOpen = v; },
+    // [TEST-MOD-APPROVED #4063] The production picker now tracks whether the
+    // wheel was deliberately moved so its Done control cannot silently accept
+    // the visible fallback date. Keep the extracted-handler harness complete.
+    setBirthdayPickerTouched: (v) => { state.pickerTouched = v; },
     setData: (updater) => {
       state.setDataCalls += 1;
       state.data = typeof updater === "function" ? updater(state.data) : updater;
