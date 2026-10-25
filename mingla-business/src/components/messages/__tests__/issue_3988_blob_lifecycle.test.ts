@@ -7,7 +7,7 @@ import {
 } from "../BrandGroupFilePreviewModal";
 
 jest.mock("../../media/MediaViewer", () => ({ MediaViewer: () => null }));
-jest.mock("../../../services/brandGroupFilesService", () => ({ brandGroupFilePreviewRequest: jest.fn() }));
+jest.mock("../../../services/brandGroupFileRequests", () => ({ brandGroupFilePreviewRequest: jest.fn() }));
 jest.mock("react-native", () => ({ Platform: { OS: "web" } }));
 
 const items = Array.from({ length: 7 }, (_, index) => ({ fileId: String(index) }));

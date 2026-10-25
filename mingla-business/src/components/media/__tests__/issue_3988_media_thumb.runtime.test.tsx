@@ -7,23 +7,24 @@ const mockInvalidateQueries = jest.fn();
 const mockThumbnailRequest = jest.fn();
 
 jest.mock("react-native", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ReactModule = require("react");
   const base = jest.requireActual("react-native");
   Object.assign(mockPlatform, { select: base.Platform.select });
-  return { ...base, Platform: mockPlatform };
+  return {
+    ...base,
+    Image: (props: Record<string, unknown>) => ReactModule.createElement("ImageProbe", props),
+    Platform: mockPlatform,
+  };
 });
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
 }));
-jest.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+jest.mock("../../../i18n", () => ({
+  useBusinessMediaTranslation: () => ({ t: (key: string) => key, language: "en" }),
 }));
-jest.mock("expo-image", () => ({
-  Image: (props: Record<string, unknown>) =>
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("react").createElement("ImageProbe", props),
-}));
-jest.mock("../../../services/brandGroupMediaService", () => ({
-  thumbnailRequest: (...args: unknown[]) => mockThumbnailRequest(...args),
+jest.mock("../../../services/brandGroupFileRequests", () => ({
+  brandGroupFileThumbnailRequest: (...args: unknown[]) => mockThumbnailRequest(...args),
 }));
 jest.mock("../../ui/Icon", () => ({
   Icon: (props: Record<string, unknown>) =>
@@ -87,7 +88,7 @@ describe("#3988 MediaThumb runtime cache and pending resolution", () => {
     });
   });
 
-  it("uses an identity-safe native cache key and refetches metadata while a successful poster stays pending", async () => {
+  it("keeps the authorized native thumbnail request intact and refetches metadata while a successful poster stays pending", async () => {
     jest.useFakeTimers();
     let renderer: Renderer | null = null;
     await TestRenderer.act(async () => {
@@ -96,7 +97,11 @@ describe("#3988 MediaThumb runtime cache and pending resolution", () => {
     });
 
     const [image] = renderer!.root.findAll((node) => node.type === "ImageProbe");
-    expect(image.props.source).toMatchObject({ cacheKey: "bgthumb:file-a" });
+    expect(image.props.source).toMatchObject({
+      uri: "https://edge.example/thumb?token=secret",
+      headers: { Authorization: "Bearer secret" },
+    });
+    expect(image.props.resizeMode).toBe("cover");
     expect(mockThumbnailRequest).toHaveBeenCalledTimes(1);
 
     await TestRenderer.act(async () => {

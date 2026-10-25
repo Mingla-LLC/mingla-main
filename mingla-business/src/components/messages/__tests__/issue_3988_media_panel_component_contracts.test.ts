@@ -20,14 +20,15 @@ describe("#3988 media panel and chat component matrix", () => {
     expect(chat).toContain("<BrandGroupMediaBubble item={mediaItem}");
     expect(chat).toContain("requestedFocusMessageId");
     expect(chat).toContain("onShowInChat={(messageId) => void showInChat(messageId)}");
-    expect(mediaRoute).toContain("focusMessageId: messageId");
-    expect(mediaRoute).toContain("router.replace");
+    expect(chat).toContain("void showInChat(messageId)");
+    expect(mediaRoute).toContain("gallery: \"1\"");
+    expect(mediaRoute).toContain("<Redirect");
   });
 
   it("opens the gallery and viewer through 44pt-or-larger controls", () => {
     expect(chat).toMatch(/mediaButton:\s*\{ minHeight: 44/);
     expect(panel).toMatch(/iconButton:\s*\{ width: 44, height: 44/);
     expect(panel).toMatch(/retry:\s*\{ minHeight: 44/);
-    expect(panel).toContain("setViewerFileId(item.fileId)");
+    expect(panel).toContain("onOpenItems(mediaRows, item.fileId)");
   });
 });

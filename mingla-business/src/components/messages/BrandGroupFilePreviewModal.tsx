@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 
-import { MediaViewer, type ViewerProgress, type ViewerRequest } from "../media/MediaViewer";
-import { brandGroupFilePreviewRequest } from "../../services/brandGroupFilesService";
+import type { MediaThumbnailRenderer, ViewerProgress, ViewerRequest } from "../media/MediaViewer";
+import { brandGroupFilePreviewRequest } from "../../services/brandGroupFileRequests";
 import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
+
+const LazyMediaViewer = React.lazy(async () => {
+  const module = await import("../media/MediaViewer");
+  return { default: module.MediaViewer };
+});
 
 // Compatibility note for the append-only #2107 owner scan: this adapter used
 // to call useVideoPlayer( directly. MediaViewer now owns that one active
@@ -88,6 +93,7 @@ interface Props {
   items?: BrandGroupMediaRow[];
   initialFileId?: string | null;
   onShowInChat?: (messageId: string) => void;
+  renderThumbnail: MediaThumbnailRenderer;
   onClose: () => void;
 }
 
@@ -114,6 +120,7 @@ export function BrandGroupFilePreviewModal({
   items = [],
   initialFileId = null,
   onShowInChat = () => undefined,
+  renderThumbnail,
   onClose,
 }: Props): React.ReactElement {
   const viewerItems = useMemo(() => file ? [legacyItem(file)] : items, [file, items]);
@@ -183,15 +190,20 @@ export function BrandGroupFilePreviewModal({
     return { uri: objectUrl, headers: {} };
   }, []);
 
+  if (activeFileId === null || viewerItems.length === 0) return <></>;
+
   return (
-    <MediaViewer
-      visible={activeFileId !== null && viewerItems.length > 0}
-      items={viewerItems}
-      initialIndex={initialIndex}
-      requestFor={requestFor}
-      onActiveIndexChange={retainActiveWindow}
-      onShowInChat={onShowInChat}
-      onClose={() => { deactivateAndRevokeAll(); onClose(); }}
-    />
+    <React.Suspense fallback={null}>
+      <LazyMediaViewer
+        visible
+        items={viewerItems}
+        initialIndex={initialIndex}
+        requestFor={requestFor}
+        onActiveIndexChange={retainActiveWindow}
+        onShowInChat={onShowInChat}
+        renderThumbnail={renderThumbnail}
+        onClose={() => { deactivateAndRevokeAll(); onClose(); }}
+      />
+    </React.Suspense>
   );
 }

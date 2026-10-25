@@ -1,5 +1,4 @@
 import { supabase } from "./supabase";
-import { brandGroupFileThumbnailRequest } from "./brandGroupFilesService";
 
 export type BrandGroupMediaKind = "media" | "files";
 export type BrandGroupMediaRowKind = "image" | "video" | "file";
@@ -115,43 +114,3 @@ export async function listBrandGroupMedia(input: {
   if (error) throw new Error(error.message || "brand_group_media_failed");
   return parseBrandGroupMediaPage(data);
 }
-
-export function parseBrandGroupFileMetaRows(value: unknown): BrandGroupMediaRow[] {
-  if (!Array.isArray(value)) throw new Error("brand_group_media_malformed");
-  return value.map((raw) => {
-    if (!isRecord(raw) || !hasExactKeys(raw, ["file_id", "kind", "duration_ms", "width", "height", "thumb_state"])) {
-      throw new Error("brand_group_media_malformed");
-    }
-    const durationMs = nullableNumber(raw.duration_ms);
-    const width = nullableNumber(raw.width);
-    const height = nullableNumber(raw.height);
-    if (
-      typeof raw.file_id !== "string" ||
-      !["image", "video", "file"].includes(String(raw.kind)) ||
-      !["pending", "ready", "none"].includes(String(raw.thumb_state)) ||
-      Number.isNaN(durationMs) || (durationMs !== null && durationMs < 0) ||
-      Number.isNaN(width) || (width !== null && width <= 0) ||
-      Number.isNaN(height) || (height !== null && height <= 0)
-    ) throw new Error("brand_group_media_malformed");
-    return {
-      fileId: String(raw.file_id), messageId: "", name: "", mime: "", sizeBytes: 0, createdAt: "",
-      senderDisplayName: "", senderRole: "", kind: String(raw.kind) as BrandGroupMediaRowKind,
-      durationMs,
-      width,
-      height,
-      thumbState: String(raw.thumb_state) as BrandGroupMediaRow["thumbState"],
-    };
-  });
-}
-
-export async function fileMeta(conversationId: string, fileIds: readonly string[]): Promise<BrandGroupMediaRow[]> {
-  if (fileIds.length === 0) return [];
-  const { data, error } = await supabase.rpc("issue_3988_brand_group_file_media_meta", {
-    p_conversation_id: conversationId,
-    p_file_ids: [...fileIds],
-  });
-  if (error) throw new Error(error.message || "brand_group_media_meta_failed");
-  return parseBrandGroupFileMetaRows(data);
-}
-
-export const thumbnailRequest = brandGroupFileThumbnailRequest;

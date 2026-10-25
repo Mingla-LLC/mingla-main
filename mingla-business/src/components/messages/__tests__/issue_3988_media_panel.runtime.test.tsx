@@ -5,6 +5,7 @@ import React from "react";
 const mockPlatform = { OS: "ios" };
 const mockMediaQuery: Record<string, unknown> = {};
 const mockFileQuery: Record<string, unknown> = {};
+const mockOpenItems = jest.fn();
 
 jest.mock("react-native", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -35,10 +36,10 @@ jest.mock("react-native", () => {
   };
   return { ...base, FlatList, SectionList, Platform: mockPlatform };
 });
-jest.mock("react-i18next", () => ({
-  useTranslation: () => ({
+jest.mock("../../../i18n", () => ({
+  useBusinessMediaTranslation: () => ({
     t: (key: string, values?: Record<string, unknown>) => values?.count === undefined ? key : `${key}:${values.count}`,
-    i18n: { language: "en" },
+    language: "en",
   }),
 }));
 jest.mock("../../../hooks/useBrandGroupMedia", () => ({
@@ -67,7 +68,7 @@ const TestRenderer = require("react-test-renderer") as {
 };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { BrandGroupMediaPanel } = require("../BrandGroupMediaPanel") as {
-  BrandGroupMediaPanel: React.ComponentType<{ conversationId: string; groupName: string }>;
+  BrandGroupMediaPanel: React.ComponentType<Record<string, unknown>>;
 };
 
 interface Node {
@@ -111,7 +112,14 @@ function setQuery(target: Record<string, unknown>, overrides: Record<string, unk
 async function mount(): Promise<Renderer> {
   let renderer!: Renderer;
   await TestRenderer.act(async () => {
-    renderer = TestRenderer.create(<BrandGroupMediaPanel conversationId="conversation-a" groupName="Launch team" />);
+    renderer = TestRenderer.create(
+      <BrandGroupMediaPanel
+        conversationId="conversation-a"
+        groupName="Launch team"
+        onOpenItems={mockOpenItems}
+        renderThumbnail={(item: unknown) => React.createElement("MediaThumbProbe", { item })}
+      />,
+    );
   });
   return renderer;
 }
@@ -119,6 +127,7 @@ async function mount(): Promise<Renderer> {
 describe("#3988 BrandGroupMediaPanel rendered states and paging", () => {
   beforeEach(() => {
     mockPlatform.OS = "ios";
+    mockOpenItems.mockReset();
     setQuery(mockMediaQuery);
     setQuery(mockFileQuery);
   });
@@ -155,9 +164,7 @@ describe("#3988 BrandGroupMediaPanel rendered states and paging", () => {
 
     const [tile] = renderer.root.findAll((node) => node.props.accessibilityLabel === row.name);
     await TestRenderer.act(async () => (tile.props.onPress as () => void)());
-    const [preview] = renderer.root.findAll((node) => node.type === "PreviewProbe");
-    expect(preview.props.initialFileId).toBe(row.fileId);
-    expect(preview.props.items).toEqual([row]);
+    expect(mockOpenItems).toHaveBeenCalledWith([row], row.fileId);
     await TestRenderer.act(async () => renderer.unmount());
   });
 

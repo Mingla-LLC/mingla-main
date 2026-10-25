@@ -32,19 +32,20 @@ jest.mock("react-native", () => {
   return {
     ...base,
     FlatList,
+    Image: (props: Record<string, unknown>) => ReactModule.createElement("ImageProbe", props),
     Platform: mockPlatform,
     Share: { share: (...args: unknown[]) => mockShare(...args) },
     useWindowDimensions: () => mockWindow,
   };
 });
-jest.mock("react-i18next", () => ({
-  useTranslation: () => ({
+jest.mock("../../../i18n", () => ({
+  useBusinessMediaTranslation: () => ({
     t: (key: string, values?: Record<string, unknown>) => {
       if (key === "viewer.meta") return `${values?.index}/${values?.total}:${values?.sender}`;
       if (key === "viewer.page_a11y") return `${values?.index}/${values?.total}:${values?.name}`;
       return key;
     },
-    i18n: { language: "en" },
+    language: "en",
   }),
 }));
 jest.mock("react-native-gesture-handler", () => ({
@@ -81,11 +82,6 @@ jest.mock("expo-video", () => ({
   VideoView: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("VideoViewProbe", props),
-}));
-jest.mock("expo-image", () => ({
-  Image: (props: Record<string, unknown>) =>
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("react").createElement("ImageProbe", props),
 }));
 jest.mock("expo-file-system/legacy", () => ({
   cacheDirectory: "file:///cache/",
@@ -184,6 +180,7 @@ async function mountViewer(overrides: Record<string, unknown> = {}): Promise<{ r
         items={[video("one"), video("two")]}
         initialIndex={0}
         requestFor={requestFor}
+        renderThumbnail={() => null}
         onShowInChat={onShowInChat}
         onClose={onClose}
         {...overrides}

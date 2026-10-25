@@ -1,7 +1,7 @@
-import { parseBrandGroupFileMetaRows, parseBrandGroupMediaPage } from "../brandGroupMediaService";
+import { parseBrandGroupFileMetaRows } from "../brandGroupFileMetaService";
+import { parseBrandGroupMediaPage } from "../brandGroupMediaService";
 
 jest.mock("../supabase", () => ({ supabase: { rpc: jest.fn() } }));
-jest.mock("../brandGroupFilesService", () => ({ brandGroupFileThumbnailRequest: jest.fn() }));
 
 const row = {
   fileId: "00000000-0000-4000-8000-000000000001",

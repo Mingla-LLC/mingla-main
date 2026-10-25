@@ -15,9 +15,12 @@ jest.mock("expo-router", () => ({
   useRouter: () => ({ back: jest.fn(), push: jest.fn() }),
 }));
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
-jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: jest.fn() }) }));
-jest.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
-jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ user: { id: "user-a" } }) }));
+jest.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({ data: mockFileMeta }),
+  useQueryClient: () => ({ invalidateQueries: jest.fn() }),
+}));
+jest.mock("../../../i18n", () => ({ useBusinessMediaTranslation: () => ({ t: (key: string) => key, language: "en" }) }));
+jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ isAuthReady: true, user: { id: "user-a" } }) }));
 jest.mock("../../../hooks/useBrandGroups", () => ({
   useBrandGroups: () => ({
     groups: mockGroups,
@@ -25,7 +28,7 @@ jest.mock("../../../hooks/useBrandGroups", () => ({
     setMuted: mockSetMuted,
   }),
 }));
-jest.mock("../../../hooks/useBrandGroupMedia", () => ({ useBrandGroupFileMeta: () => ({ data: mockFileMeta }) }));
+jest.mock("../../../services/brandGroupFileMetaService", () => ({ fileMeta: async () => mockFileMeta }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true }) }));
 jest.mock("../../../hooks/useSupportStaff", () => ({ useSupportStaff: () => ({ isStaff: false }) }));
 jest.mock("../../../services/brandGroupsService", () => ({
@@ -65,6 +68,11 @@ jest.mock("../BrandGroupMediaBubble", () => ({
   BrandGroupMediaBubble: (props: Record<string, unknown>) =>
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("react").createElement("BubbleProbe", props),
+}));
+jest.mock("../../media/MediaThumb", () => ({
+  MediaThumb: (props: Record<string, unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("react").createElement("MediaThumbProbe", props),
 }));
 jest.mock("../../ui/Button", () => ({
   Button: (props: Record<string, unknown>) =>
@@ -126,6 +134,17 @@ async function mountAndOpenPanel(): Promise<Renderer> {
   return renderer;
 }
 
+async function showInChatFromPanel(renderer: Renderer, messageId: string): Promise<void> {
+  const [panel] = renderer.root.findAll((node) => node.type === "PanelProbe");
+  await TestRenderer.act(async () => {
+    (panel.props.onOpenItems as (items: unknown[], fileId: string) => void)([], "selected-file");
+  });
+  const [preview] = renderer.root.findAll((node) => node.type === "PreviewProbe");
+  await TestRenderer.act(async () => {
+    (preview.props.onShowInChat as (id: string) => Promise<void>)(messageId);
+  });
+}
+
 describe("#3988 rendered Show in chat page search", () => {
   beforeEach(() => {
     mockListMessages.mockReset();
@@ -136,8 +155,7 @@ describe("#3988 rendered Show in chat page search", () => {
   it("highlights an already-loaded message without loading another page", async () => {
     mockListMessages.mockResolvedValue({ messages: [message("target", "2026-10-24T12:00:00.000Z")], error: null });
     const renderer = await mountAndOpenPanel();
-    const [panel] = renderer.root.findAll((node) => node.type === "PanelProbe");
-    await TestRenderer.act(async () => (panel.props.onShowInChat as (id: string) => Promise<void>)("target"));
+    await showInChatFromPanel(renderer, "target");
     expect(mockListMessages).toHaveBeenCalledTimes(1);
     expect(renderer.root.findAll((node) => node.type === "PanelProbe")).toHaveLength(0);
     await TestRenderer.act(async () => renderer.unmount());
@@ -149,8 +167,7 @@ describe("#3988 rendered Show in chat page search", () => {
       .mockResolvedValueOnce({ messages: [message("middle", "2026-10-23T12:00:00.000Z")], error: null })
       .mockResolvedValueOnce({ messages: [message("target", "2026-10-22T12:00:00.000Z")], error: null });
     const renderer = await mountAndOpenPanel();
-    const [panel] = renderer.root.findAll((node) => node.type === "PanelProbe");
-    await TestRenderer.act(async () => (panel.props.onShowInChat as (id: string) => Promise<void>)("target"));
+    await showInChatFromPanel(renderer, "target");
     expect(mockListMessages).toHaveBeenCalledTimes(3);
     expect(renderer.root.findAll((node) => node.type === "Text" && node.props.children === "target").length).toBeGreaterThanOrEqual(1);
     expect(renderer.root.findAll((node) => node.type === "PanelProbe")).toHaveLength(0);
@@ -164,8 +181,7 @@ describe("#3988 rendered Show in chat page search", () => {
       return { messages: [message(`older-${page}`, `2026-10-${String(24 - page).padStart(2, "0")}T12:00:00.000Z`)], error: null };
     });
     const renderer = await mountAndOpenPanel();
-    const [panel] = renderer.root.findAll((node) => node.type === "PanelProbe");
-    await TestRenderer.act(async () => (panel.props.onShowInChat as (id: string) => Promise<void>)("missing"));
+    await showInChatFromPanel(renderer, "missing");
     expect(mockListMessages).toHaveBeenCalledTimes(11);
     const [toast] = renderer.root.findAll((node) => node.type === "ToastProbe");
     expect(toast.props).toMatchObject({ visible: true, message: "viewer.show_in_chat_missing" });

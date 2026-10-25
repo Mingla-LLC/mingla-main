@@ -11,9 +11,9 @@ import React, { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
-import { useTranslation } from "react-i18next";
 
 import { spacing, text as textTokens } from "../../constants/designSystem";
+import { useBusinessMediaTranslation } from "../../i18n";
 import { Icon } from "./Icon";
 import { MediaViewerShell } from "../media/MediaViewerShell";
 
@@ -25,7 +25,7 @@ export interface FullScreenVideoViewerProps {
 }
 
 export function FullScreenVideoViewer({ uri, title, onClose }: FullScreenVideoViewerProps): React.ReactElement {
-  const { t } = useTranslation("brandGroupMedia");
+  const { t } = useBusinessMediaTranslation();
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
   });

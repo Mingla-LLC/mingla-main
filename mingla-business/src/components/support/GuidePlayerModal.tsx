@@ -16,9 +16,9 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTranslation } from "react-i18next";
 
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { useBusinessMediaTranslation } from "../../i18n";
 import { Icon } from "../ui/Icon";
 import { MediaViewerShell } from "../media/MediaViewerShell";
 import { parseGuideCaptions, type GuideCaptionCue } from "./guideCaptions";
@@ -30,7 +30,7 @@ function progressKey(userId: string, slug: string): string {
 }
 
 function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userId: string; onClose: () => void }): React.ReactElement {
-  const { t } = useTranslation("brandGroupMedia");
+  const { t } = useBusinessMediaTranslation();
   const insets = useSafeAreaInsets();
   const [cues, setCues] = useState<GuideCaptionCue[]>([]);
   const [captionOn, setCaptionOn] = useState(true);
@@ -157,7 +157,7 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
 }
 
 export function GuidePlayerModal({ guide, userId, onClose }: { guide: HelpVideoRecord | null; userId: string; onClose: () => void }): React.ReactElement {
-  const { t } = useTranslation("brandGroupMedia");
+  const { t } = useBusinessMediaTranslation();
   return (
     <MediaViewerShell visible={guide !== null} onClose={onClose} closeAccessibilityLabel={t("viewer.close_guide_a11y")} contentOnly testID="guide-player-modal">
       {guide ? <GuidePlayer key={guide.slug} guide={guide} userId={userId} onClose={onClose} /> : null}

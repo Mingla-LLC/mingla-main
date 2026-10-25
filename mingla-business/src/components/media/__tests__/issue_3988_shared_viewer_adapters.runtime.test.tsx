@@ -40,7 +40,7 @@ jest.mock("@mingla/offering-rendering/videoPlayerReloadRelease", () => ({
   isVideoPlayerReleasedForReload: () => false,
   registerVideoPlayerForReload: () => jest.fn(),
 }));
-jest.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+jest.mock("../../../i18n", () => ({ useBusinessMediaTranslation: () => ({ t: (key: string) => key, language: "en" }) }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: false }) }));
 jest.mock("../../../hooks/useReducedMotionNative", () => ({ useReducedMotionNative: () => true }));
 jest.mock("../../ui/Icon", () => ({

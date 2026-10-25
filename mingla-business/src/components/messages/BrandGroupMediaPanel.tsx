@@ -9,23 +9,24 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
-import { useTranslation } from "react-i18next";
 
 import { useBrandGroupMediaPages } from "../../hooks/useBrandGroupMedia";
+import { useBusinessMediaTranslation } from "../../i18n";
 import type { BrandGroupMediaKind, BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { formatFileSize } from "../../utils/formatMediaDuration";
 import { accent, glass, spacing, text as textTokens } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
-import { MediaThumb } from "../media/MediaThumb";
-import { BrandGroupFilePreviewModal } from "./BrandGroupFilePreviewModal";
 
 interface Props {
   conversationId: string;
   groupName: string;
   compact?: boolean;
   onBack?: () => void;
-  onShowInChat?: (messageId: string) => void;
+  onOpenItems: (items: BrandGroupMediaRow[], fileId: string) => void;
+  renderThumbnail: (item: BrandGroupMediaRow, style: StyleProp<ViewStyle>) => React.ReactNode;
 }
 
 interface MonthSection { title: string; data: BrandGroupMediaRow[][] }
@@ -36,10 +37,9 @@ function rowsOfThree(rows: BrandGroupMediaRow[]): BrandGroupMediaRow[][] {
   return result;
 }
 
-export function BrandGroupMediaPanel({ conversationId, groupName, compact = false, onBack, onShowInChat = () => undefined }: Props): React.ReactElement {
-  const { t, i18n } = useTranslation("brandGroupMedia");
+export function BrandGroupMediaPanel({ conversationId, groupName, compact = false, onBack, onOpenItems, renderThumbnail }: Props): React.ReactElement {
+  const { t, language } = useBusinessMediaTranslation();
   const [kind, setKind] = useState<BrandGroupMediaKind>("media");
-  const [viewerFileId, setViewerFileId] = useState<string | null>(null);
   const mediaQuery = useBrandGroupMediaPages(conversationId, "media");
   const fileQuery = useBrandGroupMediaPages(conversationId, "files");
   const activeQuery = kind === "media" ? mediaQuery : fileQuery;
@@ -63,10 +63,10 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
       map.set(key, bucket);
     }
     return [...map.entries()].sort(([left], [right]) => right.localeCompare(left)).map(([, monthRows]) => ({
-      title: new Intl.DateTimeFormat(i18n.language, { month: "long", year: "numeric" }).format(new Date(monthRows[0].createdAt)),
+      title: new Intl.DateTimeFormat(language, { month: "long", year: "numeric" }).format(new Date(monthRows[0].createdAt)),
       data: rowsOfThree(monthRows),
     }));
-  }, [i18n.language, mediaRows]);
+  }, [language, mediaRows]);
 
   const loadMore = (): void => {
     if (activeQuery.hasNextPage && !activeQuery.isFetchingNextPage) void activeQuery.fetchNextPage();
@@ -100,7 +100,7 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
       sections={sections}
       keyExtractor={(row) => row.map((item) => item.fileId).join(":")}
       renderSectionHeader={({ section }) => <Text style={styles.month}>{section.title}</Text>}
-      renderItem={({ item: row }) => <View style={styles.gridRow}>{row.map((item) => <Pressable key={item.fileId} accessibilityRole="button" accessibilityLabel={item.name} onPress={() => setViewerFileId(item.fileId)} style={styles.tile}><MediaThumb item={item} style={styles.tileThumb} /></Pressable>)}{row.length < 3 ? Array.from({ length: 3 - row.length }, (_, index) => <View key={`empty-${index}`} style={styles.tile} />) : null}</View>}
+      renderItem={({ item: row }) => <View style={styles.gridRow}>{row.map((item) => <Pressable key={item.fileId} accessibilityRole="button" accessibilityLabel={item.name} onPress={() => onOpenItems(mediaRows, item.fileId)} style={styles.tile}>{renderThumbnail(item, styles.tileThumb)}</Pressable>)}{row.length < 3 ? Array.from({ length: 3 - row.length }, (_, index) => <View key={`empty-${index}`} style={styles.tile} />) : null}</View>}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
       refreshControl={Platform.OS === "web" ? undefined : <RefreshControl refreshing={activeQuery.isRefetching} onRefresh={refresh} tintColor={accent.warm} />}
@@ -112,7 +112,7 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
     <FlatList
       data={fileRows}
       keyExtractor={(item) => item.fileId}
-      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={() => setViewerFileId(item.fileId)} style={styles.fileRow}><View style={styles.fileIcon}><Text style={styles.extension}>{item.name.split(".").pop()?.slice(0, 4).toUpperCase() || "FILE"}</Text></View><View style={styles.fileCopy}><Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">{item.name}</Text><Text style={styles.fileMeta} numberOfLines={1}>{t("media.file_row_meta", { size: formatFileSize(item.sizeBytes, (key, variables) => t(key, variables)), sender: item.senderDisplayName, date: new Intl.DateTimeFormat(i18n.language, { month: "short", day: "numeric" }).format(new Date(item.createdAt)) })}</Text></View></Pressable>}
+      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={item.name} onPress={() => onOpenItems(fileRows, item.fileId)} style={styles.fileRow}><View style={styles.fileIcon}><Text style={styles.extension}>{item.name.split(".").pop()?.slice(0, 4).toUpperCase() || "FILE"}</Text></View><View style={styles.fileCopy}><Text style={styles.fileName} numberOfLines={1} ellipsizeMode="middle">{item.name}</Text><Text style={styles.fileMeta} numberOfLines={1}>{t("media.file_row_meta", { size: formatFileSize(item.sizeBytes, (key, variables) => t(key, variables)), sender: item.senderDisplayName, date: new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(new Date(item.createdAt)) })}</Text></View></Pressable>}
       onEndReached={loadMore}
       onEndReachedThreshold={0.5}
       refreshControl={Platform.OS === "web" ? undefined : <RefreshControl refreshing={activeQuery.isRefetching} onRefresh={refresh} tintColor={accent.warm} />}
@@ -125,7 +125,6 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
     <View style={[styles.root, compact && styles.rootCompact]}>
       {header}
       <View style={styles.body}>{content}</View>
-      <BrandGroupFilePreviewModal items={kind === "media" ? mediaRows : fileRows} initialFileId={viewerFileId} onShowInChat={onShowInChat} onClose={() => setViewerFileId(null)} />
     </View>
   );
 }

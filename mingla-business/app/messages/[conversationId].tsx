@@ -12,17 +12,17 @@ import {
   View,
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
+  type StyleProp,
   type TextInputSelectionChangeEventData,
+  type ViewStyle,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQueryClient } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupSignalModal";
 import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
 import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
-import { BrandGroupMediaPanel } from "../../src/components/messages/BrandGroupMediaPanel";
 import { BrandGroupMediaBubble } from "../../src/components/messages/BrandGroupMediaBubble";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
@@ -38,9 +38,10 @@ import {
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
-import { useBrandGroupFileMeta } from "../../src/hooks/useBrandGroupMedia";
+import { brandGroupMediaKeys } from "../../src/hooks/brandGroupMediaKeys";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
+import { useBusinessMediaTranslation } from "../../src/i18n";
 import { KeyboardAvoidingView } from "../../src/wrappers/SmartKeyboardAvoidingView";
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../src/wrappers/SmartScrollView";
 import { liftedBottomSpacer } from "../../src/wrappers/keyboardClearance";
@@ -53,6 +54,7 @@ import {
   type BrandGroupMessage,
 } from "../../src/services/brandGroupsService";
 import { supabase } from "../../src/services/supabase";
+import { fileMeta } from "../../src/services/brandGroupFileMetaService";
 import type { BrandGroupMediaRow } from "../../src/services/brandGroupMediaService";
 import { formatFileSize, formatMediaDuration } from "../../src/utils/formatMediaDuration";
 import {
@@ -63,24 +65,42 @@ import {
   type SelectedBrandGroupMention,
 } from "../../src/utils/brandGroupMentions";
 
+const LazyBrandGroupMediaPanel = React.lazy(async () => {
+  const module = await import("../../src/components/messages/BrandGroupMediaPanel");
+  return { default: module.BrandGroupMediaPanel };
+});
+const LazyMediaThumb = React.lazy(async () => {
+  const module = await import("../../src/components/media/MediaThumb");
+  return { default: module.MediaThumb };
+});
+
+function renderMediaThumbnail(item: BrandGroupMediaRow, style?: StyleProp<ViewStyle>, bubble = false): React.ReactNode {
+  return (
+    <React.Suspense fallback={<View style={style} />}>
+      <LazyMediaThumb item={item} style={style} bubble={bubble} />
+    </React.Suspense>
+  );
+}
+
 function first(value: string | string[] | undefined): string | null {
   const item = Array.isArray(value) ? value[0] : value;
   return typeof item === "string" && item.length ? item : null;
 }
 
 export default function BrandGroupThreadRoute(): React.ReactElement {
-  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[] }>();
+  const params = useLocalSearchParams<{ conversationId?: string | string[]; mode?: string | string[]; focusMessageId?: string | string[]; gallery?: string | string[] }>();
   const conversationId = first(params.conversationId);
   const requestedMode = first(params.mode);
   const requestedFocusMessageId = first(params.focusMessageId);
+  const requestedGallery = first(params.gallery);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const queryClient = useQueryClient();
-  const { t } = useTranslation("brandGroupMedia");
+  const { t } = useBusinessMediaTranslation();
   const { isWideDesktop } = useResponsiveLayout();
-  const { user } = useAuth();
+  const { isAuthReady, user } = useAuth();
   const staff = useSupportStaff();
   const { groups, refresh: refreshGroups, setMuted } = useBrandGroups();
   const group = groups.find((item) => item.conversation_id === conversationId) ?? null;
@@ -109,14 +129,26 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const [notice, setNotice] = useState<string | null>(null);
   const [filePickerVisible, setFilePickerVisible] = useState(false);
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
-  const [mediaPanelOpen, setMediaPanelOpen] = useState(false);
+  const [panelViewerItems, setPanelViewerItems] = useState<BrandGroupMediaRow[] | null>(null);
+  const [mediaPanelOpen, setMediaPanelOpen] = useState(requestedGallery === "1");
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const composerRef = useRef<TextInput>(null);
   const messageOffsets = useRef<Map<string, number>>(new Map());
   const handledFocusMessageId = useRef<string | null>(null);
   const fileIds = useMemo(() => messages.flatMap((message) => message.file_id ? [message.file_id] : []), [messages]);
-  const fileMetaQuery = useBrandGroupFileMeta(conversationId, fileIds);
+  const fileMetaEnabled = Boolean(isAuthReady && user?.id && conversationId && fileIds.length > 0);
+  const fileMetaQuery = useQuery({
+    queryKey: fileMetaEnabled && conversationId && user?.id
+      ? brandGroupMediaKeys.meta(conversationId, fileIds, user.id)
+      : (["brandGroupMedia", "meta-disabled"] as const),
+    enabled: fileMetaEnabled,
+    queryFn: () => {
+      if (!conversationId) throw new Error("brand_group_conversation_required");
+      return fileMeta(conversationId, fileIds);
+    },
+    staleTime: 30_000,
+  });
   const mediaMeta = useMemo(() => new Map((fileMetaQuery.data ?? []).map((item) => [item.fileId, item])), [fileMetaQuery.data]);
   const viewerItems = useMemo<BrandGroupMediaRow[]>(() => messages.flatMap((message) => {
     if (!message.file_id || !message.file_name || !message.file_mime) return [];
@@ -199,6 +231,10 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   }, [refresh]);
 
   useEffect(() => {
+    if (requestedGallery === "1") setMediaPanelOpen(true);
+  }, [requestedGallery]);
+
+  useEffect(() => {
     if (!conversationId) return;
     const channel = supabase
       .channel(`brand-group:${conversationId}`)
@@ -217,9 +253,15 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
 
   const openMedia = useCallback(() => {
     if (!conversationId) return;
-    if (isWideDesktop) setMediaPanelOpen((value) => !value);
-    else router.push({ pathname: "/messages/media/[conversationId]", params: { conversationId } });
-  }, [conversationId, isWideDesktop, router]);
+    setMediaPanelOpen((value) => !value);
+  }, [conversationId]);
+
+  const closeMedia = useCallback(() => {
+    setMediaPanelOpen(false);
+    if (requestedGallery === "1" && conversationId) {
+      router.replace({ pathname: "/messages/[conversationId]", params: { conversationId } });
+    }
+  }, [conversationId, requestedGallery, router]);
 
   const showInChat = useCallback(async (messageId: string): Promise<void> => {
     let merged = messages;
@@ -332,6 +374,25 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
     });
   }
 
+  if (!isWideDesktop && mediaPanelOpen && conversationId) {
+    return (
+      <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
+        <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={accent.warm} /></View>}>
+          <LazyBrandGroupMediaPanel
+            conversationId={conversationId}
+            groupName={group?.brand_name ?? "Brand group"}
+            onBack={closeMedia}
+            renderThumbnail={renderMediaThumbnail}
+            onOpenItems={(items, fileId) => {
+              setPanelViewerItems(items);
+              setPreviewFileId(fileId);
+            }}
+          />
+        </React.Suspense>
+      </SafeScreen>
+    );
+  }
+
   return (
     <SafeScreen
       edges={["top"]}
@@ -433,10 +494,13 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={isMedia ? t(mediaItem?.kind === "video" ? "chat.video_bubble_a11y" : "chat.photo_bubble_a11y", { name: message.file_name, duration: formatMediaDuration(mediaItem?.durationMs) ?? "" }) : `Open ${message.file_name}`}
-                      onPress={() => setPreviewFileId(message.file_id)}
+                      onPress={() => {
+                        setPanelViewerItems(null);
+                        setPreviewFileId(message.file_id);
+                      }}
                       style={isMedia ? styles.mediaBubble : styles.fileCard}
                     >
-                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={styles.fileCardIcon}><Icon name="notebook" size={20} color={mine ? "#101216" : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
+                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={styles.fileCardIcon}><Icon name="notebook" size={20} color={mine ? "#101216" : accent.warm} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
                   ) : <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.content}</Text>}
                   <Text style={styles.time}>{new Date(message.created_at).toLocaleString()}</Text>
@@ -526,7 +590,20 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
       </View>
       </KeyboardAvoidingView>
       </View>
-      {isWideDesktop && mediaPanelOpen && conversationId ? <BrandGroupMediaPanel compact conversationId={conversationId} groupName={group?.brand_name ?? "Brand group"} onShowInChat={(messageId) => void showInChat(messageId)} /> : null}
+      {isWideDesktop && mediaPanelOpen && conversationId ? (
+        <React.Suspense fallback={<View style={styles.mediaPanelLoading}><ActivityIndicator color={accent.warm} /></View>}>
+          <LazyBrandGroupMediaPanel
+            compact
+            conversationId={conversationId}
+            groupName={group?.brand_name ?? "Brand group"}
+            renderThumbnail={renderMediaThumbnail}
+            onOpenItems={(items, fileId) => {
+              setPanelViewerItems(items);
+              setPreviewFileId(fileId);
+            }}
+          />
+        </React.Suspense>
+      ) : null}
       </View>
 
       <BrandGroupSignalModal
@@ -550,7 +627,16 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           onUploaded={refresh}
         />
       ) : null}
-      <BrandGroupFilePreviewModal items={viewerItems} initialFileId={previewFileId} onShowInChat={(messageId) => void showInChat(messageId)} onClose={() => setPreviewFileId(null)} />
+      <BrandGroupFilePreviewModal
+        items={panelViewerItems ?? viewerItems}
+        initialFileId={previewFileId}
+        renderThumbnail={renderMediaThumbnail}
+        onShowInChat={(messageId) => void showInChat(messageId)}
+        onClose={() => {
+          setPreviewFileId(null);
+          setPanelViewerItems(null);
+        }}
+      />
       <Toast
         visible={toast.visible}
         kind="error"
@@ -571,6 +657,7 @@ const styles = StyleSheet.create({
   mediaButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,255,255,0.14)", backgroundColor: "rgba(255,255,255,0.08)" },
   mediaButtonActive: { borderColor: "rgba(235,120,37,0.7)", shadowColor: accent.warm, shadowOpacity: 0.35, shadowRadius: 10 },
   mediaButtonText: { color: textTokens.primary, fontSize: 13, fontWeight: "700" },
+  mediaPanelLoading: { width: 340, alignItems: "center", justifyContent: "center", borderLeftWidth: 1, borderLeftColor: glass.border.profileBase },
   muteControl: { minHeight: 44, alignItems: "flex-end", justifyContent: "center", gap: 2 },
   muteLabel: { color: textTokens.secondary, fontSize: 11, fontWeight: "700" },
   mutedNote: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: "rgba(235,120,37,0.08)", borderBottomWidth: 1, borderBottomColor: "rgba(235,120,37,0.25)" },

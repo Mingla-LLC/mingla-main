@@ -2,17 +2,12 @@ import React from "react";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-jest.mock("react-i18next", () => ({
-  useTranslation: () => ({
+jest.mock("../../../i18n", () => ({
+  useBusinessMediaTranslation: () => ({
     t: (key: string, values?: Record<string, unknown>) => key === "format.kb" ? `${values?.n} KB` : key,
+    language: "en",
   }),
 }));
-jest.mock("../../media/MediaThumb", () => ({
-  MediaThumb: (props: Record<string, unknown>) =>
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("react").createElement("MediaThumbProbe", props),
-}));
-
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
   create: (node: React.ReactElement) => Renderer;
@@ -49,9 +44,11 @@ describe("#3988 rendered brand-group media chat bubble", () => {
       thumbState: "ready",
     };
     let renderer!: Renderer;
+    const renderThumbnail = (mediaItem: Record<string, unknown>, style: unknown, bubble?: boolean): React.ReactNode =>
+      React.createElement("MediaThumbProbe", { item: mediaItem, style, bubble });
     await TestRenderer.act(async () => {
       renderer = TestRenderer.create(
-        <BrandGroupMediaBubble item={item} name="launch.jpg" sizeBytes={2048} mine />,
+        <BrandGroupMediaBubble item={item} name="launch.jpg" sizeBytes={2048} mine renderThumbnail={renderThumbnail} />,
       );
     });
 

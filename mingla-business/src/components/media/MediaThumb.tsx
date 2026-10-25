@@ -1,10 +1,10 @@
-import { Image } from "expo-image";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
-import { Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
-import { useTranslation } from "react-i18next";
+import { Image, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
-import { thumbnailRequest, type BrandGroupMediaRow } from "../../services/brandGroupMediaService";
+import { brandGroupFileThumbnailRequest } from "../../services/brandGroupFileRequests";
+import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
+import { useBusinessMediaTranslation } from "../../i18n";
 import { formatMediaDuration } from "../../utils/formatMediaDuration";
 import { Icon } from "../ui/Icon";
 import { glass, text as textTokens } from "../../constants/designSystem";
@@ -75,7 +75,7 @@ async function loadWebThumb(fileId: string, uri: string, headers: Record<string,
 }
 
 export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMediaRow; style?: StyleProp<ViewStyle>; bubble?: boolean }): React.ReactElement {
-  const { t } = useTranslation("brandGroupMedia");
+  const { t } = useBusinessMediaTranslation();
   const queryClient = useQueryClient();
   const [source, setSource] = useState<{ uri: string; headers?: Record<string, string> } | null>(null);
   const [retryToken, setRetryToken] = useState(0);
@@ -85,7 +85,7 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
     let releaseWebThumb: (() => void) | null = null;
     setSource(null);
     if (!shouldRequest) return undefined;
-    void requestThumbnailForState(item.thumbState, () => thumbnailRequest(item.fileId)).then(async (authorized) => {
+    void requestThumbnailForState(item.thumbState, () => brandGroupFileThumbnailRequest(item.fileId)).then(async (authorized) => {
       if (!authorized) return null;
       if (Platform.OS !== "web") {
         return retryToken === 0
@@ -122,7 +122,7 @@ export function MediaThumb({ item, style, bubble = false }: { item: BrandGroupMe
   const duration = item.kind === "video" ? formatMediaDuration(item.durationMs) : null;
   return (
     <View style={[styles.root, style]}>
-      {source ? <Image source={Platform.OS === "web" ? source : { ...source, cacheKey: `bgthumb:${item.fileId}` }} contentFit="cover" cachePolicy="disk" onError={() => setSource(null)} style={StyleSheet.absoluteFill} /> : (
+      {source ? <Image source={source} resizeMode="cover" onError={() => setSource(null)} style={StyleSheet.absoluteFill} /> : (
         <View style={styles.placeholder}>
           <Icon name={item.kind === "video" ? "play" : item.kind === "image" ? "eye" : "notebook"} size={24} color={textTokens.tertiary} />
           {item.thumbState === "pending" ? <Text style={styles.preparing} numberOfLines={2}>{t("media.preparing")}</Text> : null}

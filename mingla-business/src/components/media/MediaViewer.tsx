@@ -1,5 +1,4 @@
 import * as FileSystem from "expo-file-system/legacy";
-import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +6,7 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   FlatList,
+  Image,
   Platform,
   Pressable,
   Share,
@@ -16,24 +16,26 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { WebView } from "react-native-webview";
-import { useTranslation } from "react-i18next";
 
 import { accent, spacing, text as textTokens } from "../../constants/designSystem";
+import { useBusinessMediaTranslation } from "../../i18n";
 import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { formatFileSize } from "../../utils/formatMediaDuration";
 import { Icon } from "../ui/Icon";
 import { WebSafeGestureDetector } from "../ui/WebSafeGestureDetector";
-import { MediaThumb } from "./MediaThumb";
 import { MediaViewerShell, type MediaViewerStage } from "./MediaViewerShell";
 import { fitContain } from "./fitContain";
 import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
 
 export type ViewerRequest = { uri: string; headers: Record<string, string> };
 export type ViewerProgress = { loaded: number; total: number };
+export type MediaThumbnailRenderer = (item: BrandGroupMediaRow, style: StyleProp<ViewStyle>) => React.ReactNode;
 
 interface MediaViewerProps {
   visible: boolean;
@@ -42,6 +44,7 @@ interface MediaViewerProps {
   requestFor: (fileId: string, onProgress?: (progress: ViewerProgress) => void) => Promise<ViewerRequest>;
   onActiveIndexChange?: (index: number) => void;
   onShowInChat: (messageId: string) => void;
+  renderThumbnail: MediaThumbnailRenderer;
   onClose: () => void;
 }
 
@@ -52,14 +55,14 @@ function ActiveVideo({ source, label, style }: { source: ViewerRequest; label: s
   return <VideoView player={player} nativeControls contentFit="contain" accessibilityLabel={label} style={style} />;
 }
 
-function ViewerPage({ item, request, progress, stage, active }: { item: BrandGroupMediaRow; request: ViewerRequest | null; progress: ViewerProgress | null; stage: MediaViewerStage; active: boolean }): React.ReactElement {
-  const { t } = useTranslation("brandGroupMedia");
+function ViewerPage({ item, request, progress, stage, active, renderThumbnail }: { item: BrandGroupMediaRow; request: ViewerRequest | null; progress: ViewerProgress | null; stage: MediaViewerStage; active: boolean; renderThumbnail: MediaThumbnailRenderer }): React.ReactElement {
+  const { t } = useBusinessMediaTranslation();
   const box = fitContain(item.width, item.height, stage.width, stage.height);
   const boxStyle = { width: box.width, height: box.height };
-  if (!active) return <MediaThumb item={item} style={boxStyle} />;
+  if (!active) return <>{renderThumbnail(item, boxStyle)}</>;
   const localizedSize = (size: number): string => formatFileSize(size, (key, variables) => t(key, variables));
   if (!request) return <View style={[stage.style, styles.state]}><ActivityIndicator color={accent.warm} /><Text style={styles.stateText}>{progress && progress.total > 0 ? t("viewer.loading_progress", { loaded: localizedSize(progress.loaded), total: localizedSize(progress.total) }) : t("viewer.loading")}</Text></View>;
-  if (item.kind === "image") return <Image source={request} contentFit="contain" accessibilityLabel={item.name} style={boxStyle} />;
+  if (item.kind === "image") return <Image source={request} resizeMode="contain" accessibilityLabel={item.name} style={boxStyle} />;
   if (item.kind === "video") return <ActiveVideo source={request} label={item.name} style={boxStyle} />;
   if (item.mime === "application/pdf") {
     if (Platform.OS === "web") {
@@ -70,8 +73,8 @@ function ViewerPage({ item, request, progress, stage, active }: { item: BrandGro
   return <View style={[stage.style, styles.state]}><Icon name="notebook" size={36} color={accent.warm} /><Text style={styles.itemTitle}>{item.name}</Text><Text style={styles.stateText}>{t("viewer.not_previewable")}</Text></View>;
 }
 
-export function MediaViewer({ visible, items, initialIndex, requestFor, onActiveIndexChange, onShowInChat, onClose }: MediaViewerProps): React.ReactElement {
-  const { t, i18n } = useTranslation("brandGroupMedia");
+export function MediaViewer({ visible, items, initialIndex, requestFor, onActiveIndexChange, onShowInChat, renderThumbnail, onClose }: MediaViewerProps): React.ReactElement {
+  const { t, language } = useBusinessMediaTranslation();
   const [index, setIndex] = useState(Math.max(0, Math.min(initialIndex, Math.max(0, items.length - 1))));
   const [requests, setRequests] = useState<Record<string, ViewerRequest>>({});
   const [progress, setProgress] = useState<Record<string, ViewerProgress>>({});
@@ -167,10 +170,10 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
       index: index + 1,
       total: items.length,
       sender: current.senderDisplayName,
-      date: new Intl.DateTimeFormat(i18n.language, { month: "short", day: "numeric" }).format(new Date(current.createdAt)),
+      date: new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }).format(new Date(current.createdAt)),
       size: formatFileSize(current.sizeBytes, (key, variables) => t(key, variables)),
     });
-  }, [current, i18n.language, index, items.length, t]);
+  }, [current, index, items.length, language, t]);
 
   async function deliverFile(): Promise<void> {
     if (!current) return;
@@ -209,7 +212,7 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
   function renderStage(stage: MediaViewerStage): React.ReactNode {
     if (!current) return null;
     if (errorIds.has(current.fileId)) return <View style={[stage.style, styles.state]}><Text style={styles.stateText}>{t("viewer.unavailable")}</Text></View>;
-    if (Platform.OS === "web") return <ViewerPage item={current} request={requests[current.fileId] ?? null} progress={progress[current.fileId] ?? null} stage={stage} active />;
+    if (Platform.OS === "web") return <ViewerPage item={current} request={requests[current.fileId] ?? null} progress={progress[current.fileId] ?? null} stage={stage} active renderThumbnail={renderThumbnail} />;
     return (
       <FlatList
         ref={listRef}
@@ -221,7 +224,7 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
         getItemLayout={(_, itemIndex) => ({ length: stage.width, offset: stage.width * itemIndex, index: itemIndex })}
         keyExtractor={(item) => item.fileId}
         onMomentumScrollEnd={(event: NativeSyntheticEvent<NativeScrollEvent>) => setIndex(Math.round(event.nativeEvent.contentOffset.x / Math.max(1, stage.width)))}
-        renderItem={({ item }) => <View style={[stage.style, styles.page]}><ViewerPage item={item} request={requests[item.fileId] ?? null} progress={progress[item.fileId] ?? null} stage={stage} active={item.fileId === current.fileId} /></View>}
+        renderItem={({ item }) => <View style={[stage.style, styles.page]}><ViewerPage item={item} request={requests[item.fileId] ?? null} progress={progress[item.fileId] ?? null} stage={stage} active={item.fileId === current.fileId} renderThumbnail={renderThumbnail} /></View>}
         showsHorizontalScrollIndicator={false}
       />
     );
@@ -243,7 +246,7 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
     <View style={styles.bottom}>
       <FlatList horizontal data={items} keyExtractor={(item) => item.fileId} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip} renderItem={({ item, index: itemIndex }) => (
         <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.page_a11y", { index: itemIndex + 1, total: items.length, name: item.name })} onPress={() => move(itemIndex - index)} style={[styles.stripItem, itemIndex === index && styles.stripItemActive]}>
-          <MediaThumb item={item} style={styles.stripThumb} />
+          {renderThumbnail(item, styles.stripThumb)}
         </Pressable>
       )} />
       <Text accessibilityLiveRegion="polite" style={[styles.hint, deliveryFeedback === "failed" && styles.feedbackError]}>{deliveryFeedback === "saved" ? t("viewer.saved") : deliveryFeedback === "failed" ? t("viewer.save_failed") : Platform.OS === "web" ? t("viewer.hint_web") : t("viewer.hint")}</Text>

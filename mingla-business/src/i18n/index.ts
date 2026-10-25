@@ -1,35 +1,6 @@
-import i18n from "i18next";
-import { initReactI18next } from "react-i18next";
+import { useMemo, useSyncExternalStore } from "react";
 
-import ar from "./locales/ar/brandGroupMedia.json";
-import bin from "./locales/bin/brandGroupMedia.json";
-import bn from "./locales/bn/brandGroupMedia.json";
-import de from "./locales/de/brandGroupMedia.json";
-import el from "./locales/el/brandGroupMedia.json";
 import en from "./locales/en/brandGroupMedia.json";
-import es from "./locales/es/brandGroupMedia.json";
-import fr from "./locales/fr/brandGroupMedia.json";
-import ha from "./locales/ha/brandGroupMedia.json";
-import he from "./locales/he/brandGroupMedia.json";
-import hi from "./locales/hi/brandGroupMedia.json";
-import id from "./locales/id/brandGroupMedia.json";
-import ig from "./locales/ig/brandGroupMedia.json";
-import it from "./locales/it/brandGroupMedia.json";
-import ja from "./locales/ja/brandGroupMedia.json";
-import ko from "./locales/ko/brandGroupMedia.json";
-import ms from "./locales/ms/brandGroupMedia.json";
-import nl from "./locales/nl/brandGroupMedia.json";
-import pl from "./locales/pl/brandGroupMedia.json";
-import pt from "./locales/pt/brandGroupMedia.json";
-import ro from "./locales/ro/brandGroupMedia.json";
-import ru from "./locales/ru/brandGroupMedia.json";
-import sv from "./locales/sv/brandGroupMedia.json";
-import th from "./locales/th/brandGroupMedia.json";
-import tr from "./locales/tr/brandGroupMedia.json";
-import uk from "./locales/uk/brandGroupMedia.json";
-import vi from "./locales/vi/brandGroupMedia.json";
-import yo from "./locales/yo/brandGroupMedia.json";
-import zh from "./locales/zh/brandGroupMedia.json";
 
 export const BUSINESS_MEDIA_LANGUAGES = [
   "ar", "bin", "bn", "de", "el", "en", "es", "fr", "ha", "he",
@@ -37,26 +8,29 @@ export const BUSINESS_MEDIA_LANGUAGES = [
   "ro", "ru", "sv", "th", "tr", "uk", "vi", "yo", "zh",
 ] as const;
 
-type BusinessMediaLanguage = (typeof BUSINESS_MEDIA_LANGUAGES)[number];
+export type BusinessMediaLanguage = (typeof BUSINESS_MEDIA_LANGUAGES)[number];
+export type BusinessMediaVariables = Record<string, string | number>;
+export type BusinessMediaTranslator = (key: string, variables?: BusinessMediaVariables) => string;
+
+type TranslationTree = { [key: string]: string | TranslationTree };
+type LanguageSnapshot = { language: BusinessMediaLanguage; copy: TranslationTree };
+type NonEnglishLanguage = Exclude<BusinessMediaLanguage, "en">;
+type LocaleGroup = Partial<Record<NonEnglishLanguage, TranslationTree>>;
 
 const supported = new Set<string>(BUSINESS_MEDIA_LANGUAGES);
-const resources = {
-  ar: { brandGroupMedia: ar }, bin: { brandGroupMedia: bin },
-  bn: { brandGroupMedia: bn }, de: { brandGroupMedia: de },
-  el: { brandGroupMedia: el }, en: { brandGroupMedia: en },
-  es: { brandGroupMedia: es }, fr: { brandGroupMedia: fr },
-  ha: { brandGroupMedia: ha }, he: { brandGroupMedia: he },
-  hi: { brandGroupMedia: hi }, id: { brandGroupMedia: id },
-  ig: { brandGroupMedia: ig }, it: { brandGroupMedia: it },
-  ja: { brandGroupMedia: ja }, ko: { brandGroupMedia: ko },
-  ms: { brandGroupMedia: ms }, nl: { brandGroupMedia: nl },
-  pl: { brandGroupMedia: pl }, pt: { brandGroupMedia: pt },
-  ro: { brandGroupMedia: ro }, ru: { brandGroupMedia: ru },
-  sv: { brandGroupMedia: sv }, th: { brandGroupMedia: th },
-  tr: { brandGroupMedia: tr }, uk: { brandGroupMedia: uk },
-  vi: { brandGroupMedia: vi }, yo: { brandGroupMedia: yo },
-  zh: { brandGroupMedia: zh },
-} as const;
+const localeGroupByLanguage: Record<NonEnglishLanguage, "a" | "b" | "c"> = {
+  ar: "a", bin: "a", bn: "a", de: "a", el: "a", es: "a", fr: "a", ha: "a", he: "a", hi: "a",
+  id: "b", ig: "b", it: "b", ja: "b", ko: "b", ms: "b", nl: "b", pl: "b", pt: "b", ro: "b",
+  ru: "c", sv: "c", th: "c", tr: "c", uk: "c", vi: "c", yo: "c", zh: "c",
+};
+const localeGroupLoaders: Record<"a" | "b" | "c", () => Promise<{ default: LocaleGroup }>> = {
+  a: () => import("./brandGroupMediaLocalesA"),
+  b: () => import("./brandGroupMediaLocalesB"),
+  c: () => import("./brandGroupMediaLocalesC"),
+};
+const cachedCopy: Partial<Record<BusinessMediaLanguage, TranslationTree>> = { en };
+const listeners = new Set<() => void>();
+let snapshot: LanguageSnapshot = { language: "en", copy: en };
 
 function normalizedLanguage(value: unknown): BusinessMediaLanguage | null {
   if (typeof value !== "string") return null;
@@ -77,20 +51,83 @@ function deviceLanguage(): BusinessMediaLanguage {
   return normalizedLanguage(browserLanguage) ?? resolveBusinessMediaLanguage(null, intlLanguage);
 }
 
-// eslint-disable-next-line import/no-named-as-default-member
-void i18n.use(initReactI18next).init({
-  resources,
-  lng: deviceLanguage(),
-  fallbackLng: "en",
-  supportedLngs: [...BUSINESS_MEDIA_LANGUAGES],
-  nonExplicitSupportedLngs: true,
-  ns: ["brandGroupMedia"],
-  defaultNS: "brandGroupMedia",
-  interpolation: { escapeValue: false },
-  compatibilityJSON: "v4",
-  react: { useSuspense: false },
-  initAsync: false,
-});
+function nestedValue(copy: TranslationTree, key: string): string | null {
+  let current: string | TranslationTree = copy;
+  for (const part of key.split(".")) {
+    if (typeof current === "string" || !(part in current)) return null;
+    current = current[part];
+  }
+  return typeof current === "string" ? current : null;
+}
+
+function translatedValue(
+  copy: TranslationTree,
+  language: BusinessMediaLanguage,
+  key: string,
+  variables: BusinessMediaVariables,
+): string | null {
+  if (typeof variables.count === "number") {
+    const category = new Intl.PluralRules(language).select(variables.count);
+    return nestedValue(copy, `${key}_${category}`) ?? nestedValue(copy, `${key}_other`) ?? nestedValue(copy, key);
+  }
+  return nestedValue(copy, key);
+}
+
+function translate(
+  language: BusinessMediaLanguage,
+  copy: TranslationTree,
+  key: string,
+  variables: BusinessMediaVariables = {},
+): string {
+  const template = translatedValue(copy, language, key, variables)
+    ?? translatedValue(en, "en", key, variables)
+    ?? key;
+  return template.replace(/{{\s*([A-Za-z0-9_]+)\s*}}/g, (token, name: string) => (
+    Object.prototype.hasOwnProperty.call(variables, name) ? String(variables[name]) : token
+  ));
+}
+
+async function loadCopy(language: BusinessMediaLanguage): Promise<TranslationTree> {
+  const cached = cachedCopy[language];
+  if (cached) return cached;
+  const nonEnglishLanguage = language as NonEnglishLanguage;
+  const loaded = await localeGroupLoaders[localeGroupByLanguage[nonEnglishLanguage]]();
+  const copy = loaded.default[nonEnglishLanguage];
+  if (!copy) throw new Error(`missing_business_media_locale:${language}`);
+  cachedCopy[language] = copy;
+  return copy;
+}
+
+export async function changeBusinessMediaLanguage(
+  language: BusinessMediaLanguage,
+  isCurrent: () => boolean = () => true,
+): Promise<void> {
+  const copy = await loadCopy(language);
+  if (!isCurrent() || (snapshot.language === language && snapshot.copy === copy)) return;
+  snapshot = { language, copy };
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot(): LanguageSnapshot {
+  return snapshot;
+}
+
+export function useBusinessMediaTranslation(): {
+  t: BusinessMediaTranslator;
+  language: BusinessMediaLanguage;
+} {
+  const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const t = useMemo<BusinessMediaTranslator>(
+    () => (key, variables) => translate(current.language, current.copy, key, variables),
+    [current],
+  );
+  return { t, language: current.language };
+}
 
 /** Auth-gated profile preference wins over the boot-time browser/device locale. */
 export async function syncBusinessMediaLanguage(
@@ -108,8 +145,16 @@ export async function syncBusinessMediaLanguage(
   }
   const preferred = error ? null : (data as { preferred_language?: unknown } | null)?.preferred_language;
   const nextLanguage = resolveBusinessMediaLanguage(preferred, deviceLanguage());
-  // eslint-disable-next-line import/no-named-as-default-member
-  if (isCurrentUser() && nextLanguage !== i18n.language) await i18n.changeLanguage(nextLanguage);
+  await changeBusinessMediaLanguage(nextLanguage, isCurrentUser);
 }
 
-export default i18n;
+const businessMediaI18n = {
+  get language(): BusinessMediaLanguage {
+    return snapshot.language;
+  },
+  changeLanguage: changeBusinessMediaLanguage,
+};
+
+void changeBusinessMediaLanguage(deviceLanguage());
+
+export default businessMediaI18n;

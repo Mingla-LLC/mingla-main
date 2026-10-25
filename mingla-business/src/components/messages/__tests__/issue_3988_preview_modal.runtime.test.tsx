@@ -8,7 +8,7 @@ jest.mock("react-native", () => {
   const base = jest.requireActual("react-native");
   return { ...base, Platform: { ...base.Platform, OS: "web" } };
 });
-jest.mock("../../../services/brandGroupFilesService", () => ({
+jest.mock("../../../services/brandGroupFileRequests", () => ({
   brandGroupFilePreviewRequest: (...args: unknown[]) => mockPreviewRequest(...args),
 }));
 jest.mock("../../media/MediaViewer", () => ({
@@ -81,6 +81,7 @@ describe("#3988 BrandGroupFilePreviewModal rendered blob lifecycle", () => {
           <BrandGroupFilePreviewModal
             items={[media("file-0"), media("file-1"), media("file-2"), media("file-3")]}
             initialFileId="file-1"
+            renderThumbnail={() => null}
             onClose={onClose}
           />,
         );

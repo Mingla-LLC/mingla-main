@@ -1,16 +1,16 @@
 import React from "react";
 import { StyleSheet, Text, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
-import { useTranslation } from "react-i18next";
 
+import { useBusinessMediaTranslation } from "../../i18n";
 import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { formatFileSize } from "../../utils/formatMediaDuration";
-import { MediaThumb } from "../media/MediaThumb";
 
 interface Props {
   item: BrandGroupMediaRow;
   name: string;
   sizeBytes: number | null;
   mine: boolean;
+  renderThumbnail: (item: BrandGroupMediaRow, style?: StyleProp<ViewStyle>, bubble?: boolean) => React.ReactNode;
   thumbStyle?: StyleProp<ViewStyle>;
   footerStyle?: StyleProp<TextStyle>;
   mineFooterStyle?: StyleProp<TextStyle>;
@@ -22,14 +22,15 @@ export function BrandGroupMediaBubble({
   name,
   sizeBytes,
   mine,
+  renderThumbnail,
   thumbStyle,
   footerStyle,
   mineFooterStyle,
 }: Props): React.ReactElement {
-  const { t } = useTranslation("brandGroupMedia");
+  const { t } = useBusinessMediaTranslation();
   return (
     <>
-      <MediaThumb item={item} bubble style={thumbStyle} />
+      {renderThumbnail(item, thumbStyle, true)}
       <Text style={[styles.footer, footerStyle, mine && mineFooterStyle]} numberOfLines={1}>
         {name} · {formatFileSize(sizeBytes, (key, variables) => t(key, variables))}
       </Text>

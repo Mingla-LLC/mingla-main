@@ -1,4 +1,4 @@
-import { brandGroupMediaKeys } from "../useBrandGroupMedia";
+import { brandGroupMediaKeys } from "../brandGroupMediaKeys";
 
 describe("#3988 brand-group media query isolation", () => {
   it("scopes every list to conversation, kind, and authenticated user", () => {
