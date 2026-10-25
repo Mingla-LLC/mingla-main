@@ -229,6 +229,11 @@ export interface PublicBrandCallbacks {
   onRetryVenues?: () => void;
   // #3426 — Past tab "load more". ABSENT ⇒ no load-more control renders.
   onLoadMorePast?: () => void;
+  /**
+   * #4111 — opens the host's message sheet. Present only when the brand takes
+   * enquiries; renders the desktop side panel's Message button beside Share.
+   */
+  onMessage?: () => void;
 }
 
 export interface PublicBrandPageProps {
@@ -273,5 +278,10 @@ export interface PublicBrandPageProps {
   chromeTopOffset?: number;
   /** Runtime/browser bottom inset plus the page's 24pt breathing room. */
   contentBottomInset?: number;
+  /**
+   * #4111 — the page foot (`@mingla/brand-rendering/enquiry/BrandPageFoot`),
+   * rendered under the active pane on every tab. null/undefined → nothing.
+   */
+  foot?: import("react").ReactNode;
   callbacks: PublicBrandCallbacks;
 }

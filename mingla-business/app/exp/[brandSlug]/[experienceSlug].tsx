@@ -110,10 +110,11 @@ import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferin
 const SeeWhosGoingGate = React.lazy(
   () => import("../../../src/components/event/SeeWhosGoingGate"),
 );
-const PresentedByFollow = React.lazy(async () => {
-  const module = await import("../../../src/components/brand/usePresentedByFollow");
-  return { default: module.PresentedByFollow };
-});
+// #4111 D6 — Follow + Message on the organiser row (lazy: reads the viewer
+// and loads the message sheet only when needed; this route stays anon).
+const PresentedByFollowAndMessage = React.lazy(
+  () => import("../../../src/components/brandContact/PresentedByFollowAndMessage"),
+);
 import {
   ExperienceReservePicker,
   type ExperienceReserveMode,
@@ -427,6 +428,19 @@ const ResolvedExperiencePage: React.FC<{
     [brand.theme, experience.themeOverrides],
   );
   const palette = useMemo(() => createThemePalette(theme), [theme]);
+  const messageOffering = useMemo(
+    () => ({
+      id: experience.id,
+      title: experience.title,
+      kind: "experience" as const,
+      startsAt: null,
+      when:
+        experience.status === "ended" || experience.status === "cancelled"
+          ? ("past" as const)
+          : ("upcoming" as const),
+    }),
+    [experience.id, experience.status, experience.title],
+  );
   const surface = useMemo(() => resolveOfferingSurface(theme), [theme]);
   const followerCountQuery = useBrandFollowerCount(brand.id);
 
@@ -812,10 +826,14 @@ const ResolvedExperiencePage: React.FC<{
         onViewBrand={handleViewBrand}
         presentedByFollow={
           <React.Suspense fallback={null}>
-            <PresentedByFollow
+            <PresentedByFollowAndMessage
               brandId={brand.id}
               brandName={brand.name}
+              brandSlug={brand.slug}
               palette={palette}
+              theme={theme}
+              offering={messageOffering}
+              resumePath={`/exp/${brand.slug}/${experience.slug}`}
             />
           </React.Suspense>
         }

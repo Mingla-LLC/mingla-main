@@ -90,6 +90,10 @@ module.exports = {
     "**/__tests__/issue_3682_follow_tokens.test.ts",
     // #3682 (a) — Presented-by sibling Follow slot on Event + RSVP bodies.
     "**/__tests__/issue_3682_presented_by_follow_slot.test.ts",
+    // #4111 [brand page foot + newsletter box] — implementor RENDER proof of the
+    // foot on every tab, the signed-out box vs signed-in, no contact rows in
+    // About, and the desktop Message button. Paired MANIFEST expectedFiles entry.
+    "**/__tests__/issue_4111_brand_page_foot.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",

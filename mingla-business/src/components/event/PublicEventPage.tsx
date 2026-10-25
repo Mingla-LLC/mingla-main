@@ -168,6 +168,11 @@ import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
+import { PresentedByActions } from "../brandContact/PresentedByActions";
+import {
+  useBrandMessage,
+  viewerNameFromUser,
+} from "../brandContact/useBrandMessage";
 
 // Lazy: FollowByEmailSheet pulls supabase + Button/reanimated; keep them off
 // the PublicEventPage eager graph for jest suites without env (#3682).
@@ -833,6 +838,39 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [resolvedTheme],
   );
   const boldFamily = boldFontFamily(resolvedTheme);
+  // #4111 D6 — "Message" on the organiser row, with this event already picked.
+  const messageTarget = useMemo(
+    () =>
+      brand === null || brand === undefined
+        ? null
+        : {
+            id: brand.id,
+            name: brand.displayName,
+            slug: brand.slug,
+            theme: resolvedTheme,
+            countryIso: brand.countryCode ?? null,
+          },
+    [brand, resolvedTheme],
+  );
+  const eventIsPast = event.status === "ended" || event.status === "cancelled";
+  const messageOffering = useMemo(
+    () => ({
+      id: event.id,
+      title: event.name,
+      kind: event.event_type === "rsvp" ? ("rsvp" as const) : ("event" as const),
+      startsAt: event.masterStartAtUtc ?? null,
+      when: eventIsPast ? ("past" as const) : ("upcoming" as const),
+    }),
+    [event.event_type, event.id, event.masterStartAtUtc, event.name, eventIsPast],
+  );
+  const messageOfferings = useMemo(() => [messageOffering], [messageOffering]);
+  const brandMessage = useBrandMessage({
+    brand: messageTarget,
+    viewer: { userId: user?.id ?? null, name: viewerNameFromUser(user) },
+    entry: "offering",
+    offerings: messageOfferings,
+    resumePath: `/e/${event.brandSlug}/${event.eventSlug}`,
+  });
   useThemeFont(resolvedTheme.fontFamilyValue);
   useThemeFont(boldFamily);
 
@@ -904,7 +942,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   }, []);
 
   // #3682 A — Presented-by Follow sibling (C7: Following opens menu, not unfollow).
-  const presentedByFollow =
+  const presentedByFollowButton =
     brand !== null && brand !== undefined ? (
       <React.Suspense fallback={null}>
         <FollowButton
@@ -939,6 +977,26 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         />
       </React.Suspense>
     ) : undefined;
+  // #4111 — Follow and Message share the organiser row's slot.
+  const presentedByFollow =
+    presentedByFollowButton === undefined || brand === null || brand === undefined ? undefined : (
+      <PresentedByActions
+        follow={presentedByFollowButton}
+        brandName={brand.displayName}
+        palette={palette}
+        onMessage={
+          brandMessage.available
+            ? () =>
+                brandMessage.open({
+                  contextKind: "offering",
+                  contextId: messageOffering.id,
+                  offering: messageOffering,
+                })
+            : undefined
+        }
+        testID="public-event-presented-by-message"
+      />
+    );
 
   // ORCH-1138 — the page-level variant (cancelled / password-gate keep the shared
   // renderer's dedicated LEGACY render; everything else gets the FOUNDATION page).
@@ -1935,6 +1993,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             ) : null}
           </>
         ) : null}
+        {brandMessage.overlays}
         {brand?.id && followByEmailOpen ? (
           <React.Suspense fallback={null}>
             <FollowByEmailSheet
@@ -2231,6 +2290,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           ) : null}
         </>
       ) : null}
+      {brandMessage.overlays}
       {brand?.id && followByEmailOpen ? (
         <React.Suspense fallback={null}>
           <FollowByEmailSheet

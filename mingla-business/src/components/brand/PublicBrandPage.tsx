@@ -13,7 +13,21 @@ import {
   type PublicBrandVenueSummary,
   type PublicMenuGroup,
 } from "@mingla/brand-rendering";
-import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
+import {
+  createThemePalette,
+  resolveTheme,
+  type ResolvedTheme,
+} from "@mingla/offering-rendering";
+// #4111 — the page foot and the topic mapping, by DEEP specifier (the sheet
+// itself is loaded lazily inside useBrandMessage).
+import {
+  BrandPageFoot,
+  type BrandPageFootHandle,
+} from "@mingla/brand-rendering/enquiry/BrandPageFoot";
+import {
+  enquiryOfferingsFromSections,
+  enquiryVenueFromSummary,
+} from "@mingla/brand-rendering/enquiry/enquiryPageData";
 import { captureWeb } from "../../analytics/webAnalytics";
 import { recordShareDestination } from "../../analytics/shareDestination";
 import {
@@ -44,15 +58,14 @@ import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
 import { useThemeFont } from "../../theme/useThemeFont";
 
+import {
+  useBrandMessage,
+  viewerNameFromUser,
+} from "../brandContact/useBrandMessage";
+import { useStayInLoop } from "../brandContact/useStayInLoop";
 import { ShareModal } from "../ui/ShareModal";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { Toast } from "../ui/Toast";
-
-// Lazy: keeps supabase + Button/reanimated off PublicBrandPage's eager graph
-// so PublicEventPage/Brand jest suites without env/mocks still load (#3682).
-const FollowByEmailSheet = React.lazy(() =>
-  import("./FollowByEmailSheet").then((m) => ({ default: m.FollowByEmailSheet })),
-);
 
 interface PublicBrandPageProps {
   brand: Brand;
@@ -234,8 +247,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [unfollowOpen, setUnfollowOpen] = useState(false);
   const [signInFollowOpen, setSignInFollowOpen] = useState(false);
-  // #3682 Wave 2.5 — signed-out web Follow opens email sheet (m), not auth.
-  const [followByEmailOpen, setFollowByEmailOpen] = useState(false);
+  // #4111 — signed-out web Follow scrolls to the foot's "Stay in the loop" box
+  // and focuses Email (it replaced #3682's email sheet on this page). After a
+  // subscribe request the Follow control shows Pending until confirmed.
+  const footRef = useRef<BrandPageFootHandle>(null);
   const [followEmailPending, setFollowEmailPending] = useState(false);
   const [toast, setToast] = useState<{
     visible: boolean;
@@ -258,6 +273,55 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [experiences],
   );
   const sharedUpcoming = useMemo(() => upcoming.map(mapUpcoming), [upcoming]);
+  const palette = useMemo(() => createThemePalette(theme), [theme]);
+  const showStayInLoop = Platform.OS === "web" && !user?.id;
+  const brandCountryIso = brand.countryCode ?? null;
+  const stayInLoop = useStayInLoop({
+    brandId: brand.id,
+    brandSlug: brand.slug,
+    countryIso: brandCountryIso,
+    onRequested: () => setFollowEmailPending(true),
+  });
+  const enquiryOfferings = useMemo(
+    () =>
+      enquiryOfferingsFromSections({
+        happeningNow,
+        upcoming: sharedUpcoming,
+        past,
+      }),
+    [happeningNow, past, sharedUpcoming],
+  );
+  const firstVenue = venues[0] ?? null;
+  const enquiryVenue = useMemo(
+    () => enquiryVenueFromSummary(firstVenue),
+    [firstVenue],
+  );
+  const messageTarget = useMemo(
+    () => ({
+      id: brand.id,
+      name: brand.displayName,
+      slug: brand.slug,
+      theme,
+      countryIso: brandCountryIso,
+    }),
+    [brand.displayName, brand.id, brand.slug, brandCountryIso, theme],
+  );
+  const brandMessage = useBrandMessage({
+    brand: messageTarget,
+    viewer: { userId: user?.id ?? null, name: viewerNameFromUser(user) },
+    entry: "brand_page",
+    offerings: enquiryOfferings,
+    venue: enquiryVenue,
+    resumePath: `/b/${brand.slug}`,
+    onBookTable:
+      firstVenue === null
+        ? undefined
+        : () => {
+            router.push(
+              `${venuePublicPath({ brandSlug: brand.slug, venueSlug: firstVenue.slug })}?tab=reservations` as never,
+            );
+          },
+  });
   const engagementScope = useMemo<OfferingEngagementScope>(
     () => ({ brandId: brand.id, entityType: "brand", entityId: null }),
     [brand.id],
@@ -414,9 +478,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // is a silent no-op on react-native-web).
   const handleToggleFollow = useCallback((): void => {
     if (!user?.id) {
-      // Web: email sheet (m). Native Host preview: keep sign-in prompt.
+      // Web: the foot's "Stay in the loop" box (#4111). Native: sign-in prompt.
       if (Platform.OS === "web") {
-        setFollowByEmailOpen(true);
+        footRef.current?.focusEmail();
         return;
       }
       setSignInFollowOpen(true);
@@ -587,6 +651,23 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         theme={theme}
         chromeTopOffset={insets.top + 8}
         contentBottomInset={insets.bottom + 24}
+        foot={
+          <BrandPageFoot
+            ref={footRef}
+            brandName={brand.displayName}
+            palette={palette}
+            theme={theme}
+            loop={showStayInLoop ? stayInLoop : undefined}
+            message={
+              brandMessage.available
+                ? {
+                    onPress: () => brandMessage.open(),
+                    replyMinutes: brandMessage.replyMinutes,
+                  }
+                : undefined
+            }
+          />
+        }
         callbacks={{
           onClose: handleClose,
           onShare: handleShare,
@@ -600,6 +681,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onOpenExternal: handleOpenExternal,
           onRetryVenues,
           onLoadMorePast,
+          onMessage: brandMessage.available
+            ? () => brandMessage.open()
+            : undefined,
           onReservationsTabViewed: () => {
             captureWeb("brand_reservations_tab_viewed", {
               surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
@@ -617,25 +701,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         title={`${brand.displayName} on Mingla`}
         description={brand.bio?.slice(0, 200) ?? brand.tagline}
       />
-      {followByEmailOpen ? (
-        <React.Suspense fallback={null}>
-          <FollowByEmailSheet
-            visible={followByEmailOpen}
-            brandId={brand.id}
-            brandName={brand.displayName}
-            onClose={() => setFollowByEmailOpen(false)}
-            onSent={() => {
-              setFollowEmailPending(true);
-              captureWeb("brand_follow_email_requested", {
-                surface: "buyer_web",
-                brand_id: brand.id,
-                brand_slug: brand.slug,
-                source: "brand_page",
-              });
-            }}
-          />
-        </React.Suspense>
-      ) : null}
+      {brandMessage.overlays}
       <SimpleConfirmDialog
         visible={signInFollowOpen}
         onClose={() => setSignInFollowOpen(false)}

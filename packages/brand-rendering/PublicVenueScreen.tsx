@@ -469,6 +469,12 @@ export interface PublicVenueScreenProps {
   onClose: () => void;
   onOpenBrand: () => void;
   /**
+   * #4111 D6 — "Message {Brand}" beside the "By {brand}" line (and beside
+   * Share on desktop), opening the host's message sheet with this venue
+   * picked. Absent (enquiries off / not loaded) ⇒ nothing renders.
+   */
+  onMessageBrand?: () => void;
+  /**
    * issue #2468 — carries the venue's stored coordinate, not just the address
    * text. The host builds the URL with `buildMapsDeepLink`; it must never
    * re-derive one from `target.label` alone.
@@ -1037,6 +1043,7 @@ export const PublicVenueScreen = ({
   onShare,
   onClose,
   onOpenBrand,
+  onMessageBrand,
   onOpenMaps,
   onCopyAddress,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
@@ -1545,19 +1552,39 @@ export const PublicVenueScreen = ({
       >
         {venue.name}
       </Text>
-      <Pressable
-        onPress={onOpenBrand}
-        accessibilityRole="link"
-        accessibilityLabel={`View ${venue.brandName} on Mingla`}
-        style={styles.byBrandRow}
-      >
-        <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
-          By{" "}
-          <Text style={[styles.byBrandName, { color: palette.accent }]}>
-            {venue.brandName}
+      <View style={styles.byBrandLine}>
+        <Pressable
+          onPress={onOpenBrand}
+          accessibilityRole="link"
+          accessibilityLabel={`View ${venue.brandName} on Mingla`}
+          style={[styles.byBrandRow, styles.byBrandShrink]}
+        >
+          <Text style={[styles.byBrandBy, { color: palette.tertiaryText }]}>
+            By{" "}
+            <Text style={[styles.byBrandName, { color: palette.accent }]}>
+              {venue.brandName}
+            </Text>
           </Text>
-        </Text>
-      </Pressable>
+        </Pressable>
+        {/* Desktop shows Message beside Share in the side panel instead. */}
+        {onMessageBrand !== undefined && !isDesktop ? (
+          <Pressable
+            onPress={onMessageBrand}
+            accessibilityRole="button"
+            accessibilityLabel={`Message ${venue.brandName}`}
+            testID="issue-4111-venue-message"
+            style={({ pressed }) => [
+              styles.messageBrandBtn,
+              { borderColor: palette.accent },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.messageBrandLabel, { color: palette.primaryText }]}>
+              Message
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
       {answerCells.length > 0 ? (
         <View style={styles.answerBar} testID="issue-1561-answer-bar">
           {answerCells.map(renderAnswerCell)}
@@ -1973,20 +2000,42 @@ export const PublicVenueScreen = ({
             </Text>
           </Text>
         </Pressable>
-        <Pressable
-          onPress={onShare}
-          accessibilityRole="button"
-          accessibilityLabel="Share this venue"
-          style={({ pressed }) => [
-            styles.deskShareBtn,
-            { backgroundColor: palette.accent },
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
-            Share
-          </Text>
-        </Pressable>
+        <View style={styles.deskShareRow}>
+          <Pressable
+            onPress={onShare}
+            accessibilityRole="button"
+            accessibilityLabel="Share this venue"
+            style={({ pressed }) => [
+              styles.deskShareBtn,
+              styles.deskShareCell,
+              { backgroundColor: palette.accent },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={[styles.deskShareLabel, { color: palette.accentText }]}>
+              Share
+            </Text>
+          </Pressable>
+          {onMessageBrand !== undefined ? (
+            <Pressable
+              onPress={onMessageBrand}
+              accessibilityRole="button"
+              accessibilityLabel={`Message ${venue.brandName}`}
+              testID="issue-4111-venue-desk-message"
+              style={({ pressed }) => [
+                styles.deskShareBtn,
+                styles.deskShareCell,
+                styles.deskMessageBtn,
+                { borderColor: palette.accent },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.deskShareLabel, { color: palette.primaryText }]}>
+                Message
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
         {showPersistentReserveCta ? reserveCta : null}
       </View>
     </View>
@@ -2297,6 +2346,26 @@ const styles = StyleSheet.create({
   byBrandRow: {
     paddingVertical: 12,
     alignSelf: "flex-start",
+  },
+  byBrandLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  byBrandShrink: {
+    flexShrink: 1,
+  },
+  messageBrandBtn: {
+    minHeight: 36,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  messageBrandLabel: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   byBrandBy: {
     fontSize: 14,
@@ -2613,6 +2682,17 @@ const styles = StyleSheet.create({
   deskShareLabel: {
     fontSize: 15,
     fontWeight: "700",
+  },
+  deskShareRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  deskShareCell: {
+    flex: 1,
+  },
+  deskMessageBtn: {
+    borderWidth: 1.5,
+    backgroundColor: "transparent",
   },
 });
 

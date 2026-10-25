@@ -156,6 +156,12 @@ const LazyOrderingSurface = React.lazy(() =>
  */
 const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
 
+// #4111 D6 — Message {Brand} with this venue picked. LAZY: it owns the viewer
+// (this route never calls useAuth) and the sheet loads only on a tap.
+const VenueBrandMessage = React.lazy(
+  () => import("../../../../src/components/brandContact/VenueBrandMessage"),
+);
+
 /** #1793 — a stable empty menu, so the ordering surface's deps do not churn. */
 const EMPTY_MENU_GROUPS: PublicMenuGroup[] = [];
 
@@ -188,6 +194,11 @@ export default function PublicVenueRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const webConsentState = useWebConsentState();
   const [shareModalVisible, setShareModalVisible] = React.useState(false);
+  const [messageOpener, setMessageOpener] = React.useState<{ open: () => void } | null>(null);
+  const handleMessageOpener = useCallback(
+    (opener: { open: () => void } | null): void => setMessageOpener(opener),
+    [],
+  );
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     venueSlug: string | string[];
@@ -752,19 +763,35 @@ export default function PublicVenueRoute(): React.ReactElement {
         ),
       }}
       overlays={
-        <ShareModal
-          visible={shareModalVisible}
-          onClose={() => setShareModalVisible(false)}
-          url={canonicalUrl}
-          contentKind="venue"
-          title={pageTitle}
-          description={metaDescription}
-        />
+        <>
+          <ShareModal
+            visible={shareModalVisible}
+            onClose={() => setShareModalVisible(false)}
+            url={canonicalUrl}
+            contentKind="venue"
+            title={pageTitle}
+            description={metaDescription}
+          />
+          <React.Suspense fallback={null}>
+            <VenueBrandMessage
+              brandId={venue.brandId}
+              brandName={venue.brandName}
+              brandSlug={venue.brandSlug}
+              venueId={venue.id}
+              venueName={venue.name}
+              venueSlug={venue.slug}
+              theme={venue.theme}
+              countryIso={venue.countryCode ?? null}
+              onOpener={handleMessageOpener}
+            />
+          </React.Suspense>
+        </>
       }
       onAnalytics={handleAnalytics}
       onShare={handleShare}
       onClose={handleClose}
       onOpenBrand={handleOpenBrand}
+      onMessageBrand={messageOpener === null ? undefined : messageOpener.open}
       onOpenMaps={handleOpenMaps}
       onCopyAddress={handleCopyAddress}
     />

@@ -104,10 +104,11 @@ import type { GuestFunnelEntity } from "../../../src/services/guestFunnelLink";
 const SeeWhosGoingGate = React.lazy(
   () => import("../../../src/components/event/SeeWhosGoingGate"),
 );
-const PresentedByFollow = React.lazy(async () => {
-  const module = await import("../../../src/components/brand/usePresentedByFollow");
-  return { default: module.PresentedByFollow };
-});
+// #4111 D6 — Follow + Message on the organiser row (lazy: reads the viewer
+// and loads the message sheet only when needed; this route stays anon).
+const PresentedByFollowAndMessage = React.lazy(
+  () => import("../../../src/components/brandContact/PresentedByFollowAndMessage"),
+);
 import {
   buildTripOfferingBrand,
   buildTripOfferingData,
@@ -472,6 +473,19 @@ const ResolvedTripPage: React.FC<{
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => resolveOfferingSurface(theme), [theme]);
   const followerCountQuery = useBrandFollowerCount(payload.brand.id);
+  const messageOffering = useMemo(
+    () => ({
+      id: trip.id,
+      title: trip.title,
+      kind: "trip" as const,
+      startsAt: null,
+      when:
+        trip.status === "ended" || trip.status === "cancelled"
+          ? ("past" as const)
+          : ("upcoming" as const),
+    }),
+    [trip.id, trip.status, trip.title],
+  );
 
   // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
   // §3). Wired WEB-ONLY (SPEC §4.4.1): on business native the prop is not
@@ -821,10 +835,14 @@ const ResolvedTripPage: React.FC<{
         onViewBrand={handleViewBrand}
         presentedByFollow={
           <React.Suspense fallback={null}>
-            <PresentedByFollow
+            <PresentedByFollowAndMessage
               brandId={payload.brand.id}
               brandName={payload.brand.name}
+              brandSlug={payload.brand.slug}
               palette={palette}
+              theme={theme}
+              offering={messageOffering}
+              resumePath={`/t/${payload.brand.slug}/${trip.slug}`}
             />
           </React.Suspense>
         }
