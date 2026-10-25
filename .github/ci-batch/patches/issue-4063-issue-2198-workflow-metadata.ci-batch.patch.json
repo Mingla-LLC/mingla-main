@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-bootstrap-patch",
+  "ownerIssue": "#4063",
+  "target": {
+    "collection": "legacyOrigins",
+    "selector": {
+      "stem": "issue-2198-paystack-return-verify-tests",
+      "extension": "yml"
+    },
+    "baseRowSha256": "1ce9af98cb5537c5001fda443ef20273cb1fd7e2292bda4278af332e32d6a594"
+  },
+  "operations": [
+    {
+      "op": "replace",
+      "path": "/workflowMetadata/sourceSha256",
+      "expected": "974733d6a14827d496d04e8384672e907fd85207160c9d2900c315fced02f71e",
+      "value": "216a69d8ba7ddf22f33ae95fcb021f03338da9714f6a0f15734ccc70b0b06f8e"
+    }
+  ],
+  "dependentSeals": [],
+  "reason": "Issue #4063 replaces the Paystack return lane's retired public QR assertion with the canonical claim-only payload proof while preserving its sealed triggers, jobs, runtimes, setup, and trust boundary."
+}
