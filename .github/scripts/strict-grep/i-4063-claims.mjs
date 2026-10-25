@@ -228,19 +228,28 @@ function runSelfTest() {
   const links = realTree.issueMigrationFiles.find((relative) =>
     relative.includes("_claim_links_and_contacts.sql")
   );
-  if (core === undefined || links === undefined) {
+  const latestMintLink = [...realTree.migrationFiles].reverse().find(
+    (relative) => {
+      const source = realTree.read(relative);
+      return source !== null && extractFunctions(source, relative).some(
+        ({ name }) => name === "mint_claim_link",
+      );
+    },
+  );
+  if (core === undefined || links === undefined || latestMintLink === undefined) {
     throw new Error("self-test fixtures missing");
   }
   const coreSource = realTree.read(core);
   const linksSource = realTree.read(links);
+  const latestMintLinkSource = realTree.read(latestMintLink);
 
   const cases = [
     [
       "proof arm escapes its authority",
       new Map([[
-        links,
+        latestMintLink,
         mutateFunction(
-          linksSource,
+          latestMintLinkSource,
           "mint_claim_link",
           "PERFORM 1 FROM public.account_claim_contacts;",
         ),
@@ -249,9 +258,9 @@ function runSelfTest() {
     [
       "claim definition adds visibility",
       new Map([[
-        links,
+        latestMintLink,
         mutateFunction(
-          linksSource,
+          latestMintLinkSource,
           "mint_claim_link",
           "PERFORM visibility FROM public.events LIMIT 1;",
         ),
