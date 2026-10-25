@@ -100,7 +100,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
             Add your details
           </Text>
           <Text style={[styles.sub, { color: palette.secondaryText }]}>
-            We&rsquo;ll only use this to update you about this event.
+            We&rsquo;ll email and text you a link to your pass.
           </Text>
           <ScrollView
             style={styles.scrollArea}

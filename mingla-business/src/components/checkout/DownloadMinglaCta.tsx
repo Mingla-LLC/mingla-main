@@ -34,22 +34,53 @@
  * rate-limited or terminally ineligible the button still renders and still
  * reaches the right store. A guest who never installs is unaffected either way.
  */
-import React, { useEffect, useMemo, useState } from "react";
-import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { PressableStateCallbackType, ViewStyle } from "react-native";
 
-import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { phMaskProps } from "../../analytics/phMask";
+import { captureWeb } from "../../analytics/webAnalytics";
+import {
+  BUYER_CLAIM_COPY,
+  buyerDesktopTextFallback,
+  buyerSignInCopy,
+  type BuyerClaimNoun,
+} from "../../constants/buyerClaimCopy";
+import {
+  accent,
+  glass,
+  radius,
+  spacing,
+  text as textTokens,
+} from "../../constants/designSystem";
 import {
   detectClientPlatform,
   openAppScheme,
   openExternal,
   resolveConfirmationAppTarget,
+  type GuestFunnelEntity,
   type Platform as DevicePlatform,
 } from "../../services/guestFunnelLink";
+import { postHogService } from "../../services/postHogService";
 // issue #2326 — STATIC import, deliberately. This module used to be pulled in
 // with a dynamic `import()` from inside the tap handler; see `open()` below for
 // why that must never come back.
 import { openAttendanceClaimWithFallback } from "../../utils/attendanceClaimDeepLink";
+import { GateQr } from "../event/GateQr";
 import { Icon } from "../ui/Icon";
 
 export type DownloadMinglaClaimPhase =
@@ -81,8 +112,14 @@ interface DownloadMinglaCtaProps {
  */
 const useDevicePlatform = (): DevicePlatform => {
   const nativePlatform: DevicePlatform | null =
-    Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : null;
-  const [platform, setPlatform] = useState<DevicePlatform>(nativePlatform ?? "other");
+    Platform.OS === "ios"
+      ? "ios"
+      : Platform.OS === "android"
+        ? "android"
+        : null;
+  const [platform, setPlatform] = useState<DevicePlatform>(
+    nativePlatform ?? "other",
+  );
   useEffect(() => {
     if (nativePlatform !== null) return;
     setPlatform(detectClientPlatform());
@@ -101,14 +138,16 @@ const webTransitionStyle = (reducedMotion: boolean): WebTransitionStyle => ({
 });
 
 const useReducedMotionOnWeb = (): boolean => {
-  const [reduced, setReduced] = useState<boolean>(() =>
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
+  const [reduced, setReduced] = useState<boolean>(
+    () =>
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
   );
 
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+    if (Platform.OS !== "web" || typeof window === "undefined")
+      return undefined;
     const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
     if (query === undefined) return undefined;
     const update = (): void => setReduced(query.matches);
@@ -117,6 +156,374 @@ const useReducedMotionOnWeb = (): boolean => {
   }, []);
 
   return reduced;
+};
+
+type BuyerClaimVariant = "auto" | "phone" | "desktop";
+type BuyerClaimCardKind = Exclude<BuyerClaimNoun, "receipt">;
+
+export type BuyerClaimHandoffMintResult =
+  | { ok: true; handoffUrl: string; expiresAt: string }
+  | {
+      ok: false;
+      reason: "invalid" | "rate_limited" | "network";
+      retryAfterSeconds: number | null;
+    };
+
+export interface BuyerClaimCardProps {
+  kind: BuyerClaimCardKind;
+  email: string | null;
+  phoneLast4: string | null;
+  shortUrl: string | null;
+  handoff: {
+    mint: () => Promise<BuyerClaimHandoffMintResult>;
+  } | null;
+  textSent: boolean;
+  variant?: BuyerClaimVariant;
+  analyticsSurface: string;
+  /** Needed only for the no-claim fallback destination. */
+  fallbackEntity: GuestFunnelEntity;
+  waitingOverride?: string;
+  signInOverride?: string;
+}
+
+type ScanState =
+  | { phase: "idle" | "minting" | "rate_limited" | "error" }
+  | { phase: "ready" | "expired"; handoffUrl: string; expiresAt: string };
+
+const nonBlank = (value: string | null): string | null => {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const useBuyerClaimPlatform = (
+  variant: BuyerClaimVariant,
+): { device: DevicePlatform | null; display: "phone" | "desktop" | null } => {
+  const nativeDevice: DevicePlatform | null =
+    Platform.OS === "ios"
+      ? "ios"
+      : Platform.OS === "android"
+        ? "android"
+        : null;
+  const [device, setDevice] = useState<DevicePlatform | null>(nativeDevice);
+
+  useEffect(() => {
+    if (nativeDevice !== null) return;
+    setDevice(detectClientPlatform());
+  }, [nativeDevice]);
+
+  if (variant === "phone") return { device, display: "phone" };
+  if (variant === "desktop")
+    return { device: device ?? "other", display: "desktop" };
+  if (nativeDevice !== null) return { device: nativeDevice, display: "phone" };
+  if (device === null) return { device: null, display: null };
+  return { device, display: device === "other" ? "desktop" : "phone" };
+};
+
+function captureBuyerClaim(
+  event: string,
+  properties: Record<string, string | number | boolean>,
+): void {
+  if (Platform.OS === "web") captureWeb(event, properties);
+  else postHogService.capture(event, properties);
+}
+
+function emphasizedSignInCopy(
+  copy: string,
+  values: (string | null)[],
+): React.ReactNode[] {
+  const emphasized = new Set(
+    values.filter((value): value is string => value !== null),
+  );
+  if (emphasized.size === 0) return [copy];
+  const escaped = [...emphasized]
+    .sort((a, b) => b.length - a.length)
+    .map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return copy
+    .split(new RegExp(`(${escaped.join("|")})`, "g"))
+    .map((part, index) =>
+      emphasized.has(part) ? (
+        <Text key={`${part}-${index}`} style={styles.claimEmphasis}>
+          {part}
+        </Text>
+      ) : (
+        part
+      ),
+    );
+}
+
+/**
+ * The shared post-purchase handoff. A QR rendered here is a short-lived link to
+ * the phone flow, never a ticket or admission credential.
+ */
+export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
+  kind,
+  email,
+  phoneLast4,
+  shortUrl,
+  handoff,
+  textSent,
+  variant = "auto",
+  analyticsSurface,
+  fallbackEntity,
+  waitingOverride,
+  signInOverride,
+}) => {
+  const { device, display } = useBuyerClaimPlatform(variant);
+  const reducedMotion = useReducedMotionOnWeb();
+  const [scan, setScan] = useState<ScanState>({ phase: "idle" });
+  const mintEpoch = useRef(0);
+  const viewedVariants = useRef(new Set<string>());
+  const cleanEmail = nonBlank(email);
+  const cleanLast4 = nonBlank(phoneLast4);
+  const signIn =
+    signInOverride ??
+    buyerSignInCopy({
+      emailMasked: cleanEmail,
+      phoneLast4: cleanLast4,
+    });
+  const displayForCopy = display === "desktop" ? "desktop" : "phone";
+  const waiting =
+    waitingOverride ?? BUYER_CLAIM_COPY.waiting[kind][displayForCopy];
+  const handoffMint = handoff?.mint ?? null;
+
+  useEffect(() => {
+    if (display === null || viewedVariants.current.has(display)) return;
+    viewedVariants.current.add(display);
+    captureBuyerClaim("buyer_claim_card_viewed", {
+      surface: analyticsSurface,
+      kind,
+      variant: display,
+      has_short_url: shortUrl !== null,
+      has_phone: cleanLast4 !== null,
+    });
+  }, [analyticsSurface, cleanLast4, display, kind, shortUrl]);
+
+  const mint = useCallback(async (): Promise<void> => {
+    if (handoffMint === null) {
+      setScan({ phase: "idle" });
+      return;
+    }
+    const epoch = ++mintEpoch.current;
+    setScan({ phase: "minting" });
+    try {
+      const result = await handoffMint();
+      if (epoch !== mintEpoch.current) return;
+      if (result.ok === false) {
+        const phase =
+          result.reason === "rate_limited" ? "rate_limited" : "error";
+        setScan({ phase });
+        captureBuyerClaim("buyer_claim_scan_error", {
+          surface: analyticsSurface,
+          kind,
+          reason: result.reason,
+        });
+        return;
+      }
+      const expiresAtMs = Date.parse(result.expiresAt);
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+        setScan({
+          phase: "expired",
+          handoffUrl: result.handoffUrl,
+          expiresAt: result.expiresAt,
+        });
+        captureBuyerClaim("buyer_claim_scan_expired", {
+          surface: analyticsSurface,
+          kind,
+        });
+        return;
+      }
+      setScan({
+        phase: "ready",
+        handoffUrl: result.handoffUrl,
+        expiresAt: result.expiresAt,
+      });
+      captureBuyerClaim("buyer_claim_scan_minted", {
+        surface: analyticsSurface,
+        kind,
+      });
+    } catch {
+      if (epoch !== mintEpoch.current) return;
+      setScan({ phase: "error" });
+      captureBuyerClaim("buyer_claim_scan_error", {
+        surface: analyticsSurface,
+        kind,
+        reason: "network",
+      });
+    }
+  }, [analyticsSurface, handoffMint, kind]);
+
+  useEffect(() => {
+    if (display !== "desktop") {
+      mintEpoch.current += 1;
+      setScan({ phase: "idle" });
+      return;
+    }
+    if (handoffMint !== null) void mint();
+    else setScan({ phase: "idle" });
+    return () => {
+      mintEpoch.current += 1;
+    };
+  }, [display, handoffMint, mint]);
+
+  useEffect(() => {
+    if (scan.phase !== "ready") return undefined;
+    const remainingMs = Date.parse(scan.expiresAt) - Date.now();
+    if (remainingMs <= 0) {
+      setScan({ ...scan, phase: "expired" });
+      captureBuyerClaim("buyer_claim_scan_expired", {
+        surface: analyticsSurface,
+        kind,
+      });
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setScan({ ...scan, phase: "expired" });
+      captureBuyerClaim("buyer_claim_scan_expired", {
+        surface: analyticsSurface,
+        kind,
+      });
+    }, remainingMs);
+    return () => clearTimeout(timer);
+  }, [analyticsSurface, kind, scan]);
+
+  const open = (): void => {
+    if (device === null) return;
+    const target =
+      shortUrl ?? resolveConfirmationAppTarget(fallbackEntity, device).ctaUrl;
+    captureBuyerClaim("buyer_claim_cta_tapped", {
+      surface: analyticsSurface,
+      kind,
+      platform: device,
+      target: shortUrl === null ? "store_fallback" : "short_url",
+    });
+    if (Platform.OS === "web") openExternal(target);
+    else void Linking.openURL(target);
+  };
+
+  const desktopFallback =
+    display === "desktop" && textSent
+      ? buyerDesktopTextFallback(cleanLast4)
+      : null;
+  const buttonLabel = BUYER_CLAIM_COPY.button[kind];
+
+  return (
+    <View
+      accessibilityRole="summary"
+      role={Platform.OS === "web" ? "region" : undefined}
+      aria-label={waiting}
+      style={styles.claimCard}
+      testID="buyer-claim-card"
+    >
+      <Text style={styles.claimWaiting}>{waiting}</Text>
+      <Text style={styles.claimSignIn} {...phMaskProps()}>
+        {emphasizedSignInCopy(signIn, [cleanEmail, cleanLast4])}
+      </Text>
+
+      {display === "phone" && device !== null ? (
+        <>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`${buttonLabel}, opens the Mingla app or the app store`}
+            style={({
+              pressed,
+              hovered,
+              focused,
+            }: PressableStateCallbackType & {
+              hovered?: boolean;
+              focused?: boolean;
+            }) => [
+              styles.primaryBadge,
+              Platform.OS === "web" ? webTransitionStyle(reducedMotion) : null,
+              hovered && !pressed ? styles.primaryBadgeHovered : null,
+              pressed ? styles.primaryBadgePressed : null,
+              focused ? styles.primaryBadgeFocused : null,
+            ]}
+            testID="buyer-claim-primary"
+            onPress={open}
+          >
+            <Text style={styles.primaryBadgeText}>{buttonLabel}</Text>
+          </Pressable>
+          <Text style={styles.claimUnderButton}>
+            {BUYER_CLAIM_COPY.underButton[kind]}
+          </Text>
+        </>
+      ) : null}
+
+      {display === "desktop" ? (
+        <View style={styles.claimDesktop}>
+          {desktopFallback !== null ? (
+            <Text style={styles.claimTextFallback} {...phMaskProps()}>
+              {desktopFallback}
+            </Text>
+          ) : null}
+          {scan.phase === "minting" ? (
+            <View
+              style={styles.claimScanState}
+              accessibilityLiveRegion="polite"
+              role="status"
+            >
+              <ActivityIndicator color={accent.warm} />
+              <Text style={styles.claimScanStatus}>
+                {BUYER_CLAIM_COPY.scanPreparing}
+              </Text>
+            </View>
+          ) : scan.phase === "ready" ? (
+            <View style={styles.claimQrGroup}>
+              <View
+                style={styles.claimQrPlate}
+                accessibilityRole="image"
+                accessibilityLabel={`${BUYER_CLAIM_COPY.scanInstruction[kind]} This is not your ticket.`}
+              >
+                <GateQr value={scan.handoffUrl} size={220} />
+              </View>
+              <Text style={styles.claimScanInstruction}>
+                {BUYER_CLAIM_COPY.scanInstruction[kind]}
+              </Text>
+              <Text style={styles.claimScanDisclaimer}>
+                {BUYER_CLAIM_COPY.scanDisclaimer}
+              </Text>
+            </View>
+          ) : scan.phase === "expired" ? (
+            <View
+              style={styles.claimScanState}
+              accessibilityLiveRegion="polite"
+            >
+              <Text style={styles.claimScanStatus}>
+                {BUYER_CLAIM_COPY.scanExpired}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={BUYER_CLAIM_COPY.scanRefresh}
+                style={styles.secondaryBadge}
+                testID="buyer-claim-scan-refresh"
+                onPress={() => void mint()}
+              >
+                <Text style={styles.secondaryBadgeText}>
+                  {BUYER_CLAIM_COPY.scanRefresh}
+                </Text>
+              </Pressable>
+            </View>
+          ) : scan.phase === "rate_limited" ? (
+            <Text
+              style={styles.claimScanStatus}
+              accessibilityLiveRegion="polite"
+              role="status"
+            >
+              {BUYER_CLAIM_COPY.scanRateLimited}
+            </Text>
+          ) : scan.phase === "error" ? (
+            <Text
+              style={styles.claimScanStatus}
+              accessibilityLiveRegion="polite"
+              role="status"
+            >
+              {BUYER_CLAIM_COPY.scanError}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
 };
 
 export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
@@ -130,7 +537,12 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
 }) => {
   const platform = useDevicePlatform();
   const reducedMotion = useReducedMotionOnWeb();
-  const noun = eventType === "trip" ? "trip" : eventType === "experience" ? "experience" : "event";
+  const noun =
+    eventType === "trip"
+      ? "trip"
+      : eventType === "experience"
+        ? "experience"
+        : "event";
   const target = useMemo(
     () =>
       resolveConfirmationAppTarget(
@@ -233,7 +645,11 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
     // app does not take the navigation. `fallbackUrl` (#2217) redirects that
     // fallback away from the two-store interstitial.
     void openAttendanceClaimWithFallback(
-      { appClaimUrl: claimAppUrl, webClaimUrl: target.ctaUrl, fallbackUrl: target.ctaUrl },
+      {
+        appClaimUrl: claimAppUrl,
+        webClaimUrl: target.ctaUrl,
+        fallbackUrl: target.ctaUrl,
+      },
       navigateFromTap,
     );
   };
@@ -247,23 +663,22 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
         Join your {noun} chat in the Mingla app
       </Text>
       <Text style={styles.body} numberOfLines={3}>
-        Get updates, ask questions, and message other guests for {eventName}. Sign in
-        with the email or phone you used here and this ticket is already waiting.
+        Get updates, ask questions, and message other guests for {eventName}.
+        Sign in with the email or phone you used here and this ticket is already
+        waiting.
       </Text>
       <View style={styles.badgeRow}>
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={destinationLabel}
-          style={(
-            {
-              pressed,
-              hovered,
-              focused,
-            }: PressableStateCallbackType & {
-              hovered?: boolean;
-              focused?: boolean;
-            },
-          ) => [
+          style={({
+            pressed,
+            hovered,
+            focused,
+          }: PressableStateCallbackType & {
+            hovered?: boolean;
+            focused?: boolean;
+          }) => [
             styles.primaryBadge,
             Platform.OS === "web" ? webTransitionStyle(reducedMotion) : null,
             hovered && !pressed ? styles.primaryBadgeHovered : null,
@@ -283,7 +698,9 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
           accessibilityLiveRegion="polite"
           role="status"
         >
-          Your tickets are confirmed. You can open the app and sign in with your checkout email or phone.
+          {
+            "Your tickets are confirmed. You can open the app and sign in with your checkout email or phone."
+          }
         </Text>
       ) : claimPhase === "error" ? (
         <View style={styles.claimNoteRow}>
@@ -302,11 +719,13 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
         </View>
       ) : claimPhase === "terminal" ? (
         <Text style={styles.claimNote}>
-          Your tickets are confirmed. Guest-list access isn’t available for this order.
+          Your tickets are confirmed. Guest-list access isn’t available for this
+          order.
         </Text>
       ) : claimPhase === "rate" ? (
         <Text style={styles.claimNote}>
-          Your tickets are confirmed. Try the Mingla link again in a few minutes.
+          Your tickets are confirmed. Try the Mingla link again in a few
+          minutes.
         </Text>
       ) : claimPhase === "loading" ? (
         // issue #2326 — "Preparing your Mingla link…" used to render in the
@@ -321,6 +740,78 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
 };
 
 const styles = StyleSheet.create({
+  claimCard: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  claimWaiting: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  claimSignIn: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: textTokens.secondary,
+  },
+  claimEmphasis: {
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  claimUnderButton: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: textTokens.tertiary,
+  },
+  claimDesktop: {
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  claimTextFallback: {
+    alignSelf: "stretch",
+    fontSize: 13,
+    lineHeight: 18,
+    color: textTokens.tertiary,
+  },
+  claimScanState: {
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  claimScanStatus: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    color: textTokens.secondary,
+  },
+  claimQrGroup: {
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  claimQrPlate: {
+    width: 220,
+    height: 220,
+    padding: 0,
+    backgroundColor: "#FFFFFF",
+  },
+  claimScanInstruction: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  claimScanDisclaimer: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+    color: textTokens.tertiary,
+  },
   card: {
     gap: spacing.sm,
     padding: spacing.md,

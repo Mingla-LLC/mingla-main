@@ -157,7 +157,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
 
 export const DEFAULT_WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
-export const DEFAULT_MIGRATIONS_DIR = path.join(REPO_ROOT, "supabase/migrations");
+export const DEFAULT_MIGRATIONS_DIR = path.join(
+  REPO_ROOT,
+  "supabase/migrations",
+);
 
 /** The lane whose skip list C-3 pins, and the branches it must keep. */
 const PINNED_LANE = "issue-1931-private-event-access.yml";
@@ -200,8 +203,14 @@ function endOfSingleQuoted(sql, start) {
   const honoursBackslash = isEscapeString(sql, start);
   let j = start + 1;
   while (j < sql.length) {
-    if (honoursBackslash && sql[j] === "\\") { j += 2; continue; }
-    if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; continue; }
+    if (honoursBackslash && sql[j] === "\\") {
+      j += 2;
+      continue;
+    }
+    if (sql[j] === "'" && sql[j + 1] === "'") {
+      j += 2;
+      continue;
+    }
     if (sql[j] === "'") return j + 1;
     j++;
   }
@@ -228,9 +237,13 @@ export function maskComments(sql) {
       let depth = 1;
       let j = i + 2;
       while (j < sql.length && depth > 0) {
-        if (sql.slice(j, j + 2) === "/*") { depth++; j += 2; }
-        else if (sql.slice(j, j + 2) === "*/") { depth--; j += 2; }
-        else j++;
+        if (sql.slice(j, j + 2) === "/*") {
+          depth++;
+          j += 2;
+        } else if (sql.slice(j, j + 2) === "*/") {
+          depth--;
+          j += 2;
+        } else j++;
       }
       blankRange(out, i, j);
       i = j;
@@ -238,7 +251,10 @@ export function maskComments(sql) {
       i = endOfSingleQuoted(sql, i);
     } else if (sql[i] === "$") {
       const m = DOLLAR_TAG_RE.exec(sql.slice(i));
-      if (!m) { i++; continue; }
+      if (!m) {
+        i++;
+        continue;
+      }
       const end = sql.indexOf(m[0], i + m[0].length);
       i = end === -1 ? sql.length : end + m[0].length;
     } else {
@@ -298,7 +314,11 @@ export function segment(sql) {
         const tag = m[0];
         const close = sql.indexOf(tag, i + tag.length);
         const end = close === -1 ? sql.length : close + tag.length;
-        regions.push({ start: i, end, inner: sql.slice(i + tag.length, close === -1 ? sql.length : close) });
+        regions.push({
+          start: i,
+          end,
+          inner: sql.slice(i + tag.length, close === -1 ? sql.length : close),
+        });
         blankRange(top, i, end);
         i = end;
         continue;
@@ -337,7 +357,10 @@ export function parseMigration(name, rawSql) {
 
   // `SET check_function_bodies = false` disables CREATE-time validation of
   // function bodies for the rest of the session. Statement level is unaffected.
-  const bodiesUnchecked = /\bSET\s+check_function_bodies\s*(?:=|\bTO\b)\s*(?:false|off|'off'|0)\b/i.test(top);
+  const bodiesUnchecked =
+    /\bSET\s+check_function_bodies\s*(?:=|\bTO\b)\s*(?:false|off|'off'|0)\b/i.test(
+      top,
+    );
 
   const sqlBodies = [];
   for (const region of regions) {
@@ -349,7 +372,11 @@ export function parseMigration(name, rawSql) {
     const end = closeIdx === -1 ? top.length : closeIdx;
     const statement = `${top.slice(start, region.start)} ${top.slice(region.end, end)}`;
 
-    if (!/\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b/i.test(statement)) {
+    if (
+      !/\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b/i.test(
+        statement,
+      )
+    ) {
       // Not a routine body: a `DO $$…$$` block (plpgsql, not CREATE-time
       // validated) or a dollar-quoted string literal. Neither flags.
       continue;
@@ -370,11 +397,20 @@ export function parseMigration(name, rawSql) {
 
   const definitions = new Set();
   let m;
-  const fnRe = new RegExp(`\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`, "gi");
+  const fnRe = new RegExp(
+    `\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`,
+    "gi",
+  );
   while ((m = fnRe.exec(top))) definitions.add(`fn:${bareName(m[1])}`);
-  const viewRe = new RegExp(`\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`, "gi");
+  const viewRe = new RegExp(
+    `\\bCREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`,
+    "gi",
+  );
   while ((m = viewRe.exec(top))) definitions.add(`view:${bareName(m[1])}`);
-  const tableRe = new RegExp(`\\bCREATE\\s+(?:UNLOGGED\\s+|TEMP\\s+|TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`, "gi");
+  const tableRe = new RegExp(
+    `\\bCREATE\\s+(?:UNLOGGED\\s+|TEMP\\s+|TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`,
+    "gi",
+  );
   while ((m = tableRe.exec(top))) definitions.add(`table:${bareName(m[1])}`);
   const colRe = new RegExp(
     `\\bALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s+ADD\\s+COLUMN\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${IDENT})`,
@@ -401,13 +437,24 @@ export function parseMigration(name, rawSql) {
 
 /** Blank out whole-line `#` comments (YAML comments AND shell comments). */
 function stripHashComments(text) {
-  return text.split("\n").map((line) => (/^\s*#/.test(line) ? "" : line)).join("\n");
+  return text
+    .split("\n")
+    .map((line) => (/^\s*#/.test(line) ? "" : line))
+    .join("\n");
 }
 
 /** Shell glob -> anchored RegExp. `*` spans anything, `?` one character. */
 export function globToRegExp(glob) {
   const body = Array.from(glob)
-    .map((c) => (c === "*" ? ".*" : c === "?" ? "." : /[.^$+(){}[\]\\|]/.test(c) ? `\\${c}` : c))
+    .map((c) =>
+      c === "*"
+        ? ".*"
+        : c === "?"
+          ? "."
+          : /[.^$+(){}[\]\\|]/.test(c)
+            ? `\\${c}`
+            : c,
+    )
     .join("");
   return new RegExp(`^${body}$`);
 }
@@ -429,7 +476,9 @@ export function globToRegExp(glob) {
 function branchCensus(regionLines) {
   return {
     terminators: regionLines.join("\n").split(/;;&?/).length - 1,
-    continues: regionLines.filter((l) => /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l)).length,
+    continues: regionLines.filter((l) =>
+      /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l),
+    ).length,
   };
 }
 
@@ -442,7 +491,9 @@ export function discoverLanes(workflowName, rawYaml) {
   const lanes = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const header = /^(\s*)for\s+([A-Za-z_][A-Za-z_0-9]*)\s+in\s+(.*)$/.exec(lines[i]);
+    const header = /^(\s*)for\s+([A-Za-z_][A-Za-z_0-9]*)\s+in\s+(.*)$/.exec(
+      lines[i],
+    );
     if (!header) continue;
     const [, indent, loopVar, words] = header;
     // R-1 — accept every loop spelling by keying on the directory, not the
@@ -463,8 +514,11 @@ export function discoverLanes(workflowName, rawYaml) {
       parseErrors: [],
     };
 
-    let end = lines.findIndex((l, idx) => idx > i && new RegExp(`^${indent}done\\b`).test(l));
-    if (end === -1) end = lines.findIndex((l, idx) => idx > i && /^\s*done\b/.test(l));
+    let end = lines.findIndex(
+      (l, idx) => idx > i && new RegExp(`^${indent}done\\b`).test(l),
+    );
+    if (end === -1)
+      end = lines.findIndex((l, idx) => idx > i && /^\s*done\b/.test(l));
     if (end === -1) {
       lane.parseErrors.push(
         `${workflowName}:${i + 1}: migration apply loop is never terminated by \`done\` — its body cannot be bounded.`,
@@ -475,7 +529,9 @@ export function discoverLanes(workflowName, rawYaml) {
 
     const body = lines.slice(i, end + 1);
     // C-4(b) — detected INDEPENDENTLY of the case parse, on purpose.
-    lane.hasContinue = body.some((l) => /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l));
+    lane.hasContinue = body.some((l) =>
+      /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l),
+    );
 
     const caseIdx = body.findIndex((l) => /^\s*case\s+.+\s+in\s*$/.test(l));
     if (caseIdx !== -1) {
@@ -483,7 +539,8 @@ export function discoverLanes(workflowName, rawYaml) {
       // including the nested quote in `case "$(basename "$migration")" in`.
       const subject = /^\s*case\s+(.+)\s+in\s*$/.exec(body[caseIdx])[1];
       if (/\bbasename\b/.test(subject)) lane.subjectKind = "basename";
-      else if (new RegExp(`\\$\\{?${loopVar}\\b`).test(subject)) lane.subjectKind = "path";
+      else if (new RegExp(`\\$\\{?${loopVar}\\b`).test(subject))
+        lane.subjectKind = "path";
       else {
         lane.parseErrors.push(
           `${workflowName}:${i + 1 + caseIdx}: cannot resolve the case subject \`${subject.trim()}\` to a full path ` +
@@ -491,7 +548,9 @@ export function discoverLanes(workflowName, rawYaml) {
         );
       }
 
-      const esacIdx = body.findIndex((l, idx) => idx > caseIdx && /^\s*esac\s*$/.test(l));
+      const esacIdx = body.findIndex(
+        (l, idx) => idx > caseIdx && /^\s*esac\s*$/.test(l),
+      );
       if (esacIdx === -1) {
         lane.parseErrors.push(
           `${workflowName}:${i + 1 + caseIdx}: \`case\` is never closed by \`esac\` inside the apply loop — ` +
@@ -506,7 +565,9 @@ export function discoverLanes(workflowName, rawYaml) {
         if (lane.subjectKind) {
           for (let b = 0; b < region.length; b++) {
             let patterns = null;
-            const inline = /^\s*\(?\s*([^)]*?)\s*\)\s*continue\s*;;/.exec(region[b]);
+            const inline = /^\s*\(?\s*([^)]*?)\s*\)\s*continue\s*;;/.exec(
+              region[b],
+            );
             if (inline) {
               patterns = inline[1];
             } else {
@@ -519,8 +580,12 @@ export function discoverLanes(workflowName, rawYaml) {
               const header = /^\s*\(?\s*([^)]*?)\s*\)\s*$/.exec(region[b]);
               if (header) {
                 let next = b + 1;
-                while (next < region.length && region[next].trim() === "") next++;
-                if (next < region.length && /^\s*continue\s*;;&?\s*$/.test(region[next])) {
+                while (next < region.length && region[next].trim() === "")
+                  next++;
+                if (
+                  next < region.length &&
+                  /^\s*continue\s*;;&?\s*$/.test(region[next])
+                ) {
                   patterns = header[1];
                   b = next;
                 }
@@ -529,7 +594,10 @@ export function discoverLanes(workflowName, rawYaml) {
             if (patterns === null) continue;
             lane.branchCount += 1;
             // R-3 — one branch may carry several globs.
-            for (const glob of patterns.split("|").map((g) => g.trim()).filter(Boolean)) {
+            for (const glob of patterns
+              .split("|")
+              .map((g) => g.trim())
+              .filter(Boolean)) {
               lane.globs.push(glob);
             }
           }
@@ -537,7 +605,12 @@ export function discoverLanes(workflowName, rawYaml) {
       }
     }
 
-    if (lane.hasContinue || lane.globs.length > 0 || lane.parseErrors.length > 0) lanes.push(lane);
+    if (
+      lane.hasContinue ||
+      lane.globs.length > 0 ||
+      lane.parseErrors.length > 0
+    )
+      lanes.push(lane);
   }
 
   return lanes;
@@ -554,11 +627,18 @@ export function discoverLanes(workflowName, rawYaml) {
  */
 export function analyseTrees({ workflows, migrations }) {
   const violations = [];
-  const migrationNames = Object.keys(migrations).filter((n) => n.endsWith(".sql")).sort();
+  const migrationNames = Object.keys(migrations)
+    .filter((n) => n.endsWith(".sql"))
+    .sort();
 
   // P-vacuous — matching nothing is a failure, never a pass.
   if (migrationNames.length === 0) {
-    violations.push({ check: "P-vacuous", lane: null, message: "No .sql migrations were discovered. A guard that inspects nothing cannot pass." });
+    violations.push({
+      check: "P-vacuous",
+      lane: null,
+      message:
+        "No .sql migrations were discovered. A guard that inspects nothing cannot pass.",
+    });
     return { lanes: [], violations };
   }
 
@@ -572,12 +652,20 @@ export function analyseTrees({ workflows, migrations }) {
   }
 
   const lanes = [];
-  for (const workflowName of Object.keys(workflows).filter((n) => /\.ya?ml$/.test(n)).sort()) {
-    for (const lane of discoverLanes(workflowName, workflows[workflowName])) lanes.push(lane);
+  for (const workflowName of Object.keys(workflows)
+    .filter((n) => /\.ya?ml$/.test(n))
+    .sort()) {
+    for (const lane of discoverLanes(workflowName, workflows[workflowName]))
+      lanes.push(lane);
   }
 
   if (lanes.length === 0) {
-    violations.push({ check: "P-vacuous", lane: null, message: "No filtered migration-replay lane was discovered. This repository has four; finding none means the parser is blind." });
+    violations.push({
+      check: "P-vacuous",
+      lane: null,
+      message:
+        "No filtered migration-replay lane was discovered. This repository has four; finding none means the parser is blind.",
+    });
   }
 
   for (const lane of lanes) {
@@ -605,7 +693,11 @@ export function analyseTrees({ workflows, migrations }) {
     // branches the parser actually read. Disagreement means a skip entry exists
     // that the guard cannot see, which silently credits that entry's
     // definitions to the filtered chain and hides any closure break behind it.
-    if (lane.census && (lane.census.terminators !== lane.branchCount || lane.census.continues !== lane.branchCount)) {
+    if (
+      lane.census &&
+      (lane.census.terminators !== lane.branchCount ||
+        lane.census.continues !== lane.branchCount)
+    ) {
       violations.push({
         check: "C-4c",
         lane: label,
@@ -620,7 +712,8 @@ export function analyseTrees({ workflows, migrations }) {
     }
 
     // Resolve the skip set against THIS lane's own subject (R-4).
-    const subjectOf = (file) => (lane.subjectKind === "basename" ? file : `supabase/migrations/${file}`);
+    const subjectOf = (file) =>
+      lane.subjectKind === "basename" ? file : `supabase/migrations/${file}`;
     const skipped = new Set();
     for (const glob of lane.globs) {
       const re = globToRegExp(glob);
@@ -710,7 +803,10 @@ function readDirText(dir, pattern) {
  * directory makes the real lanes' globs match zero files and fires C-2/C-3 on
  * a test that expects a clean result.
  */
-export function analyseLanes({ workflowsDir = DEFAULT_WORKFLOWS_DIR, migrationsDir = DEFAULT_MIGRATIONS_DIR } = {}) {
+export function analyseLanes({
+  workflowsDir = DEFAULT_WORKFLOWS_DIR,
+  migrationsDir = DEFAULT_MIGRATIONS_DIR,
+} = {}) {
   return analyseTrees({
     workflows: readDirText(workflowsDir, /\.ya?ml$/),
     migrations: readDirText(migrationsDir, /\.sql$/),
@@ -729,7 +825,10 @@ function readRealTrees() {
 }
 
 /** Deep-enough copy of a { name: text } map. */
-const copy = (tree) => ({ workflows: { ...tree.workflows }, migrations: { ...tree.migrations } });
+const copy = (tree) => ({
+  workflows: { ...tree.workflows },
+  migrations: { ...tree.migrations },
+});
 
 function selfTest() {
   const failures = [];
@@ -739,20 +838,35 @@ function selfTest() {
   /** Every mutant must actually change the tree, or the mutant proves nothing. */
   const mutate = (id, tree, file, from, to, where = "workflows") => {
     const before = tree[where][file];
-    if (before === undefined) { record(id, `fixture file ${file} is missing`); return false; }
-    const after = typeof from === "string" ? before.split(from).join(to) : before.replace(from, to);
-    if (after === before) { record(id, `mutation was a NO-OP — the mutant proves nothing`); return false; }
+    if (before === undefined) {
+      record(id, `fixture file ${file} is missing`);
+      return false;
+    }
+    const after =
+      typeof from === "string"
+        ? before.split(from).join(to)
+        : before.replace(from, to);
+    if (after === before) {
+      record(id, `mutation was a NO-OP — the mutant proves nothing`);
+      return false;
+    }
     tree[where][file] = after;
     return true;
   };
-  const fired = (result, check) => result.violations.some((v) => v.check === check);
+  const fired = (result, check) =>
+    result.violations.some((v) => v.check === check);
 
   // GOOD — the repository as shipped.
   const good = analyseTrees(real);
   if (good.violations.length) {
-    record("GOOD", `repo as shipped wrongly flagged:\n      ${good.violations.map((v) => `[${v.check}] ${v.message}`).join("\n      ")}`);
+    record(
+      "GOOD",
+      `repo as shipped wrongly flagged:\n      ${good.violations.map((v) => `[${v.check}] ${v.message}`).join("\n      ")}`,
+    );
   }
-  const inventory = Object.fromEntries(good.lanes.map((l) => [l.workflow, l.globs.length]));
+  const inventory = Object.fromEntries(
+    good.lanes.map((l) => [l.workflow, l.globs.length]),
+  );
   // [TEST-MOD-APPROVED #2489] The pinned lane inventory below moved: the
   // private-event lane went from FOUR skips to SIX, and the visibility lane from
   // ONE to TWO. Two legitimate skips were added, neither a workaround:
@@ -885,24 +999,51 @@ function selfTest() {
   // bodies over brand_discounts, which #1931 omits. Counts: 34/28 -> 35/28.
   // [TEST-MOD-APPROVED #4073] Discover V2 re-emits public readers that retain
   // helpers omitted by both filtered lanes. Counts: 35/28 -> 36/29.
+  // [TEST-MOD-APPROVED #4063] Claim-link/contact message payloads read the
+  // canonical claim tables added after the private-event replay boundary, so
+  // that lane gains the exact #4063 migration skip. Counts: 36/29 -> 37/29.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    "issue-1931-private-event-access.yml": 36,
+    "issue-1931-private-event-access.yml": 37,
     "issue-2117-offering-visibility-gate-tests.yml": 29,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
-    record("GOOD", `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`);
+    record(
+      "GOOD",
+      `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`,
+    );
   }
 
   // M-1 (C-1) — the exact regression: drop the #2462 skip branch.
   {
     const tree = copy(real);
-    if (mutate("M-1", tree, PINNED_LANE, /^.*20270522002462_issue_2462_checkout_determinism\.sql\) continue ;;\n/m, "")) {
+    if (
+      mutate(
+        "M-1",
+        tree,
+        PINNED_LANE,
+        /^.*20270522002462_issue_2462_checkout_determinism\.sql\) continue ;;\n/m,
+        "",
+      )
+    ) {
       const out = analyseTrees(tree);
-      if (!fired(out, "C-1")) record("M-1", "C-1 did NOT fire when the #2462 skip branch was removed");
-      else if (!out.violations.some((v) => v.check === "C-1" && v.message.includes("issue_1931_event_ordinary_read_blocked"))) {
-        record("M-1", "C-1 fired but never named the missing #1931 guard function");
+      if (!fired(out, "C-1"))
+        record(
+          "M-1",
+          "C-1 did NOT fire when the #2462 skip branch was removed",
+        );
+      else if (
+        !out.violations.some(
+          (v) =>
+            v.check === "C-1" &&
+            v.message.includes("issue_1931_event_ordinary_read_blocked"),
+        )
+      ) {
+        record(
+          "M-1",
+          "C-1 fired but never named the missing #1931 guard function",
+        );
       }
     }
   }
@@ -910,16 +1051,37 @@ function selfTest() {
   // M-2 (C-2) — a skip glob that matches nothing.
   {
     const tree = copy(real);
-    if (mutate("M-2", tree, PINNED_LANE, "*_issue_1931_*) continue ;;", "*_issue_1931_*) continue ;;\n              *_issue_0000_never_existed_*) continue ;;")) {
-      if (!fired(analyseTrees(tree), "C-2")) record("M-2", "C-2 did NOT fire on a skip glob matching zero files");
+    if (
+      mutate(
+        "M-2",
+        tree,
+        PINNED_LANE,
+        "*_issue_1931_*) continue ;;",
+        "*_issue_1931_*) continue ;;\n              *_issue_0000_never_existed_*) continue ;;",
+      )
+    ) {
+      if (!fired(analyseTrees(tree), "C-2"))
+        record("M-2", "C-2 did NOT fire on a skip glob matching zero files");
     }
   }
 
   // M-3 (C-3) — a pinned skip branch deleted.
   {
     const tree = copy(real);
-    if (mutate("M-3", tree, PINNED_LANE, /^.*\*_issue_2160_\*\) continue ;;\n/m, "")) {
-      if (!fired(analyseTrees(tree), "C-3")) record("M-3", "C-3 did NOT fire when the *_issue_2160_* branch was deleted");
+    if (
+      mutate(
+        "M-3",
+        tree,
+        PINNED_LANE,
+        /^.*\*_issue_2160_\*\) continue ;;\n/m,
+        "",
+      )
+    ) {
+      if (!fired(analyseTrees(tree), "C-3"))
+        record(
+          "M-3",
+          "C-3 did NOT fire when the *_issue_2160_* branch was deleted",
+        );
     }
   }
 
@@ -927,7 +1089,11 @@ function selfTest() {
   {
     const tree = copy(real);
     if (mutate("M-4", tree, PINNED_LANE, /^(\s*)esac\n/m, "")) {
-      if (!fired(analyseTrees(tree), "C-4a")) record("M-4", "C-4a did NOT fire on a case that is never closed by esac");
+      if (!fired(analyseTrees(tree), "C-4a"))
+        record(
+          "M-4",
+          "C-4a did NOT fire on a case that is never closed by esac",
+        );
     }
   }
 
@@ -935,16 +1101,45 @@ function selfTest() {
   {
     const tree = copy(real);
     const ok =
-      mutate("M-5", tree, PINNED_LANE, 'case "$f" in', 'case "$(basename "$f")" in') &&
-      mutate("M-5", tree, PINNED_LANE, "*20270522002462_issue_2462_checkout_determinism.sql)", "20270522002462_issue_2462_checkout_determinism.sql)");
+      mutate(
+        "M-5",
+        tree,
+        PINNED_LANE,
+        'case "$f" in',
+        'case "$(basename "$f")" in',
+      ) &&
+      mutate(
+        "M-5",
+        tree,
+        PINNED_LANE,
+        "*20270522002462_issue_2462_checkout_determinism.sql)",
+        "20270522002462_issue_2462_checkout_determinism.sql)",
+      );
     if (ok) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (!lane) record("M-5", "the #1931 lane VANISHED when rewritten to the basename nested-quote form (R-2)");
-      else if (lane.subjectKind !== "basename") record("M-5", `subject read as "${lane.subjectKind}", expected "basename"`);
-      else if (lane.globs.length !== 36) record("M-5", `${lane.globs.length} globs extracted, expected 36`);
-      else if (out.lanes.length !== 4) record("M-5", `inventory collapsed to ${out.lanes.length} lanes, expected 4`);
-      else if (out.violations.length) record("M-5", `clean tree flagged after a semantics-preserving rewrite: ${out.violations.map((v) => v.check).join(",")}`);
+      if (!lane)
+        record(
+          "M-5",
+          "the #1931 lane VANISHED when rewritten to the basename nested-quote form (R-2)",
+        );
+      else if (lane.subjectKind !== "basename")
+        record(
+          "M-5",
+          `subject read as "${lane.subjectKind}", expected "basename"`,
+        );
+      else if (lane.globs.length !== 37)
+        record("M-5", `${lane.globs.length} globs extracted, expected 37`);
+      else if (out.lanes.length !== 4)
+        record(
+          "M-5",
+          `inventory collapsed to ${out.lanes.length} lanes, expected 4`,
+        );
+      else if (out.violations.length)
+        record(
+          "M-5",
+          `clean tree flagged after a semantics-preserving rewrite: ${out.violations.map((v) => v.check).join(",")}`,
+        );
     }
   }
 
@@ -959,19 +1154,36 @@ function selfTest() {
       "*_issue_2160_*|*_issue_2333_discover_online_carveout*|*20270522002462_issue_2462_checkout_determinism.sql) continue ;;",
     );
     if (ok) {
-      const lane = analyseTrees(tree).lanes.find((l) => l.workflow === PINNED_LANE);
+      const lane = analyseTrees(tree).lanes.find(
+        (l) => l.workflow === PINNED_LANE,
+      );
       if (!lane) record("M-6", "lane vanished");
-      else if (lane.globs.length !== 38) record("M-6", `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 38`);
+      else if (lane.globs.length !== 39)
+        record(
+          "M-6",
+          `alternation under-read: ${lane.globs.length} globs from ${lane.branchCount} branches, expected 39`,
+        );
     }
   }
 
   // M-7 (R-4) — a glob evaluated against the wrong subject.
   {
     const tree = copy(real);
-    if (mutate("M-7", tree, "issue-1644-storage-guardrail-collage-fill-tests.yml", 'case "$(basename "$migration")" in', 'case "$migration" in')) {
+    if (
+      mutate(
+        "M-7",
+        tree,
+        "issue-1644-storage-guardrail-collage-fill-tests.yml",
+        'case "$(basename "$migration")" in',
+        'case "$migration" in',
+      )
+    ) {
       const out = analyseTrees(tree);
       if (!fired(out, "C-2")) {
-        record("M-7", "C-2 did NOT fire when a basename glob was evaluated against a full path — subject-correct matching is not load-bearing");
+        record(
+          "M-7",
+          "C-2 did NOT fire when a basename glob was evaluated against a full path — subject-correct matching is not load-bearing",
+        );
       }
     }
   }
@@ -982,13 +1194,17 @@ function selfTest() {
     const src = tree.workflows[PINNED_LANE];
     const caseStart = src.indexOf('case "$f" in');
     const esacEnd = src.indexOf("esac", caseStart);
-    if (caseStart === -1 || esacEnd === -1) record("M-8", "could not locate the case block to replace");
+    if (caseStart === -1 || esacEnd === -1)
+      record("M-8", "could not locate the case block to replace");
     else {
       tree.workflows[PINNED_LANE] =
         `${src.slice(0, caseStart)}[ -n "\${SKIP_ME:-}" ] && continue${src.slice(esacEnd + "esac".length)}`;
       const out = analyseTrees(tree);
       if (!fired(out, "C-4b")) {
-        record("M-8", "C-4b did NOT fire on a lane whose loop continues but yields zero globs — an unread lane was silently treated as unfiltered");
+        record(
+          "M-8",
+          "C-4b did NOT fire on a lane whose loop continues but yields zero globs — an unread lane was silently treated as unfiltered",
+        );
       }
     }
   }
@@ -999,14 +1215,32 @@ function selfTest() {
   // only the census catches it. This is the mutant that makes C-4(c) real.
   {
     const tree = copy(real);
-    if (mutate("M-9", tree, PINNED_LANE, "            esac", "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac")) {
+    if (
+      mutate(
+        "M-9",
+        tree,
+        PINNED_LANE,
+        "            esac",
+        "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac",
+      )
+    ) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 36) record("M-9", `expected the 3-line branch to stay unread (branchCount 36), got ${lane.branchCount}`);
+      if (lane.branchCount !== 37)
+        record(
+          "M-9",
+          `expected the 3-line branch to stay unread (branchCount 37), got ${lane.branchCount}`,
+        );
       else if (!fired(out, "C-4c")) {
-        record("M-9", "C-4c did NOT fire on a lane whose case region holds a branch the parser cannot read — under-counting is invisible");
+        record(
+          "M-9",
+          "C-4c did NOT fire on a lane whose case region holds a branch the parser cannot read — under-counting is invisible",
+        );
       } else if (fired(out, "C-4b")) {
-        record("M-9", "C-4b fired, which would mean this mutant is not exercising the gap C-4c exists for");
+        record(
+          "M-9",
+          "C-4b fired, which would mean this mutant is not exercising the gap C-4c exists for",
+        );
       }
     }
   }
@@ -1015,12 +1249,29 @@ function selfTest() {
   // The glob names a real migration so C-2 cannot fire for an unrelated reason.
   {
     const tree = copy(real);
-    if (mutate("M-10", tree, PINNED_LANE, "            esac", "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac")) {
+    if (
+      mutate(
+        "M-10",
+        tree,
+        PINNED_LANE,
+        "            esac",
+        "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac",
+      )
+    ) {
       const out = analyseTrees(tree);
       const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
-      if (lane.branchCount !== 37) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 37 (R-5)`);
-      else if (lane.globs.length !== 37) record("M-10", `${lane.globs.length} globs, expected 37`);
-      else if (out.violations.length) record("M-10", `a readable two-line branch flagged: ${out.violations.map((v) => v.check).join(",")}`);
+      if (lane.branchCount !== 38)
+        record(
+          "M-10",
+          `two-line branch form not read: branchCount ${lane.branchCount}, expected 38 (R-5)`,
+        );
+      else if (lane.globs.length !== 38)
+        record("M-10", `${lane.globs.length} globs, expected 38`);
+      else if (out.violations.length)
+        record(
+          "M-10",
+          `a readable two-line branch flagged: ${out.violations.map((v) => v.check).join(",")}`,
+        );
     }
   }
 
@@ -1028,7 +1279,9 @@ function selfTest() {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 36/1/3/29 lane inventory, 10 mutants M-1…M-10 all behaving).");
+  console.log(
+    "#2492 self-test PASS (1 good tree with the 37/1/3/29 lane inventory, 10 mutants M-1…M-10 all behaving).",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1049,14 +1302,20 @@ function liveRun(argv) {
     );
     process.exit(1);
   }
-  const inventory = lanes.map((l) => `${l.workflow} (${l.globs.length} glob${l.globs.length === 1 ? "" : "s"}, ${l.skipped.length} file${l.skipped.length === 1 ? "" : "s"} skipped)`);
+  const inventory = lanes.map(
+    (l) =>
+      `${l.workflow} (${l.globs.length} glob${l.globs.length === 1 ? "" : "s"}, ${l.skipped.length} file${l.skipped.length === 1 ? "" : "s"} skipped)`,
+  );
   console.log(
     `#2492 OK — ${lanes.length} filtered migration-replay lane(s), each closed under its own skip list:\n  - ` +
       inventory.join("\n  - "),
   );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   if (process.argv.includes("--self-test")) selfTest();
   else liveRun(process.argv.slice(2));
 }

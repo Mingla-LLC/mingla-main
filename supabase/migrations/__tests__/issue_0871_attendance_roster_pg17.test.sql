@@ -568,6 +568,15 @@ BEGIN
     pg_temp.issue871_uuid('privacy-tier'),pg_temp.issue871_uuid('privacy-event'),
     'privacy-qr-claim','valid','auto'
   );
+  -- #4063 requires an ownership proof before an order may be attached to an
+  -- account. Model the verified email that makes this legacy claim legitimate.
+  INSERT INTO auth.identities(id,user_id,provider,identity_data)
+  VALUES (
+    pg_temp.issue871_uuid('privacy-optin-email'),
+    pg_temp.issue871_uuid('privacy-optin'),
+    'email',
+    jsonb_build_object('email','claim@example.test','email_verified',true)
+  );
   PERFORM set_config('session_replication_role','origin',true);
   -- JWT as the opted-in buyer (claimant), so inherit runs under a real uid.
   PERFORM set_config('request.jwt.claim.sub',pg_temp.issue871_uuid('privacy-optin')::text,false);

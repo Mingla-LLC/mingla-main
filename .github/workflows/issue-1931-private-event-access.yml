@@ -437,6 +437,12 @@ jobs:
               # replay covers the migration in true filename order.
               # Matched by EXACT filename, never an issue-number infix.
               *20271218004073_issue_4073_discover_feed_v2.sql) continue ;;
+              # #4063 claim links/contacts — SKIPPED because it reads checkout
+              # consumed_at state introduced only by migrations this deliberately
+              # filtered pre-#1931 chain omits. The unfiltered canonical replay
+              # covers it in true filename order.
+              # Matched by EXACT filename, never an issue-number infix.
+              *20271218034063_issue_4063_claim_links_and_contacts.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

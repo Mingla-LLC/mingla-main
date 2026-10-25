@@ -47,8 +47,9 @@
 
 import React from "react";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 type Renderer = {
   root: {
@@ -139,7 +140,9 @@ jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {
     expoConfig: {
-      extra: { EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com" },
+      extra: {
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
+      },
     },
   },
 }));
@@ -153,7 +156,12 @@ jest.mock("react-native-safe-area-context", () => ({
 }));
 jest.mock(
   "react-native-svg",
-  () => ({ __esModule: true, default: () => null, Path: () => null, Circle: () => null }),
+  () => ({
+    __esModule: true,
+    default: () => null,
+    Path: () => null,
+    Circle: () => null,
+  }),
   { virtual: true },
 );
 jest.mock("../../../../src/services/supabase", () => ({
@@ -180,7 +188,9 @@ jest.mock("../../../../src/analytics/webAnalytics", () => ({
   postAttributionConversion: jest.fn(),
   getStoredClickAttribution: () => ({ clickId: null }),
 }));
-jest.mock("../../../../src/analytics/phMask", () => ({ phMaskProps: () => ({}) }));
+jest.mock("../../../../src/analytics/phMask", () => ({
+  phMaskProps: () => ({}),
+}));
 jest.mock("../../../../src/components/ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../../src/components/ui/GlassCard", () => {
   const { View } = require("react-native");
@@ -202,6 +212,7 @@ jest.mock("../../../../src/components/checkout/TicketQrCarousel", () => ({
   TicketQrCarousel: () => null,
 }));
 jest.mock("../../../../src/components/checkout/DownloadMinglaCta", () => ({
+  BuyerClaimCard: () => null,
   DownloadMinglaCta: () => null,
 }));
 jest.mock("../../../../src/components/checkout/AttendanceClaimAppIcon", () => ({
@@ -234,6 +245,8 @@ interface Seed {
   eventDateIds?: readonly string[];
   eventDateId?: string | null;
   quantity?: number;
+  /** [TEST-MOD-APPROVED #4063] Canonical date line returned by the server. */
+  receiptDateLine?: string | null;
 }
 
 function CartSeeder({ seed }: { seed: Seed }): null {
@@ -264,6 +277,17 @@ function CartSeeder({ seed }: { seed: Seed }): null {
       currency: "NGN",
       paymentStatus: "paid",
       notificationStatus: "queued",
+      receipt: {
+        lines: [
+          { qty: seed.quantity ?? 3, name: "Free Entry", amountCents: 0 },
+        ],
+        discountLines: [],
+        feesAndTaxCents: 0,
+        paidCents: 0,
+        currency: "NGN",
+        dateLine: seed.receiptDateLine ?? null,
+        orderRef: "B19A9609",
+      },
       tickets: [],
     });
   }, [seed, setLineQuantity, setEventDateIds, setEventDateId, recordResult]);
@@ -275,7 +299,8 @@ const summaryDateLine = (tree: Renderer): string => {
   const nodes = tree.root.findAllByProps({
     testID: "issue-2338-summary-date-line",
   });
-  if (nodes.length === 0) throw new Error("order summary date line not rendered");
+  if (nodes.length === 0)
+    throw new Error("order summary date line not rendered");
   const children = nodes[nodes.length - 1].props.children;
   return Array.isArray(children) ? children.join("") : String(children);
 };
@@ -312,14 +337,21 @@ describe("issue #2338 — the confirmation screen's order summary", () => {
     invoke.mockReset();
     router.replace.mockReset();
     setLocationSearch("");
-    publicEventData = { event: TWO_DAY_EVENT, brand: null, occurrences: [DAY_29, DAY_30] };
+    publicEventData = {
+      event: TWO_DAY_EVENT,
+      brand: null,
+      occurrences: [DAY_29, DAY_30],
+    };
   });
   afterEach(() => {
     jest.useRealTimers();
   });
 
   test("S-1 the founder's two-day free order names BOTH days", async () => {
-    const tree = await mount({ eventDateIds: [DAY_29.id, DAY_30.id] });
+    const tree = await mount({
+      eventDateIds: [DAY_29.id, DAY_30.id],
+      receiptDateLine: "Sat 29 Aug + Sun 30 Aug",
+    });
     expect(summaryDateLine(tree)).toBe("Sat 29 Aug + Sun 30 Aug");
     expect(summaryDateLine(tree)).not.toBe("Date TBD");
     await act(async () => tree.unmount());
@@ -331,14 +363,20 @@ describe("issue #2338 — the confirmation screen's order summary", () => {
     // string were a literal, or derived from anything other than the payload
     // this screen is handed, this case would still say "Sat 29 Aug + Sun 30 Aug".
     publicEventData = { event: TWO_DAY_EVENT, brand: null, occurrences: [] };
-    const tree = await mount({ eventDateIds: [DAY_29.id, DAY_30.id] });
+    const tree = await mount({
+      eventDateIds: [DAY_29.id, DAY_30.id],
+      receiptDateLine: "Date TBD",
+    });
     expect(summaryDateLine(tree)).toBe("Date TBD");
     expect(summaryDateLine(tree)).not.toContain("29 Aug");
     await act(async () => tree.unmount());
   });
 
   test("S-3 LOAD-BEARING: withhold the CHOSEN SET and the guest's days are not claimed", async () => {
-    const tree = await mount({ eventDateIds: [] });
+    const tree = await mount({
+      eventDateIds: [],
+      receiptDateLine: "Sat 29 Aug · 11:00 AM – 6:00 PM",
+    });
     // The event's own first day — the same line the public page shows — never
     // the two-day string, because nothing on this screen knows what was bought.
     const line = summaryDateLine(tree);
@@ -353,7 +391,10 @@ describe("issue #2338 — the confirmation screen's order summary", () => {
       brand: null,
       occurrences: [],
     };
-    const tree = await mount({ eventDateIds: [] });
+    const tree = await mount({
+      eventDateIds: [],
+      receiptDateLine: formatDraftDateLine(SINGLE_DATE_EVENT as never),
+    });
     // `formatDraftDateLine(event)` is LITERALLY the expression the screen
     // evaluated before #2338. Equality with it is the byte-identity proof.
     expect(summaryDateLine(tree)).toBe(
@@ -369,7 +410,10 @@ describe("issue #2338 — the confirmation screen's order summary", () => {
       brand: null,
       occurrences: [DAY_29],
     };
-    const tree = await mount({ eventDateIds: [] });
+    const tree = await mount({
+      eventDateIds: [],
+      receiptDateLine: formatDraftDateLine(SINGLE_DATE_EVENT as never),
+    });
     expect(summaryDateLine(tree)).toBe(
       formatDraftDateLine(SINGLE_DATE_EVENT as never),
     );
@@ -378,13 +422,16 @@ describe("issue #2338 — the confirmation screen's order summary", () => {
 
   test("S-5 HONEST DEGRADE: a multi-date event with no materialised day still says 'Date TBD'", async () => {
     publicEventData = { event: TWO_DAY_EVENT, brand: null, occurrences: [] };
-    const tree = await mount({ eventDateIds: [] });
+    const tree = await mount({ eventDateIds: [], receiptDateLine: "Date TBD" });
     expect(summaryDateLine(tree)).toBe("Date TBD");
     await act(async () => tree.unmount());
   });
 
   test("S-6 the legacy #2135 single eventDateId still names its one day", async () => {
-    const tree = await mount({ eventDateId: DAY_30.id });
+    const tree = await mount({
+      eventDateId: DAY_30.id,
+      receiptDateLine: "Sun 30 Aug",
+    });
     expect(summaryDateLine(tree)).toBe("Sun 30 Aug");
     await act(async () => tree.unmount());
   });
@@ -435,6 +482,15 @@ describe("issue #2338 — the confirmation screen's order summary", () => {
           taxAmountCents: 0,
           tickets: [],
           notificationStatus: "queued",
+          receipt: {
+            lines: [{ qty: 2, name: "General", amountCents: 1000000 }],
+            discountLines: [],
+            feesAndTaxCents: 0,
+            paidCents: 1000000,
+            currency: "NGN",
+            dateLine: "Sat 29 Aug + Sun 30 Aug",
+            orderRef: "B19A9609",
+          },
         },
       },
       error: null,
@@ -443,6 +499,7 @@ describe("issue #2338 — the confirmation screen's order summary", () => {
     const tree = await mount(null);
     expect(summaryDateLine(tree)).toBe("Sat 29 Aug + Sun 30 Aug");
     await act(async () => tree.unmount());
-    delete (globalThis as unknown as { sessionStorage?: unknown }).sessionStorage;
+    delete (globalThis as unknown as { sessionStorage?: unknown })
+      .sessionStorage;
   });
 });

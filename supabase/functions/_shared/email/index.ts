@@ -5,6 +5,8 @@
 import { renderShell } from "./shell.ts";
 import { renderTicketBody } from "./ticketBody.ts";
 import { renderGenericBody } from "./genericBody.ts";
+import { renderPurchaseBody } from "./purchaseBody.ts";
+import type { PurchaseBodyInput } from "./purchaseBody.ts";
 import { ticketFollowFooterHtml } from "./ticketFollow.ts";
 import {
   assertNotResendSandbox,
@@ -31,6 +33,7 @@ function resolveSender(variant: EmailVariant): SenderIdentity {
     case "ticket_confirmation_paid":
     case "ticket_confirmation_free":
     case "ticket_confirmation_pending":
+    case "purchase_message":
       return EMAIL_SENDERS.tickets;
     case "admin_compose":
       return EMAIL_SENDERS.admin;
@@ -81,6 +84,14 @@ export function renderTransactionalEmail(input: RenderInput): RenderResult {
         input.body as TicketBodyInput,
         input.appCtaClaimUrl,
       );
+      bodyHtml = rendered.html;
+      text = rendered.text;
+      subject = rendered.subject;
+      preheader = rendered.preheader;
+      break;
+    }
+    case "purchase_message": {
+      const rendered = renderPurchaseBody(input.body as PurchaseBodyInput);
       bodyHtml = rendered.html;
       text = rendered.text;
       subject = rendered.subject;
@@ -142,6 +153,7 @@ export {
 export type {
   EmailVariant,
   GenericBodyInput,
+  PurchaseBodyInput,
   RenderInput,
   RenderResult,
   SenderIdentity,

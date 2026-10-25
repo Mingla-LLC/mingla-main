@@ -24,6 +24,7 @@ const paths = {
   door: "mingla-business/src/components/scanners/ScannerHome.tsx",
   console: "mingla-business/src/components/rsvp/RsvpGuestConsole.tsx",
   recoveryRoute: "mingla-business/app/rsvp/pass.tsx",
+  staticClaim: "mingla-business/src/components/checkout/StaticBuyerClaimPage.tsx",
   happy: "supabase/migrations/__tests__/issue_1447_rsvp_admission.test.ts",
   workflow: ".github/workflows/issue-1447-rsvp-admission-tests.yml",
 };
@@ -93,15 +94,21 @@ export function violations(files) {
     "provisionPassEntities",
     "const passEligible",
     "passEligible && typeof result.rsvpId",
-    "userId === null && passEligible",
-    'confirmationToken: passEligible ? result.confirmationToken ?? null : null',
+    "confirmationToken: userId !== null && passEligible",
+    "credentials: userId !== null && passEligible",
+    "anonymousRecovery: []",
+    'const claim = passEligible && typeof result.rsvpId === "string"',
+    'shortUrl: claim?.url ?? null',
     'guestEmail = verifiedUserEmail || p.email?.trim() || guestEmail || ""',
-    'result.status === "going" && result.approvalStatus === "approved"',
+    'result.status === "going" &&\n    result.approvalStatus === "approved"',
     'entityType: entity.role',
     "pdfFetchRef: entity.entityId",
     'acknowledgement: result.approvalStatus === "pending"',
   ]) need(submit, token, "status-safe submit response", failures);
   forbid(submit, "guestEmail = guestEmail || verifiedUserEmail", "verified email authority", failures);
+  forbid(submit, "userId === null && passEligible", "anonymous RSVP credential disclosure", failures);
+  forbid(submit, 'confirmationToken: passEligible ? result.confirmationToken', "anonymous RSVP credential disclosure", failures);
+  forbid(submit, "credentials: passEligible", "anonymous RSVP credential disclosure", failures);
 
   const notify = files.notify ?? "";
   for (const token of [
@@ -119,15 +126,18 @@ export function violations(files) {
     need(files.scanEdge ?? "", token, "authenticated scan edge", failures);
   for (const token of [
     '"Referrer-Policy": "no-referrer"',
-    "constantTimeHexEqual",
     'entityType !== "primary" && entityType !== "guest"',
-    'error: "not_owner_or_bad_recovery_token"',
+    "authenticatedEntityOwner",
+    "authenticatedPartyOwner",
+    'error: "sign_in_required"',
     'error: "not_pass_eligible"',
     "buildRsvpPassPdf",
     '"Content-Type": "application/pdf"',
     '"application/json"',
     "new Response(bytes",
-  ]) need(files.passEdge ?? "", token, "owner/recovery-gated PDF", failures);
+  ]) need(files.passEdge ?? "", token, "authenticated-owner PDF", failures);
+  forbid(files.passEdge ?? "", "constantTimeHexEqual", "pointer-only RSVP recovery", failures);
+  forbid(files.passEdge ?? "", 'error: "not_owner_or_bad_recovery_token"', "pointer-only RSVP recovery", failures);
 
   for (const token of [
     'testID="issue-1447-rsvp-pass-block"',
@@ -175,13 +185,18 @@ export function violations(files) {
   for (const token of ["Not checked in", "Checked in", "plusCheckedInCount"])
     need(files.console ?? "", token, "guest-console check-in truth/filters", failures);
   for (const token of [
-    "window.location.hash",
+    "StaticBuyerClaimPage",
+    'kind="pass"',
+    "scrubFragment",
+  ]) need(files.recoveryRoute ?? "", token, "pointer-only RSVP recovery route", failures);
+  for (const token of [
     'meta.content = "no-referrer"',
-    "fetchPublicRsvpPassMetadata",
-    "fetchPublicRsvpPassPdf",
-    "Try again",
-  ])
-    need(files.recoveryRoute ?? "", token, "fragment recovery page", failures);
+    "window.location.hash.length > 0",
+    "window.history.replaceState",
+    "resolveGuestFunnelTarget",
+  ]) need(files.staticClaim ?? "", token, "pointer-only RSVP claim page", failures);
+  forbid(files.recoveryRoute ?? "", "fetchPublicRsvpPassMetadata", "pointer-only RSVP recovery route", failures);
+  forbid(files.recoveryRoute ?? "", "fetchPublicRsvpPassPdf", "pointer-only RSVP recovery route", failures);
 
   for (const token of [
     "auto-approved anonymous primary plus two guests",
@@ -211,7 +226,8 @@ function selfTest() {
   const reversions = [
     ["migration", "qr_code=p_qr_payload FOR UPDATE", "qr_code=p_qr_payload", "FOR UPDATE"],
     ["migration", "SET checked_in_at=v_now, checked_in_by=v_actor", "SET checked_in_at=NULL, checked_in_by=NULL", "checked_in_at"],
-    ["submit", 'result.status === "going" && result.approvalStatus === "approved"', 'result.status === "going"', "approvalStatus"],
+    ["submit", 'result.status === "going" &&\n    result.approvalStatus === "approved"', 'result.status === "going"', "approvalStatus"],
+    ["submit", "credentials: userId !== null && passEligible", "credentials: passEligible", "anonymous RSVP credential disclosure"],
     ["submit", 'guestEmail = verifiedUserEmail || p.email?.trim() || guestEmail || ""', 'guestEmail = guestEmail || verifiedUserEmail || p.email?.trim() || ""', "verified email"],
     ["migration", "requested_event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE RESTRICT", "requested_event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE", "scan audit preservation"],
     ["migration", "pass_recovery_token_hash=NULL,pass_recovery_token_created_at=NULL", "pass_recovery_token_hash=NULL,pass_recovery_token_created_at=NULL,checked_in_at=NULL,checked_in_by=NULL", "check-in history"],
@@ -224,6 +240,9 @@ function selfTest() {
     ["calendar", 'testID="issue-1447-calendar-rsvp-share"', 'testID="issue-1447-calendar-rsvp-download-2"', "calendar-rsvp-share"],
     ["explorerRsvpService", 'Accept: "application/pdf"', 'Accept: "application/json"', "application/pdf"],
     ["publicRsvpService", 'headers: { Accept: "application/pdf" }', 'headers: { Accept: "application/json" }', "application/pdf"],
+    ["passEdge", 'error: "sign_in_required"', 'error: "not_owner_or_bad_recovery_token"', "sign_in_required"],
+    ["recoveryRoute", "scrubFragment", "fetchPublicRsvpPassMetadata", "scrubFragment"],
+    ["staticClaim", "window.history.replaceState", "window.location.assign", "replaceState"],
     ["ticketScanner", "scanTicket(event.id, scan.data)", "scanRsvp(event.id, scan.data)", "ticket scanner isolation"],
     ["workflow", "issue_1447_rsvp_admission.test.ts", "issue_1447_rsvp_admission.disabled.ts", "issue_1447_rsvp_admission.test.ts"],
   ];
@@ -245,5 +264,5 @@ if (process.argv.includes("--self-test")) {
     console.error(failures.join("\n"));
     process.exit(1);
   }
-  console.log("issue-1447 RSVP admission gate PASS (eligibility, scan, recovery, delivery, exact-shape UI, ticket isolation)");
+  console.log("issue-1447 RSVP admission gate PASS (eligibility, scan, pointer-only recovery, delivery, exact-shape UI, ticket isolation)");
 }

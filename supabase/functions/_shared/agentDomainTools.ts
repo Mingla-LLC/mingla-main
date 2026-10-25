@@ -1482,7 +1482,7 @@ const createVenueReservation = writeTool(
     guest_phone_e164: {
       type: "string",
       pattern: E164_PATTERN,
-      description: "Strict E.164, e.g. +14155550123.",
+      description: "Guest's mobile (required, E.164), e.g. +14155550123.",
     },
     guest_email: { type: "string" },
     table_id: UUID,
@@ -1492,7 +1492,7 @@ const createVenueReservation = writeTool(
     // A manual booking starts in a non-terminal, sensible state only.
     status: { type: "string", enum: ["requested", "confirmed", "seated"] },
   },
-  ["brand_id", "venue_id", "reserved_for", "party_size"],
+  ["brand_id", "venue_id", "reserved_for", "party_size", "guest_phone_e164"],
   async (args, client, userId, context) => {
     requireAgentOperationId(context);
     requireBrand(args, client, userId);
@@ -1512,9 +1512,11 @@ const createVenueReservation = writeTool(
       throw new ToolError("INVALID_ARGS", "party_size must be 1-100");
     }
     if (
-      isString(args.guest_phone_e164) &&
-      !STRICT_E164_RE.test((args.guest_phone_e164 as string).trim())
+      !isString(args.guest_phone_e164) || args.guest_phone_e164.trim() === ""
     ) {
+      throw new ToolError("INVALID_ARGS", "guest_phone_e164 is required");
+    }
+    if (!STRICT_E164_RE.test((args.guest_phone_e164 as string).trim())) {
       throw new ToolError(
         "INVALID_ARGS",
         "guest_phone_e164 must be E.164 (e.g. +14155550123)",

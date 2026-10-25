@@ -1,4 +1,5 @@
 // Unlisted RSVP invite link — an approved guest of an UNLISTED RSVP gets the pass.
+// #4063 keeps this eligibility proof while replacing the public pass with app claim.
 //
 // fails-on-revert: put `event.visibility === "public"` back (drop "hidden" from
 // RSVP_PASS_VISIBILITIES) and P-02 reds; admit "private" and P-03 reds; unwire the
@@ -81,7 +82,9 @@ Deno.test("P-04 everything else is unchanged: deleted, deleted brand, not RSVP, 
   }
 });
 
-Deno.test("P-06 the pass asks the helper; the #871 attendance link keeps its own public-only gate", async () => {
+// [TEST-MOD-APPROVED #4063] Visibility is no longer an ownership predicate;
+// the existing pass eligibility boundary remains unchanged.
+Deno.test("P-06 the pass owns send eligibility while attendance ignores visibility", async () => {
   const worker = await Deno.readTextFile(
     new URL("../index.ts", import.meta.url),
   );
@@ -102,7 +105,9 @@ Deno.test("P-06 the pass asks the helper; the #871 attendance link keeps its own
   );
   const pass = body("async function passStillEligible(");
   assert(
-    pass.includes("if (!rsvpPassEventEligible(event, brand?.deleted_at)) return null;"),
+    pass.includes(
+      "if (!rsvpPassEventEligible(event, brand?.deleted_at)) return null;",
+    ),
     "passStillEligible must delegate the pass decision to rsvpPassEventEligible",
   );
   assert(
@@ -110,32 +115,25 @@ Deno.test("P-06 the pass asks the helper; the #871 attendance link keeps its own
     "the pass decision itself must not be public-only",
   );
   assert(
-    pass.includes(
-      "return { attendanceClaim: attendanceClaimStillEligible(event, brand) };",
-    ),
+    /return\s*{[\s\S]*attendanceClaim:\s*attendanceClaimStillEligible\(event, brand\)[\s\S]*}/
+      .test(pass),
     "the attendance link decision must be made separately, on the same event row",
   );
-  // #871: the attendance link is redeemable only through
-  // claim_attendance_internal_v2, which admits public events only. Widening the
-  // pass must not widen it. (Behaviour: unlisted_rsvp_pass_delivery.runtime R-01.)
   const attendance = body("function attendanceClaimStillEligible(");
   assert(
-    attendance.includes('event.visibility === "public"') &&
-      !attendance.includes("rsvpPassEventEligible") &&
-      !attendance.includes('"hidden"'),
-    "the attendance link gate must stay exactly public-only",
+    !attendance.includes("event.visibility") &&
+      !attendance.includes("rsvpPassEventEligible"),
+    "the attendance claim decision must not read discovery visibility",
   );
   const link = body("async function recoveryLinkFor(");
   assert(
-    link.includes(
-      'if (table === "event_rsvps" && current?.event_id && attendanceClaimAllowed) {',
-    ),
+    /if\s*\(\s*table === "event_rsvps"\s*&&\s*current\?\.event_id\s*&&\s*attendanceClaimAllowed\s*\)/
+      .test(link),
     "the attendance URL must only be built when that gate allows it",
   );
   assert(
-    worker.includes(
-      "? await recoveryLinkFor(admin, p, pass?.attendanceClaim === true)",
-    ),
+    /\?\s*await recoveryLinkFor\(admin, p, pass\?\.attendanceClaim === true\)/
+      .test(worker),
     "the worker must pass the attendance decision, not a constant",
   );
 });

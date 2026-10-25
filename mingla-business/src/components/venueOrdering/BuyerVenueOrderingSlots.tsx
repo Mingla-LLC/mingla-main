@@ -422,7 +422,7 @@ export const BuyerVenueOrderStatusView: React.FC<{
     palette={palette}
     surface={surface}
     live={live}
-    buyerName=""
+    buyerName={live.buyerName}
     actionPending={actionPending}
     actionError={actionError}
     onCancel={onCancel}

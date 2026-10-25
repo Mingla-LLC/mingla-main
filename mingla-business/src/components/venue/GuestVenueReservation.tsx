@@ -7,7 +7,6 @@ import {
 import {
   ActivityIndicator,
   Linking,
-  Platform,
   Pressable,
   StyleSheet,
   Switch,
@@ -37,6 +36,7 @@ import {
   spacing,
   typography,
 } from "../../constants/designSystem";
+import { BUYER_CLAIM_COPY } from "../../constants/buyerClaimCopy";
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
 import {
   createGuestVenueReservation,
@@ -44,7 +44,6 @@ import {
   previewGuestVenueReservation,
   type GuestReservationPreview,
 } from "../../services/venueGuestReservationService";
-import { guestReservationManagePath } from "../../utils/guestReservationManage";
 import { guestReservationFailureCopy } from "./venueGuestReservationErrorCopy";
 import {
   captureVenueOrganicEvent,
@@ -57,6 +56,8 @@ import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
+import { BuyerClaimCard } from "../checkout/DownloadMinglaCta";
+import { mintClaimLinkHandoff } from "../../services/claimLinkService";
 
 const DiscountReasonText = React.lazy(() =>
   import("@mingla/offering-rendering/DiscountReasonText").then((module) => ({
@@ -238,9 +239,12 @@ function GuestVenueReservationBody({
   const [discountCode, setDiscountCode] = useState<string | null>(null);
   const [reviewQuote, setReviewQuote] =
     useState<GuestReservationPreview | null>(null);
-  const [completedId, setCompletedId] = useState<string | null>(null);
-  // #3392 — the free booking's private manage/cancel credential (web only).
-  const [manageToken, setManageToken] = useState<string | null>(null);
+  const [completed, setCompleted] = useState<{
+    email: string | null;
+    phoneLast4: string | null;
+    shortUrl: string | null;
+    code: string | null;
+  } | null>(null);
 
   const availability = usePublicVenueAvailability(venueId, date, partySize);
   const slots = availability.data ?? [];
@@ -410,11 +414,7 @@ function GuestVenueReservationBody({
     }
     if (nameInvalid) setNameTouched(true);
     if (emailInvalid) setEmailTouched(true);
-    if (
-      selectedUtc === null ||
-      contactInvalid ||
-      normalizedPhone === null
-    ) {
+    if (selectedUtc === null || contactInvalid || normalizedPhone === null) {
       setPhoneTouched(true);
       setError(normalizedPhone === null ? phoneErrorCopy : null);
       return;
@@ -464,8 +464,12 @@ function GuestVenueReservationBody({
         quoteDigest: checkoutPreview.quoteDigest,
       });
       if (result.kind === "free_completed") {
-        setManageToken(result.guestCancelToken ?? null);
-        setCompletedId(result.reservationId);
+        setCompleted({
+          email: result.buyerContact?.email ?? null,
+          phoneLast4: result.buyerContact?.phoneLast4 ?? null,
+          shortUrl: result.claim?.shortUrl ?? null,
+          code: result.claim?.code ?? null,
+        });
         captureWeb("venue_reservation_completed", {
           surface: analyticsSurface,
           brand_id: brandId,
@@ -508,7 +512,9 @@ function GuestVenueReservationBody({
       } else {
         // #3387 — a refusal the guest can act on gets its own sentence.
         // prettier-ignore -- #3393 source contract audits this exact refusal owner.
-        setError(guestReservationFailureCopy(errorCode) ?? RESERVATION_FAILURE_COPY);
+        setError(
+          guestReservationFailureCopy(errorCode) ?? RESERVATION_FAILURE_COPY,
+        );
       }
       captureWeb("venue_reservation_failed", {
         surface: analyticsSurface,
@@ -521,37 +527,31 @@ function GuestVenueReservationBody({
     }
   };
 
-  if (completedId !== null) {
+  if (completed !== null) {
+    const claimCode = completed.code;
     return (
       <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
         <Text style={[styles.title, { color: palette.primaryText }]}>
-          Your table is reserved
+          {BUYER_CLAIM_COPY.venue.title}
         </Text>
-        <Text style={[styles.body, { color: palette.secondaryText }]}>
-          Confirmation has been sent to your email.
-        </Text>
-        {Platform.OS === "web" && manageToken !== null ? (
-          // #3392 — free bookings get the same private manage/cancel page
-          // paid bookings reach from their confirm screen.
-          <Button
-            label="Manage or cancel"
-            variant="secondary"
-            size="md"
-            onPress={() => {
-              if (typeof window !== "undefined") {
-                window.location.assign(
-                  guestReservationManagePath({
-                    brandId,
-                    reservationId: completedId,
-                    token: manageToken,
-                  }),
-                );
-              }
-            }}
-            accessibilityLabel="Manage or cancel this reservation"
-            testID="guest-reservation-manage"
-          />
-        ) : null}
+        <BuyerClaimCard
+          kind="booking"
+          email={completed.email}
+          phoneLast4={completed.phoneLast4}
+          shortUrl={completed.shortUrl}
+          handoff={
+            claimCode === null
+              ? null
+              : { mint: () => mintClaimLinkHandoff(claimCode) }
+          }
+          textSent={completed.phoneLast4 !== null}
+          analyticsSurface="guest_venue_reservation"
+          fallbackEntity={{
+            entityType: "event",
+            brandSlug: brandId,
+            entitySlug: venueId,
+          }}
+        />
       </View>
     );
   }
@@ -822,6 +822,12 @@ function GuestVenueReservationBody({
               </Text>
             </Pressable>
           ) : null}
+          <Text
+            style={[styles.promise, { color: palette.secondaryText }]}
+            testID="venue-checkout-claim-promise"
+          >
+            {BUYER_CLAIM_COPY.checkoutPromise.booking}
+          </Text>
           <Input
             value={occasion}
             onChangeText={setOccasion}
@@ -1026,11 +1032,7 @@ function GuestVenueReservationBody({
             size="lg"
             fullWidth
             loading={submitting}
-            disabled={
-              submitting ||
-              contactInvalid ||
-              !availabilitySettled
-            }
+            disabled={submitting || contactInvalid || !availabilitySettled}
             onPress={() => void submit()}
           />
         </View>
@@ -1078,6 +1080,7 @@ const styles = StyleSheet.create({
   fieldError: { ...typography.bodySm, color: semantic.error },
   phoneSwitch: { alignSelf: "flex-start", paddingVertical: spacing.xs },
   phoneSwitchText: { ...typography.bodySm, fontWeight: "600" },
+  promise: { ...typography.bodySm, marginTop: spacing.xs },
   optIn: {
     flexDirection: "row",
     alignItems: "center",

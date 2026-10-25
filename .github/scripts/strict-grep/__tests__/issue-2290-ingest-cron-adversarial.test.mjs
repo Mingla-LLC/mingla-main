@@ -83,7 +83,9 @@ function migrationSql() {
 /** Offsets of every `cron.<verb>(` call and the first single-quoted argument. */
 function cronCalls(cleanSql) {
   const out = [];
-  for (const m of cleanSql.matchAll(/\bcron\.(schedule|unschedule)\s*\(\s*'([^']*)'/gi)) {
+  for (const m of cleanSql.matchAll(
+    /\bcron\.(schedule|unschedule)\s*\(\s*'([^']*)'/gi,
+  )) {
     out.push({ verb: m[1].toLowerCase(), name: m[2], at: m.index });
   }
   return out;
@@ -108,14 +110,23 @@ test("A-1 the unschedule and the schedule COMMIT together — no interposed COMM
 
   const begin = clean.search(/\bBEGIN\s*;/i);
   const commit = clean.search(/\bCOMMIT\s*;/i);
-  assert.ok(begin !== -1, "the migration must open an explicit transaction (BEGIN;)");
-  assert.ok(commit !== -1, "the migration must close its transaction (COMMIT;)");
+  assert.ok(
+    begin !== -1,
+    "the migration must open an explicit transaction (BEGIN;)",
+  );
+  assert.ok(
+    commit !== -1,
+    "the migration must close its transaction (COMMIT;)",
+  );
 
   const calls = cronCalls(clean);
   const unsched = calls.find((c) => c.verb === "unschedule" && c.name === JOB);
   const sched = calls.find((c) => c.verb === "schedule" && c.name === JOB);
   assert.ok(unsched, `must cron.unschedule('${JOB}') before rescheduling it`);
-  assert.ok(sched, `must cron.schedule('${JOB}') — anti-vacuity for this whole file`);
+  assert.ok(
+    sched,
+    `must cron.schedule('${JOB}') — anti-vacuity for this whole file`,
+  );
 
   // Both halves inside the SAME transaction.
   assert.ok(
@@ -142,7 +153,10 @@ test("A-2 every scheduled job name is unscheduled-if-exists first (whitespace-in
   const calls = cronCalls(clean);
 
   const scheduled = calls.filter((c) => c.verb === "schedule");
-  assert.ok(scheduled.length > 0, "anti-vacuity: the migration must schedule at least one job");
+  assert.ok(
+    scheduled.length > 0,
+    "anti-vacuity: the migration must schedule at least one job",
+  );
   assert.deepEqual(
     [...new Set(scheduled.map((c) => c.name))],
     [JOB],
@@ -181,7 +195,11 @@ test("A-3 replaying the migration twice yields exactly ONE job and ONE target", 
     1,
     "a second apply must not add a second job — that is exactly #2297's defect",
   );
-  assert.deepEqual(twice.jobs.get(JOB), [FN], `the one job must still post only to ${FN}`);
+  assert.deepEqual(
+    twice.jobs.get(JOB),
+    [FN],
+    `the one job must still post only to ${FN}`,
+  );
   assert.deepEqual([...twice.functions], [FN]);
 });
 
@@ -210,11 +228,16 @@ test("A-4 the guard credits an unreachable schedule, so #2290's must be top-leve
   // only form the model reads faithfully.
   const sql = migrationSql();
   const clean = stripSqlComments(sql);
-  const sched = cronCalls(clean).find((c) => c.verb === "schedule" && c.name === JOB);
+  const sched = cronCalls(clean).find(
+    (c) => c.verb === "schedule" && c.name === JOB,
+  );
   assert.ok(sched, `anti-vacuity: cron.schedule('${JOB}') must be present`);
 
   const raw = sql.indexOf(`cron.schedule(`);
-  assert.ok(raw !== -1, "anti-vacuity: the raw file must contain the schedule call");
+  assert.ok(
+    raw !== -1,
+    "anti-vacuity: the raw file must contain the schedule call",
+  );
   for (const [start, end] of doBlockSpans(sql)) {
     assert.ok(
       raw < start || raw > end,
@@ -246,9 +269,16 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // production while this gate stayed green.
   const dynamic = cronReachability([
     { file: "a.sql", sql: sched },
-    { file: "b.sql", sql: `SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = '${JOB}';` },
+    {
+      file: "b.sql",
+      sql: `SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = '${JOB}';`,
+    },
   ]);
-  assert.equal(dynamic.dynamicUnschedules, 1, "the dynamic unschedule must at least be COUNTED");
+  assert.equal(
+    dynamic.dynamicUnschedules,
+    1,
+    "the dynamic unschedule must at least be COUNTED",
+  );
   assert.equal(
     dynamic.functions.has(FN),
     true,
@@ -266,6 +296,8 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // [TEST-MOD-APPROVED #3697] The airtight ads release adds three guarded
   // unschedule-then-reschedule pairs: conversion retry, creative archival, and
   // audience sync (+3 → 13). Prove each pair before accepting the combined count.
+  // [TEST-MOD-APPROVED #4063] The buyer-message migration atomically removes
+  // and restores the existing reminder job (+1 → 14).
   const issue3697Pairs = [
     {
       file: "supabase/migrations/20271213023697_issue_3697_conversion_retry.sql",
@@ -281,11 +313,23 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
     },
   ];
   for (const { file, job } of issue3697Pairs) {
-    const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
-    const unschedule = sql.search(/cron\.unschedule\s*\(\s*[a-z_][a-z0-9_]*\s*\)/i);
-    const schedule = sql.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
-    assert.ok(unschedule >= 0, `${file} must dynamically unschedule its existing job`);
-    assert.ok(schedule > unschedule, `${file} must reschedule ${job} after the dynamic unschedule`);
+    const sql = stripSqlComments(
+      fs.readFileSync(path.join(REPO_ROOT, file), "utf8"),
+    );
+    const unschedule = sql.search(
+      /cron\.unschedule\s*\(\s*[a-z_][a-z0-9_]*\s*\)/i,
+    );
+    const schedule = sql.search(
+      new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"),
+    );
+    assert.ok(
+      unschedule >= 0,
+      `${file} must dynamically unschedule its existing job`,
+    );
+    assert.ok(
+      schedule > unschedule,
+      `${file} must reschedule ${job} after the dynamic unschedule`,
+    );
     assert.doesNotMatch(
       sql.slice(unschedule, schedule),
       /\bCOMMIT\s*;/i,
@@ -294,10 +338,13 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   }
   // A NEW one must force a human to confirm it is not a permanent kill.
   const repo = cronReachability(loadMigrations());
-  assert.ok(repo.scheduleCalls > 0, "anti-vacuity: the repo scan must parse real migrations");
+  assert.ok(
+    repo.scheduleCalls > 0,
+    "anti-vacuity: the repo scan must parse real migrations",
+  );
   assert.equal(
     repo.dynamicUnschedules,
-    13,
+    14,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +
@@ -320,10 +367,23 @@ test("A-6 missing extensions are FATAL; an unseeded vault is advisory and says s
   );
 
   // Advisory half: an unseeded vault must NOT abort, but must not be silent either.
-  const advisories = [...clean.matchAll(/RAISE NOTICE '([^']*)'/g)].map((m) => m[1]);
-  assert.equal(advisories.length, 2, "both vault secrets must have an advisory");
-  for (const [secret, text] of [["supabase_url", advisories[0]], ["service_role_key", advisories[1]]]) {
-    assert.match(text, new RegExp(secret), `the advisory must name the missing secret ${secret}`);
+  const advisories = [...clean.matchAll(/RAISE NOTICE '([^']*)'/g)].map(
+    (m) => m[1],
+  );
+  assert.equal(
+    advisories.length,
+    2,
+    "both vault secrets must have an advisory",
+  );
+  for (const [secret, text] of [
+    ["supabase_url", advisories[0]],
+    ["service_role_key", advisories[1]],
+  ]) {
+    assert.match(
+      text,
+      new RegExp(secret),
+      `the advisory must name the missing secret ${secret}`,
+    );
     assert.match(
       text,
       /will register but its http_post calls will fail/,
@@ -366,7 +426,10 @@ test("A-8 a dark worker invoked only by another dark worker is still reported", 
   // nothing.
   const { violations, workers } = analyze(
     [
-      { name: "dark-worker", source: machineDoor + 'await sb.rpc("biz_claim_thing");' },
+      {
+        name: "dark-worker",
+        source: machineDoor + 'await sb.rpc("biz_claim_thing");',
+      },
       {
         name: "dark-caller",
         source:
@@ -378,7 +441,11 @@ test("A-8 a dark worker invoked only by another dark worker is still reported", 
     "",
   );
 
-  assert.equal(workers.length, 2, "anti-vacuity: both fixtures must register as claim workers");
+  assert.equal(
+    workers.length,
+    2,
+    "anti-vacuity: both fixtures must register as claim workers",
+  );
   assert.deepEqual(
     violations.map((v) => v.name).sort(),
     ["dark-caller", "dark-worker"],
@@ -388,11 +455,18 @@ test("A-8 a dark worker invoked only by another dark worker is still reported", 
 
   // The control: give the caller a human-openable door and the closure DOES
   // credit the callee — so A-8 is discriminating, not merely always-red.
-  const openDoor = 'const { data } = await sb.auth.getUser(req.headers.get("authorization"));\n';
+  const openDoor =
+    'const { data } = await sb.auth.getUser(req.headers.get("authorization"));\n';
   const credited = analyze(
     [
-      { name: "dark-worker", source: machineDoor + 'await sb.rpc("biz_claim_thing");' },
-      { name: "open-caller", source: openDoor + 'await sb.functions.invoke("dark-worker", {});' },
+      {
+        name: "dark-worker",
+        source: machineDoor + 'await sb.rpc("biz_claim_thing");',
+      },
+      {
+        name: "open-caller",
+        source: openDoor + 'await sb.functions.invoke("dark-worker", {});',
+      },
     ],
     [],
     "",

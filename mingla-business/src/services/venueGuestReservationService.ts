@@ -41,6 +41,8 @@ export type GuestReservationResult =
        * server stores only its hash, so this response is the one place it exists.
        */
       guestCancelToken?: string;
+      buyerContact?: { email: string; phoneLast4: string | null };
+      claim?: { shortUrl: string | null; code: string | null };
     }
   | {
       kind: "requires_web_redirect";
@@ -63,6 +65,8 @@ export interface GuestReservationConfirmResult {
   status: "completed" | "pending" | "failed";
   reservationId: string | null;
   guestCancelToken?: string;
+  buyerContact?: { email: string; phoneLast4: string | null };
+  claim?: { shortUrl: string | null; code: string | null };
 }
 
 export interface GuestVenueRefundSummary {

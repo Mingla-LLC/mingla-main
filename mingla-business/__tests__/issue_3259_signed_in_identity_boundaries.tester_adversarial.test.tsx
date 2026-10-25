@@ -85,7 +85,9 @@ jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {
     expoConfig: {
-      extra: { EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com" },
+      extra: {
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
+      },
     },
   },
 }));
@@ -126,6 +128,7 @@ import {
 } from "../src/components/auth/SignedInNotFoundNotice";
 import { PublicBrandNotFound } from "../src/components/brand/PublicBrandNotFound";
 import { PublicVenueNotFound } from "../src/components/venue/PublicVenueNotFound";
+import { BUYER_CLAIM_COPY } from "../src/constants/buyerClaimCopy";
 
 /* ------------------------------------------------------- tree utilities */
 
@@ -206,8 +209,7 @@ function isScrollHost(node: El): boolean {
         (node.type as { name?: string })?.name ??
         "");
   return (
-    /ScrollView/.test(name) &&
-    "contentContainerStyle" in (node.props as object)
+    /ScrollView/.test(name) && "contentContainerStyle" in (node.props as object)
   );
 }
 
@@ -237,7 +239,8 @@ const RN_IOS_FONT_SCALES = [
   3.571,
 ];
 
-const renderTree = (): El[] => expand((NotFoundScreen as unknown as () => El)());
+const renderTree = (): El[] =>
+  expand((NotFoundScreen as unknown as () => El)());
 const renderRoot = (): El => (NotFoundScreen as unknown as () => El)();
 
 const EMAIL = "business@usemingla.com";
@@ -290,7 +293,11 @@ function resolveSpecifier(spec: string, fromFile: string): string | null {
     base = path.resolve(path.dirname(fromFile), spec);
   } else if (spec.startsWith("@mingla/")) {
     // A workspace barrel must not be able to launder an identity import.
-    const pkgDir = path.join(REPO_ROOT, "packages", spec.slice("@mingla/".length));
+    const pkgDir = path.join(
+      REPO_ROOT,
+      "packages",
+      spec.slice("@mingla/".length),
+    );
     const manifest = path.join(pkgDir, "package.json");
     if (!existsFile(manifest)) return null;
     const main = (JSON.parse(readSource(manifest) ?? "{}") as { main?: string })
@@ -439,7 +446,8 @@ const PUBLIC_ENTRIES: string[] = (() => {
     "src/components/venue/PublicVenueNotFound.tsx",
   ].map((rel) => path.join(BUSINESS_ROOT, rel));
   const dirs = ["app/checkout", "app/checkout-experience", "app/checkout-trip"];
-  for (const dir of dirs) named.push(...listFiles(path.join(BUSINESS_ROOT, dir)));
+  for (const dir of dirs)
+    named.push(...listFiles(path.join(BUSINESS_ROOT, dir)));
   return named;
 })();
 
@@ -456,7 +464,9 @@ const PREEXISTING_AUTHCONTEXT_ENTRYPOINTS = [
 
 describe("#3259 A — the signed-in identity block is UNREACHABLE from public buyer routes", () => {
   const publicReach = closure(PUBLIC_ENTRIES);
-  const notFoundReach = closure([path.join(BUSINESS_ROOT, "app/+not-found.tsx")]);
+  const notFoundReach = closure([
+    path.join(BUSINESS_ROOT, "app/+not-found.tsx"),
+  ]);
 
   it("CONTROL: the walker really does find both identity modules from +not-found", () => {
     // Without this, every negative below could be a walker that matches nothing.
@@ -492,14 +502,18 @@ describe("#3259 A — the signed-in identity block is UNREACHABLE from public bu
       .map((f) => chainTo(publicReach.parent, f).split(" -> ")[0])
       .filter((v, i, a) => a.indexOf(v) === i)
       .sort();
-    expect(entryPoints).toEqual([...PREEXISTING_AUTHCONTEXT_ENTRYPOINTS].sort());
+    expect(entryPoints).toEqual(
+      [...PREEXISTING_AUTHCONTEXT_ENTRYPOINTS].sort(),
+    );
   });
 
   it("no public buyer route FILE calls useAuth / useSwitchAccount itself", () => {
     const CALL_RE = /\buse(?:Auth|SwitchAccount)\s*\(/;
     // CONTROL: the regex must match where the call really is.
     expect(
-      CALL_RE.test(readSource(path.join(BUSINESS_ROOT, "app/+not-found.tsx")) ?? ""),
+      CALL_RE.test(
+        readSource(path.join(BUSINESS_ROOT, "app/+not-found.tsx")) ?? "",
+      ),
     ).toBe(true);
     const offenders = PUBLIC_ENTRIES.filter((f) =>
       CALL_RE.test(readSource(f) ?? ""),
@@ -528,9 +542,7 @@ describe("#3259 A — the signed-in identity block is UNREACHABLE from public bu
     // CONTROL: the scan found the real call sites, so an empty offender list
     // below is a verdict and not a vacuous run.
     expect(callSites.length).toBeGreaterThanOrEqual(10);
-    expect(
-      callSites.filter((c) => c.expr !== "signedInEmail"),
-    ).toEqual([]);
+    expect(callSites.filter((c) => c.expr !== "signedInEmail")).toEqual([]);
   });
 
   it("every SignedInNotFoundNotice call site passes a literal, known variant", () => {
@@ -548,13 +560,15 @@ describe("#3259 A — the signed-in identity block is UNREACHABLE from public bu
     }
     expect(found.length).toBeGreaterThanOrEqual(10);
     expect(
-      found.filter((f) => f.variant !== "missing" && f.variant !== "restricted"),
+      found.filter(
+        (f) => f.variant !== "missing" && f.variant !== "restricted",
+      ),
     ).toEqual([]);
     // `missing` says "switch accounts and open it again" — only honest on a
     // pure route miss. Every data-backed screen must use `restricted`.
-    expect(found.filter((f) => f.variant === "missing").map((f) => f.file)).toEqual(
-      ["app/+not-found.tsx"],
-    );
+    expect(
+      found.filter((f) => f.variant === "missing").map((f) => f.file),
+    ).toEqual(["app/+not-found.tsx"]);
   });
 });
 
@@ -563,7 +577,10 @@ describe("#3259 A — the signed-in identity block is UNREACHABLE from public bu
    ===================================================================== */
 
 describe("#3259 B — an anon visitor still cannot tell a pending thing from a nonexistent one", () => {
-  const venueTree = (brandSlug: string | null, brandDisplayName: string | null): El[] =>
+  const venueTree = (
+    brandSlug: string | null,
+    brandDisplayName: string | null,
+  ): El[] =>
     expand(
       (PublicVenueNotFound as unknown as (p: unknown) => El)({
         brandSlug,
@@ -579,7 +596,9 @@ describe("#3259 B — an anon visitor still cannot tell a pending thing from a n
     const b = textOf(venueTree("lanternroom", null));
     expect(a).toBe(b);
     expect(a).toContain("This venue isn't on Mingla yet");
-    expect(a).toContain("The link may be mistyped, or the venue isn't live right now.");
+    expect(a).toContain(
+      "The link may be mistyped, or the venue isn't live right now.",
+    );
   });
 
   it("PublicVenueNotFound names no account, no session and no cause", () => {
@@ -604,18 +623,23 @@ describe("#3259 B — an anon visitor still cannot tell a pending thing from a n
       "The link may be mistyped or the brand may have changed its name.",
     );
     const lower = copy.toLowerCase();
-    for (const forbidden of ["signed in as", "switch account", "deleted", "permission"])
+    for (const forbidden of [
+      "signed in as",
+      "switch account",
+      "deleted",
+      "permission",
+    ])
       expect(lower).not.toContain(forbidden);
   });
 
   it("the public order routes keep their generic copy and gain no identity", () => {
-    // COPY-DRIFT PIN (source text, with the control immediately below).
-    const order = readSource(path.join(BUSINESS_ROOT, "app/o/[orderId].tsx")) ?? "";
+    // [TEST-MOD-APPROVED #4063] Public order pointers now delegate to the
+    // generic claim screen instead of describing whether an order exists.
+    const order =
+      readSource(path.join(BUSINESS_ROOT, "app/o/[orderId].tsx")) ?? "";
     // CONTROL: the file really was read and really is the order route.
-    expect(order).toContain('title="Order not found"');
-    expect(order).toContain(
-      "If you have your confirmation email, the link there is the canonical reference.",
-    );
+    expect(order).toContain("StaticBuyerClaimPage");
+    expect(order).toContain('kind="ticket"');
     const venueOrder =
       readSource(path.join(BUSINESS_ROOT, "app/o/venue/[orderId].tsx")) ?? "";
     expect(venueOrder).toContain("We can't open this order");
@@ -699,7 +723,9 @@ describe("#3259 D — `restricted` states both possibilities and asserts neither
   it("the two variants are genuinely different sentences", () => {
     // A copy/paste that collapsed them would make `missing` claim a deletion.
     expect(SIGNED_IN_NOT_FOUND_COPY.missing).not.toBe(copy);
-    expect(SIGNED_IN_NOT_FOUND_COPY.missing.toLowerCase()).not.toContain("deleted");
+    expect(SIGNED_IN_NOT_FOUND_COPY.missing.toLowerCase()).not.toContain(
+      "deleted",
+    );
   });
 });
 
@@ -707,7 +733,10 @@ describe("#3259 D — `restricted` states both possibilities and asserts neither
    E. DEGENERATE IDENTITY VALUES
    ===================================================================== */
 
-const noticeTree = (variant: "missing" | "restricted", email: string | null): El[] =>
+const noticeTree = (
+  variant: "missing" | "restricted",
+  email: string | null,
+): El[] =>
   expand(
     (SignedInNotFoundNotice as unknown as (p: unknown) => El | null)({
       variant,
@@ -729,7 +758,9 @@ describe("#3259 E — degenerate identity values never produce a half-sentence",
   it("the hook can only ever emit a non-empty string or null", () => {
     // The component is props-only; this is the guarantee at the source, so a
     // future relaxation there cannot silently create the empty-card state.
-    const src = readSource(path.join(BUSINESS_ROOT, "src/hooks/useSwitchAccount.ts")) ?? "";
+    const src =
+      readSource(path.join(BUSINESS_ROOT, "src/hooks/useSwitchAccount.ts")) ??
+      "";
     expect(src).toContain("isAuthReady");
     expect(src).toMatch(/typeof user\?\.email === "string"/);
     expect(src).toMatch(/user\.email\.length > 0/);
@@ -763,7 +794,9 @@ describe("#3259 E — degenerate identity values never produce a half-sentence",
       strings([n]).some((s) => s.includes("signed in as")),
     ) as El;
     expect(identity).toBeDefined();
-    expect((identity.props as { numberOfLines?: number }).numberOfLines).toBeUndefined();
+    expect(
+      (identity.props as { numberOfLines?: number }).numberOfLines,
+    ).toBeUndefined();
     expect(
       (identity.props as { ellipsizeMode?: string }).ellipsizeMode,
     ).toBeUndefined();
@@ -810,8 +843,18 @@ interface AuthShape {
 }
 
 const AUTH_SHAPES: AuthShape[] = [
-  { label: "signed out, auth ready", user: null, isAuthReady: true, expectIdentity: false },
-  { label: "signed out, auth NOT ready", user: null, isAuthReady: false, expectIdentity: false },
+  {
+    label: "signed out, auth ready",
+    user: null,
+    isAuthReady: true,
+    expectIdentity: false,
+  },
+  {
+    label: "signed out, auth NOT ready",
+    user: null,
+    isAuthReady: false,
+    expectIdentity: false,
+  },
   {
     label: "signed in, auth NOT ready (cold load race)",
     user: { email: EMAIL },
@@ -869,8 +912,12 @@ describe("#3259 F — every auth shape is WHOLLY signed-out or WHOLLY signed-in"
         expect(copy).not.toContain(SIGNED_IN_HEADING);
         expect(copy).not.toContain("signed in as");
       }
-      // The guaranteed exit survives every shape.
-      expect(byLabel(nodes, "Go home").length).toBeGreaterThanOrEqual(1);
+      // The guaranteed exit survives every shape. Signed-out claim pointers
+      // send buyers to the app; signed-in misses retain the home exit.
+      const exitLabel = shape.expectIdentity
+        ? "Go home"
+        : BUYER_CLAIM_COPY.notFound.cta;
+      expect(byLabel(nodes, exitLabel).length).toBeGreaterThanOrEqual(1);
     },
   );
 
@@ -973,7 +1020,9 @@ describe("#3259 H — #2180's structural guarantees survive WITH the notice rend
       const regions = childrenOf(safeArea);
       expect(regions.length).toBeGreaterThanOrEqual(2);
 
-      const content = flattenStyle((regions[0].props as { style?: unknown }).style);
+      const content = flattenStyle(
+        (regions[0].props as { style?: unknown }).style,
+      );
       expect(content.flex).toBe(1);
       expect(content.overflow).toBe("hidden");
 
@@ -988,7 +1037,9 @@ describe("#3259 H — #2180's structural guarantees survive WITH the notice rend
       // the region whose height the new notice can now grow.
       expect(byLabel(expand(regions[0]), "Go home")).toHaveLength(0);
       // …and the safe area still reaches the bottom edge.
-      expect((safeArea.props as { edges?: string[] }).edges ?? []).toContain("bottom");
+      expect((safeArea.props as { edges?: string[] }).edges ?? []).toContain(
+        "bottom",
+      );
     },
   );
 
@@ -1043,7 +1094,9 @@ describe("#3259 H — #2180's structural guarantees survive WITH the notice rend
     "at fontScale %s the brand lockup is still sized on BOTH axes with no aspectRatio",
     (fontScale: number) => {
       const image = expand(signedInRoot(fontScale)).find(
-        (n) => (n.props as { accessibilityRole?: string }).accessibilityRole === "image",
+        (n) =>
+          (n.props as { accessibilityRole?: string }).accessibilityRole ===
+          "image",
       ) as El;
       expect(image).toBeDefined();
       const applied = flattenStyle((image.props as { style?: unknown }).style);
@@ -1062,14 +1115,20 @@ describe("#3259 H — #2180's structural guarantees survive WITH the notice rend
     // branch and the compact arm could be dead on this branch specifically.
     const findImage = (fontScale: number): Record<string, unknown> => {
       const image = expand(signedInRoot(fontScale)).find(
-        (n) => (n.props as { accessibilityRole?: string }).accessibilityRole === "image",
+        (n) =>
+          (n.props as { accessibilityRole?: string }).accessibilityRole ===
+          "image",
       ) as El;
       return flattenStyle((image.props as { style?: unknown }).style);
     };
     const ordinary = findImage(LARGE_TYPE_FONT_SCALE - 0.5);
     const accessibility = findImage(LARGE_TYPE_FONT_SCALE + 0.5);
-    expect(accessibility.width as number).toBeLessThan(ordinary.width as number);
-    expect(accessibility.height as number).toBeLessThan(ordinary.height as number);
+    expect(accessibility.width as number).toBeLessThan(
+      ordinary.width as number,
+    );
+    expect(accessibility.height as number).toBeLessThan(
+      ordinary.height as number,
+    );
   });
 });
 
@@ -1084,7 +1143,8 @@ describe("#3259 I — every control in the new states is real and labelled", () 
     const controls = nodes.filter(
       (n) =>
         "onPress" in (n.props as object) ||
-        (n.props as { accessibilityRole?: string }).accessibilityRole === "button",
+        (n.props as { accessibilityRole?: string }).accessibilityRole ===
+          "button",
     );
     // CONTROL: at minimum Go home + Switch account.
     expect(controls.length).toBeGreaterThanOrEqual(2);
@@ -1096,7 +1156,9 @@ describe("#3259 I — every control in the new states is real and labelled", () 
       };
       expect(typeof props.onPress).toBe("function");
       expect(typeof (props.accessibilityLabel ?? props.label)).toBe("string");
-      expect((props.accessibilityLabel ?? props.label ?? "").length).toBeGreaterThan(0);
+      expect(
+        (props.accessibilityLabel ?? props.label ?? "").length,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -1116,7 +1178,9 @@ describe("#3259 I — every control in the new states is real and labelled", () 
       expect(control).toBeDefined();
       expect((control.props as { onPress?: unknown }).onPress).toBe(handler);
       expect((control.props as { fullWidth?: boolean }).fullWidth).toBe(true);
-      expect((control.props as { label?: string }).label).toBe(SWITCH_ACCOUNT_LABEL);
+      expect((control.props as { label?: string }).label).toBe(
+        SWITCH_ACCOUNT_LABEL,
+      );
       // The card itself must be addressable for the host screen's own proofs.
       expect((nodes[0].props as { testID?: string }).testID).toBe("probe");
     },

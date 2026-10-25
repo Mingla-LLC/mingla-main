@@ -66,6 +66,16 @@ export interface RsvpSuccessPopupProps {
   /** Append the Calendar nudge for a signed-in consumer (anon web omits it). */
   showCalendarNudge: boolean;
   onClose: () => void;
+  /** Explorer keeps the credential view; public Business surfaces use claim. */
+  passPresentation?: "qr" | "claim";
+  claim?: {
+    email: string | null;
+    phoneLast4: string | null;
+    shortUrl: string | null;
+    onOpen: (url: string | null) => void;
+  };
+  /** Business desktop may supply its host-owned scan-to-phone card. */
+  renderClaimBody?: () => React.ReactNode;
   /**
    * ORCH-1291 [rsvp-chip-in] — an OPTIONAL voluntary chip-in panel rendered
    * between the detail block and the Done button (the high-intent "you're in —
@@ -86,8 +96,15 @@ const Row: React.FC<{
   bold: string;
 }> = ({ label, value, palette, bold }) => (
   <View style={styles.detailRow}>
-    <Text style={[styles.detailLabel, { color: palette.tertiaryText }]}>{label}</Text>
-    <Text style={[styles.detailValue, { color: palette.primaryText, fontFamily: bold }]}>
+    <Text style={[styles.detailLabel, { color: palette.tertiaryText }]}>
+      {label}
+    </Text>
+    <Text
+      style={[
+        styles.detailValue,
+        { color: palette.primaryText, fontFamily: bold },
+      ]}
+    >
       {value}
     </Text>
   </View>
@@ -105,6 +122,9 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
     onClose,
     chipInPanel,
     onDownloadPass,
+    passPresentation = "qr",
+    claim,
+    renderClaimBody,
   } = props;
   const boldFamily = boldFontFamily(theme);
   const { height: windowHeight } = useWindowDimensions();
@@ -116,14 +136,18 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
   const eligibleCredentials = details.credentials.filter(
     (item: RsvpPassCredential) => item.qrCode !== null,
   );
-  const selected = eligibleCredentials.find(
-    (item: RsvpPassCredential) => item.entityId === selectedEntityId,
-  ) ??
-    eligibleCredentials[0] ?? null;
-  const selectedRecovery = selected === null ? null :
-    details.anonymousRecovery.find(
-      (item: RsvpAnonymousRecovery) => item.entityId === selected.entityId,
-    ) ?? null;
+  const selected =
+    eligibleCredentials.find(
+      (item: RsvpPassCredential) => item.entityId === selectedEntityId,
+    ) ??
+    eligibleCredentials[0] ??
+    null;
+  const selectedRecovery =
+    selected === null
+      ? null
+      : (details.anonymousRecovery.find(
+          (item: RsvpAnonymousRecovery) => item.entityId === selected.entityId,
+        ) ?? null);
 
   const title =
     details.status === "waitlisted"
@@ -142,6 +166,22 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
     .filter((n) => n.trim().length > 0)
     .join(", ");
 
+  const claimSignIn = (() => {
+    const email = claim?.email?.trim() || null;
+    const last4 = claim?.phoneLast4?.trim() || null;
+    if (email && last4)
+      return `Sign in with ${email} or the number ending ${last4}`;
+    if (email) return `Sign in with ${email}`;
+    if (last4) return `Sign in with the number ending ${last4}`;
+    return "Sign in with the email or mobile number you used.";
+  })();
+  const claimStatusLine =
+    details.status === "pending"
+      ? "Needs approval? We'll text and email you when the host says yes."
+      : details.status === "waitlisted"
+        ? "A spot opened? We'll text and email you automatically."
+        : null;
+
   return (
     <Modal
       visible={visible}
@@ -150,7 +190,11 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
       onRequestClose={onClose}
       accessibilityViewIsModal
     >
-      <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Dismiss">
+      <Pressable
+        style={styles.scrim}
+        onPress={onClose}
+        accessibilityLabel="Dismiss"
+      >
         <Pressable
           style={[
             styles.card,
@@ -163,108 +207,267 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
           onPress={() => undefined}
           testID="orch-1163-rsvp-success-popup"
         >
+          {passPresentation === "claim" ? (
+            <Pressable
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
+              style={styles.closeButton}
+              testID="issue-4063-rsvp-claim-close"
+            >
+              <Text style={[styles.closeText, { color: palette.primaryText }]}>
+                ×
+              </Text>
+            </Pressable>
+          ) : null}
           <ScrollView
             contentContainerStyle={styles.cardContent}
             showsVerticalScrollIndicator
             keyboardShouldPersistTaps="handled"
           >
-          <Text style={[styles.title, { color: palette.primaryText, fontFamily: boldFamily }]}>
-            {title}
-          </Text>
+            <Text
+              style={[
+                styles.title,
+                { color: palette.primaryText, fontFamily: boldFamily },
+              ]}
+            >
+              {title}
+            </Text>
 
-          <View style={styles.detailBlock}>
-            <Row label="Event" value={details.eventName} palette={palette} bold={boldFamily} />
-            <Row label="When" value={details.dateLine} palette={palette} bold={boldFamily} />
-            <Row label="Where" value={details.venueLine} palette={palette} bold={boldFamily} />
-            <Row label="Guest" value={details.guestName} palette={palette} bold={boldFamily} />
-            {plusNames.length > 0 ? (
-              <Row label="Plus-ones" value={plusNames} palette={palette} bold={boldFamily} />
-            ) : null}
-            <Row label="Status" value={statusWord} palette={palette} bold={boldFamily} />
-          </View>
-
-          {selected !== null ? (
-            <View style={styles.passBlock} testID="issue-1447-rsvp-pass-block">
-              {eligibleCredentials.length > 1 ? (
-                <View style={styles.partyTabs}>
-                  {eligibleCredentials.map((credential: RsvpPassCredential) => (
-                    <Pressable
-                      key={credential.entityId}
-                      onPress={() => setSelectedEntityId(credential.entityId)}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: credential.entityId === selected.entityId }}
+            {passPresentation === "claim" ? (
+              renderClaimBody !== undefined ? (
+                renderClaimBody()
+              ) : (
+                <View
+                  style={styles.claimBody}
+                  testID="issue-4063-rsvp-claim-body"
+                >
+                  <Text
+                    style={[
+                      styles.claimWaiting,
+                      { color: palette.primaryText, fontFamily: boldFamily },
+                    ]}
+                  >
+                    Your pass is waiting in the Mingla app.
+                  </Text>
+                  <Text
+                    style={[
+                      styles.claimSignIn,
+                      { color: palette.secondaryText },
+                    ]}
+                  >
+                    {claimSignIn}
+                  </Text>
+                  <Pressable
+                    onPress={() => claim?.onOpen(claim.shortUrl ?? null)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Get my pass"
+                    style={[
+                      styles.claimButton,
+                      { backgroundColor: palette.accent },
+                    ]}
+                    testID="issue-4063-rsvp-claim-primary"
+                  >
+                    <Text
                       style={[
-                        styles.partyTab,
-                        { borderColor: palette.panelBorder },
-                        credential.entityId === selected.entityId && { backgroundColor: palette.card },
+                        styles.claimButtonText,
+                        { color: palette.accentText, fontFamily: boldFamily },
                       ]}
                     >
-                      <Text style={[styles.partyTabText, { color: palette.primaryText }]} numberOfLines={1}>
-                        {credential.entityType === "primary" ? "You" : credential.displayName}
-                      </Text>
-                    </Pressable>
-                  ))}
+                      Get my pass
+                    </Text>
+                  </Pressable>
+                  {claimStatusLine !== null ? (
+                    <Text
+                      style={[
+                        styles.claimStatus,
+                        { color: palette.secondaryText },
+                      ]}
+                    >
+                      {claimStatusLine}
+                    </Text>
+                  ) : null}
                 </View>
-              ) : null}
-              <View
-                style={[styles.qrCard, { backgroundColor: "#FFFFFF" }]}
-                accessible
-                accessibilityRole="image"
-                accessibilityLabel={`RSVP QR code for ${selected.displayName}`}
-              >
-                <Suspense fallback={<View style={styles.qrFallback} />}>
-                  <QrCode value={selected.qrCode as string} size={184} />
-                </Suspense>
-              </View>
-              <Text style={[styles.passName, { color: palette.primaryText, fontFamily: boldFamily }]}>
-                {selected.displayName}
-              </Text>
-              {onDownloadPass ? (
+              )
+            ) : (
+              <>
+                <View style={styles.detailBlock}>
+                  <Row
+                    label="Event"
+                    value={details.eventName}
+                    palette={palette}
+                    bold={boldFamily}
+                  />
+                  <Row
+                    label="When"
+                    value={details.dateLine}
+                    palette={palette}
+                    bold={boldFamily}
+                  />
+                  <Row
+                    label="Where"
+                    value={details.venueLine}
+                    palette={palette}
+                    bold={boldFamily}
+                  />
+                  <Row
+                    label="Guest"
+                    value={details.guestName}
+                    palette={palette}
+                    bold={boldFamily}
+                  />
+                  {plusNames.length > 0 ? (
+                    <Row
+                      label="Plus-ones"
+                      value={plusNames}
+                      palette={palette}
+                      bold={boldFamily}
+                    />
+                  ) : null}
+                  <Row
+                    label="Status"
+                    value={statusWord}
+                    palette={palette}
+                    bold={boldFamily}
+                  />
+                </View>
+
+                {selected !== null ? (
+                  <View
+                    style={styles.passBlock}
+                    testID="issue-1447-rsvp-pass-block"
+                  >
+                    {eligibleCredentials.length > 1 ? (
+                      <View style={styles.partyTabs}>
+                        {eligibleCredentials.map(
+                          (credential: RsvpPassCredential) => (
+                            <Pressable
+                              key={credential.entityId}
+                              onPress={() =>
+                                setSelectedEntityId(credential.entityId)
+                              }
+                              accessibilityRole="tab"
+                              accessibilityState={{
+                                selected:
+                                  credential.entityId === selected.entityId,
+                              }}
+                              style={[
+                                styles.partyTab,
+                                { borderColor: palette.panelBorder },
+                                credential.entityId === selected.entityId && {
+                                  backgroundColor: palette.card,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.partyTabText,
+                                  { color: palette.primaryText },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {credential.entityType === "primary"
+                                  ? "You"
+                                  : credential.displayName}
+                              </Text>
+                            </Pressable>
+                          ),
+                        )}
+                      </View>
+                    ) : null}
+                    <View
+                      style={[styles.qrCard, { backgroundColor: "#FFFFFF" }]}
+                      accessible
+                      accessibilityRole="image"
+                      accessibilityLabel={`RSVP QR code for ${selected.displayName}`}
+                    >
+                      <Suspense fallback={<View style={styles.qrFallback} />}>
+                        <QrCode value={selected.qrCode as string} size={184} />
+                      </Suspense>
+                    </View>
+                    <Text
+                      style={[
+                        styles.passName,
+                        { color: palette.primaryText, fontFamily: boldFamily },
+                      ]}
+                    >
+                      {selected.displayName}
+                    </Text>
+                    {onDownloadPass ? (
+                      <Pressable
+                        onPress={() => {
+                          if (downloading) return;
+                          setDownloadError(null);
+                          setDownloading(true);
+                          void onDownloadPass(selected, selectedRecovery)
+                            .catch(() =>
+                              setDownloadError(
+                                "Couldn't download the invite. Try again.",
+                              ),
+                            )
+                            .finally(() => setDownloading(false));
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Download RSVP invite PDF"
+                        style={[
+                          styles.downloadBtn,
+                          { borderColor: palette.panelBorder },
+                        ]}
+                        testID="issue-1447-rsvp-download-pdf"
+                      >
+                        <Text
+                          style={[
+                            styles.downloadText,
+                            {
+                              color: palette.primaryText,
+                              fontFamily: boldFamily,
+                            },
+                          ]}
+                        >
+                          {downloading
+                            ? "Preparing PDF…"
+                            : "Download RSVP invite PDF"}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    {downloadError ? (
+                      <Text style={styles.downloadError}>{downloadError}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {showCalendarNudge ? (
+                  <Text
+                    style={[styles.nudge, { color: palette.secondaryText }]}
+                  >
+                    Find your RSVP + entry QR in your Calendar.
+                  </Text>
+                ) : null}
+
+                {/* ORCH-1291 [rsvp-chip-in] — the voluntary gift moment, above Done. */}
+                {chipInPanel !== undefined && chipInPanel !== null ? (
+                  <View style={styles.chipInWrap}>{chipInPanel}</View>
+                ) : null}
+
                 <Pressable
-                  onPress={() => {
-                    if (downloading) return;
-                    setDownloadError(null);
-                    setDownloading(true);
-                    void onDownloadPass(selected, selectedRecovery)
-                      .catch(() => setDownloadError("Couldn't download the invite. Try again."))
-                      .finally(() => setDownloading(false));
-                  }}
+                  onPress={onClose}
                   accessibilityRole="button"
-                  accessibilityLabel="Download RSVP invite PDF"
-                  style={[styles.downloadBtn, { borderColor: palette.panelBorder }]}
-                  testID="issue-1447-rsvp-download-pdf"
+                  accessibilityLabel="Done"
+                  style={[styles.doneBtn, { backgroundColor: palette.accent }]}
+                  testID="orch-1163-rsvp-success-done"
                 >
-                  <Text style={[styles.downloadText, { color: palette.primaryText, fontFamily: boldFamily }]}>
-                    {downloading ? "Preparing PDF…" : "Download RSVP invite PDF"}
+                  <Text
+                    style={[
+                      styles.doneBtnText,
+                      { color: palette.accentText, fontFamily: boldFamily },
+                    ]}
+                  >
+                    Done
                   </Text>
                 </Pressable>
-              ) : null}
-              {downloadError ? <Text style={styles.downloadError}>{downloadError}</Text> : null}
-            </View>
-          ) : null}
-
-          {showCalendarNudge ? (
-            <Text style={[styles.nudge, { color: palette.secondaryText }]}>
-              Find your RSVP + entry QR in your Calendar.
-            </Text>
-          ) : null}
-
-          {/* ORCH-1291 [rsvp-chip-in] — the voluntary gift moment, above Done. */}
-          {chipInPanel !== undefined && chipInPanel !== null ? (
-            <View style={styles.chipInWrap}>{chipInPanel}</View>
-          ) : null}
-
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Done"
-            style={[styles.doneBtn, { backgroundColor: palette.accent }]}
-            testID="orch-1163-rsvp-success-done"
-          >
-            <Text style={[styles.doneBtnText, { color: palette.accentText, fontFamily: boldFamily }]}>
-              Done
-            </Text>
-          </Pressable>
+              </>
+            )}
           </ScrollView>
         </Pressable>
       </Pressable>
@@ -285,22 +488,45 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     borderRadius: 20,
     borderWidth: 1,
+    position: "relative",
   },
   cardContent: { padding: 22 },
-  title: { fontSize: 22, fontWeight: "900", letterSpacing: -0.4, marginBottom: 14 },
+  title: {
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.4,
+    marginBottom: 14,
+  },
   detailBlock: { gap: 10 },
   detailRow: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
   detailLabel: { fontSize: 13, fontWeight: "700" },
-  detailValue: { fontSize: 14, fontWeight: "800", flexShrink: 1, textAlign: "right" },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    flexShrink: 1,
+    textAlign: "right",
+  },
   nudge: { fontSize: 13, lineHeight: 19, marginTop: 14 },
   passBlock: { alignItems: "center", marginTop: 18, gap: 10 },
   partyTabs: { width: "100%", flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  partyTab: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, maxWidth: 150 },
+  partyTab: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    maxWidth: 150,
+  },
   partyTabText: { fontSize: 12, fontWeight: "800" },
   qrCard: { borderRadius: 16, padding: 14 },
   qrFallback: { width: 184, height: 184 },
   passName: { fontSize: 14, fontWeight: "800" },
-  downloadBtn: { width: "100%", alignItems: "center", borderWidth: 1, borderRadius: 14, paddingVertical: 12 },
+  downloadBtn: {
+    width: "100%",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
   downloadText: { fontSize: 14, fontWeight: "800" },
   downloadError: { color: "#d14343", fontSize: 12, textAlign: "center" },
   chipInWrap: { marginTop: 16 },
@@ -312,6 +538,29 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   doneBtnText: { fontSize: 16, fontWeight: "900" },
+  closeButton: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    zIndex: 2,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeText: { fontSize: 28, lineHeight: 30 },
+  claimBody: { gap: 14 },
+  claimWaiting: { fontSize: 17, lineHeight: 24, fontWeight: "800" },
+  claimSignIn: { fontSize: 14, lineHeight: 21 },
+  claimButton: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingHorizontal: 18,
+  },
+  claimButtonText: { fontSize: 15, fontWeight: "900" },
+  claimStatus: { fontSize: 13, lineHeight: 19 },
 });
 
 export default RsvpSuccessPopup;

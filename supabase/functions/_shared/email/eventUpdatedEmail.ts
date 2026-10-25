@@ -20,6 +20,9 @@ import { EMAIL_SENDERS, type SenderIdentity } from "./senders.ts";
 import { minglaLogoUrl } from "../brandAssets.ts";
 import { resolveRuntimeString } from "../runtimeConfig.ts";
 import { isWellFormedEmail } from "../organiserContactEmail.ts";
+import { plainSpaces } from "../messageTime.ts";
+
+export { plainSpaces } from "../messageTime.ts";
 
 const { BRAND_ORANGE, BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BG_SOFT, BRAND_BORDER } =
   SHELL_TOKENS;
@@ -296,15 +299,6 @@ function datePairs(value: unknown): EventUpdateDatePair[] {
     typeof (pair as EventUpdateDatePair).s === "string" &&
     typeof (pair as EventUpdateDatePair).e === "string"
   );
-}
-
-// Older ICU builds (Deno 1.46, used by CI) put U+202F NARROW NO-BREAK SPACE
-// before "am"/"pm" and can use U+00A0 elsewhere; newer ones use a plain
-// space. Every time string this email prints goes through this, so the email
-// reads the same, byte for byte, wherever it is rendered.
-const ICU_SPACES = new RegExp(`[${String.fromCharCode(0x202f, 0x00a0, 0x2009)}]`, "g");
-export function plainSpaces(text: string): string {
-  return text.replace(ICU_SPACES, " ");
 }
 
 /** One start/end pair in the listing's zone, with plain spaces only. */

@@ -36,6 +36,7 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { formatCurrency } from "../../../src/utils/currency";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import {
   guestManageErrorCode,
   guestManageHeadline,
@@ -204,6 +205,7 @@ export default function GuestReservationManageRoute() {
             Party of {reservation.partySize}
           </Text>
         </View>
+        <Text style={styles.body}>{BUYER_CLAIM_COPY.reserve.alsoInApp}</Text>
         {moneyLine !== null ? (
           <Text style={styles.body} testID="guest-manage-money">
             {moneyLine}

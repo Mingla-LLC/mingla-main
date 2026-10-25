@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/attendance-claim-identity/__tests__/issue_4063_claim_sweep_contract.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4063-claim-sweep-contract",
+  "profile": "deno-1.46-stripe"
+}

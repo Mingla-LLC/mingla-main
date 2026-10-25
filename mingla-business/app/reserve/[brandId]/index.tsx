@@ -1,5 +1,5 @@
 import React from "react";
-import { ScrollView, StyleSheet, Text } from "react-native";
+import { Linking, Platform, ScrollView, StyleSheet, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -35,7 +35,11 @@ export default function VenueReservationCancelledRoute(): React.ReactElement {
         label="Go back"
         onPress={() => {
           if (router.canGoBack()) router.back();
-          else router.replace("/" as never);
+          else if (Platform.OS === "web" && typeof window !== "undefined") {
+            window.location.assign("https://usemingla.com");
+          } else {
+            void Linking.openURL("https://usemingla.com");
+          }
         }}
       />
       </ScrollView>

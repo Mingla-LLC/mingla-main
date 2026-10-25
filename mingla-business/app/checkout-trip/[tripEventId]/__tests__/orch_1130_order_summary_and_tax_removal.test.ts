@@ -33,17 +33,16 @@ const DEAD_COMPONENT =
   "mingla-business/src/components/checkout/CartTaxPreview.tsx";
 
 const stripComments = (src: string): string =>
-  src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 describe("ORCH-1130 Fix #1 — Total + Total due today under installments", () => {
-  // [TEST-MOD-APPROVED #3872] The server quote owns every payable amount,
-  // including mixed full-pay/installment carts and applied discounts.
+  // [TEST-MOD-APPROVED #4063] The server quote owns every payable amount,
+  // including mixed full-pay/installment carts and applied discounts, while
+  // the shared buyer-copy contract owns the rendered total label.
   it("trip buyer.tsx renders a 'Total due today' line from per-line choices", () => {
     const code = stripComments(read(TRIP_BUYER));
     // Both labels present (full Total + due-today).
-    expect(code).toMatch(/>Total</);
+    expect(code).toMatch(/BUYER_CLAIM_COPY\.confirmTotalLabel/);
     expect(code).toMatch(/Total due today/);
     expect(code).toMatch(/dueTodayCents\s*!==\s*null/);
     expect(code).toMatch(/quote\.dueTodayNetCents/);

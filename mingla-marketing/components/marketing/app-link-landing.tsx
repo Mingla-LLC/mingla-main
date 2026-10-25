@@ -47,7 +47,9 @@ export function AppLinkLanding({ kind }: { kind: AppLinkLandingKind }) {
           {copy.title}
         </h1>
         <p className="mt-4 text-base leading-relaxed text-white/76">{copy.lede}</p>
-        <p className="mt-3 text-sm leading-relaxed text-white/60">{copy.detail}</p>
+        {copy.detail ? (
+          <p className="mt-3 text-sm leading-relaxed text-white/60">{copy.detail}</p>
+        ) : null}
 
         <Link
           href={DOWNLOAD_PATH}

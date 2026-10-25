@@ -108,23 +108,51 @@ jest.mock("react-native-safe-area-context", () => ({
 // The single factory now exports every runtime value the adapter destructures,
 // including the post-ORCH-1167 EventOfferingFloatingBar/EventTicketBox +
 // buildStaticMapUrl. Behavior under test (close callbacks) is unaffected.
-jest.mock("@mingla/offering-rendering", () => ({
-  PublicEventPage: "SharedPublicEventPage",
-  // ORCH-1117 — the adapter pulls the shared theme + offering-CTA helpers.
-  // ORCH-1138 Leg 2 — + createThemePalette + boldFontFamily for FOUNDATION mode.
-  resolveTheme: () => ({ color: "#eb7825", foregroundColor: "#ffffff", fontFamilyValue: undefined }),
-  resolveOfferingCta: () => ({ kind: "buy", label: "Buy ticket", price: "£25", tappable: true }),
-  computeOfferingVariant: () => "published",
-  createThemePalette: () => ({ page: "#0c0e12", accent: "#eb7825", accentText: "#fff", primaryText: "#fff", secondaryText: "#ccc", tertiaryText: "#999", panel: "#111", panelStrong: "#222", panelBorder: "#333", card: "#1a1a1a", cutoutBorder: "#444", glass: "#000", glassTint: "dark", accentWash: "#332211" }),
-  boldFontFamily: () => undefined,
-  buildStaticMapUrl: () => "https://map.test/static.png",
-  // ORCH-1138 Leg 2 — the adapter composes the Direction-A foundation: it pulls
-  // useResponsiveLayout from @mingla/offering-rendering (and, post-ORCH-1167, the
-  // shared EventOfferingFloatingBar + EventTicketBox from the same package).
-  useResponsiveLayout: () => ({ isDesktop: false, isWeb: true }),
-  EventOfferingFloatingBar: "EventOfferingFloatingBar",
-  EventTicketBox: "EventTicketBox",
-}), { virtual: true });
+jest.mock(
+  "@mingla/offering-rendering",
+  () => ({
+    PublicEventPage: "SharedPublicEventPage",
+    // ORCH-1117 — the adapter pulls the shared theme + offering-CTA helpers.
+    // ORCH-1138 Leg 2 — + createThemePalette + boldFontFamily for FOUNDATION mode.
+    resolveTheme: () => ({
+      color: "#eb7825",
+      foregroundColor: "#ffffff",
+      fontFamilyValue: undefined,
+    }),
+    resolveOfferingCta: () => ({
+      kind: "buy",
+      label: "Buy ticket",
+      price: "£25",
+      tappable: true,
+    }),
+    computeOfferingVariant: () => "published",
+    createThemePalette: () => ({
+      page: "#0c0e12",
+      accent: "#eb7825",
+      accentText: "#fff",
+      primaryText: "#fff",
+      secondaryText: "#ccc",
+      tertiaryText: "#999",
+      panel: "#111",
+      panelStrong: "#222",
+      panelBorder: "#333",
+      card: "#1a1a1a",
+      cutoutBorder: "#444",
+      glass: "#000",
+      glassTint: "dark",
+      accentWash: "#332211",
+    }),
+    boldFontFamily: () => undefined,
+    buildStaticMapUrl: () => "https://map.test/static.png",
+    // ORCH-1138 Leg 2 — the adapter composes the Direction-A foundation: it pulls
+    // useResponsiveLayout from @mingla/offering-rendering (and, post-ORCH-1167, the
+    // shared EventOfferingFloatingBar + EventTicketBox from the same package).
+    useResponsiveLayout: () => ({ isDesktop: false, isWeb: true }),
+    EventOfferingFloatingBar: "EventOfferingFloatingBar",
+    EventTicketBox: "EventTicketBox",
+  }),
+  { virtual: true },
+);
 
 jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: mockUser }),
@@ -268,6 +296,10 @@ const renderPublicEventPage = (
         return require(request);
       case "./FoundationEventPreview":
         return { FoundationEventPreview: "FoundationEventPreview" };
+      // [TEST-MOD-APPROVED #4063] The claim-only purchase preface is unrelated
+      // to close navigation; this evaluator only needs its pure boundary.
+      case "./prePurchaseAppBox":
+        return { SHOW_PRE_PURCHASE_APP_BOX: true };
       // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062] — deps the adapter added after
       // this evaluator was last written. @mingla/phone-input is a proven web-safe
       // dep (already shipping in buyer-web checkout); the rest are stubbed like the
@@ -280,12 +312,23 @@ const renderPublicEventPage = (
       // remains real in the dedicated RSVP suites; accidental use here is loud.
       case "./useRsvpGuestRecovery":
         return {
-          useRsvpGuestRecovery: (_eventId: string, _userId: string | null, enabled: boolean) => {
-            if (enabled) throw new Error("RSVP recovery is outside the close-button harness");
+          useRsvpGuestRecovery: (
+            _eventId: string,
+            _userId: string | null,
+            enabled: boolean,
+          ) => {
+            if (enabled)
+              throw new Error(
+                "RSVP recovery is outside the close-button harness",
+              );
             return {
               restoredRsvp: null,
               recoveryNotice: null,
-              onResolved: () => { throw new Error("RSVP acceptance is outside the close-button harness"); },
+              onResolved: () => {
+                throw new Error(
+                  "RSVP acceptance is outside the close-button harness",
+                );
+              },
             };
           },
         };
@@ -449,13 +492,17 @@ const renderPublicEventPage = (
       // package by deep specifier. The real module is returned; the close-callback
       // contract is unrelated and every close assertion below is untouched.
       case "@mingla/offering-rendering/offeringRefundPolicy":
-        return jest.requireActual("@mingla/offering-rendering/offeringRefundPolicy");
+        return jest.requireActual(
+          "@mingla/offering-rendering/offeringRefundPolicy",
+        );
       // Harness registration only — ADDITION, no assertion changed. The public
       // RSVP page keeps an anonymous guest's accepted reply for the tab (pure
       // snapshot reader, returned real) and renders its RSVP status pill from a
       // sibling component. Both are outside the close-callback contract.
       case "@mingla/offering-rendering/rsvpGuestSnapshot":
-        return jest.requireActual("@mingla/offering-rendering/rsvpGuestSnapshot");
+        return jest.requireActual(
+          "@mingla/offering-rendering/rsvpGuestSnapshot",
+        );
       case "./RsvpStatusBanner":
         return { RsvpStatusBanner: "RsvpStatusBanner" };
       // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
@@ -486,11 +533,30 @@ const renderPublicEventPage = (
       // close assertion below is untouched.
       case "../ui/SimpleConfirmDialog":
         return { SimpleConfirmDialog: () => null };
+      // [TEST-MOD-APPROVED #4063] Harness registration only — the shared
+      // approval toast copy does not participate in the close contract.
+      case "../../constants/buyerClaimCopy":
+        return { BUYER_CLAIM_COPY: { approvalToast: "Approved" } };
+      // [TEST-MOD-APPROVED #4063] Harness registration only — app-download
+      // targeting is outside this close-callback contract.
+      case "../../services/guestFunnelLink":
+        return {
+          detectClientPlatform: () => "other",
+          openExternal: jest.fn(),
+          resolveGuestFunnelTarget: () => ({
+            ctaUrl: "https://usemingla.com/download",
+          }),
+        };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }
   };
-  const evaluator = new Function("require", "exports", "module", transpiled.outputText);
+  const evaluator = new Function(
+    "require",
+    "exports",
+    "module",
+    transpiled.outputText,
+  );
   evaluator(customRequire, moduleRef.exports, moduleRef);
   const PublicEventPage = moduleRef.exports.PublicEventPage as (props: {
     event: ReturnType<typeof eventFixture>;
@@ -542,7 +608,10 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
   });
 
   test("deep-link close falls back to the live brand slug when brand is populated", () => {
-    const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
+    const tree = renderPublicEventPage(
+      eventFixture("frozen-brand"),
+      brandFixture("live-brand"),
+    );
 
     driveClose(tree);
 
@@ -573,7 +642,10 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
 
   test("history close uses router.back without replacing the URL", () => {
     mockRouter = makeRouter(true);
-    const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
+    const tree = renderPublicEventPage(
+      eventFixture("frozen-brand"),
+      brandFixture("live-brand"),
+    );
 
     driveClose(tree);
 
@@ -582,7 +654,10 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
   });
 
   test("buyer-web adapter renders the FOUNDATION page with palette + chrome handlers (ORCH-1138 Leg 2)", () => {
-    const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
+    const tree = renderPublicEventPage(
+      eventFixture("frozen-brand"),
+      brandFixture("live-brand"),
+    );
     const page = getPageNode(tree);
 
     // ORCH-1138 Leg 2 — a scheduled event renders FoundationEventPreview (the
@@ -600,7 +675,10 @@ describe("ORCH-0961 — PublicEventPage close callback adversarial coverage", ()
   test("founder public route keeps public close fallback instead of hub replacement", () => {
     mockUser = { id: "founder-1" };
     mockUserBrands = [{ id: "brand-1" }];
-    const tree = renderPublicEventPage(eventFixture("frozen-brand"), brandFixture("live-brand"));
+    const tree = renderPublicEventPage(
+      eventFixture("frozen-brand"),
+      brandFixture("live-brand"),
+    );
 
     driveClose(tree);
 

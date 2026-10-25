@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4063_order_confirmation_message.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4063-order-confirmation-message",
+  "profile": "deno-2-unit"
+}

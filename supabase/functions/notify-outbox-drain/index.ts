@@ -25,6 +25,10 @@ import {
   resolveVenueReservationManageLink,
   type VenueReservationManageKeyRing,
 } from "../_shared/venueReservationManageToken.ts";
+import {
+  type BuyerLinkKind,
+  resolveBuyerLink,
+} from "../_shared/messageLinks.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -191,6 +195,13 @@ export async function resolveReservationConfirmationDispatch(
   const guestEmail = typeof payload.guest_email === "string"
     ? payload.guest_email.trim()
     : "";
+  const dedicatedSmsRow = typeof rowContact === "string" &&
+    /^\+[1-9][0-9]{1,14}$/.test(rowContact) &&
+    (payload.channel_hint === "sms" ||
+      String(row.idempotency_key ?? "").endsWith(":sms"));
+  if (dedicatedSmsRow) {
+    return { contact: rowContact, manageUrl: null };
+  }
   // The link is a credential: it only ever goes to the booking's own email.
   if (!EMAIL_RE.test(guestEmail)) {
     return { contact: rowContact, manageUrl: null };
@@ -219,6 +230,64 @@ export async function resolveReservationConfirmationDispatch(
     );
     return { contact, manageUrl: null };
   }
+}
+
+interface GenericBuyerLinkRequest {
+  kind: BuyerLinkKind;
+  sourceId: string;
+}
+
+export function genericBuyerLinkRequest(
+  row: Record<string, unknown>,
+): GenericBuyerLinkRequest | null {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const category = String(row.category_key ?? "");
+  const from = (key: string): string => String(payload[key] ?? "").trim();
+  const hasMessageTimezone = typeof payload.timezone === "string" &&
+    payload.timezone.trim().length > 0;
+
+  if (
+    hasMessageTimezone &&
+    (category === "buyer_event_reminder" ||
+      category === "buyer_event_updated" ||
+      category === "buyer_purchase_confirmation")
+  ) {
+    const sourceId = from("order_id");
+    return sourceId ? { kind: "order", sourceId } : null;
+  }
+  if (
+    hasMessageTimezone &&
+    [
+      "buyer_reservation_confirmed",
+      "buyer_reservation_changed",
+      "buyer_reservation_cancelled",
+      "buyer_reservation_reminder",
+    ].includes(category)
+  ) {
+    const sourceId = from("reservation_id");
+    return sourceId ? { kind: "reservation", sourceId } : null;
+  }
+  if (category === "buyer_venue_order_receipt") {
+    const sourceId = from("venue_order_id");
+    return sourceId ? { kind: "venue_order", sourceId } : null;
+  }
+  return null;
+}
+
+export async function resolveGenericBuyerMessageLink(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const request = genericBuyerLinkRequest(row);
+  if (request === null) return {};
+  const link = await resolveBuyerLink(admin, request);
+  return {
+    message_link_url: link.url,
+    message_link_display: link.display,
+    message_link_claimed: link.claimed,
+    message_link_fallback: link.fallback,
+  };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -311,6 +380,7 @@ export async function processGeneric(
   const payload: Record<string, unknown> = {
     ...((row.payload as Record<string, unknown>) ?? {}),
     brand_name: brandName,
+    ...await resolveGenericBuyerMessageLink(admin, row),
   };
   let contact = (row.contact as string | null | undefined) ?? null;
   let reservationManageUrl: string | null = null;

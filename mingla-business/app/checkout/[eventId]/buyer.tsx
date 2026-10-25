@@ -119,6 +119,7 @@ import {
   PURCHASE_TERMS_LABEL_TERMS,
   PURCHASE_TERMS_URL,
 } from "../../../src/constants/consentDisclosure";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { supabase } from "../../../src/services/supabase";
 
 import { Button } from "../../../src/components/ui/Button";
@@ -770,6 +771,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           currency: result.currency,
           paymentStatus: result.paymentStatus,
           notificationStatus: result.notificationStatus,
+          buyerContact: result.buyerContact,
+          receipt: result.receipt,
+          claim: result.claim,
+          attachedToAccount: result.attachedToAccount,
+          boughtForSomeoneElse: result.boughtForSomeoneElse,
           tickets: result.tickets,
         });
         router.replace(`/checkout/${eventId}/confirm` as never);
@@ -835,7 +841,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     phoneCountry,
     eventId,
     totals.isFree,
-    totals.currency,
     discountCode,
     quote,
     quoteStatus,
@@ -918,13 +923,29 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             </View>
             {quote !== null ? (
               <React.Suspense fallback={null}>
-                <TicketQuoteSummary quote={quote} compact />
+                <TicketQuoteSummary
+                  quote={quote}
+                  compact
+                  totalLabel={BUYER_CLAIM_COPY.confirmTotalLabel}
+                  totalValue={
+                    totals.isFree
+                      ? BUYER_CLAIM_COPY.receipt.free
+                      : formatCurrency(totals.allInTotal, totals.currency, true)
+                  }
+                />
               </React.Suspense>
             ) : null}
           </GlassCard>
         </Pressable>
 
-        <Text style={styles.sectionLabel}>Buyer details</Text>
+        {Platform.OS !== "web" && sessionUserId !== null ? (
+          <Text
+            style={styles.buyerContext}
+            testID="business-buyer-recipient-note"
+          >
+            {BUYER_CLAIM_COPY.bizCheckout.forSomeoneElse}
+          </Text>
+        ) : null}
 
         {/* Name */}
         <View style={styles.fieldWrap}>
@@ -1013,6 +1034,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             theme={PUBLIC_BUYER_PHONE_THEME}
           />
         </View>
+
+        <Text style={styles.promise} testID="checkout-claim-promise">
+          {BUYER_CLAIM_COPY.checkoutPromise.ticket}
+        </Text>
 
         {/* #3859 — purchase acceptance and optional marketing are separate. */}
         <Pressable
@@ -1119,13 +1144,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         ]}
       >
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
+          <Text style={styles.totalLabel}>
+            {BUYER_CLAIM_COPY.confirmTotalLabel}
+          </Text>
           <Text style={styles.totalValue}>
-            {quoteStatus !== "ready" || quote === null
+            {quoteStatus !== "ready"
               ? "Updating…"
-              : quote.buyerTotalCents === 0
-                ? formatCurrency(0, quote.currency)
-                : formatCurrency(quote.buyerTotalCents, quote.currency, true)}
+              : totals.isFree
+                ? BUYER_CLAIM_COPY.receipt.free
+                : formatCurrency(totals.allInTotal, totals.currency, true)}
           </Text>
         </View>
         {/* META-ORCH-1161 Sub-A.2 (DEC-186) — the Pay button stays VISUALLY
@@ -1250,6 +1277,19 @@ const styles = StyleSheet.create({
   // Field wrappers
   fieldWrap: {
     marginBottom: spacing.md,
+  },
+  buyerContext: {
+    marginBottom: spacing.md,
+    fontSize: 13,
+    lineHeight: 19,
+    color: textTokens.secondary,
+  },
+  promise: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    fontSize: 13,
+    lineHeight: 19,
+    color: textTokens.secondary,
   },
   // ORCH-0847 Phase B — labeled field header with required asterisk.
   fieldLabelRow: {

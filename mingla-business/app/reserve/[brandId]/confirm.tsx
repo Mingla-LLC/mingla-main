@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { captureWeb } from "../../../src/analytics/webAnalytics";
@@ -9,14 +15,18 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
-import { confirmGuestVenueReservation } from "../../../src/services/venueGuestReservationService";
-import { guestReservationManagePath } from "../../../src/utils/guestReservationManage";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
+import {
+  confirmGuestVenueReservation,
+  type GuestReservationConfirmResult,
+} from "../../../src/services/venueGuestReservationService";
+import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { Button } from "../../../src/components/ui/Button";
+import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
 
 type State = "loading" | "completed" | "pending" | "error";
 
 export default function VenueReservationConfirmRoute(): React.ReactElement {
-  const router = useRouter();
   const params = useLocalSearchParams<{
     brandId: string | string[];
     rcs?: string | string[];
@@ -32,8 +42,8 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
     ? params.bst[0]
     : params.bst;
   const [state, setState] = useState<State>("loading");
-  const [manageReservationId, setManageReservationId] = useState<string | null>(null);
-  const [manageToken, setManageToken] = useState<string | null>(null);
+  const [completedResult, setCompletedResult] =
+    useState<GuestReservationConfirmResult | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -64,8 +74,7 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
             : "error",
       );
       if (result.status === "completed") {
-        setManageReservationId(result.reservationId);
-        setManageToken(result.guestCancelToken ?? buyerStatusToken);
+        setCompletedResult(result);
         captureWeb("venue_reservation_completed", {
           surface: "buyer_web",
           brand_id: typeof brandId === "string" ? brandId : null,
@@ -102,51 +111,56 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
       >
-      {state === "loading" ? (
-        <>
-          <ActivityIndicator />
-          <Text style={styles.title}>Confirming your reservation…</Text>
-        </>
-      ) : state === "completed" ? (
-        <>
-          <Text style={styles.title}>Your table is reserved</Text>
-          <Text style={styles.body}>
-            Confirmation has been sent to your email.
-          </Text>
-          <Button label="Done" onPress={() => router.replace("/" as never)} />
-          {manageReservationId && manageToken ? (
-            <Button
-              label="Manage reservation"
-              onPress={() => {
-                if (typeof window !== "undefined") {
-                  window.location.assign(
-                    guestReservationManagePath({
-                      brandId: typeof brandId === "string" ? brandId : "",
-                      reservationId: manageReservationId,
-                      token: manageToken,
-                    }),
-                  );
+        {state === "loading" ? (
+          <>
+            <ActivityIndicator />
+            <Text style={styles.title}>Confirming your reservation…</Text>
+          </>
+        ) : state === "completed" ? (
+          <>
+            <Text style={styles.title}>{BUYER_CLAIM_COPY.venue.title}</Text>
+            {completedResult !== null ? (
+              <BuyerClaimCard
+                kind="booking"
+                email={completedResult.buyerContact?.email ?? null}
+                phoneLast4={completedResult.buyerContact?.phoneLast4 ?? null}
+                shortUrl={completedResult.claim?.shortUrl ?? null}
+                handoff={
+                  completedResult.claim?.code
+                    ? {
+                        mint: () =>
+                          mintClaimLinkHandoff(
+                            completedResult.claim?.code ?? "",
+                          ),
+                      }
+                    : null
                 }
-              }}
-            />
-          ) : null}
-        </>
-      ) : state === "pending" ? (
-        <>
-          <Text style={styles.title}>Payment is still confirming</Text>
-          <Text style={styles.body}>Give it a moment, then check again.</Text>
-          <Button label="Check again" onPress={() => void confirm()} />
-        </>
-      ) : (
-        <>
-          <Text style={styles.title}>We couldn’t confirm it yet</Text>
-          <Text style={styles.body}>
-            If you were charged, your reservation is still protected while we
-            check the payment.
-          </Text>
-          <Button label="Try again" onPress={() => void confirm()} />
-        </>
-      )}
+                textSent={completedResult.buyerContact?.phoneLast4 != null}
+                analyticsSurface="venue_reservation_confirm"
+                fallbackEntity={{
+                  entityType: "event",
+                  brandSlug: typeof brandId === "string" ? brandId : "",
+                  entitySlug: completedResult.reservationId ?? "",
+                }}
+              />
+            ) : null}
+          </>
+        ) : state === "pending" ? (
+          <>
+            <Text style={styles.title}>Payment is still confirming</Text>
+            <Text style={styles.body}>Give it a moment, then check again.</Text>
+            <Button label="Check again" onPress={() => void confirm()} />
+          </>
+        ) : (
+          <>
+            <Text style={styles.title}>We couldn’t confirm it yet</Text>
+            <Text style={styles.body}>
+              If you were charged, your reservation is still protected while we
+              check the payment.
+            </Text>
+            <Button label="Try again" onPress={() => void confirm()} />
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

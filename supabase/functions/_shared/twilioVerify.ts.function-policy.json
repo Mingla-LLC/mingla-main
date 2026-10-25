@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "kind": "shared-module-policy",
+  "module_path": "supabase/functions/_shared/twilioVerify.ts",
+  "env": {
+    "allowed_top_level": [
+      "TWILIO_ACCOUNT_SID",
+      "TWILIO_AUTH_TOKEN",
+      "TWILIO_VERIFY_SERVICE_SID"
+    ],
+    "dynamic_getters": [],
+    "local_call_identifiers": [],
+    "closure_call_identifiers": [],
+    "allowed_bundle_fields": {}
+  }
+}

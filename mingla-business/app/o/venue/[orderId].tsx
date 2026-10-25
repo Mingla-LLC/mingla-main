@@ -27,6 +27,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -42,6 +43,8 @@ import {
   resolveTheme,
 } from "@mingla/offering-rendering";
 import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering";
+import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
+import { venuePublicPath } from "../../../src/constants/publicUrls";
 
 /**
  * The status card, and the transport it needs, behind a LAZY boundary — and
@@ -209,6 +212,23 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
       .finally(() => setActionPending(false));
   }, [orderId, token]);
 
+  const backToMenu = useCallback((): void => {
+    if (live?.brandSlug && live.venueSlug) {
+      router.replace(
+        `${venuePublicPath({
+          brandSlug: live.brandSlug,
+          venueSlug: live.venueSlug,
+        })}?tab=menu` as never,
+      );
+      return;
+    }
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.location.assign("https://usemingla.com");
+      return;
+    }
+    void Linking.openURL("https://usemingla.com");
+  }, [live, router]);
+
   const body = (): React.ReactElement => {
     if (typeof orderId !== "string" || token === "") {
       return (
@@ -274,13 +294,13 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
         </Text>
         {body()}
         <Pressable
-          onPress={() => router.replace("/")}
+          onPress={backToMenu}
           accessibilityRole="button"
-          accessibilityLabel="Back to Mingla"
+          accessibilityLabel={BUYER_CLAIM_COPY.venueOrder.back}
           style={styles.homeBtn}
         >
           <Text style={[styles.homeLabel, { color: palette.accent }]}>
-            Back to Mingla
+            {BUYER_CLAIM_COPY.venueOrder.back}
           </Text>
         </Pressable>
       </ScrollView>

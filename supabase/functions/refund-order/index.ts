@@ -621,6 +621,7 @@ serve(async (req: Request): Promise<Response> => {
         refund_lines: serverRefundLines(pending),
         reason: reason.trim(),
         is_full_refund: pending.is_full_refund === true,
+        refund_record_id: refundId,
         stripe_refund_id: stripeRefund.id,
         payment_provider: paymentProvider,
       },

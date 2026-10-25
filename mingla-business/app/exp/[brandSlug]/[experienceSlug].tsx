@@ -92,6 +92,7 @@ import {
 } from "../../../src/analytics/publicParityWebAdapter";
 import { buildAdViewContentPayload } from "../../../src/analytics/adViewContentPayload";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
+import { SHOW_PRE_PURCHASE_APP_BOX } from "../../../src/components/event/prePurchaseAppBox";
 import { useBrandFollowerCount } from "../../../src/hooks/useBrandFollowerCount";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
@@ -842,7 +843,7 @@ const ResolvedExperiencePage: React.FC<{
       {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
           lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
           tree — the COMMS-0084 no-residue posture holds by construction). */}
-      {gateVisible ? (
+      {SHOW_PRE_PURCHASE_APP_BOX && gateVisible ? (
         <React.Suspense fallback={null}>
           <SeeWhosGoingGate
             visible={gateVisible}

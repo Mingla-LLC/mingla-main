@@ -15,12 +15,16 @@ import { formatQuoteMoney } from "./quoteMoney";
 export interface TicketQuoteSummaryProps {
   quote: TicketQuote;
   compact?: boolean;
+  totalLabel?: string;
+  totalValue?: string;
 }
 
 /** W-SUMMARY — display-only rendering of the server quote. */
 export const TicketQuoteSummary: React.FC<TicketQuoteSummaryProps> = ({
   quote,
   compact = false,
+  totalLabel = "Total",
+  totalValue,
 }) => {
   const feesAndTaxCents = ticketQuoteFeesAndTaxCents(quote);
   return (
@@ -65,9 +69,10 @@ export const TicketQuoteSummary: React.FC<TicketQuoteSummaryProps> = ({
         </Text>
       </View>
       <View style={[styles.row, styles.totalRow]}>
-        <Text style={styles.totalLabel}>Total</Text>
+        <Text style={styles.totalLabel}>{totalLabel}</Text>
         <Text style={styles.totalValue}>
-          {formatQuoteMoney(quote.buyerTotalCents, quote.currency)}
+          {totalValue ??
+            formatQuoteMoney(quote.buyerTotalCents, quote.currency)}
         </Text>
       </View>
     </View>

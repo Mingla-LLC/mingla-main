@@ -14,6 +14,8 @@
 import React from "react";
 import {
   Image,
+  Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -39,6 +41,7 @@ import {
   typography,
 } from "../src/constants/designSystem";
 import { HapticFeedback } from "../src/utils/hapticFeedback";
+import { BUYER_CLAIM_COPY } from "../src/constants/buyerClaimCopy";
 // ISSUE-1001 — the official business lockup now imports from the canonical
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
@@ -124,6 +127,14 @@ export default function NotFoundScreen(): React.ReactElement {
 
   const handleGoHome = (): void => {
     HapticFeedback.buttonPress();
+    if (!isSignedIn) {
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.location.assign("https://usemingla.com");
+      } else {
+        void Linking.openURL("https://usemingla.com");
+      }
+      return;
+    }
     // router.replace (NOT push) — back button can't return to the 404.
     // Index gate routes per signed-in/signed-out state.
     router.replace("/" as never);
@@ -207,11 +218,15 @@ export default function NotFoundScreen(): React.ReactElement {
           <View style={styles.footer}>
             <View style={styles.cta}>
               <Button
-                label="Go home"
+                label={
+                  isSignedIn ? "Go home" : BUYER_CLAIM_COPY.notFound.cta
+                }
                 onPress={handleGoHome}
                 variant="primary"
                 size="md"
-                accessibilityLabel="Go home"
+                accessibilityLabel={
+                  isSignedIn ? "Go home" : BUYER_CLAIM_COPY.notFound.cta
+                }
                 // #2180 P2-1 — caps the label at 200 % so the full word stays
                 // inside the 44 pt pill at every Dynamic Type setting.
                 labelStyle={ctaLabelStyle(fontScale)}

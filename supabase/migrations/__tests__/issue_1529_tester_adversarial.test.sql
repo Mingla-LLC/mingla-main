@@ -267,23 +267,24 @@ BEGIN
   END IF;
   -- Everything that TOUCHES the table, writers and readers alike.
   -- [TEST-MOD-APPROVED #3988] Fifteen established producers, two brand-support
-  -- producers, one drain-derived producer, and twelve proved readers are the
-  -- exact live catalog after #3988: 30 functions that touch the outbox.
-  IF v_count < 30 THEN
+  -- producers, one #4063 receipt producer, one drain-derived producer, and
+  -- twelve proved readers are the exact live catalog: 31 functions that touch
+  -- the outbox.
+  IF v_count < 31 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_30_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_31_got_%',
       v_count;
   END IF;
 
   -- [TEST-MOD-APPROVED #3988] Brand-visible support adds two country-aware,
-  -- push-only producers. EIGHTEEN: the writer floor is the number that
+  -- push-only producers. NINETEEN: the writer floor is the number that
   -- actually exists, so a producer disappearing is caught as well as one
   -- appearing.
   SELECT count(*) INTO v_count
   FROM issue_1529_adv_producers WHERE writes_outbox;
-  IF v_count < 18 THEN
+  IF v_count < 19 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_18_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_19_got_%',
       v_count;
   END IF;
 END;
@@ -313,6 +314,7 @@ DECLARE
     'issue_3988_notify_brand_support_progress',
     'issue_3720_community_add_comment',
     'issue_4073_scan_city_watches',
+    'tg_venue_orders_a4063_receipt',
     'create_support_ticket'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund
