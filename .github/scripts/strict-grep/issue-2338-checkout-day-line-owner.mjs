@@ -85,10 +85,14 @@ const RESUME_CARRIES_DAYS =
 // A. the call, WITH the occurrences named. `[]` or `EMPTY` in that slot fails.
 const RESOLVE_CALL =
   /resolveChosenDaysLine\(\s*[A-Za-z_$][\w$]*\s*,\s*occurrences\s*,/;
+// #4063 moves post-payment receipt construction behind the status-token-gated
+// confirmation API. The screen remains honest only when it renders the returned
+// canonical receipt rather than rebuilding a date from stripped event data.
+const CANONICAL_RECEIPT =
+  /<BuyerCheckoutReceipt[\s\S]{0,500}?receipt=\{result\.receipt\}/;
 // B. the draft formatters — correct for an organiser draft, blind on a
 // published multi-date event.
-const DRAFT_FORMATTER =
-  /\bformatDraft(DateLine|DateSubline|DatesList)\s*\(/;
+const DRAFT_FORMATTER = /\bformatDraft(DateLine|DateSubline|DatesList)\s*\(/;
 // C. a hand-rolled day label — how the fourth formatter got built.
 const RAW_DAY_LABEL = /\bformatOccurrenceDayLabel\s*\(/;
 
@@ -108,10 +112,11 @@ export function stripComments(source) {
 
 export function check(rawSource, relPath, failures) {
   const source = stripComments(rawSource);
-  if (!RESOLVE_CALL.test(source)) {
+  if (!RESOLVE_CALL.test(source) && !CANONICAL_RECEIPT.test(source)) {
     failures.push(
-      `${relPath}: does not call resolveChosenDaysLine(event, occurrences, …). ` +
-        "A checkout surface renders its date line through the display owner " +
+      `${relPath}: neither calls resolveChosenDaysLine(event, occurrences, …) ` +
+        "nor renders result.receipt through BuyerCheckoutReceipt. A checkout " +
+        "surface renders its date line through the display owner " +
         "AND names the occurrence list at the call site. Passing `[]` (or " +
         "omitting the argument) is the #2209 defect exactly: the prop exists, " +
         "it defaults, and nobody ever hands it the days — so a guest who chose " +
@@ -179,11 +184,7 @@ if (process.argv.includes("--self-test")) {
 
   // BAD1 — the shape #2338 shipped: the draft formatter, straight into the UI.
   f = [];
-  check(
-    "<Text>{formatDraftDateLine(event)}</Text>",
-    "bad1.tsx",
-    f,
-  );
+  check("<Text>{formatDraftDateLine(event)}</Text>", "bad1.tsx", f);
   if (f.length < 2) {
     self.push(
       "BAD1 (draft formatter, no owner call) must trip BOTH rule A and rule B, " +
@@ -200,7 +201,9 @@ if (process.argv.includes("--self-test")) {
     f,
   );
   if (f.length === 0) {
-    self.push("BAD2 (resolveChosenDaysLine called with an EMPTY list) not flagged");
+    self.push(
+      "BAD2 (resolveChosenDaysLine called with an EMPTY list) not flagged",
+    );
   }
 
   // BAD3 — a fifth private formatter, rebuilt in the screen.
@@ -224,7 +227,10 @@ if (process.argv.includes("--self-test")) {
     "good2.tsx",
     f,
   );
-  if (f.length) self.push("GOOD2 (defect named in COMMENTS) wrongly flagged: " + f.join("; "));
+  if (f.length)
+    self.push(
+      "GOOD2 (defect named in COMMENTS) wrongly flagged: " + f.join("; "),
+    );
 
   // BAD5 — the resume payload stops carrying the days across the redirect.
   f = [];
@@ -235,7 +241,8 @@ if (process.argv.includes("--self-test")) {
     "bad5.tsx",
     f,
   );
-  if (f.length === 0) self.push("BAD5 (resume payload without the day set) not flagged");
+  if (f.length === 0)
+    self.push("BAD5 (resume payload without the day set) not flagged");
 
   f = [];
   checkResumeWriter(
@@ -244,13 +251,19 @@ if (process.argv.includes("--self-test")) {
     "good3.tsx",
     f,
   );
-  if (f.length) self.push("GOOD3 (resume payload WITH the day set) wrongly flagged: " + f.join("; "));
+  if (f.length)
+    self.push(
+      "GOOD3 (resume payload WITH the day set) wrongly flagged: " +
+        f.join("; "),
+    );
 
   // BAD4 — the owner gutted.
   f = [];
   checkOwner("export const formatDraftDateLine = () => {};", "bad4.ts", f);
   if (f.length !== 2) {
-    self.push(`BAD4 (owner exports removed) must report 2 losses, got ${f.length}`);
+    self.push(
+      `BAD4 (owner exports removed) must report 2 losses, got ${f.length}`,
+    );
   }
 
   // GOOD-owner inverse.
@@ -261,16 +274,15 @@ if (process.argv.includes("--self-test")) {
     "goodowner.ts",
     f,
   );
-  if (f.length) self.push("GOOD owner fixture wrongly flagged: " + f.join("; "));
+  if (f.length)
+    self.push("GOOD owner fixture wrongly flagged: " + f.join("; "));
 
   if (self.length) {
     console.error("issue-2338 checkout-day-line-owner self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log(
-    "issue-2338 checkout-day-line-owner self-test PASS (9/9 cases).",
-  );
+  console.log("issue-2338 checkout-day-line-owner self-test PASS (9/9 cases).");
   process.exit(0);
 }
 
@@ -295,7 +307,11 @@ if (!fs.existsSync(writerAbs)) {
   failures.push(`${RESUME_WRITER}: the paid-leg resume writer is missing.`);
 } else {
   scanned += 1;
-  checkResumeWriter(fs.readFileSync(writerAbs, "utf8"), RESUME_WRITER, failures);
+  checkResumeWriter(
+    fs.readFileSync(writerAbs, "utf8"),
+    RESUME_WRITER,
+    failures,
+  );
 }
 
 const ownerAbs = path.join(root, OWNER);

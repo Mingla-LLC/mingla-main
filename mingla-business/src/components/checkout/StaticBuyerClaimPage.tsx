@@ -114,6 +114,7 @@ export const StaticBuyerClaimPage: React.FC<StaticBuyerClaimPageProps> = ({
         <Text style={styles.body}>{BUYER_CLAIM_COPY.signInGeneric}</Text>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={BUYER_CLAIM_COPY.button[kind]}
           disabled={target === null}
           onPress={open}
           style={({ pressed }) => [

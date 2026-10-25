@@ -123,6 +123,7 @@ import {
 // place the screen does rather than hardcoding it, so the wiring assertion below
 // stays true if that mock is ever retuned.
 import { useWindowDimensions } from "react-native";
+import { BUYER_CLAIM_COPY } from "../src/constants/buyerClaimCopy";
 
 // ---------------------------------------------------------------------------
 // #2180 — the consumer screen, loaded WITHOUT importing it.
@@ -154,7 +155,10 @@ const CONSUMER_STUBS: Record<string, unknown> = {
     Stack: { Screen: "Stack.Screen" },
     useRouter: () => ({ replace: jest.fn(), push: jest.fn(), back: jest.fn() }),
   },
-  "expo-linear-gradient": { __esModule: true, LinearGradient: "LinearGradient" },
+  "expo-linear-gradient": {
+    __esModule: true,
+    LinearGradient: "LinearGradient",
+  },
   "react-native-safe-area-context": {
     __esModule: true,
     SafeAreaView: "SafeAreaView",
@@ -183,9 +187,20 @@ const CONSUMER_STUBS: Record<string, unknown> = {
 /** Resolve a relative specifier to a real `app-mobile` file, or throw. */
 function resolveConsumerFile(fromDir: string, specifier: string): string {
   const base = path.resolve(fromDir, specifier);
-  const candidates = [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")];
-  const hit = candidates.find((c) => fs.existsSync(c) && fs.statSync(c).isFile());
-  if (!hit) throw new Error(`#2180 consumer loader: cannot resolve "${specifier}" from ${fromDir}`);
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    path.join(base, "index.ts"),
+    path.join(base, "index.tsx"),
+  ];
+  const hit = candidates.find(
+    (c) => fs.existsSync(c) && fs.statSync(c).isFile(),
+  );
+  if (!hit)
+    throw new Error(
+      `#2180 consumer loader: cannot resolve "${specifier}" from ${fromDir}`,
+    );
   return hit;
 }
 
@@ -221,7 +236,8 @@ function loadConsumerFile(absPath: string): Record<string, unknown> {
   const moduleObject = { exports: moduleExports };
   const dir = path.dirname(absPath);
   const localRequire = (specifier: string): unknown => {
-    if (specifier.startsWith(".")) return loadConsumerFile(resolveConsumerFile(dir, specifier));
+    if (specifier.startsWith("."))
+      return loadConsumerFile(resolveConsumerFile(dir, specifier));
     if (specifier in CONSUMER_STUBS) return CONSUMER_STUBS[specifier];
     throw new Error(
       `#2180 consumer loader: "${specifier}" (required by ${path.relative(CONSUMER_ROOT, absPath)}) ` +
@@ -229,7 +245,14 @@ function loadConsumerFile(absPath: string): Record<string, unknown> {
     );
   };
 
-  const factory = new Function("exports", "require", "module", "__filename", "__dirname", outputText) as (
+  const factory = new Function(
+    "exports",
+    "require",
+    "module",
+    "__filename",
+    "__dirname",
+    outputText,
+  ) as (
     exports: Record<string, unknown>,
     require: (s: string) => unknown,
     module: { exports: Record<string, unknown> },
@@ -243,9 +266,12 @@ function loadConsumerFile(absPath: string): Record<string, unknown> {
   return result;
 }
 
-const consumerNotFound = loadConsumerFile(path.join(CONSUMER_ROOT, "app/+not-found.tsx"));
+const consumerNotFound = loadConsumerFile(
+  path.join(CONSUMER_ROOT, "app/+not-found.tsx"),
+);
 const ConsumerNotFound = consumerNotFound.default as () => React.ReactElement;
-const CONSUMER_CTA_MAX_FONT_SCALE = consumerNotFound.CTA_MAX_FONT_SCALE as number;
+const CONSUMER_CTA_MAX_FONT_SCALE =
+  consumerNotFound.CTA_MAX_FONT_SCALE as number;
 
 type El = React.ReactElement<Record<string, unknown>>;
 
@@ -269,7 +295,10 @@ function walk(node: El, out: El[] = []): El[] {
 /** Flatten an RN style prop (object, array, or nested array) into one object. */
 function flattenStyle(style: unknown): Record<string, unknown> {
   if (Array.isArray(style)) {
-    return Object.assign({}, ...style.flat(Infinity).filter(Boolean).map(flattenStyle));
+    return Object.assign(
+      {},
+      ...style.flat(Infinity).filter(Boolean).map(flattenStyle),
+    );
   }
   return (style ?? {}) as Record<string, unknown>;
 }
@@ -284,28 +313,34 @@ const hasLabel = (node: El, label: string): boolean =>
   (node.props as { accessibilityLabel?: string }).accessibilityLabel === label;
 
 describe.each([
-  ["mingla-business", BusinessNotFound],
-  ["app-mobile", ConsumerNotFound],
-])("#2180 T-9 — %s +not-found structure", (appName, Screen) => {
+  // [TEST-MOD-APPROVED #4063] The signed-out business fallback now opens the
+  // claim path, while the consumer fallback retains the home exit.
+  ["mingla-business", BusinessNotFound, BUYER_CLAIM_COPY.notFound.cta],
+  ["app-mobile", ConsumerNotFound, "Go home"],
+])("#2180 T-9 — %s +not-found structure", (appName, Screen, exitLabel) => {
   const tree = (Screen as () => El)();
   const safeArea = findSafeAreaView(tree);
   const regions = childrenOf(safeArea);
 
   it("renders a heading with accessibilityRole=header", () => {
     const headings = walk(tree).filter(
-      (n) => (n.props as { accessibilityRole?: string }).accessibilityRole === "header",
+      (n) =>
+        (n.props as { accessibilityRole?: string }).accessibilityRole ===
+        "header",
     );
     expect(headings.length).toBeGreaterThanOrEqual(1);
   });
 
   it("still offers a Go home control somewhere in the tree", () => {
-    expect(walk(tree).some((n) => hasLabel(n, "Go home"))).toBe(true);
+    expect(walk(tree).some((n) => hasLabel(n, exitLabel))).toBe(true);
   });
 
   it("puts the SafeAreaView's centred region and footer side by side", () => {
     // Exactly the structural guarantee: a centred region, then a sibling footer.
     expect(regions.length).toBeGreaterThanOrEqual(2);
-    const content = flattenStyle((regions[0].props as { style?: unknown }).style);
+    const content = flattenStyle(
+      (regions[0].props as { style?: unknown }).style,
+    );
     expect(content.flex).toBe(1);
     // The centred column clips its own overflow, so nothing inside it can grow
     // the layout and push the footer off-screen.
@@ -315,14 +350,16 @@ describe.each([
   it("keeps the Go home control OUT of the centred region", () => {
     // THE #2180 REGRESSION. If the button is moved back inside the centred
     // column, a mis-measuring sibling can bury it off-screen again.
-    const insideCentred = walk(regions[0]).some((n) => hasLabel(n, "Go home"));
+    const insideCentred = walk(regions[0]).some((n) => hasLabel(n, exitLabel));
     expect(insideCentred).toBe(false);
   });
 
   it("puts the Go home control inside a non-shrinking sibling footer", () => {
     const footer = regions[regions.length - 1];
-    expect(walk(footer).some((n) => hasLabel(n, "Go home"))).toBe(true);
-    expect(flattenStyle((footer.props as { style?: unknown }).style).flexShrink).toBe(0);
+    expect(walk(footer).some((n) => hasLabel(n, exitLabel))).toBe(true);
+    expect(
+      flattenStyle((footer.props as { style?: unknown }).style).flexShrink,
+    ).toBe(0);
   });
 
   it("extends the safe area to the bottom edge so the footer is never clipped", () => {
@@ -341,7 +378,9 @@ describe.each([
     // this assertion is kept because it is the plain-language statement of the
     // invariant and it still catches the simplest form of the regression.
     const image = walk(tree).find(
-      (n) => (n.props as { accessibilityRole?: string }).accessibilityRole === "image",
+      (n) =>
+        (n.props as { accessibilityRole?: string }).accessibilityRole ===
+        "image",
     );
     expect(image).toBeDefined();
     const style = flattenStyle((image as El).props.style);
@@ -433,7 +472,8 @@ const RN_IOS_FONT_SCALES = [
 
 function findBrandImage(tree: El): El {
   const image = walk(tree).find(
-    (n) => (n.props as { accessibilityRole?: string }).accessibilityRole === "image",
+    (n) =>
+      (n.props as { accessibilityRole?: string }).accessibilityRole === "image",
   );
   if (!image) throw new Error("no brand <Image> in the rendered tree");
   return image;
@@ -445,7 +485,9 @@ function findBrandImage(tree: El): El {
  * exactly the set React Native would flatten at this Dynamic Type setting.
  */
 function appliedStyleMembers(style: unknown): Record<string, unknown>[] {
-  const list = Array.isArray(style) ? (style as unknown[]).flat(Infinity) : [style];
+  const list = Array.isArray(style)
+    ? (style as unknown[]).flat(Infinity)
+    : [style];
   return list.filter(
     (entry): entry is Record<string, unknown> =>
       typeof entry === "object" && entry !== null,
@@ -463,7 +505,9 @@ describe("#2180 T-9 D-1 — the Dynamic Type driver reaches both screens", () =>
   it("really moves fontScale, and restores it afterwards", () => {
     const before = useWindowDimensions().fontScale;
     expect(withFontScale(1, () => useWindowDimensions().fontScale)).toBe(1);
-    expect(withFontScale(3.571, () => useWindowDimensions().fontScale)).toBe(3.571);
+    expect(withFontScale(3.571, () => useWindowDimensions().fontScale)).toBe(
+      3.571,
+    );
     expect(useWindowDimensions().fontScale).toBe(before);
   });
 });
@@ -490,15 +534,23 @@ describe.each([
       const accessibility = render((largeTypeThreshold as number) + 0.5);
 
       const ordinaryMembers = appliedStyleMembers(ordinary.props.style);
-      const accessibilityMembers = appliedStyleMembers(accessibility.props.style);
+      const accessibilityMembers = appliedStyleMembers(
+        accessibility.props.style,
+      );
       expect(ordinaryMembers.length).toBeGreaterThan(0);
-      expect(accessibilityMembers.length).toBeGreaterThan(ordinaryMembers.length);
+      expect(accessibilityMembers.length).toBeGreaterThan(
+        ordinaryMembers.length,
+      );
 
       // ...and the extra member is a real step-DOWN, not a merged no-op.
       const ordinaryBox = flattenStyle(ordinary.props.style);
       const compactBox = flattenStyle(accessibility.props.style);
-      expect(compactBox.width as number).toBeLessThan(ordinaryBox.width as number);
-      expect(compactBox.height as number).toBeLessThan(ordinaryBox.height as number);
+      expect(compactBox.width as number).toBeLessThan(
+        ordinaryBox.width as number,
+      );
+      expect(compactBox.height as number).toBeLessThan(
+        ordinaryBox.height as number,
+      );
     });
 
     it.each(RN_IOS_FONT_SCALES)(
@@ -626,7 +678,9 @@ describe("#2180 T-9 P2-1 — the Go home label survives the largest Dynamic Type
     // arithmetic above green while the shipped screen reverted to the defect.
     const tree = (BusinessNotFound as unknown as () => El)();
     const footerRegion = childrenOf(findSafeAreaView(tree)).slice(-1)[0];
-    const cta = walk(footerRegion).find((n) => hasLabel(n, "Go home"));
+    const cta = walk(footerRegion).find((n) =>
+      hasLabel(n, BUYER_CLAIM_COPY.notFound.cta),
+    );
     expect(cta).toBeDefined();
     const { fontScale } = useWindowDimensions();
     expect((cta as El).props.labelStyle).toEqual(ctaLabelStyle(fontScale));
@@ -656,11 +710,11 @@ describe("#2180 T-9 P2-1 — the Go home label survives the largest Dynamic Type
   });
 
   it.each([
-    ["mingla-business", BusinessNotFound],
-    ["app-mobile", ConsumerNotFound],
+    ["mingla-business", BusinessNotFound, BUYER_CLAIM_COPY.notFound.cta],
+    ["app-mobile", ConsumerNotFound, "Go home"],
   ])(
     "%s scrolls the centred region instead of clipping it out of existence",
-    (_appName, Screen) => {
+    (_appName, Screen, exitLabel) => {
       const tree = (Screen as unknown as () => El)();
       const safeArea = findSafeAreaView(tree);
       const regions = childrenOf(safeArea);
@@ -677,12 +731,12 @@ describe("#2180 T-9 P2-1 — the Go home label survives the largest Dynamic Type
 
       // SPEC 4.2's structural guarantee is UNCHANGED by the scroll host: the
       // exit is still a non-shrinking sibling, never a child of this region.
-      expect(walk(centred).some((n) => hasLabel(n, "Go home"))).toBe(false);
+      expect(walk(centred).some((n) => hasLabel(n, exitLabel))).toBe(false);
       const footer = regions[regions.length - 1];
       expect(
         flattenStyle((footer.props as { style?: unknown }).style).flexShrink,
       ).toBe(0);
-      expect(walk(footer).some((n) => hasLabel(n, "Go home"))).toBe(true);
+      expect(walk(footer).some((n) => hasLabel(n, exitLabel))).toBe(true);
     },
   );
 

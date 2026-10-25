@@ -27,7 +27,7 @@ import React, {
 } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
 // web — buyer-web capture is a separate leg).
 import { postHogService } from "../../../src/services/postHogService";
@@ -50,6 +50,7 @@ import {
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
+import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
 import {
   TicketConfirmVerdictHero,
   type TicketConfirmEnding,
@@ -89,6 +90,7 @@ function CheckoutConfirmScreenInner({
 }): React.ReactElement | null {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
   const params = useLocalSearchParams<{ eventId: string }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
 
@@ -126,6 +128,57 @@ function CheckoutConfirmScreenInner({
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
+  const exitingViaCtaRef = useRef<boolean>(false);
+
+  // #4063 keeps the established confirmation guard: incidental back gestures
+  // cannot strand a paid buyer, while the explicit CTA disarms the guard.
+  useEffect(() => {
+    const sub = navigation.addListener(
+      "beforeRemove" as never,
+      ((e: { preventDefault: () => void }) => {
+        if (exitingViaCtaRef.current) return;
+        e.preventDefault();
+      }) as never,
+    );
+    return (): void => sub();
+  }, [navigation]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || !isClient) return;
+    const win = (
+      globalThis as unknown as {
+        window?: {
+          addEventListener?: (
+            type: string,
+            listener: (e: BeforeUnloadEvent) => void,
+          ) => void;
+          removeEventListener?: (
+            type: string,
+            listener: (e: BeforeUnloadEvent) => void,
+          ) => void;
+          history?: {
+            pushState?: (state: unknown, title: string, url?: string) => void;
+          };
+        };
+      }
+    ).window;
+    if (win === undefined) return;
+    win.history?.pushState?.(null, "", "");
+    const handler = (): void => {
+      if (exitingViaCtaRef.current) return;
+      win.history?.pushState?.(null, "", "");
+    };
+    win.addEventListener?.(
+      "popstate",
+      handler as unknown as (e: BeforeUnloadEvent) => void,
+    );
+    return (): void => {
+      win.removeEventListener?.(
+        "popstate",
+        handler as unknown as (e: BeforeUnloadEvent) => void,
+      );
+    };
+  }, [isClient]);
 
   // ----- ORCH-0852: web Stripe Checkout sync confirm + Realtime fallback -----
   // On web, Stripe's success_url returns us here with ?cs=…, after a
@@ -430,6 +483,7 @@ function CheckoutConfirmScreenInner({
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
+    exitingViaCtaRef.current = true;
     if (event !== null) {
       router.replace(
         eventPublicPath({
@@ -559,6 +613,11 @@ function CheckoutConfirmScreenInner({
             brandSlug: event.brandSlug,
             entitySlug: event.eventSlug,
           }}
+        />
+        <YoureInFollowCard
+          brandId={brand?.id ?? null}
+          brandName={brand?.displayName ?? "this brand"}
+          brandSlug={brand?.slug ?? event.brandSlug ?? null}
         />
         <BuyerCheckoutReceipt
           eventName={

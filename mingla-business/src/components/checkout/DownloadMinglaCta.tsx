@@ -84,7 +84,13 @@ import { GateQr } from "../event/GateQr";
 import { Icon } from "../ui/Icon";
 
 export type DownloadMinglaClaimPhase =
-  "idle" | "loading" | "ready" | "error" | "unavailable" | "terminal" | "rate";
+  | "idle"
+  | "loading"
+  | "ready"
+  | "error"
+  | "unavailable"
+  | "terminal"
+  | "rate";
 
 interface DownloadMinglaCtaProps {
   eventName: string;
@@ -487,6 +493,7 @@ export const BuyerClaimCard: React.FC<BuyerClaimCardProps> = ({
               </Text>
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={BUYER_CLAIM_COPY.scanRefresh}
                 style={styles.secondaryBadge}
                 testID="buyer-claim-scan-refresh"
                 onPress={() => void mint()}
@@ -691,7 +698,9 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
           accessibilityLiveRegion="polite"
           role="status"
         >
-          {"Your tickets are confirmed. You can open the app and sign in with your checkout email or phone."}
+          {
+            "Your tickets are confirmed. You can open the app and sign in with your checkout email or phone."
+          }
         </Text>
       ) : claimPhase === "error" ? (
         <View style={styles.claimNoteRow}>

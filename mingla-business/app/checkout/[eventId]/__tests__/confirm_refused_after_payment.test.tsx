@@ -24,8 +24,9 @@
 
 import React from "react";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 type TestInstance = { props: Record<string, unknown> };
 type Renderer = {
@@ -46,7 +47,10 @@ const BUYER_TOKEN = "bst-refused";
 const invoke = jest.fn();
 const router = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
 /** The screen's native back guard, captured so the CTA's disarm is provable. */
-const navListeners: Record<string, (e: { preventDefault: () => void }) => void> = {};
+const navListeners: Record<
+  string,
+  (e: { preventDefault: () => void }) => void
+> = {};
 /** The Realtime safety net's callback, captured so a late order can be fired. */
 let realtimeArgs: {
   checkoutSessionId: string | null;
@@ -57,14 +61,19 @@ jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {
     expoConfig: {
-      extra: { EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com" },
+      extra: {
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
+      },
     },
   },
 }));
 jest.mock("expo-router", () => ({
   useRouter: () => router,
   useNavigation: () => ({
-    addListener: (name: string, cb: (e: { preventDefault: () => void }) => void) => {
+    addListener: (
+      name: string,
+      cb: (e: { preventDefault: () => void }) => void,
+    ) => {
       navListeners[name] = cb;
       return () => undefined;
     },
@@ -80,7 +89,12 @@ jest.mock("react-native-safe-area-context", () => ({
 }));
 jest.mock(
   "react-native-svg",
-  () => ({ __esModule: true, default: () => null, Path: () => null, Circle: () => null }),
+  () => ({
+    __esModule: true,
+    default: () => null,
+    Path: () => null,
+    Circle: () => null,
+  }),
   { virtual: true },
 );
 jest.mock("../../../../src/services/supabase", () => ({
@@ -130,7 +144,11 @@ jest.mock("../../../../src/hooks/usePublicTripById", () => ({
         title: "Refused Trip",
         slug: "refused-trip",
         brandSlug: "refused-brand",
-        businessTrip: { startAt: null, endAt: null, destinationLocationText: null },
+        businessTrip: {
+          startAt: null,
+          endAt: null,
+          destinationLocationText: null,
+        },
       },
     },
     isLoading: false,
@@ -167,16 +185,26 @@ jest.mock("../../../../src/analytics/webAnalytics", () => ({
   postAttributionConversion: jest.fn(),
   getStoredClickAttribution: () => ({ clickId: null }),
 }));
-jest.mock("../../../../src/analytics/phMask", () => ({ phMaskProps: () => ({}) }));
+jest.mock("../../../../src/analytics/phMask", () => ({
+  phMaskProps: () => ({}),
+}));
 jest.mock("../../../../src/components/ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../../../src/components/ui/GlassCard", () => {
   const { View } = require("react-native");
-  return { GlassCard: ({ children }: { children: React.ReactNode }) => <View>{children}</View> };
+  return {
+    GlassCard: ({ children }: { children: React.ReactNode }) => (
+      <View>{children}</View>
+    ),
+  };
 });
 jest.mock("../../../../src/components/ui/Button", () => {
   const { Pressable } = require("react-native");
   return {
-    Button: (props: { label: string; onPress?: () => void; variant?: string }) => (
+    Button: (props: {
+      label: string;
+      onPress?: () => void;
+      variant?: string;
+    }) => (
       <Pressable
         testID={`btn-${props.label}`}
         accessibilityLabel={props.label}
@@ -318,9 +346,13 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     // purchase again — that is how a charged guest pays twice.
     expect(text).not.toMatch(/been charged/i);
     expect(text).not.toMatch(/refunded/i);
-    expect(tree.root.findAllByProps({ testID: "btn-Try again" })).toHaveLength(0);
-    expect(tree.root.findAllByProps({ testID: "ticket-confirm-ending-not_issued" }).length)
-      .toBeGreaterThan(0);
+    expect(tree.root.findAllByProps({ testID: "btn-Try again" })).toHaveLength(
+      0,
+    );
+    expect(
+      tree.root.findAllByProps({ testID: "ticket-confirm-ending-not_issued" })
+        .length,
+    ).toBeGreaterThan(0);
     // A refusal is an answer: asked once, and the guest is not bounced to the cart.
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
@@ -342,7 +374,10 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     await press(tree, "btn-Back to event");
 
     expect(router.replace).toHaveBeenCalledWith(
-      eventPublicPath({ brandSlug: "refused-brand", eventSlug: "refused-night" }),
+      eventPublicPath({
+        brandSlug: "refused-brand",
+        eventSlug: "refused-night",
+      }),
     );
     // After the CTA: the same guard lets the sanctioned exit through.
     const after = jest.fn();
@@ -364,7 +399,9 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     // The two refusals must never be shown as the same event: this one really
     // can say "you haven't been charged", and really can invite a retry.
     expect(text).not.toContain(TICKETS_NOT_ISSUED_MESSAGE);
-    expect(tree.root.findAllByProps({ testID: "btn-Try again" }).length).toBeGreaterThan(0);
+    expect(
+      tree.root.findAllByProps({ testID: "btn-Try again" }).length,
+    ).toBeGreaterThan(0);
     await act(async () => {
       tree.unmount();
     });
@@ -377,7 +414,9 @@ describe("event confirm — a sale refused after payment ends in a clear state",
     const tree = await mount(ConfirmScreen);
 
     // Genuinely pending: the calm loading copy is unchanged (ORCH-0911).
-    expect(visibleText(tree)).toContain("Payment received. Your tickets will appear here in a moment.");
+    expect(visibleText(tree)).toContain(
+      "Payment received. Your tickets will appear here in a moment.",
+    );
 
     await settle(1000);
     await settle(0);
@@ -391,7 +430,9 @@ describe("event confirm — a sale refused after payment ends in a clear state",
   });
 
   it("the #2198 Paystack copy still wins for a Paystack token", async () => {
-    invoke.mockResolvedValue(answer("failed", { error: "paystack_charge_failed" }));
+    invoke.mockResolvedValue(
+      answer("failed", { error: "paystack_charge_failed" }),
+    );
     const tree = await mount(ConfirmScreen);
     const text = visibleText(tree);
     expect(text).toContain(PAID_CHECKOUT_PAYMENT_FAILED_MESSAGE);
@@ -407,7 +448,9 @@ describe("event confirm — a slow answer is bounded at 60 s", () => {
     invoke.mockResolvedValue(answer("pending"));
     const tree = await mount(ConfirmScreen);
 
-    expect(visibleText(tree)).toContain("Payment received. Your tickets will appear here in a moment.");
+    expect(visibleText(tree)).toContain(
+      "Payment received. Your tickets will appear here in a moment.",
+    );
     // Realtime runs alongside the poll.
     expect(realtimeArgs?.checkoutSessionId).toBe(SESSION_ID);
 
@@ -417,13 +460,20 @@ describe("event confirm — a slow answer is bounded at 60 s", () => {
     expect(text).toContain(TICKETS_STILL_CONFIRMING_TITLE);
     expect(text).toContain(TICKETS_STILL_CONFIRMING_MESSAGE);
     expect(text).not.toContain("Payment received");
-    expect(tree.root.findAllByProps({ testID: "btn-Back to event" }).length).toBeGreaterThan(0);
+    expect(
+      tree.root.findAllByProps({ testID: "btn-Back to event" }).length,
+    ).toBeGreaterThan(0);
 
     // Polling, not a single call — and it stopped at the cap.
-    const confirmCalls = invoke.mock.calls.filter((c) => c[0] === "ticket-checkout-confirm").length;
+    const confirmCalls = invoke.mock.calls.filter(
+      (c) => c[0] === "ticket-checkout-confirm",
+    ).length;
     expect(confirmCalls).toBeGreaterThan(5);
     for (let i = 0; i < 30; i += 1) await settle(1000);
-    expect(invoke.mock.calls.filter((c) => c[0] === "ticket-checkout-confirm").length).toBe(confirmCalls);
+    expect(
+      invoke.mock.calls.filter((c) => c[0] === "ticket-checkout-confirm")
+        .length,
+    ).toBe(confirmCalls);
 
     // Realtime is still listening, and a late order replaces "still confirming".
     expect(realtimeArgs?.checkoutSessionId).toBe(SESSION_ID);
@@ -438,6 +488,17 @@ describe("event confirm — a slow answer is bounded at 60 s", () => {
         taxAmountCents: 0,
         tickets: [],
         notificationStatus: "queued",
+        // [TEST-MOD-APPROVED #4063] The late realtime success now carries the
+        // same canonical server receipt as the ordinary confirmation rail.
+        receipt: {
+          lines: [],
+          discountLines: [],
+          feesAndTaxCents: 0,
+          paidCents: 2500,
+          currency: "GBP",
+          orderRef: "ord-late",
+          dateLine: "12 October 2026",
+        },
       });
     });
     await settle(0);
@@ -456,7 +517,12 @@ describe("trip and experience confirm — surface parity", () => {
   // The money rule has to hold on all three or a guest finds the honest copy on
   // one surface and the dishonest one on another.
   const surfaces: Array<[string, React.ComponentType, string, string]> = [
-    ["trip", TripConfirmScreen, "/t/refused-brand/refused-trip", "Back to trip"],
+    [
+      "trip",
+      TripConfirmScreen,
+      "/t/refused-brand/refused-trip",
+      "Back to trip",
+    ],
     [
       "experience",
       ExperienceConfirmScreen,
@@ -475,7 +541,9 @@ describe("trip and experience confirm — surface parity", () => {
       expect(text).not.toContain("Confirming your reservation");
       expect(text).not.toMatch(/been charged/i);
       expect(text).not.toMatch(/refunded/i);
-      expect(tree.root.findAllByProps({ testID: "btn-Try again" })).toHaveLength(0);
+      expect(
+        tree.root.findAllByProps({ testID: "btn-Try again" }),
+      ).toHaveLength(0);
       await press(tree, `btn-${backLabel}`);
       expect(router.replace).toHaveBeenCalledWith(path);
       await act(async () => {

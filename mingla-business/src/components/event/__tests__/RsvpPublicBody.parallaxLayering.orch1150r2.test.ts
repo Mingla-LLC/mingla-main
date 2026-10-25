@@ -21,7 +21,10 @@ import { join } from "path";
 // WRAPPER — it composes ParallaxCoverShell around the shell-agnostic RsvpOfferingBody
 // and owns the contentBottomInset scroll-runway plumbing. The shared-body content is
 // now <RsvpOfferingBody> (first shell child), with no competing stacking style.
-const SRC = readFileSync(join(__dirname, "..", "FoundationRsvpPreview.tsx"), "utf8");
+const SRC = readFileSync(
+  join(__dirname, "..", "FoundationRsvpPreview.tsx"),
+  "utf8",
+);
 const PAGE_SRC = readFileSync(
   join(__dirname, "..", "PublicEventPage.tsx"),
   "utf8",
@@ -41,7 +44,9 @@ describe("ORCH-1150 R2 D-7 — FoundationRsvpPreview parallax content layering",
   });
 
   it("does NOT give the RSVP content (RsvpOfferingBody) a zIndex / position / marginTop / backgroundColor", () => {
-    const m = SRC.match(/<ParallaxCoverShell[\s\S]*?>\s*<RsvpOfferingBody(\s[^>]*)?>/);
+    const m = SRC.match(
+      /<ParallaxCoverShell[\s\S]*?>\s*<RsvpOfferingBody(\s[^>]*)?>/,
+    );
     expect(m).not.toBeNull();
     const childOpenTag = m ? m[0] : "";
     expect(childOpenTag).not.toMatch(/zIndex/);
@@ -111,8 +116,10 @@ describe("ORCH-1150 R2 D-7b — RSVP scroll-runway parity", () => {
     // `FLOATING_BAR_CLEARANCE + insets.bottom` (positive, safe-area-aware runway);
     // on desktop it is 0 (no floating bar, no runway needed)
     // (PublicEventPage.tsx:948). The positive-mobile-runway invariant is preserved.
+    // [TEST-MOD-APPROVED #4063] Accept the formatter's multiline JSX value
+    // without weakening the exact expression this contract pins.
     expect(tag).toMatch(
-      /contentBottomInset=\{isDesktop \? 0 : FLOATING_BAR_CLEARANCE \+ insets\.bottom\}/,
+      /contentBottomInset=\{\s*isDesktop \? 0 : FLOATING_BAR_CLEARANCE \+ insets\.bottom\s*\}/,
     );
   });
 });

@@ -1,7 +1,9 @@
 import { mintClaimLink } from "./claimLink.ts";
 import {
+  collapseDaysToRange,
   type ChosenOccurrence,
   resolveChosenOccurrence,
+  ticketDaysForOrder,
 } from "./chosenOccurrence.ts";
 import { formatMessageTime } from "./messageTime.ts";
 
@@ -116,12 +118,25 @@ export function compactOrderRef(orderId: string): string {
 }
 
 export function receiptDateLine(
-  occurrence: ChosenOccurrence | null,
+  occurrence: ChosenOccurrence | readonly ChosenOccurrence[] | null,
 ): string | null {
-  if (typeof occurrence?.start_at !== "string") return null;
+  if (Array.isArray(occurrence)) {
+    const dates = occurrence
+      .map((day) =>
+        typeof day.start_at === "string"
+          ? (formatMessageTime(day.start_at, day.timezone ?? null)?.date ??
+            null)
+          : null,
+      )
+      .filter((date): date is string => date !== null);
+    if (dates.length === 0) return null;
+    return [...new Set(dates)].join(" + ");
+  }
+  const singleOccurrence = occurrence as ChosenOccurrence | null;
+  if (typeof singleOccurrence?.start_at !== "string") return null;
   const formatted = formatMessageTime(
-    occurrence.start_at,
-    occurrence.timezone ?? null,
+    singleOccurrence.start_at,
+    singleOccurrence.timezone ?? null,
   );
   return formatted === null ? null : `${formatted.date}, ${formatted.time}`;
 }
@@ -134,13 +149,14 @@ function receiptLines(
     const name = joinedName(row.ticket_types, "Ticket");
     const qty = Math.max(Math.round(Number(row.quantity ?? 0)), 0);
     if (qty === 0) continue;
-    const chargedPlusDiscount = safeCents(row.total_cents) +
-      safeCents(row.discount_cents);
+    const chargedPlusDiscount =
+      safeCents(row.total_cents) + safeCents(row.discount_cents);
     const listUnit = safeCents(row.list_unit_price_cents);
     const unit = safeCents(row.unit_price_cents);
-    const amountCents = chargedPlusDiscount > 0
-      ? chargedPlusDiscount
-      : (listUnit > 0 ? listUnit : unit) * qty;
+    const amountCents =
+      chargedPlusDiscount > 0
+        ? chargedPlusDiscount
+        : (listUnit > 0 ? listUnit : unit) * qty;
     const current = grouped.get(name) ?? { qty: 0, amountCents: 0 };
     current.qty += qty;
     current.amountCents += amountCents;
@@ -154,10 +170,11 @@ function discountLines(
 ): BuyerConfirmationReceipt["discountLines"] {
   const grouped = new Map<string, number>();
   for (const row of rows) {
-    const label = typeof row.name_snapshot === "string" &&
-        row.name_snapshot.trim().length > 0
-      ? row.name_snapshot.trim()
-      : "Discount";
+    const label =
+      typeof row.name_snapshot === "string" &&
+      row.name_snapshot.trim().length > 0
+        ? row.name_snapshot.trim()
+        : "Discount";
     grouped.set(label, (grouped.get(label) ?? 0) + safeCents(row.amount_minor));
   }
   return [...grouped.entries()].map(([label, amountCents]) => ({
@@ -191,17 +208,18 @@ export async function buildBuyerConfirmationPayload(
   },
 ): Promise<BuyerConfirmationPayload | null> {
   const { orderId, eventId, currency, logPrefix } = input;
-  const orderLookup = input.order === undefined
-    ? client
-      .from("orders")
-      .select(
-        "buyer_email, buyer_phone_e164, buyer_user_id, purchased_by_user_id, total_cents, tax_amount_cents, buyer_fees_cents, tax_cents, buyer_total_cents, event_date_id, booked_start_at",
-      )
-      .eq("id", orderId)
-      .maybeSingle()
-    : Promise.resolve({ data: input.order, error: null });
-  const [orderResult, ticketResult, lineResult, discountResult] = await Promise
-    .all([
+  const orderLookup =
+    input.order === undefined
+      ? client
+          .from("orders")
+          .select(
+            "buyer_email, buyer_phone_e164, buyer_user_id, purchased_by_user_id, total_cents, tax_amount_cents, buyer_fees_cents, tax_cents, buyer_total_cents, event_date_id, booked_start_at",
+          )
+          .eq("id", orderId)
+          .maybeSingle()
+      : Promise.resolve({ data: input.order, error: null });
+  const [orderResult, ticketResult, lineResult, discountResult] =
+    (await Promise.all([
       orderLookup,
       client
         .from("tickets")
@@ -221,7 +239,7 @@ export async function buildBuyerConfirmationPayload(
         .eq("order_kind", "ticket")
         .eq("order_id", orderId)
         .order("applied_seq", { ascending: true }),
-    ]) as [
+    ])) as [
       QueryResult<BuyerConfirmationOrderRow>,
       QueryResult<TicketRow[]>,
       QueryResult<LineRow[]>,
@@ -235,13 +253,11 @@ export async function buildBuyerConfirmationPayload(
     });
     return null;
   }
-  for (
-    const [label, result] of [
-      ["tickets", ticketResult],
-      ["line items", lineResult],
-      ["discount lines", discountResult],
-    ] as const
-  ) {
+  for (const [label, result] of [
+    ["tickets", ticketResult],
+    ["line items", lineResult],
+    ["discount lines", discountResult],
+  ] as const) {
     if (result.error !== null) {
       console.error(`${logPrefix} ${label} lookup failed`, {
         orderId,
@@ -252,15 +268,18 @@ export async function buildBuyerConfirmationPayload(
   }
 
   const order = orderResult.data;
-  const chosen = await resolveChosenOccurrence(
-    client,
-    orderId,
-    eventId,
-    order.event_date_id,
-    logPrefix,
-    order.booked_start_at,
-  );
-  const occurrence = chosen ?? await masterOccurrence(client, eventId);
+  const chosenDays = await ticketDaysForOrder(client, orderId, logPrefix);
+  const chosen =
+    collapseDaysToRange(chosenDays ?? []) ??
+    (await resolveChosenOccurrence(
+      client,
+      orderId,
+      eventId,
+      order.event_date_id,
+      logPrefix,
+      order.booked_start_at,
+    ));
+  const occurrence = chosen ?? (await masterOccurrence(client, eventId));
   const claim = await mintClaimLink(client, "order", orderId);
 
   return {
@@ -271,13 +290,17 @@ export async function buildBuyerConfirmationPayload(
     receipt: {
       lines: receiptLines(lineResult.data ?? []),
       discountLines: discountLines(discountResult.data ?? []),
-      feesAndTaxCents: safeCents(order.buyer_fees_cents) +
-        safeCents(order.tax_cents),
-      paidCents: order.buyer_total_cents === null
-        ? safeCents(order.total_cents) + safeCents(order.tax_amount_cents)
-        : safeCents(order.buyer_total_cents),
+      feesAndTaxCents:
+        safeCents(order.buyer_fees_cents) + safeCents(order.tax_cents),
+      paidCents:
+        order.buyer_total_cents === null
+          ? safeCents(order.total_cents) + safeCents(order.tax_amount_cents)
+          : safeCents(order.buyer_total_cents),
       currency: currency.trim(),
-      dateLine: receiptDateLine(occurrence),
+      dateLine:
+        chosenDays !== null && chosenDays.length >= 2
+          ? receiptDateLine(chosenDays)
+          : receiptDateLine(occurrence),
       orderRef: compactOrderRef(orderId),
     },
     claim: {
@@ -286,18 +309,20 @@ export async function buildBuyerConfirmationPayload(
     },
     attachedToAccount: order.buyer_user_id !== null,
     boughtForSomeoneElse: order.purchased_by_user_id !== null,
-    tickets: (ticketResult.data ?? []).map((row) => ({
-      ticketId: String(row.id ?? ""),
-      ticketTypeId: typeof row.ticket_type_id === "string"
-        ? row.ticket_type_id
-        : null,
-      ticketName: joinedName(row.ticket_types, "Ticket"),
-      status: typeof row.status === "string" ? row.status : "valid",
-    })).filter((row) => row.ticketId.length > 0),
+    tickets: (ticketResult.data ?? [])
+      .map((row) => ({
+        ticketId: String(row.id ?? ""),
+        ticketTypeId:
+          typeof row.ticket_type_id === "string" ? row.ticket_type_id : null,
+        ticketName: joinedName(row.ticket_types, "Ticket"),
+        status: typeof row.status === "string" ? row.status : "valid",
+      }))
+      .filter((row) => row.ticketId.length > 0),
     taxAmountCents: safeCents(order.tax_amount_cents),
-    bookedStartAt: typeof order.booked_start_at === "string" &&
-        order.booked_start_at.length > 0
-      ? order.booked_start_at
-      : null,
+    bookedStartAt:
+      typeof order.booked_start_at === "string" &&
+      order.booked_start_at.length > 0
+        ? order.booked_start_at
+        : null,
   };
 }

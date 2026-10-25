@@ -23,6 +23,7 @@ import {
 import { emailAdapter } from "../_shared/adapters/emailAdapter.ts";
 import { renderContactCodeEmail } from "../_shared/email/contactCodeEmail.ts";
 import { EMAIL_SENDERS } from "../_shared/email/senders.ts";
+import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const E164 = /^\+[1-9][0-9]{1,14}$/;
@@ -66,12 +67,16 @@ export interface ClaimContactDeps {
     challengeId: string,
   ): Promise<boolean>;
   startPhone(phone: string): Promise<
-    { ok: true } | {
-      ok: false;
-      error: "rate_limited" | "unavailable" | "invalid";
-    }
+    | { ok: true }
+    | {
+        ok: false;
+        error: "rate_limited" | "unavailable" | "invalid";
+      }
   >;
-  checkPhone(phone: string, code: string): Promise<
+  checkPhone(
+    phone: string,
+    code: string,
+  ): Promise<
     | { ok: true; approved: boolean }
     | { ok: false; error: "expired" | "unavailable" | "invalid" }
   >;
@@ -99,15 +104,16 @@ export function parseClaimContactBody(
   if (!isObject(value) || typeof value.op !== "string") return null;
   if (value.op === "send") {
     return only(value, ["op", "channel", "value"]) &&
-        (value.channel === "email" || value.channel === "phone") &&
-        typeof value.value === "string"
+      (value.channel === "email" || value.channel === "phone") &&
+      typeof value.value === "string"
       ? value
       : null;
   }
   if (value.op === "verify") {
     return only(value, ["op", "challengeId", "code"]) &&
-        typeof value.challengeId === "string" && UUID.test(value.challengeId) &&
-        typeof value.code === "string"
+      typeof value.challengeId === "string" &&
+      UUID.test(value.challengeId) &&
+      typeof value.code === "string"
       ? value
       : null;
   }
@@ -154,9 +160,8 @@ async function sweep(
 }
 
 function normalize(channel: string, value: string): string | null {
-  const normalized = channel === "email"
-    ? value.trim().toLowerCase()
-    : value.trim();
+  const normalized =
+    channel === "email" ? value.trim().toLowerCase() : value.trim();
   if (channel === "email") return EMAIL.test(normalized) ? normalized : null;
   return E164.test(normalized) ? normalized : null;
 }
@@ -179,11 +184,14 @@ function conflictResponse(result: Record<string, unknown>): Response {
 
 function settleFailure(result: Record<string, unknown>): Response {
   if (result.outcome === "bad_code") {
-    return json({
-      ok: false,
-      error: "bad_code",
-      attemptsLeft: result.attemptsLeft,
-    }, 400);
+    return json(
+      {
+        ok: false,
+        error: "bad_code",
+        attemptsLeft: result.attemptsLeft,
+      },
+      400,
+    );
   }
   if (result.outcome === "expired") {
     return json({ ok: false, error: "expired" }, 410);
@@ -231,10 +239,13 @@ export function createClaimContactHandler(
       }
       const gate = await limited(deps, `cc_send:${ipHash}`, 5);
       if (gate !== "allow") {
-        return json({
-          ok: false,
-          error: gate === "limited" ? "rate_limited" : "unavailable",
-        }, gate === "limited" ? 429 : 503);
+        return json(
+          {
+            ok: false,
+            error: gate === "limited" ? "rate_limited" : "unavailable",
+          },
+          gate === "limited" ? 429 : 503,
+        );
       }
 
       let country = "";
@@ -242,9 +253,8 @@ export function createClaimContactHandler(
         const countryResult = await deps.rpc("mingla_e164_country", {
           p_contact: value,
         });
-        country = typeof countryResult.data === "string"
-          ? countryResult.data
-          : "";
+        country =
+          typeof countryResult.data === "string" ? countryResult.data : "";
         if (countryResult.error || !SUPPORTED_COUNTRY_SET.has(country)) {
           return json({ ok: false, error: "invalid_value" }, 400);
         }
@@ -252,9 +262,10 @@ export function createClaimContactHandler(
 
       const challengeId = crypto.randomUUID();
       const code = channel === "email" ? generateContactCode() : "";
-      const digest = channel === "email"
-        ? await contactCodeHash(pepper.bytes, challengeId, code)
-        : null;
+      const digest =
+        channel === "email"
+          ? await contactCodeHash(pepper.bytes, challengeId, code)
+          : null;
       const { data, error } = await deps.rpc(
         "issue_4063_begin_contact_challenge",
         {
@@ -287,7 +298,7 @@ export function createClaimContactHandler(
       if (result.outcome !== "started") return conflictResponse(result);
 
       if (channel === "email") {
-        if (!await deps.sendEmail(value, code, challengeId)) {
+        if (!(await deps.sendEmail(value, code, challengeId))) {
           return json({ ok: false, error: "send_failed" }, 502);
         }
       } else {
@@ -311,10 +322,13 @@ export function createClaimContactHandler(
     if (!OTP.test(code)) return json({ ok: false, error: "invalid" }, 400);
     const gate = await limited(deps, `cc_verify:${userId}`, 5);
     if (gate !== "allow") {
-      return json({
-        ok: false,
-        error: gate === "limited" ? "rate_limited" : "unavailable",
-      }, gate === "limited" ? 429 : 503);
+      return json(
+        {
+          ok: false,
+          error: gate === "limited" ? "rate_limited" : "unavailable",
+        },
+        gate === "limited" ? 429 : 503,
+      );
     }
     const challengeResult = await deps.rpc(
       "issue_4063_contact_challenge_for_user",
@@ -325,7 +339,8 @@ export function createClaimContactHandler(
     }
     const challenge = objectResult(challengeResult.data);
     if (
-      challenge.outcome !== "ok" || typeof challenge.channel !== "string" ||
+      challenge.outcome !== "ok" ||
+      typeof challenge.channel !== "string" ||
       typeof challenge.value !== "string"
     ) {
       return json({ ok: false, error: "invalid" }, 400);
@@ -373,7 +388,8 @@ export function createClaimContactHandler(
       return json({ ok: false, error: "unavailable" }, 503);
     }
     if (
-      recordResult !== "recorded" && recordResult !== "already_on_this_account"
+      recordResult !== "recorded" &&
+      recordResult !== "already_on_this_account"
     ) {
       return json({ ok: false, error: "invalid" }, 400);
     }
@@ -400,7 +416,7 @@ function productionDeps(): ClaimContactDeps {
       const rendered = renderContactCodeEmail({
         code,
         supportEmail: "support@usemingla.com",
-        logoUrl: "https://usemingla.com/logo.png",
+        logoUrl: minglaLogoUrl(),
         footerAddress: "Mingla · support@usemingla.com",
         sender: EMAIL_SENDERS.noreply,
       });

@@ -49,7 +49,11 @@ export function BuyerCheckoutReceipt({
           {eventName}
         </Text>
         {contextLine.length > 0 ? (
-          <Text style={styles.context} numberOfLines={2}>
+          <Text
+            style={styles.context}
+            numberOfLines={2}
+            testID="issue-2338-summary-date-line"
+          >
             {contextLine}
           </Text>
         ) : null}

@@ -14,11 +14,12 @@
  *
  * WHAT IT ENFORCES: no file under `supabase/functions/` may reach an SMS
  * provider MESSAGE-SEND endpoint except `_shared/adapters/smsAdapter.ts` and the
- * two documented Twilio Verify exemptions.
+ * documented Twilio Verify exemptions.
  *
  * SCOPED TO SEND ENDPOINTS, NOT TO THE TWILIO HOSTNAME — a deliberate decision
  * (#1541 SPEC §4.6, orchestrator review 2026-08-04):
- *   - `send-otp` / `verify-otp` use Twilio VERIFY (`verify.twilio.com`), a
+ *   - `send-otp` / `verify-otp` / `_shared/twilioVerify` use Twilio VERIFY
+ *     (`verify.twilio.com`), a
  *     provider-owned OTP product on a different host. Mingla sends `{To,Channel}`
  *     and never authors a message body, so there is nothing for smsAdapter —
  *     which requires a `message` to sanitize, footer and segment — to carry. It
@@ -170,6 +171,8 @@ const ALLOWLIST = new Map([
   ],
   ["supabase/functions/send-otp/index.ts", new Set(["twilio_verify"])],
   ["supabase/functions/verify-otp/index.ts", new Set(["twilio_verify"])],
+  // #4063 centralizes the same SMS-only Verify calls for claim-only contacts.
+  ["supabase/functions/_shared/twilioVerify.ts", new Set(["twilio_verify"])],
 ]);
 
 // #1541 tester T-7 — TEST FIXTURES THAT LEGITIMATELY NAME A PROVIDER ENDPOINT.
@@ -223,7 +226,8 @@ const ANCHOR_REQUIRED = ["twilio_messages", "termii_send"];
 // path. That is fail-CLOSED — a new endpoint-referencing test in that directory
 // turns the gate RED until someone adds it deliberately, which is the correct
 // direction to fail.
-const isTestFile = (rel) => rel.includes("/__tests__/") || rel.includes("/_test/");
+const isTestFile = (rel) =>
+  rel.includes("/__tests__/") || rel.includes("/_test/");
 
 // Neutralize `//` and `/* */` comments to spaces (preserving newlines and line
 // numbers) so the gate asserts absence of CODE usage, not narrative mentions.
@@ -239,21 +243,53 @@ function stripComments(src) {
     const c = src[i];
     const c2 = src[i + 1];
     if (state === "code") {
-      if (c === "/" && c2 === "/") { state = "line"; out += "  "; i++; continue; }
-      if (c === "/" && c2 === "*") { state = "block"; out += "  "; i++; continue; }
-      if (c === "'") { state = "s"; out += c; continue; }
-      if (c === '"') { state = "d"; out += c; continue; }
-      if (c === "`") { state = "t"; out += c; continue; }
+      if (c === "/" && c2 === "/") {
+        state = "line";
+        out += "  ";
+        i++;
+        continue;
+      }
+      if (c === "/" && c2 === "*") {
+        state = "block";
+        out += "  ";
+        i++;
+        continue;
+      }
+      if (c === "'") {
+        state = "s";
+        out += c;
+        continue;
+      }
+      if (c === '"') {
+        state = "d";
+        out += c;
+        continue;
+      }
+      if (c === "`") {
+        state = "t";
+        out += c;
+        continue;
+      }
       out += c;
     } else if (state === "line") {
-      if (c === "\n") { state = "code"; out += c; } else out += " ";
+      if (c === "\n") {
+        state = "code";
+        out += c;
+      } else out += " ";
     } else if (state === "block") {
-      if (c === "*" && c2 === "/") { state = "code"; out += "  "; i++; }
-      else out += c === "\n" ? c : " ";
+      if (c === "*" && c2 === "/") {
+        state = "code";
+        out += "  ";
+        i++;
+      } else out += c === "\n" ? c : " ";
     } else {
       // string literal — preserve content, honor escapes, watch the closer
       out += c;
-      if (c === "\\") { out += c2 ?? ""; i++; continue; }
+      if (c === "\\") {
+        out += c2 ?? "";
+        i++;
+        continue;
+      }
       const closer = state === "s" ? "'" : state === "d" ? '"' : "`";
       if (c === closer) state = "code";
     }
@@ -396,8 +432,11 @@ export function runGate(sources) {
     // the whole sweep, below.
     if (permitted === null && fixturePermitted === null && !fileMarkered) {
       const unit = correlationUnit(rel);
-      const acc = units.get(unit) ??
-        { space: "", files: [], flagged: new Set() };
+      const acc = units.get(unit) ?? {
+        space: "",
+        files: [],
+        flagged: new Set(),
+      };
       // Lowercased: DNS is case-insensitive, so `API.Twilio.Com` is the same
       // host (#1541 tester T-10).
       acc.space += literalSpace(stripped).toLowerCase();
@@ -452,11 +491,13 @@ export function runGate(sources) {
   for (const [unit, acc] of units) {
     for (const { id, label, all } of CORRELATIONS) {
       if (acc.flagged.has(id)) continue; // already reported per-line
-      if (!all.every((frag) => acc.space.includes(frag.toLowerCase()))) continue;
-      const where = acc.files.length === 1
-        ? `${acc.files[0]}: assembled across the file`
-        : `${unit}/: assembled across ${acc.files.length} files in this function ` +
-          `(${acc.files.join(", ")})`;
+      if (!all.every((frag) => acc.space.includes(frag.toLowerCase())))
+        continue;
+      const where =
+        acc.files.length === 1
+          ? `${acc.files[0]}: assembled across the file`
+          : `${unit}/: assembled across ${acc.files.length} files in this function ` +
+            `(${acc.files.join(", ")})`;
       violations.push(
         `${where} — unsanctioned SMS-provider send endpoint: ${label}. ` +
           `The fragments [${all.join(" + ")}] all appear in this unit's string ` +
@@ -533,7 +574,14 @@ export function runGate(sources) {
         (sanctioned.twilio_messages ?? 0) + (sanctioned.termii_send ?? 0)
       }, verify ${sanctioned.twilio_verify ?? 0}); ${violations.length} unsanctioned.`,
   );
-  return { code: 0, messages, matchCount, sanctioned, violations, scannedFiles };
+  return {
+    code: 0,
+    messages,
+    matchCount,
+    sanctioned,
+    violations,
+    scannedFiles,
+  };
 }
 
 function walk(dir, files) {
@@ -573,19 +621,19 @@ if (process.argv.includes("--self-test")) {
   };
   const SEND_OTP = {
     rel: "supabase/functions/send-otp/index.ts",
-    src:
-      "const url = `https://verify.twilio.com/v2/Services/${sid}/Verifications`;",
+    src: "const url = `https://verify.twilio.com/v2/Services/${sid}/Verifications`;",
   };
   const VERIFY_OTP = {
     rel: "supabase/functions/verify-otp/index.ts",
-    src:
-      "const url = `https://verify.twilio.com/v2/Services/${sid}/VerificationCheck`;",
+    src: "const url = `https://verify.twilio.com/v2/Services/${sid}/VerificationCheck`;",
   };
   const CLEAN_TREE = [ADAPTER, SEND_OTP, VERIFY_OTP];
 
   const expect = (n, desc, got, want) => {
     if (got !== want) {
-      selfFailures.push(`case ${n} (${desc}): expected exit ${want}, got ${got}`);
+      selfFailures.push(
+        `case ${n} (${desc}): expected exit ${want}, got ${got}`,
+      );
     }
   };
 
@@ -604,8 +652,7 @@ if (process.argv.includes("--self-test")) {
       ...CLEAN_TREE,
       {
         rel: "supabase/functions/new-sender/index.ts",
-        src:
-          'await fetch("https://api.twilio.com/2010-04-01/Accounts/AC1/Messages.json");',
+        src: 'await fetch("https://api.twilio.com/2010-04-01/Accounts/AC1/Messages.json");',
       },
     ]).code,
     1,
@@ -619,8 +666,7 @@ if (process.argv.includes("--self-test")) {
       ...CLEAN_TREE,
       {
         rel: "supabase/functions/new-sender/index.ts",
-        src:
-          "await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`);",
+        src: "await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`);",
       },
     ]).code,
     1,
@@ -690,7 +736,8 @@ if (process.argv.includes("--self-test")) {
         rel: "supabase/functions/legacy-sender/index.ts",
         src:
           'await fetch("https://api.twilio.com/2010-04-01/Accounts/AC1/Messages.json"); // ' +
-          ALLOW_MARKER + " — approved exception",
+          ALLOW_MARKER +
+          " — approved exception",
       },
     ]).code,
     0,

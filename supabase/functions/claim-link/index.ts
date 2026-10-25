@@ -16,6 +16,7 @@ import { maskContactForClaim } from "../_shared/attendanceClaim.ts";
 import { emailAdapter } from "../_shared/adapters/emailAdapter.ts";
 import { renderContactCodeEmail } from "../_shared/email/contactCodeEmail.ts";
 import { EMAIL_SENDERS } from "../_shared/email/senders.ts";
+import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 import {
   contactCodeHash,
   generateContactCode,
@@ -60,13 +61,12 @@ const only = (value: Record<string, unknown>, keys: string[]) =>
 function cors(req: Request): Record<string, string> {
   const origin = req.headers.get("origin");
   return {
-    "Access-Control-Allow-Origin": origin === "https://usemingla.com"
-      ? origin
-      : "https://usemingla.com",
+    "Access-Control-Allow-Origin":
+      origin === "https://usemingla.com" ? origin : "https://usemingla.com",
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Vary": "Origin",
+    Vary: "Origin",
   };
 }
 
@@ -101,8 +101,9 @@ export function parseClaimLinkBody(
   }
   if (value.op === "email_code_verify") {
     return only(value, ["op", "challengeId", "otp"]) &&
-        typeof value.challengeId === "string" && UUID.test(value.challengeId) &&
-        typeof value.otp === "string"
+      typeof value.challengeId === "string" &&
+      UUID.test(value.challengeId) &&
+      typeof value.otp === "string"
       ? value
       : null;
   }
@@ -133,14 +134,12 @@ function codeValue(body: Record<string, unknown>): string | null {
 }
 
 function appLink(code: string, noun: unknown): Record<string, string> {
-  const campaign = typeof noun === "string" && noun.length > 0
-    ? noun
-    : "ticket";
+  const campaign =
+    typeof noun === "string" && noun.length > 0 ? noun : "ticket";
   return {
-    oneLink:
-      `https://go.usemingla.com/w36m?deep_link_value=claim&deep_link_sub1=${code}&pid=claim_link&c=${
-        encodeURIComponent(campaign)
-      }`,
+    oneLink: `https://go.usemingla.com/w36m?deep_link_value=claim&deep_link_sub1=${code}&pid=claim_link&c=${encodeURIComponent(
+      campaign,
+    )}`,
     appScheme: `com.mingla.app.v2://c/${code}`,
   };
 }
@@ -157,11 +156,15 @@ function mapChallengeFailure(
     return json(req, { ok: false, error: "expired" }, 410);
   }
   if (outcome === "bad_code") {
-    return json(req, {
-      ok: false,
-      error: "bad_code",
-      attemptsLeft: data.attemptsLeft,
-    }, 400);
+    return json(
+      req,
+      {
+        ok: false,
+        error: "bad_code",
+        attemptsLeft: data.attemptsLeft,
+      },
+      400,
+    );
   }
   return json(req, { ok: false, error: "invalid" }, 400);
 }
@@ -213,10 +216,14 @@ export function createClaimLinkHandler(
     if (op === "resolve") {
       const gate = await limited(deps, `cl_resolve:${ipHash}`, 30);
       if (gate !== "allow") {
-        return json(req, {
-          ok: false,
-          error: gate === "limited" ? "rate_limited" : "unavailable",
-        }, gate === "limited" ? 429 : 503);
+        return json(
+          req,
+          {
+            ok: false,
+            error: gate === "limited" ? "rate_limited" : "unavailable",
+          },
+          gate === "limited" ? 429 : 503,
+        );
       }
       const { data, error } = await deps.rpc("resolve_claim_link", {
         p_code: code,
@@ -233,10 +240,14 @@ export function createClaimLinkHandler(
     if (op === "handoff") {
       const gate = await limited(deps, `cl_handoff:${ipHash}`, 10);
       if (gate !== "allow") {
-        return json(req, {
-          ok: false,
-          error: gate === "limited" ? "rate_limited" : "unavailable",
-        }, gate === "limited" ? 429 : 503);
+        return json(
+          req,
+          {
+            ok: false,
+            error: gate === "limited" ? "rate_limited" : "unavailable",
+          },
+          gate === "limited" ? 429 : 503,
+        );
       }
       const { data, error } = await deps.rpc("mint_claim_link_handoff", {
         p_code: code,
@@ -270,21 +281,25 @@ export function createClaimLinkHandler(
       const result = objectResult(data);
       return result.outcome === "ok"
         ? json(req, {
-          ok: true,
-          firstName: result.firstName ?? null,
-          lastName: result.lastName ?? null,
-          phoneE164: result.phoneE164 ?? null,
-        })
+            ok: true,
+            firstName: result.firstName ?? null,
+            lastName: result.lastName ?? null,
+            phoneE164: result.phoneE164 ?? null,
+          })
         : json(req, { ok: true, reason: "not_proven" });
     }
 
     if (op === "email_code_send") {
       const gate = await limited(deps, `cl_code_send:${ipHash}`, 3);
       if (gate !== "allow") {
-        return json(req, {
-          ok: false,
-          error: gate === "limited" ? "rate_limited" : "unavailable",
-        }, gate === "limited" ? 429 : 503);
+        return json(
+          req,
+          {
+            ok: false,
+            error: gate === "limited" ? "rate_limited" : "unavailable",
+          },
+          gate === "limited" ? 429 : 503,
+        );
       }
       const challengeId = crypto.randomUUID();
       const otp = generateContactCode();
@@ -310,7 +325,7 @@ export function createClaimLinkHandler(
       if (result.outcome !== "started" || typeof result.target !== "string") {
         return mapChallengeFailure(req, result.outcome, result);
       }
-      if (!await deps.sendEmail(result.target, otp, challengeId)) {
+      if (!(await deps.sendEmail(result.target, otp, challengeId))) {
         return json(req, { ok: false, error: "send_failed" }, 502);
       }
       return json(req, {
@@ -325,10 +340,14 @@ export function createClaimLinkHandler(
     if (!OTP.test(otp)) return json(req, { ok: false, error: "invalid" }, 400);
     const gate = await limited(deps, `cl_code_verify:${ipHash}`, 5);
     if (gate !== "allow") {
-      return json(req, {
-        ok: false,
-        error: gate === "limited" ? "rate_limited" : "unavailable",
-      }, gate === "limited" ? 429 : 503);
+      return json(
+        req,
+        {
+          ok: false,
+          error: gate === "limited" ? "rate_limited" : "unavailable",
+        },
+        gate === "limited" ? 429 : 503,
+      );
     }
     const digest = await contactCodeHash(pepper.bytes, challengeId, otp);
     const { data, error } = await deps.rpc(
@@ -353,7 +372,7 @@ export function createClaimLinkHandler(
       return json(req, { ok: false, error: "auth_unavailable" }, 502);
     }
     const userId = typeof userData === "string" ? userData : null;
-    if (userId === null && !await deps.createEmailUser(email)) {
+    if (userId === null && !(await deps.createEmailUser(email))) {
       return json(req, { ok: false, error: "auth_unavailable" }, 502);
     }
     const tokenHash = await deps.magicLinkToken(email);
@@ -382,7 +401,7 @@ function productionDeps(): ClaimLinkDeps {
       const rendered = renderContactCodeEmail({
         code,
         supportEmail: "support@usemingla.com",
-        logoUrl: "https://usemingla.com/logo.png",
+        logoUrl: minglaLogoUrl(),
         footerAddress: "Mingla · support@usemingla.com",
         sender: EMAIL_SENDERS.noreply,
       });
