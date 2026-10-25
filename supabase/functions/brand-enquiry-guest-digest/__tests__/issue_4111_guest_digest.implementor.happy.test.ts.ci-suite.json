@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-enquiry-guest-digest/__tests__/issue_4111_guest_digest.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4111-guest-digest",
+  "profile": "deno-2-unit"
+}
