@@ -530,10 +530,12 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // OneSignal pin and Expo 54 override that keep its broad peer range on the
 // approved framework line.
 // [TEST-MOD-APPROVED #3988] Re-banked after declaring the Host localization
-// dependencies used by the Brand group gallery/viewer and refreshing its lock.
+// dependencies used by the Brand group gallery/viewer, adding the app's scoped
+// Discover regression command, and completing the mandated dependency refresh
+// for both touched package trees.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "c965c2567fe3d0db9b44bbc0d45f3c761b434033e9acad98883ceff45d28c787",
-  "app-mobile/package-lock.json": "a98fc185f2b21c4c42a99137ea0c55bafa3838b984c5ec33e6f60e6000545ac9",
+  "app-mobile/package.json": "208b75239751c412c1503c77db6eff3b1a78e1927fd0e9861412cb6e7fd58364",
+  "app-mobile/package-lock.json": "1815533eaba1f604b17351e9e0585504fe1c58524d60ebbd9bff0e21e189caf7",
   "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
   "mingla-business/package-lock.json": "7add1ab1e498621c71ce7c2db5678c9b748f39c745fd95a446a5f7d7d77f1889",
 });

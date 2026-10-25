@@ -79,7 +79,7 @@ import { Checkbox } from './ui/checkbox'
 import InAppBrowserModal from './InAppBrowserModal'
 import { LEGAL_URLS } from '../constants/urls'
 import { useFriends } from '../hooks/useFriends'
-import { useSessionManagement } from '../hooks/useSessionManagement'
+import { useSessionManagement } from '../contexts/SessionManagementContext'
 import { usePendingTripChatClaims } from '../hooks/usePendingTripChatClaims'
 import { FriendRequest } from '../services/friendsService'
 // processPersonAudio removed — pairing uses real behavior data

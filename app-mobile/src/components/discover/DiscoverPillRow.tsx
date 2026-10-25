@@ -19,13 +19,15 @@ export const DiscoverPillRow = forwardRef<DiscoverPillRowHandle, Props>(function
   const scrollRef = useRef<ScrollView>(null);
   useImperativeHandle(ref, () => ({ scrollToStart: () => scrollRef.current?.scrollTo({ x: 0, animated: false }) }));
   return (
-    <View ref={targetRef} style={styles.target}>
+    <View style={styles.target}>
       <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {kinds.map((kind) => {
+        {kinds.map((kind, index) => {
           const active = kind === selected;
           return (
             <Pressable
               key={kind}
+              ref={index === 0 ? targetRef : undefined}
+              collapsable={false}
               onPress={() => onSelect(kind)}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}

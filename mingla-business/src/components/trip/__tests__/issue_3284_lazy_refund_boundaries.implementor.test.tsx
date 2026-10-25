@@ -19,15 +19,18 @@
 //         no refunds, the paid no-terms disclosure and a trip deadline), so the
 //         content below does not move; then it renders exactly the ladder's
 //         output, and every later mount gets it on the first frame.
-//   LB-*  The boundary itself: no app or package module imports the editor, the
+//   LB-*  The boundary itself: no business-web module imports the editor, the
 //         writers or the ladder statically; only their one lazy owner loads each.
-//         Its scanner is proven non-vacuous on a planted static import.
+//         Metro's exact native ladder twin is the sole eager exception because
+//         native cannot resolve a web-style chunk. The scanner is proven
+//         non-vacuous on a planted static import.
 //
 // FAILS-ON-REVERT: put back a static import of RefundPolicyEditor in any of the
 // four editor sites, of refundPolicyService in any writer consumer, or of
-// OfferingRefundLadder in a body or the barrel, and LB-1 goes red; drop the load
-// failure mapping in refundPolicyWrites.ts and LW-1/LW-2 go red; drop the retry or
-// the fallback in LazyRefundPolicyEditor.tsx and LE-1 goes red.
+// OfferingRefundLadder in a body or the barrel, or remove the native twin's eager
+// import, and LB-1 goes red; drop the load failure mapping in refundPolicyWrites.ts
+// and LW-1/LW-2 go red; drop the retry or the fallback in
+// LazyRefundPolicyEditor.tsx and LE-1 goes red.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -406,7 +409,11 @@ describe("#3284 LL — LazyOfferingRefundLadder", () => {
 const LAZY_TARGETS = [
   { name: "RefundPolicyEditor", owner: "mingla-business/src/components/trip/LazyRefundPolicyEditor.tsx" },
   { name: "refundPolicyService", owner: "mingla-business/src/services/refundPolicyWrites.ts" },
-  { name: "OfferingRefundLadder", owner: "packages/offering-rendering/LazyOfferingRefundLadder.tsx" },
+  {
+    name: "OfferingRefundLadder",
+    owner: "packages/offering-rendering/LazyOfferingRefundLadder.tsx",
+    nativeEagerOwner: "packages/offering-rendering/LazyOfferingRefundLadder.native.tsx",
+  },
 ] as const;
 
 const stripComments = (src: string): string =>
@@ -422,11 +429,18 @@ interface BoundaryViolation {
 const scanForBoundaryViolations = (file: string, raw: string): BoundaryViolation[] => {
   const src = stripComments(raw);
   const out: BoundaryViolation[] = [];
-  for (const { name, owner } of LAZY_TARGETS) {
+  for (const { name, owner, ...platformOwners } of LAZY_TARGETS) {
     const spec = `["'][^"']*/${name}["']`;
     const statics = src.matchAll(new RegExp(`\\b(import|export)\\s+(type\\s+)?([^;]*?)\\s+from\\s+${spec}`, "g"));
     for (const match of statics) {
       if (match[2] !== undefined) continue; // `import type` / `export type`
+      // [TEST-MOD-APPROVED #3988] Metro resolves this exact native owner in
+      // place of the web owner. It must stay eager because React.lazy's web
+      // chunk boundary crashes native public pages without a browser location.
+      if (
+        "nativeEagerOwner" in platformOwners &&
+        file === platformOwners.nativeEagerOwner
+      ) continue;
       const clause = match[3].trim();
       const braces = /^\{([\s\S]*)\}$/.exec(clause);
       const allTypes =
@@ -466,8 +480,8 @@ const listSourceFiles = (dir: string): string[] => {
   return found;
 };
 
-describe("#3284 LB — nothing imports the lazy chunks statically", () => {
-  test("LB-1 the editor, the writers and the ladder are reached only through their lazy owners", () => {
+describe("#3284 LB — web keeps the lazy chunks behind their owners", () => {
+  test("LB-1 web stays lazy while Metro's exact ladder twin stays native-safe", () => {
     const files = [
       ...listSourceFiles("mingla-business/src"),
       ...listSourceFiles("mingla-business/app"),
@@ -484,6 +498,12 @@ describe("#3284 LB — nothing imports the lazy chunks statically", () => {
     for (const { name, owner } of LAZY_TARGETS) {
       expect(stripComments(sources.get(owner) ?? "")).toMatch(new RegExp(`[^f]\\s*\\bimport\\(\\s*["']\\./${name}["']\\s*\\)`));
     }
+    // The platform exception is intentionally narrow: web retains the dynamic
+    // bundle boundary, while Metro's exact native twin owns the eager import.
+    const nativeLadderOwner = "packages/offering-rendering/LazyOfferingRefundLadder.native.tsx";
+    expect(stripComments(sources.get(nativeLadderOwner) ?? "")).toMatch(
+      /import\s+\*\s+as\s+OfferingRefundLadderModule\s+from\s+["']\.\/OfferingRefundLadder["']/,
+    );
     // The four editor sites use the lazy editor; the five writer consumers use the
     // lazy writers; the three bodies and the barrel use the lazy ladder.
     const uses = (file: string, owner: string): boolean =>

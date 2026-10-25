@@ -32,7 +32,7 @@
 //   X-3  WRONG-NODE width guard — no non-deck step may target a near-full-width container.
 //        SPEC §9b/§11: every registered rect except step 1 (deck) must be narrower than
 //        screenWidth*0.98. We (a) statically prove the re-pointed steps 4/5/6/7 attach to
-//        leaf affordances (per-tab Pressable / people Pressable / + Pressable) and NOT the
+//        leaf affordances (content pill / filter / people Pressable / + Pressable) and NOT the
 //        broad header containers (headerPanel / headerRowAbsolute); (b) model the guard:
 //        a rect at 98%+ screen width is flagged for every step id ≠ 1. Fails if step 4/5/6
 //        is re-pointed back to a full-width header container.
@@ -115,6 +115,8 @@ function run() {
   const contextSrc = readSource('src/contexts/CoachMarkContext.tsx');
   const profileSrc = readSource('src/components/ProfilePage.tsx');
   const discoverSrc = readSource('src/components/DiscoverScreen.tsx');
+  const discoverHeaderSrc = readSource('src/components/discover/DiscoverHeader.tsx');
+  const discoverPillRowSrc = readSource('src/components/discover/DiscoverPillRow.tsx');
   const connectionsSrc = readSource('src/components/ConnectionsPage.tsx');
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -215,14 +217,15 @@ function run() {
   // ══════════════════════════════════════════════════════════════════════════
   {
     // (a) Static proof: the re-pointed steps target leaf affordances, NOT broad containers.
-    // Step 4/5 → per-tab Pressable via coachTabRefFor(tab.id) on the tab Pressable, NOT the
-    // headerPanel View.
-    assert.ok(/ref=\{coachTabRefFor\(tab\.id\)/.test(discoverSrc),
-      'X-3a Discover steps 4/5 must attach via coachTabRefFor on the tab Pressable');
-    // The header-panel View must no longer carry a coach ref (the old wrong-node target).
+    // [TEST-MOD-APPROVED #3988] #4073's one-page Discover maps step 4 to the
+    // first visible content-type pill and step 5 to the filter Pressable.
+    assert.ok(/ref=\{index === 0 \? targetRef : undefined\}/.test(discoverPillRowSrc),
+      'X-3a Discover step 4 must attach to the first visible pill Pressable');
+    assert.ok(/ref=\{setFilterRef\}/.test(discoverHeaderSrc) && /props\.filterTargetRef\(node\)/.test(discoverHeaderSrc),
+      'X-3a Discover step 5 must attach to the filter Pressable');
     const discoverNoComments = stripComments(discoverSrc);
-    assert.ok(!/coachDiscoverFeed\.targetRef/.test(discoverNoComments),
-      'X-3a the old full-width headerPanel coach ref (coachDiscoverFeed) must be gone');
+    assert.ok(!/coachTabRefFor\(|coachDiscoverFeed\.targetRef/.test(discoverNoComments),
+      'X-3a retired tab helpers and the old full-width header target must stay gone');
 
     // Step 6 → people Pressable; step 7 → + Pressable; neither on the header row container.
     assert.ok(/ref=\{coachPeopleIcon\.targetRef/.test(connectionsSrc),

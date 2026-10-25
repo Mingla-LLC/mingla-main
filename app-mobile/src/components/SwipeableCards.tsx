@@ -126,7 +126,7 @@ import { collabSaveCard } from "./helpers/collabSaveCard";
 import { collabRecordLeftSwipe } from "./helpers/collabRecordLeftSwipe";
 import { useSessionDismissedCards } from "../hooks/useSessionDismissedCards";
 import { recordCardSwipe, recordCardExpand } from "../services/cardEngagementService";
-import { useSessionManagement } from "../hooks/useSessionManagement";
+import { useSessionManagement } from "../contexts/SessionManagementContext";
 import { useBoardSession } from "../hooks/useBoardSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {

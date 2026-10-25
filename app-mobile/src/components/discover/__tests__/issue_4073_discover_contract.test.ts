@@ -105,11 +105,10 @@ test("#4073 restores watch deep links and records privacy-safe filter and viewab
   assert.doesNotMatch(screen, /discover_filter_applied[\s\S]{0,240}(?:title|label):/);
 });
 
-test("#4073 headings describe only the inventory that actually renders", () => {
+test("#4073 renders Mingla and Ticketmaster inventory in one continuous feed", () => {
   const screen = readFileSync(fileURLToPath(new URL("../../DiscoverScreen.tsx", import.meta.url)), "utf8");
-  assert.match(screen, /items\.some\(\(card\) => card\.source === "mingla"\)/);
-  assert.match(screen, /firstTicketmaster = card\.source === "ticketmaster"/);
-  assert.match(screen, /firstTicketmaster \? <View style=\{hasMingla \? styles\.divider : styles\.tmHeading\}>/);
+  assert.match(screen, /items\.map\(\(card\) =>/);
+  assert.doesNotMatch(screen, /firstTicketmaster|section\.tm|styles\.(?:divider|tmHeading)/);
 });
 
 // [TEST-MOD-APPROVED #4073] Exact-main integration activates the already-scoped

@@ -73,7 +73,7 @@ export const DiscoverCard = React.memo(function DiscoverCard({ card, saved, onPr
   );
 });
 const styles = StyleSheet.create({
-  card: { flex: 1, minWidth: "46%", aspectRatio: 0.72, borderRadius: 24, overflow: "hidden", backgroundColor: "#252830", shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+  card: { width: "100%", aspectRatio: 0.72, borderRadius: 24, overflow: "hidden", backgroundColor: "#252830", shadowColor: "#000", shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
   type: { position: "absolute", top: 10, left: 10, height: 20, lineHeight: 20, borderRadius: 10, paddingHorizontal: 8, overflow: "hidden", color: "#fff", backgroundColor: "rgba(124,58,237,.75)", fontSize: 10, fontWeight: "600", letterSpacing: 0.3 },
   trip: { backgroundColor: "rgba(14,116,144,.8)" }, stay: { backgroundColor: "rgba(21,128,61,.8)" }, sale: { backgroundColor: "#dc2626" },
   heart: { position: "absolute", top: 8, right: 8, width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,.35)" },

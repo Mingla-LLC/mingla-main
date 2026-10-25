@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -10,6 +10,8 @@ import { DiscoverCard } from "./discover/DiscoverCard";
 import { DiscoverEmptyState } from "./discover/DiscoverEmptyState";
 import { DiscoverGridSkeleton } from "./discover/DiscoverGridSkeleton";
 import { DiscoverHeader } from "./discover/DiscoverHeader";
+import { canonicalDiscoverCardPath } from "./discover/discoverCardRoute";
+import { DISCOVER_GRID_GAP, DISCOVER_GRID_SIDE_PADDING, discoverGridCellWidth } from "./discover/discoverGridLayout";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { toastManager } from "./ui/Toast";
 import type { DiscoverPillRowHandle } from "./discover/DiscoverPillRow";
@@ -39,6 +41,7 @@ import { DISCOVER_KIND_ORDER, emptyDiscoverFilters, type DiscoverAnchorV2, type 
 import type { ExpandedCardData } from "../types/expandedCardTypes";
 import type { ExpansionTarget } from "../types/expansion";
 import { discoverCityFromPreferences, discoverQueryAnchorKey, readLastResolvedDiscoverCity, sameDiscoverAnchorCity, writeResolvedDiscoverCity } from "../utils/discoverEventsCache";
+import { dedupeDiscoverFeedCards } from "../utils/discoverFeedDedupe";
 
 interface DiscoverScreenProps {
   isTabVisible?: boolean;
@@ -76,6 +79,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }
   const { t } = useTranslation(["discover", "common", "modals"]);
   const insets = useSafeAreaInsets();
+  const { width: viewportWidth } = useWindowDimensions();
+  const gridCellWidth = discoverGridCellWidth(viewportWidth);
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAppStore((state) => state.user);
@@ -98,8 +103,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const [facetFilters, setFacetFilters] = useState<DiscoverFiltersV2>(appliedFilters);
   const [debouncedFacetFilters, setDebouncedFacetFilters] = useState<DiscoverFiltersV2>(appliedFilters);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [filterAnchorTop, setFilterAnchorTop] = useState(150);
   const [expansionTarget, setExpansionTarget] = useState<ExpansionTarget | null>(null);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const gridTopRef = useRef(0);
   const cardLayoutsRef = useRef(new Map<string, { y: number; height: number; card: DiscoverCardV2 }>());
   const viewportRef = useRef({ top: 0, height: 0 });
@@ -261,7 +266,10 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     return () => setStepCopyOverride(4, null);
   }, [setStepCopyOverride, t, visibleKinds]);
 
-  const items = useMemo(() => feed.data?.pages.flatMap((page) => page.items) ?? [], [feed.data?.pages]);
+  const items = useMemo(
+    () => dedupeDiscoverFeedCards(feed.data?.pages.flatMap((page) => page.items) ?? []),
+    [feed.data?.pages],
+  );
   const savedIds = useMemo(() => new Set((saved.data ?? []).map((item) => item.id)), [saved.data]);
   const selectionCount = discoverFilterSelectionCount(appliedFilters);
   const selectedLabels = selectedDiscoverFilterLabels(appliedFilters, facets.data?.groups ?? []);
@@ -340,11 +348,24 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       setExpansionTarget({ kind: "nightOut", data: expanded });
       return;
     }
+    const path = canonicalDiscoverCardPath(card);
+    if (!path) {
+      toastManager.show(t("error.open", "Couldn't open that page. Pull down to refresh and try again."), "error");
+      return;
+    }
     void captureConsumerOfferingEngagement({ brandId: card.brand.id, entityType: entityType(card), entityId: card.id }, "app_open");
-    router.push({ pathname: card.route.pathname as never, params: card.route.params } as never);
-  }, [router]);
+    router.push(path as never);
+  }, [router, t]);
 
-  const refresh = useCallback(() => { void queryClient.invalidateQueries({ queryKey: discoverKeys.all }); }, [queryClient]);
+  const refresh = useCallback(async () => {
+    if (isPullRefreshing) return;
+    setIsPullRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: discoverKeys.all });
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [isPullRefreshing, queryClient]);
   const evaluateViewability = useCallback(() => {
     const now = Date.now();
     const { top, height: viewportHeight } = viewportRef.current;
@@ -406,31 +427,30 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }, [cityWatch, facets.data?.city.key, t]);
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <DiscoverHeader ref={pillRowRef} title={t("title", "Discover")} cityUnsetLabel={t("city.set", "Set city")} cityLabel={city?.name ?? null} cityA11y={city ? t("city.a11y", { city: city.name }) : t("city.a11y_unset", "Set your city for Discover")} visibleKinds={visibleKinds} selectedKind={selectedKind} kindLabels={kindLabels} resultLabel={countLabel} filterLabel={filterLabel} filterCount={selectionCount} filterOpen={filterOpen} filterDisabled={Boolean(cityEmpty)} onCityPress={() => setCityPickerOpen(true)} onKindSelect={switchKind} onFilterPress={(anchorTop) => { setFilterAnchorTop(anchorTop); setFilterOpen((open) => !open); }} pillTargetRef={coachPills.targetRef} filterTargetRef={coachFilters.targetRef} />
-      <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={facets.isRefetching || feed.isRefetching} onRefresh={refresh} tintColor="#eb7825" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
+      <DiscoverHeader ref={pillRowRef} title={t("title", "Discover")} cityUnsetLabel={t("city.set", "Set city")} cityLabel={city?.name ?? null} cityA11y={city ? t("city.a11y", { city: city.name }) : t("city.a11y_unset", "Set your city for Discover")} visibleKinds={visibleKinds} selectedKind={selectedKind} kindLabels={kindLabels} resultLabel={countLabel} filterLabel={filterLabel} filterCount={selectionCount} filterOpen={filterOpen} filterDisabled={Boolean(cityEmpty)} onCityPress={() => setCityPickerOpen(true)} onKindSelect={switchKind} onFilterPress={() => { setFilterOpen((open) => !open); }} pillTargetRef={coachPills.targetRef} filterTargetRef={coachFilters.targetRef} />
+      <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={refresh} tintColor="#eb7825" title={isPullRefreshing ? t("loading.refreshing", "Refreshing events…") : undefined} titleColor="rgba(255,255,255,.72)" colors={["#eb7825"]} progressBackgroundColor="#1b1e24" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
         {facets.isLoading || feed.isLoading ? <DiscoverGridSkeleton /> : null}
         {facets.error || feed.error ? <DiscoverEmptyState mode="filters" title={t("error.title", "Something went wrong")} body={t("error.subtitle", "Pull down to retry, or check your connection.")} primaryLabel={t("error.retry", "Retry")} onPrimary={refresh} /> : null}
         {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={() => facets.data?.nearestCity && setCity({ name: facets.data.nearestCity.label, stateCode: null, countryCode: null, lat: facets.data.nearestCity.lat, lng: facets.data.nearestCity.lng })} /> : null}
         {filteredEmpty ? <DiscoverEmptyState mode="filters" title={t("empty.filtered_title_generic", "Nothing matches those filters")} body={t("empty.filtered_body", "Here's what is on instead.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
         {items.length > 0 ? <>
-          {items.some((card) => card.source === "mingla") ? <View style={styles.heading}><Text style={styles.headingTitle}>{t("section.mingla", "From Mingla hosts")}</Text><Text style={styles.headingMeta}>{t("section.mingla_sub", "Book in the app")}</Text></View> : null}
           <View style={styles.grid} onLayout={(event) => { gridTopRef.current = event.nativeEvent.layout.y; evaluateViewability(); }}>
-            {items.map((card, index) => {
+            {items.map((card) => {
               const key = `${card.source}:${card.id}`;
-              const firstTicketmaster = card.source === "ticketmaster" && (index === 0 || items[index - 1]?.source !== "ticketmaster");
-              const hasMingla = items.some((candidate) => candidate.source === "mingla");
-              return <React.Fragment key={key}>
-                {firstTicketmaster ? <View style={hasMingla ? styles.divider : styles.tmHeading}><Text style={styles.headingTitle}>{t("section.tm", "More events nearby")}</Text>{hasMingla ? <View style={styles.line} /> : null}</View> : null}
-                <View onLayout={(event) => { cardLayoutsRef.current.set(key, { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height, card }); evaluateViewability(); }}>
-                  <DiscoverCard card={card} saved={savedIds.has(card.id)} onPress={() => { mixpanelService.track("discover_card_opened", { kind: card.kind }); openCard(card); }} onSave={() => { void toggleSave(card); }} />
-                </View>
-              </React.Fragment>;
+              return <View key={key} style={[styles.gridCell, { width: gridCellWidth }]} onLayout={(event) => { cardLayoutsRef.current.set(key, { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height, card }); evaluateViewability(); }}>
+                <DiscoverCard card={card} saved={savedIds.has(card.id)} onPress={() => { mixpanelService.track("discover_card_opened", { kind: card.kind }); openCard(card); }} onSave={() => { void toggleSave(card); }} />
+              </View>;
             })}
           </View>
         </> : null}
-        {feed.isFetchingNextPage ? <Text style={styles.more}>{t("loading.more", "Loading more…")}</Text> : null}
+        {feed.isFetchingNextPage ? (
+          <View style={styles.more} accessibilityRole="progressbar" accessibilityLiveRegion="polite" accessibilityLabel={t("loading.more", "Loading more events")}>
+            <ActivityIndicator size="small" color="#eb7825" />
+            <Text style={styles.moreText}>{t("loading.more", "Loading more events…")}</Text>
+          </View>
+        ) : null}
       </ScrollView>
-      <FilterDropdown visible={filterOpen} anchorTop={filterAnchorTop} groups={facets.data?.groups ?? []} filters={facetFilters} resultCount={facets.data?.selected.total ?? 0} priceBands={facets.data?.priceBands ?? null} onDraftChange={setFacetFilters} onApply={(next) => { mixpanelService.track("discover_filter_applied", { kind: selectedKind, groups: Object.keys(next.f).sort(), option_count: discoverFilterSelectionCount(next), result_count: facets.data?.selected.total ?? 0 }); setAppliedFilters(next); setFacetFilters(next); setFiltersStore({ ...filtersStore, [selectedKind]: next }); setFilterOpen(false); }} onClose={() => { setFacetFilters(appliedFilters); setFilterOpen(false); }} t={(key, values) => t(key, values)} />
+      <FilterDropdown visible={filterOpen} groups={facets.data?.groups ?? []} filters={facetFilters} resultCount={facets.data?.selected.total ?? 0} priceBands={facets.data?.priceBands ?? null} onDraftChange={setFacetFilters} onApply={(next) => { mixpanelService.track("discover_filter_applied", { kind: selectedKind, groups: Object.keys(next.f).sort(), option_count: discoverFilterSelectionCount(next), result_count: facets.data?.selected.total ?? 0 }); setAppliedFilters(next); setFacetFilters(next); setFiltersStore({ ...filtersStore, [selectedKind]: next }); setFilterOpen(false); }} onClose={() => { setFacetFilters(appliedFilters); setFilterOpen(false); }} t={(key, values) => t(key, values)} />
       <CityPickerSheet visible={cityPickerOpen} userId={user?.id ?? null} currentCity={city} onClose={() => setCityPickerOpen(false)} onCityPicked={(next) => { setCity(next); writeResolvedDiscoverCity(next.lat, next.lng, next); }} />
       <ExpandedCardModal visible={expansionTarget !== null} target={expansionTarget} onClose={() => setExpansionTarget(null)} onSave={async () => { if (expansionTarget?.kind === "nightOut") await toggleSave({ source: "ticketmaster", kind: "event", id: expansionTarget.data.id, title: expansionTarget.data.title, venueName: expansionTarget.data.nightOutData?.venueName ?? "", imageUrl: expansionTarget.data.image, startsLocalDate: expansionTarget.data.nightOutData?.date ?? "", startsLocalTime: expansionTarget.data.nightOutData?.time ?? null, genre: expansionTarget.data.nightOutData?.genre ?? null, price: null, ticketStatus: expansionTarget.data.nightOutData?.ticketStatus ?? "", ticketUrl: expansionTarget.data.nightOutData?.ticketUrl ?? "", raw: {} }); }} onShare={(card) => openExpandedCardContentShare(card, 'discover_expanded')} shareProducerSurface="discover_expanded" isSaved={expansionTarget?.kind === "nightOut" ? savedIds.has(expansionTarget.data.id) : false} currentMode="solo" accountPreferences={accountPreferences} />
     </View>
@@ -439,12 +459,10 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#101216" }, content: { flexGrow: 1 },
-  heading: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  headingTitle: { color: "#fff", fontSize: 13, fontWeight: "600" }, headingMeta: { color: "rgba(255,255,255,.5)", fontSize: 11 },
-  grid: { paddingHorizontal: 16, paddingTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  divider: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, marginBottom: 2 }, line: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,.12)" },
-  tmHeading: { width: "100%", paddingTop: 10, paddingBottom: 2 },
-  more: { color: "rgba(255,255,255,.55)", textAlign: "center", paddingVertical: 18 },
+  grid: { paddingHorizontal: DISCOVER_GRID_SIDE_PADDING, paddingTop: 8, flexDirection: "row", flexWrap: "wrap", gap: DISCOVER_GRID_GAP },
+  gridCell: { minWidth: 0 },
+  more: { minHeight: 52, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  moreText: { color: "rgba(255,255,255,.72)", textAlign: "center" },
 });
 
 export default React.memo(DiscoverScreen);

@@ -17,5 +17,6 @@ export function buildDiscoverV2Key(request: DiscoverV2Request, generation: strin
     tz: timezone, currency, filters: request.filters.f,
     size: request.size ?? 20, bandsVersion: 1, radiusVersion: 1, tmHorizonDays: 120,
     tmSegmentMode: "all",
+    tmOccurrenceCatalogVersion: 2,
   }))}`;
 }
