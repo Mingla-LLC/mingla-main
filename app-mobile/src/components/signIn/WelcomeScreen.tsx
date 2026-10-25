@@ -21,6 +21,7 @@ import {
   TextInput,
 } from "react-native";
 import { AppleLogo } from "../ui/BrandIcons";
+import { Icon } from "../ui/Icon";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
@@ -889,6 +890,11 @@ export default function WelcomeScreen({
                   accessibilityState={{ disabled: isAnyAuthInProgress }}
                   testID="welcome-continue-with-email"
                 >
+                  <Icon
+                    name="mail-outline"
+                    size={22}
+                    color={colors.text.primary}
+                  />
                   <Text
                     style={styles.emailButtonText}
                     numberOfLines={1}
@@ -943,12 +949,19 @@ export default function WelcomeScreen({
                         {emailBusy ? (
                           <ActivityIndicator size="small" color="#111827" />
                         ) : (
-                          <Text
-                            style={styles.emailSubmitText}
-                            maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
-                          >
-                            Email me a code
-                          </Text>
+                          <>
+                            <Icon
+                              name="mail-outline"
+                              size={22}
+                              color={colors.text.primary}
+                            />
+                            <Text
+                              style={styles.emailSubmitText}
+                              maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                            >
+                              Email me a code
+                            </Text>
+                          </>
                         )}
                       </TouchableOpacity>
                     </>
@@ -1053,31 +1066,21 @@ export default function WelcomeScreen({
             </Animated.View>
           ) : null}
 
-          {!ticketClaim ? (
-            <Text style={styles.claimHint} testID="welcome-cold-ticket-line">
-              {t("auth:welcome.coldTicketLine", {
-                defaultValue:
-                  "Bought a ticket? Sign in with the email you used, or confirm your number on the next screen. It'll be waiting.",
-              })}
-            </Text>
-          ) : !ticketClaim.expired && ticketClaim.preferredProof === "phone" ? (
+          {ticketClaim &&
+          !ticketClaim.expired &&
+          ticketClaim.preferredProof === "phone" ? (
             <Text style={styles.claimHint} testID="welcome-ticket-phone-hint">
               {t("auth:welcome.gotItByText", {
                 defaultValue: "Got it by text? Confirm your number next.",
               })}
             </Text>
-          ) : !ticketClaim.expired && ticketClaim.preferredProof === "email" ? (
+          ) : ticketClaim &&
+            !ticketClaim.expired &&
+            ticketClaim.preferredProof === "email" ? (
             <Text style={styles.claimHint} testID="welcome-ticket-number-hint">
               {t("auth:welcome.boughtWithNumber", {
                 defaultValue:
                   "Bought with your number? Use any option. You'll confirm your number next.",
-              })}
-            </Text>
-          ) : !ticketClaim.expired && ticketClaim.preferredProof === "any" ? (
-            <Text style={styles.claimHint} testID="welcome-ticket-any-hint">
-              {t("auth:welcome.coldTicketLine", {
-                defaultValue:
-                  "Bought a ticket? Sign in with the email you used, or confirm your number on the next screen. It'll be waiting.",
               })}
             </Text>
           ) : null}
@@ -1290,27 +1293,32 @@ const styles = StyleSheet.create({
     gap: 12,
     ...shadows.sm,
   },
-  // #3524 — the email option and its inline panel. Same pill geometry as the
-  // Google button so the three options read as one stack, with a lighter fill so
-  // it does not compete with the two primary providers.
+  // #3524 / #4063 — the email option uses the same geometry and visual weight as
+  // Apple and Google so all three sign-in choices read as one coherent stack.
   emailButton: {
-    minHeight: 52,
-    borderRadius: radius.full,
+    width: "100%",
+    maxWidth: s(400),
+    minHeight: vs(56),
+    backgroundColor: colors.background.primary,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    borderRadius: radius.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "rgba(255,255,255,.14)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,.28)",
+    gap: 12,
+    ...shadows.sm,
   },
   emailButtonText: {
-    color: "#ffffff",
-    fontSize: s(16),
+    color: colors.text.primary,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: fontWeights.semibold,
+    letterSpacing: 0.3,
   },
   emailPanel: {
+    width: "100%",
+    maxWidth: s(400),
     borderRadius: radius.lg,
     padding: spacing.md,
     gap: spacing.sm,
@@ -1341,17 +1349,25 @@ const styles = StyleSheet.create({
   },
   emailCodeInput: { letterSpacing: 6, textAlign: "center" },
   emailSubmit: {
-    minHeight: 48,
-    borderRadius: radius.full,
+    width: "100%",
+    maxWidth: s(400),
+    minHeight: vs(56),
+    borderRadius: radius.lg,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "#ffffff",
+    gap: 12,
+    backgroundColor: colors.background.primary,
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
+    ...shadows.sm,
   },
   emailSubmitText: {
-    color: "#111827",
-    fontSize: s(16),
+    color: colors.text.primary,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: fontWeights.semibold,
+    letterSpacing: 0.3,
   },
   emailGhost: {
     minHeight: 44,
