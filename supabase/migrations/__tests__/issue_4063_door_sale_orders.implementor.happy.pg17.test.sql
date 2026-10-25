@@ -3,6 +3,7 @@
 -- MINGLA-INVARIANT: I-4063-DOOR-ATOMIC | issue #4063 | one idempotent RPC writes the order, priced lines, already-used tickets, door ledger and optional receipt outbox row
 -- MINGLA-INVARIANT: I-4063-DOOR-MONEY-ISOLATION | issue #4063 | host-collected door money never enters provider fee, payout margin, online refund fan-out or provider refund paths
 -- MINGLA-INVARIANT: I-4063-DOOR-CLAIMABLE | issue #4063 | a used door receipt with a proved contact remains claimable after the event ends
+-- MINGLA-INVARIANT: I-4063-DOOR-ACCESS | issue #4063 | only the exact host team that owns the event can search, read, refund, or render its durable door orders
 
 \set ON_ERROR_STOP on
 
