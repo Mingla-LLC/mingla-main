@@ -105,7 +105,9 @@ Deno.test("P-06 the pass owns send eligibility while attendance ignores visibili
   );
   const pass = body("async function passStillEligible(");
   assert(
-    pass.includes("if (!rsvpPassEventEligible(event, brand?.deleted_at)) return null;"),
+    pass.includes(
+      "if (!rsvpPassEventEligible(event, brand?.deleted_at)) return null;",
+    ),
     "passStillEligible must delegate the pass decision to rsvpPassEventEligible",
   );
   assert(
@@ -113,9 +115,8 @@ Deno.test("P-06 the pass owns send eligibility while attendance ignores visibili
     "the pass decision itself must not be public-only",
   );
   assert(
-    pass.includes(
-      "return { attendanceClaim: attendanceClaimStillEligible(event, brand) };",
-    ),
+    /return\s*{[\s\S]*attendanceClaim:\s*attendanceClaimStillEligible\(event, brand\)[\s\S]*}/
+      .test(pass),
     "the attendance link decision must be made separately, on the same event row",
   );
   const attendance = body("function attendanceClaimStillEligible(");
@@ -126,15 +127,13 @@ Deno.test("P-06 the pass owns send eligibility while attendance ignores visibili
   );
   const link = body("async function recoveryLinkFor(");
   assert(
-    link.includes(
-      'if (table === "event_rsvps" && current?.event_id && attendanceClaimAllowed) {',
-    ),
+    /if\s*\(\s*table === "event_rsvps"\s*&&\s*current\?\.event_id\s*&&\s*attendanceClaimAllowed\s*\)/
+      .test(link),
     "the attendance URL must only be built when that gate allows it",
   );
   assert(
-    worker.includes(
-      "? await recoveryLinkFor(admin, p, pass?.attendanceClaim === true)",
-    ),
+    /\?\s*await recoveryLinkFor\(admin, p, pass\?\.attendanceClaim === true\)/
+      .test(worker),
     "the worker must pass the attendance decision, not a constant",
   );
 });

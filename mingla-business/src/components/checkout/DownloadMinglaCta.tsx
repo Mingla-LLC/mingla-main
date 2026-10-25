@@ -691,8 +691,7 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
           accessibilityLiveRegion="polite"
           role="status"
         >
-          Your tickets are confirmed. You can open the app and sign in with your
-          checkout email or phone.
+          {"Your tickets are confirmed. You can open the app and sign in with your checkout email or phone."}
         </Text>
       ) : claimPhase === "error" ? (
         <View style={styles.claimNoteRow}>
