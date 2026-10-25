@@ -46,16 +46,21 @@ function functionBody(source, name) {
   return ''
 }
 
-function requiresGrant(body, readyPattern = null) {
+// MINGLA-INVARIANT: I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF | issue #2331 | Analytics (PostHog, GA4) and ads (Meta/TikTok/Snap/Reddit pixels) are each on unless this visitor turned it off, in every country; GPC starts ads off; nothing loads or sends after a turn-off.
+//
+// #2331 converts this gate from the retired #2771 "no web analytics before an
+// explicit grant" rule. It now proves: every facade and boot fails closed on
+// the visitor's saved turn-off, a turn-off stops the vendors and clears their
+// cookies, no per-country read survives, and the old grant gate is gone.
+
+function requiresOn(body, guard, readyPattern = null) {
   const prefix = body.slice(0, 320)
-  const consent = /readStoredConsent\(\)\s*(?:!==|===)\s*['"]granted['"]/.test(prefix)
-  return consent && (readyPattern === null || readyPattern.test(prefix))
+  return guard.test(prefix) && (readyPattern === null || readyPattern.test(prefix))
 }
 
-function requiresAdTracking(body) {
-  const prefix = body.slice(0, 320)
-  return /adTrackingAllowed\(\)/.test(prefix) && /adPixelsBootstrapped/.test(prefix)
-}
+const BUSINESS_ANALYTICS_ON = /isAnalyticsOn\(\)/
+const BUSINESS_ADS_ON = /isAdsOn\(\)/
+const MARKETING_ANALYTICS_ON = /isMarketingAnalyticsOn\(\)/
 
 export function evaluateSources(input) {
   const errors = []
@@ -67,81 +72,106 @@ export function evaluateSources(input) {
   if (/import\s+posthog\s+from\s+['"]posthog-js['"]/.test(business)) {
     errors.push('Business must not eagerly import posthog-js')
   }
-  const initBody = functionBody(business, 'initWebAnalytics')
-  if (!requiresGrant(initBody) || !/ensureGrantedAnalyticsBoot\(\)/.test(initBody)) {
-    errors.push('Business init must fail closed before the private single-flight boot')
+  const isAnalyticsOnBody = functionBody(business, 'isAnalyticsOn')
+  if (!/return choice === null \? true : choice\.analytics;/.test(isAnalyticsOnBody)) {
+    errors.push('Business analytics must be on unless the saved choice turned it off')
   }
-  const bootBody = functionBody(business, 'bootGrantedAnalytics')
-  if (!requiresGrant(bootBody) || !/await import\(['"]posthog-js['"]\)/.test(bootBody)) {
-    errors.push('Business private boot must re-check grant and dynamically import PostHog')
+  const isAdsOnBody = functionBody(business, 'isAdsOn')
+  if (!/return choice === null \? !globalPrivacyControlOn\(\) : choice\.ads;/.test(isAdsOnBody)) {
+    errors.push('Business ads must be on unless turned off, with GPC starting them off')
+  }
+  const initBody = functionBody(business, 'initWebAnalytics')
+  if (!/if \(isAdsOn\(\)\) await bootstrapAdPixels\(\);/.test(initBody) || !/if \(isAnalyticsOn\(\)\) await ensureAnalyticsBoot\(\);/.test(initBody)) {
+    errors.push('Business init must boot each vendor only while it is on')
+  }
+  const bootBody = functionBody(business, 'bootAnalytics')
+  if (!requiresOn(bootBody, BUSINESS_ANALYTICS_ON) || !/await import\(['"]posthog-js['"]\)/.test(bootBody)) {
+    errors.push('Business boot must check analytics is on and dynamically import PostHog')
+  }
+  if (!/await import\(['"]posthog-js['"]\);\s*if \(!isAnalyticsOn\(\)\) return;/.test(bootBody)) {
+    errors.push('Business boot must re-check the choice after the dynamic import (a mid-boot turn-off wins)')
   }
   if (!/^[ \t]*cross_subdomain_cookie\s*:\s*false\s*,?\s*$/m.test(bootBody)) {
-    errors.push('Business PostHog init must keep consent cookies origin-local')
+    errors.push('Business PostHog init must keep privacy cookies origin-local')
   }
   for (const name of ['captureWeb', 'identifyWeb', 'getFeatureFlagWeb']) {
-    if (!requiresGrant(functionBody(business, name), /posthogClient/)) {
-      errors.push(`Business ${name} must require grant and a ready PostHog client`)
+    if (!requiresOn(functionBody(business, name), BUSINESS_ANALYTICS_ON, /posthogClient/)) {
+      errors.push(`Business ${name} must require analytics on and a ready PostHog client`)
     }
   }
-  if (!requiresGrant(functionBody(business, 'gaEvent'), /window\.gtag/)) {
-    errors.push('Business gaEvent must require grant and ready gtag')
+  if (!requiresOn(functionBody(business, 'gaEvent'), BUSINESS_ANALYTICS_ON, /window\.gtag/)) {
+    errors.push('Business gaEvent must require analytics on and ready gtag')
   }
-  // [TEST-MOD-APPROVED #3697] Ad pixels are arrival-on by default, while a
-  // remembered opt-out or a region configured as opt_in keeps every fire dark.
+  const stopBody = functionBody(business, 'stopAnalytics')
+  if (!/opt_out_capturing\(\)/.test(stopBody) || !/expireCookie\(name\)/.test(stopBody) || !/ga-disable-/.test(stopBody)) {
+    errors.push('Business analytics turn-off must opt PostHog out, disable GA and clear their cookies')
+  }
+  const transitionBody = functionBody(business, 'applyPrivacyTransition')
+  if (!/if \(!adsOn\) stopAdPixels\(\);/.test(transitionBody) || !/if \(!analyticsOn\) stopAnalytics\(\);/.test(transitionBody)) {
+    errors.push('Business save must stop whatever was turned off')
+  }
   for (const name of [
     'fireAdPageView', 'fireAdViewContent', 'fireAdPurchase', 'fireAdReservation',
     'fireAdInitiateCheckout', 'identifyAdBuyer',
   ]) {
-    if (!requiresAdTracking(functionBody(business, name))) {
-      errors.push(`Business ${name} must require allowed, bootstrapped ad tracking`)
+    if (!requiresOn(functionBody(business, name), BUSINESS_ADS_ON, /adPixelsBootstrapped/)) {
+      errors.push(`Business ${name} must require ads on and bootstrapped pixels`)
     }
   }
-  // [TEST-MOD-APPROVED #3697] first-party ad touch may run before Accept; Reject
-  // still blocks new capture. Vendor SDKs above remain grant-gated.
   for (const name of ['captureAdClickIds', 'postAttributionTouch']) {
-    const body = functionBody(business, name)
-    const prefix = body.slice(0, 400)
-    if (!/readStoredConsent\(\)\s*===\s*['"]denied['"]/.test(prefix)) {
-      errors.push(`Business ${name} must block Reject (denied) for first-party attribution`)
+    if (!requiresOn(functionBody(business, name), /!isAdsOn\(\)/)) {
+      errors.push(`Business ${name} must block first-party attribution after ads are turned off`)
     }
   }
-  // toward #3697 Wave 0d: browser conversion POST is retired (trusted server path).
   const conversionBody = functionBody(business, 'postAttributionConversion')
   if (/postAttr\s*\(|kind:\s*['"]conversion['"]/.test(conversionBody)) {
     errors.push('Business postAttributionConversion must remain a no-op (trusted server path only)')
+  }
+  for (const [label, source] of [['Business', business], ['Marketing provider', provider], ['Marketing banner', banner]]) {
+    if (/\/api\/ad-pixel-config|ad_pixel_public_config|__minglaAdPixelConsentMode/.test(source)) {
+      errors.push(`${label} must not read a per-country privacy mode`)
+    }
+    if (/readStoredConsent\(\)\s*(?:!==|===)\s*['"]granted['"]|readMarketingConsent\(\)/.test(source)) {
+      errors.push(`${label} must not restore the retired explicit-grant gate`)
+    }
   }
 
   if (/import\s+posthog\s+from\s+['"]posthog-js['"]/.test(provider)) {
     errors.push('Marketing must not eagerly import posthog-js')
   }
-  if (!/await import\(['"]posthog-js['"]\)/.test(provider)) {
-    errors.push('Marketing grant-only boot must dynamically import PostHog')
-  }
   const marketingBootBody = functionBody(provider, 'bootGrantedMarketingAnalytics')
+  if (!/await import\(['"]posthog-js['"]\)/.test(marketingBootBody) || !requiresOn(marketingBootBody, MARKETING_ANALYTICS_ON)) {
+    errors.push('Marketing boot must check analytics is on and dynamically import PostHog')
+  }
   if (!/^[ \t]*cross_subdomain_cookie\s*:\s*false\s*,?\s*$/m.test(marketingBootBody)) {
-    errors.push('Marketing PostHog init must keep consent cookies origin-local')
+    errors.push('Marketing PostHog init must keep privacy cookies origin-local')
   }
   if (!/return\s+enabled\s*\?\s*children\s*:\s*null/.test(provider)) {
-    errors.push('Marketing provider must withhold analytics children until booted grant')
+    errors.push('Marketing provider must withhold analytics children while analytics is off')
   }
-  if (!/readMarketingConsent\(\)\s*!==\s*['"]granted['"]/.test(provider)) {
-    errors.push('Marketing controller must fail closed on non-granted consent')
+  const marketingAnalyticsOn = functionBody(provider, 'isMarketingAnalyticsOn')
+  if (!/return choice === null \? true : choice\.analytics/.test(marketingAnalyticsOn)) {
+    errors.push('Marketing analytics must be on unless the saved choice turned it off')
   }
   const marketingCapture = functionBody(provider, 'captureMarketing')
-  if (!/readMarketingConsent\(\)\s*!==\s*['"]granted['"]/.test(marketingCapture) || !/posthogClient\s*===\s*null/.test(marketingCapture)) {
-    errors.push('Marketing capture facade must require grant and a ready client')
+  if (!requiresOn(marketingCapture, MARKETING_ANALYTICS_ON) || !/posthogClient\s*===\s*null\s*\|\|\s*posthogOptedOut/.test(marketingCapture)) {
+    errors.push('Marketing capture facade must require analytics on and a live client')
+  }
+  const marketingStop = functionBody(provider, 'stopMarketingAnalytics')
+  if (!/opt_out_capturing\(\)/.test(marketingStop) || !/expireCookie\(name\)/.test(marketingStop)) {
+    errors.push('Marketing analytics turn-off must opt PostHog out and clear its cookies')
   }
   if (/from\s+['"]next\/script['"]|strategy\s*=\s*['"]beforeInteractive['"]/.test(layout)) {
     errors.push('Marketing root must not eagerly mount a script loader')
   }
   if (!/<PostHogProvider>\s*<GoogleAnalytics\s+gaId=[^>]+\/>\s*<\/PostHogProvider>/.test(layout)) {
-    errors.push('GoogleAnalytics must be a grant-gated provider child')
+    errors.push('GoogleAnalytics must be an analytics-gated provider child')
   }
-  if (/posthogOptOut\(|consent_denied|['"]consent['"]\s*,\s*['"]update['"]/.test(banner)) {
-    errors.push('Marketing Reject path must not call an analytics facade or emit a deny event')
+  if (/posthogOptOut\(|consent_denied|consent_granted/.test(banner)) {
+    errors.push('Marketing choices must not emit an analytics event of their own')
   }
   if (/maskAllInputs\s*:\s*false|api_host\s*:\s*['"](?!https:\/\/us\.i\.posthog\.com)/.test(provider)) {
-    errors.push('Post-grant PostHog US-host and masking controls must remain intact')
+    errors.push('PostHog US-host and masking controls must remain intact')
   }
   return errors
 }
@@ -156,16 +186,21 @@ function runSelfTest() {
   const clean = readSources()
   const cases = [
     ['Business eager SDK', { business: clean.business.replace('import type { CaptureResult, PostHog }', 'import posthog') }],
-    ['Business private boot loses grant', { business: clean.business.replace('if (readStoredConsent() !== "granted") return;', '') }],
-    ['Business pixel fire loses opt-out gate', { business: clean.business.replace('if (!adTrackingAllowed() || !adPixelsBootstrapped) return;', '') }],
-    // [TEST-MOD-APPROVED #3697] first-party capture gates on Reject, not grant.
-    ['Attribution loses Reject gate', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() === "denied") return;', 'if (!hasWindow()) return;') }],
+    ['Business boot loses the on check', { business: clean.business.replace('async function bootAnalytics(): Promise<void> {\n  if (!isAnalyticsOn()) return;', 'async function bootAnalytics(): Promise<void> {') }],
+    ['Business mid-boot turn-off ignored', { business: clean.business.replace('const { default: posthog } = await import("posthog-js");\n    if (!isAnalyticsOn()) return;', 'const { default: posthog } = await import("posthog-js");') }],
+    ['Business analytics off by default', { business: clean.business.replace('return choice === null ? true : choice.analytics;', 'return choice === null ? false : choice.analytics;') }],
+    ['Business ads ignore GPC', { business: clean.business.replace('return choice === null ? !globalPrivacyControlOn() : choice.ads;', 'return choice === null ? true : choice.ads;') }],
+    ['Business pixel fire loses the ads gate', { business: clean.business.replace('if (!isAdsOn() || !adPixelsBootstrapped) return;', 'if (!adPixelsBootstrapped) return;') }],
+    ['Business turn-off keeps cookies', { business: clean.business.replace('if (isAnalyticsStorageName(name)) expireCookie(name);', '') }],
+    ['Business turn-off forgets analytics', { business: clean.business.replace('if (!analyticsOn) stopAnalytics();', '') }],
+    ['Attribution loses the ads gate', { business: clean.business.replace('if (!hasWindow() || !isAdsOn()) return;', 'if (!hasWindow()) return;') }],
+    ['Region read restored', { business: clean.business.replace('export async function initWebAnalytics(): Promise<void> {', 'export async function initWebAnalytics(): Promise<void> {\n  void fetch("/api/ad-pixel-config");') }],
     ['Marketing eager SDK', { marketingProvider: clean.marketingProvider.replace("import type { PostHog } from 'posthog-js'", "import posthog from 'posthog-js'") }],
     ['Marketing unconditional children', { marketingProvider: clean.marketingProvider.replace('return enabled ? children : null', 'return children') }],
     ['Marketing eager GA', { marketingLayout: clean.marketingLayout.replace('<PostHogProvider>\n          <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />\n        </PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />') }],
-    ['Reject analytics ping', { marketingBanner: clean.marketingBanner.replace('persistMarketingConsent(value)', "persistMarketingConsent(value)\n    if (value === 'denied') posthogOptOut()") }],
+    ['Marketing choice emits an event', { marketingBanner: clean.marketingBanner.replace('saveMarketingPrivacy(choice)', "saveMarketingPrivacy(choice)\n    posthogOptOut()") }],
     ['Replay masking disabled', { marketingProvider: clean.marketingProvider.replace('maskAllInputs: true', 'maskAllInputs: false') }],
-    ['Business cross-subdomain cookie restored', { business: clean.business.replace('        cross_subdomain_cookie: false,\n', '') }],
+    ['Business cross-subdomain cookie restored', { business: clean.business.replace('      cross_subdomain_cookie: false,\n', '') }],
     ['Marketing cross-subdomain cookie restored', { marketingProvider: clean.marketingProvider.replace('      cross_subdomain_cookie: false,\n', '') }],
   ]
   if (evaluateSources(clean).length > 0) throw new Error('clean implementation failed before mutations')
@@ -173,7 +208,7 @@ function runSelfTest() {
     const mutated = { ...clean, ...changed }
     if (evaluateSources(mutated).length === 0) throw new Error(`mutation escaped: ${label}`)
   }
-  console.log(`OK: issue-2771 self-test — ${cases.length}/${cases.length} regressions rejected`)
+  console.log(`OK: issue-2771/#2331 self-test — ${cases.length}/${cases.length} regressions rejected`)
 }
 
 function main() {
@@ -183,12 +218,12 @@ function main() {
   }
   const errors = evaluateSources(readSources())
   if (errors.length > 0) {
-    console.error('FAIL: I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT')
+    console.error('FAIL: I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF')
     for (const error of errors) console.error(`  - ${error}`)
     process.exitCode = 1
     return
   }
-  console.log('OK: I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT — both web roots are grant-before-load and origin-local')
+  console.log('OK: I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF — both web roots boot unless turned off, stop on a turn-off, and stay origin-local')
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main()
