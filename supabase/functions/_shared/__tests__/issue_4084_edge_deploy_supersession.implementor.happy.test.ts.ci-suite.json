@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4084-edge-deploy-supersession",
+  "profile": "deno-1.46-stripe"
+}

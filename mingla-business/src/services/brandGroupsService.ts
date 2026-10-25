@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { BrandGroupMentionCandidate } from "../utils/brandGroupMentions";
 
 export interface BrandGroupSummary {
   conversation_id: string;
@@ -55,11 +56,12 @@ export async function listBrandGroups(): Promise<{
 
 export async function listBrandGroupMessages(
   conversationId: string,
+  before: string | null = null,
 ): Promise<{ messages: BrandGroupMessage[]; error: string | null }> {
   const { data, error } = await supabase.rpc("issue_3720_list_brand_group_messages", {
     p_conversation_id: conversationId,
     p_limit: 120,
-    p_before: null,
+    p_before: before,
   });
   return {
     messages: ((data ?? []) as BrandGroupMessage[]).slice().reverse(),
@@ -128,11 +130,27 @@ export async function setBrandGroupPushPrefEnabled(
   if (error) throw new Error(error.message || "Couldn't save Brand group notifications");
 }
 
+export async function listBrandGroupMentionCandidates(
+  conversationId: string,
+  query: string,
+): Promise<{ candidates: BrandGroupMentionCandidate[]; error: string | null }> {
+  const { data, error } = await supabase.rpc("issue_3988_list_brand_group_mention_candidates", {
+    p_conversation_id: conversationId,
+    p_query: query,
+    p_limit: 4,
+  });
+  return {
+    candidates: (data ?? []) as BrandGroupMentionCandidate[],
+    error: errorMessage(error, "Couldn't load Brand group teammates"),
+  };
+}
+
 export async function sendBrandGroupMessage(input: {
   conversationId: string;
   content: string;
   replyToId?: string | null;
   relatedMessageIds?: string[];
+  mentionedUserIds?: string[];
   actorMode: "brand" | "support";
 }): Promise<string> {
   const { data, error } = await supabase.rpc("issue_3720_send_brand_group_message", {
@@ -140,6 +158,7 @@ export async function sendBrandGroupMessage(input: {
     p_content: input.content,
     p_reply_to_id: input.replyToId ?? null,
     p_related_message_ids: input.relatedMessageIds ?? [],
+    p_mentioned_user_ids: input.mentionedUserIds ?? [],
     p_actor_mode: input.actorMode,
   });
   if (error) throw new Error(error.message || "Couldn't send the message");

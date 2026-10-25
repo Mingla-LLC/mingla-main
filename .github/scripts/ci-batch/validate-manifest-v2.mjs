@@ -325,6 +325,9 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     workflow: "deploy-functions.yml",
     referenceFiles: Object.freeze([
       "scripts/ci/issue2948-deploy-invocation-shape.test.mjs",
+      // #4084's supersession suite also consumes this retained provider to pin
+      // the guarded input, permissions and post-deploy attestation wiring.
+      "supabase/functions/_shared/__tests__/issue_4084_edge_deploy_supersession.implementor.happy.test.ts",
     ]),
   }),
   Object.freeze({
@@ -524,12 +527,15 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // `@mingla/video-upload` package (pure JS web TUS lane) and its lockfile link.
 // [TEST-MOD-APPROVED #3872] Re-banked after the mandated final R1 dependency
 // updates in the touched Explorer and Host package trees, including the Host
-// OneSignal pin that keeps its transitive Expo family on the approved line.
+// OneSignal pin and Expo 54 override that keep its broad peer range on the
+// approved framework line.
+// [TEST-MOD-APPROVED #3988] Re-banked after declaring the Host localization
+// dependencies used by the Brand group gallery/viewer and refreshing its lock.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "c965c2567fe3d0db9b44bbc0d45f3c761b434033e9acad98883ceff45d28c787",
   "app-mobile/package-lock.json": "a98fc185f2b21c4c42a99137ea0c55bafa3838b984c5ec33e6f60e6000545ac9",
-  "mingla-business/package.json": "bbe315942249d9690ab22371098a0fb926616cc9f9c4d8cb4f9c957c284ea04e",
-  "mingla-business/package-lock.json": "a18c94ecbead7cb439c7760298454116ca94547c0a5efa9166b226d1904cff46",
+  "mingla-business/package.json": "6f77fc43e63360ac45b94d11195b966433d4e6769b34a0340d88f9871b4b2315",
+  "mingla-business/package-lock.json": "7add1ab1e498621c71ce7c2db5678c9b748f39c745fd95a446a5f7d7d77f1889",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other

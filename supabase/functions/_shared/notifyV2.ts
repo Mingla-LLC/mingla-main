@@ -29,13 +29,13 @@ import { notificationSafeError } from "./notificationSafeError.ts";
 import { countryFromE164 } from "./e164Country.ts";
 // #3988 — support and product alerts for Mingla teammates.
 import {
-  ISSUE_3988_ALERT_CATEGORIES,
-  ISSUE_3988_EMAIL_CATEGORIES,
+  isIssue3988AlertCategory,
   issue3988DeepLinkValid,
   issue3988EmailCta,
   issue3988ProviderSafeKeys,
   issue3988PushAllowed,
-  isIssue3988AlertCategory,
+  ISSUE_3988_ALERT_CATEGORIES,
+  ISSUE_3988_EMAIL_CATEGORIES,
 } from "./issue3988SupportAlerts.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
@@ -249,7 +249,7 @@ export function providerSafePayload(
     return pick(["ticket_id"]);
   }
   if (category === "business.brand_group_message") {
-    return pick(["message_id", "conversation_id", "brand_id"]);
+    return pick(["message_id", "conversation_id", "brand_id", "mentioned"]);
   }
   if (category === "admin.team_mention") {
     return pick(["mention_id", "source_kind", "source_id"]);

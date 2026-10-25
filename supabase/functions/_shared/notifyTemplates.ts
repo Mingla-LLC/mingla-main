@@ -66,12 +66,18 @@ function priorityLabel(value: unknown): string {
 
 function kindLabel(value: unknown): string {
   switch (str(value)) {
-    case "question": return "Question";
-    case "account": return "Account";
-    case "bug": return "Bug";
-    case "feature": return "Feature";
-    case "trust_safety": return "Trust and safety";
-    default: return "";
+    case "question":
+      return "Question";
+    case "account":
+      return "Account";
+    case "bug":
+      return "Bug";
+    case "feature":
+      return "Feature";
+    case "trust_safety":
+      return "Trust and safety";
+    default:
+      return "";
   }
 }
 
@@ -175,9 +181,7 @@ export function renderCategoryMessage(
   const dateTitle = str(payload.date_title);
   const dateLocation = str(payload.date_location);
   const reminderHeadline = dateTitle.length > 0 ? dateTitle : eventTitle;
-  const reminderPlace = dateLocation.length > 0
-    ? ` — ${dateLocation}`
-    : "";
+  const reminderPlace = dateLocation.length > 0 ? ` — ${dateLocation}` : "";
 
   switch (categoryKey) {
     case "discover_city_plans_live": {
@@ -232,9 +236,16 @@ export function renderCategoryMessage(
           ? "The next-update promise on your brand’s support case changed."
           : "Mingla Support opened and took ownership of a case for your brand.";
         return {
-          push: { title: updateKind === "opened" ? "Support case opened" : "Support case updated", body: publicBody },
+          push: {
+            title: updateKind === "opened"
+              ? "Support case opened"
+              : "Support case updated",
+            body: publicBody,
+          },
           email: {
-            subject: updateKind === "opened" ? "Mingla Support opened and took ownership of a case for your brand" : "Your Mingla support case was updated",
+            subject: updateKind === "opened"
+              ? "Mingla Support opened and took ownership of a case for your brand"
+              : "Your Mingla support case was updated",
             body: subject ? `${publicBody}\n\nSubject: ${subject}` : publicBody,
           },
           sms: `Mingla: ${publicBody}`,
@@ -256,7 +267,9 @@ export function renderCategoryMessage(
     // ticket details or a signal's problem statement.
     case "business.support_ticket_reply": {
       const subject = communityMarkdownToPlainText(payload.subject);
-      const body = subject ? `New message on: ${subject}` : "A Host replied on a support ticket.";
+      const body = subject
+        ? `New message on: ${subject}`
+        : "A Host replied on a support ticket.";
       return {
         push: { title: "Support reply", body },
         email: {
@@ -389,12 +402,23 @@ export function renderCategoryMessage(
         "Someone";
       const brandName = communityMarkdownToPlainText(payload.brand_name) ||
         "your Brand group";
+      const mentioned = payload.mentioned === true;
       const body = communityExcerpt(
         communityMarkdownToPlainText(payload.body),
       ) || "Open Mingla Host to read the message.";
       return {
-        push: { title: `${sender} in ${brandName}`, body },
-        email: { subject: `${sender} in ${brandName}`, body },
+        push: {
+          title: mentioned
+            ? `${sender} mentioned you in ${brandName}`
+            : `${sender} in ${brandName}`,
+          body,
+        },
+        email: {
+          subject: mentioned
+            ? `${sender} mentioned you in ${brandName}`
+            : `${sender} in ${brandName}`,
+          body,
+        },
         sms: `Mingla: ${body}`,
       };
     }
@@ -566,7 +590,8 @@ export function renderCategoryMessage(
           },
           email: {
             subject: `${reminderHeadline} starts in 2 hours`,
-            body: `${reminderHeadline} starts in 2 hours at ${time}${reminderPlace}.\n\n` +
+            body:
+              `${reminderHeadline} starts in 2 hours at ${time}${reminderPlace}.\n\n` +
               `See you soon! Details are in the Mingla app.`,
           },
           sms:
@@ -580,7 +605,8 @@ export function renderCategoryMessage(
         },
         email: {
           subject: `${reminderHeadline} is tomorrow`,
-          body: `${reminderHeadline} is tomorrow at ${time}${reminderPlace}.\n\n` +
+          body:
+            `${reminderHeadline} is tomorrow at ${time}${reminderPlace}.\n\n` +
             `See you there! Details are in the Mingla app.`,
         },
         sms:

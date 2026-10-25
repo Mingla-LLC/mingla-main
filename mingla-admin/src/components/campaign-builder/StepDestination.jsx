@@ -16,6 +16,10 @@ import {
   listAdvertisablePages,
   listNativeAppDestinations,
 } from "../../services/adDestinationsService";
+import {
+  destinationAvailabilityGuidance,
+  isDestinationSelectable,
+} from "../../lib/adBuilder/destinationAvailability";
 
 const TABS = [
   { id: "all", label: "All" },
@@ -40,10 +44,6 @@ const PAGE_TYPE_LABEL = Object.fromEntries(
 /** Stable identity for a destination row across tab reloads (page_type + id). */
 function destKey(row) {
   return `${row.page_type}:${row.id}`;
-}
-
-function isAvailable(row) {
-  return row.availability == null || row.availability === "available";
 }
 
 export function StepDestination({
@@ -107,7 +107,7 @@ export function StepDestination({
       const normalizedSearch = search.trim().toLowerCase();
       const visibleApps = appRows.filter(
         (row) =>
-          (includeUnavailable || isAvailable(row)) &&
+          (includeUnavailable || isDestinationSelectable(row)) &&
           (!certificationMode ||
             (row.app_key === certificationAppKey &&
               row.os === certificationOs)) &&
@@ -145,7 +145,7 @@ export function StepDestination({
   // toward #3697 Wave 2 (#3707): single select — tap again to clear, tap another to replace.
   const toggle = useCallback(
     (row) => {
-      if (!isAvailable(row)) return;
+      if (!isDestinationSelectable(row)) return;
       const key = destKey(row);
       const isSelected = selected.some((d) => destKey(d) === key);
       onDestinationsChange(isSelected ? [] : [row]);
@@ -257,7 +257,8 @@ export function StepDestination({
           className="grid grid-cols-2 md:grid-cols-3 gap-3"
         >
           {rows.map((row) => {
-            const available = isAvailable(row);
+            const selectable = isDestinationSelectable(row);
+            const guidance = destinationAvailabilityGuidance(row);
             const isSelected = selected.some(
               (d) => destKey(d) === destKey(row),
             );
@@ -267,13 +268,13 @@ export function StepDestination({
                 type="button"
                 role="checkbox"
                 aria-checked={isSelected}
-                aria-disabled={!available}
-                disabled={!available}
+                aria-disabled={!selectable}
+                disabled={!selectable}
                 onClick={() => toggle(row)}
                 className={[
                   "relative text-left rounded-xl border overflow-hidden transition-all duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
-                  !available
+                  !selectable
                     ? "opacity-55 cursor-not-allowed border-[var(--gray-200)]"
                     : isSelected
                       ? "border-[var(--color-brand-500)] ring-2 ring-[var(--color-brand-500)] cursor-pointer"
@@ -310,7 +311,12 @@ export function StepDestination({
                       ? ` · ${new Date(row.master_start_at).toLocaleDateString()}`
                       : ""}
                   </p>
-                  {!available && (
+                  {guidance && (
+                    <p className="text-[10px] text-[var(--color-warning-700)] mt-0.5">
+                      {guidance}
+                    </p>
+                  )}
+                  {!selectable && (
                     <p className="text-[10px] text-[var(--color-warning-700)] mt-0.5">
                       Unavailable
                       {row.availability_reason
