@@ -77,6 +77,20 @@ test("#3988 Discover shows one Ticketmaster card per named event", () => {
   assert.match(queryKeys, /'feed',\s*DISCOVER_OCCURRENCE_CATALOG_VERSION/);
 });
 
+test("#3988 Discover exposes distinct progress treatments at both feed edges", () => {
+  const screen = readFileSync(
+    fileURLToPath(new URL("../../DiscoverScreen.tsx", import.meta.url)),
+    "utf8",
+  );
+
+  assert.match(screen, /const \[isPullRefreshing, setIsPullRefreshing\] = useState\(false\)/);
+  assert.match(screen, /const refresh = useCallback\(async \(\) => \{[\s\S]{0,360}setIsPullRefreshing\(true\)[\s\S]{0,360}await queryClient\.invalidateQueries[\s\S]{0,360}setIsPullRefreshing\(false\)/);
+  assert.match(screen, /<RefreshControl refreshing=\{isPullRefreshing\}[\s\S]{0,360}Refreshing events/);
+  assert.match(screen, /feed\.isFetchingNextPage \? \([\s\S]{0,360}<ActivityIndicator/);
+  assert.match(screen, /accessibilityRole="progressbar"/);
+  assert.match(screen, /Loading more events/);
+});
+
 test("#3988 two Discover columns plus their gap fit narrow viewports", () => {
   for (const viewportWidth of [240, 280, 320, 375, 430]) {
     const cellWidth = discoverGridCellWidth(viewportWidth);

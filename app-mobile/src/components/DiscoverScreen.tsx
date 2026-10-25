@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -105,6 +105,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterAnchorTop, setFilterAnchorTop] = useState(150);
   const [expansionTarget, setExpansionTarget] = useState<ExpansionTarget | null>(null);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const gridTopRef = useRef(0);
   const cardLayoutsRef = useRef(new Map<string, { y: number; height: number; card: DiscoverCardV2 }>());
   const viewportRef = useRef({ top: 0, height: 0 });
@@ -357,7 +358,15 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     router.push(path as never);
   }, [router, t]);
 
-  const refresh = useCallback(() => { void queryClient.invalidateQueries({ queryKey: discoverKeys.all }); }, [queryClient]);
+  const refresh = useCallback(async () => {
+    if (isPullRefreshing) return;
+    setIsPullRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: discoverKeys.all });
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [isPullRefreshing, queryClient]);
   const evaluateViewability = useCallback(() => {
     const now = Date.now();
     const { top, height: viewportHeight } = viewportRef.current;
@@ -420,7 +429,7 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <DiscoverHeader ref={pillRowRef} title={t("title", "Discover")} cityUnsetLabel={t("city.set", "Set city")} cityLabel={city?.name ?? null} cityA11y={city ? t("city.a11y", { city: city.name }) : t("city.a11y_unset", "Set your city for Discover")} visibleKinds={visibleKinds} selectedKind={selectedKind} kindLabels={kindLabels} resultLabel={countLabel} filterLabel={filterLabel} filterCount={selectionCount} filterOpen={filterOpen} filterDisabled={Boolean(cityEmpty)} onCityPress={() => setCityPickerOpen(true)} onKindSelect={switchKind} onFilterPress={(anchorTop) => { setFilterAnchorTop(anchorTop); setFilterOpen((open) => !open); }} pillTargetRef={coachPills.targetRef} filterTargetRef={coachFilters.targetRef} />
-      <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={facets.isRefetching || feed.isRefetching} onRefresh={refresh} tintColor="#eb7825" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
+      <ScrollView onLayout={(event) => { viewportRef.current = { ...viewportRef.current, height: event.nativeEvent.layout.height }; evaluateViewability(); }} onScroll={onScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={refresh} tintColor="#eb7825" title={isPullRefreshing ? t("loading.refreshing", "Refreshing events…") : undefined} titleColor="rgba(255,255,255,.72)" colors={["#eb7825"]} progressBackgroundColor="#1b1e24" />} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
         {facets.isLoading || feed.isLoading ? <DiscoverGridSkeleton /> : null}
         {facets.error || feed.error ? <DiscoverEmptyState mode="filters" title={t("error.title", "Something went wrong")} body={t("error.subtitle", "Pull down to retry, or check your connection.")} primaryLabel={t("error.retry", "Retry")} onPrimary={refresh} /> : null}
         {cityEmpty ? <DiscoverEmptyState mode="city" title={t("empty.city_title", { city: city?.name ?? "your city" })} body={t("empty.city_body", "Hosts are joining. We'll tell you when the first plans go live.")} primaryLabel={cityWatch.subscribed ? t("empty.notify_done", "We'll tell you") : t("empty.notify", "Tell me when")} undoLabel={t("empty.notify_undo", "Undo")} primaryA11y={t("empty.notify_a11y", { city: city?.name ?? "your city" })} doneA11y={t("empty.notify_done_a11y", { city: city?.name ?? "your city" })} subscribed={cityWatch.subscribed} loading={cityWatch.pending} nearest={facets.data?.nearestCity} onPrimary={() => { void toggleCityWatch(); }} onUndo={() => { void toggleCityWatch(); }} onNearest={() => facets.data?.nearestCity && setCity({ name: facets.data.nearestCity.label, stateCode: null, countryCode: null, lat: facets.data.nearestCity.lat, lng: facets.data.nearestCity.lng })} /> : null}
@@ -435,7 +444,12 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
             })}
           </View>
         </> : null}
-        {feed.isFetchingNextPage ? <Text style={styles.more}>{t("loading.more", "Loading more…")}</Text> : null}
+        {feed.isFetchingNextPage ? (
+          <View style={styles.more} accessibilityRole="progressbar" accessibilityLiveRegion="polite" accessibilityLabel={t("loading.more", "Loading more events")}>
+            <ActivityIndicator size="small" color="#eb7825" />
+            <Text style={styles.moreText}>{t("loading.more", "Loading more events…")}</Text>
+          </View>
+        ) : null}
       </ScrollView>
       <FilterDropdown visible={filterOpen} anchorTop={filterAnchorTop} groups={facets.data?.groups ?? []} filters={facetFilters} resultCount={facets.data?.selected.total ?? 0} priceBands={facets.data?.priceBands ?? null} onDraftChange={setFacetFilters} onApply={(next) => { mixpanelService.track("discover_filter_applied", { kind: selectedKind, groups: Object.keys(next.f).sort(), option_count: discoverFilterSelectionCount(next), result_count: facets.data?.selected.total ?? 0 }); setAppliedFilters(next); setFacetFilters(next); setFiltersStore({ ...filtersStore, [selectedKind]: next }); setFilterOpen(false); }} onClose={() => { setFacetFilters(appliedFilters); setFilterOpen(false); }} t={(key, values) => t(key, values)} />
       <CityPickerSheet visible={cityPickerOpen} userId={user?.id ?? null} currentCity={city} onClose={() => setCityPickerOpen(false)} onCityPicked={(next) => { setCity(next); writeResolvedDiscoverCity(next.lat, next.lng, next); }} />
@@ -448,7 +462,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#101216" }, content: { flexGrow: 1 },
   grid: { paddingHorizontal: DISCOVER_GRID_SIDE_PADDING, paddingTop: 8, flexDirection: "row", flexWrap: "wrap", gap: DISCOVER_GRID_GAP },
   gridCell: { minWidth: 0 },
-  more: { color: "rgba(255,255,255,.55)", textAlign: "center", paddingVertical: 18 },
+  more: { minHeight: 52, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  moreText: { color: "rgba(255,255,255,.72)", textAlign: "center" },
 });
 
 export default React.memo(DiscoverScreen);
