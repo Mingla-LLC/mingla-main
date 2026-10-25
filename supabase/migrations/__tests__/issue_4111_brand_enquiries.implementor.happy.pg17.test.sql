@@ -159,7 +159,8 @@ BEGIN
   SELECT count(*) INTO v_count FROM public.messages
   WHERE conversation_id = v_group AND message_type = 'brand_enquiry_card'
     AND sender_kind = 'system' AND card_payload->>'enquiry_id' = v_enquiry::text
-    AND card_payload->>'guest_name' = 'Gabi Test';
+    -- Wave C (20271223004111): the card never names the guest.
+    AND NOT (card_payload ? 'guest_name') AND content = 'New customer enquiry · Refund or cancel';
   IF v_count <> 1 THEN RAISE EXCEPTION 'brand_group_card_count_wrong:%', v_count; END IF;
   IF EXISTS (SELECT 1 FROM public.notification_outbox o
     JOIN public.messages m ON m.id::text = o.payload->>'message_id'
