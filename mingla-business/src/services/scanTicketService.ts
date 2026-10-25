@@ -35,6 +35,8 @@ export interface ServerScanResult {
   nextStartAt: string | null;
   // ORCH-0793 — ISO8601. Present when result='event_ended'.
   lastEndAt: string | null;
+  /** issue #3281 PR8 — day this scan admitted (biz_ticket_scan). */
+  eventDateId?: string | null;
 }
 
 export type ScanTicketErrorCode =

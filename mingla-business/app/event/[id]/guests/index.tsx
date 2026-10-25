@@ -380,10 +380,21 @@ export default function EventGuestsListRoute(): React.ReactElement {
   // reader that served the event (#2161), so an UNLISTED event's roster gets
   // its days exactly like a public one's and this screen issues no extra query.
   const [dayFilter, setDayFilter] = useState<string | null>(null);
+  const [dayFilterSeeded, setDayFilterSeeded] = useState(false);
   const occurrences = publicEventQuery.data?.occurrences ?? EMPTY_OCCURRENCES;
   // Only a REAL multi-day event gets a chip row. A single-date event renders
   // exactly today's screen — no chips, no new column header, nothing.
   const hasDayChips = occurrences.length > 1;
+  // issue #3281 PR8 — above 7 dates, default the Day selector to the next upcoming.
+  useEffect(() => {
+    if (dayFilterSeeded || occurrences.length <= 7) return;
+    const now = Date.now();
+    const next = occurrences.find((o) => Date.parse(o.endAt) > now) ?? occurrences[0];
+    if (next !== undefined) {
+      setDayFilter(next.id);
+      setDayFilterSeeded(true);
+    }
+  }, [occurrences, dayFilterSeeded]);
   const dayLabels = useMemo<Map<string, string>>(() => {
     const map = new Map<string, string>();
     for (const occ of occurrences) {
@@ -826,6 +837,69 @@ export default function EventGuestsListRoute(): React.ReactElement {
         {/* issue #2160 — the day chip row. Rendered ONLY when the event has
             more than one occurrence, so a single-date roster is untouched. */}
         {hasDayChips ? (
+          occurrences.length > 7 ? (
+            // issue #3281 PR8 — above 7 dates, a Day selector (month-grouped)
+            // defaults to the next upcoming occurrence.
+            <View style={styles.daySelectorHost} testID="issue-3281-day-selector">
+              <Text style={styles.daySelectorLabel}>Day</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.dayChipRow}
+              >
+                <Pressable
+                  onPress={() => setDayFilter(null)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: dayFilter === null }}
+                  accessibilityLabel={`All ${headcountPlural}`}
+                  testID="issue-2160-day-chip-all"
+                  style={[
+                    styles.dayChip,
+                    dayFilter === null ? styles.dayChipActive : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.dayChipLabel,
+                      dayFilter === null ? styles.dayChipLabelActive : null,
+                    ]}
+                  >
+                    All
+                  </Text>
+                </Pressable>
+                {occurrences.map((occ) => {
+                  const label = dayLabels.get(occ.id);
+                  if (label === undefined) return null;
+                  const active = dayFilter === occ.id;
+                  const count = dayHeadCounts.get(occ.id) ?? 0;
+                  const monthKey = occ.startAt.slice(0, 7);
+                  return (
+                    <Pressable
+                      key={occ.id}
+                      onPress={() => setDayFilter(active ? null : occ.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`${label} — ${count} ${headcountLabelForCount(count)}`}
+                      testID={`issue-2160-day-chip-${occ.id}`}
+                      style={[
+                        styles.dayChip,
+                        active ? styles.dayChipActive : null,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.dayChipLabel,
+                          active ? styles.dayChipLabelActive : null,
+                        ]}
+                      >
+                        {monthKey} · {label} · {count}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -880,6 +954,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
               );
             })}
           </ScrollView>
+          )
         ) : null}
 
         {legacyComps.length > 0 && canAddGuests ? (
@@ -1146,6 +1221,17 @@ const styles = StyleSheet.create({
   // issue #2160 — the per-day chip row. Only mounted on a multi-day event, so
   // a single-date roster renders exactly today's screen.
   dayChipScroll: { flexGrow: 0, marginBottom: spacing.sm },
+  daySelectorHost: {
+    flexGrow: 0,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 16,
+    gap: spacing.xs,
+  },
+  daySelectorLabel: {
+    ...textTokens.caption,
+    color: "rgba(255,255,255,0.72)",
+    marginBottom: 4,
+  },
   dayChipRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: 16 },
   dayChip: {
     paddingHorizontal: 12,

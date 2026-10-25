@@ -65,8 +65,13 @@ import {
   ScanTicketError,
   scanTicket,
 } from "../../../../src/services/scanTicketService";
+import { usePublicEventById } from "../../../../src/hooks/usePublicEvents";
+import { formatOccurrenceDayLabel } from "../../../../src/utils/eventDateDisplay";
 
-import type { ScanResultCopy } from "../../../../src/components/scanner/scanResultCopy";
+import {
+  describeScanResult,
+  type ScanResultCopy,
+} from "../../../../src/components/scanner/scanResultCopy";
 import type { AdmitResponse } from "../../../../src/services/guestListService";
 
 import { Button } from "../../../../src/components/ui/Button";
@@ -204,6 +209,11 @@ export default function ScannerCameraRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const event = routeEvent.event;
+  // issue #3281 PR8 — occurrences for admitted-date labels on the door.
+  const publicEventQuery = usePublicEventById(
+    typeof eventId === "string" ? eventId : null,
+  );
+  const occurrences = publicEventQuery.data?.occurrences ?? [];
   // META-ORCH-1059 — kind-aware copy lens for the shared scanner screen.
   const kindCfg = offeringKindConfig(
     offeringKindFromEventType(event?.event_type),
@@ -385,41 +395,51 @@ export default function ScannerCameraRoute(): React.ReactElement {
             buyerName: result.buyerName,
             ticketName: result.ticketName,
           });
+          // issue #3281 PR8 — resolve admitted day for door copy.
+          const admittedId =
+            typeof result.eventDateId === "string" ? result.eventDateId : null;
+          const admittedOcc =
+            admittedId === null
+              ? null
+              : (occurrences.find((o) => o.id === admittedId) ?? null);
+          const dayLabel =
+            admittedOcc !== null
+              ? formatOccurrenceDayLabel(
+                  admittedOcc.startAt,
+                  admittedOcc.timezone,
+                )
+              : null;
+          const passTotal = occurrences.length > 1 ? occurrences.length : null;
+          const passIndex =
+            admittedOcc !== null && passTotal !== null
+              ? occurrences.findIndex((o) => o.id === admittedOcc.id) + 1
+              : null;
+          const copy = describeScanResult(
+            kind,
+            {
+              buyerName: result.buyerName,
+              ticketName: result.ticketName,
+              nextStartAt: result.nextStartAt,
+              lastEndAt: result.lastEndAt,
+              eventDateId: admittedId,
+              dayLabel,
+              overrideTitle: admittedOcc?.overrideTitle ?? null,
+              passIndex,
+              passTotal,
+            },
+            kindCfg.noun,
+          );
+          showResult({
+            kind: copy.kind,
+            message: copy.message,
+            detail: copy.detail,
+          });
           if (kind === "success") {
-            showResult({
-              kind,
-              message: `${result.buyerName ?? "Guest"} checked in`,
-              detail: result.ticketName ?? "Ticket",
-            });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
             );
             return;
           }
-          // ORCH-0793 — explicit branches so the time-window cases can
-          // pull nextStartAt / lastEndAt off the server response.
-          let message: string;
-          let detail: string | undefined = result.ticketName ?? undefined;
-          if (kind === "duplicate") {
-            message = "Already checked in";
-          } else if (kind === "wrong_event") {
-            message = `Different ${kindCfg.noun}`;
-          } else if (kind === "void") {
-            message = "Ticket not valid";
-          } else if (kind === "not_yet_open") {
-            message = "Doors aren't open yet";
-            detail = result.nextStartAt
-              ? `Opens ${formatDoorTime(result.nextStartAt)}`
-              : "Try again closer to start time";
-          } else if (kind === "event_ended") {
-            message = result.lastEndAt
-              ? `${capitalizeNoun(kindCfg.noun)} ended ${formatRelativeTime(result.lastEndAt)}`
-              : `${capitalizeNoun(kindCfg.noun)} has ended`;
-            detail = `Ticket can't be used after the ${kindCfg.noun}`;
-          } else {
-            message = "Ticket not found";
-          }
-          showResult({ kind, message, detail });
           // Warning tone for recoverable states (duplicate + the two new
           // time-window states); Error tone for the not-recoverable ones.
           void Haptics.notificationAsync(
@@ -458,7 +478,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         }
       })();
     },
-    [event, showResult, recordServerScan, kindCfg.noun],
+    [event, showResult, recordServerScan, kindCfg.noun, occurrences],
   );
 
   // issue #3827 — a name admit gets the same result card, haptics and

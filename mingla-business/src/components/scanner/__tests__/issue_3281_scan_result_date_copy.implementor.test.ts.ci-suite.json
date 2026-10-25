@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-business/src/components/scanner/__tests__/issue_3281_scan_result_date_copy.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-scan-result-date-copy",
+  "profile": "deno-2-unit"
+}

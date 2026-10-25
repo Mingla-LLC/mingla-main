@@ -159,12 +159,28 @@ export const orderDayCell = (
     for (const id of t.eventDateIds) ids.add(id);
   }
   if (ids.size === 0) return "";
+  // issue #3281 PR8 — a pass that covers every labelled day → "All N dates".
+  const allIds = [...dayLabels.keys()];
+  if (
+    allIds.length >= 2 &&
+    ids.size === allIds.length &&
+    allIds.every((id) => ids.has(id))
+  ) {
+    return `All ${allIds.length} dates`;
+  }
+  // Sort by the event's date order (Map insertion = occurrence start order),
+  // never lexicographic label order.
   const labels: string[] = [];
-  for (const id of ids) {
+  for (const id of allIds) {
+    if (!ids.has(id)) continue;
     const label = dayLabels.get(id);
     if (label !== undefined && label.length > 0) labels.push(label);
   }
-  return labels.sort().join("; ");
+  // Ids present on the order but missing from dayLabels stay omitted (#9).
+  for (const id of ids) {
+    if (dayLabels.has(id)) continue;
+  }
+  return labels.join("; ");
 };
 
 export const serializeGuestsToCsv = (
