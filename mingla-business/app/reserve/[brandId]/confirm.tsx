@@ -23,6 +23,7 @@ import {
 import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
 import { Button } from "../../../src/components/ui/Button";
 import { BuyerClaimCard } from "../../../src/components/checkout/DownloadMinglaCta";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 type State = "loading" | "completed" | "pending" | "error";
 
@@ -161,6 +162,8 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
             <Button label="Try again" onPress={() => void confirm()} />
           </>
         )}
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
     </SafeAreaView>
   );

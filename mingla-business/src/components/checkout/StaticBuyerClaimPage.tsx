@@ -20,6 +20,7 @@ import {
   type Platform as DevicePlatform,
 } from "../../services/guestFunnelLink";
 import { SafeScreen } from "../ui/SafeScreen";
+import { PrivacyChoicesLink } from "../../analytics/PrivacyChoicesLink";
 
 type StaticBuyerClaimKind = Extract<BuyerClaimNoun, "ticket" | "pass">;
 
@@ -127,6 +128,8 @@ export const StaticBuyerClaimPage: React.FC<StaticBuyerClaimPageProps> = ({
           <Text style={styles.buttonText}>{BUYER_CLAIM_COPY.button[kind]}</Text>
         </Pressable>
       </View>
+      {/* #2331 — end of content: reopens the privacy bar. */}
+      <PrivacyChoicesLink />
     </SafeScreen>
   );
 };

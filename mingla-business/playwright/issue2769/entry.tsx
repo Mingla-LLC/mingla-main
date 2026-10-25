@@ -3,6 +3,7 @@ import React from "react";
 // @ts-expect-error -- this browser-only harness uses the installed runtime.
 import { createRoot } from "react-dom/client";
 import { Text, View } from "react-native";
+import { PageFooterAccessoryContext } from "@mingla/offering-rendering";
 import type {
   PublicVenueAnalyticsEvent,
   PublicVenueReservationSheetContext,
@@ -13,7 +14,7 @@ import { PublicVenueScreen } from "issue2769-real-public-venue";
 // @ts-expect-error -- aliases are declared by bundle.mjs for this harness only.
 import { ConsentBanner } from "issue2769-real-consent-banner";
 // @ts-expect-error -- aliases are declared by bundle.mjs for this harness only.
-import { useWebConsentState } from "issue2769-real-consent-hook";
+import { PrivacyChoicesLink } from "issue2769-real-privacy-link";
 
 declare global {
   interface Window {
@@ -50,13 +51,14 @@ const venue: PublicVenueViewModel = {
 window.__issue2769Analytics = [];
 
 function Harness(): React.ReactElement {
-  const webConsentState = useWebConsentState();
   const initialTab = new URLSearchParams(window.location.search).get("tab");
+  // #2331 — the same app-root shape as Expo web (a flex:1 column filling
+  // #root) and the same footer accessory the business root layout provides.
   return (
-    <>
+    <PageFooterAccessoryContext.Provider value={PrivacyChoicesLink}>
+      <View style={{ flex: 1, alignSelf: "stretch" }}>
       <PublicVenueScreen
         venue={venue}
-        webConsentState={webConsentState}
         discoveryPrice={null}
         menu={[{
           menuId: "issue-2769-menu",
@@ -94,8 +96,9 @@ function Harness(): React.ReactElement {
         onOpenBrand={() => undefined}
         onOpenMaps={() => undefined}
       />
+      </View>
       <ConsentBanner />
-    </>
+    </PageFooterAccessoryContext.Provider>
   );
 }
 

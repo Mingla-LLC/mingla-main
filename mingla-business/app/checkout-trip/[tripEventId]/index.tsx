@@ -70,6 +70,7 @@ import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // trip checkout too (the event checkout already does; trips/experiences didn't,
 // undercounting started checkouts). Web-only (native no-op via the .web split).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 const CheckoutDiscountCodeField = React.lazy(() =>
   import("../../../src/components/checkout/DiscountCodeField").then(
@@ -706,6 +707,8 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
             </View>
           );
         })}
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar — subtotal + Continue */}

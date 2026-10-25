@@ -59,6 +59,7 @@ import {
   gaEvent,
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 export default function CheckoutExperienceConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
   useEffect(() => {
@@ -570,6 +571,8 @@ function CheckoutExperienceConfirmScreenInner({
           orderId={result.orderId}
           receipt={result.receipt}
         />
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
     </View>
   );

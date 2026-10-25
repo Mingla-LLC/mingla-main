@@ -72,6 +72,7 @@ import { resolveEventCheckoutLifecycleGate } from "../../../src/utils/eventLifec
 import { eventAcquisitionNoticeCopy } from "@mingla/offering-rendering";
 // META-ORCH-1187 LEG 2 — buyer-web funnel capture (web-only; native no-op).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 const CheckoutDiscountCodeField = React.lazy(() =>
   import("../../../src/components/checkout/DiscountCodeField").then(
@@ -617,6 +618,8 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
             />
           );
         })}
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar — subtotal + Continue */}
