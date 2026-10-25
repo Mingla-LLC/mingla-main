@@ -117,5 +117,18 @@
     "next_step_label": "Go to next step",
     "finish_tour_label": "Finish guided tour",
     "guided_tour_label": "Guided tour step {{current}} of {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Yakınınızdaki her şey, tek sayfada",
+      "body_all": "Etkinlikler, deneyimler, geziler ve konaklamalar, hepsi tek sayfada. Geçiş yapmak için bir hapa dokunun.",
+      "body_subset": "{{list}}, hepsi tek sayfada. Geçiş yapmak için bir hapa dokunun."
+    },
+    "step5": {
+      "title": "Daraltın",
+      "body": "Güne, ortama, müziğe, varış noktasına ve daha fazlasına göre filtreleyin. Seçenekler her hapla değişir."
+    },
+    "list_two": "{{a}} ve {{b}}",
+    "list_three": "{{a}}, {{b}} ve {{c}}"
   }
 }

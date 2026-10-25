@@ -117,5 +117,18 @@
     "next_step_label": "Go to next step",
     "finish_tour_label": "Finish guided tour",
     "guided_tour_label": "Guided tour step {{current}} of {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Wszystko blisko Ciebie, na jednej stronie",
+      "body_all": "Wydarzenia, przeżycia, wycieczki i pobyty, wszystko na jednej stronie. Kliknij pigułkę, aby przełączyć.",
+      "body_subset": "{{list}}, wszystko na jednej stronie. Kliknij pigułkę, aby przełączyć."
+    },
+    "step5": {
+      "title": "Zawęź",
+      "body": "Filtruj według dnia, klimatu, muzyki, miejsca docelowego i nie tylko. Możliwości wyboru zmieniają się w przypadku każdej pigułki."
+    },
+    "list_two": "{{a}} i {{b}}",
+    "list_three": "{{a}}, {{b}} i {{c}}"
   }
 }

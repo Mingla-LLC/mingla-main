@@ -103,6 +103,7 @@ async function readBoundedSuccessEnvelope(
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ISSUE_3720_CONTACT_CATEGORIES = new Set([
+  "discover_city_plans_live",
   "business.community_announcement",
   "business.support_new_ticket",
   "admin.team_mention",

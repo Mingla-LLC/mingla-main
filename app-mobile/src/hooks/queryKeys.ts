@@ -9,6 +9,7 @@
  * - pairingKeys: usePairings.ts
  * - notificationKeys: useNotifications.ts
  * - phoneLookupKeys: usePhoneLookup.ts
+ * - discoverKeys: discoverQueryKeys.ts (isolated from shared mutation graphs)
  */
 
 export const savedCardKeys = {

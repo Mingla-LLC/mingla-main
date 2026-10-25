@@ -133,9 +133,14 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // [TEST-MOD-APPROVED #3697] staged-plan snapshots and daily stage metrics
   // upsert on their matching migration-backed unique arbiters; census +2 (96).
   //
+  // [TEST-MOD-APPROVED #4073] Discover v2 persists its Ticketmaster L2 pool in
+  // `discover_merged_events_cache` with `cache_key` as the conflict target.
+  // That column is the table's non-partial primary key from
+  // `20260612000000_orch_426_discover_scale.sql`; census +1 (97).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 96);
+  assert.equal(sites.length, 97);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

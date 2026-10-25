@@ -42,14 +42,18 @@ describe("#4037 consumer aggregate capture", () => {
       assert.ok(source.includes('"app_impression"'));
       assert.ok(source.includes('"app_open"'));
     }
-    assert.ok(events.includes("visible >= layout.height * 0.5"));
-    assert.ok(events.includes("}, 1_000);"));
-    assert.ok(events.includes('entityType: "event"'));
+    // [TEST-MOD-APPROVED #4073] One-page Discover replaced the event-only
+    // layout map with one generic card viewability clock for every Mingla kind.
+    assert.ok(events.includes("visibleHeight / layout.height < 0.5"));
+    assert.ok(events.includes("now - since < 1_000"));
+    assert.ok(events.includes("setTimeout(evaluateViewability, 1_050)"));
+    assert.ok(events.includes('layout.card.source === "mingla"'));
+    assert.ok(events.includes("entityType: entityType(layout.card)"));
     assert.ok(deck.includes("currentRec as Recommendation"));
     assert.ok(deck.includes("}, 1_000);"));
     assert.ok(deck.includes("entityType: 'experience'"));
     assert.ok(
-      (events.match(/captureConsumerOfferingEngagement/g) ?? []).length >= 3,
+      (events.match(/captureConsumerOfferingEngagement/g) ?? []).length >= 2,
     );
   });
 });

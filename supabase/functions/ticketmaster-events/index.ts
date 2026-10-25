@@ -50,6 +50,8 @@ interface RequestBody {
   stateCode?: string | null;
   countryCode?: string | null;
   segmentSlug?: DiscoverSegmentSlug | string;
+  /** #4073: omit Ticketmaster's segmentId so the v2 candidate pool spans all segments. */
+  segmentMode?: "all";
   genreSlugs?: ReadonlyArray<DiscoverGenreSlug | string>;
   localStartEndDateTime?: string;
   latFallback?: number;
@@ -82,6 +84,9 @@ interface TicketmasterEvent {
   coordinates: { lat: number; lng: number };
   genre: string | null;
   subGenre: string | null;
+  segmentId: string | null;
+  genreId: string | null;
+  subGenreId: string | null;
   tags: string[];
   ticketUrl: string;
   ticketStatus: string;
@@ -147,6 +152,7 @@ interface CacheKeyInput {
   lat?: number;
   lng?: number;
   segmentId: string;
+  segmentMode?: "all";
   genreIds: string[];
   subGenreIds: string[];
   localStartEndDateTime?: string;
@@ -156,7 +162,7 @@ interface CacheKeyInput {
 }
 
 function buildCacheKey(input: CacheKeyInput): string {
-  const segPart = input.segmentId;
+  const segPart = input.segmentMode === "all" ? "all" : input.segmentId;
   const genrePart = [...input.genreIds].sort().join(",") || "any";
   // ORCH-0809-E: sub-genre union must be part of the cache key so different
   // sub-genre combinations don't share entries (FILTER_DIMENSION invariant).
@@ -236,6 +242,9 @@ function transformEvent(
   const venueLng = parseFloat(venue?.location?.longitude ?? "0");
 
   const classification = event.classifications?.[0];
+  const segmentId = classification?.segment?.id ?? null;
+  const genreId = classification?.genre?.id ?? null;
+  const subGenreId = classification?.subGenre?.id ?? null;
   const genre = classification?.genre?.name !== "Undefined"
     ? classification?.genre?.name ?? null
     : null;
@@ -287,6 +296,9 @@ function transformEvent(
     coordinates: { lat: venueLat, lng: venueLng },
     genre,
     subGenre,
+    segmentId,
+    genreId,
+    subGenreId,
     tags,
     ticketUrl: event.url ?? "",
     ticketStatus: event.dates?.status?.code ?? "unknown",
@@ -304,7 +316,7 @@ interface TmQueryInput {
   lat?: number;
   lng?: number;
   radius?: number;
-  segmentId: string;
+  segmentId?: string;
   genreIds: string[];
   subGenreIds: string[];
   localStartEndDateTime?: string;
@@ -338,7 +350,7 @@ function buildTmUrl(input: TmQueryInput): string {
     params.set("unit", "km");
   }
 
-  params.set("segmentId", input.segmentId);
+  if (input.segmentId) params.set("segmentId", input.segmentId);
 
   if (input.genreIds.length > 0) {
     params.set("genreId", input.genreIds.join(","));
@@ -474,6 +486,7 @@ serve(async (req: Request) => {
       stateCode,
       countryCode,
       segmentSlug,
+      segmentMode,
       genreSlugs,
       localStartEndDateTime,
       latFallback,
@@ -506,7 +519,7 @@ serve(async (req: Request) => {
     // deleted price filter). Constitution #3 (no silent failures) + #9 (no
     // fabricated data) require an explicit 400 so the client knows the slug is
     // unsupported rather than receiving Music events labeled under another segment.
-    if (segmentSlug !== undefined && !(segmentSlug in DISCOVER_SEGMENT_ID)) {
+    if (segmentMode !== "all" && segmentSlug !== undefined && !(segmentSlug in DISCOVER_SEGMENT_ID)) {
       return new Response(
         JSON.stringify({
           error: `unknown segmentSlug: ${segmentSlug}`,
@@ -551,6 +564,7 @@ serve(async (req: Request) => {
       lat: location?.lat,
       lng: location?.lng,
       segmentId,
+      segmentMode,
       genreIds,
       subGenreIds,
       localStartEndDateTime,
@@ -608,7 +622,7 @@ serve(async (req: Request) => {
       lat: location?.lat,
       lng: location?.lng,
       radius: searchRadius,
-      segmentId,
+      segmentId: segmentMode === "all" ? undefined : segmentId,
       genreIds,
       subGenreIds,
       localStartEndDateTime,
@@ -693,7 +707,7 @@ serve(async (req: Request) => {
         lat: latFallback,
         lng: lngFallback,
         radius: radiusFallback ?? 50,
-        segmentId,
+        segmentId: segmentMode === "all" ? undefined : segmentId,
         genreIds,
         subGenreIds,
         localStartEndDateTime,
@@ -719,6 +733,7 @@ serve(async (req: Request) => {
           lat: latFallback,
           lng: lngFallback,
           segmentId,
+          segmentMode,
           genreIds,
           subGenreIds,
           localStartEndDateTime,

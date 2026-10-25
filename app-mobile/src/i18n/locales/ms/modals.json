@@ -117,5 +117,18 @@
     "next_step_label": "Pergi ke langkah seterusnya",
     "finish_tour_label": "Selesaikan lawatan berpandu",
     "guided_tour_label": "Lawatan berpandu langkah {{current}} daripada {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Semua yang berdekatan dengan anda, satu halaman",
+      "body_all": "Acara, pengalaman, perjalanan dan penginapan, semuanya pada satu halaman. Ketik pil untuk bertukar.",
+      "body_subset": "{{list}}, semuanya pada satu halaman. Ketik pil untuk menukar."
+    },
+    "step5": {
+      "title": "Perincikannya",
+      "body": "Tapis mengikut hari, getaran, muzik, destinasi dan banyak lagi. Pilihan berubah dengan setiap pil."
+    },
+    "list_two": "{{a}} dan {{b}}",
+    "list_three": "{{a}}, {{b}} dan {{c}}"
   }
 }

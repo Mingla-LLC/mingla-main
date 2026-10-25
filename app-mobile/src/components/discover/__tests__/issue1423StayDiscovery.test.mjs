@@ -10,13 +10,16 @@ const card = read("../StayCard.tsx");
 const service = read("../../../services/staysDiscoveryService.ts");
 const hook = read("../../../hooks/useDiscoverStays.ts");
 const store = read("../../../store/appStore.ts");
+const feedTypes = read("../../../types/discoverFeed.ts");
 
-test("#1423 adds Stays to the existing Discover capsule and nowhere else", () => {
-  assert.match(discover, /id: "events"[\s\S]*id: "trips"[\s\S]*id: "stays"/);
-  assert.match(discover, /activeTab === "stays"[\s\S]*<StaysContent/);
-  assert.match(discover, /activeTab === "trips"[\s\S]*<TripsContent/);
-  assert.match(discover, /activeTab === "events"[\s\S]*filterBarAbsolute/);
-  assert.match(store, /discoverActiveTab: 'events' \| 'trips' \| 'stays'/);
+// [TEST-MOD-APPROVED #4073] The one-page Discover architecture preserves Stay
+// as one generic feed kind instead of retaining the retired inline tab branches.
+test("#1423 keeps Stays in the ordered one-page Discover kind contract", () => {
+  assert.match(feedTypes, /DISCOVER_KIND_ORDER\s*=\s*\[\s*"events",\s*"experiences",\s*"trips",\s*"stays",?\s*\]/);
+  assert.match(discover, /DISCOVER_KIND_ORDER\.filter/);
+  assert.match(discover, /<DiscoverHeader[\s\S]*visibleKinds=\{visibleKinds\}[\s\S]*onKindSelect=\{switchKind\}/);
+  assert.match(store, /discoverSelectedKind: import\('\.\.\/types\/discoverFeed'\)\.DiscoverKind \| null/);
+  assert.match(store, /discoverFiltersByKind: Partial<Record</);
 });
 
 test("#1423 exposes exactly the four approved Stay filter entry points", () => {

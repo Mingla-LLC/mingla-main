@@ -117,5 +117,18 @@
     "next_step_label": "Go to next step",
     "finish_tour_label": "Finish guided tour",
     "guided_tour_label": "Guided tour step {{current}} of {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Totul în apropierea dvs., o pagină",
+      "body_all": "Evenimente, experiențe, călătorii și sejururi, toate pe o singură pagină. Atingeți o pastilă pentru a comuta.",
+      "body_subset": "{{list}}, toate pe o singură pagină. Atingeți o pastilă pentru a comuta."
+    },
+    "step5": {
+      "title": "Restrângeți-o",
+      "body": "Filtrați după zi, vibrație, muzică, destinație și multe altele. Opțiunile se schimbă cu fiecare pastilă."
+    },
+    "list_two": "{{a}} și {{b}}",
+    "list_three": "{{a}}, {{b}} și {{c}}"
   }
 }

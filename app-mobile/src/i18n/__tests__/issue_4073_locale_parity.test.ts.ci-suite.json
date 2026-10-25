@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/i18n/__tests__/issue_4073_locale_parity.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4073-locale-parity",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

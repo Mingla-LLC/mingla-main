@@ -117,5 +117,18 @@
     "next_step_label": "Gaa nzọụkwụ ọzọ",
     "finish_tour_label": "Mechaa nduzi",
     "guided_tour_label": "Nzọụkwụ nduzi {{current}} n'ime {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Ihe niile dị gị nso, otu ibe",
+      "body_all": "Ihe omume, ahụmịhe, njem na ọnụnọ, niile n'otu ibe. Kpatụ pill ka ịgbanwee.",
+      "body_subset": "{{list}}, ha niile n'otu ibe. Kpatụ pill ka ịgbanwee."
+    },
+    "step5": {
+      "title": "Mebie ya",
+      "body": "Nyochaa ụbọchị, vibe, egwu, ebe na ihe ndị ọzọ. Nhọrọ na-agbanwe na pill ọ bụla."
+    },
+    "list_two": "{{a}} na {{b}}",
+    "list_three": "{{a}}, {{b}} na {{c}}"
   }
 }
