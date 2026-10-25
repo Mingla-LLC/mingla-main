@@ -32,7 +32,8 @@ describe("#3720 Wave 3 Guides and Brand-group files", () => {
   });
 
   it("keeps Drive provider ids and raw URLs out of both browser clients", () => {
-    const host = read("mingla-business/src/services/brandGroupFilesService.ts");
+    // [TEST-MOD-APPROVED #3988] The authorized read request moved out of the upload service.
+    const host = read("mingla-business/src/services/brandGroupFileRequests.ts");
     const admin = read("mingla-admin/src/services/communityService.js");
     for (const source of [host, admin]) {
       expect(source).toContain("brand-group-files?file_id=");

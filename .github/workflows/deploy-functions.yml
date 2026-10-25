@@ -38,13 +38,23 @@ on:
         required: false
         default: false
         type: boolean
+      supersedes_pr:
+        description: >-
+          Optional merged pull request whose earlier failed edge deployment
+          this exact successful selection supersedes. The attestation refuses
+          any selection that does not exactly match that pull request.
+        required: false
+        type: string
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    outputs:
+      edge_deployed: ${{ steps.deploy-marker.outputs.deployed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -120,6 +130,20 @@ jobs:
             ${preflight_arg:+"$preflight_arg"} \
             "${args[@]}"
 
+      - name: Record that deployment completed
+        id: deploy-marker
+        if: success() && steps.select.outputs.count != '0' && inputs.preflight_only != true
+        run: echo "deployed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Attest a superseding edge deployment
+        if: success() && steps.select.outputs.count != '0' && inputs.supersedes_pr != '' && inputs.preflight_only != true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINGLA_SUPERSEDES_PR: ${{ inputs.supersedes_pr }}
+          MINGLA_DEPLOY_SELECTION_PATH: ${{ runner.temp }}/edge-deploy-functions
+          MINGLA_PREFLIGHT_ONLY: ${{ inputs.preflight_only || 'false' }}
+        run: node .github/scripts/release-records/attest-edge-deploy.mjs
+
   # #2948 AC-5. A failed deployment must reach a human, and it must do so
   # DETERMINISTICALLY. #2909's `Alert: main went red` lives in another workflow
   # and evaluates the newest COMPLETED run per workflow, so whether it can see
@@ -142,21 +166,35 @@ jobs:
           # Same thread #2912 escalates to, so red-`main` noise stays in one place.
           MINGLA_EDGE_DEPLOY_ALERT_ISSUE: '2909'
           DEPLOY_RESULT: ${{ needs.deploy.result }}
+          EDGE_DEPLOY_COMPLETED: ${{ needs.deploy.outputs.edge_deployed }}
         shell: bash
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          body=$(printf '%s\n' \
-            "EDGE_DEPLOY_ALERT error_code=EDGE_FUNCTION_DEPLOY_DID_NOT_HAPPEN" \
-            "" \
-            "- result: ${DEPLOY_RESULT}" \
-            "- commit: ${GITHUB_SHA}" \
-            "- pushed by: ${GITHUB_ACTOR}" \
-            "- run: ${run_url}" \
-            "" \
-            "Production edge functions are still running whatever was last deployed successfully." \
-            "Read the live versions before assuming which commit that is:" \
-            "GET https://api.supabase.com/v1/projects/<ref>/functions")
+          if [[ "${EDGE_DEPLOY_COMPLETED:-false}" == "true" ]]; then
+            body=$(printf '%s\n' \
+              "EDGE_DEPLOY_ALERT error_code=EDGE_DEPLOY_ATTESTATION_FAILED" \
+              "" \
+              "- result: ${DEPLOY_RESULT}" \
+              "- commit: ${GITHUB_SHA}" \
+              "- pushed by: ${GITHUB_ACTOR}" \
+              "- run: ${run_url}" \
+              "" \
+              "The selected production functions deployed, but the requested release-record attestation failed." \
+              "Do not redeploy older code. Read the attestation step and retry from current main.")
+          else
+            body=$(printf '%s\n' \
+              "EDGE_DEPLOY_ALERT error_code=EDGE_FUNCTION_DEPLOY_DID_NOT_HAPPEN" \
+              "" \
+              "- result: ${DEPLOY_RESULT}" \
+              "- commit: ${GITHUB_SHA}" \
+              "- pushed by: ${GITHUB_ACTOR}" \
+              "- run: ${run_url}" \
+              "" \
+              "Production edge functions are still running whatever was last deployed successfully." \
+              "Read the live versions before assuming which commit that is:" \
+              "GET https://api.supabase.com/v1/projects/<ref>/functions")
+          fi
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/issues/${MINGLA_EDGE_DEPLOY_ALERT_ISSUE}/comments" \
             -f body="$body" >/dev/null

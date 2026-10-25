@@ -292,11 +292,15 @@ export function tripToStep1Draft(trip: Trip): Step1Draft {
     destinationLocationText: trip.businessTrip.destinationLocationText,
     destinationLat: trip.businessTrip.destinationLat,
     destinationLng: trip.businessTrip.destinationLng,
+    destinationCity: trip.businessTrip.destinationCity ?? null,
+    destinationCountryCode: trip.businessTrip.destinationCountryCode ?? null,
     // ORCH-1016 — departure (origin) seeded from current trip row.
     departurePlaceId: trip.businessTrip.departurePlaceId,
     departureLocationText: trip.businessTrip.departureLocationText,
     departureLat: trip.businessTrip.departureLat,
     departureLng: trip.businessTrip.departureLng,
+    departureCity: trip.businessTrip.departureCity ?? null,
+    departureCountryCode: trip.businessTrip.departureCountryCode ?? null,
     // Issue #1363 — precision is a transient capture-side signal; existing trips
     // predate it, so seed null (the coordinate itself is already present).
     destinationCoordinatePrecision: null,
@@ -545,6 +549,8 @@ export function isTripWizardPristine(
     step1Draft.destinationLocationText !== initStep1.destinationLocationText ||
     step1Draft.destinationLat !== initStep1.destinationLat ||
     step1Draft.destinationLng !== initStep1.destinationLng ||
+    step1Draft.destinationCity !== initStep1.destinationCity ||
+    step1Draft.destinationCountryCode !== initStep1.destinationCountryCode ||
     // ORCH-0876 — cover fields part of Step 1 draft now.
     step1Draft.coverMediaUrl !== initStep1.coverMediaUrl ||
     step1Draft.coverMediaType !== initStep1.coverMediaType ||
@@ -556,6 +562,8 @@ export function isTripWizardPristine(
     step1Draft.departureLocationText !== initStep1.departureLocationText ||
     step1Draft.departureLat !== initStep1.departureLat ||
     step1Draft.departureLng !== initStep1.departureLng ||
+    step1Draft.departureCity !== initStep1.departureCity ||
+    step1Draft.departureCountryCode !== initStep1.departureCountryCode ||
     // #1022 — theme participates in pristineness, null-normalised both sides.
     JSON.stringify(normalizeThemeOverrides(step1Draft.themeOverrides)) !==
       JSON.stringify(normalizeThemeOverrides(initStep1.themeOverrides))
@@ -1032,10 +1040,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         destinationLocationText: step1Draft.destinationLocationText,
         destinationLat: step1Draft.destinationLat,
         destinationLng: step1Draft.destinationLng,
+        destinationCity: step1Draft.destinationCity,
+        destinationCountryCode: step1Draft.destinationCountryCode,
         departurePlaceId: step1Draft.departurePlaceId,
         departureLocationText: step1Draft.departureLocationText,
         departureLat: step1Draft.departureLat,
         departureLng: step1Draft.departureLng,
+        departureCity: step1Draft.departureCity,
+        departureCountryCode: step1Draft.departureCountryCode,
         // Issue #3801 — derived from the packages on screen, never authored.
         capacity: draftPackagesTotalSpots(step4Draft.packages),
       },
@@ -1213,10 +1225,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           destinationLocationText: step1Draft.destinationLocationText,
           destinationLat: step1Draft.destinationLat,
           destinationLng: step1Draft.destinationLng,
+          destinationCity: step1Draft.destinationCity,
+          destinationCountryCode: step1Draft.destinationCountryCode,
           departurePlaceId: step1Draft.departurePlaceId,
           departureLocationText: step1Draft.departureLocationText,
           departureLat: step1Draft.departureLat,
           departureLng: step1Draft.departureLng,
+          departureCity: step1Draft.departureCity,
+          departureCountryCode: step1Draft.departureCountryCode,
         },
         // ORCH-0876 — cover fields persist alongside basics. CoverPicker
         // emits patches synchronously into draft state; this writes them
@@ -1729,10 +1745,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               destinationLocationText: step1Draft.destinationLocationText,
               destinationLat: step1Draft.destinationLat,
               destinationLng: step1Draft.destinationLng,
+              destinationCity: step1Draft.destinationCity,
+              destinationCountryCode: step1Draft.destinationCountryCode,
               departurePlaceId: step1Draft.departurePlaceId,
               departureLocationText: step1Draft.departureLocationText,
               departureLat: step1Draft.departureLat,
               departureLng: step1Draft.departureLng,
+              departureCity: step1Draft.departureCity,
+              departureCountryCode: step1Draft.departureCountryCode,
               // Issue #1363 — precision rides theme.business_trip.* (JSON; no
               // column). The publish RPC preserves unknown business_trip keys, so
               // this persists with no RPC change.

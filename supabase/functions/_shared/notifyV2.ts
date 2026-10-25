@@ -281,6 +281,9 @@ export function providerSafePayload(
         .filter((key) => payload[key] !== undefined)
         .map((key) => [key, payload[key]]),
     );
+  if (category === "discover_city_plans_live") {
+    return pick(["city_key", "deep_link"]);
+  }
   if (category === "business.community_announcement") {
     return pick(["campaign_id", "announcement_id"]);
   }
@@ -294,7 +297,7 @@ export function providerSafePayload(
     return pick(["ticket_id"]);
   }
   if (category === "business.brand_group_message") {
-    return pick(["message_id", "conversation_id", "brand_id"]);
+    return pick(["message_id", "conversation_id", "brand_id", "mentioned"]);
   }
   if (category === "admin.team_mention") {
     return pick(["mention_id", "source_kind", "source_id"]);

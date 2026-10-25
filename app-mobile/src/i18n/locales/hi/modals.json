@@ -117,5 +117,18 @@
     "next_step_label": "अगले चरण पर जाएँ",
     "finish_tour_label": "गाइडेड टूर समाप्त करें",
     "guided_tour_label": "गाइडेड टूर चरण {{current}} / {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "आपके निकट सब कुछ, एक पृष्ठ",
+      "body_all": "घटनाएँ, अनुभव, यात्राएँ और प्रवास, सभी एक पृष्ठ पर। स्विच करने के लिए एक गोली टैप करें।",
+      "body_subset": "{{list}}, सभी एक पृष्ठ पर। स्विच करने के लिए एक गोली टैप करें।"
+    },
+    "step5": {
+      "title": "इसे छोटा करें",
+      "body": "Filter by day, vibe, music, destination and more. The choices change with each pill."
+    },
+    "list_two": "{{a}} and {{b}}",
+    "list_three": "{{a}}, {{b}} and {{c}}"
   }
 }

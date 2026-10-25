@@ -222,11 +222,15 @@ interface LocalTripEditState {
   destinationLocationText: string | null;
   destinationLat: number | null;
   destinationLng: number | null;
+  destinationCity: string | null;
+  destinationCountryCode: string | null;
   // ORCH-1016 — departure (origin) city
   departurePlaceId: string | null;
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
+  departureCity: string | null;
+  departureCountryCode: string | null;
   // Issue #1363 — legacy precision may be exact; selected-address resolution is
   // approximate; null means unset. Carried into theme.business_trip.* on save.
   destinationCoordinatePrecision: "exact" | "approximate" | null;
@@ -281,10 +285,14 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     destinationLocationText: trip.businessTrip.destinationLocationText,
     destinationLat: trip.businessTrip.destinationLat,
     destinationLng: trip.businessTrip.destinationLng,
+    destinationCity: trip.businessTrip.destinationCity ?? null,
+    destinationCountryCode: trip.businessTrip.destinationCountryCode ?? null,
     departurePlaceId: trip.businessTrip.departurePlaceId,
     departureLocationText: trip.businessTrip.departureLocationText,
     departureLat: trip.businessTrip.departureLat,
     departureLng: trip.businessTrip.departureLng,
+    departureCity: trip.businessTrip.departureCity ?? null,
+    departureCountryCode: trip.businessTrip.departureCountryCode ?? null,
     // Issue #1363 — precision is transient capture-side (existing coord present).
     destinationCoordinatePrecision: null,
     departureCoordinatePrecision: null,
@@ -410,10 +418,14 @@ function buildLiveTripPatch(
     destinationLocationText: string | null;
     destinationLat: number | null;
     destinationLng: number | null;
+    destinationCity: string | null;
+    destinationCountryCode: string | null;
     departurePlaceId: string | null;
     departureLocationText: string | null;
     departureLat: number | null;
     departureLng: number | null;
+    departureCity: string | null;
+    departureCountryCode: string | null;
     destinationCoordinatePrecision: "exact" | "approximate" | null;
     departureCoordinatePrecision: "exact" | "approximate" | null;
     capacity: number | null;
@@ -435,6 +447,15 @@ function buildLiveTripPatch(
   if (state.destinationLng !== trip.businessTrip.destinationLng) {
     bt.destinationLng = state.destinationLng;
   }
+  if (state.destinationCity !== (trip.businessTrip.destinationCity ?? null)) {
+    bt.destinationCity = state.destinationCity;
+  }
+  if (
+    state.destinationCountryCode !==
+    (trip.businessTrip.destinationCountryCode ?? null)
+  ) {
+    bt.destinationCountryCode = state.destinationCountryCode;
+  }
   // ORCH-1016 — departure is ADDITIVE (no refund gate; doesn't change
   // price/dates/capacity/inclusions). The biz_update_live_trip generic
   // theme.business_trip merge persists these into theme; the ORCH-1016 trigger
@@ -452,6 +473,15 @@ function buildLiveTripPatch(
   }
   if (state.departureLng !== trip.businessTrip.departureLng) {
     bt.departureLng = state.departureLng;
+  }
+  if (state.departureCity !== (trip.businessTrip.departureCity ?? null)) {
+    bt.departureCity = state.departureCity;
+  }
+  if (
+    state.departureCountryCode !==
+    (trip.businessTrip.departureCountryCode ?? null)
+  ) {
+    bt.departureCountryCode = state.departureCountryCode;
   }
   // Issue #1363 — persist capture precision only when it was set this session
   // (non-null). Rides the same theme.business_trip merge as the coords above.
@@ -948,6 +978,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         departurePlaceId: null,
         departureLat: null,
         departureLng: null,
+        departureCity: null,
+        departureCountryCode: null,
         departureCoordinatePrecision: null,
       });
       void (async () => {
@@ -971,6 +1003,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           updateBasics({
             departureLat: approx.lat,
             departureLng: approx.lng,
+            departureCity: approx.city,
+            departureCountryCode: approx.countryCode,
             departureCoordinatePrecision: "approximate",
           });
           departureContextRef.current = {
@@ -1005,6 +1039,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         destinationPlaceId: null,
         destinationLat: null,
         destinationLng: null,
+        destinationCity: null,
+        destinationCountryCode: null,
         destinationCoordinatePrecision: null,
       });
       void (async () => {
@@ -1028,6 +1064,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           updateBasics({
             destinationLat: approx.lat,
             destinationLng: approx.lng,
+            destinationCity: approx.city,
+            destinationCountryCode: approx.countryCode,
             destinationCoordinatePrecision: "approximate",
           });
           destinationContextRef.current = {
@@ -1651,6 +1689,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       departurePlaceId: null,
                       departureLat: null,
                       departureLng: null,
+                      departureCity: null,
+                      departureCountryCode: null,
                       departureCoordinatePrecision: null,
                     });
                   }}
@@ -1666,6 +1706,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       departureLocationText: label,
                       departureLat: place.location.lat,
                       departureLng: place.location.lng,
+                      departureCity: place.city,
+                      departureCountryCode: place.countryCode,
                       departureCoordinatePrecision: "approximate",
                     });
                     departureContextRef.current = {
@@ -1689,6 +1731,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       departurePlaceId: null,
                       departureLat: null,
                       departureLng: null,
+                      departureCity: null,
+                      departureCountryCode: null,
                       departureCoordinatePrecision: null,
                     });
                   }}
@@ -1707,6 +1751,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       departureLocationText: null,
                       departureLat: null,
                       departureLng: null,
+                      departureCity: null,
+                      departureCountryCode: null,
                       departureCoordinatePrecision: null,
                     });
                   }}
@@ -1750,6 +1796,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       destinationPlaceId: null,
                       destinationLat: null,
                       destinationLng: null,
+                      destinationCity: null,
+                      destinationCountryCode: null,
                       destinationCoordinatePrecision: null,
                     });
                   }}
@@ -1765,6 +1813,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       destinationLocationText: label,
                       destinationLat: place.location.lat,
                       destinationLng: place.location.lng,
+                      destinationCity: place.city,
+                      destinationCountryCode: place.countryCode,
                       destinationCoordinatePrecision: "approximate",
                     });
                     destinationContextRef.current = {
@@ -1788,6 +1838,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       destinationPlaceId: null,
                       destinationLat: null,
                       destinationLng: null,
+                      destinationCity: null,
+                      destinationCountryCode: null,
                       destinationCoordinatePrecision: null,
                     });
                   }}
@@ -1806,6 +1858,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       destinationLocationText: null,
                       destinationLat: null,
                       destinationLng: null,
+                      destinationCity: null,
+                      destinationCountryCode: null,
                       destinationCoordinatePrecision: null,
                     });
                   }}

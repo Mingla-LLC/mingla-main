@@ -117,5 +117,18 @@
     "next_step_label": "Ke langkah berikutnya",
     "finish_tour_label": "Selesaikan tur panduan",
     "guided_tour_label": "Langkah tur panduan {{current}} dari {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Semua yang ada di dekat Anda, satu halaman",
+      "body_all": "Acara, pengalaman, perjalanan, dan penginapan, semuanya dalam satu halaman. Ketuk pil untuk beralih.",
+      "body_subset": "{{list}}, semuanya dalam satu halaman. Ketuk pil untuk beralih."
+    },
+    "step5": {
+      "title": "Persempit",
+      "body": "Filter berdasarkan hari, suasana, musik, tujuan, dan lainnya. Pilihannya berubah setiap pil."
+    },
+    "list_two": "{{a}} dan {{b}}",
+    "list_three": "{{a}}, {{b}} dan {{c}}"
   }
 }

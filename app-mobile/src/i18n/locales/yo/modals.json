@@ -117,5 +117,18 @@
     "next_step_label": "Lọ sí ìgbésẹ̀ tí ó kàn",
     "finish_tour_label": "Parí ìtọ́sọ́nà",
     "guided_tour_label": "Ìgbésẹ̀ ìtọ́sọ́nà {{current}} nínú {{total}}"
+  },
+  "coach": {
+    "step4": {
+      "title": "Ohun gbogbo ti o wa nitosi rẹ, oju-iwe kan",
+      "body_all": "Awọn iṣẹlẹ, awọn iriri, awọn irin ajo ati awọn iduro, gbogbo rẹ ni oju-iwe kan. Fọwọ ba egbogi kan lati yipada.",
+      "body_subset": "{{list}}, gbogbo rẹ ni oju-iwe kan. Fọwọ ba egbogi kan lati yipada."
+    },
+    "step5": {
+      "title": "Din rẹ mọlẹ",
+      "body": "Asẹmọ nipasẹ ọjọ, gbigbọn, orin, ibi-ajo ati diẹ sii. Awọn aṣayan yi pada pẹlu oogun kọọkan."
+    },
+    "list_two": "{{a}} ati {{b}}",
+    "list_three": "{{a}}, {{b}} ati {{c}}"
   }
 }

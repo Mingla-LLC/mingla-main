@@ -88,12 +88,12 @@ export function parseDeepLink(url: string): Destination | null {
     const params: Record<string, string> = {};
 
     if (queryPart) {
-      queryPart.split('&').forEach((pair) => {
-        const [key, value] = pair.split('=');
-        if (key && value) {
-          params[decodeURIComponent(key)] = decodeURIComponent(value);
-        }
-      });
+      // URLSearchParams performs component decoding once, preserves encoded
+      // separators, and treats malformed percent escapes as data instead of
+      // throwing the whole navigation away.
+      for (const [key, value] of new URLSearchParams(queryPart)) {
+        if (key && value) params[key] = value;
+      }
     }
 
     const path = pathSegments[0];

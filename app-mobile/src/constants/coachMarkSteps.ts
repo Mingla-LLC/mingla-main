@@ -30,6 +30,8 @@ export interface CoachStep {
   title: string;
   description: string;
   buttonLabel: string;
+  titleKey?: string;
+  descriptionKey?: string;
   /** Override bubble position. 'auto' (default) places the bubble above/below the
    *  cutout. 'center' renders the bubble in the middle of the screen — useful when
    *  the cutout is large (e.g. a full screen section) and the bubble shouldn't hug it. */
@@ -64,16 +66,20 @@ export const COACH_STEPS: CoachStep[] = [
     // 'center' override was a band-aid for the too-broad target and is removed.
     id: 4,
     tab: 'discover',
-    title: 'Events, near you',
-    description: 'Concerts, shows, experiences — all within reach.',
+    title: 'Everything near you, one page',
+    description: 'Events, experiences, trips and stays, all on one page. Tap a pill to switch.',
+    titleKey: 'modals:coach.step4.title',
+    descriptionKey: 'modals:coach.step4.body_all',
     buttonLabel: 'Got it',
   },
   {
     // ORCH-1035 NEW: Trips tab (ORCH-1016 travel reframing).
     id: 5,
     tab: 'discover',
-    title: 'Trips, ready when you are',
-    description: 'Weekend escapes, big adventures — plan the whole thing here.',
+    title: 'Narrow it down',
+    description: 'Filter by day, vibe, music, destination and more. The choices change with each pill.',
+    titleKey: 'modals:coach.step5.title',
+    descriptionKey: 'modals:coach.step5.body',
     buttonLabel: 'Got it',
   },
   {

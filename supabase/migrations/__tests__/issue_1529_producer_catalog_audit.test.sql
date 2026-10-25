@@ -68,9 +68,14 @@ END;
 $vacuity$;
 
 -- ---------------------------------------------------------------------------
+-- [TEST-MOD-APPROVED #3988] Brand-visible support adds two explicitly
+-- country-aware, push-only producers and raises the catalog floor to 18.
+-- [TEST-MOD-APPROVED #4073] City-watch delivery adds one producer that copies
+-- the normalized country stored on the durable watch, raising 18 -> 19.
 -- [TEST-MOD-APPROVED #4063] Buyer venue-order receipts add one explicitly
--- country-aware SMS producer and raise the catalog floor to 19.
--- (2) RATCHET — raised 18 → 19 for #4063. The floor is the number that ACTUALLY
+-- country-aware SMS producer, raising 19 -> 20.
+-- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, and 19 -> 20
+--     for #4063. The floor is the number that ACTUALLY
 --     exists in the catalog, so a producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
 --     could have vanished unnoticed.
@@ -80,9 +85,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 19 THEN
+  IF v_count < 20 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_19_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_20_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -112,6 +117,8 @@ $ratchet$;
 --       issue_3988_notify_brand_support_progress → explicit NULL (push-only progress notice)
 --       issue_3720_admin_update_idea        → explicit NULL (no SMS channel)
 --       issue_3720_admin_question_action    → explicit NULL (no SMS channel)
+--       issue_4073_scan_city_watches        → copies the normalized country_code
+--                                             from the durable city watch
 --       tg_venue_orders_a4063_receipt       → mingla_e164_country(NEW.buyer_phone_e164)
 --
 --     DRAIN-DERIVED — emits source-refund-pool rows carrying contact NULL by
@@ -145,6 +152,7 @@ DECLARE
     'issue_3988_notify_brand_support_progress',
     'issue_3720_admin_update_idea',
     'issue_3720_admin_question_action',
+    'issue_4073_scan_city_watches',
     'tg_venue_orders_a4063_receipt'
   ];
   drain_derived text[] := ARRAY[
@@ -255,6 +263,7 @@ DECLARE
     'issue_3988_notify_brand_support_progress',
     'issue_3720_admin_update_idea',
     'issue_3720_admin_question_action',
+    'issue_4073_scan_city_watches',
     'tg_venue_orders_a4063_receipt'
   ];
   v_missing text;

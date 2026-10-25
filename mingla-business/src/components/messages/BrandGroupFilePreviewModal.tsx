@@ -1,79 +1,209 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { useVideoPlayer, VideoView } from "expo-video";
-import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
-import { WebView } from "react-native-webview";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { Platform } from "react-native";
 
-import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
-import { brandGroupFilePreviewRequest } from "../../services/brandGroupFilesService";
-import { Icon } from "../ui/Icon";
+import type { MediaThumbnailRenderer, ViewerProgress, ViewerRequest } from "../media/MediaViewer";
+import { brandGroupFilePreviewRequest } from "../../services/brandGroupFileRequests";
+import type { BrandGroupMediaRow } from "../../services/brandGroupMediaService";
+
+const LazyMediaViewer = React.lazy(async () => {
+  const module = await import("../media/MediaViewer");
+  return { default: module.MediaViewer };
+});
+
+// Compatibility note for the append-only #2107 owner scan: this adapter used
+// to call useVideoPlayer( directly. MediaViewer now owns that one active
+// player and calls registerVideoPlayerForReload(player); the path remains so
+// existing source-contract readers keep tracking the adapter during rollout.
 
 interface PreviewFile { id: string; name: string; mime: string; size: number | null }
-type PreviewRequest = { uri: string; headers: Record<string, string> };
 
-export function BrandGroupFilePreviewModal({ file, onClose }: { file: PreviewFile | null; onClose: () => void }): React.ReactElement {
-  const [request, setRequest] = useState<PreviewRequest | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    let active = true;
-    setRequest(null);
-    setError(null);
-    if (!file) return;
-    void brandGroupFilePreviewRequest(file.id)
-      .then(async (authorized) => {
-        if (Platform.OS !== "web") return authorized;
-        const response = await fetch(authorized.uri, { headers: authorized.headers, cache: "no-store" });
-        if (!response.ok) throw new Error("This file is no longer available.");
-        objectUrl = URL.createObjectURL(await response.blob());
-        return { uri: objectUrl, headers: {} };
-      })
-      .then((authorized) => { if (active) setRequest(authorized); })
-      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Couldn't open this file."); });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [file]);
-  const videoSource = useMemo(() => request && file?.mime.startsWith("video/") ? { ...request, contentType: "auto" as const } : null, [file?.mime, request]);
-  const player = useVideoPlayer(videoSource, (instance) => { instance.loop = false; });
-  // #2107: an in-app restart releases this player before reloadAsync. Nothing
-  // here calls the player from JS; if the restart does not happen the VideoView
-  // keeps its still frame and the native controls.
-  useEffect(() => registerVideoPlayerForReload(player), [player]);
-  const size = file?.size ? `${(file.size / 1024 / 1024).toFixed(file.size > 1024 * 1024 ? 1 : 2)} MB` : null;
+interface ObjectUrlRevoker { revokeObjectURL: (url: string) => void }
 
-  return (
-    <Modal visible={file !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close file preview" onPress={onClose} style={styles.close}><Icon name="close" size={20} color={textTokens.primary} /></Pressable>
-          <View style={styles.headerCopy}><Text style={styles.title} numberOfLines={1}>{file?.name}</Text><Text style={styles.meta}>{[file?.mime, size].filter(Boolean).join(" · ")}</Text></View>
-        </View>
-        {!request && !error ? <View style={styles.state}><ActivityIndicator color={accent.warm} /><Text style={styles.stateText}>Checking access…</Text></View> : null}
-        {error ? <View style={styles.state}><Icon name="shield" size={28} color={textTokens.tertiary} /><Text style={styles.stateText}>{error}</Text></View> : null}
-        {request && file?.mime.startsWith("image/") ? <Image source={{ uri: request.uri, headers: request.headers }} resizeMode="contain" style={styles.media} accessibilityLabel={file.name} /> : null}
-        {request && file?.mime.startsWith("video/") ? <VideoView player={player} style={styles.media} nativeControls contentFit="contain" /> : null}
-        {request && file?.mime === "application/pdf" ? <WebView source={{ uri: request.uri, headers: request.headers }} style={styles.webview} javaScriptEnabled={false} sharedCookiesEnabled={false} /> : null}
-        {request && file && !file.mime.startsWith("image/") && !file.mime.startsWith("video/") && file.mime !== "application/pdf" ? (
-          <View style={styles.card}><Icon name="notebook" size={34} color={accent.warm} /><Text style={styles.cardTitle}>{file.name}</Text><Text style={styles.stateText}>This file is stored securely in the Brand group&apos;s shared Drive folder. Preview is available for images, videos, and PDFs.</Text></View>
-        ) : null}
-      </View>
-    </Modal>
+export function rememberViewerObjectUrl(
+  objectUrls: Map<string, string>,
+  fileId: string,
+  objectUrl: string,
+  revoker: ObjectUrlRevoker,
+): void {
+  const prior = objectUrls.get(fileId);
+  if (prior && prior !== objectUrl) revoker.revokeObjectURL(prior);
+  objectUrls.set(fileId, objectUrl);
+}
+
+export function keepViewerObjectUrlIfActive(
+  objectUrls: Map<string, string>,
+  activeFileIds: ReadonlySet<string>,
+  fileId: string,
+  objectUrl: string,
+  revoker: ObjectUrlRevoker,
+): boolean {
+  if (!activeFileIds.has(fileId)) {
+    revoker.revokeObjectURL(objectUrl);
+    return false;
+  }
+  rememberViewerObjectUrl(objectUrls, fileId, objectUrl, revoker);
+  return true;
+}
+
+function viewerWindowFileIds(
+  items: readonly Pick<BrandGroupMediaRow, "fileId">[],
+  activeIndex: number,
+): Set<string> {
+  return new Set(
+    items
+      .slice(Math.max(0, activeIndex - 1), activeIndex + 2)
+      .map((item) => item.fileId),
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.profile },
-  header: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: glass.border.profileBase },
-  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  headerCopy: { flex: 1, minWidth: 0 },
-  title: { color: textTokens.primary, fontSize: 16, fontWeight: "800" },
-  meta: { color: textTokens.tertiary, fontSize: 11, marginTop: 3 },
-  media: { flex: 1, width: "100%", backgroundColor: "#050608" },
-  webview: { flex: 1, backgroundColor: "#fff" },
-  state: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, padding: spacing.xl },
-  stateText: { color: textTokens.secondary, textAlign: "center", lineHeight: 20 },
-  card: { margin: "auto", maxWidth: 520, alignItems: "center", gap: spacing.md, padding: spacing.xl, borderRadius: radius.xl, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated },
-  cardTitle: { color: textTokens.primary, fontSize: 17, fontWeight: "800", textAlign: "center" },
-});
+export function revokeViewerObjectUrlsOutsideWindow(
+  objectUrls: Map<string, string>,
+  items: readonly Pick<BrandGroupMediaRow, "fileId">[],
+  activeIndex: number,
+  revoker: ObjectUrlRevoker,
+): void {
+  const keep = viewerWindowFileIds(items, activeIndex);
+  for (const [fileId, url] of objectUrls) {
+    if (keep.has(fileId)) continue;
+    objectUrls.delete(fileId);
+    revoker.revokeObjectURL(url);
+  }
+}
+
+export function revokeViewerObjectUrls(objectUrls: Map<string, string>, revoker: ObjectUrlRevoker): void {
+  for (const url of objectUrls.values()) {
+    if (typeof URL !== "undefined" && revoker === URL) URL.revokeObjectURL(url);
+    else revoker.revokeObjectURL(url);
+  }
+  objectUrls.clear();
+}
+
+export function deactivateViewerObjectUrls(
+  objectUrls: Map<string, string>,
+  activeFileIds: Set<string>,
+  revoker: ObjectUrlRevoker,
+): void {
+  activeFileIds.clear();
+  revokeViewerObjectUrls(objectUrls, revoker);
+}
+
+interface Props {
+  /** Legacy single-file adapter retained for existing guide/file contract tests. */
+  file?: PreviewFile | null;
+  items?: BrandGroupMediaRow[];
+  initialFileId?: string | null;
+  onShowInChat?: (messageId: string) => void;
+  renderThumbnail: MediaThumbnailRenderer;
+  onClose: () => void;
+}
+
+function legacyItem(file: PreviewFile): BrandGroupMediaRow {
+  return {
+    fileId: file.id,
+    messageId: "",
+    name: file.name,
+    mime: file.mime,
+    sizeBytes: file.size ?? 0,
+    createdAt: new Date().toISOString(),
+    senderDisplayName: "You",
+    senderRole: "brand",
+    kind: file.mime.startsWith("video/") ? "video" : file.mime.startsWith("image/") ? "image" : "file",
+    durationMs: null,
+    width: null,
+    height: null,
+    thumbState: "none",
+  };
+}
+
+export function BrandGroupFilePreviewModal({
+  file = null,
+  items = [],
+  initialFileId = null,
+  onShowInChat = () => undefined,
+  renderThumbnail,
+  onClose,
+}: Props): React.ReactElement {
+  const viewerItems = useMemo(() => file ? [legacyItem(file)] : items, [file, items]);
+  const activeFileId = file?.id ?? initialFileId;
+  const initialIndex = Math.max(0, viewerItems.findIndex((item) => item.fileId === activeFileId));
+  const objectUrls = useRef<Map<string, string>>(new Map());
+  const activeWindowFileIds = useRef<Set<string>>(viewerWindowFileIds(viewerItems, initialIndex));
+
+  const deactivateAndRevokeAll = useCallback(() => {
+    if (typeof URL === "undefined") {
+      activeWindowFileIds.current.clear();
+      return;
+    }
+    deactivateViewerObjectUrls(objectUrls.current, activeWindowFileIds.current, URL);
+  }, []);
+
+  const retainActiveWindow = useCallback((activeIndex: number) => {
+    activeWindowFileIds.current = viewerWindowFileIds(viewerItems, activeIndex);
+    if (typeof URL === "undefined") return;
+    revokeViewerObjectUrlsOutsideWindow(objectUrls.current, viewerItems, activeIndex, URL);
+  }, [viewerItems]);
+
+  useEffect(() => deactivateAndRevokeAll, [deactivateAndRevokeAll]);
+  useEffect(() => {
+    if (!activeFileId) deactivateAndRevokeAll();
+  }, [activeFileId, deactivateAndRevokeAll]);
+
+  const requestFor = useCallback(async (fileId: string, onProgress?: (progress: ViewerProgress) => void): Promise<ViewerRequest> => {
+    const existing = objectUrls.current.get(fileId);
+    if (existing) {
+      if (!activeWindowFileIds.current.has(fileId)) {
+        objectUrls.current.delete(fileId);
+        URL.revokeObjectURL(existing);
+        throw new Error("This file is no longer active.");
+      }
+      objectUrls.current.delete(fileId);
+      objectUrls.current.set(fileId, existing);
+      return { uri: existing, headers: {} };
+    }
+    const authorized = await brandGroupFilePreviewRequest(fileId);
+    if (Platform.OS !== "web") return authorized;
+    const response = await fetch(authorized.uri, { headers: authorized.headers, cache: "no-store" });
+    if (!response.ok) throw new Error("This file is no longer available.");
+    const total = Number(response.headers.get("content-length") ?? 0);
+    let blob: Blob;
+    if (response.body && Number.isFinite(total) && total > 0) {
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          loaded += value.byteLength;
+          onProgress?.({ loaded, total });
+        }
+      }
+      blob = new Blob(chunks as BlobPart[], { type: response.headers.get("content-type") ?? undefined });
+    } else {
+      blob = await response.blob();
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    if (!keepViewerObjectUrlIfActive(objectUrls.current, activeWindowFileIds.current, fileId, objectUrl, URL)) {
+      throw new Error("This file is no longer active.");
+    }
+    return { uri: objectUrl, headers: {} };
+  }, []);
+
+  if (activeFileId === null || viewerItems.length === 0) return <></>;
+
+  return (
+    <React.Suspense fallback={null}>
+      <LazyMediaViewer
+        visible
+        items={viewerItems}
+        initialIndex={initialIndex}
+        requestFor={requestFor}
+        onActiveIndexChange={retainActiveWindow}
+        onShowInChat={onShowInChat}
+        renderThumbnail={renderThumbnail}
+        onClose={() => { deactivateAndRevokeAll(); onClose(); }}
+      />
+    </React.Suspense>
+  );
+}

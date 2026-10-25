@@ -241,6 +241,14 @@ interface AppState {
   likesActiveTab: 'saved' | 'calendar';
   // ORCH-1016 / #1423 — Discover capsule selection across tab unmount.
   discoverActiveTab: 'events' | 'trips' | 'stays';
+  // #4073 — one-page Discover UI state. Server state remains in React Query.
+  // These fields are intentionally absent from partialize (session-only).
+  discoverSelectedKind: import('../types/discoverFeed').DiscoverKind | null;
+  discoverFiltersByKind: Partial<Record<
+    import('../types/discoverFeed').DiscoverKind,
+    import('../types/discoverFeed').DiscoverFiltersV2
+  >>;
+  discoverPendingWatchCity: string | null;
 
   // Actions
   setAuth: (user: User | null) => void;
@@ -274,6 +282,9 @@ interface AppState {
   setConnectionsFriendsModalTab: (tab: AppState['connectionsFriendsModalTab']) => void;
   setLikesActiveTab: (tab: 'saved' | 'calendar') => void;
   setDiscoverActiveTab: (tab: 'events' | 'trips' | 'stays') => void;
+  setDiscoverSelectedKind: (kind: import('../types/discoverFeed').DiscoverKind | null) => void;
+  setDiscoverFiltersByKind: (filters: AppState['discoverFiltersByKind']) => void;
+  setDiscoverPendingWatchCity: (cityKey: string | null) => void;
 
   // Utilities
   clearUserData: () => void;
@@ -322,6 +333,9 @@ export const useAppStore = create<AppState>()(
       connectionsFriendsModalTab: null,
       likesActiveTab: 'saved',
       discoverActiveTab: 'events',
+      discoverSelectedKind: null,
+      discoverFiltersByKind: {},
+      discoverPendingWatchCity: null,
 
       // Auth actions
       setAuth: (user) => {
@@ -405,6 +419,9 @@ export const useAppStore = create<AppState>()(
       setConnectionsFriendsModalTab: (connectionsFriendsModalTab) => set({ connectionsFriendsModalTab }),
       setLikesActiveTab: (likesActiveTab) => set({ likesActiveTab }),
       setDiscoverActiveTab: (discoverActiveTab) => set({ discoverActiveTab }),
+      setDiscoverSelectedKind: (discoverSelectedKind) => set({ discoverSelectedKind }),
+      setDiscoverFiltersByKind: (discoverFiltersByKind) => set({ discoverFiltersByKind }),
+      setDiscoverPendingWatchCity: (discoverPendingWatchCity) => set({ discoverPendingWatchCity }),
 
       // Deck metadata action. History reset is explicitly paired by callers
       // with the dedicated deckSessionHistoryStore.
@@ -450,6 +467,9 @@ export const useAppStore = create<AppState>()(
           connectionsFriendsModalTab: null,
           likesActiveTab: 'saved',
           discoverActiveTab: 'events',
+          discoverSelectedKind: null,
+          discoverFiltersByKind: {},
+          discoverPendingWatchCity: null,
         });
       },
     })),  // end of state definition + devLoggerMiddleware

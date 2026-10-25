@@ -43,6 +43,8 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     currentStepConfig,
     nextStep,
     prevStep,
+    coachProgress,
+    currentStepCopyOverride,
     skipTour,
     targetMeasurements,
     overlayVisible,
@@ -141,7 +143,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   if (!currentStepConfig) return null;
 
   const isFirstStep = currentStep === 1;
-  const isLastStep = currentStep === COACH_STEP_COUNT;
+  const isLastStep = coachProgress.current === coachProgress.total;
   const target: TargetRect | undefined = targetMeasurements.get(currentStep);
 
   // ORCH-1029 (F-1, REWORK): fullscreen-rejection clamp — recalibrated.
@@ -274,7 +276,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
       style={[StyleSheet.absoluteFill, { zIndex: 100, opacity: overlayOpacity }]}
       pointerEvents={overlayVisible ? 'box-none' : 'none'}
       accessibilityRole="none"
-      accessibilityLabel={t('modals:spotlight.guided_tour_label', { current: currentStep, total: COACH_STEP_COUNT })}
+      accessibilityLabel={t('modals:spotlight.guided_tour_label', coachProgress)}
     >
       {/* Layer 1: Scrim strips — 4 strips around the cutout block taps on dark area.
           The cutout area has NO View covering it, so touches fall through the
@@ -375,27 +377,36 @@ export default function SpotlightOverlay(): React.ReactElement | null {
         {/* Progress bar + counter */}
         <View style={styles.progressRow}>
           <View style={styles.progressBarContainer}>
-            {Array.from({ length: COACH_STEP_COUNT }, (_, i) => (
+            {Array.from({ length: coachProgress.total }, (_, i) => (
               <View
                 key={i}
                 style={[
                   styles.progressSegment,
-                  i < currentStep ? styles.segmentFilled : styles.segmentEmpty,
+                  i < coachProgress.current ? styles.segmentFilled : styles.segmentEmpty,
                 ]}
               />
             ))}
           </View>
-          <Text style={styles.stepCounter}>{t('modals:spotlight.step_counter', { current: currentStep, total: COACH_STEP_COUNT })}</Text>
+          <Text style={styles.stepCounter}>{t('modals:spotlight.step_counter', coachProgress)}</Text>
         </View>
 
         {/* Title */}
         <Text style={styles.title} accessibilityRole="header">
-          {currentStepConfig.title}
+          {currentStepConfig.titleKey
+            ? t(currentStepConfig.titleKey, { defaultValue: currentStepConfig.title })
+            : currentStepConfig.title}
         </Text>
 
         {/* Description */}
         <Text style={styles.description}>
-          {currentStepConfig.description}
+          {currentStepCopyOverride
+            ? t(currentStepCopyOverride.descriptionKey, {
+                ...currentStepCopyOverride.descriptionValues,
+                defaultValue: currentStepConfig.description,
+              })
+            : currentStepConfig.descriptionKey
+            ? t(currentStepConfig.descriptionKey, { defaultValue: currentStepConfig.description })
+            : currentStepConfig.description}
         </Text>
 
         {/* Action row */}

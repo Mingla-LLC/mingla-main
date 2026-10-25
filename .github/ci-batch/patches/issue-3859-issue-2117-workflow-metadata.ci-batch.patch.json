@@ -15,9 +15,9 @@
       "op": "replace",
       "path": "/workflowMetadata/sourceSha256",
       "expected": "94a8a540ab89cc662424629526b9be45e23ea38999e94bd0cc4d25c21a8d6338",
-      "value": "b59005d97d36640dabfcb1c96bf78206a23b7f3bffac68ae46aeb9234b745454"
+      "value": "09f3b0db3c4559eb830a63d4b295eb913342ffae3d9920e18d1fd2511b3aa642"
     }
   ],
   "dependentSeals": [],
-  "reason": "Issue #3859 and #3281 extend the visibility-gate replay skip list (installment capability, Round 2 checkout units/repair, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment, and its link cover and dates and orders foreign-key migrations, which alter or reference those private-link tables."
+  "reason": "Issue #3859 and #3281 extend the visibility-gate replay skip list (installment capability, Round 2 checkout units/repair, Round 3 spacing/spots, and many-dates foundation) without changing its execution topology. #3827 adds its going-box and private-ticket-link migrations, whose reader and checkout re-emissions require the same exact filtered-lane treatment, and its link cover and dates and orders foreign-key migrations, which alter or reference those private-link tables. #4073 adds its exact Discover V2 migration because the unified public feed retains privacy helpers omitted by this filtered lane."
 }
