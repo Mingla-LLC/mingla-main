@@ -287,8 +287,10 @@ export interface TripBusinessTrip {
   destinationLocationText: string | null;
   destinationLat: number | null;
   destinationLng: number | null;
-  destinationCity: string | null;
-  destinationCountryCode: string | null;
+  // #4073 rolling compatibility: callers built from a pre-place-identity
+  // payload may omit these fields while current readers always normalize them.
+  destinationCity?: string | null;
+  destinationCountryCode?: string | null;
   // ORCH-1016 — DEPARTURE/origin city. departureLocationText is sourced from the
   // canonical events.departure_text column (synced from theme.business_trip by the
   // ORCH-1016 trigger); placeId/lat/lng read from theme.business_trip.
@@ -296,8 +298,8 @@ export interface TripBusinessTrip {
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
-  departureCity: string | null;
-  departureCountryCode: string | null;
+  departureCity?: string | null;
+  departureCountryCode?: string | null;
   capacity: number | null;
 }
 
