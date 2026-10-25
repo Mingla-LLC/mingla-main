@@ -18,19 +18,16 @@
 // inserted N business cards at the HEAD of a wrapping 2-column grid, so every
 // painted card moved — and an odd N flipped every card between columns.
 //
-// WHAT THIS SUITE PROVES, and how it is not a replica of the screen. The
-// decisions the screen makes are now PURE and EXPORTED
-// (`resolveDiscoverQueryAnchor`, `buildDiscoverSignatureForAnchor`,
-// `hasUsableDiscoverQuery`, `decideDiscoverFetchMode`, `buildDiscoverDeckOrder`),
-// and contracts C-1..C-5 below read the REAL DiscoverScreen.tsx source to prove
-// the screen delegates to exactly those and retains no second path. So the
-// timeline replayed in T-1..T-4 is the screen's own decision function, not a
-// model of it.
+// WHAT THIS SUITE PROVES, and how it is not a replica of the screen. The pure
+// timeline cases retain the original defect's executable oracle. Contracts
+// C-1..C-9 read the REAL one-page Discover screen, React Query hook, query-key
+// factory and feed service to prove the replacement architecture still has one
+// settled anchor, one query identity, one page fetch and one rendered list.
 //
 // FAILS-ON-REVERT: delete the `coords` branch from `resolveDiscoverQueryAnchor`
-// (discoverEventsCache.ts) → T-1/T-2/T-3 fail (a cold mount issues ZERO
-// fetches). Restore the `NightOutExperiencesService.search(` call or the
-// `setBusinessEvents([])` line in DiscoverScreen.tsx → C-2/C-3 fail.
+// (discoverEventsCache.ts) → T-1/T-2/T-3 fail. Add a second feed hook/direct
+// endpoint, remove the saved-city gate, or restore split render arrays in
+// DiscoverScreen.tsx → C-1..C-9 fail.
 //
 // Deno-runnable: discoverEventsCache.ts and discoverDeckOrder.ts have zero RN
 // dependencies, matching the sibling ORCH-0996 suites.
@@ -482,46 +479,48 @@ const denseCode = (src: string): string =>
     .replace(/\s+/g, "");
 
 const SCREEN_REL = "../../components/DiscoverScreen.tsx";
-const SERVICE_REL = "../../services/nightOutExperiencesService.ts";
+const FEED_HOOK_REL = "../../hooks/useDiscoverFeed.ts";
+const QUERY_KEYS_REL = "../../hooks/queryKeys.ts";
+const FEED_SERVICE_REL = "../../services/discoverFeedService.ts";
+const LEGACY_SERVICE_REL = "../../services/nightOutExperiencesService.ts";
 
 Deno.test("#1637 C-0 the scan is not vacuous", () => {
   const screen = read(SCREEN_REL);
-  const service = read(SERVICE_REL);
-  assert(screen.length > 50_000, `DiscoverScreen.tsx read back only ${screen.length} chars`);
-  assert(service.length > 2_000, `nightOutExperiencesService.ts read back only ${service.length} chars`);
+  const hook = read(FEED_HOOK_REL);
+  const service = read(FEED_SERVICE_REL);
+  assert(screen.length > 20_000, `DiscoverScreen.tsx read back only ${screen.length} chars`);
+  assert(hook.length > 500, `useDiscoverFeed.ts read back only ${hook.length} chars`);
+  assert(service.length > 900, `discoverFeedService.ts read back only ${service.length} chars`);
 });
 
-Deno.test("#1637 C-1 the query anchor is fed selectedCity, NEVER the reverse-geocoded city", () => {
-  const screen = read(SCREEN_REL);
-  const call = screen.match(/resolveDiscoverQueryAnchor\(\{[\s\S]{0,400}?\}\)/g);
-  assert(call !== null && call.length >= 1, "expected at least one resolveDiscoverQueryAnchor call site");
-  for (const site of call) {
-    assert(
-      !/selectedCity\s*:\s*[^,\n]*(effectiveCity|gpsDefaultCity)/.test(site),
-      "resolveDiscoverQueryAnchor must never be handed effectiveCity/gpsDefaultCity — that is #1637 verbatim:\n" + site,
-    );
-  }
-  // And the live call site passes the bare `selectedCity` state.
-  assert(
-    /resolveDiscoverQueryAnchor\(\{\s*\n\s*selectedCity,/.test(screen),
-    "expected the live anchor call to pass `selectedCity` (shorthand) directly",
-  );
-});
-
-Deno.test("#1637 C-2 DiscoverScreen has NO Ticketmaster-only fetch path left", () => {
+Deno.test("#1637 C-1 the live query anchor stays disabled until saved-city preference settlement", () => {
   const dense = denseCode(read(SCREEN_REL));
   assert(
-    !dense.includes("NightOutExperiencesService.search("),
-    "DiscoverScreen must not call the Ticketmaster-only `search()` — it is the branch that produced a first deck with zero Mingla events",
+    dense.includes("constactiveAnchor=preferencesSettled?anchor:null"),
+    "the network anchor must remain null until the saved-city mirror/row settles",
   );
   assert(
-    dense.includes("NightOutExperiencesService.searchMerged("),
-    "DiscoverScreen must call searchMerged — vacuity guard for the assertion above",
+    dense.includes("constpreferencesSettled=!user?.id||preferencesSettledFor===user.id"),
+    "settlement must be scoped to the current user rather than a reusable boolean",
+  );
+});
+
+Deno.test("#1637 C-2 DiscoverScreen has exactly one page-fetch path", () => {
+  const screen = denseCode(read(SCREEN_REL));
+  const hook = denseCode(read(FEED_HOOK_REL));
+  assert(
+    !screen.includes("NightOutExperiencesService.search(") && !screen.includes("NightOutExperiencesService.searchMerged("),
+    "the one-page screen must not retain either legacy direct endpoint",
   );
   assertEquals(
-    (dense.match(/NightOutExperiencesService\.searchMerged\(/g) ?? []).length,
+    (screen.match(/useDiscoverFeed\(/g) ?? []).length,
     1,
-    "exactly ONE fetch call site: two would be two commits and therefore a reshuffle",
+    "the screen must install exactly one feed hook",
+  );
+  assertEquals(
+    (hook.match(/fetchDiscoverPage\(/g) ?? []).length,
+    1,
+    "the feed hook must have exactly one page fetch call site",
   );
 });
 
@@ -531,72 +530,37 @@ Deno.test("#1637 C-3 the `setBusinessEvents([])` hard-empty is gone", () => {
     !dense.includes("setBusinessEvents([])"),
     "`setBusinessEvents([])` blanked Mingla supply before every cold-launch first paint; it must not come back",
   );
-  assert(
-    dense.includes("setBusinessEvents(bizItems)"),
-    "vacuity guard: the real business-events commit must still be present",
-  );
+  assert(!dense.includes("setBusinessEvents("), "the one-page feed must not restore a parallel business array");
+  assert(dense.includes("feed.data?.pages.flatMap((page)=>page.items)??[]"), "the rendered inventory must flatten the one feed's pages");
 });
 
-Deno.test("#1637 C-4 the fetch callback's dependency list IS the query identity", () => {
-  const screen = read(SCREEN_REL);
-  // The dependency array closing `fetchNightOutEvents`'s useCallback.
-  const deps = screen.match(
-    /const fetchNightOutEvents = useCallback\([\s\S]*?\n    \[([\s\S]*?)\n    \],\n  \);/,
-  );
-  assert(deps !== null, "could not locate fetchNightOutEvents' dependency array");
-  // Comments inside the array explain WHY effectiveCity and the raw coords were
-  // removed, so the identifier checks below must read code only.
-  const body = deps[1]
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-  assert(/\bqueryAnchor,/.test(body), "queryAnchor must be a dependency (it is the query identity)");
+Deno.test("#1637 C-4 the React Query key is the complete feed identity", () => {
+  const hook = denseCode(read(FEED_HOOK_REL));
+  const keys = denseCode(read(QUERY_KEYS_REL));
   assert(
-    !/effectiveCity/.test(body),
-    "effectiveCity must NOT be a dependency — it folds in the reverse-geocoded chip city (#1637)",
+    hook.includes("queryKey:discoverKeys.feed(anchorKey,filters)"),
+    "the feed hook must delegate identity to the centralized key factory",
   );
   assert(
-    !/nightOutGpsLat|nightOutGpsLng/.test(body),
-    "raw device coords must NOT be dependencies — they re-fire a city-anchored query whose body is byte-identical",
+    keys.includes("feed:(anchorKey:string,filters:DiscoverFiltersV2)=>[...discoverKeys.all,'feed',anchorKey,normalizeDiscoverFilters(filters)]asconst"),
+    "the key must contain the settled anchor value plus every normalized filter",
   );
-  for (const facet of ["date", "segment", "genre", "partyTypes", "vibeTags", "musicGenres"]) {
-    assert(
-      new RegExp(`selectedFilters\\.${facet},`).test(body),
-      `selectedFilters.${facet} must stay a dependency (stale-closure guard, ORCH-0824 QA F-1)`,
-    );
-  }
+  assert(hook.includes("enabled:anchor!==null"), "a missing/unsettled anchor must not issue a request");
 });
 
-Deno.test("#1637 C-7 the anchor memo is keyed on the anchor's VALUE, not on its inputs", () => {
+Deno.test("#1637 C-7 the feed receives the same settled value-keyed anchor", () => {
   const dense = denseCode(read(SCREEN_REL));
   assert(
-    dense.includes("constsnappedGpsLat=snapDiscoverQueryCoord(nightOutGpsLat)"),
-    "the raw fix must be snapped before it reaches the anchor",
+    dense.includes("constanchorKey=useMemo(()=>activeAnchor?discoverQueryAnchorKey({kind:\"city\",cityName:activeAnchor.name??\"\",cityLat:activeAnchor.lat,cityLng:activeAnchor.lng}):\"none\",[activeAnchor])"),
+    "the key must derive from the settled anchor value",
   );
   assert(
-    dense.includes("constsnappedGpsLng=snapDiscoverQueryCoord(nightOutGpsLng)"),
-  );
-  // WHY THIS ASSERTION CHANGED (#1637 follow-up). It previously pinned the deps
-  // to `[selectedCity,snappedGpsLat,snappedGpsLng]` — the SNAPPED INPUTS. That
-  // is one bug narrower than it needs to be. Snapping stops a 7-decimal jitter
-  // from re-keying the anchor, but a genuine ~110m move still changes
-  // `snappedGpsLat` — and in CITY mode `resolveDiscoverQueryAnchor` DISCARDS the
-  // coords entirely, so the memo handed React a new object describing a
-  // byte-identical query and the fetch effect re-fired. Caught on the physical
-  // Samsung SM-A725F: a third city-anchored `searchMerged` for "Raleigh", 6.8s
-  // after the second, caused by nothing but the device refining its position.
-  // The memo now keys on `queryAnchorKey`, which is computed FROM the resolved
-  // anchor, so "same query" and "same identity" are the same statement.
-  assert(
-    dense.includes("constqueryAnchorKey=discoverQueryAnchorKey("),
-    "the screen must derive the anchor's value-identity key",
+    dense.includes("useDiscoverFeed(anchorKey,activeAnchor,appliedFilters)"),
+    "the page request must receive the exact anchor that produced its key",
   );
   assert(
-    dense.includes("gpsLat:snappedGpsLat,gpsLng:snappedGpsLng,}),[queryAnchorKey],"),
-    "the useMemo deps must be the anchor's VALUE key — keying on the inputs re-fires a city-anchored query that discards those very inputs",
-  );
-  assert(
-    !dense.includes("}),[selectedCity,snappedGpsLat,snappedGpsLng],"),
-    "the input-keyed dependency array must not come back — it is the third-fetch defect",
+    !dense.includes("useDiscoverFeed(anchorKey,anchor,appliedFilters)"),
+    "the ungated anchor must never reach the feed",
   );
 });
 
@@ -772,7 +736,7 @@ Deno.test("#1637 C-8 the prefs effect reads the LOCAL MIRROR before the network 
     "the mirror must be read FIRST; behind the network row it cannot open the gate in time",
   );
   assert(
-    dense.includes("setSelectedCity(mirrored);setPrefsSettled(true);"),
+    dense.includes("setCity(mirrored)") && dense.includes("setPreferencesSettledFor(userId)"),
     "a mirrored city must seed the anchor AND open the gate, without waiting on the network",
   );
 });
@@ -780,11 +744,11 @@ Deno.test("#1637 C-8 the prefs effect reads the LOCAL MIRROR before the network 
 Deno.test("#1637 C-9 the authoritative row re-anchors only when it disagrees with the seed", () => {
   const dense = denseCode(read(SCREEN_REL));
   assert(
-    dense.includes("if(!sameDiscoverAnchorCity(seeded,authoritative)){setSelectedCity(authoritative);}"),
-    "an unguarded setSelectedCity here re-commits the deck on every launch — it is the second fetch, restored",
+    dense.includes("if(preferences&&!sameDiscoverAnchorCity(seeded,authoritative)){setCity(authoritative);"),
+    "an unguarded setCity here re-commits the deck on every launch — it is the second fetch, restored",
   );
   assert(
-    dense.includes("offlineService.cacheUserPreferences(prefs)"),
+    dense.includes("offlineService.cacheUserPreferences(preferences)"),
     "the mirror must be refreshed from the authoritative row, or it goes stale and stops helping",
   );
 });
@@ -792,12 +756,13 @@ Deno.test("#1637 C-9 the authoritative row re-anchors only when it disagrees wit
 Deno.test("#1637 C-5 the grid renders ONE ordered deck, not two adjacent blocks", () => {
   const dense = denseCode(read(SCREEN_REL));
   assert(
-    dense.includes("constdiscoverDeck=useMemo(()=>buildDiscoverDeckOrder(businessEvents,filteredNightOutCards)"),
-    "the deck order must come from buildDiscoverDeckOrder over both arrays",
+    dense.includes("constitems=useMemo(()=>feed.data?.pages.flatMap((page)=>page.items)??[],[feed.data?.pages])"),
+    "the deck order must be the server-ordered pagination stream",
   );
-  assert(
-    dense.includes("{discoverDeck.map("),
-    "the grid must render the single ordered deck",
+  assertEquals(
+    (dense.match(/\{items\.map\(/g) ?? []).length,
+    1,
+    "the grid must render the single ordered deck exactly once",
   );
   assert(
     !dense.includes("{businessEvents.map((be)=>("),
@@ -809,8 +774,8 @@ Deno.test("#1637 C-5 the grid renders ONE ordered deck, not two adjacent blocks"
   );
 });
 
-Deno.test("#1637 C-6 searchMerged accepts a coords-only anchor", () => {
-  const dense = denseCode(read(SERVICE_REL));
+Deno.test("#1637 C-6 the retained legacy merged service still accepts a coords-only anchor", () => {
+  const dense = denseCode(read(LEGACY_SERVICE_REL));
   assert(
     !dense.includes('if(!input.city||!input.city.name){'),
     "the hard city.name requirement must be gone — it was the client-side half of the city gate",

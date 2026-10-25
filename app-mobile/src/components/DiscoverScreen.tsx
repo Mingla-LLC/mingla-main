@@ -26,6 +26,7 @@ import { useSavedCards } from "../hooks/useSavedCards";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { geocodingService } from "../services/geocodingService";
 import { mixpanelService } from "../services/mixpanelService";
+import { offlineService } from "../services/offlineService";
 import { captureConsumerOfferingEngagement } from "../services/offeringEngagementService";
 import { PreferencesService } from "../services/preferencesService";
 import { savedCardsService } from "../services/savedCardsService";
@@ -36,7 +37,7 @@ import type { DiscoverCity } from "../types/discoverFilters";
 import { DISCOVER_KIND_ORDER, emptyDiscoverFilters, type DiscoverAnchorV2, type DiscoverCardV2, type DiscoverFiltersV2, type DiscoverKind } from "../types/discoverFeed";
 import type { ExpandedCardData } from "../types/expandedCardTypes";
 import type { ExpansionTarget } from "../types/expansion";
-import { discoverQueryAnchorKey, readLastResolvedDiscoverCity, writeResolvedDiscoverCity } from "../utils/discoverEventsCache";
+import { discoverCityFromPreferences, discoverQueryAnchorKey, readLastResolvedDiscoverCity, sameDiscoverAnchorCity, writeResolvedDiscoverCity } from "../utils/discoverEventsCache";
 
 interface DiscoverScreenProps {
   isTabVisible?: boolean;
@@ -52,6 +53,7 @@ interface DiscoverScreenProps {
 }
 
 const SEARCH_RADIUS_KM = 50;
+const PREFERENCES_GATE_MAX_WAIT_MS = 1_500;
 
 function initialCity(): DiscoverCity | null {
   const cached = readLastResolvedDiscoverCity();
@@ -88,6 +90,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const pillRowRef = useRef<DiscoverPillRowHandle>(null);
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [city, setCity] = useState<DiscoverCity | null>(initialCity);
+  const cityRef = useRef(city);
+  const [preferencesSettledFor, setPreferencesSettledFor] = useState<string | null>(null);
   const [selectedKind, setSelectedKind] = useState<DiscoverKind>(selectedKindStore ?? "events");
   const [appliedFilters, setAppliedFilters] = useState<DiscoverFiltersV2>(filtersStore[selectedKind] ?? emptyDiscoverFilters(selectedKind));
   const [facetFilters, setFacetFilters] = useState<DiscoverFiltersV2>(appliedFilters);
@@ -103,6 +107,11 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   const impressionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useUserLocation(user?.id, "solo");
   const saved = useSavedCards(user?.id);
+  const preferencesSettled = !user?.id || preferencesSettledFor === user.id;
+
+  useEffect(() => {
+    cityRef.current = city;
+  }, [city]);
 
   useEffect(() => {
     const watchCity = deepLinkParams?.watchCity?.trim();
@@ -140,14 +149,46 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
 
   useEffect(() => {
     if (!user?.id) return;
+    const userId = user.id;
     let cancelled = false;
-    void PreferencesService.getUserPreferences(user.id).then((preferences) => {
-      if (cancelled || !preferences) return;
-      const { discover_city_name: name, discover_city_state_code: stateCode, discover_city_country_code: countryCode, discover_city_lat: lat, discover_city_lng: lng } = preferences;
-      if (typeof name === "string" && typeof lat === "number" && typeof lng === "number") setCity({ name, stateCode: stateCode ?? null, countryCode: countryCode ?? null, lat, lng });
-    });
-    return () => { cancelled = true; };
-  }, [user?.id, preferencesRefreshKey]);
+    let seeded = cityRef.current;
+    const capId = setTimeout(() => {
+      if (!cancelled) setPreferencesSettledFor(userId);
+    }, PREFERENCES_GATE_MAX_WAIT_MS);
+
+    void (async () => {
+      try {
+        const mirrored = discoverCityFromPreferences(await offlineService.getOfflineUserPreferences());
+        if (cancelled) return;
+        if (mirrored) {
+          if (!sameDiscoverAnchorCity(seeded, mirrored)) setCity(mirrored);
+          seeded = mirrored;
+          writeResolvedDiscoverCity(mirrored.lat, mirrored.lng, mirrored);
+          setPreferencesSettledFor(userId);
+        }
+      } catch {
+        // A missing or corrupt mirror only means the network row owns the seed.
+      }
+
+      try {
+        const preferences = await PreferencesService.getUserPreferences(userId);
+        if (cancelled) return;
+        const authoritative = discoverCityFromPreferences(preferences);
+        if (preferences) void offlineService.cacheUserPreferences(preferences).catch(() => {});
+        if (preferences && !sameDiscoverAnchorCity(seeded, authoritative)) {
+          setCity(authoritative);
+          if (authoritative) writeResolvedDiscoverCity(authoritative.lat, authoritative.lng, authoritative);
+        }
+      } finally {
+        if (!cancelled) setPreferencesSettledFor(userId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(capId);
+    };
+  }, [preferencesRefreshKey, user?.id]);
 
   useEffect(() => {
     if (city || typeof location.data?.lat !== "number" || typeof location.data?.lng !== "number") return;
@@ -164,15 +205,16 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }, [city, location.data]);
 
   const anchor = useMemo<DiscoverAnchorV2 | null>(() => city ? { name: city.name, stateCode: city.stateCode, countryCode: city.countryCode, lat: city.lat, lng: city.lng, radiusKm: SEARCH_RADIUS_KM } : null, [city]);
-  const anchorKey = useMemo(() => anchor ? discoverQueryAnchorKey({ kind: "city", cityName: anchor.name ?? "", cityLat: anchor.lat, cityLng: anchor.lng }) : "none", [anchor]);
+  const activeAnchor = preferencesSettled ? anchor : null;
+  const anchorKey = useMemo(() => activeAnchor ? discoverQueryAnchorKey({ kind: "city", cityName: activeAnchor.name ?? "", cityLat: activeAnchor.lat, cityLng: activeAnchor.lng }) : "none", [activeAnchor]);
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedFacetFilters(facetFilters), 250);
     return () => clearTimeout(timer);
   }, [facetFilters]);
-  const facets = useDiscoverFacets(anchorKey, anchor, debouncedFacetFilters);
-  const feed = useDiscoverFeed(anchorKey, anchor, appliedFilters);
+  const facets = useDiscoverFacets(anchorKey, activeAnchor, debouncedFacetFilters);
+  const feed = useDiscoverFeed(anchorKey, activeAnchor, appliedFilters);
   const visibleKinds = useMemo(() => DISCOVER_KIND_ORDER.filter((kind) => (facets.data?.kinds[kind].total ?? 0) > 0), [facets.data?.kinds]);
-  const cityWatch = useDiscoverCityWatch({ cityKey: facets.data?.city.key ?? null, userId: user?.id ?? null, anchor, label: facets.data?.city.label ?? city?.name ?? null });
+  const cityWatch = useDiscoverCityWatch({ cityKey: facets.data?.city.key ?? null, userId: user?.id ?? null, anchor: activeAnchor, label: facets.data?.city.label ?? city?.name ?? null });
 
   useEffect(() => {
     const resolved = visibleKinds.includes(selectedKind) ? selectedKind : visibleKinds[0];
