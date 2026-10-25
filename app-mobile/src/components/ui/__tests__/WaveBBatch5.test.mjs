@@ -3,7 +3,7 @@
 /**
  * Regression suite — META-ORCH-0991 Wave B BATCH 5
  * [DismissedCardsSheet + LockedCardSchedulingSheet + MessageContextMenu +
- *  BoardSettingsDropdown + DiscoverScreen (filter <Modal> ONLY) +
+ *  BoardSettingsDropdown + FilterDropdown (Discover filter surface) +
  *  MessageInterface (1:1 more-options <Modal> ONLY) +
  *  PersonHolidayView (saves-list <Modal> ONLY) → BaseBottomSheet].
  *
@@ -11,8 +11,9 @@
  * (LockedCardSchedulingSheet summary step — "a new round of swiping starts")
  * → NON-swipe `variant="center-dialog"` per the operator rule (playbook §1).
  * The other six are full swipe-down `BaseBottomSheet` sheets. Three live inside
- * large screen files where ONLY the named modal is converted (DiscoverScreen
- * filter, MessageInterface 1:1 more-options, PersonHolidayView saves list);
+ * large screen files where ONLY the named modal is converted (MessageInterface
+ * 1:1 more-options and PersonHolidayView saves list). Discover delegates its
+ * filter surface to FilterDropdown, which owns the sheet directly;
  * the other modals in those files are EXCLUDED / Wave C and must stay raw.
  *
  * MessageContextMenu becomes a COMPACT bottom action sheet (context-menu feel):
@@ -42,9 +43,9 @@
  *   T-6  Sheets mounted over the tab bar / chat z-stack via wrapInRNModal.
  *   T-7  MessageContextMenu reads as a context menu: compact ['28%'] snap + the
  *        old Animated scale/fade spring is GONE.
- *   T-8  DiscoverScreen + MessageInterface + PersonHolidayView each convert
+ *   T-8  FilterDropdown + MessageInterface + PersonHolidayView each convert
  *        ONLY the named modal — their EXCLUDED modals stay raw <Modal>:
- *        DiscoverScreen had exactly 1 modal (now 0); MessageInterface keeps its
+ *        FilterDropdown has no raw modal; MessageInterface keeps its
  *        image-preview + file-spinner + event-audience <Modal>s; PersonHolidayView
  *        keeps the visits-list pageSheet <Modal>.
  *   T-9  PairedSavesListScreen gains the opt-in inBottomSheet → BottomSheetFlatList
@@ -93,6 +94,7 @@ const LOCKED = "app-mobile/src/components/session/LockedCardSchedulingSheet.tsx"
 const CONTEXT_MENU = "app-mobile/src/components/chat/MessageContextMenu.tsx";
 const BOARD_SETTINGS = "app-mobile/src/components/board/BoardSettingsDropdown.tsx";
 const DISCOVER = "app-mobile/src/components/DiscoverScreen.tsx";
+const FILTER_DROPDOWN = "app-mobile/src/components/discover/FilterDropdown.tsx";
 const MESSAGE_IF = "app-mobile/src/components/MessageInterface.tsx";
 const HOLIDAY = "app-mobile/src/components/PersonHolidayView.tsx";
 const SAVES_SCREEN = "app-mobile/src/components/PairedSavesListScreen.tsx";
@@ -104,6 +106,7 @@ function run() {
   const contextMenu = read(CONTEXT_MENU);
   const boardSettings = read(BOARD_SETTINGS);
   const discover = read(DISCOVER);
+  const filterDropdown = read(FILTER_DROPDOWN);
   const messageIf = read(MESSAGE_IF);
   const holiday = read(HOLIDAY);
   const savesScreen = read(SAVES_SCREEN);
@@ -118,7 +121,9 @@ function run() {
     ["BoardSettingsDropdown", boardSettings],
   ];
   const BIG_SCREEN = [
-    ["DiscoverScreen", discover],
+    // [TEST-MOD-APPROVED #3988] #4073 moved the filter UI out of DiscoverScreen;
+    // the sheet contract follows the real owner instead of blessing a raw Modal.
+    ["FilterDropdown", filterDropdown],
     ["MessageInterface", messageIf],
     ["PersonHolidayView", holiday],
   ];
@@ -127,7 +132,7 @@ function run() {
     ["DismissedCardsSheet", dismissed],
     ["MessageContextMenu", contextMenu],
     ["BoardSettingsDropdown", boardSettings],
-    ["DiscoverScreen", discover],
+    ["FilterDropdown", filterDropdown],
     ["MessageInterface", messageIf],
     ["PersonHolidayView", holiday],
   ];
@@ -176,8 +181,8 @@ function run() {
   assert.match(code(contextMenu), /\[\s*['"]28%['"]\s*\]/, "T-4 MessageContextMenu snap ['28%']");
   // BoardSettingsDropdown: was maxHeight "80%" → ['80%'].
   assert.match(code(boardSettings), /\[\s*["']80%["']\s*\]/, "T-4 BoardSettingsDropdown snap ['80%']");
-  // DiscoverScreen filter: was maxHeight "85%" → ['85%'].
-  assert.match(code(discover), /\[\s*["']85%["']\s*\]/, "T-4 DiscoverScreen filter snap ['85%']");
+  // [TEST-MOD-APPROVED #3988] FilterDropdown now owns Discover's ['85%'] sheet.
+  assert.match(code(filterDropdown), /\[\s*["']85%["']\s*\]/, "T-4 FilterDropdown snap ['85%']");
   // MessageInterface more-options: ['45%'].
   assert.match(code(messageIf), /\[\s*["']45%["']\s*\]/, "T-4 MessageInterface more-options snap ['45%']");
   // PersonHolidayView saves list: tall ['90%'].
@@ -217,10 +222,15 @@ function run() {
   );
 
   // ── T-8: big screen files convert ONLY the named modal; excluded modals stay ─
-  // DiscoverScreen had exactly one <Modal> (the filter) → now zero raw <Modal>.
+  // [TEST-MOD-APPROVED #3988] DiscoverScreen delegates the filter surface, and
+  // both the screen and its owner remain free of a raw React Native Modal.
   assert.ok(
     !/<Modal\b/.test(code(discover)),
     "T-8 DiscoverScreen: the single filter <Modal> was the only one — now converted (0 raw <Modal>)",
+  );
+  assert.ok(
+    !/<Modal\b/.test(code(filterDropdown)),
+    "T-8 FilterDropdown: Discover filters must use BaseBottomSheet, not a raw <Modal>",
   );
   // MessageInterface keeps its EXCLUDED modals (image preview + file spinner).
   // [TEST-MOD-APPROVED META-ORCH-0991] event-audience was Wave-C IN-SCOPE (not
@@ -299,6 +309,11 @@ function run() {
   // DiscoverScreen shed filterModalOverlay/backdropTouch/filterModalContent.
   for (const key of ["filterModalOverlay:", "backdropTouch:", "filterModalContent:"]) {
     assert.ok(!code(discover).includes(key), `T-A1 DiscoverScreen: dead style ${key} must be gone`);
+  }
+  // [TEST-MOD-APPROVED #3988] The delegated filter owner also sheds its raw
+  // modal backdrop and absolutely positioned card chrome.
+  for (const key of ["root:", "dim:", "menu:"]) {
+    assert.ok(!code(filterDropdown).includes(key), `T-A1 FilterDropdown: dead style ${key} must be gone`);
   }
   // MessageInterface shed chatSheetOverlay/chatSheetContainer (the converted menu's chrome).
   for (const key of ["chatSheetOverlay:", "chatSheetContainer:"]) {
