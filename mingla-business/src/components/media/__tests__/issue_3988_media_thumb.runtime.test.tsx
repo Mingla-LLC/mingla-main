@@ -146,11 +146,8 @@ describe("#3988 MediaThumb runtime cache and pending resolution", () => {
   it("revokes a web object URL immediately when the thumb unmounts", async () => {
     mockPlatform.OS = "web";
     const originalFetch = globalThis.fetch;
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-    const revokeObjectURL = jest.fn();
-    URL.createObjectURL = jest.fn(() => "blob:file-a");
-    URL.revokeObjectURL = revokeObjectURL;
+    const createObjectURL = jest.spyOn(URL, "createObjectURL").mockReturnValue("blob:file-a");
+    const revokeObjectURL = jest.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     globalThis.fetch = jest.fn(async () => ({
       ok: true,
       blob: async () => new Blob(["thumb"]),
@@ -164,7 +161,7 @@ describe("#3988 MediaThumb runtime cache and pending resolution", () => {
         }
       });
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-      expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
 
       await TestRenderer.act(async () => renderer!.unmount());
       renderer = null;
@@ -173,22 +170,18 @@ describe("#3988 MediaThumb runtime cache and pending resolution", () => {
     } finally {
       if (renderer) await TestRenderer.act(async () => renderer!.unmount());
       globalThis.fetch = originalFetch;
-      URL.createObjectURL = originalCreateObjectURL;
-      URL.revokeObjectURL = originalRevokeObjectURL;
+      jest.restoreAllMocks();
     }
   });
 
   it("expires a mounted web thumbnail after 24 hours before authorizing a replacement", async () => {
     mockPlatform.OS = "web";
     const originalFetch = globalThis.fetch;
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
     const now = jest.spyOn(Date, "now").mockReturnValue(1_000);
-    const revokeObjectURL = jest.fn();
-    URL.createObjectURL = jest.fn()
+    jest.spyOn(URL, "createObjectURL")
       .mockReturnValueOnce("blob:file-a:first")
       .mockReturnValueOnce("blob:file-a:replacement");
-    URL.revokeObjectURL = revokeObjectURL;
+    const revokeObjectURL = jest.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     globalThis.fetch = jest.fn(async () => ({
       ok: true,
       blob: async () => new Blob(["thumb"]),
@@ -216,10 +209,8 @@ describe("#3988 MediaThumb runtime cache and pending resolution", () => {
     } finally {
       if (replacement) await TestRenderer.act(async () => replacement!.unmount());
       if (first) await TestRenderer.act(async () => first!.unmount());
-      now.mockRestore();
       globalThis.fetch = originalFetch;
-      URL.createObjectURL = originalCreateObjectURL;
-      URL.revokeObjectURL = originalRevokeObjectURL;
+      jest.restoreAllMocks();
     }
   });
 });

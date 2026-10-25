@@ -53,15 +53,12 @@ const media = (fileId: string) => ({
 describe("#3988 BrandGroupFilePreviewModal rendered blob lifecycle", () => {
   it("opens, moves the active window, closes, and rejects a blob that finishes after close", async () => {
     const originalFetch = globalThis.fetch;
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
     let finishLateBlob!: (blob: Blob) => void;
     const lateBlob = new Promise<Blob>((resolve) => { finishLateBlob = resolve; });
-    const revokeObjectURL = jest.fn();
-    URL.createObjectURL = jest.fn()
+    jest.spyOn(URL, "createObjectURL")
       .mockReturnValueOnce("blob:file-1")
       .mockReturnValueOnce("blob:file-3-late");
-    URL.revokeObjectURL = revokeObjectURL;
+    const revokeObjectURL = jest.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     mockPreviewRequest.mockImplementation(async (fileId: string) => ({
       uri: `https://edge.example/file/${fileId}`,
       headers: { Authorization: "Bearer secret" },
@@ -101,8 +98,7 @@ describe("#3988 BrandGroupFilePreviewModal rendered blob lifecycle", () => {
       await TestRenderer.act(async () => renderer.unmount());
     } finally {
       globalThis.fetch = originalFetch;
-      URL.createObjectURL = originalCreateObjectURL;
-      URL.revokeObjectURL = originalRevokeObjectURL;
+      jest.restoreAllMocks();
     }
   });
 });

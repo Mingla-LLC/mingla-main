@@ -81,7 +81,7 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
       </View>
       <View accessibilityRole="tablist" style={styles.tabs}>
         {(["media", "files"] as const).map((value) => (
-          <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: kind === value }} onPress={() => setKind(value)} style={[styles.tab, kind === value && styles.tabActive]}>
+          <Pressable key={value} accessibilityRole="tab" accessibilityLabel={value === "media" ? t("media.tab_media") : t("media.tab_files")} accessibilityState={{ selected: kind === value }} onPress={() => setKind(value)} style={[styles.tab, kind === value && styles.tabActive]}>
             <Text style={[styles.tabText, kind === value && styles.tabTextActive]}>{value === "media" ? t("media.tab_media") : t("media.tab_files")}</Text>
           </Pressable>
         ))}
@@ -92,7 +92,7 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
   const content = activeQuery.isLoading ? (
     <View style={styles.state}><ActivityIndicator color={accent.warm} />{kind === "media" ? <View style={styles.skeletonGrid}>{Array.from({ length: 12 }, (_, index) => <View key={index} style={styles.skeleton} />)}</View> : <View style={styles.skeletonFiles}>{Array.from({ length: 6 }, (_, index) => <View key={index} style={styles.skeletonFile} />)}</View>}</View>
   ) : activeQuery.isError ? (
-    <View style={styles.state}><Text style={styles.stateText}>{t("media.load_error")}</Text><Pressable accessibilityRole="button" onPress={refresh} style={styles.retry}><Text style={styles.retryText}>{t("media.retry")}</Text></Pressable></View>
+    <View style={styles.state}><Text style={styles.stateText}>{t("media.load_error")}</Text><Pressable accessibilityRole="button" accessibilityLabel={t("media.retry")} onPress={refresh} style={styles.retry}><Text style={styles.retryText}>{t("media.retry")}</Text></Pressable></View>
   ) : rows.length === 0 ? (
     <View style={styles.state}><Icon name={kind === "media" ? "grid" : "notebook"} size={42} color={textTokens.tertiary} /><Text style={styles.emptyTitle}>{kind === "media" ? t("media.empty_media_title") : t("media.empty_files_title")}</Text><Text style={styles.stateText}>{t("media.empty_body")}</Text></View>
   ) : kind === "media" ? (

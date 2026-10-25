@@ -232,7 +232,7 @@ export function MediaViewer({ visible, items, initialIndex, requestFor, onActive
 
   const closeButton = <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_a11y")} onPress={onClose} style={styles.circle}><Icon name="close" size={20} color="#fff" /></Pressable>;
   const deliverButton = <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === "web" ? t("viewer.download") : Platform.OS === "ios" ? t("viewer.share") : t("viewer.save")} onPress={() => void deliverFile()} style={Platform.OS === "web" ? styles.action : styles.circle}>{Platform.OS === "web" ? <Text style={styles.actionText}>{t("viewer.download")}</Text> : <Icon name={Platform.OS === "ios" ? "share" : "download"} size={20} color="#fff" />}</Pressable>;
-  const showInChatButton = current?.messageId ? <Pressable accessibilityRole="button" onPress={() => { const id = current.messageId; onClose(); onShowInChat(id); }} style={styles.action}><Text style={styles.actionText}>{t("viewer.show_in_chat")}</Text></Pressable> : null;
+  const showInChatButton = current?.messageId ? <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.show_in_chat")} onPress={() => { const id = current.messageId; onClose(); onShowInChat(id); }} style={styles.action}><Text style={styles.actionText}>{t("viewer.show_in_chat")}</Text></Pressable> : null;
   const topBar = current ? (
     <View style={[styles.topRow, usesLargeTextLayout && styles.topRowLargeText]}>
       {Platform.OS === "web" ? null : closeButton}
