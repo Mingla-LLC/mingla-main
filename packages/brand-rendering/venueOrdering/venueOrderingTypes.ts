@@ -181,6 +181,9 @@ export type VenueOrderFulfillmentStatus =
 /** The live order, as `venue-order-status` reports it. */
 export interface VenueOrderLiveStatus {
   orderId: string;
+  buyerName: string;
+  brandSlug: string | null;
+  venueSlug: string | null;
   paymentStatus: string;
   fulfillmentStatus: VenueOrderFulfillmentStatus;
   acknowledgedAt: string | null;

@@ -35,7 +35,10 @@ beforeEach(() => {
 
 describe("#3380 own profile phone", () => {
   it("reads only the viewer's own phone column", async () => {
-    maybeSingle.mockResolvedValue({ data: { phone: "+15551234567" }, error: null });
+    maybeSingle.mockResolvedValue({
+      data: { phone: "+15551234567" },
+      error: null,
+    });
     await expect(fetchOwnProfilePhoneOnFile("user-1")).resolves.toBe(true);
     expect(from).toHaveBeenCalledWith("profiles");
     expect(select).toHaveBeenCalledWith("phone");
@@ -53,7 +56,9 @@ describe("#3380 own profile phone", () => {
 
   it("throws on a read error so the hook reports unknown, never 'no phone'", async () => {
     maybeSingle.mockResolvedValue({ data: null, error: { message: "boom" } });
-    await expect(fetchOwnProfilePhoneOnFile("user-1")).rejects.toEqual({ message: "boom" });
+    await expect(fetchOwnProfilePhoneOnFile("user-1")).rejects.toEqual({
+      message: "boom",
+    });
   });
 
   it("applies the server's test: a non-blank string", () => {
@@ -65,13 +70,22 @@ describe("#3380 own profile phone", () => {
 
   it("is wired into the RSVP adapter, keyed by the signed-in viewer", () => {
     const adapter = fs.readFileSync(
-      path.join(__dirname, "..", "..", "components/event/FoundationRsvpPreview.tsx"),
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "components/event/FoundationRsvpPreview.tsx",
+      ),
       "utf8",
     );
+    // [TEST-MOD-APPROVED #4063] The claim-only RSVP surface opts into the
+    // query's enabled flag; keep pinning the signed-in viewer identity.
     expect(adapter).toMatch(
-      /useOwnProfilePhoneOnFile\(\s*isLoggedIn \? replyIdentity \?\? null : null,/,
+      /useOwnProfilePhoneOnFile\(\s*isLoggedIn \? \(replyIdentity \?\? null\) : null,\s*true,/,
     );
     const stateCall = adapter.slice(adapter.indexOf("useRsvpOfferingState({"));
-    expect(stateCall.slice(0, stateCall.indexOf("});"))).toMatch(/\baccountPhoneOnFile,/);
+    expect(stateCall.slice(0, stateCall.indexOf("});"))).toMatch(
+      /\baccountPhoneOnFile,/,
+    );
   });
 });

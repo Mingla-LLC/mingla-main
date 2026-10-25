@@ -61,7 +61,10 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
 
   test("Explorer TicketCartSheet records purchase terms without a marketing control", () => {
     const src = readFileSync(
-      join(ROOT, "../app-mobile/src/components/expandedCard/TicketCartSheet.tsx"),
+      join(
+        ROOT,
+        "../app-mobile/src/components/expandedCard/TicketCartSheet.tsx",
+      ),
       "utf8",
     );
     expect(src).toContain("PURCHASE_TERMS_DISCLOSURE_TEXT");
@@ -95,19 +98,22 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
     );
     expect(src).toContain("you'll follow");
     expect(src).toContain("Unfollow anytime.");
-    expect(src).toContain("We'll only use this to update you about this event.");
+    // [TEST-MOD-APPROVED #4063] Anonymous RSVP copy now promises the claim
+    // link delivery channel explicitly instead of the older generic sentence.
+    expect(src).toContain("We'll email and text you a link to your pass.");
     expect(src).toContain("isLoggedIn");
   });
 });
 
 describe("#3682 Wave 2.4 — You're in follow card (surface c)", () => {
-  test("confirm mounts YoureInFollowCard between QR and DownloadMinglaCta", () => {
+  test("confirm mounts YoureInFollowCard between the claim card and receipt", () => {
     const src = read("app/checkout/[eventId]/confirm.tsx");
     expect(src).toContain("YoureInFollowCard");
+    const claimIdx = src.indexOf("<BuyerClaimCard");
     const followIdx = src.indexOf("<YoureInFollowCard");
-    const downloadIdx = src.indexOf("<DownloadMinglaCta");
-    expect(followIdx).toBeGreaterThan(0);
-    expect(downloadIdx).toBeGreaterThan(followIdx);
+    const receiptIdx = src.indexOf("<BuyerCheckoutReceipt");
+    expect(followIdx).toBeGreaterThan(claimIdx);
+    expect(receiptIdx).toBeGreaterThan(followIdx);
   });
 
   test("trip and experience confirms mount the same follow card", () => {
@@ -117,8 +123,11 @@ describe("#3682 Wave 2.4 — You're in follow card (surface c)", () => {
     ]) {
       const src = read(rel);
       expect(src).toContain("YoureInFollowCard");
+      expect(src.indexOf("<YoureInFollowCard")).toBeGreaterThan(
+        src.indexOf("<BuyerClaimCard"),
+      );
       expect(src.indexOf("<YoureInFollowCard")).toBeLessThan(
-        src.indexOf("<DownloadMinglaCta"),
+        src.indexOf("<BuyerCheckoutReceipt"),
       );
     }
   });

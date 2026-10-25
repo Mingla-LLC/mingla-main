@@ -91,9 +91,7 @@ import {
   withDiscounts,
 } from "../_shared/orderMoneyTruth.ts";
 import { normaliseDiscountCode } from "../_shared/discountEngine.ts";
-// issue #2216 — a free reservation lands the guest on the SAME confirmation
-// carousel a paid one does, so it owes the guest the SAME rendered pass.
-import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
+import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
 import {
   checkoutUnavailableResponse,
   claimTicketProviderAttempt,
@@ -578,119 +576,6 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
     default:
       return true;
   }
-}
-
-/**
- * issue #2136 [free-ticket checkout] — the issued-ticket shape the buyer
- * contract (`TicketCheckoutFreeCompleted.tickets` in
- * `mingla-business/src/services/ticketCheckoutService.ts`) declares. Kept
- * structurally identical to what `issue_1930_ticket_checkout_finalize_base`
- * builds, so the read-back below and the RPC's own fresh-mint envelope are
- * interchangeable.
- */
-export interface IssuedTicketSummary {
-  ticketId: string;
-  ticketTypeId: string | null;
-  ticketName: string;
-  qrPayload: string;
-  status: string;
-}
-
-/**
- * issue #2216 [free-order pass renders as a blank white square] — what
- * `readIssuedTicketsForOrder` actually answers with.
- *
- * ORCH-0932 moved QR rendering server-side because the client could not draw
- * one reliably on the Expo SDK 54 web export, and wired it into
- * `ticket-checkout-confirm` + `ticket-checkout-status` — the only two
- * producers of confirm-screen tickets that existed then. #2136 later added a
- * THIRD producer (this function's `free_completed` body) and it carried
- * `qrPayload` but no rendered image, so every free reservation reached the
- * carousel with nothing to draw and the `imageDataUrl.length > 0` guard
- * showed the placeholder — the blank white square in #2216.
- *
- * `qrImageDataUrl` is REQUIRED here, not optional: an optional field is
- * exactly what let the gap ship unnoticed.
- */
-export interface IssuedTicketWithQrImage extends IssuedTicketSummary {
-  /** `data:image/png;base64,…`, or `""` when this one ticket failed to render. */
-  qrImageDataUrl: string;
-}
-
-function normalizeIssuedTickets(value: unknown): IssuedTicketSummary[] {
-  if (!Array.isArray(value)) return [];
-  const rows: IssuedTicketSummary[] = [];
-  for (const entry of value) {
-    if (entry === null || typeof entry !== "object") continue;
-    const row = entry as Record<string, unknown>;
-    const ticketId = typeof row.ticketId === "string" ? row.ticketId : "";
-    if (ticketId.length === 0) continue;
-    rows.push({
-      ticketId,
-      ticketTypeId: typeof row.ticketTypeId === "string"
-        ? row.ticketTypeId
-        : null,
-      ticketName: typeof row.ticketName === "string" ? row.ticketName : "",
-      qrPayload: typeof row.qrPayload === "string" ? row.qrPayload : "",
-      status: typeof row.status === "string" ? row.status : "valid",
-    });
-  }
-  return rows;
-}
-
-/**
- * issue #2136 — resolve the tickets an order actually issued.
- *
- * `biz_ticket_checkout_finalize` returns tickets only on its fresh-mint arm;
- * its idempotent-replay arm (`order_id IS NOT NULL`) answers `{outcome,orderId}`
- * with none. Prefer the envelope when it carries them (no extra round trip on
- * the common path) and otherwise read the canonical `tickets` rows by order id.
- * Returning `[]` is meaningful: the caller REFUSES to report a completed free
- * checkout without at least one issued ticket.
- *
- * issue #2216 — this is also the SINGLE place a rendered QR image is attached,
- * which is what makes the fresh-mint arm and the idempotent-replay arm carry
- * one BY CONSTRUCTION rather than by two callers remembering to.
- */
-export async function readIssuedTicketsForOrder(
-  // deno-lint-ignore no-explicit-any
-  client: any,
-  orderId: string,
-  envelopeTickets: unknown,
-): Promise<IssuedTicketWithQrImage[]> {
-  const fromEnvelope = normalizeIssuedTickets(envelopeTickets);
-  if (fromEnvelope.length > 0) return await attachQrImageDataUrls(fromEnvelope);
-  const { data, error } = await client
-    .from("tickets")
-    .select("id, ticket_type_id, qr_code, status, ticket_types(name)")
-    .eq("order_id", orderId)
-    .order("created_at", { ascending: true });
-  if (error) {
-    console.error(
-      "[ticket-checkout-create] issued-ticket read-back failed",
-      orderId,
-      error.message,
-    );
-    return [];
-  }
-  const rows = Array.isArray(data) ? data : [];
-  return await attachQrImageDataUrls(normalizeIssuedTickets(
-    rows.map((row: Record<string, unknown>) => {
-      const joined = row.ticket_types;
-      const ticketTypeName = joined !== null && typeof joined === "object"
-        ? (Array.isArray(joined)
-          ? (joined[0] as Record<string, unknown> | undefined)?.name
-          : (joined as Record<string, unknown>).name)
-        : undefined;
-      return {
-        ticketId: row.id,
-        ticketTypeId: row.ticket_type_id,
-        ticketName: typeof ticketTypeName === "string" ? ticketTypeName : "",
-        qrPayload: row.qr_code,
-        status: row.status,
-      };
-    }),
-  ));
 }
 
 export interface TicketCheckoutCreateDeps {
@@ -2709,15 +2594,22 @@ export const createTicketCheckoutCreateHandler = (
         }
         return refuse({ error: "free_reservation_already_exists" }, 409);
       }
-      const replayedTickets = await readIssuedTicketsForOrder(
+      const replayedConfirmation = await buildBuyerConfirmationPayload(
         supabase,
-        replayedOrderId,
-        null,
+        {
+          orderId: replayedOrderId,
+          eventId: String(session.eventId ?? eventId),
+          currency: String(session.currency ?? ""),
+          logPrefix: "[ticket-checkout-create replay]",
+        },
       );
-      if (replayedTickets.length === 0) {
+      if (replayedConfirmation === null) {
+        return jsonResponse({ error: "order_payload_failed" }, 500);
+      }
+      if (replayedConfirmation.tickets.length === 0) {
         // The RPC only returns a completed free session when a live ticket
-        // exists for its order, so an empty read-back is a real inconsistency
-        // and must never be reported as a completed checkout (the #2136 rule).
+        // exists for its order, so an empty canonical read-back is a real
+        // inconsistency and must never be reported as a completed checkout.
         console.error(
           "[ticket-checkout-create] free replay order has no tickets",
           checkoutSessionId,
@@ -2734,7 +2626,7 @@ export const createTicketCheckoutCreateHandler = (
         totalCents: Number(session.totalCents ?? 0),
         currency: String(session.currency ?? ""),
         notificationStatus: "queued",
-        tickets: replayedTickets,
+        ...replayedConfirmation,
         buyerPhoneE164,
         // Echoed, never re-minted: the caller proved possession WITH this
         // token, so returning it keeps their status polling working. A
@@ -3123,23 +3015,16 @@ export const createTicketCheckoutCreateHandler = (
           409,
         );
       }
-      // issue #2136 — SUPPLY `tickets`, read back from the canonical rows.
-      //
-      // The wrapper's fresh-mint arm merges the base RPC's envelope (which DOES
-      // carry `tickets`), but its idempotent-replay arm — the `order_id IS NOT
-      // NULL` early return — answers `{outcome,orderId}` with no tickets at
-      // all. A retried tap therefore produced a `free_completed` body whose
-      // `tickets` was undefined, which is what the buyer screen crashed on.
-      // Reading the issued rows by order id covers BOTH arms with one code
-      // path, and does not change the shared RPC's return shape (which the
-      // Stripe webhook, the Paystack webhook, ticket-checkout-confirm and
-      // reconcile-stuck-checkouts all consume).
-      const freeTickets = await readIssuedTicketsForOrder(
-        supabase,
+      const freeConfirmation = await buildBuyerConfirmationPayload(supabase, {
         orderId,
-        finalizedRecord.tickets,
-      );
-      if (freeTickets.length === 0) {
+        eventId: String(finalizedRecord.eventId ?? eventId),
+        currency: String(finalizedRecord.currency ?? session.currency ?? ""),
+        logPrefix: "[ticket-checkout-create free]",
+      });
+      if (freeConfirmation === null) {
+        return jsonResponse({ error: "order_payload_failed" }, 500);
+      }
+      if (freeConfirmation.tickets.length === 0) {
         console.error(
           "[ticket-checkout-create] free finalize order has no tickets",
           checkoutSessionId,
@@ -3278,7 +3163,7 @@ export const createTicketCheckoutCreateHandler = (
         notificationStatus: String(
           finalizedRecord.notificationStatus ?? "queued",
         ),
-        tickets: freeTickets,
+        ...freeConfirmation,
         buyerPhoneE164,
         // issue #2694 — ON A REPLAY, ECHO WHAT THEY PROVED WITH.
         //

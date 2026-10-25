@@ -111,26 +111,33 @@ describe("ORCH-1187 LEG2 — _layout.tsx web-guarded init + banner mount", () =>
 describe("ORCH-1187 LEG2 — conversion captures at the buyer-web call sites", () => {
   const confirm = read("app/checkout/[eventId]/confirm.tsx");
   const tripConfirm = read("app/checkout-trip/[tripEventId]/confirm.tsx");
-  const expConfirm = read("app/checkout-experience/[experienceEventId]/confirm.tsx");
+  const expConfirm = read(
+    "app/checkout-experience/[experienceEventId]/confirm.tsx",
+  );
+  const claimCard = read("src/components/checkout/DownloadMinglaCta.tsx");
   const cart = read("app/checkout/[eventId]/index.tsx");
 
   it("event confirm fires web_purchase_completed + GA purchase + masks PII", () => {
     expect(confirm).toContain('captureWeb("web_purchase_completed"');
     expect(confirm).toContain('offering_type: "event"');
     expect(confirm).toContain('gaEvent("purchase"');
-    expect(confirm).toContain("phMaskProps()");
+    // [TEST-MOD-APPROVED #4063] PII moved into one shared claim-card owner.
+    expect(confirm).toContain("<BuyerClaimCard");
+    expect(claimCard).toContain("phMaskProps()");
   });
 
   it("trip confirm fires web_purchase_completed (offering_type trip)", () => {
     expect(tripConfirm).toContain('captureWeb("web_purchase_completed"');
     expect(tripConfirm).toContain('offering_type: "trip"');
-    expect(tripConfirm).toContain("phMaskProps()");
+    expect(tripConfirm).toContain("<BuyerClaimCard");
+    expect(claimCard).toContain("phMaskProps()");
   });
 
   it("experience confirm fires web_purchase_completed (offering_type experience)", () => {
     expect(expConfirm).toContain('captureWeb("web_purchase_completed"');
     expect(expConfirm).toContain('offering_type: "experience"');
-    expect(expConfirm).toContain("phMaskProps()");
+    expect(expConfirm).toContain("<BuyerClaimCard");
+    expect(claimCard).toContain("phMaskProps()");
   });
 
   it("cart screen fires web_checkout_started + GA begin_checkout", () => {

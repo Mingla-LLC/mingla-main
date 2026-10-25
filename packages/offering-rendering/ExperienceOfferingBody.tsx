@@ -894,7 +894,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
       ) : null}
 
       <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-        All-in price — taxes &amp; fees included, no surprises at checkout.
+        All-in price — taxes and fees included.
       </Text>
 
       {/* The phone-only DOCKED reserve CTA — the SAME shared bar the surface builds,

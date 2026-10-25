@@ -35,6 +35,8 @@ export interface RefundPreview {
   mode: "preview";
   orderId: string;
   eventId: string;
+  brandSlug: string | null;
+  tripSlug: string | null;
   quotedAt: string;
   tripStart: string;
   daysRemaining: number;
@@ -196,6 +198,8 @@ function unwrapPreview(raw: unknown): RefundPreview {
     mode: "preview",
     orderId: String(data.orderId ?? ""),
     eventId: String(data.eventId ?? ""),
+    brandSlug: typeof data.brandSlug === "string" ? data.brandSlug : null,
+    tripSlug: typeof data.tripSlug === "string" ? data.tripSlug : null,
     quotedAt: String(data.quotedAt ?? new Date().toISOString()),
     tripStart: String(data.tripStart ?? ""),
     daysRemaining: Number(data.daysRemaining ?? 0),

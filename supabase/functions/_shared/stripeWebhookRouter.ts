@@ -31,6 +31,10 @@ import { autoFollowBrandBestEffort } from "./autoFollowBrand.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 import { recordTicketProviderTotal } from "./orderMoneyTruth.ts";
 import {
+  loadStripePaymentCard,
+  recordTicketPaymentCard,
+} from "./paymentCard.ts";
+import {
   isEvidenceHoldCandidate,
   releaseTicketEvidenceHold,
   stripePaymentIntentAmount,
@@ -1133,6 +1137,20 @@ async function handleRefundEvent(
     throw new Error(`refund webhook commit failed: ${commitError.message}`);
   }
 
+  const { data: refundRecord, error: refundRecordError } = await supabase
+    .from("refunds")
+    .select("id")
+    .eq("stripe_refund_id", refundId)
+    .maybeSingle();
+  if (refundRecordError || !refundRecord?.id) {
+    throw new Error(
+      `refund webhook record lookup failed: ${
+        refundRecordError?.message ?? "refund_record_missing"
+      }`,
+    );
+  }
+  const refundRecordId = String(refundRecord.id);
+
   // META-ORCH-1074 Sub-A: notify the brand that a refund was processed.
   // Recipients: owner + finance. Idempotent on refundId so webhook replays +
   // the refund.* event family (charge.refunded / refund.updated all hit this
@@ -1197,7 +1215,11 @@ async function handleRefundEvent(
     categoryKey: "buyer_refund_issued",
     orderId,
     idempotencyKey: `buyer_refund_issued:${refundId}`,
-    extraPayload: { amount_cents: amountCents, currency },
+    extraPayload: {
+      amount_cents: amountCents,
+      currency,
+      refund_record_id: refundRecordId,
+    },
   });
 
   if (stripeAccountId) {
@@ -1289,6 +1311,7 @@ async function handleRefundEvent(
           currency: String(orderDetail.currency ?? currency),
           reason: "Dashboard-initiated refund (Stripe)",
           is_full_refund: false,
+          refund_record_id: refundRecordId,
           stripe_refund_id: refundId,
           source: "webhook_reconciliation",
         },
@@ -1636,6 +1659,23 @@ async function handleTicketCheckoutPaymentIntent(
         providerAmount?.amountCents ?? null,
       providerTaxCents,
     });
+    if (observedChargeId && observedAccount) {
+      const card = await loadStripePaymentCard(() => {
+        const stripe = stripeTicketCheckout();
+        // orch-strict-grep-allow stripe-no-idempotency-key — read-only card-display retrieval
+        return stripe.charges.retrieve(
+          observedChargeId,
+          {},
+          { stripeAccount: observedAccount },
+        );
+      });
+      if (card) {
+        await recordTicketPaymentCard(supabase, {
+          checkoutSessionId: String(session.id),
+          card,
+        });
+      }
+    }
     if (
       isEvidenceHoldCandidate(session) && providerAmount && observedChargeId
     ) {

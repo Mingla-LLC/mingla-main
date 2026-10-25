@@ -1,4 +1,5 @@
 // Executable handler/shared/mobile/web contract for issue #871.
+// #4063 removes public QR material while preserving authenticated attendance claims.
 import {
   assert,
   assertEquals,
@@ -230,17 +231,25 @@ Deno.test("#871 anonymous browser link acquisition supports preflight and retry 
   assertStringIncludes(source, "p_allow_retry_rotation: true");
 });
 
-Deno.test("#871 RSVP pass attendance CTA uses exact public live eligibility", () => {
+// [TEST-MOD-APPROVED #4063] Visibility now governs pass delivery only; claim
+// ownership is decided by the received-code contact proof.
+Deno.test("#871 RSVP pass attendance CTA uses live non-visibility eligibility", () => {
   const source = read("supabase/functions/rsvp-notify/index.ts");
   for (
     const contract of [
-      '.select("status,visibility,deleted_at,event_type,brands(deleted_at)")',
-      'event.visibility === "public"',
+      '"status,visibility,deleted_at,event_type,brands(deleted_at,contact_email)"',
       'event.event_type === "rsvp"',
       '["scheduled", "live"].includes(event.status)',
       "brand?.deleted_at === null",
     ]
   ) assertStringIncludes(source, contract);
+  const start = source.indexOf("function attendanceClaimStillEligible(");
+  const end = source.indexOf("\n}\n", start);
+  assert(start >= 0 && end > start, "attendance eligibility helper missing");
+  assert(
+    !source.slice(start, end).includes("event.visibility"),
+    "claim eligibility must not read discovery visibility",
+  );
 });
 
 Deno.test("#871 native and HTTPS fragment forms parse identically and reject ambiguity", () => {
@@ -259,9 +268,12 @@ Deno.test("#871 native and HTTPS fragment forms parse identically and reject amb
   );
 });
 
-Deno.test("#871 web landing validates the exact fragment before registered-scheme launch", () => {
+Deno.test("#871 web landing validates and scrubs the exact fragment without auto-launch", () => {
   const landing = read("mingla-business/app/attendance/claim.tsx");
-  assertStringIncludes(landing, "window.history.replaceState");
+  const deepLink = read("mingla-business/src/utils/attendanceClaimDeepLink.ts");
+  assertStringIncludes(landing, "consumeAttendanceClaimFragment(window, raw)");
+  assertStringIncludes(landing, "createAttendanceClaimFragmentScrubber(");
+  assertStringIncludes(deepLink, "history.replaceState(historyState, \"\", cleanUrl)");
   // [TEST-MOD-APPROVED #3524] `autoAttemptedRef.current` was the at-most-once
   // guard on this page's ON-MOUNT scheme launch. #3524 deleted that launch
   // outright rather than guarding it: on react-native-web `Linking.openURL` is
@@ -300,8 +312,8 @@ Deno.test("#871 web landing validates the exact fragment before registered-schem
     }
   }
   assert(reactEffectBodies(landing).length > 0, "no useEffect bodies parsed");
-  assertStringIncludes(landing, "onPress={isIos ? openOnIos : openOnAndroid}");
-  assertStringIncludes(landing, "openAttendanceClaimWithFallback(");
+  assertStringIncludes(landing, "onPress={openFromTap}");
+  assertStringIncludes(landing, "openExternal(target.ctaUrl)");
   const fragment =
     attendanceClaimUrls({ kind: "order", eventId, sourceId, token })
       .webClaimUrl.split("#")[1] ?? "";
@@ -668,43 +680,10 @@ Deno.test("#871 inherited request timeout keeps one submission in flight until s
  * mounts the owner and drives sync, realtime, retry, free, a second checkout
  * session, and all four terminal phases.
  */
-Deno.test("#871 all three confirmation routes prepare every observed finalization and terminate", () => {
-  // The ONE owner: it mints, it mints ONCE per checkout session, and it still
-  // terminates in every phase the card renders copy for.
-  const owner = read("mingla-business/src/hooks/useAttendanceClaimArm.ts");
-  assertStringIncludes(owner, "createAttendanceClaimLink(sessionId, token)");
-  assertStringIncludes(owner, "const retry = useCallback");
-  // ONE mint per checkout session — asserted as the GUARD, not as an
-  // identifier name, so a rename is allowed and a deleted guard is not.
-  assertMatch(
-    owner,
-    /if \(\w+\.current === \w+\.sessionId\) return;/,
-    "the owner must refuse to re-mint a checkout session it already minted",
-  );
-  assertMatch(
-    owner,
-    /\w+\.current = \w+\.sessionId;/,
-    "the owner must record which checkout session it minted",
-  );
-  // Every terminal phase, asserted as the MAPPING rather than as the token.
-  //
-  // The tokens alone were decoration and this was MEASURED: the previous
-  // version of this case asserted '"rate"' / '"terminal"' / '"error"' appear
-  // in the file, and a revert that broke the rate_limited mapping outright
-  // still passed, because the words survive in the phase type union. Behaviour
-  // is proven by execution in issue2323FreeOrderArm.render.test.tsx; this pins
-  // the branch so it cannot silently disappear.
-  assertMatch(
-    owner,
-    /code === "rate_limited"\s*\?\s*"rate"/,
-    "a rate-limited mint must land on the rate phase",
-  );
-  assertMatch(
-    owner,
-    /code === "invalid" \|\| code === "ineligible"\s*\?\s*"terminal"\s*:\s*"error"/,
-    "invalid/ineligible must be terminal and everything else must be a retryable error",
-  );
-
+Deno.test("#871 all three confirmation routes preserve proofs and render the shared claim envelope", () => {
+  // [TEST-MOD-APPROVED #4063] Confirmation no longer mints an attendance
+  // token client-side. The server response owns the short claim link and each
+  // route hands that envelope to the shared BuyerClaimCard.
   // Slice a named region so an assertion cannot be satisfied by the token
   // appearing somewhere else entirely in the file.
   const region = (src: string, from: string, to: string, why: string): string => {
@@ -723,11 +702,9 @@ Deno.test("#871 all three confirmation routes prepare every observed finalizatio
   ) {
     const source = read(path);
 
-    // The route hands its finalized order to the owner. Without this the route
-    // mints nothing at all, on any leg.
     assert(
-      /useAttendanceClaimArm\(result, \w+\)/.test(source),
-      `${path} does not hand its order to the attendance-claim owner`,
+      !/useAttendanceClaimArm\(/.test(source),
+      `${path} still mints a second client-side attendance claim`,
     );
 
     // SYNC leg — the `?cs=` confirm that finalizes the order in-line.
@@ -735,6 +712,11 @@ Deno.test("#871 all three confirmation routes prepare every observed finalizatio
       region(source, "recordResult({", "});", `${path} sync recordResult`),
       "buyerStatusToken: payload.buyerStatusToken",
       `${path} sync confirm records the order WITHOUT the possession proof, so nothing can mint from it`,
+    );
+    assertStringIncludes(
+      region(source, "recordResult({", "});", `${path} sync recordResult`),
+      "claim: order.claim",
+      `${path} sync confirm drops the server-owned claim envelope`,
     );
 
     // REALTIME leg — the webhook backup landing through onOrderReady.
@@ -757,18 +739,25 @@ Deno.test("#871 all three confirmation routes prepare every observed finalizatio
       `${path} realtime finalization no longer follows the subscription`,
     );
 
-    // RETRY leg.
-    assertStringIncludes(source, "const retryAttendanceClaim = attendanceClaim.retry;");
+    assertStringIncludes(
+      region(
+        source,
+        "onOrderReady:",
+        "setRealtimePending(false)",
+        `${path} onOrderReady`,
+      ),
+      "claim: order.claim",
+      `${path} realtime confirm drops the server-owned claim envelope`,
+    );
 
-    // #2217 moved the presentation of the minted link out of a second card and
-    // into the ONE app card (DownloadMinglaCta), which now owns the deep-link
-    // open, the device-aware store fallback and every phase's copy. What is
-    // pinned here is that the mint is HANDED to the card rather than dropped
-    // on the floor.
-    assertStringIncludes(source, "<DownloadMinglaCta");
-    assertStringIncludes(source, "claimPhase={attendanceClaim.phase}");
-    assertStringIncludes(source, "link.appClaimUrl");
-    assertStringIncludes(source, "onRetryClaim={retryAttendanceClaim}");
+    assertStringIncludes(source, "<BuyerClaimCard");
+    assertStringIncludes(source, "shortUrl={result.claim?.shortUrl ?? null}");
+    assertStringIncludes(source, "mintClaimLinkHandoff(claimCode)");
+    assertStringIncludes(source, "email={result.buyerContact?.email ?? null}");
+    assertStringIncludes(
+      source,
+      "phoneLast4={result.buyerContact?.phoneLast4 ?? null}",
+    );
   }
 
   // FREE leg — the arrival #2323 proved had no mint at all. It finalizes in
@@ -795,13 +784,15 @@ Deno.test("#871 (via #2217) the app card still terminates every claim phase", ()
     card,
     "Your tickets are confirmed. We couldn’t prepare the Mingla link.",
   );
-  assertStringIncludes(
+  assertMatch(
     card,
-    "Your tickets are confirmed. Guest-list access isn’t available for this order.",
+    /Your tickets are confirmed\. Guest-list access isn’t available for this\s+order\./,
+    "the terminal copy must remain readable after formatting",
   );
-  assertStringIncludes(
+  assertMatch(
     card,
-    "Your tickets are confirmed. Try the Mingla link again in a few minutes.",
+    /Your tickets are confirmed\. Try the Mingla link again in a few\s+minutes\./,
+    "the rate-limit copy must remain readable after formatting",
   );
   assertStringIncludes(card, "Preparing your Mingla link…");
   assertStringIncludes(card, "openAttendanceClaimWithFallback(");

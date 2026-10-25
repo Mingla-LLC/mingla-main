@@ -76,6 +76,7 @@ import {
 } from "../_shared/paymentProvider.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+import { mintClaimLink } from "../_shared/claimLink.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackReservationSplitFields } from "./ngPaystackSplit.ts";
@@ -1584,6 +1585,10 @@ async function completeFreeReservation(
     });
   }
 
+  const claim = reservationId
+    ? await mintClaimLink(supabase, "reservation", reservationId)
+    : null;
+
   return jsonResponse({
     kind: "free_completed",
     reservationId,
@@ -1597,6 +1602,14 @@ async function completeFreeReservation(
     discountCents: input.discountCents,
     depositNetCents: 0,
     receiptUrl: reservationId ? `/o/${reservationId}` : undefined,
+    buyerContact: {
+      email: input.buyerEmail,
+      phoneLast4: input.buyerPhoneE164.replace(/\\D/g, "").slice(-4) || null,
+    },
+    claim: {
+      shortUrl: claim?.url ?? null,
+      code: claim?.code ?? null,
+    },
   });
 }
 

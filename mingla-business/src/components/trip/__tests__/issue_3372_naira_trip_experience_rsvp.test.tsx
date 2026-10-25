@@ -362,9 +362,12 @@ describe("#3372 Business host trip and experience amounts", () => {
 
   test("the cancellation refund preview reads ₦", async () => {
     const preview = (currency: string): RefundPreview => ({
+      // [TEST-MOD-APPROVED #4063] Refund previews now carry their safe public exit route.
       mode: "preview",
       orderId: "order-3372",
       eventId: "trip-3372",
+      brandSlug: "wander-co",
+      tripSlug: "alpine-week",
       quotedAt: "2026-09-14T12:00:00Z",
       tripStart: "2026-12-01T00:00:00Z",
       daysRemaining: 78,

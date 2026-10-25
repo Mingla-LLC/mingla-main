@@ -51,6 +51,8 @@ const EVENT_ID = "e2198000-1111-4222-8333-444444444444";
 const BRAND_ID = "b2198000-1111-4222-8333-444444444444";
 const ATTEMPT_ID = "a2198000-1111-4222-8333-444444444444";
 const TICKET_ID = "t2198000-1111-4222-8333-444444444444";
+const CLAIM_CODE = "P2198CLAIM";
+const CLAIM_URL = `https://usemingla.com/c/${CLAIM_CODE}`;
 const BUYER_TOKEN = "buyer-status-token-issue-2198";
 /** `mingla_{sessionId}` — exactly what ticket-checkout-create persists. */
 const REFERENCE = `mingla_${SESSION_ID}`;
@@ -224,13 +226,40 @@ function installFetchStub(
       return Promise.resolve(jsonOk([{
         id: TICKET_ID,
         ticket_type_id: "tt-2198",
-        qr_code: "mgl:2198:qr",
         status: "valid",
         ticket_types: { name: "General Admission" },
       }]));
     }
+    if (url.startsWith(`${SUPA_URL}/rest/v1/order_line_items`)) {
+      return Promise.resolve(jsonOk([{
+        quantity: 1,
+        unit_price_cents: TOTAL_KOBO,
+        list_unit_price_cents: TOTAL_KOBO,
+        total_cents: TOTAL_KOBO,
+        discount_cents: 0,
+        ticket_types: { name: "General Admission" },
+      }]));
+    }
+    if (url.startsWith(`${SUPA_URL}/rest/v1/order_discount_lines`)) {
+      return Promise.resolve(jsonOk([]));
+    }
+    if (url.startsWith(`${SUPA_URL}/rest/v1/rpc/mint_claim_link`)) {
+      return Promise.resolve(jsonOk([{ code: CLAIM_CODE }]));
+    }
     if (url.startsWith(`${SUPA_URL}/rest/v1/orders`)) {
-      return Promise.resolve(jsonOk([{ tax_amount_cents: 0 }]));
+      return Promise.resolve(jsonOk([{
+        buyer_email: "buyer@example.com",
+        buyer_phone_e164: "+2348000002198",
+        buyer_user_id: null,
+        purchased_by_user_id: null,
+        total_cents: TOTAL_KOBO,
+        tax_amount_cents: 0,
+        buyer_fees_cents: 0,
+        tax_cents: 0,
+        buyer_total_cents: TOTAL_KOBO,
+        event_date_id: null,
+        booked_start_at: null,
+      }]));
     }
     if (url.startsWith(`${SUPA_URL}/rest/v1/audit_log`)) {
       try {
@@ -278,41 +307,15 @@ function paidBankTransfer(
   };
 }
 
-/**
- * issue #2216 crossing — a ticket surfaced by THIS path must carry a REALLY
- * RENDERED QR, not a placeholder.
- *
- * #2216 made `attachQrImageDataUrls` the single owner of "ticket → ticket +
- * rendered QR" across create/confirm/status, because a third ticket-producing
- * path (#2136's free arm) had been answering with `qrPayload` and no image, and
- * the carousel honestly drew a white square. #2198 adds a FOURTH way a ticket
- * reaches a guest: the Paystack return leg. Resolving a buyer instantly and
- * then handing them a blank pass would just trade one of tonight's bugs for the
- * other, so the QR is asserted here rather than assumed to come along.
- *
- * Nothing is stubbed for this: `qrPayloadToDataUrl` really runs and really
- * renders, so a placeholder ("") or a truncated/SVG string fails the witness.
- * `assertRenderablePngDataUrl`'s own floor is 100 base64 chars; a genuine
- * 400×400 render clears it many times over (measured 2,614 for this payload).
- */
-const assertRenderedQr = (ticket: Record<string, unknown>): void => {
-  const dataUrl = String(ticket?.qrImageDataUrl ?? "");
-  assert(
-    dataUrl.startsWith("data:image/png;base64,"),
-    `qrImageDataUrl is not a PNG data URI (got ${
-      JSON.stringify(dataUrl.slice(0, 40))
-    })`,
-  );
-  // PNG magic bytes \x89PNG base64-encode to "iVBORw0KGgo" — this is a real
-  // image, not a well-shaped string.
-  assert(
-    dataUrl.includes("base64,iVBORw0KGgo"),
-    "qrImageDataUrl does not decode to a PNG",
-  );
-  assert(
-    dataUrl.length > 500,
-    `qrImageDataUrl is too short to be a rendered QR (${dataUrl.length} chars)`,
-  );
+/** #4063 crossing — return legs expose a claim pointer and never public QR data. */
+const assertClaimOnly = (order: Record<string, unknown>): void => {
+  assertEquals(order.claim, { shortUrl: CLAIM_URL, code: CLAIM_CODE });
+  const tickets = order.tickets as Array<Record<string, unknown>>;
+  assertEquals(tickets.length, 1);
+  assertEquals(tickets[0].ticketId, TICKET_ID);
+  for (const retired of ["qrPayload", "qrImageDataUrl", "qrCode"]) {
+    assert(!(retired in tickets[0]), `public ticket leaked ${retired}`);
+  }
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -341,8 +344,7 @@ Deno.test({
       assertEquals(body.order?.orderId, ORDER_ID);
       assertEquals(body.order?.tickets?.length, 1);
       assertEquals(body.order?.tickets?.[0]?.ticketId, TICKET_ID);
-      // #2216 crossing — the pass the guest is handed is actually scannable.
-      assertRenderedQr(body.order.tickets[0]);
+      assertClaimOnly(body.order);
 
       // Paystack was actually asked, at the stored reference.
       assertEquals(wire.verifyCalls.length, 1);
@@ -506,10 +508,10 @@ Deno.test({
       const third = await HANDLER!(confirmRequest());
       const thirdBody = await third.json();
       assertEquals(thirdBody.order?.orderId, ORDER_ID);
-      // Every arm that returns an order returns a rendered one — including the
-      // replay arm, which is what a guest refreshing the page actually hits.
-      assertRenderedQr(firstBody.order.tickets[0]);
-      assertRenderedQr(thirdBody.order.tickets[0]);
+      // Every arm that returns an order returns the same claim-only shape —
+      // including the replay arm a guest refreshing the page actually hits.
+      assertClaimOnly(firstBody.order);
+      assertClaimOnly(thirdBody.order);
 
       // ONE mint across all three passes. The other two short-circuited on the
       // session's order_id — the existing idempotency, not a new mechanism.
@@ -722,7 +724,7 @@ Deno.test({
       const body = await (await HANDLER!(confirmRequest())).json();
       assertEquals(body.status, "paid");
       assertEquals(body.order?.orderId, ORDER_ID);
-      assertRenderedQr(body.order.tickets[0]);
+      assertClaimOnly(body.order);
       assertEquals(wire.verifyCalls.length, 0);
       assertEquals(wire.finalizeCalls, 0);
     } finally {

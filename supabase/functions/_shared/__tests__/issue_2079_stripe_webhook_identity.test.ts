@@ -53,8 +53,11 @@ Deno.test("#2079 webhook reads the paid charge through paymentIntentChargeId onl
   assert(helperStart >= 0 && helperEnd > helperStart);
   const outsideHelper = source.slice(0, helperStart) +
     source.slice(helperEnd);
-  assert(!/\.charges\b/.test(outsideHelper));
-  assert(!/\["charges"\]/.test(outsideHelper));
+  // #4063 may retrieve a verified Charge object to capture display-safe card
+  // facts, but the webhook must never read a legacy charges list from the
+  // PaymentIntent itself.
+  assert(!/paymentIntent\??\.charges\b/.test(outsideHelper));
+  assert(!/paymentIntent\s*\["charges"\]/.test(outsideHelper));
   const observed = handler.indexOf(
     "const observedChargeId = paymentIntentChargeId(paymentIntent);",
   );

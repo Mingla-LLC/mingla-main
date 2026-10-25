@@ -36,7 +36,6 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createTicketCheckoutCreateHandler,
-  readIssuedTicketsForOrder,
   type TicketCheckoutCreateDeps,
 } from "../index.ts";
 
@@ -132,9 +131,31 @@ class FakeQuery implements PromiseLike<DbResult> {
       return { data: null, error: null, count: 1 };
     }
     if (this.table === "trip_intake_schemas") return { data: [], error: null };
+    if (this.table === "orders" && this.action === "select") {
+      return {
+        data: {
+          buyer_email: "guest@issue2136.test",
+          buyer_phone_e164: "+15551232136",
+          buyer_user_id: null,
+          purchased_by_user_id: null,
+          total_cents: 0,
+          tax_amount_cents: 0,
+          buyer_fees_cents: 0,
+          tax_cents: 0,
+          buyer_total_cents: 0,
+          event_date_id: null,
+          booked_start_at: null,
+        },
+        error: null,
+      };
+    }
     if (this.table === "tickets" && this.action === "select") {
       return { data: this.db.tickets, error: null };
     }
+    if (
+      this.table === "order_line_items" ||
+      this.table === "order_discount_lines"
+    ) return { data: [], error: null };
     return { data: null, error: null, count: 0 };
   }
 }
@@ -180,6 +201,11 @@ class FakeCheckoutDb {
         };
       case "issue_1930_ticket_session_authorized":
         return { data: true, error: null };
+      case "mint_claim_link":
+        return {
+          data: { code: "ABC2136000", claimed: false },
+          error: null,
+        };
       case "biz_ticket_checkout_finalize":
         return { data: this.runFinalize(), error: null };
       default:
@@ -295,8 +321,10 @@ Deno.test("#2136 HAPPY PATH: a free reservation mints a free order, a free_compl
   );
   assertEquals(tickets.length, 1);
   assertEquals(tickets[0].ticketId, TICKET_ID);
-  assertEquals(tickets[0].qrPayload, "mgl_free_2136_qr");
+  assertEquals(tickets[0].ticketName, "Free entry");
   assertEquals(tickets[0].status, "valid");
+  assert(!("qrPayload" in tickets[0]));
+  assert(!("qrImageDataUrl" in tickets[0]));
 
   // The buyer contract's remaining required fields must all be present.
   assertEquals(body.orderId, ORDER_ID);
@@ -395,68 +423,16 @@ Deno.test("#2136 the free arm never touches a payment provider", async () => {
   }
 });
 
-Deno.test("#2136 readIssuedTicketsForOrder prefers the envelope and falls back to the canonical rows", async () => {
-  const envelope = [{
-    ticketId: TICKET_ID,
-    ticketTypeId: TIER_ID,
-    ticketName: "Free entry",
-    qrPayload: "mgl_free_2136_qr",
-    status: "valid",
-  }];
-  const neverRead = {
-    from: () => {
-      throw new Error("read-back ran even though the envelope carried tickets");
-    },
-  };
-  // issue #2216 — this funnel now ALSO attaches `qrImageDataUrl` (the free
-  // confirmation screen rendered a blank white square without it). The #2136
-  // contract is unchanged and asserted at exactly its original strength: every
-  // field the envelope carried is preserved byte-for-byte. The added image is
-  // asserted separately below, and owned by issue_2216_free_ticket_qr_image.
-  const fromEnvelope = await readIssuedTicketsForOrder(
-    neverRead,
-    ORDER_ID,
-    envelope,
+Deno.test("#2136/#4063 free checkout reads canonical ticket summaries without exposing credentials", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../index.ts", import.meta.url),
   );
-  assertEquals(
-    fromEnvelope.map(({ qrImageDataUrl: _image, ...rest }) => rest),
-    envelope,
-  );
-  assert(
-    fromEnvelope[0].qrImageDataUrl.startsWith("data:image/png;base64,"),
-    "issue #2216: the envelope arm must carry a rendered QR image",
-  );
-
-  // Empty / malformed envelopes fall through to the read-back.
-  const db = new FakeCheckoutDb();
-  db.tickets.push({
-    id: TICKET_ID,
-    order_id: ORDER_ID,
-    ticket_type_id: TIER_ID,
-    qr_code: "mgl_free_2136_qr",
-    status: "valid",
-    ticket_types: { name: "Free entry" },
-  });
-  for (const bad of [undefined, null, [], "tickets", [{ nope: 1 }]]) {
-    const rows = await readIssuedTicketsForOrder(db, ORDER_ID, bad);
-    assertEquals(rows.length, 1);
-    assertEquals(rows[0].ticketId, TICKET_ID);
-    assertEquals(rows[0].ticketName, "Free entry");
-  }
-
-  // A read error is NOT swallowed into a fake success — it returns [], which
-  // the handler turns into a refusal.
-  const erroring = {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          order: () =>
-            Promise.resolve({ data: null, error: { message: "boom" } }),
-        }),
-      }),
-    }),
-  };
-  assertEquals(await readIssuedTicketsForOrder(erroring, ORDER_ID, null), []);
+  assertStringIncludes(source, "buildBuyerConfirmationPayload");
+  assertStringIncludes(source, "freeConfirmation.tickets.length === 0");
+  assert(!source.includes("readIssuedTicketsForOrder"));
+  assert(!source.includes("qrImageDataUrl"));
+  assert(!source.includes("qrPayload"));
+  assert(!source.includes("qr_code"));
 });
 
 // ---------------------------------------------------------------------------

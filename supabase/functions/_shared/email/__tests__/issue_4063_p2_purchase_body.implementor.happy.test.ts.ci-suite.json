@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/email/__tests__/issue_4063_p2_purchase_body.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4063-p2-purchase-body-implementor-happy",
+  "profile": "deno-2-unit"
+}

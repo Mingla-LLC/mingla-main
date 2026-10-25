@@ -35,8 +35,19 @@ function makeFakeSupabase(opts: { buyerUserId: string | null; buyerPhone: string
                       buyer_user_id: opts.buyerUserId,
                       buyer_phone_e164: opts.buyerPhone,
                       event_id: "event-rc",
+                      event_date_id: "date-rc",
+                      booked_start_at: null,
                       currency: "USD",
-                      events: { title: "Jazz Night", brand_id: "brand-rc", brands: { name: "Lantern" } },
+                      event_dates: {
+                        start_at: "2026-07-04T19:00:00Z",
+                        timezone: "America/New_York",
+                      },
+                      events: {
+                        title: "Jazz Night",
+                        brand_id: "brand-rc",
+                        timezone: "UTC",
+                        brands: { name: "Lantern" },
+                      },
                     },
                     error: null,
                   });
@@ -87,6 +98,10 @@ Deno.test("refund buyer notify uses phone contact (no double-email)", async () =
   assertEquals(body.contact, "+15551234567");
   assertEquals(String(body.contact).includes("@"), false);
   assertEquals(body.idempotency_key, "buyer_refund_issued:re_123");
+  const payload = body.payload as Record<string, unknown>;
+  assertEquals(payload.event_date, "2026-07-04T19:00:00Z");
+  assertEquals(payload.timezone, "America/New_York");
+  assertEquals(payload.claimed, true);
 });
 
 Deno.test("order-cancelled buyer notify fires for phone-only (anon guest) buyer", async () => {
@@ -107,6 +122,8 @@ Deno.test("order-cancelled buyer notify fires for phone-only (anon guest) buyer"
   assertEquals(captured[0].body.category_key, "buyer_order_cancelled");
   assertEquals(captured[0].body.user_id, null);
   assertEquals(captured[0].body.contact, "+15559998888");
+  const payload = captured[0].body.payload as Record<string, unknown>;
+  assertEquals(payload.claimed, false);
 });
 
 Deno.test("no account and no phone → no dispatch", async () => {

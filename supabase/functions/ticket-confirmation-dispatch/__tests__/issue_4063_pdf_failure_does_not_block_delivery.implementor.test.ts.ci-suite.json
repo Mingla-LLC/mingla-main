@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-confirmation-dispatch/__tests__/issue_4063_pdf_failure_does_not_block_delivery.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4063-pdf-failure-does-not-block-delivery",
+  "profile": "deno-2-unit"
+}

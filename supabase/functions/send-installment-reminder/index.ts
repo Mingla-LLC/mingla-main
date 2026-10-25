@@ -31,16 +31,23 @@ function formatMoney(cents: number, currency: string): string {
   }
 }
 
-function formatDueDate(iso: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", {
+function formatDueDate(iso: string, timezone: string | null): string {
+  const render = (timeZone: string): string =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
       weekday: "short",
       month: "short",
       day: "numeric",
       year: "numeric",
     }).format(new Date(iso));
+  try {
+    return render(timezone?.trim() || "UTC");
   } catch {
-    return iso;
+    try {
+      return render("UTC");
+    } catch {
+      return iso;
+    }
   }
 }
 
@@ -196,7 +203,7 @@ serve(async (req: Request) => {
   };
   const { data: eventRow } = await admin
     .from("events")
-    .select("id, title")
+    .select("id, title, timezone")
     .eq("id", orderRow.event_id)
     .maybeSingle();
   const { data: brand } = await admin
@@ -213,7 +220,11 @@ serve(async (req: Request) => {
     .limit(1)
     .maybeSingle();
 
-  const eventTitle = (eventRow as { title?: string } | null)?.title ??
+  const typedEvent = eventRow as {
+    title?: string;
+    timezone?: string | null;
+  } | null;
+  const eventTitle = typedEvent?.title ??
     "your trip";
   const brandName = (brand as { name?: string } | null)?.name ?? "Mingla";
   const inst = nextInstallment as {
@@ -225,7 +236,9 @@ serve(async (req: Request) => {
     inst?.amount_cents ?? orderRow.total_cents,
     inst?.currency ?? orderRow.currency,
   );
-  const dueAt = inst?.due_at !== undefined ? formatDueDate(inst.due_at) : "soon";
+  const dueAt = inst?.due_at !== undefined
+    ? formatDueDate(inst.due_at, typedEvent?.timezone ?? null)
+    : "soon";
   const buyerEmail = orderRow.buyer_email?.trim() ?? "";
   const template = renderInstallmentReminderEmail({
     buyerName: orderRow.buyer_name,

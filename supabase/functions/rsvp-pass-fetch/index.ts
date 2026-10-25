@@ -9,7 +9,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildRsvpPassPdf } from "../_shared/ticketPdf.ts";
-import { constantTimeHexEqual, sha256Hex } from "../_shared/rsvpPass.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -78,9 +77,6 @@ serve(async (req: Request): Promise<Response> => {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const entityId = body.entityId;
   const entityType = body.entityType;
-  const recoveryToken = typeof body.recoveryToken === "string"
-    ? body.recoveryToken
-    : null;
   if (!uuid(entityId) || (entityType !== "primary" && entityType !== "guest")) {
     return reply(400, { error: "entity_required" });
   }
@@ -103,10 +99,9 @@ serve(async (req: Request): Promise<Response> => {
   let parentOwnerUserId: string | null = null;
   let name = "Guest";
   let qrCode: string | null = null;
-  let tokenHash: string | null = null;
   const { data: primary } = await admin.from("event_rsvps")
     .select(
-      "id,user_id,guest_name,qr_code,pass_recovery_token_hash,event_id,rsvp_status,approval_status",
+      "id,user_id,guest_name,qr_code,event_id,rsvp_status,approval_status",
     )
     .eq("id", entityId).maybeSingle();
   let state = primary as Record<string, unknown> | null;
@@ -115,12 +110,11 @@ serve(async (req: Request): Promise<Response> => {
     ownerUserId = primary.user_id;
     name = primary.guest_name ?? "Guest";
     qrCode = primary.qr_code;
-    tokenHash = primary.pass_recovery_token_hash;
   } else {
     if (entityType !== "guest") return reply(404, { error: "not_found" });
     const { data: guest } = await admin.from("event_rsvp_guests")
       .select(
-        "id,rsvp_id,matched_user_id,name,qr_code,pass_recovery_token_hash",
+        "id,rsvp_id,matched_user_id,name,qr_code",
       )
       .eq("id", entityId).maybeSingle();
     if (!guest) return reply(404, { error: "not_found" });
@@ -133,23 +127,19 @@ serve(async (req: Request): Promise<Response> => {
     parentOwnerUserId = parent.user_id;
     name = guest.name ?? "Guest";
     qrCode = guest.qr_code;
-    tokenHash = guest.pass_recovery_token_hash;
     state = parent as Record<string, unknown>;
   }
   const authenticatedEntityOwner = userId !== null && ownerUserId === userId;
-  const authenticatedPartyOwner = userId !== null && parentOwnerUserId === userId;
-  let recoveryAuthorized = false;
-  if (recoveryToken && tokenHash) {
-    recoveryAuthorized = constantTimeHexEqual(
-      await sha256Hex(recoveryToken),
-      tokenHash,
-    );
-  }
-  if (!authenticatedEntityOwner && !authenticatedPartyOwner && !recoveryAuthorized) {
+  const authenticatedPartyOwner = userId !== null &&
+    parentOwnerUserId === userId;
+  // Issue #4063: recovery URLs are pointers, never bearer pass credentials.
+  // Only the signed-in entity owner (or the signed-in primary party owner for
+  // a guest pass) can receive metadata or PDF bytes from this function.
+  if (!authenticatedEntityOwner && !authenticatedPartyOwner) {
     console.warn(
-      JSON.stringify({ event: "rsvp_pass_recovery_denied", entityType }),
+      JSON.stringify({ event: "rsvp_pass_sign_in_required", entityType }),
     );
-    return reply(403, { error: "not_owner_or_bad_recovery_token" });
+    return reply(403, { error: "sign_in_required" });
   }
   if (
     state?.rsvp_status !== "going" || state?.approval_status !== "approved" ||

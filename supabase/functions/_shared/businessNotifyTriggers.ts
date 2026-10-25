@@ -154,7 +154,9 @@ export async function fireBuyerPurchaseConfirmationPush(
     // Resolve the buyer (push targets buyer_user_id; no contact → email skipped).
     const { data: order } = await supabase
       .from("orders")
-      .select("buyer_user_id")
+      .select(
+        "buyer_user_id, event_date_id, event_dates!orders_event_date_id_fkey(start_at, timezone), events(timezone)",
+      )
       .eq("id", input.orderId)
       .maybeSingle();
     const buyerUserId = order?.buyer_user_id as string | null | undefined;
@@ -164,6 +166,23 @@ export async function fireBuyerPurchaseConfirmationPush(
       // to deliver on the push+inapp channels for a no-account buyer.
       return;
     }
+
+    const eventDatesJoin = order?.event_dates as
+      | { start_at?: string | null; timezone?: string | null }
+      | Array<{ start_at?: string | null; timezone?: string | null }>
+      | null
+      | undefined;
+    const eventDateRow = Array.isArray(eventDatesJoin)
+      ? eventDatesJoin[0] ?? null
+      : eventDatesJoin ?? null;
+    const eventsJoin = order?.events as
+      | { timezone?: string | null }
+      | Array<{ timezone?: string | null }>
+      | null
+      | undefined;
+    const eventRow = Array.isArray(eventsJoin)
+      ? eventsJoin[0] ?? null
+      : eventsJoin ?? null;
 
     let brandName = "Mingla";
     if (input.brandId) {
@@ -199,7 +218,9 @@ export async function fireBuyerPurchaseConfirmationPush(
           event_id: input.eventId,
           event_title: input.eventTitle,
           brand_name: brandName,
-          reserved_for: input.startAtIso ?? null,
+          reserved_for: eventDateRow?.start_at ?? input.startAtIso ?? null,
+          timezone: eventDateRow?.timezone ?? eventRow?.timezone ?? null,
+          event_date_id: (order?.event_date_id as string | null) ?? null,
         },
         idempotency_key: `buyer_purchase_confirmation:${input.orderId}`,
       }),
@@ -247,7 +268,7 @@ export async function fireBuyerOrderNotify(
     const { data: order } = await supabase
       .from("orders")
       .select(
-        "buyer_user_id, buyer_phone_e164, event_id, currency, events(title, brand_id, brands(name))",
+        "buyer_user_id, buyer_phone_e164, event_id, event_date_id, booked_start_at, currency, event_dates!orders_event_date_id_fkey(start_at, timezone), events(title, brand_id, timezone, brands(name))",
       )
       .eq("id", input.orderId)
       .maybeSingle();
@@ -262,8 +283,8 @@ export async function fireBuyerOrderNotify(
     if (!buyerUserId && !buyerPhone) return;
 
     const eventsJoin = order.events as
-      | { title?: string | null; brand_id?: string | null; brands?: { name?: string | null } | Array<{ name?: string | null }> | null }
-      | Array<{ title?: string | null; brand_id?: string | null; brands?: { name?: string | null } | Array<{ name?: string | null }> | null }>
+      | { title?: string | null; brand_id?: string | null; timezone?: string | null; brands?: { name?: string | null } | Array<{ name?: string | null }> | null }
+      | Array<{ title?: string | null; brand_id?: string | null; timezone?: string | null; brands?: { name?: string | null } | Array<{ name?: string | null }> | null }>
       | null
       | undefined;
     const eventRow = Array.isArray(eventsJoin) ? eventsJoin[0] ?? null : eventsJoin ?? null;
@@ -271,6 +292,18 @@ export async function fireBuyerOrderNotify(
     const brandRow = Array.isArray(brandsJoin) ? brandsJoin[0] ?? null : brandsJoin ?? null;
     const brandName = (brandRow?.name as string | null) ?? "Mingla";
     const eventTitle = (eventRow?.title as string | null) ?? "your order";
+    const eventDatesJoin = order.event_dates as
+      | { start_at?: string | null; timezone?: string | null }
+      | Array<{ start_at?: string | null; timezone?: string | null }>
+      | null
+      | undefined;
+    const eventDateRow = Array.isArray(eventDatesJoin)
+      ? eventDatesJoin[0] ?? null
+      : eventDatesJoin ?? null;
+    const eventDate = (order.booked_start_at as string | null) ??
+      eventDateRow?.start_at ?? null;
+    const timezone = eventDateRow?.timezone ??
+      (eventRow?.timezone as string | null) ?? null;
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -296,6 +329,9 @@ export async function fireBuyerOrderNotify(
           event_title: eventTitle,
           brand_name: brandName,
           currency: (order.currency as string | null) ?? null,
+          event_date: eventDate,
+          timezone,
+          claimed: buyerUserId !== null,
           ...(input.extraPayload ?? {}),
         },
         idempotency_key: input.idempotencyKey,

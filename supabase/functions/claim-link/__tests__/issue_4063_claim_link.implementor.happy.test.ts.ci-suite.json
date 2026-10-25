@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/claim-link/__tests__/issue_4063_claim_link.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4063-claim-link-implementor-happy",
+  "profile": "deno-1.46-stripe"
+}

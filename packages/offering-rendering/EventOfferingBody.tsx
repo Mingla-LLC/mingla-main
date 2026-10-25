@@ -1186,7 +1186,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
           </Pressable>
 
           <Text style={[styles.reassure, { color: palette.tertiaryText }]}>
-            All-in price — taxes &amp; fees included, no surprises at checkout.
+            All-in price. Taxes and fees included.
           </Text>
         </View>
       )}
