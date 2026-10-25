@@ -122,6 +122,7 @@ test("#3988 two Discover columns plus their gap fit narrow viewports", () => {
   }
 });
 
+// MINGLA-INVARIANT: I-3988-NATIVE-PUBLIC-PAGES-NO-WEB-CHUNKS | issue #3988 | Native public offering details render shared sections synchronously from the Metro bundle without browser-style chunk resolution.
 test("#3988 native public offering pages never cross a web-style lazy chunk boundary", () => {
   const nativeBoundary = readFileSync(
     fileURLToPath(

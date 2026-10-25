@@ -1,7 +1,6 @@
 /**
  * Native public-page loading boundary.
  *
- * MINGLA-INVARIANT: I-3988-NATIVE-PUBLIC-PAGES-NO-WEB-CHUNKS | issue #3988 |
  * Native offering details render their shared secondary sections from the main
  * Metro bundle; they must not use deferred chunk loading because production
  * Metro has no browser `location` from which to resolve a web-style chunk URL.
