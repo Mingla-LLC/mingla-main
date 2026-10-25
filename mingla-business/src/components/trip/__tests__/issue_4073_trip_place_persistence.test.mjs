@@ -19,6 +19,10 @@ test("#4073 city and country-code identity persists through draft, publish, edit
     assert.match(service, new RegExp(field), `read service missing ${field}`);
     assert.match(publicService, new RegExp(field), `public read service missing ${field}`);
   }
+  for (const field of fields) {
+    assert.match(wizard, new RegExp(`${field}: trip\\.businessTrip\\.${field} \\?\\? null`));
+    assert.match(edit, new RegExp(`${field}: trip\\.businessTrip\\.${field} \\?\\? null`));
+  }
 });
 test("#4073 free-text edits clear stale structured place identity", () => {
   for (const assignment of ["destinationCity: null", "destinationCountryCode: null", "departureCity: null", "departureCountryCode: null"]) {

@@ -292,15 +292,15 @@ export function tripToStep1Draft(trip: Trip): Step1Draft {
     destinationLocationText: trip.businessTrip.destinationLocationText,
     destinationLat: trip.businessTrip.destinationLat,
     destinationLng: trip.businessTrip.destinationLng,
-    destinationCity: trip.businessTrip.destinationCity,
-    destinationCountryCode: trip.businessTrip.destinationCountryCode,
+    destinationCity: trip.businessTrip.destinationCity ?? null,
+    destinationCountryCode: trip.businessTrip.destinationCountryCode ?? null,
     // ORCH-1016 — departure (origin) seeded from current trip row.
     departurePlaceId: trip.businessTrip.departurePlaceId,
     departureLocationText: trip.businessTrip.departureLocationText,
     departureLat: trip.businessTrip.departureLat,
     departureLng: trip.businessTrip.departureLng,
-    departureCity: trip.businessTrip.departureCity,
-    departureCountryCode: trip.businessTrip.departureCountryCode,
+    departureCity: trip.businessTrip.departureCity ?? null,
+    departureCountryCode: trip.businessTrip.departureCountryCode ?? null,
     // Issue #1363 — precision is a transient capture-side signal; existing trips
     // predate it, so seed null (the coordinate itself is already present).
     destinationCoordinatePrecision: null,
