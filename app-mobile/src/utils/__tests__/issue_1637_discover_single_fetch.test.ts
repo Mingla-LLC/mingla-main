@@ -534,7 +534,7 @@ Deno.test("#1637 C-3 the `setBusinessEvents([])` hard-empty is gone", () => {
   assert(dense.includes("feed.data?.pages.flatMap((page)=>page.items)??[]"), "the rendered inventory must flatten the one feed's pages");
 });
 
-Deno.test("#1637 C-4 the React Query key is the complete feed identity", () => {
+Deno.test("#1637 C-4 the React Query key is the complete feed identity [TEST-MOD-APPROVED #3988]", () => {
   const hook = denseCode(read(FEED_HOOK_REL));
   const keys = denseCode(read(QUERY_KEYS_REL));
   assert(
@@ -542,8 +542,8 @@ Deno.test("#1637 C-4 the React Query key is the complete feed identity", () => {
     "the feed hook must delegate identity to the centralized key factory",
   );
   assert(
-    keys.includes("feed:(anchorKey:string,filters:DiscoverFiltersV2)=>[...discoverKeys.all,'feed',anchorKey,normalizeDiscoverFilters(filters)]asconst"),
-    "the key must contain the settled anchor value plus every normalized filter",
+    keys.includes("feed:(anchorKey:string,filters:DiscoverFiltersV2)=>[...discoverKeys.all,'feed',DISCOVER_OCCURRENCE_CATALOG_VERSION,anchorKey,normalizeDiscoverFilters(filters)]asconst"),
+    "the key must contain the catalogue version, settled anchor value, and every normalized filter",
   );
   assert(hook.includes("enabled:anchor!==null"), "a missing/unsettled anchor must not issue a request");
 });
@@ -753,11 +753,11 @@ Deno.test("#1637 C-9 the authoritative row re-anchors only when it disagrees wit
   );
 });
 
-Deno.test("#1637 C-5 the grid renders ONE ordered deck, not two adjacent blocks", () => {
+Deno.test("#1637 C-5 the grid renders ONE ordered deck, not two adjacent blocks [TEST-MOD-APPROVED #3988]", () => {
   const dense = denseCode(read(SCREEN_REL));
   assert(
-    dense.includes("constitems=useMemo(()=>feed.data?.pages.flatMap((page)=>page.items)??[],[feed.data?.pages])"),
-    "the deck order must be the server-ordered pagination stream",
+    dense.includes("constitems=useMemo(()=>dedupeDiscoverFeedCards(feed.data?.pages.flatMap((page)=>page.items)??[]),[feed.data?.pages],)"),
+    "the deck must preserve the server-ordered pagination stream while collapsing repeated Ticketmaster catalogue cards",
   );
   assertEquals(
     (dense.match(/\{items\.map\(/g) ?? []).length,
