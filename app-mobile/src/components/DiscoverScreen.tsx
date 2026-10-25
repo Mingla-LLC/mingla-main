@@ -266,7 +266,6 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   }, [setStepCopyOverride, t, visibleKinds]);
 
   const items = useMemo(() => feed.data?.pages.flatMap((page) => page.items) ?? [], [feed.data?.pages]);
-  const hasMingla = items.some((card) => card.source === "mingla");
   const savedIds = useMemo(() => new Set((saved.data ?? []).map((item) => item.id)), [saved.data]);
   const selectionCount = discoverFilterSelectionCount(appliedFilters);
   const selectedLabels = selectedDiscoverFilterLabels(appliedFilters, facets.data?.groups ?? []);
@@ -424,15 +423,11 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
         {filteredEmpty ? <DiscoverEmptyState mode="filters" title={t("empty.filtered_title_generic", "Nothing matches those filters")} body={t("empty.filtered_body", "Here's what is on instead.")} primaryLabel={t("empty.clear_filters", "Clear filters")} onPrimary={() => { const cleared = emptyDiscoverFilters(selectedKind); setAppliedFilters(cleared); setFacetFilters(cleared); }} /> : null}
         {items.length > 0 ? <>
           <View style={styles.grid} onLayout={(event) => { gridTopRef.current = event.nativeEvent.layout.y; evaluateViewability(); }}>
-            {items.map((card, index) => {
+            {items.map((card) => {
               const key = `${card.source}:${card.id}`;
-              const firstTicketmaster = card.source === "ticketmaster" && (index === 0 || items[index - 1]?.source !== "ticketmaster");
-              return <React.Fragment key={key}>
-                {firstTicketmaster ? <View style={hasMingla ? styles.divider : styles.tmHeading}><Text style={styles.headingTitle}>{t("section.tm", "More events nearby")}</Text>{hasMingla ? <View style={styles.line} /> : null}</View> : null}
-                <View style={[styles.gridCell, { width: gridCellWidth }]} onLayout={(event) => { cardLayoutsRef.current.set(key, { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height, card }); evaluateViewability(); }}>
-                  <DiscoverCard card={card} saved={savedIds.has(card.id)} onPress={() => { mixpanelService.track("discover_card_opened", { kind: card.kind }); openCard(card); }} onSave={() => { void toggleSave(card); }} />
-                </View>
-              </React.Fragment>;
+              return <View key={key} style={[styles.gridCell, { width: gridCellWidth }]} onLayout={(event) => { cardLayoutsRef.current.set(key, { y: event.nativeEvent.layout.y, height: event.nativeEvent.layout.height, card }); evaluateViewability(); }}>
+                <DiscoverCard card={card} saved={savedIds.has(card.id)} onPress={() => { mixpanelService.track("discover_card_opened", { kind: card.kind }); openCard(card); }} onSave={() => { void toggleSave(card); }} />
+              </View>;
             })}
           </View>
         </> : null}
@@ -447,11 +442,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#101216" }, content: { flexGrow: 1 },
-  headingTitle: { color: "#fff", fontSize: 13, fontWeight: "600" },
   grid: { paddingHorizontal: DISCOVER_GRID_SIDE_PADDING, paddingTop: 8, flexDirection: "row", flexWrap: "wrap", gap: DISCOVER_GRID_GAP },
   gridCell: { minWidth: 0 },
-  divider: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, marginBottom: 2 }, line: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,.12)" },
-  tmHeading: { width: "100%", paddingTop: 10, paddingBottom: 2 },
   more: { color: "rgba(255,255,255,.55)", textAlign: "center", paddingVertical: 18 },
 });
 

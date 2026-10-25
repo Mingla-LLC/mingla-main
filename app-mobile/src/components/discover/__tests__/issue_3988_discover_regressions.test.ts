@@ -41,14 +41,18 @@ test("#3988 Discover cards resolve every Mingla offering to a canonical native p
   assert.equal(canonicalDiscoverCardPath({ ...card("event"), brand: { ...card("event").brand, slug: " " } }), null);
 });
 
-test("#3988 Discover restores an explicit two-column grid and removes the redundant hosts strip", () => {
+test("#3988 Discover is one uninterrupted two-column feed without source section gaps", () => {
   const screen = readFileSync(fileURLToPath(new URL("../../DiscoverScreen.tsx", import.meta.url)), "utf8");
   const discoverCard = readFileSync(fileURLToPath(new URL("../DiscoverCard.tsx", import.meta.url)), "utf8");
 
   assert.match(screen, /style=\{\[styles\.gridCell, \{ width: gridCellWidth \}\]\}/);
   assert.match(discoverCard, /card:\s*\{\s*width:\s*"100%"/);
   assert.doesNotMatch(screen, /section\.mingla/);
+  assert.doesNotMatch(screen, /section\.tm/);
   assert.doesNotMatch(screen, /From Mingla hosts|Book in the app/);
+  assert.doesNotMatch(screen, /More events nearby/);
+  assert.doesNotMatch(screen, /styles\.(?:divider|tmHeading)/);
+  assert.match(screen, /items\.map\(\(card\) =>/);
 });
 
 test("#3988 two Discover columns plus their gap fit narrow viewports", () => {
