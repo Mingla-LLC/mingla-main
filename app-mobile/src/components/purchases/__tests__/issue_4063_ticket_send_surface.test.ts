@@ -77,7 +77,7 @@ test("send-to-friend requires email and a country-formatted mobile number", () =
 
 test("ticket phone entry stays on the bottom-sheet keyboard restoration rail", () => {
   assert.ok(sheet.includes("inputComponent={BottomSheetTextInput}"));
-  assert.ok(sheet.includes('keyboardBehavior="interactive"'));
+  assert.ok(sheet.includes('keyboardBehavior="extend"'));
   assert.ok(sheet.includes('keyboardBlurBehavior="restore"'));
   assert.ok(sheet.includes('android_keyboardInputMode="adjustResize"'));
   assert.ok(sheet.includes('keyboardDismissMode: "interactive"'));
@@ -88,6 +88,12 @@ test("ticket phone entry stays on the bottom-sheet keyboard restoration rail", (
       "const PhoneTextInput = inputComponent ?? RefForwardingTextInput;",
     ),
   );
+});
+
+test("the closed keyboard sheet uses a content-fit bottom-anchored snap", () => {
+  assert.ok(sheet.includes('snapPoints={["64%"]}'));
+  assert.ok(!sheet.includes("enableDynamicSizing"));
+  assert.ok(!sheet.includes("maxDynamicContentSize"));
 });
 
 test("email and SMS notification rows commit together for a sent ticket", () => {

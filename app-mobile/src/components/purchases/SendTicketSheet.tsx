@@ -154,10 +154,10 @@ export function SendTicketSheet({
         keyboardDismissMode: "interactive",
         keyboardShouldPersistTaps: "handled",
       }}
-      keyboardBehavior="interactive"
+      keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
-      snapPoints={["82%"]}
+      snapPoints={["64%"]}
       theme="light"
       visible={visible}
       wrapInRNModal
