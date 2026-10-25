@@ -105,6 +105,8 @@ function run() {
   const contextSrc = readSource('src/contexts/CoachMarkContext.tsx');
   const hookSrc = readSource('src/hooks/useCoachMark.ts');
   const discoverSrc = readSource('src/components/DiscoverScreen.tsx');
+  const discoverHeaderSrc = readSource('src/components/discover/DiscoverHeader.tsx');
+  const discoverPillRowSrc = readSource('src/components/discover/DiscoverPillRow.tsx');
   const connectionsSrc = readSource('src/components/ConnectionsPage.tsx');
   const profileSrc = readSource('src/components/ProfilePage.tsx');
   const homeSrc = readSource('src/components/HomePage.tsx');
@@ -134,16 +136,23 @@ function run() {
   }
 
   // ── T-03 [FAILS-ON-REVERT]: ref-target wiring per surface ──
-  // Discover: step 4 Events pill + step 5 Trips pill, attached per tab.id via the helper.
-  assert.ok(/useCoachMark\(4\b/.test(discoverSrc), 'T-03 DiscoverScreen step 4 (Events) present');
-  assert.ok(/useCoachMark\(5\b/.test(discoverSrc), 'T-03 DiscoverScreen step 5 (Trips) present');
-  assert.ok(/coachTabRefFor\(tab\.id\)/.test(discoverSrc),
-    'T-03 DiscoverScreen must attach the coach ref per tab.id on the tab Pressable');
-  assert.ok(/tabId === 'events'/.test(discoverSrc) && /tabId === 'trips'/.test(discoverSrc),
-    'T-03 the per-tab helper must map events→step4 and trips→step5');
-  // The step-4 ref must NOT still be on the broad header panel (wrong-node regression).
-  assert.ok(!/ref=\{coachDiscoverFeed\.targetRef\}/.test(discoverSrc),
-    'T-03 the step-4 ref must NOT be on the header panel (coachDiscoverFeed removed)');
+  // [TEST-MOD-APPROVED #3988] #4073 replaced the Events/Trips tabs with one
+  // content-type pill rail plus a filter affordance. Keep both coach steps on
+  // exact leaf controls: step 4 = first visible pill, step 5 = filter button.
+  assert.ok(/useCoachMark\(4\b/.test(discoverSrc), 'T-03 DiscoverScreen step 4 (content pill) present');
+  assert.ok(/useCoachMark\(5\b/.test(discoverSrc), 'T-03 DiscoverScreen step 5 (filter button) present');
+  assert.ok(/pillTargetRef=\{coachPills\.targetRef\}/.test(discoverSrc),
+    'T-03 DiscoverScreen must route step 4 into the generic pill rail');
+  assert.ok(/filterTargetRef=\{coachFilters\.targetRef\}/.test(discoverSrc),
+    'T-03 DiscoverScreen must route step 5 into the filter affordance');
+  assert.ok(/targetRef=\{props\.pillTargetRef\}/.test(discoverHeaderSrc),
+    'T-03 DiscoverHeader must forward the step-4 ref to DiscoverPillRow');
+  assert.ok(/ref=\{index === 0 \? targetRef : undefined\}/.test(discoverPillRowSrc),
+    'T-03 step 4 must attach to the first visible pill Pressable');
+  assert.ok(/ref=\{setFilterRef\}/.test(discoverHeaderSrc) && /props\.filterTargetRef\(node\)/.test(discoverHeaderSrc),
+    'T-03 step 5 must attach to the filter Pressable');
+  assert.ok(!/coachTabRefFor\(|coachDiscoverFeed\.targetRef/.test(discoverSrc),
+    'T-03 retired tab helpers and broad header targets must stay gone');
 
   // Connections: step 6 people icon + step 7 + button.
   assert.ok(/useCoachMark\(6\b/.test(connectionsSrc), 'T-03 ConnectionsPage step 6 (people) present');
@@ -199,11 +208,13 @@ function run() {
     assert.ok(stepIdSet.has(id), `T-07 dangling: call-site id ${id} references no step`);
   }
 
-  // ── T-08: progress bar + counter derive from COACH_STEP_COUNT (auto 11) ──
-  assert.ok(/length:\s*COACH_STEP_COUNT/.test(overlaySrc),
-    'T-08 progress bar must derive segment count from COACH_STEP_COUNT');
-  assert.ok(/total:\s*COACH_STEP_COUNT/.test(overlaySrc),
-    'T-08 step counter "N of M" must derive total from COACH_STEP_COUNT');
+  // ── T-08: progress bar + counter derive from the skip-aware tour progress ──
+  // [TEST-MOD-APPROVED #3988] #4073 made unavailable Discover pill steps
+  // skippable, so rendered progress must use the context's effective count.
+  assert.ok(/length:\s*coachProgress\.total/.test(overlaySrc),
+    'T-08 progress bar must derive segment count from skip-aware coachProgress.total');
+  assert.ok(/step_counter['"],\s*coachProgress/.test(overlaySrc),
+    'T-08 step counter "N of M" must use the same skip-aware coachProgress');
 
   // ════════════════════════════════════════════════════════════════════════
   // PART B — STABLE-MEASURE BEHAVIOR (executable model)
@@ -267,8 +278,8 @@ if (require.main === module) {
   try {
     run();
     console.log(
-      'PASS ORCH-1037/1035: 11-step tour with exact per-tab mapping, Events/Trips/people/+ refs ' +
-      're-pointed to leaf affordances, Profile scroll steps 8-11 measured (offset+measurer), ' +
+      'PASS ORCH-1037/1035: 11-step tour with exact per-tab mapping, Discover pill/filter and people/+ refs ' +
+      'point to leaf affordances, Profile scroll steps 8-11 measured (offset+measurer), ' +
       "step-4 'center' + stale comment removed, lockstep bijection holds, progress/counter auto-derive; " +
       'stable-measure loop rejects the mid-animation transient and accepts the settled rect'
     );

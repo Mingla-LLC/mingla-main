@@ -10,7 +10,7 @@
  * driven by tab (home → discover → connections → profile) and within-screen
  * reading order:
  *   1 Deck · 2 Preferences · 3 Likes        (home — unchanged ids)
- *   4 Events tab · 5 Trips tab              (discover)
+ *   4 Content-type pill · 5 Filters          (discover)
  *   6 People icon · 7 + button              (connections)
  *   8 Interests · 9 Circle · 10 Account · 11 Share Feedback (profile, scroll steps)
  *
@@ -61,9 +61,8 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    // ORCH-1037: now targets the small Events tab Pressable (not the whole header
-    // panel), so the bubble hugs the pill like every other small target — the
-    // 'center' override was a band-aid for the too-broad target and is removed.
+    // ORCH-1037/#4073: targets the first visible content-type pill Pressable (not
+    // the whole pill row or header panel), so the bubble hugs a leaf affordance.
     id: 4,
     tab: 'discover',
     title: 'Everything near you, one page',
@@ -73,7 +72,7 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    // ORCH-1035 NEW: Trips tab (ORCH-1016 travel reframing).
+    // #4073: the retired Trips-tab step now targets the one-page filter button.
     id: 5,
     tab: 'discover',
     title: 'Narrow it down',
