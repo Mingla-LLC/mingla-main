@@ -91,6 +91,24 @@ test("#3988 Discover exposes distinct progress treatments at both feed edges", (
   assert.match(screen, /Loading more events/);
 });
 
+test("#3988 defaults to device city while manual search stays global", () => {
+  const screen = readFileSync(
+    fileURLToPath(new URL("../../DiscoverScreen.tsx", import.meta.url)),
+    "utf8",
+  );
+  const picker = readFileSync(
+    fileURLToPath(new URL("../CityPickerSheet.tsx", import.meta.url)),
+    "utf8",
+  );
+
+  assert.match(screen, /const location = useUserLocation\(user\?\.id, "solo"\)/);
+  assert.match(screen, /geocodingService\.reverseGeocode\(lat, lng\)/);
+  assert.match(screen, /if \(city \|\| typeof location\.data\?\.lat/);
+  assert.match(picker, /searchMode="places"/);
+  assert.match(picker, /suggestLimit=\{8\}/);
+  assert.doesNotMatch(picker, /proximity=\{/);
+});
+
 test("#3988 two Discover columns plus their gap fit narrow viewports", () => {
   for (const viewportWidth of [240, 280, 320, 375, 430]) {
     const cellWidth = discoverGridCellWidth(viewportWidth);
