@@ -58,7 +58,10 @@ test("#3988 Discover is one uninterrupted two-column feed without source section
   assert.match(screen, /items\.map\(\(card\) =>/);
 });
 
-test("#3988 Discover shows one Ticketmaster card per named event", () => {
+// [TEST-MOD-APPROVED #3988] The title-only assertion shipped in #4110 dropped
+// a distinct tour stop at another venue; retain that stop while provider label
+// suffixes for the same venue still collapse.
+test("#3988 Discover shows one Ticketmaster card per named event at each canonical venue", () => {
   const cards = [
     { source: "ticketmaster", kind: "event", id: "tm-early", title: "Jackson Dean", venueName: "Lincoln Theatre", startsLocalDate: "2026-10-31", startsLocalTime: "20:00:00" },
     { source: "ticketmaster", kind: "event", id: "tm-provider-variant", title: "  JACKSON   DEAN  ", venueName: "Lincoln Theatre-NC", startsLocalDate: "2026-10-31", startsLocalTime: "20:00:00" },
@@ -69,7 +72,7 @@ test("#3988 Discover shows one Ticketmaster card per named event", () => {
 
   assert.deepEqual(
     dedupeDiscoverFeedCards(cards).map((item) => item.id),
-    ["tm-early", "tm-accessible", "mingla-1"],
+    ["tm-early", "tm-later", "tm-accessible", "mingla-1"],
   );
   assert.deepEqual(
     collapseTicketmasterOccurrences(
@@ -81,7 +84,7 @@ test("#3988 Discover shows one Ticketmaster card per named event", () => {
           venueName: item.venueName,
         })) as any[],
     ).map((item) => item.id),
-    ["tm-early", "tm-accessible"],
+    ["tm-early", "tm-later", "tm-accessible"],
   );
   const queryKeys = readFileSync(
     fileURLToPath(new URL("../../../hooks/discoverQueryKeys.ts", import.meta.url)),

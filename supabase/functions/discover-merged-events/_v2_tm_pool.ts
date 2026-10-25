@@ -50,9 +50,20 @@ const DAILY_LIMIT = 2_500;
 const cache = new Map<string, { pool: TicketmasterPool; at: number }>();
 const builds = new Map<string, Promise<TicketmasterPool>>();
 
+function normalizedTicketmasterLabel(value: string): string {
+  return value.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+function normalizedTicketmasterVenue(value: string): string {
+  // Ticketmaster sometimes appends a state code to one provider copy of the
+  // same venue (for example "Lincoln Theatre-NC"). That copy must collapse,
+  // while a genuinely different venue must retain its own tour stop.
+  return normalizedTicketmasterLabel(value).replace(/\s*-\s*[a-z]{2}$/, "");
+}
+
 function ticketmasterDiscoveryIdentity(item: TicketmasterPoolEvent): string {
-  const title = item.eventName.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
-  const venue = item.venueName.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+  const title = normalizedTicketmasterLabel(item.eventName);
+  const venue = normalizedTicketmasterVenue(item.venueName);
   return title && title !== "untitled event"
     ? `title:${title}|venue:${venue}`
     : `id:${item.id}`;
