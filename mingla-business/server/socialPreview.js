@@ -386,7 +386,22 @@ const renderContentShareDetails = (contentShare) => {
     return `${asText(details.address) ? `<section><h2>Address</h2><p>${escapeHtml(details.address)}</p></section>` : ""}${links ? `<div class="detail-actions">${links}</div>` : ""}`;
   }
   if (Array.isArray(details.occurrences) && details.occurrences.length) {
-    return `<section aria-labelledby="dates-heading"><h2 id="dates-heading">Dates</h2><ul class="detail-list">${details.occurrences.map((item) => `<li><time datetime="${escapeHtml(item.startAt)}">${escapeHtml(item.startAt)}</time></li>`).join("")}</ul></section>`;
+    // issue #3281 PR7 — formatted dates; first 6 + "and N more" (no 24 cut upstream).
+    const all = details.occurrences;
+    const shown = all.slice(0, 6);
+    const more = all.length - shown.length;
+    const items = shown
+      .map((item) => {
+        const label = asText(item.label) || asText(item.startAt);
+        const dt = asText(item.startAt);
+        return `<li><time datetime="${escapeHtml(dt)}">${escapeHtml(label)}</time></li>`;
+      })
+      .join("");
+    const moreLi =
+      more > 0
+        ? `<li>and ${more} more</li>`
+        : "";
+    return `<section aria-labelledby="dates-heading"><h2 id="dates-heading">Dates</h2><ul class="detail-list">${items}${moreLi}</ul></section>`;
   }
   if (facts.kind === "brand" && Array.isArray(details.offerings) && details.offerings.length) {
     return `<section aria-labelledby="offerings-heading"><h2 id="offerings-heading">Upcoming</h2><ul class="detail-list">${details.offerings.map((item) => `<li><a data-share-destination="view_offering" href="${PUBLIC_ORIGIN}/${item.kind === "trip" ? "t" : item.kind === "experience" ? "exp" : "e"}/${encodeURIComponent(item.brandSlug)}/${encodeURIComponent(item.eventSlug)}">${escapeHtml(item.title)}</a></li>`).join("")}</ul></section>`;
@@ -672,12 +687,18 @@ const fetchPublicExperienceBySlug = async (brandSlug, experienceSlug) => {
   return rows[0];
 };
 
-const eventDescription = (row) =>
-  truncate(
+const eventDescription = (row) => {
+  const schedule = eventScheduleLabel(row);
+  const base =
     row.description ||
-      `Get tickets for ${row.title} by ${row.brand_name} on Mingla.`,
+    `Get tickets for ${row.title} by ${row.brand_name} on Mingla.`;
+  return truncate(
+    schedule && schedule !== "Date to be announced"
+      ? `${schedule} — ${base}`
+      : base,
     200,
   );
+};
 
 const tripDescription = (row) =>
   truncate(
@@ -701,6 +722,11 @@ const brandDescription = (row, count) =>
   );
 
 const eventDate = (row) => {
+  // issue #3281 PR7 — prefer server next / schedule over draft when.date.
+  const nextIso = asText(row?.next_start_at, "");
+  if (nextIso.length > 0) return nextIso;
+  const schedule = asText(row?.schedule_line, "");
+  if (schedule.length > 0) return schedule;
   const theme =
     row.public_theme !== null &&
     typeof row.public_theme === "object" &&
@@ -725,12 +751,27 @@ const eventDate = (row) => {
 const formatDate = (value) => {
   const date = asText(value);
   if (date.length === 0) return "Date to be announced";
+  // Already a human schedule line from the server.
+  if (/[A-Za-z]/.test(date) && !/^\d{4}-\d{2}-\d{2}/.test(date)) return date;
+  const asInstant = Date.parse(date);
+  if (!Number.isNaN(asInstant)) {
+    return new Intl.DateTimeFormat("en", {
+      dateStyle: "medium",
+      timeZone: "UTC",
+    }).format(new Date(asInstant));
+  }
   const parsed = new Date(`${date}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return date;
   return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeZone: "UTC",
   }).format(parsed);
+};
+
+const eventScheduleLabel = (row) => {
+  const line = asText(row?.schedule_line, "");
+  if (line.length > 0) return `NEXT: ${line}`;
+  return formatDate(eventDate(row));
 };
 
 const eventLocationLabel = (row) =>
@@ -749,7 +790,7 @@ const buildEventOgCardProps = (row) => {
   const kicker = row?.brand_name || "Mingla";
   const dateLabel =
     row !== null && row !== undefined
-      ? formatDate(eventDate(row))
+      ? eventScheduleLabel(row)
       : "Date to be announced";
   const locationLabel =
     row !== null && row !== undefined ? eventLocationLabel(row) : "";
@@ -921,7 +962,7 @@ const buildBrandOgCardProps = (input) => {
   const eventCount = events.length;
   const eventCountLabel = `${eventCount} event${eventCount === 1 ? "" : "s"}`;
   const featureDate =
-    featureEvent !== null ? formatDate(eventDate(featureEvent)) : "";
+    featureEvent !== null ? eventScheduleLabel(featureEvent) : "";
   const nextEventLabel =
     featureEvent !== null && asText(featureEvent.title).length > 0
       ? `${truncate(featureEvent.title, 52)}${featureDate.length > 0 ? ` - ${featureDate}` : ""}`
@@ -1028,19 +1069,33 @@ const renderEventHtml = (row) => {
       ? `<img class="media" src="${escapeHtml(row.cover_media_url)}" alt="${escapeHtml(row.title)} event cover" />`
       : `<img class="media" src="${escapeHtml(eventOgFallbackUrl(row))}" alt="${escapeHtml(row.title)} event preview" />`;
 
+  const startDate =
+    asText(row.next_start_at) || asText(row.master_start_at) || "";
+  const jsonLd =
+    startDate.length > 0
+      ? `<script type="application/ld+json">${JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Event",
+          name: row.title,
+          startDate,
+          url: canonicalUrl,
+        }).replace(/</g, "\\u003c")}</script>`
+      : "";
+
   return pageShell({
     title,
     description,
     canonicalUrl,
     imageUrl,
     type: "event",
+    trustedHeadHtml: jsonLd,
     body: `<section class="hero has-media">
       <div>
         <h1>${escapeHtml(row.title)}</h1>
         <p>${escapeHtml(description)}</p>
         <div class="meta">
           <span class="pill">${escapeHtml(row.brand_name)}</span>
-          <span class="pill">${escapeHtml(formatDate(eventDate(row)))}</span>
+          <span class="pill">${escapeHtml(eventScheduleLabel(row))}</span>
           ${location ? `<span class="pill">${escapeHtml(location)}</span>` : ""}
         </div>
         <a class="cta" href="${escapeHtml(`${PUBLIC_ORIGIN}/checkout/${encodeURIComponent(row.id)}`)}">Get tickets</a>

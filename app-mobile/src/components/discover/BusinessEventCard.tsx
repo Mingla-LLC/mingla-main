@@ -49,7 +49,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import type { BusinessEventCard as BusinessEventCardData } from "../../types/mergedDiscover";
 // ORCH-0877 — centralized consumer-side date formatter.
-import { formatEventDateChip } from "../../utils/eventDateDisplay";
+import { formatCardScheduleLabel } from "../../utils/eventDateDisplay";
 
 interface BusinessEventCardProps {
   data: BusinessEventCardData;
@@ -193,9 +193,12 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
         </Text>
         <View style={styles.infoChipMeta}>
           <Text style={styles.infoChipDate} numberOfLines={1}>
-            {formatEventDateChip({
+            {formatCardScheduleLabel({
+              scheduleLine: data.scheduleLine,
+              nextStartAtUtc: data.nextStartAtUtc,
               masterDateUtc: data.masterDateUtc,
               masterEndAtUtc: data.masterEndAtUtc,
+              nextEndAtUtc: data.nextEndAtUtc,
               timezone: data.timezone,
             })}
           </Text>

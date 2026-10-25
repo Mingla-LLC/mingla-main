@@ -344,6 +344,10 @@ const mapLiveEventToPublicEvent = (
   // event is not multi-date, when the organiser's draft entries are present, or
   // when no occurrence has a parseable instant).
   const dateDisplay = resolvePublicEventDateDisplay(event, occurrences);
+  const scheduleLine =
+    typeof (event as { scheduleLine?: string | null }).scheduleLine === "string"
+      ? (event as { scheduleLine?: string | null }).scheduleLine!.trim()
+      : "";
   return {
     id: event.id,
     name: event.name,
@@ -351,7 +355,8 @@ const mapLiveEventToPublicEvent = (
     brandSlug: event.brandSlug,
     eventSlug: event.eventSlug,
     description: event.description,
-    dateLine: dateDisplay.dateLine,
+    dateLine:
+      scheduleLine.length > 0 ? `NEXT: ${scheduleLine}` : dateDisplay.dateLine,
     dateSubline: dateDisplay.dateSubline,
     datesList: dateDisplay.datesList,
     status:
@@ -2060,12 +2065,24 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           </title>
           <meta
             name="description"
-            content={event.description.slice(0, 160) || event.name}
+            content={
+              (
+                publicEvent.dateLine
+                  ? `${publicEvent.dateLine} — ${event.description || event.name}`
+                  : event.description || event.name
+              ).slice(0, 160)
+            }
           />
           <meta property="og:title" content={event.name} />
           <meta
             property="og:description"
-            content={event.description.slice(0, 200) || event.name}
+            content={
+              (
+                publicEvent.dateLine
+                  ? `${publicEvent.dateLine} — ${event.description || event.name}`
+                  : event.description || event.name
+              ).slice(0, 200)
+            }
           />
           <meta property="og:url" content={canonicalUrl(event)} />
           <meta
@@ -2076,11 +2093,26 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             })}
           />
           <meta property="og:type" content="event" />
+          {event.masterStartAtUtc ? (
+            <meta
+              property="event:start_time"
+              content={event.masterStartAtUtc}
+            />
+          ) : null}
+          {event.masterStartAtUtc ? (
+            <meta itemProp="startDate" content={event.masterStartAtUtc} />
+          ) : null}
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={event.name} />
           <meta
             name="twitter:description"
-            content={event.description.slice(0, 200) || event.name}
+            content={
+              (
+                publicEvent.dateLine
+                  ? `${publicEvent.dateLine} — ${event.description || event.name}`
+                  : event.description || event.name
+              ).slice(0, 200)
+            }
           />
           <meta
             name="twitter:image"

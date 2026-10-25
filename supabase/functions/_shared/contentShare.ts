@@ -67,19 +67,35 @@ const publicDetailsFor = (kind: ContentShareKind, row: RecordLike, assembled: Re
     website: publicExternalUrl(row.website),
     utcOffsetMinutes: Number.isInteger(row.utc_offset_minutes) ? row.utc_offset_minutes : undefined,
   });
-  if (["event", "rsvp_event", "trip", "experience"].includes(kind)) return compact({
-    kind,
-    actionEligible: assembled.actionEligible === true,
-    occurrences: (assembled.relevantDates || []).slice(0, 24).map((date: RecordLike) => compact({
-      startAt: clean(date.start_at, 40), endAt: clean(date.end_at, 40), timezone: clean(date.timezone || row.timezone, 80),
-    })),
-  });
+  if (["event", "rsvp_event", "trip", "experience"].includes(kind)) {
+    // issue #3281 PR7 — no 24-date cut; share page shows first 6 + "and N more".
+    const occurrences = (assembled.relevantDates || []).map((date: RecordLike) => {
+      const tz = clean(date.timezone || row.timezone, 80);
+      const startAt = clean(date.start_at, 40);
+      const schedule = localSchedule(date.start_at, tz);
+      const label = [schedule.localDate, schedule.localTime].filter(Boolean).join(" · ");
+      return compact({
+        startAt,
+        endAt: clean(date.end_at, 40),
+        timezone: tz,
+        label: label || startAt,
+      });
+    });
+    return compact({
+      kind,
+      actionEligible: assembled.actionEligible === true,
+      scheduleLine: clean(row.schedule_line, 120) || undefined,
+      nextStartAt: clean(row.next_start_at, 40) || undefined,
+      occurrences,
+    });
+  }
   if (kind === "venue" || kind === "brand") return compact({
     kind,
     offerings: (assembled.offerings || []).slice(0, 8).map((item: RecordLike) => compact({
       title: clean(item.title, 160), kind: clean(item.event_type, 24),
       brandSlug: clean(item.brand_slug, 160), eventSlug: clean(item.slug, 160),
-      startAt: clean(item.master_start_at, 40),
+      startAt: clean(item.next_start_at || item.master_start_at, 40),
+      scheduleLine: clean(item.schedule_line, 120) || undefined,
     })),
   });
   return { kind };

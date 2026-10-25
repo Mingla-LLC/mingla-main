@@ -158,6 +158,11 @@ interface BusinessPublicEventViewRow {
   master_end_at: string | null;
   master_timezone: string | null;
   master_event_date_id: string | null;
+  // issue #3281 PR7 — server next-occurrence schedule (cards / brand / SEO).
+  next_start_at?: string | null;
+  next_end_at?: string | null;
+  upcoming_count?: number | null;
+  schedule_line?: string | null;
   // ORCH-1006 Slice 3 Wave 2 — server-computed all-in (tax/fee-inclusive)
   // lowest-tier price in CENTS, surfaced by business_public_events_view.
   // Arrives via the existing .select("*"); null when no priced tier → the
@@ -436,6 +441,9 @@ export type PublicBrandRecord = Brand;
 export type PublicEventRecord = LiveEvent & {
   terminalSource: EventTerminalSource;
   displaySalePriceCents?: number | null;
+  /** issue #3281 PR7 — server schedule line for cards / SEO. */
+  scheduleLine?: string | null;
+  upcomingCount?: number | null;
 };
 
 /** issue #2160 — the organiser's per-event multi-day pricing choice. */
@@ -1278,10 +1286,13 @@ export const publicEventViewRowToEvent = (
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
   // ORCH-0792: dates sourced from event_dates via master_* columns on the
   // view (I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY).
+  // issue #3281 PR7 — prefer server next occurrence for display when present.
+  const displayStartAt = row.next_start_at ?? master_start_at;
+  const displayEndAt = row.next_end_at ?? master_end_at;
   const dateTimezone =
     row.master_timezone ?? asStringOrNull(row.timezone) ?? "UTC";
-  const startSplit = splitTimestampInTz(master_start_at, dateTimezone);
-  const endSplit = splitTimestampInTz(master_end_at, dateTimezone);
+  const startSplit = splitTimestampInTz(displayStartAt, dateTimezone);
+  const endSplit = splitTimestampInTz(displayEndAt, dateTimezone);
   return {
     terminalSource,
     id,
@@ -1305,8 +1316,11 @@ export const publicEventViewRowToEvent = (
     // Source of truth for cross-midnight display and ORCH-0850 lifecycle
     // math. When non-null these take precedence over the smart-infer
     // fallback in `computeMasterEndAtUtc`.
-    masterStartAtUtc: master_start_at,
-    masterEndAtUtc: master_end_at,
+    // issue #3281 PR7 — prefer next occurrence for buyer-facing display.
+    masterStartAtUtc: displayStartAt,
+    masterEndAtUtc: displayEndAt,
+    scheduleLine: row.schedule_line ?? null,
+    upcomingCount: row.upcoming_count ?? null,
     timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||

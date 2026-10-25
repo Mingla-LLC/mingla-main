@@ -40,7 +40,19 @@ const COLUMNS = [
   },
   { key: "brand_name", label: "Brand", render: (val) => val || muted("No brand") },
   { key: "event_type", label: "Type", render: (val) => offeringTypeLabel(val) },
-  { key: "start_at", label: "When", sortable: true, render: (val) => (val ? formatDateTime(val) : muted("No date yet")) },
+  {
+    key: "start_at",
+    label: "When",
+    sortable: true,
+    render: (val, row) => {
+      // issue #3281 — prefer server schedule_line / next_start_at over master.
+      const line =
+        typeof row?.schedule_line === "string" ? row.schedule_line.trim() : "";
+      if (line.length > 0) return <span>NEXT: {line}</span>;
+      const when = row?.next_start_at || val;
+      return when ? formatDateTime(when) : muted("No date yet");
+    },
+  },
   {
     key: "state",
     label: "State",
@@ -74,6 +86,8 @@ const CSV = {
     { key: "brand_name", label: "Brand" },
     { key: "event_type", label: "Type" },
     { key: "start_at", label: "Starts" },
+    { key: "schedule_line", label: "Schedule" },
+    { key: "next_start_at", label: "Next start" },
     { key: "state", label: "State" },
     { key: "sold", label: "Sold" },
     { key: "going", label: "Going" },

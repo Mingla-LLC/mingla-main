@@ -105,6 +105,28 @@ export const formatEventDateChip = (fields: ConsumerEventTimeFields): string => 
 };
 
 /**
+ * issue #3281 PR7 — card date label from server scheduleLine when present,
+ * else the compact chip. Prefer nextStartAtUtc over master for the chip.
+ */
+export const formatCardScheduleLabel = (fields: {
+  scheduleLine?: string | null;
+  nextStartAtUtc?: string | null;
+  nextEndAtUtc?: string | null;
+  masterDateUtc?: string | null;
+  masterEndAtUtc?: string | null;
+  timezone?: string | null;
+}): string => {
+  const line =
+    typeof fields.scheduleLine === "string" ? fields.scheduleLine.trim() : "";
+  if (line.length > 0) return `NEXT: ${line}`;
+  return formatEventDateChip({
+    masterDateUtc: fields.nextStartAtUtc ?? fields.masterDateUtc ?? null,
+    masterEndAtUtc: fields.nextEndAtUtc ?? fields.masterEndAtUtc ?? null,
+    timezone: fields.timezone ?? "UTC",
+  });
+};
+
+/**
  * Full date line — renders one of:
  *   - "Date to be announced"                                          (no start)
  *   - "Sat 18 May · 10 PM"                                            (no end)

@@ -36,7 +36,8 @@ import { extractPublicEventLocation } from "../../../packages/offering-rendering
 export const PUBLIC_EVENT_SEED_COLUMNS =
   "id, brand_id, brand_slug, brand_name, brand_profile_photo_url, slug, title, " +
   "description, event_type, cover_media_url, cover_media_type, cover_media_gallery, timezone, " +
-  "master_start_at, master_end_at, master_timezone, city, location_text, " +
+  "master_start_at, master_end_at, master_timezone, " +
+  "next_start_at, next_end_at, upcoming_count, schedule_line, city, location_text, " +
   "is_online, public_theme, theme_color_override, theme_font_override, " +
   "theme_animation_override, currency, pricing_currency, display_price_cents, " +
   "party_types, vibe_tags, music_genres, location_geo, brand_theme_color, " +
@@ -62,6 +63,10 @@ export type PublicEventSeedViewRow = {
   master_start_at: string | null;
   master_end_at: string | null;
   master_timezone: string | null;
+  next_start_at?: string | null;
+  next_end_at?: string | null;
+  upcoming_count?: number | null;
+  schedule_line?: string | null;
   city: string | null;
   location_text: string | null;
   is_online: boolean | null;
@@ -162,8 +167,12 @@ export function mapPublicEventSeedRow(
     // renders whenever cover_media_url is present). PROTECTIVE: do not derive
     // a fake hue — Constitution #9 (SPEC §4.7 binds the 0).
     coverHue: 0,
-    masterDateUtc: row.master_start_at ?? null,
-    masterEndAtUtc: row.master_end_at ?? null,
+    masterDateUtc: row.next_start_at ?? row.master_start_at ?? null,
+    masterEndAtUtc: row.next_end_at ?? row.master_end_at ?? null,
+    nextStartAtUtc: row.next_start_at ?? null,
+    nextEndAtUtc: row.next_end_at ?? null,
+    upcomingCount: row.upcoming_count ?? null,
+    scheduleLine: row.schedule_line ?? null,
     // The view carries no doors-local strings — null degrades the doors labels
     // honestly (rule 9); never derived client-side.
     doorsOpenLocal: null,

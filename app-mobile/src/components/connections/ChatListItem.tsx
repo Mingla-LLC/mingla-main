@@ -204,7 +204,12 @@ function ChatListItemImpl({
     ? formatUpcomingEventTag(nextUpEvent(brandChannel.events, Date.now())?.startAt, new Date(), i18n.language)
       ?? t('connections:tag_event')
     : isEvent
-    ? formatUpcomingEventTag(conversation.eventPublicCard?.masterDateUtc, new Date(), i18n.language)
+    ? formatUpcomingEventTag(
+        conversation.eventPublicCard?.nextStartAtUtc ??
+          conversation.eventPublicCard?.masterDateUtc,
+        new Date(),
+        i18n.language,
+      )
       ?? t('connections:tag_event')
     : conversation.isEnquiry
       ? t('connections:tag_enquiry')

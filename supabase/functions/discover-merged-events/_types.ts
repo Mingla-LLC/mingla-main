@@ -13,6 +13,10 @@ export interface BusinessEventCard {
   coverMediaType: "image" | "video" | "gif" | null;
   coverHue: number;
   masterDateUtc: string | null;
+  nextStartAtUtc?: string | null;
+  nextEndAtUtc?: string | null;
+  upcomingCount?: number | null;
+  scheduleLine?: string | null;
   masterEndAtUtc: string | null;
   doorsOpenLocal: string | null;
   endsAtLocal: string | null;
