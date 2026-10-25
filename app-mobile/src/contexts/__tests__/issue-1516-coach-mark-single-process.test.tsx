@@ -13,8 +13,8 @@
 //
 // The bug: `CoachMarkContext.tsx` carried an ORCH-0635 "legacy tour" normalization
 // branch that fired on EVERY provider mount for any stored `coach_mark_step` in
-// 1..COACH_STEP_COUNT and rewrote it to TOUR_COMPLETED (12), rendering nothing. But
-// 1..11 is exactly the range the LIVE 11-step tour occupies while in progress, so the
+// 1..COACH_STEP_COUNT and rewrote it to the then-current TOUR_COMPLETED (12), rendering
+// nothing. But 1..11 was exactly the range that tour occupied while in progress, so the
 // post-onboarding provider remount (ATT prompt + refreshAllSessions showLoading unmounts
 // the authed subtree) destroyed real in-progress tours. Brand-new users were stamped
 // `coach_mark_step = 12` having never seen a single card.
@@ -28,7 +28,7 @@
 //        fires → the remount must RESUME at step 1 with the overlay up, and must never
 //        write TOUR_COMPLETED. This is the exact live sequence from
 //        `ashfordbysadiq` (45316d80-cc00-49c9-9d69-882338dc016c).
-//   R-3  ONLY 0 / -1 / 12 ARE SENTINELS. The three terminal values stay terminal and
+//   R-3  ONLY 0 / -1 / TOUR_COMPLETED ARE SENTINELS. The three terminal values stay terminal and
 //        inert across a remount (no overlay, no write, no reinterpretation).
 //   R-4  START-RACE HARDENING. A remount that happens BEFORE the start delay elapses
 //        must not restart the countdown — the per-user module-scope anchor carries the
@@ -50,8 +50,10 @@
 //        runtime-skipped, hardware Back from step 5 navigates to step 3.
 // [TEST-MOD-APPROVED #4073] The prior iOS-only harness lines were replaced so
 // this existing suite can exercise the Discover coach flow's Android Back owner.
+// [TEST-MOD-APPROVED #4063] The live tour gained the Purchases step. Keep the
+// resume sweep and terminal guard aligned with the source-derived 12/13 grammar.
 //
-// Verification note (#1516): `coach_mark_step = 12` is unfalsifiable from the database —
+// Verification note (#1516): a terminal `coach_mark_step` is unfalsifiable from the database —
 // the genuine-completion path and the silent-cancel path both write it — and coach-mark
 // analytics go to Mixpanel only. So every assertion below is on the state machine
 // (currentStep / isCoachActive / overlayVisible) and on the observed write log, never on
@@ -363,8 +365,8 @@ async function run() {
   const STEP_COUNT = realSteps.COACH_STEP_COUNT;
   const TOUR_COMPLETED = STEP_COUNT + 1;
 
-  assert.equal(STEP_COUNT, 11, 'guard: the live tour is 11 steps (COACH_STEP_COUNT)');
-  assert.equal(TOUR_COMPLETED, 12, 'guard: TOUR_COMPLETED is 12');
+  assert.equal(STEP_COUNT, 12, 'guard: the live tour is 12 steps (COACH_STEP_COUNT)');
+  assert.equal(TOUR_COMPLETED, 13, 'guard: TOUR_COMPLETED is 13');
 
   const clock = makeClock();
   const warnings = [];
@@ -607,7 +609,7 @@ async function run() {
 
 if (require.main === module) {
   run().then(() => {
-    console.log('issue-1516 coach-mark single-process regression: PASS (R-1 x11 steps, R-2, R-3, R-4, R-5a/b/c, R-6 Android Back)');
+    console.log('issue-1516 coach-mark single-process regression: PASS (R-1 x12 steps, R-2, R-3, R-4, R-5a/b/c, R-6 Android Back)');
   }).catch((e) => {
     console.error('issue-1516 coach-mark single-process regression: FAIL');
     console.error(e && e.message ? e.message : e);

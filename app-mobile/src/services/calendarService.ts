@@ -140,7 +140,7 @@ export interface BusinessEventCalendarRow {
   // mobile uses presence as a hint, but ticket-pdf-fetch handles missing
   // path transparently via lazy backfill.
   ticketPdfPath: string | null;
-  // ORCH-0842: venue block rendered inside TicketPdfSheet.
+  // ORCH-0842: venue data retained for the canonical Purchases detail.
   venue: BusinessEventVenue;
 }
 
@@ -168,6 +168,7 @@ export interface ConsumerRsvpRow {
   eventId: string;
   eventTitle: string;
   eventSlug: string;
+  brandId: string;
   brandName: string;
   masterDateUtc: string | null;
   masterDateEndUtc: string | null;
@@ -702,6 +703,7 @@ export class CalendarService {
         eventId: row.event_id,
         eventTitle: row.event_title ?? "Event",
         eventSlug: row.event_slug ?? "",
+        brandId: row.brand_id,
         brandName: row.brand_name ?? "",
         masterDateUtc: row.master_start_at ?? null,
         masterDateEndUtc: row.master_end_at ?? null,

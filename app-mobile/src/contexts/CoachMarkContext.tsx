@@ -97,7 +97,7 @@ const LOADING_SENTINEL = -2;
 // leaves the row untouched so the next launch reads it cleanly.
 const TOUR_UNAVAILABLE = -3;
 const TOUR_NOT_STARTED = 0;
-// ORCH-1037/1035: tour is 11 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1 (now 12)
+// #4063: tour is 12 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1 (now 13)
 // and derives automatically — no edit needed here when the count changes.
 const TOUR_COMPLETED = COACH_STEP_COUNT + 1;
 const TOUR_SKIPPED = -1;
@@ -113,18 +113,17 @@ const STABLE_EPSILON_PX = 1;
 const STABLE_POLL_MS = 50;
 const STABLE_TIMEOUT_MS = 1200;
 
-// ORCH-1037/1035: scroll-offset steps on Profile — Interests (8) + Your Circle (9) +
-// Account Settings row (10) + Beta Feedback (11). Renumbered from [6,7] when the four
-// new steps were added. This is the ONE hard-coded step literal that does NOT
+// #4063 profile scroll steps — Purchases (8), Interests (9), Circle (10), Account
+// Settings (11), Feedback (12). This is the ONE hard-coded step literal that does NOT
 // self-adjust from COACH_STEP_COUNT — keep it in lockstep with coachMarkSteps.ts.
-const SCROLL_STEPS = new Set([8, 9, 10, 11]);
+const SCROLL_STEPS = new Set([8, 9, 10, 11, 12]);
 
 // ── #1516 [coach mark single process] ───────────────────────────────────────
 // There is exactly ONE coach-mark process. The persisted `profiles.coach_mark_step`
 // grammar is EXACTLY:
 //    -1  TOUR_SKIPPED     — terminal
 //     0  TOUR_NOT_STARTED — pre-start
-//    12  TOUR_COMPLETED   — terminal (= COACH_STEP_COUNT + 1)
+//    13  TOUR_COMPLETED   — terminal (= COACH_STEP_COUNT + 1)
 //   1..COACH_STEP_COUNT   — IN PROGRESS; RESUMED verbatim on the next mount
 // No other value is reinterpreted at runtime. Rows written by older, shorter tours
 // were normalized ONCE in the data layer (migration
@@ -337,7 +336,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   // ── Show overlay when step becomes active ───────────────────────────────
   // #1516: this is ALSO the resume path. On a remount, currentStep transitions
   // LOADING_SENTINEL → the fetched in-progress step, which lands here and re-navigates
-  // to that step's tab and re-shows its overlay (scroll steps 8..11 surface the overlay
+  // to that step's tab and re-shows its overlay (scroll steps 8..12 surface the overlay
   // via scrollToKnownPosition, including its centered fallback). A resumed in-progress
   // step therefore always paints — the tour is never left invisible-but-active.
   useEffect(() => {
@@ -622,7 +621,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
       navigateToTabRef.current('home');
       // ORCH-1257 (Apple 2.1): permissions no longer fire here. They fire EARLY —
       // in the onboarding onComplete callback (app/index.tsx), before the coach
-      // tour — so the ATT prompt appears within seconds, not after this 11-step
+      // tour — so the ATT prompt appears within seconds, not after this 12-step
       // tour. Firing here silently dropped the prompt when the iPad was
       // backgrounded mid-tour; the ATT gate is now single-flight + AppState-gated.
       return;

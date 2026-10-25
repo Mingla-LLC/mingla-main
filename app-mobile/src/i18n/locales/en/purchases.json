@@ -1,0 +1,268 @@
+{
+  "card": {
+    "title": "Purchases",
+    "seeAll": "See all",
+    "moreUpcoming_one": "{{count}} more upcoming · {{names}}",
+    "moreUpcoming_other": "{{count}} more upcoming · {{names}}",
+    "empty": "Tickets you buy on Mingla show up here.",
+    "dateTbd": "Date to be confirmed",
+    "tonightAt": "Tonight · {{time}}",
+    "upcomingCount_one": "{{count}} upcoming",
+    "upcomingCount_other": "{{count}} upcoming"
+  },
+  "screen": {
+    "title": "Purchases",
+    "eyebrow": "Your Mingla",
+    "intro": "Tickets, RSVPs, bookings, and receipts—one reliable place for everything that's yours.",
+    "signInTitle": "Sign in to see your purchases",
+    "signInBody": "Your purchases are private and tied to your verified account.",
+    "loading": "Gathering your purchases…",
+    "partialError": "Some purchase types couldn't refresh. Showing everything that loaded.",
+    "itemCount_one": "{{count}} item",
+    "itemCount_other": "{{count}} items",
+    "back": "Go back"
+  },
+  "tab": { "upcoming": "Upcoming", "past": "Past" },
+  "badge": { "onMingla": "On Mingla" },
+  "pill": {
+    "tickets_one": "{{count}} ticket",
+    "tickets_other": "{{count}} tickets",
+    "rsvp": "RSVP · Going",
+    "rsvpPending": "RSVP · Pending",
+    "reservation": "Reservation",
+    "guestList": "Guest list",
+    "paidOf": "{{paid}} of {{total}} paid",
+    "people_one": "{{count}} person",
+    "people_other": "{{count}} people"
+  },
+  "link": {
+    "viewTicket": "View ticket",
+    "viewPass": "View pass",
+    "viewBooking": "View booking",
+    "receipt": "Receipt",
+    "details": "Details"
+  },
+  "past": {
+    "attended": "Attended",
+    "refunded": "Refunded {{amount}}",
+    "partialRefund": "Refunded {{amount}} of {{paid}}",
+    "cancelled": "Cancelled",
+    "cancelledByHost": "cancelled by host",
+    "youCancelled": "you cancelled",
+    "foodOrder": "food order"
+  },
+  "row": {
+    "from": "from {{name}}",
+    "boughtAtDoor": "bought at the door"
+  },
+  "empty": {
+    "upcoming": {
+      "title": "Nothing coming up",
+      "body": "Tickets you buy on Mingla show up here."
+    },
+    "past": {
+      "title": "Nothing here yet",
+      "body": "Events you've been to show up here."
+    }
+  },
+  "error": {
+    "title": "We couldn't load your purchases",
+    "body": "Check your connection and try again.",
+    "retry": "Try again"
+  },
+  "missing": {
+    "rowTitle": "Missing a ticket?",
+    "title": "Missing a ticket?",
+    "body": "Tickets show up when this account has confirmed the email or mobile number they were bought with.",
+    "confirmedHeading": "Confirmed on this account",
+    "noneConfirmed": "Nothing confirmed yet.",
+    "differentHeading": "Bought with a different email or number?",
+    "cta": "Add an email or number",
+    "ctaHint": "We'll send a code to confirm it's yours, then check for tickets straight away.",
+    "sheetTitle": "Add an email or number",
+    "fieldPlaceholder": "Email or mobile number",
+    "sendCode": "Send code",
+    "codeTitle": "Enter the code",
+    "codeSentTo": "Sent to {{value}}",
+    "verify": "Verify",
+    "resend": "Send a new code",
+    "resendIn": "Resend in {{seconds}}s",
+    "invalidValue": "Enter an email address or a mobile number with its country code.",
+    "badCode": "That code didn't work. Try again.",
+    "rateLimited": "Too many attempts. Try again in a few minutes.",
+    "alreadyOtherAccount": "That email or number is already confirmed on another Mingla account.",
+    "limitReached": "You've added the most emails and numbers this account can hold.",
+    "alreadyConfirmed": "That's already confirmed on this account.",
+    "foundNothing": "Confirmed. No tickets were bought with {{value}} yet.",
+    "eyebrow": "Find your purchase",
+    "email": "Email",
+    "mobile": "Mobile",
+    "foundCount_one": "{{count}} purchase found. It's now in Purchases.",
+    "foundCount_other": "{{count}} purchases found. They're now in Purchases.",
+    "verifiedNoPurchase": "That contact is verified. We didn't find another purchase yet."
+  },
+  "ticket": {
+    "timeLine": "{{when}} ({{zone}}) · {{venue}}",
+    "openInMaps": "Open in Maps",
+    "onlineEvent": "Online event",
+    "openLink": "Open link",
+    "yourTickets": "Your tickets",
+    "pageOf": "{{index}} of {{total}}",
+    "status": {
+      "valid": "Valid",
+      "used": "Checked in",
+      "refunded": "Refunded",
+      "void": "Cancelled",
+      "sent": "Sent to {{name}}",
+      "sentOpened": "Sent to {{name}} · opened"
+    },
+    "showAtDoor": "Show at the door",
+    "showAtVenue": "Show this at the venue",
+    "manageBooking": "Manage booking",
+    "manageRsvp": "Change or cancel this RSVP",
+    "bookingPass": "Your booking pass",
+    "bookingPassHint": "Show this code at the venue when you arrive.",
+    "bookingQrLabel": "Reservation QR code for {{venue}}",
+    "bookingNotCancellable": "This booking can no longer be cancelled in the app.",
+    "cancelBookingTitle": "Cancel this booking?",
+    "cancelBookingBody": "Cancel your booking at {{venue}}?",
+    "keepBooking": "Keep booking",
+    "cancelBooking": "Cancel booking",
+    "bookingCancelled": "Your booking was cancelled.",
+    "venueFallback": "the venue",
+    "free": "Free",
+    "receipt": "Receipt",
+    "receiptLine": "{{qty}}× {{name}}",
+    "discount": "Discount",
+    "discountLine": "{{name}}",
+    "feesTax": "Fees & tax",
+    "tip": "Tip",
+    "paid": "Paid",
+    "orderLine": "Order {{ref}} · {{card}} · {{date}}",
+    "orderLineNoCard": "Order {{ref}} · {{date}}",
+    "groupChat": "Group chat",
+    "addToCalendar": "Add to calendar",
+    "downloadPdf": "Download PDF",
+    "preparingPdf": "Preparing PDF…",
+    "calendarAdded": "Added to your calendar",
+    "calendarUpdated": "Updated in your calendar",
+    "calendarPermission": "Allow calendar access to add this event.",
+    "calendarUnavailable": "We couldn't find a calendar you can edit.",
+    "actionFailed": "That didn't work. Try again.",
+    "pdfUnavailable": "This purchase doesn't have a ticket PDF yet.",
+    "follow": "Follow {{brand}}",
+    "following": "Following {{brand}}",
+    "refundsHelp": "Refunds and help",
+    "loadError": "We couldn't load this ticket.",
+    "loadPending": "Getting your ticket ready…",
+    "loading": "Loading your purchase…",
+    "loadSafe": "Your purchase is safe. Try again to check for the ticket code.",
+    "notFound": "This ticket isn't on your account.",
+    "presentCode": "Present the matching code at the door. Each pass is unique.",
+    "readyToScan": "Ready to scan",
+    "admission": "Admission",
+    "ticket": "Ticket",
+    "readyInPurchases": "Ready in Purchases",
+    "details": {
+      "status": "Status",
+      "for": "For",
+      "when": "When",
+      "where": "Where",
+      "total": "Total",
+      "refund": "Refund",
+      "reference": "Reference"
+    }
+  },
+  "door": {
+    "title": "{{title}}",
+    "subtitle": "{{when}} · {{venue}}",
+    "ticketLine": "{{ticketType}} · Ticket {{index}} of {{total}}",
+    "swipeNext": "Swipe for ticket {{next}} →",
+    "brightness": "Brightness is turned up while this is open.",
+    "close": "Close",
+    "awake": "This screen will stay awake while the pass is open.",
+    "guest": "Guest",
+    "admission": "Admission"
+  },
+  "found": {
+    "title": {
+      "ticket_one": "Your ticket is here.",
+      "ticket_other": "Your tickets are here.",
+      "pass": "Your pass is here.",
+      "booking": "Your booking is here.",
+      "receipt": "Your receipt is here."
+    },
+    "cta": {
+      "ticket_one": "See my ticket",
+      "ticket_other": "See my tickets",
+      "pass": "See my pass",
+      "booking": "See my booking",
+      "receipt": "See my receipt",
+      "many": "See my purchases"
+    },
+    "footer": "They're always in Profile › Purchases.",
+    "sentBy": "Sent by {{name}}",
+    "atDoor": "bought at the door",
+    "itemCount": "{{count}} {{noun}}"
+  },
+  "nothing": {
+    "title": "No tickets yet",
+    "checked": "We checked {{email}} and the number ending {{last4}}.",
+    "checkedEmailOnly": "We checked {{email}}.",
+    "checkedPhoneOnly": "We checked the number ending {{last4}}.",
+    "differentEmail": "Bought with a different email?",
+    "addEmail": "Add that email",
+    "skip": "Or skip for now. You can do this any time in Profile › Purchases."
+  },
+  "toast": {
+    "title": {
+      "ticket_one": "Your ticket is here",
+      "ticket_other": "Your tickets are here",
+      "pass": "Your pass is here",
+      "booking": "Your booking is here",
+      "receipt": "Your receipt is here"
+    },
+    "body": "{{summary}} · {{title}}",
+    "view": "View"
+  },
+  "finishSetup": {
+    "title": "Finish setting up",
+    "body": "Tune your deck, later",
+    "homeTitle": "Finish setting up",
+    "homeBody": "A few quick picks and your deck is ready.",
+    "homeCta": "Let's go"
+  },
+  "coach": {
+    "title": "Your purchases",
+    "body": "Every ticket, pass and booking you buy lives here, with the QR code for the door.",
+    "button": "Got it"
+  },
+  "nativeCheckout": {
+    "sentTitle": "Ticket sent to {{firstName}}.",
+    "sentTitleNoName": "Ticket sent.",
+    "sentBody": "We emailed and texted {{firstName}} a link to the ticket.",
+    "sentBodyNoName": "We emailed and texted a link to the ticket.",
+    "done": "Done"
+  },
+  "send": {
+    "cta": "Send to a friend",
+    "notSent": "Ticket {{index}} of {{total}} · Not sent yet",
+    "sheetTitle": "Send ticket {{index}}",
+    "namePlaceholder": "Their first name",
+    "contactPlaceholder": "Mobile or email",
+    "explainer": "Once {{name}} opens it, it's theirs and leaves your account.",
+    "submit": "Send ticket",
+    "sending": "Sending…",
+    "with": "With {{name}}",
+    "takeBackHint": "Until {{name}} opens it, you can take it back.",
+    "takeBack": "Take it back",
+    "takeBackConfirm": "Take ticket {{index}} back from {{name}}? Their link stops working.",
+    "takeBackYes": "Take it back",
+    "takeBackNo": "Keep it with {{name}}",
+    "claimedNote": "{{name}} has this ticket now.",
+    "errorSelf": "That's your own email or number.",
+    "errorInvalid": "Enter a mobile number with its country code, or an email.",
+    "errorGeneric": "We couldn't send the ticket. Try again.",
+    "errorTooLate": "{{name}} already opened this ticket."
+  }
+}

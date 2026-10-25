@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports, import/first, react/display-name */
+// #4063 routes public purchase completion through the canonical Explorer purchase surface.
 import React from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -397,16 +398,18 @@ describe("issue #3859 — Explorer native public-page parity", () => {
     expect(experience).toContain("router.push(`/b/${seed.brandSlug}` as never)");
   });
 
-  test("ticket PDF error recovery stays inside Explorer instead of opening Host web", () => {
-    const ticketSheet = read("src/components/activity/TicketPdfSheet.tsx");
+  test("calendar tickets route into Explorer Purchases instead of opening Host web", () => {
+    const calendarRow = read("src/components/activity/BusinessEventCalendarRow.tsx");
     const calendarService = read("src/services/calendarService.ts");
 
     expect(calendarService).toContain('eventSlug: event?.slug ?? ""');
     expect(calendarService).toContain("eventType: event?.event_type ?? null");
-    expect(ticketSheet).toContain("resolveExplorerCalendarOrderPath(entry");
-    expect(ticketSheet).toContain("router.push(nativeBuyerPath as never)");
-    expect(ticketSheet).toContain("View in Mingla");
-    expect(ticketSheet).not.toContain("openBrowserAsync(entry.publicBuyerUrl)");
-    expect(ticketSheet).not.toContain("View on web");
+    // [TEST-MOD-APPROVED #4063] The destination is unchanged, but the path
+    // segment is now encoded before the optional ticket query is appended.
+    expect(calendarRow).toContain(
+      "`/purchases/order/${encodeURIComponent(entry.orderId)}${suffix}`",
+    );
+    expect(calendarRow).not.toContain("TicketPdfSheet");
+    expect(calendarRow).not.toContain("openBrowserAsync(entry.publicBuyerUrl)");
   });
 });

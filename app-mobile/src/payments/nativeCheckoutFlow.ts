@@ -191,6 +191,7 @@ type CheckoutCreateResponse =
       kind: "free_completed";
       orderId: string;
       buyerStatusToken?: string;
+      attachedToAccount?: boolean;
     }
   | {
       kind: "requires_payment";
@@ -254,7 +255,7 @@ const PAYSTACK_POLL_MAX_ATTEMPTS = 17;
  */
 type PaystackPollOutcome =
   /** The order exists. The only success. */
-  | { kind: "finalized"; orderId: string }
+  | { kind: "finalized"; orderId: string; attachedToAccount?: boolean }
   /** Money/order exists, but issued tickets are not yet server-visible. */
   | { kind: "order_pending" }
   /** The server reached a terminal verdict; `code` is its bounded token. */
@@ -290,7 +291,11 @@ async function readCheckoutStatusOnce(
   let data:
     | {
         status?: string;
-        order: { orderId: string; tickets?: unknown[] } | null;
+        order: {
+          orderId: string;
+          tickets?: unknown[];
+          attachedToAccount?: boolean;
+        } | null;
         error?: string;
       }
     | null
@@ -302,7 +307,11 @@ async function readCheckoutStatusOnce(
     // the server was sending.
     ({ data, error } = await supabase.functions.invoke<{
       status?: string;
-      order: { orderId: string; tickets?: unknown[] } | null;
+      order: {
+        orderId: string;
+        tickets?: unknown[];
+        attachedToAccount?: boolean;
+      } | null;
       error?: string;
     }>("ticket-checkout-status", {
       body: { checkoutSessionId, buyerStatusToken },
@@ -317,12 +326,19 @@ async function readCheckoutStatusOnce(
   // A finalized order OUTRANKS any status string: if the order exists, the
   // money moved and the tickets are real, whatever else the body says.
   const orderId = data?.order?.orderId;
+  const attachedToAccount = data?.order?.attachedToAccount;
   if (orderId) {
     if (
       !requireIssuedTicket ||
       (Array.isArray(data?.order?.tickets) && data.order.tickets.length > 0)
     ) {
-      return { kind: "finalized", orderId };
+      return {
+        kind: "finalized",
+        orderId,
+        ...(typeof attachedToAccount === "boolean"
+          ? { attachedToAccount }
+          : {}),
+      };
     }
     return { kind: "order_pending" };
   }
@@ -587,6 +603,7 @@ async function followPaystackHandoff(
     return {
       outcome: "succeeded",
       orderId: poll.orderId,
+      attachedToAccount: poll.attachedToAccount,
       ...(includeProvider ? { provider: "paystack" as const } : {}),
     };
   }
@@ -979,6 +996,9 @@ export const useNativeCheckoutFlow = (): ((
       return {
         outcome: "succeeded",
         orderId: data.orderId,
+        ...(typeof data.attachedToAccount === "boolean"
+          ? { attachedToAccount: data.attachedToAccount }
+          : {}),
         ...(input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION
           ? { provider: "free" as const }
           : {}),

@@ -40,6 +40,14 @@ export type Destination =
   | { kind: 'profile'; userId: string }
   | { kind: 'calendarEntry'; entryId: string }
   | { kind: 'review'; experienceId: string }
+  | {
+      kind: 'purchase';
+      purchaseKind: 'order' | 'rsvp' | 'reservation' | 'venue_order';
+      purchaseId: string;
+      door: boolean;
+      ticketId?: string;
+    }
+  | { kind: 'claim'; code: string }
   | { kind: 'pairedDeck' } // mingla://discover?paired=true
   | {
       kind: 'page';
@@ -65,6 +73,8 @@ export interface NavigationHandlers {
   setViewingFriendProfileId?: (id: string) => void;
   /** Forward deep link params to the target page (tab, conversationId, etc.) */
   setDeepLinkParams?: (params: Record<string, string>) => void;
+  openRouterPath?: (path: string) => void;
+  handleClaimCode?: (code: string) => void;
 }
 
 // ── Parser ───────────────────────────────────────────────────────────────────
@@ -80,6 +90,10 @@ export function parseDeepLink(url: string): Destination | null {
       if (/^https?:\/\//i.test(url)) {
         const parsed = new URL(url);
         return `${parsed.pathname.replace(/^\/+/, '')}${parsed.search}`;
+      }
+      if (/^com\.mingla\.app\.v2:\/\//i.test(url)) {
+        const parsed = new URL(url);
+        return `${parsed.host}${parsed.pathname}${parsed.search}`;
       }
       return url.replace(/^mingla:\/\//, '');
     })();
@@ -168,6 +182,29 @@ export function parseDeepLink(url: string): Destination | null {
         // to avoid. This matches what usemingla.com/orders/* now tells someone
         // without the app — "your ticket is in the Mingla app".
         return { kind: 'page', page: 'likes', params: { tab: 'calendar' } };
+
+      case 'purchases': {
+        const purchaseKind = pathSegments[1];
+        const purchaseId = pathSegments[2];
+        if (
+          !purchaseId ||
+          !['order', 'rsvp', 'reservation', 'venue_order'].includes(purchaseKind)
+        ) return null;
+        return {
+          kind: 'purchase',
+          purchaseKind: purchaseKind as 'order' | 'rsvp' | 'reservation' | 'venue_order',
+          purchaseId,
+          door: params.door === '1',
+          ...(params.ticket ? { ticketId: params.ticket } : {}),
+        };
+      }
+
+      case 'c': {
+        const code = pathSegments[1]?.trim().toUpperCase();
+        return code && /^[0-9A-Z]{10}$/.test(code)
+          ? { kind: 'claim', code }
+          : null;
+      }
 
       case 'calendar': {
         const entryId = pathSegments[1];
@@ -392,6 +429,21 @@ export function executeDeepLink(
       // forward (no silent drop).
       handlers.setDeepLinkParams?.({ tab: 'calendar', experienceId: dest.experienceId });
       handlers.setCurrentPage('likes');
+      break;
+
+    case 'purchase': {
+      const suffix = new URLSearchParams();
+      if (dest.door) suffix.set('door', '1');
+      if (dest.ticketId) suffix.set('ticket', dest.ticketId);
+      const query = suffix.toString();
+      handlers.openRouterPath?.(
+        `/purchases/${dest.purchaseKind}/${encodeURIComponent(dest.purchaseId)}${query ? `?${query}` : ''}`,
+      );
+      break;
+    }
+
+    case 'claim':
+      handlers.handleClaimCode?.(dest.code);
       break;
 
     case 'pairedDeck':

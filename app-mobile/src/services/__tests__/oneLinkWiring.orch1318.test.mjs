@@ -128,7 +128,14 @@ test('B1: index.tsx registers the sink with initializeAppsFlyer and triggers And
   assert.ok(initIdx !== -1 && sinkIdx > initIdx && sinkIdx - initIdx < 600,
     'sink must be wired in the same effect as initializeAppsFlyer');
   assert.match(indexTsx, /triggerAndroidDeferredResolution\(\)/, 'must trigger Android deferred resolution');
-  assert.match(indexTsx, /import \{ router \} from "expo-router"/, 'must import the router singleton');
+  // [TEST-MOD-APPROVED #4063] The ticket-first entrypoint also consumes route
+  // params from expo-router. `router` must remain one of the named singleton
+  // imports; it no longer needs to be the only name in that import statement.
+  assert.match(
+    indexTsx,
+    /import\s*\{[^}]*\brouter\b[^}]*\}\s*from\s*"expo-router"/,
+    'must import the router singleton',
+  );
 });
 
 // ── B2: ATT ordering preserved — ensureAttRequested precedes startAppsFlyer ───

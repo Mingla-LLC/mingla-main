@@ -17,8 +17,10 @@
  * (T-17/T-18/T-19 on a simulator and a physical iPhone).
  *
  * FAILS ON REVERT: restore `setCartVisible(false); void handleBuy(payload);` in
- * any of the three screens and T-10 goes red for that screen. Restore
- * `enablePanDownToClose`'s default and T-11 goes red.
+ * any of the three screens and T-10 goes red for that screen. #4063 keeps the
+ * sheet alive beyond success too, so the buyer sees the terminal confirmation
+ * until explicitly closing it. Restore `enablePanDownToClose`'s default and
+ * T-11 goes red.
  */
 
 import { readFileSync } from "node:fs";
@@ -47,6 +49,13 @@ const handleCartCheckoutBody = (source: string): string => {
   return source.slice(start, end === -1 ? start + 900 : end);
 };
 
+/** The body of `handleCartCancel` in one screen's source. */
+const handleCartCancelBody = (source: string): string => {
+  const start = source.indexOf("const handleCartCancel = useCallback(");
+  if (start === -1) throw new Error("handleCartCancel not found");
+  return source.slice(start, start + 700);
+};
+
 // ---------------------------------------------------------------------------
 // T-10 — the sheet survives the tap, on all three screens.
 // ---------------------------------------------------------------------------
@@ -60,18 +69,18 @@ describe("#2265 T-10 — the cart sheet is NOT dismissed before the work starts"
       expect(body).not.toMatch(/void handleBuy\(payload\)/);
     });
 
-    it(`${name}: nothing dismisses the sheet before that await`, () => {
+    it(`${name}: nothing dismisses the sheet during checkout`, () => {
       const awaitAt = body.indexOf("await handleBuy(payload)");
-      const dismissAt = body.indexOf("setCartVisible(false)");
       expect(awaitAt).toBeGreaterThan(-1);
-      expect(dismissAt).toBeGreaterThan(-1);
-      // Dismissal strictly AFTER the outcome. This is the whole of #2265.
-      expect(dismissAt).toBeGreaterThan(awaitAt);
+      expect(body).not.toContain("setCartVisible(false)");
     });
 
-    it(`${name}: the sheet is dismissed ONLY on success (it stays open on failure)`, () => {
+    it(`${name}: success stays visible as a terminal outcome until explicit Close`, () => {
+      // [TEST-MOD-APPROVED #4063] Success no longer dismisses the cart. It
+      // renders the terminal confirmation in the same sheet and defers the
+      // Purchases landing until the buyer explicitly closes it.
       expect(body).toMatch(
-        /result\.outcome === "succeeded"[\s\S]{0,120}setCartVisible\(false\)/,
+        /result\.outcome === "succeeded"[\s\S]{0,900}terminalSuccessCloseRef\.current = [\s\S]{0,900}setCheckoutTerminalOutcome\(result\)/,
       );
     });
 
@@ -100,19 +109,13 @@ describe("#2265 T-10 — the cart sheet is NOT dismissed before the work starts"
     });
   }
 
-  it("Event and Experience navigate only AFTER the sheet is gone (SC-11)", () => {
-    for (const name of ["Event", "Experience"] as const) {
-      const source = SCREENS.find(([n]) => n === name)![1];
-      const body = handleCartCheckoutBody(source);
+  it("the deferred success landing runs only AFTER the sheet is gone (SC-11)", () => {
+    for (const [, source] of SCREENS) {
+      const body = handleCartCancelBody(source);
       const dismissAt = body.indexOf("setCartVisible(false)");
-      const backAt = body.indexOf("onBack()");
+      const landingAt = body.indexOf("deferredSuccessClose?.()");
       expect(dismissAt).toBeGreaterThan(-1);
-      expect(backAt).toBeGreaterThan(dismissAt);
-      // …and onBack no longer fires from inside handleBuy's success arm, where
-      // it would have navigated out from under a still-visible sheet.
-      const buyStart = source.indexOf("const handleBuy = useCallback(");
-      const buyEnd = source.indexOf("const handleCartCheckout", buyStart);
-      expect(source.slice(buyStart, buyEnd)).not.toMatch(/\n\s+onBack\(\);/);
+      expect(landingAt).toBeGreaterThan(dismissAt);
     }
   });
 });
