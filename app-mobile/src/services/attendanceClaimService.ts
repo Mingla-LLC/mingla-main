@@ -196,7 +196,6 @@ const TTL_MS = 24 * 60 * 60 * 1000;
 const CLAIM_LINK_KEY = "mingla.claimLink.pending.v1";
 const CLAIM_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CLAIM_LINK_CODE = /^[0-9A-Za-z]{10}$/;
-const CLAIM_LINK_RESOLVE_TIMEOUT_MS = 2_000;
 
 type StoredClaimLink = { code: string; savedAt: number };
 
@@ -428,14 +427,10 @@ export async function fetchPendingClaimPrefill(
 export async function resolvePendingClaimCode(
   code: string,
 ): Promise<ClaimLinkResolution> {
-  const invocation = supabase.functions.invoke("claim-link", {
+  const response = await supabase.functions.invoke("claim-link", {
     body: { op: "resolve", code },
   });
-  const timeout = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), CLAIM_LINK_RESOLVE_TIMEOUT_MS);
-  });
-  const response = await Promise.race([invocation, timeout]);
-  if (response === null || response.error) return { status: "unavailable" };
+  if (response.error) return { status: "unavailable" };
   const payload = response.data as Record<string, unknown> | null;
   if (
     payload?.ok === true && payload.status === "redirect" &&
