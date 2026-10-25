@@ -169,10 +169,15 @@ export function mapPublicEventSeedRow(
     coverHue: 0,
     masterDateUtc: row.next_start_at ?? row.master_start_at ?? null,
     masterEndAtUtc: row.next_end_at ?? row.master_end_at ?? null,
-    nextStartAtUtc: row.next_start_at ?? null,
-    nextEndAtUtc: row.next_end_at ?? null,
-    upcomingCount: row.upcoming_count ?? null,
-    scheduleLine: row.schedule_line ?? null,
+    // #3281 — omit null schedule keys so sealed §4.7 exact maps (ORCH-1342) stay stable.
+    ...(row.next_start_at != null || row.next_end_at != null || row.upcoming_count != null || row.schedule_line != null
+      ? {
+          nextStartAtUtc: row.next_start_at ?? null,
+          nextEndAtUtc: row.next_end_at ?? null,
+          upcomingCount: row.upcoming_count ?? null,
+          scheduleLine: row.schedule_line ?? null,
+        }
+      : {}),
     // The view carries no doors-local strings — null degrades the doors labels
     // honestly (rule 9); never derived client-side.
     doorsOpenLocal: null,
