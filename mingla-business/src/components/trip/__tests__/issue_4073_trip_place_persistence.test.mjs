@@ -7,6 +7,7 @@ const basics = await readFile(new URL("components/trip/TripCreatorStep1Basics.ts
 const wizard = await readFile(new URL("components/trip/TripCreatorWizard.tsx", root), "utf8");
 const edit = await readFile(new URL("components/trip/EditPublishedTripScreen.tsx", root), "utf8");
 const service = await readFile(new URL("services/tripsService.ts", root), "utf8");
+const publicService = await readFile(new URL("services/publicEventsService.ts", root), "utf8");
 
 const fields = ["destinationCity", "destinationCountryCode", "departureCity", "departureCountryCode"];
 
@@ -16,6 +17,7 @@ test("#4073 city and country-code identity persists through draft, publish, edit
     assert.match(wizard, new RegExp(field), `wizard missing ${field}`);
     assert.match(edit, new RegExp(field), `published edit missing ${field}`);
     assert.match(service, new RegExp(field), `read service missing ${field}`);
+    assert.match(publicService, new RegExp(field), `public read service missing ${field}`);
   }
 });
 test("#4073 free-text edits clear stale structured place identity", () => {
