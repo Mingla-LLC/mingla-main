@@ -167,6 +167,22 @@ BEGIN
   );
 
   v_result := public.pg_ticket_offer_to_friend(
+    v_extra, 'Phone Friend', NULL, '+12025558003'
+  );
+  PERFORM pg_temp.i4063_send_assert(
+    v_result = jsonb_build_object('ok', true, 'state', 'offered')
+      AND EXISTS (
+        SELECT 1 FROM public.notification_outbox
+         WHERE category_key = 'buyer_ticket_sent'
+           AND contact = '+12025558003'
+           AND channel = 'sms'
+           AND country_code = 'US'
+      ),
+    'T5-14 an SMS ticket offer records the recipient country for delivery'
+  );
+  PERFORM public.pg_ticket_take_back(v_extra);
+
+  v_result := public.pg_ticket_offer_to_friend(
     v_extra, 'Tolu Friend', 'friend-send-4063@example.test', NULL
   );
   SELECT code INTO v_code FROM public.claim_links

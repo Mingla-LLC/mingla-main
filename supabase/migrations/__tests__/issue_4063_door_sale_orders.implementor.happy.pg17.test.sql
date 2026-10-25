@@ -118,8 +118,9 @@ BEGIN
     (SELECT count(*) FROM public.notification_outbox n
       WHERE n.idempotency_key = 'buyer_door_receipt:' || v_order::text || ':sms'
         AND n.category_key = 'buyer_door_receipt'
-        AND n.contact = '+12025554063') = 1,
-    'T5-1 the SMS receipt outbox row is durable and contact-targeted'
+        AND n.contact = '+12025554063'
+        AND n.country_code = 'US') = 1,
+    'T5-1 the SMS receipt outbox row is durable, contact-targeted and country-aware'
   );
 
   v_replay := public.biz_door_sale_record(
