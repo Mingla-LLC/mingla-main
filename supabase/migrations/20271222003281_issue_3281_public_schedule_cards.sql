@@ -59,10 +59,11 @@ BEGIN
 END;
 $fn$;
 
-REVOKE ALL ON FUNCTION public.issue_3281_event_schedule(uuid)
-  FROM PUBLIC, anon, authenticated;
+-- Same grant shape as issue_2489_* / issue_3827_*: the public view evaluates
+-- the helper under the querying role even with security_invoker=false.
+REVOKE ALL ON FUNCTION public.issue_3281_event_schedule(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.issue_3281_event_schedule(uuid)
-  TO service_role;
+  TO anon, authenticated, service_role;
 
 COMMENT ON FUNCTION public.issue_3281_event_schedule(uuid) IS
   'issue #3281 many-dates — next upcoming occurrence + scheduleLine for cards/bundle.';
