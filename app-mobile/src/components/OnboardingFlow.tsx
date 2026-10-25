@@ -1071,6 +1071,7 @@ const OnboardingFlow = ({
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [prefsSaveError, setPrefsSaveError] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
+  const [birthdayPickerTouched, setBirthdayPickerTouched] = useState(false)
   // saving state removed — save handlers (Path A/B) deleted
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
@@ -1099,6 +1100,7 @@ const OnboardingFlow = ({
   useEffect(() => {
     if (navState.subStep !== 'details') {
       setShowDatePicker(false)
+      setBirthdayPickerTouched(false)
     }
   }, [navState.subStep])
 
@@ -1426,50 +1428,6 @@ const OnboardingFlow = ({
     return /^\+[1-9]\d{1,14}$/.test(e164)
   }, [buildE164])
 
-  const completeTicketFirst = useCallback(async () => {
-    if (!user?.id) return
-    const setupDeferredAt = new Date().toISOString()
-    const { error } = await supabase.from('profiles').update({
-      has_completed_onboarding: true,
-      onboarding_step: 0,
-      setup_deferred_at: setupDeferredAt,
-      preferred_language: data.userPreferredLanguage ?? getDefaultLanguageCode(),
-      country: data.phoneCountryCode ?? null,
-    }).eq('id', user.id)
-    if (error) {
-      logger.onboarding('ticket-first completion failed', { error: error.message })
-      Alert.alert('We could not finish signing you in', 'Please try again. Your ticket is still safe.')
-      return
-    }
-
-    setProfile(profile ? {
-      ...profile,
-      has_completed_onboarding: true,
-      onboarding_step: 0,
-      setup_deferred_at: setupDeferredAt,
-      preferred_language: data.userPreferredLanguage ?? getDefaultLanguageCode(),
-      country: data.phoneCountryCode ?? null,
-    } : profile)
-    await clearOnboardingData()
-    logAppsFlyerEvent('af_tutorial_completion', {
-      af_success: true,
-      af_content: 'ticket_first',
-    })
-    mixpanelService.track('onboarding_ticket_first_completed', {
-      found_count: foundItems.length,
-      kind: foundItems.length === 1 ? foundItems[0].kind : 'many',
-    })
-
-    const item = foundItems.length === 1 ? foundItems[0] : null
-    const route = item && (
-      item.routeKind === 'order' || item.routeKind === 'rsvp' ||
-      item.routeKind === 'reservation' || item.routeKind === 'venue_order'
-    )
-      ? `/purchases/${item.routeKind}/${encodeURIComponent(item.routeId)}`
-      : '/purchases'
-    onComplete({ landing: { route } })
-  }, [data.phoneCountryCode, data.userPreferredLanguage, foundItems, onComplete, profile, setProfile, user?.id])
-
   // ─── Send OTP ───
   const handleSendOtp = useCallback(async () => {
     logger.action('Send OTP pressed')
@@ -1627,11 +1585,10 @@ const OnboardingFlow = ({
           return
         }
         if (onboardingMode === 'ticket_first') {
-          if (pendingClaim !== null) {
-            goToSubStep('tickets_found')
-          } else {
-            void completeTicketFirst()
-          }
+          // Purchase-first changes the entry point, not the rest of onboarding.
+          // Even when the purchase is already linked (no pending claim), show
+          // the reassurance screen and then continue the normal setup journey.
+          goToSubStep('tickets_found')
           return
         }
         setTimeout(() => goNext(), 800) // pause for success animation
@@ -1665,9 +1622,7 @@ const OnboardingFlow = ({
       otpAttempts,
       goToSubStep,
       data.phoneCountryCode,
-      completeTicketFirst,
       onboardingMode,
-      pendingClaim,
       user?.id,
     ]
   )
@@ -2360,12 +2315,12 @@ const OnboardingFlow = ({
     // Skip OTP step when navigating back if phone is already verified
     // (user shouldn't land on "Enter the code" screen when already verified)
     if (data.phoneVerified && navState.subStep === 'gender_identity') {
-      goToSubStep('phone')
+      goToSubStep(onboardingMode === 'ticket_first' ? 'tickets_found' : 'phone')
       return
     }
 
     goBack()
-  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep])
+  }, [goBack, goToSubStep, data.phoneVerified, navState.subStep, onboardingMode])
 
   const handleBackToWelcome = useCallback(async () => {
     logger.action('Back to welcome — signing out')
@@ -2860,6 +2815,7 @@ const OnboardingFlow = ({
               // The ref is now written ONLY by onChange, so Done on an untouched wheel commits
               // nothing. Re-opening when a birthday is already set keeps it: Done just closes.
               pendingBirthdayRef.current = null
+              setBirthdayPickerTouched(false)
               setShowDatePicker(true)
             }}
           >
@@ -2895,16 +2851,25 @@ const OnboardingFlow = ({
                     }
                     setShowDatePicker(false)
                   }}
+                  disabled={!data.userBirthday && !birthdayPickerTouched}
                   accessibilityRole="button"
                   accessibilityLabel={t('common:done')}
+                  accessibilityState={{ disabled: !data.userBirthday && !birthdayPickerTouched }}
                 >
                   <Text style={{
                     ...typography.md,
                     fontWeight: fontWeights.semibold,
-                    color: colors.primary[600],
+                    color: !data.userBirthday && !birthdayPickerTouched
+                      ? colors.text.tertiary
+                      : colors.primary[600],
                   }}>{t('common:done')}</Text>
                 </Pressable>
               )}
+              {Platform.OS === 'ios' && !data.userBirthday && !birthdayPickerTouched ? (
+                <Text style={styles.fieldHelperText}>
+                  {t('onboarding:details.dob_picker_helper')}
+                </Text>
+              ) : null}
               {/* [#2322] themeVariant/textColor are LOAD-BEARING — do not delete them as
                   "redundant on a light-only app". Installed builds do not gain the native
                   withForcedLightAppearance repair until a store update, and a future config-plugin
@@ -2929,7 +2894,10 @@ const OnboardingFlow = ({
                     return
                   }
                   // iOS spinner fires on every scroll
-                  if (selectedDate) pendingBirthdayRef.current = selectedDate
+                  if (selectedDate) {
+                    pendingBirthdayRef.current = selectedDate
+                    setBirthdayPickerTouched(true)
+                  }
                 }}
               />
             </View>
@@ -3685,7 +3653,7 @@ const OnboardingFlow = ({
         <TicketsFoundStep
           hadPendingClaim={pendingClaim !== null}
           items={foundItems}
-          onContinue={() => { void completeTicketFirst() }}
+          onContinue={goNext}
           onItemsChanged={(items) => {
             if (items.length > 0) {
               setFoundItems(items)

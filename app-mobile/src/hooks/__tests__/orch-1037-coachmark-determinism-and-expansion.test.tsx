@@ -4,7 +4,7 @@
 //
 // Source-static-analysis + executable-model test (the app-mobile convention — no jest;
 // node-runnable, self-runs via require.main === module). Two halves:
-//   (A) STRUCTURE — the 11-step tour shape, the exact per-step tab mapping, the
+//   (A) STRUCTURE — the 12-step tour shape, the exact per-step tab mapping, the
 //       re-pointed/added ref-target wiring, the lockstep call-site bijection, and the
 //       removal of the step-4 'center' band-aid + the stale "step 6" comment.
 //   (B) BEHAVIOR — an executable model of the two-consecutive-match stable-measure loop
@@ -117,18 +117,18 @@ function run() {
   // PART A — STRUCTURE
   // ════════════════════════════════════════════════════════════════════════
 
-  // ── T-01 [FAILS-ON-REVERT]: exactly 11 contiguous steps ──
+  // ── T-01 [FAILS-ON-REVERT]: exactly 12 contiguous steps ──
   const steps = parseCoachSteps(stepsSrc);
   const ids = steps.map((s) => s.id);
-  assert.deepEqual(ids, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    `T-01 COACH_STEPS must be 11 contiguous steps [1..11]; got [${ids.join(',')}]`);
+  assert.deepEqual(ids, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    `T-01 COACH_STEPS must be 12 contiguous steps [1..12]; got [${ids.join(',')}]`);
 
   // ── T-02 [FAILS-ON-REVERT]: exact per-step tab mapping (SPEC §5) ──
   const expectedTabs = {
     1: 'home', 2: 'home', 3: 'home',
     4: 'discover', 5: 'discover',
     6: 'connections', 7: 'connections',
-    8: 'profile', 9: 'profile', 10: 'profile', 11: 'profile',
+    8: 'profile', 9: 'profile', 10: 'profile', 11: 'profile', 12: 'profile',
   };
   for (const s of steps) {
     assert.equal(s.tab, expectedTabs[s.id],
@@ -163,13 +163,13 @@ function run() {
   assert.ok(!/ref=\{coachChatHeader\.targetRef/.test(connectionsSrc),
     'T-03 the people-icon ref must NOT be on the header row (coachChatHeader removed)');
 
-  // Profile: scroll steps 8/9/10/11 with explicit offset registrations + ref wrappers.
-  for (const sid of [8, 9, 10, 11]) {
+  // Profile: scroll steps 8..12 with explicit offset registrations + ref wrappers.
+  for (const sid of [8, 9, 10, 11, 12]) {
     assert.ok(new RegExp(`registerTargetScrollOffset\\(${sid}\\b`).test(profileSrc),
       `T-03 ProfilePage must register the step-${sid} scroll offset`);
   }
-  assert.ok(/interestsRef/.test(profileSrc) && /circleRef/.test(profileSrc),
-    'T-03 ProfilePage must add interestsRef + circleRef wrapping Views');
+  assert.ok(/purchasesRef/.test(profileSrc) && /interestsRef/.test(profileSrc) && /circleRef/.test(profileSrc),
+    'T-03 ProfilePage must add purchasesRef + interestsRef + circleRef wrapping Views');
   assert.ok(/registerTargetMeasurer\(/.test(profileSrc),
     'T-03 ProfilePage must register a direct post-scroll measurer per scroll step');
 
@@ -178,9 +178,9 @@ function run() {
     'T-03 HomePage steps 1+2 unchanged');
   assert.ok(/useCoachMark\(3\b/.test(indexSrc), 'T-03 app/index step 3 (Likes) unchanged');
 
-  // ── T-04 [FAILS-ON-REVERT]: SCROLL_STEPS = new Set([8, 9, 10, 11]) ──
-  assert.ok(/SCROLL_STEPS\s*=\s*new Set\(\[\s*8\s*,\s*9\s*,\s*10\s*,\s*11\s*\]\)/.test(contextSrc),
-    'T-04 SCROLL_STEPS must be new Set([8, 9, 10, 11])');
+  // ── T-04 [FAILS-ON-REVERT]: SCROLL_STEPS = new Set([8, 9, 10, 11, 12]) ──
+  assert.ok(/SCROLL_STEPS\s*=\s*new Set\(\[\s*8\s*,\s*9\s*,\s*10\s*,\s*11\s*,\s*12\s*\]\)/.test(contextSrc),
+    'T-04 SCROLL_STEPS must be new Set([8, 9, 10, 11, 12])');
 
   // ── T-05 [FAILS-ON-REVERT]: step-4 'center' band-aid removed; no step uses 'center' ──
   const stepsArrayBody = stepsSrc.slice(stepsSrc.indexOf('export const COACH_STEPS'));
@@ -278,8 +278,8 @@ if (require.main === module) {
   try {
     run();
     console.log(
-      'PASS ORCH-1037/1035: 11-step tour with exact per-tab mapping, Discover pill/filter and people/+ refs ' +
-      'point to leaf affordances, Profile scroll steps 8-11 measured (offset+measurer), ' +
+      'PASS ORCH-1037/1035/#4063: 12-step tour with exact per-tab mapping, Discover pill/filter and people/+ refs ' +
+      'point to leaf affordances, Profile scroll steps 8-12 measured (offset+measurer), ' +
       "step-4 'center' + stale comment removed, lockstep bijection holds, progress/counter auto-derive; " +
       'stable-measure loop rejects the mid-animation transient and accepts the settled rect'
     );

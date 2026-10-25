@@ -151,20 +151,22 @@ function ProfilePage({
   const [showInterestsSheet, setShowInterestsSheet] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showBillingSheet, setShowBillingSheet] = useState(false);
-  // ORCH-1037 + ORCH-1035: coach-mark scroll-offset steps on Profile —
-  //   step 8  Interests card    (NEW)
-  //   step 9  Your Circle card  (NEW)
-  //   step 10 Account Settings row (renumbered from 6)
-  //   step 11 Beta Feedback button (renumbered from 7)
+  // Profile coach-mark scroll targets. #4063 inserts Purchases before the
+  // existing profile tour while preserving the visual reading order.
+  //   step 8  Purchases card
+  //   step 9  Interests card
+  //   step 10 Your Circle card
+  //   step 11 Account Settings row
+  //   step 12 Beta Feedback button
   const scrollRef = useRef<any>(null);
   const contentRef = useRef<View>(null);
+  const purchasesRef = useRef<View>(null);
   const interestsRef = useRef<View>(null);
   const circleRef = useRef<View>(null);
   const accountSettingsRef = useRef<View>(null);
   const feedbackButtonRef = useRef<View>(null);
   const { currentStep, registerScrollRef, registerTargetScrollOffset, registerTargetMeasurer, scrollLockActive } = useCoachMarkContext();
-  // ORCH-1037/1035: Profile scroll-offset steps renumbered to 8/9/10/11.
-  const isScrollStep = currentStep === 8 || currentStep === 9 || currentStep === 10 || currentStep === 11;
+  const isScrollStep = currentStep >= 8 && currentStep <= 12;
   const coachScrollPadding = isScrollStep ? Dimensions.get('window').height * 0.65 : 0;
 
   useEffect(() => {
@@ -216,6 +218,7 @@ function ProfilePage({
           else if (stepId === 9) registerTargetScrollOffset(9, x, y, width, height);
           else if (stepId === 10) registerTargetScrollOffset(10, x, y, width, height);
           else if (stepId === 11) registerTargetScrollOffset(11, x, y, width, height);
+          else if (stepId === 12) registerTargetScrollOffset(12, x, y, width, height);
         },
         () => console.warn(`[CoachMark] measureLayout failed for step ${stepId}`),
       );
@@ -233,10 +236,11 @@ function ProfilePage({
     [registerTargetScrollOffset, registerTargetMeasurer],
   );
 
-  const handleInterestsLayout = useCallback(() => wireScrollStep(8, interestsRef), [wireScrollStep]);
-  const handleCircleLayout = useCallback(() => wireScrollStep(9, circleRef), [wireScrollStep]);
-  const handleAccountSettingsLayout = useCallback(() => wireScrollStep(10, accountSettingsRef), [wireScrollStep]);
-  const handleFeedbackButtonLayout = useCallback(() => wireScrollStep(11, feedbackButtonRef), [wireScrollStep]);
+  const handlePurchasesLayout = useCallback(() => wireScrollStep(8, purchasesRef), [wireScrollStep]);
+  const handleInterestsLayout = useCallback(() => wireScrollStep(9, interestsRef), [wireScrollStep]);
+  const handleCircleLayout = useCallback(() => wireScrollStep(10, circleRef), [wireScrollStep]);
+  const handleAccountSettingsLayout = useCallback(() => wireScrollStep(11, accountSettingsRef), [wireScrollStep]);
+  const handleFeedbackButtonLayout = useCallback(() => wireScrollStep(12, feedbackButtonRef), [wireScrollStep]);
 
   // Profile interests
   const { data: interests } = useProfileInterests();
@@ -544,19 +548,19 @@ function ProfilePage({
             </GlassCard>
           </View>
 
-          {/* #4063 — the user's tickets and bookings belong near their identity,
-              not buried among account controls. Coach targeting joins after the
-              #4073-owned step map is released. */}
-          <GlassCard variant="base">
-            <PurchasesCard
-              userId={user?.id}
-              setupDeferred={profile?.setup_deferred_at != null}
-              onOpen={() => router.push('/purchases')}
-              onFinishSetup={() => onFinishSetup?.()}
-            />
-          </GlassCard>
+          {/* #4063 coach step 8 — Purchases is the durable home for every ticket. */}
+          <View ref={purchasesRef} collapsable={false} onLayout={handlePurchasesLayout}>
+            <GlassCard variant="base">
+              <PurchasesCard
+                userId={user?.id}
+                setupDeferred={profile?.setup_deferred_at != null}
+                onOpen={() => router.push('/purchases')}
+                onFinishSetup={() => onFinishSetup?.()}
+              />
+            </GlassCard>
+          </View>
 
-          {/* 2. Interests card — ORCH-1035 coach step 8 (scroll + direct measure) */}
+          {/* 2. Interests card — coach step 9 (scroll + direct measure) */}
           <View ref={interestsRef} collapsable={false} onLayout={handleInterestsLayout}>
             <GlassCard variant="base">
               <ProfileInterestsSection
@@ -568,7 +572,7 @@ function ProfilePage({
             </GlassCard>
           </View>
 
-          {/* 3. Your Circle card — ORCH-1035 coach step 9 (scroll + direct measure) */}
+          {/* 3. Your Circle card — coach step 10 (scroll + direct measure) */}
           <View ref={circleRef} collapsable={false} onLayout={handleCircleLayout}>
             <GlassCard variant="base">
               <YourCircleSection onViewProfile={onViewFriendProfile} />

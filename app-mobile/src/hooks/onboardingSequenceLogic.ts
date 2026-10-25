@@ -36,6 +36,8 @@ export const TICKET_FIRST_SUBSTEPS: SubStep[] = [
   'phone',
   'otp',
   'tickets_found',
+  'gender_identity',
+  'details',
 ]
 
 export interface OnboardingSequenceOptions {
@@ -66,13 +68,21 @@ export function buildSequence(
   options: OnboardingSequenceOptions = DEFAULT_SEQUENCE_OPTIONS,
 ): SubStep[] {
   if (mode === 'ticket_first') {
-    if (step !== 1) return []
-    return [
-      ...(options.needsLanguage ? ['language' as const] : []),
-      'welcome',
-      ...(options.phonePreVerified ? [] : ['phone' as const, 'otp' as const]),
-      'tickets_found',
-    ]
+    if (step === 1) {
+      return [
+        ...(options.needsLanguage ? ['language' as const] : []),
+        'welcome',
+        ...(options.phonePreVerified ? [] : ['phone' as const, 'otp' as const]),
+        'tickets_found',
+        'gender_identity',
+        'details',
+      ]
+    }
+    // Purchase-first changes where onboarding starts, not whether onboarding
+    // happens. After the ticket reassurance screen the user continues through
+    // the same discovery/setup journey and reaches the normal coach tour.
+    if (step === 6 && !hasCollabContext) return []
+    return STEP_SUBSTEPS[step]
   }
   if (mode === 'finish_setup') {
     if (step === 1) return ['gender_identity', 'details']

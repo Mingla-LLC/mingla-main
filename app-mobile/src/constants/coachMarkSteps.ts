@@ -1,5 +1,5 @@
 /**
- * Coach mark step definitions — ORCH-1037 + ORCH-1035 (11-step variant).
+ * Coach mark step definitions — ORCH-1037 + ORCH-1035 + #4063 (12 steps).
  *
  * ORCH-1029: steps 4/5 ("Better together"/"Back to solo") deleted — META-ORCH-0929
  * made Home solo-only — leaving a contiguous 7-step tour.
@@ -12,17 +12,15 @@
  *   1 Deck · 2 Preferences · 3 Likes        (home — unchanged ids)
  *   4 Content-type pill · 5 Filters          (discover)
  *   6 People icon · 7 + button              (connections)
- *   8 Interests · 9 Circle · 10 Account · 11 Share Feedback (profile, scroll steps)
+ *   8 Purchases · 9 Interests · 10 Circle · 11 Account · 12 Share Feedback
+ *     (profile, scroll steps)
  *
  * ⚠ LOCKSTEP-RENUMBER WARNING: step-to-target wiring is by numeric stepId only
  * (see useCoachMark.ts). EVERY useCoachMark(<id>), registerTargetScrollOffset(<id>),
- * and the SCROLL_STEPS literal in CoachMarkContext (= new Set([8,9,10,11])) MUST
+ * and the SCROLL_STEPS literal in CoachMarkContext (= new Set([8,9,10,11,12])) MUST
  * match the ids below. A mismatch orphans a step's target (the dev-time warning in
  * useCoachMark.ts + the happy-path bijection test catch it). The old `targetId`
  * string field was dead metadata and was removed in ORCH-1029.
- *
- * Spec: Mingla_Artifacts/specs/SPEC_ORCH-1037-1035_COACHMARK_DETERMINISM_AND_EXPANSION.md §5
- *       Mingla_Artifacts/specs/SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-2 (lineage)
  */
 export interface CoachStep {
   id: number;
@@ -98,30 +96,38 @@ export const COACH_STEPS: CoachStep[] = [
     buttonLabel: 'Got it',
   },
   {
-    // ORCH-1035 NEW: Interests card (scroll step).
+    // #4063: buyers reach their tickets through the same normal coach tour.
     id: 8,
+    tab: 'profile',
+    title: 'Your tickets are always here',
+    description: 'Open Purchases for tickets, passes, bookings and receipts — including what you just claimed.',
+    buttonLabel: 'Got it',
+  },
+  {
+    // ORCH-1035: Interests card (shifted by #4063 Purchases).
+    id: 9,
     tab: 'profile',
     title: 'Your interests',
     description: "Tell us what you're into — your deck gets sharper every time.",
     buttonLabel: 'Got it',
   },
   {
-    // ORCH-1035 NEW: Your Circle card (scroll step).
-    id: 9,
+    // ORCH-1035: Your Circle card (shifted by #4063 Purchases).
+    id: 10,
     tab: 'profile',
     title: 'Your circle',
     description: 'Friends of friends, and people from the events and trips you shared — find them and connect.',
     buttonLabel: 'Got it',
   },
   {
-    id: 10,
+    id: 11,
     tab: 'profile',
     title: 'Your rules',
     description: 'Privacy, notifications, language — all in Account Settings.',
     buttonLabel: 'Got it',
   },
   {
-    id: 11,
+    id: 12,
     tab: 'profile',
     title: 'Tell us what works',
     description: "Love something? Spot a bug? Tap here — we read every one.",

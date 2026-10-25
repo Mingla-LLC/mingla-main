@@ -34,21 +34,49 @@ test("ticket-first mode is selected for an intent, a claim, or an upcoming purch
   }), "full");
 });
 
-test("ticket-first sequence keeps only identity proof and tickets-found", () => {
+test("ticket-first sequence reassures the buyer then continues normal onboarding", () => {
   assert.deepEqual(
     buildSequence(1, false, "ticket_first", {
       needsLanguage: false,
       phonePreVerified: false,
     }),
-    ["welcome", "phone", "otp", "tickets_found"],
+    [
+      "welcome",
+      "phone",
+      "otp",
+      "tickets_found",
+      "gender_identity",
+      "details",
+    ],
   );
-  for (const step of [2, 3, 4, 5, 6, 7] as const) {
-    assert.deepEqual(buildSequence(step, false, "ticket_first"), []);
+  for (const step of [2, 3, 4, 5, 7] as const) {
+    assert.deepEqual(
+      buildSequence(step, false, "ticket_first"),
+      STEP_SUBSTEPS[step],
+    );
   }
+  assert.deepEqual(buildSequence(6, false, "ticket_first"), []);
   assert.deepEqual(
     advance({ step: 1, subStep: "tickets_found" }, false, "ticket_first"),
-    { kind: "launch" },
+    { kind: "move", next: { step: 1, subStep: "gender_identity" } },
   );
+  assert.deepEqual(
+    advance({ step: 1, subStep: "details" }, false, "ticket_first"),
+    { kind: "move", next: { step: 2, subStep: "value_prop" } },
+  );
+
+  let state: Parameters<typeof advance>[0] = { step: 1, subStep: "welcome" };
+  for (let transition = 0; transition < 30; transition += 1) {
+    const result = advance(state, false, "ticket_first");
+    assert.notEqual(result.kind, "stay", `ticket-first dead-ended at ${state.step}/${state.subStep}`);
+    if (result.kind === "launch") {
+      assert.equal(state.step, 7);
+      assert.equal(state.subStep, "getting_experiences");
+      return;
+    }
+    state = result.next;
+  }
+  assert.fail("ticket-first did not reach launch within the bounded journey");
 });
 
 test("ticket-first skips verified phone and keeps language only when needed", () => {
@@ -57,7 +85,7 @@ test("ticket-first skips verified phone and keeps language only when needed", ()
       needsLanguage: true,
       phonePreVerified: true,
     }),
-    ["language", "welcome", "tickets_found"],
+    ["language", "welcome", "tickets_found", "gender_identity", "details"],
   );
 });
 

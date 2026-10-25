@@ -92,7 +92,8 @@
     "country_label": "Country",
     "country_helper": "Sets your currency and units of measurement",
     "dob_label": "Date of birth",
-    "dob_placeholder": "When's your birthday?"
+    "dob_placeholder": "When's your birthday?",
+    "dob_picker_helper": "Scroll the date wheel to choose your birthday."
   },
   "value_prop": {
     "beat1_headline": "Know exactly where to go.",
