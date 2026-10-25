@@ -13,6 +13,10 @@ import {
   type BuyerSmsNoun,
   renderBuyerSms,
 } from "./sms/buyerSms.ts";
+import {
+  isIssue4111EnquiryCategory,
+  renderIssue4111Message,
+} from "./issue4111EnquiryNotifications.ts";
 
 export interface RenderedMessage {
   push: { title: string; body: string };
@@ -214,6 +218,10 @@ export function renderCategoryMessage(
   categoryKey: string,
   payload: Record<string, unknown>,
 ): RenderedMessage {
+  // #4111 — customer enquiry copy lives with its categories.
+  if (isIssue4111EnquiryCategory(categoryKey)) {
+    return renderIssue4111Message(categoryKey, payload);
+  }
   const brand = str(payload.brand_name ?? payload.brand, "Mingla");
   const party = str(payload.party_size ?? payload.party, "");
   const { date, time } = fmtDate(payload);

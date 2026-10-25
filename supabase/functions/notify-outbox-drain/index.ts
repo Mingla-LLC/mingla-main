@@ -29,6 +29,11 @@ import {
   type BuyerLinkKind,
   resolveBuyerLink,
 } from "../_shared/messageLinks.ts";
+// #4111 — customer enquiry notifications.
+import {
+  ISSUE_4111_EMAIL_CATEGORIES,
+  ISSUE_4111_ENQUIRY_CATEGORIES,
+} from "../_shared/issue4111EnquiryNotifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -112,6 +117,7 @@ const ISSUE_3720_CONTACT_CATEGORIES = new Set([
   "business.support_new_ticket",
   "admin.team_mention",
   ...ISSUE_3988_EMAIL_CATEGORIES,
+  ...ISSUE_4111_EMAIL_CATEGORIES,
 ]);
 const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   ...ISSUE_3720_CONTACT_CATEGORIES,
@@ -120,6 +126,7 @@ const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   "business.brand_group_message",
   "admin.team_mention",
   ...ISSUE_3988_ALERT_CATEGORIES,
+  ...ISSUE_4111_ENQUIRY_CATEGORIES,
 ]);
 const TERMINAL_DELIVERY_STATUSES = new Set([
   "sent",
