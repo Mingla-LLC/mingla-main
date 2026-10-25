@@ -13,7 +13,7 @@ import {
 } from "../discoverGridLayout.ts";
 import { dedupeDiscoverFeedCards } from "../../../utils/discoverFeedDedupe.ts";
 
-// MINGLA-INVARIANT: I-3988-DISCOVER-NATIVE-ROUTES | issue #3988 | Every Mingla Discover card resolves to an existing canonical native public route rather than trusting retired feed route templates.
+// MINGLA-INVARIANT: I-3988-DISCOVER-NATIVE-ROUTES | issue #3988 | Every Mingla Discover card resolves to an existing canonical native public route rather than trusting feed-provided route templates.
 function card(kind: "event" | "rsvp" | "experience" | "trip" | "stay", params: Record<string, string> = { slug: "night out" }) {
   return {
     source: "mingla",
