@@ -11,6 +11,7 @@ export const COMMUNITY_SUPPORT_SECTIONS = [
       { id: "ideas", label: "Ideas" },
       { id: "questions", label: "Questions" },
       { id: "moderation", label: "Moderation" },
+      { id: "enquiry-reports", label: "Reported enquiries" },
     ],
   },
   {
