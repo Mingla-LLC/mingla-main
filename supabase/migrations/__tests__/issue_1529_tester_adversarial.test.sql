@@ -312,6 +312,7 @@ DECLARE
     'issue_3988_create_brand_support_ticket',
     'issue_3988_notify_brand_support_progress',
     'issue_3720_community_add_comment',
+    'issue_4073_scan_city_watches',
     'create_support_ticket'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund
