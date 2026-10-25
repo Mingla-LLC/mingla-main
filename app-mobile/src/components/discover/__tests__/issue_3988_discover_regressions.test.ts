@@ -11,6 +11,7 @@ import {
   DISCOVER_GRID_SIDE_PADDING,
   discoverGridCellWidth,
 } from "../discoverGridLayout.ts";
+import { dedupeDiscoverFeedCards } from "../../../utils/discoverFeedDedupe.ts";
 
 // MINGLA-INVARIANT: I-3988-DISCOVER-NATIVE-ROUTES | issue #3988 | Every Mingla Discover card resolves to an existing canonical native public route rather than trusting retired feed route templates.
 function card(kind: "event" | "rsvp" | "experience" | "trip" | "stay", params: Record<string, string> = { slug: "night out" }) {
@@ -53,6 +54,27 @@ test("#3988 Discover is one uninterrupted two-column feed without source section
   assert.doesNotMatch(screen, /More events nearby/);
   assert.doesNotMatch(screen, /styles\.(?:divider|tmHeading)/);
   assert.match(screen, /items\.map\(\(card\) =>/);
+});
+
+test("#3988 Discover shows one Ticketmaster card per named event", () => {
+  const cards = [
+    { source: "ticketmaster", kind: "event", id: "tm-early", title: "Curtain Call From Beyond", venueName: "City Theatre", startsLocalDate: "2026-10-25", startsLocalTime: "18:30:00" },
+    { source: "ticketmaster", kind: "event", id: "tm-later", title: "  CURTAIN   CALL FROM BEYOND  ", venueName: " CITY   THEATRE ", startsLocalDate: "2026-10-26", startsLocalTime: "19:00:00" },
+    { source: "ticketmaster", kind: "event", id: "tm-other-venue", title: "Curtain Call From Beyond", venueName: "Grand Theatre", startsLocalDate: "2026-10-26", startsLocalTime: "20:00:00" },
+    { source: "ticketmaster", kind: "event", id: "tm-accessible", title: "Accessible Curtain Call From Beyond", venueName: "City Theatre", startsLocalDate: "2026-10-25", startsLocalTime: "19:00:00" },
+    { ...card("event"), id: "mingla-1", title: "Curtain Call From Beyond" },
+  ] as any[];
+
+  assert.deepEqual(
+    dedupeDiscoverFeedCards(cards).map((item) => item.id),
+    ["tm-early", "tm-other-venue", "tm-accessible", "mingla-1"],
+  );
+  const queryKeys = readFileSync(
+    fileURLToPath(new URL("../../../hooks/discoverQueryKeys.ts", import.meta.url)),
+    "utf8",
+  );
+  assert.match(queryKeys, /DISCOVER_OCCURRENCE_CATALOG_VERSION\s*=\s*2/);
+  assert.match(queryKeys, /'feed',\s*DISCOVER_OCCURRENCE_CATALOG_VERSION/);
 });
 
 test("#3988 two Discover columns plus their gap fit narrow viewports", () => {

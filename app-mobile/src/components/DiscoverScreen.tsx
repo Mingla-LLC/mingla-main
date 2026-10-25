@@ -41,6 +41,7 @@ import { DISCOVER_KIND_ORDER, emptyDiscoverFilters, type DiscoverAnchorV2, type 
 import type { ExpandedCardData } from "../types/expandedCardTypes";
 import type { ExpansionTarget } from "../types/expansion";
 import { discoverCityFromPreferences, discoverQueryAnchorKey, readLastResolvedDiscoverCity, sameDiscoverAnchorCity, writeResolvedDiscoverCity } from "../utils/discoverEventsCache";
+import { dedupeDiscoverFeedCards } from "../utils/discoverFeedDedupe";
 
 interface DiscoverScreenProps {
   isTabVisible?: boolean;
@@ -265,7 +266,10 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     return () => setStepCopyOverride(4, null);
   }, [setStepCopyOverride, t, visibleKinds]);
 
-  const items = useMemo(() => feed.data?.pages.flatMap((page) => page.items) ?? [], [feed.data?.pages]);
+  const items = useMemo(
+    () => dedupeDiscoverFeedCards(feed.data?.pages.flatMap((page) => page.items) ?? []),
+    [feed.data?.pages],
+  );
   const savedIds = useMemo(() => new Set((saved.data ?? []).map((item) => item.id)), [saved.data]);
   const selectionCount = discoverFilterSelectionCount(appliedFilters);
   const selectedLabels = selectedDiscoverFilterLabels(appliedFilters, facets.data?.groups ?? []);

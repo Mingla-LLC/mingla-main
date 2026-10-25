@@ -4,7 +4,7 @@ import { discoverCurrency } from "../_shared/discoverCurrency.ts";
 import { discoverPriceBandCatalog, discoverPriceBands, type DiscoverPriceBandSpec } from "../_shared/discoverPriceBands.ts";
 import { buildDiscoverV2Key } from "./_v2_key.ts";
 import { DISCOVER_KINDS, type DiscoverV2Request } from "./_v2_types.ts";
-import { resolveTicketmasterPool, ticketmasterWindowIsCapped, type TicketmasterPool } from "./_v2_tm_pool.ts";
+import { collapseTicketmasterOccurrences, resolveTicketmasterPool, ticketmasterWindowIsCapped, type TicketmasterPool } from "./_v2_tm_pool.ts";
 
 type RpcClient = {
   rpc: (name: string, args?: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message?: string } | null }>;
@@ -167,9 +167,13 @@ function mergeTmFacetCounts(
     );
     for (const id of ids) {
       const baselineRequest = { ...request, filters: { kind: "events", f: {} } as DiscoverV2Request["filters"] };
-      const possible = filterTm(pool, requestWithEventOption(baselineRequest, groupId, id), timezone).length;
+      const possible = collapseTicketmasterOccurrences(
+        filterTm(pool, requestWithEventOption(baselineRequest, groupId, id), timezone),
+      ).length;
       if (possible === 0 && !options.has(id)) continue;
-      const tmCount = filterTm(pool, requestWithEventOption(request, groupId, id), timezone).length;
+      const tmCount = collapseTicketmasterOccurrences(
+        filterTm(pool, requestWithEventOption(request, groupId, id), timezone),
+      ).length;
       const current = options.get(id) ?? { id, count: 0 };
       options.set(id, { ...current, count: Number(current.count ?? 0) + tmCount });
     }
@@ -226,7 +230,9 @@ export async function handleDiscoverV2(request: DiscoverV2Request, client: RpcCl
   const tmPool = horizonWindow
     ? await resolveTicketmasterPool(client, { anchor: request.anchor, localStartEndDateTime: horizonWindow.localStartEndDateTime, timezone })
     : { items: [], poolCoverageEnd: null, capped: false, partial: false, error: null, fromCache: false };
-  const selectedTm = filterTm(tmPool, request, timezone);
+  // Filter occurrences first so a later performance that matches Tomorrow or
+  // Weekend is not hidden by an earlier performance outside the selected window.
+  const selectedTm = collapseTicketmasterOccurrences(filterTm(tmPool, request, timezone));
   const sqlFilters = {
     ...request.filters.f,
     _countryCode: request.anchor.countryCode?.toUpperCase() ?? null,
@@ -242,7 +248,7 @@ export async function handleDiscoverV2(request: DiscoverV2Request, client: RpcCl
     const result = (data ?? {}) as Record<string, unknown>;
     const kinds = (result.kinds ?? {}) as Record<string, { total?: number; available?: boolean }>;
     const tmTotal = request.filters.kind === "events" ? selectedTm.length : 0;
-    const eventTotal = Number(kinds.events?.total ?? 0) + tmPool.items.length;
+    const eventTotal = Number(kinds.events?.total ?? 0) + collapseTicketmasterOccurrences(tmPool.items).length;
     kinds.events = { total: eventTotal, available: eventTotal > 0 };
     const selected = (result.selected ?? {}) as Record<string, unknown>;
     const minglaTotal = Number(selected.minglaTotal ?? selected.total ?? 0);

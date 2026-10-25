@@ -1,6 +1,6 @@
 import { localWallClockToUtcInstant } from "../_shared/timezone.ts";
 
-interface TicketmasterPoolEvent {
+export interface TicketmasterPoolEvent {
   id: string;
   eventName: string;
   venueName: string;
@@ -49,6 +49,25 @@ const PAGE_SIZE = 200;
 const DAILY_LIMIT = 2_500;
 const cache = new Map<string, { pool: TicketmasterPool; at: number }>();
 const builds = new Map<string, Promise<TicketmasterPool>>();
+
+function ticketmasterDiscoveryIdentity(item: TicketmasterPoolEvent): string {
+  const title = item.eventName.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+  const venue = item.venueName.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+  return title && title !== "untitled event" ? `title:${title}:venue:${venue}` : `id:${item.id}`;
+}
+
+/** Keep the earliest date-sorted performance for each named Ticketmaster event. */
+export function collapseTicketmasterOccurrences(
+  items: readonly TicketmasterPoolEvent[],
+): TicketmasterPoolEvent[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const identity = ticketmasterDiscoveryIdentity(item);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
 
 export function ticketmasterPoolMetadata(
   items: readonly TicketmasterPoolEvent[],

@@ -7,6 +7,7 @@ import { discoverV2ValidationFailure, isDiscoverV2Request, validateDiscoverV2Req
 import { buildDiscoverV2Key } from "../../discover-merged-events/_v2_key.ts";
 import { decodeCursor, encodeCursor, filterTm, shouldLoadTicketmaster, tmDateMatches } from "../../discover-merged-events/_v2_handler.ts";
 import {
+  collapseTicketmasterOccurrences,
   resetTicketmasterPoolForTests,
   resolveTicketmasterPool,
   ticketmasterPoolMetadata,
@@ -39,6 +40,7 @@ Deno.test("#4073 cache keys normalize filter order and bind contract inputs", ()
   assertEquals(a, b);
   assert(a.includes("tmHorizonDays"));
   assert(a.includes("tmSegmentMode"));
+  assert(a.includes("tmOccurrenceCatalogVersion"));
   const cursor = encodeCursor({ m: 20, t: 0, k: a });
   const pageTwo = buildDiscoverV2Key({ ...common, cursor, filters: { kind: "events", f: { vibeTags: ["wild", "chill"], partyTypes: ["rave"] } } }, "g1", "Europe/London", "GBP");
   assertEquals(pageTwo, a);
@@ -143,6 +145,42 @@ Deno.test("#4073 facets always load the Ticketmaster pool so Events stays visibl
   assert(!shouldLoadTicketmaster({ op: "page", filters: { kind: "trips", f: {} } }));
 });
 
+Deno.test("#3988 Ticketmaster recurring performances collapse to the earliest named event at each venue", () => {
+  const occurrence = (id: string, eventName: string, localDate: string, venueName = "Theatre") => ({
+    id, eventName, venueName, image: "", localDate, localTime: "19:00:00",
+    dateTimeUTC: `${localDate}T23:00:00Z`, genre: null, genreId: null, subGenreId: null,
+    priceMin: null, priceMax: null, priceCurrency: null, ticketStatus: "onsale", ticketUrl: "",
+  });
+  const collapsed = collapseTicketmasterOccurrences([
+    occurrence("early", "Curtain Call From Beyond", "2026-10-25"),
+    occurrence("later", "  CURTAIN   CALL FROM BEYOND ", "2026-10-26", " THEATRE "),
+    occurrence("other-venue", "Curtain Call From Beyond", "2026-10-26", "Grand Theatre"),
+    occurrence("accessible", "Accessible Curtain Call From Beyond", "2026-10-25"),
+    occurrence("untitled-1", "Untitled Event", "2026-10-25"),
+    occurrence("untitled-2", "Untitled Event", "2026-10-26"),
+  ]);
+  assertEquals(collapsed.map((item) => item.id), ["early", "other-venue", "accessible", "untitled-1", "untitled-2"]);
+
+  const tomorrowRequest = {
+    contract: 2 as const, op: "page" as const,
+    anchor: { name: "London", stateCode: null, countryCode: "GB", lat: 51.5, lng: -0.1, radiusKm: 50 },
+    filters: { kind: "events" as const, f: { when: "tomorrow" as const } },
+  };
+  const pool: TicketmasterPool = {
+    items: [
+      occurrence("today", "Daily Show", "2026-10-25"),
+      occurrence("tomorrow", "Daily Show", "2026-10-26"),
+    ],
+    poolCoverageEnd: null, capped: false, partial: false, error: null, fromCache: false,
+  };
+  assertEquals(
+    collapseTicketmasterOccurrences(
+      filterTm(pool, tomorrowRequest, "UTC", new Date("2026-10-25T12:00:00Z")),
+    ).map((item) => item.id),
+    ["tomorrow"],
+  );
+});
+
 Deno.test("#4073 city-watch copy covers all 29 locales with byte-exact placeholders", () => {
   assertEquals(Object.keys(DISCOVER_CITY_WATCH_COPY).sort(), [...locales].sort());
   for (const locale of locales) {
@@ -174,7 +212,7 @@ Deno.test("#4073 Ticketmaster pool enforces paging, budget claims, memory SWR, c
     inFlight -= 1;
     const count = Math.min(200, total - page * 200);
     const events = Array.from({ length: count }, (_, index) => ({
-      id: `p${page}-${index}`, eventName: "E", venueName: "V", image: "",
+      id: `p${page}-${index}`, eventName: `E-${page}-${index}`, venueName: "V", image: "",
       localDate: "2026-11-01", localTime: "20:00:00", dateTimeUTC: `2026-11-${String(Math.min(28, page + 1)).padStart(2, "0")}T20:00:00Z`,
       genre: null, genreId: null, subGenreId: null, priceMin: null, priceMax: null,
       priceCurrency: null, ticketStatus: "onsale", ticketUrl: "",
