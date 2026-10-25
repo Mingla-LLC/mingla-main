@@ -193,6 +193,10 @@ export default function WelcomeScreen({
         setEmailError(result.error ?? "We couldn’t send the code. Try again.");
         return;
       }
+      // #3540 — keep the displayed/verified address identical to the address
+      // the service actually received. This also removes accidental spaces and
+      // casing before the user decides whether the inbox is the right one.
+      setEmailAddress(address);
       setEmailStep("code");
       setResendIn(RESEND_COOLDOWN_SECONDS);
       AccessibilityInfo.announceForAccessibility(
@@ -201,6 +205,19 @@ export default function WelcomeScreen({
     } finally {
       setEmailBusy(false);
     }
+  };
+
+  const editEmailAddress = (): void => {
+    // A follow invite is bound to the address carried by the signed invite.
+    // Letting that flow redirect its OTP to another mailbox would sever the
+    // server-authoritative identity contract.
+    if (followInviteActive || emailBusy) return;
+
+    setEmailStep("address");
+    setEmailCode("");
+    setEmailError(null);
+    setResendIn(0);
+    AccessibilityInfo.announceForAccessibility("Edit your email address.");
   };
 
   const submitEmailCode = async (): Promise<void> => {
@@ -664,7 +681,9 @@ export default function WelcomeScreen({
                         value={emailAddress}
                         onChangeText={(next) => {
                           setEmailAddress(next);
+                          setEmailCode("");
                           setEmailError(null);
+                          setResendIn(0);
                         }}
                         placeholder="you@example.com"
                         placeholderTextColor="rgba(255,255,255,.45)"
@@ -711,10 +730,28 @@ export default function WelcomeScreen({
                   ) : (
                     <>
                       <Text style={styles.emailPanelLabel}>
-                        {followInviteActive
-                          ? `We emailed a 6-digit code to ${followInvite!.email}`
-                          : "Enter the 6-digit code we emailed you."}
+                        {`We emailed a 6-digit code to ${
+                          followInviteActive
+                            ? followInvite!.email
+                            : emailAddress.trim().toLowerCase()
+                        }.`}
                       </Text>
+                      {!followInviteActive ? (
+                        <TouchableOpacity
+                          onPress={editEmailAddress}
+                          style={styles.emailEdit}
+                          disabled={emailBusy}
+                          accessibilityRole="button"
+                          accessibilityLabel="Wrong email? Edit"
+                          accessibilityHint="Returns to the email address field"
+                          accessibilityState={{ disabled: emailBusy }}
+                          testID="welcome-email-edit"
+                        >
+                          <Text style={styles.emailEditText}>
+                            Wrong email? Edit
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
                       <TextInput
                         value={emailCode}
                         onChangeText={(next) => {
@@ -974,6 +1011,17 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,.26)",
   },
   emailCodeInput: { letterSpacing: 6, textAlign: "center" },
+  emailEdit: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+  },
+  emailEditText: {
+    color: "rgba(255,255,255,.82)",
+    fontSize: s(14),
+    fontWeight: fontWeights.semibold,
+    textDecorationLine: "underline",
+  },
   emailSubmit: {
     minHeight: 48,
     borderRadius: radius.full,
