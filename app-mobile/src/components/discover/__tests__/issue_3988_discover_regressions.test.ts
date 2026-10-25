@@ -12,6 +12,7 @@ import {
   discoverGridCellWidth,
 } from "../discoverGridLayout.ts";
 import { dedupeDiscoverFeedCards } from "../../../utils/discoverFeedDedupe.ts";
+import { collapseTicketmasterOccurrences } from "../../../../../supabase/functions/discover-merged-events/_v2_tm_pool.ts";
 
 // MINGLA-INVARIANT: I-3988-DISCOVER-NATIVE-ROUTES | issue #3988 | Every Mingla Discover card resolves to an existing canonical native public route rather than trusting feed-provided route templates.
 // MINGLA-INVARIANT: I-3988-NATIVE-PUBLIC-PAGES-NO-WEB-CHUNKS | issue #3988 | Native public offering details render shared sections synchronously from the Metro bundle without browser-style chunk resolution.
@@ -59,22 +60,34 @@ test("#3988 Discover is one uninterrupted two-column feed without source section
 
 test("#3988 Discover shows one Ticketmaster card per named event", () => {
   const cards = [
-    { source: "ticketmaster", kind: "event", id: "tm-early", title: "Curtain Call From Beyond", venueName: "City Theatre", startsLocalDate: "2026-10-25", startsLocalTime: "18:30:00" },
-    { source: "ticketmaster", kind: "event", id: "tm-later", title: "  CURTAIN   CALL FROM BEYOND  ", venueName: " CITY   THEATRE ", startsLocalDate: "2026-10-26", startsLocalTime: "19:00:00" },
-    { source: "ticketmaster", kind: "event", id: "tm-other-venue", title: "Curtain Call From Beyond", venueName: "Grand Theatre", startsLocalDate: "2026-10-26", startsLocalTime: "20:00:00" },
-    { source: "ticketmaster", kind: "event", id: "tm-accessible", title: "Accessible Curtain Call From Beyond", venueName: "City Theatre", startsLocalDate: "2026-10-25", startsLocalTime: "19:00:00" },
-    { ...card("event"), id: "mingla-1", title: "Curtain Call From Beyond" },
+    { source: "ticketmaster", kind: "event", id: "tm-early", title: "Jackson Dean", venueName: "Lincoln Theatre", startsLocalDate: "2026-10-31", startsLocalTime: "20:00:00" },
+    { source: "ticketmaster", kind: "event", id: "tm-provider-variant", title: "  JACKSON   DEAN  ", venueName: "Lincoln Theatre-NC", startsLocalDate: "2026-10-31", startsLocalTime: "20:00:00" },
+    { source: "ticketmaster", kind: "event", id: "tm-later", title: "Jackson Dean", venueName: "Grand Theatre", startsLocalDate: "2026-11-01", startsLocalTime: "20:00:00" },
+    { source: "ticketmaster", kind: "event", id: "tm-accessible", title: "Accessible Jackson Dean", venueName: "Lincoln Theatre", startsLocalDate: "2026-10-31", startsLocalTime: "20:00:00" },
+    { ...card("event"), id: "mingla-1", title: "Jackson Dean" },
   ] as any[];
 
   assert.deepEqual(
     dedupeDiscoverFeedCards(cards).map((item) => item.id),
-    ["tm-early", "tm-other-venue", "tm-accessible", "mingla-1"],
+    ["tm-early", "tm-accessible", "mingla-1"],
+  );
+  assert.deepEqual(
+    collapseTicketmasterOccurrences(
+      cards
+        .filter((item) => item.source === "ticketmaster")
+        .map((item) => ({
+          id: item.id,
+          eventName: item.title,
+          venueName: item.venueName,
+        })) as any[],
+    ).map((item) => item.id),
+    ["tm-early", "tm-accessible"],
   );
   const queryKeys = readFileSync(
     fileURLToPath(new URL("../../../hooks/discoverQueryKeys.ts", import.meta.url)),
     "utf8",
   );
-  assert.match(queryKeys, /DISCOVER_OCCURRENCE_CATALOG_VERSION\s*=\s*2/);
+  assert.match(queryKeys, /DISCOVER_OCCURRENCE_CATALOG_VERSION\s*=\s*3/);
   assert.match(queryKeys, /'feed',\s*DISCOVER_OCCURRENCE_CATALOG_VERSION/);
 });
 

@@ -1,7 +1,7 @@
 import type { DiscoverFiltersV2 } from '../types/discoverFeed';
 import { normalizeDiscoverFilters } from '../types/discoverFeed';
 
-export const DISCOVER_OCCURRENCE_CATALOG_VERSION = 2;
+export const DISCOVER_OCCURRENCE_CATALOG_VERSION = 3;
 
 /**
  * Discover-only query keys stay outside the shared mutation key graph.

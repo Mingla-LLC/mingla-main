@@ -7,9 +7,8 @@ function normalizedTicketmasterLabel(value: string): string {
 export function discoverFeedCardIdentity(card: DiscoverCardV2): string {
   if (card.source === "mingla") return `mingla:${card.id}`;
   const title = normalizedTicketmasterLabel(card.title);
-  const venue = normalizedTicketmasterLabel(card.venueName);
   return title && title !== "untitled event"
-    ? `ticketmaster:title:${title}:venue:${venue}`
+    ? `ticketmaster:title:${title}`
     : `ticketmaster:id:${card.id}`;
 }
 
