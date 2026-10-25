@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports, import/first, react/display-name */
+// #4063 routes public purchase completion through the canonical Explorer purchase surface.
 import React from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

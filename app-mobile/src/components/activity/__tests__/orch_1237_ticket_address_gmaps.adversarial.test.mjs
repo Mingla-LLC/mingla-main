@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// #4063 adapts this legacy contract to the shared, platform-neutral purchase maps helper.
 /**
  * ORCH-1237 — ADVERSARIAL regression for the ticket-address Google Maps
  * deep-link helper `buildMapsUrl`. DIFFERENT ANGLE from the happy-path test:

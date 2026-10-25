@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// #4063 removes the retired ticket-PDF sheet while preserving this bottom-sheet registry contract.
 /**
  * Regression suite — META-ORCH-0991 Wave B BATCH 4
  * [PairRequestModal + IncomingPairRequestCard + PairingInfoCard +

@@ -1,5 +1,6 @@
 // issue #2347 — A MULTI-DAY GUEST IS SHOWN THE WRONG DAY'S PASS, STAMPED
 // "Valid", AND IS REFUSED AT THE DOOR.
+// #4063 reuses this day-bound pass contract from the canonical Purchases detail.
 //
 // ── THE DEFECT ─────────────────────────────────────────────────────────────
 // `calendarService.fetchUserBusinessEventOrders` split a multi-day order into

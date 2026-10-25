@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+// #4063 adapts this legacy contract to the shared, platform-neutral purchase maps helper.
 /**
  * ORCH-1237 — ticket address must deep-link to Google Maps (not Apple Maps)
  * and work identically on iOS + Android.
