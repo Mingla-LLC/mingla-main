@@ -434,7 +434,5 @@ GRANT EXECUTE ON FUNCTION public.biz_comp_issue(
   uuid, uuid, uuid, uuid, jsonb, text, uuid, text
 ) TO service_role;
 
--- MINGLA-INVARIANT: I-4063-COMP-CONTACT-INTENT | issue #4063 | New comp writers explicitly choose contact or name-only; legacy omitted fields preserve name-only behaviour and carry metadata.name_only=true.
-
 COMMIT;
 NOTIFY pgrst, 'reload schema';

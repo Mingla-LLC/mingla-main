@@ -1519,7 +1519,5 @@ BEGIN
 END;
 $repair$;
 
--- MINGLA-INVARIANT: I-4063-OWNER-PROOF | issue #4063 | Owner columns may attach only to an account that proved the purchase contact; signed-in non-owners remain the purchaser/booker, not the owner.
-
 COMMIT;
 NOTIFY pgrst, 'reload schema';

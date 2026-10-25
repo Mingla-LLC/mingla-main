@@ -1,4 +1,5 @@
 \set ON_ERROR_STOP on
+-- MINGLA-INVARIANT: I-4063-COMP-CONTACT-INTENT | issue #4063 | New comp writers explicitly choose contact or name-only; legacy omitted fields preserve name-only behaviour and carry metadata.name_only=true.
 
 BEGIN;
 

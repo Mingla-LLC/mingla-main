@@ -1299,13 +1299,6 @@ SELECT cron.schedule(
   $cron$
 );
 
--- MINGLA-INVARIANT: I-4063-OLD-SENDERS-NEVER-SEE-NEW-ROWS | issue #4063 | New message rows are emitted only after the service-role messages_v2 switch is enabled.
--- MINGLA-INVARIANT: I-4063-RECEIPT-NEVER-BLOCKS-PAYMENT | issue #4063 | Food-receipt enqueue failures are warning-only and cannot roll back a venue payment write.
--- MINGLA-INVARIANT: I-4063-REMINDERS-ONE-PER-BOUGHT-DATE | issue #4063 | Reminder windows run every five minutes, select only still-valid purchased dates, and remain idempotent per order, occurrence and lead bucket.
--- MINGLA-INVARIANT: I-4063-WAITLIST-ONE-ROW-PER-CONTACT | issue #4063 | With messages_v2 enabled, waitlist invitations enqueue independent email and normalized SMS rows while invalid phones remain silent.
--- MINGLA-INVARIANT: I-4063-RSVP-PROMOTION-AFTER-APPROVAL | issue #4063 | With messages_v2 enabled, auto promotions keep the promotion notice and manual promotions remain silent until host approval.
--- MINGLA-INVARIANT: I-4063-EVENT-EDIT-ONE-SMS-PER-PHONE | issue #4063 | With messages_v2 enabled, paid-order live-edit fan-out emits at most one SMS-seeding row per distinct canonical buyer phone while switch-off payloads remain unchanged.
-
 DO $exit_check$
 DECLARE
   v_definition text;

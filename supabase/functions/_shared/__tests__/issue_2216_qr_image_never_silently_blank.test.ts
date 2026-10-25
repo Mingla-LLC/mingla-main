@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4063-NO-TICKET-QR-OFF-EXPLORER | issue #4063 | Anonymous checkout producers never return rendered ticket credentials; authenticated app surfaces own QR rendering and access.
 /**
  * #2216 is superseded by I-4063-NO-TICKET-QR-OFF-EXPLORER. A future caller
  * must not resurrect the helper that put rendered credentials in anonymous

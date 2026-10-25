@@ -185,7 +185,5 @@ WHEN (
 )
 EXECUTE FUNCTION public.tg_tcs_4063_copy_card();
 
--- MINGLA-INVARIANT: I-4063-PAYMENT-CARD-DISPLAY-ONLY | issue #4063 | Provider card capture stores only normalized brand, last four digits and wallet; first writer wins.
-
 COMMIT;
 NOTIFY pgrst, 'reload schema';

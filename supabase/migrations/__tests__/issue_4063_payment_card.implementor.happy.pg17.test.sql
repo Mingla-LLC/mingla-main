@@ -1,4 +1,5 @@
 \set ON_ERROR_STOP on
+-- MINGLA-INVARIANT: I-4063-PAYMENT-CARD-DISPLAY-ONLY | issue #4063 | Provider card capture stores only normalized brand, last four digits and wallet; first writer wins.
 
 BEGIN;
 
