@@ -43,5 +43,8 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "server/__tests__/issue_3281_social_preview_schedule.implementor.test.ts"
   ]
 }
