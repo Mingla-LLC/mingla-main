@@ -2,7 +2,14 @@
 
 export type OnboardingStep = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
-export type Step1SubStep = 'language' | 'welcome' | 'phone' | 'otp' | 'gender_identity' | 'details'
+export type Step1SubStep =
+  | 'language'
+  | 'welcome'
+  | 'phone'
+  | 'otp'
+  | 'tickets_found'
+  | 'gender_identity'
+  | 'details'
 export type Step2SubStep = 'value_prop' | 'intents'
 export type Step3SubStep = 'location'
 // ORCH-0434: 'budget', 'manual_location', 'when' removed — GPS mandatory, date defaults to this_weekend

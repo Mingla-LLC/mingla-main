@@ -64,6 +64,16 @@ import { withTimeout } from '../utils/withTimeout'
 import { signOutWithPrivateCleanup } from '../utils/authCleanup'
 import { logAppsFlyerEvent } from '../services/appsFlyerService'
 import { mixpanelService } from '../services/mixpanelService'
+import {
+  type ClaimedEntry,
+  type PendingClaim,
+  fetchPendingClaimPrefill,
+} from '../services/attendanceClaimService'
+import { runClaimSweep, type ClaimSweepResult } from '../services/claimSweep'
+import type {
+  DeferredLocationSeed,
+  OnboardingMode,
+} from '../hooks/ticketFirstLogic'
 
 import { OnboardingShell } from './onboarding/OnboardingShell'
 import { resolveScrollEnabled } from './onboarding/onboardingScrollPolicy'
@@ -73,6 +83,7 @@ import { OnboardingCollaborationStep } from './onboarding/OnboardingCollaboratio
 import { CategoryTile } from './ui/CategoryTile'
 import { OnboardingFriendsAndPairingStep } from './onboarding/OnboardingFriendsAndPairingStep'
 import { OnboardingConsentStep } from './onboarding/OnboardingConsentStep'
+import { TicketsFoundStep } from './onboarding/TicketsFoundStep'
 import { LaunchCityPicker } from './onboarding/LaunchCityPicker'
 import { checkLaunchCity, type LaunchCityWithBbox } from '../hooks/useLaunchCityGate'
 import { Checkbox } from './ui/checkbox'
@@ -99,8 +110,12 @@ import {
   GENDER_DISPLAY_LABELS,
 } from '../types/onboarding'
 import { categories } from '../constants/categories'
-import { getCountryByCode } from '../constants/countries'
-import { getDefaultLanguageCode, getLanguageByCode } from '../constants/languages'
+import { COUNTRIES, getCountryByCode } from '../constants/countries'
+import {
+  getDefaultLanguageCode,
+  getLanguageByCode,
+  isDeviceLanguageSupported,
+} from '../constants/languages'
 import { CountryPickerModal } from './onboarding/CountryPickerModal'
 import { LanguageSelectionStep } from './onboarding/LanguageSelectionStep'
 import { useTranslation } from 'react-i18next'
@@ -198,6 +213,7 @@ interface GettingExperiencesScreenProps {
   data: OnboardingData
   warmPoolPromiseRef: React.MutableRefObject<Promise<void> | null>
   onComplete: () => void
+  mode: OnboardingMode
 }
 
 // Loading messages are now fetched via i18n in GettingExperiencesScreen
@@ -213,6 +229,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
   data,
   warmPoolPromiseRef,
   onComplete,
+  mode,
 }) => {
   const { t: tOnboarding } = useTranslation('onboarding')
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -300,6 +317,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
           birthday: data.userBirthday?.toISOString().split('T')[0] || null,
           country: data.userCountry,
           preferred_language: data.userPreferredLanguage,
+          ...(mode === 'finish_setup' ? { setup_deferred_at: null } : {}),
         }).eq('id', userId)
 
         if (updateError) throw updateError
@@ -347,6 +365,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
             birthday: data.userBirthday?.toISOString().split('T')[0] || null,
             country: data.userCountry,
             preferred_language: data.userPreferredLanguage,
+            ...(mode === 'finish_setup' ? { setup_deferred_at: null } : {}),
           })
         }
 
@@ -543,6 +562,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
                     birthday: data.userBirthday?.toISOString().split('T')[0] || null,
                     country: data.userCountry,
                     preferred_language: data.userPreferredLanguage,
+                    ...(mode === 'finish_setup' ? { setup_deferred_at: null } : {}),
                   }).eq('id', userId),
                   5000,
                   'skipOnboarding'
@@ -559,6 +579,7 @@ const GettingExperiencesScreen: React.FC<GettingExperiencesScreenProps> = ({
                         ...currentProfile,
                         has_completed_onboarding: true,
                         onboarding_step: 0,
+                        ...(mode === 'finish_setup' ? { setup_deferred_at: null } : {}),
                       })
                     }
                   })
@@ -684,12 +705,16 @@ const getExpStyles = StyleSheet.create({
 })
 
 interface OnboardingFlowProps {
-  onComplete: () => void
+  onComplete: (result?: { landing?: { route: string } }) => void
   initialStep: OnboardingStep
   initialData: OnboardingData
   phonePreVerified: boolean
   initialHasGpsPermission: boolean
   resumeSubStep: SubStep | null
+  mode: OnboardingMode
+  pendingClaim: PendingClaim | null
+  initialClaimResult: ClaimSweepResult | null
+  deferredLocationSeed: DeferredLocationSeed | null
 }
 
 
@@ -700,6 +725,10 @@ const OnboardingFlow = ({
   phonePreVerified,
   initialHasGpsPermission,
   resumeSubStep,
+  mode,
+  pendingClaim,
+  initialClaimResult,
+  deferredLocationSeed,
 }: OnboardingFlowProps) => {
   const { user, profile, setProfile } = useAppStore()
   const queryClient = useQueryClient()
@@ -739,6 +768,82 @@ const OnboardingFlow = ({
   // ─── State ───
   const [data, setData] = useState<OnboardingData>(initialData)
   const [hasGpsPermission, setHasGpsPermission] = useState(initialHasGpsPermission)
+  const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>(mode)
+  const [foundItems, setFoundItems] = useState<ClaimedEntry[]>(
+    initialClaimResult?.claimed ?? [],
+  )
+  const [claimNamePrefilled, setClaimNamePrefilled] = useState(false)
+  const [claimPhonePrefilled, setClaimPhonePrefilled] = useState(false)
+  const [deferredLocationSeeded, setDeferredLocationSeeded] = useState(false)
+  const deferredLocationSeedAttemptedRef = useRef(false)
+
+  useEffect(() => {
+    if (
+      onboardingMode !== 'finish_setup' ||
+      deferredLocationSeed === null ||
+      !user?.id ||
+      deferredLocationSeedAttemptedRef.current
+    ) return
+    deferredLocationSeedAttemptedRef.current = true
+    const seed = deferredLocationSeed
+    void PreferencesService.updateUserPreferences(user.id, {
+      use_gps_location: false,
+      custom_location: seed.city,
+      custom_lat: seed.lat,
+      custom_lng: seed.lng,
+    }).then(() => {
+      setData((previous) => ({
+        ...previous,
+        useGpsLocation: false,
+        cityName: seed.city,
+        manualLocation: seed.city,
+        coordinates: { lat: seed.lat, lng: seed.lng },
+      }))
+      queryClient.setQueryData(
+        ['userPreferences', user.id],
+        (previous: Record<string, unknown> | undefined) => ({
+          ...(previous ?? {}),
+          use_gps_location: false,
+          custom_location: seed.city,
+          custom_lat: seed.lat,
+          custom_lng: seed.lng,
+        }),
+      )
+      setDeferredLocationSeeded(true)
+    }).catch((error) => {
+      logger.onboarding('deferred location seed failed; keeping location step', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    })
+  }, [deferredLocationSeed, onboardingMode, queryClient, user?.id])
+
+  useEffect(() => {
+    if (onboardingMode !== 'ticket_first' || pendingClaim === null) return
+    let cancelled = false
+    void fetchPendingClaimPrefill(pendingClaim.code).then((prefill) => {
+      if (cancelled || prefill === null) return
+      const phone = prefill.phoneE164?.replace(/[^+\d]/g, '') ?? null
+      const country = phone
+        ? [...COUNTRIES]
+          .sort((a, b) => b.dialCode.length - a.dialCode.length)
+          .find((candidate) => phone.startsWith(candidate.dialCode))
+        : undefined
+      const hasName = Boolean(prefill.firstName || prefill.lastName)
+      const hasPhone = Boolean(phone && country)
+      setData((previous) => ({
+        ...previous,
+        firstName: prefill.firstName ?? previous.firstName,
+        lastName: prefill.lastName ?? previous.lastName,
+        ...(hasPhone && phone && country ? {
+          phoneCountryCode: country.code,
+          phoneNumber: phone.slice(country.dialCode.length),
+        } : {}),
+      }))
+      setClaimNamePrefilled(hasName)
+      setClaimPhonePrefilled(hasPhone)
+    })
+    return () => { cancelled = true }
+  }, [onboardingMode, pendingClaim])
 
   // ─── Collaboration context (ORCH-1039) ───
   // The collaborations step (Step 6) is HIDDEN when the user has nothing to act
@@ -804,6 +909,12 @@ const OnboardingFlow = ({
     liftedTripClaimsLoading,
   ])
 
+  const onboardingSequenceOptions = useMemo(() => ({
+    needsLanguage: !isDeviceLanguageSupported(),
+    phonePreVerified,
+    skipLocation: onboardingMode === 'finish_setup' && deferredLocationSeeded,
+  }), [deferredLocationSeeded, onboardingMode, phonePreVerified])
+
   // ─── State Machine ───
   const {
     state: navState,
@@ -812,7 +923,13 @@ const OnboardingFlow = ({
     goToSubStep,
     progress,
     isLaunch,
-  } = useOnboardingStateMachine({ initialStep, hasGpsPermission, hasCollabContext })
+  } = useOnboardingStateMachine({
+    initialStep,
+    hasGpsPermission,
+    hasCollabContext,
+    mode: onboardingMode,
+    sequenceOptions: onboardingSequenceOptions,
+  })
 
 
   // isFirstScreen: true when the user is at the earliest screen where "Back to sign in"
@@ -820,10 +937,16 @@ const OnboardingFlow = ({
   // point) OR Step 1/welcome (where they end up if they navigate backwards past Step 2).
   // The OR condition ensures pre-verified users who navigate backwards are never trapped
   // without a sign-out path.
-  const isFirstScreen = phonePreVerified
-    ? (navState.step === 2 && navState.subStep === 'value_prop') ||
-      (navState.step === 1 && navState.subStep === 'language')
-    : (navState.step === 1 && navState.subStep === 'language')
+  const isFirstScreen = onboardingMode === 'full'
+    ? phonePreVerified
+      ? (navState.step === 2 && navState.subStep === 'value_prop') ||
+        (navState.step === 1 && navState.subStep === 'language')
+      : (navState.step === 1 && navState.subStep === 'language')
+    : navState.step === 1 && navState.subStep === (
+      onboardingMode === 'finish_setup'
+        ? 'gender_identity'
+        : onboardingSequenceOptions.needsLanguage ? 'language' : 'welcome'
+    )
 
   // ── Analytics: track each onboarding sub-step transition ──
   const prevSubStepRef = useRef(navState.subStep)
@@ -1303,6 +1426,50 @@ const OnboardingFlow = ({
     return /^\+[1-9]\d{1,14}$/.test(e164)
   }, [buildE164])
 
+  const completeTicketFirst = useCallback(async () => {
+    if (!user?.id) return
+    const setupDeferredAt = new Date().toISOString()
+    const { error } = await supabase.from('profiles').update({
+      has_completed_onboarding: true,
+      onboarding_step: 0,
+      setup_deferred_at: setupDeferredAt,
+      preferred_language: data.userPreferredLanguage ?? getDefaultLanguageCode(),
+      country: data.phoneCountryCode ?? null,
+    }).eq('id', user.id)
+    if (error) {
+      logger.onboarding('ticket-first completion failed', { error: error.message })
+      Alert.alert('We could not finish signing you in', 'Please try again. Your ticket is still safe.')
+      return
+    }
+
+    setProfile(profile ? {
+      ...profile,
+      has_completed_onboarding: true,
+      onboarding_step: 0,
+      setup_deferred_at: setupDeferredAt,
+      preferred_language: data.userPreferredLanguage ?? getDefaultLanguageCode(),
+      country: data.phoneCountryCode ?? null,
+    } : profile)
+    await clearOnboardingData()
+    logAppsFlyerEvent('af_tutorial_completion', {
+      af_success: true,
+      af_content: 'ticket_first',
+    })
+    mixpanelService.track('onboarding_ticket_first_completed', {
+      found_count: foundItems.length,
+      kind: foundItems.length === 1 ? foundItems[0].kind : 'many',
+    })
+
+    const item = foundItems.length === 1 ? foundItems[0] : null
+    const route = item && (
+      item.routeKind === 'order' || item.routeKind === 'rsvp' ||
+      item.routeKind === 'reservation' || item.routeKind === 'venue_order'
+    )
+      ? `/purchases/${item.routeKind}/${encodeURIComponent(item.routeId)}`
+      : '/purchases'
+    onComplete({ landing: { route } })
+  }, [data.phoneCountryCode, data.userPreferredLanguage, foundItems, onComplete, profile, setProfile, user?.id])
+
   // ─── Send OTP ───
   const handleSendOtp = useCallback(async () => {
     logger.action('Send OTP pressed')
@@ -1446,6 +1613,27 @@ const OnboardingFlow = ({
         }))
         // NOTE: persistStep(2) intentionally removed here — moved to handleSaveIdentity
         // to prevent bypassing gender_identity/details on resume
+        const claimResult = user?.id
+          ? await withTimeout(
+            runClaimSweep(user.id, 'otp', { showBanner: false }),
+            6_000,
+            'ticketClaimAfterOtp',
+          ).catch(() => null)
+          : null
+        if ((claimResult?.claimed.length ?? 0) > 0) {
+          setFoundItems(claimResult?.claimed ?? [])
+          setOnboardingMode('ticket_first')
+          goToSubStep('tickets_found')
+          return
+        }
+        if (onboardingMode === 'ticket_first') {
+          if (pendingClaim !== null) {
+            goToSubStep('tickets_found')
+          } else {
+            void completeTicketFirst()
+          }
+          return
+        }
         setTimeout(() => goNext(), 800) // pause for success animation
       } else {
         logger.onboarding('OTP verification failed', { attempts: otpAttempts + 1, error: result.error })
@@ -1471,7 +1659,17 @@ const OnboardingFlow = ({
         }
       }
     },
-    [buildE164, goNext, otpAttempts, goToSubStep, data.phoneCountryCode]
+    [
+      buildE164,
+      goNext,
+      otpAttempts,
+      goToSubStep,
+      data.phoneCountryCode,
+      completeTicketFirst,
+      onboardingMode,
+      pendingClaim,
+      user?.id,
+    ]
   )
 
   // ─── Location Capture ───
@@ -2191,7 +2389,12 @@ const OnboardingFlow = ({
         // other auth method we keep the original required-name gate.
         const nameReady = data.firstName.trim().length > 0 && data.lastName.trim().length > 0;
         const disabled = data.isAppleSignIn ? false : !nameReady;
-        return { label: t('common:lets_go'), disabled, loading: false, onPress: handleSaveName, hide: false }
+        const label = onboardingMode === 'ticket_first'
+          ? claimNamePrefilled
+            ? t('onboarding:ticketFirst.nameCtaPrefilled')
+            : t('onboarding:ticketFirst.nameCta')
+          : t('common:lets_go')
+        return { label, disabled, loading: false, onPress: handleSaveName, hide: false }
       }
       case 'phone':
         return data.phoneVerified
@@ -2282,10 +2485,12 @@ const OnboardingFlow = ({
       case 'getting_experiences':
         // Full-screen takeover, no shell CTA
         return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
+      case 'tickets_found':
+        return { label: '', disabled: true, loading: false, onPress: () => {}, hide: true }
       default:
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep, launchGate, launchGateSelectedCity, launchGateWriting, handleLaunchGateConfirmCity, handleLaunchGateProceedWithGps, handleLaunchGateRetry])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep, launchGate, launchGateSelectedCity, launchGateWriting, handleLaunchGateConfirmCity, handleLaunchGateProceedWithGps, handleLaunchGateRetry, onboardingMode, claimNamePrefilled])
 
   // ─── Render Step Content ───
   const renderContent = () => {
@@ -2344,6 +2549,48 @@ const OnboardingFlow = ({
       }
 
       // Phase 1: Name collection — minimal, centered, modern
+      if (onboardingMode === 'ticket_first') {
+        return (
+          <View style={styles.nameCollectionContainer}>
+            <Text style={styles.headline}>
+              {t(`onboarding:ticketFirst.${claimNamePrefilled ? 'nameTitlePrefilled' : 'nameTitle'}`)}
+            </Text>
+            {claimNamePrefilled && pendingClaim ? (
+              <Text style={styles.body}>
+                {t(`onboarding:ticketFirst.nameSubPrefilled.${pendingClaim.noun}`)}
+              </Text>
+            ) : null}
+            <View style={styles.nameInputRow}>
+              <TextInput
+                ref={firstNameRef}
+                style={styles.nameInput}
+                placeholder={t('onboarding:welcome.placeholder_first')}
+                placeholderTextColor={colors.gray[300]}
+                value={data.firstName}
+                onChangeText={(text) => setData((p) => ({ ...p, firstName: text }))}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="next"
+                onSubmitEditing={() => lastNameRef.current?.focus()}
+                textAlign="center"
+              />
+              <TextInput
+                ref={lastNameRef}
+                style={styles.nameInput}
+                placeholder={t('onboarding:welcome.placeholder_last')}
+                placeholderTextColor={colors.gray[300]}
+                value={data.lastName}
+                onChangeText={(text) => setData((p) => ({ ...p, lastName: text }))}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="done"
+                textAlign="center"
+              />
+            </View>
+          </View>
+        )
+      }
+
       return (
         <View style={styles.nameCollectionContainer}>
           <Text style={styles.nameGreeting}>{t('onboarding:welcome.we_know')}</Text>
@@ -2407,8 +2654,18 @@ const OnboardingFlow = ({
 
       return (
         <View>
-          <Text style={styles.headline}>{t('onboarding:phone.headline')}</Text>
-          <Text style={styles.body}>{t('onboarding:phone.body')}</Text>
+          <Text style={styles.headline}>
+            {onboardingMode === 'ticket_first'
+              ? t('onboarding:ticketFirst.phoneTitle')
+              : t('onboarding:phone.headline')}
+          </Text>
+          <Text style={styles.body}>
+            {onboardingMode === 'ticket_first'
+              ? pendingClaim?.preferredProof === 'phone'
+                ? t(`onboarding:ticketFirst.phoneSubSms.${pendingClaim.noun}`)
+                : t('onboarding:ticketFirst.phoneSub')
+              : t('onboarding:phone.body')}
+          </Text>
           <View style={styles.inputSpacing}>
             <PhoneInput
               value={data.phoneNumber}
@@ -2418,6 +2675,16 @@ const OnboardingFlow = ({
               error={phoneError}
               disabled={sendingOtp}
             />
+            {onboardingMode === 'ticket_first' &&
+            pendingClaim?.preferredProof === 'phone' &&
+            !claimPhonePrefilled &&
+            pendingClaim.phoneLast4 ? (
+              <Text style={styles.fieldHelperText}>
+                {t('onboarding:ticketFirst.phoneHintLast4', {
+                  last4: pendingClaim.phoneLast4,
+                })}
+              </Text>
+            ) : null}
           </View>
           <Pressable
             style={styles.consentRow}
@@ -3413,6 +3680,27 @@ const OnboardingFlow = ({
       )
     }
 
+    if (subStep === 'tickets_found') {
+      return (
+        <TicketsFoundStep
+          hadPendingClaim={pendingClaim !== null}
+          items={foundItems}
+          onContinue={() => { void completeTicketFirst() }}
+          onItemsChanged={(items) => {
+            if (items.length > 0) {
+              setFoundItems(items)
+              return
+            }
+            if (!user?.id) return
+            void runClaimSweep(user.id, 'add_identity', { showBanner: false })
+              .then((result) => {
+                if (result.claimed.length > 0) setFoundItems(result.claimed)
+              })
+          }}
+        />
+      )
+    }
+
     // ─── STEP 6: Collaborations ───
     if (subStep === 'collaborations') {
       return (
@@ -3454,6 +3742,7 @@ const OnboardingFlow = ({
           data={data}
           warmPoolPromiseRef={warmPoolPromiseRef}
           onComplete={onComplete}
+          mode={onboardingMode}
         />
       )
     }
@@ -3475,11 +3764,19 @@ const OnboardingFlow = ({
       primaryCtaLoading={ctaConfig.loading}
       onPrimaryCta={ctaConfig.onPress}
       hidePrimaryCta={ctaConfig.hide}
-      hideBottomBar={navState.subStep === 'getting_experiences'}
+      hideBottomBar={
+        navState.subStep === 'getting_experiences' ||
+        navState.subStep === 'tickets_found'
+      }
       disableKeyboardAvoidance={navState.subStep === 'collaborations' || navState.subStep === 'welcome'}
       scrollEnabled={resolveScrollEnabled(navState.subStep, isShortViewport)}
       flushContent={navState.subStep === 'categories'}
-      onBackToWelcome={isFirstScreen ? handleBackToWelcome : undefined}
+      onBackToWelcome={
+        isFirstScreen && onboardingMode !== 'finish_setup'
+          ? handleBackToWelcome
+          : undefined
+      }
+      onClose={onboardingMode === 'finish_setup' ? () => onComplete() : undefined}
     >
       {renderContent()}
     </OnboardingShell>

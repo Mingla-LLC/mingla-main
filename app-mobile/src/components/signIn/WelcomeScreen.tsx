@@ -37,6 +37,13 @@ import { useTranslation } from "react-i18next";
 // deleted app-local mingla_official_logo.png copy).
 import { MINGLA_WORDMARK } from "@mingla/brand-assets";
 import { WelcomeVideoBackground } from "./WelcomeVideoBackground";
+import {
+  sendPendingClaimEmailCode,
+  verifyPendingClaimEmailCode,
+  type PendingClaim,
+} from "../../services/attendanceClaimService";
+import { formatStartsAtLabel } from "../../utils/zoneLabel";
+import { postHogService } from "../../services/postHogService";
 
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = MINGLA_WORDMARK;
@@ -67,6 +74,9 @@ interface WelcomeScreenProps {
    * email filled in and send exactly one code.
    */
   followInvite?: { brandName: string; email: string } | null;
+  /** #4063 — safe claim-link summary. The address is already server-masked. */
+  ticketClaim?: PendingClaim | null;
+  ticketClaimResolving?: boolean;
 }
 
 /** One resend per 30 seconds, with a visible countdown. A guest tapping resend
@@ -91,6 +101,8 @@ export default function WelcomeScreen({
   onVerifyEmailCode,
   emailPanelInitiallyOpen = false,
   followInvite = null,
+  ticketClaim = null,
+  ticketClaimResolving = false,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -142,6 +154,17 @@ export default function WelcomeScreen({
   const [emailError, setEmailError] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
   const followInviteCodeSentRef = useRef(false);
+  const [claimEmailChallengeId, setClaimEmailChallengeId] = useState<string | null>(null);
+  const [claimEmailSentTo, setClaimEmailSentTo] = useState<string | null>(null);
+  const [claimEmailFallback, setClaimEmailFallback] = useState(false);
+
+  useEffect(() => {
+    setClaimEmailChallengeId(null);
+    setClaimEmailSentTo(null);
+    setClaimEmailFallback(false);
+    setEmailCode("");
+    setEmailError(null);
+  }, [ticketClaim?.code]);
 
   // #3682 Wave 2.5 O1 — send exactly one code when the invite lands.
   useEffect(() => {
@@ -177,6 +200,62 @@ export default function WelcomeScreen({
 
   const isAnyAuthInProgress =
     isGoogleSignInInProgress || isAppleSignInInProgress || emailBusy;
+
+  const claimEmailPreferred = Boolean(
+    ticketClaim && !ticketClaim.expired &&
+      ticketClaim.preferredProof === "email" && ticketClaim.emailMasked &&
+      !claimEmailFallback,
+  );
+
+  const sendClaimEmailCode = async (): Promise<void> => {
+    if (!ticketClaim || emailBusy) return;
+    HapticFeedback.light();
+    postHogService.capture("welcome_continue_with_purchase_email_tapped", {
+      claim_noun: ticketClaim.noun,
+    });
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      const result = await sendPendingClaimEmailCode(ticketClaim.code);
+      if (!result.ok) {
+        setEmailError(result.message);
+        if (result.error === "rate_limited" || result.error === "no_email") {
+          setClaimEmailFallback(true);
+        }
+        return;
+      }
+      setClaimEmailChallengeId(result.challengeId);
+      setClaimEmailSentTo(result.sentTo);
+      setEmailCode("");
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+      AccessibilityInfo.announceForAccessibility(
+        `We emailed a six digit code to ${result.sentTo}.`,
+      );
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
+  const submitClaimEmailCode = async (): Promise<void> => {
+    if (!claimEmailChallengeId || emailBusy) return;
+    const otp = emailCode.trim();
+    if (!/^\d{6}$/.test(otp)) {
+      setEmailError("Enter the 6-digit code we emailed you.");
+      return;
+    }
+    setEmailBusy(true);
+    setEmailError(null);
+    try {
+      const result = await verifyPendingClaimEmailCode({
+        challengeId: claimEmailChallengeId,
+        otp,
+      });
+      if (!result.ok) setEmailError(result.message);
+      // On success the auth listener owns the transition and unmounts this screen.
+    } finally {
+      setEmailBusy(false);
+    }
+  };
 
   const sendEmailCode = async (): Promise<void> => {
     if (onSendEmailCode === undefined || emailBusy) return;
@@ -432,6 +511,28 @@ export default function WelcomeScreen({
   const logoWidth =
     (logoPillWidth * WELCOME_WORDMARK_WIDTH) / WELCOME_LOGO_PILL_WIDTH;
   const logoHeight = logoWidth * 480 / 1356;
+  const startsAtLabel = formatStartsAtLabel(
+    ticketClaim?.startsAt,
+    ticketClaim?.timezone,
+  );
+  const claimCardLabel = ticketClaim
+    ? t(`auth:welcome.claimCard.${ticketClaim.noun}`, {
+      defaultValue: `Your ${ticketClaim.noun} is waiting`,
+    })
+    : null;
+  const expiredMethods = ticketClaim
+    ? [
+      ticketClaim.emailMasked ? `the email ${ticketClaim.emailMasked}` : null,
+      ticketClaim.phoneLast4 ? `the number ending ${ticketClaim.phoneLast4}` : null,
+    ].filter((method): method is string => method !== null)
+    : [];
+  const expiredLine = ticketClaim?.expired
+    ? `This link has expired. Your ${ticketClaim.noun} is still yours: ${
+      expiredMethods.length > 0
+        ? `sign in with ${expiredMethods.join(" or ")}.`
+        : "sign in with the email or mobile number you used."
+    }`
+    : null;
 
   return (
     <View style={styles.root}>
@@ -510,7 +611,150 @@ export default function WelcomeScreen({
               : WELCOME_TAGLINE}
           </Animated.Text>
 
-        <View style={styles.authGroup}>
+          {ticketClaimResolving ? (
+            <View style={styles.claimResolving} testID="welcome-ticket-claim-resolving">
+              <ActivityIndicator color="#ffffff" />
+              <Text style={styles.claimResolvingText}>
+                {t("auth:welcome.opening.ticket", {
+                  defaultValue: "Opening your ticket…",
+                })}
+              </Text>
+            </View>
+          ) : null}
+
+        <View
+          style={[styles.authGroup, ticketClaimResolving && styles.hiddenAuthGroup]}
+          pointerEvents={ticketClaimResolving ? "none" : "auto"}
+          accessibilityElementsHidden={ticketClaimResolving}
+          importantForAccessibility={ticketClaimResolving ? "no-hide-descendants" : "auto"}
+        >
+          {ticketClaim && !ticketClaim.expired ? (
+            <View
+              style={styles.claimCard}
+              accessibilityRole="summary"
+              accessibilityLabel={[
+                claimCardLabel,
+                ticketClaim.title,
+                ticketClaim.noun === "receipt" ? ticketClaim.orderLabel : null,
+                startsAtLabel,
+              ].filter(Boolean).join(". ")}
+              testID="welcome-ticket-claim-card"
+            >
+              <Text style={styles.claimCardEyebrow}>{claimCardLabel}</Text>
+              <Text style={styles.claimCardTitle}>{ticketClaim.title}</Text>
+              {ticketClaim.noun === "receipt" && ticketClaim.orderLabel ? (
+                <Text style={styles.claimCardMeta}>{ticketClaim.orderLabel}</Text>
+              ) : null}
+              {startsAtLabel ? (
+                <Text style={styles.claimCardMeta}>{startsAtLabel}</Text>
+              ) : null}
+              <Text style={styles.claimCardPrompt}>
+                {t("auth:welcome.signInToGetIt", {
+                  defaultValue: "Sign in to get it",
+                })}
+              </Text>
+            </View>
+          ) : null}
+
+          {expiredLine ? (
+            <Text style={styles.claimHint} testID="welcome-ticket-claim-expired">
+              {expiredLine}
+            </Text>
+          ) : null}
+
+          {claimEmailPreferred ? (
+            claimEmailChallengeId === null ? (
+              <TouchableOpacity
+                onPress={() => void sendClaimEmailCode()}
+                style={[styles.claimEmailButton, emailBusy && styles.buttonDisabled]}
+                disabled={emailBusy}
+                accessibilityRole="button"
+                accessibilityLabel={`Continue with ${ticketClaim!.emailMasked}`}
+                accessibilityState={{ disabled: emailBusy, busy: emailBusy }}
+                testID="welcome-claim-email-send"
+              >
+                {emailBusy ? (
+                  <ActivityIndicator size="small" color="#111827" />
+                ) : (
+                  <Text
+                    style={styles.claimEmailButtonText}
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                  >
+                    {t("auth:welcome.continueWithEmailAddress", {
+                      email: ticketClaim!.emailMasked,
+                      defaultValue: `Continue with ${ticketClaim!.emailMasked}`,
+                    })}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.emailPanel} testID="welcome-claim-email-panel">
+                <Text style={styles.emailPanelHeading}>
+                  {t("auth:email.checkTitle", { defaultValue: "Check your email" })}
+                </Text>
+                <Text style={styles.emailPanelLabel}>
+                  {t("auth:email.codeSentTo", {
+                    email: claimEmailSentTo ?? ticketClaim!.emailMasked,
+                    defaultValue: `Enter the 6-digit code we sent to ${
+                      claimEmailSentTo ?? ticketClaim!.emailMasked
+                    }.`,
+                  })}
+                </Text>
+                <TextInput
+                  value={emailCode}
+                  onChangeText={(next) => {
+                    setEmailCode(next.replace(/[^0-9]/g, "").slice(0, 6));
+                    setEmailError(null);
+                  }}
+                  placeholder="123456"
+                  placeholderTextColor="rgba(255,255,255,.45)"
+                  keyboardType="number-pad"
+                  autoComplete="one-time-code"
+                  textContentType="oneTimeCode"
+                  returnKeyType="done"
+                  onSubmitEditing={() => void submitClaimEmailCode()}
+                  editable={!emailBusy}
+                  maxLength={6}
+                  style={[styles.emailInput, styles.emailCodeInput]}
+                  accessibilityLabel="Six digit sign-in code"
+                  testID="welcome-claim-email-code"
+                />
+                <TouchableOpacity
+                  onPress={() => void submitClaimEmailCode()}
+                  style={[styles.emailSubmit, emailBusy && styles.buttonDisabled]}
+                  disabled={emailBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sign in with this code"
+                  accessibilityState={{ disabled: emailBusy, busy: emailBusy }}
+                  testID="welcome-claim-email-verify"
+                >
+                  {emailBusy ? (
+                    <ActivityIndicator size="small" color="#111827" />
+                  ) : (
+                    <Text style={styles.emailSubmitText}>Sign in</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void sendClaimEmailCode()}
+                  style={styles.emailGhost}
+                  disabled={emailBusy || resendIn > 0}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: emailBusy || resendIn > 0 }}
+                  testID="welcome-claim-email-resend"
+                >
+                  <Text style={styles.emailGhostText}>
+                    {resendIn > 0 ? `Send a new code in ${resendIn}s` : "Send a new code"}
+                  </Text>
+                </TouchableOpacity>
+                {emailError ? (
+                  <Text style={styles.emailError} accessibilityLiveRegion="polite">
+                    {emailError}
+                  </Text>
+                ) : null}
+              </View>
+            )
+          ) : null}
           {/* Apple Sign-In Button — iOS only */}
           {Platform.OS === "ios" && (
             <Animated.View
@@ -617,7 +861,7 @@ export default function WelcomeScreen({
             straight here mid-claim, and a route push would have to carry and
             restore the pending claim across a navigation it does not own.
           */}
-          {emailSignInAvailable ? (
+          {emailSignInAvailable && !claimEmailPreferred ? (
             <Animated.View
               style={[
                 styles.buttonAnimWrapper,
@@ -710,10 +954,19 @@ export default function WelcomeScreen({
                     </>
                   ) : (
                     <>
+                      <Text style={styles.emailPanelHeading}>
+                        {t("auth:email.checkTitle", { defaultValue: "Check your email" })}
+                      </Text>
                       <Text style={styles.emailPanelLabel}>
                         {followInviteActive
-                          ? `We emailed a 6-digit code to ${followInvite!.email}`
-                          : "Enter the 6-digit code we emailed you."}
+                          ? t("auth:email.codeSentTo", {
+                            email: followInvite!.email,
+                            defaultValue: `Enter the 6-digit code we sent to ${followInvite!.email}.`,
+                          })
+                          : t("auth:email.codeSentTo", {
+                            email: emailAddress,
+                            defaultValue: `Enter the 6-digit code we sent to ${emailAddress}.`,
+                          })}
                       </Text>
                       <TextInput
                         value={emailCode}
@@ -800,6 +1053,45 @@ export default function WelcomeScreen({
             </Animated.View>
           ) : null}
 
+          {!ticketClaim ? (
+            <Text style={styles.claimHint} testID="welcome-cold-ticket-line">
+              {t("auth:welcome.coldTicketLine", {
+                defaultValue:
+                  "Bought a ticket? Sign in with the email you used, or confirm your number on the next screen. It'll be waiting.",
+              })}
+            </Text>
+          ) : !ticketClaim.expired && ticketClaim.preferredProof === "phone" ? (
+            <Text style={styles.claimHint} testID="welcome-ticket-phone-hint">
+              {t("auth:welcome.gotItByText", {
+                defaultValue: "Got it by text? Confirm your number next.",
+              })}
+            </Text>
+          ) : !ticketClaim.expired && ticketClaim.preferredProof === "email" ? (
+            <Text style={styles.claimHint} testID="welcome-ticket-number-hint">
+              {t("auth:welcome.boughtWithNumber", {
+                defaultValue:
+                  "Bought with your number? Use any option. You'll confirm your number next.",
+              })}
+            </Text>
+          ) : !ticketClaim.expired && ticketClaim.preferredProof === "any" ? (
+            <Text style={styles.claimHint} testID="welcome-ticket-any-hint">
+              {t("auth:welcome.coldTicketLine", {
+                defaultValue:
+                  "Bought a ticket? Sign in with the email you used, or confirm your number on the next screen. It'll be waiting.",
+              })}
+            </Text>
+          ) : null}
+
+          {claimEmailFallback && emailError ? (
+            <Text
+              style={styles.emailError}
+              accessibilityLiveRegion="polite"
+              testID="welcome-claim-email-fallback-error"
+            >
+              {emailError}
+            </Text>
+          ) : null}
+
           {/* Terms & Privacy */}
           <Animated.View style={[styles.termsWrapper, { opacity: termsOpacity }]}>
             <Text style={styles.termsText}>
@@ -882,6 +1174,74 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: vs(14),
   },
+  hiddenAuthGroup: { display: "none" },
+  claimResolving: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.xl,
+  },
+  claimResolvingText: {
+    color: "#ffffff",
+    fontSize: s(16),
+    fontWeight: fontWeights.semibold,
+  },
+  claimCard: {
+    width: "100%",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.xl,
+    backgroundColor: "rgba(255,255,255,.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,.32)",
+    gap: 4,
+  },
+  claimCardEyebrow: {
+    color: "rgba(255,255,255,.78)",
+    fontSize: s(13),
+    fontWeight: fontWeights.semibold,
+  },
+  claimCardTitle: {
+    color: "#ffffff",
+    fontSize: s(19),
+    lineHeight: vs(25),
+    fontWeight: fontWeights.bold,
+  },
+  claimCardMeta: {
+    color: "rgba(255,255,255,.76)",
+    fontSize: s(13),
+    lineHeight: vs(18),
+  },
+  claimCardPrompt: {
+    color: "#ffffff",
+    fontSize: s(14),
+    lineHeight: vs(20),
+    fontWeight: fontWeights.semibold,
+    marginTop: spacing.xs,
+  },
+  claimHint: {
+    color: "rgba(255,255,255,.82)",
+    fontSize: s(13),
+    lineHeight: vs(19),
+    textAlign: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  claimEmailButton: {
+    width: "100%",
+    minHeight: vs(56),
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.lg,
+    backgroundColor: "#ffffff",
+    ...shadows.sm,
+  },
+  claimEmailButtonText: {
+    color: "#111827",
+    fontSize: s(16),
+    fontWeight: fontWeights.semibold,
+  },
   buttonAnimWrapper: {
     width: "100%",
     alignItems: "center",
@@ -962,6 +1322,12 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,.82)",
     fontSize: s(14),
     lineHeight: vs(20),
+  },
+  emailPanelHeading: {
+    color: "#ffffff",
+    fontSize: s(18),
+    lineHeight: vs(24),
+    fontWeight: fontWeights.bold,
   },
   emailInput: {
     minHeight: 48,

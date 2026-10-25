@@ -7,7 +7,7 @@
 // ticket list ONCE from the whole order and attached that same array to EVERY
 // day row. `ticket_event_dates` was already selected by the query and simply
 // thrown away. Under `per_day` (D days -> D passes, one entitlement row each)
-// the day-2 QR therefore rendered on the day-1 card. `TicketPdfSheet` stamps
+// the day-2 QR therefore rendered on the day-1 card. The Purchases detail stamps
 // every pass it is handed "Valid". `biz_ticket_scan` then refuses it, and the
 // guest is turned away holding a pass the app told them was good.
 //

@@ -55,6 +55,8 @@ import BetaFeedbackButton from "./BetaFeedbackButton";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { LEGAL_URLS } from "../constants/urls";
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'expo-router';
+import { PurchasesCard } from './profile/PurchasesCard';
 
 interface ProfilePageProps {
   onSignOut?: () => void;
@@ -74,6 +76,7 @@ interface ProfilePageProps {
     profileImage: string | null;
     active?: boolean;
   };
+  onFinishSetup?: () => void;
 }
 
 function ProfilePage({
@@ -88,7 +91,9 @@ function ProfilePage({
   notificationsEnabled = true,
   onNotificationsToggle,
   userIdentity,
+  onFinishSetup,
 }: ProfilePageProps) {
+  const router = useRouter();
   // ORCH-0679 Wave 2A: Dev-only render counter (I-TAB-PROPS-STABLE verification).
   const renderCountRef = React.useRef(0);
   if (__DEV__) {
@@ -539,6 +544,18 @@ function ProfilePage({
             </GlassCard>
           </View>
 
+          {/* #4063 — the user's tickets and bookings belong near their identity,
+              not buried among account controls. Coach targeting joins after the
+              #4073-owned step map is released. */}
+          <GlassCard variant="base">
+            <PurchasesCard
+              userId={user?.id}
+              setupDeferred={profile?.setup_deferred_at != null}
+              onOpen={() => router.push('/purchases')}
+              onFinishSetup={() => onFinishSetup?.()}
+            />
+          </GlassCard>
+
           {/* 2. Interests card — ORCH-1035 coach step 8 (scroll + direct measure) */}
           <View ref={interestsRef} collapsable={false} onLayout={handleInterestsLayout}>
             <GlassCard variant="base">
@@ -571,7 +588,7 @@ function ProfilePage({
               levelProgress={levelProgress}
               onStatPress={(stat) => {
                 if (stat === "saved") onNavigateToActivity?.("saved");
-                else if (stat === "scheduled") onNavigateToActivity?.("calendar");
+                else if (stat === "scheduled") router.push('/purchases?tab=upcoming');
                 else if (stat === "connections") onNavigateToConnections?.();
               }}
             />

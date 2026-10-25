@@ -20,6 +20,27 @@
     "placeholder_last": "Last",
     "cta": "Let's go"
   },
+  "ticketFirst": {
+    "nameTitlePrefilled": "Is this you?",
+    "nameSubPrefilled": {
+      "ticket": "From your ticket. Change it if it's wrong.",
+      "pass": "From your pass. Change it if it's wrong.",
+      "booking": "From your booking. Change it if it's wrong.",
+      "receipt": "From your receipt. Change it if it's wrong."
+    },
+    "nameCtaPrefilled": "That's me",
+    "nameTitle": "What's your name?",
+    "nameCta": "Next",
+    "phoneTitle": "Confirm your number",
+    "phoneSub": "Tickets bought with this number come straight to your account.",
+    "phoneSubSms": {
+      "ticket": "Use the number the text came to. That's how your ticket finds you.",
+      "pass": "Use the number the text came to. That's how your pass finds you.",
+      "booking": "Use the number the text came to. That's how your booking finds you.",
+      "receipt": "Use the number the text came to. That's how your receipt finds you."
+    },
+    "phoneHintLast4": "The text came to the number ending {{last4}}."
+  },
   "phone": {
     "headline": "What's your number?",
     "body": "We'll send a code. Takes two seconds.",

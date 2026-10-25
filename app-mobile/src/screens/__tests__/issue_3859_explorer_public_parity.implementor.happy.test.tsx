@@ -397,16 +397,14 @@ describe("issue #3859 — Explorer native public-page parity", () => {
     expect(experience).toContain("router.push(`/b/${seed.brandSlug}` as never)");
   });
 
-  test("ticket PDF error recovery stays inside Explorer instead of opening Host web", () => {
-    const ticketSheet = read("src/components/activity/TicketPdfSheet.tsx");
+  test("calendar tickets route into Explorer Purchases instead of opening Host web", () => {
+    const calendarRow = read("src/components/activity/BusinessEventCalendarRow.tsx");
     const calendarService = read("src/services/calendarService.ts");
 
     expect(calendarService).toContain('eventSlug: event?.slug ?? ""');
     expect(calendarService).toContain("eventType: event?.event_type ?? null");
-    expect(ticketSheet).toContain("resolveExplorerCalendarOrderPath(entry");
-    expect(ticketSheet).toContain("router.push(nativeBuyerPath as never)");
-    expect(ticketSheet).toContain("View in Mingla");
-    expect(ticketSheet).not.toContain("openBrowserAsync(entry.publicBuyerUrl)");
-    expect(ticketSheet).not.toContain("View on web");
+    expect(calendarRow).toContain("`/purchases/order/${entry.orderId}");
+    expect(calendarRow).not.toContain("TicketPdfSheet");
+    expect(calendarRow).not.toContain("openBrowserAsync(entry.publicBuyerUrl)");
   });
 });

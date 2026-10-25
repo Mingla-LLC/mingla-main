@@ -10,6 +10,7 @@
  * No React, no I/O, no imports beyond the onboarding step/substep types.
  */
 import type { OnboardingStep, SubStep, OnboardingNavState } from '../types/onboarding'
+import type { OnboardingMode } from './ticketFirstLogic'
 
 // ─── Step Sub-Step Sequences ───
 // The static per-step substep arrays. The Step-6 (collaborations) sequence is
@@ -30,6 +31,25 @@ export const STEP_SUBSTEPS: Record<OnboardingStep, SubStep[]> = {
 export const FIRST_STEP: OnboardingStep = 1
 export const LAST_STEP: OnboardingStep = 7
 
+export const TICKET_FIRST_SUBSTEPS: SubStep[] = [
+  'welcome',
+  'phone',
+  'otp',
+  'tickets_found',
+]
+
+export interface OnboardingSequenceOptions {
+  needsLanguage: boolean
+  phonePreVerified: boolean
+  skipLocation?: boolean
+}
+
+const DEFAULT_SEQUENCE_OPTIONS: OnboardingSequenceOptions = {
+  needsLanguage: false,
+  phonePreVerified: false,
+  skipLocation: false,
+}
+
 /**
  * The effective substep sequence for a given step.
  *
@@ -41,8 +61,23 @@ export const LAST_STEP: OnboardingStep = 7
  */
 export function buildSequence(
   step: OnboardingStep,
-  hasCollabContext: boolean
+  hasCollabContext: boolean,
+  mode: OnboardingMode = 'full',
+  options: OnboardingSequenceOptions = DEFAULT_SEQUENCE_OPTIONS,
 ): SubStep[] {
+  if (mode === 'ticket_first') {
+    if (step !== 1) return []
+    return [
+      ...(options.needsLanguage ? ['language' as const] : []),
+      'welcome',
+      ...(options.phonePreVerified ? [] : ['phone' as const, 'otp' as const]),
+      'tickets_found',
+    ]
+  }
+  if (mode === 'finish_setup') {
+    if (step === 1) return ['gender_identity', 'details']
+    if (step === 3 && options.skipLocation === true) return []
+  }
   if (step === 6 && !hasCollabContext) return []
   return STEP_SUBSTEPS[step]
 }
@@ -62,9 +97,11 @@ export type AdvanceResult =
  */
 export function advance(
   prev: OnboardingNavState,
-  hasCollabContext: boolean
+  hasCollabContext: boolean,
+  mode: OnboardingMode = 'full',
+  options: OnboardingSequenceOptions = DEFAULT_SEQUENCE_OPTIONS,
 ): AdvanceResult {
-  const seq = buildSequence(prev.step, hasCollabContext)
+  const seq = buildSequence(prev.step, hasCollabContext, mode, options)
   const idx = seq.indexOf(prev.subStep)
 
   if (idx === -1) {
@@ -78,11 +115,14 @@ export function advance(
 
   // At end of step — advance to the next step that has a sequence.
   let nextStep = (prev.step + 1) as OnboardingStep
-  while (nextStep <= LAST_STEP && buildSequence(nextStep, hasCollabContext).length === 0) {
+  while (
+    nextStep <= LAST_STEP &&
+    buildSequence(nextStep, hasCollabContext, mode, options).length === 0
+  ) {
     nextStep = (nextStep + 1) as OnboardingStep
   }
   if (nextStep <= LAST_STEP) {
-    const nextSeq = buildSequence(nextStep, hasCollabContext)
+    const nextSeq = buildSequence(nextStep, hasCollabContext, mode, options)
     return { kind: 'move', next: { step: nextStep, subStep: nextSeq[0] } }
   }
 
@@ -103,9 +143,11 @@ export type RetreatResult =
  */
 export function retreat(
   prev: OnboardingNavState,
-  hasCollabContext: boolean
+  hasCollabContext: boolean,
+  mode: OnboardingMode = 'full',
+  options: OnboardingSequenceOptions = DEFAULT_SEQUENCE_OPTIONS,
 ): RetreatResult {
-  const seq = buildSequence(prev.step, hasCollabContext)
+  const seq = buildSequence(prev.step, hasCollabContext, mode, options)
   const idx = seq.indexOf(prev.subStep)
 
   if (idx === -1) {
@@ -119,11 +161,14 @@ export function retreat(
 
   // At start of step — go to the previous step that has a sequence.
   let prevStep = (prev.step - 1) as OnboardingStep
-  while (prevStep >= FIRST_STEP && buildSequence(prevStep, hasCollabContext).length === 0) {
+  while (
+    prevStep >= FIRST_STEP &&
+    buildSequence(prevStep, hasCollabContext, mode, options).length === 0
+  ) {
     prevStep = (prevStep - 1) as OnboardingStep
   }
   if (prevStep >= FIRST_STEP) {
-    const prevSeq = buildSequence(prevStep, hasCollabContext)
+    const prevSeq = buildSequence(prevStep, hasCollabContext, mode, options)
     return { kind: 'move', next: { step: prevStep, subStep: prevSeq[prevSeq.length - 1] } }
   }
 
@@ -139,14 +184,19 @@ export function retreat(
  */
 export function resolveEntry(
   step: OnboardingStep,
-  hasCollabContext: boolean
+  hasCollabContext: boolean,
+  mode: OnboardingMode = 'full',
+  options: OnboardingSequenceOptions = DEFAULT_SEQUENCE_OPTIONS,
 ): OnboardingNavState {
   let s = step
-  while (s <= LAST_STEP && buildSequence(s, hasCollabContext).length === 0) {
+  while (
+    s <= LAST_STEP &&
+    buildSequence(s, hasCollabContext, mode, options).length === 0
+  ) {
     s = (s + 1) as OnboardingStep
   }
   if (s > LAST_STEP) s = LAST_STEP // defensive: never past the last step
-  const seq = buildSequence(s, hasCollabContext)
+  const seq = buildSequence(s, hasCollabContext, mode, options)
   // If even the last step is somehow empty (cannot happen — Step 7 is
   // unconditional), fall back to its static first substep.
   const subStep = seq.length > 0 ? seq[0] : STEP_SUBSTEPS[s][0]
@@ -162,9 +212,11 @@ export function resolveEntry(
  */
 export function computeSegmentFill(
   state: OnboardingNavState,
-  hasCollabContext: boolean
+  hasCollabContext: boolean,
+  mode: OnboardingMode = 'full',
+  options: OnboardingSequenceOptions = DEFAULT_SEQUENCE_OPTIONS,
 ): number {
-  const seq = buildSequence(state.step, hasCollabContext)
+  const seq = buildSequence(state.step, hasCollabContext, mode, options)
   const idx = seq.indexOf(state.subStep)
   if (seq.length <= 1 || idx === -1) return 1
   return (idx + 1) / seq.length

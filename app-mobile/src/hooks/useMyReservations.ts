@@ -71,7 +71,7 @@ export const myReservationsKeys = {
   byUser: (userId: string) => [...myReservationsKeys.all, userId] as const,
 };
 
-async function fetchMyReservations(
+export async function fetchMyReservations(
   userId: string,
 ): Promise<MyReservationRow[]> {
   const { data, error } = await supabase

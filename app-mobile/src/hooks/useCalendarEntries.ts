@@ -8,7 +8,7 @@ import {
   BusinessEventCalendarRow,
   ConsumerRsvpRow,
 } from "../services/calendarService";
-import { circleKeys } from "./queryKeys";
+import { circleKeys, purchaseKeys } from "./queryKeys";
 
 const fetchCalendarEntries = async (
   userId: string | undefined
@@ -104,6 +104,7 @@ export const useOrdersRealtimeSubscription = (userId: string | undefined): void 
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ["businessEventOrders", userId] });
+          queryClient.invalidateQueries({ queryKey: purchaseKeys.all });
           queryClient.invalidateQueries({ queryKey: circleKeys.all });
         }
       )
