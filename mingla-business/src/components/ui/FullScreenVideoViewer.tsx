@@ -8,12 +8,14 @@
  * so expo-video never evaluates on a screen that does not open a video.
  */
 import React, { useEffect } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { registerVideoPlayerForReload } from "@mingla/offering-rendering/videoPlayerReloadRelease";
 
-import { canvas, glass, spacing, text as textTokens } from "../../constants/designSystem";
+import { spacing, text as textTokens } from "../../constants/designSystem";
+import { useBusinessMediaTranslation } from "../../i18n";
 import { Icon } from "./Icon";
+import { MediaViewerShell } from "../media/MediaViewerShell";
 
 export interface FullScreenVideoViewerProps {
   /** The video to play; null keeps the viewer closed. */
@@ -23,6 +25,7 @@ export interface FullScreenVideoViewerProps {
 }
 
 export function FullScreenVideoViewer({ uri, title, onClose }: FullScreenVideoViewerProps): React.ReactElement {
+  const { t } = useBusinessMediaTranslation();
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
   });
@@ -30,43 +33,29 @@ export function FullScreenVideoViewer({ uri, title, onClose }: FullScreenVideoVi
   // here calls the player from JS; if the restart does not happen the VideoView
   // keeps its still frame and the native controls.
   useEffect(() => registerVideoPlayerForReload(player), [player]);
+  const header = (
+    <View style={styles.header}>
+      <Pressable accessibilityRole="button" accessibilityLabel={t("viewer.close_video_a11y")} onPress={onClose} hitSlop={8} style={styles.close}><Icon name="close" size={20} color={textTokens.primary} /></Pressable>
+      <Text style={styles.title} numberOfLines={1}>{title}</Text>
+    </View>
+  );
   return (
-    <Modal visible={uri !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <View style={styles.screen}>
-        <View style={styles.header}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close video"
-            onPress={onClose}
-            hitSlop={8}
-            style={styles.close}
-          >
-            <Icon name="close" size={20} color={textTokens.primary} />
-          </Pressable>
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
-        </View>
-        {uri !== null ? (
-          <VideoView player={player} style={styles.media} nativeControls contentFit="contain" accessibilityLabel={title} />
-        ) : null}
-      </View>
-    </Modal>
+    <MediaViewerShell visible={uri !== null} onClose={onClose} closeAccessibilityLabel={t("viewer.close_video_a11y")} topBar={header} hasBottomArea={false} testID="full-screen-video-viewer">
+      {(stage) => uri !== null ? <VideoView player={player} style={stage.style} nativeControls contentFit="contain" accessibilityLabel={title} /> : null}
+    </MediaViewerShell>
   );
 }
 
 export default FullScreenVideoViewer;
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: canvas.profile },
   header: {
-    minHeight: 68,
+    height: 56,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: glass.border.profileBase,
   },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   title: { flex: 1, color: textTokens.primary, fontSize: 16, fontWeight: "700" },
-  media: { flex: 1, width: "100%", backgroundColor: "#050608" },
 });

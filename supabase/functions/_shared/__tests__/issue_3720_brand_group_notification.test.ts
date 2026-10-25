@@ -15,11 +15,31 @@ Deno.test("#3720 Brand group push renders the actual sender and Brand", () => {
   assertEquals(rendered.email.subject, "Simone in Acme Social");
 });
 
+// [TEST-MOD-APPROVED #3988] The existing notification contract now proves the
+// explicit mention variant while retaining the original ordinary-message case.
+Deno.test("#3988 direct Brand group mention is explicit in the notification", () => {
+  const rendered = renderCategoryMessage("business.brand_group_message", {
+    sender_name: "Simone",
+    brand_name: "Acme Social",
+    body: "Can you confirm this?",
+    mentioned: true,
+  });
+  assertEquals(rendered.push.title, "Simone mentioned you in Acme Social");
+  assertEquals(rendered.email.subject, "Simone mentioned you in Acme Social");
+});
+
 Deno.test("#3720 Brand-group notification destination is validated and routed", () => {
-  const notifyV2 = Deno.readTextFileSync(new URL("../notifyV2.ts", import.meta.url));
-  const drain = Deno.readTextFileSync(new URL("../../notify-outbox-drain/index.ts", import.meta.url));
+  const notifyV2 = Deno.readTextFileSync(
+    new URL("../notifyV2.ts", import.meta.url),
+  );
+  const drain = Deno.readTextFileSync(
+    new URL("../../notify-outbox-drain/index.ts", import.meta.url),
+  );
   assertStringIncludes(notifyV2, 'category === "business.brand_group_message"');
-  assertStringIncludes(notifyV2, 'deepLink?.replace("mingla-business://messages/", "")');
+  assertStringIncludes(
+    notifyV2,
+    'deepLink?.replace("mingla-business://messages/", "")',
+  );
   assertStringIncludes(notifyV2, "UUID.test(id)");
   assertStringIncludes(drain, '"business.brand_group_message"');
 });

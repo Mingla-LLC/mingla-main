@@ -1,0 +1,216 @@
+import React from "react";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const mockPlatform = { OS: "ios" };
+const mockInvalidateQueries = jest.fn();
+const mockThumbnailRequest = jest.fn();
+
+jest.mock("react-native", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ReactModule = require("react");
+  const base = jest.requireActual("react-native");
+  Object.assign(mockPlatform, { select: base.Platform.select });
+  return {
+    ...base,
+    Image: (props: Record<string, unknown>) => ReactModule.createElement("ImageProbe", props),
+    Platform: mockPlatform,
+  };
+});
+jest.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+}));
+jest.mock("../../../i18n", () => ({
+  useBusinessMediaTranslation: () => ({ t: (key: string) => key, language: "en" }),
+}));
+jest.mock("../../../services/brandGroupFileRequests", () => ({
+  brandGroupFileThumbnailRequest: (...args: unknown[]) => mockThumbnailRequest(...args),
+}));
+jest.mock("../../ui/Icon", () => ({
+  Icon: (props: Record<string, unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("react").createElement("IconProbe", props),
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TestRenderer = require("react-test-renderer") as {
+  create: (node: React.ReactElement) => Renderer;
+  act: (work: () => void | Promise<void>) => Promise<void>;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { MediaThumb } = require("../MediaThumb") as { MediaThumb: React.ComponentType<{ item: MediaRow }> };
+
+interface TestNode {
+  type: unknown;
+  props: Record<string, unknown>;
+  findAll: (predicate: (node: TestNode) => boolean) => TestNode[];
+}
+interface Renderer { root: TestNode; update: (node: React.ReactElement) => void; unmount: () => void }
+interface MediaRow {
+  fileId: string;
+  messageId: string;
+  name: string;
+  mime: string;
+  sizeBytes: number;
+  createdAt: string;
+  senderDisplayName: string;
+  senderRole: string;
+  kind: "image" | "video" | "file";
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+  thumbState: "pending" | "ready" | "none";
+}
+
+const item = (fileId: string, thumbState: MediaRow["thumbState"]): MediaRow => ({
+  fileId,
+  messageId: `message-${fileId}`,
+  name: `${fileId}.jpg`,
+  mime: "image/jpeg",
+  sizeBytes: 123,
+  createdAt: "2026-10-24T12:00:00.000Z",
+  senderDisplayName: "Seth",
+  senderRole: "brand",
+  kind: "image",
+  durationMs: null,
+  width: 800,
+  height: 600,
+  thumbState,
+});
+
+describe("#3988 MediaThumb runtime cache and pending resolution", () => {
+  beforeEach(() => {
+    mockPlatform.OS = "ios";
+    mockInvalidateQueries.mockReset();
+    mockThumbnailRequest.mockReset().mockResolvedValue({
+      uri: "https://edge.example/thumb?token=secret",
+      headers: { Authorization: "Bearer secret" },
+    });
+  });
+
+  it("keeps the authorized native thumbnail request intact and refetches metadata while a successful poster stays pending", async () => {
+    jest.useFakeTimers();
+    let renderer: Renderer | null = null;
+    await TestRenderer.act(async () => {
+      renderer = TestRenderer.create(<MediaThumb item={item("file-a", "pending")} />);
+      await Promise.resolve();
+    });
+
+    const [image] = renderer!.root.findAll((node) => node.type === "ImageProbe");
+    expect(image.props.source).toMatchObject({
+      uri: "https://edge.example/thumb?token=secret",
+      headers: { Authorization: "Bearer secret" },
+    });
+    expect(image.props.resizeMode).toBe("cover");
+    expect(mockThumbnailRequest).toHaveBeenCalledTimes(1);
+
+    await TestRenderer.act(async () => {
+      jest.advanceTimersByTime(60_000);
+      await Promise.resolve();
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["brandGroupMedia"] });
+    expect(mockThumbnailRequest).toHaveBeenCalledTimes(2);
+
+    await TestRenderer.act(async () => {
+      jest.advanceTimersByTime(60_000);
+      await Promise.resolve();
+    });
+
+    expect(mockInvalidateQueries).toHaveBeenCalledTimes(2);
+    expect(mockThumbnailRequest).toHaveBeenCalledTimes(3);
+    await TestRenderer.act(async () => renderer!.unmount());
+    jest.useRealTimers();
+  });
+
+  it("renders a 65-second video duration while its poster metadata is pending", async () => {
+    jest.useFakeTimers();
+    let renderer: Renderer | null = null;
+    mockThumbnailRequest.mockReturnValueOnce(new Promise(() => undefined));
+    try {
+      await TestRenderer.act(async () => {
+        renderer = TestRenderer.create(<MediaThumb item={{ ...item("video-a", "pending"), name: "clip.mp4", mime: "video/mp4", kind: "video", durationMs: 65_000 }} />);
+        await Promise.resolve();
+      });
+
+      expect(renderer!.root.findAll((node) => node.type === "Text" && node.props.children === "media.preparing")).toHaveLength(1);
+      expect(renderer!.root.findAll((node) => node.type === "Text" && node.props.children === "1:05")).toHaveLength(1);
+      await TestRenderer.act(async () => renderer!.unmount());
+      renderer = null;
+    } finally {
+      if (renderer) await TestRenderer.act(async () => renderer!.unmount());
+      jest.useRealTimers();
+    }
+  });
+
+  it("revokes a web object URL immediately when the thumb unmounts", async () => {
+    mockPlatform.OS = "web";
+    const originalFetch = globalThis.fetch;
+    const createObjectURL = jest.spyOn(URL, "createObjectURL").mockReturnValue("blob:file-a");
+    const revokeObjectURL = jest.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(["thumb"]),
+    })) as unknown as typeof fetch;
+    let renderer: Renderer | null = null;
+    try {
+      await TestRenderer.act(async () => {
+        renderer = TestRenderer.create(<MediaThumb item={item("file-a", "ready")} />);
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+      });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+
+      await TestRenderer.act(async () => renderer!.unmount());
+      renderer = null;
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-a");
+    } finally {
+      if (renderer) await TestRenderer.act(async () => renderer!.unmount());
+      globalThis.fetch = originalFetch;
+      jest.restoreAllMocks();
+    }
+  });
+
+  it("expires a mounted web thumbnail after 24 hours before authorizing a replacement", async () => {
+    mockPlatform.OS = "web";
+    const originalFetch = globalThis.fetch;
+    const now = jest.spyOn(Date, "now").mockReturnValue(1_000);
+    jest.spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:file-a:first")
+      .mockReturnValueOnce("blob:file-a:replacement");
+    const revokeObjectURL = jest.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(["thumb"]),
+    })) as unknown as typeof fetch;
+    let first: Renderer | null = null;
+    let replacement: Renderer | null = null;
+    try {
+      await TestRenderer.act(async () => {
+        first = TestRenderer.create(<MediaThumb item={item("file-a", "ready")} />);
+        for (let attempt = 0; attempt < 3; attempt += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+      });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(1_000 + 86_400_001);
+      await TestRenderer.act(async () => {
+        replacement = TestRenderer.create(<MediaThumb item={item("file-a", "ready")} />);
+        for (let attempt = 0; attempt < 3; attempt += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+      });
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-a:first");
+      await TestRenderer.act(async () => replacement!.unmount());
+      replacement = null;
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:file-a:replacement");
+    } finally {
+      if (replacement) await TestRenderer.act(async () => replacement!.unmount());
+      if (first) await TestRenderer.act(async () => first!.unmount());
+      globalThis.fetch = originalFetch;
+      jest.restoreAllMocks();
+    }
+  });
+});
