@@ -172,6 +172,11 @@ BEGIN
   SELECT code INTO v_code FROM public.claim_links
    WHERE subject_kind = 'ticket' AND subject_id = v_extra
      AND revoked_at IS NULL;
+  -- [TEST-MOD-APPROVED #4063] Written reason: refunds are written by the
+  -- privileged payment/refund rail, never by the buyer. Clear the simulated
+  -- buyer JWT so this fixture exercises the real backend authority boundary
+  -- instead of asking the ticket trigger to admit a buyer-authored status change.
+  PERFORM set_config('request.jwt.claim.sub', '', true);
   UPDATE public.tickets SET status = 'refunded' WHERE id = v_extra;
   PERFORM pg_temp.i4063_send_assert(
     v_result = jsonb_build_object('ok', true, 'state', 'offered')
@@ -187,6 +192,7 @@ BEGIN
     'T5-16 refund automatically revokes an unclaimed ticket offer and its link'
   );
   UPDATE public.tickets SET status = 'valid' WHERE id = v_extra;
+  PERFORM set_config('request.jwt.claim.sub', v_buyer::text, true);
 
   v_result := public.pg_ticket_offer_to_friend(
     v_extra, 'Tolu Friend', 'friend-send-4063@example.test', NULL
