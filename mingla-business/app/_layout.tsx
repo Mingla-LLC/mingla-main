@@ -80,6 +80,8 @@ import {
   initWebAnalytics,
 } from "../src/analytics/webAnalytics";
 import { ConsentBanner } from "../src/analytics/ConsentBanner";
+import { PrivacyChoicesLink } from "../src/analytics/PrivacyChoicesLink";
+import { PageFooterAccessoryContext } from "@mingla/offering-rendering/pageFooterAccessory";
 import {
   initializeAppsFlyer,
   subscribeOneLinkDeepLink,
@@ -599,8 +601,8 @@ function RootLayoutInner(): React.ReactElement {
         });
         revenueCatService.initialize();
         initializeOneSignal();
-        // META-ORCH-1187 LEG 2 — buyer-web analytics init (PostHog + GA4),
-        // consent-gated (no cookies/capture until Accept). WEB-ONLY: the call
+        // META-ORCH-1187 LEG 2 / #2331 — buyer-web analytics init (PostHog +
+        // GA4 + pixels), each on unless the visitor turned it off. WEB-ONLY: the call
         // resolves to a no-op on native via the .web.ts split, and is further
         // guarded here so native never even invokes it. Never throws (graceful
         // no-op when keys are absent), so a missing env can't break boot.
@@ -951,9 +953,15 @@ export default function RootLayout(): React.ReactElement {
                   <OtaAcknowledgementLayer>
                     {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
                         every route (inside AuthProvider so identify works). */}
-                    <PostHogAnalyticsProvider>
-                      <RootLayoutInner />
-                    </PostHogAnalyticsProvider>
+                    {/* #2331 — every public offering page ends with the
+                        "Your privacy choices" link on buyer web. */}
+                    <PageFooterAccessoryContext.Provider
+                      value={Platform.OS === "web" ? PrivacyChoicesLink : null}
+                    >
+                      <PostHogAnalyticsProvider>
+                        <RootLayoutInner />
+                      </PostHogAnalyticsProvider>
+                    </PageFooterAccessoryContext.Provider>
                     <KeyboardToolbarRoot />
                     <ConsentBanner />
                   </OtaAcknowledgementLayer>

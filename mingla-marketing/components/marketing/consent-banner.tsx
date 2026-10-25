@@ -1,139 +1,305 @@
 'use client'
-// META-ORCH-1187 [Growth Analytics Hub] Phase 1 — LEG 1 (marketing web).
+// #2331 — the usemingla.com privacy bar. One slim, full-width bar for
+// analytics and ads, fixed to the bottom of the viewport at every width, on
+// every route (the /links suppression is gone: the bar no longer covers
+// anything there).
 //
-// Custom Mingla-branded cookie/consent banner (§4.E). NOT a third-party CMP and
-// NOT a new design system — built from the existing marketing tokens/components
-// (Button, glass-strong surface, framer-motion, reduced-motion).
+// I-PRIVACY-BAR-NEVER-OCCLUDES: the bar writes its live height to
+// `--mingla-privacy-inset` on the root element (0px while hidden). The page
+// body gets that much bottom padding so the last line can always scroll
+// clear, every bottom-fixed element adds it to its own offset, and /links
+// sizes itself to `calc(100dvh - var(--mingla-privacy-inset))`.
 //
-// THE REAL GATE (I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT):
-//   • Neither PostHog nor Google Analytics mounts before a valid grant.
-//   • Accept persists first, then starts one shared boot. Reject only persists.
-//
-// Source of truth for re-show = localStorage key `mingla_consent_v1`:
-//   absent  → show banner, analytics remain uninitialized
-//   granted → initialize once, do not show
-//   denied  → remain uninitialized, do not show
+// Collapsed: one 53px row (1px line + 4px + 44px row + 4px) plus the bottom
+// safe-area inset. Options expands it in place, upward, to at most 60% of the
+// viewport, with Analytics and Ads switches showing the live state. Any choice
+// hides it; "Your privacy choices" in the footer reopens it, expanded.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { SITE_ORIGIN } from '@/lib/site'
-import { AnimatePresence, motion } from 'framer-motion'
-import { usePathname } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
-import { shouldRenderConsentBanner } from '@/lib/consent-banner-visibility'
 import {
-  captureMarketingConsentGrantOnce,
-  persistMarketingConsent,
+  getMarketingPrivacySnapshot,
   posthogOptIn,
-  readMarketingConsent,
-  type MarketingConsentValue,
+  PRIVACY_CHOICES_EVENT,
+  saveMarketingPrivacy,
+  subscribeMarketingConsent,
+  type MarketingPrivacySnapshot,
 } from '@/components/marketing/posthog-provider'
 import { captureMarketingAdClickIds } from '@/lib/ad-click-capture'
 
-// Storage ownership is canonical in posthog-provider.tsx. This compatibility
-// export preserves the established key contract: mingla_consent_v1.
-export const CONSENT_STORAGE_KEY = 'mingla_consent_v1'
+export const PRIVACY_INSET_PROPERTY = '--mingla-privacy-inset'
+const STYLE_ID = 'mingla-privacy-bar-style'
+const PANEL_ID = 'mingla-privacy-panel'
+const TOAST_MS = 1800
 
-const EASE_OUT_QUART = [0.16, 1, 0.3, 1] as const
+const SERVER_SNAPSHOT: MarketingPrivacySnapshot = { saved: true, analytics: false, ads: false, gpc: false }
+
+/** The one toast line for a saved choice. */
+export function privacyToastFor(choice: { analytics: boolean; ads: boolean }): string {
+  if (choice.analytics && choice.ads) return 'Saved'
+  if (!choice.analytics && !choice.ads) return 'Analytics and ads are off'
+  return choice.analytics ? 'Ads are off' : 'Analytics is off'
+}
+
+// Above page content and the fixed nav; below dialogs, sheets and the side menu (z ≥ 100).
+const BAR_CSS = `
+body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
+.mpb{position:fixed;left:0;right:0;bottom:0;z-index:95;box-sizing:border-box;margin:0;background:#171a20;color:#fff;border-top:1px solid rgba(255,255,255,.14);padding:4px max(12px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));max-height:60vh;max-height:60dvh;overflow-y:auto;overscroll-behavior:contain;font-family:var(--font-inter,inherit),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.mpb *{box-sizing:border-box}
+.mpb-row{max-width:1200px;height:44px;margin:0 auto;display:flex;align-items:center;gap:4px}
+.mpb-text{flex:1;min-width:0;margin:0 4px 0 0;font-size:13px;line-height:18px;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mpb-text b{color:#fff;font-weight:700}
+.mpb-short{display:none}
+@media (max-width:399.98px){.mpb-long{display:none}.mpb-short{display:inline}}
+.mpb-hit{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 2px;margin:0;border:0;background:none;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.mpb-hit:focus{outline:none}
+.mpb-hit:focus-visible .mpb-pill{outline:2px solid #eb7825;outline-offset:2px}
+.mpb-pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:700;line-height:1;white-space:nowrap}
+.mpb-primary{background:#eb7825;color:#111}
+.mpb-ghost{color:#fff;border:1px solid rgba(255,255,255,.32)}
+.mpb-chev{width:7px;height:7px;border-right:2px solid currentColor;border-top:2px solid currentColor;transform:translateY(2px) rotate(-45deg);transition:transform .2s ease}
+.mpb-chev-up{transform:translateY(-2px) rotate(135deg)}
+@media (max-width:359.98px){.mpb-options-label{display:none}.mpb-options .mpb-pill{padding:0 11px}}
+.mpb-panel{max-width:1200px;margin:0 auto;padding:2px 0 6px;display:grid;grid-template-columns:1fr;column-gap:24px;animation:mpb-in .2s ease-out}
+@media (min-width:600px){.mpb-panel{grid-template-columns:1fr 1fr}}
+.mpb-switch-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 0;border-top:1px solid rgba(255,255,255,.1);cursor:pointer}
+.mpb-switch-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mpb-switch-title{font-size:14px;font-weight:700;color:#fff}
+.mpb-switch-desc{font-size:13px;line-height:18px;color:rgba(255,255,255,.72)}
+.mpb-switch{appearance:none;-webkit-appearance:none;flex-shrink:0;position:relative;width:44px;height:26px;margin:9px 0;border-radius:999px;background:rgba(255,255,255,.24);border:0;cursor:pointer;transition:background .2s ease}
+.mpb-switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .2s ease}
+.mpb-switch:checked{background:#eb7825}
+.mpb-switch:checked::after{transform:translateX(18px)}
+.mpb-switch:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
+.mpb-actions{grid-column:1/-1;display:flex;align-items:center;gap:4px;flex-wrap:wrap;padding-top:4px}
+.mpb-policy{margin-left:auto;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;font-size:13px;color:rgba(255,255,255,.72);text-decoration:underline}
+.mpb-policy:focus-visible{outline:2px solid #eb7825;outline-offset:2px}
+.mpb-toast{position:fixed;z-index:96;left:50%;transform:translateX(-50%);bottom:calc(16px + var(${PRIVACY_INSET_PROPERTY},0px));max-width:calc(100vw - 32px);padding:10px 16px;border-radius:999px;background:#171a20;color:#fff;border:1px solid rgba(255,255,255,.14);font:600 13px/18px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;pointer-events:none;white-space:nowrap}
+@keyframes mpb-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.mpb-panel{animation:none}.mpb-chev,.mpb-switch,.mpb-switch::after{transition:none}}
+`
+
+function ensureBarStyle(): void {
+  if (document.getElementById(STYLE_ID) !== null) return
+  const style = document.createElement('style')
+  style.id = STYLE_ID
+  style.textContent = BAR_CSS
+  document.head.appendChild(style)
+}
+
+function writeInset(px: number): void {
+  document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, `${Math.max(0, Math.round(px))}px`)
+}
 
 export function ConsentBanner(): React.ReactElement | null {
-  const reduced = useMinglaReducedMotion()
-  // Issue #905 — route-aware suppression. Call unconditionally alongside the
-  // other hooks (Rules of Hooks); the predicate is AND-ed into `visible` below
-  // so no hook is ever conditionally skipped.
-  const pathname = usePathname()
-  // null = undecided (mount); once resolved we either show the banner or not.
-  const [decision, setDecision] = useState<MarketingConsentValue | 'pending'>('pending')
+  const privacy = useSyncExternalStore(
+    subscribeMarketingConsent,
+    getMarketingPrivacySnapshot,
+    () => SERVER_SNAPSHOT,
+  )
+  const [mounted, setMounted] = useState(false)
+  const [reopened, setReopened] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [draft, setDraft] = useState({ analytics: true, ads: true })
+  const [toast, setToast] = useState<string | null>(null)
+  const barRef = useRef<HTMLElement | null>(null)
+  const toggleRef = useRef<HTMLButtonElement | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
 
-  // On mount: re-apply any prior decision; otherwise show the banner.
-  // toward #3697: first-party ad click may record before Accept.
+  const visible = mounted && (!privacy.saved || reopened)
+
   useEffect(() => {
-    const stored = readMarketingConsent()
-    if (stored) {
-      setDecision(stored)
-    } else {
-      setDecision('pending')
-    }
+    ensureBarStyle()
+    setMounted(true)
+    // toward #3697: first-party ad click may record from the first page.
     captureMarketingAdClickIds()
+    const open = (): void => {
+      const active = document.activeElement
+      returnFocusRef.current = active instanceof HTMLElement ? active : null
+      setReopened(true)
+      setExpanded(true)
+    }
+    window.addEventListener(PRIVACY_CHOICES_EVENT, open)
+    return () => {
+      window.removeEventListener(PRIVACY_CHOICES_EVENT, open)
+      writeInset(0)
+    }
   }, [])
 
-  const choose = (value: MarketingConsentValue): void => {
-    persistMarketingConsent(value)
-    setDecision(value)
-    // Consent-rate measurement is grant-only and runs after the one-flight boot.
-    // toward #3697: Reject stamps first-party consent; Accept re-runs capture.
-    captureMarketingAdClickIds()
-    if (value === 'granted') {
-      void posthogOptIn().then(() => captureMarketingConsentGrantOnce())
+  // The switches always start from what is actually running.
+  useEffect(() => {
+    if (expanded) setDraft({ analytics: privacy.analytics, ads: privacy.ads })
+  }, [expanded, privacy.analytics, privacy.ads])
+
+  // I-PRIVACY-BAR-NEVER-OCCLUDES — the live height is the page's bottom inset.
+  useLayoutEffect(() => {
+    const bar = barRef.current
+    if (!visible || bar === null) {
+      if (mounted) writeInset(0)
+      return
     }
+    const measure = (): void => writeInset(bar.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(bar)
+    return () => observer.disconnect()
+  }, [visible, mounted, expanded])
+
+  useEffect(() => {
+    if (toast === null) return
+    const timer = window.setTimeout(() => setToast(null), TOAST_MS)
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
+  const close = useCallback((): void => {
+    setExpanded(false)
+    if (reopened) {
+      setReopened(false)
+      const target = returnFocusRef.current
+      returnFocusRef.current = null
+      if (target !== null && target.isConnected) target.focus()
+      return
+    }
+    window.requestAnimationFrame(() => toggleRef.current?.focus())
+  }, [reopened])
+
+  useEffect(() => {
+    if (!expanded) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        close()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [expanded, close])
+
+  const choose = (choice: { analytics: boolean; ads: boolean }): void => {
+    setExpanded(false)
+    setReopened(false)
+    setToast(privacyToastFor(choice))
+    saveMarketingPrivacy(choice)
+    captureMarketingAdClickIds()
+    if (choice.analytics) void posthogOptIn()
   }
 
-  // Show only while a fresh visitor has not yet decided AND the route allows the
-  // banner (Issue #905 — suppressed on the `/links` no-scroll viewport, where the
-  // fixed banner would obstruct the CTAs/socials with no scroll escape).
-  const visible = decision === 'pending' && shouldRenderConsentBanner(pathname)
+  if (!mounted) return null
+
+  const toastNode =
+    toast !== null ? (
+      <div className="mpb-toast" role="status" aria-live="polite" data-testid="privacy-toast">
+        {toast}
+      </div>
+    ) : null
+
+  if (!visible) return toastNode
 
   return (
-    <AnimatePresence>
-      {visible ? (
-        <motion.div
-          key="mingla-consent"
-          data-theme="light"
-          role="dialog"
-          aria-modal="false"
-          aria-label="Cookie consent"
-          initial={reduced ? false : { opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={reduced ? { opacity: 0 } : { opacity: 0, y: 24 }}
-          transition={{ duration: reduced ? 0 : 0.32, ease: EASE_OUT_QUART }}
-          className="glass-strong fixed inset-x-3 bottom-3 z-[90] mx-auto max-w-2xl rounded-[var(--radius-2xl)] p-5 shadow-[var(--elev-3)] ring-1 ring-[var(--glass-border)] sm:inset-x-6 sm:bottom-6 sm:p-6"
-          style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
-        >
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-6">
-            <div className="flex flex-col gap-1.5">
-              <h2 className="font-display text-base font-semibold text-text-primary">
-                We use cookies to make Mingla better
-              </h2>
-              <p className="text-[13px] leading-relaxed text-text-secondary">
-                We&apos;d like to use analytics cookies to understand how the
-                site is used so we can improve it. Nothing is set until you
-                choose.{' '}
-                {/* Absolute, not "/privacy-policy". This banner is mounted by
-                    the ROOT layout, so it also renders on career.usemingla.com,
-                    where every path is rewritten under /careers -- the relative
-                    link resolved to /careers/privacy-policy and 404'd. A
-                    consent banner whose privacy link is broken is worse than
-                    no link, and the policy lives on the apex from any host. */}
-                <a
-                  href={`${SITE_ORIGIN}/privacy-policy`}
-                  className="rounded-sm font-medium text-warm underline-offset-2 hover:underline focus-ring"
-                >
-                  Privacy policy
-                </a>
-                .
-              </p>
-            </div>
-            <div className="flex flex-shrink-0 flex-wrap items-center gap-2.5">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => choose('denied')}
-                className="min-w-[44px]"
+    <>
+      <section
+        ref={barRef}
+        className="mpb ph-no-capture"
+        role="region"
+        aria-label="Privacy choices"
+        data-testid="privacy-bar"
+        data-expanded={expanded ? 'true' : 'false'}
+      >
+        {expanded ? (
+          <div className="mpb-panel" id={PANEL_ID} data-testid="privacy-panel">
+            <label className="mpb-switch-row">
+              <span className="mpb-switch-copy">
+                <span className="mpb-switch-title">Analytics</span>
+                <span className="mpb-switch-desc">Helps us see which pages work and fix what doesn&apos;t.</span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                className="mpb-switch"
+                aria-label="Analytics"
+                data-testid="privacy-switch-analytics"
+                checked={draft.analytics}
+                onChange={(event) => setDraft((current) => ({ ...current, analytics: event.target.checked }))}
+              />
+            </label>
+            <label className="mpb-switch-row">
+              <span className="mpb-switch-copy">
+                <span className="mpb-switch-title">Ads</span>
+                <span className="mpb-switch-desc">Lets Meta, TikTok, Snapchat and Reddit measure our ads.</span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                className="mpb-switch"
+                aria-label="Ads"
+                data-testid="privacy-switch-ads"
+                checked={draft.ads}
+                onChange={(event) => setDraft((current) => ({ ...current, ads: event.target.checked }))}
+              />
+            </label>
+            <div className="mpb-actions">
+              <button type="button" className="mpb-hit" data-testid="privacy-bar-save" onClick={() => choose(draft)}>
+                <span className="mpb-pill mpb-primary">Save</span>
+              </button>
+              <button
+                type="button"
+                className="mpb-hit"
+                data-testid="privacy-bar-off-all"
+                onClick={() => choose({ analytics: false, ads: false })}
               >
-                Reject
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => choose('granted')}
-                className="min-w-[44px] bg-warm-ink hover:bg-warm-ink"
-              >
-                Accept all
-              </Button>
+                <span className="mpb-pill mpb-ghost">Turn off all</span>
+              </button>
+              {/* Absolute, not "/privacy-policy": the root layout also renders on
+                  career.usemingla.com, where every path is rewritten under /careers. */}
+              <a className="mpb-policy" href={`${SITE_ORIGIN}/privacy-policy`}>
+                Privacy policy
+              </a>
             </div>
           </div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+        ) : null}
+        <div className="mpb-row">
+          <p className="mpb-text">
+            {expanded ? (
+              <b>Your privacy choices</b>
+            ) : (
+              <>
+                <span className="mpb-long">Mingla uses cookies for analytics and ads.</span>
+                <span className="mpb-short">Cookies for analytics and ads.</span>
+              </>
+            )}
+          </p>
+          {expanded ? null : (
+            <button
+              type="button"
+              className="mpb-hit"
+              data-testid="privacy-bar-ok"
+              onClick={() => choose({ analytics: privacy.analytics, ads: privacy.ads })}
+            >
+              <span className="mpb-pill mpb-primary">OK</span>
+            </button>
+          )}
+          <button
+            type="button"
+            ref={toggleRef}
+            className="mpb-hit mpb-options"
+            data-testid="privacy-bar-options"
+            aria-expanded={expanded}
+            aria-controls={PANEL_ID}
+            aria-label={expanded ? 'Close privacy choices' : 'Privacy options'}
+            onClick={() => (expanded ? close() : setExpanded(true))}
+          >
+            <span className="mpb-pill mpb-ghost">
+              {expanded ? 'Close' : <span className="mpb-options-label">Options</span>}
+              <span className={expanded ? 'mpb-chev' : 'mpb-chev mpb-chev-up'} aria-hidden="true" />
+            </span>
+          </button>
+        </div>
+      </section>
+      {toastNode}
+    </>
   )
 }

@@ -15,15 +15,45 @@
 const noopVoid = (..._args: unknown[]): void => {};
 
 export const initWebAnalytics = async (): Promise<void> => {};
-export const grantConsent = noopVoid;
-export const denyConsent = noopVoid;
+// #2331 — the privacy bar is web-only; native consent is asked in onboarding.
+export interface PrivacyChoice {
+  analytics: boolean;
+  ads: boolean;
+  ts: number;
+}
+export interface PrivacySnapshot {
+  saved: boolean;
+  analytics: boolean;
+  ads: boolean;
+  gpc: boolean;
+}
+export const PRIVACY_STORAGE_KEY = "mingla_privacy_v2";
+export const LEGACY_CONSENT_STORAGE_KEY = "mingla_consent_v1";
+export const savePrivacyChoice = async (_input: {
+  analytics: boolean;
+  ads: boolean;
+}): Promise<void> => {};
+export const readPrivacyChoice = (): PrivacyChoice | null => null;
+export const parseLegacyConsentRecord = (
+  _raw: string | null,
+): PrivacyChoice | null => null;
+export const isAnalyticsOn = (): boolean => false;
+export const isAdsOn = (): boolean => false;
+export const globalPrivacyControlOn = (): boolean => false;
+const NATIVE_PRIVACY_SNAPSHOT: PrivacySnapshot = {
+  saved: true,
+  analytics: false,
+  ads: false,
+  gpc: false,
+};
+export const getPrivacySnapshot = (): PrivacySnapshot => NATIVE_PRIVACY_SNAPSHOT;
+export const subscribePrivacy = (_subscriber: () => void): (() => void) => () => {};
 export const captureWeb = noopVoid;
 export const gaEvent = noopVoid;
 export const captureWebSearchOutcome = noopVoid;
 export const isHostPublicInventoryPathname = (_pathname: string): boolean => false;
 export const captureHostPublicSearchPageView = (_pathname: string): void => {};
 export const identifyWeb = noopVoid;
-export const readStoredConsent = (): "granted" | "denied" | null => null;
 export const getFeatureFlagWeb = (
   _key: string,
 ): boolean | string | undefined => undefined;

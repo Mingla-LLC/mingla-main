@@ -51,6 +51,7 @@ import {
   type LinksTab,
   type LinksTabId,
 } from '@/lib/links-config'
+import { PrivacyChoicesLink } from '@/components/marketing/privacy-choices-link'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
@@ -314,9 +315,10 @@ export function LinksExperience({
       // is the fallback; the inline `height: 100dvh` wins on modern browsers (and is
       // silently dropped where dvh is unsupported, leaving svh). `overflow-hidden`
       // guarantees no scrollbar; the flex column below distributes the content to fit.
-      className="relative flex h-[100svh] flex-col overflow-hidden bg-[#08090b] px-5 text-text-primary"
+      className="relative flex h-[calc(100svh-var(--mingla-privacy-inset,0px))] flex-col overflow-hidden bg-[#08090b] px-5 text-text-primary"
       style={{
-        height: '100dvh',
+        // #2331 — the page ends above the privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES).
+        height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))',
         paddingTop: 'max(1.25rem, env(safe-area-inset-top))',
         paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))',
       }}
@@ -546,6 +548,10 @@ export function LinksExperience({
           </a>
         ))}
       </motion.nav>
+      {/* #2331 — end of content: reopens the privacy bar, expanded. */}
+      <div className="relative z-10 flex justify-center">
+        <PrivacyChoicesLink className="inline-flex min-h-11 items-center px-3 text-xs text-white/60 underline underline-offset-2 transition-colors hover:text-white focus-ring" />
+      </div>
     </main>
   )
 }
