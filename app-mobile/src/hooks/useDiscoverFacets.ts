@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { discoverKeys } from "./queryKeys";
+import { discoverKeys } from "./discoverQueryKeys";
 import { fetchDiscoverFacets } from "../services/discoverFeedService";
 import type { DiscoverAnchorV2, DiscoverFiltersV2 } from "../types/discoverFeed";
 

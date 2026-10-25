@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { discoverCityWatchService, type DiscoverCityWatchStatus } from "../services/discoverCityWatchService";
 import type { DiscoverAnchorV2 } from "../types/discoverFeed";
-import { discoverKeys } from "./queryKeys";
+import { discoverKeys } from "./discoverQueryKeys";
 
 interface Args {
   cityKey: string | null;

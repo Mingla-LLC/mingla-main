@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { discoverKeys } from "./queryKeys";
+import { discoverKeys } from "./discoverQueryKeys";
 import { fetchDiscoverPage } from "../services/discoverFeedService";
 import type { DiscoverAnchorV2, DiscoverFiltersV2, DiscoverPageResponse } from "../types/discoverFeed";
 

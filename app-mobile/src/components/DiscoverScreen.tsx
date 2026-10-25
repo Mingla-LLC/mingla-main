@@ -21,7 +21,8 @@ import { shouldSkipDiscoverPillCoachStep } from "../contexts/coachMarkSkipState"
 import { useDiscoverCityWatch } from "../hooks/useDiscoverCityWatch";
 import { useDiscoverFacets } from "../hooks/useDiscoverFacets";
 import { useDiscoverFeed } from "../hooks/useDiscoverFeed";
-import { discoverKeys, savedCardKeys } from "../hooks/queryKeys";
+import { discoverKeys } from "../hooks/discoverQueryKeys";
+import { savedCardKeys } from "../hooks/queryKeys";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { geocodingService } from "../services/geocodingService";

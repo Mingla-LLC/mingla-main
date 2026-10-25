@@ -480,7 +480,7 @@ const denseCode = (src: string): string =>
 
 const SCREEN_REL = "../../components/DiscoverScreen.tsx";
 const FEED_HOOK_REL = "../../hooks/useDiscoverFeed.ts";
-const QUERY_KEYS_REL = "../../hooks/queryKeys.ts";
+const QUERY_KEYS_REL = "../../hooks/discoverQueryKeys.ts";
 const FEED_SERVICE_REL = "../../services/discoverFeedService.ts";
 const LEGACY_SERVICE_REL = "../../services/nightOutExperiencesService.ts";
 
