@@ -116,8 +116,32 @@ class FakeQuery implements PromiseLike<DbResult> {
     this.db.operations.push(`${this.action}:${this.table}`);
     if (this.table === "event_dates") return { data: null, error: null, count: 1 };
     if (this.table === "trip_intake_schemas") return { data: [], error: null };
+    if (this.table === "orders") {
+      return {
+        data: {
+          buyer_email: "guest@issue2150.test",
+          buyer_phone_e164: "+15551234567",
+          buyer_user_id: null,
+          purchased_by_user_id: null,
+          total_cents: 0,
+          tax_amount_cents: 0,
+          buyer_fees_cents: 0,
+          tax_cents: 0,
+          buyer_total_cents: 0,
+          event_date_id: null,
+          booked_start_at: null,
+        },
+        error: null,
+      };
+    }
     if (this.table === "tickets" && this.action === "select") {
       return { data: this.db.tickets, error: null };
+    }
+    if (
+      this.table === "order_line_items" ||
+      this.table === "order_discount_lines"
+    ) {
+      return { data: [], error: null };
     }
     return { data: null, error: null, count: 0 };
   }
@@ -276,13 +300,14 @@ Deno.test("#2150 REPLAY-01: a resubmit PRESENTING the guest's token returns THAT
   assertEquals(body.currency, "NGN");
   assertEquals(body.paymentStatus, "paid");
 
-  // The confirm screen maps over this; #2136 proved an undefined array is what
-  // the guest sees as a raw TypeError.
+  // The confirmation screen still receives ticket metadata, while #4063 keeps
+  // scan credentials inside the authenticated app.
   const tickets = body.tickets as Array<Record<string, unknown>> | undefined;
   assert(Array.isArray(tickets), "the replay envelope carried no tickets array");
   assertEquals(tickets.length, 1);
   assertEquals(tickets[0].ticketId, TICKET_ID);
-  assertEquals(tickets[0].qrPayload, "mgl_free_2150_qr");
+  assertFalse("qrPayload" in tickets[0]);
+  assertFalse("qrImageDataUrl" in tickets[0]);
 
   // Nothing was re-run. These three are what would have produced the duplicate
   // order and the duplicate email + SMS.
