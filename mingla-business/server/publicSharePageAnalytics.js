@@ -23,10 +23,11 @@
  * served. `keepalive` keeps the destination event alive across the CTA's own
  * navigation, which is what `sendBeacon` was for on `/s/`.
  *
- * CONSENT. Identical gate to `/s/`: nothing is sent unless
- * `localStorage.mingla_consent_v1` records `granted`. Note that storage is
- * per-origin, so this reads `host.usemingla.com`'s consent record (the Host
- * web app writes the same key), not `usemingla.com`'s.
+ * CONSENT. Identical gate to `/s/`: nothing is sent unless the visitor's
+ * saved privacy choice (`mingla_privacy_v2`, or a carried-over v1 grant) has
+ * analytics on (#2331). Note that storage is per-origin, so this reads
+ * `host.usemingla.com`'s record (the Host web app writes the same key), not
+ * `usemingla.com`'s.
  *
  * Kept in its own module on purpose: the page's share/copy runtime lives in
  * `publicSearchBrowserRuntime.js`, whose semantic-gate exemption forbids the
@@ -34,6 +35,7 @@
  */
 
 const { SHARE_ATTRIBUTION_PARAM, parseShareAttributionValue } = require("../../packages/sharing");
+const { privacyReaderSource } = require("./publicPrivacyRuntime");
 
 const ANALYTICS_KINDS = new Set(["event", "rsvp_event", "trip", "experience", "venue", "brand"]);
 const CODE_RE = /^[0-9A-Za-z]{16}$/;
@@ -117,7 +119,8 @@ const shareAnalyticsScript = (attribution) => {
     + `const issuedPath=trimPath(location.pathname);`
     + `const done=new Set();`
     + `try{const stored=JSON.parse(sessionStorage.getItem('${SHARE_DESTINATION_LEDGER_KEY}')||'[]');if(Array.isArray(stored))stored.forEach((entry)=>{if(typeof entry==='string')done.add(entry)})}catch{}`
-    + `const consented=()=>{try{const consent=JSON.parse(localStorage.getItem('mingla_consent_v1')||'null');return consent?.choice==='granted'||consent?.value==='granted'}catch{return false}};`
+    + privacyReaderSource()
+    + `const consented=()=>{try{return __minglaPrivacy()?.analytics===true}catch{return false}};`
     + `const send=(payload)=>{try{fetch('/api/content-share-analytics',{method:'POST',keepalive:true,credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{})}catch{}};`
     + `const record=(event,action)=>{try{if(!consented())return false;const payload={event,code:base.code,version:base.version,kind:base.kind};`
     + `if(event==='share_destination_action'){if(!actions.has(action)||trimPath(location.pathname)!==issuedPath)return false;`

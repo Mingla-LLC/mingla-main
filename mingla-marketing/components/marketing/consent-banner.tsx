@@ -46,6 +46,7 @@ const BAR_CSS = `
 body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}
 .mpb{position:fixed;left:0;right:0;bottom:0;z-index:95;box-sizing:border-box;margin:0;background:#171a20;color:#fff;border-top:1px solid rgba(255,255,255,.14);padding:4px max(12px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));max-height:60vh;max-height:60dvh;overflow-y:auto;overscroll-behavior:contain;font-family:var(--font-inter,inherit),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
 .mpb *{box-sizing:border-box}
+.mpb[hidden],.mpb [hidden]{display:none!important}
 .mpb-row{max-width:1200px;height:44px;margin:0 auto;display:flex;align-items:center;gap:4px}
 .mpb-text{flex:1;min-width:0;margin:0 4px 0 0;font-size:13px;line-height:18px;color:rgba(255,255,255,.78);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mpb-text b{color:#fff;font-weight:700}

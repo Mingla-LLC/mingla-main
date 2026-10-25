@@ -6,6 +6,7 @@ const path = require("node:path");
 const React = require("react");
 const { isAllowedPublicPoster, s6CardCss, wordmarkSource } = require("./cardIdentityRenderer");
 const { selectSharedCardFacts } = require("@mingla/card-identity");
+const { privacyReaderSource } = require("./publicPrivacyRuntime");
 const { SHARED_CARD_PROXY_HEADER } = require("./sharedCardProxyAuth");
 const { contentShareOneLink } = require("./contentShareService");
 const { buildSharePortraitUrl, selectPreviewFacts, statusLabel, weekdayForShareTimezone, openStateForHours } = require("../../packages/sharing");
@@ -67,7 +68,12 @@ const escapeHtml = (value) =>
 const SAFE_PUBLIC_ANALYTICS_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const PUBLIC_ANALYTICS_FAMILIES = new Set(["opaque-share", "content-share"]);
 
-/** #3859 — consent-gated common funnel event for the two server-rendered share hosts. */
+/**
+ * #3859 — consent-gated common funnel event for the two server-rendered share
+ * hosts. #2331: these hosts show no privacy bar, so they keep sending only
+ * for a visitor whose saved choice has analytics on (mingla_privacy_v2, or a
+ * carried-over v1 grant).
+ */
 const publicPageViewedScript = ({ pageFamily, entityId }) => {
   if (
     !PUBLIC_ANALYTICS_FAMILIES.has(pageFamily) ||
@@ -84,7 +90,7 @@ const publicPageViewedScript = ({ pageFamily, entityId }) => {
     initial_state: "populated",
     auth_state: "unknown",
   }).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
-  return `<script>(()=>{try{const consent=JSON.parse(localStorage.getItem('mingla_consent_v1')||'null');if(consent?.choice!=='granted'&&consent?.value!=='granted')return;navigator.sendBeacon('/api/content-share-analytics',JSON.stringify(${payload}))}catch{}})()</script>`;
+  return `<script>(()=>{try{${privacyReaderSource()}if(__minglaPrivacy()?.analytics!==true)return;navigator.sendBeacon('/api/content-share-analytics',JSON.stringify(${payload}))}catch{}})()</script>`;
 };
 
 const asText = (value, fallback = "") => {
@@ -442,7 +448,7 @@ const renderContentShareHtml = (contentShare, installAttribution = null) => {
   const portrait = imageUrl ? `<div class="portrait"><img class="portrait-poster" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" />${moving}</div>` : "";
   const script = videoMoving ? `<script>(()=>{const v=document.querySelector('.share-motion'),p=document.querySelector('.play-control'),m=document.querySelector('.sound-control');if(!v||!p||!m)return;v.muted=true;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;const load=()=>{v.hidden=false;if(!v.src)v.src=v.dataset.source};const reset=()=>{v.pause();v.hidden=true;v.removeAttribute('src');v.load();p.textContent='▶';p.setAttribute('aria-label','Play video')};p.addEventListener('click',()=>{load();if(v.paused){v.play().then(()=>{p.textContent='Ⅱ';p.setAttribute('aria-label','Pause video')}).catch(reset)}else reset()});m.addEventListener('click',()=>{load();v.muted=!v.muted;m.textContent=v.muted?'Muted':'Sound';m.setAttribute('aria-label',v.muted?'Unmute video':'Mute video')});new IntersectionObserver(([e])=>{if(!e.isIntersecting)reset()}).observe(v);document.addEventListener('visibilitychange',()=>{if(document.hidden)reset()});v.addEventListener('error',reset);if(!reduced&&!save){load();v.play().catch(reset)}})()</script>`
     : gifMoving ? `<script>(()=>{const g=document.querySelector('.gif-motion'),p=document.querySelector('.play-control');if(!g||!p)return;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;let playing=false;const stop=()=>{playing=false;g.hidden=true;g.removeAttribute('src');p.textContent='▶';p.setAttribute('aria-label','Play animation')};const play=()=>{g.hidden=false;g.src=g.dataset.source;playing=true;p.textContent='Ⅱ';p.setAttribute('aria-label','Pause animation')};p.addEventListener('click',()=>playing?stop():play());new IntersectionObserver(([e])=>{if(!e.isIntersecting)stop();else if(!reduced&&!save)play()}).observe(g);document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});g.addEventListener('error',stop);if(!reduced&&!save)play()})()</script>` : "";
-  const analyticsScript=`<script>(()=>{const record=(event,action)=>{try{const consent=JSON.parse(localStorage.getItem('mingla_consent_v1')||'null');if(consent?.choice!=='granted'&&consent?.value!=='granted')return;const payload={event,code:${JSON.stringify(code)},version:${Number(contentShare.version)},kind:${JSON.stringify(analyticsKind)}};if(action)payload.action=action;navigator.sendBeacon('/api/content-share-analytics',JSON.stringify(payload))}catch{}};record('share_public_page_viewed');document.querySelector('[data-share-install]')?.addEventListener('click',()=>record('share_install_cta_opened'));document.querySelectorAll('[data-share-destination]').forEach((node)=>node.addEventListener('click',()=>record('share_destination_action',node.dataset.shareDestination)))})()</script>`;
+  const analyticsScript=`<script>(()=>{${privacyReaderSource()}const record=(event,action)=>{try{if(__minglaPrivacy()?.analytics!==true)return;const payload={event,code:${JSON.stringify(code)},version:${Number(contentShare.version)},kind:${JSON.stringify(analyticsKind)}};if(action)payload.action=action;navigator.sendBeacon('/api/content-share-analytics',JSON.stringify(payload))}catch{}};record('share_public_page_viewed');document.querySelector('[data-share-install]')?.addEventListener('click',()=>record('share_install_cta_opened'));document.querySelectorAll('[data-share-destination]').forEach((node)=>node.addEventListener('click',()=>record('share_destination_action',node.dataset.shareDestination)))})()</script>`;
   const parityAnalyticsScript = publicPageViewedScript({
     pageFamily: "content-share",
     entityId: code,
