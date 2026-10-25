@@ -53,6 +53,10 @@ export function computeDirtyFieldsPatch(
   if (draft.displayAttendeeCount !== original.displayAttendeeCount) {
     patch.displayAttendeeCount = draft.displayAttendeeCount;
   }
+  // #4111 — Brand edit → Contact "Let guests message us".
+  if (draft.enquiriesEnabled !== original.enquiriesEnabled) {
+    patch.enquiriesEnabled = draft.enquiriesEnabled;
+  }
   if (draft.coverMediaUrl !== original.coverMediaUrl) {
     patch.coverMediaUrl = draft.coverMediaUrl;
   }

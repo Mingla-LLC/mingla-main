@@ -14,6 +14,8 @@ import { TopBar } from "../../src/components/ui/TopBar";
 import { Button } from "../../src/components/ui/Button";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
+import { BrandEnquiryListSection } from "../../src/components/messages/BrandEnquiryListSection";
+import { brandEnquiryThreadRoute } from "../../src/utils/brandEnquiryDisplay";
 import {
   accent,
   canvas,
@@ -88,6 +90,9 @@ export default function MessagesIndexRoute(): React.ReactElement {
             </Pressable>
           </View>
         ) : null}
+
+        {/* #4111 D4 — customer enquiries sit above the Brand groups. */}
+        <BrandEnquiryListSection onOpen={(item) => router.push(brandEnquiryThreadRoute(item.id) as never)} />
 
         {loading ? (
           <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>

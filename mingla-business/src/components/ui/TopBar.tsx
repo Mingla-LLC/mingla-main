@@ -43,6 +43,8 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
 import { useBrandGroups } from "../../hooks/useBrandGroups";
+import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
+import { messagesBadgeCount } from "../../utils/brandEnquiryDisplay";
 
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";
@@ -142,7 +144,11 @@ const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   const { unreadCount: derivedUnread } = useBusinessNotificationsInbox(
     user?.id ?? null,
   );
-  const { unreadCount: messageUnread } = useBrandGroups();
+  const { unreadCount: groupUnread } = useBrandGroups();
+  // #4111 D4 — the speech bubble also counts customer enquiries waiting on the
+  // team (new|waiting). Enquiry cards in Brand groups are never unread.
+  const enquiries = useBrandEnquiries("open");
+  const messageUnread = messagesBadgeCount(groupUnread, enquiries.data?.counts);
   const badge = unreadCount ?? derivedUnread;
   return (
     <>
