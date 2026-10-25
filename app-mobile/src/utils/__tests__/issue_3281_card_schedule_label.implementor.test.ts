@@ -5,7 +5,7 @@
 import {
   assert,
   assertEquals,
-} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { formatCardScheduleLabel } from "../eventDateDisplay.ts";
 
 Deno.test("formatCardScheduleLabel prefixes NEXT: when scheduleLine present", () => {
