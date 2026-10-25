@@ -38,6 +38,7 @@ function baseDeps(rpc: ClaimContactDeps["rpc"]): ClaimContactDeps {
   return {
     rpc,
     pepper: () => Promise.resolve(PEPPER),
+    qrPepper: () => "issue-4063-test-qr-pepper-0123456789",
     userId: () => Promise.resolve(USER_ID),
     sendEmail: () => Promise.resolve(true),
     startPhone: () => Promise.resolve({ ok: true }),
@@ -156,8 +157,14 @@ Deno.test("#4063 already-confirmed contacts sweep without sending", async () => 
       if (name === "begin_attendance_claim_attempt") {
         return Promise.resolve({ data: { allowed: true }, error: null });
       }
-      assertEquals(name, "claim_attendance_by_verified_identity");
-      return Promise.resolve({ data: claimEnvelope(), error: null });
+      if (name === "claim_attendance_by_verified_identity") {
+        return Promise.resolve({ data: claimEnvelope(), error: null });
+      }
+      assertEquals(name, "issue_4063_claim_offered_tickets");
+      return Promise.resolve({
+        data: { claimed: [], more: false },
+        error: null,
+      });
     }),
     sendEmail: () => {
       providerCalls += 1;
@@ -210,7 +217,11 @@ Deno.test("#4063 settled email contact records then runs the identity sweep", as
     if (name === "begin_attendance_claim_attempt") {
       return Promise.resolve({ data: { allowed: true }, error: null });
     }
-    return Promise.resolve({ data: claimEnvelope(), error: null });
+    if (name === "claim_attendance_by_verified_identity") {
+      return Promise.resolve({ data: claimEnvelope(), error: null });
+    }
+    assertEquals(name, "issue_4063_claim_offered_tickets");
+    return Promise.resolve({ data: { claimed: [], more: false }, error: null });
   }));
   const response = await handler(request({
     op: "verify",
@@ -221,6 +232,7 @@ Deno.test("#4063 settled email contact records then runs the identity sweep", as
   assertEquals((await responseBody(response)).claimed, claimEnvelope());
   assert(calls.includes("issue_4063_record_claim_contact"));
   assert(calls.includes("claim_attendance_by_verified_identity"));
+  assert(calls.includes("issue_4063_claim_offered_tickets"));
 });
 
 Deno.test("#4063 phone-country allow-list stays in parity with Business", async () => {

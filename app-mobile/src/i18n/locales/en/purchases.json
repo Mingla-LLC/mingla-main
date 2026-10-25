@@ -251,6 +251,7 @@
     "namePlaceholder": "Their first name",
     "contactPlaceholder": "Mobile or email",
     "explainer": "Once {{name}} opens it, it's theirs and leaves your account.",
+    "explainerEmpty": "Once they open it, it's theirs and leaves your account.",
     "submit": "Send ticket",
     "sending": "Sending…",
     "with": "With {{name}}",

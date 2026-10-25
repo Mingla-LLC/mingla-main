@@ -7,7 +7,7 @@
  * (if any details captured) → NOTES section → REFUND HISTORY → "Refund"
  * CTA (variant=ghost) which opens DoorRefundSheet.
  *
- * I-21: operator-side route. I-29: door sales live ONLY in useDoorSalesStore.
+ * I-21: operator-side route. I-29: door sales are server orders.
  *
  * **OBS-1 lock:** refund handler in DoorRefundSheet does NOT touch
  * useScanStore. Buyer remains CHECKED IN (auto-check-in fired at sale time).
@@ -23,16 +23,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   accent,
   canvas,
-  glass,
-  radius as radiusTokens,
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
-import {
-  useDoorSalesStore,
-  type DoorSaleRecord,
-} from "../../../../src/store/doorSalesStore";
+import type { DoorSaleRecord } from "../../../../src/types/doorSales";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+import { useEventDoorSales } from "../../../../src/hooks/useEventDoorSales";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { deferAfterDismiss } from "../../../../src/utils/deferAfterDismiss";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
@@ -116,9 +112,15 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
   );
   const event = routeEvent.event;
 
-  // Single-existing-reference selector — safe to subscribe (per SPEC §4.5).
-  const sale = useDoorSalesStore((s) =>
-    typeof rawSaleId === "string" ? s.getSaleById(rawSaleId) : null,
+  const doorSalesQuery = useEventDoorSales(
+    typeof eventId === "string" ? eventId : null,
+  );
+  const sale = useMemo(
+    () =>
+      typeof rawSaleId === "string"
+        ? doorSalesQuery.data?.find((entry) => entry.id === rawSaleId) ?? null
+        : null,
+    [doorSalesQuery.data, rawSaleId],
   );
 
   // Per-seat expansion. Hooks BEFORE early return per ORCH-0710 lesson.
@@ -174,7 +176,10 @@ export default function DoorSaleDetailRoute(): React.ReactElement {
     }
   }, [routeEvent.replacementEventId, router, rawSaleId]);
 
-  if (event === null && routeEvent.isLoading && typeof eventId === "string") {
+  if (
+    typeof eventId === "string" &&
+    ((event === null && routeEvent.isLoading) || doorSalesQuery.isLoading)
+  ) {
     return (
       <View
         style={[

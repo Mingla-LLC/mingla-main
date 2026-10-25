@@ -4,6 +4,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { fetchMyReservations } from "./useMyReservations";
 import { purchaseKeys } from "./queryKeys";
 import {
+  fetchMyHeldTickets,
   fetchMyOrders,
   fetchMyRsvps,
   fetchMyVenueOrders,
@@ -27,7 +28,6 @@ export interface PurchasesQueryResult {
   errors: unknown[];
   refetch: () => Promise<void>;
 }
-
 function mapReservations(
   reservations: Awaited<ReturnType<typeof fetchMyReservations>>,
 ): PurchaseReservationSource[] {
@@ -65,9 +65,12 @@ async function fetchPurchaseDetail(
 ): Promise<PurchaseTimelineItem | null> {
   const empty = { orders: [], rsvps: [], reservations: [], venueOrders: [] };
   if (kind === "order") {
-    const orders = await fetchMyOrders(userId);
+    const [orders, held] = await Promise.all([
+      fetchMyOrders(userId),
+      fetchMyHeldTickets(userId),
+    ]);
     return findTimelineItem(
-      buildPurchaseTimeline({ ...empty, orders }, new Date()),
+      buildPurchaseTimeline({ ...empty, orders: [...orders, ...held] }, new Date()),
       kind,
       id,
     );
@@ -147,7 +150,6 @@ export function usePurchaseDetail(
     },
   };
 }
-
 export function usePurchases(
   userId: string | null | undefined,
 ): PurchasesQueryResult {
@@ -156,7 +158,13 @@ export function usePurchases(
     queries: [
       {
         queryKey: [...purchaseKeys.list(safeUserId), "orders"],
-        queryFn: () => fetchMyOrders(userId as string),
+        queryFn: async () => {
+          const [orders, held] = await Promise.all([
+            fetchMyOrders(userId as string),
+            fetchMyHeldTickets(userId as string),
+          ]);
+          return [...orders, ...held];
+        },
         enabled: !!userId,
         staleTime: 60_000,
         refetchOnWindowFocus: true,

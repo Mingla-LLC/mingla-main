@@ -1,4 +1,6 @@
 /* eslint-disable import/first */
+// [TEST-MOD-APPROVED #4063] The Wave 5 contact contract replaces separate
+// email/phone fields with one classified field and an explicit name-only opt-in.
 // issue #3827 — "Add to guest list" sheet, implementor render proof.
 //
 // Renders the REAL AddCompGuestSheet (network and chrome leaves mocked) and
@@ -85,7 +87,7 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
   };
 });
 
-import { AddCompGuestSheet } from "../AddCompGuestSheet";
+import { AddCompGuestSheet, parseGuestPaste } from "../AddCompGuestSheet";
 import type { LiveEvent } from "../../../store/liveEventStore";
 
 const EVENT_ID = "11111111-1111-4111-8111-111111111111";
@@ -122,6 +124,14 @@ const submit = (r: Renderer): TestInstance => {
   return b;
 };
 
+const nameOnly = (r: Renderer, index = 0): TestInstance => {
+  const found = r.root.findAll(
+    (n) => n.type === "Pressable" && n.props.accessibilityLabel === "Name only, check in at the door",
+  );
+  if (found.length <= index) throw new Error(`no name-only checkbox #${index}`);
+  return found[index];
+};
+
 const press = async (node: TestInstance): Promise<void> => {
   await act(async () => {
     await (node.props.onPress as () => Promise<void> | void)();
@@ -154,15 +164,26 @@ beforeEach(() => {
 });
 
 describe("issue #3827 — Add to guest list sheet", () => {
-  test("title, subhead and validation copy; submit stays disabled until a name is typed", async () => {
+  test("T5-8 paste keeps an international mobile ready for classified parsing", () => {
+    expect(parseGuestPaste("Tolu, +447700900456, 1")).toEqual({
+      guests: [{ name: "Tolu", contact: "+447700900456", partySize: 1 }],
+      errors: [],
+    });
+  });
+
+  test("title, contact promise and explicit name-only validation", async () => {
     const r = await mount([tier("tt-gl", "Guest list", 20, { visibility: "hidden" })]);
     expect(allText(r)).toContain("Add to guest list");
-    expect(allText(r)).toContain("They get a free ticket with a QR code by email. Guest-list tickets take a place but aren't sales.");
+    expect(allText(r)).toContain("Send the link by text or email, or choose Name only for door check-in.");
     expect(submit(r).props.disabled).toBe(true);
     await type(input(r, "Full name"), "Ana Bello");
+    expect(submit(r).props.disabled).toBe(true);
+    await press(nameOnly(r));
     expect(submit(r).props.disabled).toBe(false);
     expect(submit(r).props.label).toBe("Add 1 guest");
-    await type(input(r, "Email"), "ana@bad");
+    expect(allText(r)).toContain("No contact: they won't get a ticket link. Door staff can find them by name.");
+    await press(nameOnly(r));
+    await type(input(r, "Mobile or email, required"), "ana@bad");
     expect(allText(r)).toContain("That email doesn't look right.");
     expect(submit(r).props.disabled).toBe(true);
     // A hidden "Guest list" tier is offered and labelled.
@@ -196,12 +217,13 @@ describe("issue #3827 — Add to guest list sheet", () => {
     const onSuccess = jest.fn();
     const r = await mount([tier("tt-gl", "Guest list", 20)], onSuccess);
     await type(input(r, "Full name"), "Ada Okoro");
-    await type(input(r, "Email"), "Ada@Example.com");
+    await type(input(r, "Mobile or email, required"), "Ada@Example.com");
     const [addPlusOne] = r.root.findAll((n) => n.type === "Pressable" && n.props.accessibilityLabel === "Add a plus-one for guest 1");
     await press(addPlusOne);
     await press(addPlusOne);
     await type(input(r, "Plus-one 1 name"), "Chidi Eze");
-    expect(allText(r)).toContain("No name: their QR code goes in Ada Okoro's email.");
+    await press(nameOnly(r, 1));
+    expect(allText(r)).toContain("No name: their ticket goes to Ada Okoro.");
     expect(submit(r).props.label).toBe("Add 3 guests");
     await press(submit(r));
     expect(mockIssue).toHaveBeenCalledTimes(1);
@@ -211,13 +233,14 @@ describe("issue #3827 — Add to guest list sheet", () => {
     expect(String(call.clientRequestId)).toMatch(/^[0-9a-f-]{36}$/);
     expect(call.guests).toEqual([{
       index: 0, name: "Ada Okoro", email: "ada@example.com", phoneE164: null,
+      nameOnly: false,
       plusOnes: [
-        { name: "Chidi Eze", email: null, phoneE164: null },
-        { name: null, email: null, phoneE164: null },
+        { name: "Chidi Eze", email: null, phoneE164: null, nameOnly: true },
+        { name: null, email: null, phoneE164: null, nameOnly: false },
       ],
     }]);
     expect(onSuccess).toHaveBeenCalledWith({
-      message: "Ada Okoro and 2 plus-ones are on the guest list. Tickets emailed.",
+      message: "Ada Okoro and 2 plus-ones are on the guest list. Tickets sent.",
       addedLegacyIds: [],
     });
   });
@@ -225,9 +248,10 @@ describe("issue #3827 — Add to guest list sheet", () => {
   test("a plus-one with an email but no name is blocked with the spec copy", async () => {
     const r = await mount([tier("tt-gl", "Guest list", 20)]);
     await type(input(r, "Full name"), "Ada Okoro");
+    await type(input(r, "Mobile or email, required"), "ada@example.com");
     const [addPlusOne] = r.root.findAll((n) => n.type === "Pressable" && n.props.accessibilityLabel === "Add a plus-one for guest 1");
     await press(addPlusOne);
-    await type(input(r, "Plus-one 1 email"), "chidi@example.com");
+    await type(input(r, "Plus-one 1 mobile or email, optional"), "chidi@example.com");
     await press(submit(r));
     expect(allText(r)).toContain("Add their name, or leave all three empty.");
     expect(mockIssue).not.toHaveBeenCalled();
@@ -244,10 +268,11 @@ describe("issue #3827 — Add to guest list sheet", () => {
     const onSuccess = jest.fn();
     const r = await mount([tier("tt-gl", "Guest list", 20)], onSuccess);
     await type(input(r, "Full name"), "Kaycee");
+    await press(nameOnly(r));
     const [another] = r.root.findAll((n) => n.type === "Pressable" && n.props.accessibilityLabel === "Add another guest");
     await press(another);
     await type(input(r, "Full name", 1), "Temi Bello");
-    await type(input(r, "Email", 1), "temi@example.com");
+    await type(input(r, "Mobile or email, required", 1), "temi@example.com");
     await press(submit(r));
     expect(allText(r)).toContain("1 added, 1 couldn't be added.");
     expect(allText(r)).toContain("Already on the guest list for this event.");
@@ -259,7 +284,7 @@ describe("issue #3827 — Add to guest list sheet", () => {
       eventDateId: null, addedCount: 1, failedCount: 0, remaining: 17,
       results: [{ index: 1, plusOneIndex: null, status: "added", orderId: "o-2", ticketCount: 1, emailQueued: true, smsQueued: false, code: null }],
     });
-    await type(input(r, "Email"), "temi.b@example.com");
+    await type(input(r, "Mobile or email, required"), "temi.b@example.com");
     await press(submit(r));
     expect(mockIssue).toHaveBeenCalledTimes(2);
     const first = mockIssue.mock.calls[0][0] as { clientRequestId: string };
@@ -276,6 +301,7 @@ describe("issue #3827 — Add to guest list sheet", () => {
     mockIssue.mockRejectedValue(new GuestListError({ code: "ticket_capacity_exceeded", operation: "issue", remaining: 0, ticketName: "Guest list" }));
     const r = await mount([tier("tt-gl", "Guest list", 20)]);
     await type(input(r, "Full name"), "Ana Bello");
+    await press(nameOnly(r));
     await press(submit(r));
     expect(allText(r)).toContain("Not enough places left on Guest list. 0 left.");
     expect(input(r, "Full name").props.value).toBe("Ana Bello");

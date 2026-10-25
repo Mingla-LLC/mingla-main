@@ -2,24 +2,18 @@
  * DoorSaleNewSheet — J-D3 multi-line door sale flow (Cycle 12).
  *
  * Operator picks tickets + payment method + (optional) buyer details +
- * (optional) notes → confirms → useDoorSalesStore.recordSale fires + N
- * scan records (via=manual, scanResult=success) per Decision #5
- * auto-check-in.
+ * (optional) notes → confirms through the atomic door-sale RPC. The server
+ * creates the order, ledger, tickets, and already-used attendance state.
  *
  * Operator-locked decisions (SPEC §2):
  *   #1 multi-line cart  · #2 tier source = both per availableAt
  *   #3 reconciliation grain unaffected by this sheet
  *   #4 unrelated (scanner permission)
- *   #5 auto-check-in fires N scan records here.
+ *   #5 server-minted tickets are born used; no device-only scan fan-out.
  *
- * I-29 — door sales NEVER as phantom OrderRecord rows (this sheet writes
- * to useDoorSalesStore ONLY; CheckoutPaymentMethod door values stay door-side).
+ * I-29 — door sales are real server orders, never device-only phantom rows.
  *
  * I-30 — door tier filter: `t.visibility !== "hidden" && t.availableAt !== "online"`.
- *
- * HIDDEN-1 contract — recordSale-then-scan order: scan records are fired
- * AFTER recordSale returns the new DoorSaleRecord (so orderId resolves to
- * the persisted ds_xxx ID, never an empty string).
  *
  * [TRANSITIONAL] Card reader + NFC payment options are visible but
  * DISABLED with copy "Coming when backend ships" per Cycle 11 J-S1 banner
@@ -34,7 +28,7 @@
  * Per Cycle 12 SPEC §4.9 / §5/J-D3.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -53,20 +47,22 @@ import {
   semantic,
   spacing,
   text as textTokens,
-  typography,
 } from "../../constants/designSystem";
-import {
-  useDoorSalesStore,
-  type DoorPaymentMethod,
-  type DoorSaleRecord,
-} from "../../store/doorSalesStore";
+import type { DoorPaymentMethod } from "../../types/doorSales";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
-import { useScanStore } from "../../store/scanStore";
-import { expandDoorTickets } from "../../utils/expandDoorTickets";
 import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
+import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
+import { randomUuid } from "../../utils/randomId";
+import { useRecordDoorSale } from "../../hooks/useEventDoorSales";
+import {
+  DoorSaleError,
+  type RecordDoorSaleResult,
+} from "../../services/doorSalesService";
+import { postHogService } from "../../services/postHogService";
 
 import { Button } from "../ui/Button";
+import { PhoneField, usePhoneEntry } from "../ui/PhoneField";
 import { Sheet } from "../ui/Sheet";
 import { doorTierUnitPrice } from "./doorListPrice";
 
@@ -74,13 +70,8 @@ import { doorTierUnitPrice } from "./doorListPrice";
 
 const NAME_MAX = 120;
 const EMAIL_MAX = 200;
-const PHONE_MAX = 50;
 const NOTES_MAX = 500;
 const MAX_QTY_PER_TIER = 99;
-const PROCESSING_MS = 400;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 const isValidEmailOrEmpty = (s: string): boolean => {
   const t = s.trim();
@@ -109,7 +100,7 @@ interface PaymentMethodOption {
   disabled: boolean;
 }
 
-const PAYMENT_METHODS: ReadonlyArray<PaymentMethodOption> = [
+const PAYMENT_METHODS: readonly PaymentMethodOption[] = [
   {
     id: "cash",
     label: "Cash",
@@ -141,10 +132,8 @@ const PAYMENT_METHODS: ReadonlyArray<PaymentMethodOption> = [
 export interface DoorSaleNewSheetProps {
   visible: boolean;
   event: LiveEvent;
-  brandId: string;
-  operatorAccountId: string;
   onClose: () => void;
-  onSuccess: (sale: DoorSaleRecord) => void;
+  onSuccess: (result: RecordDoorSaleResult, phoneLast4: string | null) => void;
 }
 
 // ---- Component ------------------------------------------------------
@@ -152,8 +141,6 @@ export interface DoorSaleNewSheetProps {
 export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   visible,
   event,
-  brandId,
-  operatorAccountId,
   onClose,
   onSuccess,
 }) => {
@@ -162,15 +149,22 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     useState<DoorPaymentMethod>("cash");
   const [buyerName, setBuyerName] = useState<string>("");
   const [buyerEmail, setBuyerEmail] = useState<string>("");
-  const [buyerPhone, setBuyerPhone] = useState<string>("");
+  const [moreDetailsOpen, setMoreDetailsOpen] = useState<boolean>(false);
   const [notes, setNotes] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const clientRequestId = useRef<string>(randomUuid());
+  const recordSale = useRecordDoorSale(event.id);
 
   // #962 G5 / OQ-2(a) — a door sale freezes its currency onto the record
   // (DoorSaleRecord.currency is NOT NULL). Pre-condition the record path behind
   // a set currency so a sale is NEVER frozen with a fabricated GBP. A pre-bank
   // brand (no established currency) sees "Add your bank to record paid sales".
   const eventCurrencyCode = currencyCodeOrNull(event.currency);
+  const buyerPhone = usePhoneEntry({
+    startCountries: [phoneStartCountryForCurrency(eventCurrencyCode)],
+  });
+  const resetBuyerPhone = buyerPhone.reset;
   const fmtDoorMoney = (v: number): string =>
     eventCurrencyCode === null ? "—" : formatCurrency(v, eventCurrencyCode);
 
@@ -181,11 +175,14 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
       setPaymentMethod("cash");
       setBuyerName("");
       setBuyerEmail("");
-      setBuyerPhone("");
+      resetBuyerPhone();
+      setMoreDetailsOpen(false);
       setNotes("");
       setSubmitting(false);
+      setSubmitError(null);
+      clientRequestId.current = randomUuid();
     }
-  }, [visible]);
+  }, [resetBuyerPhone, visible]);
 
   // I-30 tier filter: surfaces "door" + "both" tiers, hides hidden + online-only
   const pickableTiers = useMemo<TicketStub[]>(
@@ -237,7 +234,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         );
       });
     },
-    [],
+    [event.currency],
   );
 
   const handleStep = useCallback(
@@ -251,7 +248,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
 
   // Validation
   const emailValid = isValidEmailOrEmpty(buyerEmail);
-  const phoneValid = buyerPhone.length <= PHONE_MAX;
+  const phoneValid = buyerPhone.isEmpty || buyerPhone.e164 !== null;
   const notesValid = notes.length <= NOTES_MAX;
   const paymentMethodOption = PAYMENT_METHODS.find(
     (p) => p.id === paymentMethod,
@@ -276,56 +273,44 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     // frozen record currency is always the event's REAL code.
     if (eventCurrencyCode === null) return;
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await sleep(PROCESSING_MS);
-      const newSale = useDoorSalesStore.getState().recordSale({
+      const result = await recordSale.mutateAsync({
         eventId: event.id,
-        brandId,
-        recordedBy: operatorAccountId,
+        eventDateId: null,
         buyerName: buyerName.trim(),
         buyerEmail: buyerEmail.trim().toLowerCase(),
-        buyerPhone: buyerPhone.trim(),
+        buyerPhoneE164: buyerPhone.e164,
         paymentMethod,
         lines: lines.map((l) => ({
           ticketTypeId: l.ticketTypeId,
-          ticketNameAtSale: l.ticketName,
-          unitPriceGbpAtSale: l.unitPrice,
-          unitPriceAtSale: l.unitPrice,
-          isFreeAtSale: l.isFree,
           quantity: l.quantity,
-          refundedQuantity: 0,
-          refundedAmountGbp: 0,
-          refundedAmount: 0,
         })),
-        totalGbpAtSale: total,
-        totalAtSale: total,
-        // #962 G5 — freeze the event's REAL currency (guaranteed non-null by the
-        // canSubmit + early-return guard above). Never a fabricated GBP.
-        currency: eventCurrencyCode,
         notes: notes.trim(),
+        clientRequestId: clientRequestId.current,
       });
-      // Decision #5 + HIDDEN-1 contract — fire N scan records AFTER recordSale
-      // returns the persisted DoorSaleRecord. orderId is the ds_xxx ID (NOT
-      // empty string — comp scans use empty orderId by convention; door
-      // scans always carry the door sale ID for cross-store joins).
-      const expanded = expandDoorTickets(newSale.id, newSale.lines);
-      const buyerNameForScan =
-        newSale.buyerName.length > 0 ? newSale.buyerName : "Walk-up";
-      expanded.forEach((t) => {
-        useScanStore.getState().recordScan({
-          ticketId: t.ticketId,
-          orderId: newSale.id,
-          eventId: newSale.eventId,
-          brandId: newSale.brandId,
-          scannerUserId: newSale.recordedBy,
-          scanResult: "success",
-          via: "manual",
-          offlineQueued: true,
-          buyerNameAtScan: buyerNameForScan,
-          ticketNameAtScan: t.ticketName,
-        });
+      const digits = buyerPhone.e164?.replace(/\D/g, "") ?? "";
+      postHogService.capture("door_sale_recorded", {
+        method: paymentMethod,
+        has_phone: buyerPhone.e164 !== null,
+        ticket_count: totalQty,
       });
-      onSuccess(newSale);
+      onSuccess(result, digits.length >= 4 ? digits.slice(-4) : null);
+    } catch (error) {
+      postHogService.capture("door_sale_failed", {
+        reason: error instanceof DoorSaleError ? error.code : "unknown",
+      });
+      if (error instanceof DoorSaleError) {
+        if (error.code === "door_ticket_capacity_exceeded") {
+          setSubmitError("Not enough tickets left for this sale.");
+        } else if (error.code === "door_access_denied" || error.code === "42501") {
+          setSubmitError("You don't have door access for this event.");
+        } else {
+          setSubmitError("Couldn't record the sale. Check your connection and try again.");
+        }
+      } else {
+        setSubmitError("Couldn't record the sale. Check your connection and try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -333,16 +318,15 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     canSubmit,
     event.id,
     eventCurrencyCode,
-    brandId,
-    operatorAccountId,
     buyerName,
     buyerEmail,
     buyerPhone,
     paymentMethod,
     lines,
-    total,
+    totalQty,
     notes,
     onSuccess,
+    recordSale,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -538,48 +522,58 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
           </View>
 
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email</Text>
-            <View
-              style={[
-                styles.inputWrap,
-                buyerEmail.length > 0 && !emailValid && styles.inputError,
-              ]}
-            >
-              <TextInput
-                value={buyerEmail}
-                onChangeText={setBuyerEmail}
-                placeholder="optional"
-                placeholderTextColor={textTokens.quaternary}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={EMAIL_MAX}
-                style={styles.input}
-                editable={!submitting}
-                accessibilityLabel="Buyer email"
-              />
-            </View>
-            {buyerEmail.length > 0 && !emailValid ? (
-              <Text style={styles.errorText}>Enter a valid email or leave blank.</Text>
-            ) : null}
+            <Text style={styles.label}>Buyer&apos;s mobile (for their receipt)</Text>
+            <PhoneField
+              entry={buyerPhone}
+              accessibilityLabel="Buyer's mobile number, optional, for their receipt"
+              disabled={submitting}
+              placeholder="Mobile number"
+              testID="door-sale-buyer-phone"
+            />
+            <Text style={styles.phoneHelper}>
+              We&apos;ll text them a receipt they can open in the Mingla app.
+            </Text>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Phone</Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                value={buyerPhone}
-                onChangeText={setBuyerPhone}
-                placeholder="optional"
-                placeholderTextColor={textTokens.quaternary}
-                keyboardType="phone-pad"
-                maxLength={PHONE_MAX}
-                style={styles.input}
-                editable={!submitting}
-                accessibilityLabel="Buyer phone"
-              />
+          <Pressable
+            onPress={() => setMoreDetailsOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: moreDetailsOpen }}
+            accessibilityLabel={moreDetailsOpen ? "Hide more details" : "Show more details"}
+            style={styles.moreDetailsToggle}
+          >
+            <Text style={styles.moreDetailsLabel}>More details</Text>
+            <Text style={styles.moreDetailsChevron}>{moreDetailsOpen ? "−" : "+"}</Text>
+          </Pressable>
+
+          {moreDetailsOpen ? (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Email</Text>
+              <View
+                style={[
+                  styles.inputWrap,
+                  buyerEmail.length > 0 && !emailValid && styles.inputError,
+                ]}
+              >
+                <TextInput
+                  value={buyerEmail}
+                  onChangeText={setBuyerEmail}
+                  placeholder="optional"
+                  placeholderTextColor={textTokens.quaternary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={EMAIL_MAX}
+                  style={styles.input}
+                  editable={!submitting}
+                  accessibilityLabel="Buyer email"
+                />
+              </View>
+              {buyerEmail.length > 0 && !emailValid ? (
+                <Text style={styles.errorText}>Enter a valid email or leave blank.</Text>
+              ) : null}
             </View>
-          </View>
+          ) : null}
 
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Notes</Text>
@@ -614,15 +608,20 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               Add your bank to record paid sales.
             </Text>
           ) : null}
+          {submitError !== null ? (
+            <Text style={styles.submitError} accessibilityRole="alert">
+              {submitError}
+            </Text>
+          ) : null}
           <Button
-            label={submitting ? "Recording..." : "Record sale"}
+            label={submitting ? "Completing…" : "Complete sale"}
             onPress={handleConfirm}
             variant="primary"
             size="lg"
             fullWidth
             loading={submitting}
             disabled={!canSubmit}
-            accessibilityLabel="Record door sale"
+            accessibilityLabel="Complete door sale"
           />
           <View style={styles.dockSpacer} />
           <Button
@@ -936,6 +935,33 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontVariant: ["tabular-nums"],
   },
+  phoneHelper: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
+  },
+  moreDetailsToggle: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  moreDetailsLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  moreDetailsChevron: {
+    fontSize: 20,
+    color: textTokens.tertiary,
+  },
 
   // Sticky bottom dock -----------------------------------------------
   dock: {
@@ -972,6 +998,13 @@ const styles = StyleSheet.create({
   currencyGateHint: {
     fontSize: 13,
     color: textTokens.secondary,
+    marginBottom: spacing.sm,
+    textAlign: "center",
+  },
+  submitError: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: semantic.error,
     marginBottom: spacing.sm,
     textAlign: "center",
   },

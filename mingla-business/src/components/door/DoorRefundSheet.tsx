@@ -2,7 +2,7 @@
  * DoorRefundSheet — J-D4 partial/full refund of an in-person door sale.
  *
  * Mirrors Cycle 9c RefundSheet pattern (per-line stepper + reason input
- * 10..200 chars + 1.2s simulated processing → useDoorSalesStore.recordRefund).
+ * 10..200 chars → the atomic server refund RPC.
  *
  * **OBS-1 hard lock — NEVER call useScanStore here.**
  * Refund affects MONEY only, NOT check-in. The buyer was physically at
@@ -37,11 +37,9 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import {
-  useDoorSalesStore,
-  type DoorSaleRecord,
-} from "../../store/doorSalesStore";
+import type { DoorSaleRecord } from "../../types/doorSales";
 import { formatCurrency } from "../../utils/currency";
+import { useRefundDoorSale } from "../../hooks/useEventDoorSales";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -54,11 +52,6 @@ import {
 
 const REASON_MIN = 10;
 const REASON_MAX = 200;
-const REFUND_PROCESSING_MS = 1200;
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
 export interface DoorRefundSheetProps {
   visible: boolean;
   sale: DoorSaleRecord;
@@ -79,13 +72,16 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
 }) => {
   const [reason, setReason] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [perLineRefund, setPerLineRefund] = useState<PerLineRefundState[]>([]);
+  const refundSale = useRefundDoorSale(sale.eventId);
 
   // Reset on visible flip → true
   useEffect(() => {
     if (visible) {
       setReason("");
       setSubmitting(false);
+      setSubmitError(null);
       setPerLineRefund(
         sale.lines.map((l) => ({
           ticketTypeId: l.ticketTypeId,
@@ -116,7 +112,12 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
   const trimmedLen = reason.trim().length;
   const reasonValid =
     trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX;
-  const hasRefundQty = refundTotalGbp > 0 || perLineRefund.some((p) => p.selectedQty > 0);
+  const remainingAmount = Math.max(
+    0,
+    (sale.totalAtSale ?? sale.totalGbpAtSale) -
+      (sale.refundedAmount ?? sale.refundedAmountGbp),
+  );
+  const hasRefundQty = refundTotalGbp > 0 && refundTotalGbp <= remainingAmount;
 
   // Cycle 13a J-T6 G4: Confirm CTA gated on REFUND_DOOR_SALE (finance_manager+).
   // Hooks run on every render before any early-return shell (ORCH-0710).
@@ -147,22 +148,7 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (!canSubmit) return;
     setSubmitting(true);
-    await sleep(REFUND_PROCESSING_MS);
-
-    const refundLines = perLineRefund
-      .filter((p) => p.selectedQty > 0)
-      .map((p) => {
-        const orderLine = sale.lines.find(
-          (l) => l.ticketTypeId === p.ticketTypeId,
-        );
-        const unitPrice = orderLine?.unitPriceGbpAtSale ?? 0;
-        return {
-          ticketTypeId: p.ticketTypeId,
-          quantity: p.selectedQty,
-          amountGbp: p.selectedQty * unitPrice,
-          amount: p.selectedQty * unitPrice,
-        };
-      });
+    setSubmitError(null);
 
     const trimmedReason = reason.trim();
     // OBS-1 lock: refund affects MONEY only, NOT check-in. NO useScanStore touch.
@@ -170,28 +156,44 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
     // without undoing the original. The buyer physically attended; financial
     // event ≠ attendance event. Edge case "operator wants to undo BOTH money
     // + check-in" is deferred to a future cycle (see SPEC §3.2 OBS-1 + D-CYCLE12-5).
-    const updated = useDoorSalesStore.getState().recordRefund(sale.id, {
-      saleId: sale.id,
-      amountGbp: refundTotalGbp,
-      amount: refundTotalGbp,
-      reason: trimmedReason,
-      lines: refundLines,
-    });
-
-    setSubmitting(false);
-    if (updated === null) {
-      // Sale disappeared mid-flight (rare). Surface via parent toast.
-      onSuccess(sale);
-      return;
+    try {
+      const result = await refundSale.mutateAsync({
+        orderId: sale.id,
+        amountCents: Math.round(refundTotalGbp * 100),
+        reason: trimmedReason,
+      });
+      const amount = result.amountCents / 100;
+      const refundedAmount = result.refundedAmountCents / 100;
+      onSuccess({
+        ...sale,
+        status: result.status === "refunded" ? "refunded_full" : "refunded_partial",
+        refundedAmount,
+        refundedAmountGbp: refundedAmount,
+        refunds: [
+          ...sale.refunds,
+          {
+            id: result.refundId,
+            saleId: sale.id,
+            amount,
+            amountGbp: amount,
+            reason: trimmedReason,
+            refundedAt: new Date().toISOString(),
+            lines: [],
+          },
+        ],
+      });
+    } catch {
+      setSubmitError("Couldn't refund this sale. Check your connection and try again.");
+    } finally {
+      setSubmitting(false);
     }
-    onSuccess(updated);
   }, [
     canSubmit,
     sale,
-    perLineRefund,
     refundTotalGbp,
     reason,
     onSuccess,
+    refundSale,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -377,6 +379,11 @@ export const DoorRefundSheet: React.FC<DoorRefundSheetProps> = ({
           {!canRefund ? (
             <Text style={styles.gateCaption}>
               {gateCaptionFor("REFUND_DOOR_SALE")}
+            </Text>
+          ) : null}
+          {submitError !== null ? (
+            <Text style={styles.submitError} accessibilityRole="alert">
+              {submitError}
             </Text>
           ) : null}
           <View style={styles.actionSpacer} />
@@ -584,6 +591,12 @@ const styles = StyleSheet.create({
   gateCaption: {
     fontSize: 12,
     color: textTokens.tertiary,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  submitError: {
+    fontSize: 12,
+    color: semantic.error,
     marginTop: 6,
     textAlign: "center",
   },
