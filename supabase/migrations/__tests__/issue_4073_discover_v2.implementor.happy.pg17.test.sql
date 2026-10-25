@@ -1,5 +1,8 @@
 -- Issue #4073 — one-page Discover server contract, PostgreSQL 17 proof.
 -- MINGLA-INVARIANT: I-4073-DISCOVER-ELIGIBILITY | issue #4073 | V1 and V2 event discovery share one eligibility reader; all v2 card/facet counts use server-owned per-kind eligibility, calendar, price, radius and availability rules.
+-- MINGLA-INVARIANT: I-DISCOVER-CITY-TZ | issue #4073 | All v2 calendar windows are owned by the tested SQL helper; clients send intent, never UTC window math.
+-- MINGLA-INVARIANT: I-DISCOVER-ONE-PRICE-OWNER | issue #4073 | Visible, enabled, non-hidden tiers alone determine the tested Discover all-in from price.
+-- MINGLA-INVARIANT: I-DISCOVER-CITY-WATCH-ONCE | issue #4073 | The tested city-watch transaction gives each row one idempotency key and marks it notified atomically.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -50,30 +53,42 @@ BEGIN
 END
 $$;
 
+-- [TEST-MOD-APPROVED #4073] Exact-main integration adds the already-scoped
+-- #3872 sale contract to this initiative's canonical server-response proof.
 -- D8: the durable master may be historical while a visible recurrence remains.
 -- The canonical reader and v2 ordering must use that next occurrence instead
 -- of dropping the whole event at the ended-master gate.
 DO $$
 DECLARE
   v_owner uuid:=gen_random_uuid(); v_brand uuid:=gen_random_uuid(); v_event uuid:=gen_random_uuid();
+  v_ticket uuid:=gen_random_uuid(); v_sale uuid:=gen_random_uuid();
   v_page jsonb; v_item jsonb;
 BEGIN
   INSERT INTO auth.users(id,email) VALUES(v_owner,'i4073-recurrence-'||v_owner||'@example.test');
   INSERT INTO public.creator_accounts(id,created_at,updated_at) VALUES(v_owner,now(),now());
   INSERT INTO public.brands(id,account_id,name,slug,default_currency,created_at,updated_at)
     VALUES(v_brand,v_owner,'I4073 recurrence','i4073-recurrence-'||v_brand,'USD',now(),now());
-  INSERT INTO public.events(id,brand_id,title,slug,event_type,status,visibility,timezone,currency,city,published_at,created_at,updated_at)
-    VALUES(v_event,v_brand,'Future recurrence','i4073-future-'||v_event,'event','scheduled','public','UTC','USD','#4073 Future City',now(),now(),now());
+  INSERT INTO public.events(id,brand_id,title,slug,event_type,status,visibility,timezone,currency,city,published_at,pass_mingla_fee,pass_service_fee,created_at,updated_at)
+    VALUES(v_event,v_brand,'Future recurrence','i4073-future-'||v_event,'event','scheduled','public','UTC','USD','#4073 Future City',now(),false,false,now(),now());
   INSERT INTO public.event_dates(id,event_id,start_at,end_at,timezone,is_master) VALUES
     (gen_random_uuid(),v_event,now()-interval '3 days',now()-interval '2 days','UTC',true),
     (gen_random_uuid(),v_event,now()+interval '2 days',now()+interval '2 days 2 hours','UTC',false);
-  INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,quantity_total,is_unlimited,min_purchase_qty,max_purchase_qty,available_online,available_in_person,display_order,is_hidden,is_disabled)
-    VALUES(v_event,'Free',0,'USD',true,20,false,1,4,true,true,0,false,false);
+  INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,is_free,quantity_total,is_unlimited,min_purchase_qty,max_purchase_qty,available_online,available_in_person,display_order,is_hidden,is_disabled)
+    VALUES(v_ticket,v_event,'General',2000,'USD',false,20,false,1,4,true,true,0,false,false);
+  INSERT INTO public.brand_discounts(
+    id,brand_id,kind,name,value_type,value_minor,currency,scope_kind,combines_with,status,created_by
+  ) VALUES(v_sale,v_brand,'sale_price','Discover sale','set_price',1500,'USD','items','any','active',v_owner);
+  INSERT INTO public.brand_discount_targets(discount_id,target_kind,target_id)
+    VALUES(v_sale,'ticket_type',v_ticket);
 
   v_page:=public.discover_v2_items('events',ARRAY['#4073 Future City'],0,0,50,'UTC','{}'::jsonb,0,10);
   SELECT value INTO v_item FROM jsonb_array_elements(v_page->'items') WHERE value->>'id'=v_event::text;
   PERFORM pg_temp.t4073_assert(v_item IS NOT NULL,'future recurrence survives an ended master');
   PERFORM pg_temp.t4073_assert((v_item->>'startsAtUtc')::timestamptz>now(),'v2 emits and orders by the future recurrence');
+  PERFORM pg_temp.t4073_assert(
+    (v_item#>>'{price,listMinor}')::integer=2000
+      AND (v_item#>>'{price,saleMinor}')::integer=1500,
+    'Discover preserves the #3872 public list and sale from prices');
 END
 $$;
 

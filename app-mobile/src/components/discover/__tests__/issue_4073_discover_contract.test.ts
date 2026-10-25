@@ -101,3 +101,16 @@ test("#4073 headings describe only the inventory that actually renders", () => {
   assert.match(screen, /firstTicketmaster = card\.source === "ticketmaster"/);
   assert.match(screen, /firstTicketmaster \? <View style=\{hasMingla \? styles\.divider : styles\.tmHeading\}>/);
 });
+
+// [TEST-MOD-APPROVED #4073] Exact-main integration activates the already-scoped
+// #3872 sale contract, so this initiative suite must pin its display behavior.
+test("#4073 shows the #3872 public sale price after the rollout landed", () => {
+  const card = readFileSync(fileURLToPath(new URL("../DiscoverCard.tsx", import.meta.url)), "utf8");
+  const flags = readFileSync(fileURLToPath(new URL("../discoverFlags.ts", import.meta.url)), "utf8");
+
+  assert.match(flags, /DISCOVER_SALE_LABEL_ENABLED = true/);
+  assert.match(card, /card\.price\.saleMinor != null/);
+  assert.match(card, /\? card\.price\.saleMinor\s*:\s*card\.price\.listMinor/);
+  assert.match(card, /formatCurrency\(displayMinor \/ 100/);
+  assert.match(card, /isSale \? t\("card\.sale"\) : label/);
+});

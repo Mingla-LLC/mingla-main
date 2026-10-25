@@ -1,6 +1,5 @@
 BEGIN;
 
--- MINGLA-INVARIANT: I-DISCOVER-CITY-TZ | issue #4073 | All v2 calendar windows are owned by this SQL helper; clients send intent, never UTC window math.
 CREATE OR REPLACE FUNCTION public.discover_v2_window(p_when text, p_tz text, p_now timestamptz DEFAULT now())
 RETURNS tstzrange
 LANGUAGE plpgsql STABLE
@@ -79,7 +78,6 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $func
   )
 $function$;
 
--- MINGLA-INVARIANT: I-DISCOVER-ONE-PRICE-OWNER | issue #4073 | Visible, enabled, non-hidden tiers alone determine Discover's all-in from price.
 CREATE OR REPLACE FUNCTION public.discover_v2_from_price_minor(p_event_id uuid)
 RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $function$
   SELECT public.compute_all_in_cents(
@@ -119,16 +117,21 @@ BEGIN
       'title',r->>'title','coverUrl',r->>'cover_media_url','coverType',r->>'cover_media_type','coverHue',24,
       'startsAtUtc',r->>'master_start_at','endsAtUtc',r->>'master_end_at','timezone',COALESCE(r->>'master_timezone',r->>'timezone','UTC'),
       'meta',jsonb_build_object('venueOrPlace',r->>'location_text'),
-      'price',jsonb_build_object('currency',COALESCE(r->>'pricing_currency',r->>'currency'),'listMinor',public.discover_v2_from_price_minor((r->>'id')::uuid),'saleMinor',NULL,'saleEndsAt',NULL,'isFree',COALESCE((r->>'price_min_cents')::int,0)=0,'unit','each'),
+      'price',jsonb_build_object('currency',COALESCE(r->>'pricing_currency',r->>'currency'),'listMinor',public.discover_v2_from_price_minor((r->>'id')::uuid),'saleMinor',display.display_sale_price_cents,'saleEndsAt',display.display_sale_ends_at,'isFree',COALESCE((r->>'price_min_cents')::int,0)=0,'unit','each'),
       'route',jsonb_build_object('pathname',CASE WHEN r->>'event_type'='rsvp' THEN '/rsvp/[slug]' ELSE '/event/[slug]' END,'params',jsonb_build_object('slug',r->>'slug'))
-    )), '[]'::jsonb) INTO v_rows FROM jsonb_array_elements(COALESCE(v_source->'rows','[]'::jsonb)) r;
+    )), '[]'::jsonb) INTO v_rows
+      FROM jsonb_array_elements(COALESCE(v_source->'rows','[]'::jsonb)) r
+      CROSS JOIN LATERAL public.issue_3872_event_display_prices((r->>'id')::uuid) display;
   ELSIF p_kind = 'trips' THEN
     WITH eligible AS (
       SELECT e.id,e.slug,e.brand_id,e.title,e.destination_text,e.departure_text,e.cover_media_url,e.cover_media_type,e.timezone,e.currency,
         e.destination_place_key,e.departure_place_key,b.slug brand_slug,b.name brand_name,b.profile_photo_url,
-        ed.start_at,ed.end_at,public.discover_v2_from_price_minor(e.id) price_minor,count(*) over() total_count
+        ed.start_at,ed.end_at,public.discover_v2_from_price_minor(e.id) price_minor,
+        display.display_sale_price_cents sale_minor,display.display_sale_ends_at sale_ends_at,
+        count(*) over() total_count
       FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
       JOIN public.event_dates ed ON ed.event_id=e.id AND ed.is_master IS TRUE AND ed.end_at>=now()
+      CROSS JOIN LATERAL public.issue_3872_event_display_prices(e.id) display
       WHERE e.event_type='trip' AND e.visibility='public' AND e.status IN ('scheduled','live') AND e.deleted_at IS NULL
         AND COALESCE(e.bookings_closed,false)=false AND (e.booking_deadline IS NULL OR e.booking_deadline>=now())
         AND EXISTS (SELECT 1 FROM public.trip_pricing_tiers tpt JOIN public.ticket_types tt ON tt.id=tpt.ticket_type_id WHERE tpt.event_id=e.id AND tt.deleted_at IS NULL AND COALESCE(tt.is_hidden,false)=false)
@@ -140,15 +143,18 @@ BEGIN
     ) SELECT COALESCE(max(total_count),0),COALESCE(jsonb_agg(jsonb_build_object(
       'source','mingla','kind','trip','id',id,'brand',jsonb_build_object('id',brand_id,'slug',brand_slug,'name',brand_name,'photoUrl',profile_photo_url),
       'title',title,'coverUrl',cover_media_url,'coverType',cover_media_type,'coverHue',194,'startsAtUtc',start_at,'endsAtUtc',end_at,'timezone',timezone,
-      'meta',jsonb_build_object('venueOrPlace',destination_text),'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',NULL,'saleEndsAt',NULL,'isFree',price_minor IS NULL,'unit','each'),
+      'meta',jsonb_build_object('venueOrPlace',destination_text),'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',sale_minor,'saleEndsAt',sale_ends_at,'isFree',price_minor IS NULL,'unit','each'),
       'route',jsonb_build_object('pathname','/trip/[slug]','params',jsonb_build_object('slug',slug))
     ) ORDER BY start_at,id),'[]'::jsonb) INTO v_total,v_rows FROM eligible;
   ELSIF p_kind = 'experiences' THEN
     WITH eligible AS (
       SELECT e.id,e.slug,e.brand_id,e.title,e.location_text,e.cover_media_url,e.cover_media_type,e.timezone,e.currency,b.slug brand_slug,b.name brand_name,b.profile_photo_url,
-        ed.start_at,ed.end_at,public.discover_v2_from_price_minor(e.id) price_minor,count(*) over() total_count
+        ed.start_at,ed.end_at,public.discover_v2_from_price_minor(e.id) price_minor,
+        display.display_sale_price_cents sale_minor,display.display_sale_ends_at sale_ends_at,
+        count(*) over() total_count
       FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
       JOIN public.event_dates ed ON ed.event_id=e.id AND ed.is_master IS TRUE AND ed.end_at>=now()
+      CROSS JOIN LATERAL public.issue_3872_event_display_prices(e.id) display
       WHERE e.event_type='experience' AND e.visibility='public' AND e.status IN ('scheduled','live') AND e.published_at IS NOT NULL AND e.deleted_at IS NULL
         AND cardinality(e.experience_intents)>0 AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
         AND NOT (public.discover_v2_from_price_minor(e.id)>0 AND NOT public.pg_brand_can_collect(e.brand_id))
@@ -159,7 +165,7 @@ BEGIN
     ) SELECT COALESCE(max(total_count),0),COALESCE(jsonb_agg(jsonb_build_object(
       'source','mingla','kind','experience','id',id,'brand',jsonb_build_object('id',brand_id,'slug',brand_slug,'name',brand_name,'photoUrl',profile_photo_url),
       'title',title,'coverUrl',cover_media_url,'coverType',cover_media_type,'coverHue',274,'startsAtUtc',start_at,'endsAtUtc',end_at,'timezone',timezone,
-      'meta',jsonb_build_object('venueOrPlace',location_text),'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',NULL,'saleEndsAt',NULL,'isFree',price_minor IS NULL,'unit','each'),
+      'meta',jsonb_build_object('venueOrPlace',location_text),'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',sale_minor,'saleEndsAt',sale_ends_at,'isFree',price_minor IS NULL,'unit','each'),
       'route',jsonb_build_object('pathname','/experience/[slug]','params',jsonb_build_object('slug',slug))
     ) ORDER BY start_at,id),'[]'::jsonb) INTO v_total,v_rows FROM eligible;
   ELSE
@@ -622,7 +628,9 @@ BEGIN
         ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_filters->'musicGenres','[]'::jsonb))),
         p_lng,p_lat,public.discover_v2_radius_km('events')) AS event_base(row)
     ), eligible AS MATERIALIZED (
-      SELECT b.row,occ.start_at,occ.end_at,occ.timezone,count(*) over() total_count
+      SELECT b.row,occ.start_at,occ.end_at,occ.timezone,
+        display.display_sale_price_cents sale_minor,display.display_sale_ends_at sale_ends_at,
+        count(*) over() total_count
       FROM base b
       JOIN LATERAL (
         SELECT ed.start_at,ed.end_at,ed.timezone FROM public.event_dates ed
@@ -630,6 +638,7 @@ BEGIN
           AND ed.start_at>=lower(v_window) AND ed.start_at<upper(v_window)
         ORDER BY ed.start_at,ed.id LIMIT 1
       ) occ ON true
+      CROSS JOIN LATERAL public.issue_3872_event_display_prices((b.row->>'id')::uuid) display
       WHERE public.discover_v2_price_matches('events',b.row->>'event_type',
         COALESCE(b.row->>'pricing_currency',b.row->>'currency'),
         NULLIF(b.row->>'display_price_cents','')::integer,
@@ -644,7 +653,7 @@ BEGIN
       'startsAtUtc',start_at,'endsAtUtc',end_at,'timezone',COALESCE(timezone,row->>'timezone','UTC'),
       'meta',jsonb_build_object('venueOrPlace',row->>'location_text'),
       'price',jsonb_build_object('currency',COALESCE(row->>'pricing_currency',row->>'currency'),
-        'listMinor',NULLIF(row->>'display_price_cents','')::integer,'saleMinor',NULL,'saleEndsAt',NULL,
+        'listMinor',NULLIF(row->>'display_price_cents','')::integer,'saleMinor',sale_minor,'saleEndsAt',sale_ends_at,
         'isFree',row->>'event_type'='rsvp' OR COALESCE(NULLIF(row->>'price_min_cents','')::integer=0,false),'unit','each'),
       'route',jsonb_build_object('pathname',CASE WHEN row->>'event_type'='rsvp' THEN '/rsvp/[slug]' ELSE '/event/[slug]' END,
         'params',jsonb_build_object('slug',row->>'slug'))
@@ -657,6 +666,7 @@ BEGIN
         b.slug brand_slug,b.name brand_name,b.profile_photo_url,
         occ.start_at,occ.end_at,occ.timezone occurrence_timezone,
         public.discover_v2_from_price_minor(e.id) price_minor,
+        display.display_sale_price_cents sale_minor,display.display_sale_ends_at sale_ends_at,
         EXISTS(SELECT 1 FROM public.ticket_types ft WHERE ft.event_id=e.id AND ft.deleted_at IS NULL
           AND ft.is_hidden IS NOT TRUE AND ft.is_disabled IS NOT TRUE AND ft.available_online IS TRUE AND ft.price_cents=0) has_free,
         (SELECT count(*) FROM public.experience_stops cs WHERE cs.event_id=e.id) stop_count,
@@ -665,6 +675,7 @@ BEGIN
       JOIN LATERAL (SELECT ed.start_at,ed.end_at,ed.timezone FROM public.event_dates ed
         WHERE ed.event_id=e.id AND ed.end_at>now() AND ed.start_at>=lower(v_window) AND ed.start_at<upper(v_window)
         ORDER BY ed.start_at,ed.id LIMIT 1) occ ON true
+      CROSS JOIN LATERAL public.issue_3872_event_display_prices(e.id) display
       WHERE e.event_type='experience' AND e.visibility='public' AND e.status='scheduled'
         AND e.published_at IS NOT NULL AND e.deleted_at IS NULL
         AND cardinality(e.experience_intents)>0
@@ -698,7 +709,7 @@ BEGIN
       'title',title,'coverUrl',cover_media_url,'coverType',cover_media_type,'coverHue',274,
       'startsAtUtc',start_at,'endsAtUtc',end_at,'timezone',COALESCE(occurrence_timezone,timezone,'UTC'),
       'meta',jsonb_build_object('venueOrPlace',first_place,'stops',stop_count),
-      'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',NULL,'saleEndsAt',NULL,'isFree',has_free,'unit','each'),
+      'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',sale_minor,'saleEndsAt',sale_ends_at,'isFree',has_free,'unit','each'),
       'route',jsonb_build_object('pathname','/experience/[slug]','params',jsonb_build_object('slug',slug))
     ) ORDER BY start_at,id),'[]'::jsonb) INTO v_total,v_rows FROM eligible;
 
@@ -707,9 +718,11 @@ BEGIN
       SELECT e.id,e.slug,e.brand_id,e.title,e.destination_text,e.departure_text,e.cover_media_url,e.cover_media_type,
         e.timezone,e.currency,e.destination_place_key,e.destination_city,e.destination_country_code,
         e.departure_place_key,e.departure_city,e.departure_country_code,b.slug brand_slug,b.name brand_name,b.profile_photo_url,
-        ed.start_at,ed.end_at,public.discover_v2_from_price_minor(e.id) price_minor
+        ed.start_at,ed.end_at,public.discover_v2_from_price_minor(e.id) price_minor,
+        display.display_sale_price_cents sale_minor,display.display_sale_ends_at sale_ends_at
       FROM public.events e JOIN public.brands b ON b.id=e.brand_id AND b.deleted_at IS NULL
       JOIN public.event_dates ed ON ed.event_id=e.id AND ed.is_master IS TRUE AND ed.end_at>=now()
+      CROSS JOIN LATERAL public.issue_3872_event_display_prices(e.id) display
       WHERE e.event_type='trip' AND e.visibility='public' AND e.status IN ('scheduled','live') AND e.deleted_at IS NULL
         AND COALESCE(e.bookings_closed,false)=false AND (e.booking_deadline IS NULL OR e.booking_deadline>=now())
         AND EXISTS (SELECT 1 FROM public.trip_pricing_tiers tpt JOIN public.ticket_types tt ON tt.id=tpt.ticket_type_id
@@ -726,7 +739,7 @@ BEGIN
     SELECT COALESCE(max(total_count),0),COALESCE(jsonb_agg(jsonb_build_object(
       'source','mingla','kind','trip','id',id,'brand',jsonb_build_object('id',brand_id,'slug',brand_slug,'name',brand_name,'photoUrl',profile_photo_url),
       'title',title,'coverUrl',cover_media_url,'coverType',cover_media_type,'coverHue',194,'startsAtUtc',start_at,'endsAtUtc',end_at,'timezone',timezone,
-      'meta',jsonb_build_object('venueOrPlace',destination_text),'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',NULL,'saleEndsAt',NULL,'isFree',price_minor IS NULL,'unit','each'),
+      'meta',jsonb_build_object('venueOrPlace',destination_text),'price',jsonb_build_object('currency',currency,'listMinor',price_minor,'saleMinor',sale_minor,'saleEndsAt',sale_ends_at,'isFree',price_minor IS NULL,'unit','each'),
       'route',jsonb_build_object('pathname','/trip/[slug]','params',jsonb_build_object('slug',slug))
     ) ORDER BY start_at,id),'[]'::jsonb) INTO v_total,v_rows FROM eligible;
     WITH candidates AS (

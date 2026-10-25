@@ -1,6 +1,5 @@
 BEGIN;
 
--- MINGLA-INVARIANT: I-DISCOVER-CITY-WATCH-ONCE | issue #4073 | One watch row owns one idempotency key and is marked notified in the enqueue transaction.
 CREATE TABLE IF NOT EXISTS public.discover_city_watch (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,

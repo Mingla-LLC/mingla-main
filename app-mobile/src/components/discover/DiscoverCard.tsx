@@ -30,8 +30,11 @@ function priceLabel(card: DiscoverCardV2, t: (key: string, values?: Record<strin
   }
   if (!card.price) return "";
   if (card.price.isFree) return t("card.free");
-  if (card.price.listMinor == null) return "";
-  const label = formatCurrency(card.price.listMinor / 100, card.price.currency, card.price.currency);
+  const displayMinor = DISCOVER_SALE_LABEL_ENABLED && card.price.saleMinor != null
+    ? card.price.saleMinor
+    : card.price.listMinor;
+  if (displayMinor == null) return "";
+  const label = formatCurrency(displayMinor / 100, card.price.currency, card.price.currency);
   return card.price.unit === "per_night" ? t("card.per_night", { price: label }) : label;
 }
 
