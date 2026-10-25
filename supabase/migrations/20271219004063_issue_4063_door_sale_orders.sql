@@ -476,10 +476,10 @@ REVOKE ALL ON FUNCTION public.biz_door_sale_refund(uuid, integer, text)
 GRANT EXECUTE ON FUNCTION public.biz_door_sale_refund(uuid, integer, text)
   TO authenticated;
 
--- Re-emit the provider-fee candidate reader with an explicit online-source
--- predicate. The provider-reference check already excludes today's door rows;
--- this source guard keeps them excluded even if a reader later adds a local
--- terminal reference to a door sale.
+-- Re-emit the provider-fee candidate reader with an explicit non-door-source
+-- predicate. Historical provider-backed rows use several source labels, so
+-- only the new host-collected door rail is excluded even if a reader later
+-- adds a local terminal reference to a door sale.
 CREATE OR REPLACE FUNCTION public.list_missing_payout_source_fees(
   p_limit integer DEFAULT 100
 ) RETURNS TABLE(
@@ -503,7 +503,7 @@ AS $function$
     JOIN public.brands b ON b.id = e.brand_id
     WHERE o.payment_status IN ('paid','partial_refund')
       AND o.total_cents > 0
-      AND coalesce(o.source, 'online_checkout') = 'online_checkout'
+      AND coalesce(o.source, 'online_checkout') <> 'door_sale'
       AND b.payout_hold_cutover_at IS NOT NULL
       AND o.created_at > b.payout_hold_cutover_at
     UNION ALL
@@ -571,7 +571,7 @@ JOIN public.events e ON e.id=o.event_id
 LEFT JOIN public.payout_source_fee_snapshots fs
   ON fs.source_type='order' AND fs.source_id=o.id
 WHERE o.payment_status IN ('paid','partial_refund','refunded')
-  AND coalesce(o.source,'online_checkout')='online_checkout'
+  AND coalesce(o.source,'online_checkout')<>'door_sale'
 UNION ALL
 SELECT 'venue_order',v.id,v.brand_id,lower(v.currency),v.created_at,
   COALESCE(v.list_subtotal_cents,v.subtotal_cents)::bigint,
