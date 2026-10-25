@@ -75,6 +75,24 @@ test("#3988 collaboration pills survive asynchronous same-user channel replaceme
   );
 });
 
+test("#3988 global board and social subscriptions survive keyed realtime remounts", () => {
+  const boards = read("app-mobile/src/hooks/useBoardQueries.ts");
+  const social = read("app-mobile/src/hooks/useSocialRealtime.ts");
+
+  assert.match(
+    boards,
+    /`board_changes_rq_\$\{userId\}:\$\{ownerRef\.current\}:\$\{channelEpoch\}`/,
+    "board realtime must not reuse an asynchronously-removing topic",
+  );
+  assert.match(
+    social,
+    /`social-realtime-\$\{userId\}:\$\{ownerRef\.current\}:\$\{channelEpoch\}`/,
+    "social realtime must not reuse an asynchronously-removing topic",
+  );
+  assert.match(boards, /void supabase\.removeChannel\(channel\)/);
+  assert.match(social, /void supabase\.removeChannel\(channel\)/);
+});
+
 test("#3988 every session consumer reads context instead of mounting a controller", () => {
   for (const relativePath of CONSUMERS) {
     const source = read(relativePath);

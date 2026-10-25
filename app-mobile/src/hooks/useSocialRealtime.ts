@@ -5,6 +5,8 @@ import { pairingKeys } from "./usePairings";
 import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { CalendarService } from "../services/calendarService";
 
+let nextSocialRealtimeOwner = 0;
+
 /**
  * Subscribes to realtime changes on social tables and invalidates
  * the appropriate React Query caches.
@@ -31,13 +33,17 @@ export function useSocialRealtime(
 ) {
   const queryClient = useQueryClient();
   const callbacksRef = useRef(callbacks);
+  const ownerRef = useRef<number | null>(null);
+  const epochRef = useRef(0);
+  if (ownerRef.current === null) ownerRef.current = ++nextSocialRealtimeOwner;
   callbacksRef.current = callbacks;
 
   useEffect(() => {
     if (!userId) return;
+    const channelEpoch = ++epochRef.current;
 
     const channel = supabase
-      .channel(`social-realtime-${userId}`)
+      .channel(`social-realtime-${userId}:${ownerRef.current}:${channelEpoch}`)
       // friend_requests: incoming requests
       .on(
         "postgres_changes",
@@ -245,7 +251,7 @@ export function useSocialRealtime(
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [userId, queryClient]);
 }
