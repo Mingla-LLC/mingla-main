@@ -519,6 +519,19 @@ AS $function$
     FROM public.discover_v2_event_base(
       p_cities,p_lower_bound,p_upper_start,p_party_types,p_vibe_tags,p_music_genres,
       p_center_lng,p_center_lat,p_radius_km) AS event_base(row)
+    WHERE NOT (
+      EXISTS (
+        SELECT 1
+        FROM public.ticket_types tt
+        WHERE tt.event_id=(row->>'id')::uuid
+          AND tt.deleted_at IS NULL
+          AND tt.is_hidden IS NOT TRUE
+          AND tt.is_disabled IS NOT TRUE
+          AND tt.available_online IS TRUE
+          AND tt.price_cents>0
+      )
+      AND NOT public.pg_brand_can_collect((row->>'brand_id')::uuid)
+    )
   ), guarded AS (
     -- Keep the installed V1 reader as a direct #2489 carrier even though the
     -- canonical base already projects the same privacy-safe fields. This second

@@ -213,6 +213,8 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     return () => clearTimeout(timer);
   }, [facetFilters]);
   const facets = useDiscoverFacets(anchorKey, activeAnchor, debouncedFacetFilters);
+  // ORCH-0839-A F-4: Discover stays server-authoritative. The V2 query hook
+  // owns freshness; there is deliberately no local skipCache short-circuit.
   const feed = useDiscoverFeed(anchorKey, activeAnchor, appliedFilters);
   const visibleKinds = useMemo(() => DISCOVER_KIND_ORDER.filter((kind) => (facets.data?.kinds[kind].total ?? 0) > 0), [facets.data?.kinds]);
   const cityWatch = useDiscoverCityWatch({ cityKey: facets.data?.city.key ?? null, userId: user?.id ?? null, anchor: activeAnchor, label: facets.data?.city.label ?? city?.name ?? null });

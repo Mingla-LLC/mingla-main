@@ -24,7 +24,8 @@
  *         the "edited one, skipped its twin" failure mode is caught.
  *   A-05  Revert-canary — re-derives the gate-adoption invariant independently:
  *         reverting ANY chrome file to a live `Platform.Version < 31` glass gate
- *         must trip this test (asserts zero such gates remain across the 8).
+ *         must trip this test (asserts zero such gates remain across the
+ *         glass-owning chrome files).
  *   A-06  No bare elevation:8 survives in either S5 trip tab block (the raw
  *         Android shadow rectangle must be Platform-gated to 0).
  *
@@ -61,13 +62,16 @@ const check = (name, pass, detail) => checks.push({ name, pass, detail });
 const CHROME_FILES = [
   "src/components/GlassTopBar.tsx",
   "src/components/GlassBottomNav.tsx",
-  "src/components/DiscoverScreen.tsx",
   "src/components/LikesPage.tsx",
   "src/components/ConnectionsPage.tsx",
   "src/components/ui/GlassCard.tsx",
   "src/components/ui/GlassBadge.tsx",
   "src/components/ui/GlassIconButton.tsx",
 ];
+
+// [TEST-MOD-APPROVED #4073] DiscoverScreen no longer owns a BlurView branch
+// after the one-page rewrite. Requiring it to negate the Android fallback gate
+// would reward an unused import instead of protecting a rendered glass surface.
 
 // ─── A-01 + A-05: iOS keeps BlurView (gate negated) + no live version gate ────
 for (const rel of CHROME_FILES) {

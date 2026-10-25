@@ -23,8 +23,9 @@ DECLARE
   v_context text:=pg_get_functiondef('public.discover_v2_city_context(text[],float8,float8,float8,text)'::regprocedure);
   v_nearest text:=pg_get_functiondef('public.discover_v2_nearest_city(float8,float8)'::regprocedure);
 BEGIN
-  PERFORM pg_temp.t4073_assert(v_v1 LIKE '%discover_v2_event_base%',
-    'v1 delegates to the canonical event eligibility reader');
+  PERFORM pg_temp.t4073_assert(v_v1 LIKE '%discover_v2_event_base%'
+    AND v_v1 LIKE '%pg_brand_can_collect%',
+    'v1 delegates to the canonical event reader and independently preserves the paid-supply readiness boundary');
   PERFORM pg_temp.t4073_assert(v_base LIKE '%master_ed.is_master IS TRUE%'
     AND v_base LIKE '%occurrence.end_at>=p_lower_bound%'
     AND v_base LIKE '%issue_1931_event_ordinary_read_blocked%'

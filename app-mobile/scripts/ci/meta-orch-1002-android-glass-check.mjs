@@ -9,7 +9,7 @@
  *
  * Asserts the consumer-side contract of SPEC_META-ORCH-1002_ANDROID_GLASS_FIRST_STRIKE.md:
  *   T-01  S2 shared gate exists      (designSystem.ts exports the opaque-fallback boolean)
- *   T-02  S2 gate adopted            (8 chrome files import it; NO live Platform.Version<31 gate)
+ *   T-02  S2 gate adopted            (glass-owning chrome files import it; NO live Platform.Version<31 gate)
  *   T-03  S1 clip + opaque unread    (NotificationsSheet clipped; cardUnreadBg Android #FFFAF4)
  *   T-04  S3 chat capsule guarded    (MessageInterface routes Android to opaque fallback)
  *   T-07  iOS frozen (consumer)      (every Platform.select kept its ios/default original value)
@@ -47,13 +47,17 @@ const check = (name, pass, detail) => {
 const CHROME_FILES = [
   "src/components/GlassTopBar.tsx",
   "src/components/GlassBottomNav.tsx",
-  "src/components/DiscoverScreen.tsx",
   "src/components/LikesPage.tsx",
   "src/components/ConnectionsPage.tsx",
   "src/components/ui/GlassCard.tsx",
   "src/components/ui/GlassBadge.tsx",
   "src/components/ui/GlassIconButton.tsx",
 ];
+
+// [TEST-MOD-APPROVED #4073] The one-page Discover rewrite no longer renders
+// BlurView in DiscoverScreen; its new header and cards use explicit fills.
+// Keep this census limited to files that still own a glass branch so the gate
+// cannot demand an unused fallback import from a non-glass surface.
 
 const design = readMaybe(path.join(root, "src/constants/designSystem.ts"));
 const designCode = design ? stripComments(design) : "";
