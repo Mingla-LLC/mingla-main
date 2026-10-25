@@ -52,10 +52,13 @@ const builds = new Map<string, Promise<TicketmasterPool>>();
 
 function ticketmasterDiscoveryIdentity(item: TicketmasterPoolEvent): string {
   const title = item.eventName.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
-  return title && title !== "untitled event" ? `title:${title}` : `id:${item.id}`;
+  const venue = item.venueName.normalize("NFKC").trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+  return title && title !== "untitled event"
+    ? `title:${title}|venue:${venue}`
+    : `id:${item.id}`;
 }
 
-/** Keep the earliest date-sorted performance for each named Ticketmaster event. */
+/** Keep the earliest date-sorted performance for each named event at each venue. */
 export function collapseTicketmasterOccurrences(
   items: readonly TicketmasterPoolEvent[],
 ): TicketmasterPoolEvent[] {
