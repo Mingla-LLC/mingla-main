@@ -7,8 +7,15 @@ import {
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import type { PhoneInputTheme } from "@mingla/phone-input";
+import { parsePhoneEntry } from "@mingla/phone-input/phoneNumber";
 
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
+import { PhoneInput } from "../onboarding/PhoneInput";
+import {
+  getCountryByCode,
+  getDefaultCountryCode,
+} from "../../constants/countries";
 import {
   offerTicketToFriend,
   TicketTransferError,
@@ -25,7 +32,21 @@ type Props = {
 };
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const E164_SHAPE = /^\+[1-9]\d{7,14}$/;
+const SEND_PHONE_THEME: PhoneInputTheme = {
+  backgroundPrimary: "#fff",
+  textPrimary: "#17191e",
+  textTertiary: "#8b8f96",
+  borderDefault: "#d8dbe0",
+  borderFocused: "#eb7825",
+  borderError: "#b42318",
+  searchBackground: "#f4f5f7",
+  rowPressedBackground: "#f4f5f7",
+  divider: "#e6e8ec",
+  accessoryBackground: "#fff",
+  accessoryBorder: "#e6e8ec",
+  accent: "#eb7825",
+  errorText: "#b42318",
+};
 
 export function SendTicketSheet({
   ticket,
@@ -36,37 +57,49 @@ export function SendTicketSheet({
 }: Props): React.ReactElement {
   const { t } = useTranslation("purchases");
   const [name, setName] = useState("");
-  const [contact, setContact] = useState("");
+  const [email, setEmail] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
+  const [countryCode, setCountryCode] = useState(getDefaultCountryCode);
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const normalizedContact = useMemo(
-    () =>
-      contact.includes("@")
-        ? contact.trim().toLowerCase()
-        : contact.replace(/[\s()-]/g, ""),
-    [contact],
+  const normalizedEmail = email.trim().toLowerCase();
+  const selectedCountry = useMemo(
+    () => getCountryByCode(countryCode),
+    [countryCode],
   );
-  const channel = contact.includes("@") ? "email" : "phone";
+  const phoneEntry = useMemo(
+    () =>
+      parsePhoneEntry(phoneInput, {
+        countryIso: countryCode,
+        dialCode: selectedCountry?.dialCode ?? null,
+        mode: "mobile",
+      }),
+    [countryCode, phoneInput, selectedCountry?.dialCode],
+  );
+  const phoneProblem =
+    phoneTouched && !phoneEntry.ok ? phoneEntry.message : null;
 
   useEffect(() => {
     if (visible) return;
     setName("");
-    setContact("");
+    setEmail("");
+    setPhoneInput("");
+    setCountryCode(getDefaultCountryCode());
+    setPhoneTouched(false);
     setBusy(false);
     setError(null);
   }, [visible]);
 
   const submit = async (): Promise<void> => {
     const trimmedName = name.trim();
-    const validContact =
-      channel === "email"
-        ? EMAIL_SHAPE.test(normalizedContact)
-        : E164_SHAPE.test(normalizedContact);
+    setPhoneTouched(true);
     if (
       !ticket ||
       trimmedName.length < 1 ||
       trimmedName.length > 60 ||
-      !validContact
+      !EMAIL_SHAPE.test(normalizedEmail) ||
+      !phoneEntry.ok
     ) {
       setError(t("send.errorInvalid"));
       postHogService.capture("ticket_send_failed", { reason: "invalid" });
@@ -78,9 +111,10 @@ export function SendTicketSheet({
       await offerTicketToFriend({
         ticketId: ticket.id,
         name: trimmedName,
-        contact: normalizedContact,
+        email: normalizedEmail,
+        phoneE164: phoneEntry.e164,
       });
-      postHogService.capture("ticket_sent", { channel });
+      postHogService.capture("ticket_sent", { channel: "email_sms" });
       // Delivery already committed server-side. A cache refresh failure must not
       // present this as a failed send and invite a duplicate submission.
       try {
@@ -116,7 +150,14 @@ export function SendTicketSheet({
       enablePanDownToClose={!busy}
       onClose={onClose}
       scrollMode="scroll"
-      snapPoints={["68%"]}
+      scrollProps={{
+        keyboardDismissMode: "interactive",
+        keyboardShouldPersistTaps: "handled",
+      }}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      snapPoints={["82%"]}
       theme="light"
       visible={visible}
       wrapInRNModal
@@ -136,18 +177,40 @@ export function SendTicketSheet({
           style={styles.input}
           value={name}
         />
+        <Text style={styles.label}>{t("send.emailLabel")}</Text>
         <BottomSheetTextInput
-          accessibilityLabel={t("send.contactPlaceholder")}
+          accessibilityLabel={t("send.emailLabel")}
           autoCapitalize="none"
+          autoComplete="email"
           autoCorrect={false}
           editable={!busy}
           keyboardType="email-address"
-          onChangeText={setContact}
-          placeholder={t("send.contactPlaceholder")}
+          onChangeText={setEmail}
+          placeholder={t("send.emailPlaceholder")}
           placeholderTextColor="#8b8f96"
           style={styles.input}
-          value={contact}
+          textContentType="emailAddress"
+          value={email}
         />
+        <Text style={styles.label}>{t("send.phoneLabel")}</Text>
+        <View style={styles.phoneField}>
+          <PhoneInput
+            countryCode={countryCode}
+            disabled={busy}
+            error={phoneProblem}
+            inputComponent={BottomSheetTextInput}
+            onBlur={() => setPhoneTouched(true)}
+            onChangeCountry={setCountryCode}
+            onChangePhone={setPhoneInput}
+            phoneInputAccessibilityLabel={t("send.phoneLabel")}
+            required
+            smartEntry
+            testID="send-ticket-phone"
+            theme={SEND_PHONE_THEME}
+            value={phoneInput}
+          />
+        </View>
+        <Text style={styles.deliveryNote}>{t("send.deliveryNote")}</Text>
         <Text style={styles.explainer}>
           {firstName
             ? t("send.explainer", { name: firstName })
@@ -205,6 +268,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 12,
   },
+  label: {
+    color: "#4e535b",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 7,
+  },
+  phoneField: { marginBottom: 10 },
+  deliveryNote: { color: "#4e535b", fontSize: 13, lineHeight: 19 },
   explainer: { color: "#60656e", fontSize: 14, lineHeight: 21, marginTop: 2 },
   error: { color: "#b42318", fontSize: 13, lineHeight: 18, marginTop: 13 },
   submit: {

@@ -101,7 +101,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_other::text, true);
   BEGIN
     PERFORM public.pg_ticket_offer_to_friend(
-      v_extra, 'Friend', 'friend-send-4063@example.test', NULL
+      v_extra, 'Friend', 'friend-send-4063@example.test', '+12025558003'
     );
     RAISE EXCEPTION 'non-buyer offer unexpectedly succeeded';
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
@@ -113,7 +113,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_buyer::text, true);
   BEGIN
     PERFORM public.pg_ticket_offer_to_friend(
-      v_first, 'Friend', 'friend-send-4063@example.test', NULL
+      v_first, 'Friend', 'friend-send-4063@example.test', '+12025558003'
     );
     RAISE EXCEPTION 'first-ticket offer unexpectedly succeeded';
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
@@ -123,7 +123,7 @@ BEGIN
   );
   BEGIN
     PERFORM public.pg_ticket_offer_to_friend(
-      v_extra, 'Me', NULL, '+12025558002'
+      v_extra, 'Me', 'not-me-send-4063@example.test', '+12025558002'
     );
     RAISE EXCEPTION 'self offer unexpectedly succeeded';
   EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
@@ -133,7 +133,7 @@ BEGIN
   );
 
   v_result := public.pg_ticket_offer_to_friend(
-    v_extra, 'Tolu Friend', 'friend-send-4063@example.test', NULL
+    v_extra, 'Tolu Friend', 'friend-send-4063@example.test', '+12025558003'
   );
   SELECT code INTO v_code FROM public.claim_links
    WHERE subject_kind = 'ticket' AND subject_id = v_extra
@@ -141,14 +141,21 @@ BEGIN
   PERFORM pg_temp.i4063_send_assert(
     v_result = jsonb_build_object('ok', true, 'state', 'offered')
       AND v_code IS NOT NULL
-      AND public.resolve_claim_link(v_code)->>'preferredProof' = 'email'
+      AND public.resolve_claim_link(v_code)->>'preferredProof' = 'phone'
       AND (SELECT transfer_state FROM public.tickets WHERE id = v_extra) = 'offered'
       AND EXISTS (
         SELECT 1 FROM public.notification_outbox
          WHERE category_key = 'buyer_ticket_sent' AND contact = 'friend-send-4063@example.test'
            AND channel = 'email' AND payload->>'sender' = 'Seth'
+           AND country_code IS NULL
+      )
+      AND EXISTS (
+        SELECT 1 FROM public.notification_outbox
+         WHERE category_key = 'buyer_ticket_sent' AND contact = '+12025558003'
+           AND channel = 'sms' AND payload->>'sender' = 'Seth'
+           AND country_code = 'US'
       ),
-    'T5-14 an extra ticket offer mints a safe claim link and queues delivery'
+    'T5-14 an extra ticket offer mints a safe claim link and queues email plus SMS delivery'
   );
 
   v_result := public.pg_ticket_take_back(v_extra);
@@ -167,7 +174,7 @@ BEGIN
   );
 
   v_result := public.pg_ticket_offer_to_friend(
-    v_extra, 'Phone Friend', NULL, '+12025558003'
+    v_extra, 'Phone Friend', 'phone-friend-send-4063@example.test', '+12025558003'
   );
   PERFORM pg_temp.i4063_send_assert(
     v_result = jsonb_build_object('ok', true, 'state', 'offered')
@@ -178,12 +185,12 @@ BEGIN
            AND channel = 'sms'
            AND country_code = 'US'
       ),
-    'T5-14 an SMS ticket offer records the recipient country for delivery'
+    'T5-14 a ticket offer records the recipient country for SMS delivery'
   );
   PERFORM public.pg_ticket_take_back(v_extra);
 
   v_result := public.pg_ticket_offer_to_friend(
-    v_extra, 'Tolu Friend', 'friend-send-4063@example.test', NULL
+    v_extra, 'Tolu Friend', 'friend-send-4063@example.test', '+12025558003'
   );
   SELECT code INTO v_code FROM public.claim_links
    WHERE subject_kind = 'ticket' AND subject_id = v_extra
@@ -211,7 +218,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.sub', v_buyer::text, true);
 
   v_result := public.pg_ticket_offer_to_friend(
-    v_extra, 'Tolu Friend', 'friend-send-4063@example.test', NULL
+    v_extra, 'Tolu Friend', 'friend-send-4063@example.test', '+12025558003'
   );
   SELECT code INTO v_code FROM public.claim_links
    WHERE subject_kind = 'ticket' AND subject_id = v_extra

@@ -249,7 +249,10 @@
     "notSent": "Ticket {{index}} of {{total}} · Not sent yet",
     "sheetTitle": "Send ticket {{index}}",
     "namePlaceholder": "Their first name",
-    "contactPlaceholder": "Mobile or email",
+    "emailLabel": "Email",
+    "emailPlaceholder": "name@example.com",
+    "phoneLabel": "Mobile number",
+    "deliveryNote": "We'll email and text the ticket link.",
     "explainer": "Once {{name}} opens it, it's theirs and leaves your account.",
     "explainerEmpty": "Once they open it, it's theirs and leaves your account.",
     "submit": "Send ticket",
@@ -262,7 +265,7 @@
     "takeBackNo": "Keep it with {{name}}",
     "claimedNote": "{{name}} has this ticket now.",
     "errorSelf": "That's your own email or number.",
-    "errorInvalid": "Enter a mobile number with its country code, or an email.",
+    "errorInvalid": "Enter a valid email and mobile number.",
     "errorGeneric": "We couldn't send the ticket. Try again.",
     "errorTooLate": "{{name}} already opened this ticket."
   }

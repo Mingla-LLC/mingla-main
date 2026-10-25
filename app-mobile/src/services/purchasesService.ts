@@ -471,12 +471,12 @@ export class TicketTransferError extends Error {
 export async function offerTicketToFriend(input: {
   ticketId: string;
   name: string;
-  contact: string;
+  email: string;
+  phoneE164: string;
 }): Promise<void> {
   const name = input.name.trim();
-  const contact = input.contact.trim();
-  const email = contact.includes("@") ? contact.toLowerCase() : null;
-  const phone = email === null ? contact.replace(/[\s()-]/g, "") : null;
+  const email = input.email.trim().toLowerCase();
+  const phone = input.phoneE164.trim();
   const { data, error } = await supabase.rpc("pg_ticket_offer_to_friend", {
     p_ticket_id: input.ticketId,
     p_name: name,

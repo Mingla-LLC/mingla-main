@@ -117,6 +117,14 @@ export interface PhoneInputProps {
   maxLength?: number;
   onBlur?: () => void;
   /**
+   * Optional host-owned native text input. Bottom-sheet hosts pass their
+   * keyboard-aware input here so focus, blur, and sheet restoration stay on
+   * the same interaction rail. Ordinary hosts keep the native TextInput.
+   */
+  inputComponent?: React.ComponentType<
+    TextInputProps & React.RefAttributes<TextInput>
+  >;
+  /**
    * Issue #3380 — the full entry experience. Formats the number the way the
    * selected country writes it as the person types (keeping their cursor),
    * follows a typed or pasted "+code" by switching the picker, and offers the
@@ -144,6 +152,7 @@ export const PhoneInput = ({
   required = false,
   maxLength,
   onBlur,
+  inputComponent,
   smartEntry = false,
 }: PhoneInputProps): React.ReactElement => {
   const [focused, setFocused] = useState(false);
@@ -170,6 +179,7 @@ export const PhoneInput = ({
   );
 
   const country = getCountryByCode(countryCode ?? "");
+  const PhoneTextInput = inputComponent ?? RefForwardingTextInput;
 
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
@@ -387,7 +397,7 @@ export const PhoneInput = ({
 
         <View style={dividerStyle} />
 
-        <RefForwardingTextInput
+        <PhoneTextInput
           ref={phoneInputRef}
           style={textInputStyle}
           value={value}

@@ -50,7 +50,8 @@ REVOKE ALL ON FUNCTION public.phone_identity_owners(text)
 GRANT EXECUTE ON FUNCTION public.phone_identity_owners(text) TO service_role;
 
 -- #4063 Wave 5: a ticket can leave the buyer only after the recipient proves
--- possession of the offered email address or phone number. The old QR is
+-- possession of the offered email address or phone number. Both contacts are
+-- collected for delivery; either proved contact may establish ownership. The old QR is
 -- rotated in the same transaction that attaches the ticket to the recipient.
 ALTER TABLE public.tickets
   ADD COLUMN IF NOT EXISTS holder_user_id uuid NULL
@@ -81,7 +82,7 @@ ALTER TABLE public.tickets
   DROP CONSTRAINT IF EXISTS tickets_transfer_offered_contact_check,
   ADD CONSTRAINT tickets_transfer_offered_contact_check CHECK (
     transfer_state <> 'offered'
-    OR (holder_email IS NOT NULL OR holder_phone_e164 IS NOT NULL)
+    OR (holder_email IS NOT NULL AND holder_phone_e164 IS NOT NULL)
   ),
   DROP CONSTRAINT IF EXISTS tickets_transfer_claimed_owner_check,
   ADD CONSTRAINT tickets_transfer_claimed_owner_check CHECK (
@@ -437,9 +438,9 @@ BEGIN
     RAISE EXCEPTION 'ticket_offer_denied' USING ERRCODE = '42501';
   END IF;
   IF v_name IS NULL OR char_length(v_name) > 60
-     OR (v_email IS NULL) = (v_phone IS NULL)
-     OR (v_email IS NOT NULL AND v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$')
-     OR (v_phone IS NOT NULL AND v_phone !~ '^\+[1-9][0-9]{1,14}$') THEN
+     OR v_email IS NULL OR v_phone IS NULL
+     OR v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+     OR v_phone !~ '^\+[1-9][0-9]{1,14}$' THEN
     RAISE EXCEPTION 'ticket_offer_invalid' USING ERRCODE = '22023';
   END IF;
 
@@ -507,43 +508,37 @@ BEGIN
 
   PERFORM public.mint_claim_link('ticket', v_ticket.id);
   v_start := v_event.starts_at;
-  BEGIN
-    IF v_email IS NOT NULL THEN
-      INSERT INTO public.notification_outbox(
-        category_key, user_id, contact, brand_id, payload, idempotency_key,
-        channel, country_code
-      ) VALUES (
-        'buyer_ticket_sent', NULL, v_email, v_event.brand_id,
-        jsonb_build_object(
-          'ticket_id', v_ticket.id, 'event_id', v_ticket.event_id,
-          'event_title', v_event.title, 'event_start_at', v_start,
-          'timezone', v_event.timezone, 'event_type', v_event.event_type,
-          'sender', v_sender, 'recipient_name', v_name
-        ),
-        'buyer_ticket_sent:' || v_ticket.id::text || ':email:' ||
-          gen_random_uuid()::text,
-        'email', NULL
-      );
-    ELSE
-      INSERT INTO public.notification_outbox(
-        category_key, user_id, contact, brand_id, payload, idempotency_key,
-        channel, country_code
-      ) VALUES (
-        'buyer_ticket_sent', NULL, v_phone, v_event.brand_id,
-        jsonb_build_object(
-          'ticket_id', v_ticket.id, 'event_id', v_ticket.event_id,
-          'event_title', v_event.title, 'event_start_at', v_start,
-          'timezone', v_event.timezone, 'event_type', v_event.event_type,
-          'sender', v_sender, 'recipient_name', v_name
-        ),
-        'buyer_ticket_sent:' || v_ticket.id::text || ':sms:' ||
-          gen_random_uuid()::text,
-        'sms', public.mingla_e164_country(v_phone)
-      );
-    END IF;
-  EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'issue_4063_ticket_sent_enqueue_failed %', SQLSTATE;
-  END;
+  -- Email and Twilio-backed SMS are one durable delivery contract. If either
+  -- outbox row cannot be written, the offer rolls back instead of telling the
+  -- buyer a ticket was sent with a missing notification.
+  INSERT INTO public.notification_outbox(
+    category_key, user_id, contact, brand_id, payload, idempotency_key,
+    channel, country_code
+  ) VALUES
+  (
+    'buyer_ticket_sent', NULL, v_email, v_event.brand_id,
+    jsonb_build_object(
+      'ticket_id', v_ticket.id, 'event_id', v_ticket.event_id,
+      'event_title', v_event.title, 'event_start_at', v_start,
+      'timezone', v_event.timezone, 'event_type', v_event.event_type,
+      'sender', v_sender, 'recipient_name', v_name
+    ),
+    'buyer_ticket_sent:' || v_ticket.id::text || ':email:' ||
+      gen_random_uuid()::text,
+    'email', NULL
+  ),
+  (
+    'buyer_ticket_sent', NULL, v_phone, v_event.brand_id,
+    jsonb_build_object(
+      'ticket_id', v_ticket.id, 'event_id', v_ticket.event_id,
+      'event_title', v_event.title, 'event_start_at', v_start,
+      'timezone', v_event.timezone, 'event_type', v_event.event_type,
+      'sender', v_sender, 'recipient_name', v_name
+    ),
+    'buyer_ticket_sent:' || v_ticket.id::text || ':sms:' ||
+      gen_random_uuid()::text,
+    'sms', public.mingla_e164_country(v_phone)
+  );
   RETURN jsonb_build_object('ok', true, 'state', 'offered');
 END;
 $function$;
