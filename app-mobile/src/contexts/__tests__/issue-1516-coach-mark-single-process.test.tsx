@@ -48,6 +48,8 @@
 //   R-6  ANDROID BACK IS OWNED BY THE ACTIVE TOUR. At step 1, hardware Back is
 //        consumed as an inert no-op rather than exiting the app. With step 4
 //        runtime-skipped, hardware Back from step 5 navigates to step 3.
+// [TEST-MOD-APPROVED #4073] The prior iOS-only harness lines were replaced so
+// this existing suite can exercise the Discover coach flow's Android Back owner.
 //
 // Verification note (#1516): `coach_mark_step = 12` is unfalsifiable from the database —
 // the genuine-completion path and the silent-cancel path both write it — and coach-mark
