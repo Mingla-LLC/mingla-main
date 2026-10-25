@@ -42,6 +42,8 @@ const ORDER_ID = "56471853-07f8-4ed3-94c8-d83cd5260ad5";
 const EVENT_ID = "e2198000-1111-4222-8333-444444444444";
 const ATTEMPT_ID = "a2198000-1111-4222-8333-444444444444";
 const TICKET_ID = "t2198000-1111-4222-8333-444444444444";
+const CLAIM_CODE = "P2198CLAIM";
+const CLAIM_URL = `https://usemingla.com/c/${CLAIM_CODE}`;
 const BUYER_TOKEN = "buyer-status-token-issue-2198";
 const REFERENCE = `mingla_${SESSION_ID}`;
 const TOTAL_KOBO = 10000;
@@ -157,13 +159,40 @@ function installFetchStub(opts: {
       return Promise.resolve(jsonOk([{
         id: TICKET_ID,
         ticket_type_id: "tt-2198",
-        qr_code: "mgl:2198:qr",
         status: "valid",
         ticket_types: { name: "General Admission" },
       }]));
     }
+    if (url.startsWith(`${SUPA_URL}/rest/v1/order_line_items`)) {
+      return Promise.resolve(jsonOk([{
+        quantity: 1,
+        unit_price_cents: TOTAL_KOBO,
+        list_unit_price_cents: TOTAL_KOBO,
+        total_cents: TOTAL_KOBO,
+        discount_cents: 0,
+        ticket_types: { name: "General Admission" },
+      }]));
+    }
+    if (url.startsWith(`${SUPA_URL}/rest/v1/order_discount_lines`)) {
+      return Promise.resolve(jsonOk([]));
+    }
+    if (url.startsWith(`${SUPA_URL}/rest/v1/rpc/mint_claim_link`)) {
+      return Promise.resolve(jsonOk([{ code: CLAIM_CODE }]));
+    }
     if (url.startsWith(`${SUPA_URL}/rest/v1/orders`)) {
-      return Promise.resolve(jsonOk([{ tax_amount_cents: 0 }]));
+      return Promise.resolve(jsonOk([{
+        buyer_email: "buyer@example.com",
+        buyer_phone_e164: "+2348000002198",
+        buyer_user_id: null,
+        purchased_by_user_id: null,
+        total_cents: TOTAL_KOBO,
+        tax_amount_cents: 0,
+        buyer_fees_cents: 0,
+        tax_cents: 0,
+        buyer_total_cents: TOTAL_KOBO,
+        event_date_id: null,
+        booked_start_at: null,
+      }]));
     }
     return Promise.resolve(jsonOk({}));
   };
@@ -186,28 +215,15 @@ function statusRequest(): Request {
   });
 }
 
-/**
- * issue #2216 crossing — see the sibling suite's note. The native rail returns
- * the SAME ticket shape through the SAME `attachQrImageDataUrls` owner, and a
- * guest resolved instantly onto a blank pass is no better off than one who
- * waited four minutes for a good one. Nothing is stubbed: the QR really renders.
- */
-const assertRenderedQr = (ticket: Record<string, unknown>): void => {
-  const dataUrl = String(ticket?.qrImageDataUrl ?? "");
-  assert(
-    dataUrl.startsWith("data:image/png;base64,"),
-    `qrImageDataUrl is not a PNG data URI (got ${
-      JSON.stringify(dataUrl.slice(0, 40))
-    })`,
-  );
-  assert(
-    dataUrl.includes("base64,iVBORw0KGgo"),
-    "qrImageDataUrl does not decode to a PNG",
-  );
-  assert(
-    dataUrl.length > 500,
-    `qrImageDataUrl is too short to be a rendered QR (${dataUrl.length} chars)`,
-  );
+/** #4063 crossing — native polling exposes a claim pointer, never public QR data. */
+const assertClaimOnly = (order: Record<string, unknown>): void => {
+  assertEquals(order.claim, { shortUrl: CLAIM_URL, code: CLAIM_CODE });
+  const tickets = order.tickets as Array<Record<string, unknown>>;
+  assertEquals(tickets.length, 1);
+  assertEquals(tickets[0].ticketId, TICKET_ID);
+  for (const retired of ["qrPayload", "qrImageDataUrl", "qrCode"]) {
+    assert(!(retired in tickets[0]), `public ticket leaked ${retired}`);
+  }
 };
 
 function paidBankTransfer(
@@ -251,8 +267,7 @@ Deno.test({
       assertEquals(body.order?.orderId, ORDER_ID);
       assertEquals(body.order?.tickets?.length, 1);
       assertEquals(body.order?.currency, "NGN");
-      // #2216 crossing — the native guest's pass is scannable too.
-      assertRenderedQr(body.order.tickets[0]);
+      assertClaimOnly(body.order);
       assertEquals(wire.verifyCalls, 1);
       assertEquals(wire.finalizeCalls, 1);
       assertEquals(wire.dispatchCalls, 1);
@@ -288,8 +303,8 @@ Deno.test({
       // slow render / retry can land another call).
       const second = await (await HANDLER!(statusRequest())).json();
       assertEquals(second.order?.orderId, ORDER_ID);
-      assertRenderedQr(first.order.tickets[0]);
-      assertRenderedQr(second.order.tickets[0]);
+      assertClaimOnly(first.order);
+      assertClaimOnly(second.order);
       assertEquals(wire.finalizeCalls, 1, "one mint across both polls");
       assertEquals(wire.dispatchCalls, 1, "one email, one SMS");
       assertEquals(wire.verifyCalls, 1, "the second poll took the fast-path");
