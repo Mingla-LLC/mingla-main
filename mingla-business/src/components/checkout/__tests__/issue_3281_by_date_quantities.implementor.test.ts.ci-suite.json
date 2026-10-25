@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-business/src/components/checkout/__tests__/issue_3281_by_date_quantities.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-by-date-quantities",
+  "profile": "deno-2-unit"
+}

@@ -452,7 +452,12 @@ const recordCheckoutRefusal = async (
  * telemetry fault must never become a buyer's failed checkout.
  */
 
-type CheckoutLine = { ticketTypeId: string; quantity: number };
+type CheckoutLine = {
+  ticketTypeId: string;
+  quantity: number;
+  /** issue #3281 PR10 — optional per-date quantities. */
+  byDate?: Record<string, number>;
+};
 type CheckoutMode = "create" | "preview" | "quote";
 // ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
 // validateBuyerAddress are REMOVED. Tax is sourced at the VENUE (SPEC §B.1),
@@ -490,13 +495,46 @@ type PaymentPlanChoice = "auto" | "full" | "installments";
 type CheckoutSurface = "native" | "web" | "mobile-web";
 
 function isCheckoutLine(value: unknown): value is CheckoutLine {
-  const row = value as Partial<CheckoutLine>;
-  return (
-    typeof row.ticketTypeId === "string" &&
-    row.ticketTypeId.length > 0 &&
-    Number.isInteger(row.quantity) &&
-    Number(row.quantity) > 0
-  );
+  const row = value as Partial<CheckoutLine> & { byDate?: unknown };
+  if (
+    typeof row.ticketTypeId !== "string" ||
+    row.ticketTypeId.length === 0 ||
+    !Number.isInteger(row.quantity) ||
+    Number(row.quantity) <= 0
+  ) {
+    return false;
+  }
+  if (row.byDate === undefined) return true;
+  if (row.byDate === null || typeof row.byDate !== "object" ||
+    Array.isArray(row.byDate)) {
+    return false;
+  }
+  for (const [key, qty] of Object.entries(row.byDate as Record<string, unknown>)) {
+    if (typeof key !== "string" || key.length === 0) return false;
+    if (!Number.isInteger(qty) || Number(qty) < 0) return false;
+  }
+  return true;
+}
+
+/** issue #3281 PR10 — DETAIL on ticket_capacity_exceeded carries event_date_id. */
+function capacityEventDateIdFromError(
+  err: { details?: unknown; detail?: unknown; message?: unknown } | null |
+    undefined,
+): string | null {
+  if (err == null) return null;
+  const candidates = [err.details, err.detail, err.message];
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  for (const c of candidates) {
+    if (typeof c !== "string") continue;
+    const trimmed = c.trim();
+    if (uuidRe.test(trimmed)) return trimmed.toLowerCase();
+    const m = trimmed.match(
+      /([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/i,
+    );
+    if (m?.[1]) return m[1].toLowerCase();
+  }
+  return null;
 }
 
 function optionalTrimmed(value: unknown): string | undefined {
@@ -2210,8 +2248,29 @@ export const createTicketCheckoutCreateHandler = (
           );
         }
         // Waitlist disabled or enrollment failed — keep today's sold-out token.
+        {
+          const eventDateId = capacityEventDateIdFromError(sessionError);
+          return jsonResponse(
+            {
+              error: "ticket_capacity_exceeded",
+              detail: sessionError?.message,
+              ...(eventDateId != null ? { eventDateId } : {}),
+            },
+            409,
+          );
+        }
+      }
+      if (
+        typeof sessionError?.message === "string" &&
+        sessionError.message.includes("ticket_capacity_exceeded")
+      ) {
+        const eventDateId = capacityEventDateIdFromError(sessionError);
         return jsonResponse(
-          { error: "checkout_session_failed", detail: sessionError?.message },
+          {
+            error: "ticket_capacity_exceeded",
+            detail: sessionError.message,
+            ...(eventDateId != null ? { eventDateId } : {}),
+          },
           409,
         );
       }
