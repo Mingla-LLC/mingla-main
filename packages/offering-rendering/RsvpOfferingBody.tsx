@@ -1585,8 +1585,7 @@ export const useRsvpOfferingState = (
           palette,
           disabled: submitting,
           required: true,
-          emptyRequired:
-            (showValidationErrors || primaryPhoneTouched) &&
+          emptyRequired: (showValidationErrors || primaryPhoneTouched) &&
             phoneRawValue.trim().length === 0 &&
             !dialogAsksForPhone,
           onBlur: () => setPrimaryPhoneTouched(true),
@@ -1810,9 +1809,7 @@ export const useRsvpOfferingState = (
                   palette,
                   disabled: submitting,
                   required: true,
-                  emptyRequired:
-                    (showValidationErrors || g.phoneTouched) &&
-                    g.rawPhone.trim().length === 0,
+                  emptyRequired: (showValidationErrors || g.phoneTouched) && g.rawPhone.trim().length === 0,
                   onBlur: () => {
                     setGuests((rows: RsvpGuestDraft[]) =>
                       markRsvpPhoneTouchedById(rows, g.id),

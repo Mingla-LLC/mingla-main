@@ -202,6 +202,7 @@ jest.mock("../../../../src/components/checkout/TicketQrCarousel", () => ({
   TicketQrCarousel: () => null,
 }));
 jest.mock("../../../../src/components/checkout/DownloadMinglaCta", () => ({
+  BuyerClaimCard: () => null,
   DownloadMinglaCta: () => null,
 }));
 jest.mock("../../../../src/components/checkout/AttendanceClaimAppIcon", () => ({

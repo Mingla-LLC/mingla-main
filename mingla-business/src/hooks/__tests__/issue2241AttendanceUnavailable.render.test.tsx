@@ -1,4 +1,5 @@
 import React from "react";
+// #4063 keeps attendance recovery behind the canonical app-claim handoff.
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 interface RenderNode {

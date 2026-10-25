@@ -1,4 +1,5 @@
 // Unlisted RSVP invite link — an approved guest of an UNLISTED RSVP gets the pass.
+// #4063 keeps this eligibility proof while replacing the public pass with app claim.
 //
 // fails-on-revert: put `event.visibility === "public"` back (drop "hidden" from
 // RSVP_PASS_VISIBILITIES) and P-02 reds; admit "private" and P-03 reds; unwire the

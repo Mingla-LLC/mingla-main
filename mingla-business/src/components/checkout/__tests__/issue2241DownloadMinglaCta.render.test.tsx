@@ -1,4 +1,5 @@
 import React from "react";
+// #4063 replaces public ticket/QR rendering with the canonical app-claim handoff.
 import { Linking, Platform, StyleSheet } from "react-native";
 import {
   afterEach,

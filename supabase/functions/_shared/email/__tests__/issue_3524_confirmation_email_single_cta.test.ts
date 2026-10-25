@@ -555,19 +555,16 @@ Deno.test("A8 ticket-confirmation-dispatch renders the CTA through the template,
     "renderedEmail = renderEmailBody(null)",
     "the eager no-claim render is gone, so a render failure would no longer surface before the send loop",
   );
-  for (
-    const arm of [
-      "renderEmailBody = (appCtaClaimUrl) => renderTripConfirmationEmail({",
-      "renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({",
-      "renderEmailBody = (appCtaClaimUrl) => renderTransactionalEmail({",
-    ]
-  ) {
-    assertStringIncludes(
-      source,
-      arm,
-      `an offering arm does not take the claim URL: ${arm}`,
-    );
-  }
+  // [TEST-MOD-APPROVED #4063] Trip, experience and event purchases now share
+  // one canonical purchase-message builder. The previous three template-arm
+  // assertions became wrong when those parallel bodies were retired.
+  for (const contract of [
+    "const buildMessage = (buttonUrl: string) =>",
+    "buildOrderConfirmationMessage({",
+    "renderEmailBody = (legacyClaimUrl) => {",
+    "const message = legacyClaimUrl === null",
+    'variant: "purchase_message"',
+  ]) assertStringIncludes(source, contract);
 
   // THE MINT DID NOT MOVE. #3551 fixed the order in which this issuance runs
   // relative to the checkout confirm screen's own mint; a "render earlier"

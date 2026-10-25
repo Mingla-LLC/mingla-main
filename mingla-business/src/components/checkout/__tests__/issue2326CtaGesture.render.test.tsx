@@ -1,4 +1,5 @@
 /**
+ * #4063 keeps this gesture regression on the canonical app-claim handoff.
  * issue #2326 — tapping "Open in Mingla" on the confirmation screen did nothing.
  *
  * ─── WHAT WAS ACTUALLY MEASURED, NOT INFERRED ───────────────────────────────

@@ -13,8 +13,12 @@
     "required_top_level": [
       "OFFERING_INVITE_TOKEN_PEPPER",
       "RESEND_API_KEY",
+      "TERMII_API_KEY",
+      "TERMII_SENDER_ID",
       "TWILIO_ACCOUNT_SID",
       "TWILIO_AUTH_TOKEN",
+      "TWILIO_MESSAGING_SERVICE_SID",
+      "TWILIO_STATUS_CALLBACK_SECRET",
       "TWILIO_VERIFY_SERVICE_SID",
       "app.qr_token_pepper"
     ]

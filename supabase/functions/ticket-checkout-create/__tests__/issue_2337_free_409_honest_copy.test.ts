@@ -1,4 +1,5 @@
 /**
+ * #4063 keeps this refusal matrix on the canonical, credential-free receipt.
  * issue #2337 [free checkout says "no more tickets" for any conflict] — the
  * END-TO-END proof, and the reason this suite is not two suites.
  *
@@ -190,8 +191,32 @@ class FakeQuery implements PromiseLike<DbResult> {
         ? { data: null, error: { message: "update denied" } }
         : { data: null, error: null };
     }
+    if (this.table === "orders") {
+      return {
+        data: {
+          buyer_email: "guest@issue2337.test",
+          buyer_phone_e164: "+15551234567",
+          buyer_user_id: null,
+          purchased_by_user_id: null,
+          total_cents: 0,
+          tax_amount_cents: 0,
+          buyer_fees_cents: 0,
+          tax_cents: 0,
+          buyer_total_cents: 0,
+          event_date_id: null,
+          booked_start_at: null,
+        },
+        error: null,
+      };
+    }
     if (this.table === "tickets" && this.action === "select") {
       return { data: this.db.tickets, error: null };
+    }
+    if (
+      this.table === "order_line_items" ||
+      this.table === "order_discount_lines"
+    ) {
+      return { data: [], error: null };
     }
     return { data: null, error: null, count: 0 };
   }

@@ -190,8 +190,13 @@ describe("ORCH-1342 §4.4.1 — web-only wiring on every mount (T-A6 posture)", 
       );
       expect(src).toContain("React.lazy(");
     }
+    expect(publicEventPage).toContain("{gateVisible ? (");
+    for (const src of [tripRoute, expRoute]) {
+      // [TEST-MOD-APPROVED #4063] The explicit pre-purchase box switch now
+      // guards these routes in addition to the existing lazy-open state.
+      expect(src).toContain("{SHOW_PRE_PURCHASE_APP_BOX && gateVisible ? (");
+    }
     for (const src of [publicEventPage, tripRoute, expRoute]) {
-      expect(src).toContain("{gateVisible ? (");
       expect(src).toContain("<React.Suspense fallback={null}>");
       expect(src).not.toMatch(
         /import\s*\{\s*SeeWhosGoingGate\s*\}\s*from/,

@@ -1,4 +1,5 @@
 /**
+ * #4063 models the canonical receipt read and proves the response is claim-only.
  * issue #2150 [duplicate free tickets on resubmit] — implementor happy-path
  * regression for the EDGE half of the fix.
  *

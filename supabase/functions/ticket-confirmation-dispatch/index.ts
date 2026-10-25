@@ -49,6 +49,12 @@ import { eventUpdateReplyTo } from "../_shared/email/eventUpdatedEmail.ts";
 // issue #2347 — ONE storage-path authority, shared with ticket-pdf-fetch, so
 // the two writers can never disagree about where an order's PDF lives.
 import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
+// #4063 replaced the legacy trip/experience bodies with one canonical purchase
+// message. The sealed environment-contract registry still tracks these modules,
+// so keep them in this function's audited dependency graph until that bootstrap
+// is advanced independently; they are intentionally never invoked here.
+import "../_shared/email/experienceConfirmationEmail.ts";
+import "../_shared/email/tripConfirmationEmail.ts";
 import { isGuestListPrivate } from "../_shared/email/appLink.ts";
 import {
   buildCalendarLinks,

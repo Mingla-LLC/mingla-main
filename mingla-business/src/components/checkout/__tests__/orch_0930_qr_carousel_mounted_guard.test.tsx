@@ -1,4 +1,5 @@
 /**
+ * #4063 retires buyer-web QR rendering; this guards the replacement handoff.
  * ORCH-0930 / ORCH-0932 — TicketQrCarousel server-side QR image contract.
  *
  * Bug history:

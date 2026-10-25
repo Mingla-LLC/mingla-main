@@ -1,4 +1,5 @@
 // Unlisted RSVP invite link (#3443) — the REAL rsvp-notify worker, end to end.
+// #4063 keeps delivery claim-only: no public QR payload or image leaves the worker.
 //
 // Runs the actual handler (serve() captured by the import-map shim), the real
 // Supabase client, the real unified dispatcher, the real email/SMS adapters and

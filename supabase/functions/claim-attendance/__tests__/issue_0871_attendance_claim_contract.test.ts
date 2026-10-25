@@ -1,4 +1,5 @@
 // Executable handler/shared/mobile/web contract for issue #871.
+// #4063 removes public QR material while preserving authenticated attendance claims.
 import {
   assert,
   assertEquals,
@@ -236,7 +237,7 @@ Deno.test("#871 RSVP pass attendance CTA uses live non-visibility eligibility", 
   const source = read("supabase/functions/rsvp-notify/index.ts");
   for (
     const contract of [
-      '.select("status,visibility,deleted_at,event_type,brands(deleted_at)")',
+      '"status,visibility,deleted_at,event_type,brands(deleted_at,contact_email)"',
       'event.event_type === "rsvp"',
       '["scheduled", "live"].includes(event.status)',
       "brand?.deleted_at === null",
@@ -267,9 +268,12 @@ Deno.test("#871 native and HTTPS fragment forms parse identically and reject amb
   );
 });
 
-Deno.test("#871 web landing validates the exact fragment before registered-scheme launch", () => {
+Deno.test("#871 web landing validates and scrubs the exact fragment without auto-launch", () => {
   const landing = read("mingla-business/app/attendance/claim.tsx");
-  assertStringIncludes(landing, "window.history.replaceState");
+  const deepLink = read("mingla-business/src/utils/attendanceClaimDeepLink.ts");
+  assertStringIncludes(landing, "consumeAttendanceClaimFragment(window, raw)");
+  assertStringIncludes(landing, "createAttendanceClaimFragmentScrubber(");
+  assertStringIncludes(deepLink, "history.replaceState(historyState, \"\", cleanUrl)");
   // [TEST-MOD-APPROVED #3524] `autoAttemptedRef.current` was the at-most-once
   // guard on this page's ON-MOUNT scheme launch. #3524 deleted that launch
   // outright rather than guarding it: on react-native-web `Linking.openURL` is
@@ -308,8 +312,8 @@ Deno.test("#871 web landing validates the exact fragment before registered-schem
     }
   }
   assert(reactEffectBodies(landing).length > 0, "no useEffect bodies parsed");
-  assertStringIncludes(landing, "onPress={isIos ? openOnIos : openOnAndroid}");
-  assertStringIncludes(landing, "openAttendanceClaimWithFallback(");
+  assertStringIncludes(landing, "onPress={openFromTap}");
+  assertStringIncludes(landing, "openExternal(target.ctaUrl)");
   const fragment =
     attendanceClaimUrls({ kind: "order", eventId, sourceId, token })
       .webClaimUrl.split("#")[1] ?? "";
