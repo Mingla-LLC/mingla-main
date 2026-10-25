@@ -115,6 +115,7 @@ export interface PhoneInputProps {
   phoneInputAccessibilityLabel?: string;
   required?: boolean;
   maxLength?: number;
+  onFocus?: () => void;
   onBlur?: () => void;
   /**
    * Optional host-owned native text input. Bottom-sheet hosts pass their
@@ -151,6 +152,7 @@ export const PhoneInput = ({
   phoneInputAccessibilityLabel,
   required = false,
   maxLength,
+  onFocus,
   onBlur,
   inputComponent,
   smartEntry = false,
@@ -415,7 +417,10 @@ export const PhoneInput = ({
           placeholder={labels.phonePlaceholder}
           placeholderTextColor={t.textTertiary}
           editable={!disabled}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            onFocus?.();
+          }}
           onBlur={() => {
             setFocused(false);
             onBlur?.();

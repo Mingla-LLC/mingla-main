@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -10,7 +11,11 @@ import { useTranslation } from "react-i18next";
 import type { PhoneInputTheme } from "@mingla/phone-input";
 import { parsePhoneEntry } from "@mingla/phone-input/phoneNumber";
 
-import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
+import {
+  BaseBottomSheet,
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from "../ui/BaseBottomSheet";
 import { PhoneInput } from "../onboarding/PhoneInput";
 import {
   getCountryByCode,
@@ -63,6 +68,11 @@ export function SendTicketSheet({
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formScrollRef = useRef<
+    React.ElementRef<typeof BottomSheetScrollView>
+  >(null);
+  const focusedInputRef = useRef<"phone" | null>(null);
+  const keyboardVisibleRef = useRef(false);
   const normalizedEmail = email.trim().toLowerCase();
   const selectedCountry = useMemo(
     () => getCountryByCode(countryCode),
@@ -79,9 +89,31 @@ export function SendTicketSheet({
   );
   const phoneProblem =
     phoneTouched && !phoneEntry.ok ? phoneEntry.message : null;
+  const scrollFormTo = useCallback((y: number): void => {
+    requestAnimationFrame(() => {
+      formScrollRef.current?.scrollTo({ y, animated: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    const keyboardShown = Keyboard.addListener("keyboardDidShow", () => {
+      keyboardVisibleRef.current = true;
+      if (focusedInputRef.current === "phone") scrollFormTo(110);
+    });
+    const keyboardHidden = Keyboard.addListener("keyboardDidHide", () => {
+      keyboardVisibleRef.current = false;
+      scrollFormTo(0);
+    });
+    return () => {
+      keyboardShown.remove();
+      keyboardHidden.remove();
+    };
+  }, [scrollFormTo]);
 
   useEffect(() => {
     if (visible) return;
+    focusedInputRef.current = null;
+    keyboardVisibleRef.current = false;
     setName("");
     setEmail("");
     setPhoneInput("");
@@ -151,13 +183,14 @@ export function SendTicketSheet({
       onClose={onClose}
       scrollMode="scroll"
       scrollProps={{
+        ref: formScrollRef,
         keyboardDismissMode: "interactive",
         keyboardShouldPersistTaps: "handled",
       }}
       keyboardBehavior="extend"
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
-      snapPoints={["64%"]}
+      snapPoints={["68%"]}
       theme="light"
       visible={visible}
       wrapInRNModal
@@ -172,6 +205,10 @@ export function SendTicketSheet({
           editable={!busy}
           maxLength={60}
           onChangeText={setName}
+          onFocus={() => {
+            focusedInputRef.current = null;
+            scrollFormTo(0);
+          }}
           placeholder={t("send.namePlaceholder")}
           placeholderTextColor="#8b8f96"
           style={styles.input}
@@ -186,6 +223,10 @@ export function SendTicketSheet({
           editable={!busy}
           keyboardType="email-address"
           onChangeText={setEmail}
+          onFocus={() => {
+            focusedInputRef.current = null;
+            scrollFormTo(0);
+          }}
           placeholder={t("send.emailPlaceholder")}
           placeholderTextColor="#8b8f96"
           style={styles.input}
@@ -199,9 +240,16 @@ export function SendTicketSheet({
             disabled={busy}
             error={phoneProblem}
             inputComponent={BottomSheetTextInput}
-            onBlur={() => setPhoneTouched(true)}
+            onBlur={() => {
+              focusedInputRef.current = null;
+              setPhoneTouched(true);
+            }}
             onChangeCountry={setCountryCode}
             onChangePhone={setPhoneInput}
+            onFocus={() => {
+              focusedInputRef.current = "phone";
+              if (keyboardVisibleRef.current) scrollFormTo(110);
+            }}
             phoneInputAccessibilityLabel={t("send.phoneLabel")}
             required
             smartEntry

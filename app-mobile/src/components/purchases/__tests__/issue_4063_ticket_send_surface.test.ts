@@ -82,6 +82,12 @@ test("ticket phone entry stays on the bottom-sheet keyboard restoration rail", (
   assert.ok(sheet.includes('android_keyboardInputMode="adjustResize"'));
   assert.ok(sheet.includes('keyboardDismissMode: "interactive"'));
   assert.ok(sheet.includes('keyboardShouldPersistTaps: "handled"'));
+  assert.ok(sheet.includes('Keyboard.addListener("keyboardDidShow"'));
+  assert.ok(sheet.includes('Keyboard.addListener("keyboardDidHide"'));
+  assert.ok(sheet.includes("scrollFormTo(110)"));
+  assert.ok(sheet.includes("scrollFormTo(0)"));
+  assert.ok(sharedPhoneInput.includes("onFocus?: () => void"));
+  assert.ok(sharedPhoneInput.includes("onFocus?.();"));
   assert.ok(sharedPhoneInput.includes("inputComponent?: React.ComponentType"));
   assert.ok(
     sharedPhoneInput.includes(
@@ -90,8 +96,8 @@ test("ticket phone entry stays on the bottom-sheet keyboard restoration rail", (
   );
 });
 
-test("the closed keyboard sheet uses a content-fit bottom-anchored snap", () => {
-  assert.ok(sheet.includes('snapPoints={["64%"]}'));
+test("the closed keyboard sheet uses the reviewed taller bottom-anchored snap", () => {
+  assert.ok(sheet.includes('snapPoints={["68%"]}'));
   assert.ok(!sheet.includes("enableDynamicSizing"));
   assert.ok(!sheet.includes("maxDynamicContentSize"));
 });

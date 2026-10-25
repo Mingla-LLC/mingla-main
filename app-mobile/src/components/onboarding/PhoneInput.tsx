@@ -37,6 +37,7 @@ interface PhoneInputProps {
   phoneInputAccessibilityLabel?: string;
   required?: boolean;
   maxLength?: number;
+  onFocus?: () => void;
   onBlur?: () => void;
   inputComponent?: PackagePhoneInputProps["inputComponent"];
   /** issue #3380 — format as typed, follow a pasted +code, phone autofill. */
