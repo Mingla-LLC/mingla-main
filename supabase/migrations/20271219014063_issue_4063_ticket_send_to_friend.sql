@@ -1,7 +1,6 @@
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 
--- MINGLA-INVARIANT: I-4063-PHONE-OWNER-FAIL-CLOSED | issue #4063 | phone onboarding refuses a number owned by another account in profiles, the verified-phone ledger, or GoTrue; incomplete ownership reads never fall through to OTP
 CREATE OR REPLACE FUNCTION public.phone_identity_owners(
   p_phone text
 )
