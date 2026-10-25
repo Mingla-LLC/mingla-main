@@ -519,8 +519,20 @@ AS $function$
     FROM public.discover_v2_event_base(
       p_cities,p_lower_bound,p_upper_start,p_party_types,p_vibe_tags,p_music_genres,
       p_center_lng,p_center_lat,p_radius_km) AS event_base(row)
+  ), guarded AS (
+    -- Keep the installed V1 reader as a direct #2489 carrier even though the
+    -- canonical base already projects the same privacy-safe fields. This second
+    -- boundary is deliberately fail-closed: a future regression in the shared
+    -- reader still cannot put a withheld address back on the V1 wire.
+    SELECT row || jsonb_build_object(
+      'location_text',CASE WHEN public.issue_2489_address_withheld(row->'theme')
+        THEN NULL ELSE row->'location_text' END,
+      'location_geo',CASE WHEN public.issue_2489_address_withheld(row->'theme')
+        THEN NULL ELSE row->'location_geo' END,
+      'theme',public.issue_2489_public_theme(row->'theme')) AS row
+    FROM base
   ), ranked AS (
-    SELECT row,count(*) over() total_count FROM base
+    SELECT row,count(*) over() total_count FROM guarded
     ORDER BY (row->>'master_start_at')::timestamptz ASC NULLS LAST,(row->>'id')::uuid
     OFFSET greatest(p_offset,0) LIMIT greatest(p_limit,0)
   )
@@ -951,7 +963,11 @@ GRANT EXECUTE ON FUNCTION public.discover_v2_claim_tm_budget(date,integer) TO se
 GRANT EXECUTE ON FUNCTION public.discover_v2_tm_budget_available(date,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.discover_v2_window(text,text,timestamptz), public.discover_v2_city_key(text,text,float8,float8), public.discover_v2_radius_km(text) TO service_role;
 
-INSERT INTO public.issue_2489_gate_carriers(object_name,object_kind) VALUES
-  ('discover_v2_items','function'),('discover_v2_event_base','function') ON CONFLICT DO NOTHING;
+-- #2489's registry is the exact set of objects whose own catalog definitions
+-- reference the privacy helpers. discover_v2_items delegates to the canonical
+-- reader; the pre-existing V1 carrier remains direct and already has a row.
+INSERT INTO public.issue_2489_gate_carriers(object_name,object_kind)
+VALUES ('discover_v2_event_base','function')
+ON CONFLICT DO NOTHING;
 
 COMMIT;

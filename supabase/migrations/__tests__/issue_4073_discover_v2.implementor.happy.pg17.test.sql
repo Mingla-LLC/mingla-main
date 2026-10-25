@@ -224,10 +224,12 @@ SELECT pg_temp.t4073_assert(
   'v2 reader is postgres-owned SECURITY DEFINER');
 SELECT pg_temp.t4073_assert(
   EXISTS(SELECT 1 FROM public.issue_2489_gate_carriers
-    WHERE object_name='discover_v2_items' AND object_kind='function')
+    WHERE object_name='discover_v2_event_base' AND object_kind='function')
   AND EXISTS(SELECT 1 FROM public.issue_2489_gate_carriers
-    WHERE object_name='discover_v2_event_base' AND object_kind='function'),
-  'privacy gate carriers include the canonical and v2 readers');
+    WHERE object_name='pg_discover_business_events' AND object_kind='function')
+  AND NOT EXISTS(SELECT 1 FROM public.issue_2489_gate_carriers
+    WHERE object_name='discover_v2_items'),
+  'privacy registry includes the direct V1 and canonical carriers, not the delegating v2 reader');
 
 SELECT pg_temp.t4073_assert(
   public.discover_v2_url_encode_component('100% fun&games=now/yes?|GB')='100%25%20fun%26games%3Dnow%2Fyes%3F%7CGB',
