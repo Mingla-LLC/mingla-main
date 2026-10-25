@@ -35,6 +35,8 @@ type DateRow = {
   timezone: string | null;
   override_title: string | null;
   override_location: string | null;
+  /** issue #3281 PR9 */
+  status?: string | null;
 };
 
 const formatInZone = (iso: string, zone: string | null): string => {
@@ -84,7 +86,9 @@ export default function EventDatesScreen(): React.ReactElement {
     else setLoading(true);
     const { data, error } = await supabase
       .from("event_dates")
-      .select("id, start_at, end_at, timezone, override_title, override_location")
+      .select(
+        "id, start_at, end_at, timezone, override_title, override_location, status",
+      )
       .eq("event_id", id)
       .order("start_at", { ascending: true });
     if (opts?.soft === true) setRefreshing(false);
@@ -115,6 +119,53 @@ export default function EventDatesScreen(): React.ReactElement {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const cancelRow = async (rowId: string) => {
+    if (typeof id !== "string") return;
+    const row = rows.find((r) => r.id === rowId);
+    if (row === undefined || row.status === "cancelled") return;
+    setSavingId(rowId);
+    const reason = "Host cancelled this date for guests and buyers.";
+    const { data: preview, error: previewError } = await supabase.rpc(
+      "business_cancel_event_date",
+      {
+        p_event_id: id,
+        p_event_date_id: rowId,
+        p_reason: reason,
+        p_preview: true,
+      },
+    );
+    if (previewError) {
+      setSavingId(null);
+      setToast(previewError.message);
+      return;
+    }
+    const buyers =
+      typeof preview?.buyerCount === "number" ? preview.buyerCount : 0;
+    const amount =
+      typeof preview?.amountCents === "number" ? preview.amountCents : 0;
+    const currency =
+      typeof preview?.currency === "string" ? preview.currency : "";
+    const { error } = await supabase.rpc("business_cancel_event_date", {
+      p_event_id: id,
+      p_event_date_id: rowId,
+      p_reason: reason,
+      p_preview: false,
+    });
+    setSavingId(null);
+    if (error) {
+      setToast(error.message);
+      return;
+    }
+    setRows((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, status: "cancelled" } : r)),
+    );
+    setToast(
+      buyers > 0
+        ? `Cancelled · ${buyers} buyer${buyers === 1 ? "" : "s"}${amount > 0 ? ` · ${amount} ${currency}`.trim() : ""}`
+        : "Date cancelled",
+    );
+  };
 
   const saveRow = async (rowId: string) => {
     if (typeof id !== "string") return;
@@ -190,16 +241,17 @@ export default function EventDatesScreen(): React.ReactElement {
             rows.map((r) => {
               const d = drafts[r.id] ?? { title: "", location: "" };
               const past = isPastEnd(r.end_at, nowMs);
+              const cancelled = r.status === "cancelled";
               return (
                 <View key={r.id} style={styles.card}>
                   <Text style={styles.when}>
                     {formatInZone(r.start_at, r.timezone)}
-                    {past ? " · ended" : ""}
+                    {cancelled ? " · cancelled" : past ? " · ended" : ""}
                   </Text>
                   <Text style={styles.label}>Title for this date</Text>
                   <TextInput
                     value={d.title}
-                    editable={!past && savingId === null}
+                    editable={!past && !cancelled && savingId === null}
                     onChangeText={(title) => {
                       dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
@@ -210,12 +262,15 @@ export default function EventDatesScreen(): React.ReactElement {
                     placeholder="Inherits event title"
                     placeholderTextColor={textTokens.quaternary}
                     maxLength={120}
-                    style={[styles.input, past ? styles.inputDisabled : null]}
+                    style={[
+                      styles.input,
+                      past || cancelled ? styles.inputDisabled : null,
+                    ]}
                   />
                   <Text style={styles.label}>Place for this date</Text>
                   <TextInput
                     value={d.location}
-                    editable={!past && savingId === null}
+                    editable={!past && !cancelled && savingId === null}
                     onChangeText={(location) => {
                       dirtyIdsRef.current.add(r.id);
                       setDrafts((prev) => ({
@@ -226,20 +281,34 @@ export default function EventDatesScreen(): React.ReactElement {
                     placeholder="Inherits venue"
                     placeholderTextColor={textTokens.quaternary}
                     maxLength={120}
-                    style={[styles.input, past ? styles.inputDisabled : null]}
+                    style={[
+                      styles.input,
+                      past || cancelled ? styles.inputDisabled : null,
+                    ]}
                   />
-                  {past ? (
+                  {cancelled ? (
+                    <Text style={styles.mutedInline}>
+                      Cancelled · refunded for that date's buyers when owed.
+                    </Text>
+                  ) : past ? (
                     <Text style={styles.mutedInline}>
                       Past dates are read-only.
                     </Text>
                   ) : (
-                    <Button
-                      label={savingId === r.id ? "Saving…" : "Save"}
-                      onPress={() => void saveRow(r.id)}
-                      // One in-flight save at a time: a second row's save must not
-                      // re-enable this row while its request is still pending.
-                      disabled={savingId !== null}
-                    />
+                    <View style={styles.rowActions}>
+                      <Button
+                        label={savingId === r.id ? "Saving…" : "Save"}
+                        onPress={() => void saveRow(r.id)}
+                        disabled={savingId !== null}
+                      />
+                      <Button
+                        label="Cancel this date"
+                        variant="secondary"
+                        onPress={() => void cancelRow(r.id)}
+                        disabled={savingId !== null}
+                        testID={`issue-3281-cancel-date-${r.id}`}
+                      />
+                    </View>
                   )}
                 </View>
               );
@@ -292,4 +361,5 @@ const styles = StyleSheet.create({
   inputDisabled: { opacity: 0.55 },
   muted: { color: textTokens.tertiary, marginTop: 16 },
   mutedInline: { color: textTokens.tertiary, marginTop: 4 },
+  rowActions: { gap: 8, marginTop: 4 },
 });
