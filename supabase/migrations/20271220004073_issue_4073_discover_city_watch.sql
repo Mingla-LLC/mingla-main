@@ -18,9 +18,8 @@ ALTER TABLE public.discover_city_watch ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS dcw_owner_select ON public.discover_city_watch;
 CREATE POLICY dcw_owner_select ON public.discover_city_watch FOR SELECT TO authenticated USING(auth.uid()=user_id);
 DROP POLICY IF EXISTS dcw_owner_delete ON public.discover_city_watch;
-CREATE POLICY dcw_owner_delete ON public.discover_city_watch FOR DELETE TO authenticated USING(auth.uid()=user_id);
 REVOKE ALL ON TABLE public.discover_city_watch FROM PUBLIC,anon,authenticated;
-GRANT SELECT,DELETE ON TABLE public.discover_city_watch TO authenticated;
+GRANT SELECT ON TABLE public.discover_city_watch TO authenticated;
 GRANT ALL ON TABLE public.discover_city_watch TO service_role;
 
 CREATE OR REPLACE FUNCTION public.discover_v2_url_encode_component(p_value text)
@@ -68,6 +67,22 @@ ALTER FUNCTION public.discover_city_watch_subscribe(text,text,text,float8,float8
 REVOKE ALL ON FUNCTION public.discover_city_watch_subscribe(text,text,text,float8,float8,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.discover_city_watch_subscribe(text,text,text,float8,float8,text) TO authenticated,service_role;
 
+CREATE OR REPLACE FUNCTION public.discover_city_watch_unsubscribe(p_city_key text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=''
+AS $function$
+DECLARE v_user uuid:=auth.uid(); v_deleted integer;
+BEGIN
+  IF v_user IS NULL THEN RAISE EXCEPTION 'city_watch_forbidden' USING ERRCODE='42501'; END IF;
+  DELETE FROM public.discover_city_watch
+  WHERE user_id=v_user AND city_key=p_city_key;
+  GET DIAGNOSTICS v_deleted=ROW_COUNT;
+  RETURN v_deleted>0;
+END;
+$function$;
+ALTER FUNCTION public.discover_city_watch_unsubscribe(text) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.discover_city_watch_unsubscribe(text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.discover_city_watch_unsubscribe(text) TO authenticated,service_role;
+
 INSERT INTO public.notification_categories(key,section,is_transactional,urgency,default_channels,reach_mode,active)
 VALUES('discover_city_plans_live','Reminders',true,'normal',ARRAY['inapp','push','email']::text[],'reach_once',true)
 ON CONFLICT(key) DO UPDATE SET section=excluded.section,is_transactional=excluded.is_transactional,urgency=excluded.urgency,default_channels=excluded.default_channels,reach_mode=excluded.reach_mode,active=true;
@@ -98,9 +113,10 @@ ALTER FUNCTION public.issue_4073_scan_city_watches(integer) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.issue_4073_scan_city_watches(integer) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4073_scan_city_watches(integer) TO service_role;
 
-DO $cron$ DECLARE v_job bigint; BEGIN
-  SELECT jobid INTO v_job FROM cron.job WHERE jobname='issue_4073_city_watch_scan';
-  IF v_job IS NOT NULL THEN PERFORM cron.unschedule(v_job); END IF;
+DO $cron$ BEGIN
+  IF EXISTS(SELECT 1 FROM cron.job WHERE jobname='issue_4073_city_watch_scan') THEN
+    PERFORM cron.unschedule('issue_4073_city_watch_scan');
+  END IF;
 END $cron$;
 SELECT cron.schedule('issue_4073_city_watch_scan','*/10 * * * *',$cron$SELECT public.issue_4073_scan_city_watches(50);$cron$);
 

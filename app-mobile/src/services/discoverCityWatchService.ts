@@ -51,7 +51,9 @@ export const discoverCityWatchService = {
   },
 
   async unsubscribe(cityKey: string): Promise<void> {
-    const { error } = await supabase.from("discover_city_watch").delete().eq("city_key", cityKey);
+    const { error } = await supabase.rpc("discover_city_watch_unsubscribe", {
+      p_city_key: cityKey,
+    });
     if (error) throw watchError(error);
   },
 

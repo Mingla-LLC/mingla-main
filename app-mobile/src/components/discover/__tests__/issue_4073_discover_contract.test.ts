@@ -63,6 +63,16 @@ test("#4073 city-watch deep links round-trip percent and reserved characters saf
   });
 });
 
+test("#4073 city-watch unsubscribe stays behind the ownership-checking RPC", () => {
+  const service = readFileSync(
+    fileURLToPath(new URL("../../../services/discoverCityWatchService.ts", import.meta.url)),
+    "utf8",
+  );
+
+  assert.match(service, /rpc\("discover_city_watch_unsubscribe"/);
+  assert.doesNotMatch(service, /from\("discover_city_watch"\)[\s\S]{0,240}\.delete\(\)/);
+});
+
 test("#4073 skipped coach steps survive provider remount and renumber forward, back and progress", () => {
   resetSkippedCoachStepsForTests();
   const firstMount = rememberSkippedCoachStep("user-4073", 4);

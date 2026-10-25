@@ -64,6 +64,7 @@ DECLARE
   v_owner uuid:=gen_random_uuid(); v_brand uuid:=gen_random_uuid(); v_event uuid:=gen_random_uuid();
   v_ticket uuid:=gen_random_uuid(); v_sale uuid:=gen_random_uuid();
   v_watch uuid:=gen_random_uuid(); v_scanned integer; v_outbox_country text;
+  v_unsubscribed boolean;
   v_page jsonb; v_item jsonb;
 BEGIN
   INSERT INTO auth.users(id,email) VALUES(v_owner,'i4073-recurrence-'||v_owner||'@example.test');
@@ -120,6 +121,40 @@ BEGIN
   PERFORM pg_temp.t4073_assert(
     (SELECT notified_at IS NOT NULL FROM public.discover_city_watch WHERE id=v_watch),
     'city-watch scan atomically marks the durable watch notified');
+  PERFORM pg_temp.t4073_assert(
+    NOT has_table_privilege('authenticated','public.discover_city_watch','DELETE')
+      AND has_function_privilege('authenticated','public.discover_city_watch_unsubscribe(text)','EXECUTE'),
+    'authenticated users unsubscribe through the ownership-checking RPC, never direct table DELETE');
+  PERFORM set_config('request.jwt.claim.sub',gen_random_uuid()::text,true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    jsonb_build_object('sub',current_setting('request.jwt.claim.sub'),'role','authenticated')::text,
+    true
+  );
+  PERFORM pg_temp.t4073_assert(
+    public.discover_city_watch_unsubscribe('i4073-future-city-ng') IS FALSE
+      AND EXISTS(SELECT 1 FROM public.discover_city_watch WHERE id=v_watch),
+    'a different user cannot remove another user city watch');
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  PERFORM set_config(
+    'request.jwt.claims',
+    jsonb_build_object('sub',v_owner,'role','authenticated')::text,
+    true
+  );
+  PERFORM pg_temp.t4073_assert(auth.uid()=v_owner,
+    'the owner JWT fixture resolves through auth.uid()');
+  PERFORM pg_temp.t4073_assert(
+    EXISTS(
+      SELECT 1 FROM public.discover_city_watch
+      WHERE id=v_watch AND user_id=v_owner AND city_key='i4073-future-city-ng'
+    ),
+    'the owner city watch exists before unsubscribe');
+  v_unsubscribed:=public.discover_city_watch_unsubscribe('i4073-future-city-ng');
+  PERFORM pg_temp.t4073_assert(v_unsubscribed IS TRUE,
+    'the owner can unsubscribe through the guarded RPC');
+  PERFORM pg_temp.t4073_assert(
+    NOT EXISTS(SELECT 1 FROM public.discover_city_watch WHERE id=v_watch),
+    'the guarded unsubscribe removes the owner city watch');
 END
 $$;
 
