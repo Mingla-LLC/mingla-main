@@ -63,16 +63,16 @@ import {
   SectionLabel,
   Segmented,
   SheetBody,
-  StatTile,
+  StatStrip,
   StatusTag,
   SummaryLine,
-  TileGrid,
   programStyles,
 } from "../programs/ProgramKit";
 import { ReferralOfferSheet } from "./ReferralOfferSheet";
 import {
   memberStatusWords,
   offerPill,
+  offerRowSummary,
   offerSummary,
   rankLeaderboard,
   slugIsValid,
@@ -94,6 +94,8 @@ export interface ReferralHomeViewProps {
   currency: string;
   initialTab?: ReferralTab;
   fallback: string;
+  /** Round 2: rendered inside Blast › Referrals (no title bar of its own). */
+  embedded?: boolean;
 }
 
 type InviteRow = { name: string; email: string };
@@ -104,9 +106,13 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
   currency,
   initialTab = "offers",
   fallback,
+  embedded = false,
 }) => {
   const client = useQueryClient();
   const [tab, setTab] = React.useState<ReferralTab>(initialTab);
+  React.useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
   const [editing, setEditing] = React.useState<
     ReferralOffer | null | undefined
   >(undefined);
@@ -266,8 +272,9 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
     <ProgramScreen
       title="Referrals"
       fallback={fallback}
+      embedded={embedded}
       right={
-        <Pressable
+        embedded ? undefined : <Pressable
           onPress={() => {
             setError(null);
             setEditing(null);
@@ -622,35 +629,22 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
         </>
       }
     >
-      <TileGrid>
-        <StatTile
-          icon="cash"
-          value={programMoneyShort(soldMinor, currency)}
-          label="Sold via referrals"
-        />
-        <StatTile
-          icon="users"
-          value={String(
-            memberRows.filter((row) => row.status === "active").length,
-          )}
-          label="People earning"
-        />
-        <StatTile
-          icon="refund"
-          value={programMoneyShort(
-            Number(reportValue.paidMinor ?? 0),
-            currency,
-          )}
-          label="Paid out"
-          hint="after Mingla's 5%"
-        />
-        <StatTile
-          icon="ticket"
-          value={String(Number(reportValue.orders ?? 0))}
-          label="Tickets"
-          hint="last 30 days"
-        />
-      </TileGrid>
+      <StatStrip
+        items={[
+          { value: programMoneyShort(soldMinor, currency), label: "Sold" },
+          {
+            value: String(Number(reportValue.orders ?? 0)),
+            label: "Tickets · 30d",
+          },
+          {
+            value: programMoneyShort(
+              Number(reportValue.paidMinor ?? 0),
+              currency,
+            ),
+            label: "Paid out",
+          },
+        ]}
+      />
       <Segmented
         options={TABS}
         value={tab}
@@ -695,8 +689,10 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
               return (
                 <ListRow
                   key={row.id}
+                  compact
+                  icon={row.audience === "buyers" ? "gift" : "users"}
                   title={row.name}
-                  subtitle={offerSummary(row, currency)}
+                  subtitle={offerRowSummary(row)}
                   right={<StatusTag label={pill.label} tone={pill.tone} />}
                   onPress={() => {
                     setError(null);
@@ -707,6 +703,19 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
             })}
           </ListGroup>
         )
+      ) : null}
+
+      {tab === "offers" && (offers.data ?? []).length > 0 ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          label="New offer"
+          leadingIcon="plus"
+          onPress={() => {
+            setError(null);
+            setEditing(null);
+          }}
+        />
       ) : null}
 
       {tab === "promoters" ? (
@@ -852,12 +861,12 @@ export const ReferralHomeView: React.FC<ReferralHomeViewProps> = ({
               )}
             />
           </Card>
-          <Muted>
-            Mingla's 5% referral service fee comes off each reward. Buyers never
-            pay extra, and tracking-only links never pay anyone.
-          </Muted>
         </>
       ) : null}
+      <Text style={styles.feeNote}>
+        Payouts are after Mingla's 5%. Buyers never pay extra, and tracking-only
+        links never pay anyone.
+      </Text>
     </ProgramScreen>
   );
 };
@@ -927,6 +936,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notice: { color: textTokens.primary, fontWeight: "600" },
+  feeNote: { color: textTokens.tertiary, fontSize: 12, lineHeight: 16 },
   label: { color: textTokens.secondary, fontSize: 13, fontWeight: "600" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   inviteRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },

@@ -71,6 +71,33 @@ export function offerSummary(
   return `${audience} · ${reward} · ${who}`;
 }
 
+/**
+ * #3872 round 2 — the one-line offer row ("Promoter team · 1 promoter",
+ * "Every buyer · all listings"). The reward stays in the offer sheet.
+ */
+export function offerRowSummary(
+  offer: Pick<
+    ReferralOffer,
+    "status" | "audience" | "scopeKind" | "listings" | "memberCount" | "endsAt"
+  >,
+): string {
+  if (offer.status === "ended")
+    return offer.endsAt ? `Ended ${shortDate(offer.endsAt)}` : "Ended";
+  const audience =
+    offer.audience === "buyers"
+      ? "Every buyer"
+      : offer.audience === "both"
+        ? "Buyers and promoters"
+        : "Promoter team";
+  const who =
+    offer.audience === "buyers"
+      ? offer.scopeKind === "brand"
+        ? "all listings"
+        : `${offer.listings.length} listing${offer.listings.length === 1 ? "" : "s"}`
+      : `${offer.memberCount} promoter${offer.memberCount === 1 ? "" : "s"}`;
+  return `${audience} · ${who}`;
+}
+
 export function memberStatusWords(
   status: ReferralMember["status"] | string,
 ): string {

@@ -667,3 +667,48 @@ export function hostContractRowStatus(contract: {
   }
   return hostContractStatus(contract.state);
 }
+
+/**
+ * #3872 round 2 — short words for a status pill on a list row. Full status
+ * words ("Paid to the creator") are too long for a pill; the contract page
+ * keeps the full words in its status card.
+ */
+const HOST_PILL_WORDS: Record<string, string> = {
+  offered: "Offer sent",
+  accepted: "Plan shoot",
+  shoot_planned: "Plan shoot",
+  script_drafting: "Script",
+  script_sent: "Review script",
+  script_locked: "Filming",
+  delivered: "Review video",
+  fix_requested: "Fixing",
+  approved: "Posting",
+  posting: "Posting",
+  posts_failed: "Posting",
+  posts_submitted: "Checking",
+  posts_verified: "Verified",
+  released: "Paid",
+  day30: "Paid",
+  completed: "Done",
+  disputed: "Dispute",
+  resolved_release: "Settled",
+  resolved_partial: "Settled",
+  resolved_refund: "Refunded",
+  declined: "Declined",
+  expired: "Expired",
+  cancelled: "Cancelled",
+};
+
+export function hostContractPill(contract: {
+  state?: string | null;
+  payment_pending?: boolean | null;
+}): { label: string; tone: HostStatusTone } {
+  if (contract.payment_pending === true) {
+    return { label: "Unpaid", tone: "problem" };
+  }
+  const full = hostContractStatus(contract.state);
+  return {
+    label: HOST_PILL_WORDS[contract.state ?? ""] ?? full.label,
+    tone: full.tone,
+  };
+}

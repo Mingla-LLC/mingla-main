@@ -3,7 +3,8 @@
  * (ORCH-0815-B foundation).
  *
  * Sits at the top of every `/(tabs)/marketing/*` route (except composer,
- * which hides it). Pills: Overview · People · Campaigns · Templates · Ads.
+ * which hides it). Pills: Overview · Campaigns · Ads · Creators · Referrals ·
+ * People · Templates (#3872 round 2).
  * Active pill: `accent.tint` background + `accent.border`. Inactive: text
  * tertiary on transparent. Tap switches sub-route via expo-router `replace`.
  *
@@ -17,8 +18,8 @@
  * Design ref: §6.1 (sub-nav specification).
  */
 
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 
 import {
@@ -29,60 +30,54 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  MARKETING_SUB_NAV_TABS,
+  detectMarketingSubNavActive,
+  type MarketingSubNavId,
+} from "./marketingSubNavTabs";
 
-export type MarketingSubNavId =
-  | "overview"
-  | "people"
-  | "campaigns"
-  | "templates"
-  | "ads";
+export type { MarketingSubNavId } from "./marketingSubNavTabs";
 
-interface SubNavTab {
-  id: MarketingSubNavId;
-  label: string;
-  /** Expo-router path (relative to `/(tabs)/marketing/`). */
-  path: string;
-}
-
-const TABS: ReadonlyArray<SubNavTab> = [
-  { id: "overview", label: "Overview", path: "/(tabs)/marketing" },
-  { id: "people", label: "People", path: "/(tabs)/marketing/people" },
-  { id: "campaigns", label: "Campaigns", path: "/(tabs)/marketing/campaigns" },
-  { id: "templates", label: "Templates", path: "/(tabs)/marketing/templates" },
-  { id: "ads", label: "Ads", path: "/(tabs)/marketing/ads" },
-];
-
-function detectActive(pathname: string): MarketingSubNavId {
-  const lower = pathname.toLowerCase();
-  if (lower.includes("/marketing/people") || lower.includes("/marketing/audiences")) return "people";
-  if (lower.includes("/marketing/campaigns")) return "campaigns";
-  if (lower.includes("/marketing/templates")) return "templates";
-  if (lower.includes("/marketing/ads")) return "ads";
-  return "overview";
-}
-
+/**
+ * #3872 round 2 — seven sections (Overview, Campaigns, Ads, Creators,
+ * Referrals, People, Templates). The row scrolls sideways and every pill is
+ * sized to its own label, so no name is ever cut off ("Campai…").
+ */
 export const MarketingSubNav: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
+  const scrollRef = useRef<ScrollView>(null);
+  const offsets = useRef<Partial<Record<MarketingSubNavId, number>>>({});
+  const active = detectMarketingSubNavActive(pathname);
+  // Keep the active pill in view when a deep link lands on a later section.
+  useEffect(() => {
+    const x = offsets.current[active];
+    if (typeof x === "number") {
+      scrollRef.current?.scrollTo({ x: Math.max(0, x - spacing.xl), animated: false });
+    }
+  }, [active]);
   // Composer is a child route of Campaigns, NOT a sub-nav tab — hide the
-  // pill segmented control while the operator is authoring a campaign.
-  // SPEC §4.2 (ORCH-0815-B) + Phase A `_layout.tsx` deferred this to Phase B.
+  // pill row while the operator is authoring a campaign.
   if (pathname.includes("/campaigns/compose")) return null;
-  const active = detectActive(pathname);
-
-  const handleTabPress = (path: string): void => {
-    router.replace(path as never);
-  };
 
   return (
     <View style={styles.host}>
-      <View style={styles.bar}>
-        {TABS.map((tab) => {
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.bar}
+        accessibilityRole="tablist"
+      >
+        {MARKETING_SUB_NAV_TABS.map((tab) => {
           const isActive = tab.id === active;
           return (
             <Pressable
               key={tab.id}
-              onPress={() => handleTabPress(tab.path)}
+              onLayout={(event) => {
+                offsets.current[tab.id] = event.nativeEvent.layout.x;
+              }}
+              onPress={() => router.replace(tab.path as never)}
               style={({ pressed }) => [
                 styles.pill,
                 isActive ? styles.pillActive : styles.pillInactive,
@@ -98,57 +93,45 @@ export const MarketingSubNav: React.FC = () => {
                   styles.label,
                   isActive ? styles.labelActive : styles.labelInactive,
                 ]}
-                numberOfLines={1}
               >
                 {tab.label}
               </Text>
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 };
 
-const SUB_NAV_HEIGHT = 44;
 const PILL_HEIGHT = 36;
 
 const styles = StyleSheet.create({
   host: {
-    paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
   bar: {
-    height: SUB_NAV_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.xs,
-    backgroundColor: glass.tint.chrome.idle,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    borderRadius: radius.full,
-    overflow: "hidden",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
   },
   pill: {
-    flex: 1,
     height: PILL_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,
-    marginHorizontal: 2,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
   },
   pillActive: {
     backgroundColor: accent.tint,
-    borderWidth: 1,
     borderColor: accent.border,
   },
   pillInactive: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "transparent",
+    backgroundColor: glass.tint.chrome.idle,
+    borderColor: glass.border.chrome,
   },
   pillPressed: {
     backgroundColor: glass.tint.profileBase,
