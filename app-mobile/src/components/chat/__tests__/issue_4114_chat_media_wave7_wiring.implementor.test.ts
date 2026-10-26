@@ -138,9 +138,13 @@ Deno.test("#4114 W7: the allowance is checked first and its refusal is shown", (
   assert(page.includes('code === "daily_limit"') && page.includes('t("chat:mediaDailyLimit")'), "the toast");
 });
 
-Deno.test("#4114 W7: iPhone exports chat videos at 720p from the library and the camera", () => {
-  assert(thread.includes("videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720"), "library preset");
-  assert(thread.includes("videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720"), "camera quality");
+// QA run 2 (rule change, updated honestly): the fixed 1280x720 preset made a
+// 9.7 MB 1080p clip 13.3 MB, so the export is now MediumQuality, whose low
+// target bitrate never exceeds the source.
+Deno.test("#4114 W7: iPhone exports chat videos at the MediumQuality preset from the library and the camera", () => {
+  assert(thread.includes("videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality"), "library preset");
+  assert(thread.includes("videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,"), "camera quality");
+  assert(!/H264_1280x720|IFrame1280x720|H264_1920x1080|HighestQuality/.test(thread), "no fixed high-bitrate re-encode preset");
   assert(/Platform\.OS === "ios"\s*\?/.test(thread.slice(thread.indexOf("export const CHAT_VIDEO_EXPORT"))), "iPhone only");
   const library = thread.slice(thread.indexOf("launchImageLibraryAsync({"), thread.indexOf("launchImageLibraryAsync({") + 800);
   const camera = thread.slice(thread.indexOf("launchCameraAsync({"), thread.indexOf("launchCameraAsync({") + 400);

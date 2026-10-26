@@ -288,14 +288,21 @@ interface ThreadRow {
 const EMPTY_EMOJIS: string[] = [];
 
 /**
- * Issue #4114 Wave 7: the picker's video export, iPhone only. 1280×720 H.264
- * from the library (videoExportPreset) and the camera (videoQuality).
+ * Issue #4114 Wave 7: the picker's video export, iPhone only, from the library
+ * (videoExportPreset) and the camera (videoQuality).
+ *
+ * QA run 2: the fixed 1280×720 H.264 preset re-encodes at a high target
+ * bitrate, so a 12 s 1080p HEVC clip (9.7 MB) came out at 13.3 MB. The
+ * MediumQuality preset targets a low bitrate (well under any iPhone camera
+ * recording, HEVC or H.264), so the export is never larger than the source and
+ * a 60 s clip stays well inside the 25 MB cap. The trade is a smaller picture
+ * (about 480p), which is what chat video needs. The 60 s / 25 MB guards stay.
  */
 export const CHAT_VIDEO_EXPORT: Pick<ImagePicker.ImagePickerOptions, "videoExportPreset" | "videoQuality"> =
   Platform.OS === "ios"
     ? {
-        videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
-        videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
+        videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
       }
     : {};
 
@@ -1267,8 +1274,9 @@ export default function MessageInterface({
         // Full quality: the upload service resizes and compresses photos itself.
         quality: 1,
         videoMaxDuration: 60,
-        // Issue #4114 Wave 7: iPhone exports videos at 720p H.264 (about 4–8 MB
-        // for 30 s instead of 30–60 MB). Android ignores it and keeps the 25 MB cap.
+        // Issue #4114 Wave 7 / QA run 2: iPhone re-encodes videos at the
+        // MediumQuality preset (never larger than the source). Android ignores
+        // it and keeps the 25 MB cap.
         ...CHAT_VIDEO_EXPORT,
       });
       if (result.canceled || !result.assets?.length) return;
