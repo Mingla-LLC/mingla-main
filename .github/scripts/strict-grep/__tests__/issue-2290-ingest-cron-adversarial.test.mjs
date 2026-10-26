@@ -298,6 +298,8 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // audience sync (+3 → 13). Prove each pair before accepting the combined count.
   // [TEST-MOD-APPROVED #4063] The buyer-message migration atomically removes
   // and restores the existing reminder job (+1 → 14).
+  // [TEST-MOD-APPROVED #4114] The chat media migration removes any existing
+  // issue_4114_chat_media_cleanup job and reschedules it in the same DO block (+1 → 15).
   const issue3697Pairs = [
     {
       file: "supabase/migrations/20271213023697_issue_3697_conversion_retry.sql",
@@ -310,6 +312,10 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
     {
       file: "supabase/migrations/20271213043697_issue_3697_audiences.sql",
       job: "issue_3697_ad_audience_sync_daily",
+    },
+    {
+      file: "supabase/migrations/20271230034114_issue_4114_chat_media.sql",
+      job: "issue_4114_chat_media_cleanup",
     },
   ];
   for (const { file, job } of issue3697Pairs) {
@@ -344,7 +350,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    14,
+    15,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +
