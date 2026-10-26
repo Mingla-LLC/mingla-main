@@ -15,6 +15,9 @@ import {
   formatMoney,
   formatShortDate,
   formatTimeLeft,
+  hostsSeeYouAs,
+  localRowCopy,
+  nicheLabel,
   isAdult,
   latestAdultBirthDate,
   moneyInputValue,
@@ -118,4 +121,23 @@ test('#3872 the creator agreement requires a birth date at least 18 years ago', 
   const latest = latestAdultBirthDate(NOW);
   assert.equal(toDayString(latest), '2008-10-26');
   assert.equal(isAdult(latest, NOW), true);
+});
+
+test('#3872 W1.2 Local row is city-aware: the viewer city rate, else a general line', () => {
+  const programs = [
+    { city_id: 'ral', city: 'Raleigh', seats: 1, monthly_rate_minor: 15000, payout_currency: 'USD' },
+    { city_id: 'lag', city: 'Lagos', seats: 2, monthly_rate_minor: 6000000, payout_currency: 'NGN' },
+  ];
+  assert.equal(localRowCopy({ enabled: true, programs, applications: [], local: null, viewer_city_id: 'ral' }), 'Get paid $150 a month in Raleigh');
+  assert.equal(localRowCopy({ enabled: true, programs, applications: [], local: null, viewer_city_id: 'lag' }), 'Get paid ₦60,000 a month in Lagos');
+  assert.equal(localRowCopy({ enabled: true, programs, applications: [], local: null, viewer_city_id: null }), 'Get paid monthly to review one place in your city');
+  assert.equal(localRowCopy({ enabled: true, programs, applications: [], local: null, viewer_city_id: 'elsewhere' }), 'Get paid monthly to review one place in your city');
+  assert.equal(localRowCopy({ enabled: false, programs: [], applications: [], local: null }), null);
+  assert.equal(localRowCopy({ enabled: true, programs, applications: [{ status: 'waitlisted' }], local: null }), 'You’re on the waitlist for the next open seat.');
+  assert.equal(localRowCopy({ enabled: true, programs, applications: [], local: { city: 'Raleigh' } }), 'Your Local seat in Raleigh');
+});
+
+test('#3872 W1.1 "Hosts see you as" reads name and niches in words', () => {
+  assert.equal(hostsSeeYouAs('Ada Films', ['food', 'nightlife'], nicheLabel), 'Ada Films · Food, Nightlife');
+  assert.equal(hostsSeeYouAs('Ada Films', [], nicheLabel), 'Ada Films');
 });

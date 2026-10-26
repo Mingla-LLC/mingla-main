@@ -33,15 +33,7 @@ export type LocalPlaceCandidate = { id: string; name: string; address: string | 
 export type PublicLocalProfile = { user_id: string; name: string; avatar_url: string | null; city: string; local_since: string; reviews: Array<{ local_month_id: string; place_id: string; place_name: string; rating: number; title: string; body: string; visited_on: string; media_job_ids: string[]; reply: string | null }> };
 export type PublicLocalPlaceReview = { local_month_id: string; local_user_id: string; name: string; avatar_url: string | null; rating: number; title: string; excerpt: string; body: string; visited_on: string; media_job_ids: string[]; reply: string | null; published_at: string };
 
-/** City rate in minor units + currency, preferring the per-city config. */
-export function localCityRate(program: LocalCityProgram | null | undefined): { minor: number; currency: string } | null {
-  if (!program) return null;
-  if (typeof program.monthly_rate_minor === 'number' && program.monthly_rate_minor > 0 && program.payout_currency) {
-    return { minor: program.monthly_rate_minor, currency: program.payout_currency };
-  }
-  if (typeof program.monthly_usd_minor === 'number' && program.monthly_usd_minor > 0) return { minor: program.monthly_usd_minor, currency: 'USD' };
-  return null;
-}
+export { localCityRate } from '../utils/programFormat';
 
 export const localProgramService = {
   landing: () => programRead<LocalLanding>('local_landing'),

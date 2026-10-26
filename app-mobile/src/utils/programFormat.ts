@@ -409,3 +409,55 @@ export function setupCheckTitle(key: string): string {
 export function setupMinutesLeft(openSteps: number): number {
   return Math.max(0, Math.round(openSteps * 2.5));
 }
+
+// ── Program copy that depends on data ──────────────────────────────────────
+
+
+type CityProgram = { city_id: string; city: string; monthly_rate_minor?: number | null; payout_currency?: string | null; monthly_usd_minor?: number | null };
+type Landing = {
+  enabled: boolean;
+  programs: CityProgram[];
+  applications: Array<{ status: string }>;
+  local: null | { city: string };
+  viewer_city_id?: string | null;
+};
+
+/** City rate in minor units + currency, preferring the per-city config. */
+export function localCityRate(program: CityProgram | null | undefined): { minor: number; currency: string } | null {
+  if (!program) return null;
+  if (typeof program.monthly_rate_minor === 'number' && program.monthly_rate_minor > 0 && program.payout_currency) {
+    return { minor: program.monthly_rate_minor, currency: program.payout_currency };
+  }
+  if (typeof program.monthly_usd_minor === 'number' && program.monthly_usd_minor > 0) return { minor: program.monthly_usd_minor, currency: 'USD' };
+  return null;
+}
+
+export const LOCAL_APPLICATION_LINE: Record<string, string> = {
+  submitted: 'Application in review. We’ll tell you here.',
+  shortlisted: 'You’re shortlisted. We’ll be in touch soon.',
+  accepted: 'You’re in. Open to pick your first place.',
+  waitlisted: 'You’re on the waitlist for the next open seat.',
+  rejected: 'Not selected this time. You can apply again in 90 days.',
+};
+
+/**
+ * W1.2 — Local pay differs by city: the viewer's city rate when known
+ * ("Get paid $150 a month in Raleigh"), else a general line. Null when there
+ * is nothing to offer or track.
+ */
+export function localRowCopy(local: Landing | null | undefined): string | null {
+  if (!local) return null;
+  if (local.local) return `Your Local seat in ${local.local.city}`;
+  const application = local.applications[0];
+  if (application) return LOCAL_APPLICATION_LINE[application.status] ?? LOCAL_APPLICATION_LINE.submitted;
+  if (!local.enabled || local.programs.length === 0) return null;
+  const mine = local.viewer_city_id ? local.programs.find((p) => p.city_id === local.viewer_city_id) : undefined;
+  const rate = localCityRate(mine);
+  if (mine && rate) return `Get paid ${formatMoney(rate.minor, rate.currency)} a month in ${mine.city}`;
+  return 'Get paid monthly to review one place in your city';
+}
+
+/** W1.1 — how hosts see you: "Ada Films · Food, Nightlife". */
+export function hostsSeeYouAs(name: string | null | undefined, niches: string[], nicheLabel: (key: string) => string): string {
+  return [name?.trim() || '', niches.slice(0, 3).map(nicheLabel).join(', ')].filter(Boolean).join(' · ');
+}

@@ -15,7 +15,7 @@ test("#3872 B5 Explorer exposes one wallet without balance or withdrawal languag
   assert.match(wallet, /Ready for automatic payout/);
   assert.match(wallet, /wallet_viewed/);
   assert.match(wallet, /voucher_redeemed/);
-  assert.match(profile, /Referral rewards, vouchers, perks and payout account/);
+  assert.match(profile, /Gig fees, referral rewards, Local pay and your payout account/);
   assert.doesNotMatch(wallet, /Withdraw now|Cash out/);
 });
 
