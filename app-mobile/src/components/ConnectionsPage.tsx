@@ -650,7 +650,8 @@ function ConnectionsPageRefactored({
   const enquiryRows = useEnquiryChatRows(user?.id ?? null);
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchFriends(), enquiryRows.refetch()]);
+    await fetchFriends();
+    await enquiryRows.refetch();
     setIsRefreshing(false);
   }, [fetchFriends, enquiryRows.refetch]);
 
