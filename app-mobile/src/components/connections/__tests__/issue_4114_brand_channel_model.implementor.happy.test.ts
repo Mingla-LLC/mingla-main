@@ -15,6 +15,7 @@
 //  - delete the `conversationId !== previous` run check → every message gets
 //    a marker and "event markers" fails;
 //  - sort nextUpEvent's list descending → "Next up" picks the later event.
+// MINGLA-INVARIANT: I-4114-BRAND-CHANNEL-SEND-TARGET | issue #4114 | A brand channel message is written to exactly one event's conversation: the quoted message's when replying, otherwise the chosen upcoming event when two or more are upcoming, otherwise the soonest upcoming (or latest) event.
 
 import {
   brandChannelId,

@@ -20,8 +20,6 @@
  *     file loads only when tapped. View once never makes one.
  *   * Wave 7 allowance (D17): 200 MB per person per day, enforced by storage;
  *     a refusal says "You've reached today's limit for photos and videos".
- *
- * MINGLA-INVARIANT: I-4114-CHAT-MEDIA-PRIVATE-PATH | issue #4114 | New chat attachments are uploaded to the private message-attachments bucket and the message stores the object path; no new message stores a public URL.
  */
 
 export const CHAT_MEDIA_BUCKET = 'message-attachments';

@@ -10,6 +10,7 @@
 // first row instead of the first upcoming one and the next-plan case fails; drop
 // the past fallback and the "Last plan" case fails; restore collabHeaderPill or
 // collabHeaderActionRow in MessageInterface and the wiring case fails.
+// MINGLA-INVARIANT: I-4114-CHAT-HEADER-62-108 | issue #4114 | The chat header is 62pt with nothing in the strip and 108pt with matches or plans, measured under the status bar.
 
 import {
   buildCollabHeaderStrip,

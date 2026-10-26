@@ -22,7 +22,6 @@
  *   - the result is sorted by timestamp with a stable tie-break.
  *
  * Pure and dependency-free (no React Native imports) so it runs under Deno.
- * MINGLA-INVARIANT: I-4114-ONE-MESSAGE-PER-CLIENT-ID | issue #4114 | A chat list never holds two rows for one client id or one server id, and a refresh never drops a pending or failed local send.
  */
 
 /** The fields the merge reads. `Message` in connectionsService satisfies this. */

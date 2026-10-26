@@ -10,6 +10,7 @@
 // FAILS-ON-REVERT: reorder FRIEND_MENU_ORDER, drop the mute→unmute swap, show
 // the paired row for an unpaired friend, or offer "Start a collab" without
 // canStartCollab and these cases fail.
+// MINGLA-INVARIANT: I-4114-ONE-FRIEND-MENU | issue #4114 | The 1:1 chat menu and FriendActionsSheet render the same ordered list from buildFriendMenu; Report and Block are always last.
 
 import { buildFriendMenu } from "../chatMenuModel.ts";
 

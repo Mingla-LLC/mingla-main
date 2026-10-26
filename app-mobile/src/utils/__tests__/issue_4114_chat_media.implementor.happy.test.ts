@@ -16,6 +16,7 @@
 // FAILS-ON-REVERT: hard-coding `return 'image/jpeg'` / 'video/mp4' in
 // mimeTypeForAsset, deleting the 60-second check in validateChatMedia, or
 // dropping the 409 branch of classifyUploadResponse fails here.
+// MINGLA-INVARIANT: I-4114-CHAT-MEDIA-PRIVATE-PATH | issue #4114 | New chat attachments are uploaded to the private message-attachments bucket and the message stores the object path; no new message stores a public URL.
 
 import {
   CHAT_ATTACHMENT_MIME_TYPES,

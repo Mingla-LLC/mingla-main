@@ -9,6 +9,7 @@
 // snapshot window (treat a refresh as a replace) and the pending send vanishes;
 // make releaseConversationSubscription unsubscribe the next id and the
 // unsubscribe case fails.
+// MINGLA-INVARIANT: I-4114-ONE-MESSAGE-PER-CLIENT-ID | issue #4114 | A chat list never holds two rows for one client id or one server id, and a refresh never drops a pending or failed local send.
 
 import {
   createClientMessageId,

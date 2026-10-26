@@ -12,7 +12,6 @@
  * Issue #4114 Wave 5: "Start a collab with {name}" is first when the chat can
  * start one (a friend, nobody blocked, no live collab); "End the collab"
  * takes its place while one is live.
- * MINGLA-INVARIANT: I-4114-ONE-FRIEND-MENU | issue #4114 | The 1:1 chat menu and FriendActionsSheet render the same ordered list from buildFriendMenu; Report and Block are always last.
  */
 
 export type FriendMenuItemId =

@@ -12,7 +12,6 @@
  * under Deno. The strip reads only data the chat already loads
  * (`useSessionSavedCardsForSheet` and `useSessionScheduledCards`) and keeps the
  * show-only-if-non-empty rules of `getCollabChatHeaderActions`.
- * MINGLA-INVARIANT: I-4114-CHAT-HEADER-62-108 | issue #4114 | The chat header is 62pt with nothing in the strip and 108pt with matches or plans, measured under the status bar.
  */
 
 export const CHAT_HEADER_METRICS = {

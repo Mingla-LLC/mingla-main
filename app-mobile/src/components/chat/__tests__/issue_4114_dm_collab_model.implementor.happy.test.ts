@@ -10,6 +10,7 @@
 //  - dmCollabNeedsPaywall letting a free account past its one open session;
 //  - the invite cards showing Join to the starter or after the friend joined;
 //  - the chat menu missing "Start a collab" / "End the collab" at the right time.
+// MINGLA-INVARIANT: I-4114-DM-COLLAB-ONE-LIVE | issue #4114 | A 1:1 chat holds at most one live collab (pending, active, voting or locked); the header offers Collab only to friends when none is live; the deck, matches and plans are driven by that session's id, never by the chat.
 
 import {
   dmCollabCardView,

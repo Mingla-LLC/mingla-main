@@ -31,7 +31,6 @@
  *
  * Pure and dependency-free (no React Native imports) so it runs under Deno
  * (see __tests__/issue_4114_brand_channel_model.implementor.happy.test.ts).
- * MINGLA-INVARIANT: I-4114-BRAND-CHANNEL-SEND-TARGET | issue #4114 | A brand channel message is written to exactly one event's conversation: the quoted message's when replying, otherwise the chosen upcoming event when two or more are upcoming, otherwise the soonest upcoming (or latest) event.
  */
 
 export const BRAND_CHANNEL_ID_PREFIX = "brand-channel:";
@@ -132,7 +131,6 @@ function isOfferingChat(conversation: BrandChannelSourceConversation): boolean {
  *
  * `teamBrandIds` null means the user's brand teams are not known yet (no
  * successful read and nothing cached): nothing is hidden.
- * MINGLA-INVARIANT: I-4114-EXPLORER-HIDES-HOST-CHATS | issue #4114 | Explorer never lists, searches, filters or counts unread for an event or trip chat whose brand is in the user's team set; it never opens one either.
  */
 export function isHostChatForUser(
   conversation: BrandChannelSourceConversation,

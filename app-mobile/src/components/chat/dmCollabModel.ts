@@ -10,8 +10,6 @@
  * session to the 1:1 chat it was started from (start_dm_collab), and the chat
  * gets system rows with `card_payload.kind = 'dm_collab'` when the collab
  * starts, when the friend joins and when it ends.
- *
- * MINGLA-INVARIANT: I-4114-DM-COLLAB-ONE-LIVE | issue #4114 | A 1:1 chat holds at most one live collab (pending, active, voting or locked); the header offers Collab only to friends when none is live; the deck, matches and plans are driven by that session's id, never by the chat.
  */
 
 /** Session states that count as "this chat has a live collab" (matches the SQL index). */
