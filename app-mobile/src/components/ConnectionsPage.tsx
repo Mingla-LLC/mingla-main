@@ -48,6 +48,7 @@ import {
   foldsIntoBrandChannel,
   isBrandChannelId,
   isBrandChannelRow,
+  pinnedBrandChannelMemberIds,
   resolveSendTarget,
   type BrandChannel,
 } from "./connections/brandChannelModel";
@@ -637,8 +638,9 @@ function ConnectionsPageRefactored({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   // Issue #4114 Wave 6: brands this user is on the team of. Their event chats
   // stay per event; every other brand's event and trip chats fold into one
-  // brand channel row.
-  const [teamBrandIds, setTeamBrandIds] = useState<ReadonlySet<string>>(() => new Set());
+  // brand channel row. null until the team read first succeeds: nothing folds
+  // while it is unknown, so a host never loses their per-event rows.
+  const [teamBrandIds, setTeamBrandIds] = useState<ReadonlySet<string> | null>(null);
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1257,13 +1259,16 @@ function ConnectionsPageRefactored({
           return new Map<string, GroupEventMeta>();
         }),
         // Issue #4114 Wave 6: your own active brand team rows (RLS: user_id =
-        // auth.uid()). A failed read keeps the last known set and logs.
+        // auth.uid()): accepted and not removed, the same rows that let a team
+        // member read the event chat. A failed read keeps the last known set
+        // (or, before any success, folds nothing) and logs.
         groupEventIds.size > 0
           ? Promise.resolve(
               supabase
                 .from('brand_team_members')
                 .select('brand_id')
                 .eq('user_id', userId)
+                .not('accepted_at', 'is', null)
                 .is('removed_at', null),
             ).then(({ data, error }) => {
               if (error) {
@@ -1551,6 +1556,20 @@ function ConnectionsPageRefactored({
 
   // ── Issue #4114: pin up to 3 chats (client check + server trigger) ──
   const handleTogglePin = useCallback(async (conversation: ChatListItemConversation) => {
+    // A brand channel row is pinned when any chat folded into it is. Its only
+    // pin action is Unpin, which unpins each of those chats (pins stay per chat).
+    if (isBrandChannelRow(conversation)) {
+      const memberIds = pinnedBrandChannelMemberIds(
+        conversations as ChatListItemConversation[],
+        conversation.__brandChannel.brandId,
+        teamBrandIds,
+      );
+      for (const memberId of memberIds) {
+        const member = conversations.find((candidate) => candidate.id === memberId) as ChatListItemConversation | undefined;
+        if (member?.pinned_at) await handleTogglePin(member);
+      }
+      return;
+    }
     const pinning = !conversation.pinned_at;
     if (pinning && !canPinChat(conversations as ChatListItemConversation[], conversation.id)) {
       HapticFeedback.warning();
@@ -1570,7 +1589,7 @@ function ConnectionsPageRefactored({
         type: result.pinLimitReached ? 'info' : 'error',
       });
     }
-  }, [conversations, patchConversation, showToast, t]);
+  }, [conversations, patchConversation, showToast, t, teamBrandIds]);
 
   // ── Issue #4114: mark unread is a private flag, never a read-receipt change ──
   const handleToggleUnread = useCallback(async (conversation: ChatListItemConversation) => {
@@ -3927,14 +3946,25 @@ function ConnectionsPageRefactored({
       setTimeout(run, delay);
     };
     // Issue #4114 Wave 6: a brand channel row stands for several event chats;
-    // only Archive (all of them) applies to the row as a whole.
+    // Archive (all of them) applies to the row as a whole, and Unpin when one
+    // of its chats is pinned (Pin stays per chat).
     if (isBrandChannelRow(target)) {
-      return [{
+      const brandActions: ChatRowAction[] = [];
+      if (target.pinned_at) {
+        brandActions.push({
+          key: "pin",
+          icon: "pin-off-outline",
+          label: t("connections:action_unpin"),
+          onPress: close(() => void rowHandlersRef.current.togglePin(target)),
+        });
+      }
+      brandActions.push({
         key: "archive",
         icon: "archive-outline",
         label: t("connections:action_archive"),
         onPress: close(() => void rowHandlersRef.current.archive(target.id)),
-      }];
+      });
+      return brandActions;
     }
     const isGroup = target.type === "group";
     const isArchived = archivedIds.has(target.id);

@@ -120,15 +120,40 @@ function isOfferingChat(conversation: BrandChannelSourceConversation): boolean {
     (conversation.linked_entity_type === "event" || conversation.linked_entity_type === "trip");
 }
 
-/** True when this chat folds into a brand channel for this user. */
+/**
+ * True when this chat folds into a brand channel for this user.
+ *
+ * `teamBrandIds` null means the user's brand teams are not known yet (the read
+ * has not succeeded): nothing folds, so a host never loses their per-event
+ * rows to a failed read.
+ */
 export function foldsIntoBrandChannel(
   conversation: BrandChannelSourceConversation,
-  teamBrandIds: ReadonlySet<string>,
+  teamBrandIds: ReadonlySet<string> | null,
 ): boolean {
+  if (teamBrandIds === null) return false;
   if (!isOfferingChat(conversation)) return false;
   const brandId = conversation.eventBrandId;
   if (!brandId) return false;
   return !teamBrandIds.has(brandId);
+}
+
+/**
+ * The pinned chats folded into one brand row. The row shows as pinned when any
+ * of them is; unpinning the row unpins exactly these (pins stay per chat, so
+ * the row itself offers Unpin but never Pin).
+ */
+export function pinnedBrandChannelMemberIds(
+  conversations: readonly BrandChannelSourceConversation[],
+  brandId: string,
+  teamBrandIds: ReadonlySet<string> | null,
+): string[] {
+  return conversations
+    .filter((conversation) =>
+      conversation.eventBrandId === brandId &&
+      Boolean(conversation.pinned_at) &&
+      foldsIntoBrandChannel(conversation, teamBrandIds))
+    .map((conversation) => conversation.id);
 }
 
 function activityTime(conversation: BrandChannelSourceConversation): number {
@@ -174,7 +199,7 @@ export function brandChannelUnread(members: readonly BrandChannelSourceConversat
  */
 export function foldBrandChannels<C extends BrandChannelSourceConversation>(
   conversations: readonly C[],
-  teamBrandIds: ReadonlySet<string>,
+  teamBrandIds: ReadonlySet<string> | null,
 ): { rows: Array<C | BrandChannelRow<C>>; channels: Map<string, BrandChannel> } {
   const membersByBrand = new Map<string, C[]>();
   for (const conversation of conversations) {

@@ -44,6 +44,8 @@ export const GroupChatMessageMedia: React.FC<GroupChatMessageMediaProps> = ({ me
   const needsUrl = kind === "image" || kind === "video";
   const [url, setUrl] = useState<string | null>(() => (needsUrl ? peekGroupChatMediaUrl(message.file_url) : null));
   const [failed, setFailed] = useState(false);
+  // A video that would not open says so inline (no silent failure) and stays tappable.
+  const [openFailed, setOpenFailed] = useState(false);
 
   useEffect(() => {
     if (!needsUrl) return;
@@ -106,15 +108,24 @@ export const GroupChatMessageMedia: React.FC<GroupChatMessageMediaProps> = ({ me
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={message.file_name ? `Play video ${message.file_name}` : "Play video"}
+        accessibilityHint={openFailed ? "The video did not open. Tap to try again." : undefined}
         onPress={() => {
-          Linking.openURL(url).catch((error: unknown) => {
-            console.warn("[GroupChatMessageMedia] could not open the video", error);
-          });
+          setOpenFailed(false);
+          // A fresh link (the cached one is re-signed shortly before it expires).
+          resolveGroupChatMediaUrl(message.file_url)
+            .then((fresh) => Linking.openURL(fresh ?? url))
+            .catch((error: unknown) => {
+              console.warn("[GroupChatMessageMedia] could not open the video", error);
+              setOpenFailed(true);
+            });
         }}
         style={styles.notice}
+        testID="group-chat-video"
       >
         <Icon name="play" size={14} color={mine ? textTokens.inverse : textTokens.primary} />
-        <Text style={[styles.noticeText, mine && styles.noticeTextMine]}>Video</Text>
+        <Text style={[styles.noticeText, mine && styles.noticeTextMine]}>
+          {openFailed ? "Couldn't open the video. Tap to try again." : "Video"}
+        </Text>
       </Pressable>
     );
   }

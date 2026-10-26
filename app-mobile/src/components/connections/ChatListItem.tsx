@@ -224,7 +224,8 @@ function ChatListItemImpl({
   }, [close, conversation, onArchive, onToggleMute, onTogglePin, onToggleUnread]);
 
   // A brand channel row stands for several chats: it can be archived (all of
-  // them), but pin and mark-unread stay per chat, so they are not offered here.
+  // them), and unpinned when one of them is pinned (its only left action);
+  // Pin and mark-unread stay per chat, so they are not offered on it.
   const renderLeftActions = useCallback(() => (
     <View style={styles.swipeActions}>
       <SwipeAction
@@ -233,7 +234,7 @@ function ChatListItemImpl({
         color={tk.swipePin}
         onPress={() => runAction('pin')}
       />
-      {canToggleUnread ? (
+      {canToggleUnread && !isBrandChannel ? (
         <SwipeAction
           icon={markedUnread ? 'mail-open-outline' : 'mail-outline'}
           label={markedUnread ? t('connections:action_mark_read') : t('connections:action_mark_unread')}
@@ -242,7 +243,7 @@ function ChatListItemImpl({
         />
       ) : null}
     </View>
-  ), [canToggleUnread, isPinned, markedUnread, runAction, t]);
+  ), [canToggleUnread, isBrandChannel, isPinned, markedUnread, runAction, t]);
 
   const renderRightActions = useCallback(() => (
     <View style={styles.swipeActions}>
@@ -279,7 +280,7 @@ function ChatListItemImpl({
   ].filter(Boolean);
 
   const accessibilityActions = [
-    ...(isBrandChannel
+    ...(isBrandChannel && !isPinned
       ? []
       : [{ name: 'pin', label: isPinned ? t('connections:action_unpin') : t('connections:action_pin') }]),
     ...(canToggleUnread && !isBrandChannel
@@ -301,7 +302,7 @@ function ChatListItemImpl({
   return (
     <ReanimatedSwipeable
       ref={swipeRef}
-      renderLeftActions={isBrandChannel ? undefined : renderLeftActions}
+      renderLeftActions={isBrandChannel && !isPinned ? undefined : renderLeftActions}
       renderRightActions={renderRightActions}
       overshootLeft={false}
       overshootRight={false}

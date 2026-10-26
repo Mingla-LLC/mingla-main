@@ -250,6 +250,65 @@ export class SignedUrlCache {
   }
 }
 
+/**
+ * Which uploads (by message client id) are running, finished, or cancelled
+ * before they started. Pure bookkeeping for chatMediaUploadService.
+ *
+ * A cancel that arrives after the upload finished is a no-op: it must not
+ * leave the client id marked cancelled, or the message's retry (same client
+ * id) would be refused as cancelled.
+ */
+export class ChatUploadCancelRegistry<Task extends { cancelAsync: () => Promise<void> }> {
+  private readonly running = new Map<string, { task: Task; cancelled: boolean }>();
+  private readonly cancelledBeforeStart = new Set<string>();
+  private readonly finished = new Set<string>();
+
+  /** A new attempt is starting (a retry starts fresh). */
+  begin(clientId: string): void {
+    this.finished.delete(clientId);
+  }
+
+  start(clientId: string, task: Task): { cancelled: boolean } {
+    const entry = { task, cancelled: false };
+    this.running.set(clientId, entry);
+    return entry;
+  }
+
+  /** The running upload ended; `uploaded` when the object is in storage. */
+  settle(clientId: string, uploaded: boolean): void {
+    this.running.delete(clientId);
+    if (uploaded) this.finished.add(clientId);
+  }
+
+  /** True once if the send was cancelled before its upload started. */
+  takeCancelledBeforeStart(clientId: string): boolean {
+    if (!this.cancelledBeforeStart.has(clientId)) return false;
+    this.cancelledBeforeStart.delete(clientId);
+    return true;
+  }
+
+  isRunning(clientId: string): boolean {
+    return this.running.has(clientId);
+  }
+
+  /** 'running' and 'pending' were cancelled; 'finished' means nothing was left to cancel. */
+  async cancel(clientId: string): Promise<'running' | 'pending' | 'finished'> {
+    const active = this.running.get(clientId);
+    if (active) {
+      active.cancelled = true;
+      try {
+        await active.task.cancelAsync();
+      } catch (error) {
+        console.warn('[chatMediaUpload] cancel failed', error);
+      }
+      return 'running';
+    }
+    if (this.finished.has(clientId)) return 'finished';
+    this.cancelledBeforeStart.add(clientId);
+    return 'pending';
+  }
+}
+
 /** Display summary of who opened a view-once message. */
 export interface MediaViewRow {
   user_id: string;

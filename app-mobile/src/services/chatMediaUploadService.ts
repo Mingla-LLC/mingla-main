@@ -23,6 +23,7 @@ import { supabase, supabaseUrl, getSupabaseFunctionHeaders } from './supabase';
 import {
   CHAT_MEDIA_BUCKET,
   PHOTO_JPEG_QUALITY,
+  ChatUploadCancelRegistry,
   SignedUrlCache,
   buildChatAttachmentPath,
   classifyUploadResponse,
@@ -103,34 +104,19 @@ type UploadTask = {
   cancelAsync: () => Promise<void>;
 };
 
-const activeUploads = new Map<string, { task: UploadTask; cancelled: boolean }>();
-/** Cancelled before its upload started (still resizing, or queued behind another item). */
-const cancelledBeforeStart = new Set<string>();
+const uploads = new ChatUploadCancelRegistry<UploadTask>();
 
-function takeCancelledBeforeStart(clientId: string): boolean {
-  if (!cancelledBeforeStart.has(clientId)) return false;
-  cancelledBeforeStart.delete(clientId);
-  return true;
-}
-
-/** Cancels this message's (client id) upload, whether it is running or still waiting to start. */
+/**
+ * Cancels this message's (client id) upload, whether it is running or still
+ * waiting to start. False when the upload had already finished (nothing to
+ * cancel; a retry of the message is not blocked).
+ */
 export async function cancelChatMediaUpload(clientId: string): Promise<boolean> {
-  const active = activeUploads.get(clientId);
-  if (!active) {
-    cancelledBeforeStart.add(clientId);
-    return true;
-  }
-  active.cancelled = true;
-  try {
-    await active.task.cancelAsync();
-  } catch (error) {
-    console.warn('[chatMediaUpload] cancel failed', error);
-  }
-  return true;
+  return (await uploads.cancel(clientId)) !== 'finished';
 }
 
 export function isChatMediaUploading(clientId: string): boolean {
-  return activeUploads.has(clientId);
+  return uploads.isRunning(clientId);
 }
 
 export interface UploadChatMediaArgs {
@@ -151,7 +137,8 @@ export interface UploadedChatMedia {
 
 export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<UploadedChatMedia> {
   const { conversationId, clientId, item, viewOnce, onProgress } = args;
-  if (takeCancelledBeforeStart(clientId)) throw new ChatMediaUploadError('cancelled');
+  uploads.begin(clientId);
+  if (uploads.takeCancelledBeforeStart(clientId)) throw new ChatMediaUploadError('cancelled');
   if (!isAllowedAttachmentMime(item.mimeType)) throw new ChatMediaUploadError('refused_type');
   if (!isWithinUploadLimit(item.fileSize)) throw new ChatMediaUploadError('refused_size');
 
@@ -170,7 +157,7 @@ export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<Upload
   const info = await FileSystem.getInfoAsync(item.uri);
   const size = info.exists && typeof info.size === 'number' ? info.size : item.fileSize;
   if (!isWithinUploadLimit(size)) throw new ChatMediaUploadError('refused_size');
-  if (takeCancelledBeforeStart(clientId)) throw new ChatMediaUploadError('cancelled');
+  if (uploads.takeCancelledBeforeStart(clientId)) throw new ChatMediaUploadError('cancelled');
 
   const objectUrl = `${supabaseUrl}/storage/v1/object/${CHAT_MEDIA_BUCKET}/${path}`;
   const task = FileSystem.createUploadTask(
@@ -193,20 +180,19 @@ export async function uploadChatMedia(args: UploadChatMediaArgs): Promise<Upload
     },
   ) as unknown as UploadTask;
 
-  const entry = { task, cancelled: false };
-  activeUploads.set(clientId, entry);
+  const entry = uploads.start(clientId, task);
   let response: { status: number; body: string } | null | undefined;
   try {
     response = await task.uploadAsync();
   } catch (error) {
+    uploads.settle(clientId, false);
     if (entry.cancelled) throw new ChatMediaUploadError('cancelled');
     throw new ChatMediaUploadError('network', error instanceof Error ? error.message : String(error));
-  } finally {
-    activeUploads.delete(clientId);
   }
+  const outcome = response ? classifyUploadResponse(response.status, response.body ?? '') : null;
+  uploads.settle(clientId, !entry.cancelled && (outcome === 'uploaded' || outcome === 'already_uploaded'));
   if (entry.cancelled || !response) throw new ChatMediaUploadError('cancelled');
 
-  const outcome = classifyUploadResponse(response.status, response.body ?? '');
   if (outcome === 'uploaded' || outcome === 'already_uploaded') {
     onProgress?.(1);
     return { path, mimeType: item.mimeType, fileSize: typeof size === 'number' ? size : null };
