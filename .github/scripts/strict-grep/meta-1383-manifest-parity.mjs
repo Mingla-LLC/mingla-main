@@ -9,10 +9,10 @@
 //
 // This gate is itself a manifest entry (enforcement batch:B), so run-batch.mjs's
 // R4 (executed === expected) proves IT ran. The circularity — removing it from BOTH
-// the manifest and the runner would satisfy R4 — is closed OUTSIDE this file by
-// tests-append-only.yml, which ratchets MANIFEST.json and requires a GATE-REMOVAL:
-// commit token to shrink gates[] or lower a floor. A different workflow guards this
-// one, so disabling this gate does not disable its guard.
+// the manifest and the runner would satisfy R4 — was once closed OUTSIDE this file
+// by a MANIFEST.json ratchet step in tests-append-only.yml. That step was retired
+// with the test append-only gate toward #3643 (2026-10-26); removing this gate from
+// both places is now caught only by code review of the visible MANIFEST diff.
 //
 // Assertions (SPEC_ORCH-1383 §5.3): P1..P8 + P-vacuous. ORCH-1400 Phase 1 adds P10..P12
 // (SPEC_ORCH-1400 §4.1.b) — they close the three recurrence holes H1–H3 that let the
