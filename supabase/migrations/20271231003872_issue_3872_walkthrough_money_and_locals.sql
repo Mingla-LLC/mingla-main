@@ -413,6 +413,17 @@ ALTER TABLE public.local_city_programs
   ADD COLUMN IF NOT EXISTS payout_currency text NOT NULL DEFAULT 'USD' CHECK (payout_currency ~ '^[A-Z]{3}$');
 UPDATE public.local_city_programs SET monthly_rate_minor=monthly_usd_minor WHERE monthly_rate_minor IS NULL;
 ALTER TABLE public.local_city_programs ALTER COLUMN monthly_rate_minor SET NOT NULL;
+-- Writers that predate the per-city rate still insert monthly_usd_minor only.
+CREATE OR REPLACE FUNCTION public.issue_3872_local_program_rate_default() RETURNS trigger
+LANGUAGE plpgsql SET search_path=public,pg_temp AS $fn$
+BEGIN
+  NEW.monthly_rate_minor:=coalesce(NEW.monthly_rate_minor,NEW.monthly_usd_minor);
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS issue_3872_local_program_rate_default ON public.local_city_programs;
+CREATE TRIGGER issue_3872_local_program_rate_default BEFORE INSERT OR UPDATE ON public.local_city_programs
+FOR EACH ROW EXECUTE FUNCTION public.issue_3872_local_program_rate_default();
 
 DROP FUNCTION IF EXISTS public.local_city_program_save(uuid,integer,boolean,bigint);
 CREATE OR REPLACE FUNCTION public.local_city_program_save(
@@ -737,7 +748,7 @@ $fn$;
 -- ---------------------------------------------------------------------------
 -- Grants.
 -- ---------------------------------------------------------------------------
-REVOKE ALL ON FUNCTION public.issue_3872_jsonb_value(jsonb),public.issue_3872_referral_member_name_source(),public.issue_3872_payee_share_freeze(),
+REVOKE ALL ON FUNCTION public.issue_3872_jsonb_value(jsonb),public.issue_3872_local_program_rate_default(),public.issue_3872_referral_member_name_source(),public.issue_3872_payee_share_freeze(),
   public.issue_3872_local_place_conflict(uuid,uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3872_jsonb_value(jsonb),public.issue_3872_local_place_conflict(uuid,uuid) TO service_role;
 REVOKE ALL ON FUNCTION public.local_city_program_save(uuid,integer,boolean,bigint,text,bigint),public.creator_earnings_summary() FROM PUBLIC,anon;
