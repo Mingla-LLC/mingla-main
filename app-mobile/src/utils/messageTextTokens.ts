@@ -30,6 +30,24 @@ export interface MentionCandidate {
   displayName: string;
 }
 
+/**
+ * Issue #4114 QA run 3: "@Your Name" is styled too. The chat's participant
+ * list leaves the current user out (you are never a mention suggestion), so
+ * the styling list adds you back. No id or no usable name: unchanged. Already
+ * present: unchanged.
+ */
+export function withSelfMentionCandidate(
+  participants: readonly MentionCandidate[],
+  currentUserId: string | null | undefined,
+  currentUserName: string | null | undefined,
+): MentionCandidate[] {
+  const name = typeof currentUserName === "string" ? currentUserName.trim() : "";
+  if (!currentUserId || !name || participants.some((p) => p.userId === currentUserId)) {
+    return [...participants];
+  }
+  return [...participants, { userId: currentUserId, displayName: name }];
+}
+
 const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>"']+/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:'"]+$/;
 

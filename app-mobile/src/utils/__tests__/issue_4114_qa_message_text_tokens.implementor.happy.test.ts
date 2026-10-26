@@ -8,7 +8,7 @@
 // participant, run a mention to the end of the text, or unwire the bubble's
 // link handlers, and the matching case fails.
 
-import { linkifyText, tokenizeMessageText } from "../messageTextTokens.ts";
+import { linkifyText, tokenizeMessageText, withSelfMentionCandidate } from "../messageTextTokens.ts";
 
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
@@ -86,4 +86,23 @@ Deno.test("QA run 2: the received link colour passes AA on the dark bubble", asy
   const b = lum(hex("bubble"));
   const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   assert(ratio >= 4.5, `link contrast ${ratio.toFixed(2)}`);
+});
+
+// QA run 3 (P3): "@Your Name" was plain text because the participant list
+// leaves you out. FAILS-ON-REVERT: drop withSelfMentionCandidate, or feed it
+// into the mention suggestions instead of only the bubble styling.
+Deno.test("QA run 3: your own name is styled, but you are never a suggestion", async () => {
+  const styled = withSelfMentionCandidate(people, "u-me", "Seth Ogieva");
+  assert(kinds(tokenizeMessageText("hey @Seth Ogieva look", [], styled)) === "text:hey |mention:@Seth Ogieva|text: look", "self mention styled");
+  assert(kinds(tokenizeMessageText("hey @Seth Ogieva look", [], people)) === "text:hey @Seth Ogieva look", "without you it is plain (the bug)");
+  assert(withSelfMentionCandidate(people, "u-ada", "Ada").length === people.length, "no duplicate");
+  assert(withSelfMentionCandidate(people, null, "Seth").length === people.length, "no id");
+  assert(withSelfMentionCandidate(people, "u-me", "  ").length === people.length, "no name");
+
+  const chat = strip(await read("components/MessageInterface.tsx"));
+  const candidates = chat.slice(chat.indexOf("const mentionCandidates = useMemo("), chat.indexOf("const handleLinkPress"));
+  assert(/withSelfMentionCandidate\([\s\S]*currentUserId,\s*currentUserName,/.test(candidates), "bubble styling includes you");
+  assert(/useChatInputController\(\{\s*participants: participantsQuery\.data \?\? \[\],/.test(chat), "suggestions still come from the participants without you");
+  const hook = strip(await read("hooks/useConversationParticipants.ts"));
+  assert(/\.filter\(\(id\) => id !== currentUserId\)/.test(hook), "the participants query still leaves you out");
 });

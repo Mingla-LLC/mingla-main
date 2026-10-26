@@ -82,6 +82,7 @@ import { ChatMediaSheet } from "./chat/ChatMediaSheet";
 import { ChatAttachSheet } from "./chat/ChatAttachSheet";
 import InAppBrowserModal from "./InAppBrowserModal";
 import { copyAddressText } from "../utils/copyAddressText";
+import { withSelfMentionCandidate } from "../utils/messageTextTokens";
 import { ChatVideoPlayerModal } from "./chat/ChatVideoPlayerModal";
 import { ViewOncePhotoViewer } from "./chat/ViewOncePhotoViewer";
 import { ImageLightbox } from "./ImageLightbox";
@@ -1542,12 +1543,19 @@ export default function MessageInterface({
 
   // Issue #4114 QA run 2: links in text bubbles open in the in-app browser and
   // copy on long-press; only this chat's people are styled as mentions.
+  // QA run 3: that includes you ("@Your Name" is styled). The participants
+  // query leaves you out on purpose (you are not a mention suggestion), so
+  // you are added here, for styling only.
   const mentionCandidates = useMemo(
-    () => (participantsQuery.data ?? []).map((participant) => ({
-      userId: participant.userId,
-      displayName: participant.displayName,
-    })),
-    [participantsQuery.data],
+    () => withSelfMentionCandidate(
+      (participantsQuery.data ?? []).map((participant) => ({
+        userId: participant.userId,
+        displayName: participant.displayName,
+      })),
+      currentUserId,
+      currentUserName,
+    ),
+    [currentUserId, currentUserName, participantsQuery.data],
   );
   const handleLinkPress = useCallback((url: string) => {
     setLinkBrowserUrl(url);
