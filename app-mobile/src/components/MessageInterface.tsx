@@ -9,7 +9,6 @@ import {
   Alert,
   Platform,
   Linking,
-  Modal,
   Dimensions,
   ActivityIndicator,
   useWindowDimensions,
@@ -17,6 +16,7 @@ import {
 } from "react-native";
 import { Icon } from "./ui/Icon";
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import * as WebBrowser from "expo-web-browser";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { supabase } from "../services/supabase";
@@ -45,6 +45,18 @@ import { useSeenSessionMatches } from "../hooks/useSeenSessionMatches";
 import { ChatActionList } from "./chat/ChatActionList";
 import { GroupInfoSheet } from "./chat/GroupInfoSheet";
 import { ChatMediaSheet } from "./chat/ChatMediaSheet";
+import { ChatAttachSheet } from "./chat/ChatAttachSheet";
+import { ChatVideoPlayerModal } from "./chat/ChatVideoPlayerModal";
+import { ViewOncePhotoViewer } from "./chat/ViewOncePhotoViewer";
+import { ImageLightbox } from "./ImageLightbox";
+import {
+  MAX_CHAT_MEDIA_ITEMS,
+  validateChatMedia,
+  viewOnceState,
+  type ChatMediaRefusal,
+  type PickedChatMedia,
+} from "../utils/chatMedia";
+import { openViewOnceMedia, peekChatMediaUrl, resolveChatMediaUrl } from "../services/chatMediaUploadService";
 import { SavedCardPicker } from "./chat/SavedCardPicker";
 import { buildFriendMenu, type FriendMenuItemId } from "../utils/chatMenuModel";
 import {
@@ -184,6 +196,11 @@ interface Message {
   reactions?: ReactionRow[];
   /** Issue #4114 Wave 3: unsent — hidden from the thread. */
   unsent?: boolean;
+  /** Issue #4114 Wave 4: view once, who opened it, and the sender's local file while it uploads. */
+  viewOnce?: boolean;
+  viewOncePurged?: boolean;
+  mediaViews?: Array<{ user_id: string; viewed_at: string }>;
+  localMedia?: PickedChatMedia;
 }
 
 /** Issue #4114 Wave 3: one prepared row of the thread (built once per message change). */
@@ -257,6 +274,16 @@ interface MessageInterfaceProps {
     cardTags?: CardTagEntry[],
   ) => void;
   messages: Message[];
+  /**
+   * Issue #4114 Wave 4: send the attach sheet's photos, videos or file. The
+   * composer text is the caption; ConnectionsPage uploads through the one
+   * chat media service.
+   */
+  onSendMedia?: (items: PickedChatMedia[], caption: string, viewOnce: boolean, replyToId?: string) => void;
+  /** Issue #4114 Wave 4: 0..1 upload progress of media sends, by client id. */
+  uploadProgress?: Record<string, number>;
+  /** Issue #4114 Wave 4: cancel a media send while it uploads. */
+  onCancelUpload?: (messageId: string) => void;
   /** Issue #4114: tap a failed bubble to resend it with the same client id. */
   onRetryMessage?: (messageId: string) => void;
   /** Issue #4114: scrolled to the top — load the previous page of history. */
@@ -339,6 +366,9 @@ export default function MessageInterface({
   onBack,
   onSendMessage,
   messages,
+  onSendMedia,
+  uploadProgress,
+  onCancelUpload,
   onRetryMessage,
   onLoadOlderMessages,
   hasOlderMessages = false,
@@ -435,11 +465,17 @@ export default function MessageInterface({
       .substring(0, 2) || "?";
 
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<any>(null);
-  const [previewUrl, setPreviewUrl] = useState<string>("");
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [isProcessingFile, setIsProcessingFile] = useState(false);
-  const [showImagePreview, setShowImagePreview] = useState(false);
+  // Issue #4114 Wave 4: the attach sheet's picked items and its View once switch.
+  const [pendingMedia, setPendingMedia] = useState<PickedChatMedia[]>([]);
+  const [attachViewOnce, setAttachViewOnce] = useState(false);
+  const [isPickingMedia, setIsPickingMedia] = useState(false);
+  // Issue #4114 Wave 4: media viewers (photo lightbox, video player, the one
+  // look at a view-once item) and the view-once items opened on this phone.
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [viewOncePhotoUrl, setViewOncePhotoUrl] = useState<string | null>(null);
+  const [viewOnceVideoUrl, setViewOnceVideoUrl] = useState<string | null>(null);
+  const [openedViewOnce, setOpenedViewOnce] = useState<Record<string, true>>({});
+  const openingViewOnceRef = useRef<string | null>(null);
   const [showMoreOptionsMenu, setShowMoreOptionsMenu] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [showMediaSheet, setShowMediaSheet] = useState(false);
@@ -932,158 +968,189 @@ export default function MessageInterface({
     : false;
 
   const handleSendMessage = () => {
-    if (newMessage.trim() || selectedFile) {
+    if (newMessage.trim()) {
       const replyToId = replyingTo?.messageId;
       const { content, mentions, cardTags } = chatController.serializeForSend();
       setReplyingTo(null); // Clear reply state immediately
-
-      if (selectedFile) {
-        const fileType =
-          selectedFile.type === "image"
-            ? "image"
-            : selectedFile.type === "video"
-            ? "video"
-            : "file";
-        onSendMessage(
-          content || selectedFile.name || "Media",
-          fileType,
-          selectedFile,
-          replyToId,
-          mentions,
-          cardTags,
-        );
-        setSelectedFile(null);
-        setPreviewUrl("");
-      } else {
-        onSendMessage(content, "text", undefined, replyToId, mentions, cardTags);
-      }
+      onSendMessage(content, "text", undefined, replyToId, mentions, cardTags);
       chatController.reset();
       stopTyping();
       HapticFeedback.light();
     }
   };
 
-  const handleFileSelect = async (type: "image" | "video" | "file") => {
-    try {
-      setShowAttachmentMenu(false);
-
-      // Request permissions
-      if (type === "image" || type === "video") {
-        const { status } = await requestGalleryPermission();
-        if (status !== "granted") {
-          Alert.alert(
-            t('chat:permissionRequired'),
-            t('chat:mediaLibraryPermission')
-          );
-          return;
-        }
+  // ── Issue #4114 Wave 4: attach sheet ─────────────────────────
+  // Every pick is validated on the phone first (D7: video over 60 s or 25 MB,
+  // any file over 25 MB, unsupported types) with a clear reason, and the sheet
+  // holds up to MAX_CHAT_MEDIA_ITEMS items until Send.
+  const refusalMessage = (reason: ChatMediaRefusal): string => {
+    switch (reason) {
+      case "video_too_long":
+        return t('chat:mediaVideoTooLong');
+      case "video_too_large":
+        return t('chat:mediaVideoTooLarge');
+      case "file_too_large":
+        return t('chat:mediaTooLarge');
+      case "unsupported_type":
+        return t('chat:mediaTypeNotSupported');
+      default: {
+        const unreachable: never = reason;
+        return String(unreachable);
       }
-
-      // Show processing loader BEFORE opening image picker
-      setIsProcessingFile(true);
-
-      let result;
-
-      if (type === "image") {
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: 'images',
-          allowsEditing: false, // Disabled to avoid white background and "Crop" button issues
-          quality: 0.7, // Reduced quality for faster processing
-          allowsMultipleSelection: false,
-        });
-      } else if (type === "video") {
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: 'videos',
-          allowsEditing: false, // Disabled to avoid UI issues
-          quality: 0.7, // Reduced quality for faster processing
-          allowsMultipleSelection: false,
-        });
-      } else {
-        // For documents, use image picker with all types (fallback)
-        // Note: For better document support, consider installing expo-document-picker
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images', 'videos'],
-          allowsEditing: false,
-          allowsMultipleSelection: false,
-        });
-      }
-
-      if (result.canceled || !result.assets || result.assets.length === 0) {
-        setIsProcessingFile(false);
-        return;
-      }
-
-      const asset = result.assets[0];
-
-      // Create file object matching what handleSendMessage expects
-      const file = {
-        uri: asset.uri,
-        name:
-          asset.fileName ||
-          `file_${Date.now()}.${asset.uri.split(".").pop() || "jpg"}`,
-        type: asset.type, // 'image' | 'video' | 'unknown'
-        size: asset.fileSize || 0,
-      };
-
-      // Set file and prepare preview - loader stays visible
-      setSelectedFile(file);
-      setIsLoadingPreview(true);
-      setPreviewUrl(""); // Clear preview URL initially
-
-      // Set preview URL and hide processing loader only when preview is ready
-      if (asset.type === "image" || asset.type === "video") {
-        // Set preview URL
-        setPreviewUrl(asset.uri);
-
-        // Wait for image to load, then hide processing loader and preview loader
-        setTimeout(() => {
-          setIsLoadingPreview(false);
-          setIsProcessingFile(false); // Hide processing loader only when preview is ready
-        }, 500); // Delay to ensure image loads
-      } else {
-        // For non-image/video files, hide loaders immediately
-        setIsLoadingPreview(false);
-        setIsProcessingFile(false);
-      }
-    } catch (error) {
-      console.error("Error selecting file:", error);
-      setIsLoadingPreview(false);
-      setIsProcessingFile(false);
-      setSelectedFile(null);
-      setPreviewUrl("");
-      Alert.alert(t('social:error'), t('chat:errorSelectFile'));
     }
   };
 
-  const closeImagePreview = () => {
-    setShowImagePreview(false);
-    setLightboxUrl(null);
+  const addPickedMedia = (picked: PickedChatMedia[]) => {
+    const accepted: PickedChatMedia[] = [];
+    const refusals = new Set<ChatMediaRefusal>();
+    for (const item of picked) {
+      const refusal = validateChatMedia(item);
+      if (refusal) refusals.add(refusal);
+      else accepted.push(item);
+    }
+    const room = MAX_CHAT_MEDIA_ITEMS - pendingMedia.length;
+    if (accepted.length > room) {
+      showNotification(t('chat:mediaLimitReached', { count: MAX_CHAT_MEDIA_ITEMS }), '', 'info');
+    }
+    if (accepted.length > 0) {
+      setPendingMedia((prev) => [...prev, ...accepted].slice(0, MAX_CHAT_MEDIA_ITEMS));
+      if (accepted.some((item) => item.kind === "file")) setAttachViewOnce(false);
+    }
+    if (refusals.size > 0) {
+      Alert.alert(t('chat:mediaNotSentTitle'), [...refusals].map(refusalMessage).join("\n"));
+    }
   };
 
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
-    setPreviewUrl("");
-    setIsLoadingPreview(false);
-    setIsProcessingFile(false);
-  };
+  const assetToPicked = (asset: ImagePicker.ImagePickerAsset): PickedChatMedia => ({
+    uri: asset.uri,
+    kind: asset.type === "video" || asset.type === "pairedVideo" ? "video" : "image",
+    mimeType: asset.mimeType ?? null,
+    fileName: asset.fileName ?? null,
+    fileSize: asset.fileSize ?? null,
+    durationMs: asset.duration ?? null,
+    width: asset.width ?? null,
+    height: asset.height ?? null,
+  });
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
-  const handleViewDocument = async (url: string) => {
+  const handlePickLibrary = async () => {
     try {
-      // Check if URL is valid
+      const { status } = await requestGalleryPermission();
+      if (status !== "granted") {
+        Alert.alert(t('chat:permissionRequired'), t('chat:mediaLibraryPermission'));
+        return;
+      }
+      setIsPickingMedia(true);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        selectionLimit: Math.max(1, MAX_CHAT_MEDIA_ITEMS - pendingMedia.length),
+        // Full quality: the upload service resizes and compresses photos itself.
+        quality: 1,
+        videoMaxDuration: 60,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      addPickedMedia(result.assets.map(assetToPicked));
+    } catch (error) {
+      console.error("Error picking photos or videos:", error);
+      Alert.alert(t('social:error'), t('chat:errorSelectFile'));
+    } finally {
+      setIsPickingMedia(false);
+    }
+  };
+
+  const handlePickCamera = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(t('chat:permissionRequired'), t('chat:cameraPermission'));
+        return;
+      }
+      setIsPickingMedia(true);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsEditing: false,
+        quality: 1,
+        videoMaxDuration: 60,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      addPickedMedia(result.assets.map(assetToPicked));
+    } catch (error) {
+      console.error("Error taking a photo or video:", error);
+      Alert.alert(t('social:error'), t('chat:errorSelectFile'));
+    } finally {
+      setIsPickingMedia(false);
+    }
+  };
+
+  // "File" opens the real document picker (it used to open the photo library).
+  const handlePickFile = async () => {
+    try {
+      setIsPickingMedia(true);
+      // No `type`: the picker's default is every file type.
+      const result = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      addPickedMedia(
+        result.assets.map((asset) => ({
+          uri: asset.uri,
+          kind: "file" as const,
+          mimeType: asset.mimeType ?? null,
+          fileName: asset.name ?? null,
+          fileSize: asset.size ?? null,
+        })),
+      );
+    } catch (error) {
+      console.error("Error picking a file:", error);
+      Alert.alert(t('social:error'), t('chat:errorSelectFile'));
+    } finally {
+      setIsPickingMedia(false);
+    }
+  };
+
+  const handleSendPickedMedia = () => {
+    if (pendingMedia.length === 0 || !onSendMedia) return;
+    const replyToId = replyingTo?.messageId;
+    const { content } = chatController.serializeForSend();
+    onSendMedia(pendingMedia, content, attachViewOnce, replyToId);
+    setPendingMedia([]);
+    setAttachViewOnce(false);
+    setShowAttachmentMenu(false);
+    setReplyingTo(null);
+    chatController.reset();
+    stopTyping();
+    HapticFeedback.light();
+  };
+
+  const closeMediaViewers = () => {
+    setLightboxUrl(null);
+    setVideoUrl(null);
+    setViewOncePhotoUrl(null);
+    setViewOnceVideoUrl(null);
+  };
+
+  /** Opens a message's photo in the lightbox (signed link for stored paths). */
+  const handleOpenImage = async (fileUrl: string | undefined) => {
+    if (!fileUrl) return;
+    try {
+      const url = await resolveChatMediaUrl(fileUrl);
+      if (!url) throw new Error("no_media_url");
+      setLightboxUrl(url);
+    } catch (error) {
+      console.error("Error opening photo:", error);
+      showNotification(t('chat:mediaLoadFailed'), '', 'error');
+    }
+  };
+
+  const handleViewDocument = async (fileUrl: string | undefined) => {
+    try {
+      const url = await resolveChatMediaUrl(fileUrl);
       if (!url) {
         Alert.alert(t('social:error'), t('chat:errorDocumentUrl'));
         return;
       }
-
-      // Try to open in WebBrowser first (for PDFs and web-viewable documents)
       try {
         await WebBrowser.openBrowserAsync(url, {
           showTitle: true,
@@ -1091,15 +1158,12 @@ export default function MessageInterface({
           enableBarCollapsing: false,
         });
       } catch (error) {
-        // Fallback to Linking for native apps
+        console.warn("In-app browser failed for a document, trying the system:", error);
         const canOpen = await Linking.canOpenURL(url);
         if (canOpen) {
           await Linking.openURL(url);
         } else {
-          Alert.alert(
-            t('social:error'),
-            t('chat:errorOpenDocument')
-          );
+          Alert.alert(t('social:error'), t('chat:errorOpenDocument'));
         }
       }
     } catch (error) {
@@ -1108,25 +1172,46 @@ export default function MessageInterface({
     }
   };
 
-  const handleOpenVideo = async (url: string) => {
+  /** Plays a message's video in the in-app player (expo-video). */
+  const handleOpenVideo = async (fileUrl: string | undefined) => {
     try {
+      const url = await resolveChatMediaUrl(fileUrl);
       if (!url) {
         Alert.alert(t('social:error'), t('chat:errorVideoUrl'));
         return;
       }
-      // Try to open video externally as fallback
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert(
-          t('social:error'),
-          t('chat:errorOpenVideo')
-        );
-      }
+      setVideoUrl(url);
     } catch (error) {
       console.error("Error opening video:", error);
       Alert.alert(t('social:error'), t('chat:errorOpenVideoGeneric'));
+    }
+  };
+
+  /**
+   * The recipient's one open of a view-once item: the server records it and
+   * hands back a 60-second link, then the bubble reads "Opened" for good.
+   */
+  const handleOpenViewOnce = async (message: Message) => {
+    if (message.isMe || openedViewOnce[message.id] || openingViewOnceRef.current) return;
+    openingViewOnceRef.current = message.id;
+    try {
+      const result = await openViewOnceMedia(message.id);
+      if (result.ok) {
+        setOpenedViewOnce((prev) => ({ ...prev, [message.id]: true }));
+        if (result.messageType === "video") setViewOnceVideoUrl(result.url);
+        else setViewOncePhotoUrl(result.url);
+        return;
+      }
+      if (result.reason === "already_opened") {
+        setOpenedViewOnce((prev) => ({ ...prev, [message.id]: true }));
+        showNotification(t('chat:viewOnceAlreadyOpened'), '', 'info');
+      } else if (result.reason === "gone") {
+        showNotification(t('chat:viewOnceExpiredToast'), '', 'info');
+      } else {
+        showNotification(t('chat:viewOnceOpenFailed'), '', 'error');
+      }
+    } finally {
+      openingViewOnceRef.current = null;
     }
   };
 
@@ -1674,6 +1759,24 @@ export default function MessageInterface({
           failed: message.failed,
           isSystem: message.isSystem,
           systemPayload: message.systemPayload,
+          // Issue #4114 Wave 4: the sender's own file while it is local, upload
+          // progress, and the view-once state (never a preview).
+          localUri: message.id.startsWith("temp-") ? message.localMedia?.uri : undefined,
+          uploadProgress:
+            message.id.startsWith("temp-") && !message.failed && message.clientId && uploadProgress
+              ? uploadProgress[message.clientId]
+              : undefined,
+          viewOnce:
+            message.viewOnce && (message.type === "image" || message.type === "video")
+              ? viewOnceState({
+                  isMe: message.isMe,
+                  currentUserId,
+                  views: message.mediaViews,
+                  purged: message.viewOncePurged === true,
+                  openedLocally: openedViewOnce[message.id] === true,
+                })
+              : undefined,
+          isGroupChat,
         },
         showSenderName: shouldShowSenderName({
           isGroupChat,
@@ -1688,7 +1791,9 @@ export default function MessageInterface({
             ? {
                 senderName: getMessageSenderName(ref),
                 content: ref.content,
-                imageUrl: ref.type === 'image' ? ref.fileUrl : undefined,
+                // Issue #4114 Wave 4: a stored path needs its signed link (cached);
+                // a view-once original never shows a thumbnail.
+                imageUrl: ref.type === 'image' && !ref.viewOnce ? peekChatMediaUrl(ref.fileUrl) ?? undefined : undefined,
                 messageId: ref.id,
               }
             : { senderName: '', content: '', isDeleted: true, messageId: message.replyToId }
@@ -1713,6 +1818,8 @@ export default function MessageInterface({
     newDividerMessageId,
     i18n.language,
     t,
+    uploadProgress,
+    openedViewOnce,
   ]);
   const threadRowsRef = useRef(threadRows);
   threadRowsRef.current = threadRows;
@@ -1746,11 +1853,35 @@ export default function MessageInterface({
     void toggleReaction(row.message.id, '❤️');
   }, [toggleReaction]);
 
+  // Issue #4114 Wave 4: a tap opens the media (lightbox, player, document, or
+  // the one look at a view-once item); any other bubble toggles its time.
+  const mediaHandlersRef = useRef({ handleOpenImage, handleOpenVideo, handleViewDocument, handleOpenViewOnce });
+  mediaHandlersRef.current = { handleOpenImage, handleOpenVideo, handleViewDocument, handleOpenViewOnce };
   const handleBubblePress = useCallback((row: ThreadRow) => {
-    setRevealedTimestampId((prev) => (prev === row.message.id ? null : row.message.id));
+    const message = row.message;
+    const local = message.id.startsWith("temp-");
+    if (!local && (message.type === "image" || message.type === "video") && message.viewOnce) {
+      if (!message.isMe) void mediaHandlersRef.current.handleOpenViewOnce(message);
+      return;
+    }
+    if (message.type === "image" && (message.fileUrl || message.localMedia)) {
+      void mediaHandlersRef.current.handleOpenImage(local ? message.localMedia?.uri ?? message.fileUrl : message.fileUrl);
+      return;
+    }
+    if (message.type === "video" && (message.fileUrl || message.localMedia)) {
+      void mediaHandlersRef.current.handleOpenVideo(local ? message.localMedia?.uri ?? message.fileUrl : message.fileUrl);
+      return;
+    }
+    if (message.type === "file" && message.fileUrl && !local) {
+      void mediaHandlersRef.current.handleViewDocument(message.fileUrl);
+      return;
+    }
+    setRevealedTimestampId((prev) => (prev === message.id ? null : message.id));
   }, []);
 
   const handleBubbleLongPress = useCallback((row: ThreadRow, pageY: number) => {
+    // Issue #4114 Wave 4: view once has no long-press menu (no copy, forward or save).
+    if (row.message.viewOnce) return;
     setContextMenu({
       visible: true,
       messageId: row.message.id,
@@ -1920,6 +2051,11 @@ export default function MessageInterface({
               showSenderName={item.showSenderName}
               reactions={item.reactions}
               onReactionPress={onToggleReaction ? toggleReaction : undefined}
+              onCancelUpload={
+                item.bubble.uploadProgress !== undefined && onCancelUpload
+                  ? () => onCancelUpload(item.message.id)
+                  : undefined
+              }
             />
           </TouchableOpacity>
         </DoubleTapHeart>
@@ -1936,6 +2072,7 @@ export default function MessageInterface({
     handleDoubleTapHeart,
     handleScrollToMessage,
     handleSystemTokenPress,
+    onCancelUpload,
     onRetryMessage,
     onToggleReaction,
     onViewProfile,
@@ -1952,7 +2089,7 @@ export default function MessageInterface({
     {
       contextMenu: contextMenu.visible,
       attachmentMenu: showAttachmentMenu,
-      imagePreview: showImagePreview || !!lightboxUrl,
+      imagePreview: !!lightboxUrl || !!videoUrl || !!viewOncePhotoUrl || !!viewOnceVideoUrl,
       expandedCard: showExpandedCardFromChat,
       eventDetail: showGroupEventSheet,
       savedCardPicker: showSavedCardPicker,
@@ -1968,7 +2105,7 @@ export default function MessageInterface({
     {
       contextMenu: closeContextMenu,
       attachmentMenu: () => setShowAttachmentMenu(false),
-      imagePreview: closeImagePreview,
+      imagePreview: closeMediaViewers,
       expandedCard: () => {
         setShowExpandedCardFromChat(false);
         setExpandedCardFromChat(null);
@@ -2227,90 +2364,18 @@ export default function MessageInterface({
         onClose={closeContextMenu}
       />
 
-      {/* Processing File Loader */}
-      <Modal visible={isProcessingFile} transparent={true} animationType="fade">
-        <View style={styles.processingOverlay}>
-          <View style={styles.processingContainer}>
-            <ActivityIndicator size="large" color="#eb7825" />
-            <Text style={styles.processingText}>{t('chat:processingFile')}</Text>
-          </View>
-        </View>
-      </Modal>
-
-      {/* File Preview */}
-      {selectedFile && (
-        <View style={styles.filePreview}>
-          <View style={styles.filePreviewContent}>
-            {isLoadingPreview ? (
-              <View style={styles.filePreviewLoader}>
-                <ActivityIndicator size="small" color="#eb7825" />
-              </View>
-            ) : previewUrl &&
-              (selectedFile.type === "image" ||
-                selectedFile.type?.startsWith("image/")) ? (
-              <TouchableOpacity
-                onPress={() => setShowImagePreview(true)}
-                activeOpacity={0.8}
-              >
-                <ImageWithFallback
-                  source={{ uri: previewUrl }}
-                  style={styles.filePreviewImage}
-                />
-              </TouchableOpacity>
-            ) : previewUrl && selectedFile.type?.startsWith("video/") ? (
-              <View style={styles.filePreviewVideo}>
-                <Icon name="play-circle" size={24} color="#eb7825" />
-              </View>
-            ) : (
-              <View style={styles.filePreviewIcon}>
-                <Icon name="document-text" size={24} color="#eb7825" />
-              </View>
-            )}
-
-            <View style={styles.filePreviewInfo}>
-              <Text style={styles.filePreviewName}>{selectedFile.name}</Text>
-              <Text style={styles.filePreviewSize}>
-                {formatFileSize(selectedFile.size)}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={handleRemoveFile}
-              style={styles.removeFileButton}
-            >
-              <Icon name="close" size={12} color="rgba(255, 255, 255, 0.72)" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Full Screen Image Preview Modal */}
-      {/* Issue #4114 Wave 3: also the lightbox for a photo opened from
-          "Photos, videos and cards" (Wave 4 brings the full media viewer). */}
-      <Modal
-        visible={showImagePreview || !!lightboxUrl}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={closeImagePreview}
-      >
-        <View style={styles.imagePreviewModal}>
-          <TouchableOpacity
-            style={styles.imagePreviewCloseButton}
-            onPress={closeImagePreview}
-            accessibilityRole="button"
-            accessibilityLabel={t('chat:a11yClosePreview')}
-          >
-            <Icon name="close" size={28} color="white" />
-          </TouchableOpacity>
-          {(lightboxUrl || previewUrl) ? (
-            <ImageWithFallback
-              source={{ uri: lightboxUrl || previewUrl }}
-              style={styles.imagePreviewFullscreen}
-              resizeMode="contain"
-            />
-          ) : null}
-        </View>
-      </Modal>
+      {/* Issue #4114 Wave 4: media viewers. Photos open in the shared
+          ImageLightbox, videos in the expo-video player, and a view-once item
+          in its one-time viewer (no save, no share). */}
+      <ImageLightbox
+        images={lightboxUrl ? [lightboxUrl] : []}
+        initialIndex={0}
+        visible={!!lightboxUrl}
+        onClose={() => setLightboxUrl(null)}
+      />
+      <ChatVideoPlayerModal url={videoUrl} onClose={() => setVideoUrl(null)} />
+      <ChatVideoPlayerModal url={viewOnceVideoUrl} onClose={() => setViewOnceVideoUrl(null)} viewOnce />
+      <ViewOncePhotoViewer url={viewOncePhotoUrl} onClose={() => setViewOncePhotoUrl(null)} />
 
       {/* Issue #4114 Wave 3: the no-composer banners are dark and sit above the
           floating bottom nav (they used to render behind it). */}
@@ -2380,62 +2445,21 @@ export default function MessageInterface({
         // padding follows its measured height.
         onLayout={onComposerLayout}
       >
-        {/* Attachment Menu — Issue #4114 Wave 3: rendered above the capsule
-            (inside it, the capsule's overflow clip hid it entirely) and dark.
-            Wave 4 replaces it with the attach sheet. */}
+        {/* Issue #4114 Wave 4: the attach sheet, above the capsule (inside
+            it, the capsule's overflow clip hid the old menu entirely). */}
         {showAttachmentMenu && (
-          <View style={styles.attachmentMenu} testID="chat-attach-menu">
-            <TouchableOpacity
-              onPress={() => handleFileSelect("image")}
-              style={styles.attachmentMenuItem}
-              accessibilityRole="button"
-              accessibilityLabel={t('chat:shareImage')}
-            >
-              <View style={styles.attachmentMenuIcon}>
-                <Icon name="image" size={16} color="#3b82f6" />
-              </View>
-              <View>
-                <Text style={styles.attachmentMenuTitle}>{t('chat:photo')}</Text>
-                <Text style={styles.attachmentMenuSubtitle}>
-                  {t('chat:shareImage')}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleFileSelect("video")}
-              style={styles.attachmentMenuItem}
-              accessibilityRole="button"
-              accessibilityLabel={t('chat:shareVideo')}
-            >
-              <View style={styles.attachmentMenuIcon}>
-                <Icon name="videocam" size={16} color="#8b5cf6" />
-              </View>
-              <View>
-                <Text style={styles.attachmentMenuTitle}>{t('chat:video')}</Text>
-                <Text style={styles.attachmentMenuSubtitle}>
-                  {t('chat:shareVideo')}
-                </Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleFileSelect("file")}
-              style={styles.attachmentMenuItem}
-              accessibilityRole="button"
-              accessibilityLabel={t('chat:shareFile')}
-            >
-              <View style={styles.attachmentMenuIcon}>
-                <Icon name="document-text" size={16} color="#10b981" />
-              </View>
-              <View>
-                <Text style={styles.attachmentMenuTitle}>{t('chat:documentAttach')}</Text>
-                <Text style={styles.attachmentMenuSubtitle}>
-                  {t('chat:shareFile')}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+          <ChatAttachSheet
+            items={pendingMedia}
+            viewOnce={attachViewOnce}
+            onToggleViewOnce={setAttachViewOnce}
+            recipientName={isGroupChat ? null : cleanName(friend.name || friend.username || "")}
+            picking={isPickingMedia}
+            onCamera={() => void handlePickCamera()}
+            onLibrary={() => void handlePickLibrary()}
+            onFile={() => void handlePickFile()}
+            onRemoveItem={(index) => setPendingMedia((prev) => prev.filter((_, i) => i !== index))}
+            onSend={handleSendPickedMedia}
+          />
         )}
         {/* Reply Preview Bar — Issue #4114 Wave 3: dark */}
         {replyingTo && (
@@ -2538,7 +2562,7 @@ export default function MessageInterface({
               onBlur={stopTyping}
               accessibilityLabel={t('chat:a11yMessageInput')}
               placeholder={
-                selectedFile ? t('chat:addCaption') : t('chat:typeMessage')
+                pendingMedia.length > 0 ? t('chat:addCaption') : t('chat:typeMessage')
               }
               placeholderTextColor="rgba(255, 255, 255, 0.4)"
               style={[
@@ -2562,14 +2586,14 @@ export default function MessageInterface({
           {/* Send Button */}
           <TouchableOpacity
             onPress={handleSendMessage}
-            disabled={!newMessage.trim() && !selectedFile}
+            disabled={!newMessage.trim()}
             style={[
               styles.sendButton,
-              !newMessage.trim() && !selectedFile && styles.sendButtonDisabled,
+              !newMessage.trim() && styles.sendButtonDisabled,
             ]}
             accessibilityRole="button"
             accessibilityLabel={t('chat:a11ySend')}
-            accessibilityState={{ disabled: !newMessage.trim() && !selectedFile }}
+            accessibilityState={{ disabled: !newMessage.trim() }}
           >
             <Icon name="paper-plane" size={20} color="white" />
           </TouchableOpacity>
@@ -2859,12 +2883,13 @@ export default function MessageInterface({
         visible={showMediaSheet}
         onClose={() => setShowMediaSheet(false)}
         conversationId={conversationId}
-        onOpenImage={(url) => {
+        onOpenImage={(fileUrl) => {
           setShowMediaSheet(false);
-          setLightboxUrl(url);
+          void handleOpenImage(fileUrl);
         }}
-        onOpenVideo={(url) => {
-          void handleOpenVideo(url);
+        onOpenVideo={(fileUrl) => {
+          setShowMediaSheet(false);
+          void handleOpenVideo(fileUrl);
         }}
         onOpenCard={(payload, messageId) => {
           void handleCardBubbleTap(payload, messageId);
@@ -2994,41 +3019,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 59,
   },
-  attachmentMenu: {
-    alignSelf: "flex-start",
-    marginBottom: 6,
-    backgroundColor: chatTokens.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: chatTokens.chromeHairline,
-    borderRadius: 16,
-    padding: 6,
-    minWidth: 220,
-  },
-  attachmentMenuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 48,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
-  attachmentMenuIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: chatTokens.strip,
-  },
-  attachmentMenuTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: chatTokens.textPrimary,
-  },
-  attachmentMenuSubtitle: {
-    fontSize: 12,
-    color: chatTokens.textSoft,
-  },
   // The capsule grows with the text (minHeight, not a fixed height) up to
   // COMPOSER_MAX_LINES; the controls stay pinned to its bottom edge.
   inputCapsule: {
@@ -3148,113 +3138,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
-  },
-  processingOverlay: {
-    flex: 1,
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  processingContainer: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 150,
-  },
-  processingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "500",
-  },
-  filePreview: {
-    padding: 16,
-    backgroundColor: "transparent",
-  },
-  filePreviewContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "white",
-    padding: 12,
-    borderRadius: 8,
-  },
-  filePreviewImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-  },
-  filePreviewVideo: {
-    width: 48,
-    height: 48,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filePreviewIcon: {
-    width: 48,
-    height: 48,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filePreviewLoader: {
-    width: 48,
-    height: 48,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  filePreviewInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  filePreviewName: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  filePreviewSize: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 2,
-  },
-  removeFileButton: {
-    width: 24,
-    height: 24,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imagePreviewModal: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.95)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imagePreviewCloseButton: {
-    position: "absolute",
-    top: 50,
-    right: 20,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  imagePreviewFullscreen: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
   },
   // ORCH-0600: Floating glass input capsule — blurred pill with inner separators
   // between attach / text / send, matching the home-chrome capsule language.

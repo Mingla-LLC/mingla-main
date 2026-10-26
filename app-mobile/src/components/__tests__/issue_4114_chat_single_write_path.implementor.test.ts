@@ -59,7 +59,7 @@ Deno.test("#4114 ConnectionsPage: one store, every write merged, no 5-second gue
     "I-DEDUP-AFTER-DELIVERY: the seen-set add comes after the store write");
 
   const deliver = functionBody(page, /const deliverMessage = async \(/);
-  assert(/messagingService\.sendMessage\([\s\S]*clientId,\s*\)/.test(deliver), "every send passes its client id");
+  assert(/messagingService\.sendMessage\([\s\S]*clientId,\s*(\{[^}]*\},\s*)?\)/.test(deliver), "every send passes its client id");
   assert(/writeConversationMessages\(conversationId, \[transformMessage\(sentMessage/.test(deliver),
     "the send result is merged, not swapped by temp id");
 
@@ -67,10 +67,12 @@ Deno.test("#4114 ConnectionsPage: one store, every write merged, no 5-second gue
   assert(/clientId: failedMessage\.clientId \?\?/.test(retry) && /deliverMessage\(/.test(retry),
     "retry reuses the failed bubble's client id");
 
+  // Wave 4 (#4114) moved the media upload into deliverMessage (one upload
+  // service, progress and cancel on the bubble), so the bubble now shows when
+  // the send starts and the server's created_at replaces its time on confirm.
   const send = functionBody(page, /const handleSendMessage = async \(/);
-  const uploadEnd = send.indexOf('getPublicUrl(filePath)');
-  const stamp = send.indexOf("const now = new Date().toISOString()");
-  assert(uploadEnd > 0 && stamp > uploadEnd, "the optimistic time is stamped after the upload");
+  assert(!/getPublicUrl\(/.test(send) && /deliverMessage\(conversationId, optimisticMsg\)/.test(send),
+    "a send posts its optimistic bubble and delivers it through deliverMessage");
 
   // Refresh paths merge as snapshots instead of replacing the list.
   const snapshots = page.match(/writeConversationMessages\([^;]*\{ snapshot: \{ complete: !hasMore \} \}\)/g) ?? [];

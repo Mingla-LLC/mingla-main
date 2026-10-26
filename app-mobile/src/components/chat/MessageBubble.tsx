@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { PlaceCuratedChatCard } from './PlaceCuratedChatCard';
@@ -13,6 +13,8 @@ import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBan
 import { selectCompactPreviewFacts, shareKindLabel, statusLabel, validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
 import type { ReactionSummary } from '../../utils/threadModel';
 import { chatTokens } from '../../constants/chatTokens';
+import type { ViewOnceState } from '../../utils/chatMedia';
+import { useChatMediaUrl } from './useChatMediaUrl';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -41,6 +43,14 @@ interface MessageData {
   // prefs button FROM DATA instead of parsing prose. Populated by the data
   // transform when card_payload?.kind === 'collab_dead_end'.
   systemPayload?: CollabDeadEndBannerPayload;
+  /** Issue #4114 Wave 4: this phone's own picked file while the send is local. */
+  localUri?: string;
+  /** Issue #4114 Wave 4: set for a view-once photo or video (who sees what). */
+  viewOnce?: ViewOnceState;
+  /** Issue #4114 Wave 4: 0..1 while the media uploads. */
+  uploadProgress?: number;
+  /** Issue #4114 Wave 4: group chats word the sender's view-once status as "Opened by N". */
+  isGroupChat?: boolean;
 }
 
 interface ReplyToData {
@@ -73,6 +83,144 @@ interface MessageBubbleProps {
   /** Issue #4114 Wave 3: reaction pills under the bubble (aggregated by emoji). */
   reactions?: readonly ReactionSummary[];
   onReactionPress?: (messageId: string, emoji: string) => void;
+  /** Issue #4114 Wave 4: cancel a media send while it uploads. */
+  onCancelUpload?: () => void;
+}
+
+/**
+ * Issue #4114 Wave 4: a chat photo. Stored paths resolve to a short-lived
+ * signed link (cached); older public links and the sender's local file show as
+ * they are. Loading and a tap-to-retry error state are drawn.
+ */
+function ChatMediaPhoto({ fileUrl, style }: { fileUrl: string | undefined; style: object }): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const { url, status, retry } = useChatMediaUrl(fileUrl);
+  if (status === 'error') {
+    return (
+      <TouchableOpacity
+        style={[style, styles.mediaPending]}
+        onPress={retry}
+        accessibilityRole="button"
+        accessibilityLabel={t('chat:mediaLoadFailed')}
+      >
+        <Icon name="refresh" size={22} color={chatTokens.textSecondary} />
+      </TouchableOpacity>
+    );
+  }
+  if (!url) {
+    return (
+      <View style={[style, styles.mediaPending]}>
+        <ActivityIndicator size="small" color={chatTokens.textSecondary} />
+      </View>
+    );
+  }
+  return <Image source={{ uri: url }} style={style} resizeMode="cover" accessibilityIgnoresInvertColors />;
+}
+
+/** Issue #4114 Wave 4: the progress + cancel layer over a media send that is uploading. */
+function UploadOverlay({ progress, onCancel }: { progress: number; onCancel?: () => void }): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const percent = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+  return (
+    <View style={styles.uploadOverlay}>
+      <View style={styles.uploadPill}>
+        <ActivityIndicator size="small" color={chatTokens.textPrimary} />
+        <Text style={styles.uploadText} accessibilityLiveRegion="polite">
+          {`${percent}%`}
+        </Text>
+        {onCancel ? (
+          <TouchableOpacity
+            onPress={onCancel}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat:a11yCancelUpload')}
+            testID="chat-upload-cancel"
+          >
+            <Icon name="close" size={14} color={chatTokens.textPrimary} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+      <View style={styles.uploadTrack}>
+        <View style={[styles.uploadFill, { width: `${percent}%` }]} />
+      </View>
+    </View>
+  );
+}
+
+function formatFileSizeLabel(size: string | undefined): string {
+  const bytes = size ? Number(size) : NaN;
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatOpenedTime(iso: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Issue #4114 Wave 4: a view-once bubble. No preview before opening.
+ * Recipient: "Tap to view once", then "Opened" (greyed, can't reopen) or "Expired".
+ * Sender: "Opened 9:40" in a 1:1, "Opened by N" in a group, "Not opened yet".
+ */
+function ViewOnceBubble({
+  state,
+  kind,
+  isGroup,
+  isMe,
+}: {
+  state: ViewOnceState;
+  kind: 'image' | 'video';
+  isGroup: boolean;
+  isMe: boolean;
+}): React.ReactElement {
+  const { t } = useTranslation(['chat']);
+  const kindLabel = kind === 'video' ? t('chat:video') : t('chat:photo');
+  let title: string;
+  let subtitle: string;
+  let spent = false;
+  if (state.role === 'recipient') {
+    if (state.status === 'unopened') {
+      title = t('chat:viewOnceTapToView');
+      subtitle = kindLabel;
+    } else {
+      spent = true;
+      title = kindLabel;
+      subtitle = state.status === 'opened' ? t('chat:viewOnceOpened') : t('chat:viewOnceExpired');
+    }
+  } else {
+    title = kindLabel;
+    if (state.status === 'not_opened') {
+      subtitle = t('chat:viewOnceNotOpened');
+    } else if (isGroup) {
+      subtitle = t('chat:viewOnceOpenedBy', { count: state.openedCount });
+    } else {
+      const time = formatOpenedTime(state.openedAt);
+      subtitle = time ? t('chat:viewOnceOpenedAt', { time }) : t('chat:viewOnceOpened');
+    }
+  }
+  return (
+    <View style={[styles.viewOnceRow, spent && styles.viewOnceSpent]} testID="chat-view-once-bubble">
+      <View style={[styles.viewOnceIcon, spent && styles.viewOnceIconSpent]}>
+        <Icon
+          name={spent ? 'checkmark-done' : kind === 'video' ? 'play' : 'eye'}
+          size={16}
+          color={spent ? chatTokens.textMuted : isMe ? 'white' : chatTokens.accent}
+        />
+      </View>
+      <View style={styles.viewOnceText}>
+        <Text style={[styles.viewOnceTitle, isMe ? styles.textSent : styles.textReceived, spent && styles.viewOnceMuted]} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={[styles.viewOnceSubtitle, spent && styles.viewOnceMuted]} numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 export type CollabSystemToken =
@@ -259,6 +407,7 @@ function MessageBubbleImpl({
   showSenderName = false,
   reactions,
   onReactionPress,
+  onCancelUpload,
 }: MessageBubbleProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -363,30 +512,52 @@ function MessageBubbleImpl({
             </>
           )}
 
-          {message.type === 'image' && message.fileUrl && (
+          {/* Issue #4114 Wave 4: view once draws no preview at all. */}
+          {(message.type === 'image' || message.type === 'video') && message.viewOnce ? (
+            <ViewOnceBubble
+              state={message.viewOnce}
+              kind={message.type}
+              isGroup={message.isGroupChat === true}
+              isMe={isMe}
+            />
+          ) : null}
+
+          {message.type === 'image' && !message.viewOnce && (message.localUri || message.fileUrl) && (
             <View style={styles.mediaContainer}>
               {message.content && message.content !== message.fileName && (
                 <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCaption]}>
                   {message.content}
                 </Text>
               )}
-              <Image
-                source={{ uri: message.fileUrl }}
-                style={[styles.mediaImage, borderRadius]}
-                resizeMode="cover"
-              />
+              <View>
+                <ChatMediaPhoto
+                  fileUrl={message.localUri ?? message.fileUrl}
+                  style={[styles.mediaImage, borderRadius]}
+                />
+                {message.uploadProgress !== undefined ? (
+                  <UploadOverlay progress={message.uploadProgress} onCancel={onCancelUpload} />
+                ) : null}
+              </View>
             </View>
           )}
 
-          {message.type === 'video' && (
+          {message.type === 'video' && !message.viewOnce && (
             <View style={styles.mediaContainer}>
               {message.content && message.content !== message.fileName && (
                 <Text style={[styles.messageText, isMe ? styles.textSent : styles.textReceived, styles.mediaCaption]}>
                   {message.content}
                 </Text>
               )}
-              <View style={[styles.videoPlaceholder, borderRadius]}>
+              <View
+                style={[styles.videoPlaceholder, borderRadius]}
+                accessibilityRole="button"
+                accessibilityLabel={t('chat:a11yPlayVideo')}
+              >
                 <Icon name="play-circle" size={40} color={isMe ? 'white' : colors.primary[500]} />
+                <Text style={styles.videoLabel}>{t('chat:video')}</Text>
+                {message.uploadProgress !== undefined ? (
+                  <UploadOverlay progress={message.uploadProgress} onCancel={onCancelUpload} />
+                ) : null}
               </View>
             </View>
           )}
@@ -398,10 +569,22 @@ function MessageBubbleImpl({
                 <Text style={[styles.fileName, isMe ? styles.textSent : styles.textReceived]} numberOfLines={1}>
                   {message.fileName || t('chat:document')}
                 </Text>
-                <Text style={[styles.fileSize, isMe ? { color: 'rgba(255,255,255,0.7)' } : { color: colors.text.tertiary }]}>
-                  {message.fileSize || t('chat:unknownSize')}
+                <Text style={[styles.fileSize, isMe ? styles.fileSizeSent : styles.fileSizeReceived]}>
+                  {message.uploadProgress !== undefined
+                    ? `${Math.round(message.uploadProgress * 100)}%`
+                    : formatFileSizeLabel(message.fileSize) || t('chat:unknownSize')}
                 </Text>
               </View>
+              {message.uploadProgress !== undefined && onCancelUpload ? (
+                <TouchableOpacity
+                  onPress={onCancelUpload}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('chat:a11yCancelUpload')}
+                >
+                  <Icon name="close" size={14} color={isMe ? 'white' : colors.text.tertiary} />
+                </TouchableOpacity>
+              ) : null}
             </View>
           )}
 
@@ -833,6 +1016,95 @@ const styles = StyleSheet.create({
   fileSize: {
     fontSize: 12,
     marginTop: 1,
+  },
+  fileSizeSent: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  fileSizeReceived: {
+    color: colors.text.tertiary,
+  },
+  // Issue #4114 Wave 4: media states, upload progress and view once.
+  mediaPending: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoLabel: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: fontWeights.medium,
+    color: 'rgba(255,255,255,0.72)',
+  },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    margin: -9,
+    marginTop: 0,
+    justifyContent: 'flex-end',
+    padding: 10,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  uploadPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  uploadText: {
+    fontSize: 12,
+    fontWeight: fontWeights.medium,
+    color: '#FFFFFF',
+  },
+  uploadTrack: {
+    marginTop: 8,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    overflow: 'hidden',
+  },
+  uploadFill: {
+    height: 3,
+    backgroundColor: chatTokens.accent,
+  },
+  viewOnceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 180,
+    paddingVertical: 2,
+  },
+  viewOnceSpent: {
+    opacity: 0.7,
+  },
+  viewOnceIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  viewOnceIconSpent: {
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  viewOnceText: {
+    flexShrink: 1,
+  },
+  viewOnceTitle: {
+    fontSize: 15,
+    fontWeight: fontWeights.semibold,
+  },
+  viewOnceSubtitle: {
+    fontSize: 12,
+    marginTop: 1,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  viewOnceMuted: {
+    color: 'rgba(255,255,255,0.45)',
   },
   failedIcon: {
     position: 'absolute',

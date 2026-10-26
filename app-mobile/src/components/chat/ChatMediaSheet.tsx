@@ -16,6 +16,7 @@ import {
   type CardPayload,
   type DirectMessage,
 } from "../../services/messagingService";
+import { useChatMediaUrl } from "./useChatMediaUrl";
 
 const MEDIA_SHEET_SNAP = ["70%"];
 
@@ -26,6 +27,19 @@ interface ChatMediaSheetProps {
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string) => void;
   onOpenCard: (payload: CardPayload, messageId: string) => void;
+}
+
+/** Issue #4114 Wave 4: a shared photo's tile — stored paths resolve to a signed link. */
+function PhotoTile({ fileUrl }: { fileUrl: string | null }): React.ReactElement {
+  const { url } = useChatMediaUrl(fileUrl);
+  if (!url) {
+    return (
+      <View style={[styles.tileImage, styles.tilePlaceholder]}>
+        <Icon name="image" size={22} color={chatTokens.textMuted} />
+      </View>
+    );
+  }
+  return <Image source={{ uri: url }} style={styles.tileImage} resizeMode="cover" />;
 }
 
 function cardThumb(payload: CardPayload | undefined): { image: string | null; title: string } {
@@ -96,7 +110,7 @@ export function ChatMediaSheet({
           <View style={styles.grid}>
             {items.map((item) => {
               const isCard = item.message_type === "card";
-              const thumb = isCard ? cardThumb(item.card_payload) : { image: item.message_type === "image" ? item.file_url ?? null : null, title: "" };
+              const thumb = isCard ? cardThumb(item.card_payload) : { image: null, title: "" };
               const label = isCard
                 ? t("chat:a11yOpenSharedCard", { title: thumb.title })
                 : item.message_type === "video"
@@ -120,7 +134,9 @@ export function ChatMediaSheet({
                     }
                   }}
                 >
-                  {thumb.image ? (
+                  {item.message_type === "image" ? (
+                    <PhotoTile fileUrl={item.file_url ?? null} />
+                  ) : thumb.image ? (
                     <Image source={{ uri: thumb.image }} style={styles.tileImage} resizeMode="cover" />
                   ) : (
                     <View style={[styles.tileImage, styles.tilePlaceholder]}>

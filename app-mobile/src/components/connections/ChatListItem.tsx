@@ -140,6 +140,7 @@ function ChatListItemImpl({
     if (lastMessage) {
       if (lastMessage.message_type === 'image') text = t('chat:photoPreview');
       else if (lastMessage.message_type === 'file') text = t('chat:filePreview');
+      else if (lastMessage.message_type === 'video') text = t('chat:videoPreview');
       else text = (lastMessage.content || '').replace(/\s+/g, ' ').trim();
     }
     if (text && lastMessage) {
