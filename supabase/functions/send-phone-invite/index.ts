@@ -175,6 +175,9 @@ export const handler = async (req: Request): Promise<Response> => {
             success: true,
             inviteId: existingInvite.id,
             status: "already_invited",
+            // Issue #4114 QA run 2: no text goes out for a repeat invite.
+            smsStatus: "failed",
+            smsProviderStatus: "already_invited",
           }),
           {
             status: 200,
@@ -227,6 +230,9 @@ export const handler = async (req: Request): Promise<Response> => {
           success: true,
           inviteId: existingInvite.id,
           status: "already_invited",
+          // Issue #4114 QA run 2: no text goes out for a repeat invite.
+          smsStatus: "failed",
+          smsProviderStatus: "already_invited",
         }),
         {
           status: 200,
@@ -306,8 +312,20 @@ export const handler = async (req: Request): Promise<Response> => {
       ? "deferred"
       : "send_failed";
 
+    // Issue #4114 QA run 2: the same SMS outcome shape send-pair-request
+    // returns since Wave 2b, so the app says "texted" only when it was, and
+    // otherwise offers Share with this link.
+    const smsStatus: "sent" | "failed" = result.status === "sent" ? "sent" : "failed";
+
     return new Response(
-      JSON.stringify({ success: true, inviteId, status: reportedStatus }),
+      JSON.stringify({
+        success: true,
+        inviteId,
+        status: reportedStatus,
+        smsStatus,
+        smsProviderStatus: reportedStatus,
+        inviteLink,
+      }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

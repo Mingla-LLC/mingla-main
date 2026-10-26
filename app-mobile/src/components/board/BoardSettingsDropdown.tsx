@@ -22,6 +22,7 @@ import type { PhoneInputTheme } from "@mingla/phone-input";
 import { chatTokens } from "../../constants/chatTokens";
 import { getCountryByCode } from "../../constants/countries";
 import { inviteByPhone } from "../../services/sessionInviteService";
+import { showInviteNotTextedAlert } from "../../utils/inviteNotTextedAlert";
 import { setSessionMute } from "../../services/sessionMuteService";
 import { InlineInviteFriendsList } from "./InlineInviteFriendsList";
 // ORCH-0520 v2: reuse existing phone-lookup hook for live warm/cold visual
@@ -435,10 +436,15 @@ export const BoardSettingsDropdown: React.FC<BoardSettingsDropdownProps> = ({
         onParticipantsChange?.();
       } else if (outcome.kind === "cold") {
         setInvitePhoneInput("");
-        Alert.alert(
-          t("board:boardSettingsDropdown.invited"),
-          t("board:boardSettingsDropdown.invitedTextSent", { phone: outcome.phoneE164 })
-        );
+        // Issue #4114 QA run 2: "Text message sent" only when it was.
+        if (outcome.texted) {
+          Alert.alert(
+            t("board:boardSettingsDropdown.invited"),
+            t("board:boardSettingsDropdown.invitedTextSent", { phone: outcome.phoneE164 })
+          );
+        } else {
+          showInviteNotTextedAlert(t, outcome.phoneE164, outcome.inviteLink);
+        }
         onParticipantsChange?.();
       } else {
         setInviteError(outcome.message);

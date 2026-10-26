@@ -31,7 +31,11 @@ import { addFriendsToSessions } from './sessionMembershipService';
 
 export type InviteByPhoneOutcome =
   | { kind: 'warm'; userId: string; displayName: string | null }
-  | { kind: 'cold'; phoneE164: string }
+  /**
+   * Issue #4114 QA run 2: `texted` is the server's real SMS outcome; when it is
+   * false the caller says "Invite not texted" and offers Share with `inviteLink`.
+   */
+  | { kind: 'cold'; phoneE164: string; texted: boolean; inviteLink: string | null }
   | { kind: 'error'; message: string };
 
 export async function inviteByPhone(
@@ -102,8 +106,9 @@ export async function inviteByPhone(
     // ── COLD PATH — phone does not belong to any Mingla user ──────────────
     await createPendingSessionInvite(sessionId, inviterUserId, phoneE164);
 
+    let sent;
     try {
-      await sendPhoneInvite(phoneE164);
+      sent = await sendPhoneInvite(phoneE164);
     } catch (smsErr) {
       const message =
         smsErr instanceof Error
@@ -112,7 +117,12 @@ export async function inviteByPhone(
       return { kind: 'error', message };
     }
 
-    return { kind: 'cold', phoneE164 };
+    return {
+      kind: 'cold',
+      phoneE164,
+      texted: sent?.smsStatus === 'sent',
+      inviteLink: typeof sent?.inviteLink === 'string' && sent.inviteLink.length > 0 ? sent.inviteLink : null,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to send invite';
     return { kind: 'error', message };
