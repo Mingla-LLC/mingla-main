@@ -499,3 +499,40 @@ export async function openOfficialBrandGroupFile(fileId) {
   if (!response.ok) throw new Error(response.status === 404 ? "You no longer have access to this file." : "Couldn't open this file.");
   return URL.createObjectURL(await response.blob());
 }
+
+// ── Reported enquiries (#4111) ──────────────────────────────────────────────
+// Staff see an enquiry only while the brand or the guest has an open report
+// on it (D8). The RPCs raise `forbidden` for anyone else and
+// `report_not_found` once the report was already handled.
+
+function throwEnquiryReportRpc(error, fallback) {
+  if (!error) return;
+  const msg = error.message || String(error);
+  if (/forbidden/i.test(msg) || error.code === "42501") {
+    throw new Error("You need a Community & Support role to review reported enquiries.");
+  }
+  if (/report_not_found/i.test(msg)) {
+    throw new Error("This report was already handled by someone else. Refresh the list.");
+  }
+  throw new Error(msg || fallback);
+}
+
+export async function listReportedEnquiries() {
+  const { data, error } = await supabase.rpc("admin_list_reported_enquiries", { p_limit: 100 });
+  throwEnquiryReportRpc(error, "Couldn't load reported enquiries.");
+  return Array.isArray(data) ? data : [];
+}
+
+export async function dismissEnquiryReport(enquiryId) {
+  const { data, error } = await supabase.rpc("admin_enquiry_dismiss_report", { p_enquiry_id: enquiryId });
+  throwEnquiryReportRpc(error, "Couldn't dismiss this report.");
+  if (data !== true) throw new Error("Couldn't dismiss this report. Nothing changed. Try again.");
+  return true;
+}
+
+export async function blockEnquirySenderEverywhere(enquiryId) {
+  const { data, error } = await supabase.rpc("admin_enquiry_block_everywhere", { p_enquiry_id: enquiryId });
+  throwEnquiryReportRpc(error, "Couldn't block this sender.");
+  if (data !== true) throw new Error("Couldn't block this sender. Nothing changed. Try again.");
+  return true;
+}
