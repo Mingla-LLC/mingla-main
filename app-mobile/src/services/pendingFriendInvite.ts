@@ -97,13 +97,14 @@ const TERMINAL_REFUSALS = new Set(["invalid_token", "own_invite", "invite_cancel
  * Claim the held invite, if any, for the signed-in user. Idempotent server-side,
  * so calling it after phone verification AND again on the friends step is safe.
  * Keeps the inviter id after a successful claim (the onboarding card reads it).
+ * The id is only ever trusted from a fresh server answer for this account.
  */
 export async function claimPendingFriendInvite(): Promise<ClaimFriendInviteResult> {
   const held = await hydratePendingFriendInvite();
   if (!held) return { status: "none" };
-  if (held.inviterId) {
-    return { status: "claimed", inviterId: held.inviterId, friendRequestId: null, pairRequestId: null };
-  }
+  // Always ask the server (idempotent): a repeat from the same account reads
+  // back the same rows; a different account on this device gets already_claimed
+  // and the held token is dropped, so no one sees another account's inviter.
   const { data, error } = await supabase.rpc("claim_friend_invite", { p_token: held.token });
   if (error) {
     console.warn("[pendingFriendInvite] claim_friend_invite failed:", error.message);

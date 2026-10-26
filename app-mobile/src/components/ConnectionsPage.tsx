@@ -3788,6 +3788,8 @@ function ConnectionsPageRefactored({
           onBroadcastReceive={handleBroadcastReceive}
           isOffline={isOffline}
           onViewProfile={onNavigateToFriendProfile}
+          isPairedFriend={Boolean(activeChat?.id && pairedUserIds.has(activeChat.id))}
+          onOpenPairedProfile={(friendUserId) => onNavigateToFriendProfile?.(friendUserId, { focus: "paired" })}
           onSessionNameUpdated={handleGroupSessionNameUpdated}
           onGroupSessionExited={handleGroupSessionRemoved}
           onGroupSessionDeleted={handleGroupSessionRemoved}

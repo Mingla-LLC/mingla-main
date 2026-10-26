@@ -223,6 +223,9 @@ interface MessageInterfaceProps {
   onBroadcastReceive: (msg: DirectMessage) => void;
   isOffline?: boolean;
   onViewProfile?: (userId: string) => void;
+  /** Issue #4114 (D13): a paired friend's 1:1 menu opens their paired view. */
+  isPairedFriend?: boolean;
+  onOpenPairedProfile?: (userId: string) => void;
   onSessionNameUpdated?: (sessionId: string, newName: string) => void;
   onGroupSessionExited?: (sessionId: string) => void;
   onGroupSessionDeleted?: (sessionId: string) => void;
@@ -261,13 +264,15 @@ export default function MessageInterface({
   onBroadcastReceive,
   isOffline = false,
   onViewProfile,
+  isPairedFriend = false,
+  onOpenPairedProfile,
   onSessionNameUpdated,
   onGroupSessionExited,
   onGroupSessionDeleted,
   onGroupParticipantsChange,
 }: MessageInterfaceProps) {
   const router = useRouter();
-  const { t } = useTranslation(['chat', 'common', 'social']);
+  const { t } = useTranslation(['chat', 'common', 'social', 'connections']);
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
     if (!name) return "Unknown";
@@ -2495,7 +2500,7 @@ export default function MessageInterface({
         onClose={() => setShowMoreOptionsMenu(false)}
         snapPoints={CHAT_MORE_OPTIONS_SNAP as unknown as string[]}
         wrapInRNModal
-        scrollMode="view"
+        scrollMode="scroll"
         accessibilityLabel={cleanName(friend.name)}
         header={<Text style={styles.chatSheetTitle}>{cleanName(friend.name)}</Text>}
       >
@@ -2508,6 +2513,19 @@ export default function MessageInterface({
             <Icon name="person-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
             <Text style={styles.chatSheetText}>View Profile</Text>
           </TouchableOpacity>
+
+          {isPairedFriend && onOpenPairedProfile ? (
+            <TouchableOpacity
+              style={styles.chatSheetItem}
+              onPress={() => { setShowMoreOptionsMenu(false); onOpenPairedProfile(friend.id); }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('connections:chat_menu_paired_view')}
+            >
+              <Icon name="gift-outline" size={20} color="#111827" style={styles.chatSheetIcon} />
+              <Text style={styles.chatSheetText}>{t('connections:chat_menu_paired_view')}</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <TouchableOpacity
             style={styles.chatSheetItem}
