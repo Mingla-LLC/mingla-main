@@ -54,6 +54,11 @@ function Player({ url, onClose, viewOnce, onLoadError }: {
       setStatus(next);
       if (next === "error") onLoadErrorRef.current?.();
     });
+    // Issue #4114 QA run 2: a cached or fast video can reach readyToPlay
+    // between the first render and this subscription; read it now so the
+    // spinner cannot stick on a status change that was never heard.
+    setStatus(player.status);
+    if (player.status === "error") onLoadErrorRef.current?.();
     return () => {
       subscription.remove();
       if (isVideoPlayerReleasedForReload(player)) return;

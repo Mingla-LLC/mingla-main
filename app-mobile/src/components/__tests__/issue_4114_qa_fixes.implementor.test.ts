@@ -67,7 +67,8 @@ Deno.test("QA2a a failed view-once load re-signs once, then gives up", async () 
   assert(/<ChatVideoPlayerModal\s+url=\{viewOnceVideoUrl\}[\s\S]*?onLoadError=\{\(\) => \{ void handleViewOnceLoadError\(\); \}\}/.test(chat), "video player reports load errors");
   const photo = strip(await read("components/chat/ViewOncePhotoViewer.tsx"));
   assert(/onError=\{\(\) => \{[\s\S]*?onLoadError\?\.\(\);/.test(photo), "image onError tells the parent");
-  assert(/useEffect\(\(\) => \{\s*setLoading\(true\);\s*setFailed\(false\);\s*\}, \[url\]\);/.test(photo), "a new url starts over");
+  // Run 2: the phase is derived from the settled url (behaviour in utils/__tests__/issue_4114_qa_media_load_phase*).
+  assert(/const phase = mediaLoadPhase\(url, loadState\);/.test(photo), "a new url starts over by derivation");
   const video = strip(await read("components/chat/ChatVideoPlayerModal.tsx"));
   assert(/if \(next === "error"\) onLoadErrorRef\.current\?\.\(\);/.test(video), "video error tells the parent");
   assert(/<Player key=\{url\}/.test(video), "a new url gets a new player");

@@ -4,12 +4,19 @@
  * recorded the open, and its 60-second link is not kept anywhere).
  * No screenshot notice yet (decision D6: needs expo-screen-capture, a store build).
  */
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, Image, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { chatTokens } from "../../constants/chatTokens";
+import {
+  EMPTY_MEDIA_LOAD_STATE,
+  markMediaFailed,
+  markMediaLoaded,
+  mediaLoadPhase,
+  type MediaLoadState,
+} from "../../utils/mediaLoadPhase";
 
 interface ViewOncePhotoViewerProps {
   url: string | null;
@@ -21,14 +28,13 @@ interface ViewOncePhotoViewerProps {
 export function ViewOncePhotoViewer({ url, onClose, onLoadError }: ViewOncePhotoViewerProps): React.ReactElement {
   const { t } = useTranslation(["chat"]);
   const insets = useSafeAreaInsets();
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
-  // A retry swaps in a fresh URL while the modal stays open: start over.
-  useEffect(() => {
-    setLoading(true);
-    setFailed(false);
-  }, [url]);
+  // Issue #4114 QA run 2: loading is derived from which url has settled, so a
+  // new url (a retry) starts loading on its own, and an image that loaded
+  // before the modal finished showing (cached, instant) is never re-armed.
+  const [loadState, setLoadState] = useState<MediaLoadState>(EMPTY_MEDIA_LOAD_STATE);
+  const phase = mediaLoadPhase(url, loadState);
+  const loading = phase === "loading";
+  const failed = phase === "failed";
 
   return (
     <Modal
@@ -37,22 +43,19 @@ export function ViewOncePhotoViewer({ url, onClose, onLoadError }: ViewOncePhoto
       animationType="fade"
       statusBarTranslucent
       onRequestClose={onClose}
-      onShow={() => {
-        setLoading(true);
-        setFailed(false);
-      }}
     >
       <StatusBar barStyle="light-content" />
       <View style={styles.overlay}>
         {url ? (
           <Image
+            key={url}
             source={{ uri: url, cache: "reload" }}
             style={styles.image}
             resizeMode="contain"
-            onLoadEnd={() => setLoading(false)}
+            onLoad={() => setLoadState((prev) => markMediaLoaded(prev, url))}
+            onLoadEnd={() => setLoadState((prev) => markMediaLoaded(prev, url))}
             onError={() => {
-              setLoading(false);
-              setFailed(true);
+              setLoadState((prev) => markMediaFailed(prev, url));
               onLoadError?.();
             }}
             accessibilityIgnoresInvertColors
