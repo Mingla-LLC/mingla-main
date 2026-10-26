@@ -7,7 +7,7 @@
  * MessageInterface (permissions go through utils/mediaLibraryPermission there);
  * this component only draws and reports taps.
  */
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { chatTokens } from "../../constants/chatTokens";
 import { MAX_CHAT_MEDIA_ITEMS, type PickedChatMedia } from "../../utils/chatMedia";
+import { videoPosterFor } from "../../services/chatMediaUploadService";
 
 interface ChatAttachSheetProps {
   items: readonly PickedChatMedia[];
@@ -37,10 +38,49 @@ interface ChatAttachSheetProps {
   onSend: () => void;
 }
 
+/**
+ * Issue #4114 QA run 2: a picked video shows its poster frame (the same Wave 7
+ * grab the upload uses for the bubble thumbnail) with a play badge; the video
+ * icon shows only while the frame is grabbed or if it cannot be.
+ */
+function VideoThumb({ uri }: { uri: string }): React.ReactElement {
+  const [posterUri, setPosterUri] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    setPosterUri(null);
+    videoPosterFor(uri)
+      .then((poster) => {
+        if (live) setPosterUri(poster.uri);
+      })
+      .catch((error: unknown) => {
+        console.warn("[ChatAttachSheet] video poster failed; showing the video icon", error);
+      });
+    return () => {
+      live = false;
+    };
+  }, [uri]);
+  if (!posterUri) {
+    return (
+      <View style={[styles.thumbImage, styles.thumbIcon]}>
+        <Icon name="videocam" size={20} color={chatTokens.textSecondary} />
+      </View>
+    );
+  }
+  return (
+    <View>
+      <Image source={{ uri: posterUri }} style={styles.thumbImage} resizeMode="cover" />
+      <View style={styles.playBadge} pointerEvents="none">
+        <Icon name="play" size={10} color={chatTokens.textPrimary} />
+      </View>
+    </View>
+  );
+}
+
 function ItemThumb({ item }: { item: PickedChatMedia }): React.ReactElement {
   if (item.kind === "image") {
     return <Image source={{ uri: item.uri }} style={styles.thumbImage} resizeMode="cover" />;
   }
+  if (item.kind === "video") return <VideoThumb uri={item.uri} />;
   return (
     <View style={[styles.thumbImage, styles.thumbIcon]}>
       <Icon name={item.kind === "video" ? "videocam" : "document-text"} size={20} color={chatTokens.textSecondary} />
@@ -181,6 +221,17 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 10,
+  },
+  playBadge: {
+    position: "absolute",
+    left: 4,
+    bottom: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
   },
   thumbIcon: {
     alignItems: "center",

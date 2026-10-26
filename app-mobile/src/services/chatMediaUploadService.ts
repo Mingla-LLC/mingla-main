@@ -231,10 +231,32 @@ export async function makePhotoThumbnail(item: PreparedChatMedia): Promise<Local
   return { uri: result.uri, width: result.width, height: result.height };
 }
 
+// QA run 2: one poster frame per picked video, shared by the attach tray and
+// the upload's thumbnail, so the frame is grabbed once. A failed grab is
+// forgotten (the next ask tries again); the map keeps the last few only.
+const VIDEO_POSTER_CACHE_SIZE = 20;
+const videoPosters = new Map<string, Promise<LocalThumbnail>>();
+
+/** Wave 7 / QA run 2: the 480px poster frame of a local video, grabbed once per uri. */
+export function videoPosterFor(uri: string): Promise<LocalThumbnail> {
+  const cached = videoPosters.get(uri);
+  if (cached) return cached;
+  const poster = makeVideoThumbnail(uri);
+  videoPosters.set(uri, poster);
+  poster.catch(() => {
+    if (videoPosters.get(uri) === poster) videoPosters.delete(uri);
+  });
+  if (videoPosters.size > VIDEO_POSTER_CACHE_SIZE) {
+    const oldest = videoPosters.keys().next().value;
+    if (oldest !== undefined) videoPosters.delete(oldest);
+  }
+  return poster;
+}
+
 /** Wave 7: the thumbnail for an ordinary photo or video (null for view once and files). */
 export async function makeChatThumbnail(item: PreparedChatMedia, viewOnce: boolean): Promise<LocalThumbnail | null> {
   if (!shouldMakeThumbnail(item.kind, viewOnce)) return null;
-  return item.kind === 'video' ? await makeVideoThumbnail(item.uri) : await makePhotoThumbnail(item);
+  return item.kind === 'video' ? await videoPosterFor(item.uri) : await makePhotoThumbnail(item);
 }
 
 /**
