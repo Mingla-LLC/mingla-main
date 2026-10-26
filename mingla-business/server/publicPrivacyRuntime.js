@@ -16,9 +16,10 @@ const LEGACY_CONSENT_STORAGE_KEY = "mingla_consent_v1";
 
 const privacyReaderSource = () => [
   "function __minglaPrivacyValid(v){return!!v&&typeof v===\"object\"&&typeof v.analytics===\"boolean\"&&typeof v.ads===\"boolean\";}",
-  "function __minglaPrivacy(){try{var p=window.__minglaPrebootPrivacy;if(__minglaPrivacyValid(p))return p;",
-  `var r=window.localStorage.getItem(${JSON.stringify(PRIVACY_STORAGE_KEY)});if(r!==null){var v=JSON.parse(r);if(__minglaPrivacyValid(v))return v;}`,
-  `var l=window.localStorage.getItem(${JSON.stringify(LEGACY_CONSENT_STORAGE_KEY)});if(l!==null){var c=l;try{var o=JSON.parse(l);c=o&&typeof o==="object"?(o.choice||o.value):o;}catch(_){}`,
+  "function __minglaPrivacy(){try{var w=typeof window!==\"undefined\"?window:{},p=w.__minglaPrebootPrivacy;if(__minglaPrivacyValid(p))return p;",
+  `var st=typeof localStorage!=="undefined"?localStorage:w.localStorage;`,
+  `var r=st.getItem(${JSON.stringify(PRIVACY_STORAGE_KEY)});if(r!==null){var v=JSON.parse(r);if(__minglaPrivacyValid(v))return v;}`,
+  `var l=st.getItem(${JSON.stringify(LEGACY_CONSENT_STORAGE_KEY)});if(l!==null){var c=l;try{var o=JSON.parse(l);c=o&&typeof o==="object"?(o.choice||o.value):o;}catch(_){}`,
   "if(c===\"granted\"||c===\"denied\")return{analytics:c===\"granted\",ads:c===\"granted\",ts:0};}}catch(_){}return null;}",
   "function __minglaPrivacyOn(kind){var s=__minglaPrivacy();if(s!==null)return kind===\"ads\"?s.ads===true:s.analytics===true;",
   "if(kind===\"ads\")return!(typeof navigator!==\"undefined\"&&navigator.globalPrivacyControl===true);return true;}",

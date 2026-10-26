@@ -23,9 +23,10 @@
  * served. `keepalive` keeps the destination event alive across the CTA's own
  * navigation, which is what `sendBeacon` was for on `/s/`.
  *
- * CONSENT. Identical gate to `/s/`: nothing is sent unless the visitor's
- * saved privacy choice (`mingla_privacy_v2`, or a carried-over v1 grant) has
- * analytics on (#2331). Note that storage is per-origin, so this reads
+ * PRIVACY (#2331, I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF): events are sent
+ * unless this visitor turned analytics off — a saved `mingla_privacy_v2` with
+ * analytics false, or a carried-over v1 `denied`. Nothing is sent after a
+ * turn-off. Note that storage is per-origin, so this reads
  * `host.usemingla.com`'s record (the Host web app writes the same key), not
  * `usemingla.com`'s.
  *
@@ -120,7 +121,7 @@ const shareAnalyticsScript = (attribution) => {
     + `const done=new Set();`
     + `try{const stored=JSON.parse(sessionStorage.getItem('${SHARE_DESTINATION_LEDGER_KEY}')||'[]');if(Array.isArray(stored))stored.forEach((entry)=>{if(typeof entry==='string')done.add(entry)})}catch{}`
     + privacyReaderSource()
-    + `const consented=()=>{try{return __minglaPrivacy()?.analytics===true}catch{return false}};`
+    + `const consented=()=>{try{return __minglaPrivacyOn('analytics')}catch{return false}};`
     + `const send=(payload)=>{try{fetch('/api/content-share-analytics',{method:'POST',keepalive:true,credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{})}catch{}};`
     + `const record=(event,action)=>{try{if(!consented())return false;const payload={event,code:base.code,version:base.version,kind:base.kind};`
     + `if(event==='share_destination_action'){if(!actions.has(action)||trimPath(location.pathname)!==issuedPath)return false;`
