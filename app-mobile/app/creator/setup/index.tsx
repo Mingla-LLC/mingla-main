@@ -1,29 +1,98 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { CREATOR_FORMATS, CREATOR_NICHES, creatorProgramService, type CreatorSetupStatus } from '../../src/services/creatorProgramService';
-import { ProgramButton, ProgramHeader, ProgramCard, ProgramChip, ProgramField, programStyles as s } from '../../src/components/programs/ProgramUi';
+import React, { useCallback, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-type Step='profile'|'handles'|'packages'|'showcase'|'payout'|'agreement';
-const STEPS:Array<{key:Step;title:string;missing:string}>= [{key:'profile',title:'Profile',missing:'profile'},{key:'handles',title:'Social proof',missing:'verified_handle'},{key:'packages',title:'Packages',missing:'package'},{key:'showcase',title:'Showcase',missing:'processed_showcase'},{key:'payout',title:'Payout',missing:'active_payout'},{key:'agreement',title:'Agreement',missing:'signed_agreement'}];
-export default function CreatorSetupScreen():React.ReactElement{
-  const router=useRouter(); const [status,setStatus]=useState<CreatorSetupStatus|null>(null); const [step,setStep]=useState<Step>('profile'); const [busy,setBusy]=useState(false);
-  const [displayName,setDisplayName]=useState('');const[bio,setBio]=useState('');const[dob,setDob]=useState('');const[languages,setLanguages]=useState('English');const[niches,setNiches]=useState<string[]>([]);
-  const[platform,setPlatform]=useState('instagram');const[handle,setHandle]=useState('');const[handleId,setHandleId]=useState<string|null>(null);const[code,setCode]=useState<string|null>(null);
-  const[formatKey,setFormatKey]=useState<(typeof CREATOR_FORMATS)[number]['key']>(CREATOR_FORMATS[0].key);const[price,setPrice]=useState('');const[currency,setCurrency]=useState('USD');const[turnaround,setTurnaround]=useState('3');
-  const agreementVersion=process.env.EXPO_PUBLIC_CREATOR_AGREEMENT_VERSION?.trim()??'';
-  const refresh=useCallback(async()=>{const next=await creatorProgramService.status();setStatus(next);const missing=new Set(next.missing??[]);const first=STEPS.find(x=>x.key==='profile'?!next.profile:missing.has(x.missing));if(first)setStep(first.key);},[]);
-  useEffect(()=>{void refresh().catch(()=>undefined);},[refresh]);
-  const done=useMemo(()=>{const missing=new Set(status?.missing??[]);return STEPS.filter(x=>x.key==='profile'?status?.profile:!missing.has(x.missing)).length;},[status]);
-  const run=async(action:()=>Promise<unknown>,message:string)=>{setBusy(true);try{await action();await refresh();Alert.alert('Saved',message);}catch(e){Alert.alert('Couldn’t save',e instanceof Error?e.message:String(e));}finally{setBusy(false);}};
-  return <SafeAreaView style={s.safe}><Stack.Screen options={{headerShown:false}}/><ProgramHeader title="Creator setup" /><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled"><Text style={s.eyebrow}>CREATOR READINESS · {done}/6</Text><Text style={s.heading}>Get ready to be hired.</Text><Text style={s.lede}>Each check protects you and the Host. You’ll always see exactly what remains.</Text>
-    <View style={s.wrap}>{STEPS.map((x,i)=>{const missing=x.key==='profile'?!status?.profile:(status?.missing??[]).includes(x.missing);return <ProgramChip key={x.key} label={`${missing?i+1:'✓'} ${x.title}`} selected={step===x.key} onPress={()=>setStep(x.key)}/>;})}</View>
-    {step==='profile'&&<ProgramCard><Text style={s.title}>Your creator profile</Text><Text style={s.copy}>Tell Hosts who you are and what you make.</Text><ProgramField value={displayName} onChangeText={setDisplayName} placeholder="Display name"/><ProgramField value={bio} onChangeText={setBio} multiline placeholder="Short bio"/><ProgramField value={dob} onChangeText={setDob} placeholder="Date of birth · YYYY-MM-DD"/><ProgramField value={languages} onChangeText={setLanguages} placeholder="Languages, separated by commas"/><Text style={s.label}>Pick up to five niches</Text><View style={s.wrap}>{CREATOR_NICHES.map(x=><ProgramChip key={x} label={x} selected={niches.includes(x)} onPress={()=>setNiches(v=>v.includes(x)?v.filter(n=>n!==x):v.length<5?[...v,x]:v)}/>)}</View><ProgramButton busy={busy} label="Save profile" disabled={displayName.trim().length<2||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dob)} onPress={()=>void run(()=>creatorProgramService.saveProfile({displayName,bio,dateOfBirth:dob,niches,languages:languages.split(',').map(x=>x.trim()).filter(Boolean),usageAdsOptIn:false}),'Your creator profile is saved.')}/></ProgramCard>}
-    {step==='handles'&&<ProgramCard><Text style={s.title}>Prove one social account</Text><Text style={s.copy}>A short code in your public bio confirms the account belongs to you.</Text><View style={s.wrap}>{['instagram','tiktok','youtube','x','snapchat'].map(x=><ProgramChip key={x} label={x} selected={platform===x} onPress={()=>setPlatform(x)}/>)}</View><ProgramField value={handle} onChangeText={setHandle} placeholder="Handle without @"/>{code?<ProgramCard><Text style={s.title}>{code}</Text><Text style={s.copy}>Put this exact code in your public bio, then tap Check.</Text></ProgramCard>:null}<ProgramButton busy={busy} label="Get verification code" disabled={!handle.trim()} onPress={()=>void run(async()=>{const saved=await creatorProgramService.saveHandle({platform,handle});setHandleId(saved.id);setCode(saved.verify_code);},'Your verification code is ready.')}/>{handleId?<ProgramButton secondary busy={busy} label="Check my public bio" onPress={()=>void run(()=>creatorProgramService.verifyHandle(handleId),'We checked the account and refreshed your status.')}/>:null}</ProgramCard>}
-    {step==='packages'&&<ProgramCard><Text style={s.title}>Price a format</Text><Text style={s.copy}>Your package gives Hosts an honest starting price and turnaround.</Text>{CREATOR_FORMATS.map(x=><Pressable key={x.key} onPress={()=>setFormatKey(x.key)} style={{padding:12,borderWidth:1,borderRadius:12,borderColor:formatKey===x.key?'#eb7825':'#413a34'}}><Text style={s.label}>{x.name}</Text></Pressable>)}<ProgramField value={price} onChangeText={setPrice} keyboardType="number-pad" placeholder="Price in minor units"/><ProgramField value={currency} onChangeText={x=>setCurrency(x.toUpperCase())} autoCapitalize="characters" placeholder="Currency · USD or NGN"/><ProgramField value={turnaround} onChangeText={setTurnaround} keyboardType="number-pad" placeholder="Turnaround days"/><ProgramButton busy={busy} label="Save package" disabled={!Number.isInteger(Number(price))||Number(price)<=0||currency.length!==3} onPress={()=>void run(()=>creatorProgramService.savePackage({formatKey,platforms:[platform],priceMinor:Number(price),currency,turnaroundDays:Number(turnaround),includesUsageDays:90}),'Hosts can now match your format and price.')}/></ProgramCard>}
-    {step==='showcase'&&<ProgramCard><Text style={s.title}>Add a private showcase</Text><Text style={s.copy}>Choose one vertical video up to 90 seconds and 150 MB. Mingla processes a private review copy and removes the original after processing.</Text><ProgramButton label="Choose showcase video" onPress={()=>router.push('/creator/showcase' as never)}/></ProgramCard>}
-    {step==='payout'&&<ProgramCard><Text style={s.title}>Choose where you’re paid</Text><Text style={s.copy}>Connect Stripe where supported or a verified Paystack bank recipient. Mingla never creates a wallet balance.</Text><ProgramButton label="Set up payouts" onPress={()=>router.push('/earnings' as never)}/></ProgramCard>}
-    {step==='agreement'&&<ProgramCard><Text style={s.title}>Creator agreement</Text><Text style={s.copy}>{agreementVersion?`Approved version: ${agreementVersion}`:'The screen is ready, but signing stays disabled until Seth configures the approved legal version.'}</Text><ProgramButton busy={busy} label="Sign creator agreement" disabled={!agreementVersion} onPress={()=>void run(()=>creatorProgramService.signAgreement(agreementVersion),'Your agreement signature is recorded.')}/></ProgramCard>}
-  </ScrollView></SafeAreaView>;
+import { creatorProgramService, setupChecks } from '../../../src/services/creatorProgramService';
+import { payoutService } from '../../../src/services/payoutService';
+import { myShowcaseMedia } from '../../../src/services/creatorMediaService';
+import { programErrorText } from '../../../src/services/programResult';
+import { formatMoney, nicheLabel, platformLabel, setupMinutesLeft } from '../../../src/utils/programFormat';
+import { SETUP_STATUS_KEY, SETUP_STEPS, firstOpenStep, type SetupStep } from '../../../src/components/creator/setupNav';
+import { PROGRAM_COLORS as C, ProgramButton, ProgramCard, ProgramLoadError, ProgramLoading, ProgramRow, ProgramScreen, ProgramSheet, programStyles as s } from '../../../src/components/programs/ProgramUi';
+
+export default function CreatorSetupChecklist(): React.ReactElement {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [preview, setPreview] = useState(false);
+  const status = useQuery({ queryKey: SETUP_STATUS_KEY, queryFn: () => creatorProgramService.status() });
+  const profile = useQuery({ queryKey: ['creator', 'own-profile'], queryFn: () => creatorProgramService.ownProfile(), enabled: Boolean(status.data?.profile) });
+  const payout = useQuery({ queryKey: ['creator', 'payout'], queryFn: () => payoutService.status(), retry: 0 });
+  const showcase = useQuery({ queryKey: ['creator', 'showcase'], queryFn: () => myShowcaseMedia(), enabled: Boolean(status.data?.profile) });
+  useFocusEffect(useCallback(() => { void queryClient.invalidateQueries({ queryKey: ['creator'] }); }, [queryClient]));
+
+  if (status.isLoading) return <ProgramScreen title="Creator setup"><ProgramLoading /></ProgramScreen>;
+  if (status.isError) return <ProgramScreen title="Creator setup"><ProgramLoadError text={programErrorText(status.error)} onRetry={() => void status.refetch()} /></ProgramScreen>;
+
+  const checks = setupChecks(status.data);
+  const doneCount = checks.filter((c) => c.done).length;
+  const next = firstOpenStep(status.data);
+  const verification = status.data?.verification ?? 'incomplete';
+  const packages = (status.data?.packages ?? []).filter((p) => p.active);
+  const cheapest = packages.slice().sort((a, b) => a.price_minor - b.price_minor)[0];
+  const handles = status.data?.handles ?? [];
+  const verifiedHandles = handles.filter((h) => h.verified);
+  const ready = (showcase.data ?? []).filter((m) => m.status === 'ready').length;
+  const processing = (showcase.data ?? []).filter((m) => m.status === 'processing' || m.status === 'awaiting_upload').length;
+  const name = profile.data?.display_name;
+  const niches = (profile.data?.niches ?? []).slice(0, 3).map(nicheLabel).join(', ');
+
+  const subtitle = (key: string, done: boolean): { text: string; tone: 'muted' | 'accent' } => {
+    const isNext = key === next;
+    const pick = (text: string): { text: string; tone: 'muted' | 'accent' } => ({ text: isNext && !done ? `Next · ${text.charAt(0).toLowerCase()}${text.slice(1)}` : text, tone: isNext && !done ? 'accent' : 'muted' });
+    switch (key) {
+      case 'profile': return pick(done && name ? [name, niches].filter(Boolean).join(' · ') : 'Your name, city and what you make');
+      case 'rates': return pick(cheapest ? `${packages.length} format${packages.length === 1 ? '' : 's'} from ${formatMoney(cheapest.price_minor, cheapest.currency)}` : 'Set a price for the formats you make');
+      case 'showcase': return pick(ready ? `${ready} ready${processing ? ` · ${processing} processing` : ''}` : processing ? 'Processing your video' : 'Add one vertical video');
+      case 'socials': return pick(verifiedHandles.length ? verifiedHandles.map((h) => `${platformLabel(h.platform)} verified`).join(' · ') : handles.length ? 'Add the code to your bio, then check' : 'Add a code to your bio');
+      case 'payout': return pick(payout.data?.summary ?? (done ? 'Connected' : 'Not connected'));
+      case 'agreement': return pick(done ? 'Signed' : 'Not signed');
+      default: return pick(done ? 'Done' : 'Not done');
+    }
+  };
+
+  const footer = next
+    ? <ProgramButton label={doneCount === 0 ? 'Start with your profile' : `Continue: ${checks.find((c) => c.key === next)?.label ?? 'next step'}`} onPress={() => router.push(`/creator/setup/${next}` as never)} />
+    : verification === 'verified'
+      ? <ProgramButton label="Back to Creator" onPress={() => router.replace('/creator' as never)} />
+      : <ProgramButton label="See verification status" onPress={() => router.push('/creator/status' as never)} />;
+
+  return <ProgramScreen title="Creator setup" footer={footer} refreshing={status.isFetching} onRefresh={() => void queryClient.invalidateQueries({ queryKey: ['creator'] })}>
+    <View style={s.rowLine}>
+      <Text style={s.strong}>{doneCount} of {checks.length} done</Text>
+      {doneCount < checks.length ? <Text style={s.small}>about {setupMinutesLeft(checks.length - doneCount)} min left</Text> : <Text style={s.successText}>All set</Text>}
+    </View>
+    <View style={styles.steps}>{checks.map((c) => <View key={c.key} style={[styles.step, c.done && styles.stepDone]} />)}</View>
+    <Text style={s.copy}>Hosts see you once all six are done. They never see your handles or contact details until they hire you.</Text>
+
+    <ProgramCard>
+      {checks.map((c, i) => {
+        const sub = subtitle(c.key, c.done);
+        const step = (SETUP_STEPS as readonly string[]).includes(c.key) ? c.key as SetupStep : null;
+        return <ProgramRow key={c.key} title={c.label} subtitle={sub.text} subtitleTone={sub.tone} done={c.done} isLast={i === checks.length - 1}
+          onPress={step ? () => router.push(`/creator/setup/${step}` as never) : undefined} />;
+      })}
+    </ProgramCard>
+
+    {status.data?.profile ? <ProgramCard>
+      <ProgramRow icon="eye" title="Preview how hosts see you" subtitle="Your public card on Explorer and the pre-hire profile" onPress={() => setPreview(true)} isLast />
+    </ProgramCard> : null}
+
+    <ProgramSheet visible={preview} onClose={() => setPreview(false)} title="How hosts see you" snapPoints={['60%']}>
+      <ProgramCard>
+        <Text style={s.title}>{name ?? 'Your name'}</Text>
+        {niches ? <Text style={s.copy}>{niches}{profile.data?.home_city_name ? ` · ${profile.data.home_city_name}` : ''}</Text> : null}
+        {profile.data?.bio ? <Text style={s.copy}>{profile.data.bio}</Text> : null}
+        <Text style={s.small}>{ready ? `${ready} showcase video${ready === 1 ? '' : 's'}` : 'No showcase video yet'} · {verifiedHandles.length ? verifiedHandles.map((h) => platformLabel(h.platform)).join(', ') + ' verified' : 'No verified account yet'}</Text>
+        {cheapest ? <Text style={s.strong}>From {formatMoney(cheapest.price_minor, cheapest.currency)}</Text> : null}
+      </ProgramCard>
+      <Text style={s.small}>Hosts never see your handles, email or phone until they hire you.</Text>
+    </ProgramSheet>
+  </ProgramScreen>;
 }
+
+const styles = StyleSheet.create({
+  steps: { flexDirection: 'row', gap: 4 },
+  step: { flex: 1, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
+  stepDone: { backgroundColor: C.accent },
+});
