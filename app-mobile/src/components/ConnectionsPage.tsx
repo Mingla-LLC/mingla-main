@@ -4095,9 +4095,7 @@ function ConnectionsPageRefactored({
           setShowAddFriendSheet(false);
           requestAnimationFrame(() => openPairingPaywall());
         }}
-        onSent={() => {
-          void loadFriendRequests();
-        }}
+        onRequestSent={() => loadFriendRequests()}
       />
 
       <ReportUserModal

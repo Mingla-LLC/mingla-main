@@ -61,7 +61,7 @@ interface AddFriendViewProps {
   onSeePlus: () => void;
   onDone: () => void;
   /** A request or invite went out — refresh Requests. */
-  onSent?: () => void;
+  onRequestSent?: () => void;
 }
 
 type Sent = { outcome: AddFriendOutcome; name: string; phoneE164: string };
@@ -77,7 +77,7 @@ export function AddFriendView({
   onMessageFriend,
   onSeePlus,
   onDone,
-  onSent,
+  onRequestSent,
 }: AddFriendViewProps): React.ReactElement {
   const { t } = useTranslation(["connections", "common"]);
   const sendPairRequest = useSendPairRequest();
@@ -132,12 +132,12 @@ export function AddFriendView({
         name: card.kind === "found" ? card.name : "",
         phoneE164: debouncedPhoneE164,
       });
-      onSent?.();
+      onRequestSent?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       setSendError(message && message !== "pairing_limit_reached" ? message : t("connections:af_send_failed"));
     }
-  }, [card, debouncedPhoneE164, sendPairRequest, onSent, t]);
+  }, [card, debouncedPhoneE164, sendPairRequest, onRequestSent, t]);
 
   const handleAddAnother = useCallback(() => {
     setSent(null);
