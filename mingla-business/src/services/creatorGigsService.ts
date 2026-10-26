@@ -439,6 +439,20 @@ export async function showcasePlayback(jobId: string): Promise<string> {
   return data.playback.url;
 }
 
+/**
+ * One-hour playback link for a delivered gig video. The host team of the
+ * contract may play it (creator-media-status shares deliveries with the
+ * contract's parties). Returns null while the video is still processing.
+ */
+export async function deliveryPlayback(jobId: string): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke<{
+    status?: string;
+    playback?: { url?: string } | null;
+  }>("creator-media-status", { body: { jobId } });
+  if (error) throw new Error("video_unavailable");
+  return typeof data?.playback?.url === "string" ? data.playback.url : null;
+}
+
 /** A top-up the host still owes after accepting a higher counter-offer. */
 export function pendingTopup(
   workspace: Pick<GigWorkspace, "pending_topup">,

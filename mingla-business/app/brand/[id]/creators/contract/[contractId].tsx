@@ -52,6 +52,7 @@ import {
 } from "../../../../../src/components/programs/contractCopy";
 import {
   creatorGigsService,
+  deliveryPlayback,
   openCounter,
   pendingTopup,
   type GigWorkspace,
@@ -875,19 +876,25 @@ export default function HostGigContract(): React.ReactElement {
               </View>
               <Pressable
                 onPress={() => {
-                  if (deliveryUrl) setVideoUri(deliveryUrl);
+                  if (deliveryUrl) {
+                    setVideoUri(deliveryUrl);
+                    return;
+                  }
+                  setNotice(null);
+                  void deliveryPlayback(delivery.media_job_id)
+                    .then((url) => {
+                      if (url) setVideoUri(url);
+                      else setNotice("The video is still processing. Try again in a minute.");
+                    })
+                    .catch(() => setError("We couldn't load the video. Try again."));
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={
-                  deliveryUrl ? `Play ${creatorName}'s video` : "Video preview"
-                }
+                accessibilityLabel={`Play ${creatorName}'s video`}
                 style={styles.player}
               >
                 <Icon name="play" size={32} color={textTokens.primary} />
                 <Text style={styles.playerCaption}>
-                  {deliveryUrl
-                    ? `Version ${delivery.round + 1} · tap to play`
-                    : `Version ${delivery.round + 1} · the preview is still processing`}
+                  {`Version ${delivery.round + 1} · tap to play`}
                 </Text>
               </Pressable>
               <Checkbox
