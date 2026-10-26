@@ -91,7 +91,7 @@ BEGIN
     (v_base || '/' || v_obj || '.'),
     (v_base || '/' || v_obj),
     (v_base || '/' || v_obj || '.abcdefghi'),
-    (v_base || '/' || translate(v_obj, 'a', U&'\0430') || '.jpg'),
+    (v_base || '/' || overlay(v_obj placing U&'\0430' from 1 for 1) || '.jpg'),
     (v_base || '/' || v_obj || U&'.jp\FF10'),
     (v_base || U&'\2215' || v_obj || '.jpg'),
     (v_base || '/' || v_obj || U&'\FF0Ejpg'),
