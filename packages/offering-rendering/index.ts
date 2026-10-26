@@ -13,6 +13,12 @@ export {
   ParallaxCoverShell,
 } from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
+// #2331 — host-provided end-of-content accessory (buyer web privacy link).
+export { getPageFooterAccessory, setPageFooterAccessory } from "./pageFooterAccessory";
+export type {
+  PageFooterAccessory,
+  PageFooterAccessoryProps,
+} from "./pageFooterAccessory";
 
 // #3872 — response types + final buyer copy for server-owned discount quotes.
 // Deliberately dependency-free so web and native consume one contract without

@@ -197,7 +197,9 @@ function sourceContract() {
   assert.match(css, /\.city-claim-sources a \{[^}]*min-width: 44px;/)
   assert.match(css, /@media print \{[\s\S]*\.city-faq-item \{ display: none !important; \}[\s\S]*\.city-hub-root \.city-faq-print-answer \{[\s\S]*display: block !important;/)
   assert.match(footer, /size="md" className="min-h-11"/)
-  assert.equal((footer.match(/inline-flex min-h-11 min-w-11 items-center/g) ?? []).length, 3)
+  // Every footer link meets the 44px target; #2331 adds "Your privacy choices".
+  assert.equal((footer.match(/inline-flex min-h-11 min-w-11 items-center/g) ?? []).length, 4)
+  assert.match(footer, /<PrivacyChoicesLink className="inline-flex min-h-11 min-w-11 items-center[^"]*"/)
 
   // #3371: the Explorer home is one non-scrolling screen again (Seth, 2026-09-14),
   // so the root gate is inverted there; the Host root keeps its city grid below.

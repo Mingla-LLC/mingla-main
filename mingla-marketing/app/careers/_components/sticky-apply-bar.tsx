@@ -38,7 +38,8 @@ export function StickyApplyBar({
       <div ref={sentinelRef} aria-hidden className="h-px w-full" />
 
       <div
-        className="fixed inset-x-0 bottom-0 z-40 lg:hidden"
+        // #2331 — fixed to the viewport, so it sits above the privacy bar.
+        className="fixed inset-x-0 bottom-[var(--mingla-privacy-inset,0px)] z-40 lg:hidden"
         style={{
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
           opacity: visible ? 1 : 0,

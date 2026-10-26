@@ -34,7 +34,9 @@ export function CutoutShell({
       data-cut-band={dark ? 'dark' : undefined}
       className={cn(
         'px-2 pb-2 pt-2 sm:px-3 sm:pb-3 sm:pt-3',
-        noScroll ? 'h-[100svh] overflow-hidden' : 'min-h-screen',
+        // #2331 — a one-viewport page ends above the privacy bar, so its
+        // bottom chips are never under it.
+        noScroll ? 'h-[calc(100svh-var(--mingla-privacy-inset,0px))] overflow-hidden' : 'min-h-screen',
       )}
       style={{ background: dark ? '#0a0a0c' : 'var(--cut-ground, #efe9df)' }}
     >

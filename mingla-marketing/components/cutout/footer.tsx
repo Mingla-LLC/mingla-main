@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { CutoutSection } from './primitives'
 import { DeviceCta, type CutoutSurface } from './device-cta'
+import { PrivacyChoicesLink } from '@/components/marketing/privacy-choices-link'
 
 // #2902 — Cutout footer. Dark band closing the page shell.
 //
@@ -84,6 +85,8 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
           <p className="text-[0.8125rem] text-[var(--cut-muted)]">
             © {new Date().getFullYear()} Mingla. Find the plan. Feel the city. Show up.
           </p>
+          {/* #2331 — reopens the privacy bar, expanded. */}
+          <PrivacyChoicesLink className="inline-flex min-h-11 min-w-11 items-center text-left text-[0.8125rem] text-[var(--cut-body)] underline underline-offset-2 transition-colors hover:text-[var(--cut-ink)] focus-ring" />
           <Link
             href={surface === 'host' ? '/' : '/host'}
             className="inline-flex min-h-11 min-w-11 items-center text-[0.8125rem] font-semibold text-[var(--cut-accent)] underline-offset-2 hover:underline focus-ring"

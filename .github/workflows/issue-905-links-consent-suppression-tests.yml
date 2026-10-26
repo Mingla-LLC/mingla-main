@@ -4,16 +4,18 @@ on:
   push:
     branches: [main, "905-links-banner-suppress"]
     paths:
-      - "mingla-marketing/lib/consent-banner-visibility.ts"
       - "mingla-marketing/components/marketing/consent-banner.tsx"
+      - "mingla-marketing/components/marketing/links-experience.tsx"
+      - "mingla-marketing/components/marketing/posthog-provider.tsx"
       - "mingla-marketing/components/marketing/__tests__/consent-banner-links-suppression*.test.ts"
       - ".github/workflows/issue-905-links-consent-suppression-tests.yml"
   pull_request:
     # issue #2881 — ready_for_review is required wherever the draft gate is set.
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - "mingla-marketing/lib/consent-banner-visibility.ts"
       - "mingla-marketing/components/marketing/consent-banner.tsx"
+      - "mingla-marketing/components/marketing/links-experience.tsx"
+      - "mingla-marketing/components/marketing/posthog-provider.tsx"
       - "mingla-marketing/components/marketing/__tests__/consent-banner-links-suppression*.test.ts"
       - ".github/workflows/issue-905-links-consent-suppression-tests.yml"
 
@@ -42,18 +44,18 @@ jobs:
           mkdir -p "$RUNNER_TEMP/nodetypes"
           npm install --no-save --no-audit --no-fund \
             --prefix "$RUNNER_TEMP/nodetypes" @types/node@^22.10.0
-      - name: Compile + run #905 /links consent-banner suppression suites
+      # #2331 — the /links suppression is retired; these suites now prove the
+      # privacy bar shows on /links and never covers it (I-PRIVACY-BAR-NEVER-OCCLUDES).
+      - name: Compile + run #905/#2331 /links privacy-bar suites
         working-directory: mingla-marketing
         # The implementor happy-path suite, the implementor .tester suite, AND the
         # tester route-set-integrity adversarial suite all exist on this branch, so
         # all three run unconditionally (no -f guard). `--rootDir .` keeps the
-        # emitted layout so the tests' relative import
-        # `../../../lib/consent-banner-visibility` still resolves post-compile.
+        # emitted layout stable (the suites read sources relative to cwd).
         # `--typeRoots` + `--types node` point tsc at the isolated @types/node above
         # so `node:fs` / `process` resolve without a full project install.
         run: |
           npx --yes -p typescript@5.7.2 tsc \
-            lib/consent-banner-visibility.ts \
             components/marketing/__tests__/consent-banner-links-suppression.test.ts \
             components/marketing/__tests__/consent-banner-links-suppression.tester.test.ts \
             components/marketing/__tests__/consent-banner-links-suppression.adversarial.test.ts \

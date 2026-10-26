@@ -4,7 +4,10 @@
  * `/links` no-scroll layout + the marketing glass-nav layout invariants.
  *
  * Enforces:
- *   - I-905-LINKS-CONSENT-BANNER-SUPPRESSED   (families A1 + A2, shared with #905)
+ *   - I-PRIVACY-BAR-NEVER-OCCLUDES on /links  (family A2, #2331 — replaces the
+ *     retired I-905-LINKS-CONSENT-BANNER-SUPPRESSED: the bar is no longer
+ *     suppressed on /links; the page sizes itself above it instead)
+ *   - the /links no-scroll layout             (family A1)
  *   - I-PROPOSED-906-NAV-ONE-ACTION-BELOW-SM  (family A3)
  *   - I-PROPOSED-906-NAV-LOGO-DIMENSIONS-PINNED (family A4)
  *
@@ -48,8 +51,8 @@
  *
  * Target files (READ-ONLY here — #906 edits NO mingla-marketing/ source):
  *   A1  mingla-marketing/components/marketing/links-experience.tsx
- *   A2a mingla-marketing/lib/consent-banner-visibility.ts
- *   A2b mingla-marketing/components/marketing/consent-banner.tsx
+ *   A2a mingla-marketing/components/marketing/links-experience.tsx (inset sizing)
+ *   A2b mingla-marketing/components/marketing/consent-banner.tsx (never route-suppressed; writes the inset)
  *   A3  mingla-marketing/components/marketing/glass-nav.tsx
  *   A4  mingla-marketing/components/marketing/glass-nav.tsx
  *
@@ -123,28 +126,36 @@ export function stripComments(src) {
 
 const A1_CHECKS = [
   { id: "A1a", protects: "links-experience.tsx:317 <main> className",
-    desc: "`h-[100svh]` single dynamic-viewport height", re: /h-\[100svh\]/ },
+    desc: "`h-[100svh]` single dynamic-viewport height (optionally less the privacy inset)",
+    re: /h-\[(?:calc\()?100svh(?:-var\(--mingla-privacy-inset,0px\)\))?\]/ },
   { id: "A1b", protects: "links-experience.tsx:317 <main> className",
     desc: "`overflow-hidden` no-scrollbar guard", re: /overflow-hidden/ },
   { id: "A1c", protects: "links-experience.tsx:319 inline style",
-    desc: "inline `height: '100dvh'`", re: /height:\s*['"]100dvh['"]/ },
+    desc: "inline `height: '100dvh'` (optionally less the privacy inset)",
+    re: /height:\s*['"](?:calc\()?100dvh(?: - var\(--mingla-privacy-inset, 0px\)\))?['"]/ },
   { id: "A1d", protects: "links-experience.tsx:332 content column",
     desc: "`min-h-0` + `flex-1` co-occurring in one className (fit-to-viewport band)",
     re: /\bmin-h-0\b[^'"]*\bflex-1\b|\bflex-1\b[^'"]*\bmin-h-0\b/ },
 ];
 
+// I-PRIVACY-BAR-NEVER-OCCLUDES (#2331): /links ends above the privacy bar, and
+// carries the in-page "Your privacy choices" link at the end of its content.
 const A2A_CHECKS = [
-  { id: "A2a", protects: "consent-banner-visibility.ts:21 SUPPRESSED_CONSENT_ROUTES",
-    desc: "`/links` is a member of the SUPPRESSED_CONSENT_ROUTES SSOT",
-    re: /SUPPRESSED_CONSENT_ROUTES\s*=\s*\[[^\]]*['"]\/links['"][^\]]*\]/ },
+  { id: "A2a-inset", protects: "links-experience.tsx <main> inline height",
+    desc: "inline `height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))'`",
+    re: /height:\s*['"]calc\(100dvh - var\(--mingla-privacy-inset, 0px\)\)['"]/ },
+  { id: "A2a-link", protects: "links-experience.tsx end of content",
+    desc: "`<PrivacyChoicesLink` rendered in the page", re: /<PrivacyChoicesLink\b/ },
 ];
 
+// The bar is never suppressed by route, and it writes its live height.
 const A2B_CHECKS = [
-  { id: "A2b-pathname", protects: "consent-banner.tsx:104 usePathname read",
-    desc: "`usePathname` pathname read", re: /usePathname/ },
-  { id: "A2b-call", protects: "consent-banner.tsx:141 visible gate",
-    desc: "`shouldRenderConsentBanner(` CALL AND-ed into `visible` (the call form, not a bare import)",
-    re: /shouldRenderConsentBanner\(/ },
+  { id: "A2b-no-suppression", protects: "consent-banner.tsx visibility",
+    desc: "no route-based suppression (`shouldRenderConsentBanner` / `SUPPRESSED_CONSENT_ROUTES` absent)",
+    re: /^(?![\s\S]*(?:shouldRenderConsentBanner|SUPPRESSED_CONSENT_ROUTES))[\s\S]*$/ },
+  { id: "A2b-inset", protects: "consent-banner.tsx inset writer",
+    desc: "the live height is written to `--mingla-privacy-inset` via a ResizeObserver",
+    re: /setProperty\(PRIVACY_INSET_PROPERTY[\s\S]*new ResizeObserver\(measure\)/ },
 ];
 
 const A3_CHECKS = [
@@ -170,7 +181,7 @@ const A4_CHECKS = [
  */
 export const TARGETS = [
   { family: "A1", rel: "mingla-marketing/components/marketing/links-experience.tsx", checks: A1_CHECKS },
-  { family: "A2", rel: "mingla-marketing/lib/consent-banner-visibility.ts", checks: A2A_CHECKS },
+  { family: "A2", rel: "mingla-marketing/components/marketing/links-experience.tsx", checks: A2A_CHECKS },
   { family: "A2", rel: "mingla-marketing/components/marketing/consent-banner.tsx", checks: A2B_CHECKS },
   { family: "A3", rel: "mingla-marketing/components/marketing/glass-nav.tsx", checks: A3_CHECKS },
   { family: "A4", rel: "mingla-marketing/components/marketing/glass-nav.tsx", checks: A4_CHECKS },
@@ -230,20 +241,24 @@ const SELF_TEST_FAMILIES = [
     groups: [
       {
         checks: A2A_CHECKS,
-        clean: `export const SUPPRESSED_CONSENT_ROUTES = ['/links'] as const`,
-        // `/links` dropped from the SSOT -> the banner would paint over the CTAs.
-        violated: `export const SUPPRESSED_CONSENT_ROUTES = [] as const`,
+        clean:
+          `style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}\n` +
+          `<PrivacyChoicesLink className="x" />`,
+        // The inset reverted out of /links -> the bar would cover the socials.
+        violated:
+          `style={{ height: '100dvh' }}\n` +
+          `<PrivacyChoicesLink className="x" />`,
       },
       {
         checks: A2B_CHECKS,
         clean:
-          `const pathname = usePathname()\n` +
-          `const visible = decision === 'pending' && shouldRenderConsentBanner(pathname)`,
-        // A2 is violated via A2a above; keep A2b clean so the violated case
-        // proves a family-level flag from a single reverted mechanism.
+          `document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, px)\n` +
+          `const observer = new ResizeObserver(measure)`,
+        // A route suppression re-introduced -> also flags (the bar must show on /links).
         violated:
-          `const pathname = usePathname()\n` +
-          `const visible = decision === 'pending' && shouldRenderConsentBanner(pathname)`,
+          `const visible = shouldRenderConsentBanner(pathname)\n` +
+          `document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, px)\n` +
+          `const observer = new ResizeObserver(measure)`,
       },
     ],
   },
@@ -337,7 +352,7 @@ if (failures.length > 0) {
   console.error(
     "issue-906 links-nav-layout-guard FAIL — a guarded layout literal was reverted:\n  " +
       failures.join("\n  ") +
-      "\n\nSee docs/INVARIANT_REGISTRY.md I-905-LINKS-CONSENT-BANNER-SUPPRESSED, " +
+      "\n\nSee I-PRIVACY-BAR-NEVER-OCCLUDES (#2331, declared above), " +
       "I-PROPOSED-906-NAV-ONE-ACTION-BELOW-SM, I-PROPOSED-906-NAV-LOGO-DIMENSIONS-PINNED.",
   );
   process.exit(1);

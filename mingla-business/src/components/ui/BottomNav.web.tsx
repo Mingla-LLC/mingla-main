@@ -329,7 +329,9 @@ const styles = StyleSheet.create({
     position: "fixed" as unknown as "absolute",
     top: 0,
     left: 0,
-    bottom: 0,
+    // #2331 — fixed to the viewport, so it ends above the privacy bar
+    // (I-PRIVACY-BAR-NEVER-OCCLUDES).
+    bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number,
     width: DESKTOP_RAIL_WIDTH,
     flexDirection: "column",
     alignItems: "center",

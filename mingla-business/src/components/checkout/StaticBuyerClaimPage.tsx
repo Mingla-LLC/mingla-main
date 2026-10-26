@@ -3,6 +3,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -20,6 +21,7 @@ import {
   type Platform as DevicePlatform,
 } from "../../services/guestFunnelLink";
 import { SafeScreen } from "../ui/SafeScreen";
+import { PrivacyChoicesLink } from "../../analytics/PrivacyChoicesLink";
 
 type StaticBuyerClaimKind = Extract<BuyerClaimNoun, "ticket" | "pass">;
 
@@ -102,31 +104,44 @@ export const StaticBuyerClaimPage: React.FC<StaticBuyerClaimPageProps> = ({
 
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.host}>
-      <View
-        style={styles.card}
-        accessibilityRole="summary"
-        accessibilityLabel={title}
+      {/* #2331 — the page scrolls when the viewport is shorter than the card
+          (a short phone with the privacy bar expanded), so no control is ever
+          pushed under the bar or off-screen. */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        testID="static-buyer-claim-scroll"
       >
-        <Text style={styles.brand}>Mingla</Text>
-        <Text style={styles.title} accessibilityRole="header">
-          {title}
-        </Text>
-        <Text style={styles.body}>{BUYER_CLAIM_COPY.signInGeneric}</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={BUYER_CLAIM_COPY.button[kind]}
-          disabled={target === null}
-          onPress={open}
-          style={({ pressed }) => [
-            styles.button,
-            pressed && styles.buttonPressed,
-            target === null && styles.buttonDisabled,
-          ]}
-          testID="static-buyer-claim-primary"
+        <View
+          style={styles.card}
+          accessibilityRole="summary"
+          accessibilityLabel={title}
         >
-          <Text style={styles.buttonText}>{BUYER_CLAIM_COPY.button[kind]}</Text>
-        </Pressable>
-      </View>
+          <Text style={styles.brand}>Mingla</Text>
+          <Text style={styles.title} accessibilityRole="header">
+            {title}
+          </Text>
+          <Text style={styles.body}>{BUYER_CLAIM_COPY.signInGeneric}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={BUYER_CLAIM_COPY.button[kind]}
+            disabled={target === null}
+            onPress={open}
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+              target === null && styles.buttonDisabled,
+            ]}
+            testID="static-buyer-claim-primary"
+          >
+            <Text style={styles.buttonText}>
+              {BUYER_CLAIM_COPY.button[kind]}
+            </Text>
+          </Pressable>
+        </View>
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
+      </ScrollView>
     </SafeScreen>
   );
 };
@@ -134,9 +149,13 @@ export const StaticBuyerClaimPage: React.FC<StaticBuyerClaimPageProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+    backgroundColor: "#0c0e12",
+  },
+  scroll: { flex: 1, alignSelf: "stretch" },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0c0e12",
     padding: 24,
   },
   card: {

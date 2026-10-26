@@ -23,6 +23,12 @@
  *   3. No `posthog.opt_in_capturing(` outside the provider's opt-in helper /
  *      banner Accept path (no auto opt-in on mount = no pre-consent capture).
  *
+ * #2331 (I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF): analytics is now on unless
+ * the visitor turned it off, so the opt-in runs in the provider's boot helper
+ * on arrival. What this gate keeps proving: PostHog stores nothing until that
+ * helper opts in, the mount never opts in directly, replay stays masked, the
+ * privacy bar saves the choice, and a turn-off opts PostHog out again.
+ *
  * FAILS-ON-REVERT: deleting the real opt-out-by-default line, deleting the real
  * mask line, or auto-opt-in-on-mount each fails this gate. PASSES on the shipped
  * code. Verified by the tester at branch HEAD 66acb0d17.
@@ -84,13 +90,23 @@ if (providerRaw) {
   }
 }
 
-// Banner must be the opt-in owner (proves consent flow is wired, not auto).
+// The bar owns the saved choice, and a turn-off opts PostHog out again (#2331).
 const bannerRaw = read(BANNER);
 if (bannerRaw) {
   const code = stripComments(bannerRaw);
-  if (!/posthogOptIn\s*\(\s*\)/.test(code)) {
+  if (!/saveMarketingPrivacy\s*\(\s*choice\s*\)/.test(code)) {
     errors.push(
-      `${BANNER}: consent banner must call posthogOptIn() on Accept (the only legitimate opt-in path).`,
+      `${BANNER}: the privacy bar must save the visitor's choice via saveMarketingPrivacy(choice).`,
+    );
+  }
+}
+if (providerRaw) {
+  const code = stripComments(providerRaw);
+  const stopStart = code.indexOf("function stopMarketingAnalytics");
+  const stopBody = stopStart === -1 ? "" : code.slice(stopStart, code.indexOf("\n}\n", stopStart));
+  if (!/opt_out_capturing\s*\(\s*\)/.test(stopBody)) {
+    errors.push(
+      `${PROVIDER}: stopMarketingAnalytics() must opt PostHog out (a turn-off stops capture now).`,
     );
   }
 }
@@ -104,5 +120,5 @@ if (errors.length > 0) {
 }
 
 console.log(
-  "OK: ORCH-1187 tester gate — consent-by-default + masking present in REAL code (deletion-robust), opt-in only via banner",
+  "OK: ORCH-1187 tester gate — opt-out-by-default + masking present in REAL code (deletion-robust), no mount-time opt-in, turn-off opts out (#2331)",
 );

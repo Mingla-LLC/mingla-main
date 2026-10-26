@@ -313,7 +313,9 @@ describe("issue #3859 — buyer web public-host parity", () => {
       .toContain("/s/");
   });
 
-  test("the real /p and /s hosts emit one bounded common view only with consent", async () => {
+  // #2331 I-PRIVACY-ON-UNLESS-VISITOR-TURNED-OFF: both hosts carry the privacy
+  // bar and send the bounded view unless the visitor turned analytics off.
+  test("the real /p and /s hosts emit one bounded common view unless analytics is turned off", async () => {
     const shareId = "0f1e2d3c-4b5a-6789-abcd-0123456789ab";
     const code = "Aa0Bb1Cc2Dd3Ee4F";
     const opaqueHtml = renderSharedCardHtml({
@@ -338,12 +340,16 @@ describe("issue #3859 — buyer web public-host parity", () => {
       { family: "content-share", entityId: code, html: contentHtml },
     ];
     for (const fixture of expected) {
-      for (const denied of [
-        null,
+      expect(fixture.html).toContain('data-testid="privacy-bar"');
+      expect(fixture.html).toContain("data-mingla-privacy-choices");
+      for (const off of [
         JSON.stringify({ choice: "denied" }),
-        "malformed",
+        JSON.stringify({ analytics: false, ads: true, ts: 1 }),
       ]) {
-        expect(runCommonSharePageScript(fixture.html, denied)).toEqual([]);
+        expect(runCommonSharePageScript(fixture.html, off)).toEqual([]);
+      }
+      for (const on of [null, "malformed", JSON.stringify({ analytics: true, ads: false, ts: 1 })]) {
+        expect(runCommonSharePageScript(fixture.html, on)).toHaveLength(1);
       }
       const posted = runCommonSharePageScript(
         fixture.html,

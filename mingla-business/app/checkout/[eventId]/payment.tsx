@@ -100,6 +100,7 @@ import {
   writeCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { PrivacyChoicesLink } from "../../../src/analytics/PrivacyChoicesLink";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -865,6 +866,8 @@ function CheckoutPaymentScreenContent({
         {paymentError !== null ? (
           <Text style={styles.errorText}>{paymentError}</Text>
         ) : null}
+        {/* #2331 — end of content: reopens the privacy bar. */}
+        <PrivacyChoicesLink />
       </ScrollView>
 
       {/* Sticky bottom bar */}

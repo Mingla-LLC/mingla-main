@@ -31,7 +31,7 @@ config.resolver.extraNodeModules = {
   "@mingla/card-identity": path.resolve(business, "../packages/card-identity"),
   "issue2769-real-public-venue": path.resolve(business, "../packages/brand-rendering/PublicVenueScreen.tsx"),
   "issue2769-real-consent-banner": path.resolve(business, "src/analytics/ConsentBanner.web.tsx"),
-  "issue2769-real-consent-hook": path.resolve(business, "src/analytics/useWebConsentState.web.ts"),
+  "issue2769-real-privacy-link": path.resolve(business, "src/analytics/PrivacyChoicesLink.web.tsx"),
 };
 const previousResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
@@ -47,8 +47,9 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 
 await Metro.runBuild(config, { entry: path.join(here, "entry.tsx"), platform: "web", minify: false, dev: true, out: outputBundle, sourceMap: false });
 const bundle = readFileSync(outputBundle, "utf8");
-for (const marker of ["orch-1255-public-venue", "issue-2769-consent-reject", "PUBLIC_VENUE_CONSENT_SAFE_DESKTOP_MIN_WIDTH"]) {
+// #2331 — the real privacy bar (inset writer) and the always-shown reserve bar.
+for (const marker of ["orch-1255-public-venue", "privacy-bar-ok", "--mingla-privacy-inset", "issue-2729-reserve-bar"]) {
   if (!bundle.includes(marker)) throw new Error(`issue #2769 real-source marker missing: ${marker}`);
 }
 writeFileSync(path.join(outputDir, "index.html"), readFileSync(path.join(here, "index.html"), "utf8"));
-console.log("issue #2769 harness bundled the real consent owner, banner, hook, and shared venue screen.");
+console.log("issue #2769/#2331 harness bundled the real privacy owner, bar, link, and shared venue screen.");
