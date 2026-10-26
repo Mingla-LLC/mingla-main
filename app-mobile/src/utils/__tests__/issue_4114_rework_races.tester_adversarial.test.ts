@@ -1,3 +1,4 @@
+// @ts-nocheck — Deno-runtime suite; app-mobile's tsc sweep has no Deno globals.
 // Issue #4114 rework retest — tester adversarial suite for the two race fixes.
 //
 // SignedUrlCache (sign-out while a sign is running), angles the implementor's
