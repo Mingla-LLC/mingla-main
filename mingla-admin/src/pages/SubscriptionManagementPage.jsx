@@ -1,833 +1,674 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+// Subscriptions — who has Mingla+, why, and when it ends.
+//
+// Issue #4130 (Wave 2b):
+//   - real tiers (what each person would have with Global Plus off) beside the
+//     Global Plus switch; turning it off says how many people lose access and
+//     asks to confirm;
+//   - "ending in 3 days" through an admin RPC (the browser cannot read the
+//     overrides table, so the old banner could never fire);
+//   - Give and Remove Mingla+ go through the audited RPCs, with a reason; the
+//     server records the signed-in admin, not a client field;
+//   - sort, paging and export run over the whole filtered list on the server;
+//     the next page follows the server's total (it used to stop at exactly 20);
+//   - a profile with no first name shows "No first name".
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CreditCard, Crown, UserCheck, Shield, Clock, Search,
-  ChevronLeft, ChevronRight, X, AlertTriangle, History, Gift,
-  Ban, Check, RefreshCw, Download,
+  AlertTriangle, ChevronLeft, ChevronRight, Crown, Download, Gift, Shield, UserCheck, Users,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
-import { StatCard, SectionCard } from "../components/ui/Card";
+import { StatCard, SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { SearchInput } from "../components/ui/SearchInput";
 import { DataTable } from "../components/ui/Table";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { Drawer } from "../components/ui/Drawer";
 import { Spinner } from "../components/ui/Spinner";
 import { StatCardSkeleton } from "../components/ui/Skeleton";
-import { useToast } from "../context/ToastContext";
-import { useAuth } from "../context/AuthContext";
-import { timeAgo, formatDate, formatDateTime, truncate, escapeLike } from "../lib/formatters";
-import { logAdminAction } from "../lib/auditLog";
-import { exportCsv } from "../lib/exportCsv";
+import { LoadError } from "../components/ui/LoadError";
 import { PageHeader } from "../components/ui/PageHeader";
+import { useToast } from "../context/ToastContext";
+import { formatDate, formatDateTime } from "../lib/formatters";
+import { exportCsv } from "../lib/exportCsv";
+import { EXPORT_ROW_CAP } from "../lib/listAll";
+import {
+  GRANT_DURATIONS,
+  SUBSCRIPTIONS_PAGE_SIZE,
+  getsNowLabel,
+  globalPlusConfirmCopy,
+  hasNextPage,
+  pageRangeLabel,
+  personName,
+  realTierLabel,
+  subscriptionErrorMessage,
+} from "../lib/subscriptionsView";
+import {
+  getGlobalPlus,
+  getOverrideHistory,
+  getSubscriptionOverview,
+  listAllSubscriptions,
+  listExpiringOverrides,
+  listSubscriptions,
+  setGlobalPlus,
+} from "../services/subscriptionsService";
+import { grantOverrideAudited, revokeOverrideAudited } from "../services/adminMoneyActService";
+import { logAdminAction } from "../lib/auditLog";
 
-const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
-const GLOBAL_PLUS_KEY = "global_plus_access";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const FILTERS = [
+  { id: null, label: "Everyone" },
+  { id: "plus", label: "Mingla+ of their own" },
+  { id: "free", label: "Free" },
+  { id: "admin", label: "Given by an admin" },
+];
 
-function timeRemaining(dateStr) {
-  if (!dateStr) return "—";
-  const diff = new Date(dateStr).getTime() - Date.now();
-  if (diff <= 0) return "Expired";
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days > 30) return `${Math.floor(days / 30)}mo ${days % 30}d`;
-  if (days > 0) return `${days}d`;
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  return `${hours}h`;
-}
-
-const TIER_CONFIG = {
-  free: { label: "Free", variant: "default", icon: UserCheck },
-  mingla_plus: { label: "Mingla+", variant: "warning", icon: Crown },
-};
-
-function TierBadge({ tier }) {
-  const config = TIER_CONFIG[tier] || TIER_CONFIG.free;
-  const Icon = config.icon;
-  return (
-    <Badge variant={config.variant}>
-      <Icon className="h-3 w-3 mr-1 inline" />
-      {config.label}
-    </Badge>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
+// DataTable column key → server sort key.
+const SORT_KEYS = { name: "name", real_tier: "real_tier", override: "override_expires_at", created_at: "joined" };
 
 export function SubscriptionManagementPage() {
   const { addToast } = useToast();
-  const { session } = useAuth();
-
-  // List state
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [page, setPage] = useState(0);
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [tierFilter, setTierFilter] = useState(null);
-  const [listLoading, setListLoading] = useState(true);
-  const [listError, setListError] = useState(null);
-
-  // Stats
-  const [stats, setStats] = useState({ total: 0, free: 0, mingla_plus: 0, overrides: 0 });
-  const [statsLoading, setStatsLoading] = useState(true);
-
-  // Expiring overrides alert
-  const [expiringCount, setExpiringCount] = useState(0);
-
-  // Grant modal
-  const [grantModal, setGrantModal] = useState(false);
-  const [grantTarget, setGrantTarget] = useState(null);
-  const [grantForm, setGrantForm] = useState({ tier: "mingla_plus", reason: "", duration_days: 30 });
-  const [granting, setGranting] = useState(false);
-
-  // Revoke modal
-  const [revokeModal, setRevokeModal] = useState(false);
-  const [revokeTarget, setRevokeTarget] = useState(null);
-  const [revoking, setRevoking] = useState(false);
-
-  // History modal
-  const [historyModal, setHistoryModal] = useState(false);
-  const [historyTarget, setHistoryTarget] = useState(null);
-  const [historyData, setHistoryData] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  // Global Plus toggle
-  const [globalPlusOn, setGlobalPlusOn] = useState(false);
-  const [globalPlusLoading, setGlobalPlusLoading] = useState(true);
-  const [globalPlusToggling, setGlobalPlusToggling] = useState(false);
-
-  // Setup state (if RPC doesn't exist)
-  const [setupNeeded, setSetupNeeded] = useState(false);
-
-  // Refs
-  const searchTimerRef = useRef(null);
   const mountedRef = useRef(true);
-
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // ─── Search debounce ────────────────────────────────────────────────────────
+  // ── list ───────────────────────────────────────────────────────────────
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filter, setFilter] = useState(null);
+  const [sort, setSort] = useState({ key: "created_at", dir: "desc" });
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState(null);
+  const [exporting, setExporting] = useState(false);
+
+  // ── overview, expiring, Global Plus ────────────────────────────────────
+  const [overview, setOverview] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState(null);
+  const [expiring, setExpiring] = useState(null);
+  const [expiringError, setExpiringError] = useState(null);
+  const [globalPlusOn, setGlobalPlusOn] = useState(null);
+  const [globalPlusError, setGlobalPlusError] = useState(null);
+  const [globalConfirm, setGlobalConfirm] = useState(false);
+  const [globalSaving, setGlobalSaving] = useState(false);
+
+  // ── person drawer ──────────────────────────────────────────────────────
+  const [person, setPerson] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
+  const [grantDays, setGrantDays] = useState(30);
+  const [grantReason, setGrantReason] = useState("");
+  const [revokeReason, setRevokeReason] = useState("");
+  const [pendingWrite, setPendingWrite] = useState(null); // "grant" | "revoke"
+  const [writing, setWriting] = useState(false);
+  const [writeError, setWriteError] = useState(null);
 
   useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(search);
+    const t = setTimeout(() => {
+      setDebouncedSearch(search.trim());
       setPage(0);
     }, SEARCH_DEBOUNCE_MS);
-    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+    return () => clearTimeout(t);
   }, [search]);
 
-  // ─── Fetch subscriptions via RPC ─────────────────────────────────────────────
+  const query = useMemo(() => ({
+    search: debouncedSearch,
+    filter,
+    sort: SORT_KEYS[sort.key] ?? "joined",
+    desc: sort.dir !== "asc",
+  }), [debouncedSearch, filter, sort]);
 
-  const fetchSubscriptions = useCallback(async () => {
+  const fetchList = useCallback(async () => {
     setListLoading(true);
     setListError(null);
     try {
-      const params = {
-        p_limit: PAGE_SIZE,
-        p_offset: page * PAGE_SIZE,
-      };
-      if (debouncedSearch) params.p_search = debouncedSearch;
-      if (tierFilter) params.p_tier_filter = tierFilter;
-
-      const { data, error } = await supabase.rpc("admin_list_subscriptions", params);
-      if (error) {
-        if (error.code === "PGRST202") {
-          setSetupNeeded(true);
-          return;
-        }
-        throw error;
-      }
+      const result = await listSubscriptions({ ...query, page, pageSize: SUBSCRIPTIONS_PAGE_SIZE });
       if (!mountedRef.current) return;
-      setSubscriptions(data || []);
-      setSetupNeeded(false);
+      setRows(result.rows);
+      setTotal(result.total);
     } catch (err) {
-      console.error("[Subscriptions] fetch error:", err.message, err.code, err.details, err.hint, err);
-      if (mountedRef.current) {
-        setListError(err.message);
-        addToast({ variant: "error", title: "Failed to load subscriptions", description: err.message });
-      }
+      if (mountedRef.current) setListError(err.message || "Couldn't load people.");
     } finally {
       if (mountedRef.current) setListLoading(false);
     }
-  }, [page, debouncedSearch, tierFilter, addToast]);
+  }, [query, page]);
 
-  // ─── Fetch stats via RPC ──────────────────────────────────────────────────────
-
-  const fetchStats = useCallback(async () => {
-    if (setupNeeded) { setStatsLoading(false); return; }
-    setStatsLoading(true);
+  const fetchOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    setOverviewError(null);
     try {
-      // Try dedicated stats RPC first
-      const { data: rpcStats, error: rpcErr } = await supabase.rpc("admin_subscription_stats");
-      if (!rpcErr && rpcStats) {
-        if (!mountedRef.current) return;
-        // rpcStats may be a single row or array
-        const s = Array.isArray(rpcStats) ? rpcStats[0] : rpcStats;
-        if (s) {
-          setStats({
-            total: s.total ?? 0,
-            free: s.free ?? 0,
-            mingla_plus: s.mingla_plus ?? 0,
-            overrides: s.overrides ?? 0,
-          });
-          setStatsLoading(false);
-          return;
-        }
-      }
-
-      // PGRST202 fallback: compute from full list
-      if (rpcErr && rpcErr.code !== "PGRST202") throw rpcErr;
-
-      const { data, error } = await supabase.rpc("admin_list_subscriptions", {
-        p_limit: 10000,
-        p_offset: 0,
-      });
-      if (error) {
-        if (error.code === "PGRST202") {
-          if (mountedRef.current) setSetupNeeded(true);
-          return;
-        }
-        throw error;
-      }
-      if (!mountedRef.current) return;
-      const all = data || [];
-      setStats({
-        total: all.length,
-        free: all.filter(u => u.effective_tier === "free").length,
-        mingla_plus: all.filter(u => u.effective_tier === "mingla_plus").length,
-        overrides: all.filter(u => u.has_admin_override).length,
-      });
+      const data = await getSubscriptionOverview();
+      if (mountedRef.current) setOverview(data);
     } catch (err) {
-      console.error("[Subscriptions] stats error:", err);
+      if (mountedRef.current) {
+        setOverview(null);
+        setOverviewError(err.message || "Couldn't load the counts.");
+      }
     } finally {
-      if (mountedRef.current) setStatsLoading(false);
+      if (mountedRef.current) setOverviewLoading(false);
     }
-  }, [setupNeeded]);
-
-  // ─── Fetch expiring overrides ─────────────────────────────────────────────────
-
-  useEffect(() => {
-    async function checkExpiring() {
-      try {
-        const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-        const { count } = await supabase
-          .from("admin_subscription_overrides")
-          .select("*", { count: "exact", head: true })
-          .is("revoked_at", null)
-          .lte("starts_at", new Date().toISOString())
-          .gt("expires_at", new Date().toISOString())
-          .lt("expires_at", threeDaysFromNow);
-        if (mountedRef.current) setExpiringCount(count ?? 0);
-      } catch { /* ignore */ }
-    }
-    checkExpiring();
   }, []);
 
-  // ─── Fetch global Plus flag ──────────────────────────────────────────────
-
-  useEffect(() => {
-    async function loadGlobalPlus() {
-      try {
-        const { data, error } = await supabase
-          .from("app_config")
-          .select("config_value")
-          .eq("config_key", GLOBAL_PLUS_KEY)
-          .maybeSingle();
-        if (!error && data && mountedRef.current) {
-          setGlobalPlusOn(data.config_value === "true");
-        }
-      } catch { /* ignore */ }
-      finally { if (mountedRef.current) setGlobalPlusLoading(false); }
-    }
-    loadGlobalPlus();
-  }, []);
-
-  const handleToggleGlobalPlus = async () => {
-    const newValue = !globalPlusOn;
-    setGlobalPlusToggling(true);
+  const fetchExpiring = useCallback(async () => {
+    setExpiringError(null);
     try {
-      const { error } = await supabase
-        .from("app_config")
-        .update({ config_value: newValue ? "true" : "false", updated_at: new Date().toISOString() })
-        .eq("config_key", GLOBAL_PLUS_KEY);
-      if (error) throw error;
-      setGlobalPlusOn(newValue);
+      const data = await listExpiringOverrides(3);
+      if (mountedRef.current) setExpiring(data);
+    } catch (err) {
+      if (mountedRef.current) {
+        setExpiring(null);
+        setExpiringError(err.message || "Couldn't check grants ending soon.");
+      }
+    }
+  }, []);
+
+  const fetchGlobalPlus = useCallback(async () => {
+    setGlobalPlusError(null);
+    try {
+      const on = await getGlobalPlus();
+      if (mountedRef.current) setGlobalPlusOn(on);
+    } catch (err) {
+      if (mountedRef.current) {
+        setGlobalPlusOn(null);
+        setGlobalPlusError(err.message || "Couldn't read the Global Plus switch.");
+      }
+    }
+  }, []);
+
+  useEffect(() => { void fetchList(); }, [fetchList]);
+  useEffect(() => {
+    void fetchOverview();
+    void fetchExpiring();
+    void fetchGlobalPlus();
+  }, [fetchOverview, fetchExpiring, fetchGlobalPlus]);
+
+  const refreshAll = useCallback(() => {
+    void fetchList();
+    void fetchOverview();
+    void fetchExpiring();
+  }, [fetchList, fetchOverview, fetchExpiring]);
+
+  // ── Global Plus ────────────────────────────────────────────────────────
+  const globalCopy = globalPlusConfirmCopy({
+    turningOn: globalPlusOn === false,
+    realFree: overview ? overview.real_free : null,
+    realPlus: overview ? overview.real_plus : null,
+  });
+
+  const confirmGlobalPlus = async () => {
+    if (globalPlusOn === null || !globalCopy.confirmLabel) return;
+    const next = !globalPlusOn;
+    setGlobalSaving(true);
+    try {
+      await setGlobalPlus(next);
+      setGlobalPlusOn(next);
+      setGlobalConfirm(false);
       addToast({
         variant: "success",
-        title: newValue ? "Global Plus ON" : "Global Plus OFF",
-        description: newValue
-          ? "All users now have Mingla+ access"
-          : "Users fall back to their real subscription tier",
+        title: next ? "Global Plus is on" : "Global Plus is off",
+        description: next
+          ? "Everyone has Mingla+ features."
+          : "People now have their real tier.",
       });
       logAdminAction(
-        newValue ? "subscription.global_plus_enabled" : "subscription.global_plus_disabled",
+        next ? "subscription.global_plus_enabled" : "subscription.global_plus_disabled",
         "app_config",
-        GLOBAL_PLUS_KEY,
-        { value: newValue }
+        "global_plus_access",
+        { value: next, people_losing_access: next ? 0 : overview?.real_free ?? null },
       );
-      fetchStats();
-      fetchSubscriptions();
+      refreshAll();
     } catch (err) {
-      addToast({ variant: "error", title: "Failed to toggle Global Plus", description: err.message });
+      addToast({ variant: "error", title: "Couldn't change Global Plus", description: subscriptionErrorMessage(err) });
     } finally {
-      setGlobalPlusToggling(false);
+      if (mountedRef.current) setGlobalSaving(false);
     }
   };
 
-  useEffect(() => {
-    fetchSubscriptions();
-  }, [fetchSubscriptions]);
-
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  // ─── Grant Override ─────────────────────────────────────────────────────────
-
-  const handleGrant = async () => {
-    if (!grantTarget || !grantForm.reason.trim()) {
-      addToast({ variant: "error", title: "Reason is required" });
-      return;
-    }
-    setGranting(true);
+  // ── export over the whole filtered list ────────────────────────────────
+  const handleExport = async () => {
+    setExporting(true);
     try {
-      const { data, error } = await supabase.rpc("admin_grant_override", {
-        p_user_id: grantTarget.user_id,
-        p_tier: grantForm.tier,
-        p_reason: grantForm.reason.trim(),
-        p_granted_by: session.user.id,
-        p_duration_days: parseInt(grantForm.duration_days, 10) || 30,
+      const { rows: all, total: counted, truncated } = await listAllSubscriptions(query);
+      const csvRows = all.map((row) => ({
+        user_id: row.user_id,
+        name: personName(row),
+        phone: row.phone ?? "",
+        real_tier: realTierLabel(row).label,
+        gets_now: getsNowLabel(row),
+        admin_grant: row.override_tier ?? "",
+        admin_grant_ends: row.override_expires_at ?? "",
+        trial_ends: row.trial_ends_at ?? "",
+        paid_until: row.current_period_end ?? "",
+        joined: row.created_at,
+      }));
+      exportCsv([
+        { key: "user_id", label: "User ID" },
+        { key: "name", label: "Name" },
+        { key: "phone", label: "Phone" },
+        { key: "real_tier", label: "Real tier" },
+        { key: "gets_now", label: "Gets now" },
+        { key: "admin_grant", label: "Given by admin" },
+        { key: "admin_grant_ends", label: "Admin grant ends" },
+        { key: "trial_ends", label: "Trial ends" },
+        { key: "paid_until", label: "Paid until" },
+        { key: "joined", label: "Joined" },
+      ], csvRows, "subscriptions");
+      addToast({
+        variant: truncated ? "warning" : "success",
+        title: truncated
+          ? `Exported the first ${csvRows.length.toLocaleString("en-US")} of ${counted.toLocaleString("en-US")} people`
+          : `Exported all ${csvRows.length.toLocaleString("en-US")} people`,
+        description: truncated ? `One export holds up to ${EXPORT_ROW_CAP.toLocaleString("en-US")} rows. Narrow the search to get the rest.` : undefined,
       });
-      if (error) throw error;
-      addToast({ variant: "success", title: "Override granted", description: `${grantForm.tier} tier for ${grantForm.duration_days} days` });
-      logAdminAction("subscription.grant_override", "subscription", grantTarget.user_id, { tier: grantForm.tier, duration_days: grantForm.duration_days, reason: grantForm.reason.trim() });
-      setGrantModal(false);
-      setGrantForm({ tier: "mingla_plus", reason: "", duration_days: 30 });
-      setGrantTarget(null);
-      fetchSubscriptions();
-      fetchStats();
     } catch (err) {
-      console.error("[Subscriptions] grant error:", err);
-      addToast({ variant: "error", title: "Failed to grant override", description: err.message });
+      addToast({ variant: "error", title: "Couldn't export", description: err.message || "Try again." });
     } finally {
-      setGranting(false);
+      if (mountedRef.current) setExporting(false);
     }
   };
 
-  // ─── Revoke Override ────────────────────────────────────────────────────────
-
-  const handleRevoke = async () => {
-    if (!revokeTarget) return;
-    setRevoking(true);
-    try {
-      const { data: history, error: hErr } = await supabase.rpc("admin_get_override_history", {
-        p_user_id: revokeTarget.user_id,
-      });
-      if (hErr) throw hErr;
-      const active = (history || []).find(h => h.is_active);
-      if (!active) {
-        addToast({ variant: "warning", title: "No active override found" });
-        setRevokeModal(false);
-        return;
-      }
-      const { error } = await supabase.rpc("admin_revoke_override", {
-        p_override_id: active.id,
-        p_revoked_by: session.user.id,
-      });
-      if (error) throw error;
-      addToast({ variant: "success", title: "Override revoked", description: `${revokeTarget.display_name}'s override has been revoked` });
-      logAdminAction("subscription.revoke_override", "subscription", revokeTarget.user_id, { display_name: revokeTarget.display_name });
-      setRevokeModal(false);
-      setRevokeTarget(null);
-      fetchSubscriptions();
-      fetchStats();
-    } catch (err) {
-      console.error("[Subscriptions] revoke error:", err);
-      addToast({ variant: "error", title: "Failed to revoke override", description: err.message });
-    } finally {
-      setRevoking(false);
-    }
-  };
-
-  // ─── View History ───────────────────────────────────────────────────────────
-
-  const openHistory = async (row) => {
-    setHistoryTarget(row);
-    setHistoryModal(true);
+  // ── person drawer ──────────────────────────────────────────────────────
+  const openPerson = async (row) => {
+    setPerson(row);
+    setGrantDays(30);
+    setGrantReason("");
+    setRevokeReason("");
+    setPendingWrite(null);
+    setWriteError(null);
+    setHistory([]);
+    setHistoryError(null);
     setHistoryLoading(true);
     try {
-      const { data, error } = await supabase.rpc("admin_get_override_history", {
-        p_user_id: row.user_id,
-      });
-      if (error) throw error;
-      setHistoryData(data || []);
+      const data = await getOverrideHistory(row.user_id);
+      if (mountedRef.current) setHistory(data);
     } catch (err) {
-      console.error("[Subscriptions] history error:", err);
-      addToast({ variant: "error", title: "Failed to load history", description: err.message });
+      if (mountedRef.current) setHistoryError(err.message || "Couldn't load the history.");
     } finally {
-      setHistoryLoading(false);
+      if (mountedRef.current) setHistoryLoading(false);
     }
   };
 
-  // ─── Export ─────────────────────────────────────────────────────────────────
+  const closePerson = () => {
+    if (writing) return;
+    setPerson(null);
+    setPendingWrite(null);
+  };
 
-  const handleExport = useCallback(() => {
-    const cols = [
-      { key: "user_id", label: "User ID" },
-      { key: "display_name", label: "Name" },
-      { key: "phone", label: "Phone" },
-      { key: "effective_tier", label: "Effective Tier" },
-      { key: "raw_tier", label: "RC Tier" },
-      { key: "has_admin_override", label: "Has Override" },
-      { key: "admin_override_tier", label: "Override Tier" },
-      { key: "admin_override_expires_at", label: "Override Expires" },
-      { key: "trial_ends_at", label: "Trial Ends" },
-      { key: "created_at", label: "Joined" },
-    ];
-    const { exported, capped } = exportCsv(cols, subscriptions, "subscriptions");
-    addToast({ variant: "success", title: `Exported ${exported} rows${capped ? " (capped at 10k)" : ""}` });
-  }, [subscriptions, addToast]);
+  const confirmWrite = async () => {
+    if (!person || !pendingWrite) return;
+    setWriting(true);
+    setWriteError(null);
+    try {
+      const result = pendingWrite === "grant"
+        ? await grantOverrideAudited({
+          user_id: person.user_id,
+          tier: "mingla_plus",
+          reason: grantReason.trim(),
+          duration_days: grantDays,
+        })
+        : await revokeOverrideAudited({
+          override_id: person.override_id,
+          user_id: person.user_id,
+          reason: revokeReason.trim(),
+        });
+      if (result?.error) throw result.error;
+      addToast({
+        variant: "success",
+        title: pendingWrite === "grant" ? "Mingla+ given" : "Admin grant removed",
+        description: "Logged on the server with your name and reason.",
+      });
+      setPerson(null);
+      setPendingWrite(null);
+      refreshAll();
+    } catch (err) {
+      setWriteError(subscriptionErrorMessage(err));
+    } finally {
+      if (mountedRef.current) setWriting(false);
+    }
+  };
 
-  // ─── Setup Screen ───────────────────────────────────────────────────────────
-
-  if (setupNeeded) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Subscriptions" />
-        <SectionCard title="Setup Required" subtitle="Run the migration to enable subscription management">
-          <div className="space-y-4">
-            <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: "var(--color-warning-50, #fffbeb)" }}>
-              <AlertTriangle className="h-5 w-5 text-[var(--color-warning-600)] shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text-primary)]">Migration not applied</p>
-                <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-                  The subscription management RPC functions don't exist yet. Run the migration file in your Supabase SQL Editor:
-                </p>
-              </div>
-            </div>
-            <div className="relative">
-              <pre className="p-4 rounded-lg text-xs font-mono overflow-x-auto" style={{ backgroundColor: "var(--color-background-secondary)", color: "var(--color-text-primary)" }}>
-                {`-- File: supabase/migrations/20260317000001_create_admin_subscription_overrides.sql
--- Copy the full contents and run in Supabase SQL Editor
--- This creates:
---   admin_subscription_overrides table
---   Updated get_effective_tier() function
---   admin_list_subscriptions() RPC
---   admin_grant_override() RPC
---   admin_revoke_override() RPC
---   admin_get_override_history() RPC`}
-              </pre>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="absolute top-2 right-2"
-                onClick={() => {
-                  navigator.clipboard.writeText("See supabase/migrations/20260317000001_create_admin_subscription_overrides.sql");
-                  addToast({ variant: "success", title: "Path copied" });
-                }}
-              >
-                Copy path
-              </Button>
-            </div>
-            <Button variant="primary" onClick={() => { setSetupNeeded(false); fetchSubscriptions(); }}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
-            </Button>
-          </div>
-        </SectionCard>
-      </div>
-    );
-  }
-
-  // ─── Pagination ──────────────────────────────────────────────────────────────
-
-  const hasMore = subscriptions.length === PAGE_SIZE;
-
-  // ─── Table columns ──────────────────────────────────────────────────────────
-
+  // ── table ──────────────────────────────────────────────────────────────
   const columns = [
     {
-      key: "display_name",
-      label: "User",
+      key: "name",
+      label: "Person",
       sortable: true,
-      render: (_val, row) => (
-        <div>
-          <p className="font-medium text-[var(--color-text-primary)]">{row.display_name || "—"}</p>
-          <p className="text-xs text-[var(--color-text-tertiary)]">{row.phone || "No phone"}</p>
-        </div>
-      ),
+      render: (_v, row) => {
+        const name = personName(row);
+        return (
+          <div>
+            <p className={name.startsWith("No first name") ? "text-[var(--color-text-tertiary)] italic" : "font-medium text-[var(--color-text-primary)]"}>
+              {name}
+            </p>
+            <p className="text-xs text-[var(--color-text-tertiary)]">{row.phone || "No phone"}</p>
+          </div>
+        );
+      },
     },
     {
-      key: "effective_tier",
-      label: "Effective Tier",
+      key: "real_tier",
+      label: "Real tier",
       sortable: true,
-      render: (_val, row) => <TierBadge tier={row.effective_tier} />,
+      render: (_v, row) => {
+        const tier = realTierLabel(row);
+        return <Badge variant={tier.variant}>{tier.label}</Badge>;
+      },
     },
     {
-      key: "raw_tier",
-      label: "RC Tier",
-      render: (_val, row) => (
-        <span className="text-sm text-[var(--color-text-secondary)]">
-          {row.raw_tier || "free"}
-        </span>
-      ),
+      key: "gets_now",
+      label: "Gets now",
+      render: (_v, row) => <span className="text-sm text-[var(--color-text-secondary)]">{getsNowLabel(row)}</span>,
     },
     {
-      key: "has_admin_override",
-      label: "Override",
-      render: (_val, row) => row.has_admin_override ? (
+      key: "override",
+      label: "Given by admin",
+      sortable: true,
+      render: (_v, row) => row.override_id ? (
         <div>
-          <Badge variant="brand">
-            <Shield className="h-3 w-3 mr-1 inline" />
-            {row.admin_override_tier}
-          </Badge>
-          <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">
-            Expires {timeRemaining(row.admin_override_expires_at)}
-          </p>
+          <Badge variant="info"><Shield className="h-3 w-3 mr-1 inline" />{row.override_tier === "free" ? "Free" : "Mingla+"}</Badge>
+          <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5">Ends {formatDate(row.override_expires_at)}</p>
         </div>
-      ) : (
-        <span className="text-xs text-[var(--color-text-tertiary)]">None</span>
-      ),
-    },
-    {
-      key: "trial_ends_at",
-      label: "Trial",
-      render: (_val, row) => row.trial_ends_at ? (
-        <div>
-          <p className="text-sm text-[var(--color-text-secondary)]">{formatDate(row.trial_ends_at)}</p>
-          <p className="text-xs text-[var(--color-text-tertiary)]">{timeRemaining(row.trial_ends_at)}</p>
-        </div>
-      ) : (
-        <span className="text-xs text-[var(--color-text-tertiary)]">—</span>
-      ),
+      ) : <span className="text-xs text-[var(--color-text-tertiary)]">–</span>,
     },
     {
       key: "created_at",
       label: "Joined",
       sortable: true,
-      render: (_val, row) => (
-        <span className="text-sm text-[var(--color-text-secondary)]">{formatDate(row.created_at)}</span>
-      ),
+      render: (_v, row) => <span className="text-sm text-[var(--color-text-secondary)]">{formatDate(row.created_at)}</span>,
     },
     {
       key: "actions",
       label: "",
-      render: (_val, row) => (
-        <div className="flex gap-1">
-          <Button variant="ghost" size="sm" onClick={() => {
-            setGrantTarget({ user_id: row.user_id, display_name: row.display_name });
-            setGrantForm({ tier: "mingla_plus", reason: "", duration_days: 30 });
-            setGrantModal(true);
-          }}>
-            <Gift className="h-4 w-4" />
-          </Button>
-          {row.has_admin_override && (
-            <Button variant="ghost" size="sm" onClick={() => {
-              setRevokeTarget(row);
-              setRevokeModal(true);
-            }}>
-              <Ban className="h-4 w-4 text-[var(--color-error-500)]" />
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => openHistory(row)}>
-            <History className="h-4 w-4" />
-          </Button>
-        </div>
+      render: (_v, row) => (
+        <Button variant="ghost" size="sm" onClick={() => void openPerson(row)} aria-label={`Open ${personName(row)}`}>
+          Open
+        </Button>
       ),
     },
   ];
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
+  const nextPage = hasNextPage(total, page);
+  const grantReasonOk = grantReason.trim().length > 0;
+  const revokeReasonOk = revokeReason.trim().length > 0;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Subscriptions"
+        description="Who has Mingla+, why, and when it ends."
         actions={
-          <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>
-            Export
+          <Button variant="secondary" size="sm" icon={Download} onClick={() => void handleExport()} loading={exporting} disabled={exporting || listLoading}>
+            Export all
           </Button>
         }
       />
 
-      {/* Global Plus Toggle */}
-      {!globalPlusLoading && (
-        <div
-          className="flex items-center justify-between px-5 py-4 rounded-xl"
-          style={{
-            backgroundColor: globalPlusOn
-              ? "var(--color-brand-50, #fff7ed)"
-              : "var(--color-background-secondary)",
-            borderStyle: "solid",
-            borderWidth: 1,
-            borderColor: globalPlusOn
-              ? "var(--color-brand-500)"
-              : "var(--color-border)",
-          }}
-        >
-          <div className="flex items-center gap-3">
+      {/* Global Plus, with the real tiers beside it */}
+      {globalPlusError ? (
+        <LoadError title="Couldn't read the Global Plus switch" message={globalPlusError} onRetry={() => void fetchGlobalPlus()} />
+      ) : globalPlusOn !== null && (
+        <SectionCard>
+          <div className="flex flex-wrap items-center gap-4">
             <Crown className={`h-5 w-5 ${globalPlusOn ? "text-[var(--color-brand-500)]" : "text-[var(--color-text-tertiary)]"}`} />
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                Global Plus Access
+                {globalPlusOn ? "Everyone gets Mingla+ right now" : "Global Plus is off"}
               </p>
-              <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+              <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
                 {globalPlusOn
-                  ? "Every user has Mingla+ — regardless of subscription status"
-                  : "Users see their real subscription tier (free or paid)"}
+                  ? overview
+                    ? `Global Plus is on, so all ${Number(overview.total).toLocaleString("en-US")} people can use Plus features. ${Number(overview.real_plus).toLocaleString("en-US")} have Mingla+ of their own; ${Number(overview.real_free).toLocaleString("en-US")} would be free without it.`
+                    : "Global Plus is on, so everyone can use Plus features."
+                  : "People have their real tier: paid, trial, referral, given by an admin, or free."}
               </p>
             </div>
+            <Button variant="secondary" onClick={() => setGlobalConfirm(true)}>
+              {globalPlusOn ? "Turn off…" : "Turn on…"}
+            </Button>
           </div>
-          <button
-            onClick={handleToggleGlobalPlus}
-            disabled={globalPlusToggling}
-            className="relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50"
-            style={{
-              backgroundColor: globalPlusOn
-                ? "var(--color-brand-500)"
-                : "var(--color-text-tertiary)",
-            }}
-            role="switch"
-            aria-checked={globalPlusOn}
-            aria-label="Toggle Global Plus Access"
-          >
-            <span
-              className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ease-in-out"
-              style={{
-                marginTop: "4px",
-                transform: globalPlusOn ? "translateX(22px)" : "translateX(4px)",
-              }}
-            />
-          </button>
-        </div>
+        </SectionCard>
       )}
 
-      {/* Expiring overrides alert */}
-      {expiringCount > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ backgroundColor: "var(--color-warning-50, #fffbeb)" }}>
-          <AlertTriangle className="h-4 w-4 text-[var(--color-warning-600)]" />
-          <span className="text-sm text-[var(--color-text-primary)]">{expiringCount} override{expiringCount > 1 ? "s" : ""} expiring within 3 days</span>
-        </div>
+      {/* Grants ending in the next 3 days */}
+      {expiringError ? (
+        <LoadError title="Couldn't check grants ending soon" message={expiringError} onRetry={() => void fetchExpiring()} />
+      ) : expiring && expiring.count > 0 && (
+        <AlertCard variant="warning" title={`${expiring.count} admin grant${expiring.count === 1 ? "" : "s"} end in the next 3 days`}>
+          {expiring.rows.slice(0, 5).map((r) => `${r.display_name || "No first name"} (${formatDate(r.expires_at)})`).join(", ")}
+          {expiring.count > 5 ? ` and ${expiring.count - 5} more` : ""}
+        </AlertCard>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statsLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
-        ) : (
-          <>
-            <StatCard label="Total Users" value={stats.total} icon={UserCheck} />
-            <StatCard label="Free" value={stats.free} icon={UserCheck} />
-            <StatCard label="Mingla+" value={stats.mingla_plus} icon={Crown} />
-            <StatCard label="Admin Overrides" value={stats.overrides} icon={Shield} />
-          </>
-        )}
-      </div>
+      {/* Real tiers */}
+      {overviewError ? (
+        <LoadError title="Couldn't load the counts" message={overviewError} onRetry={() => void fetchOverview()} />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {overviewLoading || !overview ? (
+            Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+          ) : (
+            <>
+              <StatCard label="People" value={Number(overview.total).toLocaleString("en-US")} icon={Users} />
+              <StatCard label="Mingla+ of their own (without Global Plus)" value={Number(overview.real_plus).toLocaleString("en-US")} icon={Crown} />
+              <StatCard label="Free (without Global Plus)" value={Number(overview.real_free).toLocaleString("en-US")} icon={UserCheck} />
+              <StatCard
+                label={`Given by an admin · ${Number(overview.expiring_3d).toLocaleString("en-US")} ending in 3 days`}
+                value={Number(overview.admin_given).toLocaleString("en-US")}
+                icon={Shield}
+              />
+            </>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1">
           <SearchInput
-            placeholder="Search by name or phone..."
+            placeholder="Search by name or phone…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onClear={() => setSearch("")}
           />
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {[null, "free", "mingla_plus"].map((tier) => (
+        <div className="flex gap-2 flex-wrap" role="group" aria-label="Filter by real tier">
+          {FILTERS.map((f) => (
             <button
-              key={tier ?? "all"}
-              onClick={() => { setTierFilter(tier); setPage(0); }}
+              key={f.id ?? "all"}
+              type="button"
+              aria-pressed={filter === f.id}
+              onClick={() => { setFilter(f.id); setPage(0); }}
               className={[
                 "px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer",
-                tierFilter === tier
+                filter === f.id
                   ? "bg-[var(--color-brand-500)] text-white"
                   : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-tertiary)]",
               ].join(" ")}
             >
-              {tier ? TIER_CONFIG[tier].label : "All"}
+              {f.label}
             </button>
           ))}
         </div>
       </div>
 
       {/* Table */}
-      <SectionCard>
-        {listError ? (
-          <div className="text-center py-12">
-            <AlertTriangle className="h-8 w-8 text-[var(--color-error-500)] mx-auto mb-3" />
-            <p className="text-[var(--color-text-secondary)] mb-3">{listError}</p>
-            <Button variant="secondary" onClick={fetchSubscriptions}>Retry</Button>
-          </div>
-        ) : (
-          <>
-            <DataTable
-              columns={columns}
-              rows={subscriptions}
-              loading={listLoading}
-              emptyMessage="No users found"
-            />
-            {/* Pagination */}
-            {!listLoading && subscriptions.length > 0 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border)]">
-                <p className="text-sm text-[var(--color-text-tertiary)]">
-                  Page {page + 1}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="secondary" size="sm" disabled={!hasMore} onClick={() => setPage(p => p + 1)}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </SectionCard>
-
-      {/* Grant Override Modal */}
-      <Modal open={grantModal} onClose={() => setGrantModal(false)} title="Grant Tier Override">
-        <ModalBody>
-          <div className="space-y-4">
-            <div className="p-3 rounded-lg" style={{ backgroundColor: "var(--color-background-secondary)" }}>
-              <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                {grantTarget?.display_name || "Unknown User"}
-              </p>
-              <p className="text-xs text-[var(--color-text-tertiary)] mt-0.5 font-mono">
-                {grantTarget?.user_id}
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">Tier</label>
+      {listError ? (
+        <LoadError title="Couldn't load people" message={listError} onRetry={() => void fetchList()} />
+      ) : (
+        <SectionCard noPadding>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            getRowId={(row) => row.user_id}
+            loading={listLoading}
+            sortKey={sort.key}
+            sortDirection={sort.dir}
+            onSort={(key, dir) => {
+              setSort(key && dir ? { key, dir } : { key: "created_at", dir: "desc" });
+              setPage(0);
+            }}
+            emptyMessage={debouncedSearch || filter ? "No one matches this search and filter." : "People appear here once they sign up."}
+          />
+          {!listLoading && total > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border)]">
+              <p className="text-sm text-[var(--color-text-tertiary)]">{pageRangeLabel(total, page, rows.length)}</p>
               <div className="flex gap-2">
-                {["free", "mingla_plus"].map((t) => {
-                  const Icon = TIER_CONFIG[t].icon;
-                  return (
-                    <button
-                      key={t}
-                      onClick={() => setGrantForm(f => ({ ...f, tier: t }))}
-                      className={[
-                        "flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 cursor-pointer",
-                        grantForm.tier === t
-                          ? "bg-[var(--color-brand-500)] text-white"
-                          : "bg-[var(--color-background-secondary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-background-tertiary)]",
-                      ].join(" ")}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {TIER_CONFIG[t].label}
-                    </button>
-                  );
-                })}
+                <Button variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="secondary" size="sm" disabled={!nextPage} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
-            </div>
-
-            <Input
-              label="Duration (days)"
-              type="number"
-              value={grantForm.duration_days}
-              onChange={(e) => setGrantForm(f => ({ ...f, duration_days: e.target.value }))}
-              min={1}
-              max={365}
-            />
-
-            <Input
-              label="Reason (required)"
-              value={grantForm.reason}
-              onChange={(e) => setGrantForm(f => ({ ...f, reason: e.target.value }))}
-              placeholder="e.g., Beta tester reward, influencer partnership..."
-            />
-
-            {grantForm.tier === "free" && (
-              <div className="flex items-start gap-2 p-3 rounded-lg" style={{ backgroundColor: "var(--color-warning-50, #fffbeb)" }}>
-                <AlertTriangle className="h-4 w-4 text-[var(--color-warning-600)] shrink-0 mt-0.5" />
-                <p className="text-xs text-[var(--color-text-secondary)]">
-                  Setting tier to Free will override any active paid subscription. The user will lose access to Mingla+ features for the override duration.
-                </p>
-              </div>
-            )}
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setGrantModal(false)} disabled={granting}>Cancel</Button>
-          <Button variant="primary" onClick={handleGrant} loading={granting} disabled={!grantForm.reason.trim()}>
-            <Gift className="h-4 w-4 mr-2" />
-            Grant Override
-          </Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* Revoke Override Modal */}
-      <Modal open={revokeModal} onClose={() => setRevokeModal(false)} title="Revoke Override" destructive>
-        <ModalBody>
-          <div className="space-y-3">
-            <p className="text-sm text-[var(--color-text-secondary)]">
-              Revoke the active override for <strong>{revokeTarget?.display_name}</strong>?
-            </p>
-            <p className="text-xs text-[var(--color-text-tertiary)]">
-              They will fall back to their underlying tier (RevenueCat / trial / referral / free).
-            </p>
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setRevokeModal(false)} disabled={revoking}>Cancel</Button>
-          <Button variant="danger" onClick={handleRevoke} loading={revoking}>
-            <Ban className="h-4 w-4 mr-2" />
-            Revoke Override
-          </Button>
-        </ModalFooter>
-      </Modal>
-
-      {/* History Modal */}
-      <Modal open={historyModal} onClose={() => { setHistoryModal(false); setHistoryData([]); }} title={`Override History — ${historyTarget?.display_name || ""}`} size="lg">
-        <ModalBody>
-          {historyLoading ? (
-            <div className="flex justify-center py-8">
-              <Spinner />
-            </div>
-          ) : historyData.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-tertiary)] text-center py-8">No override history for this user.</p>
-          ) : (
-            <div className="space-y-3">
-              {historyData.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="p-3 rounded-lg"
-                  style={{
-                    borderStyle: "solid",
-                    borderWidth: 1,
-                    borderColor: entry.is_active ? "var(--color-brand-500)" : "var(--color-border)",
-                    backgroundColor: entry.is_active ? "var(--color-brand-50, #fff7ed)" : "var(--color-background-secondary)",
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <TierBadge tier={entry.tier} />
-                      {entry.is_active && <Badge variant="success">Active</Badge>}
-                      {entry.revoked_at && <Badge variant="error">Revoked</Badge>}
-                      {!entry.is_active && !entry.revoked_at && <Badge variant="default">Expired</Badge>}
-                    </div>
-                  </div>
-                  <p className="text-sm text-[var(--color-text-primary)]">{entry.reason}</p>
-                  <div className="flex gap-4 mt-2 text-xs text-[var(--color-text-tertiary)]">
-                    <span>From: {formatDate(entry.starts_at)}</span>
-                    <span>To: {formatDate(entry.expires_at)}</span>
-                    {entry.revoked_at && <span>Revoked: {formatDateTime(entry.revoked_at)}</span>}
-                  </div>
-                </div>
-              ))}
             </div>
           )}
+        </SectionCard>
+      )}
+
+      {/* Global Plus confirmation */}
+      <Modal open={globalConfirm} onClose={() => (globalSaving ? null : setGlobalConfirm(false))} title={globalCopy.title} size="sm" destructive={globalPlusOn === true}>
+        <ModalBody>
+          <AlertCard variant={globalPlusOn ? "warning" : "info"}>{globalCopy.body}</AlertCard>
         </ModalBody>
+        <ModalFooter>
+          <Button variant="ghost" disabled={globalSaving} onClick={() => setGlobalConfirm(false)}>
+            {globalPlusOn ? "Keep it on" : "Keep it off"}
+          </Button>
+          {globalCopy.confirmLabel && (
+            <Button variant={globalPlusOn ? "danger" : "primary"} loading={globalSaving} disabled={globalSaving} onClick={() => void confirmGlobalPlus()}>
+              {globalCopy.confirmLabel}
+            </Button>
+          )}
+        </ModalFooter>
       </Modal>
+
+      {/* Person drawer: grant, remove, history */}
+      <Drawer open={person !== null} onClose={closePerson} title={person ? personName(person) : ""}>
+        {person && (
+          <div className="space-y-5 text-sm">
+            <dl className="grid grid-cols-2 gap-3">
+              <div><dt className="text-[var(--color-text-tertiary)]">Real tier</dt><dd>{realTierLabel(person).label}</dd></div>
+              <div><dt className="text-[var(--color-text-tertiary)]">Gets now</dt><dd>{getsNowLabel(person)}</dd></div>
+              <div><dt className="text-[var(--color-text-tertiary)]">Joined</dt><dd>{formatDate(person.created_at)}</dd></div>
+              <div><dt className="text-[var(--color-text-tertiary)]">Phone</dt><dd>{person.phone || "No phone"}</dd></div>
+              {person.current_period_end && <div><dt className="text-[var(--color-text-tertiary)]">Paid until</dt><dd>{formatDate(person.current_period_end)}</dd></div>}
+              {person.trial_ends_at && <div><dt className="text-[var(--color-text-tertiary)]">Trial ends</dt><dd>{formatDate(person.trial_ends_at)}</dd></div>}
+            </dl>
+
+            {writeError && <AlertCard variant="error">{writeError}</AlertCard>}
+
+            {person.override_id ? (
+              <section className="space-y-3 rounded-lg border border-[var(--gray-200)] p-3">
+                <h3 className="font-semibold text-[var(--color-text-primary)]">Admin grant</h3>
+                <p className="text-[var(--color-text-secondary)]">
+                  {person.override_tier === "free" ? "Set to Free" : "Mingla+"} until {formatDate(person.override_expires_at)}.
+                </p>
+                <Input
+                  label="Reason for removing it (logged on the server with your name)"
+                  value={revokeReason}
+                  onChange={(e) => { setRevokeReason(e.target.value); setPendingWrite(null); }}
+                  placeholder="e.g. partnership ended"
+                />
+                {pendingWrite === "revoke" ? (
+                  <AlertCard
+                    variant="warning"
+                    title="Remove this grant?"
+                    action={
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" disabled={writing} onClick={() => setPendingWrite(null)}>Cancel</Button>
+                        <Button variant="danger" size="sm" loading={writing} onClick={() => void confirmWrite()}>Remove grant</Button>
+                      </div>
+                    }
+                  >
+                    {personName(person)} goes back to their real tier straight away{globalPlusOn ? " (Global Plus still gives them Mingla+ while it is on)" : ""}.
+                  </AlertCard>
+                ) : (
+                  <Button variant="secondary" disabled={!revokeReasonOk} onClick={() => setPendingWrite("revoke")}>
+                    Remove grant…
+                  </Button>
+                )}
+              </section>
+            ) : (
+              <section className="space-y-3 rounded-lg border border-[var(--gray-200)] p-3">
+                <h3 className="font-semibold text-[var(--color-text-primary)]">Give Mingla+</h3>
+                <label className="flex flex-col gap-1">
+                  <span className="font-medium text-[var(--color-text-primary)]">For how long</span>
+                  <select
+                    value={grantDays}
+                    onChange={(e) => { setGrantDays(Number(e.target.value)); setPendingWrite(null); }}
+                    className="h-10 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3"
+                  >
+                    {GRANT_DURATIONS.map((d) => <option key={d.days} value={d.days}>{d.label}</option>)}
+                  </select>
+                </label>
+                <Input
+                  label="Reason (logged on the server with your name)"
+                  value={grantReason}
+                  onChange={(e) => { setGrantReason(e.target.value); setPendingWrite(null); }}
+                  placeholder="e.g. creator partner"
+                />
+                {pendingWrite === "grant" ? (
+                  <AlertCard
+                    variant="info"
+                    title="Give Mingla+?"
+                    action={
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" disabled={writing} onClick={() => setPendingWrite(null)}>Cancel</Button>
+                        <Button variant="primary" size="sm" loading={writing} onClick={() => void confirmWrite()}>Give Mingla+</Button>
+                      </div>
+                    }
+                  >
+                    {personName(person)} gets Mingla+ for {GRANT_DURATIONS.find((d) => d.days === grantDays)?.label ?? `${grantDays} days`}, even if Global Plus is turned off.
+                  </AlertCard>
+                ) : (
+                  <Button variant="primary" icon={Gift} disabled={!grantReasonOk} onClick={() => setPendingWrite("grant")}>
+                    Give Mingla+…
+                  </Button>
+                )}
+              </section>
+            )}
+
+            <section className="space-y-2">
+              <h3 className="font-semibold text-[var(--color-text-primary)]">History</h3>
+              {historyLoading ? (
+                <div className="flex justify-center py-6"><Spinner /></div>
+              ) : historyError ? (
+                <LoadError title="Couldn't load the history" message={historyError} onRetry={() => void openPerson(person)} />
+              ) : history.length === 0 ? (
+                <p className="text-[var(--color-text-tertiary)]">No admin grants for this person yet.</p>
+              ) : (
+                history.map((entry) => (
+                  <div key={entry.id} className="rounded-lg border border-[var(--gray-200)] p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={entry.tier === "mingla_plus" ? "brand" : "default"}>{entry.tier === "mingla_plus" ? "Mingla+" : "Free"}</Badge>
+                      {entry.is_active && <Badge variant="success">Active</Badge>}
+                      {entry.revoked_at && <Badge variant="error">Removed</Badge>}
+                      {!entry.is_active && !entry.revoked_at && <Badge variant="default">Ended</Badge>}
+                    </div>
+                    <p className="mt-1 text-[var(--color-text-primary)]">{entry.reason}</p>
+                    <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+                      {formatDate(entry.starts_at)} – {formatDate(entry.expires_at)}
+                      {entry.revoked_at ? ` · removed ${formatDateTime(entry.revoked_at)}` : ""}
+                    </p>
+                  </div>
+                ))
+              )}
+            </section>
+          </div>
+        )}
+      </Drawer>
+
+      {!overviewError && overview && overview.global_plus !== undefined && globalPlusOn !== null && overview.global_plus !== globalPlusOn && (
+        <p className="flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
+          <AlertTriangle className="h-3.5 w-3.5" /> The switch changed while the counts were loading. Refresh to see the latest.
+        </p>
+      )}
     </div>
   );
 }
