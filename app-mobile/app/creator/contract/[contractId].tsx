@@ -89,6 +89,7 @@ export default function CreatorContractScreen(): React.ReactElement {
         {terms ? <Text style={s.strong}>{formatMoney(terms.fee_minor, currency)} paid to you, already held by Mingla</Text> : null}
       </ProgramCard>
       {terms ? <TermsCard terms={terms} gig={w.gig} /> : null}
+      {w.pending_topup ? <ProgramNotice text="The host accepted your counter and is paying the difference. You can accept once it’s paid." /> : null}
       {openCounter ? <ProgramCard>
         <Text style={s.label}>Your counter</Text>
         <Text style={s.strong}>{formatMoney(Number(openCounter.changes.fee_minor), currency)} · waiting for the host</Text>

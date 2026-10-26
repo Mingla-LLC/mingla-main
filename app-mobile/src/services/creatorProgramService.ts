@@ -25,6 +25,9 @@ export type CreatorSetupStatus = {
   review_note?: string | null;
   declined_reason?: string | null;
   checks?: SetupCheck[];
+  /** How hosts see you (name and niches), straight from the status call. */
+  display_name?: string | null;
+  niches?: string[] | null;
   /** Legacy raw keys; never shown. */
   missing?: string[];
   handles?: CreatorHandle[];

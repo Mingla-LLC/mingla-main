@@ -31,7 +31,7 @@ export function CreatorProgramsSection({ userId, onOpenCreator, onOpenLocal, onO
   const [earnOpen, setEarnOpen] = useState(false);
   const status = useQuery({ queryKey: ['creator-programs', 'status', userId], queryFn: () => creatorProgramService.status(), enabled: Boolean(userId), staleTime: 60_000, retry: 1 });
   const isCreator = Boolean(status.data?.profile);
-  const profile = useQuery({ queryKey: ['creator-programs', 'own-profile', userId], queryFn: () => creatorProgramService.ownProfile(), enabled: isCreator, staleTime: 60_000, retry: 1 });
+  const profile = useQuery({ queryKey: ['creator-programs', 'own-profile', userId], queryFn: () => creatorProgramService.ownProfile(), enabled: isCreator && !status.data?.display_name, staleTime: 60_000, retry: 1 });
   const home = useQuery({ queryKey: ['creator-programs', 'home', userId], queryFn: () => creatorGigsService.home(), enabled: isCreator, staleTime: 60_000, retry: 1 });
   const earnings = useQuery({ queryKey: ['creator-programs', 'earnings', userId], queryFn: () => creatorGigsService.earningsSummary(), enabled: isCreator, staleTime: 60_000, retry: 0 });
   const landing = useQuery({ queryKey: ['creator-programs', 'local-landing', userId], queryFn: () => localProgramService.landing(), enabled: Boolean(userId), staleTime: 60_000, retry: 1 });
@@ -40,8 +40,8 @@ export function CreatorProgramsSection({ userId, onOpenCreator, onOpenLocal, onO
   const localCopy = localRowCopy(local);
   const hasLocalSeatOrApplication = Boolean(local?.local || (local?.applications.length ?? 0) > 0);
   const verified = status.data?.verification === 'verified';
-  const name = profile.data?.display_name ?? '';
-  const seenAs = hostsSeeYouAs(name, profile.data?.niches ?? [], nicheLabel);
+  const name = status.data?.display_name ?? profile.data?.display_name ?? '';
+  const seenAs = hostsSeeYouAs(name, status.data?.niches ?? profile.data?.niches ?? [], nicheLabel);
 
   const needsYou = (home.data?.contracts ?? []).filter((c) => creatorOwnsNextStep(c.state)).length;
   const summary = earnings.data;

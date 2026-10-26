@@ -15,6 +15,8 @@ export type CreatorHomeContract = {
   fee_minor: number; currency: string; updated_at: string;
   /** Creator-words key for the one next action (server), and when it's due. */
   next_action?: string | null; due_at?: string | null; fix_rounds_used?: number | null;
+  /** A counter-offer from you is waiting for the host. */
+  counter_open?: boolean | null;
 };
 export type CreatorHomeInterest = { id: string; gig_id: string; title: string; status: string; quote_minor: number; currency: string; created_at: string };
 export type CreatorHome = { contracts: CreatorHomeContract[]; interests: CreatorHomeInterest[]; saved?: PublicGig[] };
@@ -47,6 +49,10 @@ export type GigWorkspace = {
   scripts: GigScript[]; deliveries: GigDelivery[];
   posts: GigPost[]; dispute: null | { id: string; status: string; statement: string; offers: Array<{ id: string; offered_by: 'host' | 'creator'; refund_bps: number; note: string | null; status: string }> };
   ratings: Array<Record<string, unknown> & { rated_by?: string; stars?: number }>;
+  /** Creator-words key for the one next action (server). */
+  next_action?: string | null;
+  /** The host still owes a top-up after accepting a higher counter. */
+  pending_topup?: boolean | null;
 };
 
 export type EarningsRow = { kind: 'gig' | 'referral' | 'local'; title: string; amount_minor: number; currency: string; state: 'on_the_way' | 'ready' | 'paid'; at: string };
@@ -95,5 +101,5 @@ export const creatorGigsService = {
   offerDispute: (disputeId: string, refundBps: number, note?: string) => programWrite('gig_dispute_offer', { p_dispute_id: disputeId, p_refund_bps: refundBps, p_note: note?.trim() || null }),
   respondToDisputeOffer: (offerId: string, accept: boolean) => programEdge('gig-dispute-resolve', { offer_id: offerId, accept }),
   rate: (contractId: string, stars: number) => programWrite('gig_rating_submit', { p_contract_id: contractId, p_stars: stars, p_tags: [], p_note: null }),
-  refund: (contractId: string, branch: string, refundBps?: number) => programEdge('gig-refund', { contract_id: contractId, branch, refund_bps: refundBps }),
+  refund: (contractId: string, branch: 'creator_decline' | 'creator_after_accept') => programEdge('gig-refund', { contract_id: contractId, branch }),
 };

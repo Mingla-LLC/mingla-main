@@ -206,7 +206,7 @@ function MoneyTile({ label, value, onPress }: { label: string; value: string; on
 }
 
 function ContractRow({ contract, isLast, onPress }: { contract: CreatorHomeContract; isLast: boolean; onPress: () => void }): React.ReactElement {
-  const words = creatorStateWords(contract.state, { deadlineAt: contract.deadline_at, fixRoundsUsed: contract.fix_rounds_used });
+  const words = contract.state === 'offered' && contract.counter_open ? 'Counter sent · waiting for the host' : creatorStateWords(contract.state, { deadlineAt: contract.deadline_at, fixRoundsUsed: contract.fix_rounds_used });
   return <Pressable accessibilityRole="button" accessibilityLabel={`${contract.title}, ${words}`} onPress={onPress} style={({ pressed }) => [styles.item, !isLast && styles.itemBorder, pressed && s.pressed]}>
     <View style={styles.fmt}><Icon name="videocam" size={16} color={C.accent} /></View>
     <View style={s.flex}>
