@@ -104,6 +104,21 @@ const I3682_BLOCK = [
 ].join("\n");
 const I3682_NAMES = ["get_brand_follower_count(", "get_brand_follower_counts("];
 
+// #4111 — sixth binding amendment. Two intended-public brand-page reads (does
+// this brand take enquiries; its aggregate reply time) sit directly after the
+// #3682 follower-count readers. The frozen #2986 count header is deliberately
+// unchanged.
+const I4111_ANCHOR = I3682_SIGNATURES[1];
+const I4111_SIGNATURES = [
+  "brand_enquiry_public_profile(p_brand_id uuid)",
+  "issue_4111_brand_takes_enquiries(p_brand_id uuid)",
+];
+const I4111_BLOCK = [
+  "# #4111: signed-out brand pages need whether a brand takes enquiries and its measured reply time; both return only a boolean or an aggregate, never guest data.",
+  ...I4111_SIGNATURES,
+].join("\n");
+const I4111_NAMES = ["brand_enquiry_public_profile(", "issue_4111_brand_takes_enquiries("];
+
 const countExactLine = (source, expected) => source.split(/\r?\n/).filter((line) => line.trim() === expected).length;
 
 const expectedAfter2986 = (base) => {
@@ -204,10 +219,29 @@ const expectedAfter3682 = (base) => {
   return base.replace(`${I3682_ANCHOR}\n`, `${I3682_ANCHOR}\n${I3682_BLOCK}\n`);
 };
 
+// #4111 — applied after #3682 (its anchor is the #3682 block's last reader).
+const expectedAfter4111 = (base) => {
+  if (
+    I4111_SIGNATURES.every((signature) => countExactLine(base, signature) === 1) &&
+    base.includes(`${I4111_ANCHOR}\n${I4111_BLOCK}\n`)
+  ) {
+    return base;
+  }
+  if (I4111_NAMES.some((name) => base.includes(name)) || base.includes("# #4111:")) {
+    throw new Error("base contains a partial or lookalike #4111 brand-page enquiry reader set");
+  }
+  if (countExactLine(base, I4111_ANCHOR) !== 1) {
+    throw new Error("base #4111 insertion anchor is absent or duplicated");
+  }
+  return base.replace(`${I4111_ANCHOR}\n`, `${I4111_ANCHOR}\n${I4111_BLOCK}\n`);
+};
+
 export const expectedAllowlist = (base) =>
-  expectedAfter3872(
-    expectedAfter3682(
-      expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
+  expectedAfter4111(
+    expectedAfter3872(
+      expectedAfter3682(
+        expectedAfter3697(expectedAfter3281(expectedAfter3426(expectedAfter2986(base)))),
+      ),
     ),
   );
 
@@ -221,7 +255,7 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
   }
   if (expected && currentAllowlist !== expected) {
     failures.push(
-      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, and #3872 R1 display readers",
+      "allowlist delta is not the exact #2986 pair/comments/header correction plus the exact #3426 reader, #3281 R3 slot reader, #3697 pixel-mode reader, #3682 aggregate follower-count readers, #3872 R1 display readers, and #4111 brand-page enquiry readers",
     );
   }
   for (const signature of [
@@ -231,6 +265,7 @@ export const validate = ({ baseAllowlist, currentAllowlist, workflow }) => {
     I3697_SIGNATURE,
     ...I3682_SIGNATURES,
     ...I3872_SIGNATURES,
+    ...I4111_SIGNATURES,
   ]) {
     if (countExactLine(currentAllowlist, signature) !== 1) failures.push(`signature must occur exactly once: ${signature}`);
   }
@@ -337,16 +372,26 @@ const runSelfTest = () => {
     ["#3682 lookalike overload", `${head}get_brand_follower_count(p_brand_id uuid, p_debug boolean)\n`, workflow, false],
     ["#3682 moved away from its anchor", head.replace(`${I3682_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I3682_BLOCK}\n`), workflow, false],
     ["#3682 plus a forged neighbour", head.replace(`${I3682_BLOCK}\n`, `${I3682_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    // #4111 — the sixth amendment is exactly two brand-page readers and their
+    // one comment, directly after the #3682 block, with no header change.
+    ["#4111 block missing", head.replace(`${I4111_BLOCK}\n`, ""), workflow, false],
+    ["#4111 comment missing", head.replace(`${I4111_BLOCK.split("\n")[0]}\n`, ""), workflow, false],
+    ["#4111 comment substituted", head.replace("# #4111: signed-out brand pages need", "# #4111: approved somehow"), workflow, false],
+    ["#4111 signature changed", head.replace(I4111_SIGNATURES[0], "brand_enquiry_public_profile(brand_id uuid)"), workflow, false],
+    ["#4111 lookalike overload", `${head}issue_4111_brand_takes_enquiries(p_brand_id uuid, p_debug boolean)\n`, workflow, false],
+    ["#4111 moved away from its anchor", head.replace(`${I4111_BLOCK}\n`, "").replace("place_discovery_range_for_viewer(p_place_pool_id uuid)\n", `place_discovery_range_for_viewer(p_place_pool_id uuid)\n${I4111_BLOCK}\n`), workflow, false],
+    ["#4111 plus a forged neighbour", head.replace(`${I4111_BLOCK}\n`, `${I4111_BLOCK}\nforged_neighbour_function()\n`), workflow, false],
+    ["#4111 header edited", head.replace(I3697_NEW_HEADER, "# Signature count: 206 (intended-public 37, internally-gated 108, predicate/read-helper 58, PostGIS 3)."), workflow, false],
   ];
   for (const [name, candidate, candidateWorkflow, shouldPass] of cases) {
     const passed = validate({ baseAllowlist: base, currentAllowlist: candidate, workflow: candidateWorkflow }).length === 0;
     if (passed !== shouldPass) throw new Error(`self-test ${name} ${shouldPass ? "failed" : "was not rejected"}`);
   }
-  // Once a base carries all six amendments, the ONLY accepted head is that
+  // Once a base carries all seven amendments, the ONLY accepted head is that
   // base, byte for byte.
   const settled = expectedAllowlist(base);
   if (validate({ baseAllowlist: settled, currentAllowlist: settled, workflow }).length !== 0) {
-    throw new Error("self-test settled base with all six amendments failed");
+    throw new Error("self-test settled base with all seven amendments failed");
   }
   if (validate({ baseAllowlist: settled, currentAllowlist: `${settled}forged_after_settle()\n`, workflow }).length === 0) {
     throw new Error("self-test settled base accepted a new line");
@@ -363,7 +408,7 @@ const runReal = (baseSha) => {
   const failures = validate({ baseAllowlist, currentAllowlist, workflow });
   if (failures.length) throw new Error(failures.join("\n"));
   process.stdout.write(
-    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + frozen #2117 live gate PASS\n",
+    "#2986 exact allowlist pair + #3426 exact reader + #3281 R3 slot reader + #3697 pixel-mode reader + #3682 aggregate follower-count readers + #3872 R1 display readers + #4111 brand-page enquiry readers + frozen #2117 live gate PASS\n",
   );
 };
 

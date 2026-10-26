@@ -547,6 +547,23 @@ const renderPublicEventPage = (
             ctaUrl: "https://usemingla.com/download",
           }),
         };
+      // #4111 Harness registration only — ADDITION, no assertion changed. The
+      // organiser row now pairs Follow with Message; messaging is outside the
+      // close-callback contract, so the controller reports "unavailable".
+      case "../brandContact/PresentedByActions":
+        return {
+          PresentedByActions: ({ follow }: { follow: unknown }) => follow,
+        };
+      case "../brandContact/useBrandMessage":
+        return {
+          useBrandMessage: () => ({
+            available: false,
+            replyMinutes: null,
+            open: () => undefined,
+            overlays: null,
+          }),
+          viewerNameFromUser: () => null,
+        };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

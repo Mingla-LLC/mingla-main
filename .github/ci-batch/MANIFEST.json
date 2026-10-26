@@ -7428,6 +7428,8 @@
         "packages/brand-rendering/__tests__/issue_3430_upcoming_kind_labels.tester.adversarial.render.test.tsx",
         "packages/brand-rendering/__tests__/issue_3682_follow_tokens.test.ts",
         "packages/brand-rendering/__tests__/issue_3682_presented_by_follow_slot.test.ts",
+        "packages/brand-rendering/__tests__/issue_4111_brand_page_foot.render.test.tsx",
+        "packages/brand-rendering/__tests__/issue_4111_message_sheet_rework.render.test.tsx",
         "packages/brand-rendering/__tests__/issue_679_follow_gate.adversarial.render.test.tsx",
         "packages/brand-rendering/__tests__/issue_679_follow_gate.test.tsx",
         "packages/brand-rendering/__tests__/orch_1155_brand_redesign.adversarial.test.tsx",
@@ -18976,7 +18978,7 @@
       "providerWorkflow": ".github/workflows/issue-2272-web-app-link-landings.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "4a5e55553433be1382fa569b1b90faefdf1f58c86065dccb0a81f85c6499fb2c",
+        "sourceSha256": "d12404da6701e1bcf57af0dce4109e72845942ca935f0bc75e00b6c642c226f0",
         "triggers": [
           "pull_request",
           "push",
@@ -18985,7 +18987,7 @@
         "pathScope": [
           ".github/workflows/issue-2272-web-app-link-landings.yml",
           "app-mobile/app.json",
-          "app-mobile/app/+native-intent.tsx",
+          "app-mobile/app/\\+native-intent.tsx",
           "app-mobile/src/services/boardInviteService.ts",
           "mingla-marketing/app/board/**",
           "mingla-marketing/app/chat/**",

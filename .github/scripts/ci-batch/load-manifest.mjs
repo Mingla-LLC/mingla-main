@@ -15,7 +15,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #2331: re-sealed after the #905 /links and #922 actionability providers
 // gained the privacy-bar owners in their path scope (the /links route
 // suppression module is retired).
-export const BOOTSTRAP_SHA256 = "a4670b8512349118875015cbedc3bc1fa040473c200f679e2a09dcd0d150f7e6";
+// #4111: re-sealed after the #679 brand-page suite gained the brand page foot
+// render proof and the message-sheet rework proof (issue_4111_*.render.test.tsx).
+// #4111: re-sealed after the #2272 workflow escaped `+` in its +native-intent.tsx
+// path filter (GitHub reads `+` as a pattern operator), updating its pathScope and sourceSha256.
+export const BOOTSTRAP_SHA256 = "55d3af06815d31d21820479d7332ab691b70c8458de2b964869b838248c9ae90";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

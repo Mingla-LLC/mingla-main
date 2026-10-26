@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,6 +18,13 @@ import {
   type PublicBrandUpcoming,
   type PublicBrandVenueSummary,
 } from "@mingla/brand-rendering";
+import { BrandPageFoot } from "@mingla/brand-rendering/enquiry/BrandPageFoot";
+import {
+  enquiryOfferingsFromSections,
+  enquiryVenueFromSummary,
+} from "@mingla/brand-rendering/enquiry/enquiryPageData";
+// DEEP specifier: the barrel pulls the offering chrome into this screen.
+import { createThemePalette } from "@mingla/offering-rendering/themePalette";
 
 import {
   useBrandBySlug,
@@ -41,6 +48,7 @@ import { BrandFollowOverflowSheet } from "../components/profile/BrandFollowOverf
 import { BrandsYouFollowManageSheet } from "../components/profile/BrandsYouFollowManageSheet";
 import type { BrandFollowRow } from "../services/brandFollowsService";
 import { resolveExplorerPublicPath } from "../services/publicParityNativeAdapter";
+import { useExplorerBrandMessage } from "../components/brandEnquiry/useExplorerBrandMessage";
 
 export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const router = useRouter();
@@ -79,6 +87,59 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       });
     }
   }, [query.data?.brand?.id, queryClient, user?.id]);
+
+  // #4111 Wave D (D1/D3/D6) — "Message {Brand}". Signed-in: the foot shows the
+  // Message card only (no newsletter box in Explorer); signed-out: Message opens
+  // the "Sign in to message {Brand}" step. Offerings and the claimed venue come
+  // from what this page already loaded.
+  const loadedBrand = query.data?.brand ?? null;
+  const resolvedTheme = query.data?.resolvedTheme ?? null;
+  const messageBrand = useMemo(
+    () =>
+      loadedBrand === null || resolvedTheme === null
+        ? null
+        : {
+            id: loadedBrand.id,
+            name: loadedBrand.displayName,
+            slug: loadedBrand.slug ?? null,
+            theme: resolvedTheme,
+          },
+    [loadedBrand, resolvedTheme],
+  );
+  const enquiryOfferings = useMemo(
+    () =>
+      enquiryOfferingsFromSections({
+        happeningNow: happeningNowQuery.data ?? [],
+        upcoming: query.data?.upcoming ?? [],
+        past: pastFeed.rows ?? [],
+      }),
+    [happeningNowQuery.data, pastFeed.rows, query.data?.upcoming],
+  );
+  const firstVenue = venuesQuery.data?.[0] ?? null;
+  const enquiryVenue = useMemo(() => enquiryVenueFromSummary(firstVenue), [firstVenue]);
+  const brandMessage = useExplorerBrandMessage({
+    brand: messageBrand,
+    entry: "brand_page",
+    offerings: enquiryOfferings,
+    venue: enquiryVenue,
+    onBookTable: () => {
+      if (firstVenue === null || loadedBrand === null) return;
+      const path = resolveExplorerPublicPath(
+        {
+          kind: "venue",
+          entityId: firstVenue.id,
+          brandSlug: loadedBrand.slug,
+          venueSlug: firstVenue.slug,
+        },
+        { platform: Platform.OS, authState: user?.id ? "signed-in" : "anonymous" },
+      );
+      if (path !== null) router.push(`${path}?tab=reservations` as never);
+    },
+  });
+  const footPalette = useMemo(
+    () => (resolvedTheme === null ? null : createThemePalette(resolvedTheme)),
+    [resolvedTheme],
+  );
 
   const handleShare = useCallback((): void => {
     if (typeof slug !== "string") return;
@@ -274,7 +335,23 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         // the business adapter passes its own offset; web safe-area top is 0.
         chromeTopOffset={insets.top}
         contentBottomInset={insets.bottom + 24}
+        foot={
+          brandMessage.available && footPalette !== null ? (
+            <BrandPageFoot
+              brandName={detail.brand.displayName}
+              palette={footPalette}
+              theme={detail.resolvedTheme}
+              message={{
+                onPress: () => brandMessage.open(),
+                replyMinutes: brandMessage.replyMinutes,
+              }}
+            />
+          ) : null
+        }
         callbacks={{
+          // #4111 — desktop side-panel Message (wide layouts), only when the
+          // brand takes messages.
+          onMessage: brandMessage.available ? () => brandMessage.open() : undefined,
           onClose: handleClose,
           onShare: handleShare,
           onToggleFollow: handleToggleFollow,
@@ -372,6 +449,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           mounted in the Home route (app/index.tsx), which is NOT mounted on a
           cold /b/ deep link (investigation D-2). Warm-nav double-mount is
           benign: identical absolute-positioned overlay. */}
+      {brandMessage.overlays}
       <ToastContainer />
       <BrandFollowOverflowSheet
         visible={followingMenuOpen && followingMenuRow !== null}

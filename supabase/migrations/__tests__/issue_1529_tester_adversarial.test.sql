@@ -270,9 +270,12 @@ BEGIN
   -- producers, one #4063 receipt producer, one drain-derived producer, and
   -- twelve proved readers are the exact live catalog: 31 functions that touch
   -- the outbox.
-  IF v_count < 31 THEN
+  -- [TEST-MOD-APPROVED #4111] Raised to the live catalog measured on a fresh
+  -- PostgreSQL 17 replay of every migration with the three #4111 producers:
+  -- 37 functions touch the outbox.
+  IF v_count < 37 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_31_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_37_got_%',
       v_count;
   END IF;
 
@@ -282,9 +285,11 @@ BEGIN
   -- appearing.
   SELECT count(*) INTO v_count
   FROM issue_1529_adv_producers WHERE writes_outbox;
-  IF v_count < 19 THEN
+  -- [TEST-MOD-APPROVED #4111] Customer enquiries add three explicit-NULL
+  -- producers; the measured live writer count is 25.
+  IF v_count < 25 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_19_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_25_got_%',
       v_count;
   END IF;
 END;
@@ -320,6 +325,12 @@ DECLARE
     -- suites, so the broad adversarial catalog must classify them as populating.
     'biz_door_sale_record',
     'pg_ticket_offer_to_friend',
+    -- [TEST-MOD-APPROVED #4111] Customer enquiries: team notice, Explorer
+    -- reply push and the 24h nudge. Each writes an explicit NULL
+    -- country_code (no SMS leg); the owning #4111 PostgreSQL suite asserts it.
+    'issue_4111_enqueue_team_notice',
+    'brand_enquiry_reply',
+    'issue_4111_enquiry_nudge_sweep',
     'create_support_ticket'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund

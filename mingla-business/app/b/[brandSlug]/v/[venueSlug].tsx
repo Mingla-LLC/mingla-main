@@ -98,6 +98,10 @@ import { PublicVenueReservationSheet } from "../../../../src/components/venue/Pu
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
 import { ShareModal } from "../../../../src/components/ui/ShareModal";
 import { useThemeFont } from "../../../../src/theme/useThemeFont";
+import { OptionalFeatureBoundary } from "../../../../src/components/brandContact/OptionalFeatureBoundary";
+// #4111 D6 — Message {Brand} with this venue picked. It messages as a signed-out
+// web guest (this chain never calls useAuth); the sheet itself loads lazily.
+import VenueBrandMessage from "../../../../src/components/brandContact/VenueBrandMessage";
 import {
   brandPublicPath,
   venueOgImageUrl,
@@ -186,6 +190,17 @@ export default function PublicVenueRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [shareModalVisible, setShareModalVisible] = React.useState(false);
+  const [messageOpener, setMessageOpener] = React.useState<{ open: () => void } | null>(null);
+  // Mount the (lazy) message controller only after the page's first commit, so
+  // its chunk never sits on the venue page's first paint.
+  const [messageMountReady, setMessageMountReady] = React.useState(false);
+  useEffect(() => {
+    setMessageMountReady(true);
+  }, []);
+  const handleMessageOpener = useCallback(
+    (opener: { open: () => void } | null): void => setMessageOpener(opener),
+    [],
+  );
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     venueSlug: string | string[];
@@ -749,19 +764,38 @@ export default function PublicVenueRoute(): React.ReactElement {
         ),
       }}
       overlays={
-        <ShareModal
-          visible={shareModalVisible}
-          onClose={() => setShareModalVisible(false)}
-          url={canonicalUrl}
-          contentKind="venue"
-          title={pageTitle}
-          description={metaDescription}
-        />
+        <>
+          <ShareModal
+            visible={shareModalVisible}
+            onClose={() => setShareModalVisible(false)}
+            url={canonicalUrl}
+            contentKind="venue"
+            title={pageTitle}
+            description={metaDescription}
+          />
+          {messageMountReady ? (
+          <OptionalFeatureBoundary name="venue-brand-message">
+            <VenueBrandMessage
+              brandId={venue.brandId}
+              brandName={venue.brandName}
+              brandSlug={venue.brandSlug}
+              venueId={venue.id}
+              venueName={venue.name}
+              venueSlug={venue.slug}
+              theme={venue.theme}
+              countryIso={venue.countryCode ?? null}
+              onOpener={handleMessageOpener}
+            />
+          
+          </OptionalFeatureBoundary>
+          ) : null}
+        </>
       }
       onAnalytics={handleAnalytics}
       onShare={handleShare}
       onClose={handleClose}
       onOpenBrand={handleOpenBrand}
+      onMessageBrand={messageOpener === null ? undefined : messageOpener.open}
       onOpenMaps={handleOpenMaps}
       onCopyAddress={handleCopyAddress}
     />

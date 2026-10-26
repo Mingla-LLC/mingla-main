@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/public-brand-enquiry/__tests__/issue_4111_public_brand_enquiry.implementor.happy.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4111-public-brand-enquiry",
+  "profile": "deno-2-unit"
+}

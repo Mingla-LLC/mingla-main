@@ -57,6 +57,8 @@ export interface BrandRow {
   social_links: unknown;
   custom_links: unknown;
   display_attendee_count: boolean;
+  /** #4111 — "Let guests message us"; absent on rows read before the migration. */
+  enquiries_enabled?: boolean | null;
   tax_settings: unknown;
   default_currency: string | null;
   // ORCH-1006 — brand-level all-in pricing defaults (NULL-safe; DB defaults to
@@ -122,6 +124,7 @@ export type BrandTableInsert = {
   social_links?: Record<string, string>;
   custom_links?: BrandCustomLink[];
   display_attendee_count?: boolean;
+  enquiries_enabled?: boolean;
   tax_settings?: Record<string, unknown>;
   default_currency?: string | null;
   stripe_connect_id?: string | null;
@@ -316,6 +319,9 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
       : undefined,
     links,
     displayAttendeeCount: row.display_attendee_count,
+    ...(typeof row.enquiries_enabled === "boolean"
+      ? { enquiriesEnabled: row.enquiries_enabled }
+      : {}),
     theme:
       row.theme_color !== undefined ||
       row.theme_font !== undefined ||
@@ -475,6 +481,10 @@ export function mapUiToBrandUpdatePatch(
   }
   if (patch.displayAttendeeCount !== undefined) {
     out.display_attendee_count = patch.displayAttendeeCount;
+  }
+  // #4111 — the "Let guests message us" switch.
+  if (patch.enquiriesEnabled !== undefined) {
+    out.enquiries_enabled = patch.enquiriesEnabled;
   }
   if (patch.defaultCurrency !== undefined) {
     out.default_currency = patch.defaultCurrency;

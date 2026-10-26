@@ -21,6 +21,7 @@ import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
 import { ProductInboxPanel } from "../components/community/ProductInboxPanel";
 import { FeatureGuidePanel } from "../components/community/FeatureGuidePanel";
 import { ModerationPanel } from "../components/community/ModerationPanel";
+import { ReportedEnquiriesPanel } from "../components/community/ReportedEnquiriesPanel";
 import { IdeasPanel } from "../components/community/IdeasPanel";
 import { QuestionsPanel } from "../components/community/QuestionsPanel";
 import {
@@ -49,6 +50,7 @@ const COMMUNITY_SUPPORT_TABS = [
   { id: "ideas", label: "Ideas" },
   { id: "questions", label: "Questions" },
   { id: "moderation", label: "Moderation" },
+  { id: "enquiry-reports", label: "Reported enquiries" },
   { id: "support", label: "Support" },
   { id: "product", label: "Product Inbox" },
   { id: "feature-guide", label: "Feature Guide" },
@@ -270,6 +272,7 @@ export function CommunitySupportPage() {
       {activeTab === "ideas" && capabilities.canCommunity && <IdeasPanel />}
       {activeTab === "questions" && capabilities.canCommunity && <QuestionsPanel />}
       {activeTab === "moderation" && capabilities.canCommunity && <ModerationPanel />}
+      {activeTab === "enquiry-reports" && capabilities.canCommunity && <ReportedEnquiriesPanel />}
       {activeTab === "support" && (
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} />
       )}

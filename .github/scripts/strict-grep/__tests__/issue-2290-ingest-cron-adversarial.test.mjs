@@ -298,6 +298,10 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   // audience sync (+3 → 13). Prove each pair before accepting the combined count.
   // [TEST-MOD-APPROVED #4063] The buyer-message migration atomically removes
   // and restores the existing reminder job (+1 → 14).
+  // [TEST-MOD-APPROVED #4111] The enquiry crons (auto-resolve, nudge, guest
+  // digest) are installed idempotently: one dynamic unschedule of exactly those
+  // three names, then the three schedules, in one DO block (+1 → 15). Proven
+  // below like the #3697 pairs.
   const issue3697Pairs = [
     {
       file: "supabase/migrations/20271213023697_issue_3697_conversion_retry.sql",
@@ -336,6 +340,17 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
       `${file} must keep the unschedule and reschedule in one transaction`,
     );
   }
+  {
+    const file = "supabase/migrations/20271222004111_issue_4111_enquiry_notifications_and_subscribe.sql";
+    const sql = stripSqlComments(fs.readFileSync(path.join(REPO_ROOT, file), "utf8"));
+    const unschedule = sql.search(/cron\.unschedule\s*\(\s*jobname\s*\)/i);
+    assert.ok(unschedule >= 0, `${file} must dynamically unschedule its own jobs`);
+    for (const job of ["issue_4111_enquiry_auto_resolve", "issue_4111_enquiry_nudge", "issue_4111_enquiry_guest_digest"]) {
+      const schedule = sql.search(new RegExp(`cron\\.schedule\\s*\\(\\s*'${job}'`, "i"));
+      assert.ok(schedule > unschedule, `${file} must reschedule ${job} after the dynamic unschedule`);
+      assert.doesNotMatch(sql.slice(unschedule, schedule), /\bCOMMIT\s*;/i, `${file} must keep ${job}'s unschedule and reschedule in one transaction`);
+    }
+  }
   // A NEW one must force a human to confirm it is not a permanent kill.
   const repo = cronReachability(loadMigrations());
   assert.ok(
@@ -344,7 +359,7 @@ test("A-5 a non-literal cron.unschedule is NOT modelled — frozen as a tripwire
   );
   assert.equal(
     repo.dynamicUnschedules,
-    14,
+    15,
     "the number of unmodelled dynamic cron.unschedule calls changed. Each one is a place " +
       "where this gate cannot see a job being removed. Confirm the new call is the " +
       "unschedule-then-reschedule idiom (and not a permanent removal of a live worker) " +

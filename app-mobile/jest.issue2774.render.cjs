@@ -68,5 +68,15 @@ module.exports = {
     // issue #3682 — the consumer app updates the public aggregate immediately
     // on follow and restores the server count if the write fails.
     "**/__tests__/issue_3682_follower_count_optimistic.render.test.tsx",
+    // issue #4111 Wave D — Explorer "Message {Brand}": enquiry rows, send args,
+    // calendar prefills, push route, claim after email sign-in; the sheet
+    // wiring from every entry point and the signed-out sign-in step; the
+    // enquiry thread (composer, Report, resolved banner).
+    "**/__tests__/issue_4111_explorer_enquiry_model.implementor.happy.test.ts",
+    "**/__tests__/issue_4111_explorer_message_entry_points.implementor.happy.render.test.tsx",
+    "**/__tests__/issue_4111_explorer_enquiry_thread.implementor.happy.render.test.tsx",
+    // issue #4111 — tester adversarial: enquiry rows and read status under
+    // hostile data (other people's receipts, system rows, cross-thread pages).
+    "**/__tests__/issue_4111_explorer_enquiry_rows.tester.adversarial.test.ts",
   ],
 };
