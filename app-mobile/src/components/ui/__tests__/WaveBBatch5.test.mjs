@@ -232,14 +232,16 @@ function run() {
     !/<Modal\b/.test(code(filterDropdown)),
     "T-8 FilterDropdown: Discover filters must use BaseBottomSheet, not a raw <Modal>",
   );
-  // MessageInterface keeps its EXCLUDED modals (image preview + file spinner).
+  // MessageInterface keeps its EXCLUDED modals out of BaseBottomSheet.
   // [TEST-MOD-APPROVED META-ORCH-0991] event-audience was Wave-C IN-SCOPE (not
   // excluded) and was correctly converted to BaseBottomSheet in Wave C Batch 3,
   // superseding this batch's original "3 must remain"/chatSheetHandle assumption.
-  const miModalCount = (code(messageIf).match(/<Modal\b/g) || []).length;
+  // [TEST-MOD-APPROVED #4114] Wave 4 deleted the file spinner (a fake 500 ms
+  // timer) and moved the image preview into the shared ImageLightbox and the
+  // chat video / view-once viewers, each its own raw-<Modal> component.
   assert.ok(
-    miModalCount >= 2,
-    `T-8 MessageInterface: excluded modals (image preview, file spinner) must remain — found ${miModalCount} raw <Modal>`,
+    /<ImageLightbox\b/.test(code(messageIf)) && /<ChatVideoPlayerModal\b/.test(code(messageIf)),
+    "T-8 MessageInterface: the media viewers stay full-screen modals (ImageLightbox + ChatVideoPlayerModal), not sheets",
   );
   // PersonHolidayView keeps the visits-list pageSheet <Modal>.
   assert.match(

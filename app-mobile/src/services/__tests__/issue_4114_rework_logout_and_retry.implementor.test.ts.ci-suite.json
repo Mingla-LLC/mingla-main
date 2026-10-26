@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4114_rework_logout_and_retry.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-rework-logout-and-retry-implementor",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

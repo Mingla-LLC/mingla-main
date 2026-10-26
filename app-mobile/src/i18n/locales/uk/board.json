@@ -40,6 +40,7 @@
     "takeAStroll": "Take a Stroll"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Не вдалося надіслати SMS на {{phone}}. Натомість поділіться посиланням-запрошенням.",
     "adminPrivileges": "Adхв Privileges",
     "manageBoard": "Чоловікage Board",
     "renameBoard": "Rename Board",

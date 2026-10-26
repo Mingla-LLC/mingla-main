@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/components/connections/__tests__/issue_4114_w6_brand_channel.tester_adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4114-w6-brand-channel-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

@@ -75,6 +75,12 @@ interface ViewFriendProfileScreenProps {
     currency: string;
     measurementSystem: 'Metric' | 'Imperial';
   };
+  /**
+   * Issue #4114 (D13): "paired" opens the profile scrolled to the paired view
+   * (birthday, holidays and saves) — from the friends sheet's Paired section and
+   * from a paired friend's 1:1 chat menu.
+   */
+  initialFocus?: 'paired';
 }
 
 function displayName(
@@ -323,7 +329,11 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   onBack,
   onMessage,
   accountPreferences,
+  initialFocus,
 }) => {
+  const scrollRef = useRef<ScrollView>(null);
+  const focusedRef = useRef(false);
+  const profileSheetYRef = useRef(0);
   const { t } = useTranslation(['profile', 'common', 'discover']);
   const insets = useSafeAreaInsets();
   const { data: profile, isLoading, isError } = useFriendProfile(userId);
@@ -678,6 +688,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   return (
     <View style={styles.container}>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -730,7 +741,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           </View>
         </View>
 
-        <View style={styles.profileSheet}>
+        <View style={styles.profileSheet} onLayout={(event) => { profileSheetYRef.current = event.nativeEvent.layout.y; }}>
           <View style={styles.sheetHandle} />
           {profile.bio?.trim() ? (
             <View style={styles.bioQuoteCard} accessibilityLabel={`Bio: ${profile.bio}`}>
@@ -810,7 +821,16 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           )}
 
           {isPaired && pairedPill && currentUserId && (
-            <View style={styles.pairedSection}>
+            <View
+              style={styles.pairedSection}
+              onLayout={(event) => {
+                if (initialFocus !== 'paired' || focusedRef.current) return;
+                focusedRef.current = true;
+                // The paired section sits inside the profile sheet card.
+                const y = profileSheetYRef.current + event.nativeEvent.layout.y;
+                requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true }));
+              }}
+            >
               <PersonHolidayView
                 pairedUserId={userId}
                 pairingId={pairedPill.pairingId ?? pairedPill.id}

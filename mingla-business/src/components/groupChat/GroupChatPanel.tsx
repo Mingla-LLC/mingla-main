@@ -52,6 +52,8 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { SafeScreen } from "../ui/SafeScreen";
 import { GroupChatModerationSheet } from "./GroupChatModerationSheet";
+import { GroupChatMessageMedia } from "./GroupChatMessageMedia";
+import { groupChatMediaKind } from "../../utils/groupChatMedia";
 import {
   launchImageLibraryAsync,
   requestMediaLibraryPermissionsAsync,
@@ -225,7 +227,9 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             renderItem={({ item: message }) => {
               const mine = message.sender_id === currentUserId;
               const blast = message.marketing_campaign_id !== null;
-              const hasImage = message.message_type === "image" && message.file_url !== null;
+              // #4114 Wave 6: Explorer photos and videos are private-bucket
+              // paths (signed in GroupChatMessageMedia); view once is never shown.
+              const hasImage = groupChatMediaKind(message) !== "none";
               const hasCaption = message.content.length > 0;
               return (
                 <View
@@ -235,14 +239,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                     blast && styles.messageRowBlast,
                   ]}
                 >
-                  {hasImage ? (
-                    <Image
-                      source={{ uri: message.file_url ?? undefined }}
-                      style={styles.messageImage}
-                      resizeMode="cover"
-                      accessibilityLabel={message.file_name ?? "Attached image"}
-                    />
-                  ) : null}
+                  {hasImage ? <GroupChatMessageMedia message={message} mine={mine} /> : null}
                   {hasCaption ? (
                     <Text
                       style={[
@@ -463,12 +460,6 @@ const styles = StyleSheet.create({
   },
   messageTextWithImage: {
     marginTop: spacing.sm,
-  },
-  messageImage: {
-    width: "100%",
-    aspectRatio: 4 / 3,
-    borderRadius: radius.sm,
-    backgroundColor: "rgba(0,0,0,0.2)",
   },
   messageMetaRow: {
     flexDirection: "row",

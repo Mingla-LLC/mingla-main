@@ -16,6 +16,7 @@
     "adventurous": "Petualangan", "firstDate": "Kencan Pertama", "romantic": "Romantis", "groupFun": "Kesenangan Grup", "picnicDates": "Kencan Piknik", "takeAStroll": "Jalan-Jalan"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Kami tidak bisa mengirim SMS ke {{phone}}. Bagikan tautan undangan kepada mereka sebagai gantinya.",
     "adminPrivileges": "Hak Admin", "manageBoard": "Kelola Papan", "renameBoard": "Ganti Nama Papan",
     "inviteParticipants": "Undang Peserta", "turnOffNotifications": "Matikan Notifikasi", "turnOnNotifications": "Nyalakan Notifikasi",
     "leaveBoard": "Tinggalkan Papan", "leaving": "Meninggalkan...", "deleteBoard": "Hapus Papan",

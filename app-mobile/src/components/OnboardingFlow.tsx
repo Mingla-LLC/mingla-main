@@ -1562,6 +1562,18 @@ const OnboardingFlow = ({
           logger.onboarding('consent write threw', { error: String(consentErr) })
         }
 
+        // Issue #4114 — a friend's text invite opened before sign-up: claim it
+        // now that the phone is verified. When they signed up with the invited
+        // number the phone trigger already converted it (the claim is a no-op
+        // read-back); with a different number this is what creates the friend +
+        // pair request. Non-blocking: the friends step claims again on mount.
+        void import('../services/pendingFriendInvite')
+          .then(({ claimPendingFriendInvite }) => claimPendingFriendInvite())
+          .then((claim) => {
+            if (claim.status === 'error') logger.onboarding('friend invite claim failed (friends step retries)', { error: claim.message })
+          })
+          .catch((claimErr) => logger.onboarding('friend invite claim threw', { error: String(claimErr) }))
+
         // Pre-populate identity defaults from phone context (atomic update)
         setData((prev) => ({
           ...prev,
@@ -3616,6 +3628,7 @@ const OnboardingFlow = ({
             goNext()
           }}
           incomingRequests={incomingPendingRequests}
+          onRefreshRequests={loadFriendRequests}
           onAcceptRequest={async (requestId: string) => {
             // Find the request to extract sender info before accepting
             const request = incomingPendingRequests.find(r => r.id === requestId)

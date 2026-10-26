@@ -1,64 +1,64 @@
-import React, { useState } from "react";
-import {
-  Text,
-  View,
-  TouchableOpacity,
-  ActivityIndicator,
-  Image,
-  TextInput,
-  StyleSheet,
-  Platform,
-} from "react-native";
-import { useTranslation } from 'react-i18next';
+/**
+ * Issue #4114 Wave 2b — the friends sheet's Friends tab (dark, design v6).
+ *
+ * Search, then the Paired section (58pt avatars with a gold ring and star and
+ * each friend's next birthday — the same birthday their profile's paired view
+ * shows, read once for every paired friend by fetchPairingPills; a + tile that
+ * pairs someone and shows the free plan's limit), then all friends (44pt
+ * avatar, name, @username, a message button and ⋯), then "Blocked N ›".
+ *
+ * The Pair button has left the row: pair / unpair lives in ⋯ (FriendActionsSheet).
+ */
+import React, { useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
+import { BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { Friend } from "../../hooks/useFriends";
 import { getDisplayName } from "../../utils/getDisplayName";
-import { colors, spacing, radius, fontWeights } from "../../constants/designSystem";
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useKeyboard } from '../../hooks/useKeyboard';
+import { glass } from "../../constants/designSystem";
+import { ChatAvatar } from "./ChatAvatar";
+import { friendMatches, friendUserIdOf } from "./chatListModel";
+import { nextBirthdayLabel, type BirthdayLabel, type PairingPillLike } from "./friendsSheetModel";
+
+const ink = glass.discover.chatList;
+const fs = glass.discover.friendsSheet;
 
 interface FriendsManagementListProps {
   friends: Friend[];
   loading: boolean;
   mutedUserIds: string[];
   currentUserId: string;
-  /** ORCH-0435: Set of user IDs that are actively paired */
-  pairedUserIds?: Set<string>;
-  /** ORCH-0435: Set of user IDs with pending pair requests */
-  pendingPairUserIds?: Set<string>;
-  /** ORCH-0435: Send pair request to friend */
-  onPairFriend?: (friendUserId: string) => void;
-  /** ORCH-0435: Unpair a friend */
-  onUnpairFriend?: (friendUserId: string) => void;
-  /** ORCH-0435: User ID currently loading pair request */
-  pairLoadingUserId?: string | null;
-  /** ORCH-0435: Called when avatar is tapped */
-  onAvatarPress?: (friendUserId: string) => void;
-  /** ORCH-0435: Called when friend row (name) is tapped */
-  onFriendPress?: (friendUserId: string) => void;
-  /** ORCH-0435: Add friend to active collaboration session */
-  onAddToSession?: (friendUserId: string) => void;
-  /** ORCH-0987: open the shared friend more-menu (FriendActionsSheet) for this friend.
-   *  When provided, the ⋮ routes here instead of the legacy inline sheet. */
-  onOpenFriendActions?: (friend: Friend) => void;
+  /** Active pairs (pairing pills with pillState 'active'). */
+  pairedPills: PairingPillLike[];
+  /** The + tile: free-plan count, or nothing on Mingla+. */
+  pairTile: { showFreeCount: boolean; used: number; limit: number };
+  onPairTile: () => void;
+  /** Opens the friend's profile at their birthday, holidays and saves. */
+  onOpenPaired: (friendUserId: string) => void;
+  onAvatarPress: (friendUserId: string) => void;
+  onMessage: (friend: Friend) => void;
+  onOpenFriendActions: (friend: Friend) => void;
+  blockedCount: number;
+  onOpenBlocked: () => void;
 }
 
-function getFriendDisplayName(friend: Friend): string {
-  return getDisplayName(friend);
-}
-
-function getInitials(name: string): string {
-  if (!name || name === "Unknown") return "?";
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .substring(0, 2);
-}
-
-function getFriendUserId(friend: Friend, currentUserId: string): string {
-  return friend.user_id === currentUserId ? friend.friend_user_id : friend.user_id;
+function useBirthdayText(): (label: BirthdayLabel | null) => string | null {
+  const { t, i18n } = useTranslation(["connections"]);
+  return (label) => {
+    if (!label) return null;
+    if (label.kind === "today") return t("connections:fs_bday_today");
+    if (label.kind === "in_days") return t("connections:fs_bday_in_days", { count: label.days });
+    let date: string;
+    try {
+      date = new Intl.DateTimeFormat(i18n.language, { day: "numeric", month: "short", timeZone: "UTC" }).format(
+        new Date(Date.UTC(2000, label.month - 1, label.day)),
+      );
+    } catch {
+      date = `${label.day}/${label.month}`;
+    }
+    return t("connections:fs_bday_on", { date });
+  };
 }
 
 export function FriendsManagementList({
@@ -66,394 +66,327 @@ export function FriendsManagementList({
   loading,
   mutedUserIds,
   currentUserId,
-  pairedUserIds,
-  pendingPairUserIds,
-  onPairFriend,
-  onUnpairFriend,
-  pairLoadingUserId,
+  pairedPills,
+  pairTile,
+  onPairTile,
+  onOpenPaired,
   onAvatarPress,
-  onFriendPress,
-  onAddToSession,
+  onMessage,
   onOpenFriendActions,
-}: FriendsManagementListProps) {
-  const { t } = useTranslation(['social', 'common']);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
-  const insets = useSafeAreaInsets();
-  const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
+  blockedCount,
+  onOpenBlocked,
+}: FriendsManagementListProps): React.ReactElement {
+  const { t } = useTranslation(["connections", "social"]);
+  const [query, setQuery] = useState("");
+  const birthdayText = useBirthdayText();
+  const today = useMemo(() => new Date(), []);
 
-  const filteredFriends = friends.filter((friend) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    const displayName = getFriendDisplayName(friend).toLowerCase();
-    const username = (friend.username || "").toLowerCase();
-    const fullName = `${friend.first_name || ""} ${friend.last_name || ""}`.toLowerCase();
-    return displayName.includes(q) || username.includes(q) || fullName.includes(q);
-  });
-
-  const handleAction = (action: (friend: Friend) => void, friend: Friend) => {
-    setOpenDropdownId(null);
-    action(friend);
-  };
-
-  if (loading && friends.length === 0) {
-    return (
-      <View style={styles.loadingState}>
-        <ActivityIndicator size="small" color={colors.primary[600]} />
-      </View>
-    );
-  }
-
-  if (friends.length === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Icon name="people-outline" size={32} color={colors.gray[300]} />
-        <Text style={styles.emptyText}>{t('social:noFriendsYet')}</Text>
-      </View>
-    );
-  }
+  const pairedIds = useMemo(
+    () => new Set(pairedPills.map((pill) => pill.pairedUserId).filter((id): id is string => Boolean(id))),
+    [pairedPills],
+  );
+  const sortedFriends = useMemo(
+    () =>
+      friends
+        .filter((friend) => friendMatches(friend, query))
+        .sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b))),
+    [friends, query],
+  );
+  const searching = query.trim().length > 0;
 
   return (
     <View style={styles.container}>
-      {/* Search bar */}
-      <View style={styles.searchContainer}>
-        <Icon name="search" size={14} color={colors.gray[400]} style={styles.searchIcon} />
-        <TextInput
-          placeholder={t('social:searchFriends')}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
+      <View style={styles.search}>
+        <Icon name="search" size={15} color={ink.faint} />
+        <BottomSheetTextInput
+          placeholder={t("connections:fs_search")}
+          placeholderTextColor={ink.faint}
+          value={query}
+          onChangeText={setQuery}
           style={styles.searchInput}
-          placeholderTextColor={colors.gray[400]}
           autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel={t("connections:fs_search")}
         />
       </View>
 
-      {/* Friends list */}
-      {filteredFriends.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>{t('social:noMatchingFriends')}</Text>
+      {searching ? null : (
+        <>
+          <Text style={styles.label}>{t("connections:fs_paired_label")}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pairedRow}>
+            {pairedPills.map((pill) => {
+              const name = pill.displayName;
+              const firstName = name.split(" ")[0] || name;
+              const bday = birthdayText(nextBirthdayLabel(pill.birthday, today));
+              return (
+                <Pressable
+                  key={pill.id}
+                  onPress={() => pill.pairedUserId && onOpenPaired(pill.pairedUserId)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("connections:fs_paired_a11y", { name })}
+                  style={styles.pairedTile}
+                >
+                  <View style={styles.goldRing}>
+                    <ChatAvatar people={[{ id: pill.pairedUserId ?? pill.id, name, avatarUrl: pill.avatarUrl }]} shape="circle" label={name} size={58} />
+                    <View style={styles.star}>
+                      <Text style={styles.starText} allowFontScaling={false}>★</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.pairedName} numberOfLines={1}>{firstName}</Text>
+                  {bday ? <Text style={styles.pairedBday} numberOfLines={1}>{bday}</Text> : null}
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={onPairTile}
+              accessibilityRole="button"
+              accessibilityLabel={
+                pairTile.showFreeCount
+                  ? `${t("connections:fs_pair_tile")}, ${t("connections:fs_pair_tile_free", { used: pairTile.used, limit: pairTile.limit })}`
+                  : t("connections:fs_pair_tile")
+              }
+              style={styles.pairedTile}
+            >
+              <View style={styles.addTile}>
+                <Icon name="add" size={24} color={ink.dim} />
+              </View>
+              <Text style={styles.pairedName}>{t("connections:fs_pair_tile")}</Text>
+              {pairTile.showFreeCount ? (
+                <Text style={[styles.pairedBday, styles.addTileSub]} numberOfLines={1}>
+                  {t("connections:fs_pair_tile_free", { used: pairTile.used, limit: pairTile.limit })}
+                </Text>
+              ) : null}
+            </Pressable>
+          </ScrollView>
+          <Text style={styles.label}>{t("connections:fs_all_friends")}</Text>
+        </>
+      )}
+
+      {loading && friends.length === 0 ? (
+        <View style={styles.empty}>
+          <ActivityIndicator color={ink.accent} />
+        </View>
+      ) : sortedFriends.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyText}>
+            {friends.length === 0 ? t("connections:fs_empty_friends") : t("connections:fs_empty_search")}
+          </Text>
         </View>
       ) : (
-        filteredFriends.map((friend, index) => {
-          const friendUserId = getFriendUserId(friend, currentUserId);
-          const displayName = getFriendDisplayName(friend);
-          const initials = getInitials(displayName);
+        sortedFriends.map((friend) => {
+          const friendUserId = friendUserIdOf(friend, currentUserId);
+          const name = getDisplayName(friend);
+          const isPaired = pairedIds.has(friendUserId);
           const isMuted = mutedUserIds.includes(friendUserId);
-          const isDropdownOpen = openDropdownId === friend.id;
-
+          const sub = [
+            friend.username ? `@${friend.username}` : null,
+            isPaired ? t("connections:fs_paired_suffix") : null,
+          ].filter(Boolean).join(" · ");
           return (
-            <View key={friend.id} style={styles.friendRow}>
-              {/* Avatar — tappable → opens profile */}
-              <TouchableOpacity
-                style={styles.avatarContainer}
-                onPress={() => {
-                  setOpenDropdownId(null);
-                  onAvatarPress?.(friendUserId);
-                }}
-                activeOpacity={0.7}
+            <View key={friend.id} style={styles.row}>
+              <Pressable
+                onPress={() => onAvatarPress(friendUserId)}
+                accessibilityRole="button"
+                accessibilityLabel={name}
+                hitSlop={4}
               >
-                {friend.avatar_url ? (
-                  <Image source={{ uri: friend.avatar_url }} style={styles.avatar} />
-                ) : (
-                  <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarText}>{initials}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              {/* Name + muted badge — tappable → opens chat */}
-              <TouchableOpacity
-                style={styles.userInfo}
-                onPress={() => {
-                  setOpenDropdownId(null);
-                  onFriendPress?.(friendUserId);
-                }}
-                activeOpacity={0.7}
-              >
+                <ChatAvatar people={[{ id: friendUserId, name, avatarUrl: friend.avatar_url }]} shape="circle" label={name} size={44} />
+              </Pressable>
+              <View style={styles.rowText}>
                 <View style={styles.nameRow}>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {displayName}
-                  </Text>
-                  {isMuted && (
-                    <Icon
-                      name="volume-mute"
-                      size={13}
-                      color={colors.gray[400]}
-                      style={styles.mutedIcon}
-                    />
-                  )}
+                  <Text style={styles.rowTitle} numberOfLines={1}>{name}</Text>
+                  {isMuted ? <Icon name="volume-mute" size={13} color={ink.faint} /> : null}
                 </View>
-              </TouchableOpacity>
-
-              {/* Pair/Unpair button — ORCH-0435 */}
-              {(() => {
-                if (!pairedUserIds || !pendingPairUserIds) return null;
-                const isPaired = pairedUserIds.has(friendUserId);
-                const isPending = pendingPairUserIds.has(friendUserId);
-                const isLoadingPair = pairLoadingUserId === friendUserId;
-
-                if (isPaired) {
-                  return (
-                    <TouchableOpacity
-                      onPress={() => onUnpairFriend?.(friendUserId)}
-                      style={styles.unpairBtn}
-                      activeOpacity={0.7}
-                    >
-                      <Icon name="star" size={12} color="#10b981" />
-                      <Text style={styles.unpairBtnText}>Unpair</Text>
-                    </TouchableOpacity>
-                  );
-                }
-                if (isPending) {
-                  return (
-                    <View style={styles.pendingPairBadge}>
-                      <Icon name="star" size={12} color="#9ca3af" />
-                      <Text style={styles.pendingPairText}>Pending</Text>
-                    </View>
-                  );
-                }
-                return (
-                  <TouchableOpacity
-                    onPress={() => onPairFriend?.(friendUserId)}
-                    disabled={isLoadingPair}
-                    style={styles.pairBtn}
-                    activeOpacity={0.7}
-                  >
-                    {isLoadingPair ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <>
-                        <Icon name="star" size={12} color="#ffffff" />
-                        <Text style={styles.pairBtnText}>Pair</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                );
-              })()}
-
-              {/* Three-dot menu → opens the shared friend more-menu (ORCH-0987) */}
-              <TouchableOpacity
-                onPress={() => { setOpenDropdownId(null); onOpenFriendActions?.(friend); }}
-                style={styles.menuButton}
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                {sub ? <Text style={styles.rowSub} numberOfLines={1}>{sub}</Text> : null}
+              </View>
+              <Pressable
+                onPress={() => onMessage(friend)}
+                accessibilityRole="button"
+                accessibilityLabel={t("connections:fs_message_a11y", { name })}
+                hitSlop={6}
+                style={styles.mini}
               >
-                <Icon name="ellipsis-vertical" size={18} color={colors.text.tertiary} />
-              </TouchableOpacity>
+                <Icon name="chatbubble-outline" size={16} color={ink.ink} />
+              </Pressable>
+              <Pressable
+                onPress={() => onOpenFriendActions(friend)}
+                accessibilityRole="button"
+                accessibilityLabel={t("connections:fs_more_a11y", { name })}
+                hitSlop={6}
+                style={styles.mini}
+              >
+                <Icon name="ellipsis-horizontal" size={16} color={ink.ink} />
+              </Pressable>
             </View>
           );
         })
       )}
-      <View style={{ height: keyboardHeight > 0 ? keyboardHeight : insets.bottom }} />
+
+      <Pressable
+        onPress={onOpenBlocked}
+        accessibilityRole="button"
+        accessibilityLabel={`${t("connections:fs_blocked_row")}, ${blockedCount}`}
+        style={styles.blockedRow}
+      >
+        <Text style={styles.blockedText}>{t("connections:fs_blocked_row")}</Text>
+        <Text style={styles.blockedText}>{blockedCount} ›</Text>
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 4,
+    paddingHorizontal: 14,
+    paddingBottom: 32,
   },
-  loadingState: {
-    paddingVertical: spacing.lg,
-    alignItems: "center",
-    marginHorizontal: spacing.md,
-  },
-  emptyState: {
-    paddingVertical: spacing.lg,
-    alignItems: "center",
-    marginHorizontal: spacing.md,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.65)",
-    marginTop: spacing.sm,
-  },
-  searchContainer: {
+  search: {
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: ink.searchBg,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f3f4f6",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    height: 40,
-  },
-  searchIcon: {
-    marginRight: 6,
+    gap: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    color: ink.ink,
     fontSize: 14,
-    color: colors.text.primary,
+    paddingVertical: 0,
   },
-  friendRow: {
-    flexDirection: "row",
+  label: {
+    color: ink.faint,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    paddingTop: 12,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
+  pairedRow: {
+    gap: 14,
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    paddingBottom: 6,
+  },
+  pairedTile: {
+    width: 66,
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    position: "relative",
+    gap: 5,
   },
-  avatarContainer: {
-    marginRight: 10,
-  },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-  },
-  avatarFallback: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#eb7825",
+  goldRing: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    borderWidth: 2,
+    borderColor: fs.gold,
+    padding: 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: {
-    color: colors.text.inverse,
-    fontSize: 15,
-    fontWeight: fontWeights.semibold,
+  star: {
+    position: "absolute",
+    right: -3,
+    bottom: -3,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: fs.gold,
+    borderWidth: 2.5,
+    borderColor: fs.sheetBg,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  userInfo: {
+  starText: {
+    color: fs.goldInk,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  pairedName: {
+    color: ink.ink,
+    fontSize: 12,
+    fontWeight: "600",
+    maxWidth: 66,
+  },
+  pairedBday: {
+    color: fs.goldLabel,
+    fontSize: 10.5,
+    fontWeight: "600",
+    marginTop: -4,
+  },
+  addTile: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: fs.addTileBg,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: fs.addTileBorder,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addTileSub: {
+    color: ink.faint,
+  },
+  row: {
+    height: 60,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 4,
+  },
+  rowText: {
     flex: 1,
     minWidth: 0,
-    marginRight: spacing.sm,
   },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 6,
   },
-  userName: {
-    fontSize: 15,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
+  rowTitle: {
     flexShrink: 1,
+    color: ink.ink,
+    fontSize: 15.5,
+    fontWeight: "600",
   },
-  mutedIcon: {
-    marginLeft: 4,
-  },
-  userUsername: {
-    fontSize: 13,
-    color: colors.gray[400],
+  rowSub: {
+    color: ink.faint,
+    fontSize: 12.5,
     marginTop: 1,
   },
-  pairBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#eb7825",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    marginRight: 6,
-  },
-  pairBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#ffffff",
-  },
-  unpairBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#f0fdf4",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#bbf7d0",
-    marginRight: 6,
-  },
-  unpairBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#10b981",
-  },
-  pendingPairBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#f3f4f6",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    marginRight: 6,
-  },
-  pendingPairText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-  menuButton: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.lg,
+  mini: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: fs.miniButtonBg,
     alignItems: "center",
     justifyContent: "center",
   },
-  // Bottom sheet styles
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.3)",
+  empty: {
+    paddingVertical: 24,
+    alignItems: "center",
   },
-  sheetContainer: {
-    backgroundColor: "#ffffff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-      },
-      android: { elevation: 8 },
-    }),
-  },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#d1d5db",
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  sheetTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#111827",
+  emptyText: {
+    color: ink.dim,
+    fontSize: 14,
     textAlign: "center",
-    marginBottom: 16,
   },
-  sheetItem: {
+  blockedRow: {
     flexDirection: "row",
-    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 14,
+    paddingHorizontal: 4,
+    marginTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: fs.hairline,
   },
-  sheetItemIcon: {
-    width: 28,
-    textAlign: "center",
-    marginRight: 14,
-  },
-  sheetItemText: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#111827",
-  },
-  sheetItemTextDanger: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: colors.error[500],
-  },
-  sheetDivider: {
-    height: 1,
-    backgroundColor: "#f3f4f6",
-    marginVertical: 4,
+  blockedText: {
+    color: ink.dim,
+    fontSize: 14.5,
   },
 });

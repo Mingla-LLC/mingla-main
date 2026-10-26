@@ -40,6 +40,7 @@
     "takeAStroll": "Dar un paseo"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "No pudimos enviar un SMS a {{phone}}. Comparte el enlace de invitación en su lugar.",
     "adminPrivileges": "Privilegios de administrador",
     "manageBoard": "Gestionar tablero",
     "renameBoard": "Renombrar tablero",

@@ -178,7 +178,14 @@
     "alert_decline_error": "पेयर अनुरोध अस्वीकार नहीं हो सका। फिर से कोशिश करें।",
     "alert_generic_error": "अनुरोध प्रोसेस नहीं हो सका। फिर से कोशिश करें।",
     "share_message": "हैलो! Mingla पर मेरे साथ जुड़ें और साथ में बेहतरीन अनुभव खोजें। https://usemingla.com",
-    "fallback_user": "उपयोगकर्ता"
+    "fallback_user": "उपयोगकर्ता",
+    "invite_card_title": "आपके लोग पहले से यहाँ हैं",
+    "invite_card_body": "{{name}} ने आपको Mingla पर आमंत्रित किया। दोस्त बनने और एक-दूसरे के जन्मदिन, योजनाएँ और सहेजे गए देखने के लिए स्वीकारें।",
+    "invite_card_sub": "★ दोस्त + जोड़ी · आपको SMS से आमंत्रित किया",
+    "invite_card_accept": "स्वीकारें",
+    "invite_card_not_now": "अभी नहीं",
+    "invite_card_done": "आप {{name}} के दोस्त हैं और जोड़ी में हैं",
+    "invite_card_friends_only": "आप {{name}} के दोस्त हैं"
   },
   "collaborations": {
     "headline": "मिलकर प्लान बनाएं",

@@ -16,6 +16,7 @@
     "adventurous": "साहसिक", "firstDate": "पहला डेट", "romantic": "रोमांटिक", "groupFun": "ग्रुप मज़ा", "picnicDates": "पिकनिक डेट", "takeAStroll": "सैर"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "हम {{phone}} पर टेक्स्ट नहीं भेज सके। इसके बजाय उनके साथ आमंत्रण लिंक शेयर करें।",
     "adminPrivileges": "एडमिन विशेषाधिकार", "manageBoard": "बोर्ड प्रबंधित करें", "renameBoard": "बोर्ड का नाम बदलें",
     "inviteParticipants": "प्रतिभागियों को आमंत्रित करें", "turnOffNotifications": "सूचनाएं बंद करें", "turnOnNotifications": "सूचनाएं चालू करें",
     "leaveBoard": "बोर्ड छोड़ें", "leaving": "छोड़ रहे हैं...", "deleteBoard": "बोर्ड हटाएं",

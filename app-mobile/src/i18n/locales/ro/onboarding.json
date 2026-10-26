@@ -178,7 +178,14 @@
     "alert_decline_error": "Couldn't decline the pair request. Try again.",
     "alert_generic_error": "Couldn't process the request. Try again.",
     "share_message": "Hey! Alătură-te me on Mingla și let's find amazing experiences together. https://usemingla.com",
-    "fallback_user": "Utilizator"
+    "fallback_user": "Utilizator",
+    "invite_card_title": "Oamenii tăi sunt deja aici",
+    "invite_card_body": "{{name}} te-a invitat pe Mingla. Acceptă ca să fiți prieteni și să vă vedeți zilele de naștere, planurile și salvatele.",
+    "invite_card_sub": "★ Prieten + pereche · te-a invitat prin SMS",
+    "invite_card_accept": "Acceptă",
+    "invite_card_not_now": "Nu acum",
+    "invite_card_done": "Ești prieten și în pereche cu {{name}}",
+    "invite_card_friends_only": "Ești prieten cu {{name}}"
   },
   "collaborations": {
     "headline": "Planificați împreună",

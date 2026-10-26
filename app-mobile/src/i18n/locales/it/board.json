@@ -40,6 +40,7 @@
     "takeAStroll": "Fai una Passeggiata"
   },
   "boardSettingsDropdown": {
+    "inviteNotTextedBody": "Non siamo riusciti a inviare un SMS a {{phone}}. Condividi invece il link d'invito.",
     "adminPrivileges": "Privilegi Amministratore",
     "manageBoard": "Gestisci Bacheca",
     "renameBoard": "Rinomina Bacheca",

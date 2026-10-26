@@ -178,7 +178,14 @@
     "alert_decline_error": "Não foi possível recusar o pedido. Tente novamente.",
     "alert_generic_error": "Não foi possível processar o pedido. Tente novamente.",
     "share_message": "E aí! Junte-se a mim no Mingla e vamos encontrar experiências incríveis juntos. https://usemingla.com",
-    "fallback_user": "Usuário"
+    "fallback_user": "Usuário",
+    "invite_card_title": "Seu pessoal já está aqui",
+    "invite_card_body": "{{name}} convidou você para o Mingla. Aceite para serem amigos e verem aniversários, planos e salvos um do outro.",
+    "invite_card_sub": "★ Amigo + par · convidou você por SMS",
+    "invite_card_accept": "Aceitar",
+    "invite_card_not_now": "Agora não",
+    "invite_card_done": "Você é amigo e está pareado com {{name}}",
+    "invite_card_friends_only": "Você é amigo de {{name}}"
   },
   "collaborations": {
     "headline": "Planejem juntos",

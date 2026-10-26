@@ -178,7 +178,14 @@
     "alert_decline_error": "לא ניתן לדחות בקשה. נסה שוב.",
     "alert_generic_error": "לא ניתן לעבד בקשה. נסה שוב.",
     "share_message": "היי! הצטרף אליי ב-Mingla ונמצא חוויות מדהימות ביחד. https://usemingla.com",
-    "fallback_user": "משתמש"
+    "fallback_user": "משתמש",
+    "invite_card_title": "האנשים שלך כבר כאן",
+    "invite_card_body": "{{name}} הזמין אותך ל-Mingla. אשרו כדי להיות חברים ולראות זה של זה ימי הולדת, תוכניות ושמורים.",
+    "invite_card_sub": "★ חבר + צימוד · הזמין אותך ב-SMS",
+    "invite_card_accept": "אישור",
+    "invite_card_not_now": "לא עכשיו",
+    "invite_card_done": "אתם חברים ומצומדים עם {{name}}",
+    "invite_card_friends_only": "אתם חברים עם {{name}}"
   },
   "collaborations": {
     "headline": "תכננו ביחד",
