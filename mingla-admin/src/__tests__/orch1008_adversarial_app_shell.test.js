@@ -62,17 +62,17 @@ describe("ORCH-1008 adversarial — App.jsx PAGES map purity", () => {
     }
     // Assert the 10 expected ids ARE present (ORCH-1014: photo-labeling +
     // photo-scorer removed)
+    // #4130: users, claims, signals and place-intelligence-trial became tabs
+    // of People, Brands, Place pool and Settings (their addresses redirect).
     const expected = [
       "overview",
-      "users",
+      "people",
       "subscriptions",
       "placepool",
-      "claims",
+      "brands",
       "community-support",
       "admin",
       "settings",
-      "signals",
-      "place-intelligence-trial",
     ];
     for (const id of expected) {
       assert.ok(

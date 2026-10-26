@@ -63,10 +63,15 @@ const TEAM = normalizeTeam([
 const emailsOf = (list: Array<{ email: string }>) => list.map((p) => p.email);
 
 Deno.test("#3980 W3 D-11: the Pipeline menu is Needs you, Work and Calendar together; the Agent log is a tab on Work", () => {
-  const pipeline = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Pipeline");
-  assertEquals(pipeline?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
-    "hosts:Hosts", "creators:Creators", "drafts:Needs you", "work-board:Work", "content-calendar:Calendar",
-    "beta-leads:Beta Leads", "tool-leads:Tool Leads", "team-dashboard:Team dashboard",
+  // #4130: Wave 0 — Needs you retired into Work's first column; Work sits in
+  // Home and Calendar in Outreach. The Agent log is still a tab on Work.
+  const home = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Home");
+  assertEquals(home?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
+    "overview:Dashboard", "work-board:Work", "notifications:Notifications",
+  ]);
+  const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
+  assertEquals(outreach?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
+    "outreach:Hosts and creators", "inbound:Inbound leads", "content-calendar:Calendar", "team-dashboard:Team dashboard",
   ]);
   // The page id stays, open to the pipelines, and lands on the tab.
   assertEquals(PAGE_AREA_OVERRIDES["agent-log"], "crm");

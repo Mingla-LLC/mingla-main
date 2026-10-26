@@ -8,12 +8,10 @@
 // board inside Hosts and creators, at #/outreach?tab=hosts). PageHub says so
 // through HostedPageContext; the page then reads and writes its query inside
 // the hub's address, without the hub's own `tab`, and needs no change itself.
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { hashPageId, hashSearch } from "../lib/crmUrl";
 import { hostedHash, hostedSearch } from "../lib/adminRoutes";
-
-/** { page, tab, hosts } while a page is shown as a hub tab; null otherwise. */
-export const HostedPageContext = createContext(null);
+import { HostedPageContext } from "../components/layout/hostedPageContext";
 
 function readSearch(pageId, alias) {
   if (typeof window === "undefined") return "";

@@ -133,11 +133,12 @@ describe("ORCH-1271 — admin UI scaffolding", () => {
   it("NAV_GROUPS has a 'Business' group with the People + Brands items", () => {
     const biz = NAV_GROUPS.find((g) => g.label === "Business");
     assert.ok(biz, "Business group present");
-    assert.ok(biz.items.some((i) => i.id === "business-people" && i.icon === "Users"));
-    assert.ok(biz.items.some((i) => i.id === "business-brands" && i.icon === "Building2"));
-    // NAV_ITEMS (flattened) exposes the new items too.
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-people"));
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-brands"));
+    // #4130: People and Brands are the menu entries; the business People and
+    // Brands consoles are tabs inside them (#/business-* redirect there).
+    assert.ok(biz.items.some((i) => i.id === "people" && i.icon === "Users"));
+    assert.ok(biz.items.some((i) => i.id === "brands" && i.icon === "Building2"));
+    assert.ok(NAV_ITEMS.some((i) => i.id === "people"));
+    assert.ok(NAV_ITEMS.some((i) => i.id === "brands"));
   });
   it("Sidebar registers Building2 in ICON_MAP (else silent LayoutDashboard fallback)", () => {
     const sb = readSrc("components/layout/Sidebar.jsx");
@@ -145,9 +146,10 @@ describe("ORCH-1271 — admin UI scaffolding", () => {
     assert.match(sb, /const ICON_MAP = \{[\s\S]*?\bBuilding2\b[\s\S]*?\};/);
   });
   it("App.jsx routes #/business-people + #/business-brands (ORCH-1272 repoint)", () => {
-    const app = readSrc("App.jsx");
-    assert.match(app, /"business-people": PeopleConsolePage/);
-    assert.match(app, /"business-brands": BrandsConsolePage/);
+    // #4130: the consoles are drawn as tabs of People and Brands.
+    const hubs = readSrc("pages/shellHubs.jsx");
+    assert.match(hubs, /"business-people": PeopleConsolePage/);
+    assert.match(hubs, /"business-brands": BrandsConsolePage/);
   });
   it("HighRiskActionModal disables confirm until a non-empty reason (+ never fires onConfirm empty)", () => {
     const m = readSrc("components/entity/HighRiskActionModal.jsx");

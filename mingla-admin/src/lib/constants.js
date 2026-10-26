@@ -111,14 +111,14 @@ export const SEED_SCRIPTS = [
 //   - Who may open what is NOT decided here: lib/access.js owns it, per page
 //     id, and prepends the role Home group. Moving an item between groups
 //     never changes who sees it.
-//   - A group with a label can be folded in the menu; the first group has no
-//     label and is always shown.
+//   - A group with a label can be folded in the menu. Since #4130 every menu
+//     group is named; only the role Home group (lib/access.js) has no label.
 //   - `icon` is a key of ICON_MAP in components/layout/Sidebar.jsx. One icon
 //     per item, no two items share one, and a name that is not registered
 //     there fails src/__tests__/admin_shell_issue3802.implementor.happy.test.js
 //     (there is no fallback icon).
-//   - Slots held for pages the other #3802 waves add: Pipeline (after creators,
-//     and after tool-leads), Company (after careers), System (after agent).
+//   - #4130: a page that replaced older ones holds them as tabs until its
+//     wave rebuilds it (lib/adminRoutes.js PAGE_HUB_TABS, pages/shellHubs.jsx).
 //
 // History: ORCH-1008 pruned six pages and ORCH-1014 two more; ORCH-1271..1274
 // added the Business console; ISSUE-862 / #3697 the ads pages; ISSUE-3534

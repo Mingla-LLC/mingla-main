@@ -26,6 +26,8 @@
 // C-5 (the route guard).
 
 import { describe, it } from "node:test";
+// #4130: a page's own access, before pages were merged.
+import { canOpenOwnPage } from "../lib/access.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -96,9 +98,11 @@ const invitedGrowth = { email: "inv@test.local", role: "growth", status: "invite
 
 describe("#3802 C-1: a page nobody listed is owner/admin-only", () => {
   it("the parse found the whole page map", () => {
-    assert.ok(PAGE_IDS.length >= 32, `only ${PAGE_IDS.length} page ids parsed`);
+    // #4130: Wave 0 merged pages (40 menu entries became 26); retired ids
+    // redirect (lib/adminRoutes.js) and are no longer keys of PAGES.
+    assert.ok(PAGE_IDS.length >= 30, `only ${PAGE_IDS.length} page ids parsed`);
     assert.equal(PAGE_IDS[0], "home", "home is the first key of PAGES");
-    for (const id of ["overview", "admin", "stripe-mode", "ad-engine", "refund-operations"]) {
+    for (const id of ["overview", "admin", "platform-health", "ad-engine", "refund-operations"]) {
       assert.ok(PAGE_IDS.includes(id), `expected page id '${id}'`);
     }
     assert.equal(new Set(PAGE_IDS).size, PAGE_IDS.length, "no page id appears twice");
@@ -135,7 +139,10 @@ describe("#3802 C-1: a page nobody listed is owner/admin-only", () => {
     for (const id of PAGE_IDS) {
       if (id === "home") continue;
       assert.equal(canOpenPage(owner, id), true, `owner must open '${id}'`);
-      assert.equal(canOpenPage(admin, id), id !== "admin", `admin on '${id}'`);
+      // #4130: Team and roles now also holds Careers (an admin page), so an
+      // admin opens it for that tab alone; its Team tab stays the owner's.
+      assert.equal(canOpenPage(admin, id), true, `admin on '${id}'`);
+      assert.equal(canOpenOwnPage(admin, id), id !== "admin", `admin on the old '${id}'`);
     }
   });
 });
@@ -153,8 +160,14 @@ describe("#3802 C-2: money, ads and people pages", () => {
 
 describe("#3802 C-3: Team and roles", () => {
   it("is the owner's alone", () => {
-    assert.equal(canOpenPage(owner, "admin"), true);
-    assert.equal(canOpenPage(admin, "admin"), false);
+    // #4130: the Team tab (the old Team and roles page) is the owner's alone;
+    // the page also holds Careers, which every admin could open before, so an
+    // admin reaches the page for that tab only (PageHub shows a tab only to
+    // whoever could open the old page it shows).
+    assert.equal(canOpenOwnPage(owner, "admin"), true);
+    assert.equal(canOpenOwnPage(admin, "admin"), false);
+    assert.equal(canOpenPage(admin, "admin"), true);
+    assert.equal(canOpenOwnPage(admin, "careers"), true);
     assert.equal(canOpenPage(growth, "admin"), false);
     assert.equal(canOpenPage(partner, "admin"), false);
   });
@@ -174,7 +187,8 @@ describe("#3802 C-4: the menu each role sees", () => {
   });
 
   it("an admin sees every existing item except Team and roles, and no Home", () => {
-    assert.deepEqual(ids(admin), allIds.filter((id) => id !== "admin"));
+    // #4130: Team and roles shows for an admin (its Careers tab only).
+    assert.deepEqual(ids(admin), allIds);
     assert.equal(ids(admin).includes("home"), false);
   });
 
@@ -206,12 +220,15 @@ describe("#3802 C-4: the menu each role sees", () => {
 
 describe("#3802 C-5: what an address resolves to", () => {
   it("a page outside a role's access goes to their home and says so", () => {
-    assert.deepEqual(resolveRoute("stripe-mode", growth, PAGE_IDS),
-      { pageId: "home", denied: true, requestedId: "stripe-mode" });
+    // #4130: Stripe mode is a tab of Platform health.
+    assert.deepEqual(resolveRoute("platform-health", growth, PAGE_IDS),
+      { pageId: "home", denied: true, requestedId: "platform-health" });
     assert.deepEqual(resolveRoute("home", owner, PAGE_IDS),
       { pageId: "overview", denied: true, requestedId: "home" });
-    assert.deepEqual(resolveRoute("admin", admin, PAGE_IDS),
-      { pageId: "overview", denied: true, requestedId: "admin" });
+    // #4130: was "admin" for an admin; Team and roles now opens for an admin
+    // (Careers tab), so the refused example is the role home for an admin.
+    assert.deepEqual(resolveRoute("home", admin, PAGE_IDS),
+      { pageId: "overview", denied: true, requestedId: "home" });
   });
 
   it("an unknown address goes home quietly", () => {
@@ -228,8 +245,9 @@ describe("#3802 C-5: what an address resolves to", () => {
       { pageId: "home", denied: false, requestedId: "home" });
     assert.deepEqual(resolveRoute("admin", owner, PAGE_IDS),
       { pageId: "admin", denied: false, requestedId: "admin" });
-    assert.deepEqual(resolveRoute("users", admin, PAGE_IDS),
-      { pageId: "users", denied: false, requestedId: "users" });
+    // #4130: Users is a tab of People (#/users redirects there before routing).
+    assert.deepEqual(resolveRoute("people", admin, PAGE_IDS),
+      { pageId: "people", denied: false, requestedId: "people" });
   });
 
   it("no access resolves to no page at all", () => {
@@ -415,7 +433,8 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
     // Object.hasOwn(PAGES, page) — not the older inline requestedPageId() form.
     assert.ok(APP_JSX.includes("if (route.denied && nav.named && lastToldRef.current !== nav.seq) {"));
     assert.ok(APP_JSX.includes("function addressNamesPage()"));
-    assert.ok(APP_JSX.includes('if (page === "support" || page === "email") return true;'));
+    // #4130: every retired id (the old #/support and #/email among them) counts as named.
+    assert.ok(APP_JSX.includes("if (isRetiredPageId(page)) return true;"));
     assert.ok(APP_JSX.includes("return Object.hasOwn(PAGES, page);"));
     assert.ok(APP_JSX.includes("<AppShell activeTab={route.pageId}"));
     assert.ok(APP_JSX.includes("That page isn't part of your access"));
@@ -424,7 +443,8 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
   });
 
   it("title and breadcrumb follow the person's own home", () => {
-    assert.ok(APP_SHELL.includes("pageTitle(activeTab, access, NAV_ITEMS)"));
+    // #4130: titled by the menu entry, with the header's pages named too.
+    assert.ok(APP_SHELL.includes("pageTitle(menuId, access, [...NAV_ITEMS, ...HEADER_PAGE_ITEMS])"));
     // [TEST-MOD-APPROVED ISSUE-3802] was: the header got a `homeId` and drew a
     // root crumb that went to it. The approved shell's breadcrumb is words only
     // ("Group › Page"), so there is no root crumb to send anyone anywhere. What

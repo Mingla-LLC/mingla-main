@@ -32,7 +32,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NAV_GROUPS } from "../lib/constants.js";
-import { AREA, PAGE_AREA_OVERRIDES, areaForPage, canOpenPage, resolveRoute, visibleNavGroups } from "../lib/access.js";
+import { AREA, PAGE_ACCESS_UNION, PAGE_AREA_OVERRIDES, areaForPage, canOpenPage, resolveRoute, visibleNavGroups } from "../lib/access.js";
 import {
   MOVE_BLOCK_COPY,
   NO_REGION,
@@ -356,13 +356,18 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
     assert.equal(PAGE_AREA_OVERRIDES.creators, "crm");
     assert.equal(areaForPage("hosts"), "crm");
     assert.equal(areaForPage("creators"), "crm");
-    assert.ok(PAGE_IDS.includes("hosts") && PAGE_IDS.includes("creators"));
+    // #4130: the boards are tabs of Hosts and creators (#/outreach); their
+    // old addresses redirect there, and the page opens with the crm area.
+    assert.ok(PAGE_IDS.includes("outreach"));
+    assert.deepEqual(PAGE_ACCESS_UNION.outreach, ["hosts", "creators"]);
   });
   it("Sales and marketing and Founding partner open the approved personal workflow pages", () => {
     for (const a of [growth, partner]) {
       const open = PAGE_IDS.filter((id) => canOpenPage(a, id));
       // [TEST-MOD-APPROVED #3980] the Work board and Agent log open to both roles.
-      assert.deepEqual(open.sort(), ["agent", "agent-log", "beta-leads", "content-calendar", "creators", "drafts", "guide", "home", "hosts", "work-board"], a.role);
+      // #4130: the boards and Beta leads open as tabs of Hosts and creators
+      // and Inbound leads; Needs you (#/drafts) redirects to Work.
+      assert.deepEqual(open.sort(), ["agent", "agent-log", "content-calendar", "guide", "home", "inbound", "outreach", "work-board"], a.role);
     }
   });
   it("a page nobody listed is still closed to them", () => {
@@ -378,7 +383,8 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
     for (const id of PAGE_IDS) {
       if (id === "home") continue;
       assert.equal(canOpenPage(owner, id), true, `owner '${id}'`);
-      assert.equal(canOpenPage(admin, id), id !== "admin", `admin '${id}'`);
+      // #4130: Team and roles also holds Careers, so an admin opens it (that tab only).
+      assert.equal(canOpenPage(admin, id), true, `admin '${id}'`);
     }
   });
   it("without the crm area, even an owner or admin does not open the boards", () => {
@@ -394,8 +400,9 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
   it("an invited person, or no access at all, opens neither", () => {
     assert.equal(canOpenPage({ ...growth, status: "invited" }, "hosts"), false);
     assert.equal(canOpenPage(null, "creators"), false);
-    assert.deepEqual(resolveRoute("hosts", { ...growth, areas: ["role_home"] }, PAGE_IDS), { pageId: "home", denied: true, requestedId: "hosts" });
-    assert.deepEqual(resolveRoute("hosts", growth, PAGE_IDS), { pageId: "hosts", denied: false, requestedId: "hosts" });
+    // #4130: #/hosts redirects to #/outreach before routing.
+    assert.deepEqual(resolveRoute("outreach", { ...growth, areas: ["role_home"] }, PAGE_IDS), { pageId: "home", denied: true, requestedId: "outreach" });
+    assert.deepEqual(resolveRoute("outreach", growth, PAGE_IDS), { pageId: "outreach", denied: false, requestedId: "outreach" });
   });
   it("Beta leads opens to the whole team through its own area, and nobody lands anywhere new", () => {
     assert.equal(Object.hasOwn(PAGE_AREA_OVERRIDES, "beta-leads"), true);
@@ -411,28 +418,32 @@ describe("#3802 P-7: the menu each role sees", () => {
   it("Sales and marketing and Founding partner see the approved workflow pages", () => {
     // [TEST-MOD-APPROVED #3980] growth and partner see the Work board and Agent log.
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "beta-leads", "agent", "guide"]);
+    // #4130: Wave 0 menu — Work in Home; Hosts and creators, Inbound leads
+    // and Calendar in Outreach; My agent and Guide in the header.
+    assert.deepEqual(ids(growth), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
+    assert.deepEqual(ids(partner), ["home", "work-board", "outreach", "inbound", "content-calendar"]);
   });
-  it("owner and admin see the Pipeline group straight after the top of the menu", () => {
+  it("owner and admin see the Outreach group straight after Home", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: a "Team" group, second to last.
+    // #4130: the Pipeline group became Outreach, after the Home group.
     for (const a of [owner, admin]) {
       const groups = visibleNavGroups(NAV_GROUPS, a);
-      assert.equal(groups[0].label, null);
-      const pipeline = groups[1];
-      assert.equal(pipeline.label, "Pipeline");
-      assert.deepEqual(pipeline.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["hosts:Hosts:Handshake", "creators:Creators:Sparkles", "drafts:Needs you:FileText", "work-board:Work:SquareKanban", "content-calendar:Calendar:CalendarClock", "beta-leads:Beta Leads:Inbox", "tool-leads:Tool Leads:Wrench", "team-dashboard:Team dashboard:BarChart3"]); // [TEST-MOD-APPROVED #3980] labels and the two new pages; synced Wave 3 (D-11) order and labels, Agent log a tab on Work
+      assert.equal(groups[0].label, "Home");
+      const outreach = groups[1];
+      assert.equal(outreach.label, "Outreach");
+      assert.deepEqual(outreach.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["outreach:Hosts and creators:Handshake", "inbound:Inbound leads:Inbox", "content-calendar:Calendar:CalendarClock", "team-dashboard:Team dashboard:BarChart3"]);
     }
     assert.ok(ids(owner).includes("admin"));
-    assert.ok(!ids(admin).includes("admin"));
+    // #4130: an admin reaches Team and roles for its Careers tab only.
+    assert.ok(ids(admin).includes("admin"));
   });
   it("the group is in the one menu list, once, and its icons are ones the sidebar knows", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: "Team" is second to last, with Store.
-    assert.equal(NAV_GROUPS.filter((g) => g.label === "Pipeline").length, 1);
-    assert.equal(NAV_GROUPS[1].label, "Pipeline");
+    assert.equal(NAV_GROUPS.filter((g) => g.label === "Outreach").length, 1);
+    assert.equal(NAV_GROUPS[1].label, "Outreach");
     const sidebar = read("components/layout/Sidebar.jsx");
     const map = sidebar.slice(sidebar.indexOf("ICON_MAP"));
-    assert.ok(/\bHandshake\b/.test(map) && /\bSparkles\b/.test(map));
+    assert.ok(/\bHandshake\b/.test(map) && /\bInbox\b/.test(map));
   });
 });
 
@@ -548,9 +559,11 @@ describe("#3802 P-9: the route gate still never mounts a refused page", () => {
     assert.ok(APP_JSX.includes("if (requestedPageId() !== route.pageId) {"));
   });
   it("the two board pages are registered once each", () => {
-    assert.equal(PAGE_IDS.filter((id) => id === "hosts").length, 1);
-    assert.equal(PAGE_IDS.filter((id) => id === "creators").length, 1);
-    assert.ok(APP_JSX.includes('import { HostsPage, CreatorsPage } from "./pages/PipelinePage";'));
+    // #4130: registered once each as tabs of Hosts and creators.
+    assert.equal(PAGE_IDS.filter((id) => id === "outreach").length, 1);
+    const hubs = read("pages/shellHubs.jsx");
+    assert.ok(hubs.includes('import { HostsPage, CreatorsPage } from "./PipelinePage";'));
+    assert.ok(hubs.includes("const OUTREACH = { hosts: HostsPage, creators: CreatorsPage };"));
   });
 });
 

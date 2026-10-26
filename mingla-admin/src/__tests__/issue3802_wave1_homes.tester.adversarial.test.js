@@ -44,7 +44,7 @@ import {
   weekRows,
 } from "../lib/crmModel.js";
 import { buildBetaSearch, buildTeamSearch, parseBetaSearch, parseCrmHash, parseTeamSearch, targetSliceHash } from "../lib/crmUrl.js";
-import { AREA, areaForPage, canOpenPage, homePageFor, resolveRoute, visibleNavGroups } from "../lib/access.js";
+import { AREA, areaForPage, canOpenOwnPage, canOpenPage, homePageFor, resolveRoute, visibleNavGroups } from "../lib/access.js";
 import { NAV_GROUPS } from "../lib/constants.js";
 import { ACCEPT_COPY, acceptBody, acceptConflictMessage } from "../lib/inviteLink.js";
 
@@ -287,7 +287,13 @@ describe("#3802 TA-3: access for every combination of areas", () => {
       assert.equal(canOpenPage(p, "team-dashboard"), areas.includes("admin_console"), areas.join(","));
       assert.equal(canOpenPage(p, "hosts"), areas.includes("crm"), areas.join(","));
       assert.equal(canOpenPage(p, "home"), areas.includes("role_home"), areas.join(","));
-      assert.equal(canOpenPage(p, "admin"), areas.includes("team_manage"), areas.join(","));
+      // #4130: Team and roles also holds Careers (admin console), so the page
+      // opens with either area; its Team tab only with team_manage.
+      assert.equal(canOpenOwnPage(p, "admin"), areas.includes("team_manage"), areas.join(","));
+      assert.equal(canOpenPage(p, "admin"), areas.includes("team_manage") || areas.includes("admin_console"), areas.join(","));
+      // #4130: Inbound leads opens with Beta leads (its Beta leads tab) or the admin area (Web tool leads).
+      assert.equal(canOpenPage(p, "inbound"), areas.includes("beta_leads") || areas.includes("admin_console"), areas.join(","));
+      assert.equal(canOpenPage(p, "outreach"), areas.includes("crm"), areas.join(","));
     }
   });
 
@@ -296,17 +302,20 @@ describe("#3802 TA-3: access for every combination of areas", () => {
     const ids = visibleNavGroups(NAV_GROUPS, p).flatMap((g) => g.items.map((i) => i.id));
     // [TEST-MOD-APPROVED #3980] the Work board and Agent log follow the crm area.
     // [TEST-MOD-APPROVED #3980] synced Wave 3 (D-11): Needs you, Work, Calendar; the Agent log is a tab on Work.
-    assert.deepEqual(ids, ["home", "hosts", "creators", "drafts", "work-board", "content-calendar", "agent", "guide"]);
+    // #4130: Work, Hosts and creators, Calendar; My agent and Guide are in the header.
+    assert.deepEqual(ids, ["home", "work-board", "outreach", "content-calendar"]);
     const known = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id));
-    assert.deepEqual(resolveRoute("beta-leads", p, known), { pageId: homePageFor(p), denied: true, requestedId: "beta-leads" });
+    // #4130: Beta leads is a tab of Inbound leads (#/beta-leads redirects there).
+    assert.deepEqual(resolveRoute("inbound", p, known), { pageId: homePageFor(p), denied: true, requestedId: "inbound" });
     assert.deepEqual(resolveRoute("team-dashboard", p, known), { pageId: "home", denied: true, requestedId: "team-dashboard" });
-    assert.deepEqual(resolveRoute("hosts", p, known), { pageId: "hosts", denied: false, requestedId: "hosts" });
+    assert.deepEqual(resolveRoute("outreach", p, known), { pageId: "outreach", denied: false, requestedId: "outreach" });
   });
 
   it("a role with Beta leads but not the pipelines sees Beta Leads and no board", () => {
     const p = person(["role_home", "beta_leads"]);
     const ids = visibleNavGroups(NAV_GROUPS, p).flatMap((g) => g.items.map((i) => i.id));
-    assert.deepEqual(ids, ["home", "beta-leads"]);
+    // #4130: Beta leads is a tab of Inbound leads.
+    assert.deepEqual(ids, ["home", "inbound"]);
   });
 
   it("someone invited, removed or of unknown status opens nothing, whatever areas they are said to hold", () => {

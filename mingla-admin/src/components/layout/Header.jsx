@@ -24,14 +24,14 @@ function searchShortcut() {
 //
 // #4130 (Wave 0): My agent and Guide left the menu. Guide opens from the ?
 // help button, My agent from the profile menu; both keep their routes.
-export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobileMenuOpen, onOpenSearch, onTabChange }) {
+export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobileMenuOpen, onOpenSearch }) {
   const { theme, toggleTheme } = useTheme();
   const { access, session } = useAuth();
   const canOpenGuide = canOpenPage(access, "guide");
   const canOpenAgent = canOpenPage(access, "agent");
+  // An address change, like every menu click: App picks the page from it.
   const openPage = (id) => {
-    if (onTabChange) onTabChange(id);
-    else window.location.hash = `#/${id}`;
+    window.location.hash = `#/${id}`;
   };
   // The same words the search box itself uses (components/CommandPalette.jsx).
   const searchesEverything = !!access && access.status === "active" && access.areas.includes(AREA.ADMIN_CONSOLE);

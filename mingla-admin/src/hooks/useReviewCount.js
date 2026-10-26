@@ -42,5 +42,5 @@ export function useReviewCount() {
   // a person (send, spend, publish, other, and roadmap wording). Waiting
   // drafts are not cards, so they are not in it.
   const cards = needsPerson + draftNeeded + wording;
-  return { waiting, needsPerson, draftNeeded, wording, cards, total: waiting + cards, loaded, refetch: counts.refetch };
+  return { waiting, needsPerson, draftNeeded, wording, cards, total: waiting + needsPerson + draftNeeded + wording, loaded, refetch: counts.refetch };
 }

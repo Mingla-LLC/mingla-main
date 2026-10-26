@@ -173,18 +173,21 @@ describe("ORCH-1272 — nav + routing repointed", () => {
   it("NAV_GROUPS 'Business' group has People + Brands (business-console removed)", () => {
     const biz = NAV_GROUPS.find((g) => g.label === "Business");
     assert.ok(biz, "Business group present");
-    assert.ok(biz.items.some((i) => i.id === "business-people" && i.icon === "Users"));
-    assert.ok(biz.items.some((i) => i.id === "business-brands" && i.icon === "Building2"));
+    // #4130: People and Brands are the menu entries; the consoles are their tabs.
+    assert.ok(biz.items.some((i) => i.id === "people" && i.icon === "Users"));
+    assert.ok(biz.items.some((i) => i.id === "brands" && i.icon === "Building2"));
     assert.ok(!biz.items.some((i) => i.id === "business-console"), "placeholder item removed");
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-people"));
-    assert.ok(NAV_ITEMS.some((i) => i.id === "business-brands"));
+    assert.ok(NAV_ITEMS.some((i) => i.id === "people"));
+    assert.ok(NAV_ITEMS.some((i) => i.id === "brands"));
   });
   it("App.jsx routes #/business-people + #/business-brands (business-console gone)", () => {
     const app = readSrc("App.jsx");
-    assert.match(app, /import \{ PeopleConsolePage \} from "\.\/pages\/PeopleConsolePage"/);
-    assert.match(app, /import \{ BrandsConsolePage \} from "\.\/pages\/BrandsConsolePage"/);
-    assert.match(app, /"business-people": PeopleConsolePage/);
-    assert.match(app, /"business-brands": BrandsConsolePage/);
+    // #4130: the consoles are drawn as tabs of People and Brands.
+    const hubs = readSrc("pages/shellHubs.jsx");
+    assert.match(hubs, /import \{ PeopleConsolePage \} from "\.\/PeopleConsolePage"/);
+    assert.match(hubs, /import \{ BrandsConsolePage \} from "\.\/BrandsConsolePage"/);
+    assert.match(hubs, /"business-people": PeopleConsolePage/);
+    assert.match(hubs, /"business-brands": BrandsConsolePage/);
     assert.doesNotMatch(app, /"business-console"/);
     assert.doesNotMatch(app, /BusinessConsolePage/);
   });

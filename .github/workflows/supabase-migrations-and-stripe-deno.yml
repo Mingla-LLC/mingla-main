@@ -227,6 +227,20 @@ on:
       # one page header, and the stepper whose width sum the tester suite redoes).
       - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      # #4130 Wave 0 (admin menu, redirects, shared list and trend fixes): the
+      # suite and the files it reads that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_wave0_shell.implementor.test.js"
+      - "mingla-admin/src/lib/adminRoutes.js"
+      - "mingla-admin/src/lib/access.js"
+      - "mingla-admin/src/lib/listAll.js"
+      - "mingla-admin/src/lib/trendTone.js"
+      - "mingla-admin/src/components/layout/**"
+      - "mingla-admin/src/components/entity/EntityListView.jsx"
+      - "mingla-admin/src/components/ui/Card.jsx"
+      - "mingla-admin/src/components/ui/LoadError.jsx"
+      - "mingla-admin/src/hooks/useHashQuery.js"
+      - "mingla-admin/src/hooks/useReviewCount.js"
+      - "mingla-admin/src/App.jsx"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -484,6 +498,20 @@ on:
       # one page header, and the stepper whose width sum the tester suite redoes).
       - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      # #4130 Wave 0 (admin menu, redirects, shared list and trend fixes): the
+      # suite and the files it reads that are not already listed here.
+      - "mingla-admin/src/__tests__/issue_4130_wave0_shell.implementor.test.js"
+      - "mingla-admin/src/lib/adminRoutes.js"
+      - "mingla-admin/src/lib/access.js"
+      - "mingla-admin/src/lib/listAll.js"
+      - "mingla-admin/src/lib/trendTone.js"
+      - "mingla-admin/src/components/layout/**"
+      - "mingla-admin/src/components/entity/EntityListView.jsx"
+      - "mingla-admin/src/components/ui/Card.jsx"
+      - "mingla-admin/src/components/ui/LoadError.jsx"
+      - "mingla-admin/src/hooks/useHashQuery.js"
+      - "mingla-admin/src/hooks/useReviewCount.js"
+      - "mingla-admin/src/App.jsx"
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
@@ -708,6 +736,9 @@ jobs:
       - name: "Issue #3802 — admin shell: independent tester adversarial proof (every combination of areas against every address, hostile ids, storage that throws, stacking computed from the stylesheet, class names that do nothing, the stepper beside the new menu)"
         working-directory: mingla-admin
         run: node --test src/__tests__/admin_shell_issue3802.tester.adversarial.test.js
+      - name: "Issue #4130 — admin menu as approved: retired pages redirect to their new homes, merged pages keep the union of their access, list export and sort cover every filtered row, stat trends coloured by direction"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_4130_wave0_shell.implementor.test.js
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js

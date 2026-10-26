@@ -16,6 +16,8 @@
 import { assert, assertEquals, assertMatch, assertNotMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { cardAnchorWords } from "../lib/opsModel.js";
 import { removePerson } from "../lib/peopleField.js";
+// #4130: App rewrites retired addresses through this map before the Agent log check.
+import { redirectHash } from "../lib/adminRoutes.js";
 
 const SRC = new URL("../", import.meta.url);
 const ROOT = new URL("../../../", import.meta.url);
@@ -53,7 +55,7 @@ Deno.test("#3980 P2-1: a fresh #/agent-log lands on Work > Agent activity before
   const run = (hash: string) => {
     const location = { hash, pathname: "/", search: "" };
     const window = { location, history: { replaceState: (_s: unknown, _t: string, url: string) => { location.hash = url; } } };
-    return new Function("window", "AGENT_LOG_REDIRECT", body)(window, redirect) as string;
+    return new Function("window", "AGENT_LOG_REDIRECT", "redirectHash", body)(window, redirect, redirectHash) as string;
   };
   assertEquals(run("#/agent-log"), "#/work-board?tab=activity");
   assertEquals(run("#/agent-log?card=1"), "#/work-board?tab=activity");

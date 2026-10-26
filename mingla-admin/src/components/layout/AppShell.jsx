@@ -51,7 +51,6 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header
           activeTab={menuId}
-          onTabChange={onTabChange}
           title={currentTitle}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={handleToggleCollapsed}

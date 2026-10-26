@@ -15,7 +15,7 @@ import { Tabs } from "../ui/Tabs";
 import { useAuth } from "../../context/AuthContext";
 import { canOpenOwnPage } from "../../lib/access";
 import { hubTabFromHash, hubTabHash, hubTabs } from "../../lib/adminRoutes";
-import { HostedPageContext } from "../../hooks/useHashQuery";
+import { HostedPageContext } from "./hostedPageContext";
 
 function currentHash() {
   return typeof window === "undefined" ? "" : window.location.hash;

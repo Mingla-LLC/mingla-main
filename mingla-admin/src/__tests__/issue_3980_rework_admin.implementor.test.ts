@@ -134,7 +134,9 @@ Deno.test("#3980 rework: the To review header counts what the menu badge counts"
   const hook = code("hooks/useReviewCount.js");
   assertMatch(hook, /total: waiting \+ needsPerson/);
   assertMatch(hook, /window\.addEventListener\(REVIEW_CHANGED, refresh\)/);
-  assertMatch(code("components/layout/Sidebar.jsx"), /item\.id === "drafts" \? reviewCount\.total/);
+  // #4130: Needs you left the menu; Work carries the count of your own waiting cards.
+  assertMatch(code("components/layout/Sidebar.jsx"), /item\.id === "work-board" \? reviewCount\.cards/);
+  assertMatch(code("hooks/useReviewCount.js"), /const cards = needsPerson \+ draftNeeded \+ wording;/);
 });
 
 Deno.test("#3980 rework: the agent log names fields in plain words", () => {

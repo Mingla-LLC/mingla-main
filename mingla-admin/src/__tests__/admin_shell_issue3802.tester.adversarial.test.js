@@ -69,7 +69,9 @@ const CRUMBS = stripComments(read("components/ui/Breadcrumbs.jsx"));
 const CSS = read("globals.css");
 const SHELL_FILES = { SIDEBAR, HEADER, SHELL, PAGE_HEADER, CRUMBS };
 
-const APPROVED_LABELS = [null, "Pipeline", "Business", "Money", "Explorer app", "Growth", "Company", "System"];
+// #4130: Wave 0 — nine named groups, Home first; only the role Home group
+// (lib/access.js TEAM_NAV_GROUP) has no label.
+const APPROVED_LABELS = ["Home", "Outreach", "Support", "Business", "Money", "Explorer app", "Growth", "Company", "System"];
 const ALL_IDS = NAV_ITEMS.map((i) => i.id);
 const KNOWN = ["home", ...ALL_IDS];
 const AREAS = Object.values(AREA);
@@ -128,7 +130,11 @@ describe("#3802 TA-1: an address opens a page for exactly the people who may ope
   });
 
   it("a group name is never an address", () => {
-    for (const label of APPROVED_LABELS.filter(Boolean)) {
+    // #4130: three names match a page id by design and change nothing: Home
+    // (the role home page is "home"), Outreach (its Hosts and creators page,
+    // #/outreach, from the approved redirect map) and Support (its first
+    // entry). Group names are only ever fold memory, never an address.
+    for (const label of APPROVED_LABELS.filter((l) => l && !["Home", "Outreach", "Support"].includes(l))) {
       assert.equal(KNOWN.includes(label), false);
       assert.equal(KNOWN.includes(label.toLowerCase().replace(/\s+/g, "-")), false, `${label} must not collide with a page id`);
     }
@@ -183,10 +189,12 @@ describe("#3802 TA-2: the menu, for every combination of areas", () => {
     for (const role of ["growth", "partner"]) {
       const who = { email: `${role}@example.test`, role, status: "active", areas: ["role_home", "crm", "beta_leads"] };
       const labels = visibleNavGroups(NAV_GROUPS, who).map((g) => g.label);
-      assert.deepEqual(labels, [null, "Pipeline", "System"], role);
+      // #4130: Work sits in Home; the boards, Inbound leads (Beta leads tab)
+      // and Calendar in Outreach. My agent and Guide moved to the header.
+      assert.deepEqual(labels, [null, "Home", "Outreach"], role);
       // [TEST-MOD-APPROVED #3802] Content Calendar deliberately shares CRM access with the pipeline pages.
       // [TEST-MOD-APPROVED #3980] the Work board and Agent log are pipeline pages too.
-      for (const id of ALL_IDS.filter((x) => !["hosts", "creators", "drafts", "work-board", "agent-log", "beta-leads", "content-calendar", "agent", "guide"].includes(x))) {
+      for (const id of ALL_IDS.filter((x) => !["outreach", "inbound", "work-board", "content-calendar"].includes(x))) {
         assert.equal(canOpenPage(who, id), false, `${role} must not open ${id}`);
       }
     }
@@ -194,8 +202,8 @@ describe("#3802 TA-2: the menu, for every combination of areas", () => {
 
   it("no group label is blank, padded or repeated, so the fold memory cannot mix two groups up", () => {
     const labels = NAV_GROUPS.map((g) => g.label);
-    assert.equal(labels.filter((l) => l === null).length, 1, "exactly one group has no label");
-    assert.equal(labels[0], null, "and it is the first");
+    // #4130: every menu group is named; the role Home group is the one without.
+    assert.equal(labels.filter((l) => l === null).length, 0, "every menu group has a label");
     for (const l of labels.filter((x) => x !== null)) {
       assert.equal(typeof l, "string");
       assert.equal(l, l.trim());
@@ -347,7 +355,8 @@ describe("#3802 TA-4: the breadcrumb at its edges", () => {
     for (const menu of [null, undefined, "x", 7, {}, [], [{}], [{ label: "A" }], [{ label: "A", items: null }], [{ label: "", items: [{ id: "x" }] }], [{ label: 5, items: [{ id: "x" }] }]]) {
       assert.deepEqual(breadcrumbFor("x", "X", menu), [{ label: "X" }], JSON.stringify(menu));
     }
-    assert.deepEqual(breadcrumbFor("overview", undefined, NAV_GROUPS), [{ label: undefined }]);
+    // #4130: overview sits in the Home group now; the console id has no group.
+    assert.deepEqual(breadcrumbFor("community-support", undefined, NAV_GROUPS), [{ label: undefined }]);
   });
 
   it("building a breadcrumb never changes the menu", () => {

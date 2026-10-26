@@ -17,15 +17,21 @@ const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 const CONSTANTS = read("lib/constants.js");
 const APP = read("App.jsx");
 const PAGE = read("pages/CommunitySupportPage.jsx");
+// #4130: retired addresses (the old #/support and #/email among them) live here.
+const ROUTES = read("lib/adminRoutes.js");
 const SERVICE = read("services/communityService.js");
 const SUPPORT = read("pages/SupportDeskPage.jsx");
 const EMAIL = read("pages/EmailPage.jsx");
 
 describe("#3720 F — nav is one Community & Support item", () => {
   it("primary group has community-support; Growth no longer has email", () => {
-    assert.match(CONSTANTS, /id:\s*"community-support"/);
-    assert.match(CONSTANTS, /label:\s*"Community & Support"/);
-    assert.equal(/\bid:\s*"support"\b/.test(CONSTANTS), false);
+    // #4130: the menu's Support group holds two entries, Support and
+    // Community, that open this one console's tabs until Wave 6 splits it;
+    // there is still no page of their own and no Email entry.
+    assert.match(CONSTANTS, /id:\s*"support",\s*label:\s*"Support"/);
+    assert.match(CONSTANTS, /id:\s*"community",\s*label:\s*"Community"/);
+    assert.match(ROUTES, /support: Object\.freeze\(\{ page: "community-support", tab: "support" \}\)/);
+    assert.match(ROUTES, /community: Object\.freeze\(\{ page: "community-support" \}\)/);
     assert.equal(/\bid:\s*"email"\b/.test(CONSTANTS), false);
   });
 });
@@ -39,8 +45,10 @@ describe("#3720 F — App routes and legacy aliases", () => {
 
   it("legacy #/support and #/email rewrite to community-support tabs", () => {
     assert.match(APP, /canonicalizeLegacyCommunityHashes/);
-    assert.match(APP, /#\/community-support\?tab=support/);
-    assert.match(APP, /#\/community-support\?tab=email/);
+    // #4130: the rewrite reads the one redirect map (lib/adminRoutes.js).
+    assert.match(APP, /const next = redirectHash\(window\.location\.hash\);/);
+    assert.match(ROUTES, /support: Object\.freeze\(\{ page: "community-support", tab: "support" \}\)/);
+    assert.match(ROUTES, /email: Object\.freeze\(\{ page: "community-support", tab: "email" \}\)/);
   });
 });
 
